@@ -1,4 +1,4 @@
-# Stellwerk
+# claude-workflow-kit
 
 Eine Bibliothek aus Claude-Code-Skills, die den 9-Schritt-Prozess zur KI-gestuetzten Softwareentwicklung ausfuehrbar macht.
 
@@ -31,6 +31,12 @@ node install.mjs
 Der Installer stellt fuenf Fragen und kopiert die Skills ans richtige Ziel.
 
 Danach `workflow.config.json` anpassen (buildChecks, mutationCommand).
+
+Oder direkt aus GitHub (nach Veroeffentlichung):
+
+```bash
+npx github:mannewolff/claude-workflow-kit
+```
 
 ---
 

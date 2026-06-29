@@ -7,7 +7,7 @@
  *
  * Aufruf:
  *   node install.mjs
- *   npx github:mannewolff/Stellwerk  (nach Veroeffentlichung)
+ *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
  */
 
 import { createInterface } from "node:readline";
