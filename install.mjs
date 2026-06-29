@@ -11,16 +11,39 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, writeFileSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// --- Defaults aus dem Schema lesen ---
-const SCHEMA_PATH = join(__dirname, "templates", "workflow.config.schema.json");
-const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf-8"));
+// --- Defaults (eingebettet, damit install.mjs als Single-File portabel ist) ---
+const schema = {
+  defaults: {
+    buildChecks: [],
+    mutationCommand: "",
+    mainBranch: "main",
+    productionBranch: "production",
+    reviewScope: "diff",
+    reviewModel: "claude-opus-4-8",
+    triggers: { go: "GO", push: "push main", merge: "merge production" },
+  },
+  validationRules: [
+    {
+      field: "reviewScope",
+      rule: "enum",
+      allowed: ["diff", "full"],
+      error: "reviewScope muss 'diff' oder 'full' sein.",
+    },
+    {
+      field: "reviewModel",
+      rule: "pattern",
+      pattern: "^claude-",
+      error: "reviewModel muss eine Claude-Modell-ID sein (z.B. 'claude-opus-4-8').",
+    },
+  ],
+};
 const DEFAULTS = schema.defaults;
 
 // --- Stdin-Lese-Infrastruktur ---
