@@ -1,0 +1,95 @@
+---
+name: kontext
+description: Schritt 0 des 9-Schritt-Prozesses — lädt den Memory-Vault und gibt einen kurzen Session-Start-Stand. Nutze diesen Skill wenn der Nutzer /kontext aufruft oder die Session mit dem Projektstand starten will.
+user-invocable: true
+---
+
+# Kontext
+
+Schritt 0: Session-Start. Vault laden, Projektstand holen, kurzen Überblick geben.
+
+## Vorbedingung
+
+Suche die Config in dieser Reihenfolge (erstes gefundenes gewinnt):
+1. `.claude/kontext.config.json` im aktuellen Projektverzeichnis
+2. `~/.claude/kontext.config.json` (global)
+
+Wenn keine Config gefunden: Fehlermeldung ausgeben und abbrechen.
+
+```
+Keine kontext.config.json gefunden.
+Erstelle ~/.claude/kontext.config.json mit:
+{
+  "vault": "/pfad/zum/vault",
+  "always": ["Index.md", "Profil.md"],
+  "projectDocs": ["CLAUDE-workflow.md"]
+}
+```
+
+## Ablauf
+
+### 1. Config lesen
+
+Felder aus `kontext.config.json`:
+- `vault`: absoluter Pfad zum Memory-Vault
+- `always`: Array von Dateipfaden relativ zum `vault`-Root (immer lesen)
+- `projectDocs`: Array von Pfaden relativ zum Projektverzeichnis (optional, projekt-spezifisch)
+
+### 2. Vault-Dateien lesen
+
+Lies alle Dateien aus `always` relativ zum `vault`-Pfad. Typisch: `Index.md` (Struktur + aktive Projekte) und `Profil.md` (Nutzerprofil).
+
+### 3. Projektnotiz auto-detektieren
+
+```bash
+gh repo view --json name --jq '.name'
+```
+
+Ergebnis `{name}` → suche `{vault}/Projekte/{name}/{name}.md`. Wenn gefunden: lesen.
+
+Wenn kein Repo oder kein Match: nur die `always`-Dateien zeigen, keinen Fehler werfen.
+
+### 4. Projekt-spezifische Docs lesen
+
+Lies alle Dateien aus `projectDocs` relativ zum Projektverzeichnis. Übliche Kandidaten: `CLAUDE-workflow.md`, `.claude/workflow.config.json`.
+
+Fehlende Dateien aus dieser Liste leise überspringen (kein Fehler).
+
+### 5. Offene Issues holen
+
+```bash
+gh project item-list <BOARD-NR> --owner <owner> --format json
+```
+
+Board-Nummer und Owner aus der Projektnotiz oder `workflow.config.json` ableiten, wenn vorhanden. Wenn kein Board konfiguriert: Schritt überspringen.
+
+Alternativ einfacher:
+```bash
+gh issue list --repo <owner>/<repo> --state open --json number,title,labels
+```
+
+### 6. Zusammenfassung ausgeben
+
+Kompakter Session-Start-Stand:
+
+```
+## Session-Start — {Projektname}
+
+### Aktive Issues
+- #N Titel [Status]
+- ...
+
+### Letzte Entscheidungen / Zuletzt aktualisiert
+(aus der Projektnotiz)
+
+### Was als nächstes kommt
+(aus der Projektnotiz, offene Punkte, oder Board-Ready-Spalte)
+```
+
+Keine vollständige Wiedergabe der Vault-Inhalte — nur was für den sofortigen Einstieg relevant ist.
+
+## Was dieser Skill nicht tut
+
+- Kein Schreiben in den Vault (das ist /document)
+- Keine Code-Änderungen
+- Kein eigenmächtiges Starten anderer Skills

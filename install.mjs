@@ -80,6 +80,7 @@ function copySkills(skillsSrc, targetDir) {
   const skills = [
     "plan", "issues", "implement-ready", "local-check",
     "review", "retro", "push-main", "merge-production",
+    "kontext", "document",
   ];
   mkdirSync(targetDir, { recursive: true });
   for (const skill of skills) {
@@ -138,6 +139,13 @@ async function main() {
     "reviewModel"
   );
 
+  // Frage 6 (nur bei globalem Install): Vault-Pfad für kontext.config.json
+  let vaultPath = "";
+  if (scope === "global") {
+    const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
+    vaultPath = raw.trim();
+  }
+
   rl.close();
 
   // --- Pfade berechnen ---
@@ -167,6 +175,18 @@ async function main() {
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(`\n✓ Config geschrieben: ${configTarget}`);
+
+  // --- kontext.config.json schreiben (nur bei globalem Install mit Vault-Pfad) ---
+  if (scope === "global" && vaultPath) {
+    const kontextConfig = {
+      vault: vaultPath,
+      always: ["Index.md", "Profil.md"],
+      projectDocs: ["CLAUDE-workflow.md"],
+    };
+    const kontextConfigTarget = join(targetBase, "kontext.config.json");
+    writeFileSync(kontextConfigTarget, JSON.stringify(kontextConfig, null, 2) + "\n", "utf-8");
+    console.log(`✓ kontext.config.json geschrieben: ${kontextConfigTarget}`);
+  }
 
   // --- CLAUDE-workflow.md ablegen ---
   if (existsSync(workflowMdSrc)) {

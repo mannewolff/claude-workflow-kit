@@ -46,6 +46,7 @@ Nach der Installation erscheinen alle Skills in `/help`.
 
 | Skill | Schritt | Was er tut |
 |-------|---------|------------|
+| `/kontext` | 0 | Laedt den Memory-Vault und gibt einen kurzen Session-Start-Stand |
 | `/plan` | 2 | Erstellt einen Plan, stellt ihn zur Diskussion, implementiert nichts |
 | `/issues` | 3 | Uebertraegt den Plan in kleinteilige GitHub-Issues (Vier-Abschnitt-Format) |
 | `/implement-ready` | 5 | Arbeitet Ready-Issues sequenziell nach Nummer ab, committet lokal |
@@ -54,6 +55,7 @@ Nach der Installation erscheinen alle Skills in `/help`.
 | `/retro` | 7.5 | KI-Retrospektive, Memory konsolidieren, Workflow-Regeln schaerfen |
 | `/push-main` | 8 | Pusht den aktuellen Commit-Batch (**nur auf Trigger-Phrase**) |
 | `/merge-production` | 9 | Erstellt PR main -> production (**nur auf Trigger-Phrase**) |
+| `/document` | 9.5 | Schreibt Tageslog + aktualisiert Projektnotiz nach der Session |
 
 Die menschlichen Schritte (Anforderung, GO, Ready-Bewegung) haben bewusst keinen Skill.
 
