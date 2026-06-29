@@ -33,7 +33,7 @@ Erstelle ~/.claude/kontext.config.json mit:
 Felder aus `kontext.config.json`:
 - `vault`: absoluter Pfad zum Memory-Vault
 - `always`: Array von Dateipfaden relativ zum `vault`-Root (immer lesen)
-- `projectDocs`: Array von Pfaden relativ zum Projektverzeichnis (optional, projekt-spezifisch)
+- `projectDocs`: Array von Pfaden oder Glob-Mustern relativ zum Projektverzeichnis (optional). Beispiel: `"CLAUDE-*"` liest alle CLAUDE-*.md-Dateien im Projekt-Root.
 
 ### 2. Vault-Dateien lesen
 
@@ -51,9 +51,13 @@ Wenn kein Repo oder kein Match: nur die `always`-Dateien zeigen, keinen Fehler w
 
 ### 4. Projekt-spezifische Docs lesen
 
-Lies alle Dateien aus `projectDocs` relativ zum Projektverzeichnis. Übliche Kandidaten: `CLAUDE-workflow.md`, `.claude/workflow.config.json`.
+Lies alle Dateien aus `projectDocs` relativ zum Projektverzeichnis. Einträge können konkrete Dateinamen oder Glob-Muster sein:
 
-Fehlende Dateien aus dieser Liste leise überspringen (kein Fehler).
+```bash
+find . -maxdepth 1 -name "CLAUDE-*" -type f
+```
+
+Fehlende Dateien und Muster ohne Treffer leise überspringen (kein Fehler).
 
 ### 5. Offene Issues holen
 

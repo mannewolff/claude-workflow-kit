@@ -181,7 +181,7 @@ async function main() {
     const kontextConfig = {
       vault: vaultPath,
       always: ["Index.md", "Profil.md"],
-      projectDocs: ["CLAUDE-workflow.md"],
+      projectDocs: ["CLAUDE-*", ".claude/CLAUDE-*"],
     };
     const kontextConfigTarget = join(targetBase, "kontext.config.json");
     writeFileSync(kontextConfigTarget, JSON.stringify(kontextConfig, null, 2) + "\n", "utf-8");
