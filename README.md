@@ -19,7 +19,7 @@ Diese drei sind keine fehlende Funktion. Sie sind der Punkt, an dem der Mensch d
 ### Voraussetzungen
 
 - [Claude Code](https://claude.ai/code) installiert
-- Node.js 18+
+- Node.js 18+ (22+ empfohlen)
 - `gh` CLI (fuer Board- und Issue-Verwaltung)
 
 ### Einrichten
@@ -40,7 +40,7 @@ npx github:mannewolff/claude-workflow-kit
 
 ---
 
-## Die acht Skills
+## Die zehn Skills
 
 Nach der Installation erscheinen alle Skills in `/help`.
 
@@ -59,19 +59,30 @@ Nach der Installation erscheinen alle Skills in `/help`.
 
 Die menschlichen Schritte (Anforderung, GO, Ready-Bewegung) haben bewusst keinen Skill.
 
+/kontext (Schritt 0), /retro (Schritt 7.5) und /document (Schritt 9.5) sind Querschnitts-Skills ausserhalb der 9er-Kernkette.
+
 ---
 
 ## Config (.claude/workflow.config.json)
 
 ```json
 {
-  "buildChecks": ["mvn verify"],
-  "mutationCommand": "mvn org.pitest:pitest-maven:mutationCoverage",
+  "buildChecks": ["<build-kommando>", "<test-kommando>"],
+  "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
   "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
+}
+```
+
+Beispiel Java/Maven:
+
+```json
+{
+  "buildChecks": ["mvn verify"],
+  "mutationCommand": "mvn org.pitest:pitest-maven:mutationCoverage"
 }
 ```
 
