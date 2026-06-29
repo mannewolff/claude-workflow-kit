@@ -11,18 +11,18 @@ Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Ses
 | `~/.claude/kontext.config.json` | Global — gilt für alle Projekte |
 | `.claude/kontext.config.json` | Projektlokal — überschreibt einzelne Felder der globalen Config |
 
-Die lokale Config wird mit der globalen gemergt. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, gibt der Skill eine Fehlermeldung aus.
+Die lokale Config wird mit der globalen gemergt. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird oder `vault` fehlt, laufen /kontext und /document im Degraded Mode (kein Abbruch, eingeschraenkter Output).
 
 ---
 
 ## Felder
 
-| Feld | Typ | Beschreibung |
-|------|-----|--------------|
-| `vault` | `string` | Absoluter Pfad zum Memory-Vault |
-| `always` | `string[]` | Dateien relativ zum `vault`-Root, die immer gelesen werden |
-| `projectDocs` | `string[]` | Dateien oder Glob-Muster relativ zum Projektverzeichnis |
-| `project` | `string` | Optionaler Override für den Vault-Projektnamen (nur nötig wenn Repo-Name ≠ Vault-Ordnername) |
+| Feld | Typ | Pflicht | Beschreibung |
+|------|-----|---------|--------------|
+| `vault` | `string` | optional | Absoluter Pfad zum Memory-Vault. Ohne dieses Feld laufen /kontext und /document im Degraded Mode. |
+| `always` | `string[]` | optional | Dateien relativ zum `vault`-Root, die immer gelesen werden |
+| `projectDocs` | `string[]` | optional | Dateien oder Glob-Muster relativ zum Projektverzeichnis. Fallback: `["CLAUDE-*", ".claude/CLAUDE-*"]` |
+| `project` | `string` | optional | Override fuer den Vault-Projektnamen (nur noetig wenn Repo-Name und Vault-Ordnername abweichen) |
 
 ---
 
@@ -36,6 +36,17 @@ find .claude -maxdepth 1 -name "CLAUDE-*" -type f
 ```
 
 Muster ohne Treffer werden leise übersprungen.
+
+---
+
+## Was passiert ohne Vault
+
+Wenn `vault` nicht gesetzt ist oder keine Config gefunden wird, laufen beide Skills weiter:
+
+- `/kontext` laedt offene Issues per `gh issue list` und liest `projectDocs`. Am Ende: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
+- `/document` schreibt den Tageslog in `docs/session-log/YYYY-MM-DD.md` im Projektverzeichnis. Am Ende: "Kein Vault konfiguriert. Log ins Projektverzeichnis geschrieben."
+
+Kein Fehler, kein Abbruch. Fuer persistentes Memory ueber Projekte hinweg: `vault`-Pfad eintragen.
 
 ---
 
@@ -81,7 +92,7 @@ Die lokale `.claude/kontext.config.json` muss manuell angelegt werden (nur bei B
 
 ```json
 {
-  "vault": "/Users/manfredwolff/Nextcloud/ClaudeMemory",
+  "vault": "/pfad/zu/deinem/vault",
   "always": ["Index.md", "Profil.md"],
   "projectDocs": ["CLAUDE-*", ".claude/CLAUDE-*"]
 }
