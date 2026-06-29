@@ -1,0 +1,15 @@
+{
+  "buildChecks": [
+    "mvn verify"
+  ],
+  "mutationCommand": "mvn org.pitest:pitest-maven:mutationCoverage",
+  "mainBranch": "main",
+  "productionBranch": "production",
+  "reviewScope": "diff",
+  "reviewModel": "claude-opus-4-8",
+  "triggers": {
+    "go": "GO",
+    "push": "push main",
+    "merge": "merge production"
+  }
+}
