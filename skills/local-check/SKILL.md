@@ -1,6 +1,7 @@
 ---
 name: local-check
 description: Schritt 6 des 9-Schritt-Prozesses — führt die Pflicht-Checks aus der Config aus und gibt eine grüne Checklist zurück. Nutze diesen Skill wenn der Nutzer /local-check aufruft oder Schritt 6 (lokale Prüfung) startet.
+user-invocable: true
 ---
 
 # Local Check

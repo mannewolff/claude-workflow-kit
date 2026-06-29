@@ -1,6 +1,7 @@
 ---
 name: retro
 description: Schritt 7.5 des 9-Schritt-Prozesses — KI-Retrospektive, die die Mensch-KI-Zusammenarbeit reflektiert, Memory konsolidiert und Workflow-Regeln schärft. Nutze diesen Skill wenn der Nutzer /retro aufruft oder eine KI-Retrospektive starten will (alle 1-2 Wochen empfohlen).
+user-invocable: true
 ---
 
 # Retro

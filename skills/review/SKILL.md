@@ -1,6 +1,7 @@
 ---
 name: review
 description: Startet einen Review durch einen Opus-Subagent in frischer Session ohne Implementierungs-Kontext. Nutze diesen Skill wenn der Nutzer /review aufruft oder Schritt 7 des Prozesses startet (Code-Review durch zweites Modell).
+user-invocable: true
 ---
 
 # Review

@@ -1,6 +1,7 @@
 ---
 name: push-main
 description: Schritt 8 des 9-Schritt-Prozesses — pusht den aktuellen Commit-Batch auf main. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "push main" tippt.
+user-invocable: true
 disable-model-invocation: true
 ---
 

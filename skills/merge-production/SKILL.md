@@ -1,6 +1,7 @@
 ---
 name: merge-production
 description: Schritt 9 des 9-Schritt-Prozesses — erstellt einen PR von main nach production. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "merge production" tippt.
+user-invocable: true
 disable-model-invocation: true
 ---
 
