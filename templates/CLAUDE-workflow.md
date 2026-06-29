@@ -78,6 +78,15 @@ Absolut bindend:
 
 `buildChecks` und `mutationCommand` anpassen. Alle anderen Felder haben sinnvolle Defaults.
 
+Beispiele fuer verschiedene Stacks:
+
+| Stack | buildChecks | mutationCommand |
+|-------|------------|-----------------|
+| Java/Maven | `["mvn verify"]` | `"mvn org.pitest:pitest-maven:mutationCoverage"` |
+| Node/npm | `["npm test", "npm run build"]` | `""` |
+| Python | `["pytest", "python -m build"]` | `""` |
+| Go | `["go test ./...", "go build ./..."]` | `""` |
+
 ---
 
 ## Pflichtchecks vor Push (Schritt 6)
