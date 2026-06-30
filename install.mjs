@@ -288,6 +288,41 @@ function copySkills(skillsSrc, targetDir) {
   }
 }
 
+// --- GitLab Label Setup ---
+
+const GITLAB_LABELS = [
+  { name: "Backlog",     color: "#e2e2e2" },
+  { name: "Ready",       color: "#0075ca" },
+  { name: "In Progress", color: "#e4e669" },
+  { name: "In Review",   color: "#d93f0b" },
+  { name: "Done",        color: "#0e8a16" },
+];
+
+async function setupGitLabLabels(rl) {
+  const raw = await ask(rl, "\nGitLab-Labels jetzt automatisch anlegen? (glab muss eingeloggt sein) [j/n]: ");
+  if (raw.trim().toLowerCase() !== "j") {
+    console.log(`  Labels manuell anlegen: Backlog, Ready, "In Progress", "In Review", Done`);
+    console.log(`  Wichtig: Leerzeichen in den Namen verwenden, kein Bindestrich.\n`);
+    return;
+  }
+  console.log("\nLege GitLab-Labels an:");
+  const { execSync } = await import("node:child_process");
+  for (const label of GITLAB_LABELS) {
+    try {
+      execSync(`glab label create --name "${label.name}" --color "${label.color}"`, { stdio: "pipe" });
+      console.log(`  ✓ ${label.name}`);
+    } catch (e) {
+      const msg = e.stderr?.toString() ?? "";
+      if (msg.includes("already exists") || msg.includes("has already been taken")) {
+        console.log(`  ~ ${label.name} (bereits vorhanden)`);
+      } else {
+        console.warn(`  ✗ ${label.name}: ${msg.trim()}`);
+      }
+    }
+  }
+  console.log(`\nBoard einrichten: Issues → Boards → "Add list" → Labels auswaehlen.\n`);
+}
+
 // --- Hauptprogramm ---
 
 async function main() {
@@ -419,7 +454,7 @@ async function main() {
   console.log(`Die zehn Skills erscheinen in /help.\n`);
   if (provider === "gitlab") {
     console.log(`GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.`);
-    console.log(`GitLab: Lege die Labels Backlog, Ready, In-progress, In-review, Done im Projekt an.\n`);
+    await setupGitLabLabels(rl);
   } else {
     console.log(`GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n`);
   }
