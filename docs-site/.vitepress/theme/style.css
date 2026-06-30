@@ -1,0 +1,68 @@
+/* mwolff.org Teal-Palette — VitePress Brand Override */
+:root {
+  /* Brand / Primary */
+  --vp-c-brand-1: #2f8c97;
+  --vp-c-brand-2: #4fa5b0;
+  --vp-c-brand-3: #71c0cc;
+  --vp-c-brand-soft: rgba(47, 140, 151, 0.12);
+
+  /* Fonts */
+  --vp-font-family-base: "Open Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --vp-font-family-mono: "Fira Code", "Cascadia Code", monospace;
+
+  /* Background — warm off-white wie mwolff.org */
+  --vp-c-bg: #faf7f0;
+  --vp-c-bg-soft: #eaf2f4;
+  --vp-c-bg-mute: #dceef1;
+
+  /* Text */
+  --vp-c-text-1: #1a3540;
+  --vp-c-text-2: #3d5662;
+  --vp-c-text-3: #6b7f88;
+
+  /* Dividers */
+  --vp-c-divider: rgba(26, 53, 64, 0.08);
+
+  /* Sidebar active */
+  --vp-c-brand-light: #71c0cc;
+  --vp-c-brand-dark: #1f5562;
+}
+
+/* Headings auf Mulish / Playfair */
+.vp-doc h1 {
+  font-family: "Playfair Display", Georgia, serif;
+  color: #1a3540;
+}
+
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+  font-family: "Mulish", "Open Sans", system-ui, sans-serif;
+  color: #1a3540;
+}
+
+/* Nav-Logo */
+.VPNavBarTitle .title {
+  font-family: "Mulish", sans-serif;
+  font-weight: 700;
+  color: #2f8c97;
+}
+
+/* Inline Code */
+.vp-doc code {
+  color: #1f5562;
+  background-color: #eaf2f4;
+}
+
+/* Sicherstellen: kein Dark Mode trotz System-Präferenz */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --vp-c-bg: #faf7f0;
+    --vp-c-bg-soft: #eaf2f4;
+    --vp-c-bg-mute: #dceef1;
+    --vp-c-text-1: #1a3540;
+    --vp-c-text-2: #3d5662;
+    --vp-c-text-3: #6b7f88;
+    --vp-c-divider: rgba(26, 53, 64, 0.08);
+  }
+}

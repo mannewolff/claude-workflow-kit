@@ -1,0 +1,23 @@
+{
+  "name": "claude-workflow-kit-docs",
+  "private": true,
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "type": "module",
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  },
+  "dependencies": {
+    "@vue/server-renderer": "^3.5.39",
+    "vue": "^3.5.39"
+  }
+}
