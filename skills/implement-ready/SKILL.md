@@ -26,7 +26,7 @@ gh project item-edit --id <ITEM-ID> --project-id <PROJECT-ID> \
 
 **GitLab:**
 ```bash
-glab issue edit <NR> --label "In-progress" --unlabel "Ready"
+glab issue update <NR> --label "In Progress" --unlabel "Ready"
 ```
 
 ### 2. Issue vollständig lesen
@@ -64,7 +64,7 @@ gh project item-edit --id <ITEM-ID> ... --single-select-option-id <IN-REVIEW-OPT
 
 **GitLab:**
 ```bash
-glab issue edit <NR> --label "In-review" --unlabel "In-progress"
+glab issue update <NR> --label "In Review" --unlabel "In Progress"
 ```
 
 Abschlussbericht als Issue-Kommentar im Format:

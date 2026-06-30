@@ -21,3 +21,8 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+# Docs / VitePress
+docs/node_modules
+docs-site/node_modules
+docs-site/.vitepress/dist
+docs-site/.vitepress/cache
