@@ -1,0 +1,53 @@
+name: Deploy docs.mwolff.org via SFTP
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+
+      - name: Node einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Symlink fuer VitePress SSR-Aufloesung anlegen
+        run: ln -s ${{ github.workspace }}/docs-site/node_modules ${{ github.workspace }}/docs/node_modules
+
+      - name: Abhaengigkeiten installieren
+        working-directory: docs-site
+        run: npm ci
+
+      - name: VitePress Build ausfuehren
+        working-directory: docs-site
+        run: npm run build
+
+      - name: lftp installieren
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Deploy per SFTP auf docs.mwolff.org
+        env:
+          SFTP_HOST: ${{ vars.SFTP_HOST }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PASS: ${{ secrets.SFTP_PASS }}
+          SFTP_TARGET_DIR: ${{ vars.DOCS_SFTP_TARGET_DIR }}
+        run: |
+          lftp -u "$SFTP_USER","$SFTP_PASS" sftp://$SFTP_HOST <<EOF
+          set sftp:auto-confirm yes
+          mirror --reverse --delete --verbose docs-site/.vitepress/dist/ $SFTP_TARGET_DIR
+          bye
+          EOF
