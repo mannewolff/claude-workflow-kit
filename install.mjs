@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Stellwerk Installer
+ * Stellwerk Installer v1.1.0
  *
- * Kopiert die acht Skills nach ~/.claude/skills/ oder ./.claude/skills/
- * und schreibt .claude/workflow.config.json aus fuenf interaktiven Fragen.
+ * Kopiert die zehn Skills nach ~/.claude/skills/ oder ./.claude/skills/
+ * und schreibt .claude/workflow.config.json aus sechs interaktiven Fragen.
  *
  * Aufruf:
  *   node install.mjs
+ *   node install.mjs --version
  *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
  */
 
@@ -17,6 +18,8 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const VERSION = "1.1.0";
 
 // --- Defaults (eingebettet, damit install.mjs als Single-File portabel ist) ---
 const schema = {
@@ -128,6 +131,11 @@ function copySkills(skillsSrc, targetDir) {
 // --- Hauptprogramm ---
 
 async function main() {
+  if (process.argv.includes("--version")) {
+    console.log(`Stellwerk install.mjs v${VERSION}`);
+    process.exit(0);
+  }
+
   await loadPipedLines();
   const rl = process.stdin.isTTY
     ? createInterface({ input: process.stdin, output: process.stdout })
