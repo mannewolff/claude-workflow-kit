@@ -66,6 +66,7 @@ Absolut bindend:
 
 ```json
 {
+  "provider": "github",
   "buildChecks": ["<build-kommando>", "<test-kommando>"],
   "mutationCommand": "<mutations-test-kommando oder leer>",
   "mainBranch": "main",
@@ -75,6 +76,8 @@ Absolut bindend:
   "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
 }
 ```
+
+`provider` ist `"github"` oder `"gitlab"`. Steuert welche CLI die Skills verwenden.
 
 `buildChecks` und `mutationCommand` anpassen. Alle anderen Felder haben sinnvolle Defaults.
 
