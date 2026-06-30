@@ -66,6 +66,7 @@ Absolut bindend:
 
 ```json
 {
+  "provider": "github",
   "buildChecks": ["<build-kommando>", "<test-kommando>"],
   "mutationCommand": "<mutations-test-kommando oder leer>",
   "mainBranch": "main",
@@ -75,6 +76,8 @@ Absolut bindend:
   "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
 }
 ```
+
+`provider` ist `"github"` oder `"gitlab"`. Steuert welche CLI die Skills verwenden.
 
 `buildChecks` und `mutationCommand` anpassen. Alle anderen Felder haben sinnvolle Defaults.
 
@@ -108,6 +111,7 @@ Was konkret ist zu tun?
 
 ## Akzeptanzkriterium
 Wie wird verifiziert, dass die Aufgabe erledigt ist?
+Portabilitaets-Konvention: Wenn eine Datei als eigenstaendig portabel gedacht ist (Installer, kopierbares Script), muss hier stehen: "lauffaehig ohne weiteren Repo-Kontext".
 
 ## Abhaengigkeiten
 Keine. (oder: Issue #N muss vorher fertig sein)

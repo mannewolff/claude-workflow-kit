@@ -21,6 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // --- Defaults (eingebettet, damit install.mjs als Single-File portabel ist) ---
 const schema = {
   defaults: {
+    provider: "github",
     buildChecks: [],
     mutationCommand: "",
     mainBranch: "main",
@@ -30,6 +31,12 @@ const schema = {
     triggers: { go: "GO", push: "push main", merge: "merge production" },
   },
   validationRules: [
+    {
+      field: "provider",
+      rule: "enum",
+      allowed: ["github", "gitlab"],
+      error: "provider muss 'github' oder 'gitlab' sein.",
+    },
     {
       field: "reviewScope",
       rule: "enum",
@@ -128,7 +135,7 @@ async function main() {
 
   console.log("\n=== Stellwerk Installer ===\n");
   console.log("Dieser Installer richtet die Stellwerk-Skill-Bibliothek ein.");
-  console.log("Fuenf Fragen, dann bist du fertig.\n");
+  console.log("Sechs Fragen, dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   let scope;
@@ -140,13 +147,21 @@ async function main() {
     console.error("  Bitte 'global' oder 'projekt' eingeben.");
   }
 
-  // Frage 2: mainBranch
+  // Frage 2: provider
+  const provider = await askWithDefault(
+    rl,
+    "Issue-Plattform: 'github' oder 'gitlab'?",
+    DEFAULTS.provider,
+    "provider"
+  );
+
+  // Frage 3: mainBranch
   const mainBranch = await askWithDefault(rl, "Haupt-Branch (mainBranch)", DEFAULTS.mainBranch);
 
-  // Frage 3: productionBranch
+  // Frage 4: productionBranch
   const productionBranch = await askWithDefault(rl, "Production-Branch (productionBranch)", DEFAULTS.productionBranch);
 
-  // Frage 4: reviewScope
+  // Frage 5: reviewScope
   const reviewScope = await askWithDefault(
     rl,
     "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
@@ -154,7 +169,7 @@ async function main() {
     "reviewScope"
   );
 
-  // Frage 5: reviewModel
+  // Frage 6: reviewModel
   const reviewModel = await askWithDefault(
     rl,
     "Reviewer-Modell (muss mit 'claude-' beginnen)",
@@ -187,6 +202,7 @@ async function main() {
 
   // --- Config schreiben ---
   const config = {
+    provider,
     buildChecks: DEFAULTS.buildChecks,
     mutationCommand: DEFAULTS.mutationCommand,
     mainBranch,
@@ -221,7 +237,13 @@ async function main() {
 
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
-  console.log(`Die acht Skills erscheinen in /help.\n`);
+  console.log(`Die zehn Skills erscheinen in /help.\n`);
+  if (provider === "gitlab") {
+    console.log(`GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.`);
+    console.log(`GitLab: Lege die Labels Backlog, Ready, In-progress, In-review, Done im Projekt an.\n`);
+  } else {
+    console.log(`GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n`);
+  }
   console.log(`Naechster Schritt: workflow.config.json anpassen (buildChecks, mutationCommand).`);
   console.log(`Pfad: ${configTarget}\n`);
 }
