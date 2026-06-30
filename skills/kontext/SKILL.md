@@ -57,11 +57,25 @@ Fehlende Dateien und Muster ohne Treffer leise überspringen (kein Fehler).
 
 ### 5. Offene Issues holen (beide Modi)
 
+Lies `provider` aus `.claude/workflow.config.json` (Default: `github`).
+
+**GitHub:**
 ```bash
 gh issue list --repo <owner>/<repo> --state open --json number,title,labels
 ```
 
-Wenn kein GitHub-Repo erkennbar: Schritt überspringen.
+**GitLab:**
+```bash
+glab issue list --state opened
+```
+
+Repo-Name bei GitLab:
+```bash
+git remote get-url origin
+```
+Extrahiere den Projekt-Pfad per Regex (z.B. `group/projekt` aus `git@gitlab.com:group/projekt.git`).
+
+Wenn kein Repo erkennbar: Schritt ueberspringen.
 
 ### 6. Zusammenfassung ausgeben
 

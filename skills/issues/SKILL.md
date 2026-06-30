@@ -44,19 +44,32 @@ Wie wird verifiziert, dass die Aufgabe erledigt ist? Konkret, messbar oder ausf�
 Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 ```
 
-Issues anlegen per:
+Lies `provider` aus `.claude/workflow.config.json` (Default: `github`).
+
+**GitHub:**
 ```bash
 gh issue create --repo <owner>/<repo> --title "Titel" --body "..."
 ```
 
+**GitLab:**
+```bash
+glab issue create --title "Titel" --description "..."
+```
+
 ### 4. Issues ans Board hängen
 
-Nach dem Anlegen alle Issues zum Project Board hinzufügen:
+**GitHub:** Issues zum Project Board hinzufuegen:
 ```bash
 gh project item-add <BOARD-NR> --owner <owner> --url <issue-url>
 ```
 
-Status bleibt **Backlog**. Die Bewegung nach Ready ist Mannes GO (Schritt 4) — Claude zieht Issues nie eigenmächtig nach Ready.
+**GitLab:** GitLab hat keine vollstaendige Board-CLI. Status wird per Label gesetzt:
+```bash
+glab issue edit <NR> --label "Backlog"
+```
+Die Labels Backlog, Ready, In-progress, In-review, Done muessen einmalig im GitLab-Projekt angelegt sein (Hinweis gibt der Installer).
+
+Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schritt 4) — Claude zieht Issues nie eigenmächtig nach Ready.
 
 ### 5. Abschluss
 
