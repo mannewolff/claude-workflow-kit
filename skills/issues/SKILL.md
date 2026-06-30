@@ -24,6 +24,8 @@ Ein Issue = ein logischer Schritt, der eigenständig getestet werden kann. Krite
 
 Wenn ein Schritt sich nicht in einem überschaubaren Aufwand erledigen lässt, in Sub-Issues schneiden.
 
+Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig portabel gedacht ist (Installer, Single-File-Tool, kopierbares Script), muss das Akzeptanzkriterium explizit enthalten: "lauffaehig ohne weiteren Repo-Kontext". Ohne diesen Prueffall bleibt die Portabilitaet ungetestet.
+
 ### 3. Issues im Vier-Abschnitt-Format anlegen
 
 Jedes Issue bekommt vier Abschnitte:

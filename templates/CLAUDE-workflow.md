@@ -108,6 +108,7 @@ Was konkret ist zu tun?
 
 ## Akzeptanzkriterium
 Wie wird verifiziert, dass die Aufgabe erledigt ist?
+Portabilitaets-Konvention: Wenn eine Datei als eigenstaendig portabel gedacht ist (Installer, kopierbares Script), muss hier stehen: "lauffaehig ohne weiteren Repo-Kontext".
 
 ## Abhaengigkeiten
 Keine. (oder: Issue #N muss vorher fertig sein)
