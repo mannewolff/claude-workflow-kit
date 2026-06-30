@@ -320,7 +320,10 @@ async function setupGitLabLabels(rl) {
       }
     }
   }
-  console.log(`\nBoard einrichten: Issues → Boards → "Add list" → Labels auswaehlen.\n`);
+  console.log(`\n  Labels angelegt. Jetzt manuell das Board einrichten:`);
+  console.log(`  Issues → Boards → "Add list" → je eine Spalte fuer jedes Label anlegen.`);
+  console.log(`  Reihenfolge: Backlog → Ready → In Progress → In Review → Done`);
+  console.log(`  (Board-Spalten lassen sich nicht per CLI anlegen — das ist eine GitLab-Einschraenkung.)\n`);
 }
 
 // --- Hauptprogramm ---
