@@ -64,6 +64,21 @@ Anschließend erklärt er, dass **Board-Spalten manuell** in der GitLab-UI angel
 
 ---
 
+## Empfohlene Reihenfolge bei GitLab-Projekten
+
+Der Installer legt Labels im **aktuellen GitLab-Projekt** an (das Projekt, auf das `glab` im aktuellen Verzeichnis zeigt). Deshalb muss das Repository vorher existieren.
+
+**Korrekte Reihenfolge:**
+
+1. GitLab-Repository anlegen (UI oder `glab repo create`)
+2. Repository lokal klonen: `git clone <url>`
+3. In das Verzeichnis wechseln: `cd <projekt>`
+4. Installer aufrufen: `node install.mjs`
+
+Wenn man den Installer **vor** dem Repository-Anlegen aufruft, schlägt der Label-Setup-Schritt stillschweigend fehl — `glab` findet kein Projekt.
+
+---
+
 ## Was die Doku anpassen muss
 
 - Überall wo `In-progress` / `In-review` steht: auf `In Progress` / `In Review` ändern
