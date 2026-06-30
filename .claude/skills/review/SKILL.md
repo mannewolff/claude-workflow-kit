@@ -66,12 +66,12 @@ Schreibe die Befunde als Kommentar ans aktuelle Issue. Lies `provider` aus `.cla
 
 **GitHub:**
 ```bash
-gh issue comment <ISSUE-NUMMER> --body "## Code-Review (Schritt 7)\n\n<BEFUNDE>"
+gh issue comment <ISSUE-NUMMER> --body $'## Code-Review (Schritt 7)\n\n<BEFUNDE>'
 ```
 
 **GitLab:**
 ```bash
-glab issue note create <ISSUE-NUMMER> --message "## Code-Review (Schritt 7)\n\n<BEFUNDE>"
+glab issue note create <ISSUE-NUMMER> --message $'## Code-Review (Schritt 7)\n\n<BEFUNDE>'
 ```
 
 Falls kein Issue ermittelbar: Gib die Befunde direkt aus.

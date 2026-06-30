@@ -38,10 +38,10 @@ Lies alle Dateien aus `always` relativ zum `vault`-Pfad. Typisch: `Index.md` (St
 ### 3. Projektnotiz auto-detektieren (nur Modus A)
 
 ```bash
-gh repo view --json name --jq '.name'
+git remote get-url origin
 ```
 
-Ergebnis `{name}` → suche `{vault}/Projekte/{name}/{name}.md`. Wenn gefunden: lesen.
+Extrahiere den Repo-Namen (letztes Segment ohne `.git`) → `{name}`. Suche `{vault}/Projekte/{name}/{name}.md`. Wenn gefunden: lesen.
 
 Wenn kein Repo oder kein Match: nur die `always`-Dateien zeigen, keinen Fehler werfen.
 
