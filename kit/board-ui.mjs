@@ -8,7 +8,7 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -67,7 +67,7 @@ function serializeFrontmatter(meta, body) {
 function readIssues(issuesDir) {
   if (!existsSync(issuesDir)) return [];
   return readdirSync(issuesDir)
-    .filter((f) => f.endsWith(".md"))
+    .filter((f) => f.endsWith(".md") && statSync(join(issuesDir, f)).isFile())
     .sort()
     .map((f) => {
       const raw = readFileSync(join(issuesDir, f), "utf-8");
@@ -77,9 +77,35 @@ function readIssues(issuesDir) {
         title: meta.title || f,
         status: (meta.status || "backlog").replace(/-/g, "_"),
         created: meta.created || "",
+        done_at: meta.done_at || "",
+        priority: meta.priority ? Number(meta.priority) : null,
         body,
       };
     });
+}
+
+// --- Archiv ---
+
+function archiveOldIssues(issuesDir) {
+  if (!existsSync(issuesDir)) return;
+  const archiveDir = join(issuesDir, "archive");
+  const now = Date.now();
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  const files = readdirSync(issuesDir).filter(
+    (f) => f.endsWith(".md") && statSync(join(issuesDir, f)).isFile()
+  );
+  for (const f of files) {
+    const path = join(issuesDir, f);
+    const raw = readFileSync(path, "utf-8");
+    const { meta } = parseFrontmatter(raw);
+    const status = (meta.status || "").replace(/-/g, "_");
+    if (status !== "done" || !meta.done_at) continue;
+    const doneTs = new Date(meta.done_at).getTime();
+    if (isNaN(doneTs) || now - doneTs < THREE_DAYS_MS) continue;
+    mkdirSync(archiveDir, { recursive: true });
+    renameSync(path, join(archiveDir, f));
+    process.stdout.write(`Archiviert: ${f}\n`);
+  }
 }
 
 // --- HTTP-Handler ---
@@ -106,11 +132,18 @@ function handleRequest(req, res, issuesDir) {
     return;
   }
 
-  // GET /api/issues
+  // GET /api/issues  (optional: ?archive=1 für archivierte Issues)
   if (req.method === "GET" && url.pathname === "/api/issues") {
-    const issues = readIssues(issuesDir);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(issues));
+    if (url.searchParams.get("archive") === "1") {
+      const archiveDir = join(issuesDir, "archive");
+      const archived = readIssues(archiveDir).map((i) => ({ ...i, status: "archived" }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(archived));
+    } else {
+      const issues = readIssues(issuesDir);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(issues));
+    }
     return;
   }
 
@@ -132,6 +165,11 @@ function handleRequest(req, res, issuesDir) {
         const raw = readFileSync(file, "utf-8");
         const { meta, body: issueBody } = parseFrontmatter(raw);
         meta.status = to;
+        if (to === "done") {
+          meta.done_at = new Date().toISOString().slice(0, 10);
+        } else {
+          delete meta.done_at;
+        }
         writeFileSync(file, serializeFrontmatter(meta, issueBody), "utf-8");
 
         // GO-Commit: Drag nach ready erzeugt einen eigenen git-Commit
@@ -179,6 +217,32 @@ function handleRequest(req, res, issuesDir) {
         const block = `\n\n---\n**Kommentar** (${ts})\n\n${text.trim()}`;
         const raw = readFileSync(file, "utf-8");
         writeFileSync(file, raw + block, "utf-8");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/issues/reorder
+  if (req.method === "POST" && url.pathname === "/api/issues/reorder") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { ids } = JSON.parse(body);
+        if (!Array.isArray(ids)) throw new Error("ids muss ein Array sein");
+        ids.forEach((id, idx) => {
+          const file = join(issuesDir, `${id}.md`);
+          if (!existsSync(file)) return;
+          const raw = readFileSync(file, "utf-8");
+          const { meta, body: issueBody } = parseFrontmatter(raw);
+          meta.priority = String(idx + 1);
+          writeFileSync(file, serializeFrontmatter(meta, issueBody), "utf-8");
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -747,6 +811,9 @@ const server = createServer((req, res) => {
     res.end(e.message);
   }
 });
+
+archiveOldIssues(issuesDir);
+setInterval(() => archiveOldIssues(issuesDir), 60 * 60 * 1000);
 
 server.listen(args.port, () => {
   console.log(`Board läuft auf http://localhost:${args.port}`);
