@@ -514,6 +514,104 @@ const HTML = `<!DOCTYPE html>
     padding: 20px 8px;
   }
 
+  /* View-Toggle */
+  .view-toggle {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .view-btn {
+    padding: 4px 12px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .view-btn.active {
+    background: #0075ca;
+    border-color: #0075ca;
+    color: #fff;
+  }
+
+  /* Listenansicht */
+  .list-view {
+    padding: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .list-filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .list-filter-btn {
+    padding: 4px 12px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #6b778c;
+    transition: all .15s;
+  }
+  .list-filter-btn.active {
+    background: #172b4d;
+    border-color: #172b4d;
+    color: #fff;
+  }
+  .list-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: box-shadow .15s;
+  }
+  .list-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .list-handle {
+    color: #97a0af;
+    font-size: 16px;
+    cursor: grab;
+    flex-shrink: 0;
+    line-height: 1;
+    user-select: none;
+  }
+  .list-handle.disabled { opacity: 0; cursor: default; pointer-events: none; }
+  .list-id {
+    font-size: 11px;
+    color: #6b778c;
+    flex-shrink: 0;
+    width: 38px;
+  }
+  .list-badge {
+    flex-shrink: 0;
+  }
+  .list-title {
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-excerpt {
+    color: #6b778c;
+    font-size: 12px;
+    flex-shrink: 0;
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* Spalten-Farben */
   .col-backlog    .column-header { background: #dfe1e6; color: #42526e; }
   .col-backlog    .dot           { background: #6b7280; }
@@ -532,9 +630,14 @@ const HTML = `<!DOCTYPE html>
 <header>
   <h1>claude-workflow-kit Board</h1>
   <span class="subtitle">Lokaler Modus — Dateien in issues/</span>
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
+    <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
+  </div>
 </header>
 
 <div class="board" id="board"></div>
+<div class="list-view" id="list-view" style="display:none"></div>
 
 <script>
 let COLUMNS = [
@@ -647,6 +750,7 @@ const STATUS_BADGE = {
   in_progress: { bg: "#fffae6", color: "#7a6000", label: "In Progress" },
   in_review:   { bg: "#ffedeb", color: "#bf2600", label: "In Review" },
   done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
+  archived:    { bg: "#f0f0f0", color: "#666", label: "Archiv" },
 };
 
 function parseIssueBody(raw) {
@@ -783,6 +887,107 @@ async function loadBoard() {
   const res = await fetch("/api/issues");
   const issues = await res.json();
   buildBoard(issues);
+}
+
+// --- View-Switching ---
+let currentView = 'board';
+const activeFilters = new Set(['backlog','ready','in_progress','in_review','done']);
+
+function switchView(v) {
+  currentView = v;
+  document.getElementById('board').style.display = v === 'board' ? '' : 'none';
+  document.getElementById('list-view').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('btn-board').classList.toggle('active', v === 'board');
+  document.getElementById('btn-list').classList.toggle('active', v === 'list');
+  if (v === 'list') loadList();
+}
+
+// --- Listenansicht ---
+const LIST_STATUSES = [
+  { key: 'backlog',     label: 'Backlog' },
+  { key: 'ready',       label: 'Ready' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'in_review',   label: 'In Review' },
+  { key: 'done',        label: 'Done' },
+  { key: 'archived',    label: 'Archiv' },
+];
+
+function bodyExcerpt(raw) {
+  return raw.replace(/\\n/g, ' ').replace(/#+\\s*/g, '').replace(/[*_\`]/g, '').trim().slice(0, 80);
+}
+
+function buildList(issues) {
+  const container = document.getElementById('list-view');
+  container.innerHTML = '';
+
+  // Filter-Leiste
+  const filterBar = document.createElement('div');
+  filterBar.className = 'list-filter';
+  for (const s of LIST_STATUSES) {
+    const btn = document.createElement('button');
+    btn.className = 'list-filter-btn' + (activeFilters.has(s.key) ? ' active' : '');
+    btn.textContent = s.label;
+    btn.dataset.key = s.key;
+    btn.addEventListener('click', () => {
+      if (activeFilters.has(s.key)) activeFilters.delete(s.key);
+      else activeFilters.add(s.key);
+      buildList(issues);
+    });
+    filterBar.appendChild(btn);
+  }
+  container.appendChild(filterBar);
+
+  // Gefiltertes + sortiertes Issue-Array
+  const visible = issues
+    .filter(i => activeFilters.has(i.status))
+    .sort((a, b) => {
+      const pa = a.priority ?? Infinity, pb = b.priority ?? Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+
+  if (visible.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Keine Issues';
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const issue of visible) {
+    const row = buildListRow(issue);
+    container.appendChild(row);
+  }
+}
+
+function buildListRow(issue) {
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.dataset.id = issue.id;
+  const isDraggable = issue.status !== 'done' && issue.status !== 'archived';
+
+  const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
+  const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
+
+  row.innerHTML =
+    \`<span class="list-handle\${isDraggable ? '' : ' disabled'}" title="Reihenfolge ändern">⠿</span>
+     <span class="list-id">#\${escHtml(issue.id)}</span>
+     \${badgeEl}
+     <span class="list-title">\${escHtml(issue.title)}</span>
+     <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
+
+  row.addEventListener('click', () => openModal(issue));
+  return row;
+}
+
+async function loadList() {
+  const [res, archRes] = await Promise.all([
+    fetch('/api/issues'),
+    activeFilters.has('archived') ? fetch('/api/issues?archive=1') : Promise.resolve(null),
+  ]);
+  const issues = await res.json();
+  const archived = archRes ? await archRes.json() : [];
+  buildList([...issues, ...archived]);
 }
 
 async function init() {
