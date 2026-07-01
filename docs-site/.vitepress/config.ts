@@ -46,7 +46,10 @@ export default defineConfig({
     sidebar: [
       {
         text: "Einstieg",
-        items: [{ text: "5-Minuten-Guide", link: "/quickstart" }],
+        items: [
+          { text: "5-Minuten-Guide", link: "/quickstart" },
+          { text: "Lokal arbeiten (kein Remote, kein Board)", link: "/lokal" },
+        ],
       },
       {
         text: "Dokumentation",
