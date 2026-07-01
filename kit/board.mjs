@@ -16,8 +16,8 @@
  *   node board.mjs code pr --from <branch> --to <branch>
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
+import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
@@ -413,21 +413,139 @@ class GitLabCodeHost {
 }
 
 // ============================================================
-// Local-Adapter (Stub — wird in Issue #32 implementiert)
+// Local-Adapter
 // ============================================================
 
+// Minimaler YAML-Frontmatter-Parser fuer die Issue-Dateien (kein externes Modul)
+function parseFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return { meta: {}, body: content };
+  const meta = {};
+  for (const line of match[1].split("\n")) {
+    const m = line.match(/^(\w+):\s*(.*)$/);
+    if (m) {
+      let val = m[2].trim().replace(/^["']|["']$/g, "");
+      meta[m[1]] = val;
+    }
+  }
+  return { meta, body: match[2] };
+}
+
+function serializeFrontmatter(meta, body) {
+  const lines = Object.entries(meta).map(([k, v]) => `${k}: ${v}`);
+  return `---\n${lines.join("\n")}\n---\n${body}`;
+}
+
+function issuesDir(config) {
+  return resolve(config.local?.issuesDir || "issues");
+}
+
+function padId(n) {
+  return String(n).padStart(4, "0");
+}
+
 class LocalIssueTracker {
-  async createIssue(_input) { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
-  async getIssue(_id) { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
-  async listIssues(_status) { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
-  async moveIssue(_id, _to) { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
-  async commentIssue(_id, _text) { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
+  constructor(config) { this._cfg = config; }
+
+  _dir() {
+    return issuesDir(this._cfg);
+  }
+
+  _allFiles() {
+    const dir = this._dir();
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .sort(); // aufsteigend nach Dateiname = aufsteigend nach id
+  }
+
+  _filePath(id) {
+    return join(this._dir(), `${padId(id)}.md`);
+  }
+
+  _read(id) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    const { meta, body } = parseFrontmatter(raw);
+    return { id: meta.id || padId(id), title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
+  }
+
+  _nextId() {
+    const files = this._allFiles();
+    if (files.length === 0) return 1;
+    const nums = files.map((f) => parseInt(f, 10)).filter((n) => !isNaN(n));
+    return nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  }
+
+  async createIssue({ title, body }) {
+    const dir = this._dir();
+    mkdirSync(dir, { recursive: true });
+    const n = this._nextId();
+    const id = padId(n);
+    const today = new Date().toISOString().slice(0, 10);
+    const content = serializeFrontmatter(
+      { id: `"${id}"`, status: "backlog", title, created: today },
+      body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
+    );
+    writeFileSync(this._filePath(n), content, "utf-8");
+    return { id, path: this._filePath(n) };
+  }
+
+  async getIssue(id) {
+    return this._read(id);
+  }
+
+  async listIssues(status) {
+    return this._allFiles()
+      .map((f) => {
+        const raw = readFileSync(join(this._dir(), f), "utf-8");
+        const { meta, body } = parseFrontmatter(raw);
+        return { id: meta.id || basename(f, ".md"), title: meta.title || "", status: meta.status || "backlog", body };
+      })
+      .filter((i) => !status || i.status === status);
+  }
+
+  async moveIssue(id, to) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    const { meta, body } = parseFrontmatter(raw);
+    meta.status = to;
+    writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
+  }
+
+  async commentIssue(id, text) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
+    const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
+    writeFileSync(p, raw + comment, "utf-8");
+  }
 }
 
 class LocalCodeHost {
-  async getRepoName() { fail("local-Adapter noch nicht implementiert (Issue #32)"); }
+  async getRepoName() {
+    try {
+      const url = exec("git remote get-url origin 2>/dev/null");
+      return url.replace(/\.git$/, "").split("/").pop();
+    } catch {
+      return basename(resolve("."));
+    }
+  }
+
   supportsPullRequests() { return false; }
-  async createPullRequest(_input) { fail("local-Adapter unterstuetzt keine Pull Requests"); }
+
+  async createPullRequest({ from, to }) {
+    process.stdout.write(
+      JSON.stringify({
+        ok: false,
+        message: `Lokaler Modus: kein Pull Request. Fuehre einen lokalen Merge durch:\n  git checkout ${to}\n  git merge ${from}\n  git push`
+      }, null, 2) + "\n"
+    );
+    process.exit(0);
+  }
 }
 
 // ============================================================
@@ -453,7 +571,7 @@ function resolveTracker(config) {
   switch (config.issueTracker) {
     case "github": return new GitHubIssueTracker(config);
     case "gitlab": return new GitLabIssueTracker();
-    case "local":  return new LocalIssueTracker();
+    case "local":  return new LocalIssueTracker(config);
     default: fail(`Unbekannter issueTracker: '${config.issueTracker}'. Erwartet: github | gitlab | local`);
   }
 }
