@@ -538,8 +538,6 @@ const HTML = `<!DOCTYPE html>
   /* Listenansicht */
   .list-view {
     padding: 20px;
-    max-width: 900px;
-    margin: 0 auto;
   }
   .list-filter {
     display: flex;
