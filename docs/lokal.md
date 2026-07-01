@@ -35,9 +35,30 @@ Das Ergebnis in `.claude/workflow.config.json`:
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
-  "local": { "issuesDir": "issues" }
+  "local": { "issuesDir": "issues" },
+  "columns": {
+    "backlog":     "Backlog",
+    "ready":       "Ready",
+    "in_progress": "In Progress",
+    "in_review":   "In Review",
+    "done":        "Done"
+  }
 }
 ```
+
+Das `columns`-Feld steuert die Spaltennamen im Board. Die Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien. Die Werte sind die angezeigten Bezeichnungen und können frei geändert werden:
+
+```json
+"columns": {
+  "backlog":     "Ideen",
+  "ready":       "Los geht's",
+  "in_progress": "In Arbeit",
+  "in_review":   "Prüfen",
+  "done":        "Fertig"
+}
+```
+
+Bei GitHub entsprechen die Werte den Spaltennamen im Project Board. Bei GitLab sind es die Label-Namen die der Installer anlegt.
 
 ## Wie Issues gespeichert werden
 
