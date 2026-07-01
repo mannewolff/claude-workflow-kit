@@ -254,36 +254,91 @@ const HTML = `<!DOCTYPE html>
     padding-top: 1px;
   }
   .card-title { flex: 1; font-weight: 500; line-height: 1.4; }
-  .card-chevron {
-    flex-shrink: 0;
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 1000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px;
+    overflow-y: auto;
+  }
+  .modal-window {
+    background: #fff;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 700px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,.24);
+    position: relative;
+  }
+  .modal-header {
+    padding: 16px 48px 12px 20px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  .modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 6px;
+  }
+  .modal-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
     color: #6b778c;
-    font-size: 10px;
-    transition: transform .2s;
-    padding-top: 2px;
   }
-  .card.open .card-chevron { transform: rotate(180deg); }
-
-  .card-body {
-    display: none;
-    padding: 0 12px 12px;
-    border-top: 1px solid #f0f0f0;
-    padding-top: 10px;
+  .modal-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
   }
-  .card.open .card-body { display: block; }
-
-  .card-body h2 { font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
-  .card-body h3 { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: #344563; }
-  .card-body p { margin: 4px 0; line-height: 1.5; color: #344563; }
-  .card-body ul { margin: 4px 0 4px 16px; }
-  .card-body li { margin: 2px 0; line-height: 1.5; color: #344563; }
-  .card-body strong { font-weight: 600; }
-  .card-body code {
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: #6b778c;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 4px;
+  }
+  .modal-close:hover { background: #f0f0f0; color: #172b4d; }
+  .modal-body {
+    padding: 20px;
+  }
+  .modal-body h2 { font-size: 14px; font-weight: 600; margin: 14px 0 5px; }
+  .modal-body h3 { font-size: 13px; font-weight: 600; margin: 10px 0 4px; color: #344563; }
+  .modal-body p { margin: 5px 0; line-height: 1.6; color: #344563; }
+  .modal-body ul { margin: 5px 0 5px 18px; }
+  .modal-body li { margin: 3px 0; line-height: 1.5; color: #344563; }
+  .modal-body strong { font-weight: 600; }
+  .modal-body code {
     background: #f4f5f7;
-    padding: 1px 4px;
+    padding: 1px 5px;
     border-radius: 3px;
     font-family: monospace;
     font-size: 12px;
   }
+  .modal-body pre {
+    background: #f4f5f7;
+    padding: 10px 12px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .modal-body pre code { background: none; padding: 0; }
 
   .empty {
     text-align: center;
@@ -419,6 +474,50 @@ function buildBoard(issues) {
   }
 }
 
+const STATUS_BADGE = {
+  backlog:     { bg: "#dfe1e6", color: "#42526e", label: "Backlog" },
+  ready:       { bg: "#deebff", color: "#0747a6", label: "Ready" },
+  in_progress: { bg: "#fffae6", color: "#7a6000", label: "In Progress" },
+  in_review:   { bg: "#ffedeb", color: "#bf2600", label: "In Review" },
+  done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
+};
+
+function openModal(issue) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const badge = STATUS_BADGE[issue.status] || STATUS_BADGE.backlog;
+  const badgeHtml = \`<span class="modal-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
+
+  const window_ = document.createElement("div");
+  window_.className = "modal-window";
+  window_.innerHTML =
+    \`<div class="modal-header">
+      <div class="modal-title">\${escHtml(issue.title)}</div>
+      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span></div>
+      <button class="modal-close" aria-label="Schliessen">×</button>
+    </div>
+    <div class="modal-body">\${renderMarkdown(issue.body || "")}</div>\`;
+
+  overlay.appendChild(window_);
+  document.body.appendChild(overlay);
+
+  // Schließen via × oder Overlay-Klick (nicht Modal selbst)
+  window_.querySelector(".modal-close").addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  document.addEventListener("keydown", handleEsc);
+}
+
+function handleEsc(e) {
+  if (e.key === "Escape") closeModal();
+}
+
+function closeModal() {
+  const overlay = document.querySelector(".modal-overlay");
+  if (overlay) overlay.remove();
+  document.removeEventListener("keydown", handleEsc);
+}
+
 function buildCard(issue) {
   const card = document.createElement("div");
   card.className = "card";
@@ -429,19 +528,22 @@ function buildCard(issue) {
     \`<div class="card-header">
       <span class="card-id">#\${issue.id}</span>
       <span class="card-title">\${escHtml(issue.title)}</span>
-      <span class="card-chevron">▼</span>
-    </div>
-    <div class="card-body">\${renderMarkdown(issue.body || "")}</div>\`;
+    </div>\`;
 
-  card.querySelector(".card-header").addEventListener("click", () => {
-    card.classList.toggle("open");
-  });
-
+  let dragging = false;
   card.addEventListener("dragstart", (e) => {
+    dragging = true;
     e.dataTransfer.setData("text/plain", issue.id);
     card.classList.add("dragging");
   });
-  card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+    setTimeout(() => { dragging = false; }, 0);
+  });
+
+  card.querySelector(".card-header").addEventListener("click", () => {
+    if (!dragging) openModal(issue);
+  });
 
   return card;
 }
