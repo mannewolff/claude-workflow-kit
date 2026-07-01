@@ -611,6 +611,9 @@ const HTML = `<!DOCTYPE html>
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .list-row.drag-target {
+    border-top: 2px solid #0075ca;
+  }
 
   /* Spalten-Farben */
   .col-backlog    .column-header { background: #dfe1e6; color: #42526e; }
@@ -703,7 +706,11 @@ function buildBoard(issues) {
   }
 
   for (const col of COLUMNS) {
-    const colIssues = byStatus[col.key];
+    const colIssues = (byStatus[col.key] || []).sort((a, b) => {
+      const pa = a.priority ?? Infinity, pb = b.priority ?? Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.id || '').localeCompare(b.id || '');
+    });
     const colEl = document.createElement("div");
     colEl.className = "column col-" + col.key;
     colEl.dataset.status = col.key;
@@ -960,6 +967,9 @@ function buildList(issues) {
   }
 }
 
+let listAllIssues = [];
+let listDragId = null;
+
 function buildListRow(issue) {
   const row = document.createElement('div');
   row.className = 'list-row';
@@ -976,7 +986,65 @@ function buildListRow(issue) {
      <span class="list-title">\${escHtml(issue.title)}</span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
 
-  row.addEventListener('click', () => openModal(issue));
+  if (isDraggable) {
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => {
+      listDragId = issue.id;
+      e.dataTransfer.effectAllowed = 'move';
+      row.style.opacity = '0.4';
+    });
+    row.addEventListener('dragend', () => {
+      row.style.opacity = '';
+      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+    });
+    row.addEventListener('dragover', (e) => {
+      if (!listDragId || listDragId === issue.id) return;
+      e.preventDefault();
+      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+      row.classList.add('drag-target');
+    });
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      row.classList.remove('drag-target');
+      if (!listDragId || listDragId === issue.id) return;
+      const container = document.getElementById('list-view');
+      const rows = [...container.querySelectorAll('.list-row')];
+      const draggedEl = rows.find(r => r.dataset.id === listDragId);
+      const targetEl = rows.find(r => r.dataset.id === issue.id);
+      if (!draggedEl || !targetEl) return;
+      // Move dragged before target in DOM
+      container.insertBefore(draggedEl, targetEl);
+      listDragId = null;
+      // Collect all non-archived IDs in current DOM order
+      const orderedIds = [...container.querySelectorAll('.list-row')]
+        .filter(r => !r.querySelector('.list-handle.disabled') || r.querySelector('.list-handle.disabled') === null)
+        .map(r => r.dataset.id)
+        .filter(Boolean);
+      // POST reorder for non-done non-archived issues only
+      const reorderIds = listAllIssues
+        .filter(i => i.status !== 'done' && i.status !== 'archived')
+        .sort((a, b) => {
+          const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
+          return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+        })
+        .map(i => i.id);
+      await fetch('/api/issues/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: reorderIds }),
+      });
+      // Update listAllIssues priorities locally so board reflects immediately on switch
+      reorderIds.forEach((id, idx) => {
+        const issue = listAllIssues.find(i => i.id === id);
+        if (issue) issue.priority = idx + 1;
+      });
+    });
+  }
+
+  let clicking = false;
+  row.addEventListener('mousedown', () => { clicking = true; });
+  row.addEventListener('dragstart', () => { clicking = false; });
+  row.addEventListener('click', () => { if (clicking) openModal(issue); clicking = false; });
   return row;
 }
 
@@ -987,7 +1055,8 @@ async function loadList() {
   ]);
   const issues = await res.json();
   const archived = archRes ? await archRes.json() : [];
-  buildList([...issues, ...archived]);
+  listAllIssues = [...issues, ...archived];
+  buildList(listAllIssues);
 }
 
 async function init() {
