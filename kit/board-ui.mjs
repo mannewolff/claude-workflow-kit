@@ -215,7 +215,7 @@ const HTML = `<!DOCTYPE html>
     gap: 12px;
     padding: 20px;
     overflow-x: auto;
-    align-items: stretch;
+    align-items: flex-start;
     min-height: calc(100vh - 53px);
   }
 
@@ -225,6 +225,7 @@ const HTML = `<!DOCTYPE html>
     border-radius: 8px;
     display: flex;
     flex-direction: column;
+    min-height: calc(100vh - 93px);
   }
 
   .column-header {
