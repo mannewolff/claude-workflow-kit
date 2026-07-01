@@ -1,0 +1,21 @@
+{
+  "codeHost": "github",
+  "issueTracker": "github",
+  "buildChecks": [],
+  "mutationCommand": "",
+  "mainBranch": "main",
+  "productionBranch": "production",
+  "reviewScope": "diff",
+  "reviewModel": "claude-opus-4-8",
+  "triggers": {
+    "go": "GO",
+    "push": "push main",
+    "merge": "merge production"
+  },
+  "local": {
+    "issuesDir": "issues"
+  },
+  "github": {
+    "projectNumber": 11
+  }
+}

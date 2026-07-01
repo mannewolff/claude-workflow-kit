@@ -10,23 +10,23 @@ Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell 
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Relevante Felder:
+Lies `.claude/workflow.config.json`. Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
-- `provider`: `"github"` oder `"gitlab"` (Default: `"github"`)
 
-## Ablauf pro Issue (Reihenfolge: aufsteigend nach Issue-Nummer)
+## Ablauf pro Issue (Reihenfolge: aufsteigend nach Issue-ID, wie vom Adapter geliefert)
+
+### 0. Ready-Issues laden
+
+```bash
+node .claude/kit/board.mjs issue list --status ready
+```
+
+Gibt die Issues als JSON-Array, aufsteigend nach ID sortiert. Diese Reihenfolge ist verbindlich.
 
 ### 1. Issue nach In progress verschieben
 
-**GitHub:**
 ```bash
-gh project item-edit --id <ITEM-ID> --project-id <PROJECT-ID> \
-  --field-id <STATUS-FIELD-ID> --single-select-option-id <IN-PROGRESS-OPTION-ID>
-```
-
-**GitLab:**
-```bash
-glab issue edit <NR> --label "In-progress" --unlabel "Ready"
+node .claude/kit/board.mjs issue move <id> in_progress
 ```
 
 ### 2. Issue vollständig lesen
@@ -57,17 +57,18 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 ### 5. Issue nach In review verschieben + Abschlussbericht
 
-**GitHub:**
 ```bash
-gh project item-edit --id <ITEM-ID> ... --single-select-option-id <IN-REVIEW-OPTION-ID>
+node .claude/kit/board.mjs issue move <id> in_review
 ```
 
-**GitLab:**
+Abschlussbericht als Issue-Kommentar:
+
 ```bash
-glab issue edit <NR> --label "In-review" --unlabel "In-progress"
+node .claude/kit/board.mjs issue comment <id> --text "## Abschlussbericht Issue #N
+..."
 ```
 
-Abschlussbericht als Issue-Kommentar im Format:
+Format des Abschlussberichts:
 
 ```
 ## Abschlussbericht Issue #N
@@ -85,7 +86,7 @@ Abschlussbericht als Issue-Kommentar im Format:
 
 ### 6. Nächstes Issue
 
-Sobald das Issue in In review liegt: nächste Issue-Nummer aus Ready abarbeiten. Wenn Ready leer ist: Vollzug melden.
+Sobald das Issue in In review liegt: naechste Issue-ID aus dem zuvor geladenen Ready-Array abarbeiten. Wenn Ready leer ist: Vollzug melden.
 
 ## Verhalten bei leerem Ready
 

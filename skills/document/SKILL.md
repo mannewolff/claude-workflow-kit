@@ -26,11 +26,11 @@ Daraus ergibt sich einer von zwei Modi:
 
 Lies `kontext.config.json` (lokale Version hat Vorrang). Extrahiere `vault` wenn vorhanden.
 
-Projektname (funktioniert fuer GitHub und GitLab):
+Projektname:
 ```bash
-git remote get-url origin
+node .claude/kit/board.mjs code repo-name
 ```
-Extrahiere den Repo-Namen aus der Remote-URL (letztes Segment ohne `.git`).
+Gibt `{ "repoName": "owner/repo" }` zurueck. Letztes Segment ohne Pfad verwenden. Wenn kein Remote: Verzeichnisname.
 
 ### 2. Tageslog schreiben
 

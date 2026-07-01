@@ -62,16 +62,12 @@ Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext.
 
 ### 3. Ergebnis dokumentieren
 
-Schreibe die Befunde als Kommentar ans aktuelle Issue. Lies `provider` aus `.claude/workflow.config.json`.
+Schreibe die Befunde als Kommentar ans aktuelle Issue:
 
-**GitHub:**
 ```bash
-gh issue comment <ISSUE-NUMMER> --body $'## Code-Review (Schritt 7)\n\n<BEFUNDE>'
-```
+node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text "## Code-Review (Schritt 7)
 
-**GitLab:**
-```bash
-glab issue note create <ISSUE-NUMMER> --message $'## Code-Review (Schritt 7)\n\n<BEFUNDE>'
+<BEFUNDE>"
 ```
 
 Falls kein Issue ermittelbar: Gib die Befunde direkt aus.

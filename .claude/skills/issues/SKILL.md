@@ -6,7 +6,7 @@ user-invocable: true
 
 # Issues
 
-Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrere GitHub-Issues überführt. Das Issue ist ab jetzt die Quelle der Wahrheit, nicht der Chat.
+Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrere Issues überführt. Das Issue ist ab jetzt die Quelle der Wahrheit, nicht der Chat.
 
 ## Ablauf
 
@@ -44,34 +44,17 @@ Wie wird verifiziert, dass die Aufgabe erledigt ist? Konkret, messbar oder ausf�
 Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 ```
 
-Lies `provider` aus `.claude/workflow.config.json` (Default: `github`).
+Issue anlegen ueber den Board-Adapter:
 
-**GitHub:**
 ```bash
-gh issue create --repo <owner>/<repo> --title "Titel" --body "..."
+node .claude/kit/board.mjs issue create --title "Titel" --body "..."
 ```
 
-**GitLab:**
-```bash
-glab issue create --title "Titel" --description "..."
-```
+Der Adapter legt das Issue an, haengt es ans Board und setzt den Status auf Backlog — provider-unabhaengig.
 
-### 4. Issues ans Board hängen
+Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schritt 4) — Claude zieht Issues nie eigenmaechtig nach Ready.
 
-**GitHub:** Issues zum Project Board hinzufuegen:
-```bash
-gh project item-add <BOARD-NR> --owner <owner> --url <issue-url>
-```
-
-**GitLab:** GitLab hat keine vollstaendige Board-CLI. Status wird per Label gesetzt:
-```bash
-glab issue edit <NR> --label "Backlog"
-```
-Die Labels Backlog, Ready, In-progress, In-review, Done muessen einmalig im GitLab-Projekt angelegt sein (Hinweis gibt der Installer).
-
-Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schritt 4) — Claude zieht Issues nie eigenmächtig nach Ready.
-
-### 5. Abschluss
+### 4. Abschluss
 
 Liste alle angelegten Issues mit Nummern und Titeln. Schreibe:
 > "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO."
