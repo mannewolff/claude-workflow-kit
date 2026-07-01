@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * Stellwerk Installer v1.1.0
+ * Stellwerk Installer v2.0.0
  *
- * Kopiert die zehn Skills nach ~/.claude/skills/ oder ./.claude/skills/
- * und schreibt .claude/workflow.config.json aus sechs interaktiven Fragen.
+ * Kopiert die zehn Skills nach ~/.claude/skills/ oder ./.claude/skills/,
+ * schreibt .claude/workflow.config.json und .claude/kit/board.mjs.
  *
  * Aufruf:
  *   node install.mjs
  *   node install.mjs --version
  *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
+ *
+ * Breaking Change v2.0.0: Config-Schema nutzt codeHost + issueTracker statt provider.
+ * Bestehende Configs mit provider werden beim Lesen still migriert.
  */
 
 import { createInterface } from "node:readline";
@@ -19,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const VERSION = "1.2.0";
+const VERSION = "2.0.0";
 
 // --- CLAUDE-workflow.md (eingebettet fuer Single-File-Portabilitaet) ---
 const CLAUDE_WORKFLOW_MD = `# CLAUDE-workflow.md — Stellwerk-Prozess
@@ -90,18 +93,23 @@ Absolut bindend:
 
 \`\`\`json
 {
-  "provider": "github",
+  "codeHost": "github",
+  "issueTracker": "github",
   "buildChecks": ["<build-kommando>", "<test-kommando>"],
   "mutationCommand": "<mutations-test-kommando oder leer>",
   "mainBranch": "main",
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
-  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
+  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" },
+  "local": { "issuesDir": "issues" }
 }
 \`\`\`
 
-\`provider\` ist \`"github"\` oder \`"gitlab"\`. Steuert welche CLI die Skills verwenden.
+\`codeHost\` steuert den Code-Host (github | gitlab | local).
+\`issueTracker\` steuert Issues und Board (github | gitlab | local).
+Bei GitHub und GitLab zeigen beide auf denselben Wert.
+Bestehende Configs mit \`provider\` werden automatisch migriert.
 
 \`buildChecks\` und \`mutationCommand\` anpassen. Alle anderen Felder haben sinnvolle Defaults.
 
@@ -184,7 +192,8 @@ Output: konkrete Aenderungen an Memory-Dateien und CLAUDE*.md-Dateien.
 // --- Defaults (eingebettet, damit install.mjs als Single-File portabel ist) ---
 const schema = {
   defaults: {
-    provider: "github",
+    codeHost: "github",
+    issueTracker: "github",
     buildChecks: [],
     mutationCommand: "",
     mainBranch: "main",
@@ -192,13 +201,20 @@ const schema = {
     reviewScope: "diff",
     reviewModel: "claude-opus-4-8",
     triggers: { go: "GO", push: "push main", merge: "merge production" },
+    local: { issuesDir: "issues" },
   },
   validationRules: [
     {
-      field: "provider",
+      field: "codeHost",
       rule: "enum",
-      allowed: ["github", "gitlab"],
-      error: "provider muss 'github' oder 'gitlab' sein.",
+      allowed: ["github", "gitlab", "local"],
+      error: "codeHost muss 'github', 'gitlab' oder 'local' sein.",
+    },
+    {
+      field: "issueTracker",
+      rule: "enum",
+      allowed: ["github", "gitlab", "local"],
+      error: "issueTracker muss 'github', 'gitlab' oder 'local' sein.",
     },
     {
       field: "reviewScope",
@@ -366,23 +382,34 @@ async function main() {
       console.warn("  Hinweis: Bestehende workflow.config.json konnte nicht gelesen werden.\n");
     }
   }
+  // Rueckwaertskompatibilitaet: altes provider-Feld auf codeHost/issueTracker migrieren
+  if (existingConfig.provider && !existingConfig.codeHost) existingConfig.codeHost = existingConfig.provider;
+  if (existingConfig.provider && !existingConfig.issueTracker) existingConfig.issueTracker = existingConfig.provider;
   const D = { ...DEFAULTS, ...existingConfig };
 
-  // Frage 2: provider
-  const provider = await askWithDefault(
+  // Frage 2: codeHost
+  const codeHost = await askWithDefault(
     rl,
-    "Issue-Plattform: 'github' oder 'gitlab'?",
-    D.provider,
-    "provider"
+    "Code-Host: 'github', 'gitlab' oder 'local'?",
+    D.codeHost,
+    "codeHost"
   );
 
-  // Frage 3: mainBranch
+  // Frage 3: issueTracker
+  const issueTracker = await askWithDefault(
+    rl,
+    "Issue-Tracker: 'github', 'gitlab' oder 'local'?",
+    D.issueTracker ?? codeHost,
+    "issueTracker"
+  );
+
+  // Frage 5: mainBranch
   const mainBranch = await askWithDefault(rl, "Haupt-Branch (mainBranch)", D.mainBranch);
 
-  // Frage 4: productionBranch
+  // Frage 6: productionBranch
   const productionBranch = await askWithDefault(rl, "Production-Branch (productionBranch)", D.productionBranch);
 
-  // Frage 5: reviewScope
+  // Frage 7: reviewScope
   const reviewScope = await askWithDefault(
     rl,
     "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
@@ -390,7 +417,7 @@ async function main() {
     "reviewScope"
   );
 
-  // Frage 6: reviewModel
+  // Frage 8: reviewModel
   const reviewModel = await askWithDefault(
     rl,
     "Reviewer-Modell (muss mit 'claude-' beginnen)",
@@ -423,7 +450,8 @@ async function main() {
 
   // --- Config schreiben ---
   const config = {
-    provider,
+    codeHost,
+    issueTracker,
     buildChecks: DEFAULTS.buildChecks,
     mutationCommand: DEFAULTS.mutationCommand,
     mainBranch,
@@ -431,6 +459,7 @@ async function main() {
     reviewScope,
     reviewModel,
     triggers: DEFAULTS.triggers,
+    local: DEFAULTS.local,
   };
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
@@ -470,10 +499,10 @@ async function main() {
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
   console.log(`Die zehn Skills erscheinen in /help.\n`);
-  if (provider === "gitlab") {
+  if (codeHost === "gitlab" || issueTracker === "gitlab") {
     console.log(`GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.`);
     await setupGitLabLabels(rl);
-  } else {
+  } else if (codeHost === "github" || issueTracker === "github") {
     console.log(`GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n`);
   }
   console.log(`Naechster Schritt: workflow.config.json anpassen (buildChecks, mutationCommand).`);
