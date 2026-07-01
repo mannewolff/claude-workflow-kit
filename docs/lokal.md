@@ -99,6 +99,24 @@ Führe einen lokalen Merge durch:
   git push
 ```
 
+## Board starten
+
+Die lokale Kanban-GUI zeigt alle Issues des Projekts als Board:
+
+```bash
+node .claude/kit/board-ui.mjs
+```
+
+Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit.
+
+Port anpassen:
+
+```bash
+node .claude/kit/board-ui.mjs --port 4000
+```
+
+Was das Board nicht tut: kein Push, kein PR, kein Merge — die drei Stop-Punkte bleiben beim Menschen.
+
 ## Docs-Site lokal starten
 
 Die Dokumentation unter `docs.mwolff.org` kannst du auch lokal laufen lassen:
