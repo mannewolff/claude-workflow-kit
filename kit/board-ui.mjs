@@ -574,13 +574,10 @@ const STATUS_BADGE = {
 };
 
 function parseIssueBody(raw) {
-  // Trennt Kommentarblöcke (---\n**Kommentar** ...) vom Haupt-Body
-  const COMMENT_SEP = /\n\n---\n\*\*Kommentar\*\*/g;
-  const parts = raw.split(/(?=\n\n---\n\*\*Kommentar\*\*)/);
+  const parts = raw.split(/(?=\\n\\n---\\n\\*\\*Kommentar\\*\\*)/);
   const mainBody = parts[0];
   const comments = parts.slice(1).map((block) => {
-    // block starts with "\n\n---\n**Kommentar** (ts)\n\ntext"
-    const m = block.match(/\n\n---\n\*\*Kommentar\*\*\s*\(([^)]*)\)\n\n([\s\S]*)/);
+    const m = block.match(/\\n\\n---\\n\\*\\*Kommentar\\*\\*\\s*\\(([^)]*)\\)\\n\\n([\\s\\S]*)/);
     return m ? { ts: m[1], text: m[2].trim() } : { ts: "", text: block.trim() };
   });
   return { mainBody, comments };
