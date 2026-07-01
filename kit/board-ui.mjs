@@ -994,7 +994,7 @@ function buildListRow(issue) {
       listDragId = issue.id;
       e.dataTransfer.setData('text/plain', issue.id);
       e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => row.style.opacity = '0.4', 0);
+      setTimeout(() => { row.style.opacity = '0.4'; }, 0);
     });
     row.addEventListener('dragend', () => {
       row.style.opacity = '';
@@ -1003,6 +1003,25 @@ function buildListRow(issue) {
     });
   }
 
+  // Jede Zeile ist Drop-Target (auch done/archived), damit der Drag ueberall landet
+  row.addEventListener('dragover', (e) => {
+    if (!listDragId || listDragId === issue.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+    row.classList.add('drag-target');
+  });
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    row.classList.remove('drag-target');
+    if (!listDragId || listDragId === issue.id) return;
+    const container = document.getElementById('list-view');
+    const draggedEl = container.querySelector(\`.list-row[data-id="\${listDragId}"]\`);
+    if (draggedEl) container.insertBefore(draggedEl, row);
+    listSaveOrder();
+    listDragId = null;
+  });
+
   let clicking = false;
   row.addEventListener('mousedown', () => { clicking = true; });
   row.addEventListener('dragstart', () => { clicking = false; });
@@ -1010,57 +1029,28 @@ function buildListRow(issue) {
   return row;
 }
 
-function attachListDragHandlers(container) {
-  container.addEventListener('dragover', (e) => {
-    if (!listDragId) return;
-    e.preventDefault();
-    const target = e.target.closest('.list-row');
-    container.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
-    if (target && target.dataset.id !== listDragId) target.classList.add('drag-target');
+async function listSaveOrder() {
+  const container = document.getElementById('list-view');
+  const orderedIds = [...container.querySelectorAll('.list-row')].map(r => r.dataset.id).filter(Boolean);
+  const reorderIds = listAllIssues
+    .filter(i => i.status !== 'done' && i.status !== 'archived')
+    .sort((a, b) => {
+      const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
+      return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+    })
+    .map(i => i.id);
+  await fetch('/api/issues/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: reorderIds }),
   });
-
-  container.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    container.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
-    if (!listDragId) return;
-    const target = e.target.closest('.list-row');
-    const rows = [...container.querySelectorAll('.list-row')];
-    const draggedEl = rows.find(r => r.dataset.id === listDragId);
-    if (!draggedEl) { listDragId = null; return; }
-    if (target && target.dataset.id !== listDragId) {
-      container.insertBefore(draggedEl, target);
-    } else if (!target) {
-      container.appendChild(draggedEl);
-    }
-    listDragId = null;
-    const orderedIds = [...container.querySelectorAll('.list-row')].map(r => r.dataset.id).filter(Boolean);
-    const reorderIds = listAllIssues
-      .filter(i => i.status !== 'done' && i.status !== 'archived')
-      .sort((a, b) => {
-        const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
-        return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
-      })
-      .map(i => i.id);
-    await fetch('/api/issues/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: reorderIds }),
-    });
-    reorderIds.forEach((id, idx) => {
-      const iss = listAllIssues.find(i => i.id === id);
-      if (iss) iss.priority = idx + 1;
-    });
+  reorderIds.forEach((id, idx) => {
+    const iss = listAllIssues.find(i => i.id === id);
+    if (iss) iss.priority = idx + 1;
   });
 }
 
-let listDragHandlersAttached = false;
-
 async function loadList() {
-  const container = document.getElementById('list-view');
-  if (!listDragHandlersAttached) {
-    attachListDragHandlers(container);
-    listDragHandlersAttached = true;
-  }
   const [res, archRes] = await Promise.all([
     fetch('/api/issues'),
     activeFilters.has('archived') ? fetch('/api/issues?archive=1') : Promise.resolve(null),
