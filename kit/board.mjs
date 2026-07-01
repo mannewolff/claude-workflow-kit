@@ -25,14 +25,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
-// Status-Label-Mapping fuer GitLab (muss mit den vom Installer angelegten Labels uebereinstimmen)
-const GITLAB_LABELS = {
+const COLUMN_DEFAULTS = {
   backlog:     "Backlog",
   ready:       "Ready",
   in_progress: "In Progress",
   in_review:   "In Review",
   done:        "Done",
 };
+
+function columnLabels(config) {
+  return config.columns || COLUMN_DEFAULTS;
+}
 
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
@@ -175,8 +178,9 @@ class GitHubIssueTracker {
     const optionMap = {};
     for (const opt of statusField.options || []) {
       // Normalisiere den Option-Namen auf den Status-Enum
-      const key = Object.keys(GITHUB_STATUS_NAMES).find(
-        (k) => GITHUB_STATUS_NAMES[k].toLowerCase() === opt.name.toLowerCase()
+      const labels = columnLabels(this._cfg);
+      const key = Object.keys(labels).find(
+        (k) => labels[k].toLowerCase() === opt.name.toLowerCase()
       );
       if (key) optionMap[key] = opt.id;
     }
@@ -256,7 +260,7 @@ class GitHubIssueTracker {
     if (!optionId) fail(`Status '${status}' hat keine Entsprechung im GitHub Project`);
 
     return (items.items || [])
-      .filter((i) => i.status === githubStatusName(status))
+      .filter((i) => i.status === githubStatusName(status, this._cfg))
       .map((i) => ({
         id: String(i.content?.number),
         title: i.content?.title,
@@ -284,17 +288,8 @@ class GitHubIssueTracker {
   }
 }
 
-// Mapping von internem Status auf GitHub-Spaltennamen (anpassbar per Config)
-const GITHUB_STATUS_NAMES = {
-  backlog:     "Backlog",
-  ready:       "Ready",
-  in_progress: "In progress",
-  in_review:   "In review",
-  done:        "Done",
-};
-
-function githubStatusName(status) {
-  return GITHUB_STATUS_NAMES[status] || status;
+function githubStatusName(status, config) {
+  return columnLabels(config)[status] || status;
 }
 
 class GitHubCodeHost {
@@ -324,6 +319,8 @@ class GitHubCodeHost {
 // ============================================================
 
 class GitLabIssueTracker {
+  constructor(config) { this._cfg = config; }
+
   async createIssue({ title, body }) {
     const output = exec(
       `glab issue create --title ${shellQuote(title)} --description ${shellQuote(body || "")}`
@@ -356,7 +353,7 @@ class GitLabIssueTracker {
   async listIssues(status) {
     let cmd = "glab issue list --state opened --output json";
     if (status) {
-      const label = GITLAB_LABELS[status];
+      const label = columnLabels(this._cfg)[status];
       if (!label) fail(`Status '${status}' hat kein GitLab-Label-Mapping`);
       cmd += ` --label ${shellQuote(label)}`;
     }
@@ -375,10 +372,11 @@ class GitLabIssueTracker {
   }
 
   async moveIssue(id, to) {
-    const label = GITLAB_LABELS[to];
+    const labels = columnLabels(this._cfg);
+    const label = labels[to];
     if (!label) fail(`Status '${to}' hat kein GitLab-Label-Mapping`);
     // Alle Status-Labels entfernen, Ziel-Label setzen
-    const unlabelArgs = Object.values(GITLAB_LABELS)
+    const unlabelArgs = Object.values(labels)
       .map((l) => `--unlabel ${shellQuote(l)}`)
       .join(" ");
     exec(`glab issue edit ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
@@ -557,7 +555,7 @@ function shellQuote(str) {
 }
 
 function labelToStatus(labelNames) {
-  for (const [status, label] of Object.entries(GITLAB_LABELS)) {
+  for (const [status, label] of Object.entries(columnLabels(config))) {
     if (labelNames.includes(label)) return status;
   }
   return null;
@@ -570,7 +568,7 @@ function labelToStatus(labelNames) {
 function resolveTracker(config) {
   switch (config.issueTracker) {
     case "github": return new GitHubIssueTracker(config);
-    case "gitlab": return new GitLabIssueTracker();
+    case "gitlab": return new GitLabIssueTracker(config);
     case "local":  return new LocalIssueTracker(config);
     default: fail(`Unbekannter issueTracker: '${config.issueTracker}'. Erwartet: github | gitlab | local`);
   }

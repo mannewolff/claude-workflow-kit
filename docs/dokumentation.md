@@ -116,6 +116,8 @@ Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Sk
 
 `local.issuesDir` gibt das Verzeichnis an, in dem lokale Issues als Markdown-Dateien liegen (`issues/0001.md`, `issues/0002.md`, …). `github.projectNumber` ist die Projekt-Nummer des GitHub Projects Board — nur für `issueTracker: github` relevant.
 
+`columns` steuert die Spaltennamen auf dem Board. Die fünf Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien und sind die internen Status-Werte. Die Werte sind die angezeigten Bezeichnungen und frei wählbar. Bei GitHub entsprechen die Werte den Spaltennamen im Project Board, bei GitLab den Label-Namen. Ohne `columns` in der Config gelten die Defaults: Backlog, Ready, In Progress, In Review, Done.
+
 `buildChecks` enthält die Kommandos, die `/local-check` sequenziell ausführt. Alle müssen grün sein, bevor der Skill Vollzug meldet. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
 
 **Rückwärtskompatibilität:** Repos, die noch `"provider": "github"` oder `"provider": "gitlab"` in der Config haben, funktionieren weiter. Der Adapter migriert das Feld beim Lesen automatisch auf `codeHost` und `issueTracker`.

@@ -1,6 +1,8 @@
-# Lokal arbeiten — ohne Remote, ohne Board
+# Lokal arbeiten — ohne Remote-Repo, ohne Board
 
-Das Kit läuft vollständig ohne GitHub, GitLab oder ein externes Board. Du brauchst nur git und Node.js. Issues liegen dann als Markdown-Dateien im Repo, der Status steht im Frontmatter.
+**git selbst ist immer Pflicht.** Das Kit setzt voraus, dass du dich in einem lokalen git-Repository befindest (`git init` reicht). Was optional ist: ein Remote-Repo (z.B. auf GitHub oder GitLab) und ein Board. Beides brauchst du im lokalen Modus nicht.
+
+Du brauchst also: git (lokal), Node.js — und nichts weiter.
 
 ## Wann dieser Modus passt
 
@@ -33,9 +35,30 @@ Das Ergebnis in `.claude/workflow.config.json`:
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
-  "local": { "issuesDir": "issues" }
+  "local": { "issuesDir": "issues" },
+  "columns": {
+    "backlog":     "Backlog",
+    "ready":       "Ready",
+    "in_progress": "In Progress",
+    "in_review":   "In Review",
+    "done":        "Done"
+  }
 }
 ```
+
+Das `columns`-Feld steuert die Spaltennamen im Board. Die Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien. Die Werte sind die angezeigten Bezeichnungen und können frei geändert werden:
+
+```json
+"columns": {
+  "backlog":     "Ideen",
+  "ready":       "Los geht's",
+  "in_progress": "In Arbeit",
+  "in_review":   "Prüfen",
+  "done":        "Fertig"
+}
+```
+
+Bei GitHub entsprechen die Werte den Spaltennamen im Project Board. Bei GitLab sind es die Label-Namen die der Installer anlegt.
 
 ## Wie Issues gespeichert werden
 
@@ -96,6 +119,24 @@ Führe einen lokalen Merge durch:
   git merge main
   git push
 ```
+
+## Board starten
+
+Die lokale Kanban-GUI zeigt alle Issues des Projekts als Board:
+
+```bash
+node .claude/kit/board-ui.mjs
+```
+
+Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit.
+
+Port anpassen:
+
+```bash
+node .claude/kit/board-ui.mjs --port 4000
+```
+
+Was das Board nicht tut: kein Push, kein PR, kein Merge — die drei Stop-Punkte bleiben beim Menschen.
 
 ## Docs-Site lokal starten
 
