@@ -1,6 +1,8 @@
-# Lokal arbeiten — ohne Remote, ohne Board
+# Lokal arbeiten — ohne Remote-Repo, ohne Board
 
-Das Kit läuft vollständig ohne GitHub, GitLab oder ein externes Board. Du brauchst nur git und Node.js. Issues liegen dann als Markdown-Dateien im Repo, der Status steht im Frontmatter.
+**git selbst ist immer Pflicht.** Das Kit setzt voraus, dass du dich in einem lokalen git-Repository befindest (`git init` reicht). Was optional ist: ein Remote-Repo (z.B. auf GitHub oder GitLab) und ein Board. Beides brauchst du im lokalen Modus nicht.
+
+Du brauchst also: git (lokal), Node.js — und nichts weiter.
 
 ## Wann dieser Modus passt
 
