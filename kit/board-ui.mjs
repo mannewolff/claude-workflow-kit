@@ -75,7 +75,7 @@ function readIssues(issuesDir) {
       return {
         id: meta.id || basename(f, ".md"),
         title: meta.title || f,
-        status: meta.status || "backlog",
+        status: (meta.status || "backlog").replace(/-/g, "_"),
         created: meta.created || "",
         body,
       };
@@ -91,6 +91,18 @@ function handleRequest(req, res, issuesDir) {
   if (req.method === "GET" && url.pathname === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(HTML);
+    return;
+  }
+
+  // GET /api/config
+  if (req.method === "GET" && url.pathname === "/api/config") {
+    const colMap = config.columns || {
+      backlog: "Backlog", ready: "Ready",
+      in_progress: "In Progress", in_review: "In Review", done: "Done",
+    };
+    const columns = Object.entries(colMap).map(([key, label]) => ({ key, label }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ columns }));
     return;
   }
 
@@ -461,7 +473,7 @@ const HTML = `<!DOCTYPE html>
 <div class="board" id="board"></div>
 
 <script>
-const COLUMNS = [
+let COLUMNS = [
   { key: "backlog",     label: "Backlog" },
   { key: "ready",       label: "Ready" },
   { key: "in_progress", label: "In Progress" },
@@ -709,7 +721,14 @@ async function loadBoard() {
   buildBoard(issues);
 }
 
-loadBoard();
+async function init() {
+  const res = await fetch("/api/config");
+  const cfg = await res.json();
+  if (cfg.columns && cfg.columns.length) COLUMNS = cfg.columns;
+  await loadBoard();
+}
+
+init();
 </script>
 </body>
 </html>`;
