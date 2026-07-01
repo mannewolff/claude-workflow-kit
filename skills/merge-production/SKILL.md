@@ -22,7 +22,6 @@ Der Mensch tippt: `merge production` (oder die in `.claude/workflow.config.json`
 Lies `.claude/workflow.config.json`:
 - `mainBranch`: Quell-Branch (Default: `main`)
 - `productionBranch`: Ziel-Branch (Default: `production`)
-- `provider`: `"github"` oder `"gitlab"` (Default: `"github"`)
 
 ### 2. Commits zusammenfassen
 
@@ -34,39 +33,18 @@ Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
 ### 3. PR bzw. MR erstellen
 
-**GitHub:**
 ```bash
-gh pr create \
-  --base <productionBranch> \
-  --head <mainBranch> \
-  --title "Release: <mainBranch> -> <productionBranch> (<DATUM>)" \
-  --body "## Enthaltene Commits
-<Liste der Commits>
-
-## Vorbedingungen
-- [ ] Alle Issues in dieser Batch auf Done gesetzt
-- [ ] Testserver-Pruefung bestanden
-- [ ] Kein roter Check"
+node .claude/kit/board.mjs code pr \
+  --from <mainBranch> \
+  --to <productionBranch> \
+  --title "Release: <mainBranch> -> <productionBranch> (<DATUM>)"
 ```
 
-**GitLab:**
-```bash
-glab mr create \
-  --source-branch <mainBranch> \
-  --target-branch <productionBranch> \
-  --title "Release: <mainBranch> -> <productionBranch> (<DATUM>)" \
-  --description "## Enthaltene Commits
-<Liste der Commits>
-
-## Vorbedingungen
-- [ ] Alle Issues in dieser Batch auf Done gesetzt
-- [ ] Testserver-Pruefung bestanden
-- [ ] Kein roter Check"
-```
+Der Adapter erstellt den PR/MR provider-unabhaengig. Bei `codeHost: local` gibt er einen gefuehrten Merge-Dialog aus.
 
 ### 4. PR/MR-URL zurückgeben
 
-Gib die URL aus. Der Merge ist Mannes Aufgabe — Claude merged nicht.
+Gib die URL aus dem Adapter-Output aus. Der Merge ist Mannes Aufgabe — Claude merged nicht.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir."
 
