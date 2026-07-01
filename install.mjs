@@ -213,6 +213,13 @@ const schema = {
     reviewModel: "claude-opus-4-8",
     triggers: { go: "GO", push: "push main", merge: "merge production" },
     local: { issuesDir: "issues" },
+    columns: {
+      backlog:     "Backlog",
+      ready:       "Ready",
+      in_progress: "In Progress",
+      in_review:   "In Review",
+      done:        "Done",
+    },
   },
   validationRules: [
     {
@@ -471,6 +478,7 @@ async function main() {
     reviewModel,
     triggers: DEFAULTS.triggers,
     local: DEFAULTS.local,
+    columns: DEFAULTS.columns,
   };
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
