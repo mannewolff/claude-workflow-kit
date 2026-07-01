@@ -128,7 +128,7 @@ Die lokale Kanban-GUI zeigt alle Issues des Projekts als Board:
 node .claude/kit/board-ui.mjs
 ```
 
-Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit.
+Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit. Klick auf eine Karte öffnet eine Detailansicht mit dem vollen Issue-Text und einem Kommentarformular.
 
 Port anpassen:
 
@@ -137,6 +137,20 @@ node .claude/kit/board-ui.mjs --port 4000
 ```
 
 Was das Board nicht tut: kein Push, kein PR, kein Merge — die drei Stop-Punkte bleiben beim Menschen.
+
+### Listenansicht
+
+Der Button **Liste** oben rechts schaltet in eine volle-Breite-Listenansicht. Jeder Eintrag zeigt ID, Status, Titel und einen kurzen Textauszug. Klick öffnet die Detailansicht.
+
+Filter-Buttons oben grenzen die Anzeige auf einzelne Statuses ein. **Archiv** ist standardmäßig ausgeblendet und muss explizit aktiviert werden.
+
+Issues lassen sich in der Listenansicht per Drag am `⠿`-Handle umsortieren — ausgenommen Done und archivierte Issues. Die neue Reihenfolge wird als `priority`-Feld im Frontmatter gespeichert und gilt sofort auch für die Kartenreihenfolge im Board.
+
+### Automatisches Archivieren (Garbage Collector)
+
+Issues die länger als drei Tage den Status `done` haben, werden beim Serverstart und stündlich automatisch nach `issues/archive/` verschoben. Sie verschwinden aus dem Board und aus der Listenansicht — außer du aktivierst den Archiv-Filter.
+
+Das Archivieren ist nicht rückgängig zu machen über das Board; die Dateien in `issues/archive/` können aber manuell zurückbewegt werden.
 
 ## Docs-Site lokal starten
 
