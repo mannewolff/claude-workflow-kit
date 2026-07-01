@@ -142,6 +142,41 @@ function handleRequest(req, res, issuesDir) {
     return;
   }
 
+  // POST /api/issues/:id/comment
+  const commentMatch = url.pathname.match(/^\/api\/issues\/([^/]+)\/comment$/);
+  if (req.method === "POST" && commentMatch) {
+    const id = commentMatch[1];
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { text } = JSON.parse(body);
+        if (!text || !text.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Leerer Kommentar" }));
+          return;
+        }
+        const file = join(issuesDir, `${id}.md`);
+        if (!existsSync(file)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          return;
+        }
+        const now = new Date();
+        const ts = now.toISOString().slice(0, 16).replace("T", " ");
+        const block = `\n\n---\n**Kommentar** (${ts})\n\n${text.trim()}`;
+        const raw = readFileSync(file, "utf-8");
+        writeFileSync(file, raw + block, "utf-8");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end("Not found");
 }
@@ -340,6 +375,62 @@ const HTML = `<!DOCTYPE html>
   }
   .modal-body pre code { background: none; padding: 0; }
 
+  .modal-comments { padding: 0 20px; }
+  .modal-comment {
+    background: #f8f8f8;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+  }
+  .modal-comment-meta {
+    font-size: 11px;
+    color: #6b778c;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .modal-comment-body p { margin: 3px 0; line-height: 1.5; color: #344563; }
+  .modal-comment-body ul { margin: 3px 0 3px 16px; }
+  .modal-comment-body li { margin: 2px 0; line-height: 1.5; color: #344563; }
+  .modal-comment-body code {
+    background: #efefef;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+
+  .modal-comment-form {
+    padding: 12px 20px 20px;
+    border-top: 1px solid #e8e8e8;
+    margin-top: 8px;
+  }
+  .modal-comment-form textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 8px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    color: #172b4d;
+  }
+  .modal-comment-form textarea:focus { outline: none; border-color: #0075ca; }
+  .modal-comment-send {
+    margin-top: 8px;
+    padding: 6px 14px;
+    background: #0075ca;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .modal-comment-send:disabled { background: #a0c4e4; cursor: default; }
+  .modal-comment-send:not(:disabled):hover { background: #005fa3; }
+
   .empty {
     text-align: center;
     color: #97a0af;
@@ -482,12 +573,34 @@ const STATUS_BADGE = {
   done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
 };
 
+function parseIssueBody(raw) {
+  // Trennt Kommentarblöcke (---\n**Kommentar** ...) vom Haupt-Body
+  const COMMENT_SEP = /\n\n---\n\*\*Kommentar\*\*/g;
+  const parts = raw.split(/(?=\n\n---\n\*\*Kommentar\*\*)/);
+  const mainBody = parts[0];
+  const comments = parts.slice(1).map((block) => {
+    // block starts with "\n\n---\n**Kommentar** (ts)\n\ntext"
+    const m = block.match(/\n\n---\n\*\*Kommentar\*\*\s*\(([^)]*)\)\n\n([\s\S]*)/);
+    return m ? { ts: m[1], text: m[2].trim() } : { ts: "", text: block.trim() };
+  });
+  return { mainBody, comments };
+}
+
 function openModal(issue) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
 
   const badge = STATUS_BADGE[issue.status] || STATUS_BADGE.backlog;
   const badgeHtml = \`<span class="modal-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
+
+  const { mainBody, comments } = parseIssueBody(issue.body || "");
+
+  const commentsHtml = comments.map(c =>
+    \`<div class="modal-comment">
+      <div class="modal-comment-meta">Kommentar · \${escHtml(c.ts)}</div>
+      <div class="modal-comment-body">\${renderMarkdown(c.text)}</div>
+    </div>\`
+  ).join("");
 
   const window_ = document.createElement("div");
   window_.className = "modal-window";
@@ -497,10 +610,37 @@ function openModal(issue) {
       <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
-    <div class="modal-body">\${renderMarkdown(issue.body || "")}</div>\`;
+    <div class="modal-body">\${renderMarkdown(mainBody)}</div>
+    \${comments.length ? \`<div class="modal-comments">\${commentsHtml}</div>\` : ""}
+    <div class="modal-comment-form">
+      <textarea placeholder="Kommentar schreiben..."></textarea>
+      <button class="modal-comment-send" disabled>Senden</button>
+    </div>\`;
 
   overlay.appendChild(window_);
   document.body.appendChild(overlay);
+
+  // Kommentar-Formular
+  const textarea = window_.querySelector("textarea");
+  const sendBtn = window_.querySelector(".modal-comment-send");
+  textarea.addEventListener("input", () => {
+    sendBtn.disabled = !textarea.value.trim();
+  });
+  sendBtn.addEventListener("click", async () => {
+    const text = textarea.value.trim();
+    if (!text) return;
+    sendBtn.disabled = true;
+    await fetch(\`/api/issues/\${issue.id}/comment\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    closeModal();
+    const freshIssues = await (await fetch("/api/issues")).json();
+    buildBoard(freshIssues);
+    const fresh = freshIssues.find(i => i.id === issue.id);
+    if (fresh) openModal(fresh);
+  });
 
   // Schließen via × oder Overlay-Klick (nicht Modal selbst)
   window_.querySelector(".modal-close").addEventListener("click", closeModal);
