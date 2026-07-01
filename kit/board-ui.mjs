@@ -974,19 +974,19 @@ function buildListRow(issue) {
   const row = document.createElement('div');
   row.className = 'list-row';
   row.dataset.id = issue.id;
-  const isDraggable = issue.status !== 'done' && issue.status !== 'archived';
+  const isArchived = issue.status === 'archived';
 
   const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
   const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
 
   row.innerHTML =
-    \`<span class="list-handle\${isDraggable ? '' : ' disabled'}" title="Reihenfolge ändern">⠿</span>
+    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="Reihenfolge ändern">⠿</span>
      <span class="list-id">#\${escHtml(issue.id)}</span>
      \${badgeEl}
      <span class="list-title">\${escHtml(issue.title)}</span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
 
-  if (isDraggable) {
+  if (!isArchived) {
     row.draggable = true;
     row.addEventListener('dragstart', (e) => {
       listDragId = issue.id;
@@ -1001,7 +1001,6 @@ function buildListRow(issue) {
     });
   }
 
-  // Jede Zeile ist Drop-Target (auch done/archived), damit der Drag ueberall landet
   row.addEventListener('dragover', (e) => {
     if (!listDragId || listDragId === issue.id) return;
     e.preventDefault();
@@ -1031,7 +1030,7 @@ async function listSaveOrder() {
   const container = document.getElementById('list-view');
   const orderedIds = [...container.querySelectorAll('.list-row')].map(r => r.dataset.id).filter(Boolean);
   const reorderIds = listAllIssues
-    .filter(i => i.status !== 'done' && i.status !== 'archived')
+    .filter(i => i.status !== 'archived')
     .sort((a, b) => {
       const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
       return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
