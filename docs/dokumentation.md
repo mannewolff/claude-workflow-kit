@@ -18,9 +18,15 @@ Der Kernprozess hat neun Schritte. Die KI übernimmt Schritte 1, 2, 4, 5 und 6. 
 
 **Claude Code in einer aktuellen Version.** Die Skills nutzen das Skills-System von Claude Code. Ältere Versionen kennen dieses System möglicherweise nicht.
 
-**Eine Issue-und-Board-CLI, authentifiziert.** Das Kit legt Issues an, bewegt Board-Karten und liest den Repo-Namen. Je nach Provider brauchst du `gh` (GitHub CLI) oder `glab` (GitLab CLI). Beide müssen einmalig per `auth login` authentifiziert werden.
+**Ein Board-Adapter — und die passende CLI dazu.** Alle Issue- und Board-Operationen laufen über `.claude/kit/board.mjs`, den Board-Adapter. Der Adapter schirmt die Skills von der konkreten Plattform ab. Was du brauchst, hängt vom gewählten Issue-Tracker ab:
 
-**Ein Projekt-Board mit fünf Spalten.** Das Board braucht diese fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Bei GitHub sind das Projekt-Board-Spalten, bei GitLab werden sie durch Labels abgebildet. Die Namen sind case-sensitiv.
+| Issue-Tracker | Voraussetzung |
+|---------------|---------------|
+| `github` | `gh` (GitHub CLI), einmalig `gh auth login` |
+| `gitlab` | `glab` (GitLab CLI), einmalig `glab auth login` |
+| `local` | Nichts — Issues liegen als Dateien in `issues/` |
+
+**Ein Projekt-Board, falls du GitHub oder GitLab als Issue-Tracker nutzt.** Das Board braucht diese fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Bei GitHub sind das Projekt-Board-Spalten (GitHub Projects), bei GitLab werden sie durch Labels abgebildet. Im lokalen Modus gibt es kein Board — der Adapter schreibt und liest YAML-Frontmatter-Dateien direkt.
 
 **`kontext.config.json` für /kontext und /document (optional).** Beide Skills laufen auch ohne diese Datei im Degraded Mode. Wenn du persistentes projektübergreifendes Memory willst, legst du die Config manuell an. Der Installer erzeugt sie nicht automatisch. Details im Abschnitt [kontext.config.json](#kontext-config-json-referenz).
 
@@ -45,19 +51,23 @@ Oder in einem Schritt ohne lokale Datei:
 node <(curl -s https://mwolff.org/claude-workflow-kit/install.mjs)
 ```
 
-Der Installer stellt fünf Fragen:
+Der Installer stellt sieben Fragen:
 
-**1. Global oder projektlokal.** Global legt die Skills in `~/.claude/skills/` ab. Sie stehen dann in allen deinen Projekten zur Verfügung. Projektlokal legt sie in `./.claude/skills/` ab. Sie gehören zum Repo und werden über git mit dem Team geteilt. Für teamverbindliche Prozesse wähle projektlokal, für die persönliche Nutzung global.
+**1. Global oder projektlokal.** Global legt die Skills in `~/.claude/skills/` ab. Sie stehen dann in allen deinen Projekten zur Verfügung. Projektlokal legt sie in `./.claude/skills/` ab. Sie gehören zum Repo. Für teamverbindliche Prozesse wähle projektlokal, für die persönliche Nutzung global. Bei projektlokal fügt der Installer `.claude/` automatisch in `.gitignore` ein.
 
-**2. Name des main-Branch.** In den meisten Repos `main`, manchmal `develop` oder `master`. Dieser Branch ist das Ziel von /push-main.
+**2. Code-Host.** Wo liegen Pull Requests und das Repo? `github`, `gitlab` oder `local` (kein Remote, kein PR).
 
-**3. Name des production-Branch.** Oft `production` oder `release`. /merge-production erstellt einen PR oder MR von main auf diesen Branch.
+**3. Issue-Tracker.** Wo werden Issues verwaltet? Standard ist der Wert von Code-Host. Unabhängige Wahl ist möglich, z.B. `issueTracker: local` bei `codeHost: github`.
 
-**4. Review-Umfang (`diff` oder `full`).** Mit `diff` bekommt der Review-Skill nur die geänderten Zeilen zu sehen. Mit `full` alle Dateien im Repo. Für kleine Änderungen reicht `diff`. Für größere Refactorings ist `full` aussagekräftiger, kann aber bei sehr großen Repos das Kontextfenster überlasten.
+**4. Name des main-Branch.** In den meisten Repos `main`, manchmal `develop` oder `master`. Dieser Branch ist das Ziel von /push-main.
 
-**5. Review-Modell.** Das Modell, das in der frischen Review-Session läuft. Standard ist `claude-opus-4-8` (das leistungsstärkste Modell für unabhängige Code-Reviews).
+**5. Name des production-Branch.** Oft `production` oder `release`. /merge-production erstellt einen PR oder MR von main auf diesen Branch.
 
-Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten und legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab. Bei GitLab fragt er zusätzlich, ob er die fünf Labels (Backlog, Ready, In Progress, In Review, Done) automatisch anlegen soll. Bei "j" legt er sie per `glab label create` direkt im aktuellen Projekt an. Damit das klappt, muss das Repository vorher existieren und du musst im geklonten Verzeichnis sein. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+**6. Review-Umfang (`diff` oder `full`).** Mit `diff` bekommt der Review-Skill nur die geänderten Zeilen zu sehen. Mit `full` alle Dateien im Repo. Für kleine Änderungen reicht `diff`. Für größere Refactorings ist `full` aussagekräftiger, kann aber bei sehr großen Repos das Kontextfenster überlasten.
+
+**7. Review-Modell.** Das Modell, das in der frischen Review-Session läuft. Standard ist `claude-opus-4-8`.
+
+Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
@@ -88,18 +98,27 @@ Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Sk
 
 ```json
 {
-  "provider": "github",
+  "codeHost": "github",
+  "issueTracker": "github",
   "buildChecks": ["<dein build-kommando>", "<dein test-kommando>"],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
-  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
+  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" },
+  "local": { "issuesDir": "issues" },
+  "github": { "projectNumber": 11 }
 }
 ```
 
-`provider` steuert, ob das Kit `gh` (GitHub) oder `glab` (GitLab) nutzt. `buildChecks` enthält die Kommandos, die `/local-check` sequenziell ausführt. Alle müssen grün sein, bevor der Skill Vollzug meldet. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft und du es manchmal separat ziehen willst (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
+`codeHost` steuert, welche Plattform für Repository und Pull Requests genutzt wird (`github`, `gitlab` oder `local`). `issueTracker` steuert, wo Issues angelegt und bewegt werden — unabhängig von `codeHost` wählbar. Der Board-Adapter `.claude/kit/board.mjs` liest beide Felder und leitet alle Board-Operationen entsprechend weiter.
+
+`local.issuesDir` gibt das Verzeichnis an, in dem lokale Issues als Markdown-Dateien liegen (`issues/0001.md`, `issues/0002.md`, …). `github.projectNumber` ist die Projekt-Nummer des GitHub Projects Board — nur für `issueTracker: github` relevant.
+
+`buildChecks` enthält die Kommandos, die `/local-check` sequenziell ausführt. Alle müssen grün sein, bevor der Skill Vollzug meldet. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
+
+**Rückwärtskompatibilität:** Repos, die noch `"provider": "github"` oder `"provider": "gitlab"` in der Config haben, funktionieren weiter. Der Adapter migriert das Feld beim Lesen automatisch auf `codeHost` und `issueTracker`.
 
 Beispiele für verschiedene Stacks:
 
@@ -256,48 +275,81 @@ Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist d
 
 **Kein Multi-Tool-Adapter.** Das Konzept ist übertragbar, das Format nicht. Codex liest `AGENTS.md`, Cursor `.cursor/rules`. Wenn du mehrere Engines einsetzen willst, brauchst du die Skill-Bibliothek in mehreren Formaten parallel im Repo. Das ist machbar, aber nicht Bestandteil dieses Kits.
 
-## GitHub oder GitLab
+## Issue-Tracker und Code-Host
 
-Das Kit unterstützt beide Plattformen. Du wählst beim Installer, mit welchem Provider du arbeitest.
+Das Kit unterstützt GitHub, GitLab und einen vollständig lokalen Modus. Die Wahl erfolgt über zwei unabhängige Achsen: `codeHost` (für Pull Requests und Repo-Erkennung) und `issueTracker` (für Issues und Board-Bewegungen). Beide können auf verschiedene Plattformen zeigen.
 
-### Voraussetzungen je nach Provider
+### Voraussetzungen je nach Konfiguration
 
-| Provider | CLI | Authentifizierung |
-|----------|-----|-------------------|
-| GitHub | `gh` (GitHub CLI) | `gh auth login` |
-| GitLab | `glab` (GitLab CLI) | `glab auth login` |
+| Wert | CLI | Authentifizierung |
+|------|-----|-------------------|
+| `github` | `gh` (GitHub CLI) | `gh auth login` |
+| `gitlab` | `glab` (GitLab CLI) | `glab auth login` |
+| `local` | keine | keine |
 
-Installiere die jeweilige CLI vor dem ersten Einsatz.
+### Board-Adapter
+
+Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
+
+- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue move`, `issue comment`
+- **Code-Host-Interface:** `code repo-name`, `code pr`
+
+Die Skills rufen ausschließlich den Adapter auf — sie wissen nichts von `gh` oder `glab`. Du kannst `issueTracker` und `codeHost` jederzeit in der Config ändern; alle Skills passen sich beim nächsten Aufruf an.
+
+### Lokaler Modus
+
+Mit `issueTracker: local` legt der Adapter Issues als Markdown-Dateien in `issues/` an:
+
+```
+issues/
+  0001.md
+  0002.md
+```
+
+Jede Datei hat YAML-Frontmatter:
+
+```markdown
+---
+id: 1
+status: backlog
+title: Beispiel-Issue
+created: 2026-07-01
+---
+
+## Kontext
+…
+
+## Aufgabe
+…
+
+## Akzeptanzkriterium
+…
+
+## Abhängigkeiten
+Keine.
+```
+
+Der Status (`backlog | ready | in_progress | in_review | done`) steht im Frontmatter. Kein Board-API, kein Label-Setup.
 
 ### Was sich bei GitLab unterscheidet
 
-**Pull Request heisst Merge Request.** `/merge-production` erstellt bei GitLab einen Merge Request statt eines Pull Requests. Das Ergebnis ist dasselbe.
+**Pull Request heisst Merge Request.** `/merge-production` erstellt bei GitLab einen Merge Request statt eines Pull Requests.
 
-**Board-Status per Label, nicht per Board-Karte.** GitHub Projects hat eine API, über die das Kit die Board-Spalten direkt setzt. GitLab bietet das per CLI noch nicht vollständig. Das Kit bildet die fünf Spalten stattdessen über Labels ab: `~Backlog`, `~Ready`, `~In Progress`, `~In Review`, `~Done`. Die Bewegung der Issues zwischen den Spalten bleibt dieselbe, sie ist nur nicht als visuelle Board-Karte sichtbar, sondern als Label am Issue.
+**Board-Status per Label.** GitLab bildet die fünf Spalten über Labels ab: `~Backlog`, `~Ready`, `~In Progress`, `~In Review`, `~Done`. Der Installer legt die Labels automatisch an, wenn du beim Setup "j" bestätigst. Die Board-Ansicht selbst (Issues → Boards → "Add list") musst du einmalig manuell in der GitLab-UI anlegen.
 
-Der Installer legt die fünf Labels automatisch an, wenn du beim Setup-Schritt "j" bestätigst. Das Repository muss dafür bereits existieren und du musst im geklonten Verzeichnis sein, damit `glab` das richtige Projekt erkennt. Die Board-Spalten selbst (Issues → Boards → "Add list") musst du einmalig manuell in der GitLab-UI anlegen.
-
-**Repo-Erkennung per git remote.** `/kontext` und `/document` ermitteln den Projekt-Namen bei GitLab über `git remote get-url origin` statt über die GitHub-API.
-
-### Provider einstellen
-
-Der Installer fragt beim Setup nach dem Provider:
-
-```
-GitHub oder GitLab? [github/gitlab]: gitlab
-```
-
-Der Wert wird in `.claude/workflow.config.json` geschrieben:
+### Konfiguration einstellen
 
 ```json
 {
-  "provider": "gitlab",
-  "buildChecks": ["<dein build-kommando>"],
+  "codeHost": "github",
+  "issueTracker": "local",
   ...
+  "local": { "issuesDir": "issues" },
+  "github": { "projectNumber": 11 }
 }
 ```
 
-Du kannst den Wert jederzeit manuell ändern. Alle Skills lesen ihn beim nächsten Aufruf.
+Du kannst beide Felder jederzeit manuell ändern. Alle Skills lesen sie beim nächsten Aufruf.
 
 ## Aktualisieren und mehrere Projekte
 
@@ -320,7 +372,7 @@ Prüfe `reviewScope` in der Config. Bei `diff` sieht der Reviewer nur die geänd
 Der Skill ist gegen autonome Invocation gesperrt. Du musst die exakte Trigger-Phrase tippen (standardmäßig `push main`). Eine frühere Freigabe in derselben Session gilt nicht für neue Commits.
 
 **`/kontext` oder `/document` meldet einen Fehler.**
-Prüfe, ob `kontext.config.json` vorhanden ist (global in `~/.claude/` oder lokal in `.claude/`). Beide Skills laufen auch ohne Vault im Degraded Mode, brauchen aber eine erreichbare CLI. Ist `gh` oder `glab` nicht authentifiziert, schlägt der Skill früh fehl.
+Prüfe, ob `kontext.config.json` vorhanden ist (global in `~/.claude/` oder lokal in `.claude/`). Beide Skills laufen auch ohne Vault im Degraded Mode. Nutzt du `codeHost: github` oder `issueTracker: github`, muss `gh` authentifiziert sein. Nutzt du `gitlab`, braucht `glab` `auth login`. Im lokalen Modus gibt es keine externe CLI-Abhängigkeit.
 
 ## kontext.config.json: Referenz
 
@@ -376,11 +428,10 @@ Muster ohne Treffer werden stillschweigend übersprungen (kein Fehler, kein Abbr
 Der Skill ermittelt die aktive Projektnotiz automatisch aus dem Repo-Namen:
 
 ```bash
-gh repo view --json name --jq '.name'   # GitHub
-git remote get-url origin               # GitLab (Fallback)
+node .claude/kit/board.mjs code repo-name
 ```
 
-Ergebnis `{name}` sucht `{vault}/Projekte/{name}/{name}.md`. Wenn Repo-Name und Vault-Ordnername nicht übereinstimmen, trägst du den korrekten Namen als `project`-Feld in der lokalen Config ein.
+Der Board-Adapter gibt `{ "repoName": "owner/repo" }` zurück. Das letzte Segment (`repo`) wird als Projektname genutzt. Wenn Repo-Name und Vault-Ordnername nicht übereinstimmen, trägst du den korrekten Namen als `project`-Feld in der lokalen Config ein.
 
 ### Beispiele
 

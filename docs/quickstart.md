@@ -7,7 +7,7 @@ Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in C
 - Node.js ab Version 22
 - git
 - Claude Code installiert
-- Ein GitHub-Projekt mit Kanban-Board, fünf Spalten: Backlog, Ready, In progress, In review, Done
+- Je nach Issue-Tracker: `gh` (GitHub CLI) oder `glab` (GitLab CLI), authentifiziert — oder gar nichts, wenn du den lokalen Modus wählst
 
 ## Installieren
 
@@ -24,15 +24,17 @@ Oder in einem Schritt:
 node <(curl -s https://mwolff.org/claude-workflow-kit/install.mjs)
 ```
 
-Der Installer fragt fünf Dinge:
+Der Installer fragt sieben Dinge:
 
 1. Global oder nur für dieses Projekt
-2. Name des main-Branch
-3. Name des production-Branch
-4. Review-Umfang: `diff` oder `full`
-5. Review-Modell
+2. Code-Host: `github`, `gitlab` oder `local`
+3. Issue-Tracker: `github`, `gitlab` oder `local` (Standard = Code-Host)
+4. Name des main-Branch
+5. Name des production-Branch
+6. Review-Umfang: `diff` oder `full`
+7. Review-Modell
 
-Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), und eine `.claude/workflow.config.json` mit deinen Antworten steht im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten und das Board-Adapter-Skript in `.claude/kit/board.mjs` stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
 ## Die zehn Skills
 

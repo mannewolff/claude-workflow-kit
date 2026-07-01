@@ -44,10 +44,10 @@ Muster ohne Treffer werden leise übersprungen.
 Der Skill ermittelt die aktive Projektnotiz automatisch:
 
 ```bash
-gh repo view --json name --jq '.name'
+node .claude/kit/board.mjs code repo-name
 ```
 
-Ergebnis `{name}` → sucht `{vault}/Projekte/{name}/{name}.md`.
+Gibt `{ "repoName": "owner/repo" }` zurück. Das letzte Segment wird als Projektname genutzt, sucht `{vault}/Projekte/{name}/{name}.md`.
 
 Wenn Repo-Name und Vault-Ordnername nicht übereinstimmen (z.B. Repo `ebdc-react`, Vault-Notiz `Projekte/EBDC/EBDC.md`), `project`-Feld in der lokalen Config setzen.
 
