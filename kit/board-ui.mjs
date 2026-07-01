@@ -574,6 +574,7 @@ const HTML = `<!DOCTYPE html>
     margin-bottom: 6px;
     cursor: pointer;
     transition: box-shadow .15s;
+    user-select: none;
   }
   .list-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
   .list-handle {
@@ -966,7 +967,50 @@ function buildList(issues) {
     container.appendChild(row);
   }
 
-  // Container-level DnD: reagiert auf den gesamten Listenbereich
+}
+
+let listAllIssues = [];
+let listDragId = null;
+
+function buildListRow(issue) {
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.dataset.id = issue.id;
+  const isDraggable = issue.status !== 'done' && issue.status !== 'archived';
+
+  const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
+  const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
+
+  row.innerHTML =
+    \`<span class="list-handle\${isDraggable ? '' : ' disabled'}" title="Reihenfolge ändern">⠿</span>
+     <span class="list-id">#\${escHtml(issue.id)}</span>
+     \${badgeEl}
+     <span class="list-title">\${escHtml(issue.title)}</span>
+     <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
+
+  if (isDraggable) {
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => {
+      listDragId = issue.id;
+      e.dataTransfer.setData('text/plain', issue.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => row.style.opacity = '0.4', 0);
+    });
+    row.addEventListener('dragend', () => {
+      row.style.opacity = '';
+      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+      listDragId = null;
+    });
+  }
+
+  let clicking = false;
+  row.addEventListener('mousedown', () => { clicking = true; });
+  row.addEventListener('dragstart', () => { clicking = false; });
+  row.addEventListener('click', () => { if (clicking) openModal(issue); clicking = false; });
+  return row;
+}
+
+function attachListDragHandlers(container) {
   container.addEventListener('dragover', (e) => {
     if (!listDragId) return;
     e.preventDefault();
@@ -1009,47 +1053,14 @@ function buildList(issues) {
   });
 }
 
-let listAllIssues = [];
-let listDragId = null;
-
-function buildListRow(issue) {
-  const row = document.createElement('div');
-  row.className = 'list-row';
-  row.dataset.id = issue.id;
-  const isDraggable = issue.status !== 'done' && issue.status !== 'archived';
-
-  const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
-  const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
-
-  row.innerHTML =
-    \`<span class="list-handle\${isDraggable ? '' : ' disabled'}" title="Reihenfolge ändern">⠿</span>
-     <span class="list-id">#\${escHtml(issue.id)}</span>
-     \${badgeEl}
-     <span class="list-title">\${escHtml(issue.title)}</span>
-     <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
-
-  if (isDraggable) {
-    row.draggable = true;
-    row.addEventListener('dragstart', (e) => {
-      listDragId = issue.id;
-      e.dataTransfer.effectAllowed = 'move';
-      setTimeout(() => row.style.opacity = '0.4', 0);
-    });
-    row.addEventListener('dragend', () => {
-      row.style.opacity = '';
-      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
-      listDragId = null;
-    });
-  }
-
-  let clicking = false;
-  row.addEventListener('mousedown', () => { clicking = true; });
-  row.addEventListener('dragstart', () => { clicking = false; });
-  row.addEventListener('click', () => { if (clicking) openModal(issue); clicking = false; });
-  return row;
-}
+let listDragHandlersAttached = false;
 
 async function loadList() {
+  const container = document.getElementById('list-view');
+  if (!listDragHandlersAttached) {
+    attachListDragHandlers(container);
+    listDragHandlersAttached = true;
+  }
   const [res, archRes] = await Promise.all([
     fetch('/api/issues'),
     activeFilters.has('archived') ? fetch('/api/issues?archive=1') : Promise.resolve(null),
