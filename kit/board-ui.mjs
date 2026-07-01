@@ -10,6 +10,7 @@
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
+import { execSync } from "node:child_process";
 
 // --- Argument-Parser ---
 
@@ -120,6 +121,17 @@ function handleRequest(req, res, issuesDir) {
         const { meta, body: issueBody } = parseFrontmatter(raw);
         meta.status = to;
         writeFileSync(file, serializeFrontmatter(meta, issueBody), "utf-8");
+
+        // GO-Commit: Drag nach ready erzeugt einen eigenen git-Commit
+        if (to === "ready") {
+          try {
+            execSync(`git add ${JSON.stringify(file)}`, { stdio: "pipe" });
+            execSync(`git commit -m "GO: #${id} nach ready"`, { stdio: "pipe" });
+          } catch (e) {
+            process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
+          }
+        }
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, id, status: to }));
       } catch (e) {
