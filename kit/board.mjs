@@ -25,12 +25,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
-// Status-Label-Mapping fuer GitLab
+// Status-Label-Mapping fuer GitLab (muss mit den vom Installer angelegten Labels uebereinstimmen)
 const GITLAB_LABELS = {
   backlog:     "Backlog",
   ready:       "Ready",
-  in_progress: "In-progress",
-  in_review:   "In-review",
+  in_progress: "In Progress",
+  in_review:   "In Review",
   done:        "Done",
 };
 
