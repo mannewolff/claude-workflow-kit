@@ -452,6 +452,21 @@ async function main() {
   writeFileSync(workflowMdTarget, CLAUDE_WORKFLOW_MD, "utf-8");
   console.log(`✓ CLAUDE-workflow.md abgelegt: ${workflowMdTarget}`);
 
+  // --- .gitignore ergänzen (nur projektlokal) ---
+  if (scope === "projekt") {
+    const gitignorePath = resolve(".gitignore");
+    const entry = ".claude/";
+    let content = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf-8") : "";
+    const lines = content.split("\n");
+    if (!lines.some((l) => l.trim() === entry)) {
+      content = content.endsWith("\n") || content === "" ? content + entry + "\n" : content + "\n" + entry + "\n";
+      writeFileSync(gitignorePath, content, "utf-8");
+      console.log(`✓ .gitignore: '${entry}' eingetragen`);
+    } else {
+      console.log(`✓ .gitignore: '${entry}' bereits vorhanden`);
+    }
+  }
+
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
   console.log(`Die zehn Skills erscheinen in /help.\n`);
