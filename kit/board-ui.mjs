@@ -965,6 +965,48 @@ function buildList(issues) {
     const row = buildListRow(issue);
     container.appendChild(row);
   }
+
+  // Container-level DnD: reagiert auf den gesamten Listenbereich
+  container.addEventListener('dragover', (e) => {
+    if (!listDragId) return;
+    e.preventDefault();
+    const target = e.target.closest('.list-row');
+    container.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+    if (target && target.dataset.id !== listDragId) target.classList.add('drag-target');
+  });
+
+  container.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    container.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+    if (!listDragId) return;
+    const target = e.target.closest('.list-row');
+    const rows = [...container.querySelectorAll('.list-row')];
+    const draggedEl = rows.find(r => r.dataset.id === listDragId);
+    if (!draggedEl) { listDragId = null; return; }
+    if (target && target.dataset.id !== listDragId) {
+      container.insertBefore(draggedEl, target);
+    } else if (!target) {
+      container.appendChild(draggedEl);
+    }
+    listDragId = null;
+    const orderedIds = [...container.querySelectorAll('.list-row')].map(r => r.dataset.id).filter(Boolean);
+    const reorderIds = listAllIssues
+      .filter(i => i.status !== 'done' && i.status !== 'archived')
+      .sort((a, b) => {
+        const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
+        return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+      })
+      .map(i => i.id);
+    await fetch('/api/issues/reorder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: reorderIds }),
+    });
+    reorderIds.forEach((id, idx) => {
+      const iss = listAllIssues.find(i => i.id === id);
+      if (iss) iss.priority = idx + 1;
+    });
+  });
 }
 
 let listAllIssues = [];
@@ -991,53 +1033,12 @@ function buildListRow(issue) {
     row.addEventListener('dragstart', (e) => {
       listDragId = issue.id;
       e.dataTransfer.effectAllowed = 'move';
-      row.style.opacity = '0.4';
+      setTimeout(() => row.style.opacity = '0.4', 0);
     });
     row.addEventListener('dragend', () => {
       row.style.opacity = '';
       document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
-    });
-    row.addEventListener('dragover', (e) => {
-      if (!listDragId || listDragId === issue.id) return;
-      e.preventDefault();
-      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
-      row.classList.add('drag-target');
-    });
-    row.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      row.classList.remove('drag-target');
-      if (!listDragId || listDragId === issue.id) return;
-      const container = document.getElementById('list-view');
-      const rows = [...container.querySelectorAll('.list-row')];
-      const draggedEl = rows.find(r => r.dataset.id === listDragId);
-      const targetEl = rows.find(r => r.dataset.id === issue.id);
-      if (!draggedEl || !targetEl) return;
-      // Move dragged before target in DOM
-      container.insertBefore(draggedEl, targetEl);
       listDragId = null;
-      // Collect all non-archived IDs in current DOM order
-      const orderedIds = [...container.querySelectorAll('.list-row')]
-        .filter(r => !r.querySelector('.list-handle.disabled') || r.querySelector('.list-handle.disabled') === null)
-        .map(r => r.dataset.id)
-        .filter(Boolean);
-      // POST reorder for non-done non-archived issues only
-      const reorderIds = listAllIssues
-        .filter(i => i.status !== 'done' && i.status !== 'archived')
-        .sort((a, b) => {
-          const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
-          return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
-        })
-        .map(i => i.id);
-      await fetch('/api/issues/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: reorderIds }),
-      });
-      // Update listAllIssues priorities locally so board reflects immediately on switch
-      reorderIds.forEach((id, idx) => {
-        const issue = listAllIssues.find(i => i.id === id);
-        if (issue) issue.priority = idx + 1;
-      });
     });
   }
 
