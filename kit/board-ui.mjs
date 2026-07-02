@@ -47,6 +47,10 @@ function loadConfig() {
 
 // --- Frontmatter-Parser ---
 
+// SYNC: bewusst dupliziert in kit/board.mjs UND kit/board-ui.mjs — beide Dateien
+// sind eigenstaendig portable Single-File-Tools, ein gemeinsames Modul wuerde das
+// brechen. Aenderungen immer in beiden Dateien identisch nachziehen.
+// Bewusst minimal: nur flaches, einzeiliges YAML (reicht fuer das Issue-Format).
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { meta: {}, body: content };

@@ -438,16 +438,17 @@ class GitLabCodeHost {
 // ============================================================
 
 // Minimaler YAML-Frontmatter-Parser fuer die Issue-Dateien (kein externes Modul)
+// SYNC: bewusst dupliziert in kit/board.mjs UND kit/board-ui.mjs — beide Dateien
+// sind eigenstaendig portable Single-File-Tools, ein gemeinsames Modul wuerde das
+// brechen. Aenderungen immer in beiden Dateien identisch nachziehen.
+// Bewusst minimal: nur flaches, einzeiliges YAML (reicht fuer das Issue-Format).
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { meta: {}, body: content };
   const meta = {};
   for (const line of match[1].split("\n")) {
     const m = line.match(/^(\w+):\s*(.*)$/);
-    if (m) {
-      let val = m[2].trim().replace(/^["']|["']$/g, "");
-      meta[m[1]] = val;
-    }
+    if (m) meta[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
   }
   return { meta, body: match[2] };
 }
