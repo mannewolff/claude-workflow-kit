@@ -200,10 +200,14 @@ class GitHubIssueTracker {
 
   async createIssue({ title, body }) {
     const repo = this._repo();
-    const url = exec(
+    const output = exec(
       `gh issue create --repo ${repo} --title ${shellQuote(title)} --body ${shellQuote(body || "")}`
     );
-    const id = String(url.split("/").pop());
+    // gh gibt ggf. Hinweiszeilen vor der URL aus — URL und ID per Regex extrahieren
+    const match = output.match(/(https?:\/\/\S+\/issues\/(\d+))/);
+    if (!match) fail(`Konnte Issue-URL aus gh-Ausgabe nicht lesen: ${output}`);
+    const url = match[1];
+    const id = match[2];
 
     // Ans Project Board haengen, falls konfiguriert
     if (this._cfg.github?.projectNumber) {
