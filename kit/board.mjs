@@ -354,7 +354,7 @@ class GitLabIssueTracker {
     const id = match[1];
     // Label 'Backlog' setzen
     try {
-      exec(`glab issue edit ${id} --label "Backlog"`);
+      exec(`glab issue update ${id} --label "Backlog"`);
     } catch (e) {
       process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
     }
@@ -402,7 +402,7 @@ class GitLabIssueTracker {
     const unlabelArgs = Object.values(labels)
       .map((l) => `--unlabel ${shellQuote(l)}`)
       .join(" ");
-    exec(`glab issue edit ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
+    exec(`glab issue update ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
   }
 
   async commentIssue(id, text) {
