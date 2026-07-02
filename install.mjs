@@ -450,8 +450,6 @@ async function main() {
     vaultPath = raw.trim();
   }
 
-  rl.close();
-
   // --- Pfade berechnen ---
   const skillsSrc = join(__dirname, "skills");
   const targetBase = scope === "global"
@@ -536,6 +534,8 @@ async function main() {
   } else if (codeHost === "github" || issueTracker === "github") {
     console.log(`GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n`);
   }
+  // rl erst hier schliessen — setupGitLabLabels fragt interaktiv nach
+  rl.close();
   console.log(`Naechster Schritt: workflow.config.json anpassen (buildChecks, mutationCommand).`);
   console.log(`Pfad: ${configTarget}\n`);
 }
