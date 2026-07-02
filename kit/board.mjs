@@ -341,7 +341,7 @@ class GitLabIssueTracker {
   async getIssue(id) {
     const data = execJSON(`glab issue view ${id} --output json`);
     const labelNames = (data.labels || []).map((l) => l.name || l);
-    const status = labelToStatus(labelNames) || null;
+    const status = labelToStatus(labelNames, this._cfg) || null;
     return {
       id: String(data.iid || data.id),
       title: data.title,
@@ -365,7 +365,7 @@ class GitLabIssueTracker {
           id: String(i.iid),
           title: i.title,
           body: i.description,
-          status: labelToStatus(labelNames) || null,
+          status: labelToStatus(labelNames, this._cfg) || null,
         };
       })
       .sort((a, b) => Number(a.id) - Number(b.id));
@@ -554,7 +554,7 @@ function shellQuote(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
-function labelToStatus(labelNames) {
+function labelToStatus(labelNames, config) {
   for (const [status, label] of Object.entries(columnLabels(config))) {
     if (labelNames.includes(label)) return status;
   }
