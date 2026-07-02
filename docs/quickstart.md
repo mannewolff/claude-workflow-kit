@@ -4,7 +4,7 @@ Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in C
 
 ## Voraussetzungen
 
-- Node.js ab Version 22
+- Node.js ab Version 18
 - git
 - Claude Code installiert
 - Je nach Issue-Tracker: `gh` (GitHub CLI) oder `glab` (GitLab CLI), authentifiziert — oder gar nichts, wenn du den lokalen Modus wählst
@@ -34,7 +34,9 @@ Der Installer fragt sieben Dinge:
 6. Review-Umfang: `diff` oder `full`
 7. Review-Modell
 
-Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten und das Board-Adapter-Skript in `.claude/kit/board.mjs` stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
+
+Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) und die lokale Board-UI (`.claude/kit/board-ui.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
 ## Die zehn Skills
 
@@ -42,7 +44,7 @@ Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/sk
 |--------|-------|
 | `/kontext` | Kontext laden, Lageüberblick zu Session-Start |
 | `/plan` | Plan aus der Anforderung, implementiert nichts |
-| `/issues` | Plan in kleinteilige GitHub-Issues |
+| `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
 | `/review` | Review durch Opus in frischer Session |
