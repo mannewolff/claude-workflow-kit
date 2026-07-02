@@ -64,6 +64,13 @@ function serializeFrontmatter(meta, body) {
 
 // --- Issues lesen ---
 
+function columnMap(config) {
+  return config.columns || {
+    backlog: "Backlog", ready: "Ready",
+    in_progress: "In Progress", in_review: "In Review", done: "Done",
+  };
+}
+
 function readIssues(issuesDir) {
   if (!existsSync(issuesDir)) return [];
   return readdirSync(issuesDir)
@@ -122,11 +129,7 @@ function handleRequest(req, res, issuesDir) {
 
   // GET /api/config
   if (req.method === "GET" && url.pathname === "/api/config") {
-    const colMap = config.columns || {
-      backlog: "Backlog", ready: "Ready",
-      in_progress: "In Progress", in_review: "In Review", done: "Done",
-    };
-    const columns = Object.entries(colMap).map(([key, label]) => ({ key, label }));
+    const columns = Object.entries(columnMap(config)).map(([key, label]) => ({ key, label }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ columns }));
     return;
@@ -156,6 +159,12 @@ function handleRequest(req, res, issuesDir) {
     req.on("end", () => {
       try {
         const { to } = JSON.parse(body);
+        const valid = Object.keys(columnMap(config));
+        if (!valid.includes(to)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Ungueltiger Status '${to}'. Gueltig: ${valid.join(", ")}` }));
+          return;
+        }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
