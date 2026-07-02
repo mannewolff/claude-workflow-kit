@@ -30,7 +30,9 @@ Projektname:
 ```bash
 node .claude/kit/board.mjs code repo-name
 ```
-Gibt `{ "repoName": "owner/repo" }` zurueck. Letztes Segment ohne Pfad verwenden. Wenn kein Remote: Verzeichnisname.
+Gibt `{ "repoName": "owner/repo" }` zurueck. Letztes Segment ohne Pfad verwenden.
+
+Fallback im lokalen Modus (`codeHost: local`) oder ohne git-Remote: Der Adapter liefert den **Verzeichnisnamen** des Projekts (`basename` des Arbeitsverzeichnisses) statt `owner/repo`. Das ist erwartetes Verhalten, kein Fehler — der Tageslog-Eintrag und die Projektnotiz verwenden dann diesen Verzeichnisnamen als Projektnamen. Wer einen anderen Namen im Log will, benennt das Projektverzeichnis entsprechend oder setzt ein git-Remote.
 
 ### 2. Tageslog schreiben
 

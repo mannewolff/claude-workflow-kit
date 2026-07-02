@@ -1,4 +1,6 @@
 {
+  "codeHost": "github",
+  "issueTracker": "github",
   "buildChecks": [
     "mvn verify"
   ],
@@ -11,5 +13,18 @@
     "go": "GO",
     "push": "push main",
     "merge": "merge production"
+  },
+  "local": {
+    "issuesDir": "issues"
+  },
+  "columns": {
+    "backlog": "Backlog",
+    "ready": "Ready",
+    "in_progress": "In Progress",
+    "in_review": "In Review",
+    "done": "Done"
+  },
+  "github": {
+    "projectNumber": 1
   }
 }

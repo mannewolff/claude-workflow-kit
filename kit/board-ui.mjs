@@ -8,7 +8,8 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from "node:fs";
+import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -46,6 +47,10 @@ function loadConfig() {
 
 // --- Frontmatter-Parser ---
 
+// SYNC: bewusst dupliziert in kit/board.mjs UND kit/board-ui.mjs — beide Dateien
+// sind eigenstaendig portable Single-File-Tools, ein gemeinsames Modul wuerde das
+// brechen. Aenderungen immer in beiden Dateien identisch nachziehen.
+// Bewusst minimal: nur flaches, einzeiliges YAML (reicht fuer das Issue-Format).
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { meta: {}, body: content };
@@ -64,10 +69,17 @@ function serializeFrontmatter(meta, body) {
 
 // --- Issues lesen ---
 
+function columnMap(config) {
+  return config.columns || {
+    backlog: "Backlog", ready: "Ready",
+    in_progress: "In Progress", in_review: "In Review", done: "Done",
+  };
+}
+
 function readIssues(issuesDir) {
   if (!existsSync(issuesDir)) return [];
   return readdirSync(issuesDir)
-    .filter((f) => f.endsWith(".md"))
+    .filter((f) => f.endsWith(".md") && statSync(join(issuesDir, f)).isFile())
     .sort()
     .map((f) => {
       const raw = readFileSync(join(issuesDir, f), "utf-8");
@@ -77,9 +89,35 @@ function readIssues(issuesDir) {
         title: meta.title || f,
         status: (meta.status || "backlog").replace(/-/g, "_"),
         created: meta.created || "",
+        done_at: meta.done_at || "",
+        priority: meta.priority ? Number(meta.priority) : null,
         body,
       };
     });
+}
+
+// --- Archiv ---
+
+// Asynchron (fs/promises), damit der stuendliche Lauf keine HTTP-Requests blockiert
+async function archiveOldIssues(issuesDir) {
+  if (!existsSync(issuesDir)) return;
+  const archiveDir = join(issuesDir, "archive");
+  const now = Date.now();
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  for (const f of await readdir(issuesDir)) {
+    if (!f.endsWith(".md")) continue;
+    const path = join(issuesDir, f);
+    if (!(await stat(path)).isFile()) continue;
+    const raw = await readFile(path, "utf-8");
+    const { meta } = parseFrontmatter(raw);
+    const status = (meta.status || "").replace(/-/g, "_");
+    if (status !== "done" || !meta.done_at) continue;
+    const doneTs = new Date(meta.done_at).getTime();
+    if (isNaN(doneTs) || now - doneTs < THREE_DAYS_MS) continue;
+    await mkdir(archiveDir, { recursive: true });
+    await rename(path, join(archiveDir, f));
+    process.stdout.write(`Archiviert: ${f}\n`);
+  }
 }
 
 // --- HTTP-Handler ---
@@ -96,21 +134,24 @@ function handleRequest(req, res, issuesDir) {
 
   // GET /api/config
   if (req.method === "GET" && url.pathname === "/api/config") {
-    const colMap = config.columns || {
-      backlog: "Backlog", ready: "Ready",
-      in_progress: "In Progress", in_review: "In Review", done: "Done",
-    };
-    const columns = Object.entries(colMap).map(([key, label]) => ({ key, label }));
+    const columns = Object.entries(columnMap(config)).map(([key, label]) => ({ key, label }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ columns }));
     return;
   }
 
-  // GET /api/issues
+  // GET /api/issues  (optional: ?archive=1 für archivierte Issues)
   if (req.method === "GET" && url.pathname === "/api/issues") {
-    const issues = readIssues(issuesDir);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(issues));
+    if (url.searchParams.get("archive") === "1") {
+      const archiveDir = join(issuesDir, "archive");
+      const archived = readIssues(archiveDir).map((i) => ({ ...i, status: "archived" }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(archived));
+    } else {
+      const issues = readIssues(issuesDir);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(issues));
+    }
     return;
   }
 
@@ -123,6 +164,12 @@ function handleRequest(req, res, issuesDir) {
     req.on("end", () => {
       try {
         const { to } = JSON.parse(body);
+        const valid = Object.keys(columnMap(config));
+        if (!valid.includes(to)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Ungueltiger Status '${to}'. Gueltig: ${valid.join(", ")}` }));
+          return;
+        }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
@@ -132,13 +179,19 @@ function handleRequest(req, res, issuesDir) {
         const raw = readFileSync(file, "utf-8");
         const { meta, body: issueBody } = parseFrontmatter(raw);
         meta.status = to;
+        if (to === "done") {
+          meta.done_at = new Date().toISOString().slice(0, 10);
+        } else {
+          delete meta.done_at;
+        }
         writeFileSync(file, serializeFrontmatter(meta, issueBody), "utf-8");
 
         // GO-Commit: Drag nach ready erzeugt einen eigenen git-Commit
         if (to === "ready") {
           try {
             execSync(`git add ${JSON.stringify(file)}`, { stdio: "pipe" });
-            execSync(`git commit -m "GO: #${id} nach ready"`, { stdio: "pipe" });
+            // --only: nur die Issue-Datei committen, fremde gestagte Aenderungen bleiben im Index
+            execSync(`git commit -o -m "GO: #${id} nach ready" -- ${JSON.stringify(file)}`, { stdio: "pipe" });
           } catch (e) {
             process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
           }
@@ -179,6 +232,32 @@ function handleRequest(req, res, issuesDir) {
         const block = `\n\n---\n**Kommentar** (${ts})\n\n${text.trim()}`;
         const raw = readFileSync(file, "utf-8");
         writeFileSync(file, raw + block, "utf-8");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/issues/reorder
+  if (req.method === "POST" && url.pathname === "/api/issues/reorder") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { ids } = JSON.parse(body);
+        if (!Array.isArray(ids)) throw new Error("ids muss ein Array sein");
+        ids.forEach((id, idx) => {
+          const file = join(issuesDir, `${id}.md`);
+          if (!existsSync(file)) return;
+          const raw = readFileSync(file, "utf-8");
+          const { meta, body: issueBody } = parseFrontmatter(raw);
+          meta.priority = String(idx + 1);
+          writeFileSync(file, serializeFrontmatter(meta, issueBody), "utf-8");
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch (e) {
@@ -450,6 +529,119 @@ const HTML = `<!DOCTYPE html>
     padding: 20px 8px;
   }
 
+  /* View-Toggle */
+  .view-toggle {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .view-btn {
+    padding: 4px 12px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .view-btn.active {
+    background: #0075ca;
+    border-color: #0075ca;
+    color: #fff;
+  }
+
+  /* Listenansicht */
+  .list-view {
+    padding: 20px;
+    --excerpt-w: 50%;
+  }
+  .list-view.resizing { cursor: col-resize; user-select: none; }
+  .list-filter {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .list-filter-btn {
+    padding: 4px 12px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #6b778c;
+    transition: all .15s;
+  }
+  .list-filter-btn.active {
+    background: #172b4d;
+    border-color: #172b4d;
+    color: #fff;
+  }
+  .list-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: box-shadow .15s;
+    user-select: none;
+  }
+  .list-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  .list-handle {
+    color: #97a0af;
+    font-size: 16px;
+    cursor: grab;
+    flex-shrink: 0;
+    line-height: 1;
+    user-select: none;
+  }
+  .list-handle.disabled { opacity: 0; cursor: default; pointer-events: none; }
+  .list-id {
+    font-size: 11px;
+    color: #6b778c;
+    flex-shrink: 0;
+    width: 38px;
+  }
+  .list-badge {
+    flex-shrink: 0;
+  }
+  .list-title {
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-excerpt {
+    color: #6b778c;
+    font-size: 12px;
+    flex: 0 0 var(--excerpt-w);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .list-resizer {
+    align-self: stretch;
+    width: 6px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    border-right: 2px solid #e8e8e8;
+    transition: border-color .15s;
+  }
+  .list-row:hover .list-resizer { border-right-color: #c1c7d0; }
+  .list-resizer:hover,
+  .list-view.resizing .list-resizer { border-right-color: #0075ca; }
+  .list-row.drag-target {
+    border-top: 2px solid #0075ca;
+  }
+
   /* Spalten-Farben */
   .col-backlog    .column-header { background: #dfe1e6; color: #42526e; }
   .col-backlog    .dot           { background: #6b7280; }
@@ -468,9 +660,14 @@ const HTML = `<!DOCTYPE html>
 <header>
   <h1>claude-workflow-kit Board</h1>
   <span class="subtitle">Lokaler Modus — Dateien in issues/</span>
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
+    <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
+  </div>
 </header>
 
 <div class="board" id="board"></div>
+<div class="list-view" id="list-view" style="display:none"></div>
 
 <script>
 let COLUMNS = [
@@ -536,7 +733,11 @@ function buildBoard(issues) {
   }
 
   for (const col of COLUMNS) {
-    const colIssues = byStatus[col.key];
+    const colIssues = (byStatus[col.key] || []).sort((a, b) => {
+      const pa = a.priority ?? Infinity, pb = b.priority ?? Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.id || '').localeCompare(b.id || '');
+    });
     const colEl = document.createElement("div");
     colEl.className = "column col-" + col.key;
     colEl.dataset.status = col.key;
@@ -583,6 +784,7 @@ const STATUS_BADGE = {
   in_progress: { bg: "#fffae6", color: "#7a6000", label: "In Progress" },
   in_review:   { bg: "#ffedeb", color: "#bf2600", label: "In Review" },
   done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
+  archived:    { bg: "#f0f0f0", color: "#666", label: "Archiv" },
 };
 
 function parseIssueBody(raw) {
@@ -721,6 +923,214 @@ async function loadBoard() {
   buildBoard(issues);
 }
 
+// --- View-Switching ---
+let currentView = 'board';
+const activeFilters = new Set(['backlog','ready','in_progress','in_review','done']);
+
+function switchView(v) {
+  currentView = v;
+  document.getElementById('board').style.display = v === 'board' ? '' : 'none';
+  document.getElementById('list-view').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('btn-board').classList.toggle('active', v === 'board');
+  document.getElementById('btn-list').classList.toggle('active', v === 'list');
+  if (v === 'list') loadList();
+}
+
+// --- Listenansicht ---
+const LIST_STATUSES = [
+  { key: 'backlog',     label: 'Backlog' },
+  { key: 'ready',       label: 'Ready' },
+  { key: 'in_progress', label: 'In Progress' },
+  { key: 'in_review',   label: 'In Review' },
+  { key: 'done',        label: 'Done' },
+  { key: 'archived',    label: 'Archiv' },
+];
+
+function bodyExcerpt(raw) {
+  return raw.replace(/\\n/g, ' ').replace(/#+\\s*/g, '').replace(/[*_\`]/g, '').trim().slice(0, 240);
+}
+
+function buildList(issues) {
+  const container = document.getElementById('list-view');
+  container.innerHTML = '';
+  container.style.setProperty('--excerpt-w', storedExcerptWidth() + '%');
+
+  // Filter-Leiste
+  const filterBar = document.createElement('div');
+  filterBar.className = 'list-filter';
+  for (const s of LIST_STATUSES) {
+    const btn = document.createElement('button');
+    btn.className = 'list-filter-btn' + (activeFilters.has(s.key) ? ' active' : '');
+    btn.textContent = s.label;
+    btn.dataset.key = s.key;
+    btn.addEventListener('click', () => {
+      if (activeFilters.has(s.key)) activeFilters.delete(s.key);
+      else activeFilters.add(s.key);
+      buildList(issues);
+    });
+    filterBar.appendChild(btn);
+  }
+  container.appendChild(filterBar);
+
+  // Gefiltertes + sortiertes Issue-Array
+  const visible = issues
+    .filter(i => activeFilters.has(i.status))
+    .sort((a, b) => {
+      const pa = a.priority ?? Infinity, pb = b.priority ?? Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+
+  if (visible.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Keine Issues';
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const issue of visible) {
+    const row = buildListRow(issue);
+    container.appendChild(row);
+  }
+
+}
+
+let listAllIssues = [];
+let listDragId = null;
+let listResizing = false;
+
+const EXCERPT_WIDTH_KEY = 'stellwerk.listExcerptWidth';
+
+function clampExcerptWidth(pct) {
+  return Math.min(75, Math.max(25, pct));
+}
+
+function storedExcerptWidth() {
+  const v = parseFloat(localStorage.getItem(EXCERPT_WIDTH_KEY));
+  return isNaN(v) ? 50 : clampExcerptWidth(v);
+}
+
+function startListResize() {
+  const container = document.getElementById('list-view');
+  listResizing = true;
+  container.classList.add('resizing');
+  const onMove = (e) => {
+    const rect = container.getBoundingClientRect();
+    const pct = clampExcerptWidth(((rect.right - e.clientX) / rect.width) * 100);
+    container.style.setProperty('--excerpt-w', pct + '%');
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    container.classList.remove('resizing');
+    const current = parseFloat(container.style.getPropertyValue('--excerpt-w'));
+    localStorage.setItem(EXCERPT_WIDTH_KEY, String(isNaN(current) ? 50 : current));
+    // Flag erst nach dem Click-Event zuruecksetzen, damit kein Modal aufgeht
+    setTimeout(() => { listResizing = false; }, 0);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function buildListRow(issue) {
+  const row = document.createElement('div');
+  row.className = 'list-row';
+  row.dataset.id = issue.id;
+  const isArchived = issue.status === 'archived';
+
+  const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
+  const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
+
+  row.innerHTML =
+    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="Reihenfolge ändern">⠿</span>
+     <span class="list-id">#\${escHtml(issue.id)}</span>
+     \${badgeEl}
+     <span class="list-title">\${escHtml(issue.title)}</span>
+     <span class="list-resizer" title="Spaltenbreite ziehen"></span>
+     <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
+
+  const resizer = row.querySelector('.list-resizer');
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startListResize();
+  });
+  resizer.addEventListener('click', (e) => e.stopPropagation());
+
+  if (!isArchived) {
+    row.draggable = true;
+    row.addEventListener('dragstart', (e) => {
+      if (listResizing) { e.preventDefault(); return; }
+      listDragId = issue.id;
+      e.dataTransfer.setData('text/plain', issue.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => { row.style.opacity = '0.4'; }, 0);
+    });
+    row.addEventListener('dragend', () => {
+      row.style.opacity = '';
+      document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+      listDragId = null;
+    });
+  }
+
+  row.addEventListener('dragover', (e) => {
+    if (!listDragId || listDragId === issue.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.list-row').forEach(r => r.classList.remove('drag-target'));
+    row.classList.add('drag-target');
+  });
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    row.classList.remove('drag-target');
+    if (!listDragId || listDragId === issue.id) return;
+    const container = document.getElementById('list-view');
+    const draggedEl = container.querySelector(\`.list-row[data-id="\${listDragId}"]\`);
+    if (draggedEl) container.insertBefore(draggedEl, row);
+    listSaveOrder();
+    listDragId = null;
+  });
+
+  let clicking = false;
+  row.addEventListener('mousedown', () => { clicking = true; });
+  row.addEventListener('dragstart', () => { clicking = false; });
+  row.addEventListener('click', () => { if (clicking) openModal(issue); clicking = false; });
+  return row;
+}
+
+async function listSaveOrder() {
+  const container = document.getElementById('list-view');
+  const orderedIds = [...container.querySelectorAll('.list-row')].map(r => r.dataset.id).filter(Boolean);
+  const reorderIds = listAllIssues
+    .filter(i => i.status !== 'archived')
+    .sort((a, b) => {
+      const ai = orderedIds.indexOf(a.id), bi = orderedIds.indexOf(b.id);
+      return (ai === -1 ? 9999 : ai) - (bi === -1 ? 9999 : bi);
+    })
+    .map(i => i.id);
+  await fetch('/api/issues/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: reorderIds }),
+  });
+  reorderIds.forEach((id, idx) => {
+    const iss = listAllIssues.find(i => i.id === id);
+    if (iss) iss.priority = idx + 1;
+  });
+}
+
+async function loadList() {
+  const [res, archRes] = await Promise.all([
+    fetch('/api/issues'),
+    activeFilters.has('archived') ? fetch('/api/issues?archive=1') : Promise.resolve(null),
+  ]);
+  const issues = await res.json();
+  const archived = archRes ? await archRes.json() : [];
+  listAllIssues = [...issues, ...archived];
+  buildList(listAllIssues);
+}
+
 async function init() {
   const res = await fetch("/api/config");
   const cfg = await res.json();
@@ -747,6 +1157,10 @@ const server = createServer((req, res) => {
     res.end(e.message);
   }
 });
+
+const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
+archiveOldIssues(issuesDir).catch(logArchiveError);
+setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
 
 server.listen(args.port, () => {
   console.log(`Board läuft auf http://localhost:${args.port}`);

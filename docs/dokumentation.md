@@ -8,7 +8,7 @@ Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zehn Skil
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Die KI übernimmt Schritte 1, 2, 4, 5 und 6. Die drei menschlichen Stop-Punkte sind Schritt 3 (GO), Schritt 7 (Push) und Schritt 9 (Merge). Schritt 8 (Test-Server prüfen) ist ebenfalls menschlich. Drei weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Drei weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /retro und /document.
 
 ## Voraussetzungen
 
@@ -28,7 +28,7 @@ Der Kernprozess hat neun Schritte. Die KI übernimmt Schritte 1, 2, 4, 5 und 6. 
 
 **Ein Projekt-Board, falls du GitHub oder GitLab als Issue-Tracker nutzt.** Das Board braucht diese fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Bei GitHub sind das Projekt-Board-Spalten (GitHub Projects), bei GitLab werden sie durch Labels abgebildet. Im lokalen Modus gibt es kein Board — der Adapter schreibt und liest YAML-Frontmatter-Dateien direkt.
 
-**`kontext.config.json` für /kontext und /document (optional).** Beide Skills laufen auch ohne diese Datei im Degraded Mode. Wenn du persistentes projektübergreifendes Memory willst, legst du die Config manuell an. Der Installer erzeugt sie nicht automatisch. Details im Abschnitt [kontext.config.json](#kontext-config-json-referenz).
+**`kontext.config.json` für /kontext und /document (optional).** Beide Skills laufen auch ohne diese Datei im Degraded Mode. Wenn du persistentes projektübergreifendes Memory willst: Bei globaler Installation fragt der Installer nach dem Vault-Pfad und legt die Datei automatisch an, bei projektlokaler Installation legst du sie manuell an. Details im Abschnitt [kontext.config.json](#kontext-config-json-referenz).
 
 ## Installation
 
@@ -51,7 +51,7 @@ Oder in einem Schritt ohne lokale Datei:
 node <(curl -s https://mwolff.org/claude-workflow-kit/install.mjs)
 ```
 
-Der Installer stellt sieben Fragen:
+Der Installer stellt sieben Fragen — bei globaler Installation folgt eine achte:
 
 **1. Global oder projektlokal.** Global legt die Skills in `~/.claude/skills/` ab. Sie stehen dann in allen deinen Projekten zur Verfügung. Projektlokal legt sie in `./.claude/skills/` ab. Sie gehören zum Repo. Für teamverbindliche Prozesse wähle projektlokal, für die persönliche Nutzung global. Bei projektlokal fügt der Installer `.claude/` automatisch in `.gitignore` ein.
 
@@ -67,7 +67,9 @@ Der Installer stellt sieben Fragen:
 
 **7. Review-Modell.** Das Modell, das in der frischen Review-Session läuft. Standard ist `claude-opus-4-8`.
 
-Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+**8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
+
+Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs` sowie die lokale Board-UI in `.claude/kit/board-ui.mjs` (eine Kanban-Ansicht für den lokalen Modus, siehe [Lokal arbeiten](./lokal#board-starten)). Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
@@ -139,15 +141,17 @@ Der Kernprozess hat neun Schritte. Drei weitere Skills (Querschnitts-Skills) ste
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
-| 1 | Anforderung planen | KI | /plan |
-| 2 | Issues anlegen | KI | /issues |
-| **3** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
-| 4 | Ready-Issues implementieren | KI | /implement-ready |
-| 5 | Lokale Checks ausführen | KI | /local-check |
-| 6 | Review durchführen | KI | /review |
-| **7** | **Push auf main** | **Mensch** | /push-main |
-| **8** | **Test-Server prüfen** | **Mensch** | (kein Skill) |
+| **1** | **Anforderung formulieren** | **Mensch** | (kein Skill) |
+| 2 | Anforderung planen | KI | /plan |
+| 3 | Issues anlegen | KI | /issues |
+| **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
+| 5 | Ready-Issues implementieren | KI | /implement-ready |
+| 6 | Lokale Checks ausführen | KI | /local-check |
+| 7 | Review durchführen | KI | /review |
+| **8** | **Push auf main** | **Mensch** | /push-main |
 | **9** | **Merge nach production** | **Mensch** | /merge-production |
+
+Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser — kein eigener Skill, aber Pflicht. Diese Zählung ist dieselbe wie in der `CLAUDE-workflow.md` und in den Skill-Definitionen.
 
 Querschnitts-Skills: /kontext (Session-Start), /retro (Wartungsrhythmus), /document (Session-Ende).
 
@@ -161,7 +165,7 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 
 ### /plan
 
-**Schritt 1, nach der Anforderung, vor der Implementierung.**
+**Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
 Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Anschließend stellt er den Plan zur Diskussion.
 
@@ -169,19 +173,19 @@ Der Skill implementiert nichts. Er stellt keine Issues an. Er wartet auf dein Fe
 
 ### /issues
 
-**Schritt 2, nach der Plan-Freigabe.**
+**Schritt 3, nach der Plan-Freigabe.**
 
 Aus dem freigegebenen Plan werden ein oder mehrere Issues. Jedes Issue ist kleinteilig genug, um eigenständig getestet zu werden, und enthält vier Abschnitte: Kontext (warum), Aufgabe (was genau), Akzeptanzkriterium (wie prüfbar) und Abhängigkeiten (was muss vorher fertig sein).
 
 Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dein Gedächtnis, nicht der Plan-Text). Die Issues landen im Backlog.
 
-### Schritt 3: GO (menschlich)
+### Schritt 4: GO (menschlich)
 
 Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach Ready. Das ist deine Entscheidung: wie viel Arbeit du freigibst und was in diesen Durchlauf kommt. Die KI zieht nie eigenmächtig Issues nach Ready.
 
 ### /implement-ready
 
-**Schritt 4, nach dem GO.**
+**Schritt 5, nach dem GO.**
 
 Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben, lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
 
@@ -189,7 +193,7 @@ Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmäc
 
 ### /local-check
 
-**Schritt 5, vor dem Review.**
+**Schritt 6, vor dem Review.**
 
 Der Skill führt alle Kommandos aus `buildChecks` sequenziell aus und führt danach `mutationCommand` aus, sofern gesetzt. Bei Frontend-Änderungen erinnert er an die manuelle UI-Verifikation im Browser und vermerkt im Bericht, wenn diese nicht automatisch möglich war.
 
@@ -197,7 +201,7 @@ Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp. Ein roter 
 
 ### /review
 
-**Schritt 6, nach dem lokalen Check.**
+**Schritt 7, nach dem lokalen Check.**
 
 Der Skill öffnet eine neue Claude-Session ohne den Implementierungskontext der aktuellen Session. Ein Reviewer, der den Entstehungsweg nicht kennt, liest den Code als Fremder und sieht Probleme, die dem Implementierer nicht auffallen.
 
@@ -205,13 +209,13 @@ Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (i
 
 ### /push-main
 
-**Schritt 7, nach dem Review, auf dein explizites Kommando.**
+**Schritt 8, nach dem Review, auf dein explizites Kommando.**
 
 Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du. Er ist gegen autonome Invocation gesperrt und reagiert nur auf die explizite Trigger-Phrase. Eine frühere Push-Freigabe in derselben Session gilt nicht für neue Commits. Jeder Batch braucht eine eigene Freigabe.
 
-Ein roter `/local-check` aus Schritt 5 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
+Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
 
-### Schritt 8: Test-Server prüfen (menschlich)
+### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
 Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du prüfst das Ergebnis im Browser: den Golden Path, kritische Edge Cases, keine sichtbaren Regressionen. Erst nach dieser Prüfung gehst du zu Schritt 9.
 
@@ -241,21 +245,21 @@ Die Dokumentation entsteht nicht als nachträgliche Pflicht, sondern als automat
 
 Du rufst `/kontext` auf, um mit einem frischen Lageüberblick in die Session zu starten.
 
-**Schritt 1:** Du diktierst die Anforderung und rufst `/plan`. Du liest den Plan, gibst Feedback und genehmigst ihn.
+**Schritte 1 und 2:** Du diktierst die Anforderung (Schritt 1) und rufst `/plan` (Schritt 2). Du liest den Plan, gibst Feedback und genehmigst ihn.
 
-**Schritt 2:** Du rufst `/issues`. Die Issues landen im Backlog.
+**Schritt 3:** Du rufst `/issues`. Die Issues landen im Backlog.
 
-**Schritt 3 (GO):** Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach Ready. Das ist eine bewusste Entscheidung, nie eine stillschweigende Verschiebung durch die KI.
+**Schritt 4 (GO):** Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach Ready. Das ist eine bewusste Entscheidung, nie eine stillschweigende Verschiebung durch die KI.
 
-**Schritt 4:** Du rufst `/implement-ready`. Die KI arbeitet die Ready-Spalte ab, committet lokal und legt die Ergebnisse in In review.
+**Schritt 5:** Du rufst `/implement-ready`. Die KI arbeitet die Ready-Spalte ab, committet lokal und legt die Ergebnisse in In review.
 
-**Schritt 5:** Du rufst `/local-check`. Alle Checks müssen grün sein.
+**Schritt 6:** Du rufst `/local-check`. Alle Checks müssen grün sein.
 
-**Schritt 6:** Du rufst `/review`. Ein frischer Blick ohne Entstehungskontext. Du liest das Review. Gibt es Befunde, die du adressieren willst, gehst du zurück zu Schritt 4.
+**Schritt 7:** Du rufst `/review`. Ein frischer Blick ohne Entstehungskontext. Du liest das Review. Gibt es Befunde, die du adressieren willst, gehst du zurück zu Schritt 5.
 
-**Schritt 7:** Du rufst `/push-main` (explizite Trigger-Phrase). Main ist jetzt aktuell.
+**Schritt 8:** Du rufst `/push-main` (explizite Trigger-Phrase). Main ist jetzt aktuell.
 
-**Schritt 8:** Du prüfst das Ergebnis auf dem Test-Server im Browser.
+**Zwischen Push und Merge:** Du prüfst das Ergebnis auf dem Test-Server im Browser.
 
 **Schritt 9:** Stimmt alles, rufst du `/merge-production`. Der PR/MR wird erstellt, du mergst ihn selbst.
 
@@ -263,9 +267,9 @@ Zum Abschluss `/document`.
 
 ## Die drei menschlichen Stop-Punkte
 
-**Schritt 3: das GO.** Du entscheidest, welche Issues in diesen Batch kommen. Darin liegt die Planung: wie viel Arbeit auf einmal, welche Priorität, welche Abhängigkeiten.
+**Schritt 4: das GO.** Du entscheidest, welche Issues in diesen Batch kommen. Darin liegt die Planung: wie viel Arbeit auf einmal, welche Priorität, welche Abhängigkeiten.
 
-**Schritt 7: der Push.** Du veränderst den Test-Server. Jeder Batch braucht eine eigene Freigabe, weil zwischen Commit und Push die letzte Chance liegt, den Scope zu überdenken.
+**Schritt 8: der Push.** Du veränderst den Test-Server. Jeder Batch braucht eine eigene Freigabe, weil zwischen Commit und Push die letzte Chance liegt, den Scope zu überdenken.
 
 **Schritt 9: der Merge.** Du bringst Code nach production. Du hast auf dem Test-Server geprüft, du trägst die Verantwortung, du mergst.
 

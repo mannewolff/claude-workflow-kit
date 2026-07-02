@@ -70,6 +70,9 @@ function execJSON(cmd) {
 
 // --- Fehlerbehandlung ---
 
+// Erwartete Fehler aus den Adaptern: abfangbar, im CLI-Layer als "Fehler: ..." ausgegeben
+class BoardError extends Error {}
+
 function fail(msg) {
   process.stderr.write(`Fehler: ${msg}\n`);
   process.exit(1);
@@ -77,6 +80,10 @@ function fail(msg) {
 
 function out(data) {
   process.stdout.write(JSON.stringify(data, null, 2) + "\n");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // --- Config laden ---
@@ -151,7 +158,7 @@ class GitHubIssueTracker {
 
   _projectNumber() {
     const n = this._cfg.github?.projectNumber;
-    if (!n) fail(
+    if (!n) throw new BoardError(
       "github.projectNumber fehlt in workflow.config.json. " +
       "Bitte erganzen: '\"github\": { \"projectNumber\": <N> }'"
     );
@@ -167,13 +174,13 @@ class GitHubIssueTracker {
     // Project-ID
     const projectList = execJSON(`gh project list --owner ${owner} --format json`);
     const project = (projectList.projects || []).find((p) => p.number === num);
-    if (!project) fail(`GitHub Project #${num} nicht gefunden fuer Owner '${owner}'`);
+    if (!project) throw new BoardError(`GitHub Project #${num} nicht gefunden fuer Owner '${owner}'`);
     this._projectId = project.id;
 
     // Status-Field und Optionen
     const fields = execJSON(`gh project field-list ${num} --owner ${owner} --format json`);
     const statusField = (fields.fields || []).find((f) => f.name === "Status");
-    if (!statusField) fail(`Kein 'Status'-Feld in GitHub Project #${num} gefunden`);
+    if (!statusField) throw new BoardError(`Kein 'Status'-Feld in GitHub Project #${num} gefunden`);
 
     const optionMap = {};
     for (const opt of statusField.options || []) {
@@ -190,20 +197,24 @@ class GitHubIssueTracker {
   _getProjectItemId(issueNumber) {
     const owner = this._owner();
     const num = this._projectNumber();
-    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json`);
+    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
     const item = (items.items || []).find(
       (i) => i.content?.number === Number(issueNumber)
     );
-    if (!item) fail(`Issue #${issueNumber} nicht im Project Board #${num} gefunden`);
+    if (!item) throw new BoardError(`Issue #${issueNumber} nicht im Project Board #${num} gefunden`);
     return item.id;
   }
 
   async createIssue({ title, body }) {
     const repo = this._repo();
-    const url = exec(
+    const output = exec(
       `gh issue create --repo ${repo} --title ${shellQuote(title)} --body ${shellQuote(body || "")}`
     );
-    const id = String(url.split("/").pop());
+    // gh gibt ggf. Hinweiszeilen vor der URL aus — URL und ID per Regex extrahieren
+    const match = output.match(/(https?:\/\/\S+\/issues\/(\d+))/);
+    if (!match) throw new BoardError(`Konnte Issue-URL aus gh-Ausgabe nicht lesen: ${output}`);
+    const url = match[1];
+    const id = match[2];
 
     // Ans Project Board haengen, falls konfiguriert
     if (this._cfg.github?.projectNumber) {
@@ -211,8 +222,20 @@ class GitHubIssueTracker {
         const owner = this._owner();
         const num = this._projectNumber();
         exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
-        // Status auf backlog setzen
-        await this.moveIssue(id, "backlog");
+        // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
+        // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
+        let lastErr = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          if (attempt > 1) await sleep(2500);
+          try {
+            await this.moveIssue(id, "backlog");
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (lastErr) throw lastErr;
       } catch (e) {
         process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
       }
@@ -254,10 +277,10 @@ class GitHubIssueTracker {
     this._ensureProjectMeta();
     const owner = this._owner();
     const num = this._projectNumber();
-    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json`);
+    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
 
     const optionId = this._statusField.options[status];
-    if (!optionId) fail(`Status '${status}' hat keine Entsprechung im GitHub Project`);
+    if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
 
     return (items.items || [])
       .filter((i) => i.status === githubStatusName(status, this._cfg))
@@ -274,7 +297,7 @@ class GitHubIssueTracker {
     this._ensureProjectMeta();
     const itemId = this._getProjectItemId(id);
     const optionId = this._statusField.options[to];
-    if (!optionId) fail(`Status '${to}' hat keine Entsprechung im GitHub Project`);
+    if (!optionId) throw new BoardError(`Status '${to}' hat keine Entsprechung im GitHub Project`);
 
     exec(
       `gh project item-edit --id ${itemId} --project-id ${this._projectId} ` +
@@ -327,11 +350,11 @@ class GitLabIssueTracker {
     );
     // glab gibt die Issue-URL aus, z.B. https://gitlab.com/owner/repo/-/issues/42
     const match = output.match(/\/issues\/(\d+)/);
-    if (!match) fail(`Konnte Issue-ID aus glab-Ausgabe nicht lesen: ${output}`);
+    if (!match) throw new BoardError(`Konnte Issue-ID aus glab-Ausgabe nicht lesen: ${output}`);
     const id = match[1];
     // Label 'Backlog' setzen
     try {
-      exec(`glab issue edit ${id} --label "Backlog"`);
+      exec(`glab issue update ${id} --label "Backlog"`);
     } catch (e) {
       process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
     }
@@ -341,7 +364,7 @@ class GitLabIssueTracker {
   async getIssue(id) {
     const data = execJSON(`glab issue view ${id} --output json`);
     const labelNames = (data.labels || []).map((l) => l.name || l);
-    const status = labelToStatus(labelNames) || null;
+    const status = labelToStatus(labelNames, this._cfg) || null;
     return {
       id: String(data.iid || data.id),
       title: data.title,
@@ -354,7 +377,7 @@ class GitLabIssueTracker {
     let cmd = "glab issue list --state opened --output json";
     if (status) {
       const label = columnLabels(this._cfg)[status];
-      if (!label) fail(`Status '${status}' hat kein GitLab-Label-Mapping`);
+      if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
       cmd += ` --label ${shellQuote(label)}`;
     }
     const items = execJSON(cmd);
@@ -365,7 +388,7 @@ class GitLabIssueTracker {
           id: String(i.iid),
           title: i.title,
           body: i.description,
-          status: labelToStatus(labelNames) || null,
+          status: labelToStatus(labelNames, this._cfg) || null,
         };
       })
       .sort((a, b) => Number(a.id) - Number(b.id));
@@ -374,12 +397,12 @@ class GitLabIssueTracker {
   async moveIssue(id, to) {
     const labels = columnLabels(this._cfg);
     const label = labels[to];
-    if (!label) fail(`Status '${to}' hat kein GitLab-Label-Mapping`);
+    if (!label) throw new BoardError(`Status '${to}' hat kein GitLab-Label-Mapping`);
     // Alle Status-Labels entfernen, Ziel-Label setzen
     const unlabelArgs = Object.values(labels)
       .map((l) => `--unlabel ${shellQuote(l)}`)
       .join(" ");
-    exec(`glab issue edit ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
+    exec(`glab issue update ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
   }
 
   async commentIssue(id, text) {
@@ -415,16 +438,17 @@ class GitLabCodeHost {
 // ============================================================
 
 // Minimaler YAML-Frontmatter-Parser fuer die Issue-Dateien (kein externes Modul)
+// SYNC: bewusst dupliziert in kit/board.mjs UND kit/board-ui.mjs — beide Dateien
+// sind eigenstaendig portable Single-File-Tools, ein gemeinsames Modul wuerde das
+// brechen. Aenderungen immer in beiden Dateien identisch nachziehen.
+// Bewusst minimal: nur flaches, einzeiliges YAML (reicht fuer das Issue-Format).
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { meta: {}, body: content };
   const meta = {};
   for (const line of match[1].split("\n")) {
     const m = line.match(/^(\w+):\s*(.*)$/);
-    if (m) {
-      let val = m[2].trim().replace(/^["']|["']$/g, "");
-      meta[m[1]] = val;
-    }
+    if (m) meta[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
   }
   return { meta, body: match[2] };
 }
@@ -463,7 +487,7 @@ class LocalIssueTracker {
 
   _read(id) {
     const p = this._filePath(id);
-    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
     return { id: meta.id || padId(id), title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
@@ -506,7 +530,7 @@ class LocalIssueTracker {
 
   async moveIssue(id, to) {
     const p = this._filePath(id);
-    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
     meta.status = to;
@@ -515,7 +539,7 @@ class LocalIssueTracker {
 
   async commentIssue(id, text) {
     const p = this._filePath(id);
-    if (!existsSync(p)) fail(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
@@ -554,7 +578,7 @@ function shellQuote(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
-function labelToStatus(labelNames) {
+function labelToStatus(labelNames, config) {
   for (const [status, label] of Object.entries(columnLabels(config))) {
     if (labelNames.includes(label)) return status;
   }
@@ -674,6 +698,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`Unerwarteter Fehler: ${err.message}\n`);
+  const prefix = err instanceof BoardError ? "Fehler" : "Unerwarteter Fehler";
+  process.stderr.write(`${prefix}: ${err.message}\n`);
   process.exit(1);
 });

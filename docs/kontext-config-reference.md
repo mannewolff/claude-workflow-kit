@@ -11,7 +11,7 @@ Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Ses
 | `~/.claude/kontext.config.json` | Global — gilt für alle Projekte |
 | `.claude/kontext.config.json` | Projektlokal — überschreibt einzelne Felder der globalen Config |
 
-Die lokale Config wird mit der globalen gemergt. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, gibt der Skill eine Fehlermeldung aus.
+Die lokale Config wird mit der globalen gemergt. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode weiter (Issues per CLI, Log ins Projektverzeichnis).
 
 ---
 
