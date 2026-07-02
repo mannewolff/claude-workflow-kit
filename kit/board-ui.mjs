@@ -8,7 +8,8 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, renameSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from "node:fs";
+import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -93,24 +94,24 @@ function readIssues(issuesDir) {
 
 // --- Archiv ---
 
-function archiveOldIssues(issuesDir) {
+// Asynchron (fs/promises), damit der stuendliche Lauf keine HTTP-Requests blockiert
+async function archiveOldIssues(issuesDir) {
   if (!existsSync(issuesDir)) return;
   const archiveDir = join(issuesDir, "archive");
   const now = Date.now();
   const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-  const files = readdirSync(issuesDir).filter(
-    (f) => f.endsWith(".md") && statSync(join(issuesDir, f)).isFile()
-  );
-  for (const f of files) {
+  for (const f of await readdir(issuesDir)) {
+    if (!f.endsWith(".md")) continue;
     const path = join(issuesDir, f);
-    const raw = readFileSync(path, "utf-8");
+    if (!(await stat(path)).isFile()) continue;
+    const raw = await readFile(path, "utf-8");
     const { meta } = parseFrontmatter(raw);
     const status = (meta.status || "").replace(/-/g, "_");
     if (status !== "done" || !meta.done_at) continue;
     const doneTs = new Date(meta.done_at).getTime();
     if (isNaN(doneTs) || now - doneTs < THREE_DAYS_MS) continue;
-    mkdirSync(archiveDir, { recursive: true });
-    renameSync(path, join(archiveDir, f));
+    await mkdir(archiveDir, { recursive: true });
+    await rename(path, join(archiveDir, f));
     process.stdout.write(`Archiviert: ${f}\n`);
   }
 }
@@ -1095,8 +1096,9 @@ const server = createServer((req, res) => {
   }
 });
 
-archiveOldIssues(issuesDir);
-setInterval(() => archiveOldIssues(issuesDir), 60 * 60 * 1000);
+const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
+archiveOldIssues(issuesDir).catch(logArchiveError);
+setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
 
 server.listen(args.port, () => {
   console.log(`Board läuft auf http://localhost:${args.port}`);
