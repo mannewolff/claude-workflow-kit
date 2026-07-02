@@ -553,7 +553,9 @@ const HTML = `<!DOCTYPE html>
   /* Listenansicht */
   .list-view {
     padding: 20px;
+    --excerpt-w: 50%;
   }
+  .list-view.resizing { cursor: col-resize; user-select: none; }
   .list-filter {
     display: flex;
     gap: 6px;
@@ -619,12 +621,23 @@ const HTML = `<!DOCTYPE html>
   .list-excerpt {
     color: #6b778c;
     font-size: 12px;
-    flex-shrink: 0;
-    max-width: 220px;
+    flex: 0 0 var(--excerpt-w);
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .list-resizer {
+    align-self: stretch;
+    width: 6px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    border-right: 2px solid #e8e8e8;
+    transition: border-color .15s;
+  }
+  .list-row:hover .list-resizer { border-right-color: #c1c7d0; }
+  .list-resizer:hover,
+  .list-view.resizing .list-resizer { border-right-color: #0075ca; }
   .list-row.drag-target {
     border-top: 2px solid #0075ca;
   }
@@ -934,12 +947,13 @@ const LIST_STATUSES = [
 ];
 
 function bodyExcerpt(raw) {
-  return raw.replace(/\\n/g, ' ').replace(/#+\\s*/g, '').replace(/[*_\`]/g, '').trim().slice(0, 80);
+  return raw.replace(/\\n/g, ' ').replace(/#+\\s*/g, '').replace(/[*_\`]/g, '').trim().slice(0, 240);
 }
 
 function buildList(issues) {
   const container = document.getElementById('list-view');
   container.innerHTML = '';
+  container.style.setProperty('--excerpt-w', storedExcerptWidth() + '%');
 
   // Filter-Leiste
   const filterBar = document.createElement('div');
@@ -984,6 +998,40 @@ function buildList(issues) {
 
 let listAllIssues = [];
 let listDragId = null;
+let listResizing = false;
+
+const EXCERPT_WIDTH_KEY = 'stellwerk.listExcerptWidth';
+
+function clampExcerptWidth(pct) {
+  return Math.min(75, Math.max(25, pct));
+}
+
+function storedExcerptWidth() {
+  const v = parseFloat(localStorage.getItem(EXCERPT_WIDTH_KEY));
+  return isNaN(v) ? 50 : clampExcerptWidth(v);
+}
+
+function startListResize() {
+  const container = document.getElementById('list-view');
+  listResizing = true;
+  container.classList.add('resizing');
+  const onMove = (e) => {
+    const rect = container.getBoundingClientRect();
+    const pct = clampExcerptWidth(((rect.right - e.clientX) / rect.width) * 100);
+    container.style.setProperty('--excerpt-w', pct + '%');
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    container.classList.remove('resizing');
+    const current = parseFloat(container.style.getPropertyValue('--excerpt-w'));
+    localStorage.setItem(EXCERPT_WIDTH_KEY, String(isNaN(current) ? 50 : current));
+    // Flag erst nach dem Click-Event zuruecksetzen, damit kein Modal aufgeht
+    setTimeout(() => { listResizing = false; }, 0);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
 
 function buildListRow(issue) {
   const row = document.createElement('div');
@@ -999,11 +1047,21 @@ function buildListRow(issue) {
      <span class="list-id">#\${escHtml(issue.id)}</span>
      \${badgeEl}
      <span class="list-title">\${escHtml(issue.title)}</span>
+     <span class="list-resizer" title="Spaltenbreite ziehen"></span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
+
+  const resizer = row.querySelector('.list-resizer');
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startListResize();
+  });
+  resizer.addEventListener('click', (e) => e.stopPropagation());
 
   if (!isArchived) {
     row.draggable = true;
     row.addEventListener('dragstart', (e) => {
+      if (listResizing) { e.preventDefault(); return; }
       listDragId = issue.id;
       e.dataTransfer.setData('text/plain', issue.id);
       e.dataTransfer.effectAllowed = 'move';
