@@ -14,6 +14,7 @@ Lies `.claude/workflow.config.json`. Die relevanten Felder:
 
 - `reviewScope`: `"diff"` (nur git diff seit letztem Push) oder `"full"` (gesamter Quelltext)
 - `reviewModel`: Modell-ID für den Reviewer (Default: `claude-opus-4-8`)
+- `mainBranch`: Basis-Branch für den Diff (Default: `main`)
 
 Fehlt die Config oder fehlen die Felder, nutze `reviewScope: "diff"` und `reviewModel: "claude-opus-4-8"` als Default und weise darauf hin.
 
@@ -23,9 +24,9 @@ Fehlt die Config oder fehlen die Felder, nutze `reviewScope: "diff"` und `review
 
 **Bei `reviewScope: "diff"`:**
 ```bash
-git diff origin/main...HEAD
+git diff origin/<mainBranch>...HEAD
 ```
-Falls kein Remote-Commit existiert: `git diff HEAD~1 HEAD` (letzter Commit).
+`<mainBranch>` ist der Wert aus der Config (Default: `main`). Falls kein Remote-Commit existiert: `git diff HEAD~1 HEAD` (letzter Commit).
 
 **Bei `reviewScope: "full"`:**
 Alle relevanten Quelltext-Dateien lesen (keine Build-Artefakte, keine `node_modules`, keine `.git`-Inhalte).
