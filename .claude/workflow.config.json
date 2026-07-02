@@ -1,7 +1,7 @@
 {
   "codeHost": "github",
   "issueTracker": "github",
-  "buildChecks": [],
+  "buildChecks": ["node tools/sync-blobs.mjs --check"],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
