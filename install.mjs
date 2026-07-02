@@ -375,7 +375,7 @@ async function main() {
 
   console.log("\n=== Stellwerk Installer ===\n");
   console.log("Dieser Installer richtet die Stellwerk-Skill-Bibliothek ein.");
-  console.log("Sechs Fragen, dann bist du fertig.\n");
+  console.log("Sieben Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   let scope;
@@ -421,13 +421,13 @@ async function main() {
     "issueTracker"
   );
 
-  // Frage 5: mainBranch
+  // Frage 4: mainBranch
   const mainBranch = await askWithDefault(rl, "Haupt-Branch (mainBranch)", D.mainBranch);
 
-  // Frage 6: productionBranch
+  // Frage 5: productionBranch
   const productionBranch = await askWithDefault(rl, "Production-Branch (productionBranch)", D.productionBranch);
 
-  // Frage 7: reviewScope
+  // Frage 6: reviewScope
   const reviewScope = await askWithDefault(
     rl,
     "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
@@ -435,7 +435,7 @@ async function main() {
     "reviewScope"
   );
 
-  // Frage 8: reviewModel
+  // Frage 7: reviewModel
   const reviewModel = await askWithDefault(
     rl,
     "Reviewer-Modell (muss mit 'claude-' beginnen)",
@@ -443,7 +443,7 @@ async function main() {
     "reviewModel"
   );
 
-  // Frage 6 (nur bei globalem Install): Vault-Pfad für kontext.config.json
+  // Frage 8 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
   if (scope === "global") {
     const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
