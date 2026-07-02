@@ -176,7 +176,8 @@ function handleRequest(req, res, issuesDir) {
         if (to === "ready") {
           try {
             execSync(`git add ${JSON.stringify(file)}`, { stdio: "pipe" });
-            execSync(`git commit -m "GO: #${id} nach ready"`, { stdio: "pipe" });
+            // --only: nur die Issue-Datei committen, fremde gestagte Aenderungen bleiben im Index
+            execSync(`git commit -o -m "GO: #${id} nach ready" -- ${JSON.stringify(file)}`, { stdio: "pipe" });
           } catch (e) {
             process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
           }
