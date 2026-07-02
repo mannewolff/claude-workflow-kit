@@ -4,6 +4,23 @@
   "description": "Projekt-spezifische Konfiguration fuer die Stellwerk-Skill-Bibliothek",
   "type": "object",
   "properties": {
+    "codeHost": {
+      "type": "string",
+      "enum": ["github", "gitlab", "local"],
+      "description": "Wo der Code liegt (Push, Pull Requests).",
+      "default": "github"
+    },
+    "issueTracker": {
+      "type": "string",
+      "enum": ["github", "gitlab", "local"],
+      "description": "Wo die Issues verwaltet werden. Darf vom codeHost abweichen.",
+      "default": "github"
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["github", "gitlab", "local"],
+      "description": "Veraltet (v1). Wird beim Laden auf codeHost/issueTracker migriert."
+    },
     "buildChecks": {
       "type": "array",
       "items": { "type": "string" },
@@ -69,11 +86,61 @@
         "push": "push main",
         "merge": "merge production"
       }
+    },
+    "local": {
+      "type": "object",
+      "description": "Einstellungen fuer den lokalen Issue-Tracker (issueTracker: 'local').",
+      "properties": {
+        "issuesDir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Verzeichnis der Issue-Markdown-Dateien, relativ zum Projekt-Root.",
+          "default": "issues"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "default": { "issuesDir": "issues" }
+    },
+    "columns": {
+      "type": "object",
+      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen.",
+      "properties": {
+        "backlog":     { "type": "string", "minLength": 1, "default": "Backlog" },
+        "ready":       { "type": "string", "minLength": 1, "default": "Ready" },
+        "in_progress": { "type": "string", "minLength": 1, "default": "In Progress" },
+        "in_review":   { "type": "string", "minLength": 1, "default": "In Review" },
+        "done":        { "type": "string", "minLength": 1, "default": "Done" }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "default": {
+        "backlog": "Backlog",
+        "ready": "Ready",
+        "in_progress": "In Progress",
+        "in_review": "In Review",
+        "done": "Done"
+      }
+    },
+    "github": {
+      "type": "object",
+      "description": "GitHub-spezifische Einstellungen.",
+      "properties": {
+        "projectNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Nummer des GitHub Project Boards (gh project list). Erforderlich fuer Board-Status-Operationen."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
     }
   },
   "required": [],
   "additionalProperties": false,
   "defaults": {
+    "codeHost": "github",
+    "issueTracker": "github",
     "buildChecks": [],
     "mutationCommand": "",
     "mainBranch": "main",
@@ -84,9 +151,29 @@
       "go": "GO",
       "push": "push main",
       "merge": "merge production"
+    },
+    "local": { "issuesDir": "issues" },
+    "columns": {
+      "backlog": "Backlog",
+      "ready": "Ready",
+      "in_progress": "In Progress",
+      "in_review": "In Review",
+      "done": "Done"
     }
   },
   "validationRules": [
+    {
+      "field": "codeHost",
+      "rule": "enum",
+      "allowed": ["github", "gitlab", "local"],
+      "error": "codeHost muss 'github', 'gitlab' oder 'local' sein."
+    },
+    {
+      "field": "issueTracker",
+      "rule": "enum",
+      "allowed": ["github", "gitlab", "local"],
+      "error": "issueTracker muss 'github', 'gitlab' oder 'local' sein."
+    },
     {
       "field": "reviewScope",
       "rule": "enum",
