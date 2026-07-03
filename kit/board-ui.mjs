@@ -96,6 +96,17 @@ function readIssues(issuesDir) {
     });
 }
 
+// --- Issue bearbeiten ---
+
+// SYNC: spiegelt die Trennlogik von parseIssueBody im Client-Script (unten im HTML-Template),
+// hier aber nur als reiner Text-Split (kein Rendering) — findet den ersten Kommentar-Marker
+// und trennt den Haupttext vom unveraenderten Kommentar-Rohtext.
+function splitComments(body) {
+  const idx = body.search(/\n\n---\n\*\*Kommentar\*\*/);
+  if (idx === -1) return { mainBody: body, commentsRaw: "" };
+  return { mainBody: body.slice(0, idx), commentsRaw: body.slice(idx) };
+}
+
 // --- Issue anlegen ---
 
 // SYNC: ID-Vergabe (padId + nextId) und das Frontmatter-Format bewusst gespiegelt
@@ -253,6 +264,41 @@ function handleRequest(req, res, issuesDir) {
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, id, status: to }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/issues/:id/edit
+  const editMatch = url.pathname.match(/^\/api\/issues\/([^/]+)\/edit$/);
+  if (req.method === "POST" && editMatch) {
+    const id = editMatch[1];
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { title, body: newBody } = JSON.parse(body);
+        if (!title || !title.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          return;
+        }
+        const file = join(issuesDir, `${id}.md`);
+        if (!existsSync(file)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          return;
+        }
+        const raw = readFileSync(file, "utf-8");
+        const { meta, body: issueBody } = parseFrontmatter(raw);
+        const { commentsRaw } = splitComments(issueBody);
+        meta.title = title.trim();
+        writeFileSync(file, serializeFrontmatter(meta, (newBody || "") + commentsRaw), "utf-8");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
       } catch (e) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: e.message }));
@@ -495,6 +541,28 @@ const HTML = `<!DOCTYPE html>
     border-radius: 4px;
   }
   .modal-close:hover { background: #f0f0f0; color: #172b4d; }
+  .modal-edit-btn {
+    margin-left: auto;
+    padding: 3px 10px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .modal-edit-btn:hover { background: #f4f5f7; }
+  .modal-edit-cancel-btn {
+    margin-left: 8px;
+    padding: 6px 14px;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .modal-edit-cancel-btn:hover { background: #f4f5f7; }
   .modal-body {
     padding: 20px;
   }
@@ -913,7 +981,7 @@ function openModal(issue) {
   window_.innerHTML =
     \`<div class="modal-header">
       <div class="modal-title">\${escHtml(issue.title)}</div>
-      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span></div>
+      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">Bearbeiten</button></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">\${renderMarkdown(mainBody)}</div>
@@ -948,10 +1016,71 @@ function openModal(issue) {
     if (fresh) openModal(fresh);
   });
 
+  // Bearbeiten
+  window_.querySelector(".modal-edit-btn").addEventListener("click", () => {
+    enterEditMode(window_, issue, mainBody);
+  });
+
   // Schließen via × oder Overlay-Klick (nicht Modal selbst)
   window_.querySelector(".modal-close").addEventListener("click", closeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
   document.addEventListener("keydown", handleEsc);
+}
+
+function enterEditMode(window_, issue, mainBody) {
+  const editBtn = window_.querySelector(".modal-edit-btn");
+  if (editBtn) editBtn.style.display = "none";
+
+  const commentsEl = window_.querySelector(".modal-comments");
+  const commentFormEl = window_.querySelector(".modal-comment-form");
+  if (commentsEl) commentsEl.style.display = "none";
+  if (commentFormEl) commentFormEl.style.display = "none";
+
+  const bodyEl = window_.querySelector(".modal-body");
+  bodyEl.innerHTML =
+    \`<div class="new-issue-field">
+      <label for="edit-issue-title">Titel</label>
+      <input id="edit-issue-title" type="text">
+    </div>
+    <div class="new-issue-field">
+      <label for="edit-issue-body">Beschreibung</label>
+      <textarea id="edit-issue-body"></textarea>
+    </div>
+    <button class="modal-comment-send edit-save-btn">Speichern</button>
+    <button class="modal-edit-cancel-btn" type="button">Abbrechen</button>\`;
+
+  const titleInput = bodyEl.querySelector("#edit-issue-title");
+  const bodyInput = bodyEl.querySelector("#edit-issue-body");
+  titleInput.value = issue.title;
+  bodyInput.value = mainBody;
+
+  const saveBtn = bodyEl.querySelector(".edit-save-btn");
+  saveBtn.addEventListener("click", async () => {
+    const newTitle = titleInput.value.trim();
+    if (!newTitle) return;
+    saveBtn.disabled = true;
+    const res = await fetch(\`/api/issues/\${issue.id}/edit\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle, body: bodyInput.value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Speichern fehlgeschlagen: " + (err.error || res.status));
+      saveBtn.disabled = false;
+      return;
+    }
+    closeModal();
+    if (currentView === "list") loadList();
+    else loadBoard();
+  });
+
+  bodyEl.querySelector(".modal-edit-cancel-btn").addEventListener("click", () => {
+    closeModal();
+    openModal(issue);
+  });
+
+  titleInput.focus();
 }
 
 function handleEsc(e) {
