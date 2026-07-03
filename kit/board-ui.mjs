@@ -411,7 +411,8 @@ const HTML = `<!DOCTYPE html>
   }
 
   .column {
-    flex: 0 0 240px;
+    flex: 1 1 0;
+    min-width: 220px;
     background: #ebecf0;
     border-radius: 8px;
     display: flex;
