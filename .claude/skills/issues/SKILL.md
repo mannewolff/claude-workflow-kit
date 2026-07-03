@@ -56,7 +56,21 @@ Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schri
 
 ### 4. Abschluss
 
-Liste alle angelegten Issues mit Nummern und Titeln. Schreibe:
+Liste alle angelegten Issues mit Nummern und Titeln.
+
+Ergänze eine Tabelle mit einer Modell-Empfehlung pro Issue. Sie hilft dem Menschen, vor dem GO zu entscheiden, mit welchem Modell jedes Issue umgesetzt wird — ohne den Plan-Kontext noch einmal zu lesen.
+
+| Issue | Empfehlung | Begründung |
+|-------|------------|------------|
+| #N | <Modell> | <ein Satz> |
+
+Heuristik für die Empfehlung:
+- **Schnelleres Standard-Modell** für mechanische, klar spezifizierte Aufgaben: ein Enum erweitern, Typen nachziehen, Restyling nach Vorlage, eine Änderung nach bestehendem Muster.
+- **Stärkstes verfügbares Modell** für Aufgaben mit Architektur-, Sicherheits- oder komplexer Interaktionslogik: OAuth-Flows, neue Komponenten mit viel Zustand, Nebenläufigkeit, Datenmigrationen.
+
+Halte die Modellnamen generisch ("Standard-Modell" / "stärkstes verfügbares Modell") und nenne das aktuell passende Modell nur als Beispiel, damit der Skill bei jedem Modell-Release aktuell bleibt. Die Begründung bleibt bei einem Satz pro Issue.
+
+Schreibe darunter:
 > "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO."
 
 ## Stop-Punkt

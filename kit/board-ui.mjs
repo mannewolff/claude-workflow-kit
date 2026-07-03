@@ -96,6 +96,48 @@ function readIssues(issuesDir) {
     });
 }
 
+// --- Issue bearbeiten ---
+
+// SYNC: spiegelt die Trennlogik von parseIssueBody im Client-Script (unten im HTML-Template),
+// hier aber nur als reiner Text-Split (kein Rendering) — findet den ersten Kommentar-Marker
+// und trennt den Haupttext vom unveraenderten Kommentar-Rohtext.
+function splitComments(body) {
+  const idx = body.search(/\n\n---\n\*\*Kommentar\*\*/);
+  if (idx === -1) return { mainBody: body, commentsRaw: "" };
+  return { mainBody: body.slice(0, idx), commentsRaw: body.slice(idx) };
+}
+
+// --- Issue anlegen ---
+
+// SYNC: ID-Vergabe (padId + nextId) und das Frontmatter-Format bewusst gespiegelt
+// aus kit/board.mjs (padId/_nextId/createIssue). board-ui.mjs und board.mjs sind
+// eigenstaendige Single-File-Tools ohne gemeinsames Modul — Aenderungen an der
+// ID- oder Frontmatter-Logik immer in beiden Dateien identisch nachziehen.
+function padId(n) {
+  return String(n).padStart(4, "0");
+}
+
+function nextId(issuesDir) {
+  if (!existsSync(issuesDir)) return 1;
+  const nums = readdirSync(issuesDir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => parseInt(f, 10))
+    .filter((n) => !isNaN(n));
+  return nums.length > 0 ? Math.max(...nums) + 1 : 1;
+}
+
+function createIssue(issuesDir, { title, body }) {
+  mkdirSync(issuesDir, { recursive: true });
+  const id = padId(nextId(issuesDir));
+  const today = new Date().toISOString().slice(0, 10);
+  const content = serializeFrontmatter(
+    { id: `"${id}"`, status: "backlog", title, created: today },
+    body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
+  );
+  writeFileSync(join(issuesDir, `${id}.md`), content, "utf-8");
+  return { id };
+}
+
 // --- Archiv ---
 
 // Asynchron (fs/promises), damit der stuendliche Lauf keine HTTP-Requests blockiert
@@ -155,6 +197,29 @@ function handleRequest(req, res, issuesDir) {
     return;
   }
 
+  // POST /api/issues  (neues Issue anlegen)
+  if (req.method === "POST" && url.pathname === "/api/issues") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { title, body: issueBody } = JSON.parse(body);
+        if (!title || !title.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          return;
+        }
+        const created = createIssue(issuesDir, { title: title.trim(), body: issueBody });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, id: created.id }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // POST /api/issues/:id/move
   const moveMatch = url.pathname.match(/^\/api\/issues\/([^/]+)\/move$/);
   if (req.method === "POST" && moveMatch) {
@@ -199,6 +264,41 @@ function handleRequest(req, res, issuesDir) {
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, id, status: to }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/issues/:id/edit
+  const editMatch = url.pathname.match(/^\/api\/issues\/([^/]+)\/edit$/);
+  if (req.method === "POST" && editMatch) {
+    const id = editMatch[1];
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { title, body: newBody } = JSON.parse(body);
+        if (!title || !title.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          return;
+        }
+        const file = join(issuesDir, `${id}.md`);
+        if (!existsSync(file)) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          return;
+        }
+        const raw = readFileSync(file, "utf-8");
+        const { meta, body: issueBody } = parseFrontmatter(raw);
+        const { commentsRaw } = splitComments(issueBody);
+        meta.title = title.trim();
+        writeFileSync(file, serializeFrontmatter(meta, (newBody || "") + commentsRaw), "utf-8");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
       } catch (e) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: e.message }));
@@ -311,7 +411,8 @@ const HTML = `<!DOCTYPE html>
   }
 
   .column {
-    flex: 0 0 240px;
+    flex: 1 1 0;
+    min-width: 220px;
     background: #ebecf0;
     border-radius: 8px;
     display: flex;
@@ -441,6 +542,28 @@ const HTML = `<!DOCTYPE html>
     border-radius: 4px;
   }
   .modal-close:hover { background: #f0f0f0; color: #172b4d; }
+  .modal-edit-btn {
+    margin-left: auto;
+    padding: 3px 10px;
+    border: 1px solid #dfe1e6;
+    background: #fff;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .modal-edit-btn:hover { background: #f4f5f7; }
+  .modal-edit-cancel-btn {
+    margin-left: 8px;
+    padding: 6px 14px;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #42526e;
+  }
+  .modal-edit-cancel-btn:hover { background: #f4f5f7; }
   .modal-body {
     padding: 20px;
   }
@@ -549,6 +672,46 @@ const HTML = `<!DOCTYPE html>
     border-color: #0075ca;
     color: #fff;
   }
+
+  /* Neues Issue */
+  .new-issue-btn {
+    padding: 6px 14px;
+    background: #0e8a16;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .new-issue-btn:hover { background: #0a6b11; }
+
+  .new-issue-field { margin-bottom: 14px; }
+  .new-issue-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b778c;
+    margin-bottom: 4px;
+  }
+  .new-issue-field input,
+  .new-issue-field textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    color: #172b4d;
+  }
+  .new-issue-field textarea {
+    min-height: 180px;
+    resize: vertical;
+    font-family: monospace;
+  }
+  .new-issue-field input:focus,
+  .new-issue-field textarea:focus { outline: none; border-color: #0075ca; }
+  .new-issue-create:not(:disabled) { cursor: pointer; }
 
   /* Listenansicht */
   .list-view {
@@ -664,6 +827,7 @@ const HTML = `<!DOCTYPE html>
     <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
     <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
   </div>
+  <button class="new-issue-btn" onclick="openNewIssueModal()">+ Neu</button>
 </header>
 
 <div class="board" id="board"></div>
@@ -818,7 +982,7 @@ function openModal(issue) {
   window_.innerHTML =
     \`<div class="modal-header">
       <div class="modal-title">\${escHtml(issue.title)}</div>
-      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span></div>
+      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">Bearbeiten</button></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">\${renderMarkdown(mainBody)}</div>
@@ -853,10 +1017,71 @@ function openModal(issue) {
     if (fresh) openModal(fresh);
   });
 
+  // Bearbeiten
+  window_.querySelector(".modal-edit-btn").addEventListener("click", () => {
+    enterEditMode(window_, issue, mainBody);
+  });
+
   // Schließen via × oder Overlay-Klick (nicht Modal selbst)
   window_.querySelector(".modal-close").addEventListener("click", closeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
   document.addEventListener("keydown", handleEsc);
+}
+
+function enterEditMode(window_, issue, mainBody) {
+  const editBtn = window_.querySelector(".modal-edit-btn");
+  if (editBtn) editBtn.style.display = "none";
+
+  const commentsEl = window_.querySelector(".modal-comments");
+  const commentFormEl = window_.querySelector(".modal-comment-form");
+  if (commentsEl) commentsEl.style.display = "none";
+  if (commentFormEl) commentFormEl.style.display = "none";
+
+  const bodyEl = window_.querySelector(".modal-body");
+  bodyEl.innerHTML =
+    \`<div class="new-issue-field">
+      <label for="edit-issue-title">Titel</label>
+      <input id="edit-issue-title" type="text">
+    </div>
+    <div class="new-issue-field">
+      <label for="edit-issue-body">Beschreibung</label>
+      <textarea id="edit-issue-body"></textarea>
+    </div>
+    <button class="modal-comment-send edit-save-btn">Speichern</button>
+    <button class="modal-edit-cancel-btn" type="button">Abbrechen</button>\`;
+
+  const titleInput = bodyEl.querySelector("#edit-issue-title");
+  const bodyInput = bodyEl.querySelector("#edit-issue-body");
+  titleInput.value = issue.title;
+  bodyInput.value = mainBody;
+
+  const saveBtn = bodyEl.querySelector(".edit-save-btn");
+  saveBtn.addEventListener("click", async () => {
+    const newTitle = titleInput.value.trim();
+    if (!newTitle) return;
+    saveBtn.disabled = true;
+    const res = await fetch(\`/api/issues/\${issue.id}/edit\`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle, body: bodyInput.value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Speichern fehlgeschlagen: " + (err.error || res.status));
+      saveBtn.disabled = false;
+      return;
+    }
+    closeModal();
+    if (currentView === "list") loadList();
+    else loadBoard();
+  });
+
+  bodyEl.querySelector(".modal-edit-cancel-btn").addEventListener("click", () => {
+    closeModal();
+    openModal(issue);
+  });
+
+  titleInput.focus();
 }
 
 function handleEsc(e) {
@@ -867,6 +1092,70 @@ function closeModal() {
   const overlay = document.querySelector(".modal-overlay");
   if (overlay) overlay.remove();
   document.removeEventListener("keydown", handleEsc);
+}
+
+const NEW_ISSUE_TEMPLATE = "\\n## Kontext\\n\\n## Aufgabe\\n\\n## Akzeptanzkriterium\\n\\n## Abhaengigkeiten\\n";
+
+function openNewIssueModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const window_ = document.createElement("div");
+  window_.className = "modal-window";
+  window_.innerHTML =
+    \`<div class="modal-header">
+      <div class="modal-title">Neues Issue</div>
+      <div class="modal-meta"><span class="modal-badge" style="background:#dfe1e6;color:#42526e">Backlog</span></div>
+      <button class="modal-close" aria-label="Schliessen">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="new-issue-field">
+        <label for="new-issue-title">Titel</label>
+        <input id="new-issue-title" type="text" placeholder="Kurzer, praeziser Titel">
+      </div>
+      <div class="new-issue-field">
+        <label for="new-issue-body">Beschreibung</label>
+        <textarea id="new-issue-body"></textarea>
+      </div>
+      <button class="modal-comment-send new-issue-create" disabled>Anlegen</button>
+    </div>\`;
+
+  overlay.appendChild(window_);
+  document.body.appendChild(overlay);
+
+  const titleInput = window_.querySelector("#new-issue-title");
+  const bodyInput = window_.querySelector("#new-issue-body");
+  const createBtn = window_.querySelector(".new-issue-create");
+  bodyInput.value = NEW_ISSUE_TEMPLATE;
+
+  titleInput.addEventListener("input", () => {
+    createBtn.disabled = !titleInput.value.trim();
+  });
+
+  createBtn.addEventListener("click", async () => {
+    const title = titleInput.value.trim();
+    if (!title) return;
+    createBtn.disabled = true;
+    const res = await fetch("/api/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, body: bodyInput.value }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Anlegen fehlgeschlagen: " + (err.error || res.status));
+      createBtn.disabled = false;
+      return;
+    }
+    closeModal();
+    if (currentView === "list") loadList();
+    else loadBoard();
+  });
+
+  titleInput.focus();
+  window_.querySelector(".modal-close").addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  document.addEventListener("keydown", handleEsc);
 }
 
 function buildCard(issue) {
