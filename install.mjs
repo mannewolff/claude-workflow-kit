@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stellwerk Installer v2.0.0
+ * Stellwerk Installer v1.3.0
  *
  * Kopiert die zehn Skills nach ~/.claude/skills/ oder ./.claude/skills/,
  * schreibt .claude/workflow.config.json und .claude/kit/board.mjs.
@@ -10,8 +10,8 @@
  *   node install.mjs --version
  *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
  *
- * Breaking Change v2.0.0: Config-Schema nutzt codeHost + issueTracker statt provider.
- * Bestehende Configs mit provider werden beim Lesen still migriert.
+ * Aenderung v1.3.0: Config-Schema nutzt codeHost + issueTracker statt provider.
+ * Bestehende Configs mit provider werden beim Lesen still migriert (abwaertskompatibel).
  */
 
 import { createInterface } from "node:readline";
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const VERSION = "2.0.0";
+const VERSION = "1.3.0";
 
 // --- CLAUDE-workflow.md (eingebettet fuer Single-File-Portabilitaet) ---
 const CLAUDE_WORKFLOW_MD = `# CLAUDE-workflow.md — Stellwerk-Prozess
