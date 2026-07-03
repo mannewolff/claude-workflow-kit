@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 
 // --- CLAUDE-workflow.md (eingebettet fuer Single-File-Portabilitaet) ---
 const CLAUDE_WORKFLOW_MD = `# CLAUDE-workflow.md — Stellwerk-Prozess
