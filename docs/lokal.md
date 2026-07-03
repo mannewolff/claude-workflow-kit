@@ -128,7 +128,9 @@ Die lokale Kanban-GUI zeigt alle Issues des Projekts als Board:
 node .claude/kit/board-ui.mjs
 ```
 
-Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit — committet wird ausschließlich die Issue-Datei, bereits gestagte andere Änderungen bleiben unangetastet. Klick auf eine Karte öffnet eine Detailansicht mit dem vollen Issue-Text und einem Kommentarformular.
+Öffnet `http://localhost:3000`. Fünf Spalten: Backlog, Ready, In Progress, In Review, Done — sie passen sich der Fensterbreite an; erst bei sehr schmalen Fenstern greift horizontales Scrollen. Drag einer Karte nach Ready erzeugt automatisch einen GO-Commit — committet wird ausschließlich die Issue-Datei, bereits gestagte andere Änderungen bleiben unangetastet. Klick auf eine Karte öffnet eine Detailansicht mit dem vollen Issue-Text und einem Kommentarformular. Über den Button **Bearbeiten** lassen sich Titel und Haupttext direkt in der Detailansicht ändern; bereits vorhandene Kommentare bleiben dabei unverändert erhalten.
+
+Der Button **+ Neu** oben rechts legt ein neues Issue an: Titel eingeben, der Haupttext ist mit der Vier-Abschnitt-Vorlage (Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten) vorbefüllt. Das Issue landet direkt im Backlog — das GUI-Pendant zu `board.mjs issue create` (siehe unten).
 
 Port anpassen:
 
