@@ -179,6 +179,8 @@ Aus dem freigegebenen Plan werden ein oder mehrere Issues. Jedes Issue ist klein
 
 Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dein Gedächtnis, nicht der Plan-Text). Die Issues landen im Backlog.
 
+Zum Abschluss listet der Skill die angelegten Issues und gibt pro Issue eine Modell-Empfehlung (schnelleres Standard-Modell für mechanische Aufgaben, stärkstes verfügbares Modell für Architektur- oder Sicherheitslogik, jeweils mit einem Satz Begründung). So entscheidest du vor dem GO, mit welchem Modell du jedes Issue umsetzt, ohne den Plan-Kontext noch einmal zu lesen.
+
 ### Schritt 4: GO (menschlich)
 
 Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach Ready. Das ist deine Entscheidung: wie viel Arbeit du freigibst und was in diesen Durchlauf kommt. Die KI zieht nie eigenmächtig Issues nach Ready.
