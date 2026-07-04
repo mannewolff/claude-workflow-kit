@@ -29,3 +29,5 @@ docs-site/.vitepress/cache
 issues/
 # macOS
 .DS_Store
+# JetBrains IDEs
+.idea/
