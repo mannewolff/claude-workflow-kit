@@ -54,11 +54,11 @@ export default defineConfig({
       {
         text: "mwolff-board-ui",
         items: [
-          { text: "Das eigenständige Board", link: "/mwolff-board-ui" },
-          { text: "Epics und Stories", link: "/mwolff-board-ui#epics-und-stories" },
-          { text: "CLI-Erweiterungen", link: "/mwolff-board-ui#cli-erweiterungen" },
-          { text: "Sync mit dem Kit", link: "/mwolff-board-ui#sync-mit-dem-kit" },
-          { text: "Stand und Ausblick", link: "/mwolff-board-ui#stand-und-ausblick" },
+          { text: "Das Board", link: "/mwolff-board-ui" },
+          { text: "Board", link: "/mwolff-board-ui#board" },
+          { text: "Liste", link: "/mwolff-board-ui#liste" },
+          { text: "Epics", link: "/mwolff-board-ui#epics" },
+          { text: "Neues Issue anlegen", link: "/mwolff-board-ui#neues-issue-anlegen" },
         ],
       },
       {
