@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * board-ui.mjs — Lokale Kanban-GUI fuer das claude-workflow-kit.
+ * board-ui.mjs — Lokale Kanban-GUI (eigenstaendiges board-ui-Projekt).
  * Startet einen HTTP-Server, der Issues aus issues/*.md als Board zeigt.
  *
  * Nutzung:
- *   node .claude/kit/board-ui.mjs [--port 3000]
+ *   node src/board-ui.mjs [--port 3000]
  */
 
 import { createServer } from "node:http";
@@ -86,6 +86,10 @@ function readIssues(issuesDir) {
       const { meta, body } = parseFrontmatter(raw);
       return {
         id: meta.id || basename(f, ".md"),
+        type: meta.type || "task",
+        parent: meta.parent || "",
+        color: meta.color || "",
+        shortcode: meta.shortcode || "",
         title: meta.title || f,
         status: (meta.status || "backlog").replace(/-/g, "_"),
         created: meta.created || "",
@@ -117,6 +121,14 @@ function padId(n) {
   return String(n).padStart(4, "0");
 }
 
+// SYNC: Epic-Fortschritt aus den Kindern (parent-Zeiger). Gespiegelt aus board.mjs.
+// Kinder = nicht-Epic-Issues mit parent == epicId; done = Kinder im Status "done".
+function epicProgress(issues, epicId) {
+  const children = issues.filter((i) => i.type !== "epic" && i.parent === epicId);
+  const done = children.filter((i) => i.status === "done").length;
+  return { total: children.length, done };
+}
+
 function nextId(issuesDir) {
   if (!existsSync(issuesDir)) return 1;
   const nums = readdirSync(issuesDir)
@@ -126,12 +138,21 @@ function nextId(issuesDir) {
   return nums.length > 0 ? Math.max(...nums) + 1 : 1;
 }
 
-function createIssue(issuesDir, { title, body }) {
+function createIssue(issuesDir, { title, body, type, parent, color, shortcode }) {
   mkdirSync(issuesDir, { recursive: true });
   const id = padId(nextId(issuesDir));
   const today = new Date().toISOString().slice(0, 10);
+  const t = type || "task";
+  const meta = { id: `"${id}"`, type: t };
+  if (parent) meta.parent = `"${parent}"`;
+  if (color) meta.color = color;
+  if (shortcode) meta.shortcode = shortcode;
+  // Epics nehmen nicht am Spalten-Workflow teil (E5): kein status-Feld.
+  if (t !== "epic") meta.status = "backlog";
+  meta.title = title;
+  meta.created = today;
   const content = serializeFrontmatter(
-    { id: `"${id}"`, status: "backlog", title, created: today },
+    meta,
     body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
   );
   writeFileSync(join(issuesDir, `${id}.md`), content, "utf-8");
@@ -197,19 +218,30 @@ function handleRequest(req, res, issuesDir) {
     return;
   }
 
+  // GET /api/epics — Epics mit berechnetem Fortschritt (E5: keine Board-Karten)
+  if (req.method === "GET" && url.pathname === "/api/epics") {
+    const all = readIssues(issuesDir);
+    const epics = all
+      .filter((i) => i.type === "epic")
+      .map((e) => ({ ...e, progress: epicProgress(all, e.id) }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(epics));
+    return;
+  }
+
   // POST /api/issues  (neues Issue anlegen)
   if (req.method === "POST" && url.pathname === "/api/issues") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
       try {
-        const { title, body: issueBody } = JSON.parse(body);
+        const { title, body: issueBody, type, parent } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
           return;
         }
-        const created = createIssue(issuesDir, { title: title.trim(), body: issueBody });
+        const created = createIssue(issuesDir, { title: title.trim(), body: issueBody, type, parent });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, id: created.id }));
       } catch (e) {
@@ -695,7 +727,8 @@ const HTML = `<!DOCTYPE html>
     margin-bottom: 4px;
   }
   .new-issue-field input,
-  .new-issue-field textarea {
+  .new-issue-field textarea,
+  .new-issue-field select {
     width: 100%;
     padding: 8px 10px;
     border: 1px solid #d0d7de;
@@ -703,6 +736,7 @@ const HTML = `<!DOCTYPE html>
     font-family: inherit;
     font-size: 13px;
     color: #172b4d;
+    background: #fff;
   }
   .new-issue-field textarea {
     min-height: 180px;
@@ -710,7 +744,8 @@ const HTML = `<!DOCTYPE html>
     font-family: monospace;
   }
   .new-issue-field input:focus,
-  .new-issue-field textarea:focus { outline: none; border-color: #0075ca; }
+  .new-issue-field textarea:focus,
+  .new-issue-field select:focus { outline: none; border-color: #0075ca; }
   .new-issue-create:not(:disabled) { cursor: pointer; }
 
   /* Listenansicht */
@@ -816,6 +851,65 @@ const HTML = `<!DOCTYPE html>
   .col-in_review  .dot           { background: #d93f0b; }
   .col-done       .column-header { background: #e3fcef; color: #006644; }
   .col-done       .dot           { background: #0e8a16; }
+
+  /* Epics-Ansicht */
+  .epics-view { padding: 20px; display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+  .epics-empty { color: #5e6c84; font-size: 14px; padding: 24px 4px; }
+  .epic-card {
+    background: #fff; border: 1px solid #dfe1e6; border-left: 4px solid #5e6c84;
+    border-radius: 3px; padding: 14px 16px; cursor: pointer;
+  }
+  .epic-card:hover { border-color: #c1c7d0; box-shadow: 0 1px 3px rgba(9,30,66,.13); }
+  .epic-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .epic-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .epic-code { font-size: 11px; font-weight: 700; letter-spacing: .4px; }
+  .epic-name { font-size: 15px; font-weight: 600; color: #172b4d; }
+  .epic-desc { font-size: 13px; color: #5e6c84; line-height: 1.5; margin-bottom: 10px; }
+  .epic-progress { display: flex; align-items: center; gap: 10px; }
+  .epic-progress-bar { flex: 1; height: 8px; background: #ebecf0; border-radius: 4px; overflow: hidden; }
+  .epic-progress-fill { height: 100%; background: #5e6c84; border-radius: 4px; transition: width .2s; }
+  .epic-progress-label { font-size: 12px; color: #5e6c84; white-space: nowrap; }
+
+  /* Epic-Detailansicht */
+  .epic-detail-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .epic-back {
+    border: 1px solid #dfe1e6; background: #fff; color: #42526e; font-size: 13px;
+    padding: 6px 12px; border-radius: 3px; cursor: pointer;
+  }
+  .epic-back:hover { background: #f4f5f7; }
+  .epic-detail-title { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .epic-add-story { margin-left: auto; }
+  .epic-mini-board { display: flex; gap: 10px; align-items: flex-start; }
+  .epic-mini-col { flex: 1; min-width: 0; background: #f4f5f7; border-radius: 4px; padding: 8px; }
+  .epic-mini-colhead {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .4px; color: #5e6c84; padding: 2px 4px 8px;
+  }
+  .epic-mini-colhead .dot { width: 8px; height: 8px; border-radius: 50%; background: #97a0af; }
+  .epic-mini-count { margin-left: auto; font-weight: 600; }
+  .epic-mini-body { display: flex; flex-direction: column; gap: 6px; min-height: 8px; }
+  .epic-mini-card {
+    background: #fff; border: 1px solid #dfe1e6; border-radius: 3px; padding: 8px 10px;
+    font-size: 13px; cursor: pointer; line-height: 1.4;
+  }
+  .epic-mini-card:hover { border-color: #c1c7d0; box-shadow: 0 1px 2px rgba(9,30,66,.13); }
+  .epic-mini-card .card-id { color: #5e6c84; font-size: 12px; margin-right: 4px; }
+  .epic-mini-card .card-title { color: #172b4d; }
+  .epic-mini-col.col-ready .epic-mini-colhead .dot { background: #0747a6; }
+  .epic-mini-col.col-in_progress .epic-mini-colhead .dot { background: #e4b400; }
+  .epic-mini-col.col-in_review .epic-mini-colhead .dot { background: #d93f0b; }
+  .epic-mini-col.col-done .epic-mini-colhead .dot { background: #0e8a16; }
+
+  /* Epic-Badge auf Story-/Task-Karten (Board + Liste) */
+  .card-epic {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: .4px;
+    width: fit-content;
+  }
+  .card-epic-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .card > .card-epic { margin: 10px 12px 0; }
+  .list-epic { margin-right: 2px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -826,12 +920,14 @@ const HTML = `<!DOCTYPE html>
   <div class="view-toggle">
     <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
     <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
+    <button class="view-btn" id="btn-epics" onclick="switchView('epics')">Epics</button>
   </div>
   <button class="new-issue-btn" onclick="openNewIssueModal()">+ Neu</button>
 </header>
 
 <div class="board" id="board"></div>
 <div class="list-view" id="list-view" style="display:none"></div>
+<div class="epics-view" id="epics-view" style="display:none"></div>
 
 <script>
 let COLUMNS = [
@@ -891,6 +987,7 @@ function buildBoard(issues) {
   const byStatus = {};
   for (const col of COLUMNS) byStatus[col.key] = [];
   for (const issue of issues) {
+    if (issue.type === "epic") continue; // Epics sind keine Board-Karten (E5)
     const key = issue.status || "backlog";
     if (byStatus[key]) byStatus[key].push(issue);
     else byStatus["backlog"].push(issue);
@@ -1096,7 +1193,11 @@ function closeModal() {
 
 const NEW_ISSUE_TEMPLATE = "\\n## Kontext\\n\\n## Aufgabe\\n\\n## Akzeptanzkriterium\\n\\n## Abhaengigkeiten\\n";
 
-function openNewIssueModal() {
+async function openNewIssueModal(opts) {
+  opts = opts || {};
+  await loadEpicsMap();
+  const epics = Object.values(epicsById);
+
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
 
@@ -1105,10 +1206,21 @@ function openNewIssueModal() {
   window_.innerHTML =
     \`<div class="modal-header">
       <div class="modal-title">Neues Issue</div>
-      <div class="modal-meta"><span class="modal-badge" style="background:#dfe1e6;color:#42526e">Backlog</span></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">
+      <div class="new-issue-field">
+        <label for="new-issue-type">Typ</label>
+        <select id="new-issue-type">
+          <option value="task">Task</option>
+          <option value="story">Story</option>
+          <option value="epic">Epic</option>
+        </select>
+      </div>
+      <div class="new-issue-field" id="new-issue-parent-field">
+        <label for="new-issue-parent">Epic</label>
+        <select id="new-issue-parent"></select>
+      </div>
       <div class="new-issue-field">
         <label for="new-issue-title">Titel</label>
         <input id="new-issue-title" type="text" placeholder="Kurzer, praeziser Titel">
@@ -1123,10 +1235,28 @@ function openNewIssueModal() {
   overlay.appendChild(window_);
   document.body.appendChild(overlay);
 
+  const typeSelect = window_.querySelector("#new-issue-type");
+  const parentField = window_.querySelector("#new-issue-parent-field");
+  const parentSelect = window_.querySelector("#new-issue-parent");
   const titleInput = window_.querySelector("#new-issue-title");
   const bodyInput = window_.querySelector("#new-issue-body");
   const createBtn = window_.querySelector(".new-issue-create");
   bodyInput.value = NEW_ISSUE_TEMPLATE;
+
+  parentSelect.innerHTML = '<option value="">(kein Epic)</option>' +
+    epics.map(function (e) {
+      return '<option value="' + escHtml(e.id) + '">' + escHtml(epicShortcode(e)) + ' – ' + escHtml(e.title) + '</option>';
+    }).join('');
+
+  typeSelect.value = opts.type || "task";
+  if (opts.parent) parentSelect.value = opts.parent;
+
+  function syncParentVisibility() {
+    // Epics haben keinen Parent (E4/E5)
+    parentField.style.display = typeSelect.value === "epic" ? "none" : "";
+  }
+  syncParentVisibility();
+  typeSelect.addEventListener("change", syncParentVisibility);
 
   titleInput.addEventListener("input", () => {
     createBtn.disabled = !titleInput.value.trim();
@@ -1136,10 +1266,12 @@ function openNewIssueModal() {
     const title = titleInput.value.trim();
     if (!title) return;
     createBtn.disabled = true;
+    const type = typeSelect.value;
+    const parent = type === "epic" ? "" : parentSelect.value;
     const res = await fetch("/api/issues", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: bodyInput.value }),
+      body: JSON.stringify({ title, body: bodyInput.value, type, parent }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1148,7 +1280,9 @@ function openNewIssueModal() {
       return;
     }
     closeModal();
-    if (currentView === "list") loadList();
+    if (currentEpicDetail) openEpicDetail(currentEpicDetail);
+    else if (currentView === "list") loadList();
+    else if (currentView === "epics") loadEpics();
     else loadBoard();
   });
 
@@ -1164,7 +1298,19 @@ function buildCard(issue) {
   card.draggable = true;
   card.dataset.id = issue.id;
 
+  const epic = issue.parent ? epicsById[issue.parent] : null;
+  let badgeHtml = "";
+  if (epic) {
+    const c = epicColor(epic);
+    card.style.borderLeft = "4px solid " + c;
+    badgeHtml =
+      '<div class="card-epic" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,#fff)">' +
+        '<span class="card-epic-dot" style="background:' + c + '"></span>' + escHtml(epicShortcode(epic)) +
+      '</div>';
+  }
+
   card.innerHTML =
+    badgeHtml +
     \`<div class="card-header">
       <span class="card-id">#\${issue.id}</span>
       <span class="card-title">\${escHtml(issue.title)}</span>
@@ -1207,6 +1353,7 @@ async function moveIssue(id, to) {
 }
 
 async function loadBoard() {
+  await loadEpicsMap();
   const res = await fetch("/api/issues");
   const issues = await res.json();
   buildBoard(issues);
@@ -1220,9 +1367,145 @@ function switchView(v) {
   currentView = v;
   document.getElementById('board').style.display = v === 'board' ? '' : 'none';
   document.getElementById('list-view').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('epics-view').style.display = v === 'epics' ? '' : 'none';
   document.getElementById('btn-board').classList.toggle('active', v === 'board');
   document.getElementById('btn-list').classList.toggle('active', v === 'list');
+  document.getElementById('btn-epics').classList.toggle('active', v === 'epics');
   if (v === 'list') loadList();
+  if (v === 'epics') loadEpics();
+}
+
+// --- Epic-Zuordnung, Farbe, Kürzel ---
+let epicsById = {};
+// Feste Palette (mittel-kräftige Töne, Light Mode) für Epics ohne eigenes color-Feld.
+const EPIC_PALETTE = ['#534AB7','#1D9E75','#D4537E','#185FA5','#BA7517','#993C1D','#0F6E56','#0C447C'];
+
+function hashId(id) {
+  let h = 0; const s = String(id);
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+function epicColor(epic) {
+  if (!epic) return '#5e6c84';
+  const c = (epic.color || '').trim();
+  return c || EPIC_PALETTE[hashId(epic.id) % EPIC_PALETTE.length];
+}
+function epicShortcode(epic) {
+  if (!epic) return '';
+  const s = (epic.shortcode || '').trim();
+  if (s) return s;
+  const words = (epic.title || '').split(/\\s+/).filter(Boolean);
+  const initials = words.map(w => w[0]).join('').slice(0, 3).toUpperCase();
+  return initials || 'EPIC';
+}
+async function loadEpicsMap() {
+  try {
+    const res = await fetch('/api/epics');
+    const epics = await res.json();
+    epicsById = {};
+    for (const e of epics) epicsById[e.id] = e;
+  } catch (e) { epicsById = {}; }
+}
+
+// --- Epics-Ansicht ---
+let currentEpicDetail = null;
+
+async function loadEpics() {
+  currentEpicDetail = null;
+  const res = await fetch('/api/epics');
+  const epics = await res.json();
+  buildEpics(epics);
+}
+
+function buildEpics(epics) {
+  const container = document.getElementById('epics-view');
+  container.innerHTML = '';
+  if (!epics.length) {
+    const empty = document.createElement('div');
+    empty.className = 'epics-empty';
+    empty.textContent = 'Noch keine Epics. Lege über „+ Neu" ein Issue vom Typ Epic an.';
+    container.appendChild(empty);
+    return;
+  }
+  for (const epic of epics) {
+    const total = epic.progress.total, done = epic.progress.done;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const color = epicColor(epic);
+    const card = document.createElement('div');
+    card.className = 'epic-card';
+    card.style.borderLeftColor = color;
+    const chip = '<span class="epic-code" style="color:' + escHtml(color) + '">' + escHtml(epicShortcode(epic)) + '</span>';
+    card.innerHTML =
+      '<div class="epic-card-head">' +
+        '<span class="epic-dot" style="background:' + escHtml(color) + '"></span>' +
+        chip +
+        '<span class="epic-name">' + escHtml(epic.title) + '</span>' +
+      '</div>' +
+      '<div class="epic-desc">' + escHtml(bodyExcerpt(epic.body || '')) + '</div>' +
+      '<div class="epic-progress">' +
+        '<div class="epic-progress-bar"><div class="epic-progress-fill" style="width:' + pct + '%;background:' + escHtml(color) + '"></div></div>' +
+        '<span class="epic-progress-label">' + done + '/' + total + ' Stories fertig</span>' +
+      '</div>';
+    card.addEventListener('click', () => openEpicDetail(epic));
+    container.appendChild(card);
+  }
+}
+
+async function openEpicDetail(epic) {
+  currentEpicDetail = epic;
+  const res = await fetch('/api/issues');
+  const all = await res.json();
+  const children = all.filter(i => i.type !== 'epic' && i.parent === epic.id);
+
+  const container = document.getElementById('epics-view');
+  container.innerHTML = '';
+  const color = epicColor(epic);
+  const codeHtml = '<span class="epic-code" style="color:' + escHtml(color) + '">' + escHtml(epicShortcode(epic)) + '</span>';
+
+  const head = document.createElement('div');
+  head.className = 'epic-detail-head';
+  head.innerHTML =
+    '<button class="epic-back" type="button">← Alle Epics</button>' +
+    '<div class="epic-detail-title"><span class="epic-dot" style="background:' + escHtml(color) + '"></span>' + codeHtml +
+      '<span class="epic-name">' + escHtml(epic.title) + '</span></div>' +
+    '<button class="new-issue-btn epic-add-story" type="button">+ Neue Story</button>';
+  container.appendChild(head);
+  head.querySelector('.epic-back').addEventListener('click', () => loadEpics());
+  head.querySelector('.epic-add-story').addEventListener('click', () => openNewIssueModal({ type: 'story', parent: epic.id }));
+
+  if (!children.length) {
+    const empty = document.createElement('div');
+    empty.className = 'epics-empty';
+    empty.textContent = 'Noch keine Stories in diesem Epic. Lege über „+ Neue Story“ eine an.';
+    container.appendChild(empty);
+    return;
+  }
+
+  const byStatus = {};
+  for (const col of COLUMNS) byStatus[col.key] = [];
+  for (const c of children) { (byStatus[c.status] || byStatus['backlog']).push(c); }
+
+  const mini = document.createElement('div');
+  mini.className = 'epic-mini-board';
+  for (const col of COLUMNS) {
+    const items = byStatus[col.key] || [];
+    const colEl = document.createElement('div');
+    colEl.className = 'epic-mini-col col-' + col.key;
+    colEl.innerHTML = '<div class="epic-mini-colhead"><span class="dot"></span>' + col.label +
+      ' <span class="epic-mini-count">' + items.length + '</span></div>';
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'epic-mini-body';
+    for (const child of items) {
+      const card = document.createElement('div');
+      card.className = 'epic-mini-card';
+      card.innerHTML = '<span class="card-id">#' + escHtml(child.id) + '</span> <span class="card-title">' + escHtml(child.title) + '</span>';
+      card.addEventListener('click', () => openModal(child));
+      bodyEl.appendChild(card);
+    }
+    colEl.appendChild(bodyEl);
+    mini.appendChild(colEl);
+  }
+  container.appendChild(mini);
 }
 
 // --- Listenansicht ---
@@ -1261,9 +1544,9 @@ function buildList(issues) {
   }
   container.appendChild(filterBar);
 
-  // Gefiltertes + sortiertes Issue-Array
+  // Gefiltertes + sortiertes Issue-Array (Epics sind keine Listen-Karten, E5)
   const visible = issues
-    .filter(i => activeFilters.has(i.status))
+    .filter(i => i.type !== 'epic' && activeFilters.has(i.status))
     .sort((a, b) => {
       const pa = a.priority ?? Infinity, pb = b.priority ?? Infinity;
       if (pa !== pb) return pa - pb;
@@ -1331,10 +1614,19 @@ function buildListRow(issue) {
   const badge = STATUS_BADGE[issue.status] || { bg: '#e0e0e0', color: '#444', label: issue.status };
   const badgeEl = \`<span class="modal-badge list-badge" style="background:\${badge.bg};color:\${badge.color}">\${badge.label}</span>\`;
 
+  const epic = issue.parent ? epicsById[issue.parent] : null;
+  let epicEl = '';
+  if (epic) {
+    const c = epicColor(epic);
+    row.style.borderLeft = '3px solid ' + c;
+    epicEl = '<span class="list-epic card-epic" style="color:' + c + ';background:color-mix(in srgb,' + c + ' 13%,#fff)">' +
+      '<span class="card-epic-dot" style="background:' + c + '"></span>' + escHtml(epicShortcode(epic)) + '</span>';
+  }
+
   row.innerHTML =
     \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="Reihenfolge ändern">⠿</span>
      <span class="list-id">#\${escHtml(issue.id)}</span>
-     \${badgeEl}
+     \${badgeEl}\${epicEl}
      <span class="list-title">\${escHtml(issue.title)}</span>
      <span class="list-resizer" title="Spaltenbreite ziehen"></span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
@@ -1410,6 +1702,7 @@ async function listSaveOrder() {
 }
 
 async function loadList() {
+  await loadEpicsMap();
   const [res, archRes] = await Promise.all([
     fetch('/api/issues'),
     activeFilters.has('archived') ? fetch('/api/issues?archive=1') : Promise.resolve(null),
