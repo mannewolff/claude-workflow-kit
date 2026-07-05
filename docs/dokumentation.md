@@ -41,14 +41,14 @@ npx claude-workflow-kit
 Alternativ kannst du den Installer herunterladen und direkt starten:
 
 ```bash
-curl -O https://mwolff.org/claude-workflow-kit/install.mjs
+curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
 Oder in einem Schritt ohne lokale Datei:
 
 ```bash
-node <(curl -s https://mwolff.org/claude-workflow-kit/install.mjs)
+node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
 Der Installer stellt sieben Fragen — bei globaler Installation folgt eine achte:

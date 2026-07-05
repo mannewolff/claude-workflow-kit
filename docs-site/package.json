@@ -2,7 +2,9 @@
   "name": "claude-workflow-kit-docs",
   "private": true,
   "scripts": {
+    "predev": "node ../tools/copy-install-for-docs.mjs",
     "dev": "vitepress dev",
+    "prebuild": "node ../tools/copy-install-for-docs.mjs",
     "build": "vitepress build",
     "preview": "vitepress preview"
   },

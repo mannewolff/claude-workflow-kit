@@ -14,14 +14,14 @@ Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in C
 Lade den Installer herunter und starte ihn im Projektordner:
 
 ```bash
-curl -O https://mwolff.org/claude-workflow-kit/install.mjs
+curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
 Oder in einem Schritt:
 
 ```bash
-node <(curl -s https://mwolff.org/claude-workflow-kit/install.mjs)
+node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
 Der Installer fragt sieben Dinge:
