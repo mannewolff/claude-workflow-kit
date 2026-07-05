@@ -466,6 +466,14 @@ function padId(n) {
   return String(n).padStart(4, "0");
 }
 
+// SYNC: Epic-Fortschritt aus den Kindern (parent-Zeiger). Gespiegelt in board-ui.mjs.
+// Kinder = nicht-Epic-Issues mit parent == epicId; done = Kinder im Status "done".
+function epicProgress(issues, epicId) {
+  const children = issues.filter((i) => i.type !== "epic" && i.parent === epicId);
+  const done = children.filter((i) => i.status === "done").length;
+  return { total: children.length, done };
+}
+
 class LocalIssueTracker {
   constructor(config) { this._cfg = config; }
 
@@ -490,7 +498,7 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
-    return { id: meta.id || padId(id), title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
+    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
   }
 
   _nextId() {
@@ -500,14 +508,23 @@ class LocalIssueTracker {
     return nums.length > 0 ? Math.max(...nums) + 1 : 1;
   }
 
-  async createIssue({ title, body }) {
+  async createIssue({ title, body, type, parent, color, shortcode }) {
     const dir = this._dir();
     mkdirSync(dir, { recursive: true });
     const n = this._nextId();
     const id = padId(n);
     const today = new Date().toISOString().slice(0, 10);
+    const t = type || "task";
+    const meta = { id: `"${id}"`, type: t };
+    if (parent) meta.parent = `"${parent}"`;
+    if (color) meta.color = color;
+    if (shortcode) meta.shortcode = shortcode;
+    // Epics nehmen nicht am Spalten-Workflow teil (E5): kein status-Feld.
+    if (t !== "epic") meta.status = "backlog";
+    meta.title = title;
+    meta.created = today;
     const content = serializeFrontmatter(
-      { id: `"${id}"`, status: "backlog", title, created: today },
+      meta,
       body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
     );
     writeFileSync(this._filePath(n), content, "utf-8");
@@ -523,9 +540,18 @@ class LocalIssueTracker {
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
-        return { id: meta.id || basename(f, ".md"), title: meta.title || "", status: meta.status || "backlog", body };
+        return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", body };
       })
-      .filter((i) => !status || i.status === status);
+      // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
+      // (z.B. --status ready für implement-ready) tauchen sie nie auf.
+      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+  }
+
+  async listEpics() {
+    const all = await this.listIssues();
+    return all
+      .filter((i) => i.type === "epic")
+      .map((e) => ({ ...e, progress: epicProgress(all, e.id) }));
   }
 
   async moveIssue(id, to) {
@@ -629,7 +655,14 @@ async function main() {
     switch (command) {
       case "create": {
         if (!args.title) fail("--title ist erforderlich");
-        out(await tracker.createIssue({ title: args.title, body: args.body || "" }));
+        out(await tracker.createIssue({
+          title: args.title,
+          body: args.body || "",
+          type: args.type,
+          parent: args.parent,
+          color: args.color,
+          shortcode: args.shortcode,
+        }));
         break;
       }
       case "get": {
@@ -643,6 +676,13 @@ async function main() {
           fail(`Ungueltiger Status '${args.status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
         }
         out(await tracker.listIssues(args.status));
+        break;
+      }
+      case "epics": {
+        if (typeof tracker.listEpics !== "function") {
+          fail("epics wird nur im lokalen Modus unterstuetzt (issueTracker: local)");
+        }
+        out(await tracker.listEpics());
         break;
       }
       case "move": {

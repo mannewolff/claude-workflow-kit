@@ -26,6 +26,9 @@ docs/node_modules
 docs-site/node_modules
 docs-site/.vitepress/dist
 docs-site/.vitepress/cache
-
+docs/public/install.mjs
+issues/
 # macOS
 .DS_Store
+# JetBrains IDEs
+.idea/

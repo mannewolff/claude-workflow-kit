@@ -39,7 +39,7 @@ export default defineConfig({
       { text: "Dokumentation", link: "/dokumentation" },
       {
         text: "Installer herunterladen",
-        link: "https://mwolff.org/claude-workflow-kit/install.mjs",
+        link: "https://docs.mwolff.org/install.mjs",
       },
     ],
 
@@ -49,6 +49,16 @@ export default defineConfig({
         items: [
           { text: "5-Minuten-Guide", link: "/quickstart" },
           { text: "Lokal arbeiten (kein Remote, kein Board)", link: "/lokal" },
+        ],
+      },
+      {
+        text: "mwolff-board-ui",
+        items: [
+          { text: "Das eigenständige Board", link: "/mwolff-board-ui" },
+          { text: "Epics und Stories", link: "/mwolff-board-ui#epics-und-stories" },
+          { text: "CLI-Erweiterungen", link: "/mwolff-board-ui#cli-erweiterungen" },
+          { text: "Sync mit dem Kit", link: "/mwolff-board-ui#sync-mit-dem-kit" },
+          { text: "Stand und Ausblick", link: "/mwolff-board-ui#stand-und-ausblick" },
         ],
       },
       {
