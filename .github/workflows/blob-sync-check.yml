@@ -1,0 +1,30 @@
+name: install.mjs-Blobs synchron
+
+# CI-Guard: prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
+# aktuellen Stand von kit/board.mjs und kit/board-ui.mjs passen. Wird rot, wenn
+# die kit/-Dateien geändert (oder aus board-ui gesynct) wurden, ohne dass
+# anschließend `node tools/sync-blobs.mjs` lief. Der Check schreibt nichts.
+#
+# Zweck: verhindert, dass ein Merge nach production einen veralteten install.mjs
+# auf docs.mwolff.org deployt.
+
+on:
+  push:
+    branches: [main, production]
+  pull_request:
+    branches: [main, production]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+
+      - name: Node einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Blobs gegen kit/ prüfen
+        run: node tools/sync-blobs.mjs --check
