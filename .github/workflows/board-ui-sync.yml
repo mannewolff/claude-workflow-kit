@@ -1,0 +1,71 @@
+name: Sync board-ui blobs
+
+# Kit-Seite des Board-Sync (Issue #3 im board-ui-Board). Reagiert auf ein Release
+# im eigenständigen board-ui-Repo (repository_dispatch aus dessen release-and-sync.yml,
+# Issue #2). Zieht die veröffentlichten board.mjs/board-ui.mjs aus dem Release nach
+# kit/, regeneriert damit die eingebetteten Base64-Blobs in install.mjs über den
+# bestehenden tools/sync-blobs.mjs und committet die Änderung.
+#
+# Voraussetzung:
+# - Repository-Secret BOARD_UI_TOKEN: PAT/App-Token mit Leserecht auf das (private)
+#   Repo mannewolff/board-ui, damit die Release-Assets heruntergeladen werden können.
+#   Der eingebaute GITHUB_TOKEN sieht nur dieses Repo.
+#
+# Manueller Anstoß möglich über workflow_dispatch mit dem gewünschten Tag.
+
+on:
+  repository_dispatch:
+    types: [board-ui-release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "board-ui Release-Tag (z. B. v0.1.0), leer = latest"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tag bestimmen
+        id: tag
+        run: |
+          TAG="${{ github.event.client_payload.tag || github.event.inputs.tag }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Release-Artefakte aus board-ui ziehen
+        env:
+          GH_TOKEN: ${{ secrets.BOARD_UI_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "BOARD_UI_TOKEN nicht gesetzt, Abbruch." >&2
+            exit 1
+          fi
+          gh release download ${TAG:+"$TAG"} \
+            --repo mannewolff/board-ui \
+            --pattern board.mjs --pattern board-ui.mjs \
+            --dir kit --clobber
+
+      - name: Blobs in install.mjs regenerieren
+        run: node tools/sync-blobs.mjs
+
+      - name: Änderungen committen
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kit/board.mjs kit/board-ui.mjs install.mjs
+          if git diff --cached --quiet; then
+            echo "Keine Änderungen, install.mjs bereits synchron."
+          else
+            git commit -m "board-ui-Sync: Blobs auf ${TAG:-latest} aktualisiert"
+            git push
+          fi
