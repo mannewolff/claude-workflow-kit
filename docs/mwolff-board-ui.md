@@ -1,114 +1,59 @@
-# mwolff-board-ui — das eigenständige Board
+# mwolff-board-ui — das Kanban-Board
 
-Die lokale Kanban-GUI (`board-ui.mjs`) und der Board-Adapter (`board.mjs`) leben seit der Auslösung in einem eigenen Projekt: [mannewolff/board-ui](https://github.com/mannewolff/board-ui). Dort werden sie unabhängig vom Kit weiterentwickelt, primär um eine **Epic/Story-Ebene**.
+Eine schlanke Kanban-Oberfläche für die Issues deines Projekts. Sie läuft lokal im Browser, zeigt alle Issues auf einen Blick und lässt dich sie anlegen, verschieben, kommentieren und in Epics organisieren.
 
-Für Kit-Nutzer ändert sich nichts: Der Installer (`install.mjs`) bettet beide Dateien weiterhin als Base64-Blobs ein und legt sie unter `.claude/kit/` ab. Die Grundbedienung (Board starten, Drag, Detailansicht, Listenansicht, Archivierung, CLI) ist unter [Lokal arbeiten](./lokal#board-starten) beschrieben — diese Seite ergänzt nur, was über das eigenständige Projekt und die Epic-Ebene hinzukommt.
-
-## Verhältnis zum Kit
-
-- **Quelle der Wahrheit** ist ab jetzt das board-ui-Repo (`src/board.mjs`, `src/board-ui.mjs`).
-- Das Kit **bettet** die fertigen Dateien in `install.mjs` ein. Nach Änderungen im board-ui-Repo wird der Installer über einen **manuellen Sync** aktualisiert (siehe unten).
-- Beide Dateien bleiben bewusst eigenständige **Single-File-Tools** ohne npm-Dependencies — jede ist einzeln lauffähig und portabel.
-
-## Epics und Stories
-
-Zusätzlich zu den bisherigen Issues (reine Tasks) kennt das Board zwei Organisationsebenen: **Epic → Story/Task**. Bewusst genau zwei Ebenen, **keine** Sub-tasks: wird eine Story zu groß, wird sie in kleinere Stories unter demselben Epic geschnitten, statt eine dritte Ebene einzuführen.
-
-Epics sind reine Organisationseinheiten. Sie **nehmen nicht am Spalten-Workflow teil** — kein Kanban-Status, nicht nach Ready ziehbar, tauchen nie in der Ready-Filterung oder bei `implement-ready` auf.
-
-### Datenmodell
-
-Das Frontmatter-Format ist **abwärtskompatibel** erweitert. Fehlende Felder bedeuten das bisherige Verhalten (reiner Task). Bestehende Issue-Dateien ohne `type`/`parent` funktionieren unverändert.
-
-Ein Epic:
-
-```markdown
----
-id: "0001"
-type: epic
-color: "#534AB7"
-shortcode: AUTH
-title: Login und Authentifizierung
-created: 2026-07-01
----
-```
-
-Eine Story darunter:
-
-```markdown
----
-id: "0003"
-type: story
-parent: "0001"
-status: ready
-title: Login-Formular bauen
-created: 2026-07-02
----
-```
-
-- `type`: `epic | story | task` (Default: `task`)
-- `parent`: id des Epics (nur bei `story`/`task`)
-- `color`, `shortcode`: optionale Anzeige-Attribute am Epic (für das Karten-Badge)
-- Epics tragen **kein** `status`-Feld.
-
-Es wird nur ein **Parent-Zeiger** gespeichert, keine Kind-Liste am Epic. Die Kinder werden beim Lesen über `parent` aus allen Issues zusammengesucht — so gibt es keine zweite Quelle der Wahrheit, die driften könnte.
-
-### Der Epics-Tab
-
-Neben **Board** und **Liste** gibt es einen dritten Tab **Epics**. Er listet alle Epics mit Titel, Kurzbeschreibung und einem **Fortschrittsbalken** (z.B. „1/3 Stories fertig"), berechnet aus dem Status der Kinder.
-
-Klick auf ein Epic öffnet die **Detailansicht**: ein Mini-Board nur für dieses Epic, dessen Stories/Tasks nach Status-Spalten gruppiert sind — **ohne Drag** (Epics haben keinen eigenen Workflow). Von dort legt der Button **+ Neue Story** direkt ein Issue mit vorbelegtem Parent an.
-
-### Epic-Badge auf den Karten
-
-Stories und Tasks mit Epic-Zugehörigkeit tragen in **Board und Liste** ein Badge: einen Farbpunkt mit Kürzel-Chip in der Epic-Farbe sowie einen farbigen linken Kartenrand. So ist die Zuordnung auch außerhalb der Epic-Ansicht auf einen Blick erkennbar. Die Farbe kommt aus dem `color`-Feld, sonst wird sie deterministisch aus einer festen Palette vergeben; das Kürzel aus `shortcode`, sonst aus den Titel-Initialen. Karten ohne Epic bleiben schlicht.
-
-Board und Liste zeigen weiterhin **nur Stories/Tasks als Karten** — Epics erscheinen dort nicht.
-
-### Anlegen mit Typ und Epic
-
-Das **+ Neu**-Modal hat eine Typ-Auswahl (Task / Story / Epic) und, wenn nicht Epic, einen **Epic-Picker** über die bestehenden Epics. Bei Typ *Epic* entfällt der Picker. Aus der Epic-Detailansicht heraus ist der Parent vorbelegt.
-
-## CLI-Erweiterungen
-
-Der Adapter (`board.mjs`) kennt die neuen Felder:
+## Starten
 
 ```bash
-# Epic anlegen
-node .claude/kit/board.mjs issue create --title "Login und Auth" --type epic --shortcode AUTH --color "#534AB7"
-
-# Story unter einem Epic anlegen
-node .claude/kit/board.mjs issue create --title "Login-Formular" --type story --parent 0001
-
-# Alle Epics mit Fortschritt anzeigen (nur lokaler Modus)
-node .claude/kit/board.mjs issue epics
+node .claude/kit/board-ui.mjs
 ```
 
-`issue list --status ready` gibt weiterhin nie ein Epic zurück — die Epic-Ebene ist eine Eigenschaft des lokalen Modus (`issue epics` existiert nur dort).
+Öffnet das Board auf `http://localhost:3000`. Oben rechts wechselst du zwischen drei Ansichten — **Board**, **Liste** und **Epics** — und legst über **+ Neu** ein Issue an.
 
-## Sync mit dem Kit
+## Board
 
-Nach Änderungen im board-ui-Repo wird der Kit-Installer von Hand aktualisiert (im ausgecheckten Kit-Repo):
+Die klassische Kanban-Ansicht mit fünf Spalten: **Backlog**, **Ready**, **In Progress**, **In Review**, **Done**. Die Spalten füllen die Bildschirmbreite; erst bei sehr schmalen Fenstern wird horizontal gescrollt.
 
-```bash
-# 1. aktuelle Dateien ins Kit kopieren
-cp <board-ui>/src/board.mjs    <kit>/kit/board.mjs
-cp <board-ui>/src/board-ui.mjs <kit>/kit/board-ui.mjs
+- **Karten verschieben:** Zieh eine Karte per Drag in eine andere Spalte — das ändert den Status des Issues.
+- **Details öffnen:** Klick auf eine Karte öffnet die Detailansicht mit dem vollen Text (siehe unten).
+- **Epic-Zugehörigkeit:** Gehört eine Karte zu einem Epic, trägt sie ein farbiges Kürzel-Label und einen farbigen linken Rand in der Epic-Farbe — so siehst du die Zuordnung auf einen Blick.
 
-# 2. eingebettete Blobs in install.mjs neu generieren
-cd <kit> && node tools/sync-blobs.mjs
+## Liste
 
-# 3. im Kit-Repo committen und pushen
-```
+Eine kompakte Tabelle aller Issues über die volle Breite. Jede Zeile zeigt Nummer, Status, Titel und einen kurzen Textauszug.
 
-`node tools/sync-blobs.mjs --check` prüft nur auf Drift (Exit 1), ohne zu ändern. Eine automatisierte CI-Variante wurde bewusst zugunsten dieses manuellen Wegs zurückgestellt — sie bräuchte Cross-Repo-Tokens.
+- **Filtern:** Die Buttons oben blenden einzelne Status ein oder aus. **Archiv** ist standardmäßig ausgeblendet.
+- **Sortieren:** Zieh Issues am `⠿`-Griff in eine andere Reihenfolge (außer Done und archivierte). Die Reihenfolge gilt sofort auch für die Kartenreihenfolge im Board.
+- **Spaltenbreite:** Die Grenze zwischen Titel und Textauszug lässt sich wie in einer Tabelle per Maus ziehen; die Breite bleibt über Reloads erhalten.
+- Auch hier tragen Issues mit Epic-Zugehörigkeit ihr farbiges Kürzel-Label.
 
-## Stand und Ausblick
+## Epics
 
-**Vorhanden:** Extraktion ins eigene Repo, Epic/Story-Datenmodell (abwärtskompatibel), Epics-Tab mit Fortschritt, Epic-Detailansicht, Epic-Badges auf Karten, Typ-/Parent-Auswahl im Anlegen-Modal, CLI-Erweiterungen, manueller Kit-Sync.
+Die dritte Ansicht organisiert Issues in **Epics** (größere Vorhaben) mit ihren **Stories** und **Tasks** darunter.
 
-**Bewusst zurückgestellt:**
+- **Übersicht:** Jedes Epic erscheint als Karte mit Titel, Kurzbeschreibung und einem **Fortschrittsbalken** (z.B. „3/7 Stories fertig"), der sich aus dem Stand der zugehörigen Issues ergibt.
+- **Hineinschauen:** Klick auf ein Epic öffnet ein Mini-Board nur für dieses Epic — seine Stories und Tasks nach Status-Spalten sortiert. Von dort legst du über **+ Neue Story** direkt ein Issue an, das dem Epic zugeordnet ist.
 
-- **Jira-Adapter** — als nächster Adapter nach `github`/`gitlab`/`local` denkbar. Das Epic/Story-Modell (Parent-Referenz) ist bewusst nah am Jira-Modell gewählt, damit ein solcher Adapter es nur mappen müsste.
-- **Toolbox-Anbindung** — dieselbe UI gegen das Kanban-Backend der Toolbox (React/Spring/Keycloak) laufen zu lassen, ist pausiert.
-- **Sub-tasks / dritte Hierarchie-Ebene** — verworfen (siehe oben).
+Epics selbst erscheinen bewusst nicht als Karten im Board oder in der Liste — dort stehen nur die tatsächlich abarbeitbaren Stories und Tasks.
+
+## Ein Issue im Detail
+
+Ein Klick auf eine Karte (oder eine Listenzeile) öffnet die Detailansicht:
+
+- Der **volle Issue-Text** mit den vier Abschnitten Kontext, Aufgabe, Akzeptanzkriterium und Abhängigkeiten.
+- Über **Bearbeiten** änderst du Titel und Haupttext direkt; vorhandene Kommentare bleiben erhalten.
+- Unten kannst du einen **Kommentar** anhängen — etwa Notizen aus einem Review.
+
+## Neues Issue anlegen
+
+Der Button **+ Neu** oben rechts öffnet das Anlegen-Formular:
+
+- **Typ:** Task, Story oder Epic.
+- **Epic:** Bei Task oder Story wählst du optional ein übergeordnetes Epic aus. (Bei Typ Epic entfällt das.)
+- **Titel** und **Beschreibung** — die Beschreibung ist mit der Vier-Abschnitt-Vorlage (Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten) vorbefüllt.
+
+Das neue Issue landet in der Backlog-Spalte.
+
+## Automatisches Archivieren
+
+Issues, die länger als drei Tage im Status **Done** stehen, werden automatisch archiviert. Sie verschwinden aus Board und Liste, bleiben aber über den **Archiv**-Filter in der Listenansicht sichtbar. So bleibt das Board übersichtlich, ohne dass Erledigtes verloren geht.
