@@ -27,7 +27,6 @@ docs-site/node_modules
 docs-site/.vitepress/dist
 docs-site/.vitepress/cache
 docs/public/install.mjs
-issues/
 # Board-Adapter: lokal gecachte GitHub-Project-Metadaten (maschinenlokal, nicht committen)
 .claude/board-meta-cache.json
 # macOS
