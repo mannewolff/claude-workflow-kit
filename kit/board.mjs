@@ -165,9 +165,78 @@ class GitHubIssueTracker {
     return n;
   }
 
+  // Project-ID, Status-Field-ID und Option-IDs aendern sich praktisch nie. Sie werden
+  // deshalb persistent gecacht (.claude/board-meta-cache.json), damit nicht jeder
+  // board.mjs-Aufruf zwei GraphQL-Abfragen (gh project list / field-list) kostet — der
+  // In-Memory-Cache haelt nur innerhalb eines Prozesses, jeder CLI-Aufruf ist aber neu.
+  _metaCachePath() {
+    return resolve(".claude", "board-meta-cache.json");
+  }
+
+  _metaCacheKey() {
+    return `${this._owner()}#${this._projectNumber()}`;
+  }
+
+  _readMetaCache() {
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return null;
+    let all;
+    try {
+      all = JSON.parse(readFileSync(p, "utf-8"));
+    } catch {
+      return null; // korrupte Cache-Datei wie Cache-Miss behandeln
+    }
+    const entry = all[this._metaCacheKey()];
+    if (!entry || !entry.projectId || !entry.statusField) return null;
+    // Bei geaenderten Spalten-Labels ist die Option-Zuordnung veraltet — neu aufbauen.
+    if (JSON.stringify(entry.columnLabels) !== JSON.stringify(columnLabels(this._cfg))) return null;
+    return entry;
+  }
+
+  _writeMetaCache() {
+    const p = this._metaCachePath();
+    let all = {};
+    if (existsSync(p)) {
+      try { all = JSON.parse(readFileSync(p, "utf-8")); } catch { all = {}; }
+    }
+    all[this._metaCacheKey()] = {
+      projectId: this._projectId,
+      statusField: this._statusField,
+      columnLabels: columnLabels(this._cfg),
+    };
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
+  }
+
+  _invalidateMetaCache() {
+    this._projectId = null;
+    this._statusField = null;
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return;
+    try {
+      const all = JSON.parse(readFileSync(p, "utf-8"));
+      delete all[this._metaCacheKey()];
+      writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
+    } catch {
+      // korrupte Datei: der naechste _writeMetaCache ueberschreibt sie ohnehin
+    }
+  }
+
   _ensureProjectMeta() {
     if (this._projectId && this._statusField) return;
 
+    const cached = this._readMetaCache();
+    if (cached) {
+      this._projectId = cached.projectId;
+      this._statusField = cached.statusField;
+      return;
+    }
+
+    this._loadProjectMetaFromApi();
+    this._writeMetaCache();
+  }
+
+  _loadProjectMetaFromApi() {
     const owner = this._owner();
     const num = this._projectNumber();
 
@@ -296,12 +365,29 @@ class GitHubIssueTracker {
   async moveIssue(id, to) {
     this._ensureProjectMeta();
     const itemId = this._getProjectItemId(id);
-    const optionId = this._statusField.options[to];
-    if (!optionId) throw new BoardError(`Status '${to}' hat keine Entsprechung im GitHub Project`);
+    this._optionIdFor(to); // wirft frueh, falls Status unbekannt
 
+    try {
+      this._editItemStatus(itemId, to);
+    } catch (e) {
+      // Gecachte IDs koennten veraltet sein (z.B. Option-ID im Project entfernt) —
+      // Cache verwerfen, Meta frisch aus der API laden und einmal wiederholen.
+      this._invalidateMetaCache();
+      this._ensureProjectMeta();
+      this._editItemStatus(itemId, to);
+    }
+  }
+
+  _optionIdFor(status) {
+    const optionId = this._statusField.options[status];
+    if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
+    return optionId;
+  }
+
+  _editItemStatus(itemId, status) {
     exec(
       `gh project item-edit --id ${itemId} --project-id ${this._projectId} ` +
-      `--field-id ${this._statusField.id} --single-select-option-id ${optionId}`
+      `--field-id ${this._statusField.id} --single-select-option-id ${this._optionIdFor(status)}`
     );
   }
 
