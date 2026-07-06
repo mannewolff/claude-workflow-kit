@@ -4,7 +4,9 @@
  * Startet einen HTTP-Server, der Issues aus issues/*.md als Board zeigt.
  *
  * Nutzung:
- *   node src/board-ui.mjs [--port 3000]
+ *   node src/board-ui.mjs [--port 3000] [--name <Board-Name>]
+ *
+ * Port-Vorrang: config.local.uiPort (workflow.config.json) > --port > 3000.
  */
 
 import { createServer } from "node:http";
@@ -13,13 +15,22 @@ import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execSync } from "node:child_process";
 
+// Versionskennung (x.y.z). Einzige Anzeige-Quelle — funktioniert auch fuer die
+// standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
+// Gepflegt von tools/bump-version.mjs (haelt package.json im Gleichschritt):
+// "push main" erhoeht z (patch), "merge production" erhoeht y (minor), x nur manuell.
+const VERSION = "0.1.1";
+
 // --- Argument-Parser ---
 
 function parseArgs(argv) {
-  const result = { port: 3000 };
+  const result = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--port" && argv[i + 1]) {
       result.port = Number(argv[i + 1]);
+      i++;
+    } else if (argv[i] === "--name" && argv[i + 1]) {
+      result.name = argv[i + 1];
       i++;
     }
   }
@@ -199,7 +210,26 @@ function handleRequest(req, res, issuesDir) {
   if (req.method === "GET" && url.pathname === "/api/config") {
     const columns = Object.entries(columnMap(config)).map(([key, label]) => ({ key, label }));
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ columns }));
+    res.end(JSON.stringify({ columns, boardName: args.name || null, root: process.cwd(), version: VERSION }));
+    return;
+  }
+
+  // GET /api/state — billige Signatur des issues/-Ordners (Dateianzahl + neuester mtime),
+  // ohne volles Issue-JSON. Dient dem Client-Polling zum Erkennen externer Aenderungen.
+  if (req.method === "GET" && url.pathname === "/api/state") {
+    let count = 0;
+    let maxMtime = 0;
+    if (existsSync(issuesDir)) {
+      for (const f of readdirSync(issuesDir)) {
+        if (!f.endsWith(".md")) continue;
+        const st = statSync(join(issuesDir, f));
+        if (!st.isFile()) continue;
+        count++;
+        if (st.mtimeMs > maxMtime) maxMtime = st.mtimeMs;
+      }
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ sig: count + ":" + maxMtime }));
     return;
   }
 
@@ -235,13 +265,20 @@ function handleRequest(req, res, issuesDir) {
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
       try {
-        const { title, body: issueBody, type, parent } = JSON.parse(body);
+        const { title, body: issueBody, type, parent, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
           return;
         }
-        const created = createIssue(issuesDir, { title: title.trim(), body: issueBody, type, parent });
+        const created = createIssue(issuesDir, {
+          title: title.trim(),
+          body: issueBody,
+          type,
+          parent,
+          shortcode: shortcode && shortcode.trim(),
+          color: color && color.trim(),
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, id: created.id }));
       } catch (e) {
@@ -312,7 +349,7 @@ function handleRequest(req, res, issuesDir) {
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
       try {
-        const { title, body: newBody } = JSON.parse(body);
+        const { title, body: newBody, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
@@ -328,6 +365,16 @@ function handleRequest(req, res, issuesDir) {
         const { meta, body: issueBody } = parseFrontmatter(raw);
         const { commentsRaw } = splitComments(issueBody);
         meta.title = title.trim();
+        // shortcode/color nur anfassen, wenn das Feld mitgeschickt wurde (nur Epics tun das).
+        // Leerer Wert entfernt das Feld → Titel-Initialen- bzw. Palette-Fallback greift wieder.
+        if (shortcode !== undefined) {
+          if (shortcode && shortcode.trim()) meta.shortcode = shortcode.trim();
+          else delete meta.shortcode;
+        }
+        if (color !== undefined) {
+          if (color && color.trim()) meta.color = color.trim();
+          else delete meta.color;
+        }
         writeFileSync(file, serializeFrontmatter(meta, (newBody || "") + commentsRaw), "utf-8");
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
@@ -431,6 +478,11 @@ const HTML = `<!DOCTYPE html>
     gap: 10px;
   }
   header h1 { font-size: 16px; font-weight: 600; }
+  header .version {
+    font-size: 11px; font-weight: 600; color: #5e6c84;
+    background: #f4f5f7; border: 1px solid #dfe1e6;
+    border-radius: 10px; padding: 1px 8px;
+  }
   header .subtitle { color: #6b778c; font-size: 12px; }
 
   .board {
@@ -747,6 +799,18 @@ const HTML = `<!DOCTYPE html>
   .new-issue-field textarea:focus,
   .new-issue-field select:focus { outline: none; border-color: #0075ca; }
   .new-issue-create:not(:disabled) { cursor: pointer; }
+  .epic-color-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+  .epic-swatch {
+    width: 24px; height: 24px; padding: 0;
+    border-radius: 6px; border: 2px solid transparent;
+    cursor: pointer; box-sizing: border-box;
+  }
+  .epic-swatch.selected { border-color: #172b4d; box-shadow: 0 0 0 2px #fff inset; }
+  .epic-swatch-auto {
+    background: #f4f5f7; color: #6b778c;
+    font-size: 11px; font-weight: 700; line-height: 1;
+    border: 1px solid #d0d7de;
+  }
 
   /* Listenansicht */
   .list-view {
@@ -915,8 +979,9 @@ const HTML = `<!DOCTYPE html>
 <body>
 
 <header>
-  <h1>claude-workflow-kit Board</h1>
-  <span class="subtitle">Lokaler Modus — Dateien in issues/</span>
+  <h1 id="board-title">claude-workflow-kit Board</h1>
+  <span class="version" id="board-version"></span>
+  <span class="subtitle" id="board-subtitle">Lokaler Modus — Dateien in issues/</span>
   <div class="view-toggle">
     <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
     <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
@@ -1152,15 +1217,38 @@ function enterEditMode(window_, issue, mainBody) {
   titleInput.value = issue.title;
   bodyInput.value = mainBody;
 
+  // Epics: Kuerzel + Farbe editierbar (per DOM eingefuegt, um verschachtelte Templates zu vermeiden).
+  const isEpic = issue.type === "epic";
+  let shortcodeInput = null;
+  let getEpicColor = null;
+  if (isEpic) {
+    const field = document.createElement("div");
+    field.className = "new-issue-field";
+    field.innerHTML =
+      '<label for="edit-issue-shortcode">Kürzel</label>' +
+      '<input id="edit-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">' +
+      '<label style="margin-top:8px">Farbe</label>' +
+      '<div class="epic-color-picker" id="edit-issue-color"></div>';
+    titleInput.closest(".new-issue-field").after(field);
+    shortcodeInput = field.querySelector("#edit-issue-shortcode");
+    shortcodeInput.value = issue.shortcode || "";
+    getEpicColor = buildColorPicker(field.querySelector("#edit-issue-color"), issue.color || "");
+  }
+
   const saveBtn = bodyEl.querySelector(".edit-save-btn");
   saveBtn.addEventListener("click", async () => {
     const newTitle = titleInput.value.trim();
     if (!newTitle) return;
     saveBtn.disabled = true;
+    const payload = { title: newTitle, body: bodyInput.value };
+    if (isEpic) {
+      payload.shortcode = shortcodeInput.value.trim();
+      payload.color = getEpicColor();
+    }
     const res = await fetch(\`/api/issues/\${issue.id}/edit\`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: newTitle, body: bodyInput.value }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1221,6 +1309,12 @@ async function openNewIssueModal(opts) {
         <label for="new-issue-parent">Epic</label>
         <select id="new-issue-parent"></select>
       </div>
+      <div class="new-issue-field" id="new-issue-epic-fields" style="display:none">
+        <label for="new-issue-shortcode">Kürzel</label>
+        <input id="new-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">
+        <label style="margin-top:8px">Farbe</label>
+        <div class="epic-color-picker" id="new-issue-color"></div>
+      </div>
       <div class="new-issue-field">
         <label for="new-issue-title">Titel</label>
         <input id="new-issue-title" type="text" placeholder="Kurzer, praeziser Titel">
@@ -1241,6 +1335,9 @@ async function openNewIssueModal(opts) {
   const titleInput = window_.querySelector("#new-issue-title");
   const bodyInput = window_.querySelector("#new-issue-body");
   const createBtn = window_.querySelector(".new-issue-create");
+  const epicFields = window_.querySelector("#new-issue-epic-fields");
+  const shortcodeInput = window_.querySelector("#new-issue-shortcode");
+  const getEpicColor = buildColorPicker(window_.querySelector("#new-issue-color"), "");
   bodyInput.value = NEW_ISSUE_TEMPLATE;
 
   parentSelect.innerHTML = '<option value="">(kein Epic)</option>' +
@@ -1251,12 +1348,14 @@ async function openNewIssueModal(opts) {
   typeSelect.value = opts.type || "task";
   if (opts.parent) parentSelect.value = opts.parent;
 
-  function syncParentVisibility() {
-    // Epics haben keinen Parent (E4/E5)
-    parentField.style.display = typeSelect.value === "epic" ? "none" : "";
+  function syncTypeFields() {
+    // Epics haben keinen Parent (E4/E5), dafuer Kuerzel + Farbe.
+    const isEpic = typeSelect.value === "epic";
+    parentField.style.display = isEpic ? "none" : "";
+    epicFields.style.display = isEpic ? "" : "none";
   }
-  syncParentVisibility();
-  typeSelect.addEventListener("change", syncParentVisibility);
+  syncTypeFields();
+  typeSelect.addEventListener("change", syncTypeFields);
 
   titleInput.addEventListener("input", () => {
     createBtn.disabled = !titleInput.value.trim();
@@ -1268,10 +1367,15 @@ async function openNewIssueModal(opts) {
     createBtn.disabled = true;
     const type = typeSelect.value;
     const parent = type === "epic" ? "" : parentSelect.value;
+    const payload = { title, body: bodyInput.value, type, parent };
+    if (type === "epic") {
+      payload.shortcode = shortcodeInput.value.trim();
+      payload.color = getEpicColor();
+    }
     const res = await fetch("/api/issues", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: bodyInput.value, type, parent }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1397,6 +1501,28 @@ function epicShortcode(epic) {
   const words = (epic.title || '').split(/\\s+/).filter(Boolean);
   const initials = words.map(w => w[0]).join('').slice(0, 3).toUpperCase();
   return initials || 'EPIC';
+}
+// Baut eine Farb-Swatch-Auswahl (Palette + "automatisch") in container und liefert
+// einen Getter, der den gewaehlten Farbwert zurueckgibt ('' = automatisch/Fallback).
+function buildColorPicker(container, initial) {
+  let selected = (initial || '').trim();
+  container.innerHTML = '';
+  const swatches = [];
+  const options = [''].concat(EPIC_PALETTE);
+  options.forEach(function (val) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'epic-swatch' + (val === selected ? ' selected' : '');
+    if (val) { b.style.background = val; b.title = val; }
+    else { b.classList.add('epic-swatch-auto'); b.textContent = 'A'; b.title = 'automatisch'; }
+    b.addEventListener('click', function () {
+      selected = val;
+      swatches.forEach(function (s) { s.el.classList.toggle('selected', s.val === selected); });
+    });
+    container.appendChild(b);
+    swatches.push({ el: b, val: val });
+  });
+  return function () { return selected; };
 }
 async function loadEpicsMap() {
   try {
@@ -1713,11 +1839,72 @@ async function loadList() {
   buildList(listAllIssues);
 }
 
+// --- Auto-Refresh: pollt /api/state und laedt die aktuelle Ansicht neu, wenn sich
+// der issues/-Ordner extern geaendert hat (z.B. board.mjs verschiebt ein Issue).
+let pollLastSig = null;
+let pollPending = false;
+let pollTimer = null;
+let dragActive = false;
+document.addEventListener('dragstart', function () { dragActive = true; });
+document.addEventListener('dragend', function () { dragActive = false; });
+
+function pollIsIdle() {
+  // Kein Reload waehrend ein Modal offen ist oder ein Drag laeuft.
+  return !document.querySelector('.modal-overlay') && !dragActive;
+}
+function pollRefreshView() {
+  if (currentEpicDetail) return openEpicDetail(currentEpicDetail);
+  if (currentView === 'list') return loadList();
+  if (currentView === 'epics') return loadEpics();
+  return loadBoard();
+}
+async function pollState() {
+  let sig;
+  try {
+    const res = await fetch('/api/state');
+    if (!res.ok) return;
+    sig = (await res.json()).sig;
+  } catch (e) { return; }
+  if (pollLastSig === null) { pollLastSig = sig; return; }
+  if (sig !== pollLastSig) { pollLastSig = sig; pollPending = true; }
+  // Geaenderte Signatur nur anwenden, wenn idle — sonst gemerkt lassen und spaeter nachholen.
+  if (pollPending && pollIsIdle()) {
+    pollPending = false;
+    await pollRefreshView();
+  }
+}
+function pollStart() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollState, 3000);
+}
+function pollStop() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+document.addEventListener('visibilitychange', function () {
+  // Bei verstecktem Tab pausieren, bei Rueckkehr sofort refreshen.
+  if (document.hidden) pollStop();
+  else { pollStart(); pollState(); }
+});
+
 async function init() {
   const res = await fetch("/api/config");
   const cfg = await res.json();
   if (cfg.columns && cfg.columns.length) COLUMNS = cfg.columns;
+  if (cfg.boardName) {
+    const title = cfg.boardName + " Board";
+    document.getElementById("board-title").textContent = title;
+    document.title = title;
+  }
+  if (cfg.root) {
+    document.getElementById("board-subtitle").textContent =
+      "Lokaler Modus — Dateien in issues/ — " + cfg.root;
+  }
+  if (cfg.version) {
+    document.getElementById("board-version").textContent = "v" + cfg.version;
+  }
   await loadBoard();
+  await pollState(); // Signatur seeden (erster Aufruf laedt nicht neu)
+  pollStart();
 }
 
 init();
@@ -1730,6 +1917,8 @@ init();
 const args = parseArgs(process.argv.slice(2));
 const config = loadConfig();
 const issuesDir = resolve(config.local?.issuesDir || "issues");
+// Vorrang: config.local.uiPort (workflow.config.json) > --port > Default 3000.
+const port = config.local?.uiPort ?? args.port ?? 3000;
 
 const server = createServer((req, res) => {
   try {
@@ -1744,7 +1933,7 @@ const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen
 archiveOldIssues(issuesDir).catch(logArchiveError);
 setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
 
-server.listen(args.port, () => {
-  console.log(`Board läuft auf http://localhost:${args.port}`);
+server.listen(port, () => {
+  console.log(`Board läuft auf http://localhost:${port}`);
   console.log(`Issues-Verzeichnis: ${issuesDir}`);
 });
