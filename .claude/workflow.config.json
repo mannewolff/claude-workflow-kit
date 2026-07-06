@@ -1,4 +1,5 @@
 {
+  "version": "1.4.0",
   "codeHost": "github",
   "issueTracker": "local",
   "buildChecks": ["node tools/sync-blobs.mjs --check"],

@@ -4,6 +4,12 @@
   "description": "Projekt-spezifische Konfiguration fuer die Stellwerk-Skill-Bibliothek",
   "type": "object",
   "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Versionskennung x.y.z. push main erhoeht z, merge production erhoeht y, x nur explizit. Wird auf dem Board angezeigt.",
+      "default": "1.4.0"
+    },
     "codeHost": {
       "type": "string",
       "enum": ["github", "gitlab", "local"],
