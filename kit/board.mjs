@@ -4,6 +4,12 @@
  * Liest .claude/workflow.config.json, waehlt anhand issueTracker/codeHost den Adapter
  * und fuehrt die angeforderte Operation aus.
  *
+ * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
+ * board.mjs ist die generalisierte Board-Adapter-Schnittstelle des Kits; board-ui ist
+ * nur ein Consumer davon. NICHT aus dem board-ui-Repo zuruecksyncen — Aenderungen
+ * ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs` (aktualisiert den
+ * eingebetteten Blob in install.mjs). (board-ui.mjs kommt umgekehrt aus dem board-ui-Repo.)
+ *
  * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
