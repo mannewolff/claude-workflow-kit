@@ -1,6 +1,6 @@
 {
   "codeHost": "github",
-  "issueTracker": "github",
+  "issueTracker": "local",
   "buildChecks": ["node tools/sync-blobs.mjs --check"],
   "mutationCommand": "",
   "mainBranch": "main",
