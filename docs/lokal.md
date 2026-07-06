@@ -98,6 +98,32 @@ Keine.
 
 Der Status (`backlog | ready | in_progress | in_review | done`) wird vom Board-Adapter direkt in der Datei gesetzt — kein API, kein Label, kein Board.
 
+## Das Board über Git teilen (mehrere Rechner)
+
+Weil Issues normale Dateien im Repo sind, hängt ihre Portabilität nur an einer Frage: Ist `issues/` versioniert?
+
+Standardmäßig ist es das — der Installer nimmt `issues/` **nicht** in die `.gitignore` auf. Das lokale Board ist damit Teil des Repos und wandert per `commit` / `push` / `pull` mit. Arbeitest du an einem Projekt von zwei Rechnern, siehst du auf beiden denselben Board-Stand:
+
+```bash
+# Rechner A
+node .claude/kit/board.mjs issue move 0001 ready
+git add issues/ && git commit -m "Board: #0001 nach ready" && git push
+
+# Rechner B
+git pull   # zieht den neuen Board-Stand
+```
+
+Das heißt aber auch: **Jeder Statuswechsel erzeugt einen Commit/Diff** in der Issue-Datei. Der Board-Verlauf wird Teil der Git-Historie — gewollt, aber die Historie wird geschwätziger.
+
+**Board bewusst privat halten:** Willst du das Board pro Rechner lokal lassen (nicht teilen), nimm `issues/` in die `.gitignore` auf. Dann bleiben die Dateien maschinenlokal.
+
+**Heads-up beim ersten Pull auf einem zweiten Rechner:** Liegen dort bereits eigene, untracked Issue-Dateien in `issues/`, bricht `git pull` mit *„untracked working tree files would be overwritten"* ab. Vorher sichern oder entfernen:
+
+```bash
+mv issues issues.backup   # oder löschen, falls identisch
+git pull
+```
+
 ## Der Prozess im lokalen Modus
 
 Die neun Schritte laufen genauso wie mit GitHub oder GitLab. Der einzige Unterschied: Statt Board-Karten zu bewegen, schreibt der Adapter den Status ins Frontmatter.
