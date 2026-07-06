@@ -4,6 +4,12 @@
  * Liest .claude/workflow.config.json, waehlt anhand issueTracker/codeHost den Adapter
  * und fuehrt die angeforderte Operation aus.
  *
+ * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
+ * board.mjs ist die generalisierte Board-Adapter-Schnittstelle des Kits; board-ui ist
+ * nur ein Consumer davon. NICHT aus dem board-ui-Repo zuruecksyncen — Aenderungen
+ * ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs` (aktualisiert den
+ * eingebetteten Blob in install.mjs). (board-ui.mjs kommt umgekehrt aus dem board-ui-Repo.)
+ *
  * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
@@ -165,9 +171,78 @@ class GitHubIssueTracker {
     return n;
   }
 
+  // Project-ID, Status-Field-ID und Option-IDs aendern sich praktisch nie. Sie werden
+  // deshalb persistent gecacht (.claude/board-meta-cache.json), damit nicht jeder
+  // board.mjs-Aufruf zwei GraphQL-Abfragen (gh project list / field-list) kostet — der
+  // In-Memory-Cache haelt nur innerhalb eines Prozesses, jeder CLI-Aufruf ist aber neu.
+  _metaCachePath() {
+    return resolve(".claude", "board-meta-cache.json");
+  }
+
+  _metaCacheKey() {
+    return `${this._owner()}#${this._projectNumber()}`;
+  }
+
+  _readMetaCache() {
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return null;
+    let all;
+    try {
+      all = JSON.parse(readFileSync(p, "utf-8"));
+    } catch {
+      return null; // korrupte Cache-Datei wie Cache-Miss behandeln
+    }
+    const entry = all[this._metaCacheKey()];
+    if (!entry || !entry.projectId || !entry.statusField) return null;
+    // Bei geaenderten Spalten-Labels ist die Option-Zuordnung veraltet — neu aufbauen.
+    if (JSON.stringify(entry.columnLabels) !== JSON.stringify(columnLabels(this._cfg))) return null;
+    return entry;
+  }
+
+  _writeMetaCache() {
+    const p = this._metaCachePath();
+    let all = {};
+    if (existsSync(p)) {
+      try { all = JSON.parse(readFileSync(p, "utf-8")); } catch { all = {}; }
+    }
+    all[this._metaCacheKey()] = {
+      projectId: this._projectId,
+      statusField: this._statusField,
+      columnLabels: columnLabels(this._cfg),
+    };
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
+  }
+
+  _invalidateMetaCache() {
+    this._projectId = null;
+    this._statusField = null;
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return;
+    try {
+      const all = JSON.parse(readFileSync(p, "utf-8"));
+      delete all[this._metaCacheKey()];
+      writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
+    } catch {
+      // korrupte Datei: der naechste _writeMetaCache ueberschreibt sie ohnehin
+    }
+  }
+
   _ensureProjectMeta() {
     if (this._projectId && this._statusField) return;
 
+    const cached = this._readMetaCache();
+    if (cached) {
+      this._projectId = cached.projectId;
+      this._statusField = cached.statusField;
+      return;
+    }
+
+    this._loadProjectMetaFromApi();
+    this._writeMetaCache();
+  }
+
+  _loadProjectMetaFromApi() {
     const owner = this._owner();
     const num = this._projectNumber();
 
@@ -194,12 +269,42 @@ class GitHubIssueTracker {
     this._statusField = { id: statusField.id, options: optionMap };
   }
 
+  // Gezielter Lookup der Project-Item-ID fuer genau dieses eine Issue via GraphQL-
+  // Einzelabfrage (repository -> issue -> projectItems). Kostet ~1 Kontingentpunkt
+  // unabhaengig von der Boardgroesse — statt eines paginierten `gh project item-list`
+  // ueber alle bis zu 1000 Items, das je nach Board zweistellige Punktzahlen verbraucht.
   _getProjectItemId(issueNumber) {
     const owner = this._owner();
+    const repoName = this._repo().split("/")[1];
     const num = this._projectNumber();
-    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
-    const item = (items.items || []).find(
-      (i) => i.content?.number === Number(issueNumber)
+    const number = Number(issueNumber);
+
+    const query = [
+      "query($owner:String!,$repo:String!,$number:Int!){",
+      "  repository(owner:$owner,name:$repo){",
+      "    issue(number:$number){",
+      "      projectItems(first:20){",
+      "        nodes{",
+      "          id",
+      "          project{ number owner{ ... on User{ login } ... on Organization{ login } } }",
+      "        }",
+      "      }",
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
+
+    const data = execJSON(
+      `gh api graphql -f query=${shellQuote(query)} ` +
+      `-f owner=${shellQuote(owner)} -f repo=${shellQuote(repoName)} -F number=${number}`
+    );
+
+    const issue = data?.data?.repository?.issue;
+    if (!issue) throw new BoardError(`Issue #${issueNumber} nicht in Repo '${this._repo()}' gefunden`);
+
+    const nodes = issue.projectItems?.nodes || [];
+    const item = nodes.find(
+      (n) => n.project?.number === num && n.project?.owner?.login === owner
     );
     if (!item) throw new BoardError(`Issue #${issueNumber} nicht im Project Board #${num} gefunden`);
     return item.id;
@@ -296,12 +401,29 @@ class GitHubIssueTracker {
   async moveIssue(id, to) {
     this._ensureProjectMeta();
     const itemId = this._getProjectItemId(id);
-    const optionId = this._statusField.options[to];
-    if (!optionId) throw new BoardError(`Status '${to}' hat keine Entsprechung im GitHub Project`);
+    this._optionIdFor(to); // wirft frueh, falls Status unbekannt
 
+    try {
+      this._editItemStatus(itemId, to);
+    } catch (e) {
+      // Gecachte IDs koennten veraltet sein (z.B. Option-ID im Project entfernt) —
+      // Cache verwerfen, Meta frisch aus der API laden und einmal wiederholen.
+      this._invalidateMetaCache();
+      this._ensureProjectMeta();
+      this._editItemStatus(itemId, to);
+    }
+  }
+
+  _optionIdFor(status) {
+    const optionId = this._statusField.options[status];
+    if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
+    return optionId;
+  }
+
+  _editItemStatus(itemId, status) {
     exec(
       `gh project item-edit --id ${itemId} --project-id ${this._projectId} ` +
-      `--field-id ${this._statusField.id} --single-select-option-id ${optionId}`
+      `--field-id ${this._statusField.id} --single-select-option-id ${this._optionIdFor(status)}`
     );
   }
 
