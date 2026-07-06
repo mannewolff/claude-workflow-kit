@@ -1,8 +1,10 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "codeHost": "github",
   "issueTracker": "local",
-  "buildChecks": ["node tools/sync-blobs.mjs --check"],
+  "buildChecks": [
+    "node tools/sync-blobs.mjs --check"
+  ],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
