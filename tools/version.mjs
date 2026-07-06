@@ -39,15 +39,20 @@ function parseVersion(v) {
   return v.split(".").map(Number);
 }
 
+// Ersetzt nur den Versions-String im Roh-Text, damit der Bump die uebrige
+// Config-Formatierung nicht anfasst (kein Neu-Serialisieren via JSON.stringify).
+const VERSION_RE = /("version"\s*:\s*")\d+\.\d+\.\d+(")/;
+
 function main() {
   const flags = ["--get", "--patch", "--minor", "--major"];
   const flag = process.argv.slice(2).find((a) => flags.includes(a));
   if (!flag) fail(`Kein gueltiges Flag. Erwartet: ${flags.join(" | ")}`);
 
   const path = configPath();
+  const raw = readFileSync(path, "utf-8");
   let config;
   try {
-    config = JSON.parse(readFileSync(path, "utf-8"));
+    config = JSON.parse(raw);
   } catch {
     fail(`workflow.config.json konnte nicht gelesen werden: ${path}`);
   }
@@ -63,9 +68,14 @@ function main() {
   else if (flag === "--minor") { y += 1; z = 0; }
   else if (flag === "--major") { x += 1; y = 0; z = 0; }
 
-  config.version = `${x}.${y}.${z}`;
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
-  process.stdout.write(`${config.version}\n`);
+  const next = `${x}.${y}.${z}`;
+  // Nur den Versions-String im Roh-Text ersetzen — Formatierung der restlichen Config bleibt unangetastet.
+  const updated = raw.replace(VERSION_RE, `$1${next}$2`);
+  if (updated === raw) {
+    fail(`version-Feld konnte im Roh-Text nicht ersetzt werden (unerwartetes Format): ${path}`);
+  }
+  writeFileSync(path, updated);
+  process.stdout.write(`${next}\n`);
 }
 
 main();
