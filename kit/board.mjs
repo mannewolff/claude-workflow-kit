@@ -263,12 +263,42 @@ class GitHubIssueTracker {
     this._statusField = { id: statusField.id, options: optionMap };
   }
 
+  // Gezielter Lookup der Project-Item-ID fuer genau dieses eine Issue via GraphQL-
+  // Einzelabfrage (repository -> issue -> projectItems). Kostet ~1 Kontingentpunkt
+  // unabhaengig von der Boardgroesse — statt eines paginierten `gh project item-list`
+  // ueber alle bis zu 1000 Items, das je nach Board zweistellige Punktzahlen verbraucht.
   _getProjectItemId(issueNumber) {
     const owner = this._owner();
+    const repoName = this._repo().split("/")[1];
     const num = this._projectNumber();
-    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
-    const item = (items.items || []).find(
-      (i) => i.content?.number === Number(issueNumber)
+    const number = Number(issueNumber);
+
+    const query = [
+      "query($owner:String!,$repo:String!,$number:Int!){",
+      "  repository(owner:$owner,name:$repo){",
+      "    issue(number:$number){",
+      "      projectItems(first:20){",
+      "        nodes{",
+      "          id",
+      "          project{ number owner{ ... on User{ login } ... on Organization{ login } } }",
+      "        }",
+      "      }",
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
+
+    const data = execJSON(
+      `gh api graphql -f query=${shellQuote(query)} ` +
+      `-f owner=${shellQuote(owner)} -f repo=${shellQuote(repoName)} -F number=${number}`
+    );
+
+    const issue = data?.data?.repository?.issue;
+    if (!issue) throw new BoardError(`Issue #${issueNumber} nicht in Repo '${this._repo()}' gefunden`);
+
+    const nodes = issue.projectItems?.nodes || [];
+    const item = nodes.find(
+      (n) => n.project?.number === num && n.project?.owner?.login === owner
     );
     if (!item) throw new BoardError(`Issue #${issueNumber} nicht im Project Board #${num} gefunden`);
     return item.id;
