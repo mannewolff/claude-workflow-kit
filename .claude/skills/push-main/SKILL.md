@@ -33,19 +33,13 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Versions-Bump
+### 3. Projekt-eigene Release-Schritte (optional)
 
-```bash
-node tools/version.mjs --patch
-```
-
-Gibt die neue Version `X.Y.Z` aus. Ergebnis committen (nur `.claude/workflow.config.json` —
-install.mjs bleibt hier bewusst unangetastet, siehe RELEASING.md):
-
-```bash
-git add .claude/workflow.config.json
-git commit -m "chore: vX.Y.Z"
-```
+Prüfe, ob eine `RELEASING.md` im Projekt-Root existiert. Falls ja: lies sie und
+führe den dort für diesen Schritt (Push auf `mainBranch`) beschriebenen Ablauf
+aus (z. B. ein Versions-Bump-Kommando + eigener Commit), **bevor** gepusht wird.
+Falls keine `RELEASING.md` existiert: diesen Schritt überspringen, direkt weiter
+mit Pushen.
 
 ### 4. Pushen
 

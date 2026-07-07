@@ -31,24 +31,13 @@ git log origin/<productionBranch>..origin/<mainBranch> --oneline
 
 Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
-### 3. Versions-Bump
+### 3. Projekt-eigene Release-Schritte (optional)
 
-```bash
-node tools/version.mjs --minor
-```
-
-Bumpt `.claude/workflow.config.json` **und** synchronisiert install.mjs' `VERSION`-Konstante
-(install.mjs traegt damit beim naechsten Docs-Deploy, ausgeloest durch den Push auf
-`productionBranch`, die korrekte Version). Ergebnis committen und auf `mainBranch` pushen:
-
-```bash
-git add .claude/workflow.config.json install.mjs
-git commit -m "chore: vX.Y.Z"
-git push origin <mainBranch>
-```
-
-Dieser Commit loest **keinen** zusaetzlichen Patch-Bump aus — er ist Teil dieses
-Release-Schritts, kein separates `push main` fuer denselben Commit.
+Prüfe, ob eine `RELEASING.md` im Projekt-Root existiert. Falls ja: lies sie und
+führe den dort für diesen Schritt (vor der PR-Erstellung) beschriebenen Ablauf
+aus (z. B. ein Versions-Bump-Kommando + Commit + Push auf `mainBranch`). Falls
+keine `RELEASING.md` existiert: diesen Schritt überspringen, direkt weiter mit
+der PR-Erstellung.
 
 ### 4. PR bzw. MR erstellen
 

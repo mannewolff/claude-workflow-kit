@@ -33,13 +33,21 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Pushen
+### 3. Projekt-eigene Release-Schritte (optional)
+
+Prüfe, ob eine `RELEASING.md` im Projekt-Root existiert. Falls ja: lies sie und
+führe den dort für diesen Schritt (Push auf `mainBranch`) beschriebenen Ablauf
+aus (z. B. ein Versions-Bump-Kommando + eigener Commit), **bevor** gepusht wird.
+Falls keine `RELEASING.md` existiert: diesen Schritt überspringen, direkt weiter
+mit Pushen.
+
+### 4. Pushen
 
 ```bash
 git push origin <mainBranch>
 ```
 
-### 4. Bestätigung
+### 5. Bestätigung
 
 Melde den neuen Stand auf `origin/<mainBranch>` mit dem letzten Commit-Hash.
 
