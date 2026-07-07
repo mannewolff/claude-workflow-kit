@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
  * version.mjs — liest/erhoeht die Versionskennung (x.y.z) in workflow.config.json.
+ * Bei --minor/--major wird zusaetzlich install.mjs' VERSION-Konstante synchronisiert:
+ * install.mjs repraesentiert den zuletzt veroeffentlichten Stand, --patch (push main)
+ * laesst es deshalb bewusst unangetastet.
  *
  * Nutzung:
  *   node tools/version.mjs --get      # aktuelle Version auf stdout ausgeben
  *   node tools/version.mjs --patch    # z + 1                 (push main)
- *   node tools/version.mjs --minor    # y + 1, z = 0          (merge production)
- *   node tools/version.mjs --major    # x + 1, y = 0, z = 0   (nur explizit)
+ *   node tools/version.mjs --minor    # y + 1, z = 0          (merge production, synct install.mjs)
+ *   node tools/version.mjs --major    # x + 1, y = 0, z = 0   (nur explizit, synct install.mjs)
  *
  * Ausgabe: neue (bzw. aktuelle) Version auf stdout. Fehler: stderr, Exit 1.
- * Single-File-Tool: nur node:*-Imports, Config-Pfad relativ zum Arbeitsverzeichnis.
+ * Single-File-Tool: nur node:*-Imports, Pfade relativ zum Arbeitsverzeichnis.
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -43,6 +46,27 @@ function parseVersion(v) {
 // Config-Formatierung nicht anfasst (kein Neu-Serialisieren via JSON.stringify).
 const VERSION_RE = /("version"\s*:\s*")\d+\.\d+\.\d+(")/;
 
+const INSTALL_PATH = resolve("install.mjs");
+const INSTALL_VERSION_RE = /(const VERSION = ")\d+\.\d+\.\d+(";)/;
+
+// Liest und validiert install.mjs' VERSION-Konstante, OHNE zu schreiben. Wird bei
+// --minor/--major VOR dem Config-Bump aufgerufen: schlaegt die Validierung fehl,
+// bleibt workflow.config.json unangetastet (keine Teil-Inkonsistenz zwischen den Dateien).
+function readInstallVersion() {
+  if (!existsSync(INSTALL_PATH)) {
+    fail(`install.mjs nicht gefunden: ${INSTALL_PATH}`);
+  }
+  const raw = readFileSync(INSTALL_PATH, "utf-8");
+  if (!INSTALL_VERSION_RE.test(raw)) {
+    fail(`VERSION-Konstante in install.mjs nicht gefunden oder unerwartetes Format: ${INSTALL_PATH}`);
+  }
+  return raw;
+}
+
+function writeInstallVersion(raw, next) {
+  writeFileSync(INSTALL_PATH, raw.replace(INSTALL_VERSION_RE, `$1${next}$2`));
+}
+
 function main() {
   const flags = ["--get", "--patch", "--minor", "--major"];
   const flag = process.argv.slice(2).find((a) => flags.includes(a));
@@ -64,6 +88,10 @@ function main() {
     return;
   }
 
+  const syncInstall = flag === "--minor" || flag === "--major";
+  // Install.mjs VOR dem Config-Bump validieren (siehe readInstallVersion-Kommentar).
+  const installRaw = syncInstall ? readInstallVersion() : null;
+
   if (flag === "--patch") z += 1;
   else if (flag === "--minor") { y += 1; z = 0; }
   else if (flag === "--major") { x += 1; y = 0; z = 0; }
@@ -75,6 +103,7 @@ function main() {
     fail(`version-Feld konnte im Roh-Text nicht ersetzt werden (unerwartetes Format): ${path}`);
   }
   writeFileSync(path, updated);
+  if (syncInstall) writeInstallVersion(installRaw, next);
   process.stdout.write(`${next}\n`);
 }
 
