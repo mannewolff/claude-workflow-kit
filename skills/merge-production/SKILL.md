@@ -31,7 +31,18 @@ git log origin/<productionBranch>..origin/<mainBranch> --oneline
 
 Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
-### 3. PR bzw. MR erstellen
+### 3. Release-Schritte (falls `RELEASING.md` existiert)
+
+Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
+- **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
+  Release-Schritte aus — typischerweise ein Version-Bump. Committe die geänderten
+  Dateien auf `mainBranch`, damit sie im PR nach `production` enthalten sind.
+- **Nein:** Nichts weiter tun.
+
+Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik;
+diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos.
+
+### 4. PR bzw. MR erstellen
 
 ```bash
 node .claude/kit/board.mjs code pr \
@@ -42,7 +53,7 @@ node .claude/kit/board.mjs code pr \
 
 Der Adapter erstellt den PR/MR provider-unabhaengig. Bei `codeHost: local` gibt er einen gefuehrten Merge-Dialog aus.
 
-### 4. PR/MR-URL zurückgeben
+### 5. PR/MR-URL zurückgeben
 
 Gib die URL aus dem Adapter-Output aus. Der Merge ist Mannes Aufgabe — Claude merged nicht.
 

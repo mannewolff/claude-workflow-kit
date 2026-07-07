@@ -110,13 +110,13 @@
     },
     "columns": {
       "type": "object",
-      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen.",
+      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur fuer den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhaengig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt \"Open\" eingetragen ist — sonst ein normales Label.",
       "properties": {
-        "backlog":     { "type": "string", "minLength": 1, "default": "Backlog" },
+        "backlog":     { "type": "string", "minLength": 1, "default": "Backlog", "description": "GitLab-Sonderwert \"Open\": backlog wird als nativer Open-Zustand behandelt statt als Label." },
         "ready":       { "type": "string", "minLength": 1, "default": "Ready" },
         "in_progress": { "type": "string", "minLength": 1, "default": "In Progress" },
         "in_review":   { "type": "string", "minLength": 1, "default": "In Review" },
-        "done":        { "type": "string", "minLength": 1, "default": "Done" }
+        "done":        { "type": "string", "minLength": 1, "default": "Done", "description": "Nur Anzeigename fuer GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand." }
       },
       "required": [],
       "additionalProperties": false,

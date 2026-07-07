@@ -229,6 +229,12 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
+### Eigene Release-Schritte per RELEASING.md
+
+`/push-main` und `/merge-production` prüfen bei jedem Lauf, ob eine `RELEASING.md` im Projekt-Root liegt. Falls ja, lesen sie diese Datei und führen den dort beschriebenen Ablauf aus, bevor gepusht bzw. der PR erstellt wird — zum Beispiel ein Versions-Bump-Kommando mit anschließendem Commit. Falls keine `RELEASING.md` existiert, wird dieser Schritt ersatzlos übersprungen.
+
+Das ist eine reine Opt-in-Konvention, kein Kit-internes Feature: Jedes Projekt, das per `/push-main`/`/merge-production` arbeitet, kann so eigene Release-Schritte (Versionierung, Changelog-Pflege, was auch immer) andocken, ohne die generischen Skills zu forken. Das claude-workflow-kit-Repo selbst nutzt das für seine eigene Versionierung — siehe [RELEASING.md](https://github.com/mannewolff/claude-workflow-kit/blob/main/RELEASING.md) im Repo.
+
 ### /retro
 
 **Querschnitts-Skill, Wartungsrhythmus (alle ein bis zwei Wochen).**
