@@ -33,13 +33,17 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Projekt-eigene Release-Schritte (optional)
+### 3. Release-Schritte (falls `RELEASING.md` existiert)
 
-Prüfe, ob eine `RELEASING.md` im Projekt-Root existiert. Falls ja: lies sie und
-führe den dort für diesen Schritt (Push auf `mainBranch`) beschriebenen Ablauf
-aus (z. B. ein Versions-Bump-Kommando + eigener Commit), **bevor** gepusht wird.
-Falls keine `RELEASING.md` existiert: diesen Schritt überspringen, direkt weiter
-mit Pushen.
+Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
+- **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen
+  Release-Schritte aus — typischerweise ein Version-Bump. Nimm alle dabei
+  geänderten Dateien in **denselben** Push-Batch auf (mit committen), bevor du
+  pushst.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 4.
+
+Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik;
+diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 
 ### 4. Pushen
 

@@ -31,13 +31,16 @@ git log origin/<productionBranch>..origin/<mainBranch> --oneline
 
 Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
-### 3. Projekt-eigene Release-Schritte (optional)
+### 3. Release-Schritte (falls `RELEASING.md` existiert)
 
-Prüfe, ob eine `RELEASING.md` im Projekt-Root existiert. Falls ja: lies sie und
-führe den dort für diesen Schritt (vor der PR-Erstellung) beschriebenen Ablauf
-aus (z. B. ein Versions-Bump-Kommando + Commit + Push auf `mainBranch`). Falls
-keine `RELEASING.md` existiert: diesen Schritt überspringen, direkt weiter mit
-der PR-Erstellung.
+Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
+- **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
+  Release-Schritte aus — typischerweise ein Version-Bump. Committe die geänderten
+  Dateien auf `mainBranch`, damit sie im PR nach `production` enthalten sind.
+- **Nein:** Nichts weiter tun.
+
+Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik;
+diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 
 ### 4. PR bzw. MR erstellen
 

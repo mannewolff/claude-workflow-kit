@@ -19,7 +19,7 @@ import { execSync } from "node:child_process";
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
 // Gepflegt von tools/bump-version.mjs (haelt package.json im Gleichschritt):
 // "push main" erhoeht z (patch), "merge production" erhoeht y (minor), x nur manuell.
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 
 // --- Argument-Parser ---
 
@@ -1184,15 +1184,32 @@ function openModal(issue) {
     enterEditMode(window_, issue, mainBody);
   });
 
-  // Schließen via × oder Overlay-Klick (nicht Modal selbst)
+  // Schließen nur über × oder Escape — ein Klick neben das Modal schließt NICHT.
+  // "Modal" heisst modal: kein versehentliches Zugehen bei Klick auf den Backdrop.
   window_.querySelector(".modal-close").addEventListener("click", closeModal);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
   document.addEventListener("keydown", handleEsc);
 }
 
 function enterEditMode(window_, issue, mainBody) {
+  // Overlay sperren: Backdrop-Klick und Escape schließen jetzt nicht mehr hart,
+  // damit im Edit-Formular keine Eingaben verloren gehen.
+  const overlay = window_.closest(".modal-overlay");
+  if (overlay) {
+    overlay.dataset.locked = "1";
+    overlay._onCancel = cancelEdit;
+  }
+
   const editBtn = window_.querySelector(".modal-edit-btn");
   if (editBtn) editBtn.style.display = "none";
+
+  // Im Edit-Modus nur noch Speichern/Abbrechen — "×" ausblenden.
+  const closeBtn = window_.querySelector(".modal-close");
+  if (closeBtn) closeBtn.style.display = "none";
+
+  function cancelEdit() {
+    closeModal();
+    openModal(issue);
+  }
 
   const commentsEl = window_.querySelector(".modal-comments");
   const commentFormEl = window_.querySelector(".modal-comment-form");
@@ -1261,16 +1278,20 @@ function enterEditMode(window_, issue, mainBody) {
     else loadBoard();
   });
 
-  bodyEl.querySelector(".modal-edit-cancel-btn").addEventListener("click", () => {
-    closeModal();
-    openModal(issue);
-  });
+  bodyEl.querySelector(".modal-edit-cancel-btn").addEventListener("click", cancelEdit);
 
   titleInput.focus();
 }
 
 function handleEsc(e) {
-  if (e.key === "Escape") closeModal();
+  if (e.key !== "Escape") return;
+  const overlay = document.querySelector(".modal-overlay");
+  // Gesperrtes Formular: Escape wirkt als Abbrechen, nicht als harter Close.
+  if (overlay && overlay.dataset.locked === "1") {
+    if (typeof overlay._onCancel === "function") overlay._onCancel();
+    return;
+  }
+  closeModal();
 }
 
 function closeModal() {
@@ -1324,10 +1345,15 @@ async function openNewIssueModal(opts) {
         <textarea id="new-issue-body"></textarea>
       </div>
       <button class="modal-comment-send new-issue-create" disabled>Anlegen</button>
+      <button class="modal-edit-cancel-btn new-issue-cancel" type="button">Abbrechen</button>
     </div>\`;
 
   overlay.appendChild(window_);
   document.body.appendChild(overlay);
+
+  // Formular-Modal: von Anfang an gesperrt, damit Backdrop/Escape den Entwurf nicht verwerfen.
+  overlay.dataset.locked = "1";
+  overlay._onCancel = closeModal;
 
   const typeSelect = window_.querySelector("#new-issue-type");
   const parentField = window_.querySelector("#new-issue-parent-field");
@@ -1391,8 +1417,9 @@ async function openNewIssueModal(opts) {
   });
 
   titleInput.focus();
-  window_.querySelector(".modal-close").addEventListener("click", closeModal);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  // Schliessen nur ueber Abbrechen/Anlegen — "×" ausblenden, kein Backdrop-Schliessen.
+  window_.querySelector(".modal-close").style.display = "none";
+  window_.querySelector(".new-issue-cancel").addEventListener("click", closeModal);
   document.addEventListener("keydown", handleEsc);
 }
 
