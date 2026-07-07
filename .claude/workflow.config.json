@@ -1,5 +1,5 @@
 {
-  "version": "1.5.2",
+  "version": "1.5.3",
   "codeHost": "github",
   "issueTracker": "local",
   "buildChecks": ["node tools/sync-blobs.mjs --check"],
