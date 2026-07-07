@@ -43,6 +43,16 @@ function columnLabels(config) {
   return config.columns || COLUMN_DEFAULTS;
 }
 
+// Entscheidungskriterium fuer den GitLab-Adapter: 'done' ist immer der GitLab-Zustand
+// Closed. 'backlog' ist der GitLab-Zustand Open nur, wenn so konfiguriert
+// (columns.backlog === "Open"); sonst ein normales Label. Alle anderen Spalten sind
+// immer Labels. Einzige Quelle der Wahrheit fuer createIssue/moveIssue/listIssues/labelToStatus.
+function isStateColumn(status, config) {
+  if (status === "done") return true;
+  if (status === "backlog") return columnLabels(config).backlog === "Open";
+  return false;
+}
+
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
@@ -474,11 +484,15 @@ class GitLabIssueTracker {
     const match = output.match(/\/issues\/(\d+)/);
     if (!match) throw new BoardError(`Konnte Issue-ID aus glab-Ausgabe nicht lesen: ${output}`);
     const id = match[1];
-    // Label 'Backlog' setzen
-    try {
-      exec(`glab issue update ${id} --label "Backlog"`);
-    } catch (e) {
-      process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
+    // Backlog-Label nur setzen, wenn backlog per Config ueberhaupt ein Label ist
+    // (nicht der native Open-Zustand) — sonst bleibt das neue Issue einfach offen.
+    if (!isStateColumn("backlog", this._cfg)) {
+      const label = columnLabels(this._cfg).backlog;
+      try {
+        exec(`glab issue update ${id} --label ${shellQuote(label)}`);
+      } catch (e) {
+        process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
+      }
     }
     return { id, url: output.trim() };
   }
@@ -486,7 +500,7 @@ class GitLabIssueTracker {
   async getIssue(id) {
     const data = execJSON(`glab issue view ${id} --output json`);
     const labelNames = (data.labels || []).map((l) => l.name || l);
-    const status = labelToStatus(labelNames, this._cfg) || null;
+    const status = labelToStatus(labelNames, this._cfg, data.state) || null;
     return {
       id: String(data.iid || data.id),
       title: data.title,
@@ -498,9 +512,21 @@ class GitLabIssueTracker {
   async listIssues(status) {
     let cmd = "glab issue list --output json";
     if (status) {
-      const label = columnLabels(this._cfg)[status];
-      if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
-      cmd += ` --label ${shellQuote(label)}`;
+      if (isStateColumn(status, this._cfg)) {
+        if (status === "done") {
+          cmd += " --closed";
+        } else {
+          // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
+          const otherLabels = Object.entries(columnLabels(this._cfg))
+            .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
+            .map(([, l]) => l);
+          cmd += otherLabels.map((l) => ` --not-label ${shellQuote(l)}`).join("");
+        }
+      } else {
+        const label = columnLabels(this._cfg)[status];
+        if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
+        cmd += ` --label ${shellQuote(label)}`;
+      }
     }
     const items = execJSON(cmd);
     return (Array.isArray(items) ? items : [])
@@ -510,7 +536,7 @@ class GitLabIssueTracker {
           id: String(i.iid),
           title: i.title,
           body: i.description,
-          status: labelToStatus(labelNames, this._cfg) || null,
+          status: labelToStatus(labelNames, this._cfg, i.state) || null,
         };
       })
       .sort((a, b) => Number(a.id) - Number(b.id));
@@ -520,9 +546,10 @@ class GitLabIssueTracker {
     const labels = columnLabels(this._cfg);
     const statusLabels = Object.values(labels);
 
-    // backlog/done sind GitLab-Zustaende (Open/Closed), keine Labels: nur
-    // Status-Labels entfernen, Issue oeffnen bzw. schliessen, kein Phantom-Label setzen.
-    if (to === "backlog" || to === "done") {
+    // backlog (falls als Open-Zustand konfiguriert) und done sind GitLab-Zustaende,
+    // keine Labels: nur Status-Labels entfernen, Issue oeffnen bzw. schliessen, kein
+    // Phantom-Label setzen.
+    if (isStateColumn(to, this._cfg)) {
       const unlabelArgs = statusLabels.map((l) => `--unlabel ${shellQuote(l)}`).join(" ");
       exec(`glab issue update ${id} ${unlabelArgs}`);
       exec(to === "done" ? `glab issue close ${id}` : `glab issue reopen ${id}`);
@@ -739,10 +766,13 @@ function shellQuote(str) {
   return `'${String(str).replace(/'/g, "'\\''")}'`;
 }
 
-function labelToStatus(labelNames, config) {
+function labelToStatus(labelNames, config, state) {
   for (const [status, label] of Object.entries(columnLabels(config))) {
+    if (isStateColumn(status, config)) continue;
     if (labelNames.includes(label)) return status;
   }
+  if (state === "closed") return "done";
+  if (state === "opened" && isStateColumn("backlog", config)) return "backlog";
   return null;
 }
 
