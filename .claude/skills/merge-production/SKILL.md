@@ -31,7 +31,26 @@ git log origin/<productionBranch>..origin/<mainBranch> --oneline
 
 Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
-### 3. PR bzw. MR erstellen
+### 3. Versions-Bump
+
+```bash
+node tools/version.mjs --minor
+```
+
+Bumpt `.claude/workflow.config.json` **und** synchronisiert install.mjs' `VERSION`-Konstante
+(install.mjs traegt damit beim naechsten Docs-Deploy, ausgeloest durch den Push auf
+`productionBranch`, die korrekte Version). Ergebnis committen und auf `mainBranch` pushen:
+
+```bash
+git add .claude/workflow.config.json install.mjs
+git commit -m "chore: vX.Y.Z"
+git push origin <mainBranch>
+```
+
+Dieser Commit loest **keinen** zusaetzlichen Patch-Bump aus — er ist Teil dieses
+Release-Schritts, kein separates `push main` fuer denselben Commit.
+
+### 4. PR bzw. MR erstellen
 
 ```bash
 node .claude/kit/board.mjs code pr \
@@ -42,7 +61,7 @@ node .claude/kit/board.mjs code pr \
 
 Der Adapter erstellt den PR/MR provider-unabhaengig. Bei `codeHost: local` gibt er einen gefuehrten Merge-Dialog aus.
 
-### 4. PR/MR-URL zurückgeben
+### 5. PR/MR-URL zurückgeben
 
 Gib die URL aus dem Adapter-Output aus. Der Merge ist Mannes Aufgabe — Claude merged nicht.
 

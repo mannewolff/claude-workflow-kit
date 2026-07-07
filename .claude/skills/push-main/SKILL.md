@@ -33,13 +33,27 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Pushen
+### 3. Versions-Bump
+
+```bash
+node tools/version.mjs --patch
+```
+
+Gibt die neue Version `X.Y.Z` aus. Ergebnis committen (nur `.claude/workflow.config.json` —
+install.mjs bleibt hier bewusst unangetastet, siehe RELEASING.md):
+
+```bash
+git add .claude/workflow.config.json
+git commit -m "chore: vX.Y.Z"
+```
+
+### 4. Pushen
 
 ```bash
 git push origin <mainBranch>
 ```
 
-### 4. Bestätigung
+### 5. Bestätigung
 
 Melde den neuen Stand auf `origin/<mainBranch>` mit dem letzten Commit-Hash.
 
