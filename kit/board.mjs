@@ -518,10 +518,23 @@ class GitLabIssueTracker {
 
   async moveIssue(id, to) {
     const labels = columnLabels(this._cfg);
+    const statusLabels = Object.values(labels);
+
+    // backlog/done sind GitLab-Zustaende (Open/Closed), keine Labels: nur
+    // Status-Labels entfernen, Issue oeffnen bzw. schliessen, kein Phantom-Label setzen.
+    if (to === "backlog" || to === "done") {
+      const unlabelArgs = statusLabels.map((l) => `--unlabel ${shellQuote(l)}`).join(" ");
+      exec(`glab issue update ${id} ${unlabelArgs}`);
+      exec(to === "done" ? `glab issue close ${id}` : `glab issue reopen ${id}`);
+      return;
+    }
+
     const label = labels[to];
     if (!label) throw new BoardError(`Status '${to}' hat kein GitLab-Label-Mapping`);
-    // Alle Status-Labels entfernen, Ziel-Label setzen
-    const unlabelArgs = Object.values(labels)
+    // Alle anderen Status-Labels entfernen, Ziel-Label setzen (Ziel-Label
+    // NICHT im selben Aufruf unlabeln, sonst verrechnet glab beides gegeneinander).
+    const unlabelArgs = statusLabels
+      .filter((l) => l !== label)
       .map((l) => `--unlabel ${shellQuote(l)}`)
       .join(" ");
     exec(`glab issue update ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
