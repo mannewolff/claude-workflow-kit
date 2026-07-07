@@ -496,7 +496,7 @@ class GitLabIssueTracker {
   }
 
   async listIssues(status) {
-    let cmd = "glab issue list --state opened --output json";
+    let cmd = "glab issue list --output json";
     if (status) {
       const label = columnLabels(this._cfg)[status];
       if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
