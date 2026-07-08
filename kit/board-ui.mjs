@@ -19,7 +19,7 @@ import { execSync } from "node:child_process";
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
 // Gepflegt von tools/bump-version.mjs (haelt package.json im Gleichschritt):
 // "push main" erhoeht z (patch), "merge production" erhoeht y (minor), x nur manuell.
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 
 // --- Argument-Parser ---
 
@@ -483,6 +483,7 @@ const HTML = `<!DOCTYPE html>
     background: #f4f5f7; border: 1px solid #dfe1e6;
     border-radius: 10px; padding: 1px 8px;
   }
+  header .copyright { color: #6b778c; font-size: 12px; }
   header .subtitle { color: #6b778c; font-size: 12px; }
 
   .board {
@@ -980,6 +981,7 @@ const HTML = `<!DOCTYPE html>
 
 <header>
   <h1 id="board-title">claude-workflow-kit Board</h1>
+  <span class="copyright" id="board-copyright"></span>
   <span class="version" id="board-version"></span>
   <span class="subtitle" id="board-subtitle">Lokaler Modus — Dateien in issues/</span>
   <div class="view-toggle">
@@ -1914,6 +1916,8 @@ document.addEventListener('visibilitychange', function () {
 });
 
 async function init() {
+  document.getElementById("board-copyright").textContent =
+    "© " + new Date().getFullYear() + " Manfred Wolff";
   const res = await fetch("/api/config");
   const cfg = await res.json();
   if (cfg.columns && cfg.columns.length) COLUMNS = cfg.columns;
