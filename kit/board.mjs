@@ -67,7 +67,8 @@ Nutzung:
 Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}
 
 Konfiguration: .claude/workflow.config.json (issueTracker, codeHost)
-Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen.
+Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt sie,
+wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
 `;
 
 // --- Shell-Hilfsfunktionen ---
@@ -159,6 +160,7 @@ class GitHubIssueTracker {
     this._repoName = null;
     this._projectId = null;
     this._statusField = null; // { id, options: { [status]: optionId } }
+    this._projectNumberCache = null;
   }
 
   _repo() {
@@ -172,13 +174,78 @@ class GitHubIssueTracker {
     return this._repo().split("/")[0];
   }
 
+  // Ohne konfigurierte github.projectNumber wird versucht, die Nummer automatisch zu
+  // erkennen: gibt es fuer den Owner genau ein GitHub Project, wird dieses verwendet
+  // (mit Hinweis, kein stiller Schreibzugriff auf workflow.config.json). Bei keinem
+  // oder mehreren Projects bleibt es beim harten Fehler mit Projekt-Liste. Ergebnis
+  // wird pro Prozess memoisiert und die Auto-Erkennung zusaetzlich prozessuebergreifend
+  // gecacht (siehe _readAutoProjectNumberCache), damit nicht jeder Aufruf ohne
+  // konfigurierte Nummer erneut gh project list kostet.
   _projectNumber() {
-    const n = this._cfg.github?.projectNumber;
-    if (!n) throw new BoardError(
-      "github.projectNumber fehlt in workflow.config.json. " +
-      "Bitte erganzen: '\"github\": { \"projectNumber\": <N> }'"
+    if (this._projectNumberCache) return this._projectNumberCache;
+
+    const configured = this._cfg.github?.projectNumber;
+    if (configured) {
+      this._projectNumberCache = configured;
+      return configured;
+    }
+
+    const owner = this._owner();
+    const cachedAuto = this._readAutoProjectNumberCache(owner);
+    if (cachedAuto) {
+      this._projectNumberCache = cachedAuto;
+      return cachedAuto;
+    }
+
+    const projects = execJSON(`gh project list --owner ${owner} --format json`).projects || [];
+    if (projects.length === 1) {
+      const num = projects[0].number;
+      process.stderr.write(
+        `Hinweis: github.projectNumber fehlt in workflow.config.json, verwende automatisch ` +
+        `erkanntes einziges GitHub Project #${num} ('${projects[0].title}') fuer Owner '${owner}'. ` +
+        `Zur dauerhaften Fixierung ergaenzen: '"github": { "projectNumber": ${num} }'\n`
+      );
+      this._writeAutoProjectNumberCache(owner, num);
+      this._projectNumberCache = num;
+      return num;
+    }
+    if (projects.length === 0) {
+      throw new BoardError(
+        `github.projectNumber fehlt in workflow.config.json, und Owner '${owner}' hat kein GitHub Project. ` +
+        `Bitte erganzen: '"github": { "projectNumber": <N> }'`
+      );
+    }
+    const list = projects.map((p) => `#${p.number} (${p.title})`).join(", ");
+    throw new BoardError(
+      `github.projectNumber fehlt in workflow.config.json, Owner '${owner}' hat mehrere Projects: ${list}. ` +
+      `Bitte erganzen: '"github": { "projectNumber": <N> }'`
     );
-    return n;
+  }
+
+  _autoCacheKey(owner) {
+    return `${owner}#auto`;
+  }
+
+  _readAutoProjectNumberCache(owner) {
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return null;
+    try {
+      const all = JSON.parse(readFileSync(p, "utf-8"));
+      return all[this._autoCacheKey(owner)]?.projectNumber || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _writeAutoProjectNumberCache(owner, num) {
+    const p = this._metaCachePath();
+    let all = {};
+    if (existsSync(p)) {
+      try { all = JSON.parse(readFileSync(p, "utf-8")); } catch { all = {}; }
+    }
+    all[this._autoCacheKey(owner)] = { projectNumber: num };
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
   }
 
   // Project-ID, Status-Field-ID und Option-IDs aendern sich praktisch nie. Sie werden
@@ -331,29 +398,28 @@ class GitHubIssueTracker {
     const url = match[1];
     const id = match[2];
 
-    // Ans Project Board haengen, falls konfiguriert
-    if (this._cfg.github?.projectNumber) {
-      try {
-        const owner = this._owner();
-        const num = this._projectNumber();
-        exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
-        // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
-        // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
-        let lastErr = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          if (attempt > 1) await sleep(2500);
-          try {
-            await this.moveIssue(id, "backlog");
-            lastErr = null;
-            break;
-          } catch (e) {
-            lastErr = e;
-          }
+    // Ans Project Board haengen. _projectNumber() wirft, wenn weder konfiguriert
+    // noch eindeutig automatisch erkennbar — dann bleibt die Zuordnung aus (Hinweis).
+    try {
+      const owner = this._owner();
+      const num = this._projectNumber();
+      exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
+      // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
+      // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
+      let lastErr = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (attempt > 1) await sleep(2500);
+        try {
+          await this.moveIssue(id, "backlog");
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
         }
-        if (lastErr) throw lastErr;
-      } catch (e) {
-        process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
       }
+      if (lastErr) throw lastErr;
+    } catch (e) {
+      process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
     }
     return { id, url };
   }
@@ -382,16 +448,18 @@ class GitHubIssueTracker {
     }
 
     // Filterung nach Board-Status via Project
-    if (!this._cfg.github?.projectNumber) {
+    let num;
+    try {
+      num = this._projectNumber();
+    } catch {
       process.stderr.write(
-        "Hinweis: Ohne github.projectNumber kein Board-Status-Filter moeglich. Liste alle offenen Issues.\n"
+        "Hinweis: Kein eindeutiges GitHub Project bestimmbar, kein Board-Status-Filter moeglich. Liste alle offenen Issues.\n"
       );
       return this.listIssues(undefined);
     }
 
     this._ensureProjectMeta();
     const owner = this._owner();
-    const num = this._projectNumber();
     const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
 
     const optionId = this._statusField.options[status];
