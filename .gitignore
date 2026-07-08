@@ -33,3 +33,4 @@ docs/public/install.mjs
 .DS_Store
 # JetBrains IDEs
 .idea/
+.claude/

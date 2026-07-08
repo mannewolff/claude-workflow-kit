@@ -1,8 +1,7 @@
 {
-  "version": "1.6.0",
   "codeHost": "github",
   "issueTracker": "local",
-  "buildChecks": ["node tools/sync-blobs.mjs --check"],
+  "buildChecks": [],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
@@ -16,7 +15,11 @@
   "local": {
     "issuesDir": "issues"
   },
-  "github": {
-    "projectNumber": 11
+  "columns": {
+    "backlog": "Backlog",
+    "ready": "Ready",
+    "in_progress": "In Progress",
+    "in_review": "In Review",
+    "done": "Done"
   }
 }
