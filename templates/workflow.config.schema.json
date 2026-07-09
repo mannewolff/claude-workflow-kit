@@ -18,8 +18,8 @@
     },
     "issueTracker": {
       "type": "string",
-      "enum": ["github", "gitlab", "local"],
-      "description": "Wo die Issues verwaltet werden. Darf vom codeHost abweichen.",
+      "enum": ["github", "gitlab", "local", "toolbox"],
+      "description": "Wo die Issues verwaltet werden. Darf vom codeHost abweichen. 'toolbox' ist ein privates Setup (eigenes Kanban-Tool des Autors), nicht Teil des Installer-Dialogs und nur per manueller Config-Bearbeitung nutzbar.",
       "default": "github"
     },
     "provider": {
@@ -136,6 +136,19 @@
           "type": "integer",
           "minimum": 1,
           "description": "Nummer des GitHub Project Boards (gh project list). Erforderlich fuer Board-Status-Operationen."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "toolbox": {
+      "type": "object",
+      "description": "Einstellungen fuer den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs.",
+      "properties": {
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Basis-URL der Toolbox-Instanz."
         }
       },
       "required": [],
