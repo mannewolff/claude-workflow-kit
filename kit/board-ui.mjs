@@ -19,7 +19,7 @@ import { execSync } from "node:child_process";
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
 // Gepflegt von tools/bump-version.mjs (haelt package.json im Gleichschritt):
 // "push main" erhoeht z (patch), "merge production" erhoeht y (minor), x nur manuell.
-const VERSION = "0.1.3";
+const VERSION = "0.1.4";
 
 // --- Argument-Parser ---
 
