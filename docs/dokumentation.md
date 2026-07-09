@@ -116,7 +116,7 @@ Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Sk
 
 `codeHost` steuert, welche Plattform für Repository und Pull Requests genutzt wird (`github`, `gitlab` oder `local`). `issueTracker` steuert, wo Issues angelegt und bewegt werden — unabhängig von `codeHost` wählbar. Der Board-Adapter `.claude/kit/board.mjs` liest beide Felder und leitet alle Board-Operationen entsprechend weiter.
 
-`local.issuesDir` gibt das Verzeichnis an, in dem lokale Issues als Markdown-Dateien liegen (`issues/0001.md`, `issues/0002.md`, …). `github.projectNumber` ist die Projekt-Nummer des GitHub Projects Board — nur für `issueTracker: github` relevant.
+`local.issuesDir` gibt das Verzeichnis an, in dem lokale Issues als Markdown-Dateien liegen (`issues/0001.md`, `issues/0002.md`, …). `github.projectNumber` ist die Projekt-Nummer des GitHub Projects Board — nur für `issueTracker: github` relevant. Fehlt sie, versucht der Adapter automatisch das einzige vorhandene GitHub Project des Owners zu erkennen (mit Hinweis auf stderr, kein automatischer Config-Schreibzugriff); gibt es kein oder mehrere Projects, bricht er mit einer Fehlermeldung ab, die zur Ergänzung des Felds auffordert.
 
 Bei `issueTracker: github` legt der Adapter beim ersten Zugriff eine Cache-Datei `.claude/board-meta-cache.json` mit den Project-Metadaten (Project-ID, Status-Feld- und Options-IDs) an. Sie erspart jedem weiteren `board.mjs`-Aufruf zwei GraphQL-Abfragen und schont so das GitHub-Kontingent. Die Datei ist maschinenlokal und gehört nicht ins Repository — der Installer ignoriert `.claude/` ohnehin komplett; committest du `.claude/` selbst, nimm `.claude/board-meta-cache.json` in die `.gitignore` auf. Löschst du sie, wird sie beim nächsten Aufruf neu aufgebaut; veraltete IDs heilt der Adapter automatisch.
 
@@ -366,6 +366,24 @@ Der Status (`backlog | ready | in_progress | in_review | done`) steht im Frontma
 ```
 
 Du kannst beide Felder jederzeit manuell ändern. Alle Skills lesen sie beim nächsten Aufruf.
+
+### Toolbox (privates Setup)
+
+Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-Tool des Autors (eigenes Backend, eigenes Frontend), das er selbst als Issue-Tracker nutzt. Der Installer fragt nicht danach, und dieser Abschnitt dient in erster Linie dem eigenen Nachschlagen — nicht der allgemeinen Empfehlung.
+
+`codeHost` bleibt davon unabhängig (üblicherweise `github` oder `gitlab`): Toolbox ist nur ein Issue-Tracker, kein Code-Host, Pull Requests laufen weiterhin über die dort konfigurierte Plattform.
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "toolbox",
+  "toolbox": { "host": "https://toolbox.mwolff.org" }
+}
+```
+
+**Authentifizierung** läuft über einen persönlichen Kanban-Access-Token (PAT), nicht über den Keycloak-Login der Toolbox-Weboberfläche: Token in der Toolbox-Web-UI erzeugen, anschließend `tbx auth login` ausführen. Der Token wird unter `~/.config/toolbox-cli/{config,tokens}.json` gespeichert, jeder Aufruf trägt ihn im Header `X-Kanban-Token`. Er wirkt ausschließlich auf `/api/kanban/**` — Einrichtung des `tbx`-CLI und Token-Verwaltung sind Teil des Toolbox-Projekts selbst, nicht dieses Kits.
+
+**Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
 ## Aktualisieren und mehrere Projekte
 

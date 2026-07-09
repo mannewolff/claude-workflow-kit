@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 
 import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -67,7 +68,8 @@ Nutzung:
 Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}
 
 Konfiguration: .claude/workflow.config.json (issueTracker, codeHost)
-Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen.
+Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt sie,
+wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
 `;
 
 // --- Shell-Hilfsfunktionen ---
@@ -159,6 +161,7 @@ class GitHubIssueTracker {
     this._repoName = null;
     this._projectId = null;
     this._statusField = null; // { id, options: { [status]: optionId } }
+    this._projectNumberCache = null;
   }
 
   _repo() {
@@ -172,13 +175,78 @@ class GitHubIssueTracker {
     return this._repo().split("/")[0];
   }
 
+  // Ohne konfigurierte github.projectNumber wird versucht, die Nummer automatisch zu
+  // erkennen: gibt es fuer den Owner genau ein GitHub Project, wird dieses verwendet
+  // (mit Hinweis, kein stiller Schreibzugriff auf workflow.config.json). Bei keinem
+  // oder mehreren Projects bleibt es beim harten Fehler mit Projekt-Liste. Ergebnis
+  // wird pro Prozess memoisiert und die Auto-Erkennung zusaetzlich prozessuebergreifend
+  // gecacht (siehe _readAutoProjectNumberCache), damit nicht jeder Aufruf ohne
+  // konfigurierte Nummer erneut gh project list kostet.
   _projectNumber() {
-    const n = this._cfg.github?.projectNumber;
-    if (!n) throw new BoardError(
-      "github.projectNumber fehlt in workflow.config.json. " +
-      "Bitte erganzen: '\"github\": { \"projectNumber\": <N> }'"
+    if (this._projectNumberCache) return this._projectNumberCache;
+
+    const configured = this._cfg.github?.projectNumber;
+    if (configured) {
+      this._projectNumberCache = configured;
+      return configured;
+    }
+
+    const owner = this._owner();
+    const cachedAuto = this._readAutoProjectNumberCache(owner);
+    if (cachedAuto) {
+      this._projectNumberCache = cachedAuto;
+      return cachedAuto;
+    }
+
+    const projects = execJSON(`gh project list --owner ${owner} --format json`).projects || [];
+    if (projects.length === 1) {
+      const num = projects[0].number;
+      process.stderr.write(
+        `Hinweis: github.projectNumber fehlt in workflow.config.json, verwende automatisch ` +
+        `erkanntes einziges GitHub Project #${num} ('${projects[0].title}') fuer Owner '${owner}'. ` +
+        `Zur dauerhaften Fixierung ergaenzen: '"github": { "projectNumber": ${num} }'\n`
+      );
+      this._writeAutoProjectNumberCache(owner, num);
+      this._projectNumberCache = num;
+      return num;
+    }
+    if (projects.length === 0) {
+      throw new BoardError(
+        `github.projectNumber fehlt in workflow.config.json, und Owner '${owner}' hat kein GitHub Project. ` +
+        `Bitte erganzen: '"github": { "projectNumber": <N> }'`
+      );
+    }
+    const list = projects.map((p) => `#${p.number} (${p.title})`).join(", ");
+    throw new BoardError(
+      `github.projectNumber fehlt in workflow.config.json, Owner '${owner}' hat mehrere Projects: ${list}. ` +
+      `Bitte erganzen: '"github": { "projectNumber": <N> }'`
     );
-    return n;
+  }
+
+  _autoCacheKey(owner) {
+    return `${owner}#auto`;
+  }
+
+  _readAutoProjectNumberCache(owner) {
+    const p = this._metaCachePath();
+    if (!existsSync(p)) return null;
+    try {
+      const all = JSON.parse(readFileSync(p, "utf-8"));
+      return all[this._autoCacheKey(owner)]?.projectNumber || null;
+    } catch {
+      return null;
+    }
+  }
+
+  _writeAutoProjectNumberCache(owner, num) {
+    const p = this._metaCachePath();
+    let all = {};
+    if (existsSync(p)) {
+      try { all = JSON.parse(readFileSync(p, "utf-8")); } catch { all = {}; }
+    }
+    all[this._autoCacheKey(owner)] = { projectNumber: num };
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify(all, null, 2) + "\n");
   }
 
   // Project-ID, Status-Field-ID und Option-IDs aendern sich praktisch nie. Sie werden
@@ -331,29 +399,28 @@ class GitHubIssueTracker {
     const url = match[1];
     const id = match[2];
 
-    // Ans Project Board haengen, falls konfiguriert
-    if (this._cfg.github?.projectNumber) {
-      try {
-        const owner = this._owner();
-        const num = this._projectNumber();
-        exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
-        // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
-        // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
-        let lastErr = null;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          if (attempt > 1) await sleep(2500);
-          try {
-            await this.moveIssue(id, "backlog");
-            lastErr = null;
-            break;
-          } catch (e) {
-            lastErr = e;
-          }
+    // Ans Project Board haengen. _projectNumber() wirft, wenn weder konfiguriert
+    // noch eindeutig automatisch erkennbar — dann bleibt die Zuordnung aus (Hinweis).
+    try {
+      const owner = this._owner();
+      const num = this._projectNumber();
+      exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
+      // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
+      // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
+      let lastErr = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (attempt > 1) await sleep(2500);
+        try {
+          await this.moveIssue(id, "backlog");
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
         }
-        if (lastErr) throw lastErr;
-      } catch (e) {
-        process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
       }
+      if (lastErr) throw lastErr;
+    } catch (e) {
+      process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
     }
     return { id, url };
   }
@@ -382,16 +449,18 @@ class GitHubIssueTracker {
     }
 
     // Filterung nach Board-Status via Project
-    if (!this._cfg.github?.projectNumber) {
+    let num;
+    try {
+      num = this._projectNumber();
+    } catch {
       process.stderr.write(
-        "Hinweis: Ohne github.projectNumber kein Board-Status-Filter moeglich. Liste alle offenen Issues.\n"
+        "Hinweis: Kein eindeutiges GitHub Project bestimmbar, kein Board-Status-Filter moeglich. Liste alle offenen Issues.\n"
       );
       return this.listIssues(undefined);
     }
 
     this._ensureProjectMeta();
     const owner = this._owner();
-    const num = this._projectNumber();
     const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
 
     const optionId = this._statusField.options[status];
@@ -759,6 +828,175 @@ class LocalCodeHost {
 }
 
 // ============================================================
+// Toolbox-Adapter (eigenes Kanban-Board als Issue-Tracker, #368)
+// ============================================================
+
+// Kit-Status <-> KanbanColumn (Backend). Simple Uppercase-Abbildung.
+const TOOLBOX_STATUS_TO_COLUMN = {
+  backlog:     "BACKLOG",
+  ready:       "READY",
+  in_progress: "IN_PROGRESS",
+  in_review:   "IN_REVIEW",
+  done:        "DONE",
+};
+const TOOLBOX_COLUMN_TO_STATUS = Object.fromEntries(
+  Object.entries(TOOLBOX_STATUS_TO_COLUMN).map(([s, c]) => [c, s])
+);
+
+/**
+ * Issue-Tracker gegen das eigene Toolbox-Kanban-Board. Zwei-Achsen-Modell (#368): der Code liegt
+ * weiter auf GitHub (codeHost bleibt github), nur der Issue-Tracker ist das Board.
+ *
+ * Auth: liest Host + Token aus ~/.config/toolbox-cli/{config,tokens}.json (dieselbe Quelle wie das
+ * tbx-CLI, #367); Host per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header
+ * X-Kanban-Token.
+ *
+ * number vs. DB-id: Der Workflow adressiert Issues ueber die Board-Anzeigenummer (#N). Move/Comment
+ * brauchen die DB-id aus der Item-Response; sie wird intern per Board-Fetch aufgeloest.
+ */
+class ToolboxIssueTracker {
+  constructor(config) { this._cfg = config; }
+
+  _auth() {
+    const dir = process.env.TBX_CONFIG_DIR || join(homedir(), ".config", "toolbox-cli");
+    const stored = this._readJson(join(dir, "config.json"));
+    const tokens = this._readJson(join(dir, "tokens.json"));
+    const host = this._cfg.toolbox?.host || stored?.host;
+    const token = tokens?.token;
+    if (!host || !token) {
+      throw new BoardError(
+        "Kein Toolbox-Login gefunden. Token in der Web-UI erzeugen und 'tbx auth login' ausfuehren."
+      );
+    }
+    return { host, token };
+  }
+
+  _readJson(path) {
+    if (!existsSync(path)) return null;
+    try { return JSON.parse(readFileSync(path, "utf-8")); } catch { return null; }
+  }
+
+  async _fetch(path, options = {}) {
+    const { host, token } = this._auth();
+    let res;
+    try {
+      res = await fetch(`${host}${path}`, {
+        ...options,
+        headers: { ...(options.headers || {}), "X-Kanban-Token": token },
+      });
+    } catch (e) {
+      throw new BoardError(`Toolbox-API nicht erreichbar (${host}): ${e.message}`);
+    }
+    if (res.status === 401) {
+      throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
+    }
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.message) msg = body.message;
+      } catch { /* kein JSON-Body */ }
+      throw new BoardError(`Toolbox-API-Fehler: ${msg}`);
+    }
+    return res;
+  }
+
+  _toColumn(status) {
+    const column = TOOLBOX_STATUS_TO_COLUMN[status];
+    if (!column) throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    return column;
+  }
+
+  _toStatus(column) {
+    return TOOLBOX_COLUMN_TO_STATUS[column] || null;
+  }
+
+  /** Liest das gruppierte Board und liefert eine flache Liste inkl. abgeleitetem Status. */
+  async _boardItems() {
+    const res = await this._fetch("/api/kanban/items");
+    const grouped = await res.json();
+    return Object.values(grouped)
+      .flat()
+      .map((item) => ({ ...item, status: this._toStatus(item.column) }));
+  }
+
+  _findByNumber(items, number) {
+    return items.find((i) => i.number === number) || null;
+  }
+
+  _resolveByNumber(items, number) {
+    const item = this._findByNumber(items, number);
+    if (!item) throw new BoardError(`Issue ${number} nicht gefunden`);
+    return item;
+  }
+
+  async createIssue({ title, body }) {
+    const { host } = this._auth();
+    const res = await this._fetch("/api/kanban/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, body: body || "", column: "BACKLOG" }),
+    });
+    const created = await res.json();
+    return { id: String(created.number), url: `${host}/kanban` };
+  }
+
+  async getIssue(number) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    return { id: String(item.number), title: item.title, body: item.body, status: item.status };
+  }
+
+  async listIssues(status) {
+    if (status && !VALID_STATUSES.includes(status)) {
+      throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    }
+    const items = await this._boardItems();
+    return items
+      // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
+      .filter((i) => !status || (i.type !== "epic" && i.status === status))
+      .sort((a, b) => a.number - b.number)
+      .map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status }));
+  }
+
+  async listEpics() {
+    const res = await this._fetch("/api/kanban/epics");
+    const epics = await res.json();
+    return (Array.isArray(epics) ? epics : []).map((e) => ({
+      id: String(e.number ?? e.id),
+      title: e.title,
+      shortcode: e.shortcode || "",
+      progress: e.progress || { total: 0, done: 0 },
+    }));
+  }
+
+  async moveIssue(number, to) {
+    const num = Number(number);
+    const column = this._toColumn(to);
+    const items = await this._boardItems();
+    const item = this._resolveByNumber(items, num);
+    // Zielposition = Ende der Zielspalte (bei gleichbleibender Spalte: aktuelle Position halten).
+    const targetPosition =
+      item.column === column ? item.position : items.filter((i) => i.column === column).length;
+    await this._fetch(`/api/kanban/items/${item.id}/move`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ column, position: targetPosition }),
+    });
+  }
+
+  async commentIssue(number, text) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    await this._fetch(`/api/kanban/items/${item.id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: text }),
+    });
+  }
+}
+
+// ============================================================
 // Hilfsfunktionen
 // ============================================================
 
@@ -785,7 +1023,8 @@ function resolveTracker(config) {
     case "github": return new GitHubIssueTracker(config);
     case "gitlab": return new GitLabIssueTracker(config);
     case "local":  return new LocalIssueTracker(config);
-    default: fail(`Unbekannter issueTracker: '${config.issueTracker}'. Erwartet: github | gitlab | local`);
+    case "toolbox": return new ToolboxIssueTracker(config);
+    default: fail(`Unbekannter issueTracker: '${config.issueTracker}'. Erwartet: github | gitlab | local | toolbox`);
   }
 }
 
