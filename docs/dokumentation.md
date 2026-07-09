@@ -367,6 +367,24 @@ Der Status (`backlog | ready | in_progress | in_review | done`) steht im Frontma
 
 Du kannst beide Felder jederzeit manuell ändern. Alle Skills lesen sie beim nächsten Aufruf.
 
+### Toolbox (privates Setup)
+
+Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-Tool des Autors (eigenes Backend, eigenes Frontend), das er selbst als Issue-Tracker nutzt. Der Installer fragt nicht danach, und dieser Abschnitt dient in erster Linie dem eigenen Nachschlagen — nicht der allgemeinen Empfehlung.
+
+`codeHost` bleibt davon unabhängig (üblicherweise `github` oder `gitlab`): Toolbox ist nur ein Issue-Tracker, kein Code-Host, Pull Requests laufen weiterhin über die dort konfigurierte Plattform.
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "toolbox",
+  "toolbox": { "host": "https://toolbox.mwolff.org" }
+}
+```
+
+**Authentifizierung** läuft über einen persönlichen Kanban-Access-Token (PAT), nicht über den Keycloak-Login der Toolbox-Weboberfläche: Token in der Toolbox-Web-UI erzeugen, anschließend `tbx auth login` ausführen. Der Token wird unter `~/.config/toolbox-cli/{config,tokens}.json` gespeichert, jeder Aufruf trägt ihn im Header `X-Kanban-Token`. Er wirkt ausschließlich auf `/api/kanban/**` — Einrichtung des `tbx`-CLI und Token-Verwaltung sind Teil des Toolbox-Projekts selbst, nicht dieses Kits.
+
+**Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
+
 ## Aktualisieren und mehrere Projekte
 
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).
