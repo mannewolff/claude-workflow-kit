@@ -36,7 +36,7 @@ Der Installer fragt sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die zwölf Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) und die lokale Board-UI (`.claude/kit/board-ui.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die zwölf Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
 ## Die zwölf Skills
 

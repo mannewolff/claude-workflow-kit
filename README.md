@@ -2,7 +2,7 @@
 
 Eine Bibliothek aus Claude-Code-Skills, die den 9-Schritt-Prozess zur KI-gestuetzten Softwareentwicklung ausfuehrbar macht. Claude plant, schreibt Issues, implementiert und bereitet das Review vor — drei Schritte bleiben bewusst menschlich: das GO, der Push und der Merge.
 
-GitHub, GitLab und ein vollstaendig lokaler Modus werden unterstuetzt — lokal liegen die Issues als Markdown-Dateien im Repo, inklusive einer lokalen Kanban-Board-UI.
+GitHub, GitLab und ein vollstaendig lokaler Modus werden unterstuetzt — lokal liegen die Issues als Markdown-Dateien im Repo.
 
 ## Installation
 
