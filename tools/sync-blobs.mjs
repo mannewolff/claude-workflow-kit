@@ -33,7 +33,6 @@ function buildDirJson(dir) {
 
 const BLOBS = [
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
-  { constName: "BOARD_UI_MJS_B64", source: join(root, "kit", "board-ui.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 
