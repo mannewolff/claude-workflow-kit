@@ -8,7 +8,7 @@ Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zwölf Sk
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Drei weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Fünf weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /implement-test und /implement-done, /retro und /document.
 
 ## Voraussetzungen
 
@@ -193,9 +193,17 @@ Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach R
 
 **Schritt 5, nach dem GO.**
 
-Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben, lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
+Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben (testgetrieben: Tests zuerst, rot, dann implementieren bis grün), lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
 
 Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmächtig nach Ready.
+
+### /implement-test und /implement-done
+
+**Granularer Einstieg zu Schritt 5, für Einsteiger.**
+
+`/implement-ready` erledigt Test und Implementierung eines Issues in einem Rutsch. Wer den Rot-Grün-Übergang bewusst sehen will, nutzt stattdessen zwei Skills nacheinander: `/implement-test` nimmt das nächste Ready-Issue, bewegt es nach In progress und schreibt ausschließlich die Tests dagegen — kein Produktionscode, kein Commit. Läuft bereits ein Issue in In progress, stoppt der Skill und verweist auf `/implement-done`.
+
+`/implement-done` findet das laufende Issue über die In-progress-Spalte, implementiert gegen die vorbereiteten Tests, bis sie grün sind, und committet Tests und Implementierung gemeinsam — Format und Stop-Punkte identisch zu `/implement-ready`.
 
 ### /local-check
 
@@ -286,6 +294,16 @@ Zum Abschluss `/document`.
 **Schritt 9: der Merge.** Du bringst Code nach production. Du hast auf dem Test-Server geprüft, du trägst die Verantwortung, du mergst.
 
 Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist der Sinn des Kits: KI macht die Arbeit, Menschen treffen die Entscheidungen.
+
+## Zwei Bahnen
+
+Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
+
+**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO.
+
+**Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
+
+Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
 ## Was bewusst nicht im Kit ist
 
