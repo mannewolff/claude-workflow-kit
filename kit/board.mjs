@@ -5,10 +5,8 @@
  * und fuehrt die angeforderte Operation aus.
  *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
- * board.mjs ist die generalisierte Board-Adapter-Schnittstelle des Kits; board-ui ist
- * nur ein Consumer davon. NICHT aus dem board-ui-Repo zuruecksyncen — Aenderungen
- * ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs` (aktualisiert den
- * eingebetteten Blob in install.mjs). (board-ui.mjs kommt umgekehrt aus dem board-ui-Repo.)
+ * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`
+ * (aktualisiert den eingebetteten Blob in install.mjs).
  *
  * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
  *
@@ -668,10 +666,7 @@ class GitLabCodeHost {
 // Local-Adapter
 // ============================================================
 
-// Minimaler YAML-Frontmatter-Parser fuer die Issue-Dateien (kein externes Modul)
-// SYNC: bewusst dupliziert in kit/board.mjs UND kit/board-ui.mjs — beide Dateien
-// sind eigenstaendig portable Single-File-Tools, ein gemeinsames Modul wuerde das
-// brechen. Aenderungen immer in beiden Dateien identisch nachziehen.
+// Minimaler YAML-Frontmatter-Parser fuer die Issue-Dateien (kein externes Modul).
 // Bewusst minimal: nur flaches, einzeiliges YAML (reicht fuer das Issue-Format).
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -697,7 +692,7 @@ function padId(n) {
   return String(n).padStart(4, "0");
 }
 
-// SYNC: Epic-Fortschritt aus den Kindern (parent-Zeiger). Gespiegelt in board-ui.mjs.
+// Epic-Fortschritt aus den Kindern (parent-Zeiger).
 // Kinder = nicht-Epic-Issues mit parent == epicId; done = Kinder im Status "done".
 function epicProgress(issues, epicId) {
   const children = issues.filter((i) => i.type !== "epic" && i.parent === epicId);
