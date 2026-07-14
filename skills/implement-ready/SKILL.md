@@ -35,10 +35,12 @@ Lies alle vier Abschnitte des Issues. Implementiere **gegen das Issue**, nicht g
 
 ### 3. Implementieren
 
-- Code schreiben, Tests schreiben (TDD: erst Test, dann Code)
+- TDD: Tests zuerst schreiben und rot laufen lassen, dann gegen die Tests implementieren, bis grün
 - Bestehende Muster und Funktionen wiederverwenden
 - Kein Feature, keine Refactoring, keine Abstraktion die das Issue nicht verlangt
 - Bei UI-Änderungen: Dev-Server starten, Golden Path und Edge Cases durchklicken
+
+Für eine granularere Variante mit explizitem Stopp zwischen rot und grün: `/implement-test` gefolgt von `/implement-done`.
 
 ### 4. Lokal committen (nicht pushen)
 
