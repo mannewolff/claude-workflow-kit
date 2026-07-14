@@ -12,7 +12,7 @@ Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrer
 
 ### 1. Plan prüfen
 
-Lies den freigegebenen Plan. Wenn kein Plan vorliegt, weise darauf hin: erst `/plan` ausführen und freigeben lassen.
+Prüfe, ob ein in **dieser Session** freigegebener Plan existiert. Wenn nein: **STOPP — keine Issues anlegen.** Verweise darauf, dass erst `/plan` laufen und freigegeben werden muss. Eine Ideen-/Use-Case-Liste im Chat ist **kein** freigegebener Plan.
 
 ### 2. Issues schneiden
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit kit/ und skills/.
+ * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/ und skills/.
  *
  * Nutzung:
  *   node tools/sync-blobs.mjs          # Blobs in install.mjs neu generieren
@@ -32,6 +32,7 @@ function buildDirJson(dir) {
 }
 
 const BLOBS = [
+  { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
