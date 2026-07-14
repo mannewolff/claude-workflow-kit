@@ -4,7 +4,7 @@ Eine dünne Werkzeugschicht, die einen 9-Schritt-Kernprozess für KI-gestützte 
 
 ## Konzept
 
-Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zehn Skills, eine projektlokale Config und ein Installer.
+Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zwölf Skills, eine projektlokale Config und ein Installer.
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
@@ -69,7 +69,7 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs` sowie die lokale Board-UI in `.claude/kit/board-ui.mjs` (eine Kanban-Ansicht für den lokalen Modus, siehe [Lokal arbeiten](./lokal#board-starten)). Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die zwölf Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs` sowie die lokale Board-UI in `.claude/kit/board-ui.mjs` (eine Kanban-Ansicht für den lokalen Modus, siehe [Lokal arbeiten](./lokal#board-starten)). Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
@@ -137,9 +137,9 @@ Beispiele für verschiedene Stacks:
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
 
-## Die zehn Skills und der 9-Schritt-Kernprozess
+## Die zwölf Skills und der 9-Schritt-Kernprozess
 
-Der Kernprozess hat neun Schritte. Drei weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
+Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -155,7 +155,7 @@ Der Kernprozess hat neun Schritte. Drei weitere Skills (Querschnitts-Skills) ste
 
 Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser — kein eigener Skill, aber Pflicht. Diese Zählung ist dieselbe wie in der `CLAUDE-workflow.md` und in den Skill-Definitionen.
 
-Querschnitts-Skills: /kontext (Session-Start), /retro (Wartungsrhythmus), /document (Session-Ende).
+Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-done (granularer Einstieg zu Schritt 5), /retro (Wartungsrhythmus), /document (Session-Ende).
 
 ### /kontext
 
