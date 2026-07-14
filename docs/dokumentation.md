@@ -4,11 +4,11 @@ Eine dünne Werkzeugschicht, die einen 9-Schritt-Kernprozess für KI-gestützte 
 
 ## Konzept
 
-Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zehn Skills, eine projektlokale Config und ein Installer.
+Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zwölf Skills, eine projektlokale Config und ein Installer.
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Drei weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Fünf weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /implement-test und /implement-done, /retro und /document.
 
 ## Voraussetzungen
 
@@ -69,7 +69,9 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die zehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs` sowie die lokale Board-UI in `.claude/kit/board-ui.mjs` (eine Kanban-Ansicht für den lokalen Modus, siehe [Lokal arbeiten](./lokal#board-starten)). Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die zwölf Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+
+Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
@@ -137,9 +139,9 @@ Beispiele für verschiedene Stacks:
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
 
-## Die zehn Skills und der 9-Schritt-Kernprozess
+## Die zwölf Skills und der 9-Schritt-Kernprozess
 
-Der Kernprozess hat neun Schritte. Drei weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
+Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -155,7 +157,7 @@ Der Kernprozess hat neun Schritte. Drei weitere Skills (Querschnitts-Skills) ste
 
 Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser — kein eigener Skill, aber Pflicht. Diese Zählung ist dieselbe wie in der `CLAUDE-workflow.md` und in den Skill-Definitionen.
 
-Querschnitts-Skills: /kontext (Session-Start), /retro (Wartungsrhythmus), /document (Session-Ende).
+Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-done (granularer Einstieg zu Schritt 5), /retro (Wartungsrhythmus), /document (Session-Ende).
 
 ### /kontext
 
@@ -191,9 +193,17 @@ Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach R
 
 **Schritt 5, nach dem GO.**
 
-Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben, lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
+Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben (testgetrieben: Tests zuerst, rot, dann implementieren bis grün), lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
 
 Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmächtig nach Ready.
+
+### /implement-test und /implement-done
+
+**Granularer Einstieg zu Schritt 5, für Einsteiger.**
+
+`/implement-ready` erledigt Test und Implementierung eines Issues in einem Rutsch. Wer den Rot-Grün-Übergang bewusst sehen will, nutzt stattdessen zwei Skills nacheinander: `/implement-test` nimmt das nächste Ready-Issue, bewegt es nach In progress und schreibt ausschließlich die Tests dagegen — kein Produktionscode, kein Commit. Läuft bereits ein Issue in In progress, stoppt der Skill und verweist auf `/implement-done`.
+
+`/implement-done` findet das laufende Issue über die In-progress-Spalte, implementiert gegen die vorbereiteten Tests, bis sie grün sind, und committet Tests und Implementierung gemeinsam — Format und Stop-Punkte identisch zu `/implement-ready`.
 
 ### /local-check
 
@@ -284,6 +294,16 @@ Zum Abschluss `/document`.
 **Schritt 9: der Merge.** Du bringst Code nach production. Du hast auf dem Test-Server geprüft, du trägst die Verantwortung, du mergst.
 
 Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist der Sinn des Kits: KI macht die Arbeit, Menschen treffen die Entscheidungen.
+
+## Zwei Bahnen
+
+Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
+
+**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO.
+
+**Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
+
+Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
 ## Was bewusst nicht im Kit ist
 

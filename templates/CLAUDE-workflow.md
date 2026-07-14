@@ -32,6 +32,25 @@ Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und
 
 ---
 
+## Zwei Bahnen
+
+**Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger.
+
+**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/plan` → `/issues` → GO → `/implement-ready`.
+
+**Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2, ich …"); im Zweifel Bahn 2.
+
+| Beispiel | Bahn |
+|----------|------|
+| Icon-/Favicon-Tausch | 1 |
+| Textkorrektur | 1 |
+| Config-Default | 1 |
+| Neue Tabelle | 2 |
+| Neuer Endpoint | 2 |
+| Neues UI-Feature | 2 |
+
+---
+
 ## Kanban-Board (5 Spalten)
 
 | Spalte | Bedeutung | Wer bewegt |
@@ -66,18 +85,23 @@ Absolut bindend:
 
 ```json
 {
-  "provider": "github",
+  "codeHost": "github",
+  "issueTracker": "github",
   "buildChecks": ["<build-kommando>", "<test-kommando>"],
   "mutationCommand": "<mutations-test-kommando oder leer>",
   "mainBranch": "main",
   "productionBranch": "production",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
-  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" }
+  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" },
+  "local": { "issuesDir": "issues" }
 }
 ```
 
-`provider` ist `"github"` oder `"gitlab"`. Steuert welche CLI die Skills verwenden.
+`codeHost` steuert den Code-Host (github | gitlab | local).
+`issueTracker` steuert Issues und Board (github | gitlab | local).
+Bei GitHub und GitLab zeigen beide auf denselben Wert.
+Bestehende Configs mit `provider` werden automatisch migriert.
 
 `buildChecks` und `mutationCommand` anpassen. Alle anderen Felder haben sinnvolle Defaults.
 

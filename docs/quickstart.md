@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir zehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir zwölf Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -36,9 +36,9 @@ Der Installer fragt sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) und die lokale Board-UI (`.claude/kit/board-ui.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die zwölf Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die zehn Skills
+## Die zwölf Skills
 
 | Befehl | Wofür |
 |--------|-------|
@@ -46,6 +46,8 @@ Danach liegen die zehn Skills in `.claude/skills/` (oder global in `~/.claude/sk
 | `/plan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
+| `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
+| `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
 | `/review` | Review durch Opus in frischer Session |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
