@@ -39,6 +39,7 @@ Lies alle vier Abschnitte des Issues. Implementiere **gegen das Issue**, nicht g
 - Bestehende Muster und Funktionen wiederverwenden
 - Kein Feature, keine Refactoring, keine Abstraktion die das Issue nicht verlangt
 - Bei UI-Änderungen: Dev-Server starten, Golden Path und Edge Cases durchklicken
+- Bei neuer oder geänderter Logik: abgedeckt oder begründet ausgeschlossen gemäß der Coverage-/Qualitäts-Policy des Projekts (siehe Projekt-Guide bzw. `workflow.config.json`). Untestete Logik nie stillschweigend ausschließen, Schwellen nie senken, nur damit ein Gate grün wird.
 
 ### 4. Lokal committen (nicht pushen)
 
