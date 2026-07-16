@@ -30,6 +30,18 @@ Führe alle Kommandos in `buildChecks` sequenziell aus:
 
 Bei Fehler: Ausgabe zeigen, Ursache analysieren, Fix vorschlagen. Nicht stillschweigend weitermachen.
 
+**Bevorzugt im Vordergrund ausführen** — der Exit-Code ist dann direkt sichtbar und eindeutig dem Check zuzuordnen.
+
+Wird ein langer Check dennoch in den Hintergrund verschoben: den **echten** Exit-Code in eine Datei schreiben und von dort auswerten, statt dem automatisch gemeldeten Abschluss-Status der Kommandokette zu vertrauen:
+
+```bash
+<kommando> > log.txt 2>&1 ; echo "EXIT=$?" >> log.txt
+```
+
+Ein nachgestelltes `echo` maskiert den Exit-Code, wenn die Auswertung nur auf den gemeldeten Abschluss-Status der gesamten Kommandokette schaut — der ist dann immer der von `echo` (0), nicht der des eigentlichen Checks. Die Auswertung muss den in der Datei geschriebenen Wert lesen (`grep "^EXIT="`), nicht den Status der Kommandokette selbst.
+
+Zusätzlich zu tool-spezifischen Erfolgsmeldungen generisch auf `[ERROR]` bzw. `BUILD FAILURE` im Log prüfen, nicht nur auf enge Stichworte (z. B. nur PIT-Survivors oder nur das Wort „FAILURE") — sonst rutschen andere Fehlerarten (z. B. Formatierungs- oder Lint-Violations) unbemerkt durch.
+
 ### 2. Mutations-Test (wenn konfiguriert)
 
 ```bash
