@@ -18,6 +18,8 @@ Fehlt die Config: Führe `buildChecks: []` aus und weise darauf hin, dass keine 
 
 ## Pflicht-Checks
 
+**Leitplanke: Ein Coverage-/Qualitäts-Gate ist ein Floor, kein Beweis voller Abdeckung.** Grün heißt „über der vereinbarten Schwelle", nicht „vollständig getestet". Als Vertrauenssignal trägt eine Metrik nur, wenn sie ehrlich bleibt: Eine Lücke muss echt ungetestete Logik bedeuten, nie stillschweigend ausgeschlossenes Rauschen. Liegt der Coverage-Report unter dem im Projekt vereinbarten Ziel (siehe Projekt-Guide bzw. `workflow.config.json`), das explizit als Signal ausweisen statt es still durchzuwinken — der Mensch entscheidet, ob reingeschaut oder Tests nachgezogen werden.
+
 ### 1. Build-Checks aus der Config
 
 Führe alle Kommandos in `buildChecks` sequenziell aus:
@@ -29,6 +31,18 @@ Führe alle Kommandos in `buildChecks` sequenziell aus:
 ```
 
 Bei Fehler: Ausgabe zeigen, Ursache analysieren, Fix vorschlagen. Nicht stillschweigend weitermachen.
+
+**Bevorzugt im Vordergrund ausführen** — der Exit-Code ist dann direkt sichtbar und eindeutig dem Check zuzuordnen.
+
+Wird ein langer Check dennoch in den Hintergrund verschoben: den **echten** Exit-Code in eine Datei schreiben und von dort auswerten, statt dem automatisch gemeldeten Abschluss-Status der Kommandokette zu vertrauen:
+
+```bash
+<kommando> > log.txt 2>&1 ; echo "EXIT=$?" >> log.txt
+```
+
+Ein nachgestelltes `echo` maskiert den Exit-Code, wenn die Auswertung nur auf den gemeldeten Abschluss-Status der gesamten Kommandokette schaut — der ist dann immer der von `echo` (0), nicht der des eigentlichen Checks. Die Auswertung muss den in der Datei geschriebenen Wert lesen (`grep "^EXIT="`), nicht den Status der Kommandokette selbst.
+
+Zusätzlich zu tool-spezifischen Erfolgsmeldungen generisch auf `[ERROR]` bzw. `BUILD FAILURE` im Log prüfen, nicht nur auf enge Stichworte (z. B. nur PIT-Survivors oder nur das Wort „FAILURE") — sonst rutschen andere Fehlerarten (z. B. Formatierungs- oder Lint-Violations) unbemerkt durch.
 
 ### 2. Mutations-Test (wenn konfiguriert)
 

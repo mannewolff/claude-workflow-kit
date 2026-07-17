@@ -1,6 +1,6 @@
 {
   "codeHost": "github",
-  "issueTracker": "local",
+  "issueTracker": "github",
   "buildChecks": [],
   "mutationCommand": "",
   "mainBranch": "main",
@@ -15,11 +15,14 @@
   "local": {
     "issuesDir": "issues"
   },
+  "github": {
+    "projectNumber": 14
+  },
   "columns": {
     "backlog": "Backlog",
     "ready": "Ready",
-    "in_progress": "In Progress",
-    "in_review": "In Review",
+    "in_progress": "In progress",
+    "in_review": "In review",
     "done": "Done"
   }
 }

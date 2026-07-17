@@ -114,8 +114,8 @@
       "properties": {
         "backlog":     { "type": "string", "minLength": 1, "default": "Backlog", "description": "GitLab-Sonderwert \"Open\": backlog wird als nativer Open-Zustand behandelt statt als Label." },
         "ready":       { "type": "string", "minLength": 1, "default": "Ready" },
-        "in_progress": { "type": "string", "minLength": 1, "default": "In Progress" },
-        "in_review":   { "type": "string", "minLength": 1, "default": "In Review" },
+        "in_progress": { "type": "string", "minLength": 1, "default": "In progress" },
+        "in_review":   { "type": "string", "minLength": 1, "default": "In review" },
         "done":        { "type": "string", "minLength": 1, "default": "Done", "description": "Nur Anzeigename fuer GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand." }
       },
       "required": [],
@@ -123,8 +123,8 @@
       "default": {
         "backlog": "Backlog",
         "ready": "Ready",
-        "in_progress": "In Progress",
-        "in_review": "In Review",
+        "in_progress": "In progress",
+        "in_review": "In review",
         "done": "Done"
       }
     },
@@ -175,8 +175,8 @@
     "columns": {
       "backlog": "Backlog",
       "ready": "Ready",
-      "in_progress": "In Progress",
-      "in_review": "In Review",
+      "in_progress": "In progress",
+      "in_review": "In review",
       "done": "Done"
     }
   },

@@ -1,0 +1,37 @@
+name: SonarQube Cloud
+
+# Rein statische Analyse (Bugs, Code Smells, Duplication, Security Hotspots) fuer die
+# Node-Scripts des Kits (kit/, install.mjs, tools/). Keine Coverage-Auswertung, da diese
+# Scripts aktuell keine Testsuite haben (siehe sonar-project.properties). Nur main als
+# Trigger: production hat zum Merge-Zeitpunkt denselben Inhalt wie main (Release-Flow ist
+# main -> production per PR-Merge, siehe RELEASING.md), ein zusaetzlicher Scan dort waere
+# nur eine redundante Zweitanalyse desselben Commits.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sonarqube:
+    name: SonarQube-Analyse (statisch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # voller Verlauf noetig, sonst fehlen Sonar die Blame-Infos
+
+      # Auf Commit-SHA gepinnt statt beweglichem Tag (Supply-Chain-Haertung), derselbe Pin
+      # wie im Vorbild kanban-kit (.github/workflows/sonarqube.yml, entspricht v8.2.0).
+      # sonar.branch.name=main explizit gesetzt statt dem Auto-Erkennen des Scanners
+      # ueberlassen: robust auch bei workflow_dispatch (kann von jedem Branch/Ref manuell
+      # gestartet werden). Die kostenlose SonarCloud-Stufe kennt ohnehin nur den main-Branch.
+      - name: SonarQube-Scan
+        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
+        with:
+          args: >
+            -Dsonar.branch.name=main
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

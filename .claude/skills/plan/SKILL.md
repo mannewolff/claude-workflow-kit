@@ -10,6 +10,10 @@ Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur
 
 ## Ablauf
 
+### 0. Bahn bestimmen
+
+Ist die Anforderung Bahn 1 (kleine Änderung nach der Definition in CLAUDE-workflow.md), sag das und biete an, sie **direkt** umzusetzen statt zu planen — kein Plan-Overhead. Nur bei Bahn 2 den vollen Plan erstellen.
+
 ### 1. Anforderung verstehen
 
 Kläre zuerst:

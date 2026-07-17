@@ -39,8 +39,8 @@ Das Ergebnis in `.claude/workflow.config.json`:
   "columns": {
     "backlog":     "Backlog",
     "ready":       "Ready",
-    "in_progress": "In Progress",
-    "in_review":   "In Review",
+    "in_progress": "In progress",
+    "in_review":   "In review",
     "done":        "Done"
   }
 }

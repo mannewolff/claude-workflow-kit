@@ -26,7 +26,7 @@ Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI über
 | `gitlab` | `glab` (GitLab CLI), einmalig `glab auth login` |
 | `local` | Nichts — Issues liegen als Dateien in `issues/` |
 
-**Ein Projekt-Board, falls du GitHub oder GitLab als Issue-Tracker nutzt.** Das Board braucht diese fünf Spalten: Backlog, Ready, In Progress, In Review, Done. Bei GitHub sind das Projekt-Board-Spalten (GitHub Projects), bei GitLab werden sie durch Labels abgebildet. Im lokalen Modus gibt es kein Board — der Adapter schreibt und liest YAML-Frontmatter-Dateien direkt.
+**Ein Projekt-Board, falls du GitHub oder GitLab als Issue-Tracker nutzt.** Das Board braucht diese fünf Spalten: Backlog, Ready, In progress, In review, Done. Bei GitHub sind das Projekt-Board-Spalten (GitHub Projects), bei GitLab werden sie durch Labels abgebildet. Im lokalen Modus gibt es kein Board — der Adapter schreibt und liest YAML-Frontmatter-Dateien direkt.
 
 **`kontext.config.json` für /kontext und /document (optional).** Beide Skills laufen auch ohne diese Datei im Degraded Mode. Wenn du persistentes projektübergreifendes Memory willst: Bei globaler Installation fragt der Installer nach dem Vault-Pfad und legt die Datei automatisch an, bei projektlokaler Installation legst du sie manuell an. Details im Abschnitt [kontext.config.json](#kontext-config-json-referenz).
 
@@ -122,7 +122,7 @@ Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Sk
 
 Bei `issueTracker: github` legt der Adapter beim ersten Zugriff eine Cache-Datei `.claude/board-meta-cache.json` mit den Project-Metadaten (Project-ID, Status-Feld- und Options-IDs) an. Sie erspart jedem weiteren `board.mjs`-Aufruf zwei GraphQL-Abfragen und schont so das GitHub-Kontingent. Die Datei ist maschinenlokal und gehört nicht ins Repository — der Installer ignoriert `.claude/` ohnehin komplett; committest du `.claude/` selbst, nimm `.claude/board-meta-cache.json` in die `.gitignore` auf. Löschst du sie, wird sie beim nächsten Aufruf neu aufgebaut; veraltete IDs heilt der Adapter automatisch.
 
-`columns` steuert die Spaltennamen auf dem Board. Die fünf Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien und sind die internen Status-Werte. Die Werte sind die angezeigten Bezeichnungen und frei wählbar. Bei GitHub entsprechen die Werte den Spaltennamen im Project Board, bei GitLab den Label-Namen. Ohne `columns` in der Config gelten die Defaults: Backlog, Ready, In Progress, In Review, Done.
+`columns` steuert die Spaltennamen auf dem Board. Die fünf Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien und sind die internen Status-Werte. Die Werte sind die angezeigten Bezeichnungen und frei wählbar. Bei GitHub entsprechen die Werte den Spaltennamen im Project Board, bei GitLab den Label-Namen. Ohne `columns` in der Config gelten die Defaults: Backlog, Ready, In progress, In review, Done.
 
 `buildChecks` enthält die Kommandos, die `/local-check` sequenziell ausführt. Alle müssen grün sein, bevor der Skill Vollzug meldet. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
 
@@ -371,7 +371,7 @@ Der Status (`backlog | ready | in_progress | in_review | done`) steht im Frontma
 
 **Pull Request heisst Merge Request.** `/merge-production` erstellt bei GitLab einen Merge Request statt eines Pull Requests.
 
-**Board-Status per Label.** GitLab bildet die fünf Spalten über Labels ab: `~Backlog`, `~Ready`, `~In Progress`, `~In Review`, `~Done`. Der Installer legt die Labels automatisch an, wenn du beim Setup "j" bestätigst. Die Board-Ansicht selbst (Issues → Boards → "Add list") musst du einmalig manuell in der GitLab-UI anlegen.
+**Board-Status per Label.** GitLab bildet die fünf Spalten über Labels ab: `~Backlog`, `~Ready`, `~In progress`, `~In review`, `~Done`. Der Installer legt die Labels automatisch an, wenn du beim Setup "j" bestätigst. Die Board-Ansicht selbst (Issues → Boards → "Add list") musst du einmalig manuell in der GitLab-UI anlegen.
 
 ### Konfiguration einstellen
 
