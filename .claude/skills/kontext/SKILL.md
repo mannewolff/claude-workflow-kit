@@ -66,8 +66,6 @@ node .claude/kit/board.mjs code repo-name
 
 Wenn der Adapter einen Fehler zurueckgibt: Schritt ueberspringen, kein harter Abbruch.
 
-Im lokalen Modus (`issueTracker: local`) kann der Mensch das Board visuell mit `node .claude/kit/board-ui.mjs` starten — das oeffnet eine Kanban-Ansicht auf http://localhost:3000.
-
 ### 6. Zusammenfassung ausgeben
 
 Kompakter Session-Start-Stand:
