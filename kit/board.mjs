@@ -269,7 +269,7 @@ class GitHubIssueTracker {
       return null; // korrupte Cache-Datei wie Cache-Miss behandeln
     }
     const entry = all[this._metaCacheKey()];
-    if (!entry || !entry.projectId || !entry.statusField) return null;
+    if (!entry?.projectId || !entry?.statusField) return null;
     // Bei geaenderten Spalten-Labels ist die Option-Zuordnung veraltet — neu aufbauen.
     if (JSON.stringify(entry.columnLabels) !== JSON.stringify(columnLabels(this._cfg))) return null;
     return entry;
@@ -482,12 +482,19 @@ class GitHubIssueTracker {
 
     try {
       this._editItemStatus(itemId, to);
-    } catch (e) {
+    } catch (firstErr) {
       // Gecachte IDs koennten veraltet sein (z.B. Option-ID im Project entfernt) —
       // Cache verwerfen, Meta frisch aus der API laden und einmal wiederholen.
       this._invalidateMetaCache();
       this._ensureProjectMeta();
-      this._editItemStatus(itemId, to);
+      try {
+        this._editItemStatus(itemId, to);
+      } catch (retryErr) {
+        throw new BoardError(
+          `Status-Update fehlgeschlagen (auch nach Cache-Refresh): ${retryErr.message} ` +
+          `(urspruenglicher Fehler: ${firstErr.message})`
+        );
+      }
     }
   }
 
@@ -673,7 +680,9 @@ function parseFrontmatter(content) {
   if (!match) return { meta: {}, body: content };
   const meta = {};
   for (const line of match[1].split("\n")) {
-    const m = line.match(/^(\w+):\s*(.*)$/);
+    // Fuehrende Leerzeichen nach dem Doppelpunkt uebernimmt das nachgelagerte .trim();
+    // deshalb hier bewusst kein \s* (vermeidet ueberlappende Zeichenklassen/Backtracking).
+    const m = line.match(/^(\w+):(.*)$/);
     if (m) meta[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
   }
   return { meta, body: match[2] };
@@ -730,7 +739,7 @@ class LocalIssueTracker {
   _nextId() {
     const files = this._allFiles();
     if (files.length === 0) return 1;
-    const nums = files.map((f) => parseInt(f, 10)).filter((n) => !isNaN(n));
+    const nums = files.map((f) => Number.parseInt(f, 10)).filter((n) => !Number.isNaN(n));
     return nums.length > 0 ? Math.max(...nums) + 1 : 1;
   }
 
@@ -877,7 +886,7 @@ class ToolboxIssueTracker {
     try {
       res = await fetch(`${host}${path}`, {
         ...options,
-        headers: { ...(options.headers || {}), "X-Kanban-Token": token },
+        headers: { ...options.headers, "X-Kanban-Token": token },
       });
     } catch (e) {
       throw new BoardError(`Toolbox-API nicht erreichbar (${host}): ${e.message}`);
@@ -996,7 +1005,9 @@ class ToolboxIssueTracker {
 // ============================================================
 
 function shellQuote(str) {
-  return `'${String(str).replace(/'/g, "'\\''")}'`;
+  // Klassisches POSIX-Single-Quote-Escaping: jedes ' wird zu '\'' (schliessen, escaptes
+  // Quote, wieder oeffnen). String.raw haelt die Ersetzung frei von Backslash-Escapes.
+  return `'${String(str).replaceAll("'", String.raw`'\''`)}'`;
 }
 
 function labelToStatus(labelNames, config, state) {
@@ -1036,6 +1047,98 @@ function resolveCodeHost(config) {
 // Dispatch
 // ============================================================
 
+// Ein Handler je issue-Subbefehl: haelt die Argument-Validierung flach (auf Funktionsebene
+// statt tief in verschachtelten switch-cases) und damit die kognitive Komplexitaet niedrig.
+async function issueCreate(tracker, args) {
+  if (!args.title) fail("--title ist erforderlich");
+  out(await tracker.createIssue({
+    title: args.title,
+    body: args.body || "",
+    type: args.type,
+    parent: args.parent,
+    color: args.color,
+    shortcode: args.shortcode,
+  }));
+}
+
+async function issueGet(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue get <id>");
+  out(await tracker.getIssue(id));
+}
+
+async function issueList(tracker, args) {
+  if (args.status && !VALID_STATUSES.includes(args.status)) {
+    fail(`Ungueltiger Status '${args.status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+  }
+  out(await tracker.listIssues(args.status));
+}
+
+async function issueEpics(tracker) {
+  if (typeof tracker.listEpics !== "function") {
+    fail("epics wird nur im lokalen Modus unterstuetzt (issueTracker: local)");
+  }
+  out(await tracker.listEpics());
+}
+
+async function issueMove(tracker, args) {
+  const [id, toStatus] = args._;
+  if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
+  if (!toStatus) fail("status ist erforderlich: board.mjs issue move <id> <status>");
+  if (!VALID_STATUSES.includes(toStatus)) {
+    fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+  }
+  await tracker.moveIssue(id, toStatus);
+  out({ ok: true, id, status: toStatus });
+}
+
+async function issueComment(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
+  if (!args.text) fail("--text ist erforderlich");
+  await tracker.commentIssue(id, args.text);
+  out({ ok: true, id });
+}
+
+async function dispatchIssue(command, args) {
+  const tracker = resolveTracker(loadConfig());
+  switch (command) {
+    case "create":  return issueCreate(tracker, args);
+    case "get":     return issueGet(tracker, args);
+    case "list":    return issueList(tracker, args);
+    case "epics":   return issueEpics(tracker);
+    case "move":    return issueMove(tracker, args);
+    case "comment": return issueComment(tracker, args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter issue-Befehl: '${command}'`);
+  }
+}
+
+async function codeRepoName(host) {
+  out({ repoName: await host.getRepoName() });
+}
+
+async function codePr(host, args) {
+  if (!args.from) fail("--from ist erforderlich");
+  if (!args.to) fail("--to ist erforderlich");
+  if (!host.supportsPullRequests()) {
+    fail("Dieser codeHost unterstuetzt keine Pull Requests. Nutze einen lokalen git-Merge.");
+  }
+  out(await host.createPullRequest({ from: args.from, to: args.to, title: args.title }));
+}
+
+async function dispatchCode(command, args) {
+  const host = resolveCodeHost(loadConfig());
+  switch (command) {
+    case "repo-name": return codeRepoName(host);
+    case "pr":        return codePr(host, args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter code-Befehl: '${command}'`);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -1048,96 +1151,19 @@ async function main() {
   const args = parseArgs(rest);
 
   if (axis === "issue") {
-    const config = loadConfig();
-    const tracker = resolveTracker(config);
-
-    switch (command) {
-      case "create": {
-        if (!args.title) fail("--title ist erforderlich");
-        out(await tracker.createIssue({
-          title: args.title,
-          body: args.body || "",
-          type: args.type,
-          parent: args.parent,
-          color: args.color,
-          shortcode: args.shortcode,
-        }));
-        break;
-      }
-      case "get": {
-        const id = args._[0];
-        if (!id) fail("id ist erforderlich: board.mjs issue get <id>");
-        out(await tracker.getIssue(id));
-        break;
-      }
-      case "list": {
-        if (args.status && !VALID_STATUSES.includes(args.status)) {
-          fail(`Ungueltiger Status '${args.status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
-        }
-        out(await tracker.listIssues(args.status));
-        break;
-      }
-      case "epics": {
-        if (typeof tracker.listEpics !== "function") {
-          fail("epics wird nur im lokalen Modus unterstuetzt (issueTracker: local)");
-        }
-        out(await tracker.listEpics());
-        break;
-      }
-      case "move": {
-        const [id, toStatus] = args._;
-        if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
-        if (!toStatus) fail("status ist erforderlich: board.mjs issue move <id> <status>");
-        if (!VALID_STATUSES.includes(toStatus)) {
-          fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
-        }
-        await tracker.moveIssue(id, toStatus);
-        out({ ok: true, id, status: toStatus });
-        break;
-      }
-      case "comment": {
-        const id = args._[0];
-        if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
-        if (!args.text) fail("--text ist erforderlich");
-        await tracker.commentIssue(id, args.text);
-        out({ ok: true, id });
-        break;
-      }
-      default:
-        process.stdout.write(HELP);
-        fail(`Unbekannter issue-Befehl: '${command}'`);
-    }
-
+    await dispatchIssue(command, args);
   } else if (axis === "code") {
-    const config = loadConfig();
-    const host = resolveCodeHost(config);
-
-    switch (command) {
-      case "repo-name":
-        out({ repoName: await host.getRepoName() });
-        break;
-      case "pr": {
-        if (!args.from) fail("--from ist erforderlich");
-        if (!args.to) fail("--to ist erforderlich");
-        if (!host.supportsPullRequests()) {
-          fail("Dieser codeHost unterstuetzt keine Pull Requests. Nutze einen lokalen git-Merge.");
-        }
-        out(await host.createPullRequest({ from: args.from, to: args.to, title: args.title }));
-        break;
-      }
-      default:
-        process.stdout.write(HELP);
-        fail(`Unbekannter code-Befehl: '${command}'`);
-    }
-
+    await dispatchCode(command, args);
   } else {
     process.stdout.write(HELP);
     fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code`);
   }
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   const prefix = err instanceof BoardError ? "Fehler" : "Unerwarteter Fehler";
   process.stderr.write(`${prefix}: ${err.message}\n`);
   process.exit(1);
-});
+}
