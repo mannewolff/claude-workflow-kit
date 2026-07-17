@@ -1,6 +1,6 @@
 {
   "codeHost": "github",
-  "issueTracker": "local",
+  "issueTracker": "github",
   "buildChecks": [],
   "mutationCommand": "",
   "mainBranch": "main",
@@ -14,6 +14,9 @@
   },
   "local": {
     "issuesDir": "issues"
+  },
+  "github": {
+    "projectNumber": 14
   },
   "columns": {
     "backlog": "Backlog",
