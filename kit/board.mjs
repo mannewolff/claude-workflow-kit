@@ -33,8 +33,8 @@ const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 const COLUMN_DEFAULTS = {
   backlog:     "Backlog",
   ready:       "Ready",
-  in_progress: "In Progress",
-  in_review:   "In Review",
+  in_progress: "In progress",
+  in_review:   "In review",
   done:        "Done",
 };
 
@@ -340,7 +340,17 @@ class GitHubIssueTracker {
       const key = Object.keys(labels).find(
         (k) => labels[k].toLowerCase() === opt.name.toLowerCase()
       );
-      if (key) optionMap[key] = opt.id;
+      if (key) {
+        if (labels[key] !== opt.name) {
+          process.stderr.write(
+            `Hinweis: workflow.config.json konfiguriert fuer Status '${key}' das Label '${labels[key]}', ` +
+            `das GitHub Project verwendet tatsaechlich '${opt.name}' (Gross-/Kleinschreibung weicht ab). ` +
+            `Aktuell noch per Fallback erkannt — zur Vermeidung stiller Folgefehler bitte in ` +
+            `workflow.config.json anpassen: '"columns": { "${key}": "${opt.name}" }'\n`
+          );
+        }
+        optionMap[key] = opt.id;
+      }
     }
     this._statusField = { id: statusField.id, options: optionMap };
   }
@@ -464,8 +474,9 @@ class GitHubIssueTracker {
     const optionId = this._statusField.options[status];
     if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
 
+    const wantedStatus = githubStatusName(status, this._cfg).toLowerCase();
     return (items.items || [])
-      .filter((i) => i.status === githubStatusName(status, this._cfg))
+      .filter((i) => (i.status || "").toLowerCase() === wantedStatus)
       .map((i) => ({
         id: String(i.content?.number),
         title: i.content?.title,
@@ -1007,7 +1018,8 @@ class ToolboxIssueTracker {
 function shellQuote(str) {
   // Klassisches POSIX-Single-Quote-Escaping: jedes ' wird zu '\'' (schliessen, escaptes
   // Quote, wieder oeffnen). String.raw haelt die Ersetzung frei von Backslash-Escapes.
-  return `'${String(str).replaceAll("'", String.raw`'\''`)}'`;
+  const escaped = String(str).replaceAll("'", String.raw`'\''`);
+  return `'${escaped}'`;
 }
 
 function labelToStatus(labelNames, config, state) {

@@ -18,7 +18,7 @@ node .claude/kit/board.mjs issue list --status in_progress
 
 Steht dort bereits ein Issue: stoppen.
 
-> "Issue #N liegt bereits in In Progress (Tests vermutlich schon geschrieben). Erst `/implement-done` dafür laufen lassen, bevor ein neues Issue startet."
+> "Issue #N liegt bereits in In progress (Tests vermutlich schon geschrieben). Erst `/implement-done` dafür laufen lassen, bevor ein neues Issue startet."
 
 Kein zweites Issue parallel anfassen — ein Issue in Arbeit zur Zeit.
 
@@ -32,7 +32,7 @@ node .claude/kit/board.mjs issue list --status ready
 
 Issue mit der niedrigsten ID nehmen. Diese Auswahl ist verbindlich, kein Raten, welches Issue sinnvoller wäre.
 
-### 2. Issue nach In Progress verschieben
+### 2. Issue nach In progress verschieben
 
 ```bash
 node .claude/kit/board.mjs issue move <id> in_progress
@@ -69,5 +69,5 @@ Tests stehen rot. Weiter mit /implement-done.
 
 - Kein Produktionscode: dieser Skill schreibt ausschließlich Tests.
 - Kein Commit: der entsteht erst in `/implement-done`.
-- Kein zweites Issue parallel starten, solange eins in In Progress liegt.
+- Kein zweites Issue parallel starten, solange eins in In progress liegt.
 - Pushen, Backlog nach Ready ziehen, Issues auf Done setzen: wie bei `/implement-ready` nie eigenmächtig.

@@ -1,23 +1,23 @@
 ---
 name: implement-done
-description: Granulare Einsteiger-Variante von Schritt 5 (Teil 2) — implementiert gegen die von /implement-test vorbereiteten roten Tests, bis sie gruen sind, committet und verschiebt nach In Review. Nutze diesen Skill wenn der Nutzer /implement-done aufruft oder nach /implement-test die Implementierung gegen die roten Tests fortsetzen will.
+description: Granulare Einsteiger-Variante von Schritt 5 (Teil 2) — implementiert gegen die von /implement-test vorbereiteten roten Tests, bis sie gruen sind, committet und verschiebt nach In review. Nutze diesen Skill wenn der Nutzer /implement-done aufruft oder nach /implement-test die Implementierung gegen die roten Tests fortsetzen will.
 user-invocable: true
 ---
 
 # Implement Done
 
-Granulare Variante von Schritt 5 (Teil 2 von 2): gegen die von `/implement-test` geschriebenen, roten Tests implementieren, bis sie grün sind, committen, nach In Review verschieben.
+Granulare Variante von Schritt 5 (Teil 2 von 2): gegen die von `/implement-test` geschriebenen, roten Tests implementieren, bis sie grün sind, committen, nach In review verschieben.
 
 ## Vorbedingung
 
-### 0. Issue in In Progress finden
+### 0. Issue in In progress finden
 
 ```bash
 node .claude/kit/board.mjs issue list --status in_progress
 ```
 
 - Kein Issue dort: stoppen.
-  > "Kein Issue in In Progress. Erst `/implement-test` starten, um Tests für ein Issue zu schreiben."
+  > "Kein Issue in In progress. Erst `/implement-test` starten, um Tests für ein Issue zu schreiben."
 - Mehr als ein Issue dort: stoppen, auflisten, Nutzer um Auswahl bitten. Nicht raten, welches gemeint ist.
 - Genau ein Issue dort: das ist das aktuelle Issue.
 
@@ -52,7 +52,7 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch beim Push/Merge, und die Board-Automation zieht es dann sofort nach Done — noch bevor der Mensch getestet hat. `Refs #N` verlinkt, ohne zu schließen. Das Schließen macht ausschließlich der Mensch.
 
-### 4. Issue nach In Review verschieben + Abschlussbericht
+### 4. Issue nach In review verschieben + Abschlussbericht
 
 ```bash
 node .claude/kit/board.mjs issue move <id> in_review
