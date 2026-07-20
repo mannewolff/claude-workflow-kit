@@ -363,19 +363,22 @@ async function main() {
   copySkills(skillsSrc, skillsTarget);
 
   // --- Config schreiben ---
+  // Basis sind die DEFAULTS (fuellen echte Luecken), darueber die bestehende Config
+  // (nicht abgefragte Felder wie buildChecks, toolbox, github oder unbekannte
+  // Zusatzfelder bleiben erhalten, #125), zuoberst die sieben abgefragten Werte.
   const config = {
+    ...DEFAULTS,
+    ...existingConfig,
     codeHost,
     issueTracker,
-    buildChecks: DEFAULTS.buildChecks,
-    mutationCommand: DEFAULTS.mutationCommand,
     mainBranch,
     productionBranch,
     reviewScope,
     reviewModel,
-    triggers: DEFAULTS.triggers,
-    local: DEFAULTS.local,
-    columns: DEFAULTS.columns,
   };
+  // Das alte provider-Feld ist beim Laden auf codeHost/issueTracker migriert worden
+  // und wird nicht zurueckgeschrieben.
+  delete config.provider;
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(`\n✓ Config geschrieben: ${configTarget}`);
