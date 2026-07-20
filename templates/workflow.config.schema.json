@@ -149,6 +149,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Basis-URL der Toolbox-Instanz."
+        },
+        "ideaStored": {
+          "type": "boolean",
+          "default": true,
+          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false = wie frueher direkt ins Backlog. Backends ohne Ideen-Speicher ignorieren das Feld."
         }
       },
       "required": [],

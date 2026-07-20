@@ -415,6 +415,8 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
+**Neue Issues landen im Ideen-Speicher.** `issue create` legt Issues gegen ein kanban-kit-Backend als Idee im Sammelbecken an (unsichtbar im Board, sichtbar nur in der Ideen-Zone der Listenansicht), nicht direkt im Backlog — das Hochziehen ins Backlog bleibt der gemeinsamen Sichtung vorbehalten. Wer das alte Verhalten (direkt ins Backlog) will, setzt `"toolbox": { "ideaStored": false }` in der Config. Backends ohne Ideen-Speicher ignorieren das Feld und legen unverändert im Backlog an; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
+
 ## Aktualisieren und mehrere Projekte
 
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).

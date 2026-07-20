@@ -947,10 +947,14 @@ class ToolboxIssueTracker {
 
   async createIssue({ title, body }) {
     const { host } = this._auth();
+    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im Sammelbecken
+    // statt direkt im Backlog. Per Config abschaltbar (toolbox.ideaStored: false). Aeltere
+    // Backends ohne #245 ignorieren das Feld und legen wie bisher im Backlog an.
+    const ideaStored = this._cfg.toolbox?.ideaStored !== false;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: body || "", column: "BACKLOG" }),
+      body: JSON.stringify({ title, body: body || "", column: "BACKLOG", ideaStored }),
     });
     const created = await res.json();
     return { id: String(created.number), url: `${host}/kanban` };
