@@ -23,6 +23,7 @@ Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commit
 
 Lies `.claude/workflow.config.json`:
 - `mainBranch`: Ziel-Branch (Default: `main`)
+- `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
 
 ### 2. Stand prüfen
 
@@ -33,25 +34,46 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Release-Schritte (falls `RELEASING.md` existiert)
+### 3. Pflicht-Checks (Gate — vor Bump und Push)
+
+Führe **alle** Kommandos aus `buildChecks` sequenziell aus, bevor irgendetwas
+gebumpt oder gepusht wird. Das ist eine Leitplanke, die scheitert, kein Prompt,
+der bittet: Auch wenn `/implement-ready` oder `/local-check` die Checks pro
+Issue bereits liefen, sichert dieser Lauf gegen zwischenzeitliche Änderungen
+und maskierte Exit-Codes ab. Der Trade-off (langsamerer Push durch erneute
+Checks) ist bei einem seltenen main-Push akzeptabel und gewollt.
+
+- **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals
+  den Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren
+  (siehe die Exit-Code-Guidance im `local-check`-Skill). Zusätzlich generisch
+  auf `[ERROR]` bzw. `BUILD FAILURE` im Output prüfen, nicht nur auf enge
+  tool-spezifische Stichworte.
+- **Ein roter Check bricht ab:** nicht pushen, nicht bumpen, keine
+  Release-Schritte. Klare Meldung, **welcher** Check mit welchem Fehler
+  fehlschlug. Erst wenn der Fehler behoben ist und der Mensch erneut
+  `push main` tippt, startet der Ablauf von vorn.
+- Ist `buildChecks` leer: Hinweis ausgeben "Keine buildChecks konfiguriert."
+  und weiter zu Schritt 4 (kein Abbruch).
+
+### 4. Release-Schritte (falls `RELEASING.md` existiert)
 
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen
   Release-Schritte aus — typischerweise ein Version-Bump. Nimm alle dabei
   geänderten Dateien in **denselben** Push-Batch auf (mit committen), bevor du
   pushst.
-- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 4.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
 Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik;
 diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 
-### 4. Pushen
+### 5. Pushen
 
 ```bash
 git push origin <mainBranch>
 ```
 
-### 5. Bestätigung
+### 6. Bestätigung
 
 Melde den neuen Stand auf `origin/<mainBranch>` mit dem letzten Commit-Hash.
 
@@ -60,6 +82,7 @@ Hinweis auf nächsten Schritt:
 
 ## Was dieser Skill nicht tut
 
+- Kein Push und kein Version-Bump bei einem roten Pflicht-Check (Schritt 3)
 - Keine Force-Pushes
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
