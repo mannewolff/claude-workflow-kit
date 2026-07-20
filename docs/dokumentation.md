@@ -305,6 +305,16 @@ Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet z
 
 Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
+## Leitplanken statt Prompts
+
+Ein Sprachmodell reproduziert das häufigste Muster seines Trainingskorpus, nicht das aktuellste. Eine vor Monaten abgekündigte API steht in Millionen Zeilen Altcode noch als der normale Weg; der Abkündigungshinweis ist ein Randfall gegen diese Masse. Das Ergebnis ist ein Denkfehler, vielfach materialisiert: dasselbe veraltete oder abgekündigte Idiom, über alle Aufrufstellen ausgerollt — und oft erst spät in einer externen Analyse sichtbar.
+
+Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim Coverage-Gate: eine **harte Leitplanke, die im Pflicht-Gate scheitert**, statt ein Prompt oder eine Doku, die bittet. Ein Prompt an die Disziplin wird unter Zeitdruck übersprungen; eine Lint- oder Compiler-Regel in den `buildChecks`, die Agent und CI ohnehin durchlaufen, kann gar nicht erst grün committen. Konkret:
+
+- **Die Leitplanke leitet aus vorhandenen Annotationen ab**, statt eine handgepflegte Verbotsliste zu führen, die selbst veraltet: `@typescript-eslint/no-deprecated` liest JSDoc-`@deprecated`, Java meldet mit `-Xlint:deprecation` und `-Werror` jede abgekündigte API als Build-Fehler, Linter-`recommended`-Sets decken die gängigen veralteten Idiome ab. Der Analyzer skaliert mit dem Ökosystem, die Liste nur mit der Pflegedisziplin.
+- **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
+- **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
+
 ## Was bewusst nicht im Kit ist
 
 **Security-Gates gehören ins CI, nicht in einen Skill.** gitleaks findet Secrets, Semgrep oder SpotBugs finden SQL-Konkatenation und fehlende Input-Validation. Ein deterministisches Tool teilt mit keinem Sprachmodell einen blinden Fleck. Ein roter Build blockiert den Push mechanisch, verlässlicher als jedes Modell. Der Review-Skill ergänzt diese Tools, ersetzt sie nicht.
