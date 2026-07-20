@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Stellwerk workflow.config",
-  "description": "Projekt-spezifische Konfiguration fuer die Stellwerk-Skill-Bibliothek",
+  "title": "claude-workflow-kit workflow.config",
+  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek",
   "type": "object",
   "properties": {
     "version": {
