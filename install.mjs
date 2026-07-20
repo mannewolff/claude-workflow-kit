@@ -71,7 +71,10 @@ const schema = {
     {
       field: "issueTracker",
       rule: "enum",
-      allowed: ["github", "gitlab", "local"],
+      // 'toolbox' ist bewusst nicht in Prompt und Fehlermeldung (Hidden Feature, #0013),
+      // muss aber gueltig sein, damit eine bestehende Toolbox-Config beim Re-Install
+      // per Enter bestaetigt werden kann (#124).
+      allowed: ["github", "gitlab", "local", "toolbox"],
       error: "issueTracker muss 'github', 'gitlab' oder 'local' sein.",
     },
     {
