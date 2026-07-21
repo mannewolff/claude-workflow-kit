@@ -1,0 +1,9 @@
+# install.mjs soll beim Klick auf "Installer herunterladen" als Download angeboten
+# werden statt als Quelltext im Browser zu erscheinen (Issue #129).
+# curl -O / node <(curl -s ...) bleiben unberuehrt (curl ignoriert Content-Disposition
+# ohne -J). IfModule-Guard: ohne mod_headers kein 500er, nur wieder Inline-Anzeige.
+<IfModule mod_headers.c>
+  <Files "install.mjs">
+    Header set Content-Disposition "attachment; filename=\"install.mjs\""
+  </Files>
+</IfModule>
