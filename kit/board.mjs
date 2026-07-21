@@ -475,6 +475,8 @@ class GitHubIssueTracker {
     if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
 
     const wantedStatus = githubStatusName(status, this._cfg).toLowerCase();
+    // Kein ID-Re-Sort: gh project item-list liefert die manuelle Projekt-Reihenfolge,
+    // gefiltert auf eine Spalte ist das die Board-Reihenfolge (oben zuerst, #128).
     return (items.items || [])
       .filter((i) => (i.status || "").toLowerCase() === wantedStatus)
       .map((i) => ({
@@ -482,8 +484,7 @@ class GitHubIssueTracker {
         title: i.content?.title,
         body: null,
         status,
-      }))
-      .sort((a, b) => Number(a.id) - Number(b.id));
+      }));
   }
 
   async moveIssue(id, to) {
@@ -597,6 +598,9 @@ class GitLabIssueTracker {
   async listIssues(status) {
     let cmd = "glab issue list --output json";
     if (status) {
+      // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
+      // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
+      cmd += " --order relative_position --sort asc";
       if (isStateColumn(status, this._cfg)) {
         if (status === "done") {
           cmd += " --closed";
@@ -614,17 +618,18 @@ class GitLabIssueTracker {
       }
     }
     const items = execJSON(cmd);
-    return (Array.isArray(items) ? items : [])
-      .map((i) => {
-        const labelNames = (i.labels || []).map((l) => l.name || l);
-        return {
-          id: String(i.iid),
-          title: i.title,
-          body: i.description,
-          status: labelToStatus(labelNames, this._cfg, i.state) || null,
-        };
-      })
-      .sort((a, b) => Number(a.id) - Number(b.id));
+    const mapped = (Array.isArray(items) ? items : []).map((i) => {
+      const labelNames = (i.labels || []).map((l) => l.name || l);
+      return {
+        id: String(i.iid),
+        title: i.title,
+        body: i.description,
+        status: labelToStatus(labelNames, this._cfg, i.state) || null,
+      };
+    });
+    // Mit Status-Filter gilt die Board-Reihenfolge (relative_position, s. o.);
+    // ungefiltert bleibt die stabile numerische Sortierung.
+    return status ? mapped : mapped.sort((a, b) => Number(a.id) - Number(b.id));
   }
 
   async moveIssue(id, to) {
@@ -947,10 +952,14 @@ class ToolboxIssueTracker {
 
   async createIssue({ title, body }) {
     const { host } = this._auth();
+    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im Sammelbecken
+    // statt direkt im Backlog. Per Config abschaltbar (toolbox.ideaStored: false). Aeltere
+    // Backends ohne #245 ignorieren das Feld und legen wie bisher im Backlog an.
+    const ideaStored = this._cfg.toolbox?.ideaStored !== false;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: body || "", column: "BACKLOG" }),
+      body: JSON.stringify({ title, body: body || "", column: "BACKLOG", ideaStored }),
     });
     const created = await res.json();
     return { id: String(created.number), url: `${host}/kanban` };
@@ -967,11 +976,14 @@ class ToolboxIssueTracker {
       throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
     }
     const items = await this._boardItems();
-    return items
+    const filtered = items
       // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
-      .filter((i) => !status || (i.type !== "epic" && i.status === status))
-      .sort((a, b) => a.number - b.number)
-      .map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status }));
+      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+    // Mit Status-Filter liegen alle Items in derselben Spalte: die API-Reihenfolge
+    // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
+    // ungefiltert bleibt die stabile numerische Sortierung.
+    if (!status) filtered.sort((a, b) => a.number - b.number);
+    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status }));
   }
 
   async listEpics() {

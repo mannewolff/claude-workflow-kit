@@ -305,6 +305,16 @@ Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet z
 
 Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
+## Leitplanken statt Prompts
+
+Ein Sprachmodell reproduziert das häufigste Muster seines Trainingskorpus, nicht das aktuellste. Eine vor Monaten abgekündigte API steht in Millionen Zeilen Altcode noch als der normale Weg; der Abkündigungshinweis ist ein Randfall gegen diese Masse. Das Ergebnis ist ein Denkfehler, vielfach materialisiert: dasselbe veraltete oder abgekündigte Idiom, über alle Aufrufstellen ausgerollt — und oft erst spät in einer externen Analyse sichtbar.
+
+Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim Coverage-Gate: eine **harte Leitplanke, die im Pflicht-Gate scheitert**, statt ein Prompt oder eine Doku, die bittet. Ein Prompt an die Disziplin wird unter Zeitdruck übersprungen; eine Lint- oder Compiler-Regel in den `buildChecks`, die Agent und CI ohnehin durchlaufen, kann gar nicht erst grün committen. Konkret:
+
+- **Die Leitplanke leitet aus vorhandenen Annotationen ab**, statt eine handgepflegte Verbotsliste zu führen, die selbst veraltet: `@typescript-eslint/no-deprecated` liest JSDoc-`@deprecated`, Java meldet mit `-Xlint:deprecation` und `-Werror` jede abgekündigte API als Build-Fehler, Linter-`recommended`-Sets decken die gängigen veralteten Idiome ab. Der Analyzer skaliert mit dem Ökosystem, die Liste nur mit der Pflegedisziplin.
+- **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
+- **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
+
 ## Was bewusst nicht im Kit ist
 
 **Security-Gates gehören ins CI, nicht in einen Skill.** gitleaks findet Secrets, Semgrep oder SpotBugs finden SQL-Konkatenation und fehlende Input-Validation. Ein deterministisches Tool teilt mit keinem Sprachmodell einen blinden Fleck. Ein roter Build blockiert den Push mechanisch, verlässlicher als jedes Modell. Der Review-Skill ergänzt diese Tools, ersetzt sie nicht.
@@ -331,6 +341,8 @@ Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwe
 - **Code-Host-Interface:** `code repo-name`, `code pr`
 
 Die Skills rufen ausschließlich den Adapter auf — sie wissen nichts von `gh` oder `glab`. Du kannst `issueTracker` und `codeHost` jederzeit in der Config ändern; alle Skills passen sich beim nächsten Aufruf an.
+
+**Abarbeitungsreihenfolge = Board-Reihenfolge.** `issue list --status <spalte>` liefert die Issues in der Reihenfolge der Board-Spalte (oben zuerst), nicht numerisch — du steuerst die Abarbeitung von `/implement-ready` also per Drag&Drop in der Ready-Spalte. Umgesetzt pro Tracker: GitHub über die manuelle Projekt-Reihenfolge von `gh project item-list` (gilt für die Standard-Board-View; eine View mit eigener Sortierung zeigt anders an, als die API liefert), GitLab über `--order relative_position`, das eigene Kanban über die Spalten-Position der API. Zwei bewusste Ausnahmen: der lokale Datei-Tracker kennt keine Positionen und bleibt numerisch, und `issue list` ohne Status-Filter bleibt überall stabil numerisch (eine spaltenübergreifende Board-Reihenfolge gibt es nicht). Konsequenz: Die Abarbeitungsreihenfolge hängt am Board-Zustand und ist nicht mehr deterministisch-numerisch — das ist gewollt.
 
 ### Lokaler Modus
 
@@ -404,6 +416,8 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 **Authentifizierung** läuft über einen persönlichen Kanban-Access-Token (PAT), nicht über den Keycloak-Login der Toolbox-Weboberfläche: Token in der Toolbox-Web-UI erzeugen, anschließend `tbx auth login` ausführen. Der Token wird unter `~/.config/toolbox-cli/{config,tokens}.json` gespeichert, jeder Aufruf trägt ihn im Header `X-Kanban-Token`. Er wirkt ausschließlich auf `/api/kanban/**` — Einrichtung des `tbx`-CLI und Token-Verwaltung sind Teil des Toolbox-Projekts selbst, nicht dieses Kits.
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
+
+**Neue Issues landen im Ideen-Speicher.** `issue create` legt Issues gegen ein kanban-kit-Backend als Idee im Sammelbecken an (unsichtbar im Board, sichtbar nur in der Ideen-Zone der Listenansicht), nicht direkt im Backlog — das Hochziehen ins Backlog bleibt der gemeinsamen Sichtung vorbehalten. Wer das alte Verhalten (direkt ins Backlog) will, setzt `"toolbox": { "ideaStored": false }` in der Config. Backends ohne Ideen-Speicher ignorieren das Feld und legen unverändert im Backlog an; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
 
 ## Aktualisieren und mehrere Projekte
 

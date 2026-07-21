@@ -1,4 +1,4 @@
-# CLAUDE-workflow.md — Stellwerk-Prozess
+# CLAUDE-workflow.md — claude-workflow-kit-Prozess
 
 Verbindlicher Prozess fuer KI-gestuetzte Softwareentwicklung in diesem Projekt.
 Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten Softwareentwicklung", Manne Wolff, 2026).

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Stellwerk workflow.config",
-  "description": "Projekt-spezifische Konfiguration fuer die Stellwerk-Skill-Bibliothek",
+  "title": "claude-workflow-kit workflow.config",
+  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek",
   "type": "object",
   "properties": {
     "version": {
@@ -149,6 +149,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Basis-URL der Toolbox-Instanz."
+        },
+        "ideaStored": {
+          "type": "boolean",
+          "default": true,
+          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false = wie frueher direkt ins Backlog. Backends ohne Ideen-Speicher ignorieren das Feld."
         }
       },
       "required": [],

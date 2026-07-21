@@ -1,6 +1,6 @@
 ---
 name: implement-ready
-description: Schritt 5 des 9-Schritt-Prozesses — arbeitet alle Issues in der Ready-Spalte sequenziell nach Issue-Nummer ab, committet lokal, pusht nicht. Nutze diesen Skill wenn der Nutzer /implement-ready aufruft, Ready-Issues umsetzen will oder das GO zur Implementierung gibt.
+description: Schritt 5 des 9-Schritt-Prozesses — arbeitet alle Issues in der Ready-Spalte sequenziell in Board-Reihenfolge ab, committet lokal, pusht nicht. Nutze diesen Skill wenn der Nutzer /implement-ready aufruft, Ready-Issues umsetzen will oder das GO zur Implementierung gibt.
 user-invocable: true
 ---
 
@@ -13,7 +13,7 @@ Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell 
 Lies `.claude/workflow.config.json`. Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
 
-## Ablauf pro Issue (Reihenfolge: aufsteigend nach Issue-ID, wie vom Adapter geliefert)
+## Ablauf pro Issue (Reihenfolge: wie vom Adapter geliefert = Board-Reihenfolge)
 
 ### 0. Ready-Issues laden
 
@@ -21,7 +21,7 @@ Lies `.claude/workflow.config.json`. Relevantes Feld:
 node .claude/kit/board.mjs issue list --status ready
 ```
 
-Gibt die Issues als JSON-Array, aufsteigend nach ID sortiert. Diese Reihenfolge ist verbindlich.
+Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Diese Reihenfolge ist verbindlich — der Mensch legt sie vor dem GO per Drag&Drop in der Ready-Spalte fest. Nicht numerisch umsortieren.
 
 ### 1. Issue nach In progress verschieben
 
@@ -40,6 +40,7 @@ Lies alle vier Abschnitte des Issues. Implementiere **gegen das Issue**, nicht g
 - Kein Feature, keine Refactoring, keine Abstraktion die das Issue nicht verlangt
 - Bei UI-Änderungen: Dev-Server starten, Golden Path und Edge Cases durchklicken
 - Bei neuer oder geänderter Logik: abgedeckt oder begründet ausgeschlossen gemäß der Coverage-/Qualitäts-Policy des Projekts (siehe Projekt-Guide bzw. `workflow.config.json`). Untestete Logik nie stillschweigend ausschließen, Schwellen nie senken, nur damit ein Gate grün wird.
+- Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
 
 Für eine granularere Variante mit explizitem Stopp zwischen rot und grün: `/implement-test` gefolgt von `/implement-done`.
 
@@ -91,7 +92,7 @@ Format des Abschlussberichts:
 
 ### 6. Nächstes Issue
 
-Sobald das Issue in In review liegt: naechste Issue-ID aus dem zuvor geladenen Ready-Array abarbeiten. Wenn Ready leer ist: Vollzug melden.
+Sobald das Issue in In review liegt: naechstes Issue aus dem zuvor geladenen Ready-Array abarbeiten (in Array-Reihenfolge). Wenn Ready leer ist: Vollzug melden.
 
 ## Verhalten bei leerem Ready
 

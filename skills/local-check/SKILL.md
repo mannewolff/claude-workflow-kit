@@ -20,6 +20,8 @@ Fehlt die Config: Führe `buildChecks: []` aus und weise darauf hin, dass keine 
 
 **Leitplanke: Ein Coverage-/Qualitäts-Gate ist ein Floor, kein Beweis voller Abdeckung.** Grün heißt „über der vereinbarten Schwelle", nicht „vollständig getestet". Als Vertrauenssignal trägt eine Metrik nur, wenn sie ehrlich bleibt: Eine Lücke muss echt ungetestete Logik bedeuten, nie stillschweigend ausgeschlossenes Rauschen. Liegt der Coverage-Report unter dem im Projekt vereinbarten Ziel (siehe Projekt-Guide bzw. `workflow.config.json`), das explizit als Signal ausweisen statt es still durchzuwinken — der Mensch entscheidet, ob reingeschaut oder Tests nachgezogen werden.
 
+**Leitplanke: Wiederkehrende, klassenweite Modell-Fehler gehören ins Gate, nicht in Prompts.** Ein KI-Modell reproduziert das häufigste, nicht das aktuellste Muster seines Trainingskorpus — abgekündigte APIs und veraltete Idiome tauchen deshalb wiederholt und flächendeckend auf. Solche Fehlerklassen gehören als harte Lint-/Compiler-Leitplanke in die `buildChecks` dieses Gates, nicht als Bitte in eine CLAUDE-`*`.md: Ein Prompt an die Disziplin wird unter Zeitdruck übersprungen, eine Leitplanke im Gate kann gar nicht erst grün committen. Die Leitplanke leitet aus den vorhandenen Annotationen ab, statt eine handgepflegte Verbotsliste zu führen (die selbst veraltet) — z. B. `@typescript-eslint/no-deprecated` (liest JSDoc-`@deprecated`), Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets. SonarQube o. Ä. bleibt Sicherheitsnetz, nicht Hauptfang: Der Round-Trip über `main` fängt sicher, aber spät — der Check gehört nach vorn, in dieses Gate.
+
 ### 1. Build-Checks aus der Config
 
 Führe alle Kommandos in `buildChecks` sequenziell aus:
