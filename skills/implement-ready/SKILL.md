@@ -13,7 +13,7 @@ Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell 
 Lies `.claude/workflow.config.json`. Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
 
-## Ablauf pro Issue (Reihenfolge: aufsteigend nach Issue-ID, wie vom Adapter geliefert)
+## Ablauf pro Issue (Reihenfolge: wie vom Adapter geliefert = Board-Reihenfolge)
 
 ### 0. Ready-Issues laden
 
@@ -21,7 +21,7 @@ Lies `.claude/workflow.config.json`. Relevantes Feld:
 node .claude/kit/board.mjs issue list --status ready
 ```
 
-Gibt die Issues als JSON-Array, aufsteigend nach ID sortiert. Diese Reihenfolge ist verbindlich.
+Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Diese Reihenfolge ist verbindlich — der Mensch legt sie vor dem GO per Drag&Drop in der Ready-Spalte fest. Nicht numerisch umsortieren.
 
 ### 1. Issue nach In progress verschieben
 
@@ -92,7 +92,7 @@ Format des Abschlussberichts:
 
 ### 6. Nächstes Issue
 
-Sobald das Issue in In review liegt: naechste Issue-ID aus dem zuvor geladenen Ready-Array abarbeiten. Wenn Ready leer ist: Vollzug melden.
+Sobald das Issue in In review liegt: naechstes Issue aus dem zuvor geladenen Ready-Array abarbeiten (in Array-Reihenfolge). Wenn Ready leer ist: Vollzug melden.
 
 ## Verhalten bei leerem Ready
 
