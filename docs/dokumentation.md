@@ -4,11 +4,11 @@ Eine dünne Werkzeugschicht, die einen 9-Schritt-Kernprozess für KI-gestützte 
 
 ## Konzept
 
-Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus zwölf Skills, eine projektlokale Config und ein Installer.
+Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus dreizehn Skills, eine projektlokale Config und ein Installer.
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Fünf weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /implement-test und /implement-done, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Sechs weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /implement-test und /implement-done, /implement-next, /retro und /document.
 
 ## Voraussetzungen
 
@@ -69,7 +69,7 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die zwölf Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die dreizehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
@@ -139,7 +139,7 @@ Beispiele für verschiedene Stacks:
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
 
-## Die zwölf Skills und der 9-Schritt-Kernprozess
+## Die dreizehn Skills und der 9-Schritt-Kernprozess
 
 Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
 
@@ -157,7 +157,7 @@ Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) st
 
 Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser — kein eigener Skill, aber Pflicht. Diese Zählung ist dieselbe wie in der `CLAUDE-workflow.md` und in den Skill-Definitionen.
 
-Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-done (granularer Einstieg zu Schritt 5), /retro (Wartungsrhythmus), /document (Session-Ende).
+Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-done (granularer Einstieg zu Schritt 5), /implement-next (genau ein Issue, Baustein des Nachtbetriebs), /retro (Wartungsrhythmus), /document (Session-Ende).
 
 ### /kontext
 
@@ -204,6 +204,14 @@ Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmäc
 `/implement-ready` erledigt Test und Implementierung eines Issues in einem Rutsch. Wer den Rot-Grün-Übergang bewusst sehen will, nutzt stattdessen zwei Skills nacheinander: `/implement-test` nimmt das nächste Ready-Issue, bewegt es nach In progress und schreibt ausschließlich die Tests dagegen — kein Produktionscode, kein Commit. Läuft bereits ein Issue in In progress, stoppt der Skill und verweist auf `/implement-done`.
 
 `/implement-done` findet das laufende Issue über die In-progress-Spalte, implementiert gegen die vorbereiteten Tests, bis sie grün sind, und committet Tests und Implementierung gemeinsam — Format und Stop-Punkte identisch zu `/implement-ready`.
+
+### /implement-next
+
+**Genau ein Issue — der Baustein des Nachtbetriebs.**
+
+Die Single-Issue-Variante von `/implement-ready`: nimmt genau das oberste Ready-Issue (Board-Reihenfolge), setzt es um, committet lokal, verschiebt es mit Abschlussbericht nach In review — und endet. Kein weiteres Issue, auch wenn Ready noch gefüllt ist. Bei leerem Ready meldet der Skill das und endet ohne Fehler.
+
+Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/implement-test` und `/implement-done` zerlegen ein Issue in Rot- und Grün-Phase; `/implement-next` macht ein komplettes Issue und stoppt dann. Interaktiv ist das die „mach genau eins"-Variante — seine Hauptrolle spielt er im [Nachtbetrieb](#nachtbetrieb), wo der Nacht-Runner pro Issue eine frische Session mit genau diesem Skill startet.
 
 ### /local-check
 
@@ -304,6 +312,43 @@ Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet z
 **Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
 
 Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
+
+## Nachtbetrieb
+
+Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next`, wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
+
+**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück.
+
+**Start:**
+
+```bash
+node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde — startet nichts
+node .claude/kit/night.mjs             # echter Lauf
+```
+
+Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-4-8`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions).
+
+**Permissions.** Unbeaufsichtigt heißt: niemand beantwortet Permission-Dialoge. Der Runner startet die Sessions deshalb mit `--permission-mode acceptEdits`; alles Weitere erlaubst du gezielt über eine Allowlist in `.claude/settings.json` des Projekts, z. B.:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/kit/board.mjs:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run build:*)"
+    ]
+  }
+}
+```
+
+Die `buildChecks` deines Projekts gehören mit in die Liste. Ein Kommando außerhalb der Allowlist blockiert die Runde bis zum Timeout — das ist gewollt: lieber eine verlorene Runde als eine unbeaufsichtigte Aktion. Wer stattdessen `--yolo` setzt, schaltet **alle** Permission-Checks der Nacht-Sessions ab (`--dangerously-skip-permissions`); die Stop-Punkte hängen dann allein am Skill-Prompt. Bewusste Einzelfall-Entscheidung, kein Default.
+
+**Wenn etwas schiefgeht:** Endet eine Runde ohne In-review-Ergebnis, kommentiert der Runner das Issue und stellt es zurück ins Backlog — der Lauf geht mit dem nächsten Issue weiter. Hinterlässt die Runde aber einen unsauberen Working Tree, stoppt der Lauf hart (Exit ≠ 0): Auf halben Änderungen wird nicht weitergebaut. Vor dem Start prüft der Runner außerdem: kein Issue in In progress (Crash-Rest), sauberer Working Tree, `buildChecks` vorhanden.
+
+**Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde), dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
 
 ## Leitplanken statt Prompts
 

@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir zwölf Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir dreizehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -36,9 +36,9 @@ Der Installer fragt sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die zwölf Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die dreizehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die zwölf Skills
+## Die dreizehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
@@ -48,6 +48,7 @@ Danach liegen die zwölf Skills in `.claude/skills/` (oder global in `~/.claude/
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
 | `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
 | `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
+| `/implement-next` | Genau ein Ready-Issue (oberstes), dann Ende — Baustein des Nachtbetriebs |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
 | `/review` | Review durch Opus in frischer Session |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
@@ -90,5 +91,9 @@ Auf dem Test-Server kontrollierst du das Ergebnis. Stimmt es:
 ## Die drei Stellen, die du selbst machst
 
 Das Ziehen nach Ready, der Push, der Merge. Diese drei automatisiert das Kit bewusst nicht. Sie sind der Punkt, an dem du die Verantwortung trägst. Alles andere nimmt dir die KI ab.
+
+## Nachts arbeiten lassen
+
+Abends Issues nach Ready ziehen und sortieren, dann `node .claude/kit/night.mjs` — der Nacht-Runner arbeitet die Spalte mit einer frischen Session pro Issue ab, committet nur lokal und pusht nie. Details im Abschnitt „Nachtbetrieb" der [Dokumentation](./dokumentation.md#nachtbetrieb).
 
 Mehr Details in der ausführlichen Dokumentation.
