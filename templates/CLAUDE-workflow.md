@@ -141,6 +141,11 @@ Portabilitaets-Konvention: Wenn eine Datei als eigenstaendig portabel gedacht is
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
 
+Abhaengigkeits-Konvention: exakt "Keine." oder explizite Referenzen der Form `Issue #N`.
+Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein anderes Issue
+gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
+Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
+
 ---
 
 ## Abschlussbericht-Format
