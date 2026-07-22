@@ -34,6 +34,7 @@ function buildDirJson(dir) {
 const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
+  { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 

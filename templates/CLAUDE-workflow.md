@@ -32,6 +32,17 @@ Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und
 
 ---
 
+## Nachtbetrieb (optional)
+
+Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab:
+pro Issue eine frische Headless-Session mit `/implement-next` (genau ein Issue, dann Ende).
+Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins
+Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Die Stop-Punkte gelten
+unveraendert: nachts wird committet, nie gepusht — Review, Test und `push main` passieren
+morgens durch den Menschen. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
+
+---
+
 ## Zwei Bahnen
 
 **Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger.
@@ -140,6 +151,11 @@ Portabilitaets-Konvention: Wenn eine Datei als eigenstaendig portabel gedacht is
 ## Abhaengigkeiten
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
+
+Abhaengigkeits-Konvention: exakt "Keine." oder explizite Referenzen der Form `Issue #N`.
+Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein anderes Issue
+gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
+Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
 ---
 
