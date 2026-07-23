@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const VERSION = "1.17.0";
+const VERSION = "1.17.1";
 
 // --- CLAUDE-workflow.md (Base64-eingebettet fuer Single-File-Portabilitaet) ---
 // SYNC: Nach jeder Aenderung an templates/CLAUDE-workflow.md neu generieren:
