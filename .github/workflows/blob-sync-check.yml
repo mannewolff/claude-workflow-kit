@@ -1,12 +1,17 @@
-name: install.mjs-Blobs synchron
+name: "Checks: Tests + install.mjs-Blobs synchron"
 
-# CI-Guard: prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
-# aktuellen Stand von kit/board.mjs und kit/board-ui.mjs passen. Wird rot, wenn
-# die kit/-Dateien geändert (oder aus board-ui gesynct) wurden, ohne dass
-# anschließend `node tools/sync-blobs.mjs` lief. Der Check schreibt nichts.
+# CI-Guard mit zwei Steps:
+# 1. node --test — die node:test-Suite unter test/ (seit #135).
+# 2. Blob-Check — prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
+#    aktuellen Stand von kit/board.mjs und kit/board-ui.mjs passen. Wird rot, wenn
+#    die kit/-Dateien geändert (oder aus board-ui gesynct) wurden, ohne dass
+#    anschließend `node tools/sync-blobs.mjs` lief. Der Check schreibt nichts.
 #
-# Zweck: verhindert, dass ein Merge nach production einen veralteten install.mjs
-# auf docs.mwolff.org deployt.
+# Zweck: verhindert, dass ein Merge nach production einen veralteten oder
+# kaputten install.mjs auf docs.mwolff.org deployt. Lokal laufen dieselben
+# Kommandos als buildChecks (Gate in /local-check und /push-main); die
+# Doppelung ist gewollt — lokal fängt vor dem Push, CI bleibt Sicherheitsnetz
+# für PRs und Fremd-Pushes (#137).
 
 on:
   push:
@@ -25,6 +30,9 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 20
+
+      - name: Testsuite ausführen
+        run: node --test
 
       - name: Blobs gegen kit/ prüfen
         run: node tools/sync-blobs.mjs --check
