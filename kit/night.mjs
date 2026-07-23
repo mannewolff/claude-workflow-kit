@@ -18,8 +18,11 @@
  *   --no-checks-ok     Start trotz leerer buildChecks erlauben
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
+ *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
+ *     harter Stopp, Issue bleibt unangetastet (kein Kommentar, kein Backlog-Move)
  *   - Working Tree dirty  -> harter Stopp (auf halben Aenderungen wird nicht weitergebaut)
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
+ * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  *
@@ -256,7 +259,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   sessions++;
   log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
   const started = Date.now();
-  runSession(top.id, args);
+  const res = runSession(top.id, args);
   const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
@@ -264,6 +267,20 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     succeeded++;
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
     continue;
+  }
+
+  // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
+  // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
+  // falsch. Harter Stopp ohne Kommentar und ohne Backlog-Move, sonst raeumt eine
+  // kaputte Umgebung die ganze Ready-Spalte leer.
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (!timedOut && (res.error || res.status !== 0)) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
+    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
+    if (detail) log(`  CLI-Meldung: ${detail}`);
+    hardStop = true;
+    break;
   }
 
   if (!gitClean()) {
