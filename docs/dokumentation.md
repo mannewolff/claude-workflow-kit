@@ -458,7 +458,35 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 }
 ```
 
-**Authentifizierung** läuft über einen persönlichen Kanban-Access-Token (PAT), nicht über den Keycloak-Login der Toolbox-Weboberfläche: Token in der Toolbox-Web-UI erzeugen, anschließend `tbx auth login` ausführen. Der Token wird unter `~/.config/toolbox-cli/{config,tokens}.json` gespeichert, jeder Aufruf trägt ihn im Header `X-Kanban-Token`. Er wirkt ausschließlich auf `/api/kanban/**` — Einrichtung des `tbx`-CLI und Token-Verwaltung sind Teil des Toolbox-Projekts selbst, nicht dieses Kits.
+**Authentifizierung** läuft über einen persönlichen Kanban-Access-Token (PAT), nicht über den Keycloak-Login der Toolbox-Weboberfläche. Jeder Aufruf trägt den Token im Header `X-Kanban-Token`; er wirkt ausschließlich auf `/api/kanban/**`. Einrichtung des `tbx`-CLI und Token-Verwaltung sind Teil des Toolbox-Projekts selbst, nicht dieses Kits.
+
+`board.mjs` löst den Token über drei Wege auf — die erste Fundstelle gewinnt:
+
+1. **`TBX_TOKEN`** (Umgebungsvariable): höchste Priorität. Praktisch, um ein Token pro Terminal-Session oder pro Aufruf mitzugeben, ohne irgendetwas ins Projekt zu schreiben.
+2. **`toolbox.tokenFile`** in der `workflow.config.json`: Pfad (relativ zum Projektverzeichnis) zu einer Datei, die nur das Token enthält. Damit bekommt jede App ihr eigenes, projekt-/board-gebundenes Token. Die Token-Datei gehört in `.gitignore` — eingecheckt wird nur der Pfad, nie das Secret.
+3. **Globaler `tbx`-Login** (Fallback, bisheriges Verhalten): Token in der Toolbox-Web-UI erzeugen, `tbx auth login` ausführen. Der Token liegt dann unter `~/.config/toolbox-cli/tokens.json` (überschreibbar per `TBX_CONFIG_DIR`) und gilt für alle Projekte auf dem Rechner, die keinen der beiden anderen Wege nutzen.
+
+**Kein Klartext-Token in die `workflow.config.json`.** Die Config ist eingecheckt und wird geteilt. Steht dort ein `toolbox.token` im Klartext, bricht `board.mjs` mit einer klaren Meldung ab, statt das Secret still zu verwenden — nutze `TBX_TOKEN` oder `toolbox.tokenFile`.
+
+**Beispiel: zweite App mit eigenem Token am selben kanban-kit.** Der Server unterstützt projekt-/board-gebundene Tokens: in der Admin-UI ein zweites Token erzeugen und an Projekt 2/Board 2 binden. Im zweiten Projekt dann entweder `TBX_TOKEN` setzen oder in der Config auf eine gitignorete Token-Datei zeigen:
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "toolbox",
+  "toolbox": {
+    "host": "https://toolbox.mwolff.org",
+    "tokenFile": ".claude/tbx.token"
+  }
+}
+```
+
+```bash
+echo "<token-aus-der-admin-ui>" > .claude/tbx.token
+echo ".claude/tbx.token" >> .gitignore
+```
+
+Der globale `tbx`-Login von App 1 bleibt dabei unangetastet — App 1 fällt weiter auf `tokens.json` zurück, App 2 nutzt ihr eigenes Token aus der Datei. Die Host-Auflösung ist davon unabhängig (`toolbox.host` in der Config, sonst der Host aus dem `tbx`-Login).
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
@@ -469,6 +497,8 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).
 
 In einem neuen Projekt brauchst du nur den Installer auszuführen oder die `workflow.config.json` aus einem bestehenden Projekt zu kopieren und die Branch-Namen anzupassen. Alle Skills sind sofort einsatzbereit.
+
+Arbeiten mehrere Projekte gegen denselben Toolbox-/kanban-kit-Tracker, bekommt jedes Projekt sein eigenes, projekt-/board-gebundenes Token: per `TBX_TOKEN`-Umgebungsvariable oder per `toolbox.tokenFile` in der Config (gitignorete Datei, kein Klartext-Token in der geteilten `workflow.config.json`). Precedence und ein Beispiel stehen im Abschnitt [Toolbox (privates Setup)](#toolbox-privates-setup).
 
 ## Troubleshooting
 
