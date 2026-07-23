@@ -106,6 +106,15 @@ function lastCommitHash() {
   return res.status === 0 ? res.stdout.trim() : "?";
 }
 
+// --- Fachliche Issues (PO-Schleife, #146) ---
+
+// [Fachlich]-Titelpraefix = Discovery-Issue: wird gegroomt, nie implementiert.
+// Titel-basiert, weil issue list den Titel bei allen Trackern ohne Adapter-
+// Erweiterung liefert (Stufe 1; Label-Achse ist als Folgepaket benannt).
+function isFachlich(title) {
+  return /^\s*\[fachlich\]/i.test(title || "");
+}
+
 // --- Abhaengigkeiten ---
 
 // Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
@@ -192,6 +201,10 @@ if (args.dryRun) {
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
   for (const issue of ready) {
+    if (isFachlich(issue.title)) {
+      log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
+      continue;
+    }
     const full = board("issue", "get", String(issue.id));
     const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
     if (unmet.length > 0) {
@@ -221,6 +234,14 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   if (ready.length === 0) break;
 
   const top = ready[0];
+  if (isFachlich(top.title)) {
+    log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
+    board("issue", "comment", String(top.id), "--text",
+      `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`);
+    board("issue", "move", String(top.id), "backlog");
+    deferred++;
+    continue;
+  }
   const full = board("issue", "get", String(top.id));
   const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
   if (unmet.length > 0) {

@@ -23,6 +23,12 @@ node .claude/kit/board.mjs issue list --status ready
 
 Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Diese Reihenfolge ist verbindlich — der Mensch legt sie vor dem GO per Drag&Drop in der Ready-Spalte fest. Nicht numerisch umsortieren.
 
+**Fachliche Issues überspringen (Leitplanke):** Issues mit dem Titel-Präfix `[Fachlich]` (PO-Schleife) werden **nie implementiert**. Liegt eines in Ready, wird es mit diesem Kommentar zurück nach Backlog verschoben, und der Lauf geht mit dem nächsten Issue weiter:
+
+```
+Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
+```
+
 ### 1. Issue nach In progress verschieben
 
 ```bash
@@ -102,6 +108,7 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 ## Stop-Punkte
 
+- Fachliche Issues (`[Fachlich]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
