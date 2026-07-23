@@ -20,7 +20,7 @@
  *   node board.mjs code pr --from <branch> --to <branch>
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
 import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
@@ -1260,7 +1260,14 @@ async function main() {
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
-const runAsCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// realpathSync statt resolve: Node loest fuer import.meta.url Symlinks auf (macOS:
+// /var -> /private/var), ein nur normalisierter argv[1] wuerde dann nie matchen (#146).
+let runAsCli = false;
+if (process.argv[1]) {
+  try {
+    runAsCli = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
+}
 if (runAsCli) {
   try {
     await main();

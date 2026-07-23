@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir dreizehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir vierzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -36,13 +36,14 @@ Der Installer fragt sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die dreizehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die dreizehn Skills
+## Die vierzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
 | `/kontext` | Kontext laden, Lageüberblick zu Session-Start |
+| `/fachplan` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
 | `/plan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |

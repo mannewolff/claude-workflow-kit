@@ -16,10 +16,14 @@
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
  *   --no-checks-ok     Start trotz leerer buildChecks erlauben
+ *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
+ *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
+ *     harter Stopp, Issue bleibt unangetastet (kein Kommentar, kein Backlog-Move)
  *   - Working Tree dirty  -> harter Stopp (auf halben Aenderungen wird nicht weitergebaut)
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
+ * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  *
@@ -39,17 +43,45 @@ const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem
 
 // --- Argumente ---
 
+function printHelp() {
+  process.stdout.write(`Nacht-Runner: arbeitet die Ready-Spalte unbeaufsichtigt ab —
+pro Issue eine frische Headless-Session (/implement-next), sequenziell.
+Erfolg wird am Board gemessen (Issue in In review). Gepusht wird nie.
+
+Aufruf (im Projekt-Root):
+  node .claude/kit/night.mjs [Flags]
+
+Flags:
+  --max <N>          maximale Session-Starts pro Lauf (Default 10)
+  --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
+  --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
+  --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
+  --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+  --no-checks-ok     Start trotz leerer buildChecks erlauben
+  --help, -h         diese Uebersicht
+
+Beispiele:
+  caffeinate -i node .claude/kit/night.mjs
+  TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
+
+Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
+`);
+}
+
 function parseArgs(argv) {
   const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--max") args.max = Number(argv[++i]);
+    if (a === "--help" || a === "-h") {
+      printHelp();
+      process.exit(0);
+    } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];
     else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
     else if (a === "--no-checks-ok") args.noChecksOk = true;
-    else fail(`Unbekanntes Argument: ${a}`);
+    else fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
@@ -104,6 +136,15 @@ function gitClean() {
 function lastCommitHash() {
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
   return res.status === 0 ? res.stdout.trim() : "?";
+}
+
+// --- Fachliche Issues (PO-Schleife, #146) ---
+
+// [Fachlich]-Titelpraefix = Discovery-Issue: wird gegroomt, nie implementiert.
+// Titel-basiert, weil issue list den Titel bei allen Trackern ohne Adapter-
+// Erweiterung liefert (Stufe 1; Label-Achse ist als Folgepaket benannt).
+function isFachlich(title) {
+  return /^\s*\[fachlich\]/i.test(title || "");
 }
 
 // --- Abhaengigkeiten ---
@@ -192,6 +233,10 @@ if (args.dryRun) {
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
   for (const issue of ready) {
+    if (isFachlich(issue.title)) {
+      log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
+      continue;
+    }
     const full = board("issue", "get", String(issue.id));
     const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
     if (unmet.length > 0) {
@@ -221,6 +266,14 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   if (ready.length === 0) break;
 
   const top = ready[0];
+  if (isFachlich(top.title)) {
+    log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
+    board("issue", "comment", String(top.id), "--text",
+      `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`);
+    board("issue", "move", String(top.id), "backlog");
+    deferred++;
+    continue;
+  }
   const full = board("issue", "get", String(top.id));
   const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
   if (unmet.length > 0) {
@@ -235,7 +288,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   sessions++;
   log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
   const started = Date.now();
-  runSession(top.id, args);
+  const res = runSession(top.id, args);
   const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
@@ -243,6 +296,20 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     succeeded++;
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
     continue;
+  }
+
+  // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
+  // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
+  // falsch. Harter Stopp ohne Kommentar und ohne Backlog-Move, sonst raeumt eine
+  // kaputte Umgebung die ganze Ready-Spalte leer.
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (!timedOut && (res.error || res.status !== 0)) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
+    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
+    if (detail) log(`  CLI-Meldung: ${detail}`);
+    hardStop = true;
+    break;
   }
 
   if (!gitClean()) {

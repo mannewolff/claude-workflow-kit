@@ -23,6 +23,12 @@ node .claude/kit/board.mjs issue list --status ready
 
 Gibt die Issues in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Das **erste** Element ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
+**Fachliche Issues überspringen (Leitplanke):** Trägt das oberste Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), wird es **nicht implementiert** — es mit diesem Kommentar zurück nach Backlog verschieben und mit dem nächsten Ready-Issue fortfahren (bzw. ohne Fehler enden, wenn keines bleibt):
+
+```
+Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
+```
+
 Wenn Ready leer ist:
 
 > "Ready ist leer. Nichts zu tun."
@@ -100,6 +106,7 @@ Nach dem Abschlussbericht endet der Skill — **kein weiteres Issue**, auch wenn
 
 ## Stop-Punkte
 
+- Fachliche Issues (`[Fachlich]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
