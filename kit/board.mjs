@@ -911,6 +911,23 @@ export function resolveToolboxToken({ cfg, env, readFile }) {
 }
 
 /**
+ * Interpretiert die Response von POST /api/kanban/items (#141, Bug #140). Reine Funktion,
+ * damit die drei Vertragsfaelle ohne Netz testbar sind:
+ *   1. { number } vorhanden — alter Vertrag (Original-Toolbox, kanban-kit vor #373):
+ *      die angelegte Board-Karte traegt sofort eine Anzeigenummer.
+ *   2. nur { id } — neuer Pool-Vertrag (kanban-kit >= 1.5): der Create landet als board-lose
+ *      Idee im Projekt-Ideen-Pool; die Board-Nummer entsteht erst beim menschlichen Einplanen.
+ *   3. weder number noch id — harter Fehler mit Response-Auszug, nie stilles "undefined".
+ */
+export function interpretToolboxCreateResponse(created) {
+  if (created?.number != null) return { id: String(created.number) };
+  if (created?.id != null) return { id: null, ideaId: String(created.id), pending: true };
+  throw new BoardError(
+    `Unerwartete Create-Response der Kanban-API (weder 'number' noch 'id'): ${JSON.stringify(created)}`
+  );
+}
+
+/**
  * Issue-Tracker gegen das eigene Toolbox-Kanban-Board. Zwei-Achsen-Modell (#368): der Code liegt
  * weiter auf GitHub (codeHost bleibt github), nur der Issue-Tracker ist das Board.
  *
@@ -1012,7 +1029,15 @@ class ToolboxIssueTracker {
       body: JSON.stringify({ title, body: body || "", column: "BACKLOG", ideaStored }),
     });
     const created = await res.json();
-    return { id: String(created.number), url: `${host}/kanban` };
+    const result = interpretToolboxCreateResponse(created);
+    if (result.pending) {
+      return {
+        ...result,
+        url: `${host}/kanban`,
+        hinweis: "Als Idee im Projekt-Ideen-Pool angelegt; die Board-Nummer entsteht beim Einplanen.",
+      };
+    }
+    return { ...result, url: `${host}/kanban` };
   }
 
   async getIssue(number) {
