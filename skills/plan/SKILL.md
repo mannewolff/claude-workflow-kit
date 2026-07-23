@@ -8,6 +8,16 @@ user-invocable: true
 
 Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
 
+## Eingang `/plan #N`: fachliches Issue als Quelle
+
+Wird der Skill mit einer Issue-Nummer aufgerufen und trägt dieses Issue das Titel-Präfix `[Fachlich]` (PO-Schleife, siehe `/fachplan`), dann ist **das Issue die Anforderungsquelle, nicht der Chat**:
+
+1. Das fachliche Issue vollständig lesen — **einschließlich aller Kommentare**, denn dort steckt die Groom-Historie mit den PO-Entscheidungen.
+2. Den technischen Plan aus Ziel, fachlichen Akzeptanzkriterien und Nicht-Zielen entwickeln; die Nicht-Ziele sind Scope-Grenzen, keine Anregungen.
+3. Das fachliche Issue im Plan ausdrücklich referenzieren („Fachliche Quelle: Issue #N"), damit `/issues` den Rückverweis in die technischen Issues übernimmt.
+
+Trägt #N kein `[Fachlich]`-Präfix, gilt der normale Ablauf unten — kein Sonderweg.
+
 ## Ablauf
 
 ### 0. Bahn bestimmen
