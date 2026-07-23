@@ -44,25 +44,6 @@ morgens durch den Menschen. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumen
 
 ---
 
-## Zwei Bahnen
-
-**Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger.
-
-**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/plan` → `/issues` → GO → `/implement-ready`.
-
-**Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2, ich …"); im Zweifel Bahn 2.
-
-| Beispiel | Bahn |
-|----------|------|
-| Icon-/Favicon-Tausch | 1 |
-| Textkorrektur | 1 |
-| Config-Default | 1 |
-| Neue Tabelle | 2 |
-| Neuer Endpoint | 2 |
-| Neues UI-Feature | 2 |
-
----
-
 ## Kanban-Board (5 Spalten)
 
 | Spalte | Bedeutung | Wer bewegt |

@@ -139,13 +139,14 @@ Beispiele für verschiedene Stacks:
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
 
-## Die dreizehn Skills und der 9-Schritt-Kernprozess
+## Die vierzehn Skills und der 9-Schritt-Kernprozess
 
 Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
 | **1** | **Anforderung formulieren** | **Mensch** | (kein Skill) |
+| 1.5 | Fachliches Issue anlegen (optional, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)) | KI | /fachplan |
 | 2 | Anforderung planen | KI | /plan |
 | 3 | Issues anlegen | KI | /issues |
 | **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
@@ -166,6 +167,14 @@ Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-do
 Der Skill lädt den Kontext, den du brauchst, um sofort arbeitsfähig zu sein, ohne den Chat der letzten Session im Kopf haben zu müssen. Er liest `kontext.config.json` (zuerst global aus `~/.claude/`, dann lokal aus `.claude/`, wobei lokale Werte die globalen überschreiben).
 
 Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, Arbeitsregeln), erkennt die Projektnotiz automatisch anhand des Repo-Namens und liest zusätzliche `projectDocs`. Ohne Vault holt er die offenen Issues per CLI und liest `projectDocs` aus dem Repo. Die Ausgabe ist ein kurzer Lageüberblick: offene Issues, letzte Entscheidungen, was als nächstes ansteht.
+
+### /fachplan
+
+**Schritt 1.5, optional — nur für Projekte mit Product Owner ([PO-Schleife](#po-schleife-fachliche-und-technische-issues)).**
+
+Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt (Kommentare, Edits).
+
+Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/plan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/plan`.
 
 ### /plan
 
@@ -313,11 +322,36 @@ Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet z
 
 Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
+## PO-Schleife: fachliche und technische Issues
+
+In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anforderungen ein — und will den Plan fachlich abnehmen, bevor Technik entsteht. Dafür trennt das Kit optional zwei Issue-Sorten nach dem Discovery/Delivery-Muster:
+
+- **Fachliche Issues** (Titel-Präfix `[Fachlich]`, angelegt per [/fachplan](#fachplan)): beschreiben in PO-Sprache das Was und Warum — Story-Format mit Ziel, fachlichen Akzeptanzkriterien, Nicht-Zielen und offenen Fragen. Sie werden am Board **gegroomt** (Kommentare und Edits sind die Verhandlung mit dem PO) und **nie implementiert**.
+- **Technische Issues** (Vier-Abschnitt-Format wie gehabt): entstehen erst, wenn der PO sagt „das ist es" — dann liest `/plan #N` das fachliche Issue **einschließlich seiner Kommentare** als Anforderungsquelle, und `/issues` schneidet daraus die technischen Issues.
+
+**Der Ablauf:**
+
+1. `/fachplan <Anforderung>` → fachliches Issue in Backlog (bzw. im Ideen-Pool, siehe unten).
+2. Groomen direkt am Issue, bis der PO die fachliche Freigabe gibt.
+3. `/plan #N` → technischer Plan aus dem fachlichen Issue.
+4. `/issues` → technische Issues; jedes trägt den Rückverweis „Fachliche Quelle: Issue #N" **im Kontext-Abschnitt**.
+5. Ab hier der normale Weg: GO, `/implement-ready` oder Nachtbetrieb, Review, Push.
+
+**Die Regeln dahinter:**
+
+- **Der Rückverweis steht im Kontext, nie in den Abhängigkeiten.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten — und weil das fachliche Issue erst Done wird, wenn seine technischen Kinder fertig sind, würden alle Kinder dauerhaft zurückgestellt (Henne-Ei).
+- **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten.
+- **Lebenszyklus:** Das fachliche Issue bleibt als Klammer offen; Done setzt der Mensch, wenn die technischen Kinder durch sind.
+- **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
+- **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/plan #N` = fachlich freigegeben.
+
+Ohne PO ist die Schleife unsichtbar: `/plan` direkt aufzurufen bleibt der Normalweg.
+
 ## Nachtbetrieb
 
 Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next`, wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
-**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück.
+**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)) überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten.
 
 **Start:**
 
