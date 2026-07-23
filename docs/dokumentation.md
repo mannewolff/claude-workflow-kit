@@ -328,6 +328,14 @@ node .claude/kit/night.mjs             # echter Lauf
 
 Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-4-8`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions).
 
+**Nachtlauf gegen ein anderes Board (Toolbox/kanban-kit).** Läuft dein Projekt gegen einen kanban-kit-Tracker, kannst du den ganzen Nachtlauf auf ein eigenes Night-Board umschalten: Token in der Admin-UI erzeugen und an das Night-Board binden, als zweite gitignorete Datei neben dem normalen `tokenFile` ablegen (z. B. `.claude/tbx-night.token`) und den Runner mit `TBX_TOKEN` pro Aufruf starten:
+
+```bash
+TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
+```
+
+Das funktioniert, weil `TBX_TOKEN` die höchste Stufe der [Token-Precedence](#toolbox-privates-setup) ist und die Umgebungsvariable über die ganze Prozesskette vererbt wird: vom Runner an seine eigenen `board.mjs`-Aufrufe **und** an jede Headless-Session, deren `board.mjs`-Aufrufe sie wiederum erben. Der gesamte Lauf wechselt damit das Board — Ready-Quelle und alle Rückmeldungen (move, comment). Ein Split („Issues von Board B ziehen, auf Board A melden") ist bewusst nicht möglich: Das Board ist das einzige Koordinationssignal des Runners. Wichtig: `TBX_TOKEN` nur so, pro Aufruf, setzen — nie dauerhaft exportieren (etwa in `.zshrc`), sonst gewinnt es in **jedem** Projekt gegen dessen `tokenFile`. Das alles gilt nur für den Toolbox-/kanban-kit-Tracker; bei GitHub und GitLab ist das Board pro Repo über die Config getrennt (`github.projectNumber` bzw. Status-Labels), ein Umschalten pro Aufruf gibt es dort nicht.
+
 **Permissions.** Unbeaufsichtigt heißt: niemand beantwortet Permission-Dialoge. Der Runner startet die Sessions deshalb mit `--permission-mode acceptEdits`; alles Weitere erlaubst du gezielt über eine Allowlist in `.claude/settings.json` des Projekts, z. B.:
 
 ```json
@@ -462,7 +470,7 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 
 `board.mjs` löst den Token über drei Wege auf — die erste Fundstelle gewinnt:
 
-1. **`TBX_TOKEN`** (Umgebungsvariable): höchste Priorität. Praktisch, um ein Token pro Terminal-Session oder pro Aufruf mitzugeben, ohne irgendetwas ins Projekt zu schreiben.
+1. **`TBX_TOKEN`** (Umgebungsvariable): höchste Priorität. Praktisch, um ein Token pro Terminal-Session oder pro Aufruf mitzugeben, ohne irgendetwas ins Projekt zu schreiben — so schaltet man z. B. einen ganzen Nachtlauf auf ein eigenes Night-Board um (siehe [Nachtbetrieb](#nachtbetrieb)).
 2. **`toolbox.tokenFile`** in der `workflow.config.json`: Pfad (relativ zum Projektverzeichnis) zu einer Datei, die nur das Token enthält. Damit bekommt jede App ihr eigenes, projekt-/board-gebundenes Token. Die Token-Datei gehört in `.gitignore` — eingecheckt wird nur der Pfad, nie das Secret.
 3. **Globaler `tbx`-Login** (Fallback, bisheriges Verhalten): Token in der Toolbox-Web-UI erzeugen, `tbx auth login` ausführen. Der Token liegt dann unter `~/.config/toolbox-cli/tokens.json` (überschreibbar per `TBX_CONFIG_DIR`) und gilt für alle Projekte auf dem Rechner, die keinen der beiden anderen Wege nutzen.
 
