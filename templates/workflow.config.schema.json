@@ -150,6 +150,11 @@
           "minLength": 1,
           "description": "Basis-URL der Toolbox-Instanz."
         },
+        "tokenFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab."
+        },
         "ideaStored": {
           "type": "boolean",
           "default": true,

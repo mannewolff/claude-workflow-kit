@@ -864,12 +864,59 @@ const TOOLBOX_COLUMN_TO_STATUS = Object.fromEntries(
 );
 
 /**
+ * Loest das kanban-kit-Token pro App auf (#135). Reine Funktion: cfg, env und readFile werden
+ * injiziert, damit die Precedence ohne Dateisystem testbar ist. Erste Fundstelle gewinnt:
+ *   1. env.TBX_TOKEN (getrimmt)
+ *   2. cfg.toolbox.tokenFile — Datei lesen, Inhalt trimmen (Pfad relativ zum cwd)
+ *   3. <TBX_CONFIG_DIR | ~/.config/toolbox-cli>/tokens.json .token (globaler tbx-Login, #367)
+ * Fail-fast: ein Klartext-Token in der Config (cfg.toolbox.token) bricht immer ab —
+ * Secrets gehoeren nicht ins eingecheckte Repo.
+ */
+export function resolveToolboxToken({ cfg, env, readFile }) {
+  if (cfg?.toolbox?.token) {
+    throw new BoardError(
+      "kein Klartext-Token in workflow.config.json — nutze TBX_TOKEN oder toolbox.tokenFile."
+    );
+  }
+
+  const envToken = (env?.TBX_TOKEN || "").trim();
+  if (envToken) return envToken;
+
+  const tokenFile = cfg?.toolbox?.tokenFile;
+  if (tokenFile) {
+    let content;
+    try {
+      content = readFile(resolve(tokenFile));
+    } catch (e) {
+      throw new BoardError(`toolbox.tokenFile '${tokenFile}' nicht lesbar: ${e.message}`);
+    }
+    const fileToken = (content || "").trim();
+    if (!fileToken) throw new BoardError(`toolbox.tokenFile '${tokenFile}' ist leer.`);
+    return fileToken;
+  }
+
+  const dir = env?.TBX_CONFIG_DIR || join(homedir(), ".config", "toolbox-cli");
+  let storedToken = "";
+  try {
+    const tokens = JSON.parse(readFile(join(dir, "tokens.json")));
+    if (typeof tokens?.token === "string") storedToken = tokens.token.trim();
+  } catch { /* kein oder kaputter tbx-Login — faellt in die Fehlermeldung unten */ }
+  if (storedToken) return storedToken;
+
+  throw new BoardError(
+    "Kein Toolbox-Token gefunden. Drei Wege: TBX_TOKEN als Umgebungsvariable setzen, " +
+    "toolbox.tokenFile in workflow.config.json auf eine Token-Datei zeigen lassen, " +
+    "oder Token in der Web-UI erzeugen und 'tbx auth login' ausfuehren."
+  );
+}
+
+/**
  * Issue-Tracker gegen das eigene Toolbox-Kanban-Board. Zwei-Achsen-Modell (#368): der Code liegt
  * weiter auf GitHub (codeHost bleibt github), nur der Issue-Tracker ist das Board.
  *
- * Auth: liest Host + Token aus ~/.config/toolbox-cli/{config,tokens}.json (dieselbe Quelle wie das
- * tbx-CLI, #367); Host per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header
- * X-Kanban-Token.
+ * Auth: Token per resolveToolboxToken() (TBX_TOKEN > toolbox.tokenFile > globaler tbx-Login,
+ * #135); Host aus ~/.config/toolbox-cli/config.json (dieselbe Quelle wie das tbx-CLI, #367),
+ * per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header X-Kanban-Token.
  *
  * number vs. DB-id: Der Workflow adressiert Issues ueber die Board-Anzeigenummer (#N). Move/Comment
  * brauchen die DB-id aus der Item-Response; sie wird intern per Board-Fetch aufgeloest.
@@ -880,14 +927,17 @@ class ToolboxIssueTracker {
   _auth() {
     const dir = process.env.TBX_CONFIG_DIR || join(homedir(), ".config", "toolbox-cli");
     const stored = this._readJson(join(dir, "config.json"));
-    const tokens = this._readJson(join(dir, "tokens.json"));
     const host = this._cfg.toolbox?.host || stored?.host;
-    const token = tokens?.token;
-    if (!host || !token) {
+    if (!host) {
       throw new BoardError(
-        "Kein Toolbox-Login gefunden. Token in der Web-UI erzeugen und 'tbx auth login' ausfuehren."
+        "Kein Toolbox-Host gefunden. toolbox.host in workflow.config.json setzen oder 'tbx auth login' ausfuehren."
       );
     }
+    const token = resolveToolboxToken({
+      cfg: this._cfg,
+      env: process.env,
+      readFile: (path) => readFileSync(path, "utf-8"),
+    });
     return { host, token };
   }
 
@@ -1184,10 +1234,14 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch (err) {
-  const prefix = err instanceof BoardError ? "Fehler" : "Unerwarteter Fehler";
-  process.stderr.write(`${prefix}: ${err.message}\n`);
-  process.exit(1);
+// Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
+const runAsCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (runAsCli) {
+  try {
+    await main();
+  } catch (err) {
+    const prefix = err instanceof BoardError ? "Fehler" : "Unerwarteter Fehler";
+    process.stderr.write(`${prefix}: ${err.message}\n`);
+    process.exit(1);
+  }
 }
