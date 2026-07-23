@@ -16,6 +16,7 @@
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
  *   --no-checks-ok     Start trotz leerer buildChecks erlauben
+ *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
  *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
@@ -42,17 +43,45 @@ const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem
 
 // --- Argumente ---
 
+function printHelp() {
+  process.stdout.write(`Nacht-Runner: arbeitet die Ready-Spalte unbeaufsichtigt ab —
+pro Issue eine frische Headless-Session (/implement-next), sequenziell.
+Erfolg wird am Board gemessen (Issue in In review). Gepusht wird nie.
+
+Aufruf (im Projekt-Root):
+  node .claude/kit/night.mjs [Flags]
+
+Flags:
+  --max <N>          maximale Session-Starts pro Lauf (Default 10)
+  --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
+  --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
+  --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
+  --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+  --no-checks-ok     Start trotz leerer buildChecks erlauben
+  --help, -h         diese Uebersicht
+
+Beispiele:
+  caffeinate -i node .claude/kit/night.mjs
+  TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
+
+Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
+`);
+}
+
 function parseArgs(argv) {
   const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--max") args.max = Number(argv[++i]);
+    if (a === "--help" || a === "-h") {
+      printHelp();
+      process.exit(0);
+    } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];
     else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
     else if (a === "--no-checks-ok") args.noChecksOk = true;
-    else fail(`Unbekanntes Argument: ${a}`);
+    else fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
