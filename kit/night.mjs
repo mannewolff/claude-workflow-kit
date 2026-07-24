@@ -24,6 +24,10 @@
  *   - Working Tree dirty  -> harter Stopp (auf halben Aenderungen wird nicht weitergebaut)
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
+ * Verhalten bei Erfolg einer Runde (Issue in In review):
+ *   - Working Tree sauber -> weiter mit der naechsten Runde
+ *   - Working Tree dirty   -> harter Stopp (unkommittete Reste wuerden die naechste
+ *     Runde vergiften, siehe Issue #152)
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  *
@@ -295,6 +299,15 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   if (nowInReview) {
     succeeded++;
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
+    // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
+    // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
+    // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
+    if (!gitClean()) {
+      log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
+      hardStop = true;
+      break;
+    }
     continue;
   }
 

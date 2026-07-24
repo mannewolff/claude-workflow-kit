@@ -77,12 +77,14 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 node .claude/kit/board.mjs issue move <id> in_review
 ```
 
-Abschlussbericht als Issue-Kommentar:
+Abschlussbericht **direkt** als Issue-Kommentar posten — kein Zwischenschritt über eine Wrapper- oder Temp-Datei:
 
 ```bash
 node .claude/kit/board.mjs issue comment <id> --text "## Abschlussbericht Issue #N
 ..."
 ```
+
+**Working Tree sauber hinterlassen (Nachtbetrieb-Leitplanke).** Am Ende der Session enthält der Working Tree ausschließlich committete Änderungen. Lege für den Abschlussbericht keine Hilfsdateien an (kein `.tmp-report.md`, kein Node-Wrapper zum Posten) — der `issue comment --text`-Aufruf oben genügt. Waren ausnahmsweise Hilfsdateien nötig, lösche sie vor Session-Ende. Der Nacht-Runner stoppt hart, wenn eine erfolgreiche Runde unkommittete Reste hinterlässt (siehe `kit/night.mjs`, Issue #152).
 
 Format des Abschlussberichts:
 
