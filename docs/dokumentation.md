@@ -383,14 +383,39 @@ Das funktioniert, weil `TBX_TOKEN` die höchste Stufe der [Token-Precedence](#to
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
-      "Bash(npm test:*)",
-      "Bash(npm run build:*)"
+      "Bash(mvn:*)",
+      "Bash(npm --prefix frontend:*)"
     ]
   }
 }
 ```
 
-Die `buildChecks` deines Projekts gehören **wörtlich** mit in die Liste — inklusive aller Flags, denn die Muster matchen als Präfix: `Bash(npm run build:*)` erlaubt `npm --prefix frontend run build` **nicht**. Wer solche Checks fährt, trägt sie exakt so ein, z. B. `Bash(npm --prefix frontend run build:*)` oder `Bash(mvn verify:*)`. Die vier read-only-Git-Kommandos gehören ebenfalls hinein, damit eine Session beim Commit-Vorbereiten nicht an einem harmlosen `git status` scheitert. Ein Kommando außerhalb der Allowlist wird im Headless-Betrieb sofort abgelehnt; eine gut erzogene Session implementiert dann zwar weiter, kann aber ihre Checks nicht ausführen und committet deshalb nicht — die Runde endet zeitnah ohne In-review-Ergebnis (dirty Tree → harter Stopp, sauberer Tree → Backlog), nicht erst nach `--timeout-min`. Das ist gewollt: lieber eine verlorene Runde als eine unbeaufsichtigte Aktion. Wer stattdessen `--yolo` setzt, schaltet **alle** Permission-Checks der Nacht-Sessions ab (`--dangerously-skip-permissions`); die Stop-Punkte hängen dann allein am Skill-Prompt. Bewusste Einzelfall-Entscheidung, kein Default.
+Für den unbeaufsichtigten Betrieb erlaubst du am besten das **Werkzeug**, nicht das einzelne Kommando: `Bash(mvn:*)` statt `Bash(mvn verify:*)`. Der Grund ist das Präfix-Matching der Allowlist — ein Muster greift nur, wenn der Kommando-Anfang exakt passt. `Bash(mvn verify:*)` deckt `mvn verify` ab, aber nicht `mvn -q verify`, `mvn clean verify` oder ein `mvn test` für einen Teillauf; Sessions formulieren solche Varianten aber legitim. Ein tool-weiter Eintrag fängt alle. Die vier read-only-Git-Kommandos gehören ebenfalls hinein, damit eine Session beim Commit-Vorbereiten nicht an einem harmlosen `git status` scheitert. **Trade-off:** Ein tool-weiter Eintrag gibt der Session mehr Spielraum (beliebige `mvn`-Goals, beliebige `npm`-Scripts). Für projekteigene Build-Werkzeuge ist das nachts der pragmatische Schnitt; wer enger bleiben will, trägt die buildChecks stattdessen wörtlich ein (inklusive aller Flags) und zahlt dafür mit Runden, die an einer nicht vorhergesehenen Kommando-Variante scheitern.
+
+Ein Kommando außerhalb der Allowlist wird im Headless-Betrieb sofort abgelehnt; eine gut erzogene Session implementiert dann zwar weiter, kann aber ihre Checks nicht ausführen und committet deshalb nicht — die Runde endet zeitnah ohne In-review-Ergebnis (dirty Tree → harter Stopp, sauberer Tree → Backlog), nicht erst nach `--timeout-min`. Das ist gewollt: lieber eine verlorene Runde als eine unbeaufsichtigte Aktion. Wer stattdessen `--yolo` setzt, schaltet **alle** Permission-Checks der Nacht-Sessions ab (`--dangerously-skip-permissions`); die Stop-Punkte hängen dann allein am Skill-Prompt. Bewusste Einzelfall-Entscheidung, kein Default.
+
+**Zwei weitere Schichten: Sandbox und Umgebung.** Die Allowlist entscheidet, ob ein Kommando *erlaubt* ist — nicht, in welcher Umgebung es läuft. Claude Code führt Bash-Kommandos zusätzlich in einer **Sandbox** aus, die unter anderem Unix-Sockets abschottet. Braucht ein Check einen Socket (typisch: Testcontainers-Integrationstests über `mvn verify`, die den Docker-/Colima-Socket ansprechen), scheitert er trotz passender Allow-Rule an der Sandbox, und der Ausweg („ohne Sandbox erneut ausführen") ist ein interaktiver Prompt — nachts unbeantwortbar. Nimm solche Kommandos über [`sandbox.excludedCommands`](https://code.claude.com/docs/en/sandboxing) aus der Sandbox heraus:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": ["mvn *"]
+  }
+}
+```
+
+Fehlt dem Check darüber hinaus eine **Umgebungsvariable** (z. B. `DOCKER_HOST`, damit Testcontainers den Socket findet), setz sie im `env`-Block der `settings.json` — **nicht** als Kommando-Präfix. Ein `env DOCKER_HOST=… mvn …` fällt nämlich aus beiden Mustern heraus: Das erste Token ist dann `env`, nicht `mvn`, also greifen weder die Allow-Rule `Bash(mvn:*)` noch `excludedCommands: ["mvn *"]`. Im `env`-Block gilt die Variable für jede Session, und `mvn` erbt sie ohne Präfix:
+
+```json
+{
+  "env": {
+    "DOCKER_HOST": "unix:///<pfad-zum>/docker.sock"
+  }
+}
+```
+
+Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen müssen: die **Allowlist** erlaubt das Kommando, `sandbox.excludedCommands` befreit es von der Isolation, der `env`-Block versorgt es mit Variablen. (Für Testcontainers speziell tut es alternativ eine `~/.testcontainers.properties` mit `docker.host` — die liegt außerhalb des Projekts, ist dafür aber unabhängig von Claude Code.)
 
 **Wenn etwas schiefgeht:** Der Runner unterscheidet drei Fälle. **Infrastruktur-Fehlstart** — die Session selbst endet mit Exit ≠ 0 (Auth abgelaufen, CLI kaputt): harter Stopp, das Issue bleibt unangetastet in Ready, denn mit ihm ist nichts falsch; die CLI-Fehlermeldung steht direkt im Konsolen-Log. So räumt eine kaputte Umgebung nicht die ganze Ready-Spalte leer. **Fachlicher Fehlschlag** — die Session endet sauber (Exit 0), aber das Issue steht nicht in In review: der Runner kommentiert es und stellt es zurück ins Backlog, der Lauf geht mit dem nächsten Issue weiter. Ein **Timeout** (`--timeout-min`) zählt als issue-spezifisch (Aufgabe zu groß) und wird wie ein fachlicher Fehlschlag behandelt. Hinterlässt eine Runde einen unsauberen Working Tree, stoppt der Lauf in jedem Fall hart (Exit ≠ 0): Auf halben Änderungen wird nicht weitergebaut. Vor dem Start prüft der Runner außerdem: kein Issue in In progress (Crash-Rest), sauberer Working Tree, `buildChecks` vorhanden.
 
