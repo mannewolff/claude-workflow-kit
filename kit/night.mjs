@@ -16,6 +16,8 @@
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
  *   --no-checks-ok     Start trotz leerer buildChecks erlauben
+ *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
+ *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
@@ -31,11 +33,15 @@
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  *
- * Test-Hook: NIGHT_CLAUDE_CMD ersetzt den claude-Aufruf durch ein Shell-Kommando
- * (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable) — nur fuer Tests gedacht.
+ * Test-Hooks (nur fuer Tests gedacht):
+ *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
+ *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
+ *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
+ *                     (statt --timeout-min), damit der Timeout-Pfad schnell
+ *                     testbar ist.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,6 +68,8 @@ Flags:
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
   --no-checks-ok     Start trotz leerer buildChecks erlauben
+  --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
+                     der laufenden Session mitloggen (via stream-json)
   --help, -h         diese Uebersicht
 
 Beispiele:
@@ -73,7 +81,7 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 }
 
 function parseArgs(argv) {
-  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false };
+  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
@@ -85,6 +93,7 @@ function parseArgs(argv) {
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
     else if (a === "--no-checks-ok") args.noChecksOk = true;
+    else if (a === "--verbose") args.verbose = true;
     else fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
@@ -169,29 +178,135 @@ function satisfiedIds() {
   return new Set([...inReview, ...done].map((i) => Number(i.id)));
 }
 
+// --- Verbose-Stream (Issue #154) ---
+
+// Kuerzt Text auf eine kompakte, einzeilige Log-Zeile.
+function flatten(str, max) {
+  const flat = (str || "").replace(/\s+/g, " ").trim();
+  return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
+}
+
+// Waehlt das aussagekraeftigste Argument eines Tool-Aufrufs (Kommando, Pfad),
+// faellt auf ein kompaktes JSON zurueck.
+function toolArg(block) {
+  const input = block.input || {};
+  for (const key of ["command", "file_path", "path", "pattern", "url"]) {
+    if (typeof input[key] === "string") return input[key];
+  }
+  const json = JSON.stringify(input);
+  return json && json !== "{}" ? json : "";
+}
+
+// Uebersetzt eine stream-json-Zeile (ein NDJSON-Objekt) in 0..n kompakte
+// Ereigniszeilen: Tool-Aufrufe (Bash/Edit/…) und Text-Snippets der Session.
+function interpretStreamEvent(obj) {
+  const out = [];
+  if (!obj || typeof obj !== "object") return out;
+  if (obj.type === "assistant" && Array.isArray(obj.message?.content)) {
+    for (const block of obj.message.content) {
+      if (block.type === "text" && block.text?.trim()) {
+        out.push(`Claude: ${flatten(block.text, 200)}`);
+      } else if (block.type === "tool_use" && block.name) {
+        const arg = toolArg(block);
+        out.push(arg ? `${block.name}: ${flatten(arg, 160)}` : block.name);
+      }
+    }
+  }
+  return out;
+}
+
+function emitVerbose(issueId, line) {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let obj;
+  try {
+    obj = JSON.parse(trimmed);
+  } catch {
+    return; // unparsebare Zeilen tolerant ueberspringen
+  }
+  for (const ev of interpretStreamEvent(obj)) {
+    log(`  #${issueId} > ${ev}`);
+  }
+}
+
 // --- Nacht-Session ---
 
-function runSession(issueId, args) {
-  const timeoutMs = args.timeoutMin * 60 * 1000;
-  const testCmd = process.env.NIGHT_CLAUDE_CMD;
-  let res;
-  if (testCmd) {
-    res = spawnSync("sh", ["-c", testCmd], {
-      encoding: "utf-8",
-      timeout: timeoutMs,
+// Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
+// parst stdout live zeilenweise. Eigener Timeout-Timer statt spawnSync-timeout,
+// weil wir waehrend des Laufs streamen muessen. Das Rueckgabe-Objekt spiegelt
+// die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
+// damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
+// unveraendert weiterarbeiten.
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream }) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId) },
     });
+    let stdout = "";
+    let stderr = "";
+    let buf = "";
+    let timedOut = false;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, timeoutMs);
+
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    child.stdout?.on("data", (chunk) => {
+      const text = chunk.toString();
+      stdout += text;
+      if (useStream) {
+        buf += text;
+        let idx;
+        while ((idx = buf.indexOf("\n")) >= 0) {
+          emitVerbose(issueId, buf.slice(0, idx));
+          buf = buf.slice(idx + 1);
+        }
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (err) => done({ status: null, signal: null, error: err, stdout, stderr }));
+    child.on("close", (code, signal) => {
+      if (useStream && buf.trim()) emitVerbose(issueId, buf);
+      const error = timedOut
+        ? Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })
+        : null;
+      done({ status: code, signal, error, stdout, stderr });
+    });
+  });
+}
+
+async function runSession(issueId, args) {
+  const timeoutMs = process.env.NIGHT_TIMEOUT_MS
+    ? Number(process.env.NIGHT_TIMEOUT_MS)
+    : args.timeoutMin * 60 * 1000;
+  const testCmd = process.env.NIGHT_CLAUDE_CMD;
+  let cmd, cmdArgs;
+  if (testCmd) {
+    cmd = "sh";
+    cmdArgs = ["-c", testCmd];
   } else {
     const permArgs = args.yolo
       ? ["--dangerously-skip-permissions"]
       : ["--permission-mode", "acceptEdits"];
-    res = spawnSync("claude", ["-p", "/implement-next", "--model", args.model, ...permArgs], {
-      encoding: "utf-8",
-      timeout: timeoutMs,
-    });
-    if (res.error && res.error.code === "ENOENT") {
-      fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
-    }
+    const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
+    cmd = "claude";
+    cmdArgs = ["-p", "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
+  }
+  const res = await runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream: args.verbose });
+  if (!testCmd && res.error && res.error.code === "ENOENT") {
+    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   }
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
@@ -292,7 +407,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   sessions++;
   log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
   const started = Date.now();
-  const res = runSession(top.id, args);
+  const res = await runSession(top.id, args);
   const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));

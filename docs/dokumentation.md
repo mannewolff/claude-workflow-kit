@@ -360,7 +360,17 @@ node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde — startet ni
 node .claude/kit/night.mjs             # echter Lauf
 ```
 
-Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-4-8`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions).
+Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-4-8`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--verbose` (Live-Verlaufsprotokoll), `--help`.
+
+Ohne `--verbose` protokolliert der Runner pro Runde nur Start und Ende — bei einer langen Session sieht man nicht, woran sie gerade arbeitet (`claude -p` gibt erst am Schluss seine Abschlussnachricht aus). Mit `--verbose` liest der Runner den `stream-json`-Output der Session live mit und schreibt kompakte Ereigniszeilen ins Nacht-Log und auf die Konsole — Tool-Aufrufe und Text-Snippets, jeweils mit der Issue-Nummer:
+
+```
+[18:24:10]   #401 > Bash: mvn -q verify
+[18:25:02]   #401 > Edit: src/main/java/.../ProjectIdeaEventService.java
+[18:26:11]   #401 > Claude: Tests grün, ich committe jetzt.
+```
+
+Die finale Abschlussnachricht landet wie gehabt zusätzlich im Log; das Streaming ergänzt sie, ersetzt sie nicht.
 
 **Nachtlauf gegen ein anderes Board (Toolbox/kanban-kit).** Läuft dein Projekt gegen einen kanban-kit-Tracker, kannst du den ganzen Nachtlauf auf ein eigenes Night-Board umschalten: Token in der Admin-UI erzeugen und an das Night-Board binden, als zweite gitignorete Datei neben dem normalen `tokenFile` ablegen (z. B. `.claude/tbx-night.token`) und den Runner mit `TBX_TOKEN` pro Aufruf starten:
 
