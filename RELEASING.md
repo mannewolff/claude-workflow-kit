@@ -34,14 +34,20 @@ Gebumpt wird ueber das Single-File-Tool `tools/version.mjs` (`--get`, `--patch`,
 
 **Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --patch`
-2. Version-Commit: `chore: vX.Y.Z` (nur `install.mjs`)
-3. Push auf `main`.
+2. `node tools/changelog.mjs` — regeneriert `CHANGELOG.md` aus der Historie (liest die frisch gebumpte `VERSION` fuer den obersten Block).
+3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` **und** `CHANGELOG.md` zusammen).
+4. Push auf `main`.
 
 **Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --minor`
-2. Version-Commit: `chore: vX.Y.Z` (`install.mjs`)
-3. Push auf `main`.
-4. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
+2. `node tools/changelog.mjs` — regeneriert `CHANGELOG.md`.
+3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` **und** `CHANGELOG.md` zusammen).
+4. Push auf `main`.
+5. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
+
+Reihenfolge ist bindend: **erst** Bump (`version.mjs`), **dann** Changelog
+(`changelog.mjs` liest die neue Version), **dann** der gemeinsame Commit. So
+landet `CHANGELOG.md` immer im selben `chore:`-Commit wie der Bump.
 
 Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzlichen
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.
