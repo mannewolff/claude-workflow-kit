@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.21.1] - 2026-07-27
+- Leitplanke: lang laufende Build-Checks mit explizitem Timeout (#165)
+
 ## [1.20.1] - 2026-07-27
 - Changelog automatisch bei Release generieren (RELEASING.md einhaken + Doku) (#162)
 - Changelog-Generator: tools/changelog.mjs + initiales CHANGELOG.md (ab v1.16) (#161)
