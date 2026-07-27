@@ -72,7 +72,7 @@ test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt u
     const sessionLog = join(dir, "sessions.log");
     const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}; echo "Failed to authenticate: OAuth session expired" >&2; exit 1`;
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     // Harter Stopp: Exit 1, Meldung nennt Exit-Code und CLI-Ausgabe.
     assert.equal(res.status, 1, `night.mjs haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -105,7 +105,7 @@ test("Nachtlauf: fachlicher Fehlschlag (Exit 0, kein In review) wandert weiterhi
 
     // Session-Fake: endet sauber (Exit 0), hat aber nichts erreicht — das ist
     // das bestehende Verhalten und darf durch den Guard nicht kippen.
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")], { NIGHT_CLAUDE_CMD: "exit 0" });
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: "exit 0" });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Fehlschlag/, "fachlicher Fehlschlag wird nicht gemeldet");

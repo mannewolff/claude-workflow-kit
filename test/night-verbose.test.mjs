@@ -67,7 +67,7 @@ test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-L
     const issue = board(dir, "issue", "create", "--title", "Verbose-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--verbose"],
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none", "--verbose"],
       { NIGHT_CLAUDE_CMD: streamFake() });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -84,7 +84,7 @@ test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)"
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")],
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
       { NIGHT_CLAUDE_CMD: streamFake() });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -104,7 +104,7 @@ test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haen
     // Fake laeuft laenger als das (per Test-Hook winzig gesetzte) Zeitlimit und
     // bringt das Issue nicht nach In review -> Timeout greift, Runde = Fehlschlag.
     const started = Date.now();
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")],
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
       { NIGHT_CLAUDE_CMD: "sleep 30", NIGHT_TIMEOUT_MS: "400" });
     const elapsed = Date.now() - started;
 

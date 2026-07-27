@@ -73,7 +73,7 @@ test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue
     const sessionLog = join(dir, "sessions.log");
     const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)} && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     // Fachliches Issue: zurueck im Backlog, mit Nachtlauf-Kommentar, KEINE Session dafuer.
@@ -97,7 +97,7 @@ test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewege
     const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", "## Ziel\nStory.");
     board(dir, "issue", "move", String(fachlich.id), "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--dry-run"]);
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none", "--dry-run"]);
     assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /fachlich/i, "dry-run erwaehnt das fachliche Issue nicht");
     assert.match(res.stdout, /0 Session\(s\) wuerden starten/, "dry-run wuerde faelschlich eine Session starten");

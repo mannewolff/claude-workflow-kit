@@ -11,11 +11,14 @@
  *
  * Flags:
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
- *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-4-8)
+ *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
  *   --no-checks-ok     Start trotz leerer buildChecks erlauben
+ *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
+ *                      kit:nightrun); --label none schaltet den Filter ab (altes
+ *                      Verhalten: striktes ready[0])
  *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
  *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
@@ -48,7 +51,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BOARD_PATH = join(__dirname, "board.mjs");
-const DEFAULT_MODEL = "claude-opus-4-8";
+const DEFAULT_MODEL = "claude-opus-5";
+const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
 // --- Argumente ---
@@ -68,6 +72,9 @@ Flags:
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
   --no-checks-ok     Start trotz leerer buildChecks erlauben
+  --label <name>     nur Ready-Issues mit diesem Label verarbeiten
+                     (Default ${DEFAULT_LABEL}); --label none schaltet den
+                     Filter ab (altes Verhalten: striktes erstes Ready-Issue)
   --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
                      der laufenden Session mitloggen (via stream-json)
   --help, -h         diese Uebersicht
@@ -81,7 +88,7 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 }
 
 function parseArgs(argv) {
-  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false };
+  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
@@ -89,6 +96,7 @@ function parseArgs(argv) {
       process.exit(0);
     } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];
+    else if (a === "--label") args.label = argv[++i];
     else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
@@ -326,7 +334,13 @@ const config = JSON.parse(readFileSync(configPath, "utf-8"));
 mkdirSync(join(process.cwd(), ".claude"), { recursive: true });
 LOG_FILE = join(process.cwd(), ".claude", `night-run-${new Date().toISOString().slice(0, 10)}.log`);
 
-log(`Nacht-Runner startet (max ${args.max} Sessions, Modell ${args.model}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
+// Routing-Label (Issue #159): nur Ready-Issues mit diesem Label werden verarbeitet,
+// alle anderen bleiben unangetastet liegen. --label none schaltet den Filter ab
+// (null = striktes ready[0], das Verhalten vor #159).
+const labelFilter = args.label === "none" ? null : args.label;
+const hasLabel = (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter);
+
+log(`Nacht-Runner startet (max ${args.max} Sessions, Modell ${args.model}, Label ${args.label}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
 if (args.yolo && !args.dryRun) {
   log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
 }
@@ -352,6 +366,10 @@ if (args.dryRun) {
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
   for (const issue of ready) {
+    if (!hasLabel(issue)) {
+      log(`  #${issue.id} ${issue.title} -> uebersprungen (kein Label '${labelFilter}')`);
+      continue;
+    }
     if (isFachlich(issue.title)) {
       log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
       continue;
@@ -384,7 +402,10 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) break;
 
-  const top = ready[0];
+  // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
+  // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.
+  const top = labelFilter === null ? ready[0] : ready.find(hasLabel);
+  if (!top) break;
   if (isFachlich(top.title)) {
     log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
     board("issue", "comment", String(top.id), "--text",
