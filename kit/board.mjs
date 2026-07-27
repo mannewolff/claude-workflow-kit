@@ -453,7 +453,9 @@ class GitHubIssueTracker {
       const items = execJSON(
         `gh issue list --repo ${repo} --state open --json number,title,body`
       );
-      return items.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: null }));
+      // labels: [] als bewusster Platzhalter — ob `gh` bei diesem Aufruf Labels
+      // liefert, ist ungeprueft und wird nicht vorab geraten (Issue #158).
+      return items.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: null, labels: [] }));
     }
 
     // Filterung nach Board-Status via Project
@@ -484,6 +486,9 @@ class GitHubIssueTracker {
         title: i.content?.title,
         body: null,
         status,
+        // labels: [] als bewusster Platzhalter — ob `gh project item-list` Labels
+        // mitliefert, ist ungeprueft und wird nicht vorab geraten (Issue #158).
+        labels: [],
       }));
   }
 
@@ -619,12 +624,13 @@ class GitLabIssueTracker {
     }
     const items = execJSON(cmd);
     const mapped = (Array.isArray(items) ? items : []).map((i) => {
-      const labelNames = (i.labels || []).map((l) => l.name || l);
+      const labelNames = labelNamesFrom(i.labels);
       return {
         id: String(i.iid),
         title: i.title,
         body: i.description,
         status: labelToStatus(labelNames, this._cfg, i.state) || null,
+        labels: labelNames,
       };
     });
     // Mit Status-Filter gilt die Board-Reihenfolge (relative_position, s. o.);
@@ -1058,7 +1064,9 @@ class ToolboxIssueTracker {
     // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
     // ungefiltert bleibt die stabile numerische Sortierung.
     if (!status) filtered.sort((a, b) => a.number - b.number);
-    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status }));
+    // labels erst echt gefuellt, sobald kanbancompat sie exponiert (mannewolff/kanban-kit#457);
+    // bis dahin liefert die Karten-API kein labels-Feld -> [] (rueckwaertskompatibel).
+    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
   }
 
   async listEpics() {
@@ -1107,6 +1115,18 @@ function shellQuote(str) {
   // Quote, wieder oeffnen). String.raw haelt die Ersetzung frei von Backslash-Escapes.
   const escaped = String(str).replaceAll("'", String.raw`'\''`);
   return `'${escaped}'`;
+}
+
+// Normalisiert die roh vom Backend gelieferten Labels auf ein flaches Array von
+// Namen: GitLab liefert Objekte ({name}), andere Backends evtl. nackte Strings,
+// oder das Feld fehlt ganz. Fehlform oder fehlendes Feld -> []. Von GitLab- und
+// Toolbox-listIssues geteilt, damit Aufrufer (z. B. night.mjs Routing-Label,
+// Issue #159) verlaesslich ein Array bekommen (Issue #158).
+export function labelNamesFrom(rawLabels) {
+  if (!Array.isArray(rawLabels)) return [];
+  return rawLabels
+    .map((l) => (l && typeof l === "object" ? l.name : l))
+    .filter((n) => n != null);
 }
 
 function labelToStatus(labelNames, config, state) {
