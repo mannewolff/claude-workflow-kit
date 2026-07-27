@@ -797,7 +797,12 @@ class LocalIssueTracker {
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
-        return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", body };
+        // Labels als kommaseparierter Frontmatter-String (parseFrontmatter kann kein
+        // YAML-Array) -> Namen-Array, analog zu den anderen Trackern (Issue #158/#159).
+        const labels = typeof meta.labels === "string" && meta.labels.trim()
+          ? meta.labels.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+        return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", labels, body };
       })
       // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
       // (z.B. --status ready für implement-ready) tauchen sie nie auf.
