@@ -49,6 +49,15 @@ Reihenfolge ist bindend: **erst** Bump (`version.mjs`), **dann** Changelog
 (`changelog.mjs` liest die neue Version), **dann** der gemeinsame Commit. So
 landet `CHANGELOG.md` immer im selben `chore:`-Commit wie der Bump.
 
+`tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
+`KIT_VERSION`-Konstante von `kit/board.mjs` und `kit/night.mjs`, bevor es die Blobs
+backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
+sie stammt (`node .claude/kit/board.mjs --version`). Das braucht **keinen** eigenen
+Schritt in der Liste oben: Der Stempel entsteht beim naechsten `sync-blobs`-Lauf, und
+`sync-blobs --check` ist ohnehin ein `buildCheck` dieses Repos. Nach einem Bump also
+wie gewohnt `node tools/sync-blobs.mjs` laufen lassen — die geaenderten Kit-Dateien
+gehoeren dann mit in den `chore:`-Commit.
+
 Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzlichen
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.
 
