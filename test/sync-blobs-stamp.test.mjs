@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -25,12 +25,13 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die vier Blob-Quellen und
 // eine install.mjs mit den vier Konstanten plus VERSION.
-function setupFixture(installVersion, kitVersion) {
+function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sync-stamp-"));
   mkdirSync(join(dir, "tools"), { recursive: true });
   mkdirSync(join(dir, "kit"), { recursive: true });
   mkdirSync(join(dir, "templates"), { recursive: true });
   mkdirSync(join(dir, "skills", "beispiel"), { recursive: true });
+  if (lokaleKopie) mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
 
   copyFileSync(join(repoRoot, "tools", "sync-blobs.mjs"), join(dir, "tools", "sync-blobs.mjs"));
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
@@ -138,6 +139,74 @@ test("Stempel: fehlende KIT_VERSION-Konstante ist ein harter Fehler, kein stille
     assert.equal(res.status, 1, "eine fehlende Konstante haette abbrechen muessen");
     assert.match(res.stderr, /KIT_VERSION/, "die Fehlermeldung nennt die Konstante nicht");
     assert.match(res.stderr, /board\.mjs/, "die Fehlermeldung nennt die Datei nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Dogfooding-Kopie unter .claude/kit/ (Issue #173) ---
+//
+// Das Kit betreibt eine eigene Kopie von board.mjs und night.mjs unter
+// .claude/kit/ und liess sie bis #173 von Hand per cp auffrischen — ein Schritt,
+// den man vergisst (bei Issue #167 waere er beinahe untergegangen). Mit den
+// Versionsstempeln wuerde eine vergessene Kopie eine falsche Version behaupten.
+//
+// Besonderheit: .claude/ ist gitignored. sync-blobs schreibt hier also bewusst
+// eine nicht versionierte Datei — deshalb auch der stille Skip, wenn es die
+// lokale Installation gar nicht gibt (frischer Clone).
+
+test("Lokale Kopie: sync-blobs frischt .claude/kit/ mit der gestempelten Fassung auf", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    writeFileSync(join(dir, ".claude", "kit", "board.mjs"), "veralteter Inhalt\n");
+
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, `sync-blobs schlug fehl: ${res.stderr}${res.stdout}`);
+
+    for (const datei of ["board.mjs", "night.mjs"]) {
+      assert.equal(
+        readFileSync(join(dir, ".claude", "kit", datei), "utf-8"),
+        readFileSync(join(dir, "kit", datei), "utf-8"),
+        `.claude/kit/${datei} weicht nach dem Lauf noch von der Quelle ab`
+      );
+    }
+    // Die Kopie traegt den frischen Stempel, nicht den alten.
+    assert.match(readFileSync(join(dir, ".claude", "kit", "night.mjs"), "utf-8"),
+      /const KIT_VERSION = "2\.5\.0";/, "die Kopie traegt nicht die gestempelte Fassung");
+    assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Lokale Kopie: --check meldet eine abweichende Kopie getrennt", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    writeFileSync(join(dir, ".claude", "kit", "night.mjs"), "von Hand verbogen\n");
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette die abweichende Kopie melden muessen");
+    const meldung = res.stderr + res.stdout;
+    assert.match(meldung, /\.claude\/kit\/night\.mjs/, "die Meldung nennt die Kopie nicht");
+    // Stempel und Blob sind unberuehrt — die Meldung darf sie nicht mitbeschuldigen.
+    assert.doesNotMatch(meldung, /Versions-Stempel/, "Stempel-Drift faelschlich gemeldet");
+    assert.doesNotMatch(meldung, /Blob-Drift/, "Blob-Drift faelschlich gemeldet");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Lokale Kopie: ohne .claude/kit/ laeuft sync-blobs durch und legt nichts an", () => {
+  // Frischer Clone ohne lokale Installation: .claude/kit/ ist Laufzeitzustand,
+  // kein Repo-Inhalt — es anzulegen waere ein Uebergriff.
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, `sync-blobs schlug fehl: ${res.stderr}${res.stdout}`);
+    assert.equal(existsSync(join(dir, ".claude")), false,
+      "sync-blobs haette .claude/ nicht anlegen duerfen");
+    assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette gruen sein muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -75,6 +75,23 @@ Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
+### Welchen Stand hat meine Installation?
+
+Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:
+
+```bash
+node .claude/kit/board.mjs --version
+node .claude/kit/night.mjs --version
+```
+
+```
+board.mjs (claude-workflow-kit v1.22.0)
+```
+
+Vergleiche das mit der aktuellen Kit-Version (`node install.mjs --version`, oder die Versionsangabe auf der Download-Seite). Liegt deine Kopie zurück, spielst du einfach den Installer erneut ein — er überschreibt die Kit-Dateien und lässt deine `workflow.config.json` bis auf die abgefragten Felder unangetastet.
+
+Die Versionsnummer ist bewusst dieselbe wie die des Kits, keine eigene Zählung pro Datei: Eine Kopie mit `v1.22.0` ist exakt der Stand, den Kit 1.22.0 ausgeliefert hat. Laufen die beiden Dateien auseinander — etwa weil nur eine von beiden ersetzt wurde —, warnt der Nacht-Runner beim Start und läuft trotzdem weiter.
+
 ## Was ist der Vault?
 
 Der Vault ist ein persönlicher Memory-Speicher außerhalb des Repos. Er hält projektübergreifendes Wissen: dein Profil, Arbeitsregeln, Entscheidungshistorie und Tages-Logs. /kontext lädt ihn zu Session-Beginn, /document schreibt am Session-Ende in ihn hinein.

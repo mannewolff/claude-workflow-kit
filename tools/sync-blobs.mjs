@@ -17,7 +17,7 @@
  * RELEASING.md braucht keine zusaetzliche Reihenfolge-Regel.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,6 +104,30 @@ for (const { constName, source, sourceDir } of BLOBS) {
   }
 }
 
+// --- Dogfooding-Kopie unter .claude/kit/ (Issue #173) ---
+//
+// Hier schreibt das Tool bewusst eine NICHT versionierte Datei: .claude/ steht
+// komplett in der .gitignore. Die Kopie ist der Runner, den dieses Repo selbst
+// benutzt — laeuft sie der Quelle hinterher, fuehrt das Dogfooding einen anderen
+// Stand aus als das Repo enthaelt (bei Issue #167 waere der manuelle cp beinahe
+// vergessen worden). Fehlt das Verzeichnis, ist es ein frischer Clone ohne lokale
+// Installation: stiller Skip, kein Anlegen — .claude/kit/ ist Laufzeitzustand,
+// kein Repo-Inhalt.
+const LOCAL_KIT = join(root, ".claude", "kit");
+const copyDrift = [];
+
+if (existsSync(LOCAL_KIT)) {
+  for (const datei of STAMPED) {
+    const ziel = join(LOCAL_KIT, datei);
+    const soll = readFileSync(join(root, "kit", datei), "utf-8");
+    const ist = existsSync(ziel) ? readFileSync(ziel, "utf-8") : null;
+    if (ist !== soll) {
+      copyDrift.push(`.claude/kit/${datei}`);
+      if (!checkOnly) writeFileSync(ziel, soll, "utf-8");
+    }
+  }
+}
+
 if (checkOnly) {
   // Stempel- und Blob-Drift getrennt melden: sie haben verschiedene Ursachen
   // (vergessener Bump-Nachzug vs. geaenderte Quelldatei) und die Meldung soll
@@ -111,16 +135,18 @@ if (checkOnly) {
   const probleme = [];
   if (stampDrift.length > 0) probleme.push(`Versions-Stempel: ${stampDrift.join("; ")}.`);
   if (drift.length > 0) probleme.push(`Blob-Drift in install.mjs: ${drift.join(", ")} weicht von kit/ ab.`);
+  if (copyDrift.length > 0) probleme.push(`Lokale Kopie veraltet: ${copyDrift.join(", ")}.`);
   if (probleme.length > 0) {
     process.stderr.write(`${probleme.join("\n")}\nBeheben mit: node tools/sync-blobs.mjs\n`);
     process.exit(1);
   }
   process.stdout.write("Blobs und Versions-Stempel synchron mit kit/.\n");
-} else if (stampDrift.length > 0 || drift.length > 0) {
+} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0) {
   if (drift.length > 0) writeFileSync(INSTALL, installSrc, "utf-8");
   const teile = [];
   if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${STAMPED.map((d) => `kit/${d}`).join(", ")}`);
   if (drift.length > 0) teile.push(`Aktualisiert: ${drift.join(", ")}`);
+  if (copyDrift.length > 0) teile.push(`Lokale Kopie aufgefrischt: ${copyDrift.join(", ")}`);
   process.stdout.write(`${teile.join("\n")}\n`);
 } else {
   process.stdout.write("Blobs bereits synchron.\n");
