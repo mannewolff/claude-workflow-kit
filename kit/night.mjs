@@ -26,8 +26,19 @@
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
  *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
  *     harter Stopp, Issue bleibt unangetastet (kein Kommentar, kein Backlog-Move)
- *   - Working Tree dirty  -> harter Stopp (auf halben Aenderungen wird nicht weitergebaut)
+ *   - Working Tree dirty  -> Salvage-Versuch (siehe unten), sonst harter Stopp
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
+ *
+ * Salvage (Issue #167): Eine Session, die einen langen Check im Hintergrund
+ * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
+ * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
+ * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
+ * Runner deshalb die buildChecks selbst (nicht mutationCommand — das ist ein
+ * nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
+ * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
+ * gegen das Issue zu pruefen, zu committen und das Board zu bewegen. Rote Checks
+ * oder eine gescheiterte Salvage-Session -> harter Stopp. Immer an; ein Opt-out-
+ * Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Verhalten bei Erfolg einer Runde (Issue in In review):
  *   - Working Tree sauber -> weiter mit der naechsten Runde
@@ -41,7 +52,10 @@
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
  *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
  *                     (statt --timeout-min), damit der Timeout-Pfad schnell
- *                     testbar ist.
+ *                     testbar ist. Gilt auch fuer die Salvage-Session.
+ *   NIGHT_SALVAGE     wird der Salvage-Session als Umgebungsvariable gesetzt
+ *                     (Wert "1"), damit ein Fake-Hook die beiden Session-Arten
+ *                     unterscheiden kann.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -78,6 +92,12 @@ Flags:
   --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
                      der laufenden Session mitloggen (via stream-json)
   --help, -h         diese Uebersicht
+
+Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
+Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
+genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
+zu pruefen, zu committen und nach In review zu verschieben (Zeitlimit 10 min). Rote
+Checks oder ein gescheiterter Salvage-Versuch fuehren zum harten Stopp.
 
 Beispiele:
   caffeinate -i node .claude/kit/night.mjs
@@ -245,10 +265,10 @@ function emitVerbose(issueId, line) {
 // die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
 // damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
 // unveraendert weiterarbeiten.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
   return new Promise((resolve) => {
     const child = spawn(cmd, cmdArgs, {
-      env: { ...process.env, NIGHT_ISSUE_ID: String(issueId) },
+      env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
     });
     let stdout = "";
     let stderr = "";
@@ -295,10 +315,13 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream }) {
   });
 }
 
-async function runSession(issueId, args) {
+// opts (Issue #167): { prompt, timeoutMs, extraEnv } — die Salvage-Session nutzt
+// denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
+// eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
+async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
-    : args.timeoutMin * 60 * 1000;
+    : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
@@ -310,9 +333,11 @@ async function runSession(issueId, args) {
       : ["--permission-mode", "acceptEdits"];
     const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
+    cmdArgs = ["-p", opts.prompt || "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
   }
-  const res = await runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream: args.verbose });
+  const res = await runProcess(cmd, cmdArgs, {
+    issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
+  });
   if (!testCmd && res.error && res.error.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   }
@@ -320,6 +345,51 @@ async function runSession(issueId, args) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
   return res;
+}
+
+// --- Salvage (Issue #167) ---
+
+// Zeitlimit der Salvage-Session: sie fuehrt keinen Build mehr aus, sondern prueft
+// nur den Diff gegen das Issue, committet und bewegt das Board. Bewusst unabhaengig
+// von --timeout-min (das bemisst eine volle Implementierungsrunde).
+const SALVAGE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// Fuehrt die buildChecks der Config sequenziell aus und bricht beim ersten roten
+// Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
+// kein Blocker fuer die Salvage-Entscheidung.
+function runBuildChecksSync(cfg) {
+  let output = "";
+  for (const cmd of cfg.buildChecks || []) {
+    const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8" });
+    output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
+    if (res.status !== 0) return { ok: false, output };
+  }
+  return { ok: true, output };
+}
+
+// Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
+// gruen — die Session darf sie NICHT erneut starten, sonst laeuft sie in genau
+// den Hintergrund-Check, der die Runde ueberhaupt erst gekostet hat.
+function salvagePrompt(issueId, checksOutput) {
+  const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
+  return [
+    `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
+    `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
+    ``,
+    `Im Working Tree liegen unkommittete Aenderungen zu Issue #${issueId}. Deine einzige Aufgabe:`,
+    `1. Lies das Issue: node .claude/kit/board.mjs issue get ${issueId}`,
+    `2. Sieh dir den Stand an: git status und git diff`,
+    `3. Passt der Stand zum Issue, committe ihn (Betreff mit "(Issue #${issueId})", im Body "Refs #${issueId}"`,
+    `   — niemals Closes/Fixes/Resolves), verschiebe das Issue mit`,
+    `   node .claude/kit/board.mjs issue move ${issueId} in_review`,
+    `   und kommentiere den Abschlussbericht per`,
+    `   node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
+    `4. Passt der Stand nicht zum Issue oder wirkt unvollstaendig: NICHT committen,`,
+    `   nichts am Board bewegen, und klar benennen was fehlt.`,
+    ``,
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe:`,
+    tail,
+  ].join("\n");
 }
 
 // --- Hauptprogramm ---
@@ -396,6 +466,8 @@ let succeeded = 0;
 let deferred = 0;
 let iterations = 0;
 let hardStop = false;
+// Genau ein Salvage-Versuch pro Issue und Lauf (#167).
+const salvageAttempted = new Set();
 
 while (sessions < args.max && iterations < MAX_ITERATIONS) {
   iterations++;
@@ -462,6 +534,36 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   }
 
   if (!gitClean()) {
+    // Salvage (#167): Bevor der Lauf hart stoppt, pruefen wir selbst, ob die Arbeit
+    // inhaltlich fertig ist. Gruene buildChecks sind das Indiz dafuer, dass die
+    // Session nur ihr Ergebnis verloren hat (Hintergrund-Check ohne Folge-Turn) und
+    // nicht wirklich gescheitert ist. Genau ein Versuch pro Issue.
+    if (!salvageAttempted.has(String(top.id))) {
+      salvageAttempted.add(String(top.id));
+      const checks = runBuildChecksSync(config);
+      if (checks.ok) {
+        log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
+        await runSession(top.id, args, {
+          prompt: salvagePrompt(top.id, checks.output),
+          timeoutMs: SALVAGE_TIMEOUT_MS,
+          extraEnv: { NIGHT_SALVAGE: "1" },
+        });
+        const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
+        if (salvaged && gitClean()) {
+          succeeded++;
+          log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+          board("issue", "comment", String(top.id), "--text",
+            "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
+          continue;
+        }
+        log(`  SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`);
+        board("issue", "comment", String(top.id), "--text",
+          "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+        hardStop = true;
+        break;
+      }
+      log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
+    }
     log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
     board("issue", "comment", String(top.id), "--text",
       "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
