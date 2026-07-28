@@ -21,6 +21,7 @@
  *                      Verhalten: striktes ready[0])
  *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
  *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
+ *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
@@ -74,6 +75,10 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BOARD_PATH = join(__dirname, "board.mjs");
+// Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
+// Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
+// tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
+const KIT_VERSION = "1.22.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -100,6 +105,7 @@ Flags:
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
   --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
                      der laufenden Session mitloggen (via stream-json)
+  --version          Kit-Stand dieser Datei
   --help, -h         diese Uebersicht
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
@@ -128,6 +134,11 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       printHelp();
+      process.exit(0);
+    } else if (a === "--version") {
+      // Wie --help: greift vor allen Vorflug-Checks, damit die Auskunft auch in
+      // einem Verzeichnis ohne Config und ohne board.mjs funktioniert.
+      process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
       process.exit(0);
     } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];

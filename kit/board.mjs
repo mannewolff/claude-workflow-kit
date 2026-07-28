@@ -28,6 +28,11 @@ import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
+// Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
+// tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
+const KIT_VERSION = "1.22.0";
+
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
 const COLUMN_DEFAULTS = {
@@ -62,6 +67,8 @@ Nutzung:
   node board.mjs issue comment <id> --text "..."
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
+
+  node board.mjs --version
 
 Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}
 
@@ -1268,6 +1275,13 @@ async function main() {
 
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(HELP);
+    process.exit(0);
+  }
+
+  // Vor jedem Config-Zugriff: --version muss auch in einem Projekt ohne
+  // .claude/workflow.config.json antworten — genau dort fragt man danach.
+  if (argv[0] === "--version") {
+    process.stdout.write(`board.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
     process.exit(0);
   }
 
