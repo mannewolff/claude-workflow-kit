@@ -454,6 +454,50 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 **`formatFixCommand` — ein Formatverstoß darf keinen Lauf kippen.** Setzt du in der `workflow.config.json` ein Kommando, das Formatierung mechanisch repariert (`"formatFixCommand": "mvn spotless:apply"`, für Frontends etwa `"npx prettier --write ."`), dann läuft es bei roten Checks in der Salvage-Vorprüfung **genau einmal**, und die Checks werden **genau einmal** wiederholt. Werden sie dadurch grün, geht der Lauf weiter und das Protokoll weist den Eingriff mit `FORMAT-FIX angewendet` aus — kein stiller Eingriff. Bleiben sie rot, war das Format nicht die Ursache und es bleibt beim harten Stopp. Hintergrund: Ein einzelner falsch umbrochener Javadoc-Kommentar hat einmal einen kompletten Nachtlauf beendet, obwohl die Arbeit korrekt war. Ein Formatverstoß ist deterministisch behebbar und sagt nichts über die fachliche Qualität — ein fehlgeschlagener Test dagegen schon, und der bleibt unverändert ein harter Stopp. Ohne das Feld ändert sich nichts.
 
+### Mit einem lokalen Modell fahren
+
+> **Ungetestet.** Dieser Abschnitt beschreibt einen Weg, der sich aus der Architektur des Runners ergibt und ohne jede Änderung am Kit funktionieren sollte — er ist hier aber **nicht praktisch erprobt**. Weder wurde LiteLLM aufgesetzt noch ein Lauf gegen ein lokales Modell gefahren. Nimm ihn als begründeten Vorschlag, nicht als Erfahrungsbericht.
+
+Die Idee: einfache Issues nachts von einem lokalen Modell bauen lassen, während Review und anspruchsvolle Issues weiter über Anthropic laufen.
+
+**Warum ein Proxy nötig ist.** Claude Code spricht ausschließlich die Anthropic Messages API; lokale Runner wie Ollama sprechen das OpenAI-Format. Dazwischen gehört ein Übersetzer — üblich ist [LiteLLM](https://docs.litellm.ai/). Zwei Dinge sind dabei unterschiedlich belastbar: Dass Claude Code über `ANTHROPIC_BASE_URL` auf einen eigenen Endpunkt zeigen kann, ist [offiziell dokumentiert](https://code.claude.com/docs/en/llm-gateway) (Gateway-Muster), ebenso `--model` pro Aufruf. Ein lokales Modell hinter diesem Endpunkt zu betreiben ist dagegen Community-Terrain und von Anthropic nicht supportet.
+
+Eine minimale LiteLLM-Konfiguration:
+
+```yaml
+model_list:
+  - model_name: lokal-qwen
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://localhost:11434
+```
+
+**Mischbetrieb: die Variable dem Kommando voranstellen, nicht exportieren.**
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 3
+```
+
+`ANTHROPIC_BASE_URL` wirkt global für einen Prozess, `--model` dagegen pro Aufruf — das klingt nach einem Hindernis für den Mischbetrieb, ist hier aber keins. Der Runner startet jede Session als eigenen Kindprozess und reicht dabei `process.env` durch. Stellst du die Variable **dem Nachtlauf-Kommando voran**, gilt sie ausschließlich für dessen Sessions; eine parallel laufende interaktive Claude-Code-Sitzung bleibt unberührt. Ein `export` in der `.zshrc` würde genau das kaputt machen — dann liefe auch deine interaktive Arbeit über den Proxy.
+
+**Aufteilung über Labels.** Das [Routing-Label](#nachtbetrieb) genügt für die Trennung, ein neues Flag braucht es nicht: Vergib den einfachen Issues ein eigenes Label (etwa `kit:lokal`) und fahre zwei Läufe nacheinander — einen mit lokalem Modell und diesem Label, einen regulären mit `kit:nightrun`.
+
+**Der Review bleibt unberührt.** `/review` nutzt das `reviewModel` aus der `workflow.config.json` und ist vom Nachtlauf-Modell vollständig entkoppelt. Was ein lokales Modell nachts gebaut hat, wird morgens trotzdem vom starken Modell begutachtet.
+
+**Wo die Grenzen liegen — ungeschönt.** Eine Nacht-Session muss mehr können als Code schreiben: Sie muss Werkzeuge zuverlässig aufrufen (Board-Operationen über `board.mjs`, Datei-Edits, Git), eine mehrstufige Kette durchhalten und am Ende sauber committen. Kleine Modelle brechen erfahrungsgemäß genau daran, nicht am Programmieren selbst. Projekte mit scharfen Gates — Mutationstests, Coverage-Ratchets, mehrstufige Build-Ketten — sind für ein kleines lokales Modell realistisch außer Reichweite. Der sinnvolle Einsatzbereich sind Änderungen ohne Testpflicht: Dokumentation, Textkorrekturen, Konfigurationswerte, kleine mechanische Anpassungen.
+
+**Was schützt, wenn es schiefgeht.** Nichts Kaputtes gelangt ins Repo: Die [Salvage-Vorprüfung](#nachtbetrieb) fährt die `buildChecks` selbst, bevor überhaupt etwas committet wird, rote Checks führen zum harten Stopp, und der Rest-Guard beendet den Lauf, sobald eine Runde unkommittete Reste hinterlässt. Ein gescheiterter lokaler Lauf kostet dich Strom und Zeit, nicht die Codebasis.
+
+**Einstieg.** Fang mit einem einzigen Doku-Issue an:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 1 --verbose
+```
+
+`--verbose` zeigt im Protokoll jeden Tool-Aufruf der Session. Daran siehst du binnen Minuten, ob das Modell die Board-Operationen sauber hinbekommt — das ist der schnellste Machbarkeitstest, und er entscheidet die Frage, bevor du eine ganze Nacht investierst.
+
 **Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde), dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
 
 ## Leitplanken statt Prompts
