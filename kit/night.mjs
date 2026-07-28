@@ -508,7 +508,34 @@ if (args.yolo && !args.dryRun) {
   log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
 }
 
+// Versions-Drift zwischen den beiden Kit-Dateien (Issue #172). Sie werden
+// gemeinsam installiert, koennen aber auseinanderlaufen (einzeln kopiert,
+// abgebrochenes Re-Install). Der Runner ruft dann Adapter-Funktionen auf, die eine
+// aeltere board.mjs nicht kennt — das aeussert sich als schwer zuzuordnendes
+// Fehlverhalten. Bewusst nur eine Warnung: ein Unterschied macht den Lauf nicht
+// zwingend kaputt, und ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer
+// als das Problem, das er meldet.
+function boardKitVersion() {
+  try {
+    const m = readFileSync(BOARD_PATH, "utf-8").match(/const KIT_VERSION = "([^"]*)";/);
+    return m ? m[1] : null;
+  } catch {
+    return null; // nicht lesbar -> wie fehlende Konstante behandeln
+  }
+}
+
+function warnBeiVersionsDrift() {
+  const andere = boardKitVersion();
+  if (andere === KIT_VERSION) return;
+  log(
+    `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
+    `board.mjs ist ${andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)"}. ` +
+    `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
+  );
+}
+
 // Vorflug-Checks
+warnBeiVersionsDrift();
 const inProgress = board("issue", "list", "--status", "in_progress");
 if (inProgress.length > 0) {
   fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`);
