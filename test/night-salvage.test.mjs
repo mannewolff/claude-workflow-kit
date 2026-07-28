@@ -37,7 +37,7 @@ function board(cwd, ...cliArgs) {
 // buildChecks ist der Hebel dieses Tests: "true" simuliert gruene Pflichtchecks
 // (die Arbeit ist inhaltlich fertig), "false" rote (die Session ist wirklich
 // gescheitert).
-function setupProjekt(buildChecks) {
+function setupProjekt(buildChecks, extraConfig = {}) {
   const dir = mkdtempSync(join(tmpdir(), "night-salvage-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
@@ -47,8 +47,9 @@ function setupProjekt(buildChecks) {
     issueTracker: "local",
     buildChecks,
     local: { issuesDir: "issues" },
+    ...extraConfig,
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nfixcount.log\n");
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -94,6 +95,9 @@ test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraend
       "die bestehende Fehlschlag-Meldung fehlt");
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
       "bei roten Checks darf keine Salvage-Session starten");
+    // Ohne formatFixCommand bleibt der Format-Fix-Pfad komplett aus (Issue #169).
+    assert.doesNotMatch(res.stdout, /FORMAT-FIX/,
+      "ohne formatFixCommand darf kein Format-Fix versucht werden");
 
     // Nur die regulaere Session lief, das Issue blieb liegen (kein Backlog-Move).
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
@@ -255,6 +259,72 @@ test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", 
       `erwartet: regulaere Runde + genau eine Salvage-Runde, tatsaechlich: ${log.join(" / ")}`);
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
     assert.ok(ready.includes(String(zweites.id)), "zweites Issue haette in Ready bleiben muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Format-Fix (Issue #169) ---
+//
+// Beobachtet bei kanban-kit#463: ein einzelner Javadoc-Zeilenumbruch liess
+// Spotless rot laufen und stoppte damit einen ganzen Nachtlauf, obwohl die
+// Arbeit vollstaendig war. Ein Formatverstoss ist mechanisch und deterministisch
+// behebbar und sagt nichts ueber die fachliche Qualitaet — er darf einen Lauf
+// mit zwanzig wartenden Issues nicht beenden. Rote Checks mit inhaltlicher
+// Aussage (Testfehler, Lint) bleiben unveraendert ein harter Stopp.
+
+test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", () => {
+  // Der buildCheck besteht erst, wenn die Marker-Datei existiert — das
+  // formatFixCommand legt sie an. Damit ist "erst rot, nach dem Fix gruen"
+  // deterministisch nachgestellt.
+  const dir = setupProjekt(["test -f fixed.marker"], { formatFixCommand: "touch fixed.marker" });
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = fakeSession(sessionLog,
+      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+      { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /FORMAT-FIX angewendet, buildChecks jetzt gruen/,
+      "der angewendete Format-Fix muss im Protokoll sichtbar sein");
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage haette danach laufen muessen");
+
+    // Beide Issues gerettet: der Lauf wurde fortgesetzt statt gestoppt.
+    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
+    assert.ok(inReview.includes(String(erstes.id)) && inReview.includes(String(zweites.id)),
+      `beide Issues haetten in In review landen muessen, sind aber: ${inReview.join(", ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief genau einmal", () => {
+  // Das Format-Kommando protokolliert jeden Aufruf, die Checks bleiben rot.
+  // Belegt zugleich: keine Schleife, genau ein Versuch.
+  const dir = setupProjekt(["false"], { formatFixCommand: "echo lauf >> fixcount.log" });
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = fakeSession(sessionLog, "true");
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+      { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /FORMAT-FIX angewendet/,
+      "der Fix hat nicht geholfen, darf also nicht als erfolgreich gemeldet werden");
+    assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/, "die bestehende Fehlschlag-Meldung fehlt");
+
+    const laeufe = readFileSync(join(dir, "fixcount.log"), "utf-8").trim().split("\n");
+    assert.equal(laeufe.length, 1, `das Format-Kommando lief ${laeufe.length}x statt genau einmal`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

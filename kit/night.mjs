@@ -44,6 +44,10 @@
  * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
  * projektspezifische Variablen, die sonst nur Claude Codes eigene Bash-Aufrufe
  * bekommen, und die Vorpruefung liefert ein falsches Rot (kanban-kit #445, #168).
+ * Sind die Checks rot und ist config.formatFixCommand gesetzt, laeuft das Kommando
+ * genau einmal und die Checks werden genau einmal wiederholt (Issue #169): ein
+ * reiner Formatverstoss ist mechanisch behebbar und darf keinen Lauf beenden, in
+ * dem noch zwanzig Issues warten. Bleiben sie rot, war das Format nicht die Ursache.
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Verhalten bei Erfolg einer Runde (Issue in In review):
  *   - Working Tree sauber -> weiter mit der naechsten Runde
@@ -103,6 +107,12 @@ Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, beko
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und nach In review zu verschieben (Zeitlimit 10 min). Rote
 Checks oder ein gescheiterter Salvage-Versuch fuehren zum harten Stopp.
+
+Ist in der Config "formatFixCommand" gesetzt (z.B. "mvn spotless:apply" oder
+"npx prettier --write ."), laeuft es bei roten Checks genau einmal, danach werden
+die Checks genau einmal wiederholt: ein reiner Formatverstoss kippt so keinen Lauf
+mehr. Bleiben die Checks rot, war das Format nicht die Ursache -> harter Stopp.
+Ohne das Feld aendert sich nichts.
 
 Beispiele:
   caffeinate -i node .claude/kit/night.mjs
@@ -389,8 +399,14 @@ function settingsEnv() {
 // Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
 // kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
 // zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
+// Umgebung fuer die eigenen Kindprozesse (Vorpruefung und Format-Fix): process.env
+// plus der gemergte settings-env-Block.
+function checkEnv() {
+  return { ...process.env, ...settingsEnv() };
+}
+
 function runBuildChecksSync(cfg) {
-  const env = { ...process.env, ...settingsEnv() };
+  const env = checkEnv();
   let output = "";
   for (const cmd of cfg.buildChecks || []) {
     const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
@@ -400,10 +416,35 @@ function runBuildChecksSync(cfg) {
   return { ok: true, output };
 }
 
+// Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
+//
+// Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
+// nichts ueber die fachliche Qualitaet der Arbeit — er darf keinen Lauf beenden,
+// in dem noch zwanzig Issues warten (beobachtet bei kanban-kit#463: ein einzelner
+// Javadoc-Zeilenumbruch). Ist formatFixCommand gesetzt und sind die Checks rot,
+// laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
+// Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
+// Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
+function verifyChecksForSalvage(cfg) {
+  const first = runBuildChecksSync(cfg);
+  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null };
+
+  const fixCmd = (cfg.formatFixCommand || "").trim();
+  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
+
+  log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  spawnSync("sh", ["-c", fixCmd], { cwd: process.cwd(), encoding: "utf-8", env: checkEnv() });
+
+  const second = runBuildChecksSync(cfg);
+  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null };
+  log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
+  return { ok: true, output: second.output, formatFixCmd: fixCmd };
+}
+
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
 // gruen — die Session darf sie NICHT erneut starten, sonst laeuft sie in genau
 // den Hintergrund-Check, der die Runde ueberhaupt erst gekostet hat.
-function salvagePrompt(issueId, checksOutput) {
+function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
@@ -419,6 +460,14 @@ function salvagePrompt(issueId, checksOutput) {
     `   node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
     `4. Passt der Stand nicht zum Issue oder wirkt unvollstaendig: NICHT committen,`,
     `   nichts am Board bewegen, und klar benennen was fehlt.`,
+    // Ohne diesen Hinweis blieben die Formatierungsaenderungen unkommittiert liegen
+    // und der Rest-Guard (#152) wertete die geglueckte Runde doch noch als Fehlschlag.
+    ...(formatFixCmd ? [
+      ``,
+      `WICHTIG: Die Checks waren zunaechst rot; danach lief automatisch das Format-Kommando`,
+      `"${formatFixCmd}" und erst dann wurden sie gruen. Die dadurch entstandenen`,
+      `Formatierungsaenderungen gehoeren MIT in denselben Commit und in den Abschlussbericht.`,
+    ] : []),
     ``,
     `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe:`,
     tail,
@@ -573,11 +622,11 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     // nicht wirklich gescheitert ist. Genau ein Versuch pro Issue.
     if (!salvageAttempted.has(String(top.id))) {
       salvageAttempted.add(String(top.id));
-      const checks = runBuildChecksSync(config);
+      const checks = verifyChecksForSalvage(config);
       if (checks.ok) {
         log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
         await runSession(top.id, args, {
-          prompt: salvagePrompt(top.id, checks.output),
+          prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
           timeoutMs: SALVAGE_TIMEOUT_MS,
           extraEnv: { NIGHT_SALVAGE: "1" },
         });
