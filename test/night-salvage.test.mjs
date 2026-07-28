@@ -176,6 +176,59 @@ test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buil
   }
 });
 
+// Fuehrt einen Salvage-Lauf mit vorgegebenen settings-Dateien aus und liefert das
+// Runner-Ergebnis. Geteilt von den beiden settings.local.json-Faellen (Issue #168).
+function laufMitSettings(erwarteterWert, dateien) {
+  const dir = setupProjekt([`test "$NIGHT_TEST_ENV_VAR" = "${erwarteterWert}"`]);
+  try {
+    for (const [name, env] of Object.entries(dateien)) {
+      writeFileSync(join(dir, ".claude", name), JSON.stringify({ env }, null, 2));
+    }
+    // Committen, sonst meldet der gitClean()-Vorflug-Check faelschlich dirty.
+    run(dir, "git", ["add", "-A"]);
+    run(dir, "git", ["commit", "-q", "-m", "settings ergaenzt"]);
+
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+
+    const fake = fakeSession(join(dir, "sessions.log"),
+      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+      { NIGHT_CLAUDE_CMD: fake });
+    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
+    return { res, geretttet: inReview.includes(String(erstes.id)) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", () => {
+  // settings.local.json ist gitignored und damit der uebliche Ort fuer
+  // maschinenspezifische Werte (z. B. ein Colima-Socket-Pfad). Claude Code liest
+  // beide Dateien — die Vorpruefung muss das auch tun (Issue #168).
+  const { res, geretttet } = laufMitSettings("from-local", {
+    "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
+  });
+
+  assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+  assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
+    "die Variable aus settings.local.json haette die buildChecks gruen machen muessen");
+  assert.ok(geretttet, "Issue haette in In review landen muessen");
+});
+
+test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", () => {
+  const { res, geretttet } = laufMitSettings("from-local", {
+    "settings.json": { NIGHT_TEST_ENV_VAR: "from-shared" },
+    "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
+  });
+
+  assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+  assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
+    "bei gleichem Schluessel haette der Wert aus settings.local.json gewinnen muessen");
+  assert.ok(geretttet, "Issue haette in In review landen muessen");
+});
+
 test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", () => {
   const dir = setupProjekt(["true"]);
   try {

@@ -39,10 +39,11 @@
  * gegen das Issue zu pruefen, zu committen und das Board zu bewegen. Rote Checks
  * oder eine gescheiterte Salvage-Session -> harter Stopp. Immer an; ein Opt-out-
  * Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
- * Die Vorpruefung mergt den env-Block aus .claude/settings.json in die eigene
+ * Die Vorpruefung mergt den env-Block aus .claude/settings.json und
+ * .claude/settings.local.json (local gewinnt, wie in Claude Code) in die eigene
  * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
  * projektspezifische Variablen, die sonst nur Claude Codes eigene Bash-Aufrufe
- * bekommen, und die Vorpruefung liefert ein falsches Rot (kanban-kit #445).
+ * bekommen, und die Vorpruefung liefert ein falsches Rot (kanban-kit #445, #168).
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Verhalten bei Erfolg einer Runde (Issue in In review):
  *   - Working Tree sauber -> weiter mit der naechsten Runde
@@ -367,14 +368,21 @@ const SALVAGE_TIMEOUT_MS = 10 * 60 * 1000;
 // kanban-kit #445: mvn verify schlug ohne die beiden Variablen mit Mockito-
 // MockMaker-Fehlern fehl, mit ihnen lief er sauber durch).
 function settingsEnv() {
-  const path = join(process.cwd(), ".claude", "settings.json");
-  if (!existsSync(path)) return {};
-  try {
-    const settings = JSON.parse(readFileSync(path, "utf-8"));
-    return settings.env && typeof settings.env === "object" ? settings.env : {};
-  } catch {
-    return {}; // kaputtes/kein JSON blockiert die Vorpruefung nicht, nur die Merge-Quelle fehlt
+  // Precedence wie in Claude Code: settings.json zuerst, settings.local.json
+  // gewinnt. Die local-Datei ist gitignored und damit der uebliche Ort fuer
+  // maschinenspezifische Werte — genau die, die hier fehlen wuerden (Issue #168).
+  const merged = {};
+  for (const name of ["settings.json", "settings.local.json"]) {
+    const path = join(process.cwd(), ".claude", name);
+    if (!existsSync(path)) continue;
+    try {
+      const settings = JSON.parse(readFileSync(path, "utf-8"));
+      if (settings.env && typeof settings.env === "object") Object.assign(merged, settings.env);
+    } catch {
+      // Kaputtes JSON blockiert die Vorpruefung nicht — nur diese eine Quelle faellt aus.
+    }
   }
+  return merged;
 }
 
 // Fuehrt die buildChecks der Config sequenziell aus und bricht beim ersten roten
