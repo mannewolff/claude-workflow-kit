@@ -2,6 +2,19 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.22.1] - 2026-07-28
+- Doku: Nachtbetrieb mit einem lokalen Modell (Ollama) neben Anthropic (#174)
+- issue get liefert Kommentare (GitHub, GitLab, kanbancompat)
+- sync-blobs.mjs frischt die .claude/kit-Kopie mit auf (#173)
+- Nacht-Runner warnt bei abweichendem Versionsstempel von board.mjs (#172)
+- sync-blobs.mjs stempelt die Kit-Version in board.mjs und night.mjs (#171)
+- board.mjs und night.mjs tragen die Kit-Version (#170)
+- Salvage: mechanisch behebbare Formatverstoesse kippen keinen Nachtlauf mehr (#169)
+- Salvage-Vorpruefung liest auch .claude/settings.local.json (#168)
+- Salvage-Vorpruefung mergt .claude/settings.json-env-Block
+- Night-Runner-Salvage: Fehlschlag durch verifizierten Zwischenstand abfangen (#167)
+- Leitplanke: im Hintergrund gestartete Pflichtchecks vor Abschluss abholen
+
 ## [1.21.1] - 2026-07-27
 - Leitplanke: lang laufende Build-Checks mit explizitem Timeout (#165)
 
