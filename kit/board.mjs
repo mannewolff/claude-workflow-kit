@@ -443,13 +443,14 @@ class GitHubIssueTracker {
   async getIssue(id) {
     const repo = this._repo();
     const data = execJSON(
-      `gh issue view ${id} --repo ${repo} --json number,title,body,state`
+      `gh issue view ${id} --repo ${repo} --json number,title,body,state,comments`
     );
     return {
       id: String(data.number),
       title: data.title,
       body: data.body,
       status: null, // Board-Status nicht im Issue-Objekt, erfordert Project-Abfrage
+      comments: normalizeComments(data.comments),
     };
   }
 
@@ -604,7 +605,20 @@ class GitLabIssueTracker {
       title: data.title,
       body: data.description,
       status,
+      comments: this._notes(id),
     };
+  }
+
+  // Kommentare liegen bei GitLab als "Notes" an einem eigenen Endpunkt (kanban-kit#449).
+  // Ein Fehlschlag darf `issue get` nicht kippen — der Verlauf ist Zusatzinformation,
+  // Titel/Body/Status sind die Hauptsache. Deshalb leeres Array statt Abbruch.
+  _notes(id) {
+    try {
+      return normalizeComments(execJSON(`glab api projects/:id/issues/${id}/notes`));
+    } catch (e) {
+      process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
+      return [];
+    }
   }
 
   async listIssues(status) {
@@ -1061,7 +1075,28 @@ class ToolboxIssueTracker {
   async getIssue(number) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
-    return { id: String(item.number), title: item.title, body: item.body, status: item.status };
+    return {
+      id: String(item.number),
+      title: item.title,
+      body: item.body,
+      status: item.status,
+      comments: await this._comments(item.id),
+    };
+  }
+
+  // Kommentare ueber den Lesepfad aus kanban-kit#448 (kanban-kit#449). Der Endpunkt
+  // ist juenger als der Rest der API: Eine Instanz, die ihn noch nicht kennt,
+  // antwortet mit 404/405 und wuerde `issue get` sonst komplett scheitern lassen.
+  // Der Verlauf ist Zusatzinformation — Titel/Body/Status sind die Hauptsache.
+  // Deshalb leeres Array statt Abbruch, mit Hinweis auf stderr.
+  async _comments(itemId) {
+    try {
+      const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
+      return normalizeComments(await res.json());
+    } catch (e) {
+      process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
+      return [];
+    }
   }
 
   async listIssues(status) {
@@ -1139,6 +1174,33 @@ export function labelNamesFrom(rawLabels) {
   return rawLabels
     .map((l) => (l && typeof l === "object" ? l.name : l))
     .filter((n) => n != null);
+}
+
+// Normalisiert die roh gelieferten Kommentare auf {author, body, createdAt}
+// (kanban-kit#449). Die drei Tracker liefern drei Formen:
+//   GitHub        author.login   + createdAt
+//   GitLab        author.username + created_at, dazu System-Notes (system: true),
+//                 die keine echten Kommentare sind ("changed the description")
+//   kanbancompat  author bereits als String + createdAt
+// Fehlform oder fehlendes Feld -> []. Fehlende Einzelfelder werden zu leeren
+// Strings statt undefined, damit Aufrufer nicht pro Feld pruefen muessen.
+// Kommentare ohne Body werden verworfen: Es gibt nichts anzuzeigen, und ein
+// leerer Eintrag im Verlauf ist irrefuehrender als gar keiner.
+//
+// Abgrenzung (siehe Issue #155): Kommentare tragen Verlauf und Berichte. Die
+// fachliche PO-Verhandlung bleibt im Body — daran aendert dieses Feld nichts.
+export function normalizeComments(rawComments) {
+  if (!Array.isArray(rawComments)) return [];
+  return rawComments
+    .filter((c) => c && typeof c === "object" && !c.system)
+    .map((c) => ({
+      author: typeof c.author === "object" && c.author !== null
+        ? String(c.author.login ?? c.author.username ?? "")
+        : String(c.author ?? ""),
+      body: String(c.body ?? ""),
+      createdAt: String(c.createdAt ?? c.created_at ?? ""),
+    }))
+    .filter((c) => c.body !== "");
 }
 
 function labelToStatus(labelNames, config, state) {
