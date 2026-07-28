@@ -139,6 +139,43 @@ test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf
   }
 });
 
+test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", () => {
+  // buildChecks besteht nur, wenn die Variable ankommt — belegt, dass
+  // runBuildChecksSync sie aus settings.json mergt statt nur process.env zu
+  // erben (kanban-kit #445: DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE
+  // fehlten sonst, weil night.mjs ausserhalb von Claude Code laeuft).
+  const dir = setupProjekt(['test "$NIGHT_TEST_ENV_VAR" = "hello-from-settings"']);
+  try {
+    writeFileSync(join(dir, ".claude", "settings.json"),
+      JSON.stringify({ env: { NIGHT_TEST_ENV_VAR: "hello-from-settings" } }, null, 2));
+    // Committen, sonst meldet der gitClean()-Vorflug-Check faelschlich einen
+    // dirty Tree, noch bevor ueberhaupt eine Runde startet.
+    run(dir, "git", ["add", "-A"]);
+    run(dir, "git", ["commit", "-q", "-m", "settings.json ergaenzt"]);
+
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = fakeSession(sessionLog,
+      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
+    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+      { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
+      "die settings.json-Variable haette die buildChecks gruen machen muessen");
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
+      "die Salvage-Startzeile fehlt");
+
+    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
+    assert.ok(inReview.includes(String(erstes.id)), "Issue haette in In review landen muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", () => {
   const dir = setupProjekt(["true"]);
   try {

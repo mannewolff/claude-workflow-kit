@@ -39,6 +39,10 @@
  * gegen das Issue zu pruefen, zu committen und das Board zu bewegen. Rote Checks
  * oder eine gescheiterte Salvage-Session -> harter Stopp. Immer an; ein Opt-out-
  * Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
+ * Die Vorpruefung mergt den env-Block aus .claude/settings.json in die eigene
+ * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
+ * projektspezifische Variablen, die sonst nur Claude Codes eigene Bash-Aufrufe
+ * bekommen, und die Vorpruefung liefert ein falsches Rot (kanban-kit #445).
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Verhalten bei Erfolg einer Runde (Issue in In review):
  *   - Working Tree sauber -> weiter mit der naechsten Runde
@@ -354,13 +358,34 @@ async function runSession(issueId, args, opts = {}) {
 // von --timeout-min (das bemisst eine volle Implementierungsrunde).
 const SALVAGE_TIMEOUT_MS = 10 * 60 * 1000;
 
+// Liest den env-Block aus .claude/settings.json (falls vorhanden). Dort stehen
+// projektspezifische Variablen (z.B. DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_
+// OVERRIDE fuer Testcontainers unter Colima), die Claude Code seinen eigenen
+// Bash-Tool-Aufrufen automatisch mitgibt. night.mjs ist aber ein eigener
+// Node-Prozess ausserhalb von Claude Code und bekommt diese Variablen sonst
+// nicht — ohne sie liefert runBuildChecksSync ein falsches Rot (beobachtet bei
+// kanban-kit #445: mvn verify schlug ohne die beiden Variablen mit Mockito-
+// MockMaker-Fehlern fehl, mit ihnen lief er sauber durch).
+function settingsEnv() {
+  const path = join(process.cwd(), ".claude", "settings.json");
+  if (!existsSync(path)) return {};
+  try {
+    const settings = JSON.parse(readFileSync(path, "utf-8"));
+    return settings.env && typeof settings.env === "object" ? settings.env : {};
+  } catch {
+    return {}; // kaputtes/kein JSON blockiert die Vorpruefung nicht, nur die Merge-Quelle fehlt
+  }
+}
+
 // Fuehrt die buildChecks der Config sequenziell aus und bricht beim ersten roten
 // Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
-// kein Blocker fuer die Salvage-Entscheidung.
+// kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
+// zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
 function runBuildChecksSync(cfg) {
+  const env = { ...process.env, ...settingsEnv() };
   let output = "";
   for (const cmd of cfg.buildChecks || []) {
-    const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8" });
+    const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
   }
