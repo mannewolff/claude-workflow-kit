@@ -18,7 +18,13 @@ import { copyFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Repo-Root: normalerweise der eigene Ort (<tool-dir>/..). KIT_ROOT ueberschreibt ihn
+// und ist ein Test-Hook (Issue #186): So laeuft in Tests das ECHTE Script gegen ein
+// Fixture-Verzeichnis, statt dass eine Kopie im Temp-Ordner ausgefuehrt wird — deren
+// Coverage liesse sich nicht auf die Repo-Datei abbilden.
+const root = process.env.KIT_ROOT
+  ? resolve(process.env.KIT_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const targetDir = join(root, "docs", "public");
 
 // Quellpfade relativ zum Repo-Root. Der Dateiname im Site-Root ergibt sich aus dem

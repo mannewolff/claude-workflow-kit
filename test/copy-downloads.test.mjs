@@ -6,14 +6,15 @@
 // derselben Datei driften auseinander — am 09.07. war genau das die Ursache
 // des Blob-Drifts ueber board-ui.mjs.
 //
-// Getestet wird wie bei sync-blobs gegen ein Fixture-Repo im Temp-Verzeichnis:
-// das Script loest seine Pfade relativ zum eigenen Ort auf (root = <tool-dir>/..)
-// und laesst sich ueber ein nachgebautes Verzeichnis vollstaendig isolieren.
+// Getestet wird gegen ein Fixture-Repo im Temp-Verzeichnis. Das Script laeuft dabei
+// aus dem Repo und bekommt den Fixture-Pfad ueber den Test-Hook KIT_ROOT (Issue #186)
+// — so ist es vollstaendig isoliert, und die Coverage landet unter der Repo-Datei
+// statt unter einem Temp-Pfad, den SonarCloud nicht zuordnen kann.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -27,16 +28,17 @@ function setupFixture(installInhalt, boardUiInhalt) {
   mkdirSync(join(dir, "tools"), { recursive: true });
   mkdirSync(join(dir, "kit"), { recursive: true });
 
-  copyFileSync(join(repoRoot, "tools", "copy-downloads-for-docs.mjs"),
-    join(dir, "tools", "copy-downloads-for-docs.mjs"));
   writeFileSync(join(dir, "install.mjs"), installInhalt);
   writeFileSync(join(dir, "kit", "board-ui.mjs"), boardUiInhalt);
   return dir;
 }
 
+// Fuehrt das ECHTE Script aus dem Repo aus und zeigt nur mit KIT_ROOT ins Fixture
+// (Issue #186). Eine Kopie im Temp-Verzeichnis wuerde Coverage unter einem Pfad
+// erzeugen, den SonarCloud nicht auf die Repo-Datei abbilden kann.
 function copyDownloads(dir) {
-  return spawnSync(process.execPath, [join(dir, "tools", "copy-downloads-for-docs.mjs")],
-    { cwd: dir, encoding: "utf-8" });
+  return spawnSync(process.execPath, [join(repoRoot, "tools", "copy-downloads-for-docs.mjs")],
+    { cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
 }
 
 // Byte-Vergleich statt Text: eine Kopie, die sich in der Kodierung unterscheidet,
