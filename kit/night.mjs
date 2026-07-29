@@ -406,7 +406,7 @@ async function runSession(issueId, args, opts = {}) {
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
   });
-  if (!testCmd && res.error && res.error.code === "ENOENT") {
+  if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   }
   if (LOG_FILE) {
@@ -588,9 +588,10 @@ function boardKitVersion() {
 function warnBeiVersionsDrift() {
   const andere = boardKitVersion();
   if (andere === KIT_VERSION) return;
+  const andereAngabe = andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)";
   log(
     `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
-    `board.mjs ist ${andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)"}. ` +
+    `board.mjs ist ${andereAngabe}. ` +
     `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
   );
 }
