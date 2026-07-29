@@ -503,6 +503,25 @@ LOG_FILE = join(process.cwd(), ".claude", `night-run-${new Date().toISOString().
 const labelFilter = args.label === "none" ? null : args.label;
 const hasLabel = (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter);
 
+// Vorflug-Warnung zum Routing-Label (Issue #179). Ein Vertipper im --label-Wert ist
+// syntaktisch gueltig: --label no filtert auf ein Label namens "no", findet nichts,
+// und der Lauf endet ohne Arbeit — im Protokoll nicht von einem abgearbeiteten Board
+// zu unterscheiden. Die Warnung trennt die beiden Faelle.
+//
+// Bewusst nur eine Warnung, kein Stopp: Ein Lauf ohne passende Issues ist ein
+// legitimer Zustand. Ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer als
+// das Problem, das er meldet (dieselbe Abwaegung wie bei der Versions-Drift, #172).
+let labelWarnungGezeigt = false;
+function warnWennLabelNirgendsVorkommt(ready) {
+  if (labelWarnungGezeigt || labelFilter === null || ready.length === 0) return;
+  if (ready.some(hasLabel)) return;
+  labelWarnungGezeigt = true;
+  const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
+  log(`WARNUNG: kein Ready-Issue traegt das Label '${labelFilter}' — es wird nichts verarbeitet.`);
+  log(`  In Ready vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+  log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
+}
+
 log(`Nacht-Runner startet (max ${args.max} Sessions, Modell ${args.model}, Label ${args.label}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
 if (args.yolo && !args.dryRun) {
   log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
@@ -552,6 +571,7 @@ if (args.dryRun) {
     log("Ready ist leer — nichts zu tun.");
     process.exit(0);
   }
+  warnWennLabelNirgendsVorkommt(ready);
   const satisfied = satisfiedIds();
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
@@ -593,6 +613,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   iterations++;
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) break;
+  warnWennLabelNirgendsVorkommt(ready);
 
   // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
   // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.
