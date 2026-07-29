@@ -38,6 +38,11 @@
       "description": "Kommando fuer Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test.",
       "default": ""
     },
+    "formatFixCommand": {
+      "type": "string",
+      "description": "Kommando, das Formatierungsverstoesse mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorpruefung rot, laeuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix.",
+      "default": ""
+    },
     "mainBranch": {
       "type": "string",
       "minLength": 1,

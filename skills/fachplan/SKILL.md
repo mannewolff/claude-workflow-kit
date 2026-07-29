@@ -54,7 +54,7 @@ Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
 
 **Verbindlich:** Alles, worauf sich ein späterer Plan stützen muss, gehört in den **Body** des Issues — Antworten des PO ebenso wie Ergänzungen der KI. Kommentare sind für Verlauf und Diskussion, nicht für Entscheidungen.
 
-Der Grund ist nicht Geschmack, sondern Werkzeug: `board.mjs issue get` liefert Titel, Body und Status — **keine Kommentare**, bei keinem Tracker. Eine Entscheidung, die als Kommentar abgelegt wird, ist für jede spätere Session unsichtbar, und `/plan #N` verlangt ausdrücklich die Groom-Historie. (Beim Toolbox-/kanban-kit-Tracker kommt hinzu, dass seine API für Kommentare nur ein `POST` kennt, kein `GET` — dort sind sie also gar nicht abrufbar.)
+Der Grund ist inhaltlich: Der Body ist der **verhandelte Stand**, Kommentare sind **Verlauf**. Wer eine Entscheidung nur kommentiert, zwingt jede spätere Session, sie aus einer Diskussion zu rekonstruieren, statt sie zu lesen — und die Anforderung hat dann keinen eindeutigen Stand mehr. `board.mjs issue get` liefert seit kanban-kit#449 zwar auch die Kommentare mit, aber das ändert die Regel nicht: Was gilt, steht im Body.
 
 **Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben.
 

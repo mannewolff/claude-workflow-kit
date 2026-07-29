@@ -21,13 +21,34 @@
  *                      Verhalten: striktes ready[0])
  *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
  *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
+ *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
  *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
  *     harter Stopp, Issue bleibt unangetastet (kein Kommentar, kein Backlog-Move)
- *   - Working Tree dirty  -> harter Stopp (auf halben Aenderungen wird nicht weitergebaut)
+ *   - Working Tree dirty  -> Salvage-Versuch (siehe unten), sonst harter Stopp
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
+ *
+ * Salvage (Issue #167): Eine Session, die einen langen Check im Hintergrund
+ * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
+ * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
+ * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
+ * Runner deshalb die buildChecks selbst (nicht mutationCommand — das ist ein
+ * nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
+ * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
+ * gegen das Issue zu pruefen, zu committen und das Board zu bewegen. Rote Checks
+ * oder eine gescheiterte Salvage-Session -> harter Stopp. Immer an; ein Opt-out-
+ * Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
+ * Die Vorpruefung mergt den env-Block aus .claude/settings.json und
+ * .claude/settings.local.json (local gewinnt, wie in Claude Code) in die eigene
+ * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
+ * projektspezifische Variablen, die sonst nur Claude Codes eigene Bash-Aufrufe
+ * bekommen, und die Vorpruefung liefert ein falsches Rot (kanban-kit #445, #168).
+ * Sind die Checks rot und ist config.formatFixCommand gesetzt, laeuft das Kommando
+ * genau einmal und die Checks werden genau einmal wiederholt (Issue #169): ein
+ * reiner Formatverstoss ist mechanisch behebbar und darf keinen Lauf beenden, in
+ * dem noch zwanzig Issues warten. Bleiben sie rot, war das Format nicht die Ursache.
  * Timeout (--timeout-min) zaehlt als issue-spezifisch, nicht als Infrastruktur.
  * Verhalten bei Erfolg einer Runde (Issue in In review):
  *   - Working Tree sauber -> weiter mit der naechsten Runde
@@ -41,7 +62,10 @@
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
  *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
  *                     (statt --timeout-min), damit der Timeout-Pfad schnell
- *                     testbar ist.
+ *                     testbar ist. Gilt auch fuer die Salvage-Session.
+ *   NIGHT_SALVAGE     wird der Salvage-Session als Umgebungsvariable gesetzt
+ *                     (Wert "1"), damit ein Fake-Hook die beiden Session-Arten
+ *                     unterscheiden kann.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -51,6 +75,10 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BOARD_PATH = join(__dirname, "board.mjs");
+// Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
+// Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
+// tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
+const KIT_VERSION = "1.24.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -77,7 +105,20 @@ Flags:
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
   --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
                      der laufenden Session mitloggen (via stream-json)
+  --version          Kit-Stand dieser Datei
   --help, -h         diese Uebersicht
+
+Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
+Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
+genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
+zu pruefen, zu committen und nach In review zu verschieben (Zeitlimit 10 min). Rote
+Checks oder ein gescheiterter Salvage-Versuch fuehren zum harten Stopp.
+
+Ist in der Config "formatFixCommand" gesetzt (z.B. "mvn spotless:apply" oder
+"npx prettier --write ."), laeuft es bei roten Checks genau einmal, danach werden
+die Checks genau einmal wiederholt: ein reiner Formatverstoss kippt so keinen Lauf
+mehr. Bleiben die Checks rot, war das Format nicht die Ursache -> harter Stopp.
+Ohne das Feld aendert sich nichts.
 
 Beispiele:
   caffeinate -i node .claude/kit/night.mjs
@@ -93,6 +134,11 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
       printHelp();
+      process.exit(0);
+    } else if (a === "--version") {
+      // Wie --help: greift vor allen Vorflug-Checks, damit die Auskunft auch in
+      // einem Verzeichnis ohne Config und ohne board.mjs funktioniert.
+      process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
       process.exit(0);
     } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];
@@ -245,10 +291,10 @@ function emitVerbose(issueId, line) {
 // die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
 // damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
 // unveraendert weiterarbeiten.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
   return new Promise((resolve) => {
     const child = spawn(cmd, cmdArgs, {
-      env: { ...process.env, NIGHT_ISSUE_ID: String(issueId) },
+      env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
     });
     let stdout = "";
     let stderr = "";
@@ -295,10 +341,13 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream }) {
   });
 }
 
-async function runSession(issueId, args) {
+// opts (Issue #167): { prompt, timeoutMs, extraEnv } — die Salvage-Session nutzt
+// denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
+// eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
+async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
-    : args.timeoutMin * 60 * 1000;
+    : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
@@ -310,9 +359,11 @@ async function runSession(issueId, args) {
       : ["--permission-mode", "acceptEdits"];
     const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
+    cmdArgs = ["-p", opts.prompt || "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
   }
-  const res = await runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream: args.verbose });
+  const res = await runProcess(cmd, cmdArgs, {
+    issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
+  });
   if (!testCmd && res.error && res.error.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   }
@@ -320,6 +371,118 @@ async function runSession(issueId, args) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
   return res;
+}
+
+// --- Salvage (Issue #167) ---
+
+// Zeitlimit der Salvage-Session: sie fuehrt keinen Build mehr aus, sondern prueft
+// nur den Diff gegen das Issue, committet und bewegt das Board. Bewusst unabhaengig
+// von --timeout-min (das bemisst eine volle Implementierungsrunde).
+const SALVAGE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// Liest den env-Block aus .claude/settings.json (falls vorhanden). Dort stehen
+// projektspezifische Variablen (z.B. DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_
+// OVERRIDE fuer Testcontainers unter Colima), die Claude Code seinen eigenen
+// Bash-Tool-Aufrufen automatisch mitgibt. night.mjs ist aber ein eigener
+// Node-Prozess ausserhalb von Claude Code und bekommt diese Variablen sonst
+// nicht — ohne sie liefert runBuildChecksSync ein falsches Rot (beobachtet bei
+// kanban-kit #445: mvn verify schlug ohne die beiden Variablen mit Mockito-
+// MockMaker-Fehlern fehl, mit ihnen lief er sauber durch).
+function settingsEnv() {
+  // Precedence wie in Claude Code: settings.json zuerst, settings.local.json
+  // gewinnt. Die local-Datei ist gitignored und damit der uebliche Ort fuer
+  // maschinenspezifische Werte — genau die, die hier fehlen wuerden (Issue #168).
+  const merged = {};
+  for (const name of ["settings.json", "settings.local.json"]) {
+    const path = join(process.cwd(), ".claude", name);
+    if (!existsSync(path)) continue;
+    try {
+      const settings = JSON.parse(readFileSync(path, "utf-8"));
+      if (settings.env && typeof settings.env === "object") Object.assign(merged, settings.env);
+    } catch {
+      // Kaputtes JSON blockiert die Vorpruefung nicht — nur diese eine Quelle faellt aus.
+    }
+  }
+  return merged;
+}
+
+// Fuehrt die buildChecks der Config sequenziell aus und bricht beim ersten roten
+// Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
+// kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
+// zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
+// Umgebung fuer die eigenen Kindprozesse (Vorpruefung und Format-Fix): process.env
+// plus der gemergte settings-env-Block.
+function checkEnv() {
+  return { ...process.env, ...settingsEnv() };
+}
+
+function runBuildChecksSync(cfg) {
+  const env = checkEnv();
+  let output = "";
+  for (const cmd of cfg.buildChecks || []) {
+    const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
+    output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
+    if (res.status !== 0) return { ok: false, output };
+  }
+  return { ok: true, output };
+}
+
+// Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
+//
+// Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
+// nichts ueber die fachliche Qualitaet der Arbeit — er darf keinen Lauf beenden,
+// in dem noch zwanzig Issues warten (beobachtet bei kanban-kit#463: ein einzelner
+// Javadoc-Zeilenumbruch). Ist formatFixCommand gesetzt und sind die Checks rot,
+// laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
+// Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
+// Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
+function verifyChecksForSalvage(cfg) {
+  const first = runBuildChecksSync(cfg);
+  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null };
+
+  const fixCmd = (cfg.formatFixCommand || "").trim();
+  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
+
+  log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  spawnSync("sh", ["-c", fixCmd], { cwd: process.cwd(), encoding: "utf-8", env: checkEnv() });
+
+  const second = runBuildChecksSync(cfg);
+  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null };
+  log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
+  return { ok: true, output: second.output, formatFixCmd: fixCmd };
+}
+
+// Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
+// gruen — die Session darf sie NICHT erneut starten, sonst laeuft sie in genau
+// den Hintergrund-Check, der die Runde ueberhaupt erst gekostet hat.
+function salvagePrompt(issueId, checksOutput, formatFixCmd) {
+  const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
+  return [
+    `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
+    `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
+    ``,
+    `Im Working Tree liegen unkommittete Aenderungen zu Issue #${issueId}. Deine einzige Aufgabe:`,
+    `1. Lies das Issue: node .claude/kit/board.mjs issue get ${issueId}`,
+    `2. Sieh dir den Stand an: git status und git diff`,
+    `3. Passt der Stand zum Issue, committe ihn (Betreff mit "(Issue #${issueId})", im Body "Refs #${issueId}"`,
+    `   — niemals Closes/Fixes/Resolves), verschiebe das Issue mit`,
+    `   node .claude/kit/board.mjs issue move ${issueId} in_review`,
+    `   und kommentiere den Abschlussbericht per`,
+    `   node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
+    `4. Passt der Stand nicht zum Issue oder wirkt unvollstaendig: NICHT committen,`,
+    `   nichts am Board bewegen, und klar benennen was fehlt.`,
+    // Ohne diesen Hinweis blieben die Formatierungsaenderungen unkommittiert liegen
+    // und der Rest-Guard (#152) wertete die geglueckte Runde doch noch als Fehlschlag.
+    ...(formatFixCmd ? [
+      ``,
+      `WICHTIG: Die Checks waren zunaechst rot; danach lief automatisch das Format-Kommando`,
+      `"${formatFixCmd}" und erst dann wurden sie gruen. Die dadurch entstandenen`,
+      `Formatierungsaenderungen gehoeren MIT in denselben Commit und in den Abschlussbericht.`,
+    ] : []),
+    ``,
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe:`,
+    tail,
+  ].join("\n");
 }
 
 // --- Hauptprogramm ---
@@ -345,7 +508,34 @@ if (args.yolo && !args.dryRun) {
   log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
 }
 
+// Versions-Drift zwischen den beiden Kit-Dateien (Issue #172). Sie werden
+// gemeinsam installiert, koennen aber auseinanderlaufen (einzeln kopiert,
+// abgebrochenes Re-Install). Der Runner ruft dann Adapter-Funktionen auf, die eine
+// aeltere board.mjs nicht kennt — das aeussert sich als schwer zuzuordnendes
+// Fehlverhalten. Bewusst nur eine Warnung: ein Unterschied macht den Lauf nicht
+// zwingend kaputt, und ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer
+// als das Problem, das er meldet.
+function boardKitVersion() {
+  try {
+    const m = readFileSync(BOARD_PATH, "utf-8").match(/const KIT_VERSION = "([^"]*)";/);
+    return m ? m[1] : null;
+  } catch {
+    return null; // nicht lesbar -> wie fehlende Konstante behandeln
+  }
+}
+
+function warnBeiVersionsDrift() {
+  const andere = boardKitVersion();
+  if (andere === KIT_VERSION) return;
+  log(
+    `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
+    `board.mjs ist ${andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)"}. ` +
+    `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
+  );
+}
+
 // Vorflug-Checks
+warnBeiVersionsDrift();
 const inProgress = board("issue", "list", "--status", "in_progress");
 if (inProgress.length > 0) {
   fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`);
@@ -396,6 +586,8 @@ let succeeded = 0;
 let deferred = 0;
 let iterations = 0;
 let hardStop = false;
+// Genau ein Salvage-Versuch pro Issue und Lauf (#167).
+const salvageAttempted = new Set();
 
 while (sessions < args.max && iterations < MAX_ITERATIONS) {
   iterations++;
@@ -462,6 +654,36 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   }
 
   if (!gitClean()) {
+    // Salvage (#167): Bevor der Lauf hart stoppt, pruefen wir selbst, ob die Arbeit
+    // inhaltlich fertig ist. Gruene buildChecks sind das Indiz dafuer, dass die
+    // Session nur ihr Ergebnis verloren hat (Hintergrund-Check ohne Folge-Turn) und
+    // nicht wirklich gescheitert ist. Genau ein Versuch pro Issue.
+    if (!salvageAttempted.has(String(top.id))) {
+      salvageAttempted.add(String(top.id));
+      const checks = verifyChecksForSalvage(config);
+      if (checks.ok) {
+        log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
+        await runSession(top.id, args, {
+          prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
+          timeoutMs: SALVAGE_TIMEOUT_MS,
+          extraEnv: { NIGHT_SALVAGE: "1" },
+        });
+        const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
+        if (salvaged && gitClean()) {
+          succeeded++;
+          log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+          board("issue", "comment", String(top.id), "--text",
+            "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
+          continue;
+        }
+        log(`  SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`);
+        board("issue", "comment", String(top.id), "--text",
+          "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+        hardStop = true;
+        break;
+      }
+      log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
+    }
     log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
     board("issue", "comment", String(top.id), "--text",
       "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");

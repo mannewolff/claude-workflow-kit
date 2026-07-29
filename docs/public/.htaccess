@@ -2,8 +2,15 @@
 # werden statt als Quelltext im Browser zu erscheinen (Issue #129).
 # curl -O / node <(curl -s ...) bleiben unberuehrt (curl ignoriert Content-Disposition
 # ohne -J). IfModule-Guard: ohne mod_headers kein 500er, nur wieder Inline-Anzeige.
+#
+# board-ui.mjs (die lokale Kanban-GUI) wird ueber denselben Weg angeboten und
+# braucht denselben Header (Issue #176). Bewusst als zweiter Files-Block statt als
+# FilesMatch-Regex: gleiche Form, kein Regex, der versehentlich weiter greift.
 <IfModule mod_headers.c>
   <Files "install.mjs">
     Header set Content-Disposition "attachment; filename=\"install.mjs\""
+  </Files>
+  <Files "board-ui.mjs">
+    Header set Content-Disposition "attachment; filename=\"board-ui.mjs\""
   </Files>
 </IfModule>

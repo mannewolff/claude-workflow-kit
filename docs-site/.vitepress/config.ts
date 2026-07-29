@@ -16,6 +16,13 @@ export default defineConfig({
         text: "Installer herunterladen",
         link: "https://docs.mwolff.org/install.mjs",
       },
+      // Absolute URL ist Absicht: VitePress setzt daran das External-Link-Icon,
+      // und der Server liefert die Datei per Content-Disposition als Download
+      // aus (docs/public/.htaccess).
+      {
+        text: "Board-UI herunterladen",
+        link: "https://docs.mwolff.org/board-ui.mjs",
+      },
     ],
 
     sidebar: [

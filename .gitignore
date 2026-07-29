@@ -27,6 +27,7 @@ docs-site/node_modules
 docs-site/.vitepress/dist
 docs-site/.vitepress/cache
 docs/public/install.mjs
+docs/public/board-ui.mjs
 # Board-Adapter: lokal gecachte GitHub-Project-Metadaten (maschinenlokal, nicht committen)
 .claude/board-meta-cache.json
 # SonarQube-Scanner: lokales Arbeitsverzeichnis bei manuellen Laeufen

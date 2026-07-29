@@ -3,9 +3,13 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 # CI-Guard mit zwei Steps:
 # 1. node --test — die node:test-Suite unter test/ (seit #135).
 # 2. Blob-Check — prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
-#    aktuellen Stand von kit/board.mjs und kit/board-ui.mjs passen. Wird rot, wenn
-#    die kit/-Dateien geändert (oder aus board-ui gesynct) wurden, ohne dass
-#    anschließend `node tools/sync-blobs.mjs` lief. Der Check schreibt nichts.
+#    aktuellen Stand ihrer Quellen passen: templates/CLAUDE-workflow.md,
+#    kit/board.mjs, kit/night.mjs und skills/. Wird rot, wenn eine dieser Quellen
+#    geändert wurde, ohne dass anschließend `node tools/sync-blobs.mjs` lief.
+#    Der Check schreibt nichts.
+#    kit/board-ui.mjs gehört bewusst nicht dazu: Die lokale Kanban-GUI ist kein
+#    Installer-Bestandteil mehr, sie wird nur zum Download ausgeliefert (#176).
+#    Sie liegt zwar unter kit/, ist aber von diesem Guard nicht abgedeckt.
 #
 # Zweck: verhindert, dass ein Merge nach production einen veralteten oder
 # kaputten install.mjs auf docs.mwolff.org deployt. Lokal laufen dieselben

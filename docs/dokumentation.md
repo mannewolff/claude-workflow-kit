@@ -75,6 +75,23 @@ Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
+### Welchen Stand hat meine Installation?
+
+Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:
+
+```bash
+node .claude/kit/board.mjs --version
+node .claude/kit/night.mjs --version
+```
+
+```
+board.mjs (claude-workflow-kit v1.22.0)
+```
+
+Vergleiche das mit der aktuellen Kit-Version (`node install.mjs --version`, oder die Versionsangabe auf der Download-Seite). Liegt deine Kopie zurück, spielst du einfach den Installer erneut ein — er überschreibt die Kit-Dateien und lässt deine `workflow.config.json` bis auf die abgefragten Felder unangetastet.
+
+Die Versionsnummer ist bewusst dieselbe wie die des Kits, keine eigene Zählung pro Datei: Eine Kopie mit `v1.22.0` ist exakt der Stand, den Kit 1.22.0 ausgeliefert hat. Laufen die beiden Dateien auseinander — etwa weil nur eine von beiden ersetzt wurde —, warnt der Nacht-Runner beim Start und läuft trotzdem weiter.
+
 ## Was ist der Vault?
 
 Der Vault ist ein persönlicher Memory-Speicher außerhalb des Repos. Er hält projektübergreifendes Wissen: dein Profil, Arbeitsregeln, Entscheidungshistorie und Tages-Logs. /kontext lädt ihn zu Session-Beginn, /document schreibt am Session-Ende in ihn hinein.
@@ -172,7 +189,7 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 
 **Schritt 1.5, optional — nur für Projekte mit Product Owner ([PO-Schleife](#po-schleife-fachliche-und-technische-issues)).**
 
-Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare (`board.mjs issue get` liest keine Kommentare, eine spätere `/plan #N`-Session sähe sie nicht).
+Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
 Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/plan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/plan`.
 
@@ -362,7 +379,7 @@ node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde — startet ni
 node .claude/kit/night.mjs             # echter Lauf
 ```
 
-Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll), `--help`.
+Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll), `--help`. Dazu das Config-Feld `formatFixCommand` (siehe unten) — kein Flag, weil es projektspezifisch ist.
 
 **Routing-Label — welche Ready-Issues der Nachtlauf bearbeitet.** Standardmäßig verarbeitet der Runner aus Ready nur Issues mit dem Label `kit:nightrun`; alle anderen bleiben unangetastet liegen (kein Verschieben, kein Kommentar). So markierst du auf **einem** Board gezielt die Teilmenge für den Nachtlauf und behältst den Rest für interaktive Arbeit — ohne ein zweites Board mit eigenem Token, das `Issue #N`-Abhängigkeiten zwischen den Boards unauflösbar machen würde. Das Label ist per `--label <name>` überschreibbar; `--label none` schaltet den Filter ganz ab (dann kommt wie früher strikt das oberste Ready-Issue dran). Ein `--dry-run` weist ungelabelte Issues sichtbar als „übersprungen" aus. Bei **GitLab** sind Labels bereits der Status-Mechanismus — wähle dort einen Routing-Label-Namen, der mit keinem Status-Label kollidiert (der Default `kit:nightrun` mit Namespace-Präfix tut das). **Tragweite:** Wer `night.mjs` bisher ohne Labels nutzte, muss seine Nacht-Issues jetzt mit `kit:nightrun` versehen oder `--label none` setzen — sonst findet der Lauf nichts.
 
@@ -432,6 +449,54 @@ Fehlt dem Check darüber hinaus eine **Umgebungsvariable** (z. B. `DOCKER_HOST`,
 Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen müssen: die **Allowlist** erlaubt das Kommando, `sandbox.excludedCommands` befreit es von der Isolation, der `env`-Block versorgt es mit Variablen. (Für Testcontainers speziell tut es alternativ eine `~/.testcontainers.properties` mit `docker.host` — die liegt außerhalb des Projekts, ist dafür aber unabhängig von Claude Code.)
 
 **Wenn etwas schiefgeht:** Der Runner unterscheidet drei Fälle. **Infrastruktur-Fehlstart** — die Session selbst endet mit Exit ≠ 0 (Auth abgelaufen, CLI kaputt): harter Stopp, das Issue bleibt unangetastet in Ready, denn mit ihm ist nichts falsch; die CLI-Fehlermeldung steht direkt im Konsolen-Log. So räumt eine kaputte Umgebung nicht die ganze Ready-Spalte leer. **Fachlicher Fehlschlag** — die Session endet sauber (Exit 0), aber das Issue steht nicht in In review: der Runner kommentiert es und stellt es zurück ins Backlog, der Lauf geht mit dem nächsten Issue weiter. Ein **Timeout** (`--timeout-min`) zählt als issue-spezifisch (Aufgabe zu groß) und wird wie ein fachlicher Fehlschlag behandelt. Hinterlässt eine Runde einen unsauberen Working Tree, stoppt der Lauf in jedem Fall hart (Exit ≠ 0): Auf halben Änderungen wird nicht weitergebaut. Vor dem Start prüft der Runner außerdem: kein Issue in In progress (Crash-Rest), sauberer Working Tree, `buildChecks` vorhanden.
+
+**Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus. Sind sie grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
+
+**`formatFixCommand` — ein Formatverstoß darf keinen Lauf kippen.** Setzt du in der `workflow.config.json` ein Kommando, das Formatierung mechanisch repariert (`"formatFixCommand": "mvn spotless:apply"`, für Frontends etwa `"npx prettier --write ."`), dann läuft es bei roten Checks in der Salvage-Vorprüfung **genau einmal**, und die Checks werden **genau einmal** wiederholt. Werden sie dadurch grün, geht der Lauf weiter und das Protokoll weist den Eingriff mit `FORMAT-FIX angewendet` aus — kein stiller Eingriff. Bleiben sie rot, war das Format nicht die Ursache und es bleibt beim harten Stopp. Hintergrund: Ein einzelner falsch umbrochener Javadoc-Kommentar hat einmal einen kompletten Nachtlauf beendet, obwohl die Arbeit korrekt war. Ein Formatverstoß ist deterministisch behebbar und sagt nichts über die fachliche Qualität — ein fehlgeschlagener Test dagegen schon, und der bleibt unverändert ein harter Stopp. Ohne das Feld ändert sich nichts.
+
+### Mit einem lokalen Modell fahren
+
+> **Ungetestet.** Dieser Abschnitt beschreibt einen Weg, der sich aus der Architektur des Runners ergibt und ohne jede Änderung am Kit funktionieren sollte — er ist hier aber **nicht praktisch erprobt**. Weder wurde LiteLLM aufgesetzt noch ein Lauf gegen ein lokales Modell gefahren. Nimm ihn als begründeten Vorschlag, nicht als Erfahrungsbericht.
+
+Die Idee: einfache Issues nachts von einem lokalen Modell bauen lassen, während Review und anspruchsvolle Issues weiter über Anthropic laufen.
+
+**Warum ein Proxy nötig ist.** Claude Code spricht ausschließlich die Anthropic Messages API; lokale Runner wie Ollama sprechen das OpenAI-Format. Dazwischen gehört ein Übersetzer — üblich ist [LiteLLM](https://docs.litellm.ai/). Zwei Dinge sind dabei unterschiedlich belastbar: Dass Claude Code über `ANTHROPIC_BASE_URL` auf einen eigenen Endpunkt zeigen kann, ist [offiziell dokumentiert](https://code.claude.com/docs/en/llm-gateway) (Gateway-Muster), ebenso `--model` pro Aufruf. Ein lokales Modell hinter diesem Endpunkt zu betreiben ist dagegen Community-Terrain und von Anthropic nicht supportet.
+
+Eine minimale LiteLLM-Konfiguration:
+
+```yaml
+model_list:
+  - model_name: lokal-qwen
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://localhost:11434
+```
+
+**Mischbetrieb: die Variable dem Kommando voranstellen, nicht exportieren.**
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 3
+```
+
+`ANTHROPIC_BASE_URL` wirkt global für einen Prozess, `--model` dagegen pro Aufruf — das klingt nach einem Hindernis für den Mischbetrieb, ist hier aber keins. Der Runner startet jede Session als eigenen Kindprozess und reicht dabei `process.env` durch. Stellst du die Variable **dem Nachtlauf-Kommando voran**, gilt sie ausschließlich für dessen Sessions; eine parallel laufende interaktive Claude-Code-Sitzung bleibt unberührt. Ein `export` in der `.zshrc` würde genau das kaputt machen — dann liefe auch deine interaktive Arbeit über den Proxy.
+
+**Aufteilung über Labels.** Das [Routing-Label](#nachtbetrieb) genügt für die Trennung, ein neues Flag braucht es nicht: Vergib den einfachen Issues ein eigenes Label (etwa `kit:lokal`) und fahre zwei Läufe nacheinander — einen mit lokalem Modell und diesem Label, einen regulären mit `kit:nightrun`.
+
+**Der Review bleibt unberührt.** `/review` nutzt das `reviewModel` aus der `workflow.config.json` und ist vom Nachtlauf-Modell vollständig entkoppelt. Was ein lokales Modell nachts gebaut hat, wird morgens trotzdem vom starken Modell begutachtet.
+
+**Wo die Grenzen liegen — ungeschönt.** Eine Nacht-Session muss mehr können als Code schreiben: Sie muss Werkzeuge zuverlässig aufrufen (Board-Operationen über `board.mjs`, Datei-Edits, Git), eine mehrstufige Kette durchhalten und am Ende sauber committen. Kleine Modelle brechen erfahrungsgemäß genau daran, nicht am Programmieren selbst. Projekte mit scharfen Gates — Mutationstests, Coverage-Ratchets, mehrstufige Build-Ketten — sind für ein kleines lokales Modell realistisch außer Reichweite. Der sinnvolle Einsatzbereich sind Änderungen ohne Testpflicht: Dokumentation, Textkorrekturen, Konfigurationswerte, kleine mechanische Anpassungen.
+
+**Was schützt, wenn es schiefgeht.** Nichts Kaputtes gelangt ins Repo: Die [Salvage-Vorprüfung](#nachtbetrieb) fährt die `buildChecks` selbst, bevor überhaupt etwas committet wird, rote Checks führen zum harten Stopp, und der Rest-Guard beendet den Lauf, sobald eine Runde unkommittete Reste hinterlässt. Ein gescheiterter lokaler Lauf kostet dich Strom und Zeit, nicht die Codebasis.
+
+**Einstieg.** Fang mit einem einzigen Doku-Issue an:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 1 --verbose
+```
+
+`--verbose` zeigt im Protokoll jeden Tool-Aufruf der Session. Daran siehst du binnen Minuten, ob das Modell die Board-Operationen sauber hinbekommt — das ist der schnellste Machbarkeitstest, und er entscheidet die Frage, bevor du eine ganze Nacht investierst.
 
 **Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde), dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
 
