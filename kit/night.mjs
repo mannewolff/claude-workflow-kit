@@ -188,6 +188,25 @@ function board(...cliArgs) {
 
 // --- Git-Helfer ---
 
+// PATH-Aufloesung bei den git- und sh-Aufrufen dieser Datei: bewusst so (Issue #183).
+//
+// SonarQube S4036 ("OS commands should not rely on PATH resolution") markiert jeden
+// Start eines Kommandos ohne absoluten Pfad. Die Regel ist hier nicht erfuellbar,
+// ohne mehr kaputtzumachen als sie schuetzt:
+//
+//   - Absolute Pfade brechen die zugesagte Portabilitaet. Das Kit laeuft auf Mac,
+//     Windows und Linux; /usr/bin/git existiert unter Windows nicht, und je nach
+//     Installation liegt git auch unter /opt/homebrew/bin.
+//   - Ein kontrollierter env.PATH ist kein Fix: Die Regel beanstandet nicht, WELCHEN
+//     PATH der Prozess bekommt, sondern DASS ueber PATH aufgeloest wird.
+//   - Die sh -c-Aufrufe (runBuildChecksSync, Format-Fix) fuehren frei konfigurierte
+//     Kommandozeilen aus der workflow.config.json aus. Die brauchen zwingend eine
+//     Shell — ohne sie gibt es das Feature nicht.
+//
+// Zur Risikobewertung: Das sind lokale Entwickler-Werkzeuge, die der Nutzer auf seiner
+// eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
+// Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
+// soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
 function gitClean() {
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
@@ -201,6 +220,7 @@ function gitClean() {
 }
 
 function lastCommitHash() {
+  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitClean() (S4036, Issue #183).
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
   return res.status === 0 ? res.stdout.trim() : "?";
 }
@@ -462,6 +482,8 @@ function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
   for (const cmd of cfg.buildChecks || []) {
+    // sh ist hier zwingend: cmd ist eine frei konfigurierte Kommandozeile aus der
+    // workflow.config.json. PATH-Aufloesung bewusst (S4036, Issue #183).
     const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
@@ -486,6 +508,7 @@ function verifyChecksForSalvage(cfg) {
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  // Wie oben: fixCmd kommt aus der Config, PATH-Aufloesung bewusst (S4036, Issue #183).
   spawnSync("sh", ["-c", fixCmd], { cwd: process.cwd(), encoding: "utf-8", env: checkEnv() });
 
   const second = runBuildChecksSync(cfg);
