@@ -458,12 +458,14 @@ class GitHubIssueTracker {
     const repo = this._repo();
 
     if (!status) {
+      // `gh issue list` liefert Labels direkt mit, sobald das Feld angefordert wird
+      // (verifiziert 2026-07-29, Issue #180).
       const items = execJSON(
-        `gh issue list --repo ${repo} --state open --json number,title,body`
+        `gh issue list --repo ${repo} --state open --json number,title,body,labels`
       );
-      // labels: [] als bewusster Platzhalter — ob `gh` bei diesem Aufruf Labels
-      // liefert, ist ungeprueft und wird nicht vorab geraten (Issue #158).
-      return items.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: null, labels: [] }));
+      return items.map((i) => ({
+        id: String(i.number), title: i.title, body: i.body, status: null, labels: labelNamesFrom(i.labels),
+      }));
     }
 
     // Filterung nach Board-Status via Project
@@ -487,17 +489,35 @@ class GitHubIssueTracker {
     const wantedStatus = githubStatusName(status, this._cfg).toLowerCase();
     // Kein ID-Re-Sort: gh project item-list liefert die manuelle Projekt-Reihenfolge,
     // gefiltert auf eine Spalte ist das die Board-Reihenfolge (oben zuerst, #128).
-    return (items.items || [])
+    const gefiltert = (items.items || [])
       .filter((i) => (i.status || "").toLowerCase() === wantedStatus)
       .map((i) => ({
         id: String(i.content?.number),
         title: i.content?.title,
         body: null,
         status,
-        // labels: [] als bewusster Platzhalter — ob `gh project item-list` Labels
-        // mitliefert, ist ungeprueft und wird nicht vorab geraten (Issue #158).
         labels: [],
       }));
+
+    return this._mitLabels(gefiltert, repo);
+  }
+
+  // `gh project item-list` liefert keine Labels (Issue #180) — sie werden ueber einen
+  // zweiten Aufruf nachgeschlagen. Schlaegt der fehl, bleibt es bei labels: [] und die
+  // Liste selbst ueberlebt: Ein Netzwerkschluckauf darf einen Nachtlauf nicht kippen.
+  _mitLabels(items, repo) {
+    if (items.length === 0) return items;
+    try {
+      const raw = execJSON(
+        `gh issue list --repo ${repo} --state all --json number,labels --limit 1000`
+      );
+      return withLabels(items, labelMapFrom(raw));
+    } catch (e) {
+      process.stderr.write(
+        `Hinweis: Labels konnten nicht nachgeschlagen werden (${e.message}). Liste ohne Labels.\n`
+      );
+      return items;
+    }
   }
 
   async moveIssue(id, to) {
@@ -1174,6 +1194,38 @@ export function labelNamesFrom(rawLabels) {
   return rawLabels
     .map((l) => (l && typeof l === "object" ? l.name : l))
     .filter((n) => n != null);
+}
+
+// Labels nachbeschaffen fuer den GitHub-Tracker (Issue #180).
+//
+// `gh project item-list` liefert pro Item nur body, number, repository, title, type
+// und url — kein labels-Feld, und ein Flag zur Feldauswahl gibt es nicht. Ohne
+// Nachschlag traegt bei issueTracker: github kein Ready-Issue jemals ein Label, und
+// das Routing-Label des Nacht-Runners (Issue #159) ueberspringt zwangslaeufig alles.
+//
+// Aufgeteilt in zwei reine Funktionen, weil die Tracker-Klassen selbst wegen ihrer
+// CLI-Nebenwirkungen nicht exportiert und damit nicht direkt testbar sind.
+
+// Rohantwort von `gh issue list --json number,labels` -> Map "<nummer>" -> [Namen].
+// Schluessel bewusst als String: Die Items tragen ihre id als String, ein
+// Zahlen-Schluessel wuerde nie treffen.
+export function labelMapFrom(rawIssues) {
+  const map = new Map();
+  if (!Array.isArray(rawIssues)) return map;
+  for (const issue of rawIssues) {
+    if (issue?.number == null) continue;
+    map.set(String(issue.number), labelNamesFrom(issue.labels));
+  }
+  return map;
+}
+
+// Heftet die nachgeschlagenen Labels an die Items. Die Reihenfolge bleibt
+// unangetastet — sie ist bei status-gefilterten Listen die Board-Reihenfolge
+// (Issue #128), nach der der Nacht-Runner abarbeitet. Eine fehlende Nummer fuehrt
+// zu [] statt undefined, damit Aufrufer nie auf einem fehlenden Feld arbeiten.
+export function withLabels(items, labelMap) {
+  if (!Array.isArray(items)) return [];
+  return items.map((i) => ({ ...i, labels: labelMap.get(String(i.id)) || [] }));
 }
 
 // Normalisiert die roh gelieferten Kommentare auf {author, body, createdAt}
