@@ -293,26 +293,68 @@ function emitVerbose(issueId, line) {
 // unveraendert weiterarbeiten.
 function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
   return new Promise((resolve) => {
+    // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
+    // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
+    // ueberlebt ein Enkel (bei `claude` etwa ein Bash-Tool-Aufruf wie `mvn verify`),
+    // haelt die geerbte stdout-Pipe offen und verhindert das close-Event — der Runner
+    // wartet dann die volle Laufzeit ab, obwohl er laengst gekillt hat.
+    // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
+    // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
     const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
+      detached: process.platform !== "win32",
     });
     let stdout = "";
     let stderr = "";
     let buf = "";
     let timedOut = false;
     let settled = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, timeoutMs);
+    const timers = [];
 
     const done = (result) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
       resolve(result);
     };
+
+    // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
+    // Prozessgruppen in dieser Form — dort bleibt es beim Einzel-Kill, die
+    // Einschraenkung ist bekannt und nicht behebbar. Ein bereits beendeter Prozess
+    // laesst kill mit ESRCH scheitern; das ist der Normalfall, kein Fehler.
+    const killTree = (signal) => {
+      try {
+        if (process.platform === "win32") child.kill(signal);
+        else process.kill(-child.pid, signal);
+      } catch {
+        /* Prozess(gruppe) bereits weg */
+      }
+    };
+
+    // Nachfrist bis zum harten Nachsetzen. Ueber NIGHT_KILL_GRACE_MS testbar gemacht,
+    // analog zu NIGHT_TIMEOUT_MS.
+    const killGraceMs = process.env.NIGHT_KILL_GRACE_MS
+      ? Number(process.env.NIGHT_KILL_GRACE_MS)
+      : 5000;
+
+    timers.push(setTimeout(() => {
+      timedOut = true;
+      killTree("SIGTERM");
+      // Harte Obergrenze: Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal,
+      // haengender I/O), wird nachgesetzt — und wenn auch das close-Event ausbleibt,
+      // loest der Runner selbst auf. Ein Nachtlauf darf unter keinen Umstaenden
+      // unbegrenzt warten.
+      timers.push(setTimeout(() => {
+        killTree("SIGKILL");
+        timers.push(setTimeout(() => done({
+          status: null,
+          signal: "SIGKILL",
+          error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
+          stdout,
+          stderr,
+        }), killGraceMs));
+      }, killGraceMs));
+    }, timeoutMs));
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
