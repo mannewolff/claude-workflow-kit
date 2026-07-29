@@ -23,6 +23,26 @@ jobs:
         with:
           fetch-depth: 0 # voller Verlauf noetig, sonst fehlen Sonar die Blame-Infos
 
+      # Node 22 statt 20: Den lcov-Reporter fuer `node --test` gibt es erst ab 22
+      # (Issue #185). Ohne ihn laesst sich der Coverage-Report gar nicht erzeugen.
+      - name: Node einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # Erzeugt coverage/lcov.info fuer sonar.javascript.lcov.reportPaths.
+      # `|| true`: Rote Tests duerfen den Scan nicht verhindern — dafuer ist der
+      # Checks-Workflow zustaendig. Zwei rote Ampeln fuer denselben Fehler helfen
+      # niemandem, und ohne Scan verlaengen wir bei jedem Testfehler auch noch die
+      # Sonar-Historie.
+      - name: Coverage erzeugen
+        run: |
+          mkdir -p coverage # Node legt das Zielverzeichnis des Reporters nicht selbst an
+          node --test --experimental-test-coverage \
+            --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
+            --test-reporter=spec --test-reporter-destination=stdout || true
+          test -s coverage/lcov.info || echo "WARNUNG: coverage/lcov.info ist leer"
+
       # Auf Commit-SHA gepinnt statt beweglichem Tag (Supply-Chain-Haertung), derselbe Pin
       # wie im Vorbild kanban-kit (.github/workflows/sonarqube.yml, entspricht v8.2.0).
       # sonar.branch.name=main explizit gesetzt statt dem Auto-Erkennen des Scanners
