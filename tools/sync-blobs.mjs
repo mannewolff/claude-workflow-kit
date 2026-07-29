@@ -144,7 +144,8 @@ if (checkOnly) {
 } else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0) {
   if (drift.length > 0) writeFileSync(INSTALL, installSrc, "utf-8");
   const teile = [];
-  if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${STAMPED.map((d) => `kit/${d}`).join(", ")}`);
+  const gestempelt = STAMPED.map((d) => `kit/${d}`).join(", ");
+  if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${gestempelt}`);
   if (drift.length > 0) teile.push(`Aktualisiert: ${drift.join(", ")}`);
   if (copyDrift.length > 0) teile.push(`Lokale Kopie aufgefrischt: ${copyDrift.join(", ")}`);
   process.stdout.write(`${teile.join("\n")}\n`);

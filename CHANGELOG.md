@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.24.1] - 2026-07-29
+- Coverage-Report an SonarCloud anbinden (#185)
+- Verbleibende acht Code Smells beseitigen (#184)
+- Timeout killt die Prozessgruppe statt nur des Kindprozesses (#182)
+- board-ui.mjs aus der SonarCloud-Analyse ausschliessen (#181)
+- GitHub-Tracker liefert Labels (#180)
+- Nacht-Runner warnt bei nirgends vorkommendem Routing-Label (#179)
+
 ## [1.23.1] - 2026-07-29
 - Hauptnav der Doku-Site bekommt "Board-UI herunterladen" (#178)
 - Kommentar in blob-sync-check.yml auf den tatsächlichen Stand bringen (#177)

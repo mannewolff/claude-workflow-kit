@@ -78,7 +78,7 @@ const BOARD_PATH = join(__dirname, "board.mjs");
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.24.0";
+const KIT_VERSION = "1.25.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -293,26 +293,68 @@ function emitVerbose(issueId, line) {
 // unveraendert weiterarbeiten.
 function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
   return new Promise((resolve) => {
+    // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
+    // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
+    // ueberlebt ein Enkel (bei `claude` etwa ein Bash-Tool-Aufruf wie `mvn verify`),
+    // haelt die geerbte stdout-Pipe offen und verhindert das close-Event — der Runner
+    // wartet dann die volle Laufzeit ab, obwohl er laengst gekillt hat.
+    // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
+    // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
     const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
+      detached: process.platform !== "win32",
     });
     let stdout = "";
     let stderr = "";
     let buf = "";
     let timedOut = false;
     let settled = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-    }, timeoutMs);
+    const timers = [];
 
     const done = (result) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
       resolve(result);
     };
+
+    // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
+    // Prozessgruppen in dieser Form — dort bleibt es beim Einzel-Kill, die
+    // Einschraenkung ist bekannt und nicht behebbar. Ein bereits beendeter Prozess
+    // laesst kill mit ESRCH scheitern; das ist der Normalfall, kein Fehler.
+    const killTree = (signal) => {
+      try {
+        if (process.platform === "win32") child.kill(signal);
+        else process.kill(-child.pid, signal);
+      } catch {
+        /* Prozess(gruppe) bereits weg */
+      }
+    };
+
+    // Nachfrist bis zum harten Nachsetzen. Ueber NIGHT_KILL_GRACE_MS testbar gemacht,
+    // analog zu NIGHT_TIMEOUT_MS.
+    const killGraceMs = process.env.NIGHT_KILL_GRACE_MS
+      ? Number(process.env.NIGHT_KILL_GRACE_MS)
+      : 5000;
+
+    timers.push(setTimeout(() => {
+      timedOut = true;
+      killTree("SIGTERM");
+      // Harte Obergrenze: Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal,
+      // haengender I/O), wird nachgesetzt — und wenn auch das close-Event ausbleibt,
+      // loest der Runner selbst auf. Ein Nachtlauf darf unter keinen Umstaenden
+      // unbegrenzt warten.
+      timers.push(setTimeout(() => {
+        killTree("SIGKILL");
+        timers.push(setTimeout(() => done({
+          status: null,
+          signal: "SIGKILL",
+          error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
+          stdout,
+          stderr,
+        }), killGraceMs));
+      }, killGraceMs));
+    }, timeoutMs));
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
@@ -364,7 +406,7 @@ async function runSession(issueId, args, opts = {}) {
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
   });
-  if (!testCmd && res.error && res.error.code === "ENOENT") {
+  if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   }
   if (LOG_FILE) {
@@ -503,6 +545,25 @@ LOG_FILE = join(process.cwd(), ".claude", `night-run-${new Date().toISOString().
 const labelFilter = args.label === "none" ? null : args.label;
 const hasLabel = (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter);
 
+// Vorflug-Warnung zum Routing-Label (Issue #179). Ein Vertipper im --label-Wert ist
+// syntaktisch gueltig: --label no filtert auf ein Label namens "no", findet nichts,
+// und der Lauf endet ohne Arbeit — im Protokoll nicht von einem abgearbeiteten Board
+// zu unterscheiden. Die Warnung trennt die beiden Faelle.
+//
+// Bewusst nur eine Warnung, kein Stopp: Ein Lauf ohne passende Issues ist ein
+// legitimer Zustand. Ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer als
+// das Problem, das er meldet (dieselbe Abwaegung wie bei der Versions-Drift, #172).
+let labelWarnungGezeigt = false;
+function warnWennLabelNirgendsVorkommt(ready) {
+  if (labelWarnungGezeigt || labelFilter === null || ready.length === 0) return;
+  if (ready.some(hasLabel)) return;
+  labelWarnungGezeigt = true;
+  const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
+  log(`WARNUNG: kein Ready-Issue traegt das Label '${labelFilter}' — es wird nichts verarbeitet.`);
+  log(`  In Ready vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+  log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
+}
+
 log(`Nacht-Runner startet (max ${args.max} Sessions, Modell ${args.model}, Label ${args.label}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
 if (args.yolo && !args.dryRun) {
   log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
@@ -527,9 +588,10 @@ function boardKitVersion() {
 function warnBeiVersionsDrift() {
   const andere = boardKitVersion();
   if (andere === KIT_VERSION) return;
+  const andereAngabe = andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)";
   log(
     `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
-    `board.mjs ist ${andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)"}. ` +
+    `board.mjs ist ${andereAngabe}. ` +
     `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
   );
 }
@@ -552,6 +614,7 @@ if (args.dryRun) {
     log("Ready ist leer — nichts zu tun.");
     process.exit(0);
   }
+  warnWennLabelNirgendsVorkommt(ready);
   const satisfied = satisfiedIds();
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
@@ -593,6 +656,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   iterations++;
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) break;
+  warnWennLabelNirgendsVorkommt(ready);
 
   // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
   // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.

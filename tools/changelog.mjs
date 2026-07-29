@@ -53,12 +53,17 @@ export function parseVersions(entries, currentVersion, today) {
       pending = [];
       continue;
     }
-    if (/^Merge /.test(e.subject)) continue; // defensiv; git --no-merges filtert regulaer
+    if (e.subject.startsWith("Merge ")) continue; // defensiv; git --no-merges filtert regulaer
     const m = e.subject.match(/^(.*) \(Issue #(\d+)\)$/);
     pending.push(m ? { text: m[1], ref: m[2] } : { text: e.subject, ref: null });
   }
   if (pending.length) blocks.push({ version: currentVersion, date: today, items: pending });
-  return blocks.reverse().map((b) => ({ ...b, items: b.items.slice().reverse() }));
+  return blocks.toReversed().map((b) => ({ ...b, items: b.items.toReversed() }));
+}
+
+function renderItem(it) {
+  const ref = it.ref ? ` (#${it.ref})` : "";
+  return `- ${it.text}${ref}`;
 }
 
 export function renderChangelog(blocks) {
@@ -71,7 +76,7 @@ export function renderChangelog(blocks) {
     .map(
       (b) =>
         `## [${b.version}] - ${b.date}\n` +
-        b.items.map((it) => `- ${it.text}${it.ref ? ` (#${it.ref})` : ""}`).join("\n")
+        b.items.map(renderItem).join("\n")
     )
     .join("\n\n");
   return `${header}\n${body}\n`;
@@ -87,7 +92,8 @@ function currentVersion() {
 }
 
 function readEntries() {
-  const grep = `^chore: v${START_VERSION.replace(/\./g, "\\.")}$`;
+  const escaped = START_VERSION.replaceAll(".", String.raw`\.`);
+  const grep = `^chore: v${escaped}$`;
   const startHash = git(["log", "-1", "--format=%H", `--grep=${grep}`]).trim();
   if (!startHash) fail(`Startmarke 'chore: v${START_VERSION}' nicht in der Historie gefunden.`);
   const raw = git(["log", "--reverse", "--no-merges", "--date=short", "--format=%cd%x09%s", `${startHash}..HEAD`]);
