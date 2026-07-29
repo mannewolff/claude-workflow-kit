@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.23.1] - 2026-07-29
+- Hauptnav der Doku-Site bekommt "Board-UI herunterladen" (#178)
+- Kommentar in blob-sync-check.yml auf den tatsächlichen Stand bringen (#177)
+- board-ui.mjs über docs.mwolff.org als Download ausliefern (#176)
+
 ## [1.22.1] - 2026-07-28
 - Doku: Nachtbetrieb mit einem lokalen Modell (Ollama) neben Anthropic (#174)
 - issue get liefert Kommentare (GitHub, GitLab, kanbancompat)
