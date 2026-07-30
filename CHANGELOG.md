@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.25.1] - 2026-07-30
+- Modell-Selbstauskunft als X-Agent-Model-Header (#193)
+- Hartes [Idee]-Gate im Nacht-Runner analog zu [Fachlich] (#192)
+- Nacht-Runner uebergibt das Issue verbindlich an die Session (#191)
+- KIT_ROOT-Test-Hook macht Subprozess-Coverage messbar (#186)
+- PATH-Aufloesung bei git/sh begruenden statt verbiegen (#183)
+
 ## [1.24.1] - 2026-07-29
 - Coverage-Report an SonarCloud anbinden (#185)
 - Verbleibende acht Code Smells beseitigen (#184)
