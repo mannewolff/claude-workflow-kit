@@ -456,7 +456,12 @@ async function runSession(issueId, args, opts = {}) {
   }
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose,
-    extraEnv: { NIGHT_PROMPT: prompt, ...opts.extraEnv },
+    // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
+    // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
+    // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
+    // welchem Modell der Nachtlauf gearbeitet hat. Nur hier gesetzt: interaktive
+    // Sessions machen bewusst keine Angabe.
+    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: args.model, ...opts.extraEnv },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
