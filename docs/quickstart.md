@@ -49,7 +49,7 @@ Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claud
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
 | `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
 | `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
-| `/implement-next` | Genau ein Ready-Issue (oberstes), dann Ende — Baustein des Nachtbetriebs |
+| `/implement-next` | Genau ein Ready-Issue (`#N` verbindlich, sonst das oberste), dann Ende — Baustein des Nachtbetriebs |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
 | `/review` | Review durch Opus in frischer Session |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |

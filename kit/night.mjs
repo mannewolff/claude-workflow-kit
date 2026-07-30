@@ -3,9 +3,17 @@
  * claude-workflow-kit Nacht-Runner (Issue #131)
  *
  * Arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue eine FRISCHE
- * Headless-Session (`claude -p "/implement-next"`), sequenziell, bis Ready
+ * Headless-Session (`claude -p "/implement-next #N"`), sequenziell, bis Ready
  * leer oder --max erreicht ist. Das Board ist einziges Koordinations- und
  * Erfolgssignal (Issue in In review = Erfolg). Der Runner pusht nie.
+ *
+ * Die Issue-Wahl liegt ausschliesslich hier (Issue #191): Label-Filter,
+ * Abhaengigkeits-Pruefung und Board-Reihenfolge entscheiden, welches Issue dran
+ * ist, und die Session bekommt es als Argument verbindlich uebergeben. Solange
+ * der Skill selbst "das oberste Ready-Issue" waehlte, gab es zwei Wahrheiten
+ * ueber das Dran-Sein: eine Session konnte am Label-Filter vorbei ein fremdes
+ * Issue implementieren, waehrend das beauftragte faelschlich als Fehlschlag ins
+ * Backlog wanderte (live beobachtet in kanban-kit, 2026-07-29).
  *
  * Aufruf im Projekt-Root:  node .claude/kit/night.mjs [Flags]
  *
@@ -60,6 +68,11 @@
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
+ *   NIGHT_PROMPT      wird jeder Session als Umgebungsvariable gesetzt und
+ *                     enthaelt genau den Prompt, mit dem sie gestartet wurde.
+ *                     Nur so ist der uebergebene Auftrag (/implement-next #N)
+ *                     auch dann pruefbar, wenn NIGHT_CLAUDE_CMD den echten
+ *                     claude-Aufruf ersetzt (Issue #191).
  *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
  *                     (statt --timeout-min), damit der Timeout-Pfad schnell
  *                     testbar ist. Gilt auch fuer die Salvage-Session.
@@ -87,7 +100,7 @@ const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem
 
 function printHelp() {
   process.stdout.write(`Nacht-Runner: arbeitet die Ready-Spalte unbeaufsichtigt ab —
-pro Issue eine frische Headless-Session (/implement-next), sequenziell.
+pro Issue eine frische Headless-Session (/implement-next #N), sequenziell.
 Erfolg wird am Board gemessen (Issue in In review). Gepusht wird nie.
 
 Aufruf (im Projekt-Root):
@@ -410,6 +423,10 @@ async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
     : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
+  // Das Issue wird der Session verbindlich uebergeben (Issue #191) — sie waehlt
+  // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
+  // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
+  const prompt = opts.prompt || `/implement-next #${issueId}`;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
@@ -421,10 +438,11 @@ async function runSession(issueId, args, opts = {}) {
       : ["--permission-mode", "acceptEdits"];
     const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", opts.prompt || "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
+    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
-    issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
+    issueId, timeoutMs, useStream: args.verbose,
+    extraEnv: { NIGHT_PROMPT: prompt, ...opts.extraEnv },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");

@@ -1,12 +1,12 @@
 ---
 name: implement-next
-description: Single-Issue-Variante von Schritt 5 — arbeitet genau das oberste Ready-Issue ab (Board-Reihenfolge), committet lokal, pusht nicht und endet danach. Nutze diesen Skill wenn der Nutzer /implement-next aufruft oder genau ein Ready-Issue umgesetzt werden soll (z. B. pro Session im Nachtbetrieb).
+description: Single-Issue-Variante von Schritt 5 — arbeitet genau ein Ready-Issue ab (das übergebene #N, sonst das oberste in Board-Reihenfolge), committet lokal, pusht nicht und endet danach. Nutze diesen Skill wenn der Nutzer /implement-next aufruft oder genau ein Ready-Issue umgesetzt werden soll (z. B. pro Session im Nachtbetrieb).
 user-invocable: true
 ---
 
 # Implement Next
 
-Single-Issue-Variante von Schritt 5 des 9-Schritt-Prozesses: Genau das **oberste** Ready-Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben — danach endet der Skill. Kernbaustein des Nachtbetriebs (der Nacht-Runner startet pro Issue eine frische Session mit diesem Skill), interaktiv genauso nutzbar („mach genau eins").
+Single-Issue-Variante von Schritt 5 des 9-Schritt-Prozesses: **Genau ein** Ready-Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben — danach endet der Skill. Welches Issue, entscheidet das Argument: mit `#N` ist es verbindlich vorgegeben, ohne Argument ist es das oberste in Ready. Kernbaustein des Nachtbetriebs (der Nacht-Runner startet pro Issue eine frische Session mit `/implement-next #N`), interaktiv genauso nutzbar („mach genau eins").
 
 ## Vorbedingung
 
@@ -15,19 +15,29 @@ Lies `.claude/workflow.config.json`. Relevantes Feld:
 
 ## Ablauf (genau ein Issue)
 
-### 0. Oberstes Ready-Issue holen
+### 0. Issue dieses Laufs bestimmen
 
 ```bash
 node .claude/kit/board.mjs issue list --status ready
 ```
 
-Gibt die Issues in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Das **erste** Element ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
+Gibt die Issues in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Welches davon dran ist, hängt am Aufruf:
 
-**Fachliche Issues überspringen (Leitplanke):** Trägt das oberste Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), wird es **nicht implementiert** — es mit diesem Kommentar zurück nach Backlog verschieben und mit dem nächsten Ready-Issue fortfahren (bzw. ohne Fehler enden, wenn keines bleibt):
+**Mit Argument (`/implement-next #N`, auch `/implement-next N`) — verbindlicher Auftrag.** Das Issue ist vorgegeben und wird **nicht** neu gewählt. Steht `#N` in der Ready-Liste, ist es das Issue dieses Laufs — unabhängig davon, an welcher Position es liegt. Steht es dort **nicht** (mehr), endet der Skill ergebnislos mit dieser Meldung, ohne ein Ersatz-Issue zu nehmen:
+
+> "Issue #N liegt nicht (mehr) in Ready — kein Ersatz-Issue, Ende."
+
+Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb der Nacht-Runner) hat bereits gefiltert — nach Routing-Label, Abhängigkeiten und Board-Reihenfolge — und misst den Erfolg an genau diesem Issue. Eine eigene Auswahl erzeugt eine zweite Wahrheit darüber, was dran ist: Sie umgeht die Freigabe des Menschen (ungelabelte Issues) und lässt den beauftragten Vorgang fälschlich als Fehlschlag ins Backlog wandern.
+
+**Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
+
+**Fachliche Issues überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), wird es **nicht implementiert** — es mit diesem Kommentar zurück nach Backlog verschieben:
 
 ```
 Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
 ```
+
+Ohne Argument danach mit dem nächsten Ready-Issue fortfahren (bzw. ohne Fehler enden, wenn keines bleibt). Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue.
 
 Wenn Ready leer ist:
 
@@ -116,3 +126,4 @@ Nach dem Abschlussbericht endet der Skill — **kein weiteres Issue**, auch wenn
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
 - Issue-schließende Commit-Keywords (`Closes`/`Fixes`/`Resolves #N`): nie — sie schließen das Issue beim Push/Merge und die Board-Automation zieht es nach Done, bevor getestet wurde. Nur `Refs #N` verwenden.
 - Mehr als ein Issue abarbeiten: nie — dafür ist `/implement-ready` da.
+- Bei einem übergebenen `#N` ein anderes Issue bearbeiten: nie — liegt es nicht mehr in Ready, endet der Lauf ergebnislos.

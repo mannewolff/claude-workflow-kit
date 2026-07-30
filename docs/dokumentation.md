@@ -235,7 +235,9 @@ Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmäc
 
 **Genau ein Issue — der Baustein des Nachtbetriebs.**
 
-Die Single-Issue-Variante von `/implement-ready`: nimmt genau das oberste Ready-Issue (Board-Reihenfolge), setzt es um, committet lokal, verschiebt es mit Abschlussbericht nach In review — und endet. Kein weiteres Issue, auch wenn Ready noch gefüllt ist. Bei leerem Ready meldet der Skill das und endet ohne Fehler.
+Die Single-Issue-Variante von `/implement-ready`: nimmt genau ein Ready-Issue, setzt es um, committet lokal, verschiebt es mit Abschlussbericht nach In review — und endet. Kein weiteres Issue, auch wenn Ready noch gefüllt ist. Bei leerem Ready meldet der Skill das und endet ohne Fehler.
+
+Welches Issue dran ist, entscheidet das Argument. `/implement-next` ohne Argument nimmt das oberste Ready-Issue (Board-Reihenfolge). `/implement-next #N` ist ein **verbindlicher Auftrag**: Der Skill arbeitet ausschließlich dieses Issue und weicht nie auf ein anderes aus — liegt `#N` nicht mehr in Ready, endet der Lauf ergebnislos mit einer klaren Meldung. So bleibt die Auswahl an genau einer Stelle: Der Auftraggeber hat bereits nach Routing-Label, Abhängigkeiten und Board-Reihenfolge gefiltert und misst den Erfolg an diesem Issue.
 
 Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/implement-test` und `/implement-done` zerlegen ein Issue in Rot- und Grün-Phase; `/implement-next` macht ein komplettes Issue und stoppt dann. Interaktiv ist das die „mach genau eins"-Variante — seine Hauptrolle spielt er im [Nachtbetrieb](#nachtbetrieb), wo der Nacht-Runner pro Issue eine frische Session mit genau diesem Skill startet.
 
@@ -368,7 +370,7 @@ Ohne PO ist die Schleife unsichtbar: `/plan` direkt aufzurufen bleibt der Normal
 
 ## Nachtbetrieb
 
-Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next`, wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
+Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
 **Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)) überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten.
 
