@@ -29,6 +29,12 @@ Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (o
 Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
 ```
 
+**Ideen überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Idee]` — eine rohe Idee ohne `/plan`-Zyklus ist kein implementierbares Issue. Auch sie wandert mit diesem Kommentar zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:
+
+```
+Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
+```
+
 ### 1. Issue nach In progress verschieben
 
 ```bash
@@ -110,7 +116,7 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel) und Ideen (`[Idee]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test

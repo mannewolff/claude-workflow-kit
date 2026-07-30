@@ -64,6 +64,9 @@
  *     Runde vergiften, siehe Issue #152)
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
+ * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
+ * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146)
+ * und `[Idee]` (rohe Idee ohne /plan-Zyklus, #192).
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
@@ -238,13 +241,24 @@ function lastCommitHash() {
   return res.status === 0 ? res.stdout.trim() : "?";
 }
 
-// --- Fachliche Issues (PO-Schleife, #146) ---
+// --- Nicht implementierbare Issues: fachlich (#146) und Idee (#192) ---
 
 // [Fachlich]-Titelpraefix = Discovery-Issue: wird gegroomt, nie implementiert.
 // Titel-basiert, weil issue list den Titel bei allen Trackern ohne Adapter-
 // Erweiterung liefert (Stufe 1; Label-Achse ist als Folgepaket benannt).
 function isFachlich(title) {
   return /^\s*\[fachlich\]/i.test(title || "");
+}
+
+// [Idee]-Titelpraefix = rohe Idee ohne /plan-Zyklus, ebenfalls nicht nachtlauf-faehig
+// (Issue #192). Ohne Gate startet der Runner eine Session, die das Issue korrekt
+// ablehnt und ohne In-review-Ergebnis endet — eine korrekte Ablehnung, die der
+// Runner nicht von einem Fehlschlag unterscheiden kann. Beobachtet an zwei Tagen
+// mit demselben Issue (kanban-kit#494): je Lauf eine verbrannte Session plus ein
+// Kommentar, der wie ein Infrastrukturproblem aussieht. Vorhersehbare Modell-
+// Entscheidungen gehoeren ins Gate, nicht in Prompts.
+function isIdee(title) {
+  return /^\s*\[idee\]/i.test(title || "");
 }
 
 // --- Abhaengigkeiten ---
@@ -668,6 +682,10 @@ if (args.dryRun) {
       log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
       continue;
     }
+    if (isIdee(issue.title)) {
+      log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Idee, wird nicht implementiert)`);
+      continue;
+    }
     const full = board("issue", "get", String(issue.id));
     const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
     if (unmet.length > 0) {
@@ -707,6 +725,14 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
     board("issue", "comment", String(top.id), "--text",
       `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`);
+    board("issue", "move", String(top.id), "backlog");
+    deferred++;
+    continue;
+  }
+  if (isIdee(top.title)) {
+    log(`#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`);
+    board("issue", "comment", String(top.id), "--text",
+      `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`);
     board("issue", "move", String(top.id), "backlog");
     deferred++;
     continue;
