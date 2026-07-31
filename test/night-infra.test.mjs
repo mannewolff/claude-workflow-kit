@@ -15,9 +15,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  const res = spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  const res = spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
   return res;
 }
 
@@ -31,7 +34,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-infra-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
@@ -72,7 +74,7 @@ test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt u
     const sessionLog = join(dir, "sessions.log");
     const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}; echo "Failed to authenticate: OAuth session expired" >&2; exit 1`;
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     // Harter Stopp: Exit 1, Meldung nennt Exit-Code und CLI-Ausgabe.
     assert.equal(res.status, 1, `night.mjs haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -105,7 +107,7 @@ test("Nachtlauf: fachlicher Fehlschlag (Exit 0, kein In review) wandert weiterhi
 
     // Session-Fake: endet sauber (Exit 0), hat aber nichts erreicht — das ist
     // das bestehende Verhalten und darf durch den Guard nicht kippen.
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: "exit 0" });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "exit 0" });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Fehlschlag/, "fachlicher Fehlschlag wird nicht gemeldet");

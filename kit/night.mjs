@@ -86,11 +86,20 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BOARD_PATH = join(__dirname, "board.mjs");
+// Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
+// verlegt die Suche in ein anderes Projekt und ist ein Test-Hook (Issue #189,
+// dasselbe Muster wie in kit/board.mjs und tools/sync-blobs.mjs): Nur so koennen
+// die E2E-Tests das ECHTE Script aus dem Repo gegen ein Fixture-Projekt fahren
+// statt eine Kopie im Temp-Verzeichnis — deren Coverage liesse sich nicht auf
+// kit/night.mjs abbilden. Genau daran lag es, dass die acht night-Testdateien
+// trotz voller E2E-Laeufe null Prozent zur gemessenen Abdeckung beitrugen.
+const BOARD_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
+  : join(__dirname, "board.mjs");
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.

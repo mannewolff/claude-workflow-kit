@@ -15,9 +15,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -36,7 +39,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-assign-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -70,7 +72,7 @@ test("Runner uebergibt das Issue verbindlich: Prompt enthaelt /implement-next #N
     board(dir, "issue", "move", b.id, "ready");
 
     const promptLog = join(dir, "prompts.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: promptFake(promptLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
@@ -92,7 +94,7 @@ test("Label-Filter wirkt im Prompt: ungelabeltes Ready-Issue wird nie beauftragt
     board(dir, "issue", "move", b.id, "ready");
 
     const promptLog = join(dir, "prompts.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")],
+    const res = run(dir, process.execPath, [NIGHT],
       { NIGHT_CLAUDE_CMD: promptFake(promptLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 

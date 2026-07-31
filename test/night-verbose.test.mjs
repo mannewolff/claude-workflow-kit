@@ -15,9 +15,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -30,7 +33,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-verbose-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
@@ -67,7 +69,7 @@ test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-L
     const issue = board(dir, "issue", "create", "--title", "Verbose-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none", "--verbose"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"],
       { NIGHT_CLAUDE_CMD: streamFake() });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -84,7 +86,7 @@ test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)"
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: streamFake() });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -104,7 +106,7 @@ test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haen
     // Fake laeuft laenger als das (per Test-Hook winzig gesetzte) Zeitlimit und
     // bringt das Issue nicht nach In review -> Timeout greift, Runde = Fehlschlag.
     const started = Date.now();
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "sleep 30", NIGHT_TIMEOUT_MS: "400" });
     const elapsed = Date.now() - started;
 

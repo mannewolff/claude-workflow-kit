@@ -20,9 +20,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -36,7 +39,6 @@ function board(cwd, ...cliArgs) {
 function setupProjekt(boardVersion) {
   const dir = mkdtempSync(join(tmpdir(), "night-drift-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
 
   let boardSrc = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8");
   if (boardVersion === null) {
@@ -72,7 +74,7 @@ function laufMitEinemIssue(dir) {
   const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
   board(dir, "issue", "move", String(erstes.id), "ready");
   const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;
-  const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+  const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
     { NIGHT_CLAUDE_CMD: fake });
   const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
   return { res, geschafft: inReview.includes(String(erstes.id)) };

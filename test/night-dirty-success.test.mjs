@@ -16,9 +16,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -31,7 +34,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-dirty-success-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
@@ -67,7 +69,7 @@ test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der n
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`
       + ` && echo rest > .tmp-report.md`;
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     // Harter Stopp direkt nach der erfolgreichen, aber schmutzigen Runde.
     assert.equal(res.status, 1, `night.mjs haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -99,7 +101,7 @@ test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsver
     const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));

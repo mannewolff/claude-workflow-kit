@@ -15,9 +15,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -30,7 +33,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-agent-model-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -62,7 +64,7 @@ test("Session-Umgebung traegt KIT_AGENT_MODEL mit dem Wert aus --model", () => {
 
     const modelLog = join(dir, "models.log");
     const res = run(dir, process.execPath,
-      [join(dir, ".claude", "kit", "night.mjs"), "--label", "none", "--model", "claude-sonnet-5"],
+      [NIGHT, "--label", "none", "--model", "claude-sonnet-5"],
       { NIGHT_CLAUDE_CMD: modelFake(modelLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
@@ -80,12 +82,12 @@ test("Ohne --model steht das Default-Modell in KIT_AGENT_MODEL", () => {
     board(dir, "issue", "move", a.id, "ready");
 
     const modelLog = join(dir, "models.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: modelFake(modelLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     // Der Default steht in night.mjs (DEFAULT_MODEL) und wird auch im --help ausgewiesen.
-    const help = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--help"]);
+    const help = run(dir, process.execPath, [NIGHT, "--help"]);
     const defaultModel = help.stdout.match(/--model <id>\s+Modell der Nacht-Sessions \(Default (\S+)\)/)?.[1];
     assert.ok(defaultModel, "Default-Modell nicht aus --help ablesbar");
     assert.deepEqual(readFileSync(modelLog, "utf-8").trim().split("\n"), [defaultModel],
