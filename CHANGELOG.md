@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.26.1] - 2026-07-31
+- kit/night.mjs und tools/ auf 100 % Zeilenabdeckung (#189)
+- kit/board.mjs auf 100 % Zeilenabdeckung (#188)
+
 ## [1.25.1] - 2026-07-30
 - Modell-Selbstauskunft als X-Agent-Model-Header (#193)
 - Hartes [Idee]-Gate im Nacht-Runner analog zu [Fachlich] (#192)
