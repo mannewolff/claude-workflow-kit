@@ -30,9 +30,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -45,7 +48,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-killgroup-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -73,7 +75,7 @@ test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
     // sleep haelt die geerbte stdout-Pipe. Ohne Gruppen-Kill laeuft der Runner die
     // vollen 30 s, obwohl das Zeitlimit bei 400 ms liegt.
     const started = Date.now();
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "sleep 30 & wait", NIGHT_TIMEOUT_MS: "400" });
     const elapsed = Date.now() - started;
 
@@ -95,7 +97,7 @@ test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", () => {
     // trap "" TERM ignoriert SIGTERM vollstaendig. Ohne harte Obergrenze wartet der
     // Runner unbegrenzt — genau der Zustand, den ein Nachtlauf nie erreichen darf.
     const started = Date.now();
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 30', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
     const elapsed = Date.now() - started;
 

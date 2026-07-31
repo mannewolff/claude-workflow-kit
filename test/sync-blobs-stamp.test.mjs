@@ -9,9 +9,10 @@
 // Bump die Blobs veraltet und `sync-blobs --check` — ein buildCheck dieses Repos —
 // ginge zwischenzeitlich rot. So bleibt es ein atomarer Schritt.
 //
-// Getestet wird gegen ein Fixture-Repo im Temp-Verzeichnis: sync-blobs.mjs loest
-// seine Pfade relativ zum eigenen Ort auf (root = <tool-dir>/..), laesst sich also
-// ueber ein nachgebautes Verzeichnis vollstaendig isolieren.
+// Getestet wird gegen ein Fixture-Repo im Temp-Verzeichnis. sync-blobs.mjs laeuft
+// dabei aus dem Repo und bekommt den Fixture-Pfad ueber den Test-Hook KIT_ROOT
+// (Issue #186) — vollstaendig isoliert, und die Coverage landet unter der
+// Repo-Datei statt unter einem Temp-Pfad.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -33,7 +34,6 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   mkdirSync(join(dir, "skills", "beispiel"), { recursive: true });
   if (lokaleKopie) mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
 
-  copyFileSync(join(repoRoot, "tools", "sync-blobs.mjs"), join(dir, "tools", "sync-blobs.mjs"));
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   for (const datei of ["board.mjs", "night.mjs"]) {
@@ -51,9 +51,12 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   return dir;
 }
 
+// Fuehrt das ECHTE Script aus dem Repo aus und zeigt nur mit KIT_ROOT ins Fixture
+// (Issue #186). Eine Kopie im Temp-Verzeichnis wuerde Coverage unter einem Pfad
+// erzeugen, den SonarCloud nicht auf die Repo-Datei abbilden kann.
 function syncBlobs(dir, ...cliArgs) {
-  return spawnSync(process.execPath, [join(dir, "tools", "sync-blobs.mjs"), ...cliArgs],
-    { cwd: dir, encoding: "utf-8" });
+  return spawnSync(process.execPath, [join(repoRoot, "tools", "sync-blobs.mjs"), ...cliArgs],
+    { cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
 }
 
 function stempel(dir, datei) {

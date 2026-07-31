@@ -20,9 +20,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -42,7 +45,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-labelwarn-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -75,7 +77,7 @@ test("Vertipper: --label no warnt und nennt gesuchten Wert, vorhandene Labels un
     board(dir, "issue", "move", a.id, "ready");
 
     const sessionLog = join(dir, "sessions.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "no"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "no"],
       { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
 
     assert.equal(res.status, 0, `night.mjs haette regulaer enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -94,7 +96,7 @@ test("Vertipper: ohne jedes Label in Ready meldet die Warnung ausdruecklich 'kei
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", a.id, "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")],
+    const res = run(dir, process.execPath, [NIGHT],
       { NIGHT_CLAUDE_CMD: successFake(join(dir, "sessions.log")) });
 
     assert.equal(res.status, 0, `night.mjs haette regulaer enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -112,7 +114,7 @@ test("Gegenprobe: passendes Label vorhanden -> keine Warnung", () => {
     setLabels(dir, a.id, ["kit:nightrun"]);
     board(dir, "issue", "move", a.id, "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")],
+    const res = run(dir, process.execPath, [NIGHT],
       { NIGHT_CLAUDE_CMD: successFake(join(dir, "sessions.log")) });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -128,7 +130,7 @@ test("Gegenprobe: --label none -> keine Warnung, der Filter ist ja abgeschaltet"
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", a.id, "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: successFake(join(dir, "sessions.log")) });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -141,7 +143,7 @@ test("Gegenprobe: --label none -> keine Warnung, der Filter ist ja abgeschaltet"
 test("Gegenprobe: leeres Ready -> keine Warnung, es gibt nichts zu unterscheiden", () => {
   const dir = setupProjekt();
   try {
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "no"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "no"],
       { NIGHT_CLAUDE_CMD: successFake(join(dir, "sessions.log")) });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
@@ -161,7 +163,7 @@ test("--dry-run: die Warnung erscheint auch im Trockenlauf", () => {
     setLabels(dir, a.id, ["kit:nightrun"]);
     board(dir, "issue", "move", a.id, "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--dry-run", "--label", "no"]);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "no"]);
 
     assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, WARNUNG, "im Dry-Run fehlt die Warnung — gerade dort will man den Vertipper sehen");

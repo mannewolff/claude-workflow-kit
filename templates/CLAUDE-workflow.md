@@ -36,7 +36,8 @@ Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und
 ## Nachtbetrieb (optional)
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab:
-pro Issue eine frische Headless-Session mit `/implement-next` (genau ein Issue, dann Ende).
+pro Issue eine frische Headless-Session mit `/implement-next #N` (das Issue wird verbindlich
+uebergeben, genau eins, dann Ende).
 Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins
 Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Die Stop-Punkte gelten
 unveraendert: nachts wird committet, nie gepusht — Review, Test und `push main` passieren

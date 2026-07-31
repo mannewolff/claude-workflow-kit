@@ -23,9 +23,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -41,7 +44,6 @@ function setupProjekt(buildChecks, extraConfig = {}) {
   const dir = mkdtempSync(join(tmpdir(), "night-salvage-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
@@ -87,7 +89,7 @@ test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraend
 
     const sessionLog = join(dir, "sessions.log");
     const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
@@ -122,7 +124,7 @@ test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf
     const fake = fakeSession(sessionLog,
       `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -164,7 +166,7 @@ test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buil
     const fake = fakeSession(sessionLog,
       `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -198,7 +200,7 @@ function laufMitSettings(erwarteterWert, dateien) {
     const fake = fakeSession(join(dir, "sessions.log"),
       `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
     return { res, geretttet: inReview.includes(String(erstes.id)) };
@@ -244,7 +246,7 @@ test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", 
     const sessionLog = join(dir, "sessions.log");
     // Die Salvage-Session laesst den Stand liegen (Diff passt nicht zum Issue).
     const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
@@ -288,7 +290,7 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den L
     const fake = fakeSession(sessionLog,
       `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -315,7 +317,7 @@ test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief ge
 
     const sessionLog = join(dir, "sessions.log");
     const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);

@@ -21,7 +21,15 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Repo-Root: normalerweise der eigene Ort (<tool-dir>/..). KIT_ROOT ueberschreibt ihn
+// und ist ein Test-Hook (Issue #186, analog NIGHT_CLAUDE_CMD/NIGHT_TIMEOUT_MS in
+// night.mjs). Vorher kopierten die Tests dieses Script in ein Fixture-Verzeichnis und
+// fuehrten die Kopie aus — dabei entsteht Coverage unter einem Temp-Pfad, den SonarCloud
+// nicht auf die Repo-Datei abbilden kann. Mit dem Hook laeuft das ECHTE Script und zeigt
+// nur mit dem Root ins Fixture.
+const root = process.env.KIT_ROOT
+  ? resolve(process.env.KIT_ROOT)
+  : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALL = join(root, "install.mjs");
 
 // Liest einen Ordner mit einer Unterordner-Ebene (z.B. skills/<name>/<datei>)

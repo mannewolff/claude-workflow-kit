@@ -15,9 +15,12 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -38,7 +41,6 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-label-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  copyFileSync(join(repoRoot, "kit", "night.mjs"), join(dir, ".claude", "kit", "night.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -72,7 +74,7 @@ test("Default-Label: nur kit:nightrun-Issues laufen, ungelabelte bleiben in Read
     board(dir, "issue", "move", b.id, "ready");
 
     const sessionLog = join(dir, "sessions.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
+    const res = run(dir, process.execPath, [NIGHT], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     // Nur B lief, A blieb unangetastet in Ready.
@@ -96,7 +98,7 @@ test("--label none: altes Verhalten, striktes ready[0] (auch ungelabelt)", () =>
     board(dir, "issue", "move", b.id, "ready");
 
     const sessionLog = join(dir, "sessions.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--label", "none"], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     // Ohne Filter kommt das erste Ready-Issue dran (A), unabhaengig vom Label.
@@ -114,7 +116,7 @@ test("kein Label-Treffer -> Lauf endet wie bei leerem Ready", () => {
     board(dir, "issue", "move", a.id, "ready");
 
     const sessionLog = join(dir, "sessions.log");
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs")], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
+    const res = run(dir, process.execPath, [NIGHT], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /0 erfolgreich, 0 zurueckgestellt, 0 Session/, "kein-Treffer-Lauf haette leer enden muessen");
     assert.ok(!existsSync(sessionLog), "es haette keine Session laufen duerfen");
@@ -134,7 +136,7 @@ test("--dry-run: ungelabelte Issues werden sichtbar als uebersprungen ausgewiese
     board(dir, "issue", "move", a.id, "ready");
     board(dir, "issue", "move", b.id, "ready");
 
-    const res = run(dir, process.execPath, [join(dir, ".claude", "kit", "night.mjs"), "--dry-run"]);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run"]);
     assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(`#${a.id}.*uebersprungen.*kit:nightrun`), "ungelabeltes A nicht als uebersprungen ausgewiesen");
     assert.match(res.stdout, new RegExp(`#${b.id}.*Session 1`), "gelabeltes B nicht als Session gezaehlt");

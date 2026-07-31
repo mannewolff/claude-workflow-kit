@@ -30,6 +30,10 @@ function fail(msg) {
   process.exit(1);
 }
 
+// PATH-Aufloesung bewusst (SonarQube S4036, Issue #183): Ein absoluter git-Pfad waere
+// nicht portabel (Windows, Homebrew), und ein kontrollierter env.PATH erfuellt die
+// Regel nicht — beanstandet wird die Aufloesung selbst. Ausfuehrliche Begruendung
+// in kit/night.mjs ueber gitClean(). In SonarCloud als accepted markiert.
 function git(args) {
   const res = spawnSync("git", args, { encoding: "utf-8" });
   if (res.status !== 0) fail(`git ${args.join(" ")} schlug fehl: ${(res.stderr || "").trim()}`);

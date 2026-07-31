@@ -3,9 +3,17 @@
  * claude-workflow-kit Nacht-Runner (Issue #131)
  *
  * Arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue eine FRISCHE
- * Headless-Session (`claude -p "/implement-next"`), sequenziell, bis Ready
+ * Headless-Session (`claude -p "/implement-next #N"`), sequenziell, bis Ready
  * leer oder --max erreicht ist. Das Board ist einziges Koordinations- und
  * Erfolgssignal (Issue in In review = Erfolg). Der Runner pusht nie.
+ *
+ * Die Issue-Wahl liegt ausschliesslich hier (Issue #191): Label-Filter,
+ * Abhaengigkeits-Pruefung und Board-Reihenfolge entscheiden, welches Issue dran
+ * ist, und die Session bekommt es als Argument verbindlich uebergeben. Solange
+ * der Skill selbst "das oberste Ready-Issue" waehlte, gab es zwei Wahrheiten
+ * ueber das Dran-Sein: eine Session konnte am Label-Filter vorbei ein fremdes
+ * Issue implementieren, waehrend das beauftragte faelschlich als Fehlschlag ins
+ * Backlog wanderte (live beobachtet in kanban-kit, 2026-07-29).
  *
  * Aufruf im Projekt-Root:  node .claude/kit/night.mjs [Flags]
  *
@@ -56,10 +64,18 @@
  *     Runde vergiften, siehe Issue #152)
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
+ * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
+ * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146)
+ * und `[Idee]` (rohe Idee ohne /plan-Zyklus, #192).
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
+ *   NIGHT_PROMPT      wird jeder Session als Umgebungsvariable gesetzt und
+ *                     enthaelt genau den Prompt, mit dem sie gestartet wurde.
+ *                     Nur so ist der uebergebene Auftrag (/implement-next #N)
+ *                     auch dann pruefbar, wenn NIGHT_CLAUDE_CMD den echten
+ *                     claude-Aufruf ersetzt (Issue #191).
  *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
  *                     (statt --timeout-min), damit der Timeout-Pfad schnell
  *                     testbar ist. Gilt auch fuer die Salvage-Session.
@@ -70,15 +86,24 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BOARD_PATH = join(__dirname, "board.mjs");
+// Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
+// verlegt die Suche in ein anderes Projekt und ist ein Test-Hook (Issue #189,
+// dasselbe Muster wie in kit/board.mjs und tools/sync-blobs.mjs): Nur so koennen
+// die E2E-Tests das ECHTE Script aus dem Repo gegen ein Fixture-Projekt fahren
+// statt eine Kopie im Temp-Verzeichnis — deren Coverage liesse sich nicht auf
+// kit/night.mjs abbilden. Genau daran lag es, dass die acht night-Testdateien
+// trotz voller E2E-Laeufe null Prozent zur gemessenen Abdeckung beitrugen.
+const BOARD_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
+  : join(__dirname, "board.mjs");
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.25.0";
+const KIT_VERSION = "1.27.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -87,7 +112,7 @@ const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem
 
 function printHelp() {
   process.stdout.write(`Nacht-Runner: arbeitet die Ready-Spalte unbeaufsichtigt ab —
-pro Issue eine frische Headless-Session (/implement-next), sequenziell.
+pro Issue eine frische Headless-Session (/implement-next #N), sequenziell.
 Erfolg wird am Board gemessen (Issue in In review). Gepusht wird nie.
 
 Aufruf (im Projekt-Root):
@@ -188,6 +213,25 @@ function board(...cliArgs) {
 
 // --- Git-Helfer ---
 
+// PATH-Aufloesung bei den git- und sh-Aufrufen dieser Datei: bewusst so (Issue #183).
+//
+// SonarQube S4036 ("OS commands should not rely on PATH resolution") markiert jeden
+// Start eines Kommandos ohne absoluten Pfad. Die Regel ist hier nicht erfuellbar,
+// ohne mehr kaputtzumachen als sie schuetzt:
+//
+//   - Absolute Pfade brechen die zugesagte Portabilitaet. Das Kit laeuft auf Mac,
+//     Windows und Linux; /usr/bin/git existiert unter Windows nicht, und je nach
+//     Installation liegt git auch unter /opt/homebrew/bin.
+//   - Ein kontrollierter env.PATH ist kein Fix: Die Regel beanstandet nicht, WELCHEN
+//     PATH der Prozess bekommt, sondern DASS ueber PATH aufgeloest wird.
+//   - Die sh -c-Aufrufe (runBuildChecksSync, Format-Fix) fuehren frei konfigurierte
+//     Kommandozeilen aus der workflow.config.json aus. Die brauchen zwingend eine
+//     Shell — ohne sie gibt es das Feature nicht.
+//
+// Zur Risikobewertung: Das sind lokale Entwickler-Werkzeuge, die der Nutzer auf seiner
+// eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
+// Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
+// soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
 function gitClean() {
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
@@ -201,17 +245,29 @@ function gitClean() {
 }
 
 function lastCommitHash() {
+  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitClean() (S4036, Issue #183).
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
   return res.status === 0 ? res.stdout.trim() : "?";
 }
 
-// --- Fachliche Issues (PO-Schleife, #146) ---
+// --- Nicht implementierbare Issues: fachlich (#146) und Idee (#192) ---
 
 // [Fachlich]-Titelpraefix = Discovery-Issue: wird gegroomt, nie implementiert.
 // Titel-basiert, weil issue list den Titel bei allen Trackern ohne Adapter-
 // Erweiterung liefert (Stufe 1; Label-Achse ist als Folgepaket benannt).
 function isFachlich(title) {
   return /^\s*\[fachlich\]/i.test(title || "");
+}
+
+// [Idee]-Titelpraefix = rohe Idee ohne /plan-Zyklus, ebenfalls nicht nachtlauf-faehig
+// (Issue #192). Ohne Gate startet der Runner eine Session, die das Issue korrekt
+// ablehnt und ohne In-review-Ergebnis endet — eine korrekte Ablehnung, die der
+// Runner nicht von einem Fehlschlag unterscheiden kann. Beobachtet an zwei Tagen
+// mit demselben Issue (kanban-kit#494): je Lauf eine verbrannte Session plus ein
+// Kommentar, der wie ein Infrastrukturproblem aussieht. Vorhersehbare Modell-
+// Entscheidungen gehoeren ins Gate, nicht in Prompts.
+function isIdee(title) {
+  return /^\s*\[idee\]/i.test(title || "");
 }
 
 // --- Abhaengigkeiten ---
@@ -390,6 +446,10 @@ async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
     : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
+  // Das Issue wird der Session verbindlich uebergeben (Issue #191) — sie waehlt
+  // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
+  // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
+  const prompt = opts.prompt || `/implement-next #${issueId}`;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
@@ -401,10 +461,16 @@ async function runSession(issueId, args, opts = {}) {
       : ["--permission-mode", "acceptEdits"];
     const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", opts.prompt || "/implement-next", "--model", args.model, ...permArgs, ...streamArgs];
+    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
-    issueId, timeoutMs, useStream: args.verbose, extraEnv: opts.extraEnv,
+    issueId, timeoutMs, useStream: args.verbose,
+    // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
+    // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
+    // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
+    // welchem Modell der Nachtlauf gearbeitet hat. Nur hier gesetzt: interaktive
+    // Sessions machen bewusst keine Angabe.
+    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: args.model, ...opts.extraEnv },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
@@ -462,6 +528,8 @@ function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
   for (const cmd of cfg.buildChecks || []) {
+    // sh ist hier zwingend: cmd ist eine frei konfigurierte Kommandozeile aus der
+    // workflow.config.json. PATH-Aufloesung bewusst (S4036, Issue #183).
     const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
@@ -486,6 +554,7 @@ function verifyChecksForSalvage(cfg) {
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  // Wie oben: fixCmd kommt aus der Config, PATH-Aufloesung bewusst (S4036, Issue #183).
   spawnSync("sh", ["-c", fixCmd], { cwd: process.cwd(), encoding: "utf-8", env: checkEnv() });
 
   const second = runBuildChecksSync(cfg);
@@ -627,6 +696,10 @@ if (args.dryRun) {
       log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
       continue;
     }
+    if (isIdee(issue.title)) {
+      log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Idee, wird nicht implementiert)`);
+      continue;
+    }
     const full = board("issue", "get", String(issue.id));
     const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
     if (unmet.length > 0) {
@@ -666,6 +739,14 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
     board("issue", "comment", String(top.id), "--text",
       `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`);
+    board("issue", "move", String(top.id), "backlog");
+    deferred++;
+    continue;
+  }
+  if (isIdee(top.title)) {
+    log(`#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`);
+    board("issue", "comment", String(top.id), "--text",
+      `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`);
     board("issue", "move", String(top.id), "backlog");
     deferred++;
     continue;

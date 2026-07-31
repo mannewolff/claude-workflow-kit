@@ -31,7 +31,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.25.0";
+const KIT_VERSION = "1.27.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -111,10 +111,19 @@ function sleep(ms) {
 
 // --- Config laden ---
 
+// Zweiter Kandidat ist normalerweise der eigene Ort (<kit-dir>/..), damit der Adapter
+// auch aus einem Unterverzeichnis des Projekts heraus die Config findet. KIT_ROOT
+// ueberschreibt ihn und ist ein Test-Hook (Issue #188, dasselbe Muster wie in
+// tools/sync-blobs.mjs, Issue #186): Ohne ihn faende ein Test, der das Fehlen der
+// Config prueft, die Dogfooding-Config des Kit-Repos und liefe gegen echtes gh.
+function configRoot() {
+  return process.env.KIT_ROOT ? resolve(process.env.KIT_ROOT) : join(__dirname, "..");
+}
+
 function loadConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
-    join(__dirname, "..", ".claude", "workflow.config.json"),
+    join(configRoot(), ".claude", "workflow.config.json"),
   ];
   for (const p of candidates) {
     if (existsSync(p)) {
@@ -886,17 +895,10 @@ class LocalCodeHost {
     }
   }
 
+  // Kein createPullRequest: codePr() bricht schon an supportsPullRequests() ab und gibt
+  // den Hinweis auf den lokalen git-Merge aus. Eine Methode hier waere unerreichbar
+  // (entfernt in Issue #188) — und ein zweiter, abweichender Wortlaut fuer denselben Fall.
   supportsPullRequests() { return false; }
-
-  async createPullRequest({ from, to }) {
-    process.stdout.write(
-      JSON.stringify({
-        ok: false,
-        message: `Lokaler Modus: kein Pull Request. Fuehre einen lokalen Merge durch:\n  git checkout ${to}\n  git merge ${from}\n  git push`
-      }, null, 2) + "\n"
-    );
-    process.exit(0);
-  }
 }
 
 // ============================================================
@@ -980,12 +982,29 @@ export function interpretToolboxCreateResponse(created) {
 }
 
 /**
+ * Modell-Selbstauskunft fuer Board-Requests (#193). Reine Funktion ueber der Umgebung:
+ * Ist KIT_AGENT_MODEL gesetzt (der Nacht-Runner setzt es auf den Wert von --model und
+ * vererbt es ueber die Claude-Session bis in diesen Prozess), tragen die Requests den
+ * Header X-Agent-Model. Ohne die Variable — also in jeder interaktiven Session — bleibt
+ * er weg; keine Angabe ist ehrlicher als eine geratene.
+ *
+ * Ausdruecklich eine Selbstauskunft des Clients, kein Nachweis: Der Server kann Session
+ * und Token verifizieren, das Modell nicht. Die Board-Seite kennzeichnet den Wert
+ * entsprechend ("lt. Angabe").
+ */
+export function agentModelHeader(env = process.env) {
+  const model = (env.KIT_AGENT_MODEL || "").trim();
+  return model ? { "X-Agent-Model": model } : {};
+}
+
+/**
  * Issue-Tracker gegen das eigene Toolbox-Kanban-Board. Zwei-Achsen-Modell (#368): der Code liegt
  * weiter auf GitHub (codeHost bleibt github), nur der Issue-Tracker ist das Board.
  *
  * Auth: Token per resolveToolboxToken() (TBX_TOKEN > toolbox.tokenFile > globaler tbx-Login,
  * #135); Host aus ~/.config/toolbox-cli/config.json (dieselbe Quelle wie das tbx-CLI, #367),
- * per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header X-Kanban-Token.
+ * per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header X-Kanban-Token,
+ * im Nachtbetrieb zusaetzlich X-Agent-Model als Selbstauskunft (siehe agentModelHeader).
  *
  * number vs. DB-id: Der Workflow adressiert Issues ueber die Board-Anzeigenummer (#N). Move/Comment
  * brauchen die DB-id aus der Item-Response; sie wird intern per Board-Fetch aufgeloest.
@@ -1021,7 +1040,7 @@ class ToolboxIssueTracker {
     try {
       res = await fetch(`${host}${path}`, {
         ...options,
-        headers: { ...options.headers, "X-Kanban-Token": token },
+        headers: { ...options.headers, "X-Kanban-Token": token, ...agentModelHeader() },
       });
     } catch (e) {
       throw new BoardError(`Toolbox-API nicht erreichbar (${host}): ${e.message}`);
@@ -1119,10 +1138,10 @@ class ToolboxIssueTracker {
     }
   }
 
+  // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
+  // VALID_STATUSES, bevor irgendein Tracker ihn sieht — die Pruefung hier war
+  // unerreichbar (entfernt in Issue #188) und als einzige der vier Tracker doppelt.
   async listIssues(status) {
-    if (status && !VALID_STATUSES.includes(status)) {
-      throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
-    }
     const items = await this._boardItems();
     const filtered = items
       // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
