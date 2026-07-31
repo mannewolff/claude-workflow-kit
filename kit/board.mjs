@@ -111,10 +111,19 @@ function sleep(ms) {
 
 // --- Config laden ---
 
+// Zweiter Kandidat ist normalerweise der eigene Ort (<kit-dir>/..), damit der Adapter
+// auch aus einem Unterverzeichnis des Projekts heraus die Config findet. KIT_ROOT
+// ueberschreibt ihn und ist ein Test-Hook (Issue #188, dasselbe Muster wie in
+// tools/sync-blobs.mjs, Issue #186): Ohne ihn faende ein Test, der das Fehlen der
+// Config prueft, die Dogfooding-Config des Kit-Repos und liefe gegen echtes gh.
+function configRoot() {
+  return process.env.KIT_ROOT ? resolve(process.env.KIT_ROOT) : join(__dirname, "..");
+}
+
 function loadConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
-    join(__dirname, "..", ".claude", "workflow.config.json"),
+    join(configRoot(), ".claude", "workflow.config.json"),
   ];
   for (const p of candidates) {
     if (existsSync(p)) {
@@ -886,17 +895,10 @@ class LocalCodeHost {
     }
   }
 
+  // Kein createPullRequest: codePr() bricht schon an supportsPullRequests() ab und gibt
+  // den Hinweis auf den lokalen git-Merge aus. Eine Methode hier waere unerreichbar
+  // (entfernt in Issue #188) — und ein zweiter, abweichender Wortlaut fuer denselben Fall.
   supportsPullRequests() { return false; }
-
-  async createPullRequest({ from, to }) {
-    process.stdout.write(
-      JSON.stringify({
-        ok: false,
-        message: `Lokaler Modus: kein Pull Request. Fuehre einen lokalen Merge durch:\n  git checkout ${to}\n  git merge ${from}\n  git push`
-      }, null, 2) + "\n"
-    );
-    process.exit(0);
-  }
 }
 
 // ============================================================
@@ -1136,10 +1138,10 @@ class ToolboxIssueTracker {
     }
   }
 
+  // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
+  // VALID_STATUSES, bevor irgendein Tracker ihn sieht — die Pruefung hier war
+  // unerreichbar (entfernt in Issue #188) und als einzige der vier Tracker doppelt.
   async listIssues(status) {
-    if (status && !VALID_STATUSES.includes(status)) {
-      throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
-    }
     const items = await this._boardItems();
     const filtered = items
       // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
