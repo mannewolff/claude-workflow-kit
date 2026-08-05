@@ -17,6 +17,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -63,7 +68,7 @@ function readyIssue(dir, titel, body = "## Abhaengigkeiten\nKeine.") {
 
 // --- Vorflug-Checks ---
 
-test("Vorflug: ein Issue in In progress stoppt den Lauf als Crash-Rest", () => {
+test("Vorflug: ein Issue in In progress stoppt den Lauf als Crash-Rest", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-inprogress-");
   try {
     const id = readyIssue(dir, "Haengengeblieben");
@@ -77,7 +82,7 @@ test("Vorflug: ein Issue in In progress stoppt den Lauf als Crash-Rest", () => {
   }
 });
 
-test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn durch", () => {
+test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn durch", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-checks-", { buildChecks: [] });
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -92,7 +97,7 @@ test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn dur
   }
 });
 
-test("Vorflug: --yolo warnt vor umgangenen Permission-Checks", () => {
+test("Vorflug: --yolo warnt vor umgangenen Permission-Checks", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-yolo-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--yolo"], { NIGHT_CLAUDE_CMD: "true" });
@@ -111,7 +116,7 @@ function stubBoard(dir, script) {
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), script, "utf-8");
 }
 
-test("board.mjs mit Exit ungleich 0 beendet den Lauf mit sprechender Meldung", () => {
+test("board.mjs mit Exit ungleich 0 beendet den Lauf mit sprechender Meldung", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-boardfail-");
   try {
     stubBoard(dir, 'process.stderr.write("Adapter kaputt\\n");\nprocess.exit(3);\n');
@@ -123,7 +128,7 @@ test("board.mjs mit Exit ungleich 0 beendet den Lauf mit sprechender Meldung", (
   }
 });
 
-test("board.mjs ohne JSON-Ausgabe beendet den Lauf mit sprechender Meldung", () => {
+test("board.mjs ohne JSON-Ausgabe beendet den Lauf mit sprechender Meldung", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-boardjson-");
   try {
     stubBoard(dir, 'process.stdout.write("kein JSON, nur Text\\n");\n');
@@ -139,7 +144,7 @@ test("board.mjs ohne JSON-Ausgabe beendet den Lauf mit sprechender Meldung", () 
 // Ein Verzeichnis an der Stelle ist der portable Weg dorthin: existsSync sagt ja,
 // readFileSync scheitert. Danach faellt der erste Board-Aufruf ohnehin aus — die
 // Warnung muss trotzdem schon dagestanden haben.
-test("Versions-Drift: unlesbare board.mjs warnt mit 'unbekannt'", () => {
+test("Versions-Drift: unlesbare board.mjs warnt mit 'unbekannt'", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-unreadable-");
   try {
     rmSync(join(dir, ".claude", "kit", "board.mjs"));
@@ -153,7 +158,7 @@ test("Versions-Drift: unlesbare board.mjs warnt mit 'unbekannt'", () => {
 
 // --- Dry-Run ---
 
-test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", () => {
+test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-dryempty-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
@@ -164,7 +169,7 @@ test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", () => {
   }
 });
 
-test("Dry-Run: unerfuellte Abhaengigkeit und --max-Grenze werden ausgewiesen", () => {
+test("Dry-Run: unerfuellte Abhaengigkeit und --max-Grenze werden ausgewiesen", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-drydeps-");
   try {
     const blocker = board(dir, "issue", "create", "--title", "Blocker", "--body", "## Abhaengigkeiten\nKeine.");
@@ -185,7 +190,7 @@ test("Dry-Run: unerfuellte Abhaengigkeit und --max-Grenze werden ausgewiesen", (
 
 // --- Abhaengigkeits-Kaskade im echten Lauf ---
 
-test("Kaskade: unerfuellte Abhaengigkeit wandert kommentiert ins Backlog, erfuellte laeuft", () => {
+test("Kaskade: unerfuellte Abhaengigkeit wandert kommentiert ins Backlog, erfuellte laeuft", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-kaskade-");
   try {
     // #A ist erledigt (In review), #B nicht — also ist nur die Referenz auf #B offen.
@@ -238,7 +243,7 @@ function binMitClaude(dir, claudeScript) {
   return binDir;
 }
 
-test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Modus", () => {
+test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Modus", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-claude-");
   try {
     const id = readyIssue(dir, "Wird beauftragt");
@@ -259,7 +264,7 @@ test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Mo
   }
 });
 
-test("Ohne Test-Hook setzt --yolo --dangerously-skip-permissions, --verbose den Stream", () => {
+test("Ohne Test-Hook setzt --yolo --dangerously-skip-permissions, --verbose den Stream", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-claude-yolo-");
   try {
     readyIssue(dir, "Wird beauftragt");
@@ -279,7 +284,7 @@ test("Ohne Test-Hook setzt --yolo --dangerously-skip-permissions, --verbose den 
   }
 });
 
-test("Fehlendes claude-CLI wird als solches gemeldet, nicht als Issue-Fehlschlag", () => {
+test("Fehlendes claude-CLI wird als solches gemeldet, nicht als Issue-Fehlschlag", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-noclaude-");
   try {
     readyIssue(dir, "Findet kein CLI");
@@ -298,7 +303,7 @@ test("Fehlendes claude-CLI wird als solches gemeldet, nicht als Issue-Fehlschlag
 // Eine Session, die SIGTERM ignoriert, muss nachgesetzt bekommen (#182). Die Nachfrist
 // ist ueber NIGHT_KILL_GRACE_MS testbar gemacht; hier steht sie auf 1 ms, damit der
 // Test in Millisekunden statt in Sekunden laeuft.
-test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", () => {
+test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-timeout-");
   try {
     const id = readyIssue(dir, "Reagiert nicht auf SIGTERM");
@@ -324,7 +329,7 @@ test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", ()
 // sofort. Node liefert dann kein close-Event — der Runner muss von allein aufloesen.
 // Beim Nachsetzen ist die Gruppe des Kindes bereits leer, der Kill scheitert mit
 // ESRCH, und genau das darf den Runner nicht aus der Bahn werfen.
-test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event nicht", () => {
+test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event nicht", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-enkel-");
   try {
     const id = readyIssue(dir, "Haengt an einem Enkel");
@@ -350,7 +355,7 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
 // in ihre Kindprozess-Umgebung — ohne ihn liefert sie ein falsches Rot (kanban-kit#445).
 // Hier ist die erste Datei kaputtes JSON: Sie darf die Vorpruefung nicht blockieren,
 // nur selbst ausfallen. Der buildCheck prueft die Variable aus der zweiten Datei.
-test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.json gilt", () => {
+test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.json gilt", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-settingsenv-", {
     buildChecks: ['test "$NIGHT_TEST_VAR" = "aus-settings-local"'],
   });
@@ -386,7 +391,7 @@ test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.jso
 
 // Ein Tool-Aufruf ohne die bekannten Schluessel (command, file_path, path, pattern,
 // url) faellt auf ein kompaktes JSON zurueck; ist auch das leer, bleibt nur der Name.
-test("Verbose: Tool-Aufrufe ohne bekannte Argumente werden trotzdem lesbar geloggt", () => {
+test("Verbose: Tool-Aufrufe ohne bekannte Argumente werden trotzdem lesbar geloggt", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-verbose-");
   try {
     const id = readyIssue(dir, "Loggt exotische Tools");

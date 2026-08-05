@@ -22,6 +22,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -79,7 +84,7 @@ function fakeSession(sessionLog, salvageBody) {
     + `fi\n`;
 }
 
-test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraendert", () => {
+test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraendert", NUR_POSIX, () => {
   const dir = setupProjekt(["false"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -111,7 +116,7 @@ test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraend
   }
 });
 
-test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf fort", () => {
+test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf fort", NUR_POSIX, () => {
   const dir = setupProjekt(["true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -145,7 +150,7 @@ test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf
   }
 });
 
-test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", () => {
+test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", NUR_POSIX, () => {
   // buildChecks besteht nur, wenn die Variable ankommt — belegt, dass
   // runBuildChecksSync sie aus settings.json mergt statt nur process.env zu
   // erben (kanban-kit #445: DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE
@@ -209,7 +214,7 @@ function laufMitSettings(erwarteterWert, dateien) {
   }
 }
 
-test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", () => {
+test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", NUR_POSIX, () => {
   // settings.local.json ist gitignored und damit der uebliche Ort fuer
   // maschinenspezifische Werte (z. B. ein Colima-Socket-Pfad). Claude Code liest
   // beide Dateien — die Vorpruefung muss das auch tun (Issue #168).
@@ -223,7 +228,7 @@ test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt"
   assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", () => {
+test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", NUR_POSIX, () => {
   const { res, geretttet } = laufMitSettings("from-local", {
     "settings.json": { NIGHT_TEST_ENV_VAR: "from-shared" },
     "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
@@ -235,7 +240,7 @@ test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Preceden
   assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", () => {
+test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", NUR_POSIX, () => {
   const dir = setupProjekt(["true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -275,7 +280,7 @@ test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", 
 // mit zwanzig wartenden Issues nicht beenden. Rote Checks mit inhaltlicher
 // Aussage (Testfehler, Lint) bleiben unveraendert ein harter Stopp.
 
-test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", () => {
+test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", NUR_POSIX, () => {
   // Der buildCheck besteht erst, wenn die Marker-Datei existiert — das
   // formatFixCommand legt sie an. Damit ist "erst rot, nach dem Fix gruen"
   // deterministisch nachgestellt.
@@ -307,7 +312,7 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den L
   }
 });
 
-test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief genau einmal", () => {
+test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief genau einmal", NUR_POSIX, () => {
   // Das Format-Kommando protokolliert jeden Aufruf, die Checks bleiben rot.
   // Belegt zugleich: keine Schleife, genau ein Versuch.
   const dir = setupProjekt(["false"], { formatFixCommand: "echo lauf >> fixcount.log" });

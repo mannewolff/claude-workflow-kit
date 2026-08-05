@@ -25,7 +25,16 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Windows laeuft mit (Issue #197): Das Kit sagt Windows-Portabilitaet zu, und der
+    # Bug aus #195 konnte nur deshalb monatelang unbemerkt bleiben, weil hier
+    # ausschliesslich Ubuntu lief. fail-fast ist aus, damit ein plattformspezifischer
+    # Fehler nicht den jeweils anderen Job mit abbricht — sonst sieht man nicht, ob
+    # etwas ueberall oder nur auf einer Plattform kaputt ist.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v5

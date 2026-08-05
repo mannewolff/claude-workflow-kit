@@ -22,6 +22,11 @@ import { fileURLToPath } from "node:url";
 
 import { setupProjekt, fakeCli, board, runBoard, aufrufe } from "./helpers/board-fixture.mjs";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
+
+
 const BOARD_QUELLE = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "board.mjs");
 
 // Ein Body, der jede Quoting-Variante zum Stolpern bringt: Zeilenumbrueche (der
@@ -82,7 +87,7 @@ test("Ein nicht installiertes CLI wird als solches gemeldet", () => {
 
 // --- 2. Verhalten: GitHub ---
 
-test("GitHub: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", () => {
+test("GitHub: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", NUR_POSIX, () => {
   const dir = setupProjekt({ codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } });
   try {
     fakeCli(dir, "gh", [
@@ -109,7 +114,7 @@ test("GitHub: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", ()
   }
 });
 
-test("GitHub: Kommentartext mit Sonderzeichen kommt als ein Argument an", () => {
+test("GitHub: Kommentartext mit Sonderzeichen kommt als ein Argument an", NUR_POSIX, () => {
   const dir = setupProjekt({ codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } });
   try {
     fakeCli(dir, "gh", [
@@ -128,7 +133,7 @@ test("GitHub: Kommentartext mit Sonderzeichen kommt als ein Argument an", () => 
 
 // --- 2. Verhalten: GitLab (der Tracker des Melders aus #195) ---
 
-test("GitLab: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", () => {
+test("GitLab: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", NUR_POSIX, () => {
   const dir = setupProjekt({ codeHost: "gitlab", issueTracker: "gitlab" });
   try {
     fakeCli(dir, "glab", [
@@ -147,7 +152,7 @@ test("GitLab: mehrzeiliger Body mit Sonderzeichen kommt als ein Argument an", ()
   }
 });
 
-test("GitLab: Kommentartext mit Sonderzeichen kommt als ein Argument an", () => {
+test("GitLab: Kommentartext mit Sonderzeichen kommt als ein Argument an", NUR_POSIX, () => {
   const dir = setupProjekt({ codeHost: "gitlab", issueTracker: "gitlab" });
   try {
     fakeCli(dir, "glab", [{ match: "", stdout: "" }]);

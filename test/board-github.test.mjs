@@ -12,6 +12,11 @@ import { join, basename } from "node:path";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
+
+
 const GITHUB = { codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } };
 
 const OPTIONEN = [
@@ -67,7 +72,7 @@ function metaCache(dir) {
 
 // --- Lesen ---
 
-test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", () => {
+test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const geholt = board(dir, "issue", "get", "42");
     assert.deepEqual(geholt, {
@@ -89,7 +94,7 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
   });
 });
 
-test("list ohne Status fragt die offenen Issues samt Labels ab", () => {
+test("list ohne Status fragt die offenen Issues samt Labels ab", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const alle = board(dir, "issue", "list");
     assert.deepEqual(alle, [
@@ -103,7 +108,7 @@ test("list ohne Status fragt die offenen Issues samt Labels ab", () => {
   });
 });
 
-test("list --status filtert ueber das Project und schlaegt die Labels nach", () => {
+test("list --status filtert ueber das Project und schlaegt die Labels nach", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const bereit = board(dir, "issue", "list", "--status", "ready");
     assert.deepEqual(bereit, [
@@ -135,7 +140,7 @@ test("list --status filtert ueber das Project und schlaegt die Labels nach", () 
 
 // Ein Netzwerkschluckauf beim Label-Nachschlag darf einen Nachtlauf nicht kippen:
 // die Liste ueberlebt ohne Labels, mit Hinweis auf stderr.
-test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", () => {
+test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -152,7 +157,7 @@ test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", () => {
 });
 
 // Leere Trefferliste: der zweite gh-Aufruf muss ausbleiben (nichts nachzuschlagen).
-test("list --status ohne Treffer schlaegt keine Labels nach", () => {
+test("list --status ohne Treffer schlaegt keine Labels nach", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "list", "--status", "in_review"), []);
     assert.doesNotMatch(aufrufZeilen(dir, "gh").join("\n"), /--state all/);
@@ -161,7 +166,7 @@ test("list --status ohne Treffer schlaegt keine Labels nach", () => {
   });
 });
 
-test("list --status ohne passende Project-Option schlaegt fehl", () => {
+test("list --status ohne passende Project-Option schlaegt fehl", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "in_review"]);
     assert.equal(res.status, 1);
@@ -176,7 +181,7 @@ test("list --status ohne passende Project-Option schlaegt fehl", () => {
 
 // --- Project-Nummer: Konfiguration, Auto-Erkennung, Cache ---
 
-test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erkannt und gecacht", () => {
+test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erkannt und gecacht", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -195,7 +200,7 @@ test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erk
   });
 });
 
-test("Kein Project fuer den Owner: harter Fehler mit Anleitung", () => {
+test("Kein Project fuer den Owner: harter Fehler mit Anleitung", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -206,7 +211,7 @@ test("Kein Project fuer den Owner: harter Fehler mit Anleitung", () => {
   });
 });
 
-test("Mehrere Projects: harter Fehler mit Projektliste", () => {
+test("Mehrere Projects: harter Fehler mit Projektliste", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -222,7 +227,7 @@ test("Mehrere Projects: harter Fehler mit Projektliste", () => {
 
 // Ohne Project ist kein Board-Status-Filter moeglich — statt abzubrechen listet der
 // Adapter alle offenen Issues und sagt das auf stderr.
-test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zurueck", () => {
+test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zurueck", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -239,7 +244,7 @@ test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zur
 
 // Der Cache ist eine Beschleunigung, keine Quelle der Wahrheit: Ist die Datei kaputt,
 // muss die Auto-Erkennung normal durchlaufen und die Datei sauber ersetzt werden.
-test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnummer", () => {
+test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnummer", NUR_POSIX, () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "board-meta-cache.json"), "{kein JSON", "utf-8");
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
@@ -255,7 +260,7 @@ test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnumme
 // Zwischen dem Laden der Meta-Daten und dem Verwerfen des Caches kann ein anderer
 // Prozess die Datei zerschiessen (paralleler board.mjs-Lauf, abgebrochener Schreib-
 // vorgang). Das darf den Ablauf nicht kippen — der naechste Schreibzugriff heilt sie.
-test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", () => {
+test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -271,7 +276,7 @@ test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", () => {
   });
 });
 
-test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben", () => {
+test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben", NUR_POSIX, () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "board-meta-cache.json"), "{kaputt", "utf-8");
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
@@ -280,7 +285,7 @@ test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben"
   });
 });
 
-test("Geaenderte Spalten-Labels entwerten den Meta-Cache", () => {
+test("Geaenderte Spalten-Labels entwerten den Meta-Cache", NUR_POSIX, () => {
   const dir = setupProjekt(GITHUB, "board-github-");
   fakeCli(dir, "gh", basisRegeln());
   try {
@@ -304,7 +309,7 @@ test("Geaenderte Spalten-Labels entwerten den Meta-Cache", () => {
   }
 });
 
-test("Project nicht gefunden und fehlendes Status-Feld werden benannt", () => {
+test("Project nicht gefunden und fehlendes Status-Feld werden benannt", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -324,7 +329,7 @@ test("Project nicht gefunden und fehlendes Status-Feld werden benannt", () => {
 
 // Weicht nur die Gross-/Kleinschreibung ab, greift der Fallback — aber mit Hinweis,
 // damit die Config nachgezogen wird, bevor daraus ein stiller Folgefehler wird.
-test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", () => {
+test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -339,7 +344,7 @@ test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", 
 
 // --- Verschieben ---
 
-test("move setzt die Single-Select-Option des Project-Items", () => {
+test("move setzt die Single-Select-Option des Project-Items", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "move", "42", "in_review"), { ok: true, id: "42", status: "in_review" });
     assert.match(
@@ -349,7 +354,7 @@ test("move setzt die Single-Select-Option des Project-Items", () => {
   });
 });
 
-test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", () => {
+test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -369,7 +374,7 @@ test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", () => {
 
 // Gecachte Option-IDs koennen veralten (Option im Project ersetzt). Der erste
 // item-edit scheitert dann, der Cache wird verworfen und einmal wiederholt.
-test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", () => {
+test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -380,7 +385,7 @@ test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", 
   });
 });
 
-test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", () => {
+test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -392,7 +397,7 @@ test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", (
 
 // --- Anlegen ---
 
-test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", () => {
+test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const angelegt = board(dir, "issue", "create", "--title", "Neu mit 'Quote'", "--body", "Body");
     assert.deepEqual(angelegt, { id: "42", url: "https://github.com/besitzer/mein-repo/issues/42" });
@@ -408,7 +413,7 @@ test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", (
   });
 });
 
-test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", () => {
+test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne URL"]);
     assert.equal(res.status, 1);
@@ -419,7 +424,7 @@ test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", () => {
 });
 
 // Die Board-Zuordnung ist Kuer: schlaegt sie fehl, existiert das Issue trotzdem.
-test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", () => {
+test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne Board"]);
     assert.equal(res.status, 0, res.stderr);
@@ -435,7 +440,7 @@ test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", () => 
 
 // Eventual Consistency: ein frisch hinzugefuegtes Item ist manchmal erst beim
 // zweiten Versuch sichtbar — deshalb der Retry mit Wartezeit.
-test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtbar ist", () => {
+test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtbar ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Verzoegert sichtbar"]);
     assert.equal(res.status, 0, res.stderr);
@@ -452,7 +457,7 @@ test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtba
 
 // --- Kommentieren ---
 
-test("comment reicht den Text als --body an gh weiter", () => {
+test("comment reicht den Text als --body an gh weiter", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "comment", "42", "--text", "Zeile eins"), { ok: true, id: "42" });
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /issue comment 42 --repo besitzer\/mein-repo --body Zeile eins/);
@@ -461,7 +466,7 @@ test("comment reicht den Text als --body an gh weiter", () => {
 
 // --- CodeHost ---
 
-test("repo-name kommt von gh", () => {
+test("repo-name kommt von gh", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "besitzer/mein-repo" });
   });
@@ -470,7 +475,7 @@ test("repo-name kommt von gh", () => {
 // Ist gh nicht nutzbar (nicht angemeldet, kein gh installiert), faellt der Adapter auf
 // die origin-Remote zurueck und zuletzt auf den Verzeichnisnamen. Bewusst ohne
 // Normalisierung: Es ist eine Notfall-Auskunft, keine zweite Quelle der Wahrheit.
-test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zurueck", () => {
+test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zurueck", NUR_POSIX, () => {
   const gescheitertesGh = [{ match: "^repo view", stderr: "gh: not authenticated\n", exit: 1 }];
 
   mitProjekt((dir) => {
@@ -489,7 +494,7 @@ test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zur
   }, { regeln: gescheitertesGh });
 });
 
-test("pr erzeugt einen Pull Request mit Standardtitel", () => {
+test("pr erzeugt einen Pull Request mit Standardtitel", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const ergebnis = board(dir, "code", "pr", "--from", "feature", "--to", "main");
     assert.deepEqual(ergebnis, { url: "https://github.com/besitzer/mein-repo/pull/5" });
@@ -499,7 +504,7 @@ test("pr erzeugt einen Pull Request mit Standardtitel", () => {
   });
 });
 
-test("pr uebernimmt einen mitgegebenen Titel", () => {
+test("pr uebernimmt einen mitgegebenen Titel", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "code", "pr", "--from", "feature", "--to", "main", "--title", "Mein Titel");
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /--title Mein Titel/);
@@ -512,7 +517,7 @@ test("pr uebernimmt einen mitgegebenen Titel", () => {
 
 // Ein Fehler, der nicht aus dem Adapter kommt (hier: gh liefert kaputtes JSON),
 // muss als "Unerwarteter Fehler" erkennbar sein — nicht als Bedienfehler.
-test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", () => {
+test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 1);
@@ -524,7 +529,7 @@ test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", () => {
 
 // gh meldet Fehler auf stderr; ist stderr leer, muss die Meldung des Prozesses
 // selbst durchkommen statt eines leeren Strings.
-test("Leeres stderr eines gh-Fehlschlags liefert trotzdem eine Meldung", () => {
+test("Leeres stderr eines gh-Fehlschlags liefert trotzdem eine Meldung", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 1);
