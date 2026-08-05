@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.28.3] - 2026-08-05
+- install.mjs: Frage-Antwort-Weg und Re-Install testen (#187)
+
 ## [1.28.2] - 2026-08-05
 - .gitattributes: LF im Working Tree erzwingen (#197)
 
