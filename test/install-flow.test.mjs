@@ -10,10 +10,12 @@
 //
 // 1. **cwd** ist immer ein Wegwerf-Verzeichnis — der projektlokale Install schreibt
 //    nach ./.claude/ und fasst die .gitignore an.
-// 2. **HOME** zeigt ebenfalls dorthin. Der globale Install schreibt nach
-//    ~/.claude/, und os.homedir() folgt unter POSIX der Variablen. Ohne diese
-//    Umlenkung wuerde ein Testlauf die echte Konfiguration des Entwicklers
-//    ueberschreiben — das waere ein Schaden, kein Test.
+// 2. **HOME und USERPROFILE** zeigen ebenfalls dorthin. Der globale Install schreibt
+//    nach ~/.claude/, und os.homedir() liest unter POSIX HOME, unter Windows aber
+//    USERPROFILE. Beide muessen gesetzt sein: Mit nur HOME liefen die Tests des
+//    globalen Installs unter Windows gegen das echte Benutzerverzeichnis und
+//    schlugen fehl (gefunden vom Windows-Job, Issue #197). Ohne die Umlenkung wuerde
+//    ein Testlauf die echte Konfiguration ueberschreiben — ein Schaden, kein Test.
 //
 // Gefahren wird das ECHTE install.mjs aus dem Repo im Piped-Modus (stdin ist keine
 // TTY, der Installer liest die Antworten dann zeilenweise).
@@ -44,7 +46,7 @@ function installiere(dir, antworten, extraEnv = {}) {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
-    env: { ...process.env, HOME: join(dir, "home"), ...extraEnv },
+    env: { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home"), ...extraEnv },
   });
 }
 
@@ -61,7 +63,7 @@ test("install.mjs --version gibt die Version aus und installiert nichts", () => 
   const dir = fixture("install-version-");
   try {
     const res = spawnSync(process.execPath, [INSTALLER, "--version"], {
-      cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: join(dir, "home") },
+      cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home") },
     });
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /claude-workflow-kit install\.mjs v\d+\.\d+\.\d+/);
@@ -227,7 +229,7 @@ function installiereKopie(dir, pfad, antworten) {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
-    env: { ...process.env, HOME: join(dir, "home") },
+    env: { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home") },
   });
 }
 
