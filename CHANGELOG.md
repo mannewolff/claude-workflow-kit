@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.28.1] - 2026-08-05
+- changelog.mjs: Import-Guard funktioniert unter Windows (#197)
+
 ## [1.27.1] - 2026-08-05
 - night.mjs faehrt buildChecks in der Shell der Plattform (#199)
 - install.mjs legt GitLab-Labels ohne Shell an (#198)
