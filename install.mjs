@@ -219,18 +219,25 @@ async function setupGitLabLabels(rl) {
     return;
   }
   console.log("\nLege GitLab-Labels an:");
-  const { execSync } = await import("node:child_process");
+  // Ohne Shell, mit Argument-Array (Issue #198, dieselbe Linie wie board.mjs in #196):
+  // Zuvor wurde der Labelname in eine Kommandozeile interpoliert. Namen wie
+  // "In progress" haengen damit am Quoting-Dialekt der jeweiligen Plattform, und ein
+  // Sonderzeichen im Namen bricht den Aufruf ueberall. Als argv-Element gibt es das
+  // Problem nicht.
+  const { spawnSync } = await import("node:child_process");
   for (const label of GITLAB_LABELS) {
-    try {
-      execSync(`glab label create --name "${label.name}" --color "${label.color}"`, { stdio: "pipe" });
+    const res = spawnSync("glab", ["label", "create", "--name", label.name, "--color", label.color], {
+      encoding: "utf-8",
+    });
+    if (!res.error && res.status === 0) {
       console.log(`  ✓ ${label.name}`);
-    } catch (e) {
-      const msg = e.stderr?.toString() ?? "";
-      if (msg.includes("already exists") || msg.includes("has already been taken")) {
-        console.log(`  ~ ${label.name} (bereits vorhanden)`);
-      } else {
-        console.warn(`  ✗ ${label.name}: ${msg.trim()}`);
-      }
+      continue;
+    }
+    const msg = res.error ? res.error.message : (res.stderr ?? "");
+    if (msg.includes("already exists") || msg.includes("has already been taken")) {
+      console.log(`  ~ ${label.name} (bereits vorhanden)`);
+    } else {
+      console.warn(`  ✗ ${label.name}: ${msg.trim()}`);
     }
   }
   console.log(`\n  Labels angelegt. Jetzt manuell das Board einrichten:`);
