@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
 import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -79,16 +79,47 @@ wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer ver
 
 // --- Shell-Hilfsfunktionen ---
 
-function exec(cmd) {
-  try {
-    return execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-  } catch (e) {
-    throw new Error(e.stderr?.toString().trim() || e.message);
+// Kommandos werden OHNE Shell gestartet: Datei plus Argument-Array (Issue #196).
+//
+// Vorher lief alles ueber execSync mit einer zusammengesetzten Kommandozeile. Node
+// waehlt dann die Shell nach Plattform — /bin/sh auf POSIX, cmd.exe auf Windows —
+// und das Quoting muesste zu beiden passen. Es passte nur zu einer: Ein mehrzeiliger
+// Issue-Body zerfiel unter Windows in einzelne Argumente (Live-Befund #195).
+//
+// Ohne Shell gibt es das Problem nicht mehr: Die Argumente gehen als argv direkt ans
+// Betriebssystem, es existiert kein Escaping-Layer, der pro Plattform anders arbeitet.
+// Nebenbei entfaellt jede Kommando-Injection-Flaeche — ein Issue-Titel kann keine
+// zweite Kommandozeile mehr eroeffnen.
+function exec(datei, args = []) {
+  const res = spawnSync(datei, args, { encoding: "utf-8" });
+  if (res.error) {
+    // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
+    throw new Error(res.error.code === "ENOENT"
+      ? `${datei} nicht gefunden — ist es installiert und im PATH?`
+      : res.error.message);
   }
+  if (res.status !== 0) {
+    throw new Error((res.stderr || res.stdout || "").trim() || `${datei} endete mit Exit ${res.status}`);
+  }
+  return (res.stdout || "").trim();
 }
 
-function execJSON(cmd) {
-  return JSON.parse(exec(cmd));
+function execJSON(datei, args = []) {
+  return JSON.parse(exec(datei, args));
+}
+
+// Die Remote-URL des Repos, oder null wenn es keine gibt (kein Repo, kein origin).
+//
+// Ersetzt die frueheren POSIX-Kommandozeilen der drei getRepoName-Pfade (Issue #196):
+// `2>/dev/null` gibt es unter cmd.exe nicht, `||` und `$(pwd)` ebenso wenig. exec
+// verwirft stderr ohnehin und wirft nur bei Exit ungleich 0 — daraus wird hier ein
+// schlichtes null, das jeder Aufrufer nach seiner eigenen Regel behandelt.
+function gitRemoteUrl() {
+  try {
+    return exec("git", ["remote", "get-url", "origin"]) || null;
+  } catch {
+    return null;
+  }
 }
 
 // --- Fehlerbehandlung ---
@@ -180,7 +211,7 @@ class GitHubIssueTracker {
 
   _repo() {
     if (!this._repoName) {
-      this._repoName = exec("gh repo view --json nameWithOwner -q .nameWithOwner");
+      this._repoName = exec("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
     }
     return this._repoName;
   }
@@ -212,7 +243,7 @@ class GitHubIssueTracker {
       return cachedAuto;
     }
 
-    const projects = execJSON(`gh project list --owner ${owner} --format json`).projects || [];
+    const projects = execJSON("gh", ["project", "list", "--owner", owner, "--format", "json"]).projects || [];
     if (projects.length === 1) {
       const num = projects[0].number;
       process.stderr.write(
@@ -339,13 +370,13 @@ class GitHubIssueTracker {
     const num = this._projectNumber();
 
     // Project-ID
-    const projectList = execJSON(`gh project list --owner ${owner} --format json`);
+    const projectList = execJSON("gh", ["project", "list", "--owner", owner, "--format", "json"]);
     const project = (projectList.projects || []).find((p) => p.number === num);
     if (!project) throw new BoardError(`GitHub Project #${num} nicht gefunden fuer Owner '${owner}'`);
     this._projectId = project.id;
 
     // Status-Field und Optionen
-    const fields = execJSON(`gh project field-list ${num} --owner ${owner} --format json`);
+    const fields = execJSON("gh", ["project", "field-list", String(num), "--owner", owner, "--format", "json"]);
     const statusField = (fields.fields || []).find((f) => f.name === "Status");
     if (!statusField) throw new BoardError(`Kein 'Status'-Feld in GitHub Project #${num} gefunden`);
 
@@ -396,10 +427,13 @@ class GitHubIssueTracker {
       "}",
     ].join("\n");
 
-    const data = execJSON(
-      `gh api graphql -f query=${shellQuote(query)} ` +
-      `-f owner=${shellQuote(owner)} -f repo=${shellQuote(repoName)} -F number=${number}`
-    );
+    const data = execJSON("gh", [
+      "api", "graphql",
+      "-f", `query=${query}`,
+      "-f", `owner=${owner}`,
+      "-f", `repo=${repoName}`,
+      "-F", `number=${number}`,
+    ]);
 
     const issue = data?.data?.repository?.issue;
     if (!issue) throw new BoardError(`Issue #${issueNumber} nicht in Repo '${this._repo()}' gefunden`);
@@ -414,9 +448,7 @@ class GitHubIssueTracker {
 
   async createIssue({ title, body }) {
     const repo = this._repo();
-    const output = exec(
-      `gh issue create --repo ${repo} --title ${shellQuote(title)} --body ${shellQuote(body || "")}`
-    );
+    const output = exec("gh", ["issue", "create", "--repo", repo, "--title", title, "--body", body || ""]);
     // gh gibt ggf. Hinweiszeilen vor der URL aus — URL und ID per Regex extrahieren
     const match = output.match(/(https?:\/\/\S+\/issues\/(\d+))/);
     if (!match) throw new BoardError(`Konnte Issue-URL aus gh-Ausgabe nicht lesen: ${output}`);
@@ -428,7 +460,7 @@ class GitHubIssueTracker {
     try {
       const owner = this._owner();
       const num = this._projectNumber();
-      exec(`gh project item-add ${num} --owner ${owner} --url ${url}`);
+      exec("gh", ["project", "item-add", String(num), "--owner", owner, "--url", url]);
       // Status auf backlog setzen. item-list zeigt frisch hinzugefuegte Items
       // teils verzoegert (Eventual Consistency) — daher kurzer Retry.
       let lastErr = null;
@@ -451,9 +483,7 @@ class GitHubIssueTracker {
 
   async getIssue(id) {
     const repo = this._repo();
-    const data = execJSON(
-      `gh issue view ${id} --repo ${repo} --json number,title,body,state,comments`
-    );
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments"]);
     return {
       id: String(data.number),
       title: data.title,
@@ -469,9 +499,7 @@ class GitHubIssueTracker {
     if (!status) {
       // `gh issue list` liefert Labels direkt mit, sobald das Feld angefordert wird
       // (verifiziert 2026-07-29, Issue #180).
-      const items = execJSON(
-        `gh issue list --repo ${repo} --state open --json number,title,body,labels`
-      );
+      const items = execJSON("gh", ["issue", "list", "--repo", repo, "--state", "open", "--json", "number,title,body,labels"]);
       return items.map((i) => ({
         id: String(i.number), title: i.title, body: i.body, status: null, labels: labelNamesFrom(i.labels),
       }));
@@ -490,7 +518,7 @@ class GitHubIssueTracker {
 
     this._ensureProjectMeta();
     const owner = this._owner();
-    const items = execJSON(`gh project item-list ${num} --owner ${owner} --format json --limit 1000`);
+    const items = execJSON("gh", ["project", "item-list", String(num), "--owner", owner, "--format", "json", "--limit", "1000"]);
 
     const optionId = this._statusField.options[status];
     if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
@@ -517,9 +545,7 @@ class GitHubIssueTracker {
   _mitLabels(items, repo) {
     if (items.length === 0) return items;
     try {
-      const raw = execJSON(
-        `gh issue list --repo ${repo} --state all --json number,labels --limit 1000`
-      );
+      const raw = execJSON("gh", ["issue", "list", "--repo", repo, "--state", "all", "--json", "number,labels", "--limit", "1000"]);
       return withLabels(items, labelMapFrom(raw));
     } catch (e) {
       process.stderr.write(
@@ -559,15 +585,18 @@ class GitHubIssueTracker {
   }
 
   _editItemStatus(itemId, status) {
-    exec(
-      `gh project item-edit --id ${itemId} --project-id ${this._projectId} ` +
-      `--field-id ${this._statusField.id} --single-select-option-id ${this._optionIdFor(status)}`
-    );
+    exec("gh", [
+      "project", "item-edit",
+      "--id", itemId,
+      "--project-id", this._projectId,
+      "--field-id", this._statusField.id,
+      "--single-select-option-id", this._optionIdFor(status),
+    ]);
   }
 
   async commentIssue(id, text) {
     const repo = this._repo();
-    exec(`gh issue comment ${id} --repo ${repo} --body ${shellQuote(text)}`);
+    exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
   }
 }
 
@@ -580,9 +609,11 @@ class GitHubCodeHost {
 
   async getRepoName() {
     try {
-      return exec("gh repo view --json nameWithOwner -q .nameWithOwner");
+      return exec("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
     } catch {
-      return exec("git remote get-url origin 2>/dev/null || basename $(pwd)");
+      // Frueher eine POSIX-Kommandozeile mit || und $(pwd) — unter cmd.exe gibt es
+      // beides nicht (Issue #196). Dieselbe Logik in JavaScript.
+      return gitRemoteUrl() || basename(resolve("."));
     }
   }
 
@@ -590,9 +621,7 @@ class GitHubCodeHost {
 
   async createPullRequest({ from, to, title }) {
     const t = title || `${from} → ${to}`;
-    const url = exec(
-      `gh pr create --base ${to} --head ${from} --title ${shellQuote(t)} --body ""`
-    );
+    const url = exec("gh", ["pr", "create", "--base", to, "--head", from, "--title", t, "--body", ""]);
     return { url };
   }
 }
@@ -605,9 +634,7 @@ class GitLabIssueTracker {
   constructor(config) { this._cfg = config; }
 
   async createIssue({ title, body }) {
-    const output = exec(
-      `glab issue create --title ${shellQuote(title)} --description ${shellQuote(body || "")}`
-    );
+    const output = exec("glab", ["issue", "create", "--title", title, "--description", body || ""]);
     // glab gibt die Issue-URL aus, z.B. https://gitlab.com/owner/repo/-/issues/42
     const match = output.match(/\/issues\/(\d+)/);
     if (!match) throw new BoardError(`Konnte Issue-ID aus glab-Ausgabe nicht lesen: ${output}`);
@@ -617,7 +644,7 @@ class GitLabIssueTracker {
     if (!isStateColumn("backlog", this._cfg)) {
       const label = columnLabels(this._cfg).backlog;
       try {
-        exec(`glab issue update ${id} --label ${shellQuote(label)}`);
+        exec("glab", ["issue", "update", String(id), "--label", label]);
       } catch (e) {
         process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
       }
@@ -626,7 +653,7 @@ class GitLabIssueTracker {
   }
 
   async getIssue(id) {
-    const data = execJSON(`glab issue view ${id} --output json`);
+    const data = execJSON("glab", ["issue", "view", String(id), "--output", "json"]);
     const labelNames = (data.labels || []).map((l) => l.name || l);
     const status = labelToStatus(labelNames, this._cfg, data.state) || null;
     return {
@@ -643,7 +670,7 @@ class GitLabIssueTracker {
   // Titel/Body/Status sind die Hauptsache. Deshalb leeres Array statt Abbruch.
   _notes(id) {
     try {
-      return normalizeComments(execJSON(`glab api projects/:id/issues/${id}/notes`));
+      return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
     } catch (e) {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
@@ -651,28 +678,28 @@ class GitLabIssueTracker {
   }
 
   async listIssues(status) {
-    let cmd = "glab issue list --output json";
+    const args = ["issue", "list", "--output", "json"];
     if (status) {
       // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
       // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
-      cmd += " --order relative_position --sort asc";
+      args.push("--order", "relative_position", "--sort", "asc");
       if (isStateColumn(status, this._cfg)) {
         if (status === "done") {
-          cmd += " --closed";
+          args.push("--closed");
         } else {
           // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
           const otherLabels = Object.entries(columnLabels(this._cfg))
             .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
             .map(([, l]) => l);
-          cmd += otherLabels.map((l) => ` --not-label ${shellQuote(l)}`).join("");
+          for (const l of otherLabels) args.push("--not-label", l);
         }
       } else {
         const label = columnLabels(this._cfg)[status];
         if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
-        cmd += ` --label ${shellQuote(label)}`;
+        args.push("--label", label);
       }
     }
-    const items = execJSON(cmd);
+    const items = execJSON("glab", args);
     const mapped = (Array.isArray(items) ? items : []).map((i) => {
       const labelNames = labelNamesFrom(i.labels);
       return {
@@ -696,9 +723,9 @@ class GitLabIssueTracker {
     // keine Labels: nur Status-Labels entfernen, Issue oeffnen bzw. schliessen, kein
     // Phantom-Label setzen.
     if (isStateColumn(to, this._cfg)) {
-      const unlabelArgs = statusLabels.map((l) => `--unlabel ${shellQuote(l)}`).join(" ");
-      exec(`glab issue update ${id} ${unlabelArgs}`);
-      exec(to === "done" ? `glab issue close ${id}` : `glab issue reopen ${id}`);
+      const unlabelArgs = statusLabels.flatMap((l) => ["--unlabel", l]);
+      exec("glab", ["issue", "update", String(id), ...unlabelArgs]);
+      exec("glab", ["issue", to === "done" ? "close" : "reopen", String(id)]);
       return;
     }
 
@@ -708,33 +735,36 @@ class GitLabIssueTracker {
     // NICHT im selben Aufruf unlabeln, sonst verrechnet glab beides gegeneinander).
     const unlabelArgs = statusLabels
       .filter((l) => l !== label)
-      .map((l) => `--unlabel ${shellQuote(l)}`)
-      .join(" ");
-    exec(`glab issue update ${id} ${unlabelArgs} --label ${shellQuote(label)}`);
+      .flatMap((l) => ["--unlabel", l]);
+    exec("glab", ["issue", "update", String(id), ...unlabelArgs, "--label", label]);
   }
 
   async commentIssue(id, text) {
-    exec(`glab issue note create ${id} --message ${shellQuote(text)}`);
+    exec("glab", ["issue", "note", "create", String(id), "--message", text]);
   }
 }
 
 class GitLabCodeHost {
   async getRepoName() {
-    try {
-      const url = exec("git remote get-url origin");
-      return url.replace(/\.git$/, "").split("/").slice(-2).join("/");
-    } catch {
-      return exec("basename $(pwd)");
-    }
+    // Ohne Remote (kein Repo, kein origin) bleibt der Verzeichnisname — frueher ueber
+    // `basename $(pwd)`, das cmd.exe nicht kennt (Issue #196).
+    const url = gitRemoteUrl();
+    if (!url) return basename(resolve("."));
+    return url.replace(/\.git$/, "").split("/").slice(-2).join("/");
   }
 
   supportsPullRequests() { return true; }
 
   async createPullRequest({ from, to, title }) {
     const t = title || `${from} -> ${to}`;
-    const url = exec(
-      `glab mr create --source-branch ${from} --target-branch ${to} --title ${shellQuote(t)} --description "" --yes`
-    );
+    const url = exec("glab", [
+      "mr", "create",
+      "--source-branch", from,
+      "--target-branch", to,
+      "--title", t,
+      "--description", "",
+      "--yes",
+    ]);
     // glab gibt die MR-URL aus
     const match = url.match(/https?:\/\/\S+/);
     return { url: match ? match[0] : url.trim() };
@@ -887,12 +917,11 @@ class LocalIssueTracker {
 
 class LocalCodeHost {
   async getRepoName() {
-    try {
-      const url = exec("git remote get-url origin 2>/dev/null");
-      return url.replace(/\.git$/, "").split("/").pop();
-    } catch {
-      return basename(resolve("."));
-    }
+    // Frueher mit 2>/dev/null — die Umleitung gibt es unter cmd.exe nicht (#196);
+    // gitRemoteUrl liefert stattdessen null, wenn kein Remote da ist.
+    const url = gitRemoteUrl();
+    if (!url) return basename(resolve("."));
+    return url.replace(/\.git$/, "").split("/").pop();
   }
 
   // Kein createPullRequest: codePr() bricht schon an supportsPullRequests() ab und gibt
@@ -1195,13 +1224,6 @@ class ToolboxIssueTracker {
 // ============================================================
 // Hilfsfunktionen
 // ============================================================
-
-function shellQuote(str) {
-  // Klassisches POSIX-Single-Quote-Escaping: jedes ' wird zu '\'' (schliessen, escaptes
-  // Quote, wieder oeffnen). String.raw haelt die Ersetzung frei von Backslash-Escapes.
-  const escaped = String(str).replaceAll("'", String.raw`'\''`);
-  return `'${escaped}'`;
-}
 
 // Normalisiert die roh vom Backend gelieferten Labels auf ein flaches Array von
 // Namen: GitLab liefert Objekte ({name}), andere Backends evtl. nackte Strings,
