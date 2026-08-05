@@ -387,6 +387,42 @@ test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.jso
   }
 });
 
+// --- Plattform-Shell der buildChecks (#199) ---
+
+// buildChecks und formatFixCommand sind frei konfigurierte Kommandozeilen und laufen
+// deshalb in der Shell der Plattform (shell:true) statt in einem fest verdrahteten sh,
+// das es unter Windows nicht gibt. Der Beleg dafuer ist ein Check, der ohne Shell gar
+// nicht ausfuehrbar waere: Operator-Verkettung und eine Umgebungsvariable.
+test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewertet", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-shell-", {
+    buildChecks: ['test "$NIGHT_SHELL_PROBE" = "da" && echo verkettet'],
+  });
+  try {
+    const id = readyIssue(dir, "Verliert sein Ergebnis");
+    writeFileSync(join(dir, ".claude", "settings.json"),
+      JSON.stringify({ env: { NIGHT_SHELL_PROBE: "da" } }), "utf-8");
+    run(dir, "git", ["add", "-A"]);
+    run(dir, "git", ["commit", "-q", "-m", "settings"]);
+
+    // Die regulaere Runde laesst Arbeit liegen -> die Salvage-Vorpruefung faehrt die
+    // buildChecks selbst. Nur wenn die Shell greift, sind sie gruen.
+    const fake = `if [ -n "$NIGHT_SALVAGE" ]; then\n`
+      + `  git add -A && git commit -q -m "Salvage (Issue $NIGHT_ISSUE_ID)"\n`
+      + `  node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null\n`
+      + `else\n`
+      + `  echo arbeit > "work-$NIGHT_ISSUE_ID.txt"\n`
+      + `fi\n`;
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
+      "die verkettete Kommandozeile muss von der Shell ausgewertet worden sein");
+    assert.match(res.stdout, new RegExp(`Salvage erfolgreich[\\s\\S]*Issue #${id} in In review`));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Verbose-Stream ---
 
 // Ein Tool-Aufruf ohne die bekannten Schluessel (command, file_path, path, pattern,

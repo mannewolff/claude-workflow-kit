@@ -453,6 +453,11 @@ async function runSession(issueId, args, opts = {}) {
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
+    // Bleibt bewusst bei sh (Issue #199): Dieser Zweig ist ausschliesslich der
+    // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell. Ihn auf die
+    // Plattform-Shell umzustellen wuerde unter Windows nichts gewinnen — die Fakes
+    // selbst liefen dort trotzdem nicht. Die night-Tests sind deshalb unter Windows
+    // ausgenommen (Issue #197); der Produktivpfad unten ist davon nicht betroffen.
     cmd = "sh";
     cmdArgs = ["-c", testCmd];
   } else {
@@ -524,13 +529,30 @@ function checkEnv() {
   return { ...process.env, ...settingsEnv() };
 }
 
+// Eine Shell ist hier zwingend — anders als in board.mjs, wo Issue #196 sie gerade
+// abgeschafft hat. Der Unterschied: Dort stehen die Kommandos fest im Code und lassen
+// sich als Argument-Array uebergeben. Hier ist `cmd` eine frei konfigurierte
+// Kommandozeile aus der workflow.config.json ("mvn verify", "npm --prefix frontend
+// run build"), die Operatoren und Umleitungen enthalten darf. Ohne Shell gaebe es das
+// Feature nicht.
+//
+// Statt fest "sh" zu starten (das es unter Windows nicht gibt, Issue #199) waehlt
+// Node mit shell:true die Shell der Plattform: /bin/sh auf POSIX, die ComSpec-Shell
+// (im Regelfall cmd.exe) unter Windows. Bewusst nicht PowerShell: Der Wert ist eine
+// Nutzer-Konfiguration, und cmd.exe ist das, was ein Windows-Nutzer beim Eintragen
+// eines Build-Kommandos erwartet; PowerShell haette zudem eine eigene Operator-Syntax
+// (kein && vor Version 7).
+//
+// Folge fuer die Konfiguration: buildChecks sind damit potenziell plattformspezifisch.
+// Ein `mvn verify` laeuft ueberall, eine Verkettung mit && oder eine Umleitung nicht
+// zwingend. Das steht so im Nachtbetrieb-Kapitel der Doku.
+//
+// PATH-Aufloesung bewusst (S4036, Issue #183).
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
   for (const cmd of cfg.buildChecks || []) {
-    // sh ist hier zwingend: cmd ist eine frei konfigurierte Kommandozeile aus der
-    // workflow.config.json. PATH-Aufloesung bewusst (S4036, Issue #183).
-    const res = spawnSync("sh", ["-c", cmd], { cwd: process.cwd(), encoding: "utf-8", env });
+    const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
   }
@@ -554,8 +576,9 @@ function verifyChecksForSalvage(cfg) {
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
-  // Wie oben: fixCmd kommt aus der Config, PATH-Aufloesung bewusst (S4036, Issue #183).
-  spawnSync("sh", ["-c", fixCmd], { cwd: process.cwd(), encoding: "utf-8", env: checkEnv() });
+  // Wie oben: fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
+  // (Issue #199). PATH-Aufloesung bewusst (S4036, Issue #183).
+  spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
 
   const second = runBuildChecksSync(cfg);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null };
