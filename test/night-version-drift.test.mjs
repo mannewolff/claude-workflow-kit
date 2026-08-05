@@ -19,6 +19,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -80,7 +85,7 @@ function laufMitEinemIssue(dir) {
   return { res, geschafft: inReview.includes(String(erstes.id)) };
 }
 
-test("Versions-Drift: abweichender board.mjs-Stempel warnt, stoppt den Lauf aber nicht", () => {
+test("Versions-Drift: abweichender board.mjs-Stempel warnt, stoppt den Lauf aber nicht", NUR_POSIX, () => {
   const dir = setupProjekt("0.9.9");
   try {
     const { res, geschafft } = laufMitEinemIssue(dir);
@@ -95,7 +100,7 @@ test("Versions-Drift: abweichender board.mjs-Stempel warnt, stoppt den Lauf aber
   }
 });
 
-test("Versions-Drift: gleiche Stempel erzeugen keine Warnung", () => {
+test("Versions-Drift: gleiche Stempel erzeugen keine Warnung", NUR_POSIX, () => {
   const dir = setupProjekt(undefined); // board.mjs unveraendert = gleicher Stand
   try {
     const { res, geschafft } = laufMitEinemIssue(dir);
@@ -109,7 +114,7 @@ test("Versions-Drift: gleiche Stempel erzeugen keine Warnung", () => {
   }
 });
 
-test("Versions-Drift: board.mjs ohne Konstante warnt mit 'unbekannt', bricht nicht ab", () => {
+test("Versions-Drift: board.mjs ohne Konstante warnt mit 'unbekannt', bricht nicht ab", NUR_POSIX, () => {
   const dir = setupProjekt(null);
   try {
     const { res, geschafft } = laufMitEinemIssue(dir);

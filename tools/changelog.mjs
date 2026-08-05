@@ -18,8 +18,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const START_VERSION = "1.16.0"; // untere Grenze der Changelog-Historie
 const CHANGELOG_PATH = resolve("CHANGELOG.md");
@@ -130,6 +131,21 @@ function main() {
 }
 
 // Nur ausfuehren, wenn direkt gestartet (nicht beim Import in Tests).
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+//
+// fileURLToPath statt new URL(...).pathname: Unter Windows liefert pathname einen
+// fuehrenden Slash vor dem Laufwerksbuchstaben ("/D:/repo/tools/changelog.mjs"), der
+// Vergleich schlug dort immer fehl — main() lief nie, `node tools/changelog.mjs`
+// tat gar nichts, und --check meldete als Gate faelschlich "aktuell", weil es nicht
+// prueft. Gefunden vom ersten Windows-CI-Lauf (Issue #197).
+//
+// realpathSync wie in kit/board.mjs: Node loest fuer import.meta.url Symlinks auf
+// (macOS: /var -> /private/var), ein nur normalisierter argv[1] wuerde nie matchen.
+let runAsCli = false;
+if (process.argv[1]) {
+  try {
+    runAsCli = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
+}
+if (runAsCli) {
   main();
 }

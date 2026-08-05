@@ -14,6 +14,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -63,7 +68,7 @@ function streamFake() {
   ].join(" && ");
 }
 
-test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-Log", () => {
+test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-Log", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Verbose-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -80,7 +85,7 @@ test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-L
   }
 });
 
-test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)", () => {
+test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -97,7 +102,7 @@ test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)"
   }
 });
 
-test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haenger", () => {
+test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haenger", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Langsames-Issue", "--body", "## Abhaengigkeiten\nKeine.");

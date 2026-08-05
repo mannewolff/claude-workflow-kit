@@ -1,0 +1,15 @@
+# Zeilenenden: im Repo UND im Working Tree immer LF — auch unter Windows.
+#
+# Grund ist kein Stilwunsch, sondern eine harte Anforderung dieses Repos: install.mjs
+# traegt seine Quellen als Base64-Blobs (kit/board.mjs, kit/night.mjs, skills/,
+# templates/CLAUDE-workflow.md). Die Blobs entstehen aus den Dateibytes. Checkt git
+# unter Windows mit CRLF aus — der Standard dort —, haben dieselben Quellen andere
+# Bytes, und `node tools/sync-blobs.mjs --check` meldet Drift in allen vier Blobs,
+# obwohl niemand etwas geaendert hat.
+#
+# Das trifft nicht nur die CI: Ein Windows-Nutzer, der das Kit klont und den Blob-Check
+# als buildCheck faehrt, bekommt dasselbe falsche Rot. Gefunden vom Windows-Job der
+# CI-Matrix (Issue #197), zwei Laeufe nach dem changelog.mjs-Fund.
+#
+# text=auto laesst git Binaerdateien selbst erkennen und normalisiert nur Textdateien.
+* text=auto eol=lf

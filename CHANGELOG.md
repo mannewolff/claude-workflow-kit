@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.28.2] - 2026-08-05
+- .gitattributes: LF im Working Tree erzwingen (#197)
+
+## [1.28.1] - 2026-08-05
+- changelog.mjs: Import-Guard funktioniert unter Windows (#197)
+
+## [1.27.1] - 2026-08-05
+- night.mjs faehrt buildChecks in der Shell der Plattform (#199)
+- install.mjs legt GitLab-Labels ohne Shell an (#198)
+- CI: Windows in die Test-Matrix aufnehmen (#197)
+- board.mjs setzt Kommandos ohne Shell ab (#196)
+
 ## [1.26.1] - 2026-07-31
 - kit/night.mjs und tools/ auf 100 % Zeilenabdeckung (#189)
 - kit/board.mjs auf 100 % Zeilenabdeckung (#188)

@@ -29,6 +29,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -65,7 +70,7 @@ function setupProjekt() {
   return dir;
 }
 
-test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
+test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Langsames-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -88,7 +93,7 @@ test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
   }
 });
 
-test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", () => {
+test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Taubes-Issue", "--body", "## Abhaengigkeiten\nKeine.");

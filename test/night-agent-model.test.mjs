@@ -14,6 +14,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -56,7 +61,7 @@ function modelFake(modelLog) {
     + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 }
 
-test("Session-Umgebung traegt KIT_AGENT_MODEL mit dem Wert aus --model", () => {
+test("Session-Umgebung traegt KIT_AGENT_MODEL mit dem Wert aus --model", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Erstes", "--body", "## Abhaengigkeiten\nKeine.");
@@ -75,7 +80,7 @@ test("Session-Umgebung traegt KIT_AGENT_MODEL mit dem Wert aus --model", () => {
   }
 });
 
-test("Ohne --model steht das Default-Modell in KIT_AGENT_MODEL", () => {
+test("Ohne --model steht das Default-Modell in KIT_AGENT_MODEL", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Erstes", "--body", "## Abhaengigkeiten\nKeine.");

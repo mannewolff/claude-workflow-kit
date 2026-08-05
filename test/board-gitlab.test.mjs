@@ -13,6 +13,11 @@ import { basename } from "node:path";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
 
+// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
+// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
+const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
+
+
 const GITLAB = { codeHost: "gitlab", issueTracker: "gitlab" };
 // backlog als nativer Open-Zustand statt als Label.
 const GITLAB_OPEN = { codeHost: "gitlab", issueTracker: "gitlab", columns: { backlog: "Open", ready: "Ready", in_progress: "In progress", in_review: "In review", done: "Done" } };
@@ -39,7 +44,7 @@ function mitProjekt(fn, { regeln = [], config = GITLAB } = {}) {
 
 // --- Anlegen ---
 
-test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", () => {
+test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const angelegt = board(dir, "issue", "create", "--title", "Neu", "--body", "Body");
     assert.deepEqual(angelegt, { id: "42", url: "https://gitlab.com/besitzer/repo/-/issues/42" });
@@ -52,7 +57,7 @@ test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", (
   });
 });
 
-test("create ohne lesbare Issue-ID schlaegt fehl", () => {
+test("create ohne lesbare Issue-ID schlaegt fehl", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne URL"]);
     assert.equal(res.status, 1);
@@ -62,7 +67,7 @@ test("create ohne lesbare Issue-ID schlaegt fehl", () => {
   });
 });
 
-test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", () => {
+test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne Label"]);
     assert.equal(res.status, 0, res.stderr);
@@ -76,7 +81,7 @@ test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", () => {
 });
 
 // Ist backlog der native Open-Zustand, waere ein Backlog-Label ein Phantom-Label.
-test("create setzt kein Label, wenn backlog der Open-Zustand ist", () => {
+test("create setzt kein Label, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "issue", "create", "--title", "Bleibt einfach offen");
     assert.doesNotMatch(aufrufZeilen(dir, "glab").join("\n"), /issue update/);
@@ -88,7 +93,7 @@ test("create setzt kein Label, wenn backlog der Open-Zustand ist", () => {
 
 // --- Lesen ---
 
-test("get leitet den Status aus den Labels ab und liefert die Notes als Kommentare", () => {
+test("get leitet den Status aus den Labels ab und liefert die Notes als Kommentare", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const geholt = board(dir, "issue", "get", "42");
     assert.deepEqual(geholt, {
@@ -117,7 +122,7 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
 });
 
 // Der Verlauf ist Zusatzinformation: ein Fehlschlag darf `issue get` nicht kippen.
-test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", () => {
+test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 0, res.stderr);
@@ -135,7 +140,7 @@ test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", () => {
   });
 });
 
-test("get erkennt geschlossene Issues als done", () => {
+test("get erkennt geschlossene Issues als done", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.equal(board(dir, "issue", "get", "42").status, "done");
   }, {
@@ -143,7 +148,7 @@ test("get erkennt geschlossene Issues als done", () => {
   });
 });
 
-test("get erkennt offene Issues als backlog, wenn backlog der Open-Zustand ist", () => {
+test("get erkennt offene Issues als backlog, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.equal(board(dir, "issue", "get", "42").status, "backlog");
   }, {
@@ -154,7 +159,7 @@ test("get erkennt offene Issues als backlog, wenn backlog der Open-Zustand ist",
 
 // --- Listen ---
 
-test("list ohne Filter sortiert numerisch und liefert die Label-Namen", () => {
+test("list ohne Filter sortiert numerisch und liefert die Label-Namen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const alle = board(dir, "issue", "list");
     assert.deepEqual(alle.map((i) => i.id), ["7", "9"]);
@@ -172,7 +177,7 @@ test("list ohne Filter sortiert numerisch und liefert die Label-Namen", () => {
   });
 });
 
-test("list --status filtert per Label und fragt die Board-Reihenfolge an", () => {
+test("list --status filtert per Label und fragt die Board-Reihenfolge an", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const bereit = board(dir, "issue", "list", "--status", "ready");
     assert.deepEqual(bereit.map((i) => i.id), ["9", "7"]);
@@ -189,7 +194,7 @@ test("list --status filtert per Label und fragt die Board-Reihenfolge an", () =>
   });
 });
 
-test("list --status done fragt die geschlossenen Issues ab", () => {
+test("list --status done fragt die geschlossenen Issues ab", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "issue", "list", "--status", "done");
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /issue list --output json --order relative_position --sort asc --closed/);
@@ -199,7 +204,7 @@ test("list --status done fragt die geschlossenen Issues ab", () => {
 });
 
 // backlog als Open-Zustand: offene Issues, die kein anderes Spalten-Label tragen.
-test("list --status backlog grenzt per --not-label ab, wenn backlog der Open-Zustand ist", () => {
+test("list --status backlog grenzt per --not-label ab, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "issue", "list", "--status", "backlog");
     const zeile = aufrufZeilen(dir, "glab").join("\n");
@@ -214,7 +219,7 @@ test("list --status backlog grenzt per --not-label ab, wenn backlog der Open-Zus
   });
 });
 
-test("list --status ohne Label-Mapping schlaegt fehl", () => {
+test("list --status ohne Label-Mapping schlaegt fehl", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "in_review"]);
     assert.equal(res.status, 1);
@@ -226,7 +231,7 @@ test("list --status ohne Label-Mapping schlaegt fehl", () => {
 
 // Antwortet glab nicht mit einem Array (Fehlerobjekt, leere Ausgabe), darf der
 // Adapter nicht ueber .map stolpern.
-test("list vertraegt eine Antwort, die kein Array ist", () => {
+test("list vertraegt eine Antwort, die kein Array ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "list"), []);
   }, {
@@ -236,7 +241,7 @@ test("list vertraegt eine Antwort, die kein Array ist", () => {
 
 // --- Verschieben ---
 
-test("move tauscht die Status-Labels und laesst das Ziel-Label ungetauscht", () => {
+test("move tauscht die Status-Labels und laesst das Ziel-Label ungetauscht", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "move", "42", "in_review"), { ok: true, id: "42", status: "in_review" });
     const zeile = aufrufZeilen(dir, "glab").join("\n");
@@ -248,7 +253,7 @@ test("move tauscht die Status-Labels und laesst das Ziel-Label ungetauscht", () 
   });
 });
 
-test("move nach done entfernt alle Labels und schliesst das Issue", () => {
+test("move nach done entfernt alle Labels und schliesst das Issue", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "issue", "move", "42", "done");
     const zeile = aufrufZeilen(dir, "glab").join("\n");
@@ -258,7 +263,7 @@ test("move nach done entfernt alle Labels und schliesst das Issue", () => {
   });
 });
 
-test("move nach backlog oeffnet das Issue wieder, wenn backlog der Open-Zustand ist", () => {
+test("move nach backlog oeffnet das Issue wieder, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
   mitProjekt((dir) => {
     board(dir, "issue", "move", "42", "backlog");
     const zeile = aufrufZeilen(dir, "glab").join("\n");
@@ -267,7 +272,7 @@ test("move nach backlog oeffnet das Issue wieder, wenn backlog der Open-Zustand 
   }, { config: GITLAB_OPEN });
 });
 
-test("move ohne Label-Mapping fuer den Zielstatus schlaegt fehl", () => {
+test("move ohne Label-Mapping fuer den Zielstatus schlaegt fehl", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "in_review"]);
     assert.equal(res.status, 1);
@@ -279,7 +284,7 @@ test("move ohne Label-Mapping fuer den Zielstatus schlaegt fehl", () => {
 
 // --- Kommentieren ---
 
-test("comment legt eine Note an", () => {
+test("comment legt eine Note an", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "comment", "42", "--text", "Mein Kommentar"), { ok: true, id: "42" });
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /issue note create 42 --message Mein Kommentar/);
@@ -288,7 +293,7 @@ test("comment legt eine Note an", () => {
 
 // --- CodeHost ---
 
-test("repo-name schneidet Besitzer und Repo aus der origin-URL", () => {
+test("repo-name schneidet Besitzer und Repo aus der origin-URL", NUR_POSIX, () => {
   mitProjekt((dir) => {
     for (const argumente of [
       ["init", "-q"],
@@ -301,13 +306,13 @@ test("repo-name schneidet Besitzer und Repo aus der origin-URL", () => {
   });
 });
 
-test("repo-name faellt ohne git-Repo auf den Verzeichnisnamen zurueck", () => {
+test("repo-name faellt ohne git-Repo auf den Verzeichnisnamen zurueck", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "code", "repo-name"), { repoName: basename(dir) });
   });
 });
 
-test("pr legt einen Merge Request an und liest die URL aus der Ausgabe", () => {
+test("pr legt einen Merge Request an und liest die URL aus der Ausgabe", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const ergebnis = board(dir, "code", "pr", "--from", "feature", "--to", "main");
     assert.deepEqual(ergebnis, { url: "https://gitlab.com/besitzer/repo/-/merge_requests/5" });
@@ -318,7 +323,7 @@ test("pr legt einen Merge Request an und liest die URL aus der Ausgabe", () => {
   });
 });
 
-test("pr nimmt die ganze Ausgabe, wenn keine URL darin steht", () => {
+test("pr nimmt die ganze Ausgabe, wenn keine URL darin steht", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "code", "pr", "--from", "feature", "--to", "main", "--title", "Mein MR"),
       { url: "MR angelegt (offline)" });
