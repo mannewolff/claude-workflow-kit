@@ -68,13 +68,29 @@ node .claude/kit/board.mjs issue list --status backlog
 
 ### 2. Autor-Modell lesen und Reviewer wählen
 
-Das Autor-Modell steht als Zeile im Kontext-Abschnitt (`Autor-Modell: …`, angelegt von `/issues`). Fehlt sie — bei älteren Issues der Normalfall —, behandle den Autor als unbekannt und vermerke das im Bericht.
+Das Autor-Modell steht als Zeile im Kontext-Abschnitt (`Autor-Modell: …`, angelegt von `/issues`).
+
+**Fehlt sie oder lautet sie `unbekannt`, frage einmal nach** — mit den vorgeschlagenen Reviewern:
+
+> #205 nennt kein Autor-Modell. Vorschlag: `opus`, `sonnet`. Wer hat es geschrieben? (Modellname / weiter mit Vorschlag)
+
+Das ist der einzige neue Stopp-Punkt und er kostet ein Wort. Ohne ihn ist bei jedem Issue, das vor der Konvention entstanden ist, die Hälfte des Reviews Selbstprüfung — und der Marker suggeriert am Ende trotzdem, es sei geprüft worden.
+
+**Ausnahme im Nachtbetrieb:** Läuft der Skill ohne Menschen (erkennbar an gesetztem `KIT_AGENT_MODEL`), wird **nicht** gefragt. Dann gilt der Regel-Vorschlag, und der Board-Kommentar vermerkt das ausdrücklich. Dieselbe Asymmetrie wie beim Gate aus Issue #223, aus demselben Grund: Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
 
 ```bash
 node .claude/kit/board.mjs issue-review reviewers --author <modell>
 ```
 
 Meldet die Antwort `unterbesetzt: true`, läuft der Review trotzdem — aber die **erste Zeile** des Board-Kommentars sagt, mit wie vielen Reviewern gefahren wurde.
+
+Die Antwort trägt außerdem `quelle: "pairs" | "regel"` (Issue #225). Nenne den Wert im Board-Kommentar: Wer eine `pairs`-Zeile für seinen Autor erwartet hat und `regel` liest, sieht sofort, dass der Name dort fehlt oder anders geschrieben ist.
+
+Wer wissen will, wer wen prüft, muss dafür nicht die Config lesen:
+
+```bash
+node .claude/kit/board.mjs issue-review matrix
+```
 
 ### 3. Reviewer starten — zwei Rollen, nicht zweimal dasselbe
 

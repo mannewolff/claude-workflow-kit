@@ -26,7 +26,15 @@ Wenn ein Schritt sich nicht in einem überschaubaren Aufwand erledigen lässt, i
 
 Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig portabel gedacht ist (Installer, Single-File-Tool, kopierbares Script), muss das Akzeptanzkriterium explizit enthalten: "lauffaehig ohne weiteren Repo-Kontext". Ohne diesen Prueffall bleibt die Portabilitaet ungetestet.
 
-Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Autor-Modell: <wert>`. Quelle ist die Umgebungsvariable `KIT_AGENT_MODEL` (gesetzt vom Nacht-Runner aus `--model`, Issue #193); in einer interaktiven Session ist sie leer, dann lautet der Wert woertlich `unbekannt`. **Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` (Schritt 3.5) muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
+Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Autor-Modell: <wert>`. Der Wert entsteht in dieser Reihenfolge:
+
+1. `KIT_AGENT_MODEL`, wenn gesetzt — der Nacht-Runner fuellt sie aus `--model` (Issue #193).
+2. sonst die **Selbstauskunft der Session**: das Modell, unter dem sie laeuft.
+3. nur wenn beides nicht zu ermitteln ist: woertlich `unbekannt`.
+
+`unbekannt` ist der Ausnahmefall, nicht der Normalfall. Die fruehere Fassung schrieb ihn fuer jede interaktive Session vor — und erzeugte damit genau den Zustand, den `/issue-review` hinterher per Rueckfrage reparieren muss (Issue #226).
+
+**Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` (Schritt 3.5) muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
 
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet (Issue #213). Eine Bitte im Issue-Text ist genau die Leitplanke, die unter Druck uebersprungen wird: Am 2026-08-06 sind daran zwei Skill-Issues in einem Nachtlauf gescheitert, und zwei weitere Kopien waren davor schon still veraltet.
 

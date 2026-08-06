@@ -50,6 +50,14 @@ Ein Modell aus einem anderen Haus bringt eine andere Sorte Fehler zum Vorschein 
 
 Praktisch heißt das: Der Prüfer darf kein fest verdrahtetes Modell sein, sondern muss ein Adapter sein. Text hinein, Text heraus. Was dazwischen läuft, geht das Verfahren nichts an. Damit nimmt jedes Werkzeug teil, das man ansprechen kann, und die Liste veraltet nicht, wenn eine neue Modellgeneration erscheint.
 
+Und dann braucht es eine ausdrückliche Zuordnung, wer wen prüft. Das klingt nach Bürokratie und ist die Lehre aus einem Fehler, den ich beim Bau genau dieses Verfahrens gemacht habe.
+
+Meine erste Fassung hatte keine Tabelle, sondern eine Regel: nimm die ersten beiden Prüfer aus der Liste, die nicht der Autor sind. Das ist elegant, spart Pflege und funktioniert — bis man nachrechnet. Bei vier Prüfern greifen immer die vorderen drei. Der vierte kommt in keinem einzigen Fall zum Zug.
+
+Der vierte war das fremde Modell. Ausgerechnet der Prüfer, dessen ganzer Wert darin besteht, die blinden Flecken der anderen nicht zu teilen, war durch die Sortierung stillgelegt. Nichts daran war kaputt; es lief, es lieferte Befunde, es sah vollständig aus.
+
+Wer so ein Verfahren aufsetzt, sollte einmal die vollständige Tabelle ausgeben lassen und sie ansehen. Nicht die Regel prüfen — die Ergebnisse. Eine Regel, die man im Kopf ausrechnen muss, verbirgt genau die Fälle, die man nicht bedacht hat.
+
 ## Die Gegenkraft, die man einbauen muss
 
 Hier kommt die Erfahrung, die ich nicht erwartet hatte.

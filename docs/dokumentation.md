@@ -529,15 +529,43 @@ Schritt 3.5 sitzt zwischen `/issues` und dem GO: Zwei Modelle, die das Issue **n
   "rounds": 1,
   "requiredBeforeReady": false,
   "reviewers": [
-    { "name": "opus",   "kind": "claude",  "model": "claude-opus-5" },
-    { "name": "sonnet", "kind": "claude",  "model": "claude-sonnet-5" },
-    { "name": "fable",  "kind": "claude",  "model": "claude-fable-5" },
-    { "name": "codex",  "kind": "command", "command": "codex exec --model gpt-5" }
+    { "name": "opus",   "kind": "claude", "model": "claude-opus-5" },
+    { "name": "sonnet", "kind": "claude", "model": "claude-sonnet-5" },
+    { "name": "fable",  "kind": "claude", "model": "claude-fable-5" }
   ]
 }
 ```
 
-Ausgewählt werden die ersten zwei Einträge, deren `name` nicht dem Autor-Modell des Issues entspricht. **Die Reihenfolge ist die Steuerung:** Wer eine feste Paarung will, sortiert die Liste entsprechend — eine Matrix „Autor → Reviewer-Paar" braucht es dafür nicht, und sie würde bei jeder neuen Modellgeneration veralten.
+Die Vorlage bringt nur die Anthropic-Familie mit. Ein fremdes Modell kommt als zusätzlicher Eintrag dazu — mehr dazu unten. Es ist bewusst nicht voreingestellt: Nicht jeder hat Codex installiert, manche wollen Gemini, und eine Vorlage, deren Vorflug beim ersten Lauf rot meldet, schreckt ab.
+
+Wer wen prüft, steht in `pairs`:
+
+```json
+"pairs": {
+  "opus":   ["sonnet", "fable"],
+  "sonnet": ["opus", "fable"],
+  "haiku":  ["sonnet", "opus"]
+}
+```
+
+Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die ersten zwei Reviewer, die nicht der Autor sind.
+
+**Verlass dich nicht auf die Regel allein.** Sie wählt immer die vordersten Einträge — bei vier konfigurierten Reviewern kommt der vierte in keinem einzigen Fall zum Zug. Wer ein fremdes Modell hinten in die Liste schreibt, hat es damit faktisch abgeschaltet. Genau das ist beim Bau dieses Verfahrens passiert, und es ist der Grund, warum es `pairs` gibt.
+
+Die vollständige Zuordnung lässt sich ablesen statt ausrechnen:
+
+```bash
+node .claude/kit/board.mjs issue-review matrix
+```
+
+```
+opus     -> codex, sonnet      (pairs)
+fable    -> opus, sonnet       (regel)
+```
+
+Die Spalte `quelle` sagt, ob die Zeile aus `pairs` oder aus dem Fallback stammt. Wer dort `regel` liest, obwohl er einen Eintrag erwartet hatte, hat den Autor-Namen anders geschrieben.
+
+Zwei Dinge sind harte Fehler, keine stillen Skips: ein Name in `pairs`, den es in `reviewers` nicht gibt, und ein Autor, der sich selbst nennt.
 
 Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die ersten zwei Reviewer genommen.
 
