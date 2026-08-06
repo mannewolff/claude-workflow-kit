@@ -1760,7 +1760,7 @@ async function kontextLastLog(args) {
 }
 
 // ============================================================
-// Issue-Review-Achse (Schritt 3.5, Issue #220)
+// Issue-Review-Achse (Issue #220)
 // ============================================================
 //
 // Ein Issue ist die Quelle der Wahrheit fuer die Implementierung — ein Fehler darin

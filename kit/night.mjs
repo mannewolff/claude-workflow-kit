@@ -266,7 +266,7 @@ function isFachlich(title) {
 // mit demselben Issue (kanban-kit#494): je Lauf eine verbrannte Session plus ein
 // Kommentar, der wie ein Infrastrukturproblem aussieht. Vorhersehbare Modell-
 // Entscheidungen gehoeren ins Gate, nicht in Prompts.
-// Review-Marker aus Schritt 3.5 (Issue #223). Anders als die beiden Filter darueber
+// Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
 // greift dieser am BODY: Der Marker steht im Kontext-Abschnitt, nicht im Titel. Der
 // Body liegt ohnehin vor, weil parseDeps ihn braucht — kein zusaetzlicher Board-Aufruf.
 //
@@ -851,7 +851,7 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
   if (config.issueReview?.requiredBeforeReady && !hasReviewMarker(full.body)) {
     log(`#${top.id} uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).`);
     board("issue", "comment", String(top.id), "--text",
-      `Nachtlauf: Ungeprueft — bitte erst /issue-review #${top.id} laufen lassen (Schritt 3.5), dann wieder nach Ready.`);
+      `Nachtlauf: Ungeprueft — bitte erst /issue-review #${top.id} laufen lassen, dann wieder nach Ready.`);
     board("issue", "move", String(top.id), "backlog");
     deferred++;
     continue;

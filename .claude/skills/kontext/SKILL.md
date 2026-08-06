@@ -1,12 +1,12 @@
 ---
 name: kontext
-description: Schritt 0 des 9-Schritt-Prozesses — lädt den Memory-Vault und gibt einen kurzen Session-Start-Stand. Nutze diesen Skill wenn der Nutzer /kontext aufruft oder die Session mit dem Projektstand starten will.
+description: Lädt den Memory-Vault und gibt einen kurzen Session-Start-Stand. Nutze diesen Skill wenn der Nutzer /kontext aufruft oder die Session mit dem Projektstand starten will.
 user-invocable: true
 ---
 
 # Kontext
 
-Schritt 0: Session-Start. Vault laden, Projektstand holen, kurzen Überblick geben.
+Session-Start: Vault laden, Projektstand holen, kurzen Überblick geben. Werkzeug neben dem Prozess — nützlich zu Beginn jeder Session, aber der Prozess läuft auch ohne.
 
 ## Vorbedingung: Config-Modus bestimmen
 

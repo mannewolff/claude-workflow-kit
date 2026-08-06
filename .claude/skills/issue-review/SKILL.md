@@ -1,12 +1,12 @@
 ---
 name: issue-review
-description: Schritt 3.5 des 9-Schritt-Prozesses — lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, bevor es nach Ready wandert. Nutze diesen Skill wenn der Nutzer /issue-review aufruft oder Issues vor dem GO schärfen will.
+description: Lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, bevor es nach Ready wandert. Nutze diesen Skill wenn der Nutzer /issue-review aufruft oder Issues vor dem GO schärfen will.
 user-invocable: true
 ---
 
 # Issue Review
 
-Schritt 3.5: Zwischen `/issues` (Schritt 3) und dem GO (Schritt 4). Zwei Modelle, die das Issue nicht geschrieben haben, prüfen es — und schärfen es, bevor jemand es implementiert.
+Werkzeug neben dem Prozess, zwischen `/issues` (Schritt 3) und dem GO (Schritt 4). Zwei Modelle, die das Issue nicht geschrieben haben, prüfen es — und schärfen es, bevor jemand es implementiert.
 
 **Warum das trägt:** Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist. Was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf — er ergänzt es unbewusst. Ein fremdes Modell hat nur den Text. Das ist derselbe Grund, aus dem der Code-Review in Schritt 7 funktioniert, nur eine Stufe früher und mit höherem Einsatz: Ein Fehler im Issue pflanzt sich in die ganze Umsetzung fort.
 
@@ -174,7 +174,7 @@ Mehr als eine Runde findet erfahrungsgemäß vor allem Geschmacksfragen. Wenn di
 Die Reviewer-Ausgaben gehen **unverändert** als Board-Kommentar ans Issue. Sie sind Verlauf, nicht verhandelter Stand (Regel aus Issue #155):
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Issue-Review (Schritt 3.5), Runde 1
+node .claude/kit/board.mjs issue comment <id> --text "## Issue-Review, Runde 1
 
 Reviewer: opus (Vollständigkeit), codex (Scope)
 
@@ -212,7 +212,7 @@ Die Formulierung ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue ge
 Zusammenfassung über alle bearbeiteten Issues:
 
 ```
-### Issue-Review (Schritt 3.5)
+### Issue-Review
 
 - #205 → 3 Funde (1 BLOCKER), Body übernommen, Marker gesetzt
 - #207 → keine Funde, Marker gesetzt

@@ -1,12 +1,12 @@
 ---
 name: implement-done
-description: Granulare Einsteiger-Variante von Schritt 5 (Teil 2) — implementiert gegen die von /implement-test vorbereiteten roten Tests, bis sie gruen sind, committet und verschiebt nach In review. Nutze diesen Skill wenn der Nutzer /implement-done aufruft oder nach /implement-test die Implementierung gegen die roten Tests fortsetzen will.
+description: Ersetzt Schritt 5 durch eine feinere Gangart (Teil 2 von 2) — implementiert gegen die von /implement-test vorbereiteten roten Tests, bis sie gruen sind, committet und verschiebt nach In review. Nutze diesen Skill wenn der Nutzer /implement-done aufruft oder nach /implement-test die Implementierung gegen die roten Tests fortsetzen will.
 user-invocable: true
 ---
 
 # Implement Done
 
-Granulare Variante von Schritt 5 (Teil 2 von 2): gegen die von `/implement-test` geschriebenen, roten Tests implementieren, bis sie grün sind, committen, nach In review verschieben.
+Ersetzt Schritt 5 durch eine feinere Gangart (Teil 2 von 2): gegen die von `/implement-test` geschriebenen, roten Tests implementieren, bis sie grün sind, committen, nach In review verschieben.
 
 ## Vorbedingung
 

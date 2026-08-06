@@ -1,12 +1,12 @@
 ---
 name: implement-test
-description: Granulare Einsteiger-Variante von Schritt 5 (Teil 1) — schreibt gegen das naechste Ready-Issue nur die Tests (rot) und stoppt vor der Implementierung. Nutze diesen Skill wenn der Nutzer /implement-test aufruft oder testgetrieben zuerst nur die roten Tests sehen will, bevor implementiert wird.
+description: Ersetzt Schritt 5 durch eine feinere Gangart (Teil 1 von 2) — schreibt gegen das naechste Ready-Issue nur die Tests (rot) und stoppt vor der Implementierung. Nutze diesen Skill wenn der Nutzer /implement-test aufruft oder testgetrieben zuerst nur die roten Tests sehen will, bevor implementiert wird.
 user-invocable: true
 ---
 
 # Implement Test
 
-Granulare Variante von Schritt 5 (Teil 1 von 2): Tests gegen ein Ready-Issue schreiben, rot laufen lassen, stoppen. Für Neulinge, die den Rot→Grün-Übergang bewusst sehen wollen, statt Test und Implementierung in einem Rutsch wie bei `/implement-ready`.
+Ersetzt Schritt 5 durch eine feinere Gangart (Teil 1 von 2): Tests gegen ein Ready-Issue schreiben, rot laufen lassen, stoppen. Für Neulinge, die den Rot→Grün-Übergang bewusst sehen wollen, statt Test und Implementierung in einem Rutsch wie bei `/implement-ready`.
 
 ## Vorbedingung
 

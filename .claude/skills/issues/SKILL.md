@@ -34,7 +34,7 @@ Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Auto
 
 `unbekannt` ist der Ausnahmefall, nicht der Normalfall. Die fruehere Fassung schrieb ihn fuer jede interaktive Session vor — und erzeugte damit genau den Zustand, den `/issue-review` hinterher per Rueckfrage reparieren muss (Issue #226).
 
-**Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` (Schritt 3.5) muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
+**Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
 
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet (Issue #213). Eine Bitte im Issue-Text ist genau die Leitplanke, die unter Druck uebersprungen wird: Am 2026-08-06 sind daran zwei Skill-Issues in einem Nachtlauf gescheitert, und zwei weitere Kopien waren davor schon still veraltet.
 
@@ -112,7 +112,7 @@ Halte die Modellnamen generisch ("Standard-Modell" / "stärkstes verfügbares Mo
 Schreibe darunter:
 > "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO."
 
-Weise zusaetzlich auf **Schritt 3.5** hin: `/issue-review` laesst die frisch angelegten Issues von zwei Modellen pruefen, die sie nicht geschrieben haben. Das GO ist die Bewegung nach Ready — dorthin sollte kein ungepruefte Issue.
+Weise zusaetzlich auf **`/issue-review`** hin: Es laesst die frisch angelegten Issues von zwei Modellen pruefen, die sie nicht geschrieben haben. Das GO ist die Bewegung nach Ready — dorthin sollte kein ungepruefte Issue.
 
 ## Stop-Punkt
 

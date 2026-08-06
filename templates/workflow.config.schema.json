@@ -213,7 +213,7 @@
     },
     "issueReview": {
       "type": "object",
-      "description": "Issue-Review ueber mehrere Modelle (Schritt 3.5, Issue #220). Zwei Reviewer, die das Issue nicht geschrieben haben, pruefen es vor dem GO. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Issue-Review ueber mehrere Modelle (Issue #220). Zwei Reviewer, die das Issue nicht geschrieben haben, pruefen es vor dem GO. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "rounds": {
           "type": "integer",

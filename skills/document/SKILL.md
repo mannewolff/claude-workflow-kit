@@ -1,12 +1,12 @@
 ---
 name: document
-description: Schritt 9.5 des 9-Schritt-Prozesses — schreibt nach der Session einen Tageslog-Eintrag in den Vault und aktualisiert die Projektnotiz. Nutze diesen Skill wenn der Nutzer /document aufruft oder die Session dokumentieren will.
+description: Schreibt nach der Session einen Tageslog-Eintrag in den Vault und aktualisiert die Projektnotiz. Nutze diesen Skill wenn der Nutzer /document aufruft oder die Session dokumentieren will.
 user-invocable: true
 ---
 
 # Document
 
-Schritt 9.5: Session-Ende. Was in dieser Session gebaut, entschieden und gelernt wurde, in den Memory-Vault schreiben.
+Werkzeug neben dem Prozess, am Session-Ende: Was in dieser Session gebaut, entschieden und gelernt wurde, in den Memory-Vault schreiben.
 
 ## Tragendes Prinzip: Eine Datei, ein Schreiber
 
