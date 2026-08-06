@@ -10,15 +10,17 @@ Schritt 0: Session-Start. Vault laden, Projektstand holen, kurzen Überblick geb
 
 ## Vorbedingung: Config-Modus bestimmen
 
-Suche die Config in dieser Reihenfolge (erstes gefundenes gewinnt):
-1. `.claude/kontext.config.json` im aktuellen Projektverzeichnis
-2. `~/.claude/kontext.config.json` (global)
+Beide Configs werden gelesen und **feldweise gemergt**, lokale Felder gewinnen:
+1. `~/.claude/kontext.config.json` (global) — die Basis
+2. `.claude/kontext.config.json` im aktuellen Projektverzeichnis — überschreibt einzelne Felder
 
-Daraus ergibt sich einer von drei Modi:
+Kein "erstes gefundenes gewinnt": Eine lokale Config, die nur `project`/`parentProject` setzt, erbt `vault` und `always` von global. Bei "erstes gewinnt" wäre der Vault-Pfad verloren.
 
-**Modus A (Vollmodus):** Config gefunden und `vault`-Feld gesetzt. Normaler Ablauf mit Vault, Projektnotiz, always-Dateien.
+Daraus ergibt sich einer von zwei Modi:
 
-**Modus B (Degraded Mode):** Config gefunden aber kein `vault`-Feld, oder keine Config gefunden. Vault-Schritte überspringen. Nur offene Issues und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
+**Modus A (Vollmodus):** Nach dem Merge ist `vault` gesetzt. Normaler Ablauf mit Vault, Projektnotizen, always-Dateien.
+
+**Modus B (Degraded Mode):** Nach dem Merge kein `vault` (kein Feld gesetzt oder gar keine Config gefunden). Vault-Schritte überspringen. Nur offene Issues und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
 
 Kein harter Abbruch. Beide Modi liefern sinnvollen Output.
 
@@ -30,20 +32,32 @@ Felder aus `kontext.config.json` (alle optional):
 - `vault`: absoluter Pfad zum Memory-Vault
 - `always`: Array von Dateipfaden relativ zum `vault`-Root (immer lesen)
 - `projectDocs`: Array von Pfaden oder Glob-Mustern relativ zum Projektverzeichnis. Fallback wenn nicht gesetzt: `["CLAUDE-*", ".claude/CLAUDE-*"]`
+- `project`: Override für den Vault-Projektnamen (nur nötig wenn Repo-Name ≠ Vault-Ordnername)
+- `parentProject`: Dach-Projekt im Multi-Repo-Setup. Gesetzt, wenn dieses Repo ein Service eines größeren Systems ist — dann liegen die Service-Notizen im Ordner des Dach-Projekts und die Dach-Notiz kommt dazu
+- `logPath`: Muster für die Tageslog-Datei relativ zum `vault`-Root, Default `Log/{date}.md`. Nur `/document` schreibt dorthin
 
 ### 2. Vault-Dateien lesen (nur Modus A)
 
 Lies alle Dateien aus `always` relativ zum `vault`-Pfad. Typisch: `Index.md` (Struktur + aktive Projekte) und `Profil.md` (Nutzerprofil).
 
-### 3. Projektnotiz auto-detektieren (nur Modus A)
+### 3. Projektnotizen lesen (nur Modus A)
+
+Der Skill baut keine Vault-Pfade selbst zusammen. Ein Aufruf liefert sie:
 
 ```bash
-git remote get-url origin
+node .claude/kit/board.mjs kontext paths
 ```
 
-Extrahiere den Repo-Namen (letztes Segment ohne `.git`) → `{name}`. Suche `{vault}/Projekte/{name}/{name}.md`. Wenn gefunden: lesen.
+Relevante Felder im JSON:
+- `parentNote`: absolute Datei der Dach-Notiz — nur gesetzt wenn `parentProject` konfiguriert ist, sonst `null`
+- `projectNote`: absolute Datei der Notiz dieses Repos
+- `project`, `parentProject`: für die Kopfzeile in Schritt 6
 
-Wenn kein Repo oder kein Match: nur die `always`-Dateien zeigen, keinen Fehler werfen.
+Lesereihenfolge: **`parentNote` zuerst** (sofern nicht `null`), **`projectNote` danach**. Die gemeinsame Klammer bildet den Rahmen, in den der Service-Kontext gehört — umgekehrt gelesen steht die Service-Sicht ohne System-Kontext da.
+
+Fehlt eine der beiden Dateien im Vault: leise überspringen, kein Fehler. Nur die `always`-Dateien zeigen reicht.
+
+**Wenn das Kommando fehlschlägt** (unbekannte Achse `kontext` — ein Projekt mit älterer `board.mjs`): auf das bisherige Verhalten zurückfallen statt abzubrechen. Also Projektname über `node .claude/kit/board.mjs code repo-name` (letztes Segment ohne `.git`, `project`-Feld aus der Config gewinnt), Projektnotiz `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. Ein Session-Start darf daran nicht scheitern.
 
 ### 4. Projekt-spezifische Docs lesen (beide Modi)
 
@@ -68,7 +82,9 @@ Wenn der Adapter einen Fehler zurueckgibt: Schritt ueberspringen, kein harter Ab
 
 ### 6. Zusammenfassung ausgeben
 
-Kompakter Session-Start-Stand:
+Kompakter Session-Start-Stand.
+
+**Ohne `parentProject`** (Ein-Repo-Fall, eine Projektebene):
 
 ```
 ## Session-Start — {Projektname}
@@ -79,6 +95,25 @@ Kompakter Session-Start-Stand:
 
 ### Letzte Entscheidungen / Zuletzt aktualisiert
 (aus der Projektnotiz — nur Modus A)
+
+### Was als nächstes kommt
+(aus der Projektnotiz oder Board-Ready-Spalte)
+```
+
+**Mit `parentProject`** (Multi-Repo-Setup): Der Kopf benennt beide Ebenen, damit sofort sichtbar ist, in welchem Service man sitzt und zu welchem System er gehört. Wurden beide Notizen gelesen, bleiben systemweiter Stand und Stand dieses Service getrennt — eine zusammengerührte Liste wäre beim Einstieg wertlos, weil nicht mehr erkennbar ist, was für alle Services gilt:
+
+```
+## Session-Start — {parentProject} / {project}
+
+### Aktive Issues
+- #N Titel [Status]
+- ...
+
+### Systemweiter Stand ({parentProject})
+(aus der Dach-Notiz — Abschnitt weglassen wenn sie fehlt)
+
+### Stand {project}
+(aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert)
 
 ### Was als nächstes kommt
 (aus der Projektnotiz oder Board-Ready-Spalte)
