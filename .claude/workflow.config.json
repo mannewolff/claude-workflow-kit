@@ -1,7 +1,10 @@
 {
   "codeHost": "github",
   "issueTracker": "github",
-  "buildChecks": ["node --test", "node tools/sync-blobs.mjs --check"],
+  "buildChecks": [
+    "node --test",
+    "node tools/sync-blobs.mjs --check"
+  ],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
@@ -15,14 +18,40 @@
   "local": {
     "issuesDir": "issues"
   },
-  "github": {
-    "projectNumber": 14
-  },
   "columns": {
     "backlog": "Backlog",
     "ready": "Ready",
     "in_progress": "In progress",
     "in_review": "In review",
     "done": "Done"
+  },
+  "github": {
+    "projectNumber": 14
+  },
+  "issueReview": {
+    "rounds": 1,
+    "requiredBeforeReady": true,
+    "reviewers": [
+      {
+        "name": "opus",
+        "kind": "claude",
+        "model": "claude-opus-5"
+      },
+      {
+        "name": "sonnet",
+        "kind": "claude",
+        "model": "claude-sonnet-5"
+      },
+      {
+        "name": "fable",
+        "kind": "claude",
+        "model": "claude-fable-5"
+      },
+      {
+        "name": "codex",
+        "kind": "command",
+        "command": "codex exec --model gpt-5"
+      }
+    ]
   }
 }

@@ -51,6 +51,8 @@ Wenn Ready leer ist:
 
 Ohne Fehler enden.
 
+**Ungepruefte Issues: Hinweis, kein Stopp.** Traegt ein Ready-Issue keine Marker-Zeile `Issue-Review:` im Kontext-Abschnitt, ist es nicht durch Schritt 3.5 gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
+
 ### 1. Issue nach In progress verschieben
 
 ```bash
