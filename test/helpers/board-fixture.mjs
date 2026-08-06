@@ -143,6 +143,10 @@ export function starteServer(antwort) {
  * Passt keine Regel, endet der Aufruf mit Exit 127 und einer sprechenden Meldung —
  * ein unerwartetes Kommando faellt so im Test auf, statt still zu gelingen.
  */
+// Die Kommando-Grammatik liegt neben den Fixtures und wird an jedes Fake-Binary
+// durchgereicht (Issue #217).
+const GRAMMATIK_PFAD = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "cli-grammar.json");
+
 export function fakeCli(dir, name, regeln) {
   const binDir = join(dir, "fakebin");
   mkdirSync(binDir, { recursive: true });
@@ -157,8 +161,8 @@ export function fakeCli(dir, name, regeln) {
   // (Node wuerde eine endungslose Datei mit import-Syntax als CommonJS lesen).
   const wrapper = [
     "#!/bin/sh",
-    `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(implPfad)} ` +
-      `${JSON.stringify(specPfad)} ${JSON.stringify(logPfad)} "$@"`,
+    `FAKE_CLI_NAME=${JSON.stringify(name)} exec ${JSON.stringify(process.execPath)} ${JSON.stringify(implPfad)} ` +
+      `${JSON.stringify(specPfad)} ${JSON.stringify(logPfad)} ${JSON.stringify(GRAMMATIK_PFAD)} "$@"`,
     "",
   ].join("\n");
   const cliPfad = join(binDir, name);
@@ -185,9 +189,52 @@ const FAKE_IMPL = `// Generiert von test/helpers/board-fixture.mjs (Issue #188) 
 import { appendFileSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const [specPfad, logPfad, ...argv] = process.argv.slice(2);
+const [specPfad, logPfad, grammatikPfad, ...argv] = process.argv.slice(2);
 const zeile = argv.join(" ");
 const regeln = JSON.parse(readFileSync(specPfad, "utf-8"));
+
+// Grammatik-Pruefung VOR dem Regel-Matching (Issue #217): Ein Fake, das nur die
+// Regeln der Tests kennt, akzeptiert auch Kommandos, die es gar nicht gibt — so
+// ueberlebte 'glab issue note create' monatelang, abgesichert von einem Test, der
+// die kaputte Syntax festhielt (Issue #216). Steht das CLI nicht in der Grammatik
+// (Fake-git, Fake-claude), wird nicht geprueft.
+if (grammatikPfad && existsSync(grammatikPfad)) {
+  const alle = JSON.parse(readFileSync(grammatikPfad, "utf-8"));
+  const cliName = process.env.FAKE_CLI_NAME;
+  const grammatik = cliName ? alle[cliName] : null;
+  if (grammatik) {
+    // Positionsargumente sind alles VOR dem ersten Flag. Nicht "alles ohne
+    // Minus" — dabei zaehlten Flag-Werte mit (--json nameWithOwner) und jeder
+    // Aufruf haette zu viele Argumente. Alle Aufrufe des Adapters halten diese
+    // Reihenfolge ein, wie es bei gh und glab ueblich ist.
+    const ersterFlag = argv.findIndex((a) => a.startsWith("-"));
+    const positional = ersterFlag === -1 ? argv : argv.slice(0, ersterFlag);
+    let treffer = null;
+    for (const pfad of Object.keys(grammatik)) {
+      const teile = pfad.split(" ");
+      if (teile.every((t, i) => positional[i] === t)) {
+        if (!treffer || pfad.split(" ").length > treffer.split(" ").length) treffer = pfad;
+      }
+    }
+    if (!treffer) {
+      const kandidaten = Object.keys(grammatik).filter((p) => p.split(" ")[0] === positional[0]);
+      process.stderr.write(
+        \`fake-cli: '\${cliName} \${zeile}' ist kein gueltiges Kommando.\n\` +
+        \`Bekannte Kommandos\${positional[0] ? \` unter '\${positional[0]}'\` : ""}: \` +
+        \`\${(kandidaten.length ? kandidaten : Object.keys(grammatik)).join(", ")}\n\`
+      );
+      process.exit(2);
+    }
+    const erwartet = grammatik[treffer].args;
+    const gezaehlt = positional.length - treffer.split(" ").length;
+    if (gezaehlt !== erwartet) {
+      process.stderr.write(
+        \`fake-cli: '\${cliName} \${treffer}' erwartet \${erwartet} Argument(e), bekam \${gezaehlt}: \${zeile}\n\`
+      );
+      process.exit(2);
+    }
+  }
+}
 const bisher = existsSync(logPfad)
   ? readFileSync(logPfad, "utf-8").split("\\n").filter(Boolean).map((z) => JSON.parse(z))
   : [];
