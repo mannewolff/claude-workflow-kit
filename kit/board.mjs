@@ -18,6 +18,7 @@
  *   node board.mjs issue comment <id> --text "..."
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
+ *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -67,12 +68,15 @@ Nutzung:
   node board.mjs issue comment <id> --text "..."
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
+  node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
 
   node board.mjs --version
 
 Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}
 
 Konfiguration: .claude/workflow.config.json (issueTracker, codeHost)
+Fuer die kontext-Achse zusaetzlich: ~/.claude/kontext.config.json und
+.claude/kontext.config.json (gemergt, lokale Felder gewinnen).
 Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt sie,
 wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
 `;
@@ -151,7 +155,11 @@ function configRoot() {
   return process.env.KIT_ROOT ? resolve(process.env.KIT_ROOT) : join(__dirname, "..");
 }
 
-function loadConfig() {
+// Liefert die Config oder null, wenn es keine gibt. Der weiche Weg fuer Aufrufer, die
+// ohne Config weiterarbeiten koennen (kontext paths, Issue #202). Eine vorhandene, aber
+// kaputte Datei bleibt ein harter Fehler: Sie stillschweigend wie "keine Config" zu
+// behandeln, wuerde einen Tippfehler in einen unsichtbaren Verhaltenswechsel verwandeln.
+function readWorkflowConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
     join(configRoot(), ".claude", "workflow.config.json"),
@@ -169,9 +177,15 @@ function loadConfig() {
       }
     }
   }
-  fail(
-    "Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren."
-  );
+  return null;
+}
+
+function loadConfig() {
+  const config = readWorkflowConfig();
+  if (!config) {
+    fail("Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren.");
+  }
+  return config;
 }
 
 // --- Argument-Parser ---
@@ -1330,6 +1344,117 @@ function resolveCodeHost(config) {
 }
 
 // ============================================================
+// Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
+// ============================================================
+
+// Die Zielpfade im Memory-Vault entstehen hier in Code statt als Prosa im Skill-Prompt.
+// Grund: Teilen sich mehrere Service-Repos einen Vault, schrieben bisher alle in dieselbe
+// Tageslog-Datei — in einem Nextcloud-Vault ein Sync-Konflikt, bei parallelen Sessions ein
+// ueberschriebener Abschnitt. Und ein stiller Pfadfehler faellt bei einem Skill, der einmal
+// pro Session laeuft, erst Wochen spaeter auf: genau die Fehlerklasse, fuer die das
+// Leitplanken-Prinzip (Issue #122) ein Gate statt einer Formulierung verlangt.
+
+const KONTEXT_DEFAULTS = {
+  logPath: "Log/{date}.md",
+  projectDocs: ["CLAUDE-*", ".claude/CLAUDE-*"],
+};
+
+const KNOWN_CODE_HOSTS = ["github", "gitlab", "local"];
+
+/**
+ * Feldweiser Merge der beiden kontext.config.json, lokale Felder gewinnen. Fehlende
+ * Datei = leeres Objekt, kein Fehler.
+ *
+ * Bewusst Merge und nicht "erstes gefundenes gewinnt": Der Multi-Repo-Fall braucht eine
+ * lokale Config, die nur `project`/`parentProject` setzt und `vault` von global erbt —
+ * bei "erstes gewinnt" waere der Vault-Pfad verloren.
+ */
+export function mergeKontextConfig(globalCfg, localCfg) {
+  return { ...(globalCfg || {}), ...(localCfg || {}) };
+}
+
+/**
+ * Berechnet die Zielpfade im Vault. Reine Funktion ohne Dateisystem-Zugriff — Projektname
+ * und Datum kommen von aussen (das --date-Flag ist die Testbarkeits-Naht, ohne es waere
+ * jeder Erwartungswert datumsabhaengig).
+ *
+ * Ohne `vault` ist das Ergebnis mode "degraded" statt eines Fehlers: /kontext und
+ * /document haben dafuer einen dokumentierten Modus ohne persistentes Memory.
+ */
+export function resolveKontextPaths({ cfg = {}, project, date }) {
+  const projectName = project || cfg.project || "";
+  const parentProject = cfg.parentProject || null;
+  // projectDocs sind Glob-Muster relativ zum PROJEKT-Verzeichnis, keine Vault-Pfade:
+  // Sie werden unveraendert durchgereicht und gelten auch im Degraded Mode.
+  const projectDocs = cfg.projectDocs || KONTEXT_DEFAULTS.projectDocs;
+  const vault = cfg.vault || null;
+
+  if (!vault) {
+    return {
+      mode: "degraded", vault: null, project: projectName, parentProject,
+      log: null, projectNote: null, parentNote: null, always: [], projectDocs,
+    };
+  }
+
+  // Ein logPath ohne {project} wird nicht stillschweigend um den Projektnamen ergaenzt,
+  // auch nicht bei gesetztem parentProject: Der Wert ist eine Entscheidung des Nutzers.
+  const logPath = cfg.logPath || KONTEXT_DEFAULTS.logPath;
+  // Ohne parentProject liegt die Notiz wie bisher in ihrem eigenen Ordner; mit ihm
+  // sammeln sich die Service-Notizen im Ordner des Dach-Projekts.
+  const notizOrdner = parentProject || projectName;
+  return {
+    mode: "full",
+    vault,
+    project: projectName,
+    parentProject,
+    log: join(vault, logPath.replaceAll("{date}", date).replaceAll("{project}", projectName)),
+    projectNote: join(vault, "Projekte", notizOrdner, `${projectName}.md`),
+    parentNote: parentProject ? join(vault, "Projekte", parentProject, `${parentProject}.md`) : null,
+    always: (cfg.always || []).map((datei) => join(vault, datei)),
+    projectDocs,
+  };
+}
+
+function readKontextConfigFile(pfad) {
+  if (!existsSync(pfad)) return {};
+  try {
+    return JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    fail(`kontext.config.json konnte nicht gelesen werden: ${pfad}`);
+  }
+}
+
+// Eigene Suche statt loadConfig(): Das ist kontext.config.json, nicht
+// workflow.config.json. Home ueber homedir() und nicht ueber HOME — unter Windows
+// liest homedir() USERPROFILE (Issue #187).
+function loadKontextConfig() {
+  return mergeKontextConfig(
+    readKontextConfigFile(join(homedir(), ".claude", "kontext.config.json")),
+    readKontextConfigFile(resolve(".claude", "kontext.config.json"))
+  );
+}
+
+// Letzte Stufe der Projektnamen-Praezedenz. Bewusst weich: board.mjs ist ein kopierbares
+// Single-File-Tool und muss `kontext paths` auch in einem Projekt beantworten, das keine
+// workflow.config.json (und damit keinen Code-Host) hat — dort ist der Verzeichnisname
+// die beste verfuegbare Auskunft. resolveCodeHost() wuerde bei unbekanntem Wert hart
+// abbrechen, deshalb die Pruefung davor.
+async function kontextRepoName() {
+  const config = readWorkflowConfig();
+  if (!config || !KNOWN_CODE_HOSTS.includes(config.codeHost)) return basename(resolve("."));
+  const repoName = await resolveCodeHost(config).getRepoName();
+  return repoName.replace(/\.git$/, "").split("/").pop();
+}
+
+// Tagesdatum lokal statt per toISOString(): Eine Session um 23:30 MESZ gehoert ins Log
+// von heute, nicht in das von morgen — in UTC waere der Tag da schon gewechselt.
+function heute() {
+  const jetzt = new Date();
+  const zweistellig = (n) => String(n).padStart(2, "0");
+  return `${jetzt.getFullYear()}-${zweistellig(jetzt.getMonth() + 1)}-${zweistellig(jetzt.getDate())}`;
+}
+
+// ============================================================
 // Dispatch
 // ============================================================
 
@@ -1425,6 +1550,30 @@ async function dispatchCode(command, args) {
   }
 }
 
+// Ein Flag ohne Wert wird von parseArgs zu true. Fuer --project/--date waere das ein
+// stiller Fehlgriff (falscher Projektname, heutiges statt gemeintem Datum) — deshalb
+// Abbruch mit Meldung statt Rueckfall auf den Default.
+function kontextOption(args, name) {
+  if (args[name] === true) fail(`--${name} braucht einen Wert`);
+  return args[name];
+}
+
+// Praezedenz des Projektnamens: --project > cfg.project > Repo-Name > basename(cwd).
+async function kontextPaths(args) {
+  const cfg = loadKontextConfig();
+  const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
+  out(resolveKontextPaths({ cfg, project, date: kontextOption(args, "date") || heute() }));
+}
+
+async function dispatchKontext(command, args) {
+  switch (command) {
+    case "paths": return kontextPaths(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter kontext-Befehl: '${command}'`);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -1447,9 +1596,11 @@ async function main() {
     await dispatchIssue(command, args);
   } else if (axis === "code") {
     await dispatchCode(command, args);
+  } else if (axis === "kontext") {
+    await dispatchKontext(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext`);
   }
 }
 
