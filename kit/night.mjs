@@ -29,6 +29,10 @@
  *                      Verhalten: striktes ready[0])
  *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
  *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
+ *   --review           Review-Modus (Issue #233): laesst BACKLOG-Issues von
+ *                      /issue-review pruefen, statt Ready-Issues zu
+ *                      implementieren. Exklusiv zur Implementierungsschleife.
+ *   --review-label <n> Routing-Label des Review-Modus (Default kit:nightreview)
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -68,6 +72,16 @@
  * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146)
  * und `[Idee]` (rohe Idee ohne /plan-Zyklus, #192).
  *
+ * Review-Modus (--review, Issue #233): Statt Ready zu implementieren, laesst der
+ * Runner BACKLOG-Issues von /issue-review pruefen. Warum der Backlog und nicht
+ * Ready: Zwischen Review und Implementierung liegt das GO. Wuerde der Runner ein
+ * Ready-Issue erst reviewen und dann implementieren, haette der Mensch sein GO auf
+ * einen Text gegeben, der bei der Implementierung nicht mehr gilt — die
+ * Verantwortungsschwelle waere umgangen, ohne dass es jemandem auffaellt. Deshalb
+ * auch exklusiv: zwei Laeufe an zwei Abenden, mit dem Menschen dazwischen.
+ * Der Vorflug prueft hier zusaetzlich die Reviewer-Verfuegbarkeit (harter Stopp),
+ * die buildChecks-Pflicht entfaellt (es wird nichts gebaut und nichts committet).
+ *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
@@ -106,6 +120,13 @@ const BOARD_PATH = process.env.KIT_ROOT
 const KIT_VERSION = "1.31.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
+// Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
+// laufen in verschiedenen Naechten und meinen verschiedene Spalten — Review den
+// Backlog, Implementierung die Ready-Spalte.
+const DEFAULT_REVIEW_LABEL = "kit:nightreview";
+// Ein Review ist keine Implementierungsrunde: kein Build, kein Commit. Deshalb ein
+// eigenes, knapperes Limit statt --timeout-min (analog SALVAGE_TIMEOUT_MS).
+const REVIEW_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
 // --- Argumente ---
@@ -128,6 +149,16 @@ Flags:
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
+
+Review-Modus (prueft statt zu implementieren):
+  --review           laesst Backlog-Issues von /issue-review pruefen, statt
+                     Ready-Issues zu implementieren. Exklusiv: die
+                     Implementierungsschleife laeuft dann nicht.
+  --review-label <n> nur Backlog-Issues mit diesem Label pruefen
+                     (Default ${DEFAULT_REVIEW_LABEL}); 'none' schaltet den Filter ab
+
+  Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich —
+  deshalb sind es zwei Laeufe an zwei Abenden, nicht zwei Phasen in einer Nacht.
   --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
                      der laufenden Session mitloggen (via stream-json)
   --version          Kit-Stand dieser Datei
@@ -154,7 +185,7 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 }
 
 function parseArgs(argv) {
-  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL };
+  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
@@ -168,6 +199,8 @@ function parseArgs(argv) {
     } else if (a === "--max") args.max = Number(argv[++i]);
     else if (a === "--model") args.model = argv[++i];
     else if (a === "--label") args.label = argv[++i];
+    else if (a === "--review") args.review = true;
+    else if (a === "--review-label") args.reviewLabel = argv[++i];
     else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
@@ -778,7 +811,9 @@ async function main() {
     log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
   }
 
-  log(`Nacht-Runner startet (max ${args.max} Sessions, Modell ${args.model}, Label ${args.label}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
+  const modus = args.review ? "Review" : "Implementierung";
+  const aktivesLabel = args.review ? args.reviewLabel : args.label;
+  log(`Nacht-Runner startet (Modus ${modus}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -817,8 +852,77 @@ async function main() {
     fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`);
   }
   if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.");
-  if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
+  // Die buildChecks-Pflicht gilt nur der Implementierung. Im Review-Modus wird nichts
+  // gebaut und nichts committet — dort waere die Pruefung gegenstandslos und wuerde
+  // Projekte ohne buildChecks zu --no-checks-ok zwingen fuer einen Lauf, der gar nichts baut.
+  if (!args.review && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok");
+  }
+
+  // Reviewer-Vorflug (Issue #233). `issue-review check` ist fuer sich eine Auskunft,
+  // kein Gate — der interaktive Skill fragt den Menschen, wenn einer fehlt. Nachts
+  // fragt niemand, und ein unterbesetzter Lauf sieht am Board aus wie ein
+  // vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer wissen
+  // will, ob alle Reviewer stehen, faehrt vorher --dry-run.
+  //
+  // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
+  // der Lauf nichts an, der das Problem aufklaeren soll.
+  let reviewerBefund = null;
+  if (args.review) {
+    reviewerBefund = board("issue-review", "check");
+    for (const r of reviewerBefund.reviewers || []) {
+      log(`  Reviewer ${r.name} (${r.kind}): ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
+    }
+    if (!reviewerBefund.alleVerfuegbar && !args.dryRun) {
+      const fehlen = (reviewerBefund.reviewers || []).filter((r) => !r.verfuegbar).map((r) => `${r.name} (${r.grund})`);
+      fail(`Reviewer nicht verfuegbar: ${fehlen.join(", ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren oder aus issueReview.reviewers nehmen.`);
+    }
+  }
+
+  // --- Review-Modus (Issue #233) ---
+  //
+  // Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
+  // das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
+  if (args.review) {
+    const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
+    const backlog = board("issue", "list", "--status", "backlog");
+    const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel });
+
+    for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+
+    if (kandidaten.length === 0) {
+      log("Keine Review-Kandidaten im Backlog — nichts zu tun.");
+      if (reviewLabel !== null && backlog.length > 0) {
+        const vorhanden = [...new Set(backlog.flatMap((i) => i.labels || []))];
+        log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+        log(`  Tippfehler im --review-label-Wert? Mit --review-label none laeuft der Lauf ohne Label-Filter.`);
+      }
+      process.exit(0);
+    }
+
+    if (args.dryRun) {
+      let geplant = 0;
+      for (const k of kandidaten) {
+        const full = board("issue", "get", String(k.id));
+        if (hasReviewMarker(full.body)) {
+          log(`  #${k.id} ${k.title} -> wuerde uebersprungen (Review-Marker schon im Body)`);
+        } else if (geplant >= args.max) {
+          log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
+        } else {
+          geplant++;
+          log(`  #${k.id} ${k.title} -> Review-Session ${geplant}`);
+        }
+      }
+      log(`Dry-Run beendet: ${geplant} Review-Session(s) wuerden starten.`);
+      process.exit(0);
+    }
+
+    // Die Review-Schleife selbst ist Issue #235. Bis dahin endet der Modus hier,
+    // statt still nichts zu tun: Ein Lauf, der ohne Meldung mit Exit 0 endet, ist
+    // von einem erfolgreichen nicht zu unterscheiden.
+    log(`${kandidaten.length} Review-Kandidat(en) ermittelt: ${kandidaten.map((k) => "#" + k.id).join(", ")}`);
+    log("Die Review-Schleife folgt in Issue #235 — bis dahin zeigt --review --dry-run, was passieren wuerde.");
+    process.exit(0);
   }
 
   // Dry-Run: Reihenfolge + Abhaengigkeits-Bewertung anzeigen, nichts bewegen, nichts starten.
