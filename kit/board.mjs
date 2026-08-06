@@ -754,7 +754,11 @@ class GitLabIssueTracker {
   }
 
   async commentIssue(id, text) {
-    exec("glab", ["issue", "note", "create", String(id), "--message", text]);
+    // 'glab issue note <id>', NICHT 'issue note create <id>' (Issue #216): Ein
+    // create-Subkommando gibt es hier nicht — anders als bei 'issue create', wo die
+    // Analogie naheliegt. glab liest ein vorangestelltes 'create' als zusaetzliches
+    // Argument und bricht mit "Accepts 1 arg(s), received 2" ab.
+    exec("glab", ["issue", "note", String(id), "--message", text]);
   }
 }
 
