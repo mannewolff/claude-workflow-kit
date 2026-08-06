@@ -15,6 +15,7 @@
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
+ *   node board.mjs issue update <id> --body "..."
  *   node board.mjs issue comment <id> --text "..."
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
@@ -69,6 +70,7 @@ Nutzung:
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
+  node board.mjs issue update <id> --body "..."
   node board.mjs issue comment <id> --text "..."
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
@@ -725,6 +727,11 @@ class GitHubIssueTracker {
     const repo = this._repo();
     exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
   }
+
+  async updateIssue(id, { body }) {
+    const repo = this._repo();
+    exec("gh", ["issue", "edit", String(id), "--repo", repo, "--body", body]);
+  }
 }
 
 function githubStatusName(status, config) {
@@ -877,6 +884,11 @@ class GitLabIssueTracker {
     // Analogie naheliegt. glab liest ein vorangestelltes 'create' als zusaetzliches
     // Argument und bricht mit "Accepts 1 arg(s), received 2" ab.
     exec("glab", ["issue", "note", String(id), "--message", text]);
+  }
+
+  async updateIssue(id, { body }) {
+    // Bei GitLab heisst der Body 'description' — dasselbe Flag wie in createIssue.
+    exec("glab", ["issue", "update", String(id), "--description", body]);
   }
 }
 
@@ -1046,6 +1058,14 @@ class LocalIssueTracker {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
     writeFileSync(p, raw + comment, "utf-8");
+  }
+
+  async updateIssue(id, { body }) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const { meta } = parseFrontmatter(readFileSync(p, "utf-8"));
+    // Nur der Body wird ersetzt; Status, Titel und Labels gehoeren anderen Kommandos.
+    writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
   }
 }
 
@@ -1354,6 +1374,18 @@ class ToolboxIssueTracker {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: text }),
+    });
+  }
+
+  async updateIssue(number, { body }) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    await this._fetch(`/api/kanban/items/${item.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      // Der Titel wird mitgeschickt, obwohl er sich nicht aendert: Behandelt das
+      // Backend das PUT als Vollersatz, ginge er sonst verloren.
+      body: JSON.stringify({ title: item.title, body }),
     });
   }
 }
@@ -1679,6 +1711,22 @@ async function issueComment(tracker, args) {
   out({ ok: true, id });
 }
 
+// Schreibt den Body eines bestehenden Issues (Issue #237). Bewusst nur --body:
+// Titel und Labels aendert kein Skill, und ein Kommando, das alles kann, laedt dazu
+// ein, mehr zu aendern als beabsichtigt.
+//
+// Ein leerer Body ist ein harter Fehler statt eines stillen No-ops — ein
+// versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
+async function issueUpdate(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
+  if (typeof args.body !== "string" || args.body.trim() === "") {
+    fail("--body ist erforderlich und darf nicht leer sein: board.mjs issue update <id> --body \"...\"");
+  }
+  await tracker.updateIssue(id, { body: args.body });
+  out({ ok: true, id });
+}
+
 async function dispatchIssue(command, args) {
   const tracker = resolveTracker(loadConfig());
   switch (command) {
@@ -1687,6 +1735,7 @@ async function dispatchIssue(command, args) {
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
     case "move":    return issueMove(tracker, args);
+    case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     default:
       process.stdout.write(HELP);

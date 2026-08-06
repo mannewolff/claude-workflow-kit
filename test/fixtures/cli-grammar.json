@@ -10,6 +10,7 @@
     "issue view": { "args": 1 },
     "issue list": { "args": 0 },
     "issue comment": { "args": 1 },
+    "issue edit": { "args": 1 },
     "pr create": { "args": 0 },
     "project list": { "args": 0 },
     "project item-list": { "args": 1 },
