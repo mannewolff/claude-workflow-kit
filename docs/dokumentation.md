@@ -516,6 +516,45 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
 
+## Team-Config und persönliche Abweichungen
+
+Dieselbe Frage wie oben, eine Ebene tiefer: Was gehört ins Repository, und was darf jeder für sich anders haben?
+
+`.claude/workflow.config.json` lag bisher außerhalb des Repositories — der Installer trug `.claude/` in die `.gitignore` ein. Damit hatte jedes Teammitglied seine eigene Fassung der Felder, die für alle gleich sein müssen. `buildChecks` entscheidet, was als grün gilt; `columns` entscheidet, wo Issues landen. Und eine abweichende `columns`-Fassung führt nicht zu einem Fehler, sondern zu einer leeren Issue-Liste — das ist der unangenehme Teil.
+
+Die Config besteht deshalb aus zwei Dateien:
+
+| Datei | Ort | Inhalt |
+|---|---|---|
+| `.claude/workflow.config.json` | **im Repository** | alles, was für das Team gilt |
+| `.claude/workflow.config.local.json` | lokal, gitignored | persönliche Abweichungen |
+
+Aus der lokalen Datei gewinnen nur diese Felder:
+
+| Feld | Warum persönlich |
+|---|---|
+| `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
+| `reviewScope` | manche lesen lieber den vollen Quelltext |
+| `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
+| `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
+
+Alles andere wird ignoriert und auf stderr gemeldet.
+
+**Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
+
+Der `.gitignore`-Block, den der Installer schreibt:
+
+```
+.claude/*
+!.claude/workflow.config.json
+.claude/workflow.config.local.json
+.claude/board-meta-cache.json
+```
+
+Die erste Zeile muss `.claude/*` lauten, **nicht** `.claude/`. Git wertet ein `!`-Negationsmuster nicht aus, wenn das Verzeichnis selbst ausgeschlossen ist — es betritt es gar nicht erst. Mit `.claude/` bliebe die Ausnahme wirkungslos, und der Fehler fühlt sich an wie „vergessen zu committen". Wer den Block von Hand schreibt, baut ihn genau einmal falsch und sucht lange.
+
+**Bestehende Projekte:** Der nächste `install.mjs`-Lauf ersetzt eine vorhandene `.claude/`-Zeile automatisch durch den Block; eigene `.claude`-Regeln bleiben unangetastet und der Installer gibt nur eine Empfehlung aus. Danach muss ein Mensch `.claude/workflow.config.json` einmal committen — der Installer kann das nicht für dich tun.
+
 ## Eine Datei, ein Schreiber
 
 Dasselbe Prinzip, angewandt auf das Gedächtnis statt auf den Code: **Jede Datei im Memory-Vault, in die ein Skill automatisch schreibt, gehört genau einem Repo.** Was geteilt wird, wird gelesen — oder nur nach ausdrücklicher Zustimmung geschrieben.
