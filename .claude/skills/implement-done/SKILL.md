@@ -61,7 +61,9 @@ node .claude/kit/board.mjs issue move <id> in_review
 Abschlussbericht als Issue-Kommentar, gleiches Format wie `implement-ready` Schritt 5:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Abschlussbericht Issue #N
+node .claude/kit/board.mjs issue comment <id> --text "**Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
+
+## Abschlussbericht Issue #N
 ..."
 ```
 

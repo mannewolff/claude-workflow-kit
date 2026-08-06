@@ -28,6 +28,24 @@ Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig p
 
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet (Issue #213). Eine Bitte im Issue-Text ist genau die Leitplanke, die unter Druck uebersprungen wird: Am 2026-08-06 sind daran zwei Skill-Issues in einem Nachtlauf gescheitert, und zwei weitere Kopien waren davor schon still veraltet.
 
+Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschliesslich Kriterien, die eine Session selbst pruefen kann** — ausfuehrbare Kommandos, Dateizustaende, Testergebnisse. Was ein menschliches Urteil oder eine menschliche Handlung braucht (Klick durch eine UI, Blick auf ein gerendertes Dokument, Urteil ueber Textqualitaet, Livetest gegen eine fremde Instanz), kommt in einen eigenen Block mit **woertlich dieser Ueberschrift**:
+
+```markdown
+## Akzeptanzkriterium
+
+- <maschinell pruefbar>
+
+### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)
+
+- <was ein Mensch prueft, bevor das Issue auf Done geht>
+```
+
+Die Ueberschrift ist der Anker, an dem `implement-*` und der Nacht-Runner den Block erkennen — sinngemaess umformuliert wirkt sie nicht.
+
+Der Grund: Ein Nacht-Runner kann ein Kriterium mit dem Wort *manuell* prinzipiell nie erfuellen. Die Session steht dann vor einer Wahl, die sie nicht gewinnen kann — abbrechen (Issue bleibt liegen, Session verbrannt) oder trotzdem abschliessen und das offene Kriterium in den Bericht schreiben. Am 2026-08-06 ist beides an einem Abend passiert: Ein Issue hielt an, ein zweites committete mit Vermerk und galt seitdem faelschlich als fertig. Dieselbe Fehlerklasse wie beim `[Idee]`-Gate (Issue #192): Eine Session, die **korrekt** anhaelt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
+
+Was die Konvention **nicht** erlaubt: ein Kriterium als manuell zu deklarieren, nur weil es muehsam automatisch zu pruefen waere. Die Frage lautet nicht "ist es unbequem", sondern "braucht es ein menschliches Urteil oder eine menschliche Handlung". Ein Wegwerf-Verzeichnis anzulegen und ein Kommando darin laufen zu lassen ist automatisierbar und gehoert nach oben; zu beurteilen, ob eine Doku verstaendlich ist, gehoert nach unten. Ohne diese Grenze wandert mit der Zeit alles Unbequeme in den unteren Block.
+
 ### 3. Issues im Vier-Abschnitt-Format anlegen
 
 Jedes Issue bekommt vier Abschnitte:
