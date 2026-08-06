@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.30.1] - 2026-08-06
+- Doku: neun Schritte und Werkzeuge getrennt darstellen (#228)
+- Prozesstabelle auf 1-9, acht Skills als Werkzeuge neben dem Prozess (#227)
+- issue-review: Rueckfrage bei unbekanntem Autor, Konvention praezisiert (#226)
+- issue-review: explizite pairs-Matrix und matrix-Kommando (#225)
+- Doku: Issue-Review ueber mehrere Modelle — Referenz und Buchtext (#224)
+- Nacht-Runner: ungepruefte Ready-Issues zurueckstellen (#223)
+- Autor-Modell im Issue, Schema und Prozess-Doku fuer Schritt 3.5 (#222)
+- Skill /issue-review: Schritt 3.5 zwischen /issues und dem GO (#221)
+- board.mjs: Achse 'issue-review' fuer Reviewer-Auswahl und Vorflug (#220)
+
 ## [1.29.1] - 2026-08-06
 - CLI-Grammatik gegen die echten gh/glab-Hilfetexte abgleichen (#218)
 - Fake-CLIs gegen eine Kommando-Grammatik validieren (#217)
