@@ -767,6 +767,107 @@ function ladeConfigMitOverrides(sharedPfad) {
   return config;
 }
 
+// --- Review-Schleife (Issue #235) ---
+
+/**
+ * Spur, die eine Review-Session am Issue hinterlaesst — ausser dem Marker.
+ *
+ * Bewusst nicht nur `comments.length`: Der lokale Tracker liefert bei `issue get`
+ * **kein** comments-Feld, er haengt Kommentare an den Body an. GitHub, GitLab und
+ * Toolbox liefern eines. Body-Laenge und Kommentarzahl zusammen tragen bei allen
+ * vier — und beide zu vergleichen kostet nichts.
+ */
+function issueSpur(full) {
+  return `${(full?.body || "").length}:${(full?.comments || []).length}`;
+}
+
+/**
+ * Laesst jeden Kandidaten von einer frischen /issue-review-Session pruefen.
+ *
+ * Erfolg ist dreistufig, weil der Skill den Marker nur bei befundfreiem Review setzt:
+ *   1. Marker im Body              -> geprueft, ohne gewichtigen Befund
+ *   2. kein Marker, aber neue Spur -> geprueft, MIT Befund; wartet planmaessig auf
+ *                                     den Menschen. Ebenfalls ein Erfolg.
+ *   3. weder noch                  -> die Session hat nichts hinterlassen
+ *
+ * Stufe 2 als Fehlschlag zu werten waere der teuerste Denkfehler hier: Genau die
+ * Issues, bei denen sich der Review gelohnt hat, wuerden als gescheitert gemeldet.
+ *
+ * Kein Salvage-Pfad: Der prueft buildChecks und committet — fuer eine Session, die
+ * keinen Code schreibt, gegenstandslos. Und kein Board-Move in keinem Ausgang; die
+ * Kandidaten liegen bereits im Backlog.
+ */
+async function runReviewLoop(kandidaten, args) {
+  let sessions = 0;
+  let ohneBefund = 0;
+  let mitBefund = 0;
+  let ohneErgebnis = 0;
+  let uebersprungen = 0;
+  let hardStop = false;
+
+  for (const kandidat of kandidaten) {
+    if (sessions >= args.max) {
+      log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
+      continue;
+    }
+    const vorher = board("issue", "get", String(kandidat.id));
+    if (hasReviewMarker(vorher.body)) {
+      log(`#${kandidat.id} uebersprungen: traegt bereits einen Issue-Review-Marker.`);
+      uebersprungen++;
+      continue;
+    }
+
+    sessions++;
+    log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
+    const spurVorher = issueSpur(vorher);
+    const started = Date.now();
+    const res = await runSession(kandidat.id, args, {
+      prompt: `/issue-review #${kandidat.id}`,
+      timeoutMs: REVIEW_TIMEOUT_MS,
+    });
+    const minutes = ((Date.now() - started) / 60000).toFixed(1);
+
+    // Infrastruktur-Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
+    // Timeout heisst, das CLI selbst ist gescheitert — mit dem Issue ist nichts falsch.
+    // Harter Stopp ohne Kommentar, sonst kommentiert eine kaputte Umgebung den ganzen
+    // Backlog voll.
+    const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+    if (!timedOut && (res.error || res.status !== 0)) {
+      const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+      log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`);
+      hardStop = true;
+      break;
+    }
+
+    // Eine Review-Session arbeitet ausschliesslich am Board. Hinterlaesst sie
+    // Aenderungen im Working Tree, hat sie etwas getan, was sie nicht sollte — und
+    // die naechste Runde wuerde darauf aufbauen.
+    if (!gitClean()) {
+      log(`  HARTER STOPP: die Review-Session zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine Review-Session darf keinen Code anfassen — bitte morgens sichten.`);
+      hardStop = true;
+      break;
+    }
+
+    const nachher = board("issue", "get", String(kandidat.id));
+    if (hasReviewMarker(nachher.body)) {
+      ohneBefund++;
+      log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
+    } else if (issueSpur(nachher) !== spurVorher) {
+      mitBefund++;
+      log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
+    } else {
+      ohneErgebnis++;
+      log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
+      board("issue", "comment", String(kandidat.id),
+        "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
+    }
+  }
+
+  log(`Nacht-Review beendet: ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
+  process.exit(hardStop ? 1 : 0);
+}
+
 // --- Hauptprogramm ---
 //
 // In eine Funktion gefasst, damit die reinen Funktionen dieser Datei importierbar
@@ -917,12 +1018,8 @@ async function main() {
       process.exit(0);
     }
 
-    // Die Review-Schleife selbst ist Issue #235. Bis dahin endet der Modus hier,
-    // statt still nichts zu tun: Ein Lauf, der ohne Meldung mit Exit 0 endet, ist
-    // von einem erfolgreichen nicht zu unterscheiden.
-    log(`${kandidaten.length} Review-Kandidat(en) ermittelt: ${kandidaten.map((k) => "#" + k.id).join(", ")}`);
-    log("Die Review-Schleife folgt in Issue #235 — bis dahin zeigt --review --dry-run, was passieren wuerde.");
-    process.exit(0);
+    await runReviewLoop(kandidaten, args);
+    return;
   }
 
   // Dry-Run: Reihenfolge + Abhaengigkeits-Bewertung anzeigen, nichts bewegen, nichts starten.
