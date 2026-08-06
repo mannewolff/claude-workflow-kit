@@ -116,6 +116,15 @@ test("issue-review reviewers: --author ohne Wert bricht mit Meldung ab", () => {
 
 // --- CLI: check ---
 
+// POSIX-only (Issue #230): Die Datei hat keine Endung und traegt ihre Ausfuehrbarkeit
+// im Shebang und im Modus. Unter Windows ist beides wirkungslos — dort entscheidet die
+// Endung (.cmd/.bat/.exe), ob etwas startbar ist. Wer diesen Helfer in einen neuen Test
+// einbaut, muss ihn dort ueberspringen (NUR_POSIX), sonst sucht er denselben Fehler
+// noch einmal.
+const NUR_POSIX = process.platform === "win32"
+  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
+  : {};
+
 /** Legt ein ausfuehrbares Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an. */
 function fakeBinary(dir, name) {
   const binDir = join(dir, "fakebin");
@@ -151,7 +160,7 @@ test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleib
   });
 });
 
-test("issue-review check: vorhandenes Kommando gilt als verfuegbar", () => {
+test("issue-review check: vorhandenes Kommando gilt als verfuegbar", NUR_POSIX, () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag" }] }, (dir) => {
     fakeBinary(dir, "meinfake");
     const res = runBoard(dir, ["issue-review", "check"]);
