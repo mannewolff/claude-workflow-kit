@@ -128,6 +128,32 @@ function gitRemoteUrl() {
   }
 }
 
+/**
+ * Bringt jede Auskunft ueber das Repo auf die eine verbindliche Form: `owner/repo`.
+ *
+ * Noetig, weil die drei getRepoName-Implementierungen frueher drei verschiedene Formen
+ * lieferten (Issue #214): GitHub gab bei erreichbarem gh `owner/repo` zurueck, bei
+ * scheiterndem gh aber die volle Remote-URL — der einzige der drei Fallback-Zweige, in
+ * dem die Normalisierung beim Windows-Umbau (Issue #196) nicht mitgewandert ist. Der
+ * lokale Host lieferte nur `repo`, ohne Owner.
+ *
+ * Verarbeitet HTTPS-URLs, die SSH-Form `git@host:owner/repo` und ein bereits
+ * normalisiertes `owner/repo`. Untergruppen werden auf die letzten zwei Segmente
+ * gekuerzt — die bisherige GitLab-Semantik, hier beibehalten.
+ */
+export function normalizeRepoName(raw) {
+  if (!raw) return null;
+  const ohneGit = String(raw).trim().replace(/\.git$/, "");
+  if (!ohneGit) return null;
+  // SSH-Form zuerst: dort trennt ein Doppelpunkt Host und Pfad, kein Slash.
+  const ssh = /^[^@/]+@[^:/]+:(.+)$/.exec(ohneGit);
+  const pfad = ssh ? ssh[1] : ohneGit.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, "");
+  const teile = pfad.split("/").filter(Boolean);
+  if (teile.length === 0) return null;
+  // Ein einzelnes Segment bleibt es — ohne Owner wird keiner hinzuerfunden.
+  return teile.length === 1 ? teile[0] : teile.slice(-2).join("/");
+}
+
 // --- Fehlerbehandlung ---
 
 // Erwartete Fehler aus den Adaptern: abfangbar, im CLI-Layer als "Fehler: ..." ausgegeben
@@ -708,7 +734,12 @@ class GitHubCodeHost {
     } catch {
       // Frueher eine POSIX-Kommandozeile mit || und $(pwd) — unter cmd.exe gibt es
       // beides nicht (Issue #196). Dieselbe Logik in JavaScript.
-      return gitRemoteUrl() || basename(resolve("."));
+      //
+      // normalizeRepoName ist hier nicht optional: Ohne sie lieferte dieser Zweig die
+      // volle Remote-URL statt owner/repo, und zwar still (Issue #214). Sichtbar wurde
+      // das nur, wenn gh nicht durchkommt — etwa unter einer Sandbox, die die
+      // TLS-Pruefung blockiert.
+      return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
     }
   }
 
@@ -847,9 +878,7 @@ class GitLabCodeHost {
   async getRepoName() {
     // Ohne Remote (kein Repo, kein origin) bleibt der Verzeichnisname — frueher ueber
     // `basename $(pwd)`, das cmd.exe nicht kennt (Issue #196).
-    const url = gitRemoteUrl();
-    if (!url) return basename(resolve("."));
-    return url.replace(/\.git$/, "").split("/").slice(-2).join("/");
+    return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
   }
 
   supportsPullRequests() { return true; }
@@ -1018,9 +1047,12 @@ class LocalCodeHost {
   async getRepoName() {
     // Frueher mit 2>/dev/null — die Umleitung gibt es unter cmd.exe nicht (#196);
     // gitRemoteUrl liefert stattdessen null, wenn kein Remote da ist.
-    const url = gitRemoteUrl();
-    if (!url) return basename(resolve("."));
-    return url.replace(/\.git$/, "").split("/").pop();
+    //
+    // Liefert seit Issue #214 owner/repo statt nur repo: Alle drei Code-Hosts geben
+    // dieselbe Form zurueck, sonst beantwortet dasselbe Kommando je nach Projekt etwas
+    // anderes. Ohne Remote bleibt es beim Verzeichnisnamen — dokumentiertes Verhalten
+    // des lokalen Modus.
+    return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
   }
 
   // Kein createPullRequest: codePr() bricht schon an supportsPullRequests() ab und gibt
