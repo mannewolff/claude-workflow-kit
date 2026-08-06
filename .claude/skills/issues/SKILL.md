@@ -26,6 +26,16 @@ Wenn ein Schritt sich nicht in einem überschaubaren Aufwand erledigen lässt, i
 
 Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig portabel gedacht ist (Installer, Single-File-Tool, kopierbares Script), muss das Akzeptanzkriterium explizit enthalten: "lauffaehig ohne weiteren Repo-Kontext". Ohne diesen Prueffall bleibt die Portabilitaet ungetestet.
 
+Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Autor-Modell: <wert>`. Der Wert entsteht in dieser Reihenfolge:
+
+1. `KIT_AGENT_MODEL`, wenn gesetzt — der Nacht-Runner fuellt sie aus `--model` (Issue #193).
+2. sonst die **Selbstauskunft der Session**: das Modell, unter dem sie laeuft.
+3. nur wenn beides nicht zu ermitteln ist: woertlich `unbekannt`.
+
+`unbekannt` ist der Ausnahmefall, nicht der Normalfall. Die fruehere Fassung schrieb ihn fuer jede interaktive Session vor — und erzeugte damit genau den Zustand, den `/issue-review` hinterher per Rueckfrage reparieren muss (Issue #226).
+
+**Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
+
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet (Issue #213). Eine Bitte im Issue-Text ist genau die Leitplanke, die unter Druck uebersprungen wird: Am 2026-08-06 sind daran zwei Skill-Issues in einem Nachtlauf gescheitert, und zwei weitere Kopien waren davor schon still veraltet.
 
 Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschliesslich Kriterien, die eine Session selbst pruefen kann** — ausfuehrbare Kommandos, Dateizustaende, Testergebnisse. Was ein menschliches Urteil oder eine menschliche Handlung braucht (Klick durch eine UI, Blick auf ein gerendertes Dokument, Urteil ueber Textqualitaet, Livetest gegen eine fremde Instanz), kommt in einen eigenen Block mit **woertlich dieser Ueberschrift**:
@@ -53,6 +63,7 @@ Jedes Issue bekommt vier Abschnitte:
 ```
 ## Kontext
 Warum wird diese Aufgabe gemacht? Was fehlt vorher, welche Vorgeschichte gehört dazu?
+Autor-Modell: <Wert von KIT_AGENT_MODEL, sonst 'unbekannt'>
 
 ## Aufgabe
 Was konkret ist zu tun? Betroffene Dateien, zu schreibende Tests (bei TDD zuerst), konkrete Änderungen.
@@ -100,6 +111,8 @@ Halte die Modellnamen generisch ("Standard-Modell" / "stärkstes verfügbares Mo
 
 Schreibe darunter:
 > "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO."
+
+Weise zusaetzlich auf **`/issue-review`** hin: Es laesst die frisch angelegten Issues von zwei Modellen pruefen, die sie nicht geschrieben haben. Das GO ist die Bewegung nach Ready — dorthin sollte kein ungepruefte Issue.
 
 ## Stop-Punkt
 

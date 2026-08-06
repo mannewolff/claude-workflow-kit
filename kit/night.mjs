@@ -103,7 +103,7 @@ const BOARD_PATH = process.env.KIT_ROOT
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.30.0";
+const KIT_VERSION = "1.31.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -266,6 +266,17 @@ function isFachlich(title) {
 // mit demselben Issue (kanban-kit#494): je Lauf eine verbrannte Session plus ein
 // Kommentar, der wie ein Infrastrukturproblem aussieht. Vorhersehbare Modell-
 // Entscheidungen gehoeren ins Gate, nicht in Prompts.
+// Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
+// greift dieser am BODY: Der Marker steht im Kontext-Abschnitt, nicht im Titel. Der
+// Body liegt ohnehin vor, weil parseDeps ihn braucht — kein zusaetzlicher Board-Aufruf.
+//
+// Bewusst streng: Nur eine Zeile, die mit 'Issue-Review:' beginnt und danach etwas
+// traegt, zaehlt. 'Issue-Review folgt noch' ist das Gegenteil einer Freigabe und darf
+// nicht als eine durchgehen.
+function hasReviewMarker(body) {
+  return /^\s*Issue-Review:\s*\S/im.test(body || "");
+}
+
 function isIdee(title) {
   return /^\s*\[idee\]/i.test(title || "");
 }
@@ -832,6 +843,19 @@ while (sessions < args.max && iterations < MAX_ITERATIONS) {
     continue;
   }
   const full = board("issue", "get", String(top.id));
+  // Ungepruefte Issues zurueckstellen (Issue #223). Nur wenn ausdruecklich aktiviert:
+  // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten, deshalb
+  // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
+  // ungepruftes Issue nicht ablehnen — er wuerde es implementieren, und die Maengel
+  // fielen erst im Code auf.
+  if (config.issueReview?.requiredBeforeReady && !hasReviewMarker(full.body)) {
+    log(`#${top.id} uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).`);
+    board("issue", "comment", String(top.id), "--text",
+      `Nachtlauf: Ungeprueft — bitte erst /issue-review #${top.id} laufen lassen, dann wieder nach Ready.`);
+    board("issue", "move", String(top.id), "backlog");
+    deferred++;
+    continue;
+  }
   const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
   if (unmet.length > 0) {
     log(`#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`);

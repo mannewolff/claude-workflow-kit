@@ -20,6 +20,9 @@
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
+  node board.mjs issue-review reviewers --author <modell>
+  node board.mjs issue-review check
+  node board.mjs issue-review matrix
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -33,7 +36,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.30.0";
+const KIT_VERSION = "1.31.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -71,6 +74,9 @@ Nutzung:
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
+  node board.mjs issue-review reviewers --author <modell>
+  node board.mjs issue-review check
+  node board.mjs issue-review matrix
 
   node board.mjs --version
 
@@ -1753,6 +1759,144 @@ async function kontextLastLog(args) {
   out(treffer ? { path: join(ordner, treffer.name), date: treffer.date } : { path: null });
 }
 
+// ============================================================
+// Issue-Review-Achse (Issue #220)
+// ============================================================
+//
+// Ein Issue ist die Quelle der Wahrheit fuer die Implementierung — ein Fehler darin
+// pflanzt sich in die ganze Umsetzung fort. Der Autor sieht ihn nicht, weil er den
+// Kontext im Kopf hat, aus dem das Issue entstanden ist. Deshalb pruefen zwei andere
+// Modelle, und deshalb ist der Autor hier nie sein eigener Reviewer.
+//
+// Reviewer sind ein Adapter, keine Modell-Liste: `kind: "claude"` laeuft ueber das
+// Agent-Tool, `kind: "command"` ueber ein beliebiges fremdes CLI. Damit nehmen auch
+// Modelle aus anderen Haeusern teil — die teilen die blinden Flecken einer Familie
+// nicht. Das Kit kennt das fremde Werkzeug nicht und muss es nicht kennen.
+
+const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
+const REVIEWER_KINDS = ["claude", "command"];
+
+/**
+ * Waehlt die Reviewer fuer ein Issue: die ersten `anzahl` Eintraege, deren Name nicht
+ * der Autor ist. Reine Funktion — die Reihenfolge der Config ist die Steuerung, wer
+ * eine feste Paarung will, sortiert entsprechend.
+ *
+ * `unterbesetzt` statt eines Fehlers, wenn zu wenige uebrig bleiben: Der Skill
+ * entscheidet, ob er mit einem Reviewer faehrt — er muss es nur sichtbar machen.
+ */
+export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
+  // Explizite Zuordnung schlaegt die Regel (Issue #225). Ohne sie waehlt die Regel
+  // immer die vordersten Eintraege — bei vier Reviewern kam der vierte nie zum Zug,
+  // ausgerechnet das Modell aus dem fremden Haus. Und wer wissen will, wer sein Issue
+  // prueft, soll es ablesen koennen statt es auszurechnen.
+  const genannt = pairs?.[autor];
+  if (Array.isArray(genannt) && genannt.length > 0) {
+    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean);
+    return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs" };
+  }
+  const passend = (alle || []).filter((r) => r.name !== autor);
+  const gewaehlt = passend.slice(0, anzahl);
+  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel" };
+}
+
+// Beide Faelle sind harte Fehler, aus derselben Begruendung wie validateReviewers:
+// Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
+// Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
+// gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
+function validatePairs(pairs, reviewers) {
+  const bekannt = new Set(reviewers.map((r) => r.name));
+  for (const [autor, genannt] of Object.entries(pairs || {})) {
+    const wo = `issueReview.pairs['${autor}']`;
+    if (!Array.isArray(genannt)) fail(`${wo}: muss eine Liste von Reviewer-Namen sein.`);
+    for (const name of genannt) {
+      if (name === autor) fail(`${wo}: nennt '${autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.`);
+      if (!bekannt.has(name)) fail(`${wo}: '${name}' steht nicht in issueReview.reviewers.`);
+    }
+  }
+  return pairs || {};
+}
+
+// Eine halb ausgefuellte Reviewer-Definition still zu ueberspringen wuerde einen
+// Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf verwandeln — und der sieht am
+// Board aus wie ein vollstaendiger. Deshalb harter Fehler mit sprechender Meldung.
+function validateReviewers(reviewers) {
+  reviewers.forEach((r, i) => {
+    const wo = `issueReview.reviewers[${i}]`;
+    if (!r || typeof r.name !== "string" || !r.name) fail(`${wo}: 'name' fehlt oder ist leer.`);
+    if (!REVIEWER_KINDS.includes(r.kind)) {
+      fail(`${wo} ('${r.name}'): 'kind' muss ${REVIEWER_KINDS.join(" oder ")} sein, ist '${r.kind}'.`);
+    }
+    if (r.kind === "claude" && !r.model) fail(`${wo} ('${r.name}'): 'model' fehlt.`);
+    if (r.kind === "command" && !r.command) fail(`${wo} ('${r.name}'): 'command' fehlt.`);
+  });
+  return reviewers;
+}
+
+function issueReviewConfig() {
+  const block = loadConfig().issueReview || {};
+  const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
+  return {
+    rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
+    reviewers,
+    pairs: validatePairs(block.pairs, reviewers),
+  };
+}
+
+// Verfuegbarkeit eines Kommandos ohne Shell: Das erste Wort wird mit --version
+// gestartet. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
+// Ein CLI, das --version nicht kennt, antwortet trotzdem — entscheidend ist nur, ob
+// der Prozess ueberhaupt startet (ENOENT = nicht im PATH).
+function kommandoVerfuegbar(kommandozeile) {
+  const datei = kommandozeile.trim().split(/\s+/)[0];
+  const res = spawnSync(datei, ["--version"], { encoding: "utf-8" });
+  return { datei, ok: !res.error };
+}
+
+function issueReviewReviewers(args) {
+  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
+  const { rounds, reviewers, pairs } = issueReviewConfig();
+  out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs), rounds });
+}
+
+// Die Tabelle, nach der man eigentlich fragt: wer prueft wen. Autoren sind alle
+// Reviewer-Namen plus alle pairs-Schluessel — letztere auch dann, wenn sie selbst nicht
+// als Reviewer auftreten (ein Modell kann schreiben, ohne zu pruefen).
+function issueReviewMatrix() {
+  const { reviewers, pairs } = issueReviewConfig();
+  const autoren = [...new Set([...reviewers.map((r) => r.name), ...Object.keys(pairs)])];
+  out({
+    matrix: autoren.map((autor) => {
+      const { gewaehlt, quelle } = pickReviewers(reviewers, autor, 2, pairs);
+      return { autor, reviewer: gewaehlt.map((r) => r.name), quelle };
+    }),
+  });
+}
+
+// Auskunft, kein Gate: Exit bleibt 0, auch wenn ein Reviewer fehlt. Wer daraus ein
+// Gate macht, ist der Skill — er kann den Menschen fragen, dieses Kommando nicht.
+function issueReviewCheck() {
+  const { reviewers } = issueReviewConfig();
+  const ergebnis = reviewers.map((r) => {
+    if (r.kind === "claude") return { name: r.name, kind: r.kind, verfuegbar: true };
+    const { datei, ok } = kommandoVerfuegbar(r.command);
+    return ok
+      ? { name: r.name, kind: r.kind, verfuegbar: true }
+      : { name: r.name, kind: r.kind, verfuegbar: false, grund: `${datei} nicht im PATH` };
+  });
+  out({ reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
+}
+
+async function dispatchIssueReview(command, args) {
+  switch (command) {
+    case "reviewers": return issueReviewReviewers(args);
+    case "check": return issueReviewCheck();
+    case "matrix": return issueReviewMatrix();
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter issue-review-Befehl: '${command}'`);
+  }
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
@@ -1785,11 +1929,13 @@ async function main() {
     await dispatchIssue(command, args);
   } else if (axis === "code") {
     await dispatchCode(command, args);
+  } else if (axis === "issue-review") {
+    await dispatchIssueReview(command, args);
   } else if (axis === "kontext") {
     await dispatchKontext(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review`);
   }
 }
 

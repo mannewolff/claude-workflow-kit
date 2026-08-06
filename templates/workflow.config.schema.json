@@ -210,6 +210,66 @@
       },
       "required": [],
       "additionalProperties": false
+    },
+    "issueReview": {
+      "type": "object",
+      "description": "Issue-Review ueber mehrere Modelle (Issue #220). Zwei Reviewer, die das Issue nicht geschrieben haben, pruefen es vor dem GO. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "rounds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Wie oft der Review-Zyklus je Issue laeuft. Default 1 — weitere Runden finden erfahrungsgemaess vor allem Geschmacksfragen."
+        },
+        "requiredBeforeReady": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurueck. Default false, damit ein Kit-Update keinem Bestandsprojekt ueber Nacht den Runner anhaelt."
+        },
+        "reviewers": {
+          "type": "array",
+          "description": "Reihenfolge ist die Steuerung: Genommen werden die ersten zwei Eintraege, die nicht der Autor sind.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Kurzname, wird mit dem Autor-Modell des Issues verglichen."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "command"
+                ],
+                "description": "'claude' laeuft als Subagent ueber das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt ueber stdin)."
+              },
+              "model": {
+                "type": "string",
+                "description": "Nur bei kind 'claude': Modell-Identifier."
+              },
+              "command": {
+                "type": "string",
+                "description": "Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ]
+          }
+        },
+        "pairs": {
+          "type": "object",
+          "description": "Explizite Zuordnung Autor -> Reviewer (Issue #225). Steht der Autor hier, gewinnt sein Eintrag ueber die Reihenfolge-Regel. Ohne pairs waehlt die Regel immer die vordersten Eintraege — ein hinten stehendes fremdes Modell kaeme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "required": [],

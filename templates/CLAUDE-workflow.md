@@ -10,16 +10,40 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 | Schritt | Aktor | Was passiert | Skill |
 |---------|-------|-------------|-------|
 | 1. Anforderung | Mensch | Formuliert oder diktiert die Anforderung | — |
-| 1.5 Fachliches Issue (optional) | KI | PO-Schleife: Anforderung als [Fachlich]-Issue zum Groomen mit dem PO | `/fachplan` |
 | 2. Plan | KI | Erstellt Plan, stellt zur Diskussion, implementiert nichts | `/plan` |
 | 3. Plan zu Issues | KI | Uebertraegt Plan in GitHub-Issues (Vier-Abschnitt-Format) | `/issues` |
 | 4. GO | Mensch | Zieht Issues nach Ready — das ist das GO | — |
 | 5. Implementierung | KI | Arbeitet Ready-Issues sequenziell ab, committet lokal | `/implement-ready` |
 | 6. Lokale Pruefung | KI + Mensch | Pflicht-Checks + manuelle UI-Verifikation | `/local-check` |
 | 7. Code-Review | KI | Startet Opus-Reviewer in frischer Session | `/review` |
-| 7.5. Retro | KI | KI-Retrospektive, Memory konsolidieren | `/retro` |
 | 8. Push | Mensch | Tippt `push main` — Claude pusht den Batch | `/push-main` |
 | 9. Merge | Mensch | Tippt `merge production` — Claude erstellt PR | `/merge-production` |
+
+---
+
+## Werkzeuge neben dem Prozess
+
+Die neun Schritte oben sind der Prozess aus dem Whitepaper. Was hier steht, ist Werkzeug des Kits: hilfreich, oft benutzt — aber **ohne diese Skills laeuft der Prozess auch**. Sie tragen deshalb keine Nummer; eine Nummer wuerde eine Reihenfolge und eine Pflicht behaupten, die es nicht gibt.
+
+Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwoelf. Wer den naechsten nuetzlichen Skill baut, traegt ihn hier ein — nicht als Zwischennummer.
+
+**Ergaenzen den Prozess**
+
+| Skill | Wofuer |
+|-------|--------|
+| `/kontext` | Session-Start: Memory-Vault laden, Projektstand holen |
+| `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
+| `/issue-review` | Issue von zwei fremden Modellen pruefen lassen, bevor es nach Ready wandert |
+| `/retro` | KI-Retrospektive, Memory konsolidieren |
+| `/document` | Session-Ende: Tageslog und Projektnotiz schreiben |
+
+**Ersetzen Schritt 5 durch eine feinere Gangart**
+
+| Skill | Wofuer |
+|-------|--------|
+| `/implement-next` | genau ein Ready-Issue statt der ganzen Spalte |
+| `/implement-test` | nur die roten Tests, Stopp vor der Implementierung |
+| `/implement-done` | Implementierung gegen die vorbereiteten roten Tests |
 
 ---
 
@@ -30,6 +54,10 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 3. **Merge (Schritt 9):** Trigger-Phrase `merge production`. Claude merged nicht.
 
 Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und tippbar.
+
+Vor dem GO gehoert ein Issue geprueft: `/issue-review` laesst es von zwei
+Modellen lesen, die es nicht geschrieben haben. Bei gesetztem `issueReview.requiredBeforeReady`
+stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
 
 ---
 

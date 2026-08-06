@@ -1,12 +1,12 @@
 ---
 name: implement-next
-description: Single-Issue-Variante von Schritt 5 — arbeitet genau ein Ready-Issue ab (das übergebene #N, sonst das oberste in Board-Reihenfolge), committet lokal, pusht nicht und endet danach. Nutze diesen Skill wenn der Nutzer /implement-next aufruft oder genau ein Ready-Issue umgesetzt werden soll (z. B. pro Session im Nachtbetrieb).
+description: Ersetzt Schritt 5 durch eine feinere Gangart — arbeitet genau ein Ready-Issue ab (das übergebene #N, sonst das oberste in Board-Reihenfolge), committet lokal, pusht nicht und endet danach. Nutze diesen Skill wenn der Nutzer /implement-next aufruft oder genau ein Ready-Issue umgesetzt werden soll (z. B. pro Session im Nachtbetrieb).
 user-invocable: true
 ---
 
 # Implement Next
 
-Single-Issue-Variante von Schritt 5 des 9-Schritt-Prozesses: **Genau ein** Ready-Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben — danach endet der Skill. Welches Issue, entscheidet das Argument: mit `#N` ist es verbindlich vorgegeben, ohne Argument ist es das oberste in Ready. Kernbaustein des Nachtbetriebs (der Nacht-Runner startet pro Issue eine frische Session mit `/implement-next #N`), interaktiv genauso nutzbar („mach genau eins").
+Ersetzt Schritt 5 durch eine feinere Gangart: **Genau ein** Ready-Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben — danach endet der Skill. Welches Issue, entscheidet das Argument: mit `#N` ist es verbindlich vorgegeben, ohne Argument ist es das oberste in Ready. Kernbaustein des Nachtbetriebs (der Nacht-Runner startet pro Issue eine frische Session mit `/implement-next #N`), interaktiv genauso nutzbar („mach genau eins").
 
 ## Vorbedingung
 
@@ -50,6 +50,8 @@ Wenn Ready leer ist:
 > "Ready ist leer. Nichts zu tun."
 
 Ohne Fehler enden.
+
+**Ungepruefte Issues: Hinweis, kein Stopp.** Traegt ein Ready-Issue keine Marker-Zeile `Issue-Review:` im Kontext-Abschnitt, ist es nicht durch `/issue-review` gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
 
 ### 1. Issue nach In progress verschieben
 

@@ -69,7 +69,7 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die dreizehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die fünfzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
@@ -156,14 +156,13 @@ Beispiele für verschiedene Stacks:
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
 
-## Die vierzehn Skills und der 9-Schritt-Kernprozess
+## Die fünfzehn Skills und der 9-Schritt-Kernprozess
 
-Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) stehen außerhalb der Nummerierung.
+Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen acht Skills sind Werkzeuge daneben: hilfreich, oft benutzt — aber ohne sie läuft der Prozess auch.
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
 | **1** | **Anforderung formulieren** | **Mensch** | (kein Skill) |
-| 1.5 | Fachliches Issue anlegen (optional, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)) | KI | /fachplan |
 | 2 | Anforderung planen | KI | /plan |
 | 3 | Issues anlegen | KI | /issues |
 | **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
@@ -175,11 +174,33 @@ Der Kernprozess hat neun Schritte. Fünf weitere Skills (Querschnitts-Skills) st
 
 Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser — kein eigener Skill, aber Pflicht. Diese Zählung ist dieselbe wie in der `CLAUDE-workflow.md` und in den Skill-Definitionen.
 
-Querschnitts-Skills: /kontext (Session-Start), /implement-test und /implement-done (granularer Einstieg zu Schritt 5), /implement-next (genau ein Issue, Baustein des Nachtbetriebs), /retro (Wartungsrhythmus), /document (Session-Ende).
+### Werkzeuge neben dem Prozess
+
+Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht behaupten würde, die es nicht gibt. Die neun Schritte sind der Prozess aus dem Whitepaper; was hier steht, ist Werkzeug des Kits.
+
+**Ergänzen den Prozess**
+
+| Skill | Wofür |
+|-------|-------|
+| `/kontext` | Session-Start: Vault laden, Projektstand |
+| `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
+| `/issue-review` | Issue von zwei fremden Modellen prüfen lassen, bevor es nach Ready wandert |
+| `/retro` | KI-Retrospektive, Memory konsolidieren |
+| `/document` | Session-Ende: Tageslog und Projektnotiz |
+
+**Ersetzen Schritt 5 durch eine feinere Gangart**
+
+| Skill | Wofür |
+|-------|-------|
+| `/implement-next` | genau ein Ready-Issue statt der ganzen Spalte |
+| `/implement-test` | nur die roten Tests, Stopp vor der Implementierung |
+| `/implement-done` | Implementierung gegen die vorbereiteten roten Tests |
+
+Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge später dazunehmen. Umgekehrt gilt: Wer den nächsten nützlichen Skill baut, trägt ihn hier ein — nicht als Zwischennummer.
 
 ### /kontext
 
-**Querschnitts-Skill, Session-Start.**
+**Werkzeug neben dem Prozess, Session-Start.**
 
 Der Skill lädt den Kontext, den du brauchst, um sofort arbeitsfähig zu sein, ohne den Chat der letzten Session im Kopf haben zu müssen. Er liest `kontext.config.json` (zuerst global aus `~/.claude/`, dann lokal aus `.claude/`, wobei lokale Werte die globalen überschreiben).
 
@@ -187,7 +208,7 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 
 ### /fachplan
 
-**Schritt 1.5, optional — nur für Projekte mit Product Owner ([PO-Schleife](#po-schleife-fachliche-und-technische-issues)).**
+**Werkzeug neben dem Prozess, vor Schritt 2 — nur für Projekte mit Product Owner ([PO-Schleife](#po-schleife-fachliche-und-technische-issues)).**
 
 Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
@@ -241,6 +262,14 @@ Welches Issue dran ist, entscheidet das Argument. `/implement-next` ohne Argumen
 
 Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/implement-test` und `/implement-done` zerlegen ein Issue in Rot- und Grün-Phase; `/implement-next` macht ein komplettes Issue und stoppt dann. Interaktiv ist das die „mach genau eins"-Variante — seine Hauptrolle spielt er im [Nachtbetrieb](#nachtbetrieb), wo der Nacht-Runner pro Issue eine frische Session mit genau diesem Skill startet.
 
+### /issue-review
+
+**Werkzeug neben dem Prozess, zwischen Schritt 3 und dem GO.**
+
+Der Skill lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, und schlägt einen geschärften Body vor. Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist — was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf. Ein fremdes Modell hat nur den Text.
+
+Die beiden Prüfer bekommen verschiedene Rollen (Vollständigkeit bzw. Scope), und beide die Frage „Was kann raus?" — ohne sie wächst das Issue mit jeder Runde, ohne besser zu werden. Die Befunde landen als Board-Kommentar; der Body wird nur nach ausdrücklicher Zustimmung geschrieben. Details im Abschnitt [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
+
 ### /local-check
 
 **Schritt 6, vor dem Review.**
@@ -285,7 +314,7 @@ Als konkretes Beispiel führt das Kit-Repo darüber ein **automatisch generierte
 
 ### /retro
 
-**Querschnitts-Skill, Wartungsrhythmus (alle ein bis zwei Wochen).**
+**Werkzeug neben dem Prozess, alle ein bis zwei Wochen.**
 
 Die KI-Retrospektive ist kein Entwicklungszyklus-Schritt, sondern ein Wartungsschritt für den Prozess selbst. Drei Fragen: Wo hat die Mensch-KI-Zusammenarbeit gehakt? Welche Memory-Einträge sind veraltet oder falsch? Welche Workflow-Regel braucht eine Schärfung?
 
@@ -293,7 +322,7 @@ Der Output sind keine Erkenntnisse, sondern konkrete Änderungen an den Konventi
 
 ### /document
 
-**Querschnitts-Skill, Session-Ende.**
+**Werkzeug neben dem Prozess, Session-Ende.**
 
 Wenn ein Vault konfiguriert ist, schreibt der Skill einen Tageslog-Eintrag in `{vault}/Log/YYYY-MM-DD.md` mit dem, was heute entschieden und implementiert wurde, und aktualisiert den Zeitstempel in der Projektnotiz. Ohne Vault schreibt er in `docs/session-log/YYYY-MM-DD.md` im Projektverzeichnis.
 
@@ -515,6 +544,111 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Die Leitplanke leitet aus vorhandenen Annotationen ab**, statt eine handgepflegte Verbotsliste zu führen, die selbst veraltet: `@typescript-eslint/no-deprecated` liest JSDoc-`@deprecated`, Java meldet mit `-Xlint:deprecation` und `-Werror` jede abgekündigte API als Build-Fehler, Linter-`recommended`-Sets decken die gängigen veralteten Idiome ab. Der Analyzer skaliert mit dem Ökosystem, die Liste nur mit der Pflegedisziplin.
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
+
+## Issue-Review über mehrere Modelle
+
+Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin kostet mehr als ein Fehler im Code, weil er sich in die ganze Umsetzung fortpflanzt — und der Autor sieht ihn nicht, weil er den Kontext im Kopf hat, aus dem das Issue entstanden ist. Was er nicht hingeschrieben hat, ergänzt er beim Lesen unbewusst.
+
+`/issue-review` sitzt zwischen `/issues` (Schritt 3) und dem GO (Schritt 4): Zwei Modelle, die das Issue **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+
+### Konfiguration
+
+```json
+"issueReview": {
+  "rounds": 1,
+  "requiredBeforeReady": false,
+  "reviewers": [
+    { "name": "opus",   "kind": "claude", "model": "claude-opus-5" },
+    { "name": "sonnet", "kind": "claude", "model": "claude-sonnet-5" },
+    { "name": "fable",  "kind": "claude", "model": "claude-fable-5" }
+  ]
+}
+```
+
+Die Vorlage bringt nur die Anthropic-Familie mit. Ein fremdes Modell kommt als zusätzlicher Eintrag dazu — mehr dazu unten. Es ist bewusst nicht voreingestellt: Nicht jeder hat Codex installiert, manche wollen Gemini, und eine Vorlage, deren Vorflug beim ersten Lauf rot meldet, schreckt ab.
+
+Wer wen prüft, steht in `pairs`:
+
+```json
+"pairs": {
+  "opus":   ["sonnet", "fable"],
+  "sonnet": ["opus", "fable"],
+  "haiku":  ["sonnet", "opus"]
+}
+```
+
+Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die ersten zwei Reviewer, die nicht der Autor sind.
+
+**Verlass dich nicht auf die Regel allein.** Sie wählt immer die vordersten Einträge — bei vier konfigurierten Reviewern kommt der vierte in keinem einzigen Fall zum Zug. Wer ein fremdes Modell hinten in die Liste schreibt, hat es damit faktisch abgeschaltet. Genau das ist beim Bau dieses Verfahrens passiert, und es ist der Grund, warum es `pairs` gibt.
+
+Die vollständige Zuordnung lässt sich ablesen statt ausrechnen:
+
+```bash
+node .claude/kit/board.mjs issue-review matrix
+```
+
+```
+opus     -> codex, sonnet      (pairs)
+fable    -> opus, sonnet       (regel)
+```
+
+Die Spalte `quelle` sagt, ob die Zeile aus `pairs` oder aus dem Fallback stammt. Wer dort `regel` liest, obwohl er einen Eintrag erwartet hatte, hat den Autor-Namen anders geschrieben.
+
+Zwei Dinge sind harte Fehler, keine stillen Skips: ein Name in `pairs`, den es in `reviewers` nicht gibt, und ein Autor, der sich selbst nennt.
+
+Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die ersten zwei Reviewer genommen.
+
+### Fremde Modelle anbinden
+
+Das ist der Punkt, an dem sich `issueReview` von einer Modell-Liste unterscheidet: Ein Reviewer ist ein **Adapter**, kein Claude-Modell.
+
+| `kind` | Wie es läuft |
+|---|---|
+| `claude` | Subagent über das Agent-Tool, mit dem konfigurierten `model` |
+| `command` | beliebiges CLI: Prompt über **stdin** hinein, Antwort von **stdout** heraus |
+
+Damit nimmt jedes Werkzeug teil, das Text liest und Text schreibt — Codex, Gemini, ein selbstgebautes Skript. **Das Kit kennt das fremde Werkzeug nicht und muss es nicht kennen.** Es prüft beim Vorflug nur, ob das erste Wort der Kommandozeile im PATH liegt.
+
+Der Prompt geht über stdin, nicht als Argument. Ein Issue-Body enthält Backticks, Anführungszeichen und Zeilenumbrüche; ihn durch eine Kommandozeile zu quoten ist genau die Fehlerklasse, die aus dem Board-Adapter entfernt wurde.
+
+### Zwei Reviewer, zwei Rollen
+
+Beide bekommen denselben Body, aber verschiedene Aufträge:
+
+| Rolle | Fragt |
+|---|---|
+| **Vollständigkeit** | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
+| **Scope & Bestand** | Ist der Schnitt zu groß? Fehlen Abhängigkeiten? Was bricht, das nicht im Issue steht? |
+
+Zwei Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
+
+**Beide Rollen tragen die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Issue nach drei Modellen doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+
+### Wer entscheidet
+
+Die Befunde gehen als Board-Kommentar ans Issue — das ist Verlauf. Der **Body** wird nie automatisch überschrieben: Der Skill zeigt einen Vorschlag und fragt einmal nach.
+
+Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist kein Wahrheitskriterium. Und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
+
+Nach der Zustimmung trägt das Issue eine Marker-Zeile:
+
+```
+Issue-Review: opus, codex (2026-08-06)
+```
+
+Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
+
+### Das Gate vor Ready
+
+Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Marker kommentiert ins Backlog zurück und fährt mit dem nächsten fort. Interaktiv weisen `/implement-ready` und `/implement-next` nur darauf hin und fragen — nachts antwortet niemand, tagsüber steht ein Mensch daneben.
+
+Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
+
+### Was es kostet
+
+Zwei Reviewer je Issue sind zwei zusätzliche Läufe. Bei einem Batch von siebzehn Issues sind das vierunddreißig. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+
+`rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
 ## Team-Config und persönliche Abweichungen
 
