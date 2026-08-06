@@ -52,6 +52,28 @@
         "kind": "command",
         "command": "codex exec --model gpt-5"
       }
-    ]
+    ],
+    "pairs": {
+      "opus": [
+        "codex",
+        "sonnet"
+      ],
+      "sonnet": [
+        "codex",
+        "opus"
+      ],
+      "fable": [
+        "codex",
+        "opus"
+      ],
+      "haiku": [
+        "codex",
+        "sonnet"
+      ],
+      "codex": [
+        "opus",
+        "sonnet"
+      ]
+    }
   }
 }

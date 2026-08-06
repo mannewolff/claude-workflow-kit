@@ -47,12 +47,25 @@
         "name": "fable",
         "kind": "claude",
         "model": "claude-fable-5"
-      },
-      {
-        "name": "codex",
-        "kind": "command",
-        "command": "codex exec --model gpt-5"
       }
-    ]
+    ],
+    "pairs": {
+      "opus": [
+        "sonnet",
+        "fable"
+      ],
+      "sonnet": [
+        "opus",
+        "fable"
+      ],
+      "fable": [
+        "opus",
+        "sonnet"
+      ],
+      "haiku": [
+        "sonnet",
+        "opus"
+      ]
+    }
   }
 }

@@ -258,6 +258,16 @@
               "kind"
             ]
           }
+        },
+        "pairs": {
+          "type": "object",
+          "description": "Explizite Zuordnung Autor -> Reviewer (Issue #225). Steht der Autor hier, gewinnt sein Eintrag ueber die Reihenfolge-Regel. Ohne pairs waehlt die Regel immer die vordersten Eintraege — ein hinten stehendes fremdes Modell kaeme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     }

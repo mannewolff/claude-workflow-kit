@@ -22,6 +22,7 @@
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check
+  node board.mjs issue-review matrix
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -75,6 +76,7 @@ Nutzung:
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check
+  node board.mjs issue-review matrix
 
   node board.mjs --version
 
@@ -1782,10 +1784,36 @@ const REVIEWER_KINDS = ["claude", "command"];
  * `unterbesetzt` statt eines Fehlers, wenn zu wenige uebrig bleiben: Der Skill
  * entscheidet, ob er mit einem Reviewer faehrt — er muss es nur sichtbar machen.
  */
-export function pickReviewers(alle, autor, anzahl = 2) {
+export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
+  // Explizite Zuordnung schlaegt die Regel (Issue #225). Ohne sie waehlt die Regel
+  // immer die vordersten Eintraege — bei vier Reviewern kam der vierte nie zum Zug,
+  // ausgerechnet das Modell aus dem fremden Haus. Und wer wissen will, wer sein Issue
+  // prueft, soll es ablesen koennen statt es auszurechnen.
+  const genannt = pairs?.[autor];
+  if (Array.isArray(genannt) && genannt.length > 0) {
+    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean);
+    return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs" };
+  }
   const passend = (alle || []).filter((r) => r.name !== autor);
   const gewaehlt = passend.slice(0, anzahl);
-  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl };
+  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel" };
+}
+
+// Beide Faelle sind harte Fehler, aus derselben Begruendung wie validateReviewers:
+// Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
+// Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
+// gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
+function validatePairs(pairs, reviewers) {
+  const bekannt = new Set(reviewers.map((r) => r.name));
+  for (const [autor, genannt] of Object.entries(pairs || {})) {
+    const wo = `issueReview.pairs['${autor}']`;
+    if (!Array.isArray(genannt)) fail(`${wo}: muss eine Liste von Reviewer-Namen sein.`);
+    for (const name of genannt) {
+      if (name === autor) fail(`${wo}: nennt '${autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.`);
+      if (!bekannt.has(name)) fail(`${wo}: '${name}' steht nicht in issueReview.reviewers.`);
+    }
+  }
+  return pairs || {};
 }
 
 // Eine halb ausgefuellte Reviewer-Definition still zu ueberspringen wuerde einen
@@ -1806,9 +1834,11 @@ function validateReviewers(reviewers) {
 
 function issueReviewConfig() {
   const block = loadConfig().issueReview || {};
+  const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
     rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
-    reviewers: validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []),
+    reviewers,
+    pairs: validatePairs(block.pairs, reviewers),
   };
 }
 
@@ -1824,8 +1854,22 @@ function kommandoVerfuegbar(kommandozeile) {
 
 function issueReviewReviewers(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
-  const { rounds, reviewers } = issueReviewConfig();
-  out({ autor: autor || null, ...pickReviewers(reviewers, autor), rounds });
+  const { rounds, reviewers, pairs } = issueReviewConfig();
+  out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs), rounds });
+}
+
+// Die Tabelle, nach der man eigentlich fragt: wer prueft wen. Autoren sind alle
+// Reviewer-Namen plus alle pairs-Schluessel — letztere auch dann, wenn sie selbst nicht
+// als Reviewer auftreten (ein Modell kann schreiben, ohne zu pruefen).
+function issueReviewMatrix() {
+  const { reviewers, pairs } = issueReviewConfig();
+  const autoren = [...new Set([...reviewers.map((r) => r.name), ...Object.keys(pairs)])];
+  out({
+    matrix: autoren.map((autor) => {
+      const { gewaehlt, quelle } = pickReviewers(reviewers, autor, 2, pairs);
+      return { autor, reviewer: gewaehlt.map((r) => r.name), quelle };
+    }),
+  });
 }
 
 // Auskunft, kein Gate: Exit bleibt 0, auch wenn ein Reviewer fehlt. Wer daraus ein
@@ -1846,6 +1890,7 @@ async function dispatchIssueReview(command, args) {
   switch (command) {
     case "reviewers": return issueReviewReviewers(args);
     case "check": return issueReviewCheck();
+    case "matrix": return issueReviewMatrix();
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

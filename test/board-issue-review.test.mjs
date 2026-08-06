@@ -204,3 +204,98 @@ test("Unbekannter issue-review-Befehl: Hilfe plus Fehlermeldung", () => {
     assert.match(res.stderr, /quatsch/);
   });
 });
+
+// --- pairs: explizite Zuordnung (Issue #225) ---
+//
+// Die Regel allein waehlt immer die vordersten Eintraege: Bei vier Reviewern kam der
+// vierte nie zum Zug — ausgerechnet das Modell aus dem fremden Haus, dessen Wert darin
+// liegt, die blinden Flecken der Familie NICHT zu teilen. pairs macht die Zuordnung
+// ablesbar statt errechenbar.
+
+const PAARE = { opus: ["codex", "sonnet"], sonnet: ["opus", "codex"] };
+
+test("pickReviewers: ein pairs-Eintrag gewinnt ueber die Regel", () => {
+  const { gewaehlt, quelle } = pickReviewers(ALLE, "opus", 2, PAARE);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["codex", "sonnet"]);
+  assert.equal(quelle, "pairs");
+});
+
+test("pickReviewers: die Reihenfolge im pairs-Eintrag wird eingehalten", () => {
+  assert.deepEqual(
+    pickReviewers(ALLE, "sonnet", 2, PAARE).gewaehlt.map((r) => r.name),
+    ["opus", "codex"]
+  );
+});
+
+test("pickReviewers: fehlt der Autor in pairs, greift die Regel", () => {
+  const { gewaehlt, quelle } = pickReviewers(ALLE, "fable", 2, PAARE);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["opus", "sonnet"]);
+  assert.equal(quelle, "regel");
+});
+
+test("pickReviewers: ohne pairs bleibt das Verhalten wie vorher", () => {
+  // Regressionsschutz — die Regel darf sich durch das neue Feld nicht aendern.
+  const ohne = pickReviewers(ALLE, "opus");
+  assert.deepEqual(ohne.gewaehlt.map((r) => r.name), ["sonnet", "fable"]);
+  assert.equal(ohne.quelle, "regel");
+  assert.deepEqual(pickReviewers(ALLE, "opus", 2, {}).gewaehlt.map((r) => r.name), ["sonnet", "fable"]);
+});
+
+test("pickReviewers: ein leerer pairs-Eintrag faellt auf die Regel zurueck", () => {
+  assert.equal(pickReviewers(ALLE, "opus", 2, { opus: [] }).quelle, "regel");
+});
+
+// --- CLI: pairs und Validierung ---
+
+test("issue-review reviewers nennt die Quelle der Auswahl", () => {
+  mitReview({ reviewers: ALLE, pairs: PAARE }, (dir) => {
+    const out = JSON.parse(runBoard(dir, ["issue-review", "reviewers", "--author", "opus"]).stdout);
+    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["codex", "sonnet"]);
+    assert.equal(out.quelle, "pairs");
+  });
+});
+
+test("issue-review: ein pairs-Eintrag mit unbekanntem Namen bricht ab", () => {
+  // Ein Tippfehler wuerde sonst zu einem unsichtbaren Ein-Reviewer-Lauf.
+  mitReview({ reviewers: ALLE, pairs: { opus: ["sonett", "fable"] } }, (dir) => {
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /sonett/);
+  });
+});
+
+test("issue-review: ein Autor, der sich selbst nennt, bricht ab", () => {
+  // Das hebelt den Zweck des Verfahrens aus und gehoert beim Schreiben bemerkt.
+  mitReview({ reviewers: ALLE, pairs: { opus: ["opus", "sonnet"] } }, (dir) => {
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /opus/);
+  });
+});
+
+// --- CLI: matrix ---
+
+test("issue-review matrix listet jeden bekannten Autor mit Quelle", () => {
+  mitReview({ reviewers: ALLE, pairs: PAARE }, (dir) => {
+    const res = runBoard(dir, ["issue-review", "matrix"]);
+    assert.equal(res.status, 0, res.stderr);
+    const { matrix } = JSON.parse(res.stdout);
+    const zeile = (name) => matrix.find((m) => m.autor === name);
+
+    assert.deepEqual(zeile("opus").reviewer, ["codex", "sonnet"]);
+    assert.equal(zeile("opus").quelle, "pairs");
+    assert.deepEqual(zeile("fable").reviewer, ["opus", "sonnet"]);
+    assert.equal(zeile("fable").quelle, "regel");
+    assert.deepEqual(matrix.map((m) => m.autor).sort(), ["codex", "fable", "opus", "sonnet"]);
+  });
+});
+
+test("issue-review matrix nimmt auch Autoren auf, die nur in pairs stehen", () => {
+  // haiku ist kein Reviewer, kann aber Issues schreiben.
+  mitReview({ reviewers: ALLE, pairs: { haiku: ["sonnet", "opus"] } }, (dir) => {
+    const { matrix } = JSON.parse(runBoard(dir, ["issue-review", "matrix"]).stdout);
+    const haiku = matrix.find((m) => m.autor === "haiku");
+    assert.deepEqual(haiku.reviewer, ["sonnet", "opus"]);
+    assert.equal(haiku.quelle, "pairs");
+  });
+});
