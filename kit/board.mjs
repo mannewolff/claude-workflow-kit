@@ -19,6 +19,7 @@
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -69,6 +70,7 @@ Nutzung:
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
 
   node board.mjs --version
 
@@ -1419,6 +1421,51 @@ export function resolveKontextPaths({ cfg = {}, project, date }) {
   };
 }
 
+/** Ein Datum ist nur gueltig, wenn es den Tag auch wirklich gibt: 2026-13-99 nicht. */
+function istTagesdatum(wert) {
+  const d = new Date(`${wert}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === wert;
+}
+
+const REGEX_SONDERZEICHEN = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Waehlt aus einer Liste von Dateinamen den juengsten Log-Eintrag desselben Projekts.
+ * Reine Funktion ueber Namen — kein Dateisystem, damit die Randfaelle pruefbar sind.
+ *
+ * Das `logPath`-Template wird zum Suchmuster: {date} wird zum Datums-Platzhalter,
+ * {project} woertlich zum Projektnamen. Gesucht wird also nie "der juengste Eintrag
+ * ueberhaupt" — im Multi-Repo-Fall liegen die Eintraege aller Services im selben
+ * Ordner, und der juengste fremde waere die falsche Anknuepfung (Issue #205).
+ *
+ * `before` grenzt auf Eintraege davor ein. Ohne den Wert laese eine zweite Session am
+ * selben Tag sich selbst als Vorgaenger.
+ */
+export function pickLatestLog(fileNames, { template, project = "", before = null } = {}) {
+  const muster = (template || KONTEXT_DEFAULTS.logPath).split("/").pop();
+  // Split mit Capture-Group behaelt die Platzhalter als eigene Stuecke: So wird nur der
+  // Literaltext escaped, und ein Punkt im Projektnamen bleibt ein Punkt.
+  const quelle = muster
+    .split(/(\{date\}|\{project\})/)
+    .map((teil) => {
+      if (teil === "{date}") return "(\\d{4}-\\d{2}-\\d{2})";
+      const literal = teil === "{project}" ? project : teil;
+      return literal.replace(REGEX_SONDERZEICHEN, "\\$&");
+    })
+    .join("");
+  const regex = new RegExp(`^${quelle}$`);
+
+  let treffer = null;
+  for (const name of fileNames) {
+    const m = regex.exec(name);
+    if (!m || !istTagesdatum(m[1])) continue;
+    if (before && m[1] >= before) continue;
+    // Bei JJJJ-MM-TT ist lexikografisch identisch mit chronologisch.
+    if (!treffer || m[1] > treffer.date) treffer = { name, date: m[1] };
+  }
+  return treffer;
+}
+
 function readKontextConfigFile(pfad) {
   if (!existsSync(pfad)) return {};
   try {
@@ -1569,9 +1616,36 @@ async function kontextPaths(args) {
   out(resolveKontextPaths({ cfg, project, date: kontextOption(args, "date") || heute() }));
 }
 
+// Der juengste vorhandene Log-Eintrag desselben Projekts, als Anknuepfung fuer /document.
+// Kein Vault, kein Log-Verzeichnis oder kein Treffer sind alle derselbe Normalfall
+// (erster Eintrag eines Projekts) und liefern path: null — kein Fehler.
+async function kontextLastLog(args) {
+  const cfg = loadKontextConfig();
+  if (!cfg.vault) return out({ path: null });
+
+  const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
+  const template = cfg.logPath || KONTEXT_DEFAULTS.logPath;
+  const ordner = join(cfg.vault, ...template.split("/").slice(0, -1));
+
+  let dateien;
+  try {
+    dateien = readdirSync(ordner);
+  } catch {
+    return out({ path: null });
+  }
+
+  const treffer = pickLatestLog(dateien, {
+    template,
+    project,
+    before: kontextOption(args, "before") || heute(),
+  });
+  out(treffer ? { path: join(ordner, treffer.name), date: treffer.date } : { path: null });
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
+    case "last-log": return kontextLastLog(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter kontext-Befehl: '${command}'`);

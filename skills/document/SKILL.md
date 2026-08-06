@@ -31,6 +31,24 @@ Das JSON enthaelt:
 
 **Wenn das Kommando fehlschlaegt** (unbekannte Achse `kontext` — ein Projekt mit aelterer `board.mjs`): auf das bisherige Verhalten zurueckfallen statt abzubrechen. Also `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
 
+### 1b. Vorgaenger-Eintrag lesen (nur Modus `full`)
+
+```bash
+node .claude/kit/board.mjs kontext last-log
+```
+
+Liefert `{"path": "...", "date": "JJJJ-MM-TT"}` — den juengsten vorhandenen Log-Eintrag **desselben Projekts** — oder `{"path": null}`, wenn es keinen gibt (erster Eintrag eines Projekts, Normalfall, kein Fehler). Der heutige Eintrag ist ausgeschlossen: Eine zweite Session am selben Tag soll nicht sich selbst als Vorgaenger lesen.
+
+Ist ein Pfad da, die Datei lesen und fuer drei Dinge nutzen:
+
+1. **Rueckverweis statt Doppelung.** Auf den Vorgaenger verweisen (`siehe Log JJJJ-MM-TT`) und dort Beschriebenes nicht erneut ausbreiten.
+2. **Offene Punkte aufgreifen.** Was der letzte Eintrag unter „Offene Punkte" gelistet hat, wird im neuen Eintrag beantwortet oder ausdruecklich als weiterhin offen fortgeschrieben. Ein offener Punkt, der kommentarlos verschwindet, ist der eigentliche Schaden — er sieht wie erledigt aus.
+3. **Ton und Gliederung uebernehmen**, statt jedes Mal ein neues Format zu erfinden.
+
+Ausdruecklich nicht: den Vorgaenger aendern, ihn ganz zitieren, oder mehr als einen Eintrag laden. Es geht um Anknuepfung, nicht um Historie.
+
+Faellt das Kommando aus (aeltere `board.mjs`), diesen Schritt still ueberspringen — er verbessert den Eintrag, er ist keine Bedingung fuer ihn.
+
 ### 2. Tageslog schreiben
 
 **Modus `full`:** Ziel-Datei ist `log` aus dem JSON.

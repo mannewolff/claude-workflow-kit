@@ -20,7 +20,7 @@ import { rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 
 import { setupProjekt, runBoard, fakeCli } from "./helpers/board-fixture.mjs";
-import { mergeKontextConfig, resolveKontextPaths } from "../kit/board.mjs";
+import { mergeKontextConfig, resolveKontextPaths, pickLatestLog } from "../kit/board.mjs";
 
 const VAULT = join("/Users", "x", "ClaudeMemory");
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
@@ -297,4 +297,144 @@ test("Kaputte kontext.config.json: Meldung nennt den Pfad, Exit 1", () => {
     assert.equal(res.status, 1);
     assert.match(res.stderr, /kontext\.config\.json konnte nicht gelesen werden/);
   });
+});
+
+// --- pickLatestLog (Issue #205) ---
+//
+// Der Log ist die einzige Vault-Datei, die geschrieben wird, ohne dass jemand die
+// vorherige Fassung gesehen hat: /kontext liest ihn nicht. Die Auswahl des Vorgaengers
+// laeuft deshalb hier in Code — als reine Funktion ueber eine Dateinamensliste, damit
+// die Randfaelle ohne Dateisystem pruefbar sind.
+
+const LOG_TEMPLATE = "Log/{date}-{project}.md";
+
+test("pickLatestLog: ohne Kandidaten gibt es keinen Vorgaenger", () => {
+  assert.equal(pickLatestLog([], { template: LOG_TEMPLATE, project: "auth" }), null);
+  assert.equal(
+    pickLatestLog(["Index.md", "Profil.md"], { template: LOG_TEMPLATE, project: "auth" }),
+    null
+  );
+});
+
+test("pickLatestLog: von mehreren Kandidaten gewinnt der juengste", () => {
+  const dateien = ["2026-08-01-auth.md", "2026-08-04-auth.md", "2026-07-30-auth.md"];
+  assert.deepEqual(pickLatestLog(dateien, { template: LOG_TEMPLATE, project: "auth" }), {
+    name: "2026-08-04-auth.md",
+    date: "2026-08-04",
+  });
+});
+
+test("pickLatestLog: der heutige Eintrag zaehlt nicht als eigener Vorgaenger", () => {
+  // Zweite Session am selben Tag: Ohne diese Grenze laese der Eintrag sich selbst.
+  const dateien = ["2026-08-04-auth.md", "2026-08-06-auth.md"];
+  assert.deepEqual(
+    pickLatestLog(dateien, { template: LOG_TEMPLATE, project: "auth", before: "2026-08-06" }),
+    { name: "2026-08-04-auth.md", date: "2026-08-04" }
+  );
+});
+
+test("pickLatestLog: Dateien fremder Projekte werden nicht gewaehlt", () => {
+  // Der Kern des Multi-Repo-Falls: Im geteilten Log-Ordner liegen die Eintraege aller
+  // Services nebeneinander. Der juengste ueberhaupt waere die falsche Anknuepfung.
+  const dateien = ["2026-08-05-payment.md", "2026-08-01-auth.md"];
+  assert.deepEqual(pickLatestLog(dateien, { template: LOG_TEMPLATE, project: "auth" }), {
+    name: "2026-08-01-auth.md",
+    date: "2026-08-01",
+  });
+});
+
+test("pickLatestLog: Dateien ohne gueltigen Datumsteil werden ignoriert", () => {
+  const dateien = ["notiz-auth.md", "2026-13-99-auth.md", "2026-08-01-auth.md"];
+  assert.deepEqual(pickLatestLog(dateien, { template: LOG_TEMPLATE, project: "auth" }), {
+    name: "2026-08-01-auth.md",
+    date: "2026-08-01",
+  });
+});
+
+test("pickLatestLog: Template ohne {project} findet die reinen Datumsdateien", () => {
+  // Der Ein-Repo-Default. Ein Projektname darf hier nichts aendern.
+  const dateien = ["2026-08-01.md", "2026-08-04.md", "2026-08-04-auth.md"];
+  assert.deepEqual(pickLatestLog(dateien, { template: "Log/{date}.md", project: "auth" }), {
+    name: "2026-08-04.md",
+    date: "2026-08-04",
+  });
+});
+
+test("pickLatestLog: Sonderzeichen im Projektnamen bleiben woertlich", () => {
+  // Ein Punkt im Namen darf im Muster kein Regex-Platzhalter werden.
+  const dateien = ["2026-08-01-a.b.md", "2026-08-02-axb.md"];
+  assert.deepEqual(pickLatestLog(dateien, { template: LOG_TEMPLATE, project: "a.b" }), {
+    name: "2026-08-01-a.b.md",
+    date: "2026-08-01",
+  });
+});
+
+// --- CLI: kontext last-log ---
+
+/** Legt einen echten Vault mit Log-Dateien an und gibt seinen Pfad zurueck. */
+function mitVault(dir, dateien) {
+  const vault = join(dir, "vault");
+  mkdirSync(join(vault, "Log"), { recursive: true });
+  for (const name of dateien) writeFileSync(join(vault, "Log", name), `# ${name}\n`);
+  return vault;
+}
+
+test("kontext last-log liefert Pfad und Datum des juengsten Eintrags", () => {
+  const dir = setupProjekt(LOKAL, "board-lastlog-");
+  const home = join(dir, "home");
+  mkdirSync(join(home, ".claude"), { recursive: true });
+  const vault = mitVault(dir, ["2026-08-01-auth.md", "2026-08-04-auth.md", "2026-08-04-payment.md"]);
+  writeFileSync(
+    join(home, ".claude", "kontext.config.json"),
+    JSON.stringify({ vault, logPath: "Log/{date}-{project}.md" })
+  );
+  try {
+    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), {
+      path: join(vault, "Log", "2026-08-04-auth.md"),
+      date: "2026-08-04",
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("kontext last-log ohne Vorgaenger liefert path null", () => {
+  const dir = setupProjekt(LOKAL, "board-lastlog-");
+  const home = join(dir, "home");
+  mkdirSync(join(home, ".claude"), { recursive: true });
+  const vault = mitVault(dir, []);
+  writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
+  try {
+    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { path: null });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("kontext last-log ohne Vault liefert path null statt eines Fehlers", () => {
+  mitKontext({}, (dir, env) => {
+    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], env);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { path: null });
+  });
+});
+
+test("kontext last-log: fehlendes Log-Verzeichnis ist kein Fehler", () => {
+  const dir = setupProjekt(LOKAL, "board-lastlog-");
+  const home = join(dir, "home");
+  mkdirSync(join(home, ".claude"), { recursive: true });
+  const vault = join(dir, "vault-ohne-log");
+  mkdirSync(vault, { recursive: true });
+  writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
+  try {
+    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { path: null });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
