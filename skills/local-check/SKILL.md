@@ -10,9 +10,14 @@ Schritt 6 des 9-Schritt-Prozesses: Alle Pflicht-Checks laufen lokal durch. Outpu
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Relevante Felder:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Relevante Felder — alle drei gelten **teamweit** und sind lokal nicht überschreibbar:
 - `buildChecks`: Liste der auszuführenden Build-/Test-Kommandos (z.B. `["mvn verify", "npm run build"]`)
 - `mutationCommand`: Mutations-Test-Kommando (optional, z.B. `"mvn org.pitest:pitest-maven:mutationCoverage"`)
+- `formatFixCommand`: Kommando, das Formatierungsverstöße mechanisch behebt (optional, z.B. `"mvn spotless:apply"` oder `"npx prettier --write ."`). Wird heute nur vom Nacht-Runner genutzt (Issue #169).
+
+Dass diese Felder im Repository liegen, ist der Punkt: Hätte jeder seine eigenen `buildChecks`, hieße „grün" bei zwei Entwicklern nicht dasselbe.
 
 Fehlt die Config: Führe `buildChecks: []` aus und weise darauf hin, dass keine Checks konfiguriert sind.
 
@@ -85,7 +90,7 @@ Checklist im Format:
 Alle automatisierten Checks grün. UI-Check steht aus.
 ```
 
-Wenn `buildChecks` leer ist: Hinweis ausgeben "Keine buildChecks konfiguriert. Passe `.claude/workflow.config.json` an." Kein Fehler, kein Abbruch.
+Wenn `buildChecks` leer ist: Hinweis ausgeben "Keine buildChecks konfiguriert. Passe `.claude/workflow.config.json` an — die Datei gehört ins Repository, die Änderung also committen." Kein Fehler, kein Abbruch.
 
 Roter Check (`❌`) stoppt den Prozess. Nicht weitergehen, bevor der Fehler geklärt ist.
 

@@ -10,7 +10,9 @@ Single-Issue-Variante von Schritt 5 des 9-Schritt-Prozesses: **Genau ein** Ready
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Relevantes Feld:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
 
 ## Ablauf (genau ein Issue)
