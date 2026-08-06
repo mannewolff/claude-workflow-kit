@@ -2,6 +2,25 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.29.1] - 2026-08-06
+- CLI-Grammatik gegen die echten gh/glab-Hilfetexte abgleichen (#218)
+- Fake-CLIs gegen eine Kommando-Grammatik validieren (#217)
+- issues-Skill: manuelle Akzeptanzkriterien vom Session-Abschluss trennen (#215)
+- board.mjs: getRepoName liefert einheitlich owner/repo (#214)
+- sync-blobs: Dogfooding-Kopien unter .claude/skills/ abgleichen und pruefen (#213)
+- /local-check: formatFixCommand bei roten Checks einmal fahren (#212)
+- Schema, Template und Doku: Zwei-Datei-Config beschreiben (#211)
+- Skills: geteilte und lokale Config beschreiben, formatFixCommand nachtragen (#210)
+- Kit-Repo: .gitignore auf den Block umstellen, 'git add -f'-Kruecke entfernen (#209)
+- install.mjs: .gitignore-Block statt '.claude/', mit Migration (#208)
+- Zwei-Datei-Config: geteilte Team-Werte, lokale Overrides mit Allowlist (#207)
+- Doku: Multi-Repo-Setup und das Prinzip 'Eine Datei, ein Schreiber' (#206)
+- /document: juengsten Log-Eintrag desselben Projekts als Anknuepfung (#205)
+- board.mjs: 'glab issue note' statt 'issue note create' (#216)
+- /kontext: Dach- und Service-Notiz laden statt nur einer Projektnotiz (#204)
+- /document: Pfade aus 'kontext paths', Dach-Notiz nur mit Rueckfrage (#203)
+- board.mjs: Kommando 'kontext paths' fuer die Vault-Pfad-Aufloesung (#202)
+
 ## [1.28.4] - 2026-08-05
 - Installer-Tests: HOME und USERPROFILE umlenken (#187)
 
