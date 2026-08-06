@@ -516,6 +516,83 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
 
+## Issue-Review über mehrere Modelle (Schritt 3.5)
+
+Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin kostet mehr als ein Fehler im Code, weil er sich in die ganze Umsetzung fortpflanzt — und der Autor sieht ihn nicht, weil er den Kontext im Kopf hat, aus dem das Issue entstanden ist. Was er nicht hingeschrieben hat, ergänzt er beim Lesen unbewusst.
+
+Schritt 3.5 sitzt zwischen `/issues` und dem GO: Zwei Modelle, die das Issue **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+
+### Konfiguration
+
+```json
+"issueReview": {
+  "rounds": 1,
+  "requiredBeforeReady": false,
+  "reviewers": [
+    { "name": "opus",   "kind": "claude",  "model": "claude-opus-5" },
+    { "name": "sonnet", "kind": "claude",  "model": "claude-sonnet-5" },
+    { "name": "fable",  "kind": "claude",  "model": "claude-fable-5" },
+    { "name": "codex",  "kind": "command", "command": "codex exec --model gpt-5" }
+  ]
+}
+```
+
+Ausgewählt werden die ersten zwei Einträge, deren `name` nicht dem Autor-Modell des Issues entspricht. **Die Reihenfolge ist die Steuerung:** Wer eine feste Paarung will, sortiert die Liste entsprechend — eine Matrix „Autor → Reviewer-Paar" braucht es dafür nicht, und sie würde bei jeder neuen Modellgeneration veralten.
+
+Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die ersten zwei Reviewer genommen.
+
+### Fremde Modelle anbinden
+
+Das ist der Punkt, an dem sich `issueReview` von einer Modell-Liste unterscheidet: Ein Reviewer ist ein **Adapter**, kein Claude-Modell.
+
+| `kind` | Wie es läuft |
+|---|---|
+| `claude` | Subagent über das Agent-Tool, mit dem konfigurierten `model` |
+| `command` | beliebiges CLI: Prompt über **stdin** hinein, Antwort von **stdout** heraus |
+
+Damit nimmt jedes Werkzeug teil, das Text liest und Text schreibt — Codex, Gemini, ein selbstgebautes Skript. **Das Kit kennt das fremde Werkzeug nicht und muss es nicht kennen.** Es prüft beim Vorflug nur, ob das erste Wort der Kommandozeile im PATH liegt.
+
+Der Prompt geht über stdin, nicht als Argument. Ein Issue-Body enthält Backticks, Anführungszeichen und Zeilenumbrüche; ihn durch eine Kommandozeile zu quoten ist genau die Fehlerklasse, die aus dem Board-Adapter entfernt wurde.
+
+### Zwei Reviewer, zwei Rollen
+
+Beide bekommen denselben Body, aber verschiedene Aufträge:
+
+| Rolle | Fragt |
+|---|---|
+| **Vollständigkeit** | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
+| **Scope & Bestand** | Ist der Schnitt zu groß? Fehlen Abhängigkeiten? Was bricht, das nicht im Issue steht? |
+
+Zwei Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
+
+**Beide Rollen tragen die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Issue nach drei Modellen doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+
+### Wer entscheidet
+
+Die Befunde gehen als Board-Kommentar ans Issue — das ist Verlauf. Der **Body** wird nie automatisch überschrieben: Der Skill zeigt einen Vorschlag und fragt einmal nach.
+
+Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist kein Wahrheitskriterium. Und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
+
+Nach der Zustimmung trägt das Issue eine Marker-Zeile:
+
+```
+Issue-Review: opus, codex (2026-08-06)
+```
+
+Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
+
+### Das Gate vor Ready
+
+Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Marker kommentiert ins Backlog zurück und fährt mit dem nächsten fort. Interaktiv weisen `/implement-ready` und `/implement-next` nur darauf hin und fragen — nachts antwortet niemand, tagsüber steht ein Mensch daneben.
+
+Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
+
+### Was es kostet
+
+Zwei Reviewer je Issue sind zwei zusätzliche Läufe. Bei einem Batch von siebzehn Issues sind das vierunddreißig. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+
+`rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
+
 ## Team-Config und persönliche Abweichungen
 
 Dieselbe Frage wie oben, eine Ebene tiefer: Was gehört ins Repository, und was darf jeder für sich anders haben?
