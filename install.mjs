@@ -276,19 +276,67 @@ function loadExistingConfig(configPath) {
   return existingConfig;
 }
 
-// '.claude/' im projektlokalen .gitignore sicherstellen (idempotent).
+// .gitignore-Block fuer .claude/ (Issue #208).
+//
+// workflow.config.json gehoert ins Repository: buildChecks, columns, Branch-Namen und
+// Tracker muessen fuer alle gleich sein. Lag die Datei ausserhalb, hatte jeder seine
+// eigene Fassung — und eine abweichende columns-Fassung fuehrt nicht zu einem Fehler,
+// sondern zu einer leeren Issue-Liste.
+//
+// Die erste Zeile MUSS `.claude/*` lauten, nicht `.claude/`: Git wertet ein
+// !-Negationsmuster nicht aus, wenn das Verzeichnis selbst ausgeschlossen ist — es
+// betritt es gar nicht erst. Mit `.claude/` bliebe die Negation wirkungslos, und der
+// Fehler faehlt sich an wie "vergessen zu committen".
+//
+// Die letzten beiden Zeilen sind formal redundant (`.claude/*` deckt sie), stehen aber
+// bewusst da: Sie machen lesbar, dass persoenliche Config und Metadaten-Cache
+// absichtlich draussen bleiben.
+const GITIGNORE_BLOCK = [
+  "# claude-workflow-kit (Issue #208): workflow.config.json gehoert ins Repo,",
+  "# alles andere unter .claude/ ist lokaler Zustand.",
+  ".claude/*",
+  "!.claude/workflow.config.json",
+  ".claude/workflow.config.local.json",
+  ".claude/board-meta-cache.json",
+];
+
+// '.claude/'-Regeln im projektlokalen .gitignore sicherstellen (idempotent).
 function ensureProjectGitignore() {
   const gitignorePath = resolve(".gitignore");
-  const entry = ".claude/";
   const content = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf-8") : "";
-  const alreadyListed = content.split("\n").some((l) => l.trim() === entry);
-  if (alreadyListed) {
-    console.log(`✓ .gitignore: '${entry}' bereits vorhanden`);
+  const lines = content.split("\n");
+  const trimmed = lines.map((l) => l.trim());
+
+  if (trimmed.includes("!.claude/workflow.config.json")) {
+    console.log("✓ .gitignore: .claude-Block bereits vorhanden");
     return;
   }
-  const next = content.endsWith("\n") || content === "" ? content + entry + "\n" : content + "\n" + entry + "\n";
+
+  // Eine handgepflegte .claude-Konfiguration nicht still umschreiben — das waere ein
+  // Uebergriff. Nur melden, welcher Block empfohlen ist.
+  const eigeneRegeln = trimmed.some((l) => l.startsWith(".claude/") && l !== ".claude/") ||
+    trimmed.some((l) => l.startsWith("!.claude/"));
+  if (eigeneRegeln) {
+    console.log("! .gitignore: eigene .claude-Regeln gefunden — nichts geaendert.");
+    console.log("  Empfohlen, damit workflow.config.json versionierbar bleibt:");
+    for (const zeile of GITIGNORE_BLOCK) console.log(`    ${zeile}`);
+    return;
+  }
+
+  const alteZeile = trimmed.indexOf(".claude/");
+  if (alteZeile !== -1) {
+    // Migration: ersetzen, nicht ergaenzen. Bliebe `.claude/` stehen, liefe die
+    // Negation aus dem oben genannten Grund ins Leere.
+    lines.splice(alteZeile, 1, ...GITIGNORE_BLOCK);
+    writeFileSync(gitignorePath, lines.join("\n"), "utf-8");
+    console.log("✓ .gitignore: '.claude/' durch Block ersetzt — workflow.config.json wird jetzt getrackt");
+    return;
+  }
+
+  const block = GITIGNORE_BLOCK.join("\n") + "\n";
+  const next = content.endsWith("\n") || content === "" ? content + block : content + "\n" + block;
   writeFileSync(gitignorePath, next, "utf-8");
-  console.log(`✓ .gitignore: '${entry}' eingetragen`);
+  console.log("✓ .gitignore: .claude-Block eingetragen");
 }
 
 async function main() {
@@ -429,6 +477,13 @@ async function main() {
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
   console.log(`Die dreizehn Skills erscheinen in /help.\n`);
+  if (scope === "projekt") {
+    // Ohne diesen Hinweis bleibt die Datei ungetrackt liegen und niemand merkt es —
+    // bis zwei Entwickler unterschiedliche buildChecks fahren (Issue #208).
+    console.log(`Bitte .claude/workflow.config.json committen — sie gilt fuer das ganze Team.`);
+    console.log(`Persoenliche Abweichungen (reviewModel, reviewScope) gehoeren in`);
+    console.log(`.claude/workflow.config.local.json; die bleibt lokal.\n`);
+  }
   if (codeHost === "gitlab" || issueTracker === "gitlab") {
     console.log(`GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.`);
     await setupGitLabLabels(rl);
