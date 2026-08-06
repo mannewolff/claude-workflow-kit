@@ -17,7 +17,7 @@
  * RELEASING.md braucht keine zusaetzliche Reihenfolge-Regel.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -132,6 +132,51 @@ if (existsSync(LOCAL_KIT)) {
     if (ist !== soll) {
       copyDrift.push(`.claude/kit/${datei}`);
       if (!checkOnly) writeFileSync(ziel, soll, "utf-8");
+    }
+  }
+}
+
+// --- Dogfooding-Kopien unter .claude/skills/ (Issue #213) ---
+//
+// Dieselbe Mechanik wie fuer .claude/kit/ darueber, aber aus einem konkreten Fehlbild
+// geboren: Am 2026-08-06 liefen zwei Skill-Issues in einem Nachtlauf in eine
+// Schreibsperre auf .claude/skills/, die Kopien drifteten — und `--check` blieb gruen,
+// weil es die Skills gar nicht ansah. Die Konsistenz stand damit nur als Bitte im
+// Issue-Text; nach dem Leitplanken-Prinzip (Issue #122) gehoert sie ins Gate.
+//
+// Ein Skill, der in skills/ liegt und unter .claude/skills/ fehlt, zaehlt als Drift und
+// nicht als Skip — sonst verschwindet ein neu angelegter Skill unbemerkt aus dem
+// Dogfooding. Fehlt das Verzeichnis ganz, ist es ein frischer Clone ohne lokale
+// Installation: stiller Skip, wie bei .claude/kit/.
+const LOCAL_SKILLS = join(root, ".claude", "skills");
+const SKILLS_SRC = join(root, "skills");
+
+if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC)) {
+  for (const name of readdirSync(SKILLS_SRC, { withFileTypes: true })) {
+    if (!name.isDirectory()) continue;
+    const quelle = join(SKILLS_SRC, name.name, "SKILL.md");
+    if (!existsSync(quelle)) continue;
+    const ziel = join(LOCAL_SKILLS, name.name, "SKILL.md");
+    const soll = readFileSync(quelle, "utf-8");
+    const ist = existsSync(ziel) ? readFileSync(ziel, "utf-8") : null;
+    if (ist === soll) continue;
+
+    copyDrift.push(`.claude/skills/${name.name}/SKILL.md`);
+    if (!checkOnly) {
+      try {
+        mkdirSync(dirname(ziel), { recursive: true });
+        writeFileSync(ziel, soll, "utf-8");
+      } catch (err) {
+        // Sichtbar scheitern statt still weiterlaufen: Genau diese Sperre war der
+        // Anlass des Issues, und ein verschluckter Fehler waere derselbe Fehler
+        // eine Ebene tiefer.
+        process.stderr.write(
+          `Fehler: ${ziel} liess sich nicht schreiben (${err.code || err.message}).\n` +
+          `Steht .claude/skills/ unter Schreibschutz? Dann die Sandbox-Ausnahme setzen ` +
+          `oder die Datei von Hand kopieren.\n`
+        );
+        process.exit(1);
+      }
     }
   }
 }
