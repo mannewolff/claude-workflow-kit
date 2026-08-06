@@ -8,37 +8,34 @@ user-invocable: true
 
 Schritt 9.5: Session-Ende. Was in dieser Session gebaut, entschieden und gelernt wurde, in den Memory-Vault schreiben.
 
-## Vorbedingung: Modus bestimmen
+## Tragendes Prinzip: Eine Datei, ein Schreiber
 
-Suche die Config in dieser Reihenfolge (erstes gefundenes gewinnt):
-1. `.claude/kontext.config.json` im aktuellen Projektverzeichnis
-2. `~/.claude/kontext.config.json` (global)
-
-Daraus ergibt sich einer von zwei Modi:
-
-**Modus A (Vollmodus):** Config gefunden und `vault`-Feld gesetzt. Tageslog in den Vault schreiben, Projektnotiz aktualisieren.
-
-**Modus B (Degraded Mode):** Config fehlt oder kein `vault`-Feld. Log in `docs/session-log/JJJJ-MM-TT.md` im Projektverzeichnis schreiben. Kein Abbruch.
+Jede Vault-Datei, in die dieser Skill automatisch schreibt, gehoert genau einem Repo. Teilen sich mehrere Service-Repos einen Vault, ist eine gemeinsam beschriebene Datei die Kollisionsstelle: parallele Sessions ueberschreiben Abschnitte, in einem synchronisierten Vault entsteht ein Sync-Konflikt. Geteilte Dateien werden deshalb gelesen oder nur mit ausdruecklicher Zustimmung geschrieben — die Dach-Notiz ist der einzige geteilte Schreibort und bewusst nicht automatisiert.
 
 ## Ablauf
 
-### 1. Config und Projektname lesen
+### 1. Zielpfade holen
 
-Lies `kontext.config.json` (lokale Version hat Vorrang). Extrahiere `vault` wenn vorhanden.
+Der Skill baut keine Vault-Pfade selbst zusammen. Ein Aufruf liefert alles:
 
-Projektname:
 ```bash
-node .claude/kit/board.mjs code repo-name
+node .claude/kit/board.mjs kontext paths
 ```
-Gibt `{ "repoName": "owner/repo" }` zurueck. Letztes Segment ohne Pfad verwenden.
 
-Fallback im lokalen Modus (`codeHost: local`) oder ohne git-Remote: Der Adapter liefert den **Verzeichnisnamen** des Projekts (`basename` des Arbeitsverzeichnisses) statt `owner/repo`. Das ist erwartetes Verhalten, kein Fehler — der Tageslog-Eintrag und die Projektnotiz verwenden dann diesen Verzeichnisnamen als Projektnamen. Wer einen anderen Namen im Log will, benennt das Projektverzeichnis entsprechend oder setzt ein git-Remote.
+Das JSON enthaelt:
+- `mode`: `"full"` (Vault konfiguriert) oder `"degraded"` (kein Vault)
+- `log`: absolute Zieldatei fuer den Tageslog
+- `projectNote`: absolute Zieldatei fuer die Projektnotiz
+- `parentNote`: absolute Datei der Dach-Notiz — nur gesetzt wenn `parentProject` konfiguriert ist, sonst `null`
+- `project`, `parentProject`, `vault`: fuer die Bestaetigungsmeldung
+
+**Wenn das Kommando fehlschlaegt** (unbekannte Achse `kontext` — ein Projekt mit aelterer `board.mjs`): auf das bisherige Verhalten zurueckfallen statt abzubrechen. Also `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
 
 ### 2. Tageslog schreiben
 
-**Modus A:** Ziel-Datei `{vault}/Log/JJJJ-MM-TT.md`
+**Modus `full`:** Ziel-Datei ist `log` aus dem JSON.
 
-**Modus B:** Ziel-Datei `docs/session-log/JJJJ-MM-TT.md` im Projektverzeichnis. Verzeichnis anlegen wenn nicht vorhanden.
+**Modus `degraded`:** Ziel-Datei `docs/session-log/JJJJ-MM-TT.md` im Projektverzeichnis. Verzeichnis anlegen wenn nicht vorhanden.
 
 In beiden Modi:
 - Wenn die Datei noch nicht existiert: neu anlegen.
@@ -68,9 +65,9 @@ Committet {HASH} / Commits: {Liste}
 
 Synthetisiere den Inhalt aus dem Session-Kontext: Issues, Commits, Entscheidungen, was als naechstes kommt. Kein Template-Fill-In, sondern lesbare Zusammenfassung.
 
-### 3. Projektnotiz aktualisieren (nur Modus A)
+### 3. Projektnotiz aktualisieren (nur Modus `full`)
 
-Projektnotiz: `{vault}/Projekte/{name}/{name}.md`
+Zieldatei ist `projectNote` aus dem JSON. Sie gehoert diesem Repo und wird ohne Rueckfrage aktualisiert.
 
 Aktualisiere den Abschnitt `## Zuletzt aktualisiert` mit einem neuen Eintrag oben (neueste Eintraege zuerst):
 
@@ -80,18 +77,52 @@ Aktualisiere den Abschnitt `## Zuletzt aktualisiert` mit einem neuen Eintrag obe
 
 Bestehende Eintraege bleiben erhalten.
 
-### 4. Bestaetigung
+### 4. Dach-Notiz nur mit Rueckfrage (nur wenn `parentNote` gesetzt ist)
 
-Melde was geschrieben wurde:
+`parentNote` wird **nie automatisch geschrieben** — sie gehoert allen Services gemeinsam.
 
-**Modus A:**
+Pruefe, ob die Session Cross-Service-Wirkung hatte:
+- geteiltes Datenmodell oder Schema geaendert
+- API-Vertrag zwischen Services geaendert
+- gemeinsame Infrastruktur angefasst
+- systemweite Architektur-Entscheidung getroffen
+
+**Ohne Cross-Service-Wirkung: nicht fragen, nichts schreiben.**
+
+**Mit Cross-Service-Wirkung:** einmal nachfragen, mit dem konkret vorgeschlagenen Eintragstext, und erst nach ausdruecklicher Zustimmung schreiben:
+
+```
+Die Session hat Cross-Service-Wirkung ({kurze Begruendung}).
+Eintrag in die Dach-Notiz Projekte/{parent}/{parent}.md:
+
+- JJJJ-MM-TT ({project}): {vorgeschlagener Eintragstext}
+
+Eintragen? (ja/nein)
+```
+
+Diese Rueckfrage ist der einzige Stopp-Punkt in `/document`. Sie im Zweifel zu stellen ist billiger als ein Sync-Konflikt in der Datei, die das Systemwissen traegt.
+
+### 5. Bestaetigung
+
+Melde die tatsaechlich geschriebenen Ziele mit ihrem Vault-relativen Pfad.
+
+**Modus `full`, ohne `parentProject`:**
 ```
 Dokumentiert:
 - Log/JJJJ-MM-TT.md (neu / ergaenzt)
 - Projekte/{name}/{name}.md (Zuletzt aktualisiert)
 ```
 
-**Modus B:**
+**Modus `full`, mit `parentProject`:** zusaetzlich ausdruecklich sagen, ob die Dach-Notiz angefasst wurde:
+```
+Dokumentiert:
+- {logPfad relativ zum Vault} (neu / ergaenzt)
+- Projekte/{parent}/{project}.md (Zuletzt aktualisiert)
+- Dach-Notiz Projekte/{parent}/{parent}.md: nicht angefasst (keine Cross-Service-Wirkung)
+```
+bzw. `... : ergaenzt (nach Zustimmung)`, wenn geschrieben wurde.
+
+**Modus `degraded`:**
 ```
 Dokumentiert:
 - docs/session-log/JJJJ-MM-TT.md (neu / ergaenzt)
@@ -103,6 +134,8 @@ Fuer Vollmodus: ~/.claude/kontext.config.json anlegen mit vault-Pfad.
 ## Was dieser Skill nicht tut
 
 - Kein Lesen von Vault-Dateien in den Kontext (das ist /kontext)
+- Kein automatisches Schreiben in die Dach-Notiz — nur nach Rueckfrage
+- Kein Selbst-Zusammenbauen von Vault-Pfaden (das macht `board.mjs kontext paths`)
 - Keine Code-Änderungen
 - Kein Commit, kein Push
 - Kein Überschreiben bestehender Log-Abschnitte — nur anhängen
