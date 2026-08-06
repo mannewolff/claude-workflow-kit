@@ -13,6 +13,7 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 | 1.5 Fachliches Issue (optional) | KI | PO-Schleife: Anforderung als [Fachlich]-Issue zum Groomen mit dem PO | `/fachplan` |
 | 2. Plan | KI | Erstellt Plan, stellt zur Diskussion, implementiert nichts | `/plan` |
 | 3. Plan zu Issues | KI | Uebertraegt Plan in GitHub-Issues (Vier-Abschnitt-Format) | `/issues` |
+| 3.5 Issue-Review (optional) | KI | Zwei fremde Modelle schaerfen das Issue vor dem GO | `/issue-review` |
 | 4. GO | Mensch | Zieht Issues nach Ready — das ist das GO | — |
 | 5. Implementierung | KI | Arbeitet Ready-Issues sequenziell ab, committet lokal | `/implement-ready` |
 | 6. Lokale Pruefung | KI + Mensch | Pflicht-Checks + manuelle UI-Verifikation | `/local-check` |
@@ -31,6 +32,10 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 
 Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und tippbar.
 
+Vor dem GO gehoert ein Issue geprueft: `/issue-review` (Schritt 3.5) laesst es von zwei
+Modellen lesen, die es nicht geschrieben haben. Bei gesetztem `issueReview.requiredBeforeReady`
+stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
+
 ---
 
 ## Nachtbetrieb (optional)
@@ -42,6 +47,25 @@ Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern komment
 Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Die Stop-Punkte gelten
 unveraendert: nachts wird committet, nie gepusht — Review, Test und `push main` passieren
 morgens durch den Menschen. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
+
+---
+
+## Zwei Bahnen
+
+**Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger.
+
+**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/plan` → `/issues` → GO → `/implement-ready`.
+
+**Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2, ich …"); im Zweifel Bahn 2.
+
+| Beispiel | Bahn |
+|----------|------|
+| Icon-/Favicon-Tausch | 1 |
+| Textkorrektur | 1 |
+| Config-Default | 1 |
+| Neue Tabelle | 2 |
+| Neuer Endpoint | 2 |
+| Neues UI-Feature | 2 |
 
 ---
 

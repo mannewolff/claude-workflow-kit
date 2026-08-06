@@ -13,6 +13,7 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 | 1.5 Fachliches Issue (optional) | KI | PO-Schleife: Anforderung als [Fachlich]-Issue zum Groomen mit dem PO | `/fachplan` |
 | 2. Plan | KI | Erstellt Plan, stellt zur Diskussion, implementiert nichts | `/plan` |
 | 3. Plan zu Issues | KI | Uebertraegt Plan in GitHub-Issues (Vier-Abschnitt-Format) | `/issues` |
+| 3.5 Issue-Review (optional) | KI | Zwei fremde Modelle schaerfen das Issue vor dem GO | `/issue-review` |
 | 4. GO | Mensch | Zieht Issues nach Ready — das ist das GO | — |
 | 5. Implementierung | KI | Arbeitet Ready-Issues sequenziell ab, committet lokal | `/implement-ready` |
 | 6. Lokale Pruefung | KI + Mensch | Pflicht-Checks + manuelle UI-Verifikation | `/local-check` |
@@ -30,6 +31,10 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 3. **Merge (Schritt 9):** Trigger-Phrase `merge production`. Claude merged nicht.
 
 Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und tippbar.
+
+Vor dem GO gehoert ein Issue geprueft: `/issue-review` (Schritt 3.5) laesst es von zwei
+Modellen lesen, die es nicht geschrieben haben. Bei gesetztem `issueReview.requiredBeforeReady`
+stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
 
 ---
 
