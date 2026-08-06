@@ -157,6 +157,76 @@ function configRoot() {
   return process.env.KIT_ROOT ? resolve(process.env.KIT_ROOT) : join(__dirname, "..");
 }
 
+// Felder, die aus workflow.config.local.json gewinnen duerfen (Issue #207). Alles andere
+// gilt teamweit und wird aus der lokalen Datei ignoriert.
+//
+// Die Allowlist ist die eigentliche Entscheidung hinter der Zwei-Datei-Trennung: Waeren
+// buildChecks lokal ueberschreibbar, koennte sich jeder sein Gate wegkonfigurieren und die
+// Trennung waere Kosmetik. Die geteilte Datei laesst sich zwar weiterhin lokal editieren —
+// dann steht sie aber in `git status`, und sichtbare Abweichung ist etwas anderes als
+// per Design unsichtbare.
+//
+// Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
+// ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
+// weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+/**
+ * Mergt die persoenliche Config in die geteilte, aber nur an den erlaubten Pfaden.
+ * Liefert `{ config, ignored }` — `ignored` nennt jedes verworfene Feld beim Namen,
+ * damit der Aufrufer es melden kann statt still das Falsche zu tun.
+ */
+export function mergeWorkflowConfig(shared, local) {
+  const config = { ...(shared || {}) };
+  const ignored = [];
+  if (!local) return { config, ignored };
+
+  const erlaubteBlaetter = new Map();
+  const erlaubteFelder = new Set();
+  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
+    const [kopf, blatt] = pfad.split(".");
+    if (blatt) {
+      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
+      erlaubteBlaetter.get(kopf).add(blatt);
+    } else {
+      erlaubteFelder.add(kopf);
+    }
+  }
+
+  for (const [feld, wert] of Object.entries(local)) {
+    if (erlaubteFelder.has(feld)) {
+      config[feld] = wert;
+    } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
+      const blaetter = erlaubteBlaetter.get(feld);
+      const zusammen = { ...(config[feld] || {}) };
+      for (const [unterfeld, unterwert] of Object.entries(wert)) {
+        if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
+        else ignored.push(`${feld}.${unterfeld}`);
+      }
+      config[feld] = zusammen;
+    } else {
+      ignored.push(feld);
+    }
+  }
+  return { config, ignored };
+}
+
+// Die persoenliche Config neben der geteilten. Fehlt sie, aendert sich nichts; ist sie
+// kaputt, wird sie mit Hinweis uebersprungen — eine Datei, die nur einem Entwickler
+// gehoert, darf nicht die Arbeitsgrundlage des ganzen Teams kippen. Bei der geteilten
+// Config bleibt ein Syntaxfehler dagegen ein harter Fehler.
+function readLocalOverrides(sharedPfad) {
+  const pfad = join(dirname(sharedPfad), "workflow.config.local.json");
+  if (!existsSync(pfad)) return null;
+  try {
+    return JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    process.stderr.write(`Hinweis: ${pfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    return null;
+  }
+}
+
 // Liefert die Config oder null, wenn es keine gibt. Der weiche Weg fuer Aufrufer, die
 // ohne Config weiterarbeiten koennen (kontext paths, Issue #202). Eine vorhandene, aber
 // kaputte Datei bleibt ein harter Fehler: Sie stillschweigend wie "keine Config" zu
@@ -173,7 +243,16 @@ function readWorkflowConfig() {
         // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
         if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
         if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-        return raw;
+        const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+        // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
+        // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
+        // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+        for (const feld of ignored) {
+          process.stderr.write(
+            `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
+          );
+        }
+        return config;
       } catch {
         fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
       }

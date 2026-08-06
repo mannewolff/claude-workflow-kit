@@ -619,6 +619,63 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   ].join("\n");
 }
 
+// --- Config mit persoenlichen Overrides (Issue #207) ---
+
+// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs
+// (LOCAL_OVERRIDE_ALLOWLIST, mergeWorkflowConfig) — Aenderungen dort nachziehen.
+// board.mjs und night.mjs sind bewusst eigenstaendige Single-File-Tools ohne
+// gemeinsames Modul; geteilte Logik wird dupliziert und hier markiert.
+//
+// Fuer den Runner ist die Allowlist besonders wichtig: Die Pruefung auf leere
+// buildChecks weiter unten ist sein einziges Gate. Waere das Feld lokal
+// ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+function ladeConfigMitOverrides(sharedPfad) {
+  const shared = JSON.parse(readFileSync(sharedPfad, "utf-8"));
+  const lokalPfad = join(dirname(sharedPfad), "workflow.config.local.json");
+  if (!existsSync(lokalPfad)) return shared;
+
+  let local;
+  try {
+    local = JSON.parse(readFileSync(lokalPfad, "utf-8"));
+  } catch {
+    // Eine persoenliche Datei mit Tippfehler darf den Lauf nicht kippen.
+    process.stderr.write(`Hinweis: ${lokalPfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    return shared;
+  }
+
+  const config = { ...shared };
+  const erlaubteBlaetter = new Map();
+  const erlaubteFelder = new Set();
+  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
+    const [kopf, blatt] = pfad.split(".");
+    if (blatt) {
+      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
+      erlaubteBlaetter.get(kopf).add(blatt);
+    } else {
+      erlaubteFelder.add(kopf);
+    }
+  }
+
+  for (const [feld, wert] of Object.entries(local)) {
+    if (erlaubteFelder.has(feld)) {
+      config[feld] = wert;
+    } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
+      const blaetter = erlaubteBlaetter.get(feld);
+      const zusammen = { ...(config[feld] || {}) };
+      for (const [unterfeld, unterwert] of Object.entries(wert)) {
+        if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
+        else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+      }
+      config[feld] = zusammen;
+    } else {
+      process.stderr.write(`Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+    }
+  }
+  return config;
+}
+
 // --- Hauptprogramm ---
 
 const args = parseArgs(process.argv.slice(2));
@@ -626,7 +683,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!existsSync(BOARD_PATH)) fail(`board.mjs nicht gefunden unter ${BOARD_PATH}`);
 const configPath = join(process.cwd(), ".claude", "workflow.config.json");
 if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
-const config = JSON.parse(readFileSync(configPath, "utf-8"));
+const config = ladeConfigMitOverrides(configPath);
 
 mkdirSync(join(process.cwd(), ".claude"), { recursive: true });
 LOG_FILE = join(process.cwd(), ".claude", `night-run-${new Date().toISOString().slice(0, 10)}.log`);
