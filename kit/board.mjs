@@ -25,8 +25,8 @@
   node board.mjs issue-review matrix
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
-import { resolve, join, dirname, basename } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
+import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -1842,14 +1842,70 @@ function issueReviewConfig() {
   };
 }
 
-// Verfuegbarkeit eines Kommandos ohne Shell: Das erste Wort wird mit --version
-// gestartet. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
-// Ein CLI, das --version nicht kennt, antwortet trotzdem — entscheidend ist nur, ob
-// der Prozess ueberhaupt startet (ENOENT = nicht im PATH).
+// Windows-Default aus der Doku von cmd.exe, falls PATHEXT nicht gesetzt ist.
+const PATHEXT_DEFAULT = ".COM;.EXE;.BAT;.CMD";
+
+/**
+ * Sucht ein Kommando im PATH und liefert den gefundenen Pfad oder null (Issue #231).
+ *
+ * Bewusst eine Dateisystem-Pruefung statt eines Prozessstarts. Der Vorflug will wissen,
+ * ob das Werkzeug DA ist — dafuer braucht es keinen Prozess. Der fruehere Weg (`datei
+ * --version` starten) lieferte unter Windows falsch negative Ergebnisse: Ein per npm
+ * installiertes CLI liegt dort als `codex.cmd`, und fuer `.cmd` wirft Node seit
+ * CVE-2024-27980 `EINVAL` ohne `shell: true` — das aber hat board.mjs in Issue #196
+ * bewusst abgeschafft. Getroffen haette es ausgerechnet die fremden Modelle, fuer die
+ * der `command`-Adapter gebaut wurde.
+ *
+ * Nebenbei: kein Startaufwand, keine Annahme darueber, dass ein CLI `--version` kennt,
+ * und kein Risiko, dass ein Probeaufruf Nebenwirkungen hat.
+ *
+ * Plattform und Dateisystem sind injizierbar, damit die Windows-Semantik ohne Windows
+ * pruefbar ist — reine Funktion in der Linie von `normalizeRepoName` und `pickReviewers`.
+ */
+export function findeImPath(datei, opts = {}) {
+  const istWindows = (opts.platform || process.platform) === "win32";
+  const existiert = opts.existiert || existsSync;
+  const ausfuehrbar = opts.ausfuehrbar || ((p) => {
+    try {
+      accessSync(p, constants.X_OK);
+      return true;
+    } catch {
+      return false; // vorhanden, aber nicht ausfuehrbar — kein Kommando
+    }
+  });
+
+  // Unter Windows entscheidet die Endung, ob etwas startbar ist. Traegt der Name schon
+  // eine, gilt nur sie ('codex.exe' darf nicht zu 'codex.exe.CMD' werden).
+  const kandidaten = (name) => {
+    if (!istWindows) return [name];
+    if (extname(name)) return [name];
+    return (opts.pathext ?? PATHEXT_DEFAULT).split(";").filter(Boolean).map((e) => name + e);
+  };
+
+  // Das X-Bit gibt es nur unter POSIX; unter Windows waere die Pruefung bedeutungslos.
+  const passt = (p) => existiert(p) && (istWindows || ausfuehrbar(p));
+
+  // Wer einen Pfad angibt, meint diesen Pfad — keine PATH-Suche, auch nicht als Fallback.
+  if ((istWindows ? /[\\/]/ : /\//).test(datei)) {
+    return kandidaten(datei).find(passt) || null;
+  }
+
+  for (const dir of (opts.path ?? "").split(istWindows ? ";" : ":").filter(Boolean)) {
+    for (const kandidat of kandidaten(datei)) {
+      // Nicht join(): Der Test fuehrt die win32-Semantik auf einem POSIX-Host aus,
+      // wo join() den falschen Trenner setzen wuerde.
+      const voll = istWindows ? `${dir}\\${kandidat}` : join(dir, kandidat);
+      if (passt(voll)) return voll;
+    }
+  }
+  return null;
+}
+
+// Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
+// sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
 function kommandoVerfuegbar(kommandozeile) {
   const datei = kommandozeile.trim().split(/\s+/)[0];
-  const res = spawnSync(datei, ["--version"], { encoding: "utf-8" });
-  return { datei, ok: !res.error };
+  return { datei, ok: findeImPath(datei, { path: process.env.PATH, pathext: process.env.PATHEXT }) !== null };
 }
 
 function issueReviewReviewers(args) {
