@@ -30,12 +30,22 @@ docs/public/install.mjs
 docs/public/board-ui.mjs
 # Coverage-Report fuer SonarCloud (Issue #185) — Generat, entsteht im Workflow
 coverage/
-# Board-Adapter: lokal gecachte GitHub-Project-Metadaten (maschinenlokal, nicht committen)
-.claude/board-meta-cache.json
 # SonarQube-Scanner: lokales Arbeitsverzeichnis bei manuellen Laeufen
 .scannerwork/
 # macOS
 .DS_Store
 # JetBrains IDEs
 .idea/
-.claude/
+# claude-workflow-kit (Issue #208/#209): workflow.config.json gehoert ins Repo, alles
+# andere unter .claude/ ist lokaler Zustand. Erste Zeile MUSS '.claude/*' lauten, nicht
+# '.claude/': Git wertet ein !-Muster nicht aus, wenn das Verzeichnis ausgeschlossen ist.
+# Zusaetzlich zum Installer-Block sind hier die Dogfooding-Kopien befreit, die dieses
+# Repo als Quelle mitfuehrt. .claude/kit/ bleibt bewusst draussen — es ist Laufzeit-
+# zustand, den tools/sync-blobs.mjs erzeugt (siehe Kommentar dort).
+.claude/*
+!.claude/workflow.config.json
+!.claude/CLAUDE-workflow.md
+!.claude/launch.json
+!.claude/skills/
+.claude/workflow.config.local.json
+.claude/board-meta-cache.json

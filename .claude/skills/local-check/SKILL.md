@@ -10,9 +10,14 @@ Schritt 6 des 9-Schritt-Prozesses: Alle Pflicht-Checks laufen lokal durch. Outpu
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Relevante Felder:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Relevante Felder — alle drei gelten **teamweit** und sind lokal nicht überschreibbar:
 - `buildChecks`: Liste der auszuführenden Build-/Test-Kommandos (z.B. `["mvn verify", "npm run build"]`)
 - `mutationCommand`: Mutations-Test-Kommando (optional, z.B. `"mvn org.pitest:pitest-maven:mutationCoverage"`)
+- `formatFixCommand`: Kommando, das Formatierungsverstöße mechanisch behebt (optional, z.B. `"mvn spotless:apply"` oder `"npx prettier --write ."`). Wird heute nur vom Nacht-Runner genutzt (Issue #169).
+
+Dass diese Felder im Repository liegen, ist der Punkt: Hätte jeder seine eigenen `buildChecks`, hieße „grün" bei zwei Entwicklern nicht dasselbe.
 
 Fehlt die Config: Führe `buildChecks: []` aus und weise darauf hin, dass keine Checks konfiguriert sind.
 
@@ -50,6 +55,33 @@ Ein nachgestelltes `echo` maskiert den Exit-Code, wenn die Auswertung nur auf de
 
 Zusätzlich zu tool-spezifischen Erfolgsmeldungen generisch auf `[ERROR]` bzw. `BUILD FAILURE` im Log prüfen, nicht nur auf enge Stichworte (z. B. nur PIT-Survivors oder nur das Wort „FAILURE") — sonst rutschen andere Fehlerarten (z. B. Formatierungs- oder Lint-Violations) unbemerkt durch.
 
+### 1b. Format-Fix bei roten Checks (wenn konfiguriert)
+
+Nur wenn mindestens ein `buildChecks`-Kommando rot ist **und** `formatFixCommand` in der geteilten Config gesetzt ist:
+
+```bash
+<formatFixCommand>
+```
+
+Danach die `buildChecks` **genau einmal** erneut ausführen. Kein Loop, keine zweite Runde — dieselbe Grenze wie im Nacht-Runner (Issue #169), aus demselben Grund: Ein Fix, der beim ersten Mal nichts bewirkt, bewirkt beim zweiten Mal auch nichts, kostet aber die volle Laufzeit noch einmal.
+
+Nicht nachfragen, bevor der Fix läuft — eine Formatierung ist mechanisch und über `git diff` vollständig einsehbar. Wohl aber melden, dass er lief.
+
+**Berichtspflicht.** Ein Format-Fix hinterlässt uncommittete Änderungen im Arbeitsbaum. Eine Checklist, die danach nur „alles grün" sagt, ist irreführend: Sie beschreibt einen Zustand, den es im letzten Commit nicht gibt. Der Bericht muss beides ausweisen:
+
+```
+- ❌ npm run lint → 3 Formatierungsverstöße
+- 🔧 Format-Fix (npx prettier --write .) → ausgeführt, 3 Dateien geändert
+- ✅ npm run lint → grün (nach Format-Fix)
+
+Hinweis: Der Format-Fix hat den Arbeitsbaum verändert. Die Änderungen müssen
+committet werden, sonst ist der nächste Lauf wieder rot.
+```
+
+Bleiben die Checks nach dem Fix rot, gilt unverändert: roter Check stoppt den Prozess. Der Bericht sagt dann ausdrücklich, dass der Format-Fix lief und **nicht gereicht hat** — sonst sucht der Mensch an der falschen Stelle.
+
+Ohne gesetztes `formatFixCommand` entfällt dieser Schritt ersatzlos.
+
 ### 2. Mutations-Test (wenn konfiguriert)
 
 ```bash
@@ -85,7 +117,7 @@ Checklist im Format:
 Alle automatisierten Checks grün. UI-Check steht aus.
 ```
 
-Wenn `buildChecks` leer ist: Hinweis ausgeben "Keine buildChecks konfiguriert. Passe `.claude/workflow.config.json` an." Kein Fehler, kein Abbruch.
+Wenn `buildChecks` leer ist: Hinweis ausgeben "Keine buildChecks konfiguriert. Passe `.claude/workflow.config.json` an — die Datei gehört ins Repository, die Änderung also committen." Kein Fehler, kein Abbruch.
 
 Roter Check (`❌`) stoppt den Prozess. Nicht weitergehen, bevor der Fehler geklärt ist.
 

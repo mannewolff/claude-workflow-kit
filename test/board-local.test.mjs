@@ -235,6 +235,9 @@ test("comment haengt den Text mit Zeitstempel unten an", () => {
 
 // --- LocalCodeHost ---
 
+// Liefert seit Issue #214 owner/repo statt nur repo — alle drei Code-Hosts geben
+// dieselbe Form zurueck, sonst beantwortet dasselbe Kommando je nach Projekt etwas
+// anderes.
 test("repo-name nutzt die origin-Remote, wenn es eine gibt", () => {
   mitProjekt((dir) => {
     for (const argumente of [
@@ -244,7 +247,7 @@ test("repo-name nutzt die origin-Remote, wenn es eine gibt", () => {
       const res = spawnSync("git", argumente, { cwd: dir, encoding: "utf-8" });
       assert.equal(res.status, 0, `git ${argumente.join(" ")} schlug fehl: ${res.stderr}`);
     }
-    assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "mein-repo" });
+    assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "besitzer/mein-repo" });
   });
 });
 

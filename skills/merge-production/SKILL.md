@@ -19,7 +19,9 @@ Der Mensch tippt: `merge production` (oder die in `.claude/workflow.config.json`
 
 ### 1. Config lesen
 
-Lies `.claude/workflow.config.json`:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Gelesen werden:
 - `mainBranch`: Quell-Branch (Default: `main`)
 - `productionBranch`: Ziel-Branch (Default: `production`)
 

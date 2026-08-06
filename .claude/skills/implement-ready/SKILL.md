@@ -10,7 +10,9 @@ Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell 
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Relevantes Feld:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
 
 ## Ablauf pro Issue (Reihenfolge: wie vom Adapter geliefert = Board-Reihenfolge)
@@ -74,6 +76,8 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch, sobald der Commit auf den Default-Branch gelangt (`push`/Merge), und die Board-Automation zieht geschlossene Issues sofort nach *Done* — noch bevor der Mensch testen konnte. `Refs #N` verlinkt das Issue, ohne es zu schließen. Das Schließen (→ Done) macht ausschließlich der Mensch nach seinem Test.
+
+**Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
 
 ### 5. Issue nach In review verschieben + Abschlussbericht
 

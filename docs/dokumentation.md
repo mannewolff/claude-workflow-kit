@@ -516,6 +516,58 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
 
+## Team-Config und persönliche Abweichungen
+
+Dieselbe Frage wie oben, eine Ebene tiefer: Was gehört ins Repository, und was darf jeder für sich anders haben?
+
+`.claude/workflow.config.json` lag bisher außerhalb des Repositories — der Installer trug `.claude/` in die `.gitignore` ein. Damit hatte jedes Teammitglied seine eigene Fassung der Felder, die für alle gleich sein müssen. `buildChecks` entscheidet, was als grün gilt; `columns` entscheidet, wo Issues landen. Und eine abweichende `columns`-Fassung führt nicht zu einem Fehler, sondern zu einer leeren Issue-Liste — das ist der unangenehme Teil.
+
+Die Config besteht deshalb aus zwei Dateien:
+
+| Datei | Ort | Inhalt |
+|---|---|---|
+| `.claude/workflow.config.json` | **im Repository** | alles, was für das Team gilt |
+| `.claude/workflow.config.local.json` | lokal, gitignored | persönliche Abweichungen |
+
+Aus der lokalen Datei gewinnen nur diese Felder:
+
+| Feld | Warum persönlich |
+|---|---|
+| `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
+| `reviewScope` | manche lesen lieber den vollen Quelltext |
+| `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
+| `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
+
+Alles andere wird ignoriert und auf stderr gemeldet.
+
+**Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
+
+Der `.gitignore`-Block, den der Installer schreibt:
+
+```
+.claude/*
+!.claude/workflow.config.json
+.claude/workflow.config.local.json
+.claude/board-meta-cache.json
+```
+
+Die erste Zeile muss `.claude/*` lauten, **nicht** `.claude/`. Git wertet ein `!`-Negationsmuster nicht aus, wenn das Verzeichnis selbst ausgeschlossen ist — es betritt es gar nicht erst. Mit `.claude/` bliebe die Ausnahme wirkungslos, und der Fehler fühlt sich an wie „vergessen zu committen". Wer den Block von Hand schreibt, baut ihn genau einmal falsch und sucht lange.
+
+**Bestehende Projekte:** Der nächste `install.mjs`-Lauf ersetzt eine vorhandene `.claude/`-Zeile automatisch durch den Block; eigene `.claude`-Regeln bleiben unangetastet und der Installer gibt nur eine Empfehlung aus. Danach muss ein Mensch `.claude/workflow.config.json` einmal committen — der Installer kann das nicht für dich tun.
+
+## Eine Datei, ein Schreiber
+
+Dasselbe Prinzip, angewandt auf das Gedächtnis statt auf den Code: **Jede Datei im Memory-Vault, in die ein Skill automatisch schreibt, gehört genau einem Repo.** Was geteilt wird, wird gelesen — oder nur nach ausdrücklicher Zustimmung geschrieben.
+
+Der Anlass ist ein Setup mit mehreren Repos an einem gemeinsamen Vault, etwa fünf Microservices. Geteilt werden soll das Wissen, nicht die Schreibhoheit. Solange alle Sessions eines Tages in dieselbe Log-Datei schreiben, entstehen in einem synchronisierten Vault Konflikt-Kopien, und bei parallelen Sessions überschreibt die zweite den Abschnitt der ersten. Beides fällt spät auf, weil niemand seinen Tageslog noch einmal liest.
+
+Zwei Konsequenzen ziehen sich daraus durch das Kit:
+
+- **Der Tageslog wird projektspezifisch.** Das Feld `logPath` macht den Dateinamen konfigurierbar (`Log/{date}-{project}.md`), damit jedes Repo seine eigene Datei bekommt. Details in der [`kontext.config.json`-Referenz](kontext-config-reference.md).
+- **Die gemeinsame Dach-Notiz schreibt `/document` nie von selbst.** Sie ist der einzige geteilte Schreibort und deshalb bewusst nicht automatisiert: Nur bei Cross-Service-Wirkung fragt der Skill einmal nach, mit dem konkreten Eintragstext, und schreibt erst nach Zustimmung. Sonst wäre die Konfliktfläche nur vom Log in die Notiz verschoben.
+
+Der Unterschied zum Leitplanken-Prinzip oben ist die Art des Stopps: Dort scheitert ein Gate mechanisch, hier fragt ein Skill einen Menschen. Der Grund ist derselbe — die Entscheidung, ob eine systemweite Erkenntnis in die gemeinsame Notiz gehört, kann keine Regel treffen.
+
 ## Was bewusst nicht im Kit ist
 
 **Security-Gates gehören ins CI, nicht in einen Skill.** gitleaks findet Secrets, Semgrep oder SpotBugs finden SQL-Konkatenation und fehlende Input-Validation. Ein deterministisches Tool teilt mit keinem Sprachmodell einen blinden Fleck. Ein roter Build blockiert den Push mechanisch, verlässlicher als jedes Modell. Der Review-Skill ergänzt diese Tools, ersetzt sie nicht.
@@ -690,7 +742,7 @@ Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Ses
 | `~/.claude/kontext.config.json` | Global, gilt für alle Projekte auf diesem Rechner |
 | `.claude/kontext.config.json` | Projektlokal, überschreibt einzelne Felder der globalen Config |
 
-Die Dateien werden gemergt. Felder, die in der lokalen Config nicht stehen, werden von der globalen geerbt. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode.
+Die Dateien werden **feldweise gemergt, lokale Felder gewinnen**. Felder, die in der lokalen Config nicht stehen, werden von der globalen geerbt. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode.
 
 ### Felder
 
@@ -700,6 +752,10 @@ Die Dateien werden gemergt. Felder, die in der lokalen Config nicht stehen, werd
 | `always` | `string[]` | optional | Dateien relativ zum `vault`-Root, die immer gelesen werden (z.B. Profil, Arbeitsregeln) |
 | `projectDocs` | `string[]` | optional | Dateien oder Glob-Muster relativ zum Projektverzeichnis. Fallback: `["CLAUDE-*", ".claude/CLAUDE-*"]` |
 | `project` | `string` | optional | Override für den Vault-Projektnamen, nur nötig wenn Repo-Name und Vault-Ordnername voneinander abweichen |
+| `logPath` | `string` | optional | Template für die Tageslog-Datei, relativ zum `vault`-Root. Platzhalter `{date}` und `{project}`. Default: `"Log/{date}.md"` |
+| `parentProject` | `string` | optional | Dach-Projekt über mehreren Service-Repos (Multi-Repo-Setup) |
+
+Teilen sich mehrere Repos einen Vault — etwa die Services eines Microservice-Systems — brauchen sie `logPath` und `parentProject`, damit nicht alle in dieselbe Tageslog-Datei schreiben. Das vollständige Setup mit Vault-Struktur und Beispiel-Config steht in der [`kontext.config.json`-Referenz](kontext-config-reference.md); das Prinzip dahinter unter [Eine Datei, ein Schreiber](#eine-datei-ein-schreiber).
 
 ### Was passiert ohne Vault?
 
@@ -722,15 +778,17 @@ find .claude -maxdepth 1 -name "CLAUDE-*" -type f
 
 Muster ohne Treffer werden stillschweigend übersprungen (kein Fehler, kein Abbruch).
 
-### Projektnotiz auto-detektieren
+### Pfade prüfen, ohne einen Skill zu starten
 
-Der Skill ermittelt die aktive Projektnotiz automatisch aus dem Repo-Namen:
+Die Zielpfade berechnet der Board-Adapter, nicht der Skill-Prompt:
 
 ```bash
-node .claude/kit/board.mjs code repo-name
+node .claude/kit/board.mjs kontext paths
 ```
 
-Der Board-Adapter gibt `{ "repoName": "owner/repo" }` zurück. Das letzte Segment (`repo`) wird als Projektname genutzt. Wenn Repo-Name und Vault-Ordnername nicht übereinstimmen, trägst du den korrekten Namen als `project`-Feld in der lokalen Config ein.
+Die Ausgabe nennt Tageslog, Projektnotiz und — im Multi-Repo-Setup — die Dach-Notiz, jeweils als absoluten Pfad. Stimmen sie hier, stimmen sie auch im Skill. Der Projektname entsteht in der Reihenfolge `--project` → `project` aus der Config → Repo-Name → Verzeichnisname; weicht der Repo-Name vom Vault-Ordnernamen ab, trägst du den korrekten Namen als `project`-Feld in der lokalen Config ein.
+
+`node .claude/kit/board.mjs kontext last-log` liefert dazu den jüngsten vorhandenen Log-Eintrag desselben Projekts — `/document` knüpft damit an den vorherigen Eintrag an, statt bei null anzufangen.
 
 ### Beispiele
 

@@ -10,7 +10,11 @@ Startet Schritt 7 des 9-Schritt-Prozesses: Code-Review durch ein zweites Modell 
 
 ## Vorbedingung
 
-Lies `.claude/workflow.config.json`. Die relevanten Felder:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+`reviewModel` und `reviewScope` sind die klassischen persönlichen Felder: Wer lieber mit einem anderen Modell oder immer über den vollen Quelltext reviewt, setzt das in `.claude/workflow.config.local.json` — ohne das Team zu beeinflussen.
+
+Die relevanten Felder:
 
 - `reviewScope`: `"diff"` (nur git diff seit letztem Push) oder `"full"` (gesamter Quelltext)
 - `reviewModel`: Modell-ID für den Reviewer (Default: `claude-opus-4-8`)

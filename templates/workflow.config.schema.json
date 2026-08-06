@@ -1,75 +1,93 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek",
+  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persoenliche Abweichungen gehoeren in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet (Issue #207).",
   "type": "object",
   "properties": {
     "version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Versionskennung x.y.z. push main erhoeht z, merge production erhoeht y, x nur explizit. Wird auf dem Board angezeigt.",
+      "description": "Versionskennung x.y.z. push main erhoeht z, merge production erhoeht y, x nur explizit. Wird auf dem Board angezeigt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "1.4.0"
     },
     "codeHost": {
       "type": "string",
-      "enum": ["github", "gitlab", "local"],
-      "description": "Wo der Code liegt (Push, Pull Requests).",
+      "enum": [
+        "github",
+        "gitlab",
+        "local"
+      ],
+      "description": "Wo der Code liegt (Push, Pull Requests). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "github"
     },
     "issueTracker": {
       "type": "string",
-      "enum": ["github", "gitlab", "local", "toolbox"],
-      "description": "Wo die Issues verwaltet werden. Darf vom codeHost abweichen. 'toolbox' ist ein privates Setup (eigenes Kanban-Tool des Autors), nicht Teil des Installer-Dialogs und nur per manueller Config-Bearbeitung nutzbar.",
+      "enum": [
+        "github",
+        "gitlab",
+        "local",
+        "toolbox"
+      ],
+      "description": "Wo die Issues verwaltet werden. Darf vom codeHost abweichen. 'toolbox' ist ein privates Setup (eigenes Kanban-Tool des Autors), nicht Teil des Installer-Dialogs und nur per manueller Config-Bearbeitung nutzbar. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "github"
     },
     "provider": {
       "type": "string",
-      "enum": ["github", "gitlab", "local"],
-      "description": "Veraltet (v1). Wird beim Laden auf codeHost/issueTracker migriert."
+      "enum": [
+        "github",
+        "gitlab",
+        "local"
+      ],
+      "description": "Veraltet (v1). Wird beim Laden auf codeHost/issueTracker migriert. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
     },
     "buildChecks": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Kommandos, die /local-check sequenziell ausfuehrt (Build, Tests). Leer-Array = keine automatisierten Checks.",
+      "items": {
+        "type": "string"
+      },
+      "description": "Kommandos, die /local-check sequenziell ausfuehrt (Build, Tests). Leer-Array = keine automatisierten Checks. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "mutationCommand": {
       "type": "string",
-      "description": "Kommando fuer Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test.",
+      "description": "Kommando fuer Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "formatFixCommand": {
       "type": "string",
-      "description": "Kommando, das Formatierungsverstoesse mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorpruefung rot, laeuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix.",
+      "description": "Kommando, das Formatierungsverstoesse mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorpruefung rot, laeuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "mainBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Branch fuer lokale Commits und Push (Schritt 8).",
+      "description": "Branch fuer lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "main"
     },
     "productionBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Ziel-Branch fuer den PR in Schritt 9 (merge production).",
+      "description": "Ziel-Branch fuer den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "production"
     },
     "reviewScope": {
       "type": "string",
-      "enum": ["diff", "full"],
-      "description": "Umfang des Review-Materials: 'diff' = git diff seit letztem Push; 'full' = gesamter Quelltext.",
+      "enum": [
+        "diff",
+        "full"
+      ],
+      "description": "Umfang des Review-Materials: 'diff' = git diff seit letztem Push; 'full' = gesamter Quelltext. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
       "default": "diff"
     },
     "reviewModel": {
       "type": "string",
       "minLength": 1,
-      "description": "Modell-ID fuer den Reviewer-Subagent (Opus-Pin). Muss ein gueltiger Claude-Modell-Identifier sein.",
+      "description": "Modell-ID fuer den Reviewer-Subagent (Opus-Pin). Muss ein gueltiger Claude-Modell-Identifier sein. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
       "default": "claude-opus-4-8"
     },
     "triggers": {
       "type": "object",
-      "description": "Trigger-Phrasen fuer die drei menschlichen Stop-Punkte.",
+      "description": "Trigger-Phrasen fuer die drei menschlichen Stop-Punkte. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
       "properties": {
         "go": {
           "type": "string",
@@ -100,7 +118,7 @@
     },
     "local": {
       "type": "object",
-      "description": "Einstellungen fuer den lokalen Issue-Tracker (issueTracker: 'local').",
+      "description": "Einstellungen fuer den lokalen Issue-Tracker (issueTracker: 'local'). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "issuesDir": {
           "type": "string",
@@ -111,17 +129,41 @@
       },
       "required": [],
       "additionalProperties": false,
-      "default": { "issuesDir": "issues" }
+      "default": {
+        "issuesDir": "issues"
+      }
     },
     "columns": {
       "type": "object",
-      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur fuer den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhaengig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt \"Open\" eingetragen ist — sonst ein normales Label.",
+      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur fuer den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhaengig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt \"Open\" eingetragen ist — sonst ein normales Label. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
-        "backlog":     { "type": "string", "minLength": 1, "default": "Backlog", "description": "GitLab-Sonderwert \"Open\": backlog wird als nativer Open-Zustand behandelt statt als Label." },
-        "ready":       { "type": "string", "minLength": 1, "default": "Ready" },
-        "in_progress": { "type": "string", "minLength": 1, "default": "In progress" },
-        "in_review":   { "type": "string", "minLength": 1, "default": "In review" },
-        "done":        { "type": "string", "minLength": 1, "default": "Done", "description": "Nur Anzeigename fuer GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand." }
+        "backlog": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Backlog",
+          "description": "GitLab-Sonderwert \"Open\": backlog wird als nativer Open-Zustand behandelt statt als Label."
+        },
+        "ready": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Ready"
+        },
+        "in_progress": {
+          "type": "string",
+          "minLength": 1,
+          "default": "In progress"
+        },
+        "in_review": {
+          "type": "string",
+          "minLength": 1,
+          "default": "In review"
+        },
+        "done": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Done",
+          "description": "Nur Anzeigename fuer GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand."
+        }
       },
       "required": [],
       "additionalProperties": false,
@@ -135,7 +177,7 @@
     },
     "github": {
       "type": "object",
-      "description": "GitHub-spezifische Einstellungen.",
+      "description": "GitHub-spezifische Einstellungen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "projectNumber": {
           "type": "integer",
@@ -148,7 +190,7 @@
     },
     "toolbox": {
       "type": "object",
-      "description": "Einstellungen fuer den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs.",
+      "description": "Einstellungen fuer den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "host": {
           "type": "string",
@@ -158,7 +200,7 @@
         "tokenFile": {
           "type": "string",
           "minLength": 1,
-          "description": "Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab."
+          "description": "Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab. Darf in workflow.config.local.json persoenlich ueberschrieben werden."
         },
         "ideaStored": {
           "type": "boolean",
@@ -186,7 +228,9 @@
       "push": "push main",
       "merge": "merge production"
     },
-    "local": { "issuesDir": "issues" },
+    "local": {
+      "issuesDir": "issues"
+    },
     "columns": {
       "backlog": "Backlog",
       "ready": "Ready",
@@ -199,19 +243,30 @@
     {
       "field": "codeHost",
       "rule": "enum",
-      "allowed": ["github", "gitlab", "local"],
+      "allowed": [
+        "github",
+        "gitlab",
+        "local"
+      ],
       "error": "codeHost muss 'github', 'gitlab' oder 'local' sein."
     },
     {
       "field": "issueTracker",
       "rule": "enum",
-      "allowed": ["github", "gitlab", "local"],
+      "allowed": [
+        "github",
+        "gitlab",
+        "local"
+      ],
       "error": "issueTracker muss 'github', 'gitlab' oder 'local' sein."
     },
     {
       "field": "reviewScope",
       "rule": "enum",
-      "allowed": ["diff", "full"],
+      "allowed": [
+        "diff",
+        "full"
+      ],
       "error": "reviewScope muss 'diff' oder 'full' sein."
     },
     {

@@ -473,8 +473,14 @@ test("repo-name kommt von gh", NUR_POSIX, () => {
 });
 
 // Ist gh nicht nutzbar (nicht angemeldet, kein gh installiert), faellt der Adapter auf
-// die origin-Remote zurueck und zuletzt auf den Verzeichnisnamen. Bewusst ohne
-// Normalisierung: Es ist eine Notfall-Auskunft, keine zweite Quelle der Wahrheit.
+// die origin-Remote zurueck und zuletzt auf den Verzeichnisnamen.
+//
+// Frueher stand hier "bewusst ohne Normalisierung: eine Notfall-Auskunft, keine zweite
+// Quelle der Wahrheit". Die Entscheidung ist mit Issue #214 revidiert: Ein Konsument
+// kann der Antwort nicht ansehen, ob sie aus gh oder aus dem Fallback stammt, und
+// /document baute daraus einen Vault-Pfad. Aus "claude-workflow-kit.git" oder der
+// ganzen URL wurde dort ein falscher Projektname. Eine Notfall-Auskunft darf luecken-
+// haft sein, aber nicht ein anderes Format haben als der Normalfall.
 test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zurueck", NUR_POSIX, () => {
   const gescheitertesGh = [{ match: "^repo view", stderr: "gh: not authenticated\n", exit: 1 }];
 
@@ -486,7 +492,7 @@ test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zur
       const res = spawnSync("git", argumente, { cwd: dir, encoding: "utf-8" });
       assert.equal(res.status, 0, `git ${argumente.join(" ")} schlug fehl: ${res.stderr}`);
     }
-    assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "https://example.invalid/besitzer/mein-repo.git" });
+    assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "besitzer/mein-repo" });
   }, { regeln: gescheitertesGh });
 
   mitProjekt((dir) => {

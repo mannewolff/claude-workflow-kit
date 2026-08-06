@@ -99,20 +99,122 @@ test("Projektlokaler Install legt Config, Skills und CLAUDE-workflow.md an", () 
   }
 });
 
-test("Projektlokaler Install traegt .claude/ in die .gitignore ein — und nur einmal", () => {
+// --- .gitignore (Issue #208) ---
+//
+// workflow.config.json gehoert ins Repository: buildChecks, columns und Branch-Namen
+// muessen fuer alle gleich sein. Der Installer schreibt deshalb einen Block statt der
+// frueheren Zeile `.claude/`.
+//
+// Entscheidend ist die erste Zeile: `.claude/*`, nicht `.claude/`. Git wertet ein
+// !-Negationsmuster nicht aus, wenn das VERZEICHNIS ausgeschlossen ist — es betritt
+// es gar nicht erst. Deshalb pruefen die Tests unten mit `git check-ignore` gegen ein
+// echtes Repo statt den Dateiinhalt zu vergleichen: Ein Textvergleich wuerde genau
+// diesen Fallstrick nicht bemerken.
+
+/** Legt ein echtes git-Repo im Fixture an, damit git check-ignore etwas zu pruefen hat. */
+function gitInit(dir) {
+  spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
+}
+
+/** true, wenn git den Pfad ignoriert. */
+function wirdIgnoriert(dir, pfad) {
+  return spawnSync("git", ["check-ignore", pfad], { cwd: dir, encoding: "utf-8" }).status === 0;
+}
+
+test("Projektlokaler Install: workflow.config.json bleibt versionierbar, der Rest von .claude/ nicht", () => {
   const dir = fixture("install-gitignore-");
   try {
-    writeFileSync(join(dir, ".gitignore"), "node_modules\n", "utf-8");
-    const erster = installiere(dir, PROJEKT_GITHUB);
-    assert.equal(erster.status, 0, erster.stderr);
-    assert.match(erster.stdout, /\.gitignore: '\.claude\/' eingetragen/);
-    assert.equal(readFileSync(join(dir, ".gitignore"), "utf-8"), "node_modules\n.claude/\n");
+    gitInit(dir);
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
 
-    // Zweiter Lauf: der Eintrag ist schon da und wird nicht verdoppelt.
+    // Der eigentliche Test: die Wirkung, nicht der Text.
+    assert.equal(wirdIgnoriert(dir, ".claude/workflow.config.json"), false,
+      "die geteilte Config muss versionierbar sein — sonst hat jeder eigene buildChecks");
+    assert.equal(wirdIgnoriert(dir, ".claude/workflow.config.local.json"), true,
+      "die persoenliche Config gehoert nicht ins Repo");
+    assert.equal(wirdIgnoriert(dir, ".claude/board-meta-cache.json"), true);
+    assert.equal(wirdIgnoriert(dir, ".claude/settings.local.json"), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Projektlokaler Install: bestehende '.claude/'-Zeile wird migriert, fremde Eintraege bleiben", () => {
+  const dir = fixture("install-gitignore-mig-");
+  try {
+    gitInit(dir);
+    writeFileSync(join(dir, ".gitignore"), "node_modules\n.claude/\ndist/\n", "utf-8");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+
+    const inhalt = readFileSync(join(dir, ".gitignore"), "utf-8");
+    assert.ok(inhalt.includes("node_modules"), "fremde Eintraege muessen erhalten bleiben");
+    assert.ok(inhalt.includes("dist/"), "fremde Eintraege muessen erhalten bleiben");
+    assert.doesNotMatch(inhalt, /^\.claude\/$/m,
+      "die alte Zeile muss ersetzt werden — bliebe sie stehen, liefe die Negation ins Leere");
+    assert.equal(wirdIgnoriert(dir, ".claude/workflow.config.json"), false);
+    assert.match(res.stdout, /\.gitignore/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Projektlokaler Install: zweiter Lauf laesst die .gitignore unveraendert", () => {
+  const dir = fixture("install-gitignore-idem-");
+  try {
+    gitInit(dir);
+    writeFileSync(join(dir, ".gitignore"), "node_modules\n", "utf-8");
+    installiere(dir, PROJEKT_GITHUB);
+    const nachErstem = readFileSync(join(dir, ".gitignore"), "utf-8");
+
     const zweiter = installiere(dir, PROJEKT_GITHUB);
     assert.equal(zweiter.status, 0, zweiter.stderr);
-    assert.match(zweiter.stdout, /\.gitignore: '\.claude\/' bereits vorhanden/);
-    assert.equal(readFileSync(join(dir, ".gitignore"), "utf-8"), "node_modules\n.claude/\n");
+    assert.equal(readFileSync(join(dir, ".gitignore"), "utf-8"), nachErstem,
+      "der Block darf sich nicht bei jedem Lauf verdoppeln");
+    assert.match(zweiter.stdout, /bereits vorhanden/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Projektlokaler Install: eigene .claude-Regeln werden nicht ueberschrieben", () => {
+  // Eine handgepflegte Ignore-Datei still umzuschreiben waere ein Uebergriff.
+  const dir = fixture("install-gitignore-eigen-");
+  try {
+    gitInit(dir);
+    const eigen = "node_modules\n.claude/*\n!.claude/skills/\n";
+    writeFileSync(join(dir, ".gitignore"), eigen, "utf-8");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(readFileSync(join(dir, ".gitignore"), "utf-8"), eigen,
+      "eine eigene .claude-Konfiguration bleibt unangetastet");
+    assert.match(res.stdout, /eigene \.claude-Regeln/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Projektlokaler Install: ohne .gitignore wird eine angelegt", () => {
+  const dir = fixture("install-gitignore-neu-");
+  try {
+    gitInit(dir);
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(existsSync(join(dir, ".gitignore")));
+    assert.equal(wirdIgnoriert(dir, ".claude/workflow.config.json"), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Projektlokaler Install weist darauf hin, dass workflow.config.json committet gehoert", () => {
+  const dir = fixture("install-hinweis-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /workflow\.config\.json/);
+    assert.match(res.stdout, /workflow\.config\.local\.json/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

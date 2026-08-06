@@ -18,6 +18,8 @@
  *   node board.mjs issue comment <id> --text "..."
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
+ *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -31,7 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.29.0";
+const KIT_VERSION = "1.30.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -67,12 +69,16 @@ Nutzung:
   node board.mjs issue comment <id> --text "..."
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
+  node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
 
   node board.mjs --version
 
 Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}
 
 Konfiguration: .claude/workflow.config.json (issueTracker, codeHost)
+Fuer die kontext-Achse zusaetzlich: ~/.claude/kontext.config.json und
+.claude/kontext.config.json (gemergt, lokale Felder gewinnen).
 Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt sie,
 wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
 `;
@@ -122,6 +128,32 @@ function gitRemoteUrl() {
   }
 }
 
+/**
+ * Bringt jede Auskunft ueber das Repo auf die eine verbindliche Form: `owner/repo`.
+ *
+ * Noetig, weil die drei getRepoName-Implementierungen frueher drei verschiedene Formen
+ * lieferten (Issue #214): GitHub gab bei erreichbarem gh `owner/repo` zurueck, bei
+ * scheiterndem gh aber die volle Remote-URL — der einzige der drei Fallback-Zweige, in
+ * dem die Normalisierung beim Windows-Umbau (Issue #196) nicht mitgewandert ist. Der
+ * lokale Host lieferte nur `repo`, ohne Owner.
+ *
+ * Verarbeitet HTTPS-URLs, die SSH-Form `git@host:owner/repo` und ein bereits
+ * normalisiertes `owner/repo`. Untergruppen werden auf die letzten zwei Segmente
+ * gekuerzt — die bisherige GitLab-Semantik, hier beibehalten.
+ */
+export function normalizeRepoName(raw) {
+  if (!raw) return null;
+  const ohneGit = String(raw).trim().replace(/\.git$/, "");
+  if (!ohneGit) return null;
+  // SSH-Form zuerst: dort trennt ein Doppelpunkt Host und Pfad, kein Slash.
+  const ssh = /^[^@/]+@[^:/]+:(.+)$/.exec(ohneGit);
+  const pfad = ssh ? ssh[1] : ohneGit.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+\//i, "");
+  const teile = pfad.split("/").filter(Boolean);
+  if (teile.length === 0) return null;
+  // Ein einzelnes Segment bleibt es — ohne Owner wird keiner hinzuerfunden.
+  return teile.length === 1 ? teile[0] : teile.slice(-2).join("/");
+}
+
 // --- Fehlerbehandlung ---
 
 // Erwartete Fehler aus den Adaptern: abfangbar, im CLI-Layer als "Fehler: ..." ausgegeben
@@ -151,7 +183,81 @@ function configRoot() {
   return process.env.KIT_ROOT ? resolve(process.env.KIT_ROOT) : join(__dirname, "..");
 }
 
-function loadConfig() {
+// Felder, die aus workflow.config.local.json gewinnen duerfen (Issue #207). Alles andere
+// gilt teamweit und wird aus der lokalen Datei ignoriert.
+//
+// Die Allowlist ist die eigentliche Entscheidung hinter der Zwei-Datei-Trennung: Waeren
+// buildChecks lokal ueberschreibbar, koennte sich jeder sein Gate wegkonfigurieren und die
+// Trennung waere Kosmetik. Die geteilte Datei laesst sich zwar weiterhin lokal editieren —
+// dann steht sie aber in `git status`, und sichtbare Abweichung ist etwas anderes als
+// per Design unsichtbare.
+//
+// Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
+// ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
+// weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+/**
+ * Mergt die persoenliche Config in die geteilte, aber nur an den erlaubten Pfaden.
+ * Liefert `{ config, ignored }` — `ignored` nennt jedes verworfene Feld beim Namen,
+ * damit der Aufrufer es melden kann statt still das Falsche zu tun.
+ */
+export function mergeWorkflowConfig(shared, local) {
+  const config = { ...(shared || {}) };
+  const ignored = [];
+  if (!local) return { config, ignored };
+
+  const erlaubteBlaetter = new Map();
+  const erlaubteFelder = new Set();
+  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
+    const [kopf, blatt] = pfad.split(".");
+    if (blatt) {
+      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
+      erlaubteBlaetter.get(kopf).add(blatt);
+    } else {
+      erlaubteFelder.add(kopf);
+    }
+  }
+
+  for (const [feld, wert] of Object.entries(local)) {
+    if (erlaubteFelder.has(feld)) {
+      config[feld] = wert;
+    } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
+      const blaetter = erlaubteBlaetter.get(feld);
+      const zusammen = { ...(config[feld] || {}) };
+      for (const [unterfeld, unterwert] of Object.entries(wert)) {
+        if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
+        else ignored.push(`${feld}.${unterfeld}`);
+      }
+      config[feld] = zusammen;
+    } else {
+      ignored.push(feld);
+    }
+  }
+  return { config, ignored };
+}
+
+// Die persoenliche Config neben der geteilten. Fehlt sie, aendert sich nichts; ist sie
+// kaputt, wird sie mit Hinweis uebersprungen — eine Datei, die nur einem Entwickler
+// gehoert, darf nicht die Arbeitsgrundlage des ganzen Teams kippen. Bei der geteilten
+// Config bleibt ein Syntaxfehler dagegen ein harter Fehler.
+function readLocalOverrides(sharedPfad) {
+  const pfad = join(dirname(sharedPfad), "workflow.config.local.json");
+  if (!existsSync(pfad)) return null;
+  try {
+    return JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    process.stderr.write(`Hinweis: ${pfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    return null;
+  }
+}
+
+// Liefert die Config oder null, wenn es keine gibt. Der weiche Weg fuer Aufrufer, die
+// ohne Config weiterarbeiten koennen (kontext paths, Issue #202). Eine vorhandene, aber
+// kaputte Datei bleibt ein harter Fehler: Sie stillschweigend wie "keine Config" zu
+// behandeln, wuerde einen Tippfehler in einen unsichtbaren Verhaltenswechsel verwandeln.
+function readWorkflowConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
     join(configRoot(), ".claude", "workflow.config.json"),
@@ -163,15 +269,30 @@ function loadConfig() {
         // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
         if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
         if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-        return raw;
+        const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+        // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
+        // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
+        // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+        for (const feld of ignored) {
+          process.stderr.write(
+            `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
+          );
+        }
+        return config;
       } catch {
         fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
       }
     }
   }
-  fail(
-    "Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren."
-  );
+  return null;
+}
+
+function loadConfig() {
+  const config = readWorkflowConfig();
+  if (!config) {
+    fail("Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren.");
+  }
+  return config;
 }
 
 // --- Argument-Parser ---
@@ -613,7 +734,12 @@ class GitHubCodeHost {
     } catch {
       // Frueher eine POSIX-Kommandozeile mit || und $(pwd) — unter cmd.exe gibt es
       // beides nicht (Issue #196). Dieselbe Logik in JavaScript.
-      return gitRemoteUrl() || basename(resolve("."));
+      //
+      // normalizeRepoName ist hier nicht optional: Ohne sie lieferte dieser Zweig die
+      // volle Remote-URL statt owner/repo, und zwar still (Issue #214). Sichtbar wurde
+      // das nur, wenn gh nicht durchkommt — etwa unter einer Sandbox, die die
+      // TLS-Pruefung blockiert.
+      return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
     }
   }
 
@@ -740,7 +866,11 @@ class GitLabIssueTracker {
   }
 
   async commentIssue(id, text) {
-    exec("glab", ["issue", "note", "create", String(id), "--message", text]);
+    // 'glab issue note <id>', NICHT 'issue note create <id>' (Issue #216): Ein
+    // create-Subkommando gibt es hier nicht — anders als bei 'issue create', wo die
+    // Analogie naheliegt. glab liest ein vorangestelltes 'create' als zusaetzliches
+    // Argument und bricht mit "Accepts 1 arg(s), received 2" ab.
+    exec("glab", ["issue", "note", String(id), "--message", text]);
   }
 }
 
@@ -748,9 +878,7 @@ class GitLabCodeHost {
   async getRepoName() {
     // Ohne Remote (kein Repo, kein origin) bleibt der Verzeichnisname — frueher ueber
     // `basename $(pwd)`, das cmd.exe nicht kennt (Issue #196).
-    const url = gitRemoteUrl();
-    if (!url) return basename(resolve("."));
-    return url.replace(/\.git$/, "").split("/").slice(-2).join("/");
+    return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
   }
 
   supportsPullRequests() { return true; }
@@ -919,9 +1047,12 @@ class LocalCodeHost {
   async getRepoName() {
     // Frueher mit 2>/dev/null — die Umleitung gibt es unter cmd.exe nicht (#196);
     // gitRemoteUrl liefert stattdessen null, wenn kein Remote da ist.
-    const url = gitRemoteUrl();
-    if (!url) return basename(resolve("."));
-    return url.replace(/\.git$/, "").split("/").pop();
+    //
+    // Liefert seit Issue #214 owner/repo statt nur repo: Alle drei Code-Hosts geben
+    // dieselbe Form zurueck, sonst beantwortet dasselbe Kommando je nach Projekt etwas
+    // anderes. Ohne Remote bleibt es beim Verzeichnisnamen — dokumentiertes Verhalten
+    // des lokalen Modus.
+    return normalizeRepoName(gitRemoteUrl()) || basename(resolve("."));
   }
 
   // Kein createPullRequest: codePr() bricht schon an supportsPullRequests() ab und gibt
@@ -1330,6 +1461,162 @@ function resolveCodeHost(config) {
 }
 
 // ============================================================
+// Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
+// ============================================================
+
+// Die Zielpfade im Memory-Vault entstehen hier in Code statt als Prosa im Skill-Prompt.
+// Grund: Teilen sich mehrere Service-Repos einen Vault, schrieben bisher alle in dieselbe
+// Tageslog-Datei — in einem Nextcloud-Vault ein Sync-Konflikt, bei parallelen Sessions ein
+// ueberschriebener Abschnitt. Und ein stiller Pfadfehler faellt bei einem Skill, der einmal
+// pro Session laeuft, erst Wochen spaeter auf: genau die Fehlerklasse, fuer die das
+// Leitplanken-Prinzip (Issue #122) ein Gate statt einer Formulierung verlangt.
+
+const KONTEXT_DEFAULTS = {
+  logPath: "Log/{date}.md",
+  projectDocs: ["CLAUDE-*", ".claude/CLAUDE-*"],
+};
+
+const KNOWN_CODE_HOSTS = ["github", "gitlab", "local"];
+
+/**
+ * Feldweiser Merge der beiden kontext.config.json, lokale Felder gewinnen. Fehlende
+ * Datei = leeres Objekt, kein Fehler.
+ *
+ * Bewusst Merge und nicht "erstes gefundenes gewinnt": Der Multi-Repo-Fall braucht eine
+ * lokale Config, die nur `project`/`parentProject` setzt und `vault` von global erbt —
+ * bei "erstes gewinnt" waere der Vault-Pfad verloren.
+ */
+export function mergeKontextConfig(globalCfg, localCfg) {
+  return { ...(globalCfg || {}), ...(localCfg || {}) };
+}
+
+/**
+ * Berechnet die Zielpfade im Vault. Reine Funktion ohne Dateisystem-Zugriff — Projektname
+ * und Datum kommen von aussen (das --date-Flag ist die Testbarkeits-Naht, ohne es waere
+ * jeder Erwartungswert datumsabhaengig).
+ *
+ * Ohne `vault` ist das Ergebnis mode "degraded" statt eines Fehlers: /kontext und
+ * /document haben dafuer einen dokumentierten Modus ohne persistentes Memory.
+ */
+export function resolveKontextPaths({ cfg = {}, project, date }) {
+  const projectName = project || cfg.project || "";
+  const parentProject = cfg.parentProject || null;
+  // projectDocs sind Glob-Muster relativ zum PROJEKT-Verzeichnis, keine Vault-Pfade:
+  // Sie werden unveraendert durchgereicht und gelten auch im Degraded Mode.
+  const projectDocs = cfg.projectDocs || KONTEXT_DEFAULTS.projectDocs;
+  const vault = cfg.vault || null;
+
+  if (!vault) {
+    return {
+      mode: "degraded", vault: null, project: projectName, parentProject,
+      log: null, projectNote: null, parentNote: null, always: [], projectDocs,
+    };
+  }
+
+  // Ein logPath ohne {project} wird nicht stillschweigend um den Projektnamen ergaenzt,
+  // auch nicht bei gesetztem parentProject: Der Wert ist eine Entscheidung des Nutzers.
+  const logPath = cfg.logPath || KONTEXT_DEFAULTS.logPath;
+  // Ohne parentProject liegt die Notiz wie bisher in ihrem eigenen Ordner; mit ihm
+  // sammeln sich die Service-Notizen im Ordner des Dach-Projekts.
+  const notizOrdner = parentProject || projectName;
+  return {
+    mode: "full",
+    vault,
+    project: projectName,
+    parentProject,
+    log: join(vault, logPath.replaceAll("{date}", date).replaceAll("{project}", projectName)),
+    projectNote: join(vault, "Projekte", notizOrdner, `${projectName}.md`),
+    parentNote: parentProject ? join(vault, "Projekte", parentProject, `${parentProject}.md`) : null,
+    always: (cfg.always || []).map((datei) => join(vault, datei)),
+    projectDocs,
+  };
+}
+
+/** Ein Datum ist nur gueltig, wenn es den Tag auch wirklich gibt: 2026-13-99 nicht. */
+function istTagesdatum(wert) {
+  const d = new Date(`${wert}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === wert;
+}
+
+const REGEX_SONDERZEICHEN = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Waehlt aus einer Liste von Dateinamen den juengsten Log-Eintrag desselben Projekts.
+ * Reine Funktion ueber Namen — kein Dateisystem, damit die Randfaelle pruefbar sind.
+ *
+ * Das `logPath`-Template wird zum Suchmuster: {date} wird zum Datums-Platzhalter,
+ * {project} woertlich zum Projektnamen. Gesucht wird also nie "der juengste Eintrag
+ * ueberhaupt" — im Multi-Repo-Fall liegen die Eintraege aller Services im selben
+ * Ordner, und der juengste fremde waere die falsche Anknuepfung (Issue #205).
+ *
+ * `before` grenzt auf Eintraege davor ein. Ohne den Wert laese eine zweite Session am
+ * selben Tag sich selbst als Vorgaenger.
+ */
+export function pickLatestLog(fileNames, { template, project = "", before = null } = {}) {
+  const muster = (template || KONTEXT_DEFAULTS.logPath).split("/").pop();
+  // Split mit Capture-Group behaelt die Platzhalter als eigene Stuecke: So wird nur der
+  // Literaltext escaped, und ein Punkt im Projektnamen bleibt ein Punkt.
+  const quelle = muster
+    .split(/(\{date\}|\{project\})/)
+    .map((teil) => {
+      if (teil === "{date}") return "(\\d{4}-\\d{2}-\\d{2})";
+      const literal = teil === "{project}" ? project : teil;
+      return literal.replace(REGEX_SONDERZEICHEN, "\\$&");
+    })
+    .join("");
+  const regex = new RegExp(`^${quelle}$`);
+
+  let treffer = null;
+  for (const name of fileNames) {
+    const m = regex.exec(name);
+    if (!m || !istTagesdatum(m[1])) continue;
+    if (before && m[1] >= before) continue;
+    // Bei JJJJ-MM-TT ist lexikografisch identisch mit chronologisch.
+    if (!treffer || m[1] > treffer.date) treffer = { name, date: m[1] };
+  }
+  return treffer;
+}
+
+function readKontextConfigFile(pfad) {
+  if (!existsSync(pfad)) return {};
+  try {
+    return JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    fail(`kontext.config.json konnte nicht gelesen werden: ${pfad}`);
+  }
+}
+
+// Eigene Suche statt loadConfig(): Das ist kontext.config.json, nicht
+// workflow.config.json. Home ueber homedir() und nicht ueber HOME — unter Windows
+// liest homedir() USERPROFILE (Issue #187).
+function loadKontextConfig() {
+  return mergeKontextConfig(
+    readKontextConfigFile(join(homedir(), ".claude", "kontext.config.json")),
+    readKontextConfigFile(resolve(".claude", "kontext.config.json"))
+  );
+}
+
+// Letzte Stufe der Projektnamen-Praezedenz. Bewusst weich: board.mjs ist ein kopierbares
+// Single-File-Tool und muss `kontext paths` auch in einem Projekt beantworten, das keine
+// workflow.config.json (und damit keinen Code-Host) hat — dort ist der Verzeichnisname
+// die beste verfuegbare Auskunft. resolveCodeHost() wuerde bei unbekanntem Wert hart
+// abbrechen, deshalb die Pruefung davor.
+async function kontextRepoName() {
+  const config = readWorkflowConfig();
+  if (!config || !KNOWN_CODE_HOSTS.includes(config.codeHost)) return basename(resolve("."));
+  const repoName = await resolveCodeHost(config).getRepoName();
+  return repoName.replace(/\.git$/, "").split("/").pop();
+}
+
+// Tagesdatum lokal statt per toISOString(): Eine Session um 23:30 MESZ gehoert ins Log
+// von heute, nicht in das von morgen — in UTC waere der Tag da schon gewechselt.
+function heute() {
+  const jetzt = new Date();
+  const zweistellig = (n) => String(n).padStart(2, "0");
+  return `${jetzt.getFullYear()}-${zweistellig(jetzt.getMonth() + 1)}-${zweistellig(jetzt.getDate())}`;
+}
+
+// ============================================================
 // Dispatch
 // ============================================================
 
@@ -1425,6 +1712,57 @@ async function dispatchCode(command, args) {
   }
 }
 
+// Ein Flag ohne Wert wird von parseArgs zu true. Fuer --project/--date waere das ein
+// stiller Fehlgriff (falscher Projektname, heutiges statt gemeintem Datum) — deshalb
+// Abbruch mit Meldung statt Rueckfall auf den Default.
+function kontextOption(args, name) {
+  if (args[name] === true) fail(`--${name} braucht einen Wert`);
+  return args[name];
+}
+
+// Praezedenz des Projektnamens: --project > cfg.project > Repo-Name > basename(cwd).
+async function kontextPaths(args) {
+  const cfg = loadKontextConfig();
+  const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
+  out(resolveKontextPaths({ cfg, project, date: kontextOption(args, "date") || heute() }));
+}
+
+// Der juengste vorhandene Log-Eintrag desselben Projekts, als Anknuepfung fuer /document.
+// Kein Vault, kein Log-Verzeichnis oder kein Treffer sind alle derselbe Normalfall
+// (erster Eintrag eines Projekts) und liefern path: null — kein Fehler.
+async function kontextLastLog(args) {
+  const cfg = loadKontextConfig();
+  if (!cfg.vault) return out({ path: null });
+
+  const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
+  const template = cfg.logPath || KONTEXT_DEFAULTS.logPath;
+  const ordner = join(cfg.vault, ...template.split("/").slice(0, -1));
+
+  let dateien;
+  try {
+    dateien = readdirSync(ordner);
+  } catch {
+    return out({ path: null });
+  }
+
+  const treffer = pickLatestLog(dateien, {
+    template,
+    project,
+    before: kontextOption(args, "before") || heute(),
+  });
+  out(treffer ? { path: join(ordner, treffer.name), date: treffer.date } : { path: null });
+}
+
+async function dispatchKontext(command, args) {
+  switch (command) {
+    case "paths": return kontextPaths(args);
+    case "last-log": return kontextLastLog(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter kontext-Befehl: '${command}'`);
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -1447,9 +1785,11 @@ async function main() {
     await dispatchIssue(command, args);
   } else if (axis === "code") {
     await dispatchCode(command, args);
+  } else if (axis === "kontext") {
+    await dispatchKontext(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext`);
   }
 }
 

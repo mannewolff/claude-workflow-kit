@@ -6,6 +6,7 @@
     "mvn verify"
   ],
   "mutationCommand": "mvn org.pitest:pitest-maven:mutationCoverage",
+  "formatFixCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
   "reviewScope": "diff",

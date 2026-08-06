@@ -1,0 +1,34 @@
+{
+  "_zweck": "Gueltige Subkommandos von gh und glab, gegen die das Fake-CLI jede Kommandozeile prueft (Issue #217). Ohne diese Pruefung akzeptiert ein Fake alles, was ein Test ihm beibringt — so lief 'glab issue note create' monatelang gruen durch die Suite, abgesichert von einem Test, der die kaputte Syntax festhielt (Issue #216).",
+  "_grenze": "Geprueft wird nur die Zahl der POSITIONSARGUMENTE, keine Flags. Das haette #216 gefangen und ist billig zu pflegen; Flags mitzupruefen wuerde die Datei aufblaehen und schneller veralten. Wer hier nachtraegt, sollte das nicht fuer Vollstaendigkeit halten.",
+  "_quelle": "gh 2.x und glab 1.112.0, erhoben am 2026-08-06 aus den USAGE-Zeilen von '<cli> <sub> --help'. Der Abgleich gegen die echten CLIs ist Issue #218.",
+  "_args": "args ist die exakte Zahl der Positionsargumente, die der Adapter uebergibt — nicht die maximal erlaubte. Ruft der Adapter ein Kommando kuenftig mit einer anderen Zahl auf, gehoert der Wert hier angepasst; genau dieses Anpassen macht die Aenderung sichtbar.",
+
+  "gh": {
+    "repo view": { "args": 0 },
+    "issue create": { "args": 0 },
+    "issue view": { "args": 1 },
+    "issue list": { "args": 0 },
+    "issue comment": { "args": 1 },
+    "pr create": { "args": 0 },
+    "project list": { "args": 0 },
+    "project item-list": { "args": 1 },
+    "project field-list": { "args": 1 },
+    "project item-add": { "args": 1 },
+    "project item-edit": { "args": 0 },
+    "api": { "args": 1 }
+  },
+
+  "glab": {
+    "issue create": { "args": 0 },
+    "issue view": { "args": 1 },
+    "issue list": { "args": 0 },
+    "issue update": { "args": 1 },
+    "issue note": { "args": 1 },
+    "issue close": { "args": 1 },
+    "issue reopen": { "args": 1 },
+    "mr create": { "args": 0 },
+    "label create": { "args": 0 },
+    "api": { "args": 1 }
+  }
+}

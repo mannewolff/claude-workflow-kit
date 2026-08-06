@@ -290,3 +290,98 @@ test("changelog.mjs meldet einen gescheiterten git-Aufruf als solchen", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- sync-blobs: Dogfooding-Kopien unter .claude/skills/ (Issue #213) ---
+//
+// Der Anlass ist ein Fehlbild vom 2026-08-06: Zwei Skill-Issues liefen in einem
+// Nachtlauf in eine Schreibsperre auf .claude/skills/, die Kopien drifteten — und
+// `sync-blobs --check` blieb gruen, weil es nur .claude/kit/ abglich. Die Konsistenz
+// der Skill-Kopien stand damit allein als Bitte im Issue-Text.
+
+/**
+ * Fixture, in dem NUR die Skill-Kopien driften koennen.
+ *
+ * Der erste sync-Lauf backt die Blobs korrekt — sonst waere `--check` schon wegen
+ * Blob-Drift rot und die Tests unten wuerden gar nicht messen, was sie behaupten.
+ * Erst danach entsteht .claude/skills mit dem gewuenschten Zustand.
+ *
+ * kopien: null = Verzeichnis fehlt ganz | undefined = Verzeichnis da, Datei fehlt |
+ * String = Datei mit diesem Inhalt.
+ */
+function skillsFixture(praefix, { kopien }) {
+  const dir = syncFixture(praefix, { installZeilen: gueltigeInstallZeilen() });
+  const vorlauf = laufe(dir, SYNC_TOOL);
+  assert.equal(vorlauf.status, 0, `Vorlauf muss gruen sein: ${vorlauf.stderr}`);
+  const sauber = laufe(dir, SYNC_TOOL, ["--check"]);
+  assert.equal(sauber.status, 0, `Fixture muss vor der Manipulation synchron sein: ${sauber.stderr}`);
+
+  if (kopien !== null) {
+    mkdirSync(join(dir, ".claude", "skills", "beispiel"), { recursive: true });
+    if (kopien !== undefined) {
+      writeFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), kopien);
+    }
+  }
+  return dir;
+}
+
+/** install.mjs-Zeilen mit allen Konstanten, damit sync-blobs bis zu den Kopien kommt. */
+function gueltigeInstallZeilen() {
+  return [
+    'const VERSION = "1.26.0";',
+    ...BLOB_KONSTANTEN.map((c) => `const ${c} = "";`),
+  ];
+}
+
+test("sync-blobs --check wird rot, wenn eine Skill-Kopie von ihrer Quelle abweicht", () => {
+  const dir = skillsFixture("sync-skills-drift-", { kopien: "# Alter Stand\n" });
+  try {
+    const res = laufe(dir, SYNC_TOOL, ["--check"]);
+    assert.notEqual(res.status, 0, "Drift in einer Skill-Kopie muss rot sein");
+    assert.match(res.stderr, /Lokale Kopie veraltet/);
+    assert.match(res.stderr, /\.claude\/skills\/beispiel\/SKILL\.md/,
+      "die Meldung muss die abweichende Datei benennen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sync-blobs --check wird rot, wenn eine Skill-Kopie ganz fehlt", () => {
+  // Ein neu angelegter Skill darf nicht unbemerkt aus dem Dogfooding verschwinden.
+  const dir = skillsFixture("sync-skills-fehlt-", { kopien: undefined });
+  try {
+    const res = laufe(dir, SYNC_TOOL, ["--check"]);
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /\.claude\/skills\/beispiel\/SKILL\.md/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sync-blobs frischt die Skill-Kopie auf und macht --check danach gruen", () => {
+  const dir = skillsFixture("sync-skills-fix-", { kopien: "# Alter Stand\n" });
+  try {
+    const lauf = laufe(dir, SYNC_TOOL);
+    assert.equal(lauf.status, 0, lauf.stderr);
+    assert.match(lauf.stdout, /beispiel/);
+    assert.equal(
+      readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"),
+      "# Beispiel-Skill\n"
+    );
+    const check = laufe(dir, SYNC_TOOL, ["--check"]);
+    assert.equal(check.status, 0, check.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sync-blobs: fehlendes .claude/skills/ ist ein stiller Skip, kein Fehler", () => {
+  // Frischer Clone ohne lokale Installation — dort gibt es nichts abzugleichen.
+  const dir = skillsFixture("sync-skills-leer-", { kopien: null });
+  try {
+    const res = laufe(dir, SYNC_TOOL, ["--check"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.doesNotMatch(res.stderr, /beispiel/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

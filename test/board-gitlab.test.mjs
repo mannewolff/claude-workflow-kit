@@ -27,7 +27,7 @@ function basisRegeln() {
     { match: "^issue update", stdout: "" },
     { match: "^issue close", stdout: "" },
     { match: "^issue reopen", stdout: "" },
-    { match: "^issue note create", stdout: "" },
+    { match: "^issue note", stdout: "" },
     { match: "^api projects", stdout: [] },
   ];
 }
@@ -287,7 +287,7 @@ test("move ohne Label-Mapping fuer den Zielstatus schlaegt fehl", NUR_POSIX, () 
 test("comment legt eine Note an", NUR_POSIX, () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "comment", "42", "--text", "Mein Kommentar"), { ok: true, id: "42" });
-    assert.match(aufrufZeilen(dir, "glab").join("\n"), /issue note create 42 --message Mein Kommentar/);
+    assert.match(aufrufZeilen(dir, "glab").join("\n"), /issue note 42 --message Mein Kommentar/);
   });
 });
 

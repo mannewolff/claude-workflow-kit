@@ -21,7 +21,9 @@ Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commit
 
 ### 1. Config lesen
 
-Lies `.claude/workflow.config.json`:
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+
+Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
 - `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
 
