@@ -191,6 +191,41 @@ Reviewer: opus (Vollständigkeit), codex (Scope)
 
 Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **ersten Zeile** des Kommentars.
 
+### 5b. Synthese protokollieren — ein zweiter, getrennter Kommentar
+
+Zwischen den Befunden und dem neuen Body liegt eine Arbeit, die sonst unsichtbar bleibt: Aus zwei Listen wird ein Text. Dabei wird entschieden, welcher Fund einfließt, welcher verworfen wird, und bei Widerspruch, wer recht bekommt.
+
+**Ohne Protokoll sieht ein bewusst verworfener Fund genauso aus wie ein übersehener.** Wer später Kommentar und Body nebeneinanderlegt, findet eine Differenz und kann die beiden Fälle nicht unterscheiden.
+
+Der Kommentar ist **getrennt** vom Befunde-Kommentar aus Schritt 5. Der bleibt unverändert Verlauf (Issue #155); die Synthese ist bewertet und gehört nicht in denselben Block.
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text "## Synthese, Runde 1
+
+### Entscheidungen
+- opus, \"Akzeptanzkriterium nicht maschinell prüfbar\" (BLOCKER) — übernommen
+- codex, \"Abhängigkeit fehlt\" (WICHTIG) — verworfen: Issue #7 steht bereits im
+  Abhängigkeiten-Abschnitt, der Reviewer sah ihn nicht (Kontextlosigkeit).
+- codex, \"Cookie-Schreiben ist Kandidat für RAUS\" (WICHTIG) — verworfen:
+  Issue #10 spezifiziert es vollständig und ist als Abhängigkeit genannt.
+
+### Dissens
+- opus wollte die Codeprüfung durch einen Test ersetzen, codex umgekehrt den
+  Test-Zweig streichen (das Projekt hat keine Testbasis). Entschieden für opus.
+  Folgeänderung: Issue #7 als Abhängigkeit ergänzt.
+
+Übernommen: 1 · Verworfen: 2"
+```
+
+**Was hineingehört:**
+
+- Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen` oder `verworfen` — und bei `verworfen` ein Satz Begründung.
+- `HINWEIS`-Funde nur, wenn sie **verworfen** wurden. Sonst wird die Liste länger als ihr Nutzen.
+- **Ein verworfener `BLOCKER` braucht immer eine Begründung.** Das ist die Kategorie, bei der stilles Verwerfen am teuersten ist.
+- Widersprechen sich die Reviewer, steht das als eigener Punkt: welche beiden Vorschläge kollidierten, welcher gewonnen hat, warum, und welche Folgeänderungen daraus entstanden sind.
+
+**Ein Muster, das man kennen sollte:** Die Kontextlosigkeit, die den Review überhaupt trägt, produziert an Abhängigkeitsgrenzen zuverlässig Fehlalarme — ein Reviewer sieht das Nachbar-Issue nicht und meldet als fehlend, was dort steht. Solche Funde zu verwerfen ist richtig. Es bleibt eine Entscheidung und gehört protokolliert.
+
 ### 6. Body schärfen — nur mit Freigabe
 
 **Der Body wird nie automatisch geschrieben.** Zeige einen Vorschlag mit den eingearbeiteten Funden und frage einmal:
@@ -234,6 +269,10 @@ Drei Abweichungen, sonst gilt alles unverändert:
 
 Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den Menschen.
 
+**Der Synthese-Kommentar aus Schritt 5b entsteht nachts genauso** — zusätzlich zum Body-Vorschlag. Dort ist er **wichtiger als interaktiv**, weil niemand zugesehen hat: Wer beim Groomen den Vorschlagstext übernimmt, übernimmt sonst eine fremde Abwägung, ohne sie zu sehen.
+
+**Daraus folgt eine Schärfung der Marker-Regel:** Wird der Marker gesetzt, obwohl ein Fund verworfen wurde, **muss die Synthese das benennen**. Sonst behauptet der Marker eine Befundfreiheit, die es nicht gab — ein `HINWEIS`, den die Nacht verworfen hat, ist kein Grund, den Marker zurückzuhalten, aber er darf nicht unsichtbar bleiben.
+
 Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden; den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
 
 **Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
@@ -253,11 +292,13 @@ Zusammenfassung über alle bearbeiteten Issues:
 ```
 ### Issue-Review
 
-- #205 → 3 Funde (1 BLOCKER), Body übernommen, Marker gesetzt
+- #205 → 3 Funde (1 BLOCKER), 2 übernommen / 1 verworfen, Body übernommen, Marker gesetzt
 - #207 → keine Funde, Marker gesetzt
-- #210 → 2 Funde, Vorschlag abgelehnt, kein Marker
+- #210 → 2 Funde, 0 übernommen / 2 verworfen, Vorschlag abgelehnt, kein Marker
 - #212 → übersprungen ([Idee]-Präfix)
 ```
+
+**Die Zählung übernommen/verworfen gehört dazu.** „3 Funde, Body übernommen" liest sich gleich, egal ob alle drei eingeflossen sind oder keiner — und genau dieser Unterschied entscheidet, wie viel der Review wert war.
 
 Dann der Hinweis auf den nächsten Schritt:
 
@@ -268,6 +309,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
 - **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
+- **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Fachlich]`- und `[Idee]`-Issues
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde
