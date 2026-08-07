@@ -776,7 +776,7 @@ Der Anlass ist ein Setup mit mehreren Repos an einem gemeinsamen Vault, etwa fü
 
 Zwei Konsequenzen ziehen sich daraus durch das Kit:
 
-- **Der Tageslog wird projektspezifisch.** Das Feld `logPath` macht den Dateinamen konfigurierbar (`Log/{date}-{project}.md`), damit jedes Repo seine eigene Datei bekommt. Details in der [`kontext.config.json`-Referenz](kontext-config-reference.md).
+- **Der Tageslog wird projektspezifisch.** Das Feld `logPath` macht den Dateinamen konfigurierbar (`Log/{date}-{project}.md`), damit jedes Repo seine eigene Datei bekommt. Das gilt nicht nur für Microservices: **Sobald zwei beliebige Projekte denselben Vault benutzen, gehört `logPath` gesetzt** — der Default `Log/{date}.md` ist eine Datei pro Tag, nicht pro Projekt. Details in der [`kontext.config.json`-Referenz](kontext-config-reference.md).
 - **Die gemeinsame Dach-Notiz schreibt `/document` nie von selbst.** Sie ist der einzige geteilte Schreibort und deshalb bewusst nicht automatisiert: Nur bei Cross-Service-Wirkung fragt der Skill einmal nach, mit dem konkreten Eintragstext, und schreibt erst nach Zustimmung. Sonst wäre die Konfliktfläche nur vom Log in die Notiz verschoben.
 
 Der Unterschied zum Leitplanken-Prinzip oben ist die Art des Stopps: Dort scheitert ein Gate mechanisch, hier fragt ein Skill einen Menschen. Der Grund ist derselbe — die Entscheidung, ob eine systemweite Erkenntnis in die gemeinsame Notiz gehört, kann keine Regel treffen.
@@ -968,7 +968,11 @@ Die Dateien werden **feldweise gemergt, lokale Felder gewinnen**. Felder, die in
 | `logPath` | `string` | optional | Template für die Tageslog-Datei, relativ zum `vault`-Root. Platzhalter `{date}` und `{project}`. Default: `"Log/{date}.md"` |
 | `parentProject` | `string` | optional | Dach-Projekt über mehreren Service-Repos (Multi-Repo-Setup) |
 
-Teilen sich mehrere Repos einen Vault — etwa die Services eines Microservice-Systems — brauchen sie `logPath` und `parentProject`, damit nicht alle in dieselbe Tageslog-Datei schreiben. Das vollständige Setup mit Vault-Struktur und Beispiel-Config steht in der [`kontext.config.json`-Referenz](kontext-config-reference.md); das Prinzip dahinter unter [Eine Datei, ein Schreiber](#eine-datei-ein-schreiber).
+**`logPath` brauchst du, sobald mehr als ein Projekt denselben Vault benutzt** — unabhängig davon, ob die Projekte etwas miteinander zu tun haben. Der Default `Log/{date}.md` ist eine Datei pro **Tag**, nicht pro Projekt: Ohne `{project}` im Template landen alle Sessions eines Tages in derselben Datei, und `kontext last-log` liefert beim nächsten `/document` womöglich den Eintrag eines fremden Projekts als Vorgänger. Zwei unabhängige Repos an einem Vault genügen dafür schon.
+
+`parentProject` ist davon unabhängig und nur für **Multi-Repo-Systeme** gedacht, in denen mehrere Service-Repos zu einem Ganzen gehören (siehe unten). Wer ein Dutzend eigenständiger Projekte an einem Vault führt, setzt `logPath` und lässt `parentProject` weg.
+
+Das vollständige Setup mit Vault-Struktur und Beispiel-Config steht in der [`kontext.config.json`-Referenz](kontext-config-reference.md); das Prinzip dahinter unter [Eine Datei, ein Schreiber](#eine-datei-ein-schreiber).
 
 ### Was passiert ohne Vault?
 

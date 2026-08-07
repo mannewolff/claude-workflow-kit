@@ -85,6 +85,14 @@ Es liefert den jüngsten vorhandenen Log-Eintrag **desselben Projekts** (`{"path
 
 Mehrere Repos, ein System: Sie sollen sich einen Vault teilen, damit das Wissen über die Servicegrenzen hinweg an einem Ort liegt. Ohne weitere Konfiguration schreiben dann aber alle Sessions eines Tages in dieselbe Log-Datei — in einem synchronisierten Vault gibt das Konflikt-Kopien, bei parallelen Sessions einen überschriebenen Abschnitt.
 
+> **`logPath` braucht nicht nur, wer Microservices fährt.** Der Default `Log/{date}.md` ist eine Datei pro **Tag**, nicht pro Projekt — schon zwei völlig unabhängige Repos an einem Vault schreiben damit ineinander, und `kontext last-log` liefert beim nächsten `/document` unter Umständen den Eintrag eines fremden Projekts als Vorgänger. Für diesen Fall genügt `logPath` **allein**, global gesetzt; `parentProject` und `project` gehören nur zum Multi-Repo-Setup unten.
+>
+> ```json
+> { "logPath": "Log/{date}-{project}.md" }
+> ```
+>
+> Beim Umstellen zu wissen: Bereits geschriebene Einträge behalten ihren alten Dateinamen und werden von `kontext last-log` nicht mehr als Vorgänger gefunden — einmalig, bis der erste Eintrag im neuen Schema liegt.
+
 Die Lösung sind zwei Felder in der **lokalen** Config jedes Service-Repos:
 
 ```json
