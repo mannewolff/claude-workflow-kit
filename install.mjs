@@ -15,7 +15,7 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -153,12 +153,6 @@ async function askWithDefault(rl, question, defaultValue, field) {
 }
 
 function copySkills(skillsSrc, targetDir) {
-  const skills = [
-    "fachplan", "plan", "issues", "implement-ready", "implement-test", "implement-done",
-    "implement-next", "local-check", "review", "retro", "push-main",
-    "merge-production", "kontext", "document",
-  ];
-
   // Primaerquelle: eingebetteter Blob (Single-File-Portabilitaet). Fallback aufs
   // Dateisystem nur fuer die Kit-Entwicklung direkt im geklonten Repo.
   let skillsBlob = {};
@@ -169,6 +163,19 @@ function copySkills(skillsSrc, targetDir) {
       console.warn("  Warnung: eingebetteter Skills-Blob ist kein gueltiges JSON, wird ignoriert.");
     }
   }
+
+  // Die Namen kommen aus dem Blob, frueher standen sie als feste Liste hier. Genau
+  // daran ist /issue-review gescheitert: Der Skill lag im Blob, fehlte aber in der
+  // Liste — und wurde in KEINEM per Installer eingerichteten Projekt jemals angelegt,
+  // lautlos. Eine Liste, die man beim Hinzufuegen eines Skills pflegen muss, wird
+  // irgendwann vergessen; der wiederkehrende Fehler gehoert mechanisch ausgeschlossen
+  // statt der Sorgfalt ueberlassen (Leitplanken-Prinzip, Issue #122).
+  const ausBlob = Object.keys(skillsBlob);
+  const skills = ausBlob.length > 0
+    ? ausBlob
+    : (existsSync(skillsSrc)
+      ? readdirSync(skillsSrc, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+      : []);
 
   let copied = 0;
   for (const skill of skills) {
@@ -200,6 +207,7 @@ function copySkills(skillsSrc, targetDir) {
     );
     process.exit(1);
   }
+  return copied;
 }
 
 // --- GitLab Label Setup ---
@@ -421,7 +429,7 @@ async function main() {
 
   // --- Skills kopieren ---
   console.log(`\nKopiere Skills nach ${skillsTarget}:`);
-  copySkills(skillsSrc, skillsTarget);
+  const skillAnzahl = copySkills(skillsSrc, skillsTarget);
 
   // --- Config schreiben ---
   // Basis sind die DEFAULTS (fuellen echte Luecken), darueber die bestehende Config
@@ -494,7 +502,9 @@ async function main() {
 
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
-  console.log(`Die dreizehn Skills erscheinen in /help.\n`);
+  // Gezaehlt statt behauptet: Das Zahlwort stand hier zweimal falsch (zuletzt
+  // "dreizehn" bei fuenfzehn Skills) — es wurde bei jedem neuen Skill vergessen.
+  console.log(`Die ${skillAnzahl} Skills erscheinen in /help.\n`);
   if (scope === "projekt") {
     // Ohne diesen Hinweis bleibt die Datei ungetrackt liegen und niemand merkt es —
     // bis zwei Entwickler unterschiedliche buildChecks fahren (Issue #208).

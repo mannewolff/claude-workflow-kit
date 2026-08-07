@@ -23,7 +23,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -536,6 +536,52 @@ test("Beispiel-Config wird beim Re-Install aufgefrischt", () => {
     assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
 
     assert.equal(readFileSync(pfad, "utf-8"), original, "Beispiel-Config wurde nicht aufgefrischt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Vollstaendigkeit der Skills (Ad-hoc-Fix) ---
+//
+// Der Test, der gefehlt hat: copySkills() lief frueher ueber eine handgepflegte
+// Namensliste, und /issue-review stand nicht darin. Der Skill lag im Blob, wurde aber
+// in KEINEM per Installer eingerichteten Projekt jemals angelegt — lautlos, weil kein
+// Test die Vollstaendigkeit prueft, sondern nur einzelne Skills stichprobenartig.
+
+test("Installer legt JEDEN Skill aus dem Blob an", () => {
+  const dir = fixture("install-alle-skills-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    // Erwartung ist die Quelle im Repo — nicht der Blob, den derselbe Installer
+    // mitbringt. Sonst pruefte der Test seine eigene Eingabe.
+    const erwartet = readdirSync(join(repoRoot, "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+
+    assert.deepEqual(installiert, erwartet,
+      "Es fehlen Skills — genau so ist /issue-review durchgefallen");
+    // Namentlich, damit ein Regress sofort lesbar ist.
+    assert.ok(existsSync(join(dir, ".claude", "skills", "issue-review", "SKILL.md")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Die Abschlussmeldung nennt die tatsaechliche Zahl der Skills", () => {
+  // Das Zahlwort war zweimal falsch, weil es von Hand gepflegt wurde.
+  const dir = fixture("install-skillzahl-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    const anzahl = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory()).length;
+    assert.match(res.stdout, new RegExp(`Die ${anzahl} Skills erscheinen`));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
