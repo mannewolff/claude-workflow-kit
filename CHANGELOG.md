@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.34.1] - 2026-08-07
+- issue-review: Synthese protokollieren (#242)
+- Autor-Modell auf Reviewer-Kurznamen aufloesen (#241)
+
 ## [1.33.1] - 2026-08-07
 - Doku: logPath gilt fuer jeden geteilten Vault, nicht nur fuer Microservices
 
