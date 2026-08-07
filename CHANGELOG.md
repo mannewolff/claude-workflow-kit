@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.33.1] - 2026-08-07
+- Doku: logPath gilt fuer jeden geteilten Vault, nicht nur fuer Microservices
+
 ## [1.32.1] - 2026-08-07
 - Installer legt jeden Skill an, nicht nur die aus einer Liste
 - Installer liefert eine Beispiel-Config aus, Vorflug gatet leere Reviewer
