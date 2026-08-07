@@ -35,6 +35,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   if (lokaleKopie) mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
+  writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   for (const datei of ["board.mjs", "night.mjs"]) {
     writeFileSync(join(dir, "kit", datei),
@@ -42,6 +43,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   }
   writeFileSync(join(dir, "install.mjs"), [
     `const VERSION = "${installVersion}";`,
+    `const CONFIG_EXAMPLE_B64 = "";`,
     `const CLAUDE_WORKFLOW_MD_B64 = "";`,
     `const BOARD_MJS_B64 = "";`,
     `const NIGHT_MJS_B64 = "";`,

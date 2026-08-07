@@ -117,7 +117,7 @@ const BOARD_PATH = process.env.KIT_ROOT
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.32.0";
+const KIT_VERSION = "1.33.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -149,6 +149,10 @@ Flags:
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
+  --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
+                     der laufenden Session mitloggen (via stream-json)
+  --version          Kit-Stand dieser Datei
+  --help, -h         diese Uebersicht
 
 Review-Modus (prueft statt zu implementieren):
   --review           laesst Backlog-Issues von /issue-review pruefen, statt
@@ -159,10 +163,11 @@ Review-Modus (prueft statt zu implementieren):
 
   Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich —
   deshalb sind es zwei Laeufe an zwei Abenden, nicht zwei Phasen in einer Nacht.
-  --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
-                     der laufenden Session mitloggen (via stream-json)
-  --version          Kit-Stand dieser Datei
-  --help, -h         diese Uebersicht
+
+  Voraussetzung: ein 'issueReview'-Block mit mindestens einem Reviewer in
+  .claude/workflow.config.json. Vorlage zum Uebernehmen liegt nach der
+  Installation in .claude/workflow.config.example.json. Fehlt der Block,
+  bricht der Vorflug ab, statt Sessions ergebnislos zu verbrennen.
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
 Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
@@ -974,9 +979,17 @@ async function main() {
     for (const r of reviewerBefund.reviewers || []) {
       log(`  Reviewer ${r.name} (${r.kind}): ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
     }
+    // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
+    // nicht "Werkzeug installieren", sondern "Block uebernehmen". board.mjs liefert
+    // dafuer `grund` statt einer Reviewer-Liste.
+    if ((reviewerBefund.reviewers || []).length === 0) {
+      log(`  Kein Reviewer konfiguriert: ${reviewerBefund.grund || "issueReview.reviewers ist leer oder fehlt"}`);
+    }
     if (!reviewerBefund.alleVerfuegbar && !args.dryRun) {
       const fehlen = (reviewerBefund.reviewers || []).filter((r) => !r.verfuegbar).map((r) => `${r.name} (${r.grund})`);
-      fail(`Reviewer nicht verfuegbar: ${fehlen.join(", ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren oder aus issueReview.reviewers nehmen.`);
+      fail(fehlen.length > 0
+        ? `Reviewer nicht verfuegbar: ${fehlen.join(", ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren oder aus issueReview.reviewers nehmen.`
+        : `Kein Reviewer konfiguriert (${reviewerBefund.grund || "issueReview.reviewers ist leer oder fehlt"}). Ohne Reviewer wuerde jede Session ergebnislos enden — der Lauf startet deshalb gar nicht erst.`);
     }
   }
 

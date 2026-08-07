@@ -603,6 +603,18 @@ Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin
 
 ### Konfiguration
 
+Der Installer legt eine Vorlage zum Abschreiben neben die echte Config:
+
+```
+.claude/workflow.config.example.json
+```
+
+Daraus den `issueReview`-Block in die eigene `.claude/workflow.config.json` kopieren und an die eigenen Modelle anpassen. **Der Installer fragt den Block nicht ab und schreibt ihn auch nicht selbst** — `reviewers` hängt davon ab, welche CLIs auf der Maschine liegen, und `pairs` ist eine Entscheidung, keine Voreinstellung. Ein automatisch geschriebener Block, von dem ein Reviewer fehlt, macht jeden Vorflug rot.
+
+Ohne den Block tut `/issue-review` nichts, und `night.mjs --review` bricht im Vorflug ab, statt eine Nacht lang Sessions ergebnislos zu starten.
+
+Die Beispieldatei wird bei jedem Re-Install aufgefrischt — sie enthält keine eigenen Werte. Die echte `workflow.config.json` bleibt davon unberührt.
+
 ```json
 "issueReview": {
   "rounds": 1,

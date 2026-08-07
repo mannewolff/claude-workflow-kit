@@ -37,7 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.32.0";
+const KIT_VERSION = "1.33.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -1991,7 +1991,15 @@ function issueReviewCheck() {
       ? { name: r.name, kind: r.kind, verfuegbar: true }
       : { name: r.name, kind: r.kind, verfuegbar: false, grund: `${datei} nicht im PATH` };
   });
-  out({ reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
+  // Ohne konfigurierte Reviewer waere `every()` auf dem leeren Array true — der Vorflug
+  // haette einen Lauf durchgelassen, der garantiert nichts liefert: Jede Session startet,
+  // der Skill beendet sich mangels Reviewern, und der Runner bucht sie als "ohne
+  // Ergebnis". Eine ganze Nacht verbrannt, ohne dass etwas nach Fehler aussieht.
+  // Dieselbe Fehlerklasse wie beim [Idee]-Gate (Issue #192): eine vorhersehbare Lage
+  // gehoert ins Gate, nicht in einen Prompt.
+  out(reviewers.length === 0
+    ? { reviewers: [], alleVerfuegbar: false, grund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen" }
+    : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
 async function dispatchIssueReview(command, args) {

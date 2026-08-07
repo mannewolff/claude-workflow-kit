@@ -293,6 +293,25 @@ test("issue-review check: claude-Reviewer gelten immer als verfuegbar", () => {
   });
 });
 
+test("issue-review check: ohne konfigurierte Reviewer ist alleVerfuegbar false", () => {
+  // Frueher lieferte `every()` auf dem leeren Array true — der Nacht-Vorflug haette
+  // einen Lauf durchgelassen, in dem jede Session ergebnislos endet. Vorhersehbare
+  // Lage gehoert ins Gate, nicht in einen Prompt (dieselbe Klasse wie Issue #192).
+  mitReview({}, (dir) => {
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.deepEqual(out.reviewers, []);
+    assert.equal(out.alleVerfuegbar, false);
+    assert.match(out.grund, /workflow\.config\.example\.json/);
+  });
+  // Auch wenn der Block ganz fehlt, nicht nur wenn er leer ist.
+  mitReview(null, (dir) => {
+    const out = JSON.parse(runBoard(dir, ["issue-review", "check"]).stdout);
+    assert.equal(out.alleVerfuegbar, false);
+  });
+});
+
 test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleibt 0", () => {
   // check ist eine Auskunft, kein Gate — wer daraus ein Gate macht, ist der Skill.
   //

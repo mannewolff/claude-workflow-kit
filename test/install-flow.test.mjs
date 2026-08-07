@@ -23,7 +23,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -466,6 +466,122 @@ test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Labels manuell anlegen: Backlog, Ready/);
     assert.match(res.stdout, /Leerzeichen in den Namen verwenden, kein Bindestrich/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Beispiel-Config (Ad-hoc-Fix nach Issue #237/#233) ---
+//
+// Der Installer fragt den issueReview-Block nicht ab: `reviewers` haengt davon ab,
+// welche CLIs auf der Maschine liegen, `pairs` ist eine Entscheidung. Stattdessen legt
+// er eine Datei zum Abschreiben daneben. Sie ist der einzige Ort, an dem ein Nutzer den
+// Block zu sehen bekommt, ohne die Doku zu lesen.
+
+test("Installer legt eine gueltige workflow.config.example.json ab", () => {
+  const dir = fixture("install-example-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const pfad = join(dir, ".claude", "workflow.config.example.json");
+    assert.ok(existsSync(pfad), "Beispiel-Config fehlt");
+    const bsp = JSON.parse(readFileSync(pfad, "utf-8"));
+
+    // Der Grund, aus dem die Datei existiert.
+    assert.ok(Array.isArray(bsp.issueReview?.reviewers) && bsp.issueReview.reviewers.length > 0,
+      "issueReview.reviewers fehlt oder ist leer");
+    assert.ok(bsp.issueReview?.pairs && Object.keys(bsp.issueReview.pairs).length > 0,
+      "issueReview.pairs fehlt oder ist leer");
+
+    // Jeder pairs-Eintrag muss auf existierende Reviewer zeigen und darf den Autor
+    // nicht sich selbst nennen — sonst bricht board.mjs beim ersten Aufruf ab, und
+    // zwar an einer Vorlage, die zum Abschreiben gedacht ist.
+    const namen = new Set(bsp.issueReview.reviewers.map((r) => r.name));
+    for (const [autor, genannt] of Object.entries(bsp.issueReview.pairs)) {
+      for (const n of genannt) {
+        assert.notEqual(n, autor, `pairs['${autor}'] nennt sich selbst`);
+        assert.ok(namen.has(n), `pairs['${autor}'] nennt unbekannten Reviewer '${n}'`);
+      }
+    }
+
+    // Anthropic-Familie als Default: Ein fremdes CLI in der Vorlage wuerde bei jedem,
+    // der es nicht installiert hat, den Vorflug rot melden.
+    assert.ok(bsp.issueReview.reviewers.every((r) => r.kind === "claude"),
+      "die Vorlage darf keinen kind:command-Reviewer enthalten");
+
+    // Abgeschafftes Feld (RELEASING.md: install.mjs ist alleinige Versionsquelle).
+    assert.ok(!("version" in bsp), "die Vorlage traegt noch ein version-Feld");
+
+    // Die echte Config bleibt davon unberuehrt — sie bekommt den Block NICHT.
+    assert.equal("issueReview" in config(dir), false,
+      "der Installer darf issueReview nicht in die echte Config schreiben");
+
+    assert.match(res.stdout, /workflow\.config\.example\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Beispiel-Config wird beim Re-Install aufgefrischt", () => {
+  // Sie enthaelt keine Nutzerdaten; eine veraltete Vorlage zeigt Felder, die es nicht
+  // mehr gibt. Das ist der Unterschied zur echten Config, die erhalten bleiben muss (#125).
+  const dir = fixture("install-example-reinstall-");
+  try {
+    assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
+    const pfad = join(dir, ".claude", "workflow.config.example.json");
+    const original = readFileSync(pfad, "utf-8");
+
+    writeFileSync(pfad, '{"veraltet": true}\n', "utf-8");
+    assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
+
+    assert.equal(readFileSync(pfad, "utf-8"), original, "Beispiel-Config wurde nicht aufgefrischt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Vollstaendigkeit der Skills (Ad-hoc-Fix) ---
+//
+// Der Test, der gefehlt hat: copySkills() lief frueher ueber eine handgepflegte
+// Namensliste, und /issue-review stand nicht darin. Der Skill lag im Blob, wurde aber
+// in KEINEM per Installer eingerichteten Projekt jemals angelegt — lautlos, weil kein
+// Test die Vollstaendigkeit prueft, sondern nur einzelne Skills stichprobenartig.
+
+test("Installer legt JEDEN Skill aus dem Blob an", () => {
+  const dir = fixture("install-alle-skills-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    // Erwartung ist die Quelle im Repo — nicht der Blob, den derselbe Installer
+    // mitbringt. Sonst pruefte der Test seine eigene Eingabe.
+    const erwartet = readdirSync(join(repoRoot, "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+
+    assert.deepEqual(installiert, erwartet,
+      "Es fehlen Skills — genau so ist /issue-review durchgefallen");
+    // Namentlich, damit ein Regress sofort lesbar ist.
+    assert.ok(existsSync(join(dir, ".claude", "skills", "issue-review", "SKILL.md")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Die Abschlussmeldung nennt die tatsaechliche Zahl der Skills", () => {
+  // Das Zahlwort war zweimal falsch, weil es von Hand gepflegt wurde.
+  const dir = fixture("install-skillzahl-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    const anzahl = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory()).length;
+    assert.match(res.stdout, new RegExp(`Die ${anzahl} Skills erscheinen`));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
