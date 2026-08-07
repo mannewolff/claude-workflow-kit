@@ -1941,9 +1941,12 @@ export function findeImPath(datei, opts = {}) {
 
   for (const dir of (opts.path ?? "").split(istWindows ? ";" : ":").filter(Boolean)) {
     for (const kandidat of kandidaten(datei)) {
-      // Nicht join(): Der Test fuehrt die win32-Semantik auf einem POSIX-Host aus,
-      // wo join() den falschen Trenner setzen wuerde.
-      const voll = istWindows ? `${dir}\\${kandidat}` : join(dir, kandidat);
+      // Nicht join(): Das ist immer die Variante des LAUFENDEN Hosts, waehrend hier die
+      // Semantik der uebergebenen `platform` gilt. Beide Richtungen gehen sonst schief —
+      // win32-Faelle auf einem POSIX-Host bekamen '/' statt '\', POSIX-Faelle auf einem
+      // Windows-Host '\' statt '/'. Der zweite Fall hat den Windows-Job gekippt, nachdem
+      // der erste bereits bedacht war.
+      const voll = istWindows ? `${dir}\\${kandidat}` : `${dir}/${kandidat}`;
       if (passt(voll)) return voll;
     }
   }

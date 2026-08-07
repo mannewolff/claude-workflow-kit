@@ -206,6 +206,18 @@ test("findeImPath: der PATH-Trenner haengt an der Plattform", () => {
   );
 });
 
+test("findeImPath: der Trenner im Ergebnis folgt der uebergebenen Plattform, nicht dem Host", () => {
+  // Die Invariante, an der der Windows-Job gescheitert ist: join() aus node:path ist
+  // immer die Variante des LAUFENDEN Hosts. Dieser Test faellt auf, egal auf welcher
+  // Seite jemand sie wieder einbaut — er laeuft unter POSIX und Windows gleich.
+  const win = findeImPath("codex", { ...WIN, path: "C:\\bin", existiert: () => true });
+  assert.ok(win.includes("\\"), `win32-Ergebnis ohne Backslash: ${win}`);
+  assert.ok(!win.includes("/"), `win32-Ergebnis mit Slash: ${win}`);
+
+  const posix = findeImPath("codex", { ...POSIX, path: "/usr/bin", existiert: () => true });
+  assert.equal(posix, "/usr/bin/codex");
+});
+
 test("findeImPath: nicht gefunden liefert null", () => {
   assert.equal(findeImPath("gibtsnicht", { ...POSIX, existiert: () => false }), null);
   assert.equal(findeImPath("gibtsnicht", { ...WIN, existiert: () => false }), null);
