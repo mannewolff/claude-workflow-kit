@@ -117,6 +117,7 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   mkdirSync(join(dir, "templates"), { recursive: true });
   mkdirSync(join(dir, "skills", "beispiel"), { recursive: true });
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
+  writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   for (const datei of ["board.mjs", "night.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
@@ -125,7 +126,7 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   return dir;
 }
 
-const BLOB_KONSTANTEN = ["CLAUDE_WORKFLOW_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "SKILLS_B64"];
+const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "SKILLS_B64"];
 
 test("sync-blobs bricht ab, wenn install.mjs keine VERSION-Konstante hat", () => {
   const dir = syncFixture("sync-noversion-", {

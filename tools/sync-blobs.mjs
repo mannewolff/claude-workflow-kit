@@ -51,6 +51,13 @@ function buildDirJson(dir) {
 
 const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
+  // Beispiel-Config, die der Installer als .claude/workflow.config.example.json ablegt.
+  // Sie ist der einzige Ort, an dem ein Nutzer den issueReview-Block zu sehen bekommt,
+  // ohne die Doku zu lesen — der Installer fragt ihn nicht ab (reviewers ist
+  // maschinenabhaengig, pairs eine Denkentscheidung). Nebeneffekt: Die Vorlage stand
+  // vorher in keiner Blob-Liste, wurde von niemandem gelesen und driftete unbemerkt;
+  // jetzt bewacht sie `sync-blobs --check`, also ein buildCheck.
+  { constName: "CONFIG_EXAMPLE_B64", source: join(root, "templates", "workflow.config.json") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
