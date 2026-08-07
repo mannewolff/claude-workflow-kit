@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.31.1] - 2026-08-07
+- Doku: Nacht-Review, Backlog statt Ready, Allowlist (#236)
+- night.mjs: Review-Schleife mit dreistufigem Erfolg (#235)
+- night.mjs: --review-Modus mit Vorflug und Dry-Run (#233)
+- issue-review: Nachtbetrieb-Zweig — Marker ja, Body nein (#234)
+- night.mjs: main()-Umbau und selectReviewCandidates (#232)
+- board.mjs: Kommando 'issue update' (#237)
+- kommandoVerfuegbar: Dateisystem statt Prozessstart (#231)
+- Windows-CI: Fake-Binary-Test ueberspringen (#230)
+
 ## [1.30.1] - 2026-08-06
 - Doku: neun Schritte und Werkzeuge getrennt darstellen (#228)
 - Prozesstabelle auf 1-9, acht Skills als Werkzeuge neben dem Prozess (#227)
