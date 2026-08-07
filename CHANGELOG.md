@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.
 
+## [1.31.2] - 2026-08-07
+- findeImPath: Pfad-Trenner folgt der Plattform, nicht dem Host (#231)
+
 ## [1.31.1] - 2026-08-07
 - Doku: Nacht-Review, Backlog statt Ready, Allowlist (#236)
 - night.mjs: Review-Schleife mit dreistufigem Erfolg (#235)
