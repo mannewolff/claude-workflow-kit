@@ -1826,26 +1826,59 @@ const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
 
 /**
+ * Uebersetzt einen Autor-Wert auf einen Reviewer-Kurznamen (Issue #241).
+ *
+ * `/issues` schreibt die volle Modell-ID in den Kontext-Abschnitt
+ * (`Autor-Modell: claude-opus-5`), `pairs` und `reviewers[].name` benutzen Kurznamen
+ * (`opus`). Ohne Uebersetzung greift `pairs` nicht — und der Regel-Zweig filtert ueber
+ * `r.name !== autor`, wo `"opus" !== "claude-opus-5"` wahr ist: Der Autor bleibt im
+ * Kandidatenfeld und prueft sein eigenes Issue. Genau das, was `pairs` aus Issue #225
+ * verhindern sollte, nur eine Ebene tiefer.
+ *
+ * Die Zuordnung steht schon in der Config — `reviewers[].model`. Es braucht deshalb
+ * weder eine zweite Tabelle noch eine Heuristik auf Namensbestandteilen.
+ *
+ * Rueckgabe `null`, wenn nichts trifft: Das ist der erlaubte Fall (aelteres Issue ohne
+ * Autor-Zeile, ein Mensch als Autor) — er soll nur nicht mehr stumm bleiben.
+ */
+function aufloesenAutor(alle, autor) {
+  if (!autor) return null;
+  const liste = alle || [];
+  if (liste.some((r) => r.name === autor)) return autor;
+  // `model` ist bei kind:"command" nicht gesetzt; der Vergleich gegen undefined
+  // duerfte niemals treffen, deshalb die Existenzpruefung.
+  const perModell = liste.find((r) => r.model && r.model === autor);
+  return perModell ? perModell.name : null;
+}
+
+/**
  * Waehlt die Reviewer fuer ein Issue: die ersten `anzahl` Eintraege, deren Name nicht
  * der Autor ist. Reine Funktion — die Reihenfolge der Config ist die Steuerung, wer
  * eine feste Paarung will, sortiert entsprechend.
  *
  * `unterbesetzt` statt eines Fehlers, wenn zu wenige uebrig bleiben: Der Skill
  * entscheidet, ob er mit einem Reviewer faehrt — er muss es nur sichtbar machen.
+ *
+ * `autorAufgeloest` sagt, ob der uebergebene Autor einem Reviewer zugeordnet werden
+ * konnte. Bei `false` ist die Auswahl unveraendert gueltig, beruht aber nicht auf einem
+ * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
  */
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
+  const aufgeloest = aufloesenAutor(alle, autor);
+  const schluessel = aufgeloest ?? autor;
+
   // Explizite Zuordnung schlaegt die Regel (Issue #225). Ohne sie waehlt die Regel
   // immer die vordersten Eintraege — bei vier Reviewern kam der vierte nie zum Zug,
   // ausgerechnet das Modell aus dem fremden Haus. Und wer wissen will, wer sein Issue
   // prueft, soll es ablesen koennen statt es auszurechnen.
-  const genannt = pairs?.[autor];
+  const genannt = pairs?.[schluessel];
   if (Array.isArray(genannt) && genannt.length > 0) {
     const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean);
-    return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs" };
+    return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
   }
-  const passend = (alle || []).filter((r) => r.name !== autor);
+  const passend = (alle || []).filter((r) => r.name !== schluessel);
   const gewaehlt = passend.slice(0, anzahl);
-  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel" };
+  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel", autorAufgeloest: aufgeloest !== null };
 }
 
 // Beide Faelle sind harte Fehler, aus derselben Begruendung wie validateReviewers:
@@ -1975,7 +2008,11 @@ function issueReviewMatrix() {
   out({
     matrix: autoren.map((autor) => {
       const { gewaehlt, quelle } = pickReviewers(reviewers, autor, 2, pairs);
-      return { autor, reviewer: gewaehlt.map((r) => r.name), quelle };
+      // Die Modell-ID dazu (Issue #241): In den Issues steht `Autor-Modell:
+      // claude-opus-5`, in dieser Tabelle stand bisher nur `opus`. Wer die Matrix
+      // liest, soll den Wert wiedererkennen, der in seinen Issues steht.
+      const modell = reviewers.find((r) => r.name === autor)?.model || null;
+      return { autor, modell, reviewer: gewaehlt.map((r) => r.name), quelle };
     }),
   });
 }

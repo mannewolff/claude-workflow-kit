@@ -42,9 +42,52 @@ test("pickReviewers: die Reihenfolge der Config bestimmt die Paarung", () => {
 
 test("pickReviewers: unbekannter Autor nimmt die ersten zwei", () => {
   // Aeltere Issues ohne Autor-Modell-Zeile, oder ein Mensch als Autor.
-  const { gewaehlt, unterbesetzt } = pickReviewers(ALLE, "unbekannt");
+  const { gewaehlt, unterbesetzt, autorAufgeloest } = pickReviewers(ALLE, "unbekannt");
   assert.deepEqual(gewaehlt.map((r) => r.name), ["opus", "sonnet"]);
   assert.equal(unterbesetzt, false);
+  // Die Auswahl ist unveraendert, aber nicht mehr stumm: Ein Aufrufer ohne Menschen
+  // davor soll erkennen, dass sie nicht auf einem erkannten Autor beruht (Issue #241).
+  assert.equal(autorAufgeloest, false);
+});
+
+// --- Autor-Aufloesung: Modell-ID -> Reviewer-Kurzname (Issue #241) ---
+//
+// `/issues` schreibt die volle Modell-ID in den Kontext-Abschnitt
+// (`Autor-Modell: claude-opus-5`), `pairs` ist mit Kurznamen geschluesselt (`opus`).
+// Ohne Uebersetzung greift pairs nicht — und schlimmer: der Regel-Zweig filtert ueber
+// `r.name !== autor`, und "opus" !== "claude-opus-5" ist wahr. Der Autor bleibt also
+// im Kandidatenfeld und **prueft sein eigenes Issue**. Genau das, was pairs aus #225
+// verhindern sollte, nur eine Ebene tiefer.
+
+test("pickReviewers: die Modell-ID waehlt dieselben Reviewer wie der Kurzname", () => {
+  const pairs = { opus: ["sonnet", "fable"] };
+  const perId = pickReviewers(ALLE, "claude-opus-5", 2, pairs);
+  const perName = pickReviewers(ALLE, "opus", 2, pairs);
+  assert.deepEqual(perId.gewaehlt.map((r) => r.name), perName.gewaehlt.map((r) => r.name));
+  assert.equal(perId.quelle, "pairs");
+  assert.equal(perId.autorAufgeloest, true);
+});
+
+test("pickReviewers: ohne pairs prueft der Autor sein eigenes Issue nicht mehr", () => {
+  // Der Kern des Bugs: Vorher stand 'opus' hier im Ergebnis.
+  const { gewaehlt, autorAufgeloest } = pickReviewers(ALLE, "claude-opus-5");
+  assert.ok(!gewaehlt.some((r) => r.name === "opus"),
+    "der Autor darf nicht sein eigener Reviewer sein");
+  assert.equal(autorAufgeloest, true);
+});
+
+test("pickReviewers: ein Kurzname loest weiterhin auf sich selbst auf", () => {
+  const { autorAufgeloest, quelle } = pickReviewers(ALLE, "sonnet", 2, { sonnet: ["opus"] });
+  assert.equal(autorAufgeloest, true);
+  assert.equal(quelle, "pairs");
+});
+
+test("pickReviewers: ein Reviewer ohne model-Feld stoert die Aufloesung nicht", () => {
+  // kind:'command'-Reviewer haben kein `model` — undefined darf nicht gegen einen
+  // fehlenden Autor matchen.
+  const { gewaehlt, autorAufgeloest } = pickReviewers(ALLE, undefined);
+  assert.equal(autorAufgeloest, false);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["opus", "sonnet"]);
 });
 
 test("pickReviewers: zu wenige Kandidaten melden unterbesetzt", () => {
@@ -476,6 +519,12 @@ test("issue-review matrix listet jeden bekannten Autor mit Quelle", () => {
 
     assert.deepEqual(zeile("opus").reviewer, ["codex", "sonnet"]);
     assert.equal(zeile("opus").quelle, "pairs");
+    // Die Modell-ID steht dabei (Issue #241) — es ist der Wert, den /issues in die
+    // Issues schreibt, und ohne ihn ist die Tabelle nicht mit ihnen abgleichbar.
+    assert.equal(zeile("opus").modell, "claude-opus-5");
+    // Ein kind:'command'-Reviewer hat keine Modell-ID; null statt undefined, damit
+    // das Feld im JSON ueberhaupt erscheint.
+    assert.equal(zeile("codex").modell, null);
     assert.deepEqual(zeile("fable").reviewer, ["opus", "sonnet"]);
     assert.equal(zeile("fable").quelle, "regel");
     assert.deepEqual(matrix.map((m) => m.autor).sort(), ["codex", "fable", "opus", "sonnet"]);
