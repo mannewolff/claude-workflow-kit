@@ -15,7 +15,7 @@ import { rmSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { pickReviewers } from "../kit/board.mjs";
+import { pickReviewers, findeImPath } from "../kit/board.mjs";
 
 const OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
 const SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
@@ -116,13 +116,173 @@ test("issue-review reviewers: --author ohne Wert bricht mit Meldung ab", () => {
 
 // --- CLI: check ---
 
-/** Legt ein ausfuehrbares Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an. */
-function fakeBinary(dir, name) {
+// --- findeImPath (Issue #231) ---
+//
+// Plattform und Dateisystem werden injiziert, damit die Windows-Semantik ohne Windows
+// pruefbar ist. Genau das war die Luecke: Der alte Verfuegbarkeits-Check startete einen
+// Prozess, und ob der unter Windows startet, laesst sich unter POSIX nicht nachstellen.
+
+// Baut eine `existiert`-Funktion aus einer Liste vorhandener Pfade.
+//
+// Bewusst case-insensitiv: PATHEXT liefert die Endungen in Grossschreibung (.CMD),
+// die installierte Datei heisst `codex.cmd`. Auf einem echten Windows-Dateisystem
+// trifft `existsSync` sie trotzdem — ein case-sensitiver Fake wuerde einen Fehler
+// behaupten, den es dort nicht gibt. Fuer die POSIX-Faelle aendert es nichts, dort
+// stimmen die Namen exakt ueberein.
+function fs_mit(...pfade) {
+  const vorhanden = new Set(pfade.map((p) => p.toLowerCase()));
+  return (p) => vorhanden.has(p.toLowerCase());
+}
+
+const WIN = {
+  platform: "win32",
+  pathext: ".COM;.EXE;.BAT;.CMD",
+  path: "C:\\bin;C:\\npm",
+};
+// `ausfuehrbar` gehoert zur Grundausstattung: Unter POSIX prueft findeImPath das
+// X-Bit, und die Fixture-Pfade existieren real nicht — ohne Injektion wuerde der
+// echte accessSync jeden Treffer wieder verwerfen.
+const POSIX = { platform: "linux", path: "/usr/bin:/usr/local/bin", ausfuehrbar: () => true };
+
+test("findeImPath: win32 findet 'codex' als codex.cmd", () => {
+  // Der Kernfall, an dem die fruehere Implementierung scheiterte.
+  // Verglichen wird case-insensitiv: Zurueck kommt der aus PATHEXT gebildete Pfad
+  // (.CMD), die Datei heisst .cmd — auf einem Windows-Dateisystem derselbe Pfad.
+  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit("C:\\npm\\codex.cmd") });
+  assert.equal(treffer?.toLowerCase(), "c:\\npm\\codex.cmd");
+});
+
+test("findeImPath: win32 haelt die PATHEXT-Reihenfolge ein", () => {
+  // .EXE steht in PATHEXT vor .CMD — liegen beide da, gewinnt .EXE.
+  const treffer = findeImPath("codex", {
+    ...WIN,
+    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\bin\\codex.EXE"),
+  });
+  assert.equal(treffer, "C:\\bin\\codex.EXE");
+});
+
+test("findeImPath: win32 durchsucht die PATH-Eintraege in ihrer Reihenfolge", () => {
+  const treffer = findeImPath("codex", {
+    ...WIN,
+    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\npm\\codex.CMD"),
+  });
+  assert.equal(treffer, "C:\\bin\\codex.CMD");
+});
+
+test("findeImPath: win32 ergaenzt einen Namen mit Endung nicht noch einmal", () => {
+  // 'codex.exe' darf nicht zu 'codex.exe.CMD' werden.
+  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe") });
+  assert.equal(treffer, "C:\\bin\\codex.exe");
+  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe.CMD") });
+  assert.equal(daneben, null);
+});
+
+test("findeImPath: win32 ohne PATHEXT nutzt die Windows-Default-Liste", () => {
+  const treffer = findeImPath("codex", {
+    platform: "win32",
+    path: "C:\\bin",
+    pathext: undefined,
+    existiert: fs_mit("C:\\bin\\codex.CMD"),
+  });
+  assert.equal(treffer, "C:\\bin\\codex.CMD");
+});
+
+test("findeImPath: posix probiert keine Endungen", () => {
+  const nackt = findeImPath("codex", { ...POSIX, existiert: fs_mit("/usr/bin/codex") });
+  assert.equal(nackt, "/usr/bin/codex");
+  const mitEndung = findeImPath("codex", { ...POSIX, existiert: fs_mit("/usr/bin/codex.cmd") });
+  assert.equal(mitEndung, null);
+});
+
+test("findeImPath: der PATH-Trenner haengt an der Plattform", () => {
+  // Unter win32 trennt ';' — ein ':' im Pfad ist dort Teil des Laufwerksbuchstabens.
+  assert.equal(
+    findeImPath("codex", { ...WIN, path: "C:\\a;C:\\b", existiert: fs_mit("C:\\b\\codex.CMD") }),
+    "C:\\b\\codex.CMD",
+  );
+  assert.equal(
+    findeImPath("codex", { ...POSIX, path: "/a:/b", existiert: fs_mit("/b/codex") }),
+    "/b/codex",
+  );
+});
+
+test("findeImPath: der Trenner im Ergebnis folgt der uebergebenen Plattform, nicht dem Host", () => {
+  // Die Invariante, an der der Windows-Job gescheitert ist: join() aus node:path ist
+  // immer die Variante des LAUFENDEN Hosts. Dieser Test faellt auf, egal auf welcher
+  // Seite jemand sie wieder einbaut — er laeuft unter POSIX und Windows gleich.
+  const win = findeImPath("codex", { ...WIN, path: "C:\\bin", existiert: () => true });
+  assert.ok(win.includes("\\"), `win32-Ergebnis ohne Backslash: ${win}`);
+  assert.ok(!win.includes("/"), `win32-Ergebnis mit Slash: ${win}`);
+
+  const posix = findeImPath("codex", { ...POSIX, path: "/usr/bin", existiert: () => true });
+  assert.equal(posix, "/usr/bin/codex");
+});
+
+test("findeImPath: nicht gefunden liefert null", () => {
+  assert.equal(findeImPath("gibtsnicht", { ...POSIX, existiert: () => false }), null);
+  assert.equal(findeImPath("gibtsnicht", { ...WIN, existiert: () => false }), null);
+});
+
+test("findeImPath: ein Pfad in der Eingabe wird direkt geprueft, ohne PATH-Suche", () => {
+  // Ein Reviewer-Kommando darf auf ein Werkzeug ausserhalb des PATH zeigen.
+  assert.equal(
+    findeImPath("/opt/tools/x", { ...POSIX, existiert: fs_mit("/opt/tools/x") }),
+    "/opt/tools/x",
+  );
+  assert.equal(
+    findeImPath("./meintool", { ...POSIX, existiert: fs_mit("./meintool") }),
+    "./meintool",
+  );
+  // Kein Fallback auf die PATH-Suche: Wer einen Pfad angibt, meint diesen Pfad.
+  assert.equal(
+    findeImPath("./meintool", { ...POSIX, existiert: fs_mit("/usr/bin/meintool") }),
+    null,
+  );
+});
+
+test("findeImPath: posix verlangt zusaetzlich das Ausfuehrbar-Bit", () => {
+  // Eine lesbare, aber nicht ausfuehrbare Datei ist kein Kommando. Der alte
+  // Prozessstart fing das implizit ab; die Dateisystem-Pruefung darf nicht
+  // dahinter zurueckfallen.
+  const treffer = findeImPath("codex", {
+    ...POSIX,
+    existiert: fs_mit("/usr/bin/codex"),
+    ausfuehrbar: () => false,
+  });
+  assert.equal(treffer, null);
+});
+
+test("findeImPath: win32 prueft kein Ausfuehrbar-Bit", () => {
+  // Unter Windows entscheidet die Endung, nicht ein Modus-Bit.
+  const treffer = findeImPath("codex", {
+    ...WIN,
+    existiert: fs_mit("C:\\bin\\codex.CMD"),
+    ausfuehrbar: () => false,
+  });
+  assert.equal(treffer, "C:\\bin\\codex.CMD");
+});
+
+test("findeImPath: leerer PATH liefert null statt zu werfen", () => {
+  assert.equal(findeImPath("codex", { ...POSIX, path: "", existiert: () => true }), null);
+  assert.equal(findeImPath("codex", { ...POSIX, path: undefined, existiert: () => true }), null);
+});
+
+// POSIX-only (Issue #230): Die Datei hat keine Endung und traegt ihre Ausfuehrbarkeit
+// im Shebang und im Modus. Unter Windows ist beides wirkungslos — dort entscheidet die
+// Endung (.cmd/.bat/.exe), ob etwas startbar ist. Wer diesen Helfer in einen neuen Test
+// einbaut, muss ihn dort ueberspringen (NUR_POSIX), sonst sucht er denselben Fehler
+// noch einmal.
+const NUR_POSIX = process.platform === "win32"
+  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
+  : {};
+
+/** Legt ein Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an. */
+function fakeBinary(dir, name, modus = 0o755) {
   const binDir = join(dir, "fakebin");
   mkdirSync(binDir, { recursive: true });
   const pfad = join(binDir, name);
   writeFileSync(pfad, "#!/bin/sh\nexit 0\n");
-  chmodSync(pfad, 0o755);
+  chmodSync(pfad, modus);
 }
 
 test("issue-review check: claude-Reviewer gelten immer als verfuegbar", () => {
@@ -151,13 +311,26 @@ test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleib
   });
 });
 
-test("issue-review check: vorhandenes Kommando gilt als verfuegbar", () => {
+test("issue-review check: vorhandenes Kommando gilt als verfuegbar", NUR_POSIX, () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag" }] }, (dir) => {
     fakeBinary(dir, "meinfake");
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
     const out = JSON.parse(res.stdout);
     assert.equal(out.alleVerfuegbar, true);
+  });
+});
+
+test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando", NUR_POSIX, () => {
+  // Deckt den echten accessSync-Pfad ab (Issue #231): Die Datei liegt im PATH, ist
+  // aber nur lesbar. Der fruehere Prozessstart fing das implizit ab.
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "nurlesbar --flag" }] }, (dir) => {
+    fakeBinary(dir, "nurlesbar", 0o644);
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.alleVerfuegbar, false);
+    assert.match(out.reviewers[0].grund, /nurlesbar/);
   });
 });
 

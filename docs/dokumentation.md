@@ -489,6 +489,56 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 **`formatFixCommand` — ein Formatverstoß darf keinen Lauf kippen.** Setzt du in der `workflow.config.json` ein Kommando, das Formatierung mechanisch repariert (`"formatFixCommand": "mvn spotless:apply"`, für Frontends etwa `"npx prettier --write ."`), dann läuft es bei roten Checks in der Salvage-Vorprüfung **genau einmal**, und die Checks werden **genau einmal** wiederholt. Werden sie dadurch grün, geht der Lauf weiter und das Protokoll weist den Eingriff mit `FORMAT-FIX angewendet` aus — kein stiller Eingriff. Bleiben sie rot, war das Format nicht die Ursache und es bleibt beim harten Stopp. Hintergrund: Ein einzelner falsch umbrochener Javadoc-Kommentar hat einmal einen kompletten Nachtlauf beendet, obwohl die Arbeit korrekt war. Ein Formatverstoß ist deterministisch behebbar und sagt nichts über die fachliche Qualität — ein fehlgeschlagener Test dagegen schon, und der bleibt unverändert ein harter Stopp. Ohne das Feld ändert sich nichts.
 
+### Zweiter Modus: der Nacht-Review
+
+Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Issues aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch zwei fremde Modelle lesen. Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Issues tragen bereits den Prüf-Marker.
+
+```bash
+node .claude/kit/night.mjs --review --dry-run   # zeigt Kandidaten und Reviewer-Stand
+node .claude/kit/night.mjs --review             # echter Lauf
+```
+
+Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none` schaltet den Filter ab), dazu `--max`, `--model` und `--verbose` wie gehabt. Das Zeitlimit liegt fest bei 15 Minuten pro Issue — ein Review baut nichts und committet nichts, `--timeout-min` bemisst eine ganze Implementierungsrunde.
+
+**Warum der Backlog und nicht Ready — und warum zwei Nächte.** Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich. Würde der Runner ein Ready-Issue erst prüfen und dann bauen, hätte der Mensch sein GO auf einen Text gegeben, der bei der Implementierung nicht mehr gilt — die Verantwortungsschwelle wäre umgangen, ohne dass es jemandem auffällt. Der Ablauf ist deshalb:
+
+> Review-Nacht → morgens sichten und nach Ready ziehen → Implementierungs-Nacht
+
+Zwei Läufe an zwei Abenden statt zweier Phasen in einer Nacht. Deshalb ist `--review` auch **exklusiv**: Die Implementierungsschleife läuft dann nicht.
+
+Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Übersprungen werden wie überall `[Fachlich]`- und `[Idee]`-Issues.
+
+**Der Vorflug ist hier ein Gate.** `board.mjs issue-review check` ist für sich nur eine Auskunft — interaktiv fragt der Skill den Menschen, wenn ein Reviewer fehlt. Nachts fragt niemand, und ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Fehlt ein Reviewer, stoppt der Lauf deshalb hart, **bevor** die erste Session startet. Ein Opt-out gibt es bewusst nicht: Wer wissen will, ob alle Reviewer stehen, fährt vorher `--dry-run` — der meldet den Befund und bricht gerade nicht ab. Die `buildChecks`-Pflicht entfällt in diesem Modus, weil nichts gebaut und nichts committet wird.
+
+**Drei Ausgänge pro Issue**, und der mittlere ist der wichtigste:
+
+| Was die Session hinterlässt | Bewertung |
+|---|---|
+| Marker im Body | geprüft, ohne gewichtigen Befund |
+| kein Marker, aber Befunde als Kommentar | **geprüft, mit Befund** — wartet planmäßig auf dich |
+| nichts | ohne Ergebnis; das Issue wird kommentiert, der Lauf geht weiter |
+
+Der mittlere Fall ist ausdrücklich ein **Erfolg**, kein Fehlschlag: Es sind genau die Issues, bei denen sich der Review gelohnt hat. Kein Issue wird in diesem Modus am Board bewegt — die Kandidaten liegen bereits im Backlog. Hinterlässt eine Review-Session Änderungen im Working Tree, stoppt der Lauf hart; sie hat dort nichts zu suchen.
+
+**Was die Nacht darf und was nicht:** Sie schreibt **nie** den Issue-Body. Der geschärfte Vorschlag geht als Kommentar ans Issue, und der Marker wird nur gesetzt, wenn kein Fund `BLOCKER` oder `WICHTIG` trägt und kein Reviewer ausgefallen ist. Die Begründung steht unter [Wer entscheidet](#wer-entscheidet).
+
+#### Allowlist für fremde Reviewer
+
+Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permission. Ein Reviewer mit **`kind: "command"`** läuft dagegen über Bash — und steht er nicht in der Allowlist, erscheint nachts ein Permission-Prompt, den niemand beantwortet. Das ist kein Fehler mit Log-Zeile: **Die Session hängt bis zum Timeout.** Trag das Werkzeug deshalb ein, bevor der erste Review-Lauf startet:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/kit/board.mjs:*)",
+      "Bash(codex:*)"
+    ]
+  }
+}
+```
+
+Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht davon nichts.
+
 ### Mit einem lokalen Modell fahren
 
 > **Ungetestet.** Dieser Abschnitt beschreibt einen Weg, der sich aus der Architektur des Runners ergibt und ohne jede Änderung am Kit funktionieren sollte — er ist hier aber **nicht praktisch erprobt**. Weder wurde LiteLLM aufgesetzt noch ein Lauf gegen ein lokales Modell gefahren. Nimm ihn als begründeten Vorschlag, nicht als Erfahrungsbericht.
@@ -637,6 +687,23 @@ Issue-Review: opus, codex (2026-08-06)
 ```
 
 Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
+
+Geschrieben wird über den Adapter, nicht am Tracker vorbei — `node .claude/kit/board.mjs issue update <id> --body "..."` funktioniert bei allen vier Trackern gleich.
+
+### Im Nachtbetrieb
+
+Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Review](#zweiter-modus-der-nacht-review)), ist niemand da, der zustimmen könnte. Die Regel wird deshalb geteilt:
+
+- **Der Body wird nie geschrieben** — auch nicht bei befundfreiem Review. Der fertig formulierte Vorschlag geht als Kommentar ans Issue, als übernehmbarer Text. Beim Groomen liest du ihn von dort (`issue get` liefert die Kommentare mit).
+- **Der Marker wird gesetzt, wenn nichts zu ändern ist**: kein Fund mit Schweregrad `BLOCKER` oder `WICHTIG`, und kein Reviewer ausgefallen oder unterbesetzt gefahren. Ein einziger gewichtiger Fund reicht, und der Marker bleibt aus.
+
+Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
+
+Ein nächtlich gesetzter Marker ist als solcher erkennbar:
+
+```
+Issue-Review: opus, codex (2026-08-06, Nachtlauf)
+```
 
 ### Das Gate vor Ready
 

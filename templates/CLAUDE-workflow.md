@@ -69,7 +69,12 @@ uebergeben, genau eins, dann Ende).
 Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins
 Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Die Stop-Punkte gelten
 unveraendert: nachts wird committet, nie gepusht — Review, Test und `push main` passieren
-morgens durch den Menschen. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
+morgens durch den Menschen.
+
+Ein zweiter Modus implementiert nicht, sondern laesst pruefen: `night.mjs --review`
+schickt **Backlog**-Issues durch `/issue-review`. Zwischen beiden Naechten steht das
+menschliche GO — deshalb sind es zwei Laeufe an zwei Abenden und nicht zwei Phasen in
+einer Nacht. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 ---
 

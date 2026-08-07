@@ -52,6 +52,8 @@ Meldet je Reviewer, ob er laufen kann. **Ist nicht alles verfügbar, frage den M
 
 Der Grund für die Rückfrage: Ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Wer das nicht merkt, hält ein halb geprüftes Issue für geprüft.
 
+**Im Nachtbetrieb wird hier nicht gefragt** (siehe unten): Der Runner hat den Vorflug vor dem Lauf gefahren und bei fehlendem Reviewer gar nicht erst gestartet.
+
 Bei `--dry-run` endet der Skill hier. Er listet zusätzlich, welche Issues er bearbeiten würde und welche Reviewer je Issue drankämen. **Nichts wird gestartet, nichts geschrieben.**
 
 ### 1. Issues bestimmen
@@ -203,9 +205,44 @@ Kein Konsens-Automatismus: Zwei Modelle können sich einig und trotzdem falsch s
 Issue-Review: opus, codex (2026-08-06)
 ```
 
-Die Formulierung ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.
+Geschrieben wird über den Adapter, nicht am Tracker vorbei:
+
+```bash
+node .claude/kit/board.mjs issue update <id> --body "..."
+```
+
+Die Formulierung des Markers ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.
 
 **Bei Ablehnung:** Body bleibt unverändert und **kein Marker** wird gesetzt. Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
+
+## Im Nachtbetrieb
+
+Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** — dieselbe Bedingung wie bei der Autor-Modell-Ausnahme oben, und ausdrücklich kein zweites Signal. Der Nacht-Runner startet diesen Skill über `night.mjs --review` mit `/issue-review #N`.
+
+Drei Abweichungen, sonst gilt alles unverändert:
+
+**Vorflug (Schritt 0): nicht fragen.** Der Runner hat vor dem Lauf geprüft und bei fehlendem Reviewer gar nicht gestartet. Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
+
+**Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
+
+**Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
+
+1. Kein Fund trägt den Schweregrad `BLOCKER` oder `WICHTIG`. Ein einziger reicht, und der Marker bleibt aus.
+2. Kein Reviewer ist ausgefallen, und der Lauf war nicht unterbesetzt.
+
+Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den Menschen.
+
+Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden; den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
+
+**Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
+
+```
+Issue-Review: opus, codex (2026-08-06, Nachtlauf)
+```
+
+Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
+
+Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Fachlich]`- und `[Idee]`-Issues, Befunde gehen unverändert als Kommentar ans Board.
 
 ## Abschluss
 
@@ -227,7 +264,8 @@ Dann der Hinweis auf den nächsten Schritt:
 ## Stop-Punkte
 
 - Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
-- Kein Marker ohne übernommenen Body
+- **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
+- Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Fachlich]`- und `[Idee]`-Issues
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde
