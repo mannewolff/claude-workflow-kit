@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht.
 
+## [1.36.2] - 2026-08-08
+- board.mjs: Text aus Datei oder stdin statt nur als Argument (#270)
+
 ## [1.36.1] - 2026-08-08
 - issue-review: nachts nie fragen, auch bei Ausfall beim Start (#267)
 - Autor-Modell erzwingen statt erbitten (#266)
