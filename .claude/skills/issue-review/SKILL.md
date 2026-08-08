@@ -258,7 +258,18 @@ Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** — dieselbe Bedingung wie
 
 Drei Abweichungen, sonst gilt alles unverändert:
 
-**Vorflug (Schritt 0): nicht fragen.** Der Runner hat vor dem Lauf geprüft und bei fehlendem Reviewer gar nicht gestartet. Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
+**Nachts wird nicht gefragt — in keiner Lage.** Das gilt für den Vorflug (Schritt 0), für das fehlende Autor-Modell (Schritt 2) und ausdrücklich auch dann, wenn ein Reviewer **beim Start ausfällt**, obwohl der Vorflug ihn als verfügbar gemeldet hat. Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
+
+Konkret bei einem ausgefallenen Reviewer, gleich zu welchem Zeitpunkt und aus welchem Grund:
+
+1. Der Review **läuft mit den verbleibenden Reviewern zu Ende**. Die Befunde des anderen sind wertvoll und dürfen nicht verfallen.
+2. Die **erste Zeile** des Board-Kommentars nennt den Ausfall mit Grund.
+3. Der **Marker bleibt aus** — ein unterbesetzter Lauf ist nie befundfrei im Sinne der Marker-Regel unten.
+4. **Kein Ersatz-Reviewer aus eigenem Antrieb.** Wer die Besetzung ändert, ändert das Verfahren; dafür gibt es `pairs`. Nachts wird die Lücke protokolliert, nicht gefüllt.
+
+Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für `night.mjs --review` — auch dann, wenn ein anderer Runner den Skill startet.
+
+Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten ihre Reviewer-Arbeit fertig — bei einer davon drei BLOCKER — und haben sie verworfen, weil sie auf eine Antwort warteten, die nachts niemand geben kann. Fünf bis sechs Minuten Arbeit je Issue, viermal, für nichts. Der bisherige Text deckte nur zwei Lagen ab: Reviewer fehlt beim Vorflug (dann startet der Runner nicht) und Reviewer fällt mitten im Lauf aus (dann ist es ein Fund für den Bericht). Die dritte — Vorflug meldet ihn, Start scheitert — kannte er nicht, und für eine Lage ohne Regel improvisiert jede Session neu.
 
 **Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
@@ -307,6 +318,8 @@ Dann der Hinweis auf den nächsten Schritt:
 ## Stop-Punkte
 
 - Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
+- **Nachts wird nie gefragt, in keiner Lage** — auch nicht, wenn ein Reviewer beim Start ausfällt oder das Autor-Modell fehlt. Es wird mit dem verfahren, was da ist, und der Rest protokolliert
+- **Nachts kein Ersatz-Reviewer** — die Besetzung folgt `pairs`, eine Lücke wird vermerkt, nicht gefüllt
 - **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
