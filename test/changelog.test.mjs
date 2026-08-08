@@ -25,14 +25,73 @@ test("Features werden dem chore-Bump zugeordnet, der chronologisch auf sie folgt
   // Neueste Version zuerst.
   assert.equal(blocks[0].version, "1.17.1");
   assert.deepEqual(blocks[0].items.map((i) => i.ref), ["12"]);
-  assert.equal(blocks[1].version, "1.16.1");
+  // v1.16.1 und v1.17.0 folgen unmittelbar aufeinander -> ein Block, hoechste
+  // Version. Siehe "aufeinanderfolgende Marken" unten.
+  assert.equal(blocks[1].version, "1.17.0");
   // Innerhalb einer Version: neueste zuerst.
   assert.deepEqual(blocks[1].items.map((i) => i.ref), ["11", "10"]);
 });
 
-test("leere Versionen (kein Feature-Commit davor) erscheinen nicht", () => {
-  const blocks = parseVersions(entries, "1.17.1", "2026-07-06");
-  assert.ok(!blocks.some((b) => b.version === "1.17.0"), "leerer Minor-Bump v1.17.0 haette uebersprungen werden muessen");
+// Issue #245: Ein Versionsblock traegt die Version, unter der die Aenderungen
+// VEROEFFENTLICHT wurden. Beim `merge production`-Trigger folgt der Minor-Bump
+// unmittelbar auf den letzten Patch-Bump; ohne Zusammenfassung blieb der
+// Minor-Block leer und verschwand — und damit ausgerechnet jede Version, die
+// jemals ausgeliefert wurde.
+
+test("zwei unmittelbar aufeinanderfolgende Marken ergeben einen Block mit der hoeheren Version", () => {
+  const blocks = parseVersions([
+    { date: "2026-08-06", subject: "Ein Feature (Issue #241)" },
+    { date: "2026-08-07", subject: "chore: v1.34.1" },
+    { date: "2026-08-07", subject: "chore: v1.35.0" },
+  ], "1.35.0", "2026-08-07");
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].version, "1.35.0");
+  assert.deepEqual(blocks[0].items.map((i) => i.ref), ["241"]);
+});
+
+test("drei aufeinanderfolgende Marken ergeben ebenfalls einen Block mit der hoechsten", () => {
+  const blocks = parseVersions([
+    { date: "2026-08-06", subject: "Ein Feature (Issue #241)" },
+    { date: "2026-08-07", subject: "chore: v1.33.1" },
+    { date: "2026-08-07", subject: "chore: v1.34.0" },
+    { date: "2026-08-07", subject: "chore: v1.35.0" },
+  ], "1.35.0", "2026-08-07");
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].version, "1.35.0");
+});
+
+test("der zusammengefasste Block traegt das Datum des Bump-Commits der hoechsten Version", () => {
+  const blocks = parseVersions([
+    { date: "2026-08-05", subject: "Ein Feature (Issue #241)" },
+    { date: "2026-08-06", subject: "chore: v1.34.1" },
+    { date: "2026-08-09", subject: "chore: v1.35.0" },
+  ], "1.35.0", "2026-08-09");
+  assert.equal(blocks[0].date, "2026-08-09");
+});
+
+test("Marken mit Commits dazwischen bleiben getrennte Bloecke", () => {
+  const blocks = parseVersions([
+    { date: "2026-08-05", subject: "Feature A (Issue #10)" },
+    { date: "2026-08-06", subject: "chore: v1.34.1" },
+    { date: "2026-08-06", subject: "Feature B (Issue #11)" },
+    { date: "2026-08-07", subject: "chore: v1.35.0" },
+  ], "1.35.0", "2026-08-07");
+  assert.equal(blocks.length, 2);
+  assert.deepEqual(blocks.map((b) => b.version), ["1.35.0", "1.34.1"]);
+});
+
+test("aufeinanderfolgende Marken ganz am Anfang erzeugen keinen leeren Block", () => {
+  // Vor der ersten Marke liegen keine Commits — es gibt nichts zuzuordnen, und
+  // ein Upgrade duerfte hier nicht auf einen nicht existierenden Block greifen.
+  const blocks = parseVersions([
+    { date: "2026-08-05", subject: "chore: v1.34.0" },
+    { date: "2026-08-05", subject: "chore: v1.34.1" },
+    { date: "2026-08-06", subject: "Ein Feature (Issue #12)" },
+    { date: "2026-08-07", subject: "chore: v1.35.0" },
+  ], "1.35.0", "2026-08-07");
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].version, "1.35.0");
+  assert.deepEqual(blocks[0].items.map((i) => i.ref), ["12"]);
 });
 
 test("(Issue #N) wird aus dem Text geloest und als ref extrahiert", () => {

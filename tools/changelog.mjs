@@ -4,8 +4,11 @@
  *
  * Es gibt keine Git-Tags; die `chore: vX.Y.Z`-Commits sind die Versionsmarken.
  * Feature-Commits (Betreff mit "(Issue #N)") werden der Version zugeordnet, die
- * chronologisch auf sie folgt. Leere Versionen (kein Feature davor — typisch die
- * Minor-Bumps aus `merge production`) erscheinen nicht. Rueckwirkend ab v1.16.
+ * chronologisch auf sie folgt. Folgen mehrere Marken unmittelbar aufeinander —
+ * typisch der Minor-Bump aus `merge production` direkt nach dem letzten
+ * Patch-Bump —, bilden sie einen Block mit der hoechsten Version: Der Changelog
+ * beschreibt, was veroeffentlicht wurde, nicht wie intern gezaehlt wurde
+ * (Issue #245). Rueckwirkend ab v1.16.
  *
  * Die Datei wird bei jedem Lauf KOMPLETT neu geschrieben (idempotent). Kein
  * Handpflege-Zustand. Gedacht als Release-Schritt (siehe RELEASING.md): laeuft
@@ -47,14 +50,32 @@ function git(args) {
 // Changelog-Bloecke ab: sammelt Feature-Commits, ordnet sie beim naechsten
 // chore-Bump dieser Version zu. Commits nach dem letzten Bump bilden den
 // obersten Block (currentVersion, today). Rueckgabe: neueste Version zuerst,
-// Items je Version neueste zuerst. Leere Versionen entfallen.
+// Items je Version neueste zuerst.
+//
+// Folgen mehrere Marken unmittelbar aufeinander, ohne Commits dazwischen, bilden
+// sie EINEN Block mit der hoechsten Version und deren Bump-Datum (Issue #245).
+// Der Grund liegt im Release-Ablauf: Beim `merge production`-Trigger folgt der
+// Minor-Bump direkt auf den letzten Patch-Bump aus `push main`. Wurde die leere
+// Marke uebersprungen, verschwand ausgerechnet jede Version, die je ausgeliefert
+// wurde, und die Arbeit stand unter der internen Patch-Nummer, die nie jemand
+// bekommen hat. Ein Block traegt die Version, unter der VEROEFFENTLICHT wurde.
 export function parseVersions(entries, currentVersion, today) {
   const blocks = [];
   let pending = [];
   for (const e of entries) {
     const chore = e.subject.match(/^chore: v(\d+\.\d+\.\d+)$/);
     if (chore) {
-      if (pending.length) blocks.push({ version: chore[1], date: e.date, items: pending });
+      if (pending.length) {
+        blocks.push({ version: chore[1], date: e.date, items: pending });
+      } else if (blocks.length) {
+        // Kein pending heisst: seit der letzten Marke kam nichts. Diese Marke
+        // gehoert zum vorigen Block und hebt ihn auf ihre Version. Beliebig oft
+        // wiederholbar, damit auch drei Bumps in Folge zusammenfallen.
+        blocks.at(-1).version = chore[1];
+        blocks.at(-1).date = e.date;
+      }
+      // blocks leer und kein pending: Marken vor dem ersten Commit haben nichts,
+      // dem sie eine Version geben koennten.
       pending = [];
       continue;
     }
@@ -76,7 +97,9 @@ export function renderChangelog(blocks) {
     "# Changelog\n\n" +
     "Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie " +
     "generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die " +
-    "Commit-Betreffzeilen; Versionen ohne eigene Feature-Commits erscheinen nicht.\n";
+    "Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen " +
+    "die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht " +
+    "wurden; die internen Zwischenstände dazwischen erscheinen nicht.\n";
   const body = blocks
     .map(
       (b) =>
