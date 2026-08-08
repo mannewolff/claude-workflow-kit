@@ -34,29 +34,44 @@ Gebumpt wird ueber das Single-File-Tool `tools/version.mjs` (`--get`, `--patch`,
 
 **Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --patch`
-2. `node tools/changelog.mjs` — regeneriert `CHANGELOG.md` aus der Historie (liest die frisch gebumpte `VERSION` fuer den obersten Block).
-3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` **und** `CHANGELOG.md` zusammen).
-4. Push auf `main`.
+2. `node tools/sync-blobs.mjs` — stempelt die neue Version in die Kit-Dateien.
+3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` und die gestempelten Kit-Dateien).
+4. `node tools/changelog.mjs` — **jetzt**, nachdem die Marke existiert.
+5. `git add CHANGELOG.md && git commit --amend --no-edit` — der Changelog wandert in
+   denselben Commit.
+6. Push auf `main`.
 
 **Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --minor`
-2. `node tools/changelog.mjs` — regeneriert `CHANGELOG.md`.
-3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` **und** `CHANGELOG.md` zusammen).
-4. Push auf `main`.
-5. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
+2. `node tools/sync-blobs.mjs`
+3. Version-Commit: `chore: vX.Y.Z`
+4. `node tools/changelog.mjs`
+5. `git add CHANGELOG.md && git commit --amend --no-edit`
+6. Push auf `main`.
+7. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
 
-Reihenfolge ist bindend: **erst** Bump (`version.mjs`), **dann** Changelog
-(`changelog.mjs` liest die neue Version), **dann** der gemeinsame Commit. So
-landet `CHANGELOG.md` immer im selben `chore:`-Commit wie der Bump.
+### Warum der Changelog erst nach dem Commit entsteht
+
+`changelog.mjs` leitet die Versionsmarken aus den `chore:`-Commits ab. Lief es
+**vor** dem Version-Commit, kannte es die Marke nicht, die dieser Commit gerade
+setzt — die eben geschriebene Datei war in dem Moment veraltet, in dem sie
+committet wurde, und `--check` schlug direkt danach fehl (Issue #265, belegt beim
+Release v1.36.0: die veroeffentlichte Version fehlte im Changelog).
+
+Der `--amend` passiert **lokal vor dem Push** und braucht deshalb keinen
+Force-Push. Er aendert weder Betreff noch Datum des Commits — und nur an denen
+haengt das Generat, weshalb `--check` danach stabil gruen bleibt.
+
+**Nicht umdrehen:** Erst Bump, dann Commit, dann Changelog, dann Amend. Wer den
+Changelog wieder vor den Commit zieht, bekommt denselben Fehler zurueck.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
 `KIT_VERSION`-Konstante von `kit/board.mjs` und `kit/night.mjs`, bevor es die Blobs
 backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
-sie stammt (`node .claude/kit/board.mjs --version`). Das braucht **keinen** eigenen
-Schritt in der Liste oben: Der Stempel entsteht beim naechsten `sync-blobs`-Lauf, und
-`sync-blobs --check` ist ohnehin ein `buildCheck` dieses Repos. Nach einem Bump also
-wie gewohnt `node tools/sync-blobs.mjs` laufen lassen — die geaenderten Kit-Dateien
-gehoeren dann mit in den `chore:`-Commit.
+sie stammt (`node .claude/kit/board.mjs --version`). Deshalb steht es als Schritt 2
+in den Listen oben — vor dem Version-Commit, damit die gestempelten Kit-Dateien mit
+hineingehen. `sync-blobs --check` ist ohnehin ein `buildCheck` dieses Repos und
+schlaegt an, wenn der Stempel fehlt.
 
 Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzlichen
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.

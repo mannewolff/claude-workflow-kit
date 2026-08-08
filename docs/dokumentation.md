@@ -312,6 +312,8 @@ Das ist eine reine Opt-in-Konvention, kein Kit-internes Feature: Jedes Projekt, 
 
 Als konkretes Beispiel führt das Kit-Repo darüber ein **automatisch generiertes `CHANGELOG.md`**: Ein Script (`tools/changelog.mjs`) leitet die Einträge bei jedem Release aus der Git-Historie ab (die Commit-Betreffzeilen, gruppiert an den Versions-Commits) — von Hand gepflegt wird nichts. Das ist Teil der Kit-eigenen RELEASING.md; Projekte, die das Kit nutzen, bekommen es nicht automatisch, können es aber nach demselben Muster in ihre eigene RELEASING.md aufnehmen.
 
+Zwei Details, die man beim Nachbauen leicht falsch macht: Der Changelog entsteht **nach** dem Versions-Commit und wandert per `git commit --amend` in denselben Commit — läuft er davor, kennt er die Marke nicht, die dieser Commit gerade setzt, und ist in dem Moment veraltet, in dem er geschrieben wird. Und Änderungen, die noch keinen Versions-Commit gesehen haben, stehen unter `[Unreleased]` statt unter der Versionsnummer aus der Konfiguration — die ist nach jedem Release bereits vergeben, und zwei Blöcke mit derselben Nummer sind kein Changelog mehr.
+
 ### Der Git-Tag ist deiner
 
 Ein Release-Schritt erzeugt **keinen** Tag — weder bei `push main` noch bei `merge production`. Ein Tag markiert eine Veröffentlichung, und Veröffentlichungen bleiben menschlich, aus derselben Überlegung heraus wie die drei Stop-Punkte.
