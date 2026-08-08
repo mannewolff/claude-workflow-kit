@@ -2,7 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht.
 
-## [1.35.1] - 2026-08-08
+## [1.36.1] - 2026-08-08
+- issue-review: nachts nie fragen, auch bei Ausfall beim Start (#267)
+- Autor-Modell erzwingen statt erbitten (#266)
+
+## [1.36.0] - 2026-08-08
 - reviewer für die review session hinzugefügt
 - issue-review check: Probelauf statt reiner PATH-Suche (#262)
 - Changelog: aufeinanderfolgende Bump-Marken zusammenfassen (#245)
