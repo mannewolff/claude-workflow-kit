@@ -90,8 +90,10 @@ node .claude/kit/board.mjs issue move <id> in_review
 Abschlussbericht als Issue-Kommentar:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Abschlussbericht Issue #N
-..."
+node .claude/kit/board.mjs issue comment <id> --text - <<'BERICHT'
+## Abschlussbericht Issue #N
+...
+BERICHT
 ```
 
 Format des Abschlussberichts:

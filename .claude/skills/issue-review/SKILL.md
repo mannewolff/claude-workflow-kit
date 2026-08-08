@@ -178,7 +178,8 @@ Mehr als eine Runde findet erfahrungsgemäß vor allem Geschmacksfragen. Wenn di
 Die Reviewer-Ausgaben gehen **unverändert** als Board-Kommentar ans Issue. Sie sind Verlauf, nicht verhandelter Stand (Regel aus Issue #155):
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Issue-Review, Runde 1
+node .claude/kit/board.mjs issue comment <id> --text - <<'BEFUNDE'
+## Issue-Review, Runde 1
 
 Reviewer: opus (Vollständigkeit), codex (Scope)
 
@@ -186,8 +187,20 @@ Reviewer: opus (Vollständigkeit), codex (Scope)
 <Befunde>
 
 ### codex — Scope, Risiko und Bestand
-<Befunde>"
+<Befunde>
+BEFUNDE
 ```
+
+**Der Text geht über stdin, nicht als Argument** (Issue #270). Befunde zweier
+Reviewer liegen regelmäßig bei über zehntausend Zeichen; als Kommandozeilen-Argument
+scheitert daran das Quoting, und eine Session, die sich daraufhin ein Hilfsskript
+baut, wird headless abgelehnt — sie endet ohne Board-Spur, und der Runner bucht sie
+als Fehlschlag. Der Heredoc mit **quotiertem** Marker (`<<'BEFUNDE'`) verhindert
+zusätzlich, dass die Shell Backticks und `$` im Befundtext auswertet.
+
+Braucht ein Werkzeug doch eine Datei, gehört sie **außerhalb des Projektverzeichnisses**
+— eine Datei im Repo macht den Working Tree unsauber, und darauf stoppt der
+Nacht-Runner hart (Issue #152).
 
 Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **ersten Zeile** des Kommentars.
 
@@ -200,13 +213,14 @@ Zwischen den Befunden und dem neuen Body liegt eine Arbeit, die sonst unsichtbar
 Der Kommentar ist **getrennt** vom Befunde-Kommentar aus Schritt 5. Der bleibt unverändert Verlauf (Issue #155); die Synthese ist bewertet und gehört nicht in denselben Block.
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Synthese, Runde 1
+node .claude/kit/board.mjs issue comment <id> --text - <<'SYNTHESE'
+## Synthese, Runde 1
 
 ### Entscheidungen
-- opus, \"Akzeptanzkriterium nicht maschinell prüfbar\" (BLOCKER) — übernommen
-- codex, \"Abhängigkeit fehlt\" (WICHTIG) — verworfen: Issue #7 steht bereits im
+- opus, "Akzeptanzkriterium nicht maschinell prüfbar" (BLOCKER) — übernommen
+- codex, "Abhängigkeit fehlt" (WICHTIG) — verworfen: Issue #7 steht bereits im
   Abhängigkeiten-Abschnitt, der Reviewer sah ihn nicht (Kontextlosigkeit).
-- codex, \"Cookie-Schreiben ist Kandidat für RAUS\" (WICHTIG) — verworfen:
+- codex, "Cookie-Schreiben ist Kandidat für RAUS" (WICHTIG) — verworfen:
   Issue #10 spezifiziert es vollständig und ist als Abhängigkeit genannt.
 
 ### Dissens
@@ -214,7 +228,8 @@ node .claude/kit/board.mjs issue comment <id> --text "## Synthese, Runde 1
   Test-Zweig streichen (das Projekt hat keine Testbasis). Entschieden für opus.
   Folgeänderung: Issue #7 als Abhängigkeit ergänzt.
 
-Übernommen: 1 · Verworfen: 2"
+Übernommen: 1 · Verworfen: 2
+SYNTHESE
 ```
 
 **Was hineingehört:**
@@ -245,7 +260,9 @@ Issue-Review: opus, codex (2026-08-06)
 Geschrieben wird über den Adapter, nicht am Tracker vorbei:
 
 ```bash
-node .claude/kit/board.mjs issue update <id> --body "..."
+node .claude/kit/board.mjs issue update <id> --body - <<'BODY'
+...
+BODY
 ```
 
 Die Formulierung des Markers ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.

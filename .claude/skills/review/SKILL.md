@@ -70,9 +70,11 @@ Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext.
 Schreibe die Befunde als Kommentar ans aktuelle Issue:
 
 ```bash
-node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text "## Code-Review (Schritt 7)
+node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text - <<'REVIEW'
+## Code-Review (Schritt 7)
 
-<BEFUNDE>"
+<BEFUNDE>
+REVIEW
 ```
 
 Falls kein Issue ermittelbar: Gib die Befunde direkt aus.

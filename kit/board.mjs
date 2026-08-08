@@ -19,8 +19,10 @@
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
- *   node board.mjs issue update <id> --body "..."
- *   node board.mjs issue comment <id> --text "..."
+ *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+ *   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
+ *       '-' liest von stdin. Fuer lange Texte (Review-Befunde) der bevorzugte Weg:
+ *       keine Datei, die jemand aufraeumen muss (Issue #270).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -74,8 +76,9 @@ Nutzung:
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
-  node board.mjs issue update <id> --body "..."
-  node board.mjs issue comment <id> --text "..."
+  node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+  node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
+      '-' liest von stdin; fuer lange Texte der bevorzugte Weg (Issue #270).
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -1758,11 +1761,59 @@ async function issueMove(tracker, args) {
   out({ ok: true, id, status: toStatus });
 }
 
+/**
+ * Loest den Text eines Schreibbefehls aus Argument, Datei oder stdin auf (Issue #270).
+ *
+ * Warum es die beiden zusaetzlichen Wege braucht: Die Skills dieses Kits erzeugen
+ * regelmaessig Texte, die nicht durch eine Kommandozeile passen — die Befunde eines
+ * Issue-Reviews lagen am 2026-08-08 bei 12 bis 14 Tausend Zeichen. Ohne einen Weg
+ * dafuer bauen Sessions sich Hilfsskripte; die stehen in keiner Allowlist, werden
+ * headless abgelehnt, und ihre Arbeitsdateien hinterlassen einen unsauberen Working
+ * Tree, auf den der Nacht-Runner hart stoppt. Dieselbe Ueberlegung wie in Issue #196
+ * (kein Shell-String-Bau) und wie beim stdin-Weg fuer command-Reviewer in
+ * /issue-review — hier fuer die Eingabeseite.
+ *
+ * stdin ist der bevorzugte Weg: Es entsteht keine Datei, die jemand aufraeumen muss.
+ */
+export function leseTextQuelle(direkt, dateiPfad, flagName) {
+  const dateiFlag = `--${flagName}-file`;
+  const hatDatei = typeof dateiPfad === "string" && dateiPfad !== "";
+  const hatDirekt = typeof direkt === "string";
+
+  // Beide angegeben: Fehler statt Vorrangregel. Wer beides setzt, meint etwas
+  // anderes als das, was eine stille Vorrangregel taete.
+  if (hatDirekt && hatDatei) fail(`--${flagName} und ${dateiFlag} schliessen sich aus — nur eine Quelle angeben.`);
+  if (dateiPfad === true) fail(`${dateiFlag} braucht einen Pfad.`);
+  if (direkt === true) fail(`--${flagName} braucht einen Wert (oder '-' fuer stdin).`);
+
+  let text;
+  if (hatDatei) {
+    if (!existsSync(dateiPfad)) fail(`${dateiFlag}: Datei nicht gefunden: ${dateiPfad}`);
+    try {
+      text = readFileSync(dateiPfad, "utf-8");
+    } catch (e) {
+      fail(`${dateiFlag}: ${dateiPfad} ist nicht lesbar (${e.code || e.message}).`);
+    }
+  } else if (direkt === "-") {
+    try {
+      text = readFileSync(0, "utf-8"); // fd 0 = stdin
+    } catch (e) {
+      fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
+    }
+  } else {
+    text = direkt;
+  }
+
+  if (typeof text !== "string" || text.trim() === "") {
+    fail(`--${flagName} ist erforderlich und darf nicht leer sein (Argument, ${dateiFlag} oder '-' fuer stdin).`);
+  }
+  return text;
+}
+
 async function issueComment(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
-  if (!args.text) fail("--text ist erforderlich");
-  await tracker.commentIssue(id, args.text);
+  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"));
   out({ ok: true, id });
 }
 
@@ -1775,10 +1826,7 @@ async function issueComment(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  if (typeof args.body !== "string" || args.body.trim() === "") {
-    fail("--body ist erforderlich und darf nicht leer sein: board.mjs issue update <id> --body \"...\"");
-  }
-  await tracker.updateIssue(id, { body: args.body });
+  await tracker.updateIssue(id, { body: leseTextQuelle(args.body, args["body-file"], "body") });
   out({ ok: true, id });
 }
 
