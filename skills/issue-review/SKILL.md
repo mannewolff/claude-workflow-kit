@@ -8,7 +8,7 @@ user-invocable: true
 
 Werkzeug neben dem Prozess, zwischen `/issues` (Schritt 3) und dem GO (Schritt 4). Zwei Modelle, die das Issue nicht geschrieben haben, prüfen es — und schärfen es, bevor jemand es implementiert.
 
-**Warum das trägt:** Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist. Was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf — er ergänzt es unbewusst. Ein fremdes Modell hat nur den Text. Das ist derselbe Grund, aus dem der Code-Review in Schritt 7 funktioniert, nur eine Stufe früher und mit höherem Einsatz: Ein Fehler im Issue pflanzt sich in die ganze Umsetzung fort.
+**Warum das trägt:** Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist. Was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf — er ergänzt es unbewusst. Ein fremdes Modell war bei dieser Entstehung nicht dabei — es liest, was dasteht, und stolpert dort, wo später die Implementierung stolpert. (Den Bestand darf es dabei lesen; kontextlos heißt ohne Entstehungsgeschichte, nicht ohne Code — siehe Schritt 3.) Das ist derselbe Grund, aus dem der Code-Review in Schritt 7 funktioniert, nur eine Stufe früher und mit höherem Einsatz: Ein Fehler im Issue pflanzt sich in die ganze Umsetzung fort.
 
 ## Vorbedingung
 
@@ -100,11 +100,30 @@ node .claude/kit/board.mjs issue-review matrix
 
 Beide Reviewer bekommen denselben Issue-Body, aber **verschiedene Rollen**. Zwei Modelle mit identischem Prompt finden großenteils dasselbe; der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
 
+#### Darf ein Reviewer den Bestand lesen? Ja.
+
+**Kontextlosigkeit meint die Entstehungsgeschichte, nicht den Code.** Der Wert des fremden Modells liegt darin, dass es das Gespräch nicht kennt, aus dem das Issue entstand — die Absicht, die Datei, die dabei offen war, die Entscheidung von vorgestern. Davon hat es auch dann nichts, wenn es das Repository liest.
+
+Der Reviewer darf und soll deshalb den Bestand lesen: Dateien öffnen, suchen, nachschlagen. Rolle B fragt ausdrücklich „Was bricht, das im Issue nicht steht?" — diese Frage ist ohne Blick in den Bestand nicht zu beantworten, und ein Prompt, der sie stellt und den Blick zugleich verbietet, verlangt Unmögliches.
+
+**Woher die Klarstellung kommt:** Bis Issue #268 stand in beiden Rollen der Satz „du hast nur den Text". Subagents mit Werkzeugen haben ihn folgerichtig ignoriert — am 2026-08-08 in zwei Läufen protokolliert, jeweils mit deutlich konkreteren Funden (der Reviewer wies nach, dass ein referenziertes Kommando im Adapter gar nicht existiert). Ein Satz, den das Werkzeug ohnehin nicht einhält, ist keine Regel, sondern eine Fehlerquelle: Er macht Befunde unvergleichbar, weil am Board nicht steht, welcher Reviewer nachgesehen hat.
+
+**Deshalb wird der Zugriff ausgewiesen, nicht verboten.** Der Board-Kommentar nennt je Reviewer eine Zeile der Form:
+
+```
+opus (Vollständigkeit) — Bestand: gelesen
+codex (Scope) — Bestand: nein
+```
+
+**Bei `kind: "command"`-Reviewern ist das nicht durchsetzbar.** Ein fremdes Werkzeug bringt seine eigenen Rechte mit; ob es ins Repository sieht, entscheidet es selbst. Genau deshalb gehört es in den Kommentar — was man nicht erzwingen kann, muss man wenigstens ablesen können.
+
 **Rolle A — Vollständigkeit und Prüfbarkeit** (erster Reviewer):
 
 ```
-Du prüfst ein Issue, das gleich implementiert werden soll. Du hast keinen Kontext
-über seine Entstehung — das ist gewollt, du hast nur den Text.
+Du prüfst ein Issue, das gleich implementiert werden soll. Du kennst die
+Entstehungsgeschichte nicht — nicht das Gespräch, nicht die Absicht dahinter. Das
+ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen;
+schlag im Repository nach, wo es deinen Befund schärft.
 
 Prüfe auf Vollständigkeit und Prüfbarkeit:
 1. Ist jedes Akzeptanzkriterium maschinell prüfbar (Kommando, Dateizustand,
@@ -129,8 +148,10 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 **Rolle B — Scope, Risiko und Bestand** (zweiter Reviewer):
 
 ```
-Du prüfst ein Issue, das gleich implementiert werden soll. Du hast keinen Kontext
-über seine Entstehung — das ist gewollt, du hast nur den Text.
+Du prüfst ein Issue, das gleich implementiert werden soll. Du kennst die
+Entstehungsgeschichte nicht — nicht das Gespräch, nicht die Absicht dahinter. Das
+ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen;
+schlag im Repository nach, wo es deinen Befund schärft.
 
 Prüfe auf Scope und Risiko:
 1. Ist der Schnitt zu groß für eine Arbeitseinheit? Wäre ein Teil ein eigenes Issue?
@@ -182,6 +203,8 @@ node .claude/kit/board.mjs issue comment <id> --text - <<'BEFUNDE'
 ## Issue-Review, Runde 1
 
 Reviewer: opus (Vollständigkeit), codex (Scope)
+opus — Bestand: gelesen
+codex — Bestand: nein
 
 ### opus — Vollständigkeit und Prüfbarkeit
 <Befunde>
