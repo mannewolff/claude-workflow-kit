@@ -312,6 +312,21 @@ Das ist eine reine Opt-in-Konvention, kein Kit-internes Feature: Jedes Projekt, 
 
 Als konkretes Beispiel führt das Kit-Repo darüber ein **automatisch generiertes `CHANGELOG.md`**: Ein Script (`tools/changelog.mjs`) leitet die Einträge bei jedem Release aus der Git-Historie ab (die Commit-Betreffzeilen, gruppiert an den Versions-Commits) — von Hand gepflegt wird nichts. Das ist Teil der Kit-eigenen RELEASING.md; Projekte, die das Kit nutzen, bekommen es nicht automatisch, können es aber nach demselben Muster in ihre eigene RELEASING.md aufnehmen.
 
+### Der Git-Tag ist deiner
+
+Ein Release-Schritt erzeugt **keinen** Tag — weder bei `push main` noch bei `merge production`. Ein Tag markiert eine Veröffentlichung, und Veröffentlichungen bleiben menschlich, aus derselben Überlegung heraus wie die drei Stop-Punkte.
+
+Was `/merge-production` stattdessen tut: Es gibt am Ende seines Laufs die fertige Kommandozeile aus, mit dem Hash des Versions-Commits, den es selbst erzeugt hat:
+
+```
+git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
+gh release create vX.Y.Z --title vX.Y.Z --notes-file <pfad>
+```
+
+Der Unterschied zwischen „setz bitte noch einen Tag" und einer kopierbaren Zeile ist nicht Bequemlichkeit, sondern ob es passiert: Wer nach jedem Release Hash und Syntax selbst zusammensuchen muss, lässt es irgendwann bleiben.
+
+Beim `push main`-Trigger entsteht bewusst kein Tag — dort entstehen interne Patch-Stände, die niemand veröffentlicht.
+
 ### /retro
 
 **Werkzeug neben dem Prozess, alle ein bis zwei Wochen.**
