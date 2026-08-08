@@ -184,12 +184,12 @@ test("epics vertraegt eine Antwort, die kein Array ist", async () => {
 
 test("create legt eine Karte an und liefert die Board-Nummer", async () => {
   await mitBoard(standardAntwort, async (dir, requests, host) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Neu", "--body", "Text"], MIT_TOKEN);
+    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Neu", "--body", "Autor-Modell: m\nText"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
 
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items");
-    assert.deepEqual(JSON.parse(post.body), { title: "Neu", body: "Text", column: "BACKLOG", ideaStored: true });
+    assert.deepEqual(JSON.parse(post.body), { title: "Neu", body: "Autor-Modell: m\nText", column: "BACKLOG", ideaStored: true });
     assert.equal(post.headers["x-kanban-token"], "test-token");
   });
 });

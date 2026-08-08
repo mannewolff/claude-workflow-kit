@@ -399,12 +399,12 @@ test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", N
 
 test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
-    const angelegt = board(dir, "issue", "create", "--title", "Neu mit 'Quote'", "--body", "Body");
+    const angelegt = board(dir, "issue", "create", "--title", "Neu mit 'Quote'", "--body", "Autor-Modell: m\nBody");
     assert.deepEqual(angelegt, { id: "42", url: "https://github.com/besitzer/mein-repo/issues/42" });
 
     const zeilen = aufrufZeilen(dir, "gh");
     // shellQuote muss das eingebettete Single Quote ueberleben.
-    assert.ok(zeilen.some((z) => z.includes("issue create --repo besitzer/mein-repo --title Neu mit 'Quote' --body Body")),
+    assert.ok(zeilen.some((z) => z.includes("issue create --repo besitzer/mein-repo --title Neu mit 'Quote' --body Autor-Modell: m\nBody")),
       `Kommandozeile unerwartet: ${zeilen.join(" | ")}`);
     assert.ok(zeilen.some((z) => z.startsWith("project item-add 14 --owner besitzer --url https://github.com/besitzer/mein-repo/issues/42")));
     assert.ok(zeilen.some((z) => z.includes("--single-select-option-id opt-backlog")));

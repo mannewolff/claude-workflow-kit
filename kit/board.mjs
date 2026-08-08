@@ -11,7 +11,11 @@
  * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
- *   node board.mjs issue create --title "..." --body "..."
+ *   node board.mjs issue create --title "..." --body "..." [--author-model <modell>]
+      Body braucht eine Zeile "Autor-Modell: <modell>"; --author-model oder
+      KIT_AGENT_MODEL setzen sie, sonst Abbruch. [--author-model <modell>]
+ *       Der Body braucht eine Zeile "Autor-Modell: <modell>" (Issue #266);
+ *       --author-model oder KIT_AGENT_MODEL setzen sie, sonst bricht der Aufruf ab.
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
@@ -1006,10 +1010,14 @@ class LocalIssueTracker {
     if (t !== "epic") meta.status = "backlog";
     meta.title = title;
     meta.created = today;
-    const content = serializeFrontmatter(
-      meta,
-      body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
-    );
+    // Die Abschnitts-Vorlage greift auch dann, wenn der Body nur aus der
+    // Autor-Modell-Zeile besteht (Issue #266). Seit der Leitplanke in issueCreate
+    // ist ein Body nie mehr wirklich leer — ohne diese Erweiterung haette ein
+    // `create` ohne --body still die Vorlage verloren.
+    const nurAutorZeile = /^\s*Autor-Modell: *\S[^\n]*\s*$/.test(body || "");
+    const VORLAGE = "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n";
+    const rumpf = !body ? VORLAGE : (nurAutorZeile ? `${body.trimEnd()}\n${VORLAGE}` : body);
+    const content = serializeFrontmatter(meta, rumpf);
     writeFileSync(this._filePath(n), content, "utf-8");
     return { id, path: this._filePath(n) };
   }
@@ -1660,11 +1668,58 @@ function heute() {
 
 // Ein Handler je issue-Subbefehl: haelt die Argument-Validierung flach (auf Funktionsebene
 // statt tief in verschachtelten switch-cases) und damit die kognitive Komplexitaet niedrig.
+// Die Autor-Modell-Zeile im Kontext-Abschnitt (Issue #266).
+//
+// Sie ist die einzige Stelle im System, an der sichtbar wird, WELCHES MODELL einen
+// Issue-Text formuliert hat. Der Tracker kann das nicht: `gh issue view` liefert
+// fuer jedes Issue den Token-Inhaber als `author`, egal wer geschrieben hat.
+// `/issue-review` waehlt anhand dieser Zeile die Pruefer, damit der Autor nicht sein
+// eigenes Issue prueft — fehlt sie, fragt der Skill nach, und nachts antwortet
+// niemand (belegt am 2026-08-08: Issue #247 kostete so einen Nacht-Slot).
+//
+// Bis hierher war die Zeile eine Bitte im /issues-Skill. Eine Bitte wird unter Druck
+// uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in /local-check.
+export const AUTOR_MODELL_ZEILE = /^Autor-Modell: *(\S.*?) *$/m;
+const AUTOR_MODELL_HILFE =
+  'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
+  'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
+
+/**
+ * Liefert den Body mit garantierter Autor-Modell-Zeile — oder bricht ab.
+ *
+ * Reihenfolge: vorhandene Zeile gewinnt, sonst --author-model, sonst
+ * KIT_AGENT_MODEL. Widersprechen sich Zeile und Flag, ist das ein Fehler und kein
+ * stilles Ueberschreiben: Wer eine Autorschaft ueberschreibt, faelscht sie.
+ */
+export function autorModellSicherstellen(body, flagWert, env = process.env) {
+  const vorhanden = body.match(AUTOR_MODELL_ZEILE);
+  const flag = typeof flagWert === "string" ? flagWert.trim() : "";
+  if (vorhanden) {
+    if (flag && flag !== vorhanden[1]) {
+      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden[1]}'. Eine der beiden weglassen.`);
+    }
+    return body;
+  }
+  const wert = flag || (env.KIT_AGENT_MODEL || "").trim();
+  if (!wert) fail(`Kein Autor-Modell angegeben. ${AUTOR_MODELL_HILFE}`);
+
+  // Ans Ende des Kontext-Abschnitts, nicht ans Dateiende: Dort suchen der
+  // /issues-Skill und /issue-review sie. Ohne Kontext-Abschnitt (Ideen, fremde
+  // Formate) kommt sie an den Anfang — Hauptsache, sie ist da und auffindbar.
+  const kontext = body.match(/^## Kontext[^\n]*\n/m);
+  if (!kontext) return `Autor-Modell: ${wert}\n\n${body}`;
+  const start = kontext.index + kontext[0].length;
+  const naechsterAbschnitt = body.slice(start).search(/^## /m);
+  const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
+  const davor = body.slice(0, ende).replace(/\n*$/, "");
+  return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   out(await tracker.createIssue({
     title: args.title,
-    body: args.body || "",
+    body: autorModellSicherstellen(args.body || "", args["author-model"]),
     type: args.type,
     parent: args.parent,
     color: args.color,

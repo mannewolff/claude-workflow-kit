@@ -46,11 +46,11 @@ function mitProjekt(fn, { regeln = [], config = GITLAB } = {}) {
 
 test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", NUR_POSIX, () => {
   mitProjekt((dir) => {
-    const angelegt = board(dir, "issue", "create", "--title", "Neu", "--body", "Body");
+    const angelegt = board(dir, "issue", "create", "--title", "Neu", "--body", "Autor-Modell: m\nBody");
     assert.deepEqual(angelegt, { id: "42", url: "https://gitlab.com/besitzer/repo/-/issues/42" });
 
     const zeilen = aufrufZeilen(dir, "glab").join("\n");
-    assert.match(zeilen, /issue create --title Neu --description Body/);
+    assert.match(zeilen, /issue create --title Neu --description Autor-Modell: m\nBody/);
     assert.match(zeilen, /issue update 42 --label Backlog/);
   }, {
     regeln: [{ match: "^issue create", stdout: "https://gitlab.com/besitzer/repo/-/issues/42\n" }],

@@ -80,7 +80,7 @@ test("issue update: ein leerer Body ist ein harter Fehler", () => {
   // Ein versehentlich geleerter Issue-Body ist nicht wiederherstellbar — deshalb
   // ein Abbruch statt eines stillen No-ops.
   mitLokal((dir) => {
-    const { id } = board(dir, "issue", "create", "--title", "Bleibt erhalten", "--body", "wichtiger Inhalt");
+    const { id } = board(dir, "issue", "create", "--title", "Bleibt erhalten", "--body", "Autor-Modell: m\nwichtiger Inhalt");
 
     const leer = runBoard(dir, ["issue", "update", String(id), "--body", ""]);
     assert.notEqual(leer.status, 0);
@@ -91,7 +91,7 @@ test("issue update: ein leerer Body ist ein harter Fehler", () => {
     assert.match(ohne.stderr, /--body/);
 
     // Nichts veraendert.
-    assert.equal(board(dir, "issue", "get", String(id)).body.trim(), "wichtiger Inhalt");
+    assert.equal(board(dir, "issue", "get", String(id)).body.trim(), "Autor-Modell: m\nwichtiger Inhalt");
   });
 });
 

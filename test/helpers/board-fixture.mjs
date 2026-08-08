@@ -60,11 +60,16 @@ export function schreibeConfig(dir, config) {
 export function runBoard(dir, cliArgs, extraEnv = {}) {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
-  delete env.KIT_AGENT_MODEL;
   Object.assign(env, {
     PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
+    // Fester Wert statt Loeschen (Issue #266): `issue create` verlangt seit der
+    // Autor-Modell-Leitplanke eine Angabe. Der Wert stammt aus dem Fixture und
+    // nicht von der Entwicklermaschine — die urspruengliche Absicht des Loeschens
+    // (kein Durchschlagen des Rechnerzustands) bleibt damit gewahrt. Tests, die
+    // gerade das Fehlen pruefen, uebergeben KIT_AGENT_MODEL: "" in extraEnv.
+    KIT_AGENT_MODEL: "fixture-modell",
   }, extraEnv);
   return spawnSync(process.execPath, [BOARD, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
 }
@@ -89,11 +94,11 @@ export function board(dir, ...cliArgs) {
 export function runBoardAsync(dir, cliArgs, extraEnv = {}) {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
-  delete env.KIT_AGENT_MODEL;
   Object.assign(env, {
     PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
+    KIT_AGENT_MODEL: "fixture-modell", // siehe runBoard (Issue #266)
   }, extraEnv);
   return new Promise((fertig) => {
     execFile(process.execPath, [BOARD, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {

@@ -32,10 +32,14 @@ const BOARD_QUELLE = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", 
 // Ein Body, der jede Quoting-Variante zum Stolpern bringt: Zeilenumbrueche (der
 // gemeldete Fall), ein Single Quote (POSIX-Escaping), ein Double Quote (cmd.exe),
 // ein Dollarzeichen und ein Prozentzeichen (Variablen-Expansion in beiden Welten).
+// Die Autor-Modell-Zeile gehoert seit Issue #266 dazu: Ohne sie wuerde die
+// Leitplanke in issueCreate sie selbst einsetzen, und dieser Test prueft gerade,
+// dass der Body BYTE-GENAU durchgereicht wird.
 const HEIKLER_TEXT = [
   "## Kontext",
   "Zeile mit 'Single Quote' und \"Double Quote\".",
   "Sonderzeichen: $HOME %PATH% `backtick` & | > <",
+  "Autor-Modell: claude-opus-5",
   "",
   "## Abhaengigkeiten",
   "Keine.",
