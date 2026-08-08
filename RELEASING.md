@@ -62,3 +62,23 @@ Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzliche
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.
 
 `x` (Major) wird ausschliesslich auf explizite Ansage erhoeht.
+
+## Git-Tags
+
+**Kein Release-Schritt erzeugt einen Tag.** Weder `push main` noch
+`merge production` setzen oder pushen einen; wer hier nach der Tag-Logik sucht,
+findet keine, weil es keine gibt.
+
+Der Tag wird **vom Menschen** gesetzt, nach dem Merge nach `production`.
+`merge-production` gibt dafuer am Ende seines Laufs die fertige Kommandozeile aus,
+mit dem Hash des `chore: vX.Y.Z`-Commits:
+
+```
+git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
+```
+
+Beim `push main`-Trigger entsteht bewusst kein Tag: Dort entstehen interne
+Patch-Staende, die niemand veroeffentlicht.
+
+Unberuehrt davon bleibt `tools/changelog.mjs` — es leitet die Versionsmarken
+weiterhin aus den `chore: vX.Y.Z`-Commits ab, nicht aus Tags.
