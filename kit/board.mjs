@@ -22,7 +22,7 @@
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check
+  node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
  */
 
@@ -77,7 +77,7 @@ Nutzung:
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check
+  node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
 
   node board.mjs --version
@@ -1988,9 +1988,55 @@ export function findeImPath(datei, opts = {}) {
 
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
 // sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
+// Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
+// noch einmal zu suchen (unter Windows steckt in `pfad` die Endung aus PATHEXT).
 function kommandoVerfuegbar(kommandozeile) {
   const datei = kommandozeile.trim().split(/\s+/)[0];
-  return { datei, ok: findeImPath(datei, { path: process.env.PATH, pathext: process.env.PATHEXT }) !== null };
+  const pfad = findeImPath(datei, { path: process.env.PATH, pathext: process.env.PATHEXT });
+  return { datei, ok: pfad !== null, pfad };
+}
+
+// Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
+// fremdes Werkzeug, das seinerseits ein Agent sein kann. Er soll feststellen, ob es
+// laeuft — nicht, was es kann.
+const PROBE_PROMPT = "Antworte nur mit dem Wort OK.\n";
+
+// Zeitlimit ist Pflicht, nicht Kuer: Ein haengender Reviewer ist fuer den Vorflug
+// dasselbe Problem wie ein fehlender, und ohne Limit haengt der Vorflug mit.
+// KIT_PROBE_TIMEOUT_MS ist ein Test-Hook (dasselbe Muster wie NIGHT_TIMEOUT_MS).
+const PROBE_TIMEOUT_MS = Number(process.env.KIT_PROBE_TIMEOUT_MS) || 60_000;
+
+/**
+ * Startet ein Reviewer-Kommando einmal mit einem harmlosen Prompt ueber stdin.
+ *
+ * Der Grund (Issue #262): Die PATH-Suche sagt, dass etwas startbar ist, nicht dass es
+ * benutzbar ist. Am 2026-08-08 lag `codex` im PATH und scheiterte trotzdem bei jedem
+ * Aufruf an einem HTTP 400 — der Vorflug meldete `verfuegbar`, und nachts haette der
+ * Lauf mit einem toten Reviewer begonnen.
+ *
+ * Ohne Shell, wie alles in dieser Datei (Issue #196): Die Kommandozeile wird am
+ * Whitespace zerlegt und als argv uebergeben. Dieselbe Annahme wie in
+ * kommandoVerfuegbar — eine Reviewer-Kommandozeile mit Quotes oder Pipes ist damit
+ * nicht abgedeckt, und das ist der Preis dafuer, dass es unter Windows laeuft.
+ */
+function probelauf(kommandozeile, pfad) {
+  const argumente = kommandozeile.trim().split(/\s+/).slice(1);
+  const res = spawnSync(pfad, argumente, {
+    input: PROBE_PROMPT,
+    encoding: "utf-8",
+    timeout: PROBE_TIMEOUT_MS,
+  });
+  if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
+    return { ok: false, grund: `Zeitlimit von ${PROBE_TIMEOUT_MS} ms ueberschritten` };
+  }
+  if (res.error) return { ok: false, grund: res.error.message };
+  if (res.status !== 0) {
+    // Die Fehlermeldung des Werkzeugs ist die eigentliche Auskunft — sie sagt, ob ein
+    // Modell fehlt, ein Token abgelaufen ist oder etwas ganz anderes klemmt.
+    const letzte = (res.stderr || "").trim().split("\n").filter(Boolean).at(-1);
+    return { ok: false, grund: (letzte || `Exit ${res.status}`).slice(0, 300) };
+  }
+  return { ok: true };
 }
 
 function issueReviewReviewers(args) {
@@ -2019,14 +2065,21 @@ function issueReviewMatrix() {
 
 // Auskunft, kein Gate: Exit bleibt 0, auch wenn ein Reviewer fehlt. Wer daraus ein
 // Gate macht, ist der Skill — er kann den Menschen fragen, dieses Kommando nicht.
-function issueReviewCheck() {
+function issueReviewCheck(args = {}) {
+  // `--nur-pfad` faellt auf das Verhalten vor Issue #262 zurueck, fuer den Fall, dass
+  // ein Probelauf zu teuer oder unerwuenscht ist. Das Feld `geprueft` macht in beiden
+  // Faellen sichtbar, worauf sich die Aussage stuetzt.
+  const nurPfad = args["nur-pfad"] === true;
   const { reviewers } = issueReviewConfig();
   const ergebnis = reviewers.map((r) => {
     if (r.kind === "claude") return { name: r.name, kind: r.kind, verfuegbar: true };
-    const { datei, ok } = kommandoVerfuegbar(r.command);
-    return ok
-      ? { name: r.name, kind: r.kind, verfuegbar: true }
-      : { name: r.name, kind: r.kind, verfuegbar: false, grund: `${datei} nicht im PATH` };
+    const { datei, ok, pfad } = kommandoVerfuegbar(r.command);
+    if (!ok) return { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    if (nurPfad) return { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "pfad" };
+    const probe = probelauf(r.command, pfad);
+    return probe.ok
+      ? { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "probelauf" }
+      : { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
   });
   // Ohne konfigurierte Reviewer waere `every()` auf dem leeren Array true — der Vorflug
   // haette einen Lauf durchgelassen, der garantiert nichts liefert: Jede Session startet,
@@ -2042,7 +2095,7 @@ function issueReviewCheck() {
 async function dispatchIssueReview(command, args) {
   switch (command) {
     case "reviewers": return issueReviewReviewers(args);
-    case "check": return issueReviewCheck();
+    case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
     default:
       process.stdout.write(HELP);

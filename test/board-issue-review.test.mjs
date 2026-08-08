@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
+import { rmSync, writeFileSync, mkdirSync, chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
@@ -319,12 +319,17 @@ const NUR_POSIX = process.platform === "win32"
   ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
   : {};
 
-/** Legt ein Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an. */
-function fakeBinary(dir, name, modus = 0o755) {
+/**
+ * Legt ein Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an.
+ *
+ * `rumpf` ersetzt den Standard-Rumpf (`exit 0`) — der Probelauf aus Issue #262
+ * braucht Kommandos, die scheitern, haengen oder stdin mitschreiben.
+ */
+function fakeBinary(dir, name, modus = 0o755, rumpf = "exit 0") {
   const binDir = join(dir, "fakebin");
   mkdirSync(binDir, { recursive: true });
   const pfad = join(binDir, name);
-  writeFileSync(pfad, "#!/bin/sh\nexit 0\n");
+  writeFileSync(pfad, `#!/bin/sh\n${rumpf}\n`);
   chmodSync(pfad, modus);
 }
 
@@ -393,6 +398,88 @@ test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando"
     const out = JSON.parse(res.stdout);
     assert.equal(out.alleVerfuegbar, false);
     assert.match(out.reviewers[0].grund, /nurlesbar/);
+    // Ein Kommando, das gar nicht startbar ist, bekommt keinen Probelauf.
+    assert.equal(out.reviewers[0].geprueft, "pfad");
+  });
+});
+
+// --- Probelauf statt reiner PATH-Suche (Issue #262) ---
+//
+// Belegt am 2026-08-08: Der Vorflug meldete `codex` verfuegbar, weil das Binary im
+// PATH lag; jeder Aufruf scheiterte dann an einem HTTP 400, weil das konfigurierte
+// Modell fuer den Account nicht freigegeben war. Interaktiv faellt das auf, nachts
+// nicht — dort wird aus `alleVerfuegbar: false` ein harter Stopp, und genau der
+// blieb aus, weil der Befund `true` lautete.
+
+test("issue-review check: ein startbares Kommando wird durch einen Probelauf bestaetigt", NUR_POSIX, () => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "laeuft --flag" }] }, (dir) => {
+    fakeBinary(dir, "laeuft");
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.alleVerfuegbar, true);
+    assert.equal(out.reviewers[0].verfuegbar, true);
+    assert.equal(out.reviewers[0].geprueft, "probelauf");
+  });
+});
+
+test("issue-review check: ein Kommando im PATH, das scheitert, gilt als nicht verfuegbar", NUR_POSIX, () => {
+  // Der Fall aus dem Befund: startbar, aber nicht benutzbar.
+  const rumpf = 'echo "model is not supported for this account" >&2\nexit 1';
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt --flag" }] }, (dir) => {
+    fakeBinary(dir, "kaputt", 0o755, rumpf);
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr, "check bleibt eine Auskunft, kein Gate");
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.alleVerfuegbar, false);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.equal(out.reviewers[0].geprueft, "probelauf");
+    // Die Fehlermeldung des Werkzeugs ist die eigentliche Auskunft.
+    assert.match(out.reviewers[0].grund, /model is not supported/);
+  });
+});
+
+test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", NUR_POSIX, () => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "liest --flag" }] }, (dir) => {
+    const mitschrift = join(dir, "stdin.txt");
+    fakeBinary(dir, "liest", 0o755, `cat > ${mitschrift}\nexit 0`);
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(existsSync(mitschrift), "das Kommando hat nichts auf stdin bekommen");
+    assert.ok(readFileSync(mitschrift, "utf-8").trim().length > 0, "der Probeprompt war leer");
+  });
+});
+
+test("issue-review check: ein haengendes Kommando laeuft ins Zeitlimit", NUR_POSIX, () => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "haengt --flag" }] }, (dir) => {
+    fakeBinary(dir, "haengt", 0o755, "sleep 30");
+    // Test-Hook statt 60 s Default — sonst dauert dieser Test eine Minute.
+    const res = runBoard(dir, ["issue-review", "check"], { KIT_PROBE_TIMEOUT_MS: "300" });
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.match(out.reviewers[0].grund, /Zeitlimit/i);
+  });
+});
+
+test("issue-review check: --nur-pfad ueberspringt den Probelauf", NUR_POSIX, () => {
+  // Dasselbe kaputte Kommando wie oben: Ohne Probelauf gilt es als verfuegbar.
+  const rumpf = 'echo "kaputt" >&2\nexit 1';
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt2 --flag" }] }, (dir) => {
+    fakeBinary(dir, "kaputt2", 0o755, rumpf);
+    const res = runBoard(dir, ["issue-review", "check", "--nur-pfad"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.alleVerfuegbar, true);
+    assert.equal(out.reviewers[0].geprueft, "pfad");
+  });
+});
+
+test("issue-review check: claude-Reviewer bekommen keinen Probelauf", () => {
+  mitReview({ reviewers: [OPUS] }, (dir) => {
+    const out = JSON.parse(runBoard(dir, ["issue-review", "check"]).stdout);
+    assert.equal(out.reviewers[0].verfuegbar, true);
+    assert.equal(out.reviewers[0].geprueft, undefined);
   });
 });
 
