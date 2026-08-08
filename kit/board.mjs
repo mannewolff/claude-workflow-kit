@@ -72,7 +72,8 @@ function isStateColumn(status, config) {
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
-  node board.mjs issue create --title "..." --body "..."
+  node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
+                             [--author-model <modell>]
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
@@ -1720,9 +1721,17 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
+  // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
+  // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
+  // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
+  const hatQuelle = args.body !== undefined || args["body-file"] !== undefined;
+  const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
   out(await tracker.createIssue({
     title: args.title,
-    body: autorModellSicherstellen(args.body || "", args["author-model"]),
+    // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
+    // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
+    // statt des Inhalts — und ein Body mit korrekter Zeile in der Datei abgelehnt.
+    body: autorModellSicherstellen(roh, args["author-model"]),
     type: args.type,
     parent: args.parent,
     color: args.color,

@@ -93,8 +93,18 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 Issue anlegen ueber den Board-Adapter:
 
 ```bash
-node .claude/kit/board.mjs issue create --title "Titel" --body "..."
+node .claude/kit/board.mjs issue create --title "Titel" --body - <<'BODY'
+## Kontext
+...
+BODY
 ```
+
+**Der Body geht ueber stdin, nicht als Argument** (Issue #271). Ein Vier-Abschnitt-Body
+mit Codebloecken, Backticks und Tabellen ist der Normalfall, und genau daran scheitert
+das Quoting einer Kommandozeile. Wer stattdessen ein Hilfsskript baut, verliert den Weg
+im Nachtbetrieb: Ein selbstgebautes Script steht in keiner Allowlist. Alternativ
+`--body-file <pfad>` — dann gehoert die Datei **ausserhalb des Projektverzeichnisses**,
+sonst ist der Working Tree unsauber und der Nacht-Runner stoppt hart.
 
 Der Adapter legt das Issue an, haengt es ans Board und setzt den Status auf Backlog — provider-unabhaengig.
 
