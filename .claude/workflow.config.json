@@ -50,7 +50,7 @@
       {
         "name": "codex",
         "kind": "command",
-        "command": "codex exec --model gpt-5"
+        "command": "codex exec"
       }
     ],
     "pairs": {
