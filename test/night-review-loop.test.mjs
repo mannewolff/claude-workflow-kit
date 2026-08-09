@@ -31,8 +31,19 @@ const NUR_CLAUDE = [
   { name: "sonnet", kind: "claude", model: "claude-sonnet-5" },
 ];
 
+// Seit Issue #269 laeuft der Vorflug als eigene Session. Ohne diesen Hook wuerde jeder
+// Test hier eine echte claude-Session starten; der Fake meldet "alles steht".
+const VORFLUG_OK = `cat <<'EOF'
+<<<VORFLUG
+{"reviewers": [], "tracker": {"erreichbar": true, "geprueft": "issue list"}}
+VORFLUG>>>
+EOF`;
+
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
+  return spawnSync(cmd, cliArgs, {
+    cwd, encoding: "utf-8",
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: VORFLUG_OK, ...env },
+  });
 }
 
 function board(cwd, ...cliArgs) {

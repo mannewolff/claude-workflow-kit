@@ -79,12 +79,19 @@
  * einen Text gegeben, der bei der Implementierung nicht mehr gilt — die
  * Verantwortungsschwelle waere umgangen, ohne dass es jemandem auffaellt. Deshalb
  * auch exklusiv: zwei Laeufe an zwei Abenden, mit dem Menschen dazwischen.
- * Der Vorflug prueft hier zusaetzlich die Reviewer-Verfuegbarkeit (harter Stopp),
- * die buildChecks-Pflicht entfaellt (es wird nichts gebaut und nichts committet).
+ * Der Vorflug prueft hier zusaetzlich die Reviewer-Verfuegbarkeit und die
+ * Erreichbarkeit des Trackers (harter Stopp) — und zwar in einer eigenen
+ * Vorflug-Session, nicht im Runner-Prozess (Issue #269). Die buildChecks-Pflicht
+ * entfaellt (es wird nichts gebaut und nichts committet).
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
+ *   NIGHT_VORFLUG_CMD ersetzt den Start der VORFLUG-Session durch ein
+ *                     Shell-Kommando — getrennt von NIGHT_CLAUDE_CMD, damit ein
+ *                     Test die beiden Session-Arten auseinanderhalten kann
+ *                     (Issue #269).
+ *   NIGHT_VORFLUG_TIMEOUT_MS ueberschreibt das Zeitlimit der Vorflug-Session.
  *   NIGHT_PROMPT      wird jeder Session als Umgebungsvariable gesetzt und
  *                     enthaelt genau den Prompt, mit dem sie gestartet wurde.
  *                     Nur so ist der uebergebene Auftrag (/implement-next #N)
@@ -772,6 +779,225 @@ function ladeConfigMitOverrides(sharedPfad) {
   return config;
 }
 
+// --- Reviewer-Vorflug in einer Session (Issue #269) ---
+//
+// Warum nicht `board.mjs issue-review check`: Dieser Probelauf laeuft im Runner-Prozess
+// und beweist damit nur, dass der RUNNER das Werkzeug starten darf. Gebraucht wird es
+// aber in den Review-Sessions — eigene Kindprozesse mit eigener Sandbox, eigener
+// Netzwerk-Allowlist und eigenen Freigaben. In der Nacht vom 2026-08-08 lief der Vorflug
+// sauber durch, waehrend `codex exec` in der Session an "Run outside of the sandbox"
+// scheiterte und `board.mjs issue get` an der leeren Netzwerk-Allowlist: ein Lauf, der
+// vollbesetzt startete und mit einem Reviewer arbeitete — genau der Zustand, den der
+// harte Stopp aus Issue #233 verhindern soll.
+//
+// Und warum die Vorflug-Session `board.mjs issue-review check` nicht einfach erneut
+// aufrufen darf: In `.claude/settings.json` steht `node .claude/kit/board.mjs*` in
+// `sandbox.excludedCommands`. Jeder Aufruf von board.mjs ist damit von der Sandbox
+// ausgenommen — gleich von wo. Eine Session, die darueber probt, meldete zuverlaessig
+// `verfuegbar: true` und saegte damit denselben Ast an, nur eine Ebene tiefer und
+// schwerer zu erkennen. Die Session startet das Reviewer-Kommando deshalb selbst,
+// direkt und mit dem Prompt ueber stdin — so, wie es die Review-Rolle spaeter auch tut.
+
+// Modell und Zeitlimit der Vorflug-Session sind bewusst unabhaengig von --model und
+// --timeout-min. Wuerde der Vorflug beides erben, kostete jedes `--review --dry-run` eine
+// volle Session im Modell des Laufs, nur um "alles steht" zu melden — und der Trockenlauf
+// verlore genau die Eigenschaft, wegen der man ihn faehrt: billig und schnell zu sein.
+const VORFLUG_MODEL = "haiku";
+const VORFLUG_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Marker um den Befund. Ein Modell schreibt neben dem Befund immer auch Prosa; die Marker
+// trennen die eine maschinenlesbare Stelle davon ab, statt raten zu muessen, welches
+// JSON-Fragment im Fliesstext gemeint war.
+const VORFLUG_START = "<<<VORFLUG";
+const VORFLUG_ENDE = "VORFLUG>>>";
+
+// Ein Prompt, der nichts verlangt (wie in board.mjs): Die Probe soll feststellen, ob der
+// Reviewer laeuft — nicht, was er kann.
+const VORFLUG_PROBE_PROMPT = "Antworte nur mit dem Wort OK.";
+
+// Der Stempel, an dem der Gate-Code erkennt, dass ein Befund aus der richtigen Umgebung
+// stammt. board.mjs stempelt seine Befunde mit "runner"; ein dort gestarteter Prozess kann
+// diesen Wert nie erzeugen.
+const UMGEBUNG_SESSION = "review-session";
+
+/**
+ * Waehlt das Issue der Tracker-Probe — deterministisch, nicht "irgendeines".
+ *
+ * Erste Wahl ist der erste Kandidat des Laufs: genau das Issue, an dem die erste
+ * Review-Session scheitern wuerde. Ohne Kandidaten faellt die Wahl auf das erste Issue der
+ * Gesamtliste. Liefert der Tracker gar keines, gibt es nichts zu holen (null) — die Probe
+ * beschraenkt sich dann auf `issue list`.
+ */
+export function trackerProbeId(kandidaten, alleIssues) {
+  const erstes = (kandidaten || [])[0] || (alleIssues || [])[0];
+  return erstes ? String(erstes.id) : null;
+}
+
+/** Baut den Auftrag der Vorflug-Session. */
+function vorflugPrompt(kommandoReviewers, trackerId) {
+  const zeilen = [
+    `Du bist der technische Vorflug eines Nacht-Reviews. Fuehre genau die Schritte unten aus`,
+    `und gib zum Schluss genau einen Befund-Block aus.`,
+    `Aendere dabei NICHTS: kein Commit, kein Board-Zug, keine neue Datei, keine Aenderung an`,
+    `vorhandenen Dateien.`,
+    ``,
+    `SCHRITT 1 — Reviewer-Kommandos`,
+  ];
+  if (kommandoReviewers.length === 0) {
+    zeilen.push(
+      `Es ist kein Reviewer vom Typ "command" konfiguriert. Schritt 1 entfaellt; "reviewers"`,
+      `bleibt im Befund eine leere Liste.`,
+    );
+  } else {
+    zeilen.push(
+      `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
+      ``,
+      ...kommandoReviewers.map((r) => `  printf '%s\\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
+      ``,
+      `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
+      `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
+      `Ein Reviewer gilt nur bei Exit-Code 0 als verfuegbar. Startfehler, Abbruch, Zeitueberschreitung`,
+      `und Exit-Code ungleich 0 ergeben "verfuegbar": false; als "grund" die letzte Fehlerzeile.`,
+    );
+  }
+  zeilen.push(
+    ``,
+    `SCHRITT 2 — Erreichbarkeit des Trackers`,
+    `Fuehre aus:`,
+    `  node .claude/kit/board.mjs issue list`,
+    ...(trackerId ? [`  node .claude/kit/board.mjs issue get ${trackerId}`] : []),
+    trackerId
+      ? `Beide muessen mit Exit-Code 0 und auswertbarem JSON enden, sonst ist der Tracker nicht erreichbar.`
+      : `Der Tracker fuehrt derzeit kein Issue. Setze "geprueft" auf "issue list" und zusaetzlich`
+        + ` "uebersprungen" auf "kein Issue vorhanden"; "erreichbar" ist true, sofern "issue list" mit Exit-Code 0 endete.`,
+    `Dieser Befund ist eigenstaendig — vermische ihn nicht mit der Reviewer-Verfuegbarkeit.`,
+    ``,
+    `SCHRITT 3 — Befund`,
+    `Gib als ALLERLETZTE Ausgabe genau diesen Block aus, ohne Code-Fence und ohne Text danach:`,
+    ``,
+    VORFLUG_START,
+    `{"reviewers": [{"name": "<name>", "verfuegbar": true, "grund": ""}], "tracker": {"erreichbar": true, "geprueft": "<kommando>", "grund": ""}}`,
+    VORFLUG_ENDE,
+  );
+  return zeilen.join("\n");
+}
+
+/** Schneidet den Befund-Block aus der Session-Ausgabe. null = nichts Auswertbares. */
+export function parseVorflugBefund(stdout) {
+  const text = stdout || "";
+  // lastIndexOf: Erklaert das Modell seinen Befund erst und gibt ihn dann aus, gilt der
+  // letzte Block — der Auftrag lautet, ihn als allerletzte Ausgabe zu schreiben.
+  const start = text.lastIndexOf(VORFLUG_START);
+  if (start < 0) return null;
+  const ende = text.indexOf(VORFLUG_ENDE, start);
+  if (ende < 0) return null;
+  try {
+    const roh = JSON.parse(text.slice(start + VORFLUG_START.length, ende));
+    return roh && typeof roh === "object" ? roh : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bringt den gemeldeten Befund in die Form, gegen die das Gate prueft.
+ *
+ * Der Stempel `umgebung` kommt vom Runner, nicht aus der Meldung: Er sagt aus, WO geprueft
+ * wurde, und das weiss der Runner sicher — er hat die Session selbst gestartet. Aus der
+ * Meldung uebernommen waere er eine Behauptung des Geprueften ueber sich selbst.
+ *
+ * Streng in beide Richtungen: Nur ein ausdrueckliches `verfuegbar: true` zaehlt, und ein
+ * Reviewer, zu dem die Session nichts gemeldet hat, gilt als nicht verfuegbar. Ein
+ * Schweigen als Zustimmung zu lesen waere genau der Fehlschluss, den dieses Issue behebt.
+ */
+export function normalisiereVorflug(roh, reviewers) {
+  const gemeldet = new Map(
+    (roh?.reviewers || []).filter((r) => r && r.name).map((r) => [String(r.name), r]),
+  );
+  const befunde = (reviewers || []).map((r) => {
+    const basis = { name: r.name, kind: r.kind, umgebung: UMGEBUNG_SESSION };
+    // claude-Reviewer laufen als Unterauftrag derselben Session-Art — dass eine
+    // Vorflug-Session ueberhaupt geantwortet hat, ist ihr Verfuegbarkeitsnachweis.
+    if (r.kind !== "command") return { ...basis, verfuegbar: true };
+    const meldung = gemeldet.get(r.name);
+    if (!meldung) {
+      return { ...basis, verfuegbar: false, grund: "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet" };
+    }
+    if (meldung.verfuegbar === true) return { ...basis, verfuegbar: true };
+    return { ...basis, verfuegbar: false, grund: String(meldung.grund || "").trim() || "ohne Grund als nicht verfuegbar gemeldet" };
+  });
+
+  const t = roh?.tracker || {};
+  const erreichbar = t.erreichbar === true;
+  const tracker = {
+    erreichbar,
+    umgebung: UMGEBUNG_SESSION,
+    geprueft: t.geprueft ? String(t.geprueft) : null,
+    ...(t.uebersprungen ? { uebersprungen: String(t.uebersprungen) } : {}),
+    ...(erreichbar ? {} : { grund: String(t.grund || "").trim() || "die Vorflug-Session hat keinen Tracker-Befund gemeldet" }),
+  };
+  return { reviewers: befunde, tracker };
+}
+
+/** Startet die Vorflug-Session — dieselbe Bauart wie eine Review-Session (runProcess). */
+async function runVorflugSession(args, prompt) {
+  const testCmd = process.env.NIGHT_VORFLUG_CMD;
+  let cmd, cmdArgs;
+  if (testCmd) {
+    // Wie bei NIGHT_CLAUDE_CMD bewusst `sh`: Dieser Zweig ist ausschliesslich der
+    // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell (Issue #199).
+    cmd = "sh";
+    cmdArgs = ["-c", testCmd];
+  } else {
+    const permArgs = args.yolo ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"];
+    cmd = "claude";
+    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, ...permArgs];
+  }
+  const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
+    ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
+    : VORFLUG_TIMEOUT_MS;
+  const res = await runProcess(cmd, cmdArgs, {
+    issueId: "vorflug", timeoutMs, useStream: false,
+    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1" },
+  });
+  if (LOG_FILE) {
+    appendFileSync(LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
+  }
+  return { res, timeoutMs };
+}
+
+/**
+ * Faehrt den Vorflug und liefert `{ sessionStartbar, grund, reviewers, tracker }`.
+ *
+ * Der Fehlerpfad der Session selbst ist ein eigener Befund und kein stiller Ausfall: Kann
+ * der Runner die Vorflug-Session gar nicht erzeugen oder endet sie ohne auswertbaren Block,
+ * steht das als `sessionStartbar: false` da. Ohne diesen Fall haette der Vorflug bei einem
+ * kaputten Session-Start gar nichts zu sagen — und Schweigen liest sich am Ende wie ein OK.
+ */
+async function reviewerVorflug(args, reviewers, trackerId) {
+  const kommandos = reviewers.filter((r) => r.kind === "command");
+  const { res, timeoutMs } = await runVorflugSession(args, vorflugPrompt(kommandos, trackerId));
+
+  const gescheitert = (grund) => ({
+    sessionStartbar: false,
+    grund,
+    reviewers: reviewers.map((r) => ({ name: r.name, kind: r.kind, umgebung: UMGEBUNG_SESSION, verfuegbar: false, grund })),
+    tracker: { erreichbar: false, umgebung: UMGEBUNG_SESSION, geprueft: null, grund },
+  });
+
+  if (res.error?.code === "ETIMEDOUT") return gescheitert(`Zeitlimit von ${timeoutMs} ms ueberschritten`);
+  if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
+  if (res.error) return gescheitert(res.error.message);
+
+  const roh = parseVorflugBefund(res.stdout);
+  if (!roh) {
+    return gescheitert(res.status === 0
+      ? "die Vorflug-Session endete ohne auswertbaren Befund-Block"
+      : `die Vorflug-Session endete mit Exit ${res.status} und ohne auswertbaren Befund-Block`);
+  }
+  return { sessionStartbar: true, grund: null, ...normalisiereVorflug(roh, reviewers) };
+}
+
 // --- Review-Schleife (Issue #235) ---
 
 /**
@@ -965,34 +1191,6 @@ async function main() {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok");
   }
 
-  // Reviewer-Vorflug (Issue #233). `issue-review check` ist fuer sich eine Auskunft,
-  // kein Gate — der interaktive Skill fragt den Menschen, wenn einer fehlt. Nachts
-  // fragt niemand, und ein unterbesetzter Lauf sieht am Board aus wie ein
-  // vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer wissen
-  // will, ob alle Reviewer stehen, faehrt vorher --dry-run.
-  //
-  // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
-  // der Lauf nichts an, der das Problem aufklaeren soll.
-  let reviewerBefund = null;
-  if (args.review) {
-    reviewerBefund = board("issue-review", "check");
-    for (const r of reviewerBefund.reviewers || []) {
-      log(`  Reviewer ${r.name} (${r.kind}): ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
-    }
-    // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
-    // nicht "Werkzeug installieren", sondern "Block uebernehmen". board.mjs liefert
-    // dafuer `grund` statt einer Reviewer-Liste.
-    if ((reviewerBefund.reviewers || []).length === 0) {
-      log(`  Kein Reviewer konfiguriert: ${reviewerBefund.grund || "issueReview.reviewers ist leer oder fehlt"}`);
-    }
-    if (!reviewerBefund.alleVerfuegbar && !args.dryRun) {
-      const fehlen = (reviewerBefund.reviewers || []).filter((r) => !r.verfuegbar).map((r) => `${r.name} (${r.grund})`);
-      fail(fehlen.length > 0
-        ? `Reviewer nicht verfuegbar: ${fehlen.join(", ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren oder aus issueReview.reviewers nehmen.`
-        : `Kein Reviewer konfiguriert (${reviewerBefund.grund || "issueReview.reviewers ist leer oder fehlt"}). Ohne Reviewer wuerde jede Session ergebnislos enden — der Lauf startet deshalb gar nicht erst.`);
-    }
-  }
-
   // --- Review-Modus (Issue #233) ---
   //
   // Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
@@ -1003,6 +1201,67 @@ async function main() {
     const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel });
 
     for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+
+    // Vorflug (Issue #233, Umgebung korrigiert in #269). `issue-review check` ist fuer
+    // sich eine Auskunft, kein Gate — der interaktive Skill fragt den Menschen, wenn
+    // einer fehlt. Nachts fragt niemand, und ein unterbesetzter Lauf sieht am Board aus
+    // wie ein vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer
+    // wissen will, ob alles steht, faehrt vorher --dry-run.
+    //
+    // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
+    // der Lauf nichts an, der das Problem aufklaeren soll. Die eine Vorflug-Session
+    // laeuft auch dort, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall.
+    //
+    // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
+    // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
+    // und die Verfuegbarkeit misst ohnehin nur noch die Session.
+    const reviewerListe = (config.issueReview?.reviewers || [])
+      .filter((r) => r && typeof r.name === "string")
+      .map((r) => ({ name: r.name, kind: r.kind === "command" ? "command" : "claude", command: r.command }));
+    const trackerId = trackerProbeId(kandidaten, kandidaten.length > 0 ? null : board("issue", "list"));
+
+    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${trackerId ? `Issue #${trackerId}` : "nur issue list"}).`);
+    const vorflug = await reviewerVorflug(args, reviewerListe, trackerId);
+
+    // Eine Vorflug-Session darf so wenig am Repository anfassen wie eine Review-Session.
+    // Tut sie es doch, ist die Lage unklar und der Lauf endet hier — dieselbe Leitplanke
+    // wie nach einer Review-Session (Issue #152), und sie gilt auch im Dry-Run: Ein
+    // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
+    if (!gitClean()) {
+      log("  HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.");
+      process.exit(1);
+    }
+
+    if (!vorflug.sessionStartbar) {
+      log(`  Vorflug-Session nicht auswertbar: ${vorflug.grund}`);
+    }
+    for (const r of vorflug.reviewers) {
+      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
+    }
+    // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
+    // nicht "Werkzeug installieren", sondern "Block uebernehmen".
+    const KEIN_REVIEWER = "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen";
+    if (reviewerListe.length === 0) log(`  Kein Reviewer konfiguriert: ${KEIN_REVIEWER}`);
+    log(`  Tracker (${vorflug.tracker.umgebung}): ${vorflug.tracker.erreichbar
+      ? `erreichbar${vorflug.tracker.uebersprungen ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}` : ""}`
+      : `NICHT erreichbar — ${vorflug.tracker.grund}`}`);
+
+    // Drei getrennte Befunde, drei getrennte Meldungen. Ein `verfuegbar: false`, das in
+    // Wahrheit ein toter Tracker war, schickt den Menschen morgens in die falsche Ecke.
+    const probleme = [];
+    if (!vorflug.sessionStartbar) probleme.push(`Die Vorflug-Session lieferte kein Ergebnis (${vorflug.grund})`);
+    if (reviewerListe.length === 0) {
+      probleme.push(`Kein Reviewer konfiguriert (${KEIN_REVIEWER}). Ohne Reviewer wuerde jede Session ergebnislos enden`);
+    } else if (vorflug.sessionStartbar) {
+      const fehlen = vorflug.reviewers.filter((r) => r.verfuegbar !== true).map((r) => `${r.name} (${r.grund})`);
+      if (fehlen.length > 0) probleme.push(`Reviewer in der Session nicht verfuegbar: ${fehlen.join(", ")}`);
+    }
+    if (vorflug.sessionStartbar && vorflug.tracker.erreichbar !== true) {
+      probleme.push(`Tracker aus der Session nicht erreichbar: ${vorflug.tracker.grund}`);
+    }
+    if (probleme.length > 0 && !args.dryRun) {
+      fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
+    }
 
     if (kandidaten.length === 0) {
       log("Keine Review-Kandidaten im Backlog — nichts zu tun.");

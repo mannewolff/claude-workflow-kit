@@ -35,8 +35,26 @@ const NUR_CLAUDE = [
   { name: "sonnet", kind: "claude", model: "claude-sonnet-5" },
 ];
 
+/**
+ * Fake fuer die Vorflug-Session (Issue #269).
+ *
+ * Seit #269 ist der Vorflug eine eigene Session; ohne diesen Hook wuerde jeder Test hier
+ * eine echte claude-Session starten. Der Fake meldet den Befund, den der Runner sonst aus
+ * der Session-Ausgabe liest.
+ */
+function vorflugFake(reviewers = [], tracker = { erreichbar: true, geprueft: "issue list" }) {
+  return `cat <<'EOF'
+<<<VORFLUG
+${JSON.stringify({ reviewers, tracker })}
+VORFLUG>>>
+EOF`;
+}
+
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
+  return spawnSync(cmd, cliArgs, {
+    cwd, encoding: "utf-8",
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: vorflugFake(), ...env },
+  });
 }
 
 function board(cwd, ...cliArgs) {
@@ -101,10 +119,15 @@ test("--help nennt --review und --review-label samt Default", () => {
 
 // --- Vorflug ---
 
+// Der Befund, den die Vorflug-Session zu einem toten Reviewer meldet (Issue #269).
+const VORFLUG_FEHLT = vorflugFake([{ name: "gibtsnicht", verfuegbar: false, grund: "gibtsnicht-xyz nicht startbar" }]);
+
 test("--review bricht bei nicht verfuegbarem command-Reviewer ab, ohne eine Session zu starten", NUR_POSIX, () => {
   mitProjekt((dir) => {
     backlogIssue(dir, "Ein Issue", OHNE_MARKER);
-    const res = run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: SESSION_FAKE });
+    const res = run(dir, process.execPath, [NIGHT, "--review"], {
+      NIGHT_CLAUDE_CMD: SESSION_FAKE, NIGHT_VORFLUG_CMD: VORFLUG_FEHLT,
+    });
     assert.notEqual(res.status, 0);
     assert.match(res.stdout + res.stderr, /gibtsnicht/);
     assert.equal(existsSync(join(dir, "session-lief")), false, "es lief eine Session, obwohl der Vorflug abbrechen sollte");
@@ -141,7 +164,7 @@ test("--review --dry-run mit fehlendem Reviewer laeuft durch und meldet ihn", NU
   // genau dem Problem scheitern, das er aufklaeren soll.
   mitProjekt((dir) => {
     backlogIssue(dir, "Ein Issue", OHNE_MARKER);
-    const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run"]);
+    const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run"], { NIGHT_VORFLUG_CMD: VORFLUG_FEHLT });
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /gibtsnicht.*NICHT verfuegbar/);
   }, {
@@ -151,7 +174,10 @@ test("--review --dry-run mit fehlendem Reviewer laeuft durch und meldet ihn", NU
   });
 });
 
-test("--review --dry-run startet keine Session und bewegt kein Issue", NUR_POSIX, () => {
+test("--review --dry-run startet keine Issue-Review-Session und bewegt kein Issue", NUR_POSIX, () => {
+  // "Keine Session" waere seit Issue #269 falsch: Genau eine Vorflug-Session laeuft auch
+  // im Dry-Run, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall. Was er
+  // weiterhin nicht darf: eine Session zu einem Issue starten oder irgendetwas bewegen.
   mitProjekt((dir) => {
     const id = backlogIssue(dir, "Ein Issue", OHNE_MARKER);
     // Die Issue-Datei selbst als Zeuge: Sie traegt Status, Body und beim lokalen
@@ -162,7 +188,7 @@ test("--review --dry-run startet keine Session und bewegt kein Issue", NUR_POSIX
 
     const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run"], { NIGHT_CLAUDE_CMD: SESSION_FAKE });
     assert.equal(res.status, 0, res.stderr);
-    assert.equal(existsSync(join(dir, "session-lief")), false, "es lief eine Session im Dry-Run");
+    assert.equal(existsSync(join(dir, "session-lief")), false, "es lief eine Issue-Review-Session im Dry-Run");
     assert.equal(readFileSync(pfad, "utf-8"), vorher, "der Dry-Run hat die Issue-Datei veraendert");
   });
 });

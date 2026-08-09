@@ -2175,6 +2175,14 @@ function issueReviewMatrix() {
   });
 }
 
+// Die Umgebung, in der dieses Kommando misst (Issue #269). Ein Befund von hier stammt
+// immer aus dem aufrufenden Prozess — interaktiv ist das die Session des Menschen, im
+// Runner der Runner selbst. Der Wert steht ausdruecklich im Befund, damit niemand ein
+// `verfuegbar: true` auf eine Umgebung bezieht, in der gar nicht geprueft wurde. Der
+// Nacht-Runner erkennt seinen eigenen Session-Vorflug am Gegenwert "review-session";
+// ein direkt hier gestarteter Prozess kann ihn nie erzeugen.
+const CHECK_UMGEBUNG = "runner";
+
 // Auskunft, kein Gate: Exit bleibt 0, auch wenn ein Reviewer fehlt. Wer daraus ein
 // Gate macht, ist der Skill — er kann den Menschen fragen, dieses Kommando nicht.
 function issueReviewCheck(args = {}) {
@@ -2184,14 +2192,15 @@ function issueReviewCheck(args = {}) {
   const nurPfad = args["nur-pfad"] === true;
   const { reviewers } = issueReviewConfig();
   const ergebnis = reviewers.map((r) => {
-    if (r.kind === "claude") return { name: r.name, kind: r.kind, verfuegbar: true };
+    const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
+    if (r.kind === "claude") return { ...basis, verfuegbar: true };
     const { datei, ok, pfad } = kommandoVerfuegbar(r.command);
-    if (!ok) return { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
-    if (nurPfad) return { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "pfad" };
+    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
     const probe = probelauf(r.command, pfad);
     return probe.ok
-      ? { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "probelauf" }
-      : { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
+      ? { ...basis, verfuegbar: true, geprueft: "probelauf" }
+      : { ...basis, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
   });
   // Ohne konfigurierte Reviewer waere `every()` auf dem leeren Array true — der Vorflug
   // haette einen Lauf durchgelassen, der garantiert nichts liefert: Jede Session startet,
