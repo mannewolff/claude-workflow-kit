@@ -57,13 +57,36 @@ Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten,
 
 ### 3. Plan erstellen
 
-Der Plan benennt:
-- **Ziel** und Nutzerwirkung
-- **Betroffene Bereiche** (Dateien, Module, Schichten)
-- **Architektonische Entscheidungen** mit Begründung
-- **Geplante Änderungen** je Datei
-- **Offene Fragen** die vor der Umsetzung geklärt sein müssen — diese als explizite Stopp-Fragen hervorheben, nicht am Ende vergraben. Wenn eine Frage die Architektur betrifft, ist sie kein optionales Detail.
-- **Verifizierung** — wie wird geprüft, dass die Implementierung korrekt ist?
+Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der Arbeitspakete in `/issues`, nicht als Anregung. Jeder Plan enthält die folgenden sechs `##`-Überschriften **genau einmal und in dieser Reihenfolge**. Dazwischen dürfen Unterüberschriften ab Ebene `###` stehen, aber keine weiteren Überschriften der Ebene `##`:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeiten — **sinngemäß umformuliert wirken sie nicht**. Sie werden wörtlich übernommen: nicht umbenannt, nicht zusammengefasst, nicht umsortiert.
+
+**Die Reihenfolge ist begründet:** `## Offene Fragen` steht **vor** `## Verifizierung`. Offene Fragen sollen nicht am Ende vergraben werden — als letzter Abschnitt des Dokuments wären sie genau das.
+
+Was in die Abschnitte gehört:
+
+- `## Ziel` — was gebaut wird und welche Wirkung es für den Nutzer hat.
+- `## Betroffene Bereiche` — Dateien, Module, Schichten.
+- `## Architektonische Entscheidungen` — die getroffenen Entscheidungen, jede mit Begründung:
+
+  > Jede architektonische Entscheidung muss eine Begründung tragen, damit ihre Annahmen und Abwägungen im Review geprüft und angegriffen werden können.
+
+- `## Geplante Änderungen` — je Datei, was sich ändert.
+- `## Offene Fragen` — **Stopp-Fragen**: Fragen, deren Antwort den Zuschnitt des Plans ändert. Nachträglich entscheidbare Fragen gehören nicht hierher, sie sind Details der Umsetzung. Betrifft eine Frage die Architektur, ist sie kein optionales Detail. **Fehlerpfad:** Enthält der Abschnitt mindestens eine offene Stopp-Frage, darf der Plan nicht in Arbeitspakete überführt werden. Erst nach Beantwortung und Einarbeitung wird er erneut zur Freigabe gestellt.
+- `## Verifizierung` — **beschreibt die auszuführenden Prüfungen, nicht deren vorweggenommenes Ergebnis.**
+
+**Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.`
+
+**Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
 
 ### 4. Plan zur Diskussion stellen
 
