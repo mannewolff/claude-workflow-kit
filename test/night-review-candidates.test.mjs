@@ -54,23 +54,34 @@ test("selectReviewCandidates: [Fachlich] und [Idee] werden uebersprungen", () =>
   assert.match(r.uebersprungen[1].grund, /idee/i);
 });
 
+test("selectReviewCandidates: [Plan] wird uebersprungen, mit [Plan] im Grund", () => {
+  // Das passende Label ist noetig: Ohne es greift der Label-Filter zuerst und der
+  // Grund lautete "kein Label" — der Test pruefte dann am Plan-Gate vorbei (#276).
+  const r = selectReviewCandidates([{ id: "1", title: "[Plan] Beispiel", labels: [LABEL] }], { label: LABEL });
+  assert.deepEqual(r.kandidaten, []);
+  assert.equal(r.uebersprungen.length, 1);
+  assert.match(r.uebersprungen[0].grund, /\[Plan\]/);
+});
+
 test("selectReviewCandidates: die Praefixe greifen unabhaengig von Schreibweise und Leerraum", () => {
   const issues = [
     issue(1, "[FACHLICH] Gross"),
     issue(2, "  [idee] mit Leerraum davor"),
     issue(3, "[Fachlich]Ohne Leerzeichen dahinter"),
+    issue(4, "[Plan] Ein Weg"),
+    issue(5, "  [PLAN]Gross, Leerraum davor, keiner dahinter"),
   ];
   const r = selectReviewCandidates(issues, { label: LABEL });
   assert.deepEqual(r.kandidaten, []);
-  assert.equal(r.uebersprungen.length, 3);
+  assert.equal(r.uebersprungen.length, 5);
 });
 
 test("selectReviewCandidates: ein Praefix mitten im Titel zaehlt nicht", () => {
   // Nur der Anfang entscheidet — sonst faellt ein Issue heraus, das ueber ein
-  // fachliches Issue nur SPRICHT.
-  const issues = [issue(1, "Doku: [Fachlich]-Issues beschreiben")];
+  // fachliches Issue oder ein Plandokument nur SPRICHT.
+  const issues = [issue(1, "Doku: [Fachlich]-Issues beschreiben"), issue(2, "Doku zu [Plan]-Issues")];
   const r = selectReviewCandidates(issues, { label: LABEL });
-  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1"]);
+  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1", "2"]);
 });
 
 test("selectReviewCandidates: ein fehlendes labels-Feld stuerzt nicht ab", () => {

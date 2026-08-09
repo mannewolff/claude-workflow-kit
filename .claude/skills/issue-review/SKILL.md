@@ -66,7 +66,7 @@ node .claude/kit/board.mjs issue list --status backlog
 
 **Mit Argumenten:** genau die übergebenen Nummern, unabhängig von Spalte und Marker. Ein erneuter Review ist ausdrücklich erlaubt — etwa nachdem sich die Anforderung geändert hat.
 
-**Übersprungen werden** Issues mit Titel-Präfix `[Fachlich]` oder `[Idee]`. Sie sind keine technischen Issues, und ihr Zuschnitt folgt anderen Regeln (siehe `/fachplan`). Nenne sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+**Übersprungen werden** Issues mit Titel-Präfix `[Fachlich]`, `[Idee]` oder `[Plan]`. Sie sind keine technischen Issues, und ihr Zuschnitt folgt anderen Regeln (siehe `/fachplan` und `/plan`). Nenne sie in der Zusammenfassung, damit niemand sie für geprüft hält.
 
 ### 2. Autor-Modell lesen und Reviewer wählen
 
@@ -334,7 +334,7 @@ Issue-Review: opus, codex (2026-08-06, Nachtlauf)
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
 
-Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Fachlich]`- und `[Idee]`-Issues, Befunde gehen unverändert als Kommentar ans Board.
+Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Fachlich]`-, `[Idee]`- und `[Plan]`-Issues, Befunde gehen unverändert als Kommentar ans Board.
 
 ## Abschluss
 
@@ -364,5 +364,5 @@ Dann der Hinweis auf den nächsten Schritt:
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - Kein Ziehen nach Ready — das ist das menschliche GO
-- Kein Review von `[Fachlich]`- und `[Idee]`-Issues
+- Kein Review von `[Fachlich]`-, `[Idee]`- und `[Plan]`-Issues
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde

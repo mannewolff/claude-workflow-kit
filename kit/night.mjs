@@ -69,8 +69,9 @@
  * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
- * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146)
- * und `[Idee]` (rohe Idee ohne /plan-Zyklus, #192).
+ * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146),
+ * `[Idee]` (rohe Idee ohne /plan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
+ * per /issues in Arbeitspakete zerlegt werden, #276).
  *
  * Review-Modus (--review, Issue #233): Statt Ready zu implementieren, laesst der
  * Runner BACKLOG-Issues von /issue-review pruefen. Warum der Backlog und nicht
@@ -333,6 +334,14 @@ function isIdee(title) {
   return /^\s*\[idee\]/i.test(title || "");
 }
 
+// [Plan]-Titelpraefix = Plandokument aus /plan (Issue #276). Ein Plan beschreibt einen
+// Weg, er ist keine Aufgabe: Er wird per /issues erst in Arbeitspakete zerlegt. Ohne
+// dieses Gate faellt er unter keine der beiden Sorten darueber und kaeme als normales
+// Arbeitspaket durch — er wuerde implementiert, und das saehe am Board wie ein Erfolg aus.
+function isPlan(title) {
+  return /^\s*\[plan\]/i.test(title || "");
+}
+
 // --- Review-Kandidaten (Issue #232) ---
 
 /**
@@ -366,6 +375,10 @@ export function selectReviewCandidates(issues, opts = {}) {
       eintrag("fachliches Issue ([Fachlich])");
     } else if (isIdee(issue.title)) {
       eintrag("Idee ([Idee])");
+    } else if (isPlan(issue.title)) {
+      // Bis zur stufenabhaengigen Review-Auswahl (eigenes Folge-Issue) fallen
+      // [Plan]-Issues unabhaengig von ihrem Inhalt heraus (Issue #276).
+      eintrag("Plan-Dokument ([Plan])");
     } else {
       kandidaten.push(issue);
     }
@@ -1318,6 +1331,10 @@ async function main() {
         log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Idee, wird nicht implementiert)`);
         continue;
       }
+      if (isPlan(issue.title)) {
+        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)`);
+        continue;
+      }
       const full = board("issue", "get", String(issue.id));
       const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
       if (unmet.length > 0) {
@@ -1365,6 +1382,14 @@ async function main() {
       log(`#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`);
       board("issue", "comment", String(top.id), "--text",
         `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`);
+      board("issue", "move", String(top.id), "backlog");
+      deferred++;
+      continue;
+    }
+    if (isPlan(top.title)) {
+      log(`#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`);
+      board("issue", "comment", String(top.id), "--text",
+        `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`);
       board("issue", "move", String(top.id), "backlog");
       deferred++;
       continue;

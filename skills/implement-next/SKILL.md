@@ -33,7 +33,7 @@ Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb de
 
 **Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
-**Fachliche Issues und Ideen überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife) oder `[Idee]` (rohe Idee ohne `/plan`-Zyklus), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
+**Fachliche Issues, Ideen und Plandokumente überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Idee ohne `/plan`-Zyklus) oder `[Plan]` (Plandokument aus `/plan` — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
 
 ```
 Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
@@ -41,6 +41,10 @@ Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische 
 
 ```
 Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
+```
+
+```
+Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
 
 Ohne Argument danach mit dem nächsten Ready-Issue fortfahren (bzw. ohne Fehler enden, wenn keines bleibt). Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue.
@@ -132,7 +136,7 @@ Nach dem Abschlussbericht endet der Skill — **kein weiteres Issue**, auch wenn
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel) und Ideen (`[Idee]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
