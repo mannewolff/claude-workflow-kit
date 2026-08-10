@@ -1,6 +1,16 @@
 # Changelog
 
-Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht.
+Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
+
+## [1.36.3] - 2026-08-10
+- reviewStufen-Config und issue-review roles --stufe (#278)
+- Gate fuer Plandokumente: [Plan]-Titel werden nie implementiert (#276)
+- Reviewer-Vorflug in einer Session statt im Runner (#269)
+- config: codex-Reviewer mit festem Modell und hohem Reasoning-Aufwand
+- plan: verbindliches Format fuer das Plandokument (#274)
+- issue create: Body aus Datei oder stdin (#271)
+- issue-review: der Reviewer darf den Bestand lesen (#268)
+- Changelog: Ablauf umdrehen, unveroeffentlichte Commits als [Unreleased] (#265)
 
 ## [1.36.2] - 2026-08-08
 - board.mjs: Text aus Datei oder stdin statt nur als Argument (#270)
