@@ -30,6 +30,7 @@
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
+  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -87,6 +88,7 @@ Nutzung:
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
+  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
 
   node board.mjs --version
 
@@ -1937,6 +1939,17 @@ async function kontextLastLog(args) {
 const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
 
+// Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
+// das einzelne Arbeitspaket. Jede schaut anders hin und ist anders besetzt — fachlich
+// und Plan mit je zwei Reviewern, das Arbeitspaket mit einem.
+const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
+
+// Rueckfallebene, wenn `reviewStufen` ganz fehlt: das Verhalten vor dieser Aenderung —
+// zwei Reviewer mit den beiden Rollen, die /issue-review schon kennt. Ein Kit-Update
+// darf keinem Bestandsprojekt den Review umbauen, dieselbe Vorsicht wie bei
+// `requiredBeforeReady`, das per Default aus ist.
+const REVIEW_STUFEN_DEFAULT = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+
 /**
  * Uebersetzt einen Autor-Wert auf einen Reviewer-Kurznamen (Issue #241).
  *
@@ -1985,7 +1998,11 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   // prueft, soll es ablesen koennen statt es auszurechnen.
   const genannt = pairs?.[schluessel];
   if (Array.isArray(genannt) && genannt.length > 0) {
-    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean);
+    // Auch hier auf `anzahl` kuerzen, nicht nur im Regel-Zweig unten (Issue #278):
+    // Sonst liefert eine Stufe mit einem Reviewer trotzdem beide Namen aus der
+    // Paar-Tabelle — der eine Reviewer waere stillschweigend zwei geblieben.
+    // Gekuerzt wird in konfigurierter Reihenfolge, sie ist die Steuerung.
+    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean).slice(0, anzahl);
     return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
   }
   const passend = (alle || []).filter((r) => r.name !== schluessel);
@@ -2026,13 +2043,61 @@ function validateReviewers(reviewers) {
   return reviewers;
 }
 
+/**
+ * Liest den `reviewStufen`-Block und prueft ihn (Issue #278).
+ *
+ * Hart wie im uebrigen Config-Bereich, aus derselben Begruendung wie validateReviewers
+ * und validatePairs: Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren
+ * unterbesetzten Lauf — und der sieht am Board aus wie ein vollstaendiger.
+ *
+ * Defaults greifen ausschliesslich, wenn der GESAMTE Block fehlt. Waere eine einzelne
+ * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
+ * Rueckfallebene nicht unterscheiden.
+ */
+function validateReviewStufen(block) {
+  if (block === undefined || block === null) {
+    return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT])), stufenQuelle: "default" };
+  }
+  if (typeof block !== "object" || Array.isArray(block)) {
+    fail(`reviewStufen: muss ein Objekt mit den Stufen ${REVIEW_STUFEN.join(", ")} sein.`);
+  }
+  const stufen = {};
+  for (const stufe of REVIEW_STUFEN) {
+    const wo = `reviewStufen.${stufe}`;
+    const eintrag = block[stufe];
+    if (!eintrag || typeof eintrag !== "object" || Array.isArray(eintrag)) {
+      fail(`${wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.`);
+    }
+    const { reviewer, rollen } = eintrag;
+    if (!Number.isInteger(reviewer) || reviewer < 1) {
+      fail(`${wo}.reviewer: muss eine positive Ganzzahl sein, ist '${reviewer}'.`);
+    }
+    if (!Array.isArray(rollen)) fail(`${wo}.rollen: muss eine Liste von Rollennamen sein.`);
+    rollen.forEach((name, i) => {
+      if (typeof name !== "string" || !name) fail(`${wo}.rollen[${i}]: muss ein nicht leerer Rollenname sein.`);
+    });
+    if (new Set(rollen).size !== rollen.length) fail(`${wo}.rollen: nennt einen Rollennamen doppelt.`);
+    if (rollen.length !== reviewer) {
+      fail(`${wo}: rollen.length (${rollen.length}) stimmt nicht mit reviewer (${reviewer}) ueberein.`);
+    }
+    stufen[stufe] = { reviewer, rollen };
+  }
+  return { stufen, stufenQuelle: "stufen" };
+}
+
 function issueReviewConfig() {
-  const block = loadConfig().issueReview || {};
+  const config = loadConfig();
+  const block = config.issueReview || {};
   const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
     rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
     reviewers,
     pairs: validatePairs(block.pairs, reviewers),
+    // `reviewStufen` steht auf oberster Ebene, nicht in `issueReview`: Die Besetzung
+    // gilt fuer die drei Stufen der Pruefung, waehrend `issueReview` beschreibt, WER
+    // ueberhaupt prueft. Geprueft wird trotzdem hier, damit ein kaputter Block bei
+    // jedem issue-review-Befehl auffaellt und nicht erst beim ersten `roles`.
+    reviewStufen: validateReviewStufen(config.reviewStufen),
   };
 }
 
@@ -2157,6 +2222,38 @@ function issueReviewReviewers(args) {
   out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs), rounds });
 }
 
+/**
+ * Besetzung und Blickwinkel einer Pruefstufe (Issue #278).
+ *
+ * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
+ * `pairs` und fuer den Selbstausschluss. Ohne ihn koennte der Befehl genau das nicht
+ * leisten, wofuer es ihn gibt — und wuerde trotzdem eine Reviewer-Liste ausgeben.
+ *
+ * Zwei Quellen, zwei Felder: `quelle` bleibt die Quelle der Reviewer-AUSWAHL
+ * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
+ * STUFENBESETZUNG ("stufen" | "default").
+ */
+function issueReviewRoles(args) {
+  const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
+  if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  if (!REVIEW_STUFEN.includes(stufe)) {
+    fail(`--stufe '${stufe}' ist keine bekannte Stufe. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  }
+  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
+  if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
+
+  const { reviewers, pairs, reviewStufen } = issueReviewConfig();
+  const { reviewer, rollen } = reviewStufen.stufen[stufe];
+  out({
+    stufe,
+    reviewer,
+    rollen,
+    stufenQuelle: reviewStufen.stufenQuelle,
+    autor,
+    ...pickReviewers(reviewers, autor, reviewer, pairs),
+  });
+}
+
 // Die Tabelle, nach der man eigentlich fragt: wer prueft wen. Autoren sind alle
 // Reviewer-Namen plus alle pairs-Schluessel — letztere auch dann, wenn sie selbst nicht
 // als Reviewer auftreten (ein Modell kann schreiben, ohne zu pruefen).
@@ -2218,6 +2315,7 @@ async function dispatchIssueReview(command, args) {
     case "reviewers": return issueReviewReviewers(args);
     case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
+    case "roles": return issueReviewRoles(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);
