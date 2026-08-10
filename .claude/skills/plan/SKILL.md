@@ -95,6 +95,38 @@ Präsentiere den Plan und warte auf Feedback. Implementiere **nicht**, bevor der
 Typischer Abschluss:
 > "Soll ich so vorgehen? Dann lege ich auf GO die GitHub-Issues an (Schritt 3)."
 
+### 5. Plan-Dokument anlegen (nur Bahn 2, nach der Freigabe)
+
+Ist der Plan freigegeben, hält der Skill ihn als eigenes Issue fest — das **Plan-Dokument**. Ohne es ist der Plan das einzige Artefakt der Kette ohne Ort: Er entsteht im Gespräch, wird einmal überflogen und verschwindet. Die technischen Issues verweisen später auf die fachliche Quelle, aber was **dazwischen** entschieden wurde — Architektur, Schnitt, Abwägungen — wäre nach der Sitzung nicht mehr rekonstruierbar.
+
+**Bei Bahn 1 entsteht kein Plan-Dokument.** Dort gibt es keinen Plan; ein leeres `[Plan]`-Ticket je Kleinigkeit wäre Lärm.
+
+**Titel:** `[Plan] <Titel des Vorhabens>`. Das Präfix ist die verbindliche Konvention, an der die übrigen Skills und der Nacht-Runner Plan-Dokumente erkennen und von Arbeitspaketen unterscheiden — dieselbe Mechanik wie `[Fachlich]` und `[Idee]`. Bei `/plan #N` entsteht der Titel aus dem Titel des Quell-Issues **ohne dessen `[Fachlich]`-Präfix**; sonst aus einer knappen Bezeichnung des `## Ziel`-Abschnitts.
+
+**Body:** der freigegebene Plan im verbindlichen Format aus Schritt 3 — alle sechs Abschnitte, unverändert übernommen. Darüber, vor `## Ziel`, die Kopfzeilen:
+
+- `Plan-Modell: <wert>` — **immer**.
+- `Fachliche Quelle: Issue #N` — **nur**, wenn der Plan aus `/plan #N` gegen ein `[Fachlich]`-Issue entstand. Bei einem Plan aus dem Chat fehlt diese Zeile; sie zu erfinden behauptete eine Quelle, die es nicht gibt.
+
+**Angelegt über:**
+
+```bash
+node .claude/kit/board.mjs issue create \
+  --title "[Plan] <Titel>" \
+  --author-model "<Wert aus Plan-Modell>" \
+  --body -
+```
+
+Der Body geht über **stdin** (`--body -`, Issue #271) — ein Plan mit Codeblöcken und Tabellen läuft als Kommandozeilen-Argument in die Quoting-Grenze.
+
+**`--author-model` ist Pflicht.** Der Adapter lehnt jeden Body ohne `Autor-Modell:`-Zeile ab, sofern weder das Flag noch `KIT_AGENT_MODEL` gesetzt ist (`kit/board.mjs`, Issue #266). Ein Plan-Body trägt aber `Plan-Modell:`, nicht `Autor-Modell:` — ohne das Flag scheitert das Anlegen bei jedem interaktiven Durchlauf zur Laufzeit, während jeder Texttest grün bleibt.
+
+**Rückmeldung.** Der Skill meldet die Nummer des Plan-Dokuments und nennt sie als Bezug für den nächsten Schritt.
+
+**Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` statt einer Nummer `{ ideaId, pending: true }`, liegt das Plan-Dokument als board-lose Idee im Projekt-Ideen-Pool. Der Skill meldet dann die `ideaId` und weist darauf hin, dass der Mensch es erst einplanen muss — vorher existiert keine Nummer, unter der es adressierbar wäre.
+
+**Fehlerfall:** Schlägt das Anlegen fehl, meldet der Skill **weder eine Nummer noch einen erfolgreichen Abschluss**. Ein Plan, der nirgends steht, ist kein festgehaltener Plan.
+
 ## Stop-Punkt
 
-Dieser Skill endet mit einem Plan-Dokument zur menschlichen Freigabe. Kein Code, kein Commit, keine Issues — erst nach explizitem GO.
+Dieser Skill endet mit einem Plan-Dokument zur menschlichen Freigabe. Kein Code, kein Commit, keine **technischen** Issues, keine Ready-Bewegung — erst nach explizitem GO. Das `[Plan]`-Dokument ist die einzige Ausnahme: Es entsteht bei Bahn 2 unmittelbar nach der Freigabe, weil es den freigegebenen Stand festhält und nicht dessen Umsetzung vorwegnimmt.

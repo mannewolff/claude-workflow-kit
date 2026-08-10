@@ -220,7 +220,9 @@ Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kom
 
 Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Anschließend stellt er den Plan zur Diskussion.
 
-Der Skill implementiert nichts. Er stellt keine Issues an. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
+Der Skill implementiert nichts. **Technische Issues stellt er nicht an** — die entstehen erst in `/issues`, nach deinem GO. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
+
+Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 das Plandokument selbst als Issue mit dem Titel-Präfix `[Plan]` an — mit dem Plan als Body, `Plan-Modell:` im Kopf und, falls der Plan aus `/plan #N` gegen ein fachliches Issue entstand, `Fachliche Quelle: Issue #N`. Es hält den freigegebenen Stand fest, statt ihn umzusetzen: Was zwischen Anforderung und Arbeitspaketen entschieden wurde — Architektur, Schnitt, Abwägungen — stünde sonst nirgends. `[Plan]`-Issues werden nie implementiert (siehe das Gate weiter unten); zerlegt werden sie per `/issues #N`. Bei Bahn 1 entsteht kein Plandokument.
 
 ### /issues
 
