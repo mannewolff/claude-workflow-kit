@@ -525,7 +525,7 @@ Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none`
 
 Zwei Läufe an zwei Abenden statt zweier Phasen in einer Nacht. Deshalb ist `--review` auch **exklusiv**: Die Implementierungsschleife läuft dann nicht.
 
-Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Übersprungen werden wie überall `[Fachlich]`-, `[Idee]`- und `[Plan]`-Issues.
+Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Welche Dokumente er nimmt, steuert `--stufe <fachlich|plan|issue>` (Default `issue`): `fachlich` nimmt genau die `[Fachlich]`-Issues, `plan` genau die `[Plan]`-Issues, `issue` weder das eine noch das andere. `[Idee]` bleibt in jeder Stufe ausgeschlossen. Ein Aufruf fährt genau eine Stufe — zwischen den Stufen steht die menschliche Freigabe. Übersprungen werden damit.
 
 **Der Vorflug ist hier ein Gate.** `board.mjs issue-review check` ist für sich nur eine Auskunft — interaktiv fragt der Skill den Menschen, wenn ein Reviewer fehlt. Nachts fragt niemand, und ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Fehlt ein Reviewer oder ist der Tracker nicht erreichbar, stoppt der Lauf deshalb hart, **bevor** die erste Review-Session startet. Ein Opt-out gibt es bewusst nicht: Wer wissen will, ob alles steht, fährt vorher `--dry-run` — der meldet den Befund und bricht gerade nicht ab. Die `buildChecks`-Pflicht entfällt in diesem Modus, weil nichts gebaut und nichts committet wird.
 

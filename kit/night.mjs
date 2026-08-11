@@ -33,6 +33,9 @@
  *                      /issue-review pruefen, statt Ready-Issues zu
  *                      implementieren. Exklusiv zur Implementierungsschleife.
  *   --review-label <n> Routing-Label des Review-Modus (Default kit:nightreview)
+ *   --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
+ *                      (Default issue), nur mit --review. Genau eine Stufe pro
+ *                      Aufruf (Issue #283).
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -167,6 +170,10 @@ Review-Modus (prueft statt zu implementieren):
                      Ready-Issues zu implementieren. Exklusiv: die
                      Implementierungsschleife laeuft dann nicht.
   --review-label <n> nur Backlog-Issues mit diesem Label pruefen
+  --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
+                     (Default issue). Nur zusammen mit --review. Genau eine
+                     Stufe pro Aufruf — zwischen den Stufen steht die
+                     menschliche Freigabe.
                      (Default ${DEFAULT_REVIEW_LABEL}); 'none' schaltet den Filter ab
 
   Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich —
@@ -198,7 +205,7 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 }
 
 function parseArgs(argv) {
-  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL };
+  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, stufe: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--help" || a === "-h") {
@@ -214,6 +221,7 @@ function parseArgs(argv) {
     else if (a === "--label") args.label = argv[++i];
     else if (a === "--review") args.review = true;
     else if (a === "--review-label") args.reviewLabel = argv[++i];
+    else if (a === "--stufe") args.stufe = argv[++i];
     else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
     else if (a === "--dry-run") args.dryRun = true;
     else if (a === "--yolo") args.yolo = true;
@@ -223,6 +231,22 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
+
+  // Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem
+  // Board-Zugriff und Session-Start greifen. Ein stiller Rueckfall auf `issue`
+  // waere der schlimmere Ausgang — der Lauf saehe erfolgreich aus und pruefte
+  // die falsche Sorte Dokument.
+  if (args.stufe !== null) {
+    if (!args.review) {
+      fail("--stufe gilt nur im Review-Modus — zusammen mit --review verwenden.");
+    }
+    if (typeof args.stufe !== "string" || args.stufe.startsWith("--") || args.stufe.trim() === "") {
+      fail(`--stufe braucht einen Wert: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
+    }
+    if (!NIGHT_REVIEW_STUFEN.includes(args.stufe)) {
+      fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
+    }
+  }
   return args;
 }
 
@@ -330,6 +354,32 @@ function hasReviewMarker(body) {
   return /^\s*Issue-Review:\s*\S/im.test(body || "");
 }
 
+// SYNC: dieselben Werte wie REVIEW_STUFEN in kit/board.mjs (Issue #278). Bekommt
+// board.mjs eine vierte Stufe, muss sie hier mit — sonst nimmt der Runner sie als
+// unbekannten Wert an und bricht ab, waehrend der Skill sie kennt.
+const NIGHT_REVIEW_STUFEN = ["fachlich", "plan", "issue"];
+
+// Welcher Marker die jeweilige Stufe nachweist (Issue #279).
+const STUFEN_MARKER = {
+  fachlich: "Fachplan-Review:",
+  plan: "Plan-Review:",
+  issue: "Issue-Review:",
+};
+
+/**
+ * Der Marker-Vergleich des Review-Modus, stufenabhaengig.
+ *
+ * Bewusst NICHT als Parameter an hasReviewMarker: Die Funktion dient dem
+ * Implementierungs-Gate `requiredBeforeReady`, und dort darf ausschliesslich
+ * `Issue-Review:` zaehlen (Issue #279). Ein Stufenparameter dort haette das
+ * Ready-Gate mitveraendert — der naheliegende, aber falsche Weg.
+ */
+export function hasStageMarker(body, stufe) {
+  const marker = STUFEN_MARKER[stufe];
+  if (!marker) return false;
+  return new RegExp(`^\\s*${marker}\\s*\\S`, "im").test(body || "");
+}
+
 function isIdee(title) {
   return /^\s*\[idee\]/i.test(title || "");
 }
@@ -364,20 +414,29 @@ function isPlan(title) {
  */
 export function selectReviewCandidates(issues, opts = {}) {
   const label = opts.label ?? null;
+  const stufe = opts.stufe ?? "issue";
   const kandidaten = [];
   const uebersprungen = [];
 
   for (const issue of issues || []) {
     const eintrag = (grund) => uebersprungen.push({ id: issue.id, title: issue.title, grund });
+    // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
+    // aus, sie umgeht die Freigabe nicht.
     if (label !== null && !(issue.labels || []).includes(label)) {
       eintrag(`kein Label '${label}'`);
+    } else if (isIdee(issue.title)) {
+      // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
+      // ist kein pruefbares Dokument (Issue #192).
+      eintrag("Idee ([Idee])");
+    } else if (stufe === "fachlich") {
+      if (isFachlich(issue.title)) kandidaten.push(issue);
+      else eintrag("kein fachliches Issue ([Fachlich])");
+    } else if (stufe === "plan") {
+      if (isPlan(issue.title)) kandidaten.push(issue);
+      else eintrag("kein Plan-Dokument ([Plan])");
     } else if (isFachlich(issue.title)) {
       eintrag("fachliches Issue ([Fachlich])");
-    } else if (isIdee(issue.title)) {
-      eintrag("Idee ([Idee])");
     } else if (isPlan(issue.title)) {
-      // Bis zur stufenabhaengigen Review-Auswahl (eigenes Folge-Issue) fallen
-      // [Plan]-Issues unabhaengig von ihrem Inhalt heraus (Issue #276).
       eintrag("Plan-Dokument ([Plan])");
     } else {
       kandidaten.push(issue);
@@ -1042,6 +1101,7 @@ function issueSpur(full) {
  * Kandidaten liegen bereits im Backlog.
  */
 async function runReviewLoop(kandidaten, args) {
+  const stufe = args.stufe ?? "issue";
   let sessions = 0;
   let ohneBefund = 0;
   let mitBefund = 0;
@@ -1055,7 +1115,7 @@ async function runReviewLoop(kandidaten, args) {
       continue;
     }
     const vorher = board("issue", "get", String(kandidat.id));
-    if (hasReviewMarker(vorher.body)) {
+    if (hasStageMarker(vorher.body, stufe)) {
       log(`#${kandidat.id} uebersprungen: traegt bereits einen Issue-Review-Marker.`);
       uebersprungen++;
       continue;
@@ -1093,7 +1153,7 @@ async function runReviewLoop(kandidaten, args) {
     }
 
     const nachher = board("issue", "get", String(kandidat.id));
-    if (hasReviewMarker(nachher.body)) {
+    if (hasStageMarker(nachher.body, stufe)) {
       ohneBefund++;
       log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
     } else if (issueSpur(nachher) !== spurVorher) {
@@ -1107,7 +1167,7 @@ async function runReviewLoop(kandidaten, args) {
     }
   }
 
-  log(`Nacht-Review beendet: ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Nacht-Review beendet (Stufe ${stufe}): ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   process.exit(hardStop ? 1 : 0);
 }
@@ -1158,7 +1218,7 @@ async function main() {
 
   const modus = args.review ? "Review" : "Implementierung";
   const aktivesLabel = args.review ? args.reviewLabel : args.label;
-  log(`Nacht-Runner startet (Modus ${modus}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
+  log(`Nacht-Runner startet (Modus ${modus}${args.review ? `, Stufe ${args.stufe ?? "issue"}` : ""}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -1210,8 +1270,9 @@ async function main() {
   // das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
   if (args.review) {
     const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
+    const stufe = args.stufe ?? "issue";
     const backlog = board("issue", "list", "--status", "backlog");
-    const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel });
+    const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
 
     for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
 
@@ -1277,7 +1338,7 @@ async function main() {
     }
 
     if (kandidaten.length === 0) {
-      log("Keine Review-Kandidaten im Backlog — nichts zu tun.");
+      log(`Keine Review-Kandidaten im Backlog (Stufe ${stufe}) — nichts zu tun.`);
       if (reviewLabel !== null && backlog.length > 0) {
         const vorhanden = [...new Set(backlog.flatMap((i) => i.labels || []))];
         log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
@@ -1290,7 +1351,7 @@ async function main() {
       let geplant = 0;
       for (const k of kandidaten) {
         const full = board("issue", "get", String(k.id));
-        if (hasReviewMarker(full.body)) {
+        if (hasStageMarker(full.body, stufe)) {
           log(`  #${k.id} ${k.title} -> wuerde uebersprungen (Review-Marker schon im Body)`);
         } else if (geplant >= args.max) {
           log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
@@ -1299,7 +1360,7 @@ async function main() {
           log(`  #${k.id} ${k.title} -> Review-Session ${geplant}`);
         }
       }
-      log(`Dry-Run beendet: ${geplant} Review-Session(s) wuerden starten.`);
+      log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Review-Session(s) wuerden starten.`);
       process.exit(0);
     }
 

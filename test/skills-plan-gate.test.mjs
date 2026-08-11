@@ -51,10 +51,16 @@ test("dokumentation: das Gate kennt drei Sorten, [Plan] eingeschlossen", () => {
   assert.match(doku, /\[Plan\]/, "das Praefix wird nicht genannt");
 });
 
-test("dokumentation: der --review-Abschnitt nennt [Plan] als uebersprungen", () => {
+// Seit Issue #283 haengt es von --stufe ab, was der Nacht-Review nimmt: [Plan] ist
+// nur in der Default-Stufe uebersprungen, in der Stufe `plan` ist es genau das
+// Ziel. Der frueher hier gepruefte Pauschalsatz waere jetzt falsch. Was bleibt:
+// [Idee] ist in JEDER Stufe ausgeschlossen, und die Doku muss die Stufen nennen.
+test("dokumentation: der --review-Abschnitt nennt die drei Stufen und den [Idee]-Ausschluss", () => {
   const doku = lies("docs", "dokumentation.md");
-  assert.match(doku, /Übersprungen werden wie überall `\[Fachlich\]`-, `\[Idee\]`- und `\[Plan\]`-Issues/,
-    "der --review-Abschnitt zaehlt [Plan] nicht auf");
+  assert.match(doku, /--stufe <fachlich\|plan\|issue>/, "das Flag fehlt in der Doku");
+  assert.match(doku, /Default `issue`/, "der Default fehlt");
+  assert.match(doku, /`\[Idee\]` bleibt in jeder Stufe ausgeschlossen/,
+    "der stufenuebergreifende [Idee]-Ausschluss fehlt");
 });
 
 // Seit Issue #279 schliesst /issue-review [Fachlich] und [Plan] NICHT mehr aus --
