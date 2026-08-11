@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.36.5] - 2026-08-11
+- Tracker-Wechsel dokumentiert, GitHub als Archiv (#294)
+- Tracker auf kanban-kit umgestellt (#293)
+- Implementierungsplan für codex hinzugefügt
+- migrate-issues.mjs: direct beim Import, Spalten-Abbildung im Gate (#291)
+
 ## [1.36.4] - 2026-08-11
 - board.mjs: kanban-kit erwartet direct statt ideaStored (#295)
 - migrate-issues.mjs: Export-Query und sechste Board-Spalte (#291)
