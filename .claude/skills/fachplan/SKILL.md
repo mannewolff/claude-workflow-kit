@@ -26,6 +26,8 @@ Body im Story-Format mit vier Abschnitten:
 ## Ziel
 Wer braucht was, und warum? (Nutzerwirkung in PO-Sprache)
 
+Autor-Modell: <wert>
+
 ## Fachliche Akzeptanzkriterien
 Woran erkennt der PO, dass es das ist? Konkret und aus Nutzersicht prüfbar.
 
@@ -38,9 +40,29 @@ Was muss im Groomen geklärt werden?
 
 **Strikt technikfrei:** keine Dateien, keine Architektur, keine Implementierungsdetails. Der Maßstab: Ein PO ohne Code-Kenntnis versteht jede Zeile.
 
+**Die `Autor-Modell:`-Zeile gehört in den Abschnitt `## Ziel`**, analog zur Konvention in `/issues`. Der Wert entsteht in drei Stufen:
+
+1. `KIT_AGENT_MODEL`, sofern nicht leer — der Nacht-Runner füllt sie aus `--model`
+2. sonst die **Selbstauskunft der Session**: das Modell, unter dem sie läuft
+3. nur wenn beides nicht zu ermitteln ist, wörtlich `unbekannt`
+
+Die Zeile wird nie weggelassen, und ihr Wert ist nie leer. Seit Issue #266 legt `board.mjs issue create` kein Issue mehr ohne sie an — das gilt für fachliche Issues genauso wie für Arbeitspakete.
+
+Der Grund ist nicht die Leitplanke, sondern das, wofür es sie gibt: Ohne die Autor-Modell-Angabe ist nicht bestimmbar, welches Modell das fachliche Issue prüfen darf, ohne sein eigenes Dokument zu prüfen. Ein Prüfer, der seinen eigenen Text liest, ist keiner.
+
 ```bash
-node .claude/kit/board.mjs issue create --title "[Fachlich] Titel" --body "..."
+node .claude/kit/board.mjs issue create --title "[Fachlich] Titel" --body - <<'BODY'
+## Ziel
+...
+
+Autor-Modell: <wert>
+
+## Fachliche Akzeptanzkriterien
+...
+BODY
 ```
+
+Der Body geht über **stdin** (Issue #271). Ein Story-Body mit Aufzählungen und Anführungszeichen läuft als Kommandozeilen-Argument in dieselbe Quoting-Grenze wie ein technischer. Der Heredoc-Marker ist **quotiert** (`<<'BODY'`), damit die Shell Backticks und `$` im Text nicht auswertet.
 
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` eine `ideaId` mit `pending: true`, liegt das fachliche Issue als board-lose Idee im Projekt-Ideen-Pool. Adressierbar (#N) und groombar wird es erst, wenn der Mensch es einplant — Pool = ungesichtete Rohanforderung, Backlog = fachlich in Arbeit.
 
@@ -65,7 +87,15 @@ Der Grund ist inhaltlich: Der Body ist der **verhandelte Stand**, Kommentare sin
 
 Diese Abschnitte kommen in den Body, nicht als Kommentar.
 
-**Werkzeug-Einschränkung, solange sie besteht:** `board.mjs` hat keinen Befehl, den Body eines bestehenden Issues zu ändern (nur `create`, `get`, `list`, `move`, `comment`), und nicht jede Tracker-API bietet dafür ein Update. Wo die KI den ergänzten Body nicht selbst schreiben kann, gibt sie ihn vollständig im Chat aus, und der Mensch fügt ihn im Board ein. Fällt die Einschränkung weg, schreibt die KI direkt.
+**So kommt der ergänzte Body ins Board:**
+
+```bash
+node .claude/kit/board.mjs issue update <id> --body-file <pfad>
+```
+
+`issue update` gibt es seit Issue #237, `--body-file` seit #270. Die Datei gehört **außerhalb des Projektverzeichnisses** — eine Datei im Repo macht den Working Tree unsauber, und darauf stoppt der Nacht-Runner hart.
+
+**Die vorhandene `Autor-Modell:`-Zeile muss dabei erhalten bleiben.** Anders als `issue create` prüft `issue update` sie nicht: Der Body wird durchgeschrieben, wie er kommt. Eine Grooming-Session, die den Body neu formuliert und die Zeile dabei vergisst, verliert sie stillschweigend — ohne Fehler, ohne Warnung. Wer den Body ersetzt, übernimmt die Zeile aus dem alten Stand.
 
 ## Stop-Punkte
 
