@@ -58,7 +58,7 @@ Bei `--dry-run` endet der Skill hier. Er listet zusätzlich, welche Issues er be
 
 ### 1. Issues bestimmen
 
-**Ohne Argumente:** alle Issues in Backlog, die noch keine Marker-Zeile `Issue-Review:` im Body tragen.
+**Ohne Argumente:** alle Dokumente in Backlog, die noch keinen Marker **ihrer Stufe** tragen. Welcher Marker das ist, entscheidet Schritt 1b — für ein Arbeitspaket `Issue-Review:`, für eine fachliche Anforderung `Fachplan-Review:`, für ein Plandokument `Plan-Review:`.
 
 ```bash
 node .claude/kit/board.mjs issue list --status backlog
@@ -66,7 +66,36 @@ node .claude/kit/board.mjs issue list --status backlog
 
 **Mit Argumenten:** genau die übergebenen Nummern, unabhängig von Spalte und Marker. Ein erneuter Review ist ausdrücklich erlaubt — etwa nachdem sich die Anforderung geändert hat.
 
-**Übersprungen werden** Issues mit Titel-Präfix `[Fachlich]`, `[Idee]` oder `[Plan]`. Sie sind keine technischen Issues, und ihr Zuschnitt folgt anderen Regeln (siehe `/fachplan` und `/plan`). Nenne sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+**Übersprungen werden** nur Issues mit Titel-Präfix `[Idee]` — eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument. Nenne sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+
+`[Fachlich]` und `[Plan]` werden **nicht mehr übersprungen**: Sie bestimmen die Prüfstufe (Schritt 1b).
+
+### 1b. Stufe bestimmen
+
+Die Stufe folgt dem Titel-Präfix:
+
+| Präfix | Stufe | Dokument |
+|---|---|---|
+| `[Fachlich]` | `fachlich` | fachliche Anforderung aus `/fachplan` |
+| `[Plan]` | `plan` | Plandokument aus `/plan` |
+| kein Präfix | `issue` | Arbeitspaket aus `/issues` |
+| `[Idee]` | — | ausgeschlossen, siehe oben |
+
+Die Präfix-Erkennung ist **rückwärtskompatibel** zum bisherigen Verhalten: unabhängig von Groß- und Kleinschreibung, nach optional führendem Leerraum, auch ohne Leerzeichen nach `]`. Ein Präfix mitten im Titel zählt nicht — `Text über [Plan]` ist ein Arbeitspaket.
+
+Rollen, Reviewer-Zahl und die einzusetzenden Reviewer kommen aus:
+
+```bash
+node .claude/kit/board.mjs issue-review roles \
+  --stufe <fachlich|plan|issue> \
+  --author <modell>
+```
+
+`--author` ist Pflicht. Die Antwort liefert `rollen`, `reviewer` und `gewaehlt`; **`gewaehlt[i]` wird mit `rollen[i]` gepaart** — der erste gewählte Reviewer bekommt die erste Rolle. Für die Ausführung wird `issue-review reviewers` nicht mehr verwendet.
+
+**Auswahl ohne Argumente:** Erst alle Backlog-Dokumente laden, dann je Dokument die Stufe aus dem Titel bestimmen und **nur den Marker dieser Stufe** prüfen. Ein Marker einer anderen Stufe zählt nicht als Nachweis. Ohne diese Reihenfolge würde ein bereits geprüftes fachliches Dokument erneut ausgewählt, weil sonst auf `Issue-Review:` gefiltert wird. Mit expliziten Nummern bleibt ein erneuter Review unabhängig vom vorhandenen Marker erlaubt.
+
+**Abgrenzung:** Dieses Verfahren wirkt vorerst **nur interaktiv**. Die stufenabhängige Kandidatenauswahl und der stufenabhängige Marker-Vergleich im Nacht-Runner sind Gegenstand von Issue #283; bis dahin sortiert `selectReviewCandidates` `[Fachlich]`- und `[Plan]`-Titel weiterhin aus, ein Nachtlauf schlägt sie also nie vor. Die ausformulierten Rollen-Prompts der beiden neuen Stufen entstehen in Issue #280 (fachlich) und Issue #281 (Plan) — bis dahin wählt die Stufenwahl Rollennamen aus, zu denen es noch keinen Prompt gibt.
 
 ### 2. Autor-Modell lesen und Reviewer wählen
 
@@ -274,11 +303,23 @@ SYNTHESE
 
 Kein Konsens-Automatismus: Zwei Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-**Nach der Zustimmung:** Body schreiben und eine Marker-Zeile in den Kontext-Abschnitt aufnehmen, wörtlich in dieser Form:
+**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** in den Kontext-Abschnitt aufnehmen, wörtlich in einer dieser drei Formen:
+
+```
+Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
+Plan-Review:     <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
+Issue-Review:    <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
+```
+
+Beispiel für ein Arbeitspaket:
 
 ```
 Issue-Review: opus, codex (2026-08-06)
 ```
+
+Die Namen stammen aus `gewaehlt` (Schritt 1b), in Auswahlreihenfolge, und nennen die **tatsächlich gelaufenen** Reviewer — nicht eine feste Liste aus der Config. Bei einem erneuten Review wird der Marker **derselben** Stufe ersetzt, nicht dupliziert.
+
+**Der Anker `Issue-Review:` bleibt ausschliesslich dem Arbeitspaket vorbehalten.** An ihm hängt in `kit/night.mjs` das Gate `requiredBeforeReady`, also die Bedingung für die Freigabe zur Umsetzung. Trüge ein fachliches Dokument oder ein Plan denselben Marker, hielte der Nacht-Runner es für freigabereif und zöge es in die Implementierung. Ein Dokument einer anderen Stufe darf ihn deshalb nie tragen.
 
 Geschrieben wird über den Adapter, nicht am Tracker vorbei:
 
@@ -334,7 +375,7 @@ Issue-Review: opus, codex (2026-08-06, Nachtlauf)
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
 
-Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Fachlich]`-, `[Idee]`- und `[Plan]`-Issues, Befunde gehen unverändert als Kommentar ans Board.
+Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
 
 ## Abschluss
 
@@ -347,6 +388,7 @@ Zusammenfassung über alle bearbeiteten Issues:
 - #207 → keine Funde, Marker gesetzt
 - #210 → 2 Funde, 0 übernommen / 2 verworfen, Vorschlag abgelehnt, kein Marker
 - #212 → übersprungen ([Idee]-Präfix)
+- #272 → fachliche Stufe, 2 Funde, 2 übernommen / 0 verworfen, Body übernommen, Marker `Fachplan-Review:` gesetzt
 ```
 
 **Die Zählung übernommen/verworfen gehört dazu.** „3 Funde, Body übernommen" liest sich gleich, egal ob alle drei eingeflossen sind oder keiner — und genau dieser Unterschied entscheidet, wie viel der Review wert war.
@@ -364,5 +406,5 @@ Dann der Hinweis auf den nächsten Schritt:
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - Kein Ziehen nach Ready — das ist das menschliche GO
-- Kein Review von `[Fachlich]`-, `[Idee]`- und `[Plan]`-Issues
+- Kein Review von `[Idee]`-Issues — `[Fachlich]` und `[Plan]` bestimmen dagegen die Stufe (Schritt 1b)
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde

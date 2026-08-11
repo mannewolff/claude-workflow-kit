@@ -57,11 +57,22 @@ test("dokumentation: der --review-Abschnitt nennt [Plan] als uebersprungen", () 
     "der --review-Abschnitt zaehlt [Plan] nicht auf");
 });
 
-test("issue-review: nennt [Plan] an allen drei Stellen der Ausschlussliste", () => {
+// Seit Issue #279 schliesst /issue-review [Fachlich] und [Plan] NICHT mehr aus --
+// sie bestimmen dort die Pruefstufe. Der frueher hier gepruefte Gleichlauf der
+// Ausschlussliste gilt deshalb nur noch fuer den [Idee]-Fall. Was das Gate
+// tatsaechlich schuetzt, prueft test/skills-issue-review-stufen.test.mjs: dass
+// kein Ausschluss von [Fachlich]/[Plan] stehen geblieben ist, und dass der Anker
+// `Issue-Review:` dem Arbeitspaket vorbehalten bleibt.
+test("issue-review: schliesst nur noch [Idee] aus, [Plan] bestimmt die Stufe", () => {
   const skill = lies("skills", "issue-review", "SKILL.md");
-  const stellen = skill.split("\n").filter((z) => /\[Fachlich\]/.test(z));
-  assert.ok(stellen.length >= 3, `nur ${stellen.length} [Fachlich]-Stellen gefunden, erwartet mindestens 3`);
-  for (const zeile of stellen) {
-    assert.match(zeile, /\[Plan\]/, `Stelle ohne [Plan]: ${zeile}`);
-  }
+  assert.match(skill, /\[Idee\]/, "der [Idee]-Ausschluss fehlt");
+  const ausschluss = skill
+    .split("\n")
+    .filter(
+      (z) =>
+        /(uebersprungen|übersprungen|kein Review von)/i.test(z) &&
+        /\[Fachlich\]|\[Plan\]/.test(z) &&
+        !/nicht mehr|bestimmen dagegen|bestimmen die (Prüf|Pruef)stufe|ohnehin nicht vor/i.test(z)
+    );
+  assert.deepEqual(ausschluss, [], `[Fachlich]/[Plan] werden noch ausgeschlossen: ${ausschluss.join(" | ")}`);
 });

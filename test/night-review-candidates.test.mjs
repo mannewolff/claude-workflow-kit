@@ -114,3 +114,30 @@ test("selectReviewCandidates: fehlende opts sind kein Fehler", () => {
   assert.equal(selectReviewCandidates(issues).kandidaten.length, 1);
   assert.equal(selectReviewCandidates(issues, {}).kandidaten.length, 1);
 });
+
+// --- Praefix-Erkennung (Issue #279) ---------------------------------------
+//
+// Die Stufenwahl im Skill haengt an genau dieser Erkennung. Sie ist Bestands-
+// verhalten, war aber nie festgenagelt: Bis Issue #279 gab es keinen Test, der
+// Gross-/Kleinschreibung, fuehrenden Leerraum, ein fehlendes Leerzeichen nach `]`
+// und ein Praefix MITTEN im Titel gegeneinander abgrenzt. Faellt eine dieser
+// Formen bei einer Umformulierung heraus, waehlt der Skill still die falsche Stufe.
+test("selectReviewCandidates: Praefix-Erkennung ist tolerant, aber nicht beliebig", () => {
+  const issues = [
+    { id: "1", title: "[FACHLICH] Grossgeschrieben", body: "" },
+    { id: "2", title: "  [plan] Fuehrender Leerraum", body: "" },
+    { id: "3", title: "[Plan]Ohne Leerzeichen", body: "" },
+    { id: "4", title: "Text ueber [Plan] mitten drin", body: "" },
+    { id: "5", title: "[Idee] Rohe Idee", body: "" },
+    { id: "6", title: "Ein normales Arbeitspaket", body: "" },
+  ];
+  const { kandidaten, uebersprungen } = selectReviewCandidates(issues);
+  const ids = (liste) => liste.map((x) => String(x.id)).sort();
+
+  // 1, 2, 3 tragen ein echtes Praefix und 5 ist die Idee -> alle vier raus.
+  assert.deepEqual(ids(uebersprungen), ["1", "2", "3", "5"],
+    "tolerante Formen und [Idee] muessen erkannt werden");
+  // 4 hat das Praefix nur im Fliesstext, 6 gar keines -> beide sind Arbeitspakete.
+  assert.deepEqual(ids(kandidaten), ["4", "6"],
+    "ein Praefix mitten im Titel darf nicht zaehlen");
+});
