@@ -403,12 +403,20 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 1. `/fachplan <Anforderung>` → fachliches Issue in Backlog (bzw. im Ideen-Pool, siehe unten).
 2. Groomen direkt am Issue, bis der PO die fachliche Freigabe gibt.
 3. `/plan #N` → technischer Plan aus dem fachlichen Issue.
-4. `/issues` → technische Issues; jedes trägt den Rückverweis „Fachliche Quelle: Issue #N" **im Kontext-Abschnitt**.
+4. `/issues` → technische Issues; jedes trägt die Rückverweise **im Kontext-Abschnitt**.
 5. Ab hier der normale Weg: GO, `/implement-ready` oder Nachtbetrieb, Review, Push.
 
 **Die Regeln dahinter:**
 
-- **Der Rückverweis steht im Kontext, nie in den Abhängigkeiten.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten — und weil das fachliche Issue erst Done wird, wenn seine technischen Kinder fertig sind, würden alle Kinder dauerhaft zurückgestellt (Henne-Ei).
+- **Zwei Rückverweise, beide im Kontext.** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Deshalb tragen die technischen Issues untereinander, in dieser Reihenfolge:
+
+  ```
+  Plan: Issue #M
+  Fachliche Quelle: Issue #N
+  ```
+
+  Die `Plan:`-Zeile entsteht nur, wenn ein `[Plan]`-Issue als Quelle vorliegt; wurde der Plan bloß in derselben Session freigegeben, bleibt sie weg. Sie ist unabhängig von `Plan-Modell:` — jene nennt den **Urheber** des Plans, diese seinen **Fundort**.
+- **Nie in den Abhängigkeiten — beide nicht.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten. Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument wird durch Umsetzung nie Done — alle Kinder blieben dauerhaft zurückgestellt (Henne-Ei).
 - **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/plan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
 - **Lebenszyklus:** Das fachliche Issue bleibt als Klammer offen; Done setzt der Mensch, wenn die technischen Kinder durch sind.
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.

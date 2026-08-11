@@ -88,7 +88,24 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 
 **Abhängigkeits-Konvention (maschinenlesbar):** Der Abschnitt enthält entweder exakt `Keine.` oder explizite Referenzen der Form `Issue #N` (mehrere möglich, je eine pro Zeile). Erläuternder Freitext ist zusätzlich erlaubt — aber wenn ein anderes Issue gemeint ist, muss die `#N`-Referenz dabeistehen. Grund: Der Nacht-Runner (`kit/night.mjs`) wertet ausschließlich `#N`-Referenzen aus und stellt Issues mit unerfüllten Abhängigkeiten automatisch zurück; eine nur in Prosa beschriebene Abhängigkeit ist für ihn unsichtbar. Abhängigkeiten auf fremde Repos als `owner/repo#N` schreiben (mit Repo-Präfix) — sie werden bewusst nicht als lokale Issues gewertet.
 
-**Rückverweis auf ein fachliches Issue (PO-Schleife):** Entstehen die Issues aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/plan #N`), bekommt jedes technische Issue den Rückverweis **im Kontext-Abschnitt** — Formulierung: „Fachliche Quelle: Issue #N". **Niemals in den Abhängigkeiten-Abschnitt:** Der Nacht-Runner würde die `Issue #N`-Referenz dort als unerfüllte Abhängigkeit werten, und da das fachliche Issue erst Done wird, wenn seine technischen Kinder fertig sind, würden alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
+**Rückverweise auf Plan und fachliche Quelle:** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Beide Verweise stehen **im Kontext-Abschnitt**, unmittelbar untereinander und in dieser Reihenfolge:
+
+```
+Plan: Issue #M
+Fachliche Quelle: Issue #N
+```
+
+- `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/plan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
+- `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/plan #N`), kommt dieser Verweis dazu.
+
+**Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
+
+**Abgrenzung zur Plan-Modell-Konvention (Issue #266):** `Plan-Modell:` sagt, **welches Modell** den Plan geschrieben hat — den Urheber. `Plan: Issue #M` sagt, **wo er steht** — den Fundort. Beide Zeilen sind unabhängig voneinander: `Plan-Modell:` darf bei identischem Plan- und Issue-Autor entfallen, die `Plan:`-Zeile wird davon nicht berührt und steht auch dann.
+
+**Zwei Randfälle:**
+
+- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile** und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
+- **Plan ohne fachliche Quelle:** Steht hinter dem Plandokument keine fachliche Anforderung, steht nur `Plan: Issue #M`.
 
 Issue anlegen ueber den Board-Adapter:
 
