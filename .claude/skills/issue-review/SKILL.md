@@ -204,6 +204,76 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 
 **Die Streich-Frage ist Pflicht in beiden Rollen.** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ein Issue, das nach drei Modellen doppelt so lang ist, ist nicht automatisch besser implementierbar — ohne diese Frage kippt der Roundtrip in Aufblähung.
 
+#### Stufe `fachlich`: die beiden Rollen der fachlichen Anforderung
+
+Diese Stufe hat den größten Hebel: Ein Fehler dort pflanzt sich in den Plan, in jedes Arbeitspaket und in allen Code fort. Sie ist zugleich die einzige, für die es vorher keinerlei Prüfung gab.
+
+**Der Maßstab ist die Form.** Beim Arbeitspaket sind es die vier Abschnitte und die maschinelle Prüfbarkeit; bei der fachlichen Anforderung ist es das Story-Format aus `/fachplan`. Ein Prüfer ohne festgelegte Form kann nur Geschmack äußern — mit ihr kann er prüfen.
+
+**Rolle `form-beobachtbarkeit`** (erster Reviewer der Stufe):
+
+```
+Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan
+entstehen soll. Du kennst die Entstehungsgeschichte nicht — nicht das Gespräch mit
+dem Product Owner, nicht die Absicht dahinter. Das ist gewollt: Genau diese Lücke
+sollst du finden.
+
+Maßstab ist das Story-Format: Ziel, Fachliche Akzeptanzkriterien, Nicht-Ziele,
+Offene Fragen an den PO.
+
+1. Sind alle vier Überschriften vorhanden? Ziel, Fachliche Akzeptanzkriterien und
+   Nicht-Ziele brauchen mindestens einen inhaltlichen Eintrag. Unter "Offene
+   Fragen an den PO" stehen entweder konkrete Fragen, dokumentierte Antworten des
+   PO oder ausdrücklich "Keine offenen Fragen". Ein leerer Abschnitt oder ein
+   bloßer Platzhalter ist ein Fund — eine fertig gegroomte Anforderung ohne offene
+   Fragen ist dagegen in Ordnung.
+2. Ist jedes fachliche Akzeptanzkriterium AUS NUTZERSICHT BEOBACHTBAR? Nicht
+   technisch prüfbar — das ist eine spätere Stufe. Woran würde ein Mensch, der die
+   Software benutzt, merken, dass es erfüllt ist?
+3. Steht Technik drin, wo keine hingehört? Dateien, Architektur,
+   Implementierungsdetails gehören nicht in eine fachliche Anforderung.
+4. Ist das Ziel als Nutzerwirkung formuliert, oder beschreibt es eine Lösung?
+5. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
+
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Zitat, ein konkreter Formulierungsvorschlag.
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- ANFORDERUNG ---
+{{ISSUE_BODY}}
+```
+
+**Rolle `abgrenzung`** (zweiter Reviewer der Stufe):
+
+```
+Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan
+entstehen soll. Du kennst die Entstehungsgeschichte nicht — das ist gewollt.
+
+Prüfe auf Abgrenzung und Widerspruch:
+
+1. Widersprechen sich Ziele und Nicht-Ziele? Verlangt ein Kriterium etwas, das
+   ein Nicht-Ziel ausschließt?
+2. Fehlt eine Scope-Grenze? Was könnte jemand hineinlesen, das nicht gemeint ist?
+3. Ist eine offene Frage durch das Ziel, ein Akzeptanzkriterium, ein Nicht-Ziel
+   oder eine im Body dokumentierte PO-Antwort bereits entschieden? Dann schlage
+   vor, sie zu entfernen oder als Entscheidung festzuhalten. Unterstelle keine
+   Entscheidungen, die nicht im Body stehen — du kennst die Vorgeschichte nicht.
+4. Fehlt eine Frage, die vor dem Plan beantwortet sein muss? Wo würde ein Planer
+   raten müssen?
+5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
+
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Zitat, ein konkreter Formulierungsvorschlag.
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- ANFORDERUNG ---
+{{ISSUE_BODY}}
+```
+
+**Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, Rolle A und Rolle B für das Arbeitspaket. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}`. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
+
 **Ausführung je nach `kind`:**
 
 - **`kind: "claude"`** — Subagent über das Agent-Tool, mit dem konfigurierten `model`. Frische Session ohne Kontext dieser Sitzung, wie in `/review`.
@@ -354,6 +424,8 @@ Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten i
 
 **Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
+**Diese Marker-Regel gilt nur für die Stufen `plan` und `issue`, nicht für `fachlich`.** Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben, und in einer fachlichen Anforderung stehen die Antworten des Product Owners, also Entscheidungen über das Produkt. Für die Stufe `fachlich` gilt deshalb in **jedem unbeaufsichtigten Lauf** — nicht nur nachts —: `issue update` wird nie ausgeführt, und auch bei befundfreiem Review wird kein Marker gesetzt. Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
 1. Kein Fund trägt den Schweregrad `BLOCKER` oder `WICHTIG`. Ein einziger reicht, und der Marker bleibt aus.
@@ -405,6 +477,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
+- **Kein Schreiben in eine fachliche Anforderung in einem unbeaufsichtigten Lauf** — bei Stufe `fachlich` weder `issue update` noch ein Marker, auch nicht bei befundfreiem Review. Dort stehen die Antworten des Product Owners
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Idee]`-Issues — `[Fachlich]` und `[Plan]` bestimmen dagegen die Stufe (Schritt 1b)
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde
