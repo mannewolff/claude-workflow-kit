@@ -814,6 +814,27 @@ Der Unterschied zum Leitplanken-Prinzip oben ist die Art des Stopps: Dort scheit
 
 Das Kit unterstützt GitHub, GitLab und einen vollständig lokalen Modus. Die Wahl erfolgt über zwei unabhängige Achsen: `codeHost` (für Pull Requests und Repo-Erkennung) und `issueTracker` (für Issues und Board-Bewegungen). Beide können auf verschiedene Plattformen zeigen.
 
+### Tracker-Wechsel dieses Repositories: kanban-kit und GitHub-Archiv
+
+Seit dem 11. August 2026 führt dieses Repository seine Issues in **kanban-kit**, nicht mehr in GitHub. Der Adapter- und Configwert dafür lautet `issueTracker: "toolbox"`; `kanban-kit` ist der Produktname und kein gültiger Wert. Der Code-Host bleibt `codeHost: "github"`.
+
+**GitHub Issues bleiben aktiviert.** Sie werden nicht mehr für neue Arbeit verwendet, aber sie sind das Archiv: Die beim Umzug bereits geschlossenen 218 Issues sind dort geblieben, und bestehende Commit-Botschaften mit `#N` behalten dadurch ein erreichbares historisches Ziel. Wer das Issue-System dort abschaltet, nimmt der Commit-Historie ihren Bezugspunkt.
+
+**Nummernlücken im kanban-kit sind gewollt.** Migriert wurden ausschließlich die zum Stichtag offenen Issues, mit ihren Originalnummern. Die Lücken dazwischen haben zwei Ursachen: geschlossene Issues, die nicht mitwanderten, und Pull-Request-Nummern, die sich denselben Nummernraum mit den Issues teilen. Zwischen `#164` und `#247` etwa liegen 70 geschlossene Issues und 12 PRs, aber kein einziges offenes Issue.
+
+**Migrierte Karten sind erkennbar.** Sie tragen `externalKey: github#N` und im Body eine zweizeilige Herkunfts-Kopfzeile, die Quelle und ursprüngliche Spalte nennt:
+
+```
+> Quelle: https://github.com/<owner>/<repo>/issues/<N>
+> Ursprüngliche Spalte: <Spaltenname oder keine>
+```
+
+Die Kopfzeile nennt die Spalte auch dann, wenn kanban-kit sie nicht kennt. Das GitHub-Board führte eine sechste Spalte `Zurückgestellt`, die auf `BACKLOG` abgebildet wurde; ohne die Kopfzeile sähen diese Karten im Backlog aus wie normale Arbeit.
+
+**Der Nummernzähler beginnt oberhalb des alten Nummernraums.** Beim Umzug stand die höchste je vergebene GitHub-Nummer bei 296, `next_card_number` wurde auf 298 gesetzt. Der Zähler darf nie unter diesen Startwert zurückgesetzt werden: Sonst bekäme eine neue Karte eine Nummer, die auf GitHub bereits vergeben ist, und `#150` bezeichnete zwei verschiedene Dinge.
+
+**`tools/migrate-issues.mjs` ist ein Einmalwerkzeug** für den Tracker-Wechsel, kein Bestandteil des laufenden Workflows. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate).
+
 ### Voraussetzungen je nach Konfiguration
 
 | Wert | CLI | Authentifizierung |

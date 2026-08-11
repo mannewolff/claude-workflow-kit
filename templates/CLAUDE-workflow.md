@@ -145,7 +145,7 @@ Absolut bindend:
 ```
 
 `codeHost` steuert den Code-Host (github | gitlab | local).
-`issueTracker` steuert Issues und Board (github | gitlab | local).
+`issueTracker` steuert Issues und Board (github | gitlab | local | toolbox).
 Bei GitHub und GitLab zeigen beide auf denselben Wert.
 Bestehende Configs mit `provider` werden automatisch migriert.
 
