@@ -934,7 +934,17 @@ Der globale `tbx`-Login von App 1 bleibt dabei unangetastet — App 1 fällt wei
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
-**Neue Issues landen im Projekt-Ideen-Pool.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` **immer** eine board-lose Idee im Ideen-Pool des Projekts an — sie erscheint in keiner Board-Spalte, und die Board-Nummer entsteht erst, wenn du die Idee einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher. `ideaStored` in der Config ist gegen kanban-kit ≥ 1.5 gegenstandslos (der Server ignoriert es); das Feld wird nur noch für ältere Backends mitgesendet, ein `ideaStored: false` legt also **nicht** mehr direkt im Backlog an. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
+**Neue Issues landen im Projekt-Ideen-Pool.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` **immer** eine board-lose Idee im Ideen-Pool des Projekts an — sie erscheint in keiner Board-Spalte, und die Board-Nummer entsteht erst, wenn du die Idee einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher. **`ideaStored: false` legt wieder direkt im Backlog an.** Der Schalter heißt in der Config unverändert `ideaStored`, das Feld auf der Leitung aber `direct`: Ein `ideaStored: false` sendet `direct: true`, und die Karte entsteht sofort mit ihrer Board-Nummer. Bei `true` oder fehlendem Wert geht kein `direct` mit, und es bleibt beim Ideen-Pool. Das früher gesendete Wire-Feld `ideaStored` wandert in **keinem** der beiden Fälle mehr über die Leitung — der Server ignoriert es ohnehin.
+
+Drei Fälle, damit klar ist, was wann passiert:
+
+| Config | Gesendet | Ergebnis |
+|---|---|---|
+| `ideaStored: false` | `direct: true` | Karte im Backlog, mit Nummer |
+| `ideaStored: true` oder nicht gesetzt | kein `direct` | Idee im Pool, `ideaId` + `pending` |
+| Legacy-Backend ohne `direct` | egal | wie bisher: Nummer zurück |
+
+Fordert die Config das direkte Anlegen an, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden — sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
 
 ## Aktualisieren und mehrere Projekte
 

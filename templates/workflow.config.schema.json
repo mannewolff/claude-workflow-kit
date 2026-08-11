@@ -205,7 +205,7 @@
         "ideaStored": {
           "type": "boolean",
           "default": true,
-          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false = wie frueher direkt ins Backlog. Backends ohne Ideen-Speicher ignorieren das Feld."
+          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false sendet 'direct: true' und legt sofort mit Board-Nummer an; true oder ein fehlender Wert sendet kein 'direct'. Das frueher gesendete Wire-Feld 'ideaStored' geht seit Issue #295 in keinem Modus mehr mit — der Server ignoriert es. Backends ohne 'direct' behalten ihr bisheriges Verhalten."
         }
       },
       "required": [],

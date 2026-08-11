@@ -1290,17 +1290,36 @@ class ToolboxIssueTracker {
 
   async createIssue({ title, body }) {
     const { host } = this._auth();
-    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im Sammelbecken
-    // statt direkt im Backlog. Per Config abschaltbar (toolbox.ideaStored: false). Aeltere
-    // Backends ohne #245 ignorieren das Feld und legen wie bisher im Backlog an.
-    const ideaStored = this._cfg.toolbox?.ideaStored !== false;
+    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im
+    // Sammelbecken statt direkt im Backlog. Das ist die Vorgabe.
+    //
+    // Das Wire-Feld dafuer heisst seit kanban-kit 2026-08 `direct` (Issue #295) —
+    // der frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und
+    // geht deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst
+    // seinen Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und
+    // eine Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
+    //
+    // Backends ohne `direct` ignorieren das Feld und legen wie bisher an.
+    const direkt = this._cfg.toolbox?.ideaStored === false;
+    const payload = { title, body: body || "", column: "BACKLOG" };
+    if (direkt) payload.direct = true;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: body || "", column: "BACKLOG", ideaStored }),
+      body: JSON.stringify(payload),
     });
     const created = await res.json();
     const result = interpretToolboxCreateResponse(created);
+    // interpretToolboxCreateResponse wertet nur die Antwort aus und kennt den
+    // gesendeten Modus nicht — deshalb sitzt die Pruefung hier. Ohne sie meldete ein
+    // direkt angefordertes Anlegen, das nur eine ideaId zurueckbringt, faelschlich
+    // `pending` samt Pool-Hinweis: Der Aufruf saehe erfolgreich aus, die Karte haette
+    // keine Nummer, und niemand bemerkt es.
+    if (direkt && result.pending) {
+      throw new BoardError(
+        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht."
+      );
+    }
     if (result.pending) {
       return {
         ...result,

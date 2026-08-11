@@ -189,7 +189,9 @@ test("create legt eine Karte an und liefert die Board-Nummer", async () => {
     assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
 
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items");
-    assert.deepEqual(JSON.parse(post.body), { title: "Neu", body: "Autor-Modell: m\nText", column: "BACKLOG", ideaStored: true });
+    // Weder `direct` noch `ideaStored`: Der Pool ist die Vorgabe, und das tote
+    // Wire-Feld wird seit Issue #295 in keinem Modus mehr gesendet.
+    assert.deepEqual(JSON.parse(post.body), { title: "Neu", body: "Autor-Modell: m\nText", column: "BACKLOG" });
     assert.equal(post.headers["x-kanban-token"], "test-token");
   });
 });
@@ -210,13 +212,54 @@ test("create meldet eine Pool-Idee als pending", async () => {
   );
 });
 
-test("create respektiert toolbox.ideaStored: false", async () => {
+// Der Config-Schluessel bleibt `ideaStored`, das Wire-Feld heisst `direct`
+// (Issue #295). Die Umkehrung ist Absicht: Der Config-Name beschreibt die Absicht
+// des Nutzers, das Wire-Feld die API-Form von kanban-kit.
+test("create schickt bei toolbox.ideaStored: false ein direct: true", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
     const res = await runBoardAsync(dir, ["issue", "create", "--title", "Direkt ins Backlog"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
-    const post = requests.find((r) => r.method === "POST");
-    assert.equal(JSON.parse(post.body).ideaStored, false);
+    const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
+    assert.equal(payload.direct, true);
+    assert.ok(!("ideaStored" in payload), "das tote Wire-Feld darf nicht mehr mitgehen");
+    assert.equal(payload.column, "BACKLOG");
   }, { config: { toolbox: { ideaStored: false } } });
+});
+
+test("create schickt bei toolbox.ideaStored: true weder direct noch ideaStored", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "create", "--title", "In den Pool"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
+    assert.ok(!("direct" in payload), "ohne Direktwunsch kein direct");
+    assert.ok(!("ideaStored" in payload));
+  }, { config: { toolbox: { ideaStored: true } } });
+});
+
+// Der stille Fall: direkt angefordert, aber nur eine ideaId zurueck. Ohne eigenen
+// Fehlerpfad meldete der Adapter hier `pending` samt Pool-Hinweis — das Anlegen
+// saehe erfolgreich aus, die Karte haette keine Nummer, und niemand merkt es.
+test("create bricht ab, wenn direct angefordert war und keine Nummer kam", async () => {
+  await mitBoard(
+    (req) => (req.method === "POST" ? { status: 200, json: { id: 80 } } : standardAntwort(req)),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "create", "--title", "Direkt"], MIT_TOKEN);
+      assert.notEqual(res.status, 0, "muss scheitern statt pending zu melden");
+      assert.match(res.stderr, /Direktes Anlegen lieferte keine Board-Nummer/);
+      assert.ok(!/pending/.test(res.stdout), "kein pending im Erfolgskanal");
+      assert.ok(!/Ideen-Pool/.test(res.stdout), "kein Pool-Hinweis");
+    },
+    { config: { toolbox: { ideaStored: false } } }
+  );
+});
+
+// Aeltere Backends kennen weder Pool noch `direct` und liefern immer eine Nummer.
+test("create liefert im Pool-Modus eine Legacy-Nummer ohne Pool-Hinweis", async () => {
+  await mitBoard(standardAntwort, async (dir, _requests, host) => {
+    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Alt"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
+  }, { config: { toolbox: { ideaStored: true } } });
 });
 
 test("create meldet eine unerwartete Antwortform als Fehler", async () => {
