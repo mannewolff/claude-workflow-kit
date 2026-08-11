@@ -33,7 +33,7 @@ Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwo
 |-------|--------|
 | `/kontext` | Session-Start: Memory-Vault laden, Projektstand holen |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
-| `/issue-review` | Issue von zwei fremden Modellen pruefen lassen, bevor es nach Ready wandert |
+| `/issue-review` | Dokument von fremden Modellen pruefen lassen, bevor es nach Ready wandert |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz schreiben |
 
@@ -55,9 +55,34 @@ Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwo
 
 Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und tippbar.
 
-Vor dem GO gehoert ein Issue geprueft: `/issue-review` laesst es von zwei
-Modellen lesen, die es nicht geschrieben haben. Bei gesetztem `issueReview.requiredBeforeReady`
-stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
+Vor dem GO gehoert ein Dokument geprueft: `/issue-review` laesst es von Modellen
+lesen, die es nicht geschrieben haben. Wie viele das sind, entscheidet die
+Pruefstufe (siehe unten): fachliche Anforderung und Plandokument je zwei, das
+Arbeitspaket eines. Bei gesetztem `issueReview.requiredBeforeReady` stellt der
+Nacht-Runner ungepruefte Ready-Issues zurueck.
+
+### Die drei Pruefstufen
+
+Der Skill prueft drei verschiedene Dokumente. Welche Stufe greift, entscheidet
+das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis im
+Kontext-Abschnitt:
+
+| Stufe | Prueft | Nachweis |
+|-------|--------|----------|
+| `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
+| `plan` | ein `[Plan]`-Issue (Plandokument aus `/plan`) | `Plan-Review: …` |
+| `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
+
+**Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.**
+`Fachplan-Review:` und `Plan-Review:` ersetzen sie nie — sie belegen die Pruefung
+einer frueheren Stufe, nicht die des Arbeitspakets. Wer sie verwechselt, zieht ein
+ungepruefte Arbeitspaket nach Ready.
+
+Die Pruefung frueh anzusetzen ist billiger: Ein Fehler in der fachlichen
+Anforderung pflanzt sich in den Plan, in jedes Arbeitspaket und in allen Code
+fort. Deshalb tragen die oberen Stufen je zwei Pruefer, das einzelne
+Arbeitspaket nur noch einen — Zuschnitt und Abhaengigkeiten entscheiden sich im
+Plan und werden dort geprueft.
 
 ---
 
@@ -72,9 +97,17 @@ unveraendert: nachts wird committet, nie gepusht — Review, Test und `push main
 morgens durch den Menschen.
 
 Ein zweiter Modus implementiert nicht, sondern laesst pruefen: `night.mjs --review`
-schickt **Backlog**-Issues durch `/issue-review`. Zwischen beiden Naechten steht das
+schickt **Backlog**-Dokumente durch `/issue-review`. Zwischen beiden Naechten steht das
 menschliche GO — deshalb sind es zwei Laeufe an zwei Abenden und nicht zwei Phasen in
-einer Nacht. Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
+einer Nacht.
+
+**Ein Aufruf, eine Stufe.** `--stufe <fachlich|plan|issue>` waehlt, welche
+Pruefstufe der Lauf faehrt; andere Werte weist der Runner ab. Ohne Angabe gilt
+`issue`. Mehrere Stufen in einem Lauf gaebe es nicht, weil zwischen ihnen die
+menschliche Freigabe steht: Wer den Plan noch nicht abgenommen hat, will die
+Arbeitspakete daraus nicht schon geprueft haben.
+
+Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 ---
 
@@ -192,13 +225,49 @@ Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein ander
 gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
-Fachliche Issues (PO-Schleife, optional): Titel-Praefix `[Fachlich]`, Story-Format statt
-Vier-Abschnitt (Ziel, Fachliche Akzeptanzkriterien, Nicht-Ziele, Offene Fragen an den PO).
-Sie werden gegroomt, nie implementiert und nie nach Ready gezogen; implement-Skills und
-Nacht-Runner stellen sie mechanisch kommentiert zurueck. Technische Issues daraus (via
-`/plan #N` + `/issues`) tragen den Rueckverweis "Fachliche Quelle: Issue #N" im
-Kontext-Abschnitt — NIE im Abhaengigkeiten-Abschnitt (der Nacht-Runner wuerde die
-Referenz sonst als dauerhaft unerfuellte Abhaengigkeit werten).
+### Drei Titel-Praefixe, drei Sonderfaelle
+
+Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei
+Praefixe kennzeichnen Dokumente, die **nie implementiert und nie nach Ready
+gezogen** werden; implement-Skills und Nacht-Runner stellen sie mechanisch
+kommentiert ins Backlog zurueck, ohne eine Session zu starten.
+
+| Praefix | Was es ist | Weg nach vorn |
+|---------|-----------|---------------|
+| `[Fachlich]` | fachliche Anforderung aus `/fachplan`, Story-Format | mit dem PO groomen, dann `/plan #N` |
+| `[Plan]` | Plandokument aus `/plan`, verbindliches Plan-Format | `/issues #N` zerlegt es in Arbeitspakete |
+| `[Idee]` | rohe Idee, noch kein Dokument | erst `/plan`, dann `/issues` |
+
+**Fachliche Issues** (`[Fachlich]`) tragen Story-Format statt Vier-Abschnitt: Ziel,
+Fachliche Akzeptanzkriterien, Nicht-Ziele, Offene Fragen an den PO. Sie werden im
+Body gegroomt. Technische Issues daraus tragen den Rueckverweis
+"Fachliche Quelle: Issue #N" im Kontext-Abschnitt — NIE im
+Abhaengigkeiten-Abschnitt (der Nacht-Runner wuerde die Referenz sonst als
+dauerhaft unerfuellte Abhaengigkeit werten).
+
+**Plandokumente** (`[Plan]`) halten den freigegebenen Stand fest, statt ihn
+umzusetzen. Ein Plan beschreibt einen Weg, er ist keine Aufgabe: Er wird
+**nie implementiert**, geht **nie nach Ready** und wird zuerst mit `/issues #N`
+in Arbeitspakete zerlegt. Sein Format ist verbindlich — genau diese sechs
+Ueberschriften in dieser Reihenfolge:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+Leere Pflichtabschnitte werden ausdruecklich mit `- Keine.` ausgewiesen. Das
+Format ist zugleich der Maszstab der Pruefstufe `plan`: Ohne festgelegte Form
+kann ein Pruefer nur Geschmack aeussern.
+
+**Ideen** (`[Idee]`) sind ohne `/plan`-Zyklus kein implementierbares Issue. Ohne
+das Gate wuerde eine Session sie zwar korrekt ablehnen, aber der Runner kann
+diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist
+verbrannt und der Kommentar am Board irrefuehrend.
 
 ---
 

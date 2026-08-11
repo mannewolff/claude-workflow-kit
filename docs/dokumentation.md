@@ -184,7 +184,7 @@ Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht beha
 |-------|-------|
 | `/kontext` | Session-Start: Vault laden, Projektstand |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
-| `/issue-review` | Issue von zwei fremden Modellen prüfen lassen, bevor es nach Ready wandert |
+| `/issue-review` | Dokument von fremden Modellen prüfen lassen, bevor es nach Ready wandert |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz |
 
@@ -268,9 +268,9 @@ Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/
 
 **Werkzeug neben dem Prozess, zwischen Schritt 3 und dem GO.**
 
-Der Skill lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, und schlägt einen geschärften Body vor. Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist — was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf. Ein fremdes Modell hat nur den Text.
+Der Skill lässt ein Dokument von Modellen prüfen, die es nicht geschrieben haben, und schlägt einen geschärften Body vor. Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist — was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf. Ein fremdes Modell hat nur den Text.
 
-Die beiden Prüfer bekommen verschiedene Rollen (Vollständigkeit bzw. Scope), und beide die Frage „Was kann raus?" — ohne sie wächst das Issue mit jeder Runde, ohne besser zu werden. Die Befunde landen als Board-Kommentar; der Body wird nur nach ausdrücklicher Zustimmung geschrieben. Details im Abschnitt [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
+Wie viele prüfen und mit welchen Rollen, entscheidet die Prüfstufe; jede Rolle trägt die Frage „Was kann raus?" — ohne sie wächst das Issue mit jeder Runde, ohne besser zu werden. Die Befunde landen als Board-Kommentar; der Body wird nur nach ausdrücklicher Zustimmung geschrieben. Details im Abschnitt [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
 
 ### /local-check
 
@@ -510,7 +510,7 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 ### Zweiter Modus: der Nacht-Review
 
-Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Issues aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch zwei fremde Modelle lesen. Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Issues tragen bereits den Prüf-Marker.
+Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Dokumente aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch fremde Modelle lesen — wie viele, entscheidet die [Prüfstufe](#drei-prüfstufen-die-prüfung-wandert-nach-oben). Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Dokumente tragen bereits den Prüf-Marker ihrer Stufe.
 
 ```bash
 node .claude/kit/night.mjs --review --dry-run   # zeigt Kandidaten und Reviewer-Stand
@@ -622,7 +622,52 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 
 Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin kostet mehr als ein Fehler im Code, weil er sich in die ganze Umsetzung fortpflanzt — und der Autor sieht ihn nicht, weil er den Kontext im Kopf hat, aus dem das Issue entstanden ist. Was er nicht hingeschrieben hat, ergänzt er beim Lesen unbewusst.
 
-`/issue-review` sitzt zwischen `/issues` (Schritt 3) und dem GO (Schritt 4): Zwei Modelle, die das Issue **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+`/issue-review` sitzt zwischen `/issues` (Schritt 3) und dem GO (Schritt 4): Modelle, die das Dokument **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+
+### Drei Prüfstufen — die Prüfung wandert nach oben
+
+Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis im Kontext-Abschnitt:
+
+| Stufe | Prüft | Nachweis |
+|---|---|---|
+| `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
+| `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
+| `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+
+**Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.** An ihr hängt das Gate `requiredBeforeReady`; `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie. Sie belegen die Prüfung einer früheren Stufe, nicht die des Arbeitspakets — wer sie verwechselt, zieht ein ungeprüftes Arbeitspaket nach Ready.
+
+**Warum nach oben.** Die Reichweite eines Fehlers wächst nach unten: Ein Fehler in der fachlichen Anforderung pflanzt sich in den Plan fort, von dort in jedes Arbeitspaket und schließlich in allen Code. Derselbe Fehler, im Arbeitspaket gefunden, kostet ein Issue; in der Anforderung gefunden, kostet er einen Satz. Früher gefundene Fehler sind deshalb nicht nur billiger zu beheben — sie sind auch die, deren Behebung am meisten verhindert. Nebenbei wird das Verfahren günstiger: Bei dreizehn Arbeitspaketen aus einem Plan sind es 17 Prüfläufe statt 26.
+
+**Warum das Arbeitspaket nur noch einen Prüfer hat.** Die bisherige zweite Rolle fragte nach Scope, Abhängigkeiten und Kollateralschäden im Bestand. Diese Fragen entscheiden sich im Plan, nicht im einzelnen Paket — ein Prüfer, der nur ein Paket vor sich hat, kann sie gar nicht beantworten. Belegt am 2026-08-08: Drei der vier Scope-Befunde jenes Laufs waren Fehlalarme an Abhängigkeitsgrenzen, weil der Prüfer das Nachbar-Issue nicht sah. Die Rolle ist deshalb nicht gestrichen, sondern als `schnitt-abhaengigkeiten` auf die Plan-Stufe gewandert, wo sie den ganzen Zuschnitt vor sich hat und tatsächlich wirkt. Was beim Arbeitspaket bleibt, ist die maschinelle Prüfbarkeit der Akzeptanzkriterien — sie hat auf den oberen Stufen kein Gegenstück, weil Akzeptanzkriterien erst dort entstehen.
+
+**Warum ein Format nötig ist.** Ein Prüfer ohne festgelegte Form kann nur Geschmack äußern; mit ihr kann er prüfen. Beim Arbeitspaket sind es die vier Abschnitte, bei der fachlichen Anforderung das Story-Format aus `/fachplan` — und beim Plandokument diese sechs Überschriften, genau in dieser Reihenfolge:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+Leere Pflichtabschnitte werden ausdrücklich mit `- Keine.` ausgewiesen. Die festen Überschriften sind der Maßstab, gegen den die Stufe `plan` prüft: Fehlt einer, steht er an falscher Stelle oder trägt eine Entscheidung ohne Begründung, ist das ein Fund und keine Geschmacksfrage.
+
+**Rückwärtskompatibilität.** Die Besetzung je Stufe steht im Config-Block `reviewStufen`; die mitgelieferte Vorlage konfiguriert für `issue` genau einen Reviewer. Bestehende Installationen **ohne** diesen Block behalten unverändert die bisherige Besetzung mit zwei Reviewern und den bisherigen beiden Rollen — erst ein ausdrücklich geschriebener Block aktiviert die neue Besetzung. Ein Kit-Update ändert das Prüfverfahren also nicht im Vorbeigehen.
+
+```json
+"reviewStufen": {
+  "fachlich": { "reviewer": 2, "rollen": ["form-beobachtbarkeit", "abgrenzung"] },
+  "plan":     { "reviewer": 2, "rollen": ["architektur-bestand", "schnitt-abhaengigkeiten"] },
+  "issue":    { "reviewer": 1, "rollen": ["pruefbarkeit"] }
+}
+```
+
+Welche Rolle welcher Reviewer übernimmt, lässt sich ablesen statt ausrechnen:
+
+```bash
+node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5
+```
 
 ### Konfiguration
 
@@ -662,7 +707,7 @@ Wer wen prüft, steht in `pairs`:
 }
 ```
 
-Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die ersten zwei Reviewer, die nicht der Autor sind.
+Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die vordersten Reviewer, die nicht der Autor sind. Wie viele davon tatsächlich laufen, kürzt anschließend die Prüfstufe.
 
 **Verlass dich nicht auf die Regel allein.** Sie wählt immer die vordersten Einträge — bei vier konfigurierten Reviewern kommt der vierte in keinem einzigen Fall zum Zug. Wer ein fremdes Modell hinten in die Liste schreibt, hat es damit faktisch abgeschaltet. Genau das ist beim Bau dieses Verfahrens passiert, und es ist der Grund, warum es `pairs` gibt.
 
@@ -681,7 +726,7 @@ Die Spalte `quelle` sagt, ob die Zeile aus `pairs` oder aus dem Fallback stammt.
 
 Zwei Dinge sind harte Fehler, keine stillen Skips: ein Name in `pairs`, den es in `reviewers` nicht gibt, und ein Autor, der sich selbst nennt.
 
-Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die ersten zwei Reviewer genommen.
+Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die vordersten Reviewer genommen, so viele wie die Stufe vorsieht.
 
 ### Fremde Modelle anbinden
 
@@ -696,18 +741,23 @@ Damit nimmt jedes Werkzeug teil, das Text liest und Text schreibt — Codex, Gem
 
 Der Prompt geht über stdin, nicht als Argument. Ein Issue-Body enthält Backticks, Anführungszeichen und Zeilenumbrüche; ihn durch eine Kommandozeile zu quoten ist genau die Fehlerklasse, die aus dem Board-Adapter entfernt wurde.
 
-### Zwei Reviewer, zwei Rollen
+### Die Rollen
 
-Beide bekommen denselben Body, aber verschiedene Aufträge:
+Jeder Prüfer bekommt denselben Body, aber seinen eigenen Auftrag. Auf der Stufe `issue` läuft davon nur die erste Zeile — die zweite ist als `schnitt-abhaengigkeiten` auf die Plan-Stufe gewandert:
 
-| Rolle | Fragt |
-|---|---|
-| **Vollständigkeit** | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
-| **Scope & Bestand** | Ist der Schnitt zu groß? Fehlen Abhängigkeiten? Was bricht, das nicht im Issue steht? |
+| Stufe | Rolle | Fragt |
+|---|---|---|
+| `fachlich` | `form-beobachtbarkeit` | Trägt die Anforderung alle vier Story-Abschnitte? Ist jedes Kriterium aus Nutzersicht beobachtbar? Steht Technik drin, wo keine hingehört? |
+| `fachlich` | `abgrenzung` | Widersprechen sich Ziele und Nicht-Ziele? Fehlt eine Scope-Grenze? Ist eine offene Frage längst entschieden? |
+| `plan` | `architektur-bestand` | Stimmt jede Behauptung über den Bestand? Trägt jede Entscheidung eine Begründung? Was bricht, das der Plan nicht nennt? |
+| `plan` | `schnitt-abhaengigkeiten` | Lässt sich der Plan überhaupt zerlegen? Welche Reihenfolge erzwingt er? Sind die offenen Fragen wirklich Stopp-Fragen? |
+| `issue` | `pruefbarkeit` | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
 
-Zwei Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
+Mehrere Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl — deshalb Rollen und nicht bloß Wiederholung.
 
-**Beide Rollen tragen die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Issue nach drei Modellen doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+Ohne konfigurierten `reviewStufen`-Block gilt für alle Stufen der Legacy-Fallback: zwei Reviewer mit den Rollen `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand`, inhaltlich die bisherigen beiden.
+
+**Jede Rolle trägt die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Dokument nach dem Review doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
 
 ### Wer entscheidet
 
@@ -718,7 +768,7 @@ Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist k
 Nach der Zustimmung trägt das Issue eine Marker-Zeile:
 
 ```
-Issue-Review: opus, codex (2026-08-06)
+Issue-Review: codex (2026-08-06)
 ```
 
 Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
@@ -732,12 +782,12 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 - **Der Body wird nie geschrieben** — auch nicht bei befundfreiem Review. Der fertig formulierte Vorschlag geht als Kommentar ans Issue, als übernehmbarer Text. Beim Groomen liest du ihn von dort (`issue get` liefert die Kommentare mit).
 - **Der Marker wird gesetzt, wenn nichts zu ändern ist**: kein Fund mit Schweregrad `BLOCKER` oder `WICHTIG`, und kein Reviewer ausgefallen oder unterbesetzt gefahren. Ein einziger gewichtiger Fund reicht, und der Marker bleibt aus.
 
-Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
+Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
 Ein nächtlich gesetzter Marker ist als solcher erkennbar:
 
 ```
-Issue-Review: opus, codex (2026-08-06, Nachtlauf)
+Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
 ### Das Gate vor Ready
@@ -748,7 +798,7 @@ Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht 
 
 ### Was es kostet
 
-Zwei Reviewer je Issue sind zwei zusätzliche Läufe. Bei einem Batch von siebzehn Issues sind das vierunddreißig. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
 
 `rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
