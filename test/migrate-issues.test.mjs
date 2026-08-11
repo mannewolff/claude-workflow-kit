@@ -220,8 +220,10 @@ test("--help listet die drei Unterkommandos auf stdout und endet mit Exit 0", ()
   }
 });
 
-test("import und verify melden 'Noch nicht implementiert' und rufen gh nicht auf", () => {
-  for (const sub of ["import", "verify"]) {
+// import ist seit Issue #289 umgesetzt und in test/migrate-issues-import.test.mjs
+// abgedeckt; verify folgt in Issue #290.
+test("verify meldet 'Noch nicht implementiert' und ruft gh nicht auf", () => {
+  for (const sub of ["verify"]) {
     const dir = fixture(`migrate-stub-${sub}-`, []);
     try {
       const res = runMigrate(dir, [sub]);

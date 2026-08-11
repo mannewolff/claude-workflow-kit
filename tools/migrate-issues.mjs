@@ -8,11 +8,18 @@
  * teure Teil, und wenn der Import scheitert, darf er nicht wiederholt werden muessen.
  *
  * Nutzung:  node tools/migrate-issues.mjs export [--out <verzeichnis>]
- *           node tools/migrate-issues.mjs import   # noch nicht implementiert (#289)
+ *           node tools/migrate-issues.mjs import --file <exportdatei> ...
  *           node tools/migrate-issues.mjs verify   # noch nicht implementiert (#290)
  *
  * `export` liest ausschliesslich: kein Schreibzugriff auf GitHub, keine Abhaengigkeit
  * zu kanban-kit. Geschrieben wird genau eine Datei im Zielverzeichnis.
+ *
+ * `import` spricht kanban-kit direkt per fetch an (Issue #289) und nicht ueber
+ * kit/board.mjs: Dessen createIssue kennt weder `number` noch `externalKey` und sendet
+ * immer column BACKLOG — die Migration braucht aber genau diese drei Felder, und
+ * board.mjs bleibt laut Plandokument (#287) unveraendert. Die Auth-Kette (Host aus der
+ * Config bzw. dem tbx-Login, Token aus TBX_TOKEN > toolbox.tokenFile > tokens.json)
+ * ist bewusst dieselbe wie dort: dasselbe Board, derselbe Login.
  *
  * Warum GraphQL statt der Kommandos aus kit/board.mjs: `gh issue list` und
  * `gh project item-list` kennen nur ein `--limit`, keinen Cursor — ein Export darf
@@ -28,7 +35,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync, renameSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const UNTERKOMMANDOS = ["export", "import", "verify"];
@@ -41,8 +48,10 @@ const HILFE = [
   "  node tools/migrate-issues.mjs export [--out <verzeichnis>]",
   "      Liest alle offenen Issues samt Body, Kommentaren, Labels und Board-Spalte",
   "      und schreibt sie als JSON. Nur lesende Zugriffe.",
-  "  node tools/migrate-issues.mjs import",
-  "      Spielt einen Export in kanban-kit ein.",
+  "  node tools/migrate-issues.mjs import --file <exportdatei>",
+  "      (--dry-run --out-dir <verzeichnis> | --yes) [--from N --to N] [--limit N]",
+  "      Spielt einen Export in kanban-kit ein. Genau einer der beiden Modi muss",
+  "      gesetzt sein: --dry-run schreibt nur Vorschaudateien, --yes legt Karten an.",
   "  node tools/migrate-issues.mjs verify",
   "      Vergleicht Export und Ziel als Gate.",
   "  node tools/migrate-issues.mjs --help",
@@ -50,6 +59,11 @@ const HILFE = [
   `Ohne --out schreibt export nach ${DEFAULT_OUT}.`,
   "Der Dateiname traegt den UTC-Zeitpunkt des Laufs; eine vorhandene Datei wird nie",
   "ueberschrieben. Auf stdout steht ausschliesslich der Pfad der erzeugten Datei.",
+  "",
+  "Vor dem ersten --yes-Lauf muss import einmal als --dry-run ohne --from/--to/--limit",
+  "ueber den vollstaendigen Bestand gelaufen und die Vorschau geprueft worden sein:",
+  "Ein Formatfehler faellt sonst erst auf, wenn er schon auf dem Board steht.",
+  "import meldet auf stdout genau ein JSON-Objekt mit den Zaehlern des Laufs.",
   "",
 ].join("\n");
 
@@ -91,18 +105,97 @@ function execJSON(datei, args) {
   }
 }
 
-function projectNumber() {
+function leseConfig() {
   const pfad = resolve(".claude", "workflow.config.json");
   if (!existsSync(pfad)) throw new MigrateError(`${pfad} nicht gefunden — bitte im Projektverzeichnis starten.`);
-  let config;
   try {
-    config = JSON.parse(readFileSync(pfad, "utf-8"));
+    return JSON.parse(readFileSync(pfad, "utf-8"));
   } catch (e) {
     throw new MigrateError(`${pfad} ist kein gueltiges JSON: ${e.message}`);
   }
+}
+
+function projectNumber() {
+  const config = leseConfig();
   const num = config.github?.projectNumber;
-  if (!num) throw new MigrateError(`github.projectNumber fehlt in ${pfad} — ohne Projektnummer gibt es keine Board-Spalte.`);
+  if (!num) throw new MigrateError("github.projectNumber fehlt in der Konfiguration — ohne Projektnummer gibt es keine Board-Spalte.");
   return Number(num);
+}
+
+/** Liest eine JSON-Datei, wenn sie da und lesbar ist — sonst null. */
+function leseJsonWennDa(pfad) {
+  if (!existsSync(pfad)) return null;
+  try { return JSON.parse(readFileSync(pfad, "utf-8")); } catch { return null; }
+}
+
+/**
+ * Host und Token fuer kanban-kit, aufgeloest wie in kit/board.mjs (#135, #367):
+ * Host aus config.toolbox.host, sonst aus dem tbx-Login; Token aus TBX_TOKEN, sonst
+ * toolbox.tokenFile, sonst tokens.json des tbx-Logins. Ein Klartext-Token in der
+ * eingecheckten Config bricht ab — dieselbe Leitplanke wie dort, weil es dieselbe
+ * Datei ist und ein Werkzeug sie nicht unterlaufen darf.
+ */
+function kanbanZugang() {
+  const config = leseConfig();
+  const dir = process.env.TBX_CONFIG_DIR || join(homedir(), ".config", "toolbox-cli");
+
+  const host = config.toolbox?.host || leseJsonWennDa(join(dir, "config.json"))?.host;
+  if (!host) {
+    throw new MigrateError(
+      "Kein kanban-kit-Host gefunden. toolbox.host in .claude/workflow.config.json setzen oder 'tbx auth login' ausfuehren."
+    );
+  }
+
+  if (config.toolbox?.token) {
+    throw new MigrateError("kein Klartext-Token in workflow.config.json — nutze TBX_TOKEN oder toolbox.tokenFile.");
+  }
+
+  const envToken = (process.env.TBX_TOKEN || "").trim();
+  let token = envToken;
+  if (!token && config.toolbox?.tokenFile) {
+    const tokenPfad = resolve(config.toolbox.tokenFile);
+    let inhalt;
+    try {
+      inhalt = readFileSync(tokenPfad, "utf-8");
+    } catch (e) {
+      throw new MigrateError(`toolbox.tokenFile '${config.toolbox.tokenFile}' nicht lesbar: ${e.message}`);
+    }
+    token = inhalt.trim();
+  }
+  if (!token) token = (leseJsonWennDa(join(dir, "tokens.json"))?.token || "").trim();
+  if (!token) {
+    throw new MigrateError(
+      "Kein kanban-kit-Token gefunden. TBX_TOKEN setzen, toolbox.tokenFile zeigen lassen oder 'tbx auth login' ausfuehren."
+    );
+  }
+
+  return { host: String(host).replace(/\/$/, ""), token };
+}
+
+/**
+ * Ein Request gegen die Kanban-API. Fehler werden zu MigrateError, damit der Aufrufer
+ * sie nicht von einem Bedienfehler unterscheiden muss; die Server-Meldung bleibt
+ * erhalten, weil sie bei einem abgebrochenen Import die einzige Spur ist.
+ */
+async function kanbanFetch(zugang, pfad, optionen = {}) {
+  let res;
+  try {
+    res = await fetch(`${zugang.host}${pfad}`, {
+      ...optionen,
+      headers: { ...optionen.headers, "X-Kanban-Token": zugang.token },
+    });
+  } catch (e) {
+    throw new MigrateError(`kanban-kit nicht erreichbar (${zugang.host}): ${e.message}`);
+  }
+  if (!res.ok) {
+    let meldung = `HTTP ${res.status}`;
+    try {
+      const koerper = await res.json();
+      if (koerper?.message) meldung = koerper.message;
+    } catch { /* kein JSON-Body */ }
+    throw new MigrateError(`kanban-kit-Fehler bei ${pfad}: ${meldung}`);
+  }
+  return res;
 }
 
 // ============================================================
@@ -312,7 +405,7 @@ function schreibeAtomar(ziel, inhalt) {
 }
 
 function fuehreExportAus(cliArgs) {
-  const outDir = resolve(leseOutOption(cliArgs) ?? DEFAULT_OUT);
+  const outDir = resolve(leseOption(cliArgs, "--out", "ein Verzeichnis") ?? DEFAULT_OUT);
   const num = projectNumber();
 
   const repoVoll = exec("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
@@ -335,13 +428,325 @@ function fuehreExportAus(cliArgs) {
   process.stdout.write(`${ziel}\n`);
 }
 
-/** Der Wert von --out, oder null. Wirft, wenn das Flag ohne Wert dasteht. */
-function leseOutOption(cliArgs) {
-  const i = cliArgs.indexOf("--out");
+/** Der Wert eines Flags, oder null. Wirft, wenn das Flag ohne Wert dasteht. */
+function leseOption(cliArgs, name, was) {
+  const i = cliArgs.indexOf(name);
   if (i === -1) return null;
   const wert = cliArgs[i + 1];
-  if (!wert || wert.startsWith("-")) throw new CliError("--out braucht ein Verzeichnis");
+  if (!wert || wert.startsWith("-")) throw new CliError(`${name} braucht ${was}`);
   return wert;
+}
+
+// ============================================================
+// import
+// ============================================================
+
+// Die Zielspalten des Boards. Der Export legt den sichtbaren Namen der GitHub-Spalte
+// ab ("In progress"), die Abbildung ist aber ueber die Status-Werte des Workflows
+// definiert (in_progress) — deshalb wird der Wert vor dem Nachschlagen normalisiert.
+// Beide Schreibweisen treffen damit dieselbe Spalte, jeder andere Wert keine.
+const ZIELSPALTEN = {
+  backlog: "BACKLOG",
+  ready: "READY",
+  in_progress: "IN_PROGRESS",
+  in_review: "IN_REVIEW",
+  done: "DONE",
+};
+
+function zielSpalte(wert) {
+  if (wert == null || String(wert).trim() === "") return "BACKLOG";
+  const schluessel = String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const spalte = ZIELSPALTEN[schluessel];
+  if (!spalte) {
+    throw new MigrateError(`Unbekannte Spalte '${wert}' — bekannt sind: ${Object.keys(ZIELSPALTEN).join(", ")}.`);
+  }
+  return spalte;
+}
+
+function externalKey(number) {
+  return `github#${number}`;
+}
+
+function issueUrl(repoUrl, number) {
+  return `${repoUrl}/issues/${number}`;
+}
+
+/**
+ * Der Karten-Body: Herkunfts-Kopfzeile, Leerzeile, urspruenglicher Body unveraendert.
+ *
+ * Die Kopfzeile nennt die Spalte auch dann, wenn es keine gab (Literal `keine`,
+ * Plan-Entscheidung 10): Ohne sie saehen die im Backlog gelandeten Karten aus wie
+ * normale Arbeit, und niemand koennte spaeter sagen, woher sie kamen.
+ */
+function kartenBody(eintrag, repoUrl) {
+  const spalte = eintrag.spalte == null || String(eintrag.spalte).trim() === "" ? "keine" : eintrag.spalte;
+  return `> Quelle: ${issueUrl(repoUrl, eintrag.number)}\n> Ursprüngliche Spalte: ${spalte}\n\n${eintrag.body}`;
+}
+
+// Kommentare werden nicht in den Karten-Body gefaltet, sondern einzeln angelegt:
+// verify (#290) vergleicht sie in Reihenfolge, und das setzt zaehlbare Einheiten
+// voraus. Ein leerer Autor wird zu 'unbekannt' — der Export normalisiert einen
+// geloeschten GitHub-Account zu "", und eine Kopfzeile mit leerem Feld liest sich wie
+// ein Fehler statt wie eine fehlende Angabe.
+function kommentarBody(eintrag, kommentar, repoUrl) {
+  const autor = String(kommentar.author ?? "").trim() || "unbekannt";
+  return `> Quelle: ${issueUrl(repoUrl, eintrag.number)}\n> Autor: ${autor}\n> Datum: ${kommentar.createdAt}\n\n${kommentar.body}`;
+}
+
+// Array.prototype.sort ist stabil: Bei gleichem createdAt bleibt die Reihenfolge der
+// Exportdatei erhalten, wie im Issue gefordert.
+function sortierteKommentare(kommentare) {
+  return [...kommentare].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+
+// ------------------------------------------------------------
+// Eingabe
+// ------------------------------------------------------------
+
+function pruefeText(wert, feld, ort) {
+  if (typeof wert !== "string") throw new MigrateError(`${ort}: '${feld}' fehlt oder ist kein Text.`);
+}
+
+/**
+ * Prueft die Exportdatei vollstaendig gegen das Schema aus Issue #288, bevor
+ * irgendetwas geschrieben wird. Ein Teilimport, der an Eintrag 40 auffliegt, waere
+ * teurer als jede Vorabpruefung: Er hinterlaesst ein halb gefuelltes Board.
+ */
+function validiereExport(daten) {
+  if (!Array.isArray(daten)) throw new MigrateError("Die Exportdatei enthaelt kein Array von Eintraegen.");
+  const nummern = new Set();
+  daten.forEach((eintrag, i) => {
+    const ort = `Eintrag ${i + 1}`;
+    if (!eintrag || typeof eintrag !== "object" || Array.isArray(eintrag)) {
+      throw new MigrateError(`${ort}: kein Objekt.`);
+    }
+    if (!Number.isInteger(eintrag.number)) throw new MigrateError(`${ort}: 'number' fehlt oder ist keine Ganzzahl.`);
+    pruefeText(eintrag.title, "title", ort);
+    pruefeText(eintrag.body, "body", ort);
+    if (!Array.isArray(eintrag.labels) || !eintrag.labels.every((l) => typeof l === "string")) {
+      throw new MigrateError(`${ort}: 'labels' fehlt oder ist keine Liste von Namen.`);
+    }
+    if (eintrag.spalte !== null && typeof eintrag.spalte !== "string") {
+      throw new MigrateError(`${ort}: 'spalte' muss ein Text oder null sein.`);
+    }
+    if (!Array.isArray(eintrag.comments)) throw new MigrateError(`${ort}: 'comments' fehlt oder ist keine Liste.`);
+    eintrag.comments.forEach((k, j) => {
+      const kOrt = `${ort}, Kommentar ${j + 1}`;
+      if (!k || typeof k !== "object") throw new MigrateError(`${kOrt}: kein Objekt.`);
+      pruefeText(k.author, "author", kOrt);
+      pruefeText(k.body, "body", kOrt);
+      pruefeText(k.createdAt, "createdAt", kOrt);
+    });
+    if (nummern.has(eintrag.number)) throw new MigrateError(`Issue-Nummer ${eintrag.number} kommt mehrfach vor.`);
+    nummern.add(eintrag.number);
+  });
+  return daten;
+}
+
+function leseExportDatei(pfad) {
+  const voll = resolve(pfad);
+  if (!existsSync(voll)) throw new MigrateError(`Exportdatei nicht gefunden: ${voll}`);
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(voll, "utf-8"));
+  } catch (e) {
+    throw new MigrateError(`${voll} ist kein gueltiges JSON: ${e.message}`);
+  }
+  return validiereExport(daten);
+}
+
+/** Der Wert eines Zahlen-Flags als positive Ganzzahl, oder null. */
+function leseZahlOption(cliArgs, name) {
+  const roh = leseOption(cliArgs, name, "eine Zahl");
+  if (roh === null) return null;
+  if (!/^\d+$/.test(roh)) throw new MigrateError(`${name} braucht eine positive Ganzzahl, nicht '${roh}'.`);
+  return Number(roh);
+}
+
+/**
+ * Alle Optionen des import-Laufs, vollstaendig geprueft — vor jedem Datei- oder
+ * Netzzugriff. Genau einer der beiden Modi muss gesetzt sein: ohne beide waere unklar,
+ * was gemeint ist, mit beiden waere es der schreibende Lauf mit einem Feigenblatt.
+ */
+function leseImportOptionen(cliArgs) {
+  const datei = leseOption(cliArgs, "--file", "die Exportdatei");
+  if (!datei) throw new MigrateError("import braucht --file <exportdatei>.");
+
+  const dryRun = cliArgs.includes("--dry-run");
+  const yes = cliArgs.includes("--yes");
+  if (dryRun === yes) {
+    throw new MigrateError("Genau einer der beiden Modi muss gesetzt sein: --dry-run oder --yes.");
+  }
+
+  const outDir = leseOption(cliArgs, "--out-dir", "ein Verzeichnis");
+  if (dryRun && !outDir) throw new MigrateError("--dry-run braucht --out-dir <verzeichnis> fuer die Vorschau.");
+
+  const from = leseZahlOption(cliArgs, "--from");
+  const to = leseZahlOption(cliArgs, "--to");
+  if ((from === null) !== (to === null)) throw new MigrateError("--from und --to gehoeren zusammen.");
+  if (from !== null && from > to) throw new MigrateError(`--from ${from} liegt hinter --to ${to}.`);
+
+  const limit = leseZahlOption(cliArgs, "--limit");
+  if (limit !== null && limit < 1) throw new MigrateError("--limit braucht eine positive Ganzzahl.");
+
+  return { datei, dryRun, outDir, from, to, limit };
+}
+
+/** Erst nach Nummer sortieren, dann den Bereich filtern, zuletzt limitieren. */
+function waehleAus(daten, { from, to, limit }) {
+  let auswahl = [...daten].sort((a, b) => a.number - b.number);
+  if (from !== null) auswahl = auswahl.filter((e) => e.number >= from && e.number <= to);
+  return limit === null ? auswahl : auswahl.slice(0, limit);
+}
+
+// ------------------------------------------------------------
+// Ausfuehrung
+// ------------------------------------------------------------
+
+/**
+ * Schreibt die Vorschau. Alle Zieldateien werden geprueft, bevor die erste entsteht:
+ * Ein Abbruch in der Mitte liesse einen halben Vorschaustand zurueck, den beim
+ * naechsten Lauf niemand von einem vollstaendigen unterscheiden koennte.
+ */
+function schreibeVorschau(auswahl, repoUrl, outDir) {
+  const ziel = resolve(outDir);
+  const dateien = auswahl.map((eintrag) => ({ eintrag, pfad: join(ziel, `github-${eintrag.number}.md`) }));
+  const belegt = dateien.find((d) => existsSync(d.pfad));
+  if (belegt) throw new MigrateError(`Vorschaudatei existiert bereits: ${belegt.pfad}`);
+
+  mkdirSync(ziel, { recursive: true });
+  for (const datei of dateien) {
+    writeFileSync(datei.pfad, kartenBody(datei.eintrag, repoUrl), "utf-8");
+  }
+}
+
+/** Der Kartenbestand des Boards als flache Liste (die API gruppiert nach Spalte). */
+async function ladeBestand(zugang) {
+  const res = await kanbanFetch(zugang, "/api/kanban/items");
+  const gruppiert = await res.json();
+  if (!gruppiert || typeof gruppiert !== "object") {
+    throw new MigrateError("Unerwartete Antwort beim Lesen des Kartenbestands.");
+  }
+  return Object.values(gruppiert).flat().filter((k) => k && typeof k === "object");
+}
+
+/**
+ * Teilt die Auswahl in "schon da" und "anzulegen" — vor dem ersten Schreibzugriff.
+ *
+ * Der externalKey ist der Anker der Idempotenz (Plan-Entscheidung 3): Der Umzug laeuft
+ * step by step, jeder Block muss wiederholbar sein. Eine belegte Zielnummer mit
+ * fremdem Schluessel ist dagegen kein Wiederholungsfall, sondern eine fremde Karte —
+ * der Lauf endet, statt sie zu ueberschreiben.
+ */
+function teileAuf(auswahl, bestand, bilanz) {
+  const nachKey = new Map();
+  const nachNummer = new Map();
+  for (const karte of bestand) {
+    if (karte.externalKey) nachKey.set(String(karte.externalKey), karte);
+    if (karte.number != null) nachNummer.set(Number(karte.number), karte);
+  }
+
+  const offen = [];
+  for (const eintrag of auswahl) {
+    if (nachKey.has(externalKey(eintrag.number))) {
+      bilanz.skipped += 1;
+      continue;
+    }
+    const belegt = nachNummer.get(eintrag.number);
+    if (belegt) {
+      throw new MigrateError(
+        `Zielnummer ${eintrag.number} ist bereits belegt (externalKey: ${belegt.externalKey ?? "keiner"}) — nichts wird ueberschrieben.`
+      );
+    }
+    offen.push(eintrag);
+  }
+  return offen;
+}
+
+async function legeKarteAn(zugang, eintrag, repoUrl) {
+  const res = await kanbanFetch(zugang, "/api/kanban/items", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      number: eintrag.number,
+      externalKey: externalKey(eintrag.number),
+      column: zielSpalte(eintrag.spalte),
+      title: eintrag.title,
+      body: kartenBody(eintrag, repoUrl),
+    }),
+  });
+
+  let angelegt = null;
+  try { angelegt = await res.json(); } catch { /* leere Antwort */ }
+  const id = angelegt?.id ?? null;
+  if (id == null && eintrag.comments.length > 0) {
+    throw new MigrateError(
+      `Die Create-Response zu Issue #${eintrag.number} enthaelt keine 'id' — die Kommentare koennen nicht angehaengt werden.`
+    );
+  }
+  return id;
+}
+
+async function schreibeKarten(zugang, offen, repoUrl, bilanz) {
+  for (const eintrag of offen) {
+    try {
+      const id = await legeKarteAn(zugang, eintrag, repoUrl);
+      for (const kommentar of sortierteKommentare(eintrag.comments)) {
+        await kanbanFetch(zugang, `/api/kanban/items/${id}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: kommentarBody(eintrag, kommentar, repoUrl) }),
+        });
+      }
+      bilanz.created += 1;
+    } catch (e) {
+      // Der Lauf endet hier statt weiterzumachen: Ein Fehler an dieser Stelle heisst
+      // meist, dass etwas Grundsaetzliches nicht stimmt, und die Bilanz sagt genau,
+      // wo fortzusetzen ist — der externalKey macht den naechsten Lauf dublettenfrei.
+      bilanz.failed += 1;
+      throw new MigrateError(`Issue #${eintrag.number} konnte nicht angelegt werden: ${e.message}`);
+    }
+  }
+}
+
+/** Die Repository-URL als Basis der Herkunftsangaben. Rein lesender gh-Aufruf. */
+function repositoryUrl() {
+  const url = exec("gh", ["repo", "view", "--json", "url", "-q", ".url"]);
+  if (!/^https?:\/\//.test(url)) throw new MigrateError(`Konnte die Repository-URL nicht bestimmen: '${url}'`);
+  return url.replace(/\/$/, "");
+}
+
+async function fuehreImportAus(cliArgs) {
+  const optionen = leseImportOptionen(cliArgs);
+  const auswahl = waehleAus(leseExportDatei(optionen.datei), optionen);
+
+  // Spaltenpruefung fuer die ganze Auswahl, bevor irgendetwas entsteht: Ein
+  // unbekannter Wert soll nicht erst auffallen, wenn die Haelfte schon steht.
+  for (const eintrag of auswahl) zielSpalte(eintrag.spalte);
+
+  const bilanz = { selected: auswahl.length, created: 0, skipped: 0, failed: 0 };
+  const melde = () => process.stdout.write(`${JSON.stringify(bilanz)}\n`);
+  if (auswahl.length === 0) {
+    melde();
+    return;
+  }
+
+  const repoUrl = repositoryUrl();
+  if (optionen.dryRun) {
+    schreibeVorschau(auswahl, repoUrl, optionen.outDir);
+    melde();
+    return;
+  }
+
+  const zugang = kanbanZugang();
+  const offen = teileAuf(auswahl, await ladeBestand(zugang), bilanz);
+  try {
+    await schreibeKarten(zugang, offen, repoUrl, bilanz);
+  } finally {
+    // Auch beim Abbruch: Die Bilanz nennt die bis dahin angelegten und
+    // uebersprungenen Karten und ist damit der Ansatzpunkt des naechsten Laufs.
+    melde();
+  }
 }
 
 // ============================================================
@@ -353,7 +758,7 @@ function hilfeAufStderr() {
   return 1;
 }
 
-export function main(argv) {
+export async function main(argv) {
   if (argv.includes("--help") || argv.includes("-h")) {
     process.stdout.write(HILFE);
     return 0;
@@ -362,13 +767,14 @@ export function main(argv) {
   const [unterkommando, ...rest] = argv;
   if (!UNTERKOMMANDOS.includes(unterkommando)) return hilfeAufStderr();
 
-  if (unterkommando !== "export") {
+  if (unterkommando === "verify") {
     process.stderr.write(`Noch nicht implementiert: ${unterkommando}\n`);
     return 1;
   }
 
   try {
-    fuehreExportAus(rest);
+    if (unterkommando === "export") fuehreExportAus(rest);
+    else await fuehreImportAus(rest);
     return 0;
   } catch (e) {
     if (e instanceof CliError) return hilfeAufStderr();
@@ -389,6 +795,9 @@ if (process.argv[1]) {
     runAsCli = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
   } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
 }
+// exitCode statt process.exit: Seit import asynchron arbeitet, wuerde ein sofortiges
+// exit die noch nicht geleerten stdout-Puffer abschneiden — und genau darin steht die
+// Bilanz des Laufs.
 if (runAsCli) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = await main(process.argv.slice(2));
 }
