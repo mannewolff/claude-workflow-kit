@@ -1,6 +1,6 @@
 {
   "codeHost": "github",
-  "issueTracker": "github",
+  "issueTracker": "toolbox",
   "buildChecks": [
     "node --test",
     "node tools/sync-blobs.mjs --check"
@@ -24,9 +24,6 @@
     "in_progress": "In progress",
     "in_review": "In review",
     "done": "Done"
-  },
-  "github": {
-    "projectNumber": 14
   },
   "issueReview": {
     "rounds": 1,
@@ -97,5 +94,9 @@
         "pruefbarkeit"
       ]
     }
+  },
+  "toolbox": {
+    "host": "https://kanban.mwolff.org",
+    "ideaStored": false
   }
 }
