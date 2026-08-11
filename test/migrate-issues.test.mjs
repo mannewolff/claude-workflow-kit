@@ -220,20 +220,20 @@ test("--help listet die drei Unterkommandos auf stdout und endet mit Exit 0", ()
   }
 });
 
-// import ist seit Issue #289 umgesetzt und in test/migrate-issues-import.test.mjs
-// abgedeckt; verify folgt in Issue #290.
-test("verify meldet 'Noch nicht implementiert' und ruft gh nicht auf", () => {
-  for (const sub of ["verify"]) {
-    const dir = fixture(`migrate-stub-${sub}-`, []);
-    try {
-      const res = runMigrate(dir, [sub]);
-      assert.equal(res.status, 1, `${sub} muss mit Exit 1 enden`);
-      assert.equal(res.stderr.trim(), `Noch nicht implementiert: ${sub}`);
-      assert.equal(res.stdout, "");
-      assert.deepEqual(aufrufe(dir, "gh"), [], `${sub} darf gh nicht aufrufen`);
-    } finally {
-      aufraeumen(dir);
-    }
+// Alle drei Unterkommandos sind umgesetzt: export hier, import in
+// test/migrate-issues-import.test.mjs (#289), verify in
+// test/migrate-issues-verify.test.mjs (#290). Was hier bleibt, ist der
+// Bedienfehler-Pfad: verify ohne --in darf gar nicht erst loslaufen.
+test("verify ohne --in endet mit Exit 2 und ruft gh nicht auf", () => {
+  const dir = fixture("migrate-verify-ohne-in-", []);
+  try {
+    const res = runMigrate(dir, ["verify"]);
+    assert.equal(res.status, 2, "fehlendes --in ist ein Betriebsfehler, kein Abweichungsbefund");
+    assert.match(res.stderr, /--in/);
+    assert.equal(res.stdout, "");
+    assert.deepEqual(aufrufe(dir, "gh"), [], "verify darf ohne Eingabedatei gh nicht aufrufen");
+  } finally {
+    aufraeumen(dir);
   }
 });
 

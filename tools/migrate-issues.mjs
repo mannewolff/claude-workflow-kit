@@ -9,7 +9,7 @@
  *
  * Nutzung:  node tools/migrate-issues.mjs export [--out <verzeichnis>]
  *           node tools/migrate-issues.mjs import --file <exportdatei> ...
- *           node tools/migrate-issues.mjs verify   # noch nicht implementiert (#290)
+ *           node tools/migrate-issues.mjs verify --in <exportdatei> [--from N --to M]
  *
  * `export` liest ausschliesslich: kein Schreibzugriff auf GitHub, keine Abhaengigkeit
  * zu kanban-kit. Geschrieben wird genau eine Datei im Zielverzeichnis.
@@ -52,8 +52,9 @@ const HILFE = [
   "      (--dry-run --out-dir <verzeichnis> | --yes) [--from N --to N] [--limit N]",
   "      Spielt einen Export in kanban-kit ein. Genau einer der beiden Modi muss",
   "      gesetzt sein: --dry-run schreibt nur Vorschaudateien, --yes legt Karten an.",
-  "  node tools/migrate-issues.mjs verify",
-  "      Vergleicht Export und Ziel als Gate.",
+  "  node tools/migrate-issues.mjs verify --in <exportdatei> [--from N --to M]",
+  "      Vergleicht Export und Ziel als Gate. Liest nur.",
+  "      Exit 0 = keine Abweichung, 1 = Abweichung gefunden, 2 = Betriebsfehler.",
   "  node tools/migrate-issues.mjs --help",
   "",
   `Ohne --out schreibt export nach ${DEFAULT_OUT}.`,
@@ -753,6 +754,125 @@ async function fuehreImportAus(cliArgs) {
 // CLI
 // ============================================================
 
+// ============================================================
+// verify
+// ============================================================
+
+const ABWEICHUNG = 1;
+const BETRIEBSFEHLER = 2;
+
+/** Die Spalte auf den Workflow-Status normalisieren — "In progress" und "IN_PROGRESS" sind dasselbe. */
+function normalisiereSpalte(wert) {
+  if (wert == null || String(wert).trim() === "") return null;
+  return String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+/**
+ * Den Ziel-Body auf den urspruenglichen zurueckfuehren: Die zwei Kopfzeilen aus
+ * Issue #289 plus die trennende Leerzeile abziehen. Ohne das waere ein Vergleich
+ * bei JEDER importierten Karte rot — die Kopfzeile steht ja ueberall.
+ * Fehlt die Kopfzeile, bleibt der Body unveraendert; dann meldet der Vergleich sie
+ * als Abweichung, was richtig ist.
+ */
+function ohneHerkunft(body) {
+  const treffer = /^> Quelle: [^\n]*\n> Ursprüngliche Spalte: [^\n]*\n\n/.exec(body ?? "");
+  return treffer ? String(body).slice(treffer[0].length) : String(body ?? "");
+}
+
+function alsJson(wert) {
+  return JSON.stringify(wert === undefined ? null : wert);
+}
+
+/**
+ * Die Kommentare einer Zielkarte lesen.
+ *
+ * Anders als der Board-Adapter (`ToolboxIssueTracker._comments`) wird ein Ausfall
+ * hier NICHT zu einer leeren Liste geglaettet: Fuer ein Gate waere ein nicht
+ * erreichbarer Endpunkt von echtem Datenverlust ununterscheidbar.
+ */
+async function leseZielKommentare(zugang, kartenId) {
+  let res;
+  try {
+    res = await kanbanFetch(zugang, `/api/kanban/items/${kartenId}/comments`);
+  } catch (e) {
+    throw new MigrateError(`Kommentare nicht prüfbar (Karte ${kartenId}): ${e.message}`);
+  }
+  const roh = await res.json();
+  if (!Array.isArray(roh)) {
+    throw new MigrateError(`Kommentare nicht prüfbar (Karte ${kartenId}): Antwort ist keine Liste.`);
+  }
+  return roh;
+}
+
+/** Ein Eintrag gegen seine Zielkarte. Liefert die Abweichungszeilen. */
+async function vergleiche(eintrag, karte, zugang) {
+  const zeilen = [];
+  const melde = (feld, quelle, ziel) =>
+    zeilen.push(`#${eintrag.number} field=${feld} source=${alsJson(quelle)} target=${alsJson(ziel)}`);
+
+  if (!karte) {
+    melde("card", eintrag.title, null);
+    return zeilen;
+  }
+  if (eintrag.title !== karte.title) melde("title", eintrag.title, karte.title);
+
+  const zielBody = ohneHerkunft(karte.body);
+  if (eintrag.body !== zielBody) melde("body", eintrag.body, zielBody);
+
+  // Eine Quelle ohne Spalte landet laut Plan-Entscheidung 10 im Backlog. Das ist
+  // spezifikationsgemaess und keine Abweichung — sonst waeren es 23 Fehlalarme.
+  const quellSpalte = normalisiereSpalte(eintrag.spalte) ?? "backlog";
+  const zielSpalteWert = normalisiereSpalte(karte.column);
+  if (quellSpalte !== zielSpalteWert) melde("spalte", quellSpalte, zielSpalteWert);
+
+  const zielKommentare = await leseZielKommentare(zugang, karte.id);
+  const quellKommentare = sortierteKommentare(eintrag.comments ?? []);
+  if (quellKommentare.length !== zielKommentare.length) {
+    melde("comments", quellKommentare.length, zielKommentare.length);
+  } else {
+    quellKommentare.forEach((k, i) => {
+      const ziel = zielKommentare[i];
+      const zielText = ohneHerkunftKommentar(ziel?.body);
+      if (k.body !== zielText) melde(`comment[${i}]`, k.body, zielText);
+    });
+  }
+  return zeilen;
+}
+
+/** Wie ohneHerkunft, nur fuer die dreizeilige Kommentar-Kopfzeile aus Issue #289. */
+function ohneHerkunftKommentar(body) {
+  const treffer = /^> Quelle: [^\n]*\n> Autor: [^\n]*\n> Datum: [^\n]*\n\n/.exec(body ?? "");
+  return treffer ? String(body).slice(treffer[0].length) : String(body ?? "");
+}
+
+async function fuehreVerifyAus(cliArgs) {
+  const pfad = leseOption(cliArgs, "--in", "ein Pfad");
+  if (!pfad) throw new MigrateError("--in <pfad> ist erforderlich.");
+  const from = leseZahlOption(cliArgs, "--from");
+  const to = leseZahlOption(cliArgs, "--to");
+  if (from !== null && to !== null && from > to) {
+    throw new MigrateError(`--from (${from}) darf nicht groesser als --to (${to}) sein.`);
+  }
+
+  const daten = leseExportDatei(pfad);
+  const auswahl = daten.filter(
+    (e) => (from === null || e.number >= from) && (to === null || e.number <= to)
+  );
+
+  const zugang = kanbanZugang();
+  const bestand = await ladeBestand(zugang);
+  const nachNummer = new Map(bestand.map((k) => [Number(k.number), k]));
+
+  const alle = [];
+  for (const eintrag of auswahl) {
+    alle.push(...(await vergleiche(eintrag, nachNummer.get(Number(eintrag.number)), zugang)));
+  }
+
+  for (const zeile of alle) process.stdout.write(`${zeile}\n`);
+  process.stdout.write(`${auswahl.length} Karten geprüft, ${alle.length} Abweichungen\n`);
+  return alle.length === 0 ? 0 : ABWEICHUNG;
+}
+
 function hilfeAufStderr() {
   process.stderr.write(HILFE);
   return 1;
@@ -767,9 +887,20 @@ export async function main(argv) {
   const [unterkommando, ...rest] = argv;
   if (!UNTERKOMMANDOS.includes(unterkommando)) return hilfeAufStderr();
 
+  // verify trennt zwei Lagen ueber den Exit-Code und faengt deshalb selbst:
+  // 1 = fachliche Abweichung, 2 = Betriebsfehler. Wer beides auf 1 abbildet, kann
+  // "die Daten stimmen nicht" nicht von "die Pruefung fand nicht statt" unterscheiden.
   if (unterkommando === "verify") {
-    process.stderr.write(`Noch nicht implementiert: ${unterkommando}\n`);
-    return 1;
+    try {
+      return await fuehreVerifyAus(rest);
+    } catch (e) {
+      if (e instanceof CliError) {
+        process.stderr.write(`Fehler: ${e.message}\n`);
+        return BETRIEBSFEHLER;
+      }
+      process.stderr.write(`Fehler: ${e.message}\n`);
+      return BETRIEBSFEHLER;
+    }
   }
 
   try {
