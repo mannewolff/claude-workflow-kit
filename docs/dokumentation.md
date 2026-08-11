@@ -184,7 +184,7 @@ Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht beha
 |-------|-------|
 | `/kontext` | Session-Start: Vault laden, Projektstand |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
-| `/issue-review` | Dokument von fremden Modellen prüfen lassen, bevor es nach Ready wandert |
+| `/issue-review` | fachliche Anforderung, Plandokument **oder** Arbeitspaket prüfen lassen — ein Kommando, drei Stufen |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz |
 
@@ -641,6 +641,10 @@ Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, e
 | `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+
+**Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
+
+Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob geschrieben werden darf — nachts nie in eine fachliche Anforderung und nie in einen Plan, weil dort PO-Antworten und Architekturentscheidungen stehen, die ein Mensch getroffen hat.
 
 **Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.** An ihr hängt das Gate `requiredBeforeReady`; `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie. Sie belegen die Prüfung einer früheren Stufe, nicht die des Arbeitspakets — wer sie verwechselt, zieht ein ungeprüftes Arbeitspaket nach Ready.
 

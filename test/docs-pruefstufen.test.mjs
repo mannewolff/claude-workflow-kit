@@ -100,6 +100,34 @@ test("beide Nachtbetrieb-Abschnitte erklaeren eine Stufe pro Aufruf samt Default
   }
 });
 
+// Ein Kommando fuer drei Dokumentsorten ist nicht selbsterklaerend. Ohne diesen
+// Satz liest man die Stufentabelle so, als brauche jede Stufe ihr eigenes
+// Kommando — und haelt die Pruefung von Plan und Anforderung faelschlich fuer
+// etwas, das nur der Nacht-Runner kann.
+test("alle drei Dokumente nennen den einen Einstieg fuer drei Stufen", () => {
+  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+    const absatz = text
+      .split(/\n\n/)
+      .find((a) => /\/issue-review #N/.test(a) && /Titel-Präfix|Titel-Praefix/.test(a));
+    assert.ok(absatz, `${name}: der gemeinsame Einstieg /issue-review #N ist nicht benannt`);
+    assert.match(absatz, /kein\s+eigenes\s+Kommando|bewusst\s+kein/i,
+      `${name}: es steht nicht, dass es kein Kommando je Stufe gibt`);
+  }
+  // Und die Aussage, dass das nicht am Nachtbetrieb haengt.
+  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+    assert.match(text, /interaktiv genauso wie im Nachtbetrieb/i,
+      `${name}: die Gleichstellung von interaktiv und Nachtbetrieb fehlt`);
+  }
+});
+
+test("die Skill-Tabellen weisen /issue-review als Drei-Stufen-Kommando aus", () => {
+  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+    const zeile = text.split("\n").find((z) => /^\|\s*`\/issue-review`/.test(z));
+    assert.ok(zeile, `${name}: keine Skill-Tabellenzeile fuer /issue-review`);
+    assert.match(zeile, /drei Stufen/i, `${name}: die Tabellenzeile nennt die drei Stufen nicht`);
+  }
+});
+
 test("das verbindliche Plan-Format steht mit allen sechs Ueberschriften in Reihenfolge", () => {
   for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
     let pos = -1;

@@ -33,7 +33,7 @@ Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwo
 |-------|--------|
 | `/kontext` | Session-Start: Memory-Vault laden, Projektstand holen |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
-| `/issue-review` | Dokument von fremden Modellen pruefen lassen, bevor es nach Ready wandert |
+| `/issue-review` | fachliche Anforderung, Plandokument **oder** Arbeitspaket pruefen lassen — ein Kommando, drei Stufen |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz schreiben |
 
@@ -72,6 +72,13 @@ Kontext-Abschnitt:
 | `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue (Plandokument aus `/plan`) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
+
+**Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt kein eigenes
+Kommando je Stufe — welche greift, liest der Skill am Titel-Praefix ab. Das gilt
+**interaktiv genauso wie im Nachtbetrieb**: Ein `[Plan]`-Issue laesst sich
+jederzeit tagsueber pruefen, es muss nicht auf einen Nachtlauf warten. Der
+Unterschied zwischen beiden Betriebsarten liegt nicht in der Stufenwahl, sondern
+darin, ob der Body geschrieben werden darf (siehe Nachtbetrieb).
 
 **Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.**
 `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie — sie belegen die Pruefung
