@@ -184,7 +184,7 @@ Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht beha
 |-------|-------|
 | `/kontext` | Session-Start: Vault laden, Projektstand |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
-| `/issue-review` | Issue von zwei fremden Modellen prüfen lassen, bevor es nach Ready wandert |
+| `/issue-review` | fachliche Anforderung, Plandokument **oder** Arbeitspaket prüfen lassen — ein Kommando, drei Stufen |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz |
 
@@ -220,7 +220,9 @@ Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kom
 
 Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Anschließend stellt er den Plan zur Diskussion.
 
-Der Skill implementiert nichts. Er stellt keine Issues an. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
+Der Skill implementiert nichts. **Technische Issues stellt er nicht an** — die entstehen erst in `/issues`, nach deinem GO. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
+
+Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 das Plandokument selbst als Issue mit dem Titel-Präfix `[Plan]` an — mit dem Plan als Body, `Plan-Modell:` im Kopf und, falls der Plan aus `/plan #N` gegen ein fachliches Issue entstand, `Fachliche Quelle: Issue #N`. Es hält den freigegebenen Stand fest, statt ihn umzusetzen: Was zwischen Anforderung und Arbeitspaketen entschieden wurde — Architektur, Schnitt, Abwägungen — stünde sonst nirgends. `[Plan]`-Issues werden nie implementiert (siehe das Gate weiter unten); zerlegt werden sie per `/issues #N`. Bei Bahn 1 entsteht kein Plandokument.
 
 ### /issues
 
@@ -266,9 +268,9 @@ Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/
 
 **Werkzeug neben dem Prozess, zwischen Schritt 3 und dem GO.**
 
-Der Skill lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, und schlägt einen geschärften Body vor. Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist — was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf. Ein fremdes Modell hat nur den Text.
+Der Skill lässt ein Dokument von Modellen prüfen, die es nicht geschrieben haben, und schlägt einen geschärften Body vor. Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist — was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf. Ein fremdes Modell hat nur den Text.
 
-Die beiden Prüfer bekommen verschiedene Rollen (Vollständigkeit bzw. Scope), und beide die Frage „Was kann raus?" — ohne sie wächst das Issue mit jeder Runde, ohne besser zu werden. Die Befunde landen als Board-Kommentar; der Body wird nur nach ausdrücklicher Zustimmung geschrieben. Details im Abschnitt [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
+Wie viele prüfen und mit welchen Rollen, entscheidet die Prüfstufe; jede Rolle trägt die Frage „Was kann raus?" — ohne sie wächst das Issue mit jeder Runde, ohne besser zu werden. Die Befunde landen als Board-Kommentar; der Body wird nur nach ausdrücklicher Zustimmung geschrieben. Details im Abschnitt [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
 
 ### /local-check
 
@@ -311,6 +313,8 @@ Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach p
 Das ist eine reine Opt-in-Konvention, kein Kit-internes Feature: Jedes Projekt, das per `/push-main`/`/merge-production` arbeitet, kann so eigene Release-Schritte (Versionierung, Changelog-Pflege, was auch immer) andocken, ohne die generischen Skills zu forken. Das claude-workflow-kit-Repo selbst nutzt das für seine eigene Versionierung — siehe [RELEASING.md](https://github.com/mannewolff/claude-workflow-kit/blob/main/RELEASING.md) im Repo.
 
 Als konkretes Beispiel führt das Kit-Repo darüber ein **automatisch generiertes `CHANGELOG.md`**: Ein Script (`tools/changelog.mjs`) leitet die Einträge bei jedem Release aus der Git-Historie ab (die Commit-Betreffzeilen, gruppiert an den Versions-Commits) — von Hand gepflegt wird nichts. Das ist Teil der Kit-eigenen RELEASING.md; Projekte, die das Kit nutzen, bekommen es nicht automatisch, können es aber nach demselben Muster in ihre eigene RELEASING.md aufnehmen.
+
+Zwei Details, die man beim Nachbauen leicht falsch macht: Der Changelog entsteht **nach** dem Versions-Commit und wandert per `git commit --amend` in denselben Commit — läuft er davor, kennt er die Marke nicht, die dieser Commit gerade setzt, und ist in dem Moment veraltet, in dem er geschrieben wird. Und Änderungen, die noch keinen Versions-Commit gesehen haben, stehen unter `[Unreleased]` statt unter der Versionsnummer aus der Konfiguration — die ist nach jedem Release bereits vergeben, und zwei Blöcke mit derselben Nummer sind kein Changelog mehr.
 
 ### Der Git-Tag ist deiner
 
@@ -399,13 +403,21 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 1. `/fachplan <Anforderung>` → fachliches Issue in Backlog (bzw. im Ideen-Pool, siehe unten).
 2. Groomen direkt am Issue, bis der PO die fachliche Freigabe gibt.
 3. `/plan #N` → technischer Plan aus dem fachlichen Issue.
-4. `/issues` → technische Issues; jedes trägt den Rückverweis „Fachliche Quelle: Issue #N" **im Kontext-Abschnitt**.
+4. `/issues` → technische Issues; jedes trägt die Rückverweise **im Kontext-Abschnitt**.
 5. Ab hier der normale Weg: GO, `/implement-ready` oder Nachtbetrieb, Review, Push.
 
 **Die Regeln dahinter:**
 
-- **Der Rückverweis steht im Kontext, nie in den Abhängigkeiten.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten — und weil das fachliche Issue erst Done wird, wenn seine technischen Kinder fertig sind, würden alle Kinder dauerhaft zurückgestellt (Henne-Ei).
-- **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/plan` und `/issues`, bevor sie implementierbar ist.
+- **Zwei Rückverweise, beide im Kontext.** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Deshalb tragen die technischen Issues untereinander, in dieser Reihenfolge:
+
+  ```
+  Plan: Issue #M
+  Fachliche Quelle: Issue #N
+  ```
+
+  Die `Plan:`-Zeile entsteht nur, wenn ein `[Plan]`-Issue als Quelle vorliegt; wurde der Plan bloß in derselben Session freigegeben, bleibt sie weg. Sie ist unabhängig von `Plan-Modell:` — jene nennt den **Urheber** des Plans, diese seinen **Fundort**.
+- **Nie in den Abhängigkeiten — beide nicht.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten. Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument wird durch Umsetzung nie Done — alle Kinder blieben dauerhaft zurückgestellt (Henne-Ei).
+- **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/plan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
 - **Lebenszyklus:** Das fachliche Issue bleibt als Klammer offen; Done setzt der Mensch, wenn die technischen Kinder durch sind.
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
 - **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/plan #N` = fachlich freigegeben.
@@ -416,7 +428,7 @@ Ohne PO ist die Schleife unsichtbar: `/plan` direkt aufzurufen bleibt der Normal
 
 Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
-**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Zwei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)) und **Ideen** (`[Idee]`-Titel). Eine rohe Idee ohne `/plan`-Zyklus ist kein implementierbares Issue; ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend.
+**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Drei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idee]`-Titel) und **Plandokumente** (`[Plan]`-Titel). Eine rohe Idee ohne `/plan`-Zyklus ist kein implementierbares Issue; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus.
 
 **Start:**
 
@@ -506,7 +518,7 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 ### Zweiter Modus: der Nacht-Review
 
-Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Issues aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch zwei fremde Modelle lesen. Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Issues tragen bereits den Prüf-Marker.
+Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Dokumente aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch fremde Modelle lesen — wie viele, entscheidet die [Prüfstufe](#drei-prüfstufen-die-prüfung-wandert-nach-oben). Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Dokumente tragen bereits den Prüf-Marker ihrer Stufe.
 
 ```bash
 node .claude/kit/night.mjs --review --dry-run   # zeigt Kandidaten und Reviewer-Stand
@@ -521,9 +533,13 @@ Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none`
 
 Zwei Läufe an zwei Abenden statt zweier Phasen in einer Nacht. Deshalb ist `--review` auch **exklusiv**: Die Implementierungsschleife läuft dann nicht.
 
-Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Übersprungen werden wie überall `[Fachlich]`- und `[Idee]`-Issues.
+Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Welche Dokumente er nimmt, steuert `--stufe <fachlich|plan|issue>` (Default `issue`): `fachlich` nimmt genau die `[Fachlich]`-Issues, `plan` genau die `[Plan]`-Issues, `issue` weder das eine noch das andere. `[Idee]` bleibt in jeder Stufe ausgeschlossen. Ein Aufruf fährt genau eine Stufe — zwischen den Stufen steht die menschliche Freigabe. Übersprungen werden damit.
 
-**Der Vorflug ist hier ein Gate.** `board.mjs issue-review check` ist für sich nur eine Auskunft — interaktiv fragt der Skill den Menschen, wenn ein Reviewer fehlt. Nachts fragt niemand, und ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Fehlt ein Reviewer, stoppt der Lauf deshalb hart, **bevor** die erste Session startet. Ein Opt-out gibt es bewusst nicht: Wer wissen will, ob alle Reviewer stehen, fährt vorher `--dry-run` — der meldet den Befund und bricht gerade nicht ab. Die `buildChecks`-Pflicht entfällt in diesem Modus, weil nichts gebaut und nichts committet wird.
+**Der Vorflug ist hier ein Gate.** `board.mjs issue-review check` ist für sich nur eine Auskunft — interaktiv fragt der Skill den Menschen, wenn ein Reviewer fehlt. Nachts fragt niemand, und ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Fehlt ein Reviewer oder ist der Tracker nicht erreichbar, stoppt der Lauf deshalb hart, **bevor** die erste Review-Session startet. Ein Opt-out gibt es bewusst nicht: Wer wissen will, ob alles steht, fährt vorher `--dry-run` — der meldet den Befund und bricht gerade nicht ab. Die `buildChecks`-Pflicht entfällt in diesem Modus, weil nichts gebaut und nichts committet wird.
+
+**Der Vorflug läuft in einer eigenen Session, nicht im Runner.** Der Reviewer wird nicht dort gebraucht, wo der Runner steht, sondern in den Review-Sessions — eigene Kindprozesse mit eigener Sandbox, eigener Netzwerk-Allowlist und eigenen Freigaben. Ein Probelauf im Runner beweist nur, dass *der Runner* das Werkzeug starten darf. In der Nacht vom 08.08.2026 lief er sauber durch, während `codex exec` in der Session an „Run outside of the sandbox" scheiterte und `board.mjs issue get` an der leeren Netzwerk-Allowlist: ein Lauf, der vollbesetzt startete und mit einem Reviewer arbeitete.
+
+`night.mjs --review` startet deshalb **genau eine Vorflug-Session** — gleiche Bauart, gleicher Startpfad, gleiche Rechte wie eine spätere Review-Session, aber mit festem günstigem Modell und kurzem eigenem Zeitlimit, damit `--dry-run` billig und schnell bleibt. Sie startet jedes `kind: "command"`-Kommando einmal direkt mit dem Prompt über stdin (ausdrücklich **nicht** über `board.mjs issue-review check` — dieser Pfad steht in `sandbox.excludedCommands` und misst damit wieder die falsche Umgebung) und prüft die Erreichbarkeit des Trackers. Jeder Befund nennt die Umgebung: `review-session` aus dem Vorflug, `runner` aus `board.mjs issue-review check`. Die Tracker-Erreichbarkeit ist ein **eigener** Befund — bei Issue #248 scheiterte nicht der Reviewer, sondern das `issue get`, und wer das als Reviewer-Ausfall meldet, schickt den Menschen morgens in die falsche Ecke. Lässt sich die Vorflug-Session gar nicht starten oder liefert sie keinen auswertbaren Befund, ist auch das ein eigener Grund zum Stopp. Verschmutzt sie den Working Tree, gilt derselbe harte Stopp wie nach einer regulären Review-Session. Der interaktive Pfad (`/issue-review`, Schritt 0) bleibt unverändert — dort läuft der Befehl ohnehin schon in einer echten Session.
 
 **Drei Ausgänge pro Issue**, und der mittlere ist der wichtigste:
 
@@ -614,7 +630,56 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 
 Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin kostet mehr als ein Fehler im Code, weil er sich in die ganze Umsetzung fortpflanzt — und der Autor sieht ihn nicht, weil er den Kontext im Kopf hat, aus dem das Issue entstanden ist. Was er nicht hingeschrieben hat, ergänzt er beim Lesen unbewusst.
 
-`/issue-review` sitzt zwischen `/issues` (Schritt 3) und dem GO (Schritt 4): Zwei Modelle, die das Issue **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+`/issue-review` sitzt zwischen `/issues` (Schritt 3) und dem GO (Schritt 4): Modelle, die das Dokument **nicht** geschrieben haben, lesen es und schlagen Schärfungen vor.
+
+### Drei Prüfstufen — die Prüfung wandert nach oben
+
+Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis im Kontext-Abschnitt:
+
+| Stufe | Prüft | Nachweis |
+|---|---|---|
+| `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
+| `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
+| `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+
+**Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
+
+Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob geschrieben werden darf — nachts nie in eine fachliche Anforderung und nie in einen Plan, weil dort PO-Antworten und Architekturentscheidungen stehen, die ein Mensch getroffen hat.
+
+**Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.** An ihr hängt das Gate `requiredBeforeReady`; `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie. Sie belegen die Prüfung einer früheren Stufe, nicht die des Arbeitspakets — wer sie verwechselt, zieht ein ungeprüftes Arbeitspaket nach Ready.
+
+**Warum nach oben.** Die Reichweite eines Fehlers wächst nach unten: Ein Fehler in der fachlichen Anforderung pflanzt sich in den Plan fort, von dort in jedes Arbeitspaket und schließlich in allen Code. Derselbe Fehler, im Arbeitspaket gefunden, kostet ein Issue; in der Anforderung gefunden, kostet er einen Satz. Früher gefundene Fehler sind deshalb nicht nur billiger zu beheben — sie sind auch die, deren Behebung am meisten verhindert. Nebenbei wird das Verfahren günstiger: Bei dreizehn Arbeitspaketen aus einem Plan sind es 17 Prüfläufe statt 26.
+
+**Warum das Arbeitspaket nur noch einen Prüfer hat.** Die bisherige zweite Rolle fragte nach Scope, Abhängigkeiten und Kollateralschäden im Bestand. Diese Fragen entscheiden sich im Plan, nicht im einzelnen Paket — ein Prüfer, der nur ein Paket vor sich hat, kann sie gar nicht beantworten. Belegt am 2026-08-08: Drei der vier Scope-Befunde jenes Laufs waren Fehlalarme an Abhängigkeitsgrenzen, weil der Prüfer das Nachbar-Issue nicht sah. Die Rolle ist deshalb nicht gestrichen, sondern als `schnitt-abhaengigkeiten` auf die Plan-Stufe gewandert, wo sie den ganzen Zuschnitt vor sich hat und tatsächlich wirkt. Was beim Arbeitspaket bleibt, ist die maschinelle Prüfbarkeit der Akzeptanzkriterien — sie hat auf den oberen Stufen kein Gegenstück, weil Akzeptanzkriterien erst dort entstehen.
+
+**Warum ein Format nötig ist.** Ein Prüfer ohne festgelegte Form kann nur Geschmack äußern; mit ihr kann er prüfen. Beim Arbeitspaket sind es die vier Abschnitte, bei der fachlichen Anforderung das Story-Format aus `/fachplan` — und beim Plandokument diese sechs Überschriften, genau in dieser Reihenfolge:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+Leere Pflichtabschnitte werden ausdrücklich mit `- Keine.` ausgewiesen. Die festen Überschriften sind der Maßstab, gegen den die Stufe `plan` prüft: Fehlt einer, steht er an falscher Stelle oder trägt eine Entscheidung ohne Begründung, ist das ein Fund und keine Geschmacksfrage.
+
+**Rückwärtskompatibilität.** Die Besetzung je Stufe steht im Config-Block `reviewStufen`; die mitgelieferte Vorlage konfiguriert für `issue` genau einen Reviewer. Bestehende Installationen **ohne** diesen Block behalten unverändert die bisherige Besetzung mit zwei Reviewern und den bisherigen beiden Rollen — erst ein ausdrücklich geschriebener Block aktiviert die neue Besetzung. Ein Kit-Update ändert das Prüfverfahren also nicht im Vorbeigehen.
+
+```json
+"reviewStufen": {
+  "fachlich": { "reviewer": 2, "rollen": ["form-beobachtbarkeit", "abgrenzung"] },
+  "plan":     { "reviewer": 2, "rollen": ["architektur-bestand", "schnitt-abhaengigkeiten"] },
+  "issue":    { "reviewer": 1, "rollen": ["pruefbarkeit"] }
+}
+```
+
+Welche Rolle welcher Reviewer übernimmt, lässt sich ablesen statt ausrechnen:
+
+```bash
+node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5
+```
 
 ### Konfiguration
 
@@ -654,7 +719,7 @@ Wer wen prüft, steht in `pairs`:
 }
 ```
 
-Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die ersten zwei Reviewer, die nicht der Autor sind.
+Steht der Autor dort, gewinnt sein Eintrag. Sonst greift eine Regel: die vordersten Reviewer, die nicht der Autor sind. Wie viele davon tatsächlich laufen, kürzt anschließend die Prüfstufe.
 
 **Verlass dich nicht auf die Regel allein.** Sie wählt immer die vordersten Einträge — bei vier konfigurierten Reviewern kommt der vierte in keinem einzigen Fall zum Zug. Wer ein fremdes Modell hinten in die Liste schreibt, hat es damit faktisch abgeschaltet. Genau das ist beim Bau dieses Verfahrens passiert, und es ist der Grund, warum es `pairs` gibt.
 
@@ -673,7 +738,7 @@ Die Spalte `quelle` sagt, ob die Zeile aus `pairs` oder aus dem Fallback stammt.
 
 Zwei Dinge sind harte Fehler, keine stillen Skips: ein Name in `pairs`, den es in `reviewers` nicht gibt, und ein Autor, der sich selbst nennt.
 
-Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die ersten zwei Reviewer genommen.
+Das Autor-Modell steht als Zeile `Autor-Modell:` im Kontext-Abschnitt des Issues; `/issues` schreibt sie beim Anlegen aus `KIT_AGENT_MODEL`. In einer interaktiven Session ist der Wert `unbekannt` — dann werden einfach die vordersten Reviewer genommen, so viele wie die Stufe vorsieht.
 
 ### Fremde Modelle anbinden
 
@@ -688,18 +753,23 @@ Damit nimmt jedes Werkzeug teil, das Text liest und Text schreibt — Codex, Gem
 
 Der Prompt geht über stdin, nicht als Argument. Ein Issue-Body enthält Backticks, Anführungszeichen und Zeilenumbrüche; ihn durch eine Kommandozeile zu quoten ist genau die Fehlerklasse, die aus dem Board-Adapter entfernt wurde.
 
-### Zwei Reviewer, zwei Rollen
+### Die Rollen
 
-Beide bekommen denselben Body, aber verschiedene Aufträge:
+Jeder Prüfer bekommt denselben Body, aber seinen eigenen Auftrag. Auf der Stufe `issue` läuft davon nur die erste Zeile — die zweite ist als `schnitt-abhaengigkeiten` auf die Plan-Stufe gewandert:
 
-| Rolle | Fragt |
-|---|---|
-| **Vollständigkeit** | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
-| **Scope & Bestand** | Ist der Schnitt zu groß? Fehlen Abhängigkeiten? Was bricht, das nicht im Issue steht? |
+| Stufe | Rolle | Fragt |
+|---|---|---|
+| `fachlich` | `form-beobachtbarkeit` | Trägt die Anforderung alle vier Story-Abschnitte? Ist jedes Kriterium aus Nutzersicht beobachtbar? Steht Technik drin, wo keine hingehört? |
+| `fachlich` | `abgrenzung` | Widersprechen sich Ziele und Nicht-Ziele? Fehlt eine Scope-Grenze? Ist eine offene Frage längst entschieden? |
+| `plan` | `architektur-bestand` | Stimmt jede Behauptung über den Bestand? Trägt jede Entscheidung eine Begründung? Was bricht, das der Plan nicht nennt? |
+| `plan` | `schnitt-abhaengigkeiten` | Lässt sich der Plan überhaupt zerlegen? Welche Reihenfolge erzwingt er? Sind die offenen Fragen wirklich Stopp-Fragen? |
+| `issue` | `pruefbarkeit` | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
 
-Zwei Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
+Mehrere Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl — deshalb Rollen und nicht bloß Wiederholung.
 
-**Beide Rollen tragen die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Issue nach drei Modellen doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+Ohne konfigurierten `reviewStufen`-Block gilt für alle Stufen der Legacy-Fallback: zwei Reviewer mit den Rollen `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand`, inhaltlich die bisherigen beiden.
+
+**Jede Rolle trägt die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Dokument nach dem Review doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
 
 ### Wer entscheidet
 
@@ -710,7 +780,7 @@ Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist k
 Nach der Zustimmung trägt das Issue eine Marker-Zeile:
 
 ```
-Issue-Review: opus, codex (2026-08-06)
+Issue-Review: codex (2026-08-06)
 ```
 
 Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
@@ -724,12 +794,12 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 - **Der Body wird nie geschrieben** — auch nicht bei befundfreiem Review. Der fertig formulierte Vorschlag geht als Kommentar ans Issue, als übernehmbarer Text. Beim Groomen liest du ihn von dort (`issue get` liefert die Kommentare mit).
 - **Der Marker wird gesetzt, wenn nichts zu ändern ist**: kein Fund mit Schweregrad `BLOCKER` oder `WICHTIG`, und kein Reviewer ausgefallen oder unterbesetzt gefahren. Ein einziger gewichtiger Fund reicht, und der Marker bleibt aus.
 
-Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
+Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
 Ein nächtlich gesetzter Marker ist als solcher erkennbar:
 
 ```
-Issue-Review: opus, codex (2026-08-06, Nachtlauf)
+Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
 ### Das Gate vor Ready
@@ -740,7 +810,7 @@ Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht 
 
 ### Was es kostet
 
-Zwei Reviewer je Issue sind zwei zusätzliche Läufe. Bei einem Batch von siebzehn Issues sind das vierunddreißig. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
 
 `rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
@@ -805,6 +875,27 @@ Der Unterschied zum Leitplanken-Prinzip oben ist die Art des Stopps: Dort scheit
 ## Issue-Tracker und Code-Host
 
 Das Kit unterstützt GitHub, GitLab und einen vollständig lokalen Modus. Die Wahl erfolgt über zwei unabhängige Achsen: `codeHost` (für Pull Requests und Repo-Erkennung) und `issueTracker` (für Issues und Board-Bewegungen). Beide können auf verschiedene Plattformen zeigen.
+
+### Tracker-Wechsel dieses Repositories: kanban-kit und GitHub-Archiv
+
+Seit dem 11. August 2026 führt dieses Repository seine Issues in **kanban-kit**, nicht mehr in GitHub. Der Adapter- und Configwert dafür lautet `issueTracker: "toolbox"`; `kanban-kit` ist der Produktname und kein gültiger Wert. Der Code-Host bleibt `codeHost: "github"`.
+
+**GitHub Issues bleiben aktiviert.** Sie werden nicht mehr für neue Arbeit verwendet, aber sie sind das Archiv: Die beim Umzug bereits geschlossenen 218 Issues sind dort geblieben, und bestehende Commit-Botschaften mit `#N` behalten dadurch ein erreichbares historisches Ziel. Wer das Issue-System dort abschaltet, nimmt der Commit-Historie ihren Bezugspunkt.
+
+**Nummernlücken im kanban-kit sind gewollt.** Migriert wurden ausschließlich die zum Stichtag offenen Issues, mit ihren Originalnummern. Die Lücken dazwischen haben zwei Ursachen: geschlossene Issues, die nicht mitwanderten, und Pull-Request-Nummern, die sich denselben Nummernraum mit den Issues teilen. Zwischen `#164` und `#247` etwa liegen 70 geschlossene Issues und 12 PRs, aber kein einziges offenes Issue.
+
+**Migrierte Karten sind erkennbar.** Sie tragen `externalKey: github#N` und im Body eine zweizeilige Herkunfts-Kopfzeile, die Quelle und ursprüngliche Spalte nennt:
+
+```
+> Quelle: https://github.com/<owner>/<repo>/issues/<N>
+> Ursprüngliche Spalte: <Spaltenname oder keine>
+```
+
+Die Kopfzeile nennt die Spalte auch dann, wenn kanban-kit sie nicht kennt. Das GitHub-Board führte eine sechste Spalte `Zurückgestellt`, die auf `BACKLOG` abgebildet wurde; ohne die Kopfzeile sähen diese Karten im Backlog aus wie normale Arbeit.
+
+**Der Nummernzähler beginnt oberhalb des alten Nummernraums.** Beim Umzug stand die höchste je vergebene GitHub-Nummer bei 296, `next_card_number` wurde auf 298 gesetzt. Der Zähler darf nie unter diesen Startwert zurückgesetzt werden: Sonst bekäme eine neue Karte eine Nummer, die auf GitHub bereits vergeben ist, und `#150` bezeichnete zwei verschiedene Dinge.
+
+**`tools/migrate-issues.mjs` ist ein Einmalwerkzeug** für den Tracker-Wechsel, kein Bestandteil des laufenden Workflows. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate).
 
 ### Voraussetzungen je nach Konfiguration
 
@@ -926,7 +1017,17 @@ Der globale `tbx`-Login von App 1 bleibt dabei unangetastet — App 1 fällt wei
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
-**Neue Issues landen im Projekt-Ideen-Pool.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` **immer** eine board-lose Idee im Ideen-Pool des Projekts an — sie erscheint in keiner Board-Spalte, und die Board-Nummer entsteht erst, wenn du die Idee einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher. `ideaStored` in der Config ist gegen kanban-kit ≥ 1.5 gegenstandslos (der Server ignoriert es); das Feld wird nur noch für ältere Backends mitgesendet, ein `ideaStored: false` legt also **nicht** mehr direkt im Backlog an. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
+**Neue Issues landen im Projekt-Ideen-Pool.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` **immer** eine board-lose Idee im Ideen-Pool des Projekts an — sie erscheint in keiner Board-Spalte, und die Board-Nummer entsteht erst, wenn du die Idee einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher. **`ideaStored: false` legt wieder direkt im Backlog an.** Der Schalter heißt in der Config unverändert `ideaStored`, das Feld auf der Leitung aber `direct`: Ein `ideaStored: false` sendet `direct: true`, und die Karte entsteht sofort mit ihrer Board-Nummer. Bei `true` oder fehlendem Wert geht kein `direct` mit, und es bleibt beim Ideen-Pool. Das früher gesendete Wire-Feld `ideaStored` wandert in **keinem** der beiden Fälle mehr über die Leitung — der Server ignoriert es ohnehin.
+
+Drei Fälle, damit klar ist, was wann passiert:
+
+| Config | Gesendet | Ergebnis |
+|---|---|---|
+| `ideaStored: false` | `direct: true` | Karte im Backlog, mit Nummer |
+| `ideaStored: true` oder nicht gesetzt | kein `direct` | Idee im Pool, `ideaId` + `pending` |
+| Legacy-Backend ohne `direct` | egal | wie bisher: Nummer zurück |
+
+Fordert die Config das direkte Anlegen an, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden — sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
 
 ## Aktualisieren und mehrere Projekte
 

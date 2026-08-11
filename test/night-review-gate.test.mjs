@@ -29,7 +29,7 @@ const NUR_POSIX = process.platform === "win32"
   : {};
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
 }
 
 function board(cwd, ...cliArgs) {
@@ -132,3 +132,35 @@ test("Default: ohne requiredBeforeReady aendert sich nichts", NUR_POSIX, () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Stufen-Marker (Issue #279) -------------------------------------------
+//
+// Der Anker `Issue-Review:` ist die Bedingung fuer die Freigabe zur Umsetzung.
+// Seit #279 gibt es zwei weitere Marker fuer die vorgelagerten Pruefstufen. Truege
+// ein Dokument mit `Fachplan-Review:` oder `Plan-Review:` denselben Nachweis,
+// hielte der Runner es fuer freigabereif und zoege es in die Implementierung —
+// obwohl niemand das Arbeitspaket geprueft hat, weil es gar keines ist.
+
+const MIT_FACHPLAN_MARKER =
+  "## Kontext\nAutor-Modell: claude-opus-5\nFachplan-Review: opus (2026-08-08)\n\n## Abhaengigkeiten\nKeine.";
+const MIT_PLAN_MARKER =
+  "## Kontext\nAutor-Modell: claude-opus-5\nPlan-Review: opus, codex (2026-08-08)\n\n## Abhaengigkeiten\nKeine.";
+
+for (const [name, body] of [["Fachplan-Review", MIT_FACHPLAN_MARKER], ["Plan-Review", MIT_PLAN_MARKER]]) {
+  test(`Gate an: ein ${name}-Marker zaehlt nicht als Freigabe-Nachweis`, NUR_POSIX, () => {
+    const dir = setupProjekt(GATE_AN);
+    try {
+      const id = readyIssue(dir, `Ein Dokument mit fremdem Marker (${name})`, body);
+      const res = nightRun(dir);
+
+      const backlog = board(dir, "issue", "list", "--status", "backlog");
+      assert.ok(
+        backlog.some((i) => String(i.id) === id),
+        `${name} darf das Implementierungs-Gate nicht passieren`
+      );
+      assert.match(res.stdout, /kein Issue-Review-Marker/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}

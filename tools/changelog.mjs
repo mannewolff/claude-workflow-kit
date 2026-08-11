@@ -8,7 +8,9 @@
  * typisch der Minor-Bump aus `merge production` direkt nach dem letzten
  * Patch-Bump —, bilden sie einen Block mit der hoechsten Version: Der Changelog
  * beschreibt, was veroeffentlicht wurde, nicht wie intern gezaehlt wurde
- * (Issue #245). Rueckwirkend ab v1.16.
+ * (Issue #245). Commits ohne eigene Marke stehen unter [Unreleased] — sie sind
+ * noch nicht veroeffentlicht und bekommen keine Nummer, die bereits vergeben ist
+ * (Issue #265). Rueckwirkend ab v1.16.
  *
  * Die Datei wird bei jedem Lauf KOMPLETT neu geschrieben (idempotent). Kein
  * Handpflege-Zustand. Gedacht als Release-Schritt (siehe RELEASING.md): laeuft
@@ -27,7 +29,6 @@ import { fileURLToPath } from "node:url";
 
 const START_VERSION = "1.16.0"; // untere Grenze der Changelog-Historie
 const CHANGELOG_PATH = resolve("CHANGELOG.md");
-const INSTALL_PATH = resolve("install.mjs");
 
 function fail(msg) {
   process.stderr.write(`Fehler: ${msg}\n`);
@@ -49,8 +50,8 @@ function git(args) {
 // Leitet aus den git-log-Eintraegen (chronologisch, aelteste zuerst) die
 // Changelog-Bloecke ab: sammelt Feature-Commits, ordnet sie beim naechsten
 // chore-Bump dieser Version zu. Commits nach dem letzten Bump bilden den
-// obersten Block (currentVersion, today). Rueckgabe: neueste Version zuerst,
-// Items je Version neueste zuerst.
+// obersten Block, der bis zum naechsten Bump [Unreleased] heisst. Rueckgabe:
+// neueste Version zuerst, Items je Version neueste zuerst.
 //
 // Folgen mehrere Marken unmittelbar aufeinander, ohne Commits dazwischen, bilden
 // sie EINEN Block mit der hoechsten Version und deren Bump-Datum (Issue #245).
@@ -59,7 +60,7 @@ function git(args) {
 // Marke uebersprungen, verschwand ausgerechnet jede Version, die je ausgeliefert
 // wurde, und die Arbeit stand unter der internen Patch-Nummer, die nie jemand
 // bekommen hat. Ein Block traegt die Version, unter der VEROEFFENTLICHT wurde.
-export function parseVersions(entries, currentVersion, today) {
+export function parseVersions(entries, today) {
   const blocks = [];
   let pending = [];
   for (const e of entries) {
@@ -83,7 +84,11 @@ export function parseVersions(entries, currentVersion, today) {
     const m = e.subject.match(/^(.*) \(Issue #(\d+)\)$/);
     pending.push(m ? { text: m[1], ref: m[2] } : { text: e.subject, ref: null });
   }
-  if (pending.length) blocks.push({ version: currentVersion, date: today, items: pending });
+  // Commits ohne eigene Marke sind noch nicht veroeffentlicht und bekommen deshalb
+  // KEINE Versionsnummer (Issue #265). Frueher stand hier `currentVersion` aus
+  // install.mjs — steht die bereits als Marke in der Historie, was direkt nach
+  // jedem Release der Fall ist, entstanden zwei Bloecke mit derselben Nummer.
+  if (pending.length) blocks.push({ version: "Unreleased", date: today, items: pending });
   return blocks.toReversed().map((b) => ({ ...b, items: b.items.toReversed() }));
 }
 
@@ -99,11 +104,14 @@ export function renderChangelog(blocks) {
     "generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die " +
     "Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen " +
     "die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht " +
-    "wurden; die internen Zwischenstände dazwischen erscheinen nicht.\n";
+    "wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten " +
+    "Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.\n";
   const body = blocks
     .map(
       (b) =>
-        `## [${b.version}] - ${b.date}\n` +
+        // Unreleased hat kein Release-Datum — ein "heute" daran waere eine Angabe,
+        // die sich bei jedem Lauf aendert und nichts bedeutet.
+        (b.version === "Unreleased" ? `## [Unreleased]\n` : `## [${b.version}] - ${b.date}\n`) +
         b.items.map(renderItem).join("\n")
     )
     .join("\n\n");
@@ -111,13 +119,6 @@ export function renderChangelog(blocks) {
 }
 
 // --- I/O ---
-
-function currentVersion() {
-  if (!existsSync(INSTALL_PATH)) fail(`install.mjs nicht gefunden: ${INSTALL_PATH}`);
-  const m = readFileSync(INSTALL_PATH, "utf-8").match(/const VERSION = "(\d+\.\d+\.\d+)";/);
-  if (!m) fail("VERSION-Konstante in install.mjs nicht gefunden.");
-  return m[1];
-}
 
 function readEntries() {
   const escaped = START_VERSION.replaceAll(".", String.raw`\.`);
@@ -136,7 +137,7 @@ function readEntries() {
 
 function generate() {
   const today = new Date().toISOString().slice(0, 10);
-  const blocks = parseVersions(readEntries(), currentVersion(), today);
+  const blocks = parseVersions(readEntries(), today);
   return renderChangelog(blocks);
 }
 

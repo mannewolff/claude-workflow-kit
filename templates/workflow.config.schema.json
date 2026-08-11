@@ -205,7 +205,7 @@
         "ideaStored": {
           "type": "boolean",
           "default": true,
-          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false = wie frueher direkt ins Backlog. Backends ohne Ideen-Speicher ignorieren das Feld."
+          "description": "Neue Issues landen im Ideen-Speicher des Boards statt direkt im Backlog (kanban-kit #245). false sendet 'direct: true' und legt sofort mit Board-Nummer an; true oder ein fehlender Wert sendet kein 'direct'. Das frueher gesendete Wire-Feld 'ideaStored' geht seit Issue #295 in keinem Modus mehr mit — der Server ignoriert es. Backends ohne 'direct' behalten ihr bisheriges Verhalten."
         }
       },
       "required": [],
@@ -270,6 +270,99 @@
           }
         }
       }
+    },
+    "reviewStufen": {
+      "type": "object",
+      "description": "Besetzung und Blickwinkel der drei Pruefstufen (Issue #278): das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Waehrend issueReview beschreibt, WER ueberhaupt prueft, steht hier, wie viele und mit welchen Rollen je Stufe geprueft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt fuer jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "fachlich": {
+          "type": "object",
+          "description": "Pruefung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.",
+          "properties": {
+            "reviewer": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2,
+              "description": "Wie viele Reviewer diese Stufe pruefen."
+            },
+            "rollen": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung."
+            }
+          },
+          "required": [
+            "reviewer",
+            "rollen"
+          ],
+          "additionalProperties": false
+        },
+        "plan": {
+          "type": "object",
+          "description": "Pruefung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfaellt.",
+          "properties": {
+            "reviewer": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2,
+              "description": "Wie viele Reviewer diese Stufe pruefen."
+            },
+            "rollen": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung."
+            }
+          },
+          "required": [
+            "reviewer",
+            "rollen"
+          ],
+          "additionalProperties": false
+        },
+        "issue": {
+          "type": "object",
+          "description": "Pruefung des einzelnen Arbeitspakets vor dem GO. Nur noch ein Reviewer: Was Form und Schnitt betrifft, ist auf den beiden Stufen davor bereits geprueft.",
+          "properties": {
+            "reviewer": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "description": "Wie viele Reviewer diese Stufe pruefen."
+            },
+            "rollen": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung."
+            }
+          },
+          "required": [
+            "reviewer",
+            "rollen"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "fachlich",
+        "plan",
+        "issue"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [],

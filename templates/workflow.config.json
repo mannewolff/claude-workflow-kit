@@ -66,5 +66,27 @@
         "opus"
       ]
     }
+  },
+  "reviewStufen": {
+    "fachlich": {
+      "reviewer": 2,
+      "rollen": [
+        "form-beobachtbarkeit",
+        "abgrenzung"
+      ]
+    },
+    "plan": {
+      "reviewer": 2,
+      "rollen": [
+        "architektur-bestand",
+        "schnitt-abhaengigkeiten"
+      ]
+    },
+    "issue": {
+      "reviewer": 1,
+      "rollen": [
+        "pruefbarkeit"
+      ]
+    }
   }
 }

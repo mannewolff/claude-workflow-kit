@@ -472,6 +472,7 @@ test("issue-review check: --nur-pfad ueberspringt den Probelauf", NUR_POSIX, () 
     const out = JSON.parse(res.stdout);
     assert.equal(out.alleVerfuegbar, true);
     assert.equal(out.reviewers[0].geprueft, "pfad");
+    assert.equal(out.reviewers[0].umgebung, "runner");
   });
 });
 
@@ -480,6 +481,19 @@ test("issue-review check: claude-Reviewer bekommen keinen Probelauf", () => {
     const out = JSON.parse(runBoard(dir, ["issue-review", "check"]).stdout);
     assert.equal(out.reviewers[0].verfuegbar, true);
     assert.equal(out.reviewers[0].geprueft, undefined);
+  });
+});
+
+test("issue-review check: jeder Befund nennt die Umgebung 'runner'", NUR_POSIX, () => {
+  // Der Befund von hier stammt immer aus dem aufrufenden Prozess (Issue #269). Wer ihn
+  // ohne diesen Stempel liest, koennte ein `verfuegbar: true` auf eine Umgebung beziehen,
+  // in der gar nicht geprueft wurde — genau der Fehlschluss aus der Nacht vom 2026-08-08.
+  // Der Nacht-Runner erkennt seinen Session-Vorflug am Gegenwert "review-session".
+  mitReview({ reviewers: [OPUS, { name: "fake", kind: "command", command: "laeuft --flag" }] }, (dir) => {
+    fakeBinary(dir, "laeuft", 0o755, "cat > /dev/null\nexit 0");
+    const out = JSON.parse(runBoard(dir, ["issue-review", "check"]).stdout);
+    assert.equal(out.reviewers.length, 2);
+    for (const r of out.reviewers) assert.equal(r.umgebung, "runner", `${r.name} traegt die falsche Umgebung`);
   });
 });
 

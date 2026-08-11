@@ -54,23 +54,34 @@ test("selectReviewCandidates: [Fachlich] und [Idee] werden uebersprungen", () =>
   assert.match(r.uebersprungen[1].grund, /idee/i);
 });
 
+test("selectReviewCandidates: [Plan] wird uebersprungen, mit [Plan] im Grund", () => {
+  // Das passende Label ist noetig: Ohne es greift der Label-Filter zuerst und der
+  // Grund lautete "kein Label" — der Test pruefte dann am Plan-Gate vorbei (#276).
+  const r = selectReviewCandidates([{ id: "1", title: "[Plan] Beispiel", labels: [LABEL] }], { label: LABEL });
+  assert.deepEqual(r.kandidaten, []);
+  assert.equal(r.uebersprungen.length, 1);
+  assert.match(r.uebersprungen[0].grund, /\[Plan\]/);
+});
+
 test("selectReviewCandidates: die Praefixe greifen unabhaengig von Schreibweise und Leerraum", () => {
   const issues = [
     issue(1, "[FACHLICH] Gross"),
     issue(2, "  [idee] mit Leerraum davor"),
     issue(3, "[Fachlich]Ohne Leerzeichen dahinter"),
+    issue(4, "[Plan] Ein Weg"),
+    issue(5, "  [PLAN]Gross, Leerraum davor, keiner dahinter"),
   ];
   const r = selectReviewCandidates(issues, { label: LABEL });
   assert.deepEqual(r.kandidaten, []);
-  assert.equal(r.uebersprungen.length, 3);
+  assert.equal(r.uebersprungen.length, 5);
 });
 
 test("selectReviewCandidates: ein Praefix mitten im Titel zaehlt nicht", () => {
   // Nur der Anfang entscheidet — sonst faellt ein Issue heraus, das ueber ein
-  // fachliches Issue nur SPRICHT.
-  const issues = [issue(1, "Doku: [Fachlich]-Issues beschreiben")];
+  // fachliches Issue oder ein Plandokument nur SPRICHT.
+  const issues = [issue(1, "Doku: [Fachlich]-Issues beschreiben"), issue(2, "Doku zu [Plan]-Issues")];
   const r = selectReviewCandidates(issues, { label: LABEL });
-  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1"]);
+  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1", "2"]);
 });
 
 test("selectReviewCandidates: ein fehlendes labels-Feld stuerzt nicht ab", () => {
@@ -102,4 +113,31 @@ test("selectReviewCandidates: fehlende opts sind kein Fehler", () => {
   const issues = [issue(1, "Eins", [])];
   assert.equal(selectReviewCandidates(issues).kandidaten.length, 1);
   assert.equal(selectReviewCandidates(issues, {}).kandidaten.length, 1);
+});
+
+// --- Praefix-Erkennung (Issue #279) ---------------------------------------
+//
+// Die Stufenwahl im Skill haengt an genau dieser Erkennung. Sie ist Bestands-
+// verhalten, war aber nie festgenagelt: Bis Issue #279 gab es keinen Test, der
+// Gross-/Kleinschreibung, fuehrenden Leerraum, ein fehlendes Leerzeichen nach `]`
+// und ein Praefix MITTEN im Titel gegeneinander abgrenzt. Faellt eine dieser
+// Formen bei einer Umformulierung heraus, waehlt der Skill still die falsche Stufe.
+test("selectReviewCandidates: Praefix-Erkennung ist tolerant, aber nicht beliebig", () => {
+  const issues = [
+    { id: "1", title: "[FACHLICH] Grossgeschrieben", body: "" },
+    { id: "2", title: "  [plan] Fuehrender Leerraum", body: "" },
+    { id: "3", title: "[Plan]Ohne Leerzeichen", body: "" },
+    { id: "4", title: "Text ueber [Plan] mitten drin", body: "" },
+    { id: "5", title: "[Idee] Rohe Idee", body: "" },
+    { id: "6", title: "Ein normales Arbeitspaket", body: "" },
+  ];
+  const { kandidaten, uebersprungen } = selectReviewCandidates(issues);
+  const ids = (liste) => liste.map((x) => String(x.id)).sort();
+
+  // 1, 2, 3 tragen ein echtes Praefix und 5 ist die Idee -> alle vier raus.
+  assert.deepEqual(ids(uebersprungen), ["1", "2", "3", "5"],
+    "tolerante Formen und [Idee] muessen erkannt werden");
+  // 4 hat das Praefix nur im Fliesstext, 6 gar keines -> beide sind Arbeitspakete.
+  assert.deepEqual(ids(kandidaten), ["4", "6"],
+    "ein Praefix mitten im Titel darf nicht zaehlen");
 });

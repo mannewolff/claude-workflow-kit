@@ -11,12 +11,18 @@
  * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
- *   node board.mjs issue create --title "..." --body "..."
+ *   node board.mjs issue create --title "..." --body "..." [--author-model <modell>]
+      Body braucht eine Zeile "Autor-Modell: <modell>"; --author-model oder
+      KIT_AGENT_MODEL setzen sie, sonst Abbruch. [--author-model <modell>]
+ *       Der Body braucht eine Zeile "Autor-Modell: <modell>" (Issue #266);
+ *       --author-model oder KIT_AGENT_MODEL setzen sie, sonst bricht der Aufruf ab.
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
- *   node board.mjs issue update <id> --body "..."
- *   node board.mjs issue comment <id> --text "..."
+ *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+ *   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
+ *       '-' liest von stdin. Fuer lange Texte (Review-Befunde) der bevorzugte Weg:
+ *       keine Datei, die jemand aufraeumen muss (Issue #270).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -24,6 +30,7 @@
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
+  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -37,7 +44,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.36.0";
+const KIT_VERSION = "1.37.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -66,12 +73,14 @@ function isStateColumn(status, config) {
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
-  node board.mjs issue create --title "..." --body "..."
+  node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
+                             [--author-model <modell>]
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
-  node board.mjs issue update <id> --body "..."
-  node board.mjs issue comment <id> --text "..."
+  node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+  node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
+      '-' liest von stdin; fuer lange Texte der bevorzugte Weg (Issue #270).
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -79,6 +88,7 @@ Nutzung:
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
+  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
 
   node board.mjs --version
 
@@ -1006,10 +1016,14 @@ class LocalIssueTracker {
     if (t !== "epic") meta.status = "backlog";
     meta.title = title;
     meta.created = today;
-    const content = serializeFrontmatter(
-      meta,
-      body || "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n"
-    );
+    // Die Abschnitts-Vorlage greift auch dann, wenn der Body nur aus der
+    // Autor-Modell-Zeile besteht (Issue #266). Seit der Leitplanke in issueCreate
+    // ist ein Body nie mehr wirklich leer — ohne diese Erweiterung haette ein
+    // `create` ohne --body still die Vorlage verloren.
+    const nurAutorZeile = /^\s*Autor-Modell: *\S[^\n]*\s*$/.test(body || "");
+    const VORLAGE = "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n";
+    const rumpf = !body ? VORLAGE : (nurAutorZeile ? `${body.trimEnd()}\n${VORLAGE}` : body);
+    const content = serializeFrontmatter(meta, rumpf);
     writeFileSync(this._filePath(n), content, "utf-8");
     return { id, path: this._filePath(n) };
   }
@@ -1276,17 +1290,36 @@ class ToolboxIssueTracker {
 
   async createIssue({ title, body }) {
     const { host } = this._auth();
-    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im Sammelbecken
-    // statt direkt im Backlog. Per Config abschaltbar (toolbox.ideaStored: false). Aeltere
-    // Backends ohne #245 ignorieren das Feld und legen wie bisher im Backlog an.
-    const ideaStored = this._cfg.toolbox?.ideaStored !== false;
+    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im
+    // Sammelbecken statt direkt im Backlog. Das ist die Vorgabe.
+    //
+    // Das Wire-Feld dafuer heisst seit kanban-kit 2026-08 `direct` (Issue #295) —
+    // der frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und
+    // geht deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst
+    // seinen Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und
+    // eine Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
+    //
+    // Backends ohne `direct` ignorieren das Feld und legen wie bisher an.
+    const direkt = this._cfg.toolbox?.ideaStored === false;
+    const payload = { title, body: body || "", column: "BACKLOG" };
+    if (direkt) payload.direct = true;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body: body || "", column: "BACKLOG", ideaStored }),
+      body: JSON.stringify(payload),
     });
     const created = await res.json();
     const result = interpretToolboxCreateResponse(created);
+    // interpretToolboxCreateResponse wertet nur die Antwort aus und kennt den
+    // gesendeten Modus nicht — deshalb sitzt die Pruefung hier. Ohne sie meldete ein
+    // direkt angefordertes Anlegen, das nur eine ideaId zurueckbringt, faelschlich
+    // `pending` samt Pool-Hinweis: Der Aufruf saehe erfolgreich aus, die Karte haette
+    // keine Nummer, und niemand bemerkt es.
+    if (direkt && result.pending) {
+      throw new BoardError(
+        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht."
+      );
+    }
     if (result.pending) {
       return {
         ...result,
@@ -1660,11 +1693,66 @@ function heute() {
 
 // Ein Handler je issue-Subbefehl: haelt die Argument-Validierung flach (auf Funktionsebene
 // statt tief in verschachtelten switch-cases) und damit die kognitive Komplexitaet niedrig.
+// Die Autor-Modell-Zeile im Kontext-Abschnitt (Issue #266).
+//
+// Sie ist die einzige Stelle im System, an der sichtbar wird, WELCHES MODELL einen
+// Issue-Text formuliert hat. Der Tracker kann das nicht: `gh issue view` liefert
+// fuer jedes Issue den Token-Inhaber als `author`, egal wer geschrieben hat.
+// `/issue-review` waehlt anhand dieser Zeile die Pruefer, damit der Autor nicht sein
+// eigenes Issue prueft — fehlt sie, fragt der Skill nach, und nachts antwortet
+// niemand (belegt am 2026-08-08: Issue #247 kostete so einen Nacht-Slot).
+//
+// Bis hierher war die Zeile eine Bitte im /issues-Skill. Eine Bitte wird unter Druck
+// uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in /local-check.
+export const AUTOR_MODELL_ZEILE = /^Autor-Modell: *(\S.*?) *$/m;
+const AUTOR_MODELL_HILFE =
+  'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
+  'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
+
+/**
+ * Liefert den Body mit garantierter Autor-Modell-Zeile — oder bricht ab.
+ *
+ * Reihenfolge: vorhandene Zeile gewinnt, sonst --author-model, sonst
+ * KIT_AGENT_MODEL. Widersprechen sich Zeile und Flag, ist das ein Fehler und kein
+ * stilles Ueberschreiben: Wer eine Autorschaft ueberschreibt, faelscht sie.
+ */
+export function autorModellSicherstellen(body, flagWert, env = process.env) {
+  const vorhanden = body.match(AUTOR_MODELL_ZEILE);
+  const flag = typeof flagWert === "string" ? flagWert.trim() : "";
+  if (vorhanden) {
+    if (flag && flag !== vorhanden[1]) {
+      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden[1]}'. Eine der beiden weglassen.`);
+    }
+    return body;
+  }
+  const wert = flag || (env.KIT_AGENT_MODEL || "").trim();
+  if (!wert) fail(`Kein Autor-Modell angegeben. ${AUTOR_MODELL_HILFE}`);
+
+  // Ans Ende des Kontext-Abschnitts, nicht ans Dateiende: Dort suchen der
+  // /issues-Skill und /issue-review sie. Ohne Kontext-Abschnitt (Ideen, fremde
+  // Formate) kommt sie an den Anfang — Hauptsache, sie ist da und auffindbar.
+  const kontext = body.match(/^## Kontext[^\n]*\n/m);
+  if (!kontext) return `Autor-Modell: ${wert}\n\n${body}`;
+  const start = kontext.index + kontext[0].length;
+  const naechsterAbschnitt = body.slice(start).search(/^## /m);
+  const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
+  const davor = body.slice(0, ende).replace(/\n*$/, "");
+  return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
+  // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
+  // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
+  // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
+  const hatQuelle = args.body !== undefined || args["body-file"] !== undefined;
+  const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
   out(await tracker.createIssue({
     title: args.title,
-    body: args.body || "",
+    // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
+    // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
+    // statt des Inhalts — und ein Body mit korrekter Zeile in der Datei abgelehnt.
+    body: autorModellSicherstellen(roh, args["author-model"]),
     type: args.type,
     parent: args.parent,
     color: args.color,
@@ -1703,11 +1791,59 @@ async function issueMove(tracker, args) {
   out({ ok: true, id, status: toStatus });
 }
 
+/**
+ * Loest den Text eines Schreibbefehls aus Argument, Datei oder stdin auf (Issue #270).
+ *
+ * Warum es die beiden zusaetzlichen Wege braucht: Die Skills dieses Kits erzeugen
+ * regelmaessig Texte, die nicht durch eine Kommandozeile passen — die Befunde eines
+ * Issue-Reviews lagen am 2026-08-08 bei 12 bis 14 Tausend Zeichen. Ohne einen Weg
+ * dafuer bauen Sessions sich Hilfsskripte; die stehen in keiner Allowlist, werden
+ * headless abgelehnt, und ihre Arbeitsdateien hinterlassen einen unsauberen Working
+ * Tree, auf den der Nacht-Runner hart stoppt. Dieselbe Ueberlegung wie in Issue #196
+ * (kein Shell-String-Bau) und wie beim stdin-Weg fuer command-Reviewer in
+ * /issue-review — hier fuer die Eingabeseite.
+ *
+ * stdin ist der bevorzugte Weg: Es entsteht keine Datei, die jemand aufraeumen muss.
+ */
+export function leseTextQuelle(direkt, dateiPfad, flagName) {
+  const dateiFlag = `--${flagName}-file`;
+  const hatDatei = typeof dateiPfad === "string" && dateiPfad !== "";
+  const hatDirekt = typeof direkt === "string";
+
+  // Beide angegeben: Fehler statt Vorrangregel. Wer beides setzt, meint etwas
+  // anderes als das, was eine stille Vorrangregel taete.
+  if (hatDirekt && hatDatei) fail(`--${flagName} und ${dateiFlag} schliessen sich aus — nur eine Quelle angeben.`);
+  if (dateiPfad === true) fail(`${dateiFlag} braucht einen Pfad.`);
+  if (direkt === true) fail(`--${flagName} braucht einen Wert (oder '-' fuer stdin).`);
+
+  let text;
+  if (hatDatei) {
+    if (!existsSync(dateiPfad)) fail(`${dateiFlag}: Datei nicht gefunden: ${dateiPfad}`);
+    try {
+      text = readFileSync(dateiPfad, "utf-8");
+    } catch (e) {
+      fail(`${dateiFlag}: ${dateiPfad} ist nicht lesbar (${e.code || e.message}).`);
+    }
+  } else if (direkt === "-") {
+    try {
+      text = readFileSync(0, "utf-8"); // fd 0 = stdin
+    } catch (e) {
+      fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
+    }
+  } else {
+    text = direkt;
+  }
+
+  if (typeof text !== "string" || text.trim() === "") {
+    fail(`--${flagName} ist erforderlich und darf nicht leer sein (Argument, ${dateiFlag} oder '-' fuer stdin).`);
+  }
+  return text;
+}
+
 async function issueComment(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
-  if (!args.text) fail("--text ist erforderlich");
-  await tracker.commentIssue(id, args.text);
+  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"));
   out({ ok: true, id });
 }
 
@@ -1720,10 +1856,7 @@ async function issueComment(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  if (typeof args.body !== "string" || args.body.trim() === "") {
-    fail("--body ist erforderlich und darf nicht leer sein: board.mjs issue update <id> --body \"...\"");
-  }
-  await tracker.updateIssue(id, { body: args.body });
+  await tracker.updateIssue(id, { body: leseTextQuelle(args.body, args["body-file"], "body") });
   out({ ok: true, id });
 }
 
@@ -1825,6 +1958,17 @@ async function kontextLastLog(args) {
 const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
 
+// Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
+// das einzelne Arbeitspaket. Jede schaut anders hin und ist anders besetzt — fachlich
+// und Plan mit je zwei Reviewern, das Arbeitspaket mit einem.
+const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
+
+// Rueckfallebene, wenn `reviewStufen` ganz fehlt: das Verhalten vor dieser Aenderung —
+// zwei Reviewer mit den beiden Rollen, die /issue-review schon kennt. Ein Kit-Update
+// darf keinem Bestandsprojekt den Review umbauen, dieselbe Vorsicht wie bei
+// `requiredBeforeReady`, das per Default aus ist.
+const REVIEW_STUFEN_DEFAULT = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+
 /**
  * Uebersetzt einen Autor-Wert auf einen Reviewer-Kurznamen (Issue #241).
  *
@@ -1873,7 +2017,11 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   // prueft, soll es ablesen koennen statt es auszurechnen.
   const genannt = pairs?.[schluessel];
   if (Array.isArray(genannt) && genannt.length > 0) {
-    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean);
+    // Auch hier auf `anzahl` kuerzen, nicht nur im Regel-Zweig unten (Issue #278):
+    // Sonst liefert eine Stufe mit einem Reviewer trotzdem beide Namen aus der
+    // Paar-Tabelle — der eine Reviewer waere stillschweigend zwei geblieben.
+    // Gekuerzt wird in konfigurierter Reihenfolge, sie ist die Steuerung.
+    const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean).slice(0, anzahl);
     return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
   }
   const passend = (alle || []).filter((r) => r.name !== schluessel);
@@ -1914,13 +2062,61 @@ function validateReviewers(reviewers) {
   return reviewers;
 }
 
+/**
+ * Liest den `reviewStufen`-Block und prueft ihn (Issue #278).
+ *
+ * Hart wie im uebrigen Config-Bereich, aus derselben Begruendung wie validateReviewers
+ * und validatePairs: Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren
+ * unterbesetzten Lauf — und der sieht am Board aus wie ein vollstaendiger.
+ *
+ * Defaults greifen ausschliesslich, wenn der GESAMTE Block fehlt. Waere eine einzelne
+ * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
+ * Rueckfallebene nicht unterscheiden.
+ */
+function validateReviewStufen(block) {
+  if (block === undefined || block === null) {
+    return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT])), stufenQuelle: "default" };
+  }
+  if (typeof block !== "object" || Array.isArray(block)) {
+    fail(`reviewStufen: muss ein Objekt mit den Stufen ${REVIEW_STUFEN.join(", ")} sein.`);
+  }
+  const stufen = {};
+  for (const stufe of REVIEW_STUFEN) {
+    const wo = `reviewStufen.${stufe}`;
+    const eintrag = block[stufe];
+    if (!eintrag || typeof eintrag !== "object" || Array.isArray(eintrag)) {
+      fail(`${wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.`);
+    }
+    const { reviewer, rollen } = eintrag;
+    if (!Number.isInteger(reviewer) || reviewer < 1) {
+      fail(`${wo}.reviewer: muss eine positive Ganzzahl sein, ist '${reviewer}'.`);
+    }
+    if (!Array.isArray(rollen)) fail(`${wo}.rollen: muss eine Liste von Rollennamen sein.`);
+    rollen.forEach((name, i) => {
+      if (typeof name !== "string" || !name) fail(`${wo}.rollen[${i}]: muss ein nicht leerer Rollenname sein.`);
+    });
+    if (new Set(rollen).size !== rollen.length) fail(`${wo}.rollen: nennt einen Rollennamen doppelt.`);
+    if (rollen.length !== reviewer) {
+      fail(`${wo}: rollen.length (${rollen.length}) stimmt nicht mit reviewer (${reviewer}) ueberein.`);
+    }
+    stufen[stufe] = { reviewer, rollen };
+  }
+  return { stufen, stufenQuelle: "stufen" };
+}
+
 function issueReviewConfig() {
-  const block = loadConfig().issueReview || {};
+  const config = loadConfig();
+  const block = config.issueReview || {};
   const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
     rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
     reviewers,
     pairs: validatePairs(block.pairs, reviewers),
+    // `reviewStufen` steht auf oberster Ebene, nicht in `issueReview`: Die Besetzung
+    // gilt fuer die drei Stufen der Pruefung, waehrend `issueReview` beschreibt, WER
+    // ueberhaupt prueft. Geprueft wird trotzdem hier, damit ein kaputter Block bei
+    // jedem issue-review-Befehl auffaellt und nicht erst beim ersten `roles`.
+    reviewStufen: validateReviewStufen(config.reviewStufen),
   };
 }
 
@@ -2045,6 +2241,38 @@ function issueReviewReviewers(args) {
   out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs), rounds });
 }
 
+/**
+ * Besetzung und Blickwinkel einer Pruefstufe (Issue #278).
+ *
+ * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
+ * `pairs` und fuer den Selbstausschluss. Ohne ihn koennte der Befehl genau das nicht
+ * leisten, wofuer es ihn gibt — und wuerde trotzdem eine Reviewer-Liste ausgeben.
+ *
+ * Zwei Quellen, zwei Felder: `quelle` bleibt die Quelle der Reviewer-AUSWAHL
+ * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
+ * STUFENBESETZUNG ("stufen" | "default").
+ */
+function issueReviewRoles(args) {
+  const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
+  if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  if (!REVIEW_STUFEN.includes(stufe)) {
+    fail(`--stufe '${stufe}' ist keine bekannte Stufe. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  }
+  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
+  if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
+
+  const { reviewers, pairs, reviewStufen } = issueReviewConfig();
+  const { reviewer, rollen } = reviewStufen.stufen[stufe];
+  out({
+    stufe,
+    reviewer,
+    rollen,
+    stufenQuelle: reviewStufen.stufenQuelle,
+    autor,
+    ...pickReviewers(reviewers, autor, reviewer, pairs),
+  });
+}
+
 // Die Tabelle, nach der man eigentlich fragt: wer prueft wen. Autoren sind alle
 // Reviewer-Namen plus alle pairs-Schluessel — letztere auch dann, wenn sie selbst nicht
 // als Reviewer auftreten (ein Modell kann schreiben, ohne zu pruefen).
@@ -2063,6 +2291,14 @@ function issueReviewMatrix() {
   });
 }
 
+// Die Umgebung, in der dieses Kommando misst (Issue #269). Ein Befund von hier stammt
+// immer aus dem aufrufenden Prozess — interaktiv ist das die Session des Menschen, im
+// Runner der Runner selbst. Der Wert steht ausdruecklich im Befund, damit niemand ein
+// `verfuegbar: true` auf eine Umgebung bezieht, in der gar nicht geprueft wurde. Der
+// Nacht-Runner erkennt seinen eigenen Session-Vorflug am Gegenwert "review-session";
+// ein direkt hier gestarteter Prozess kann ihn nie erzeugen.
+const CHECK_UMGEBUNG = "runner";
+
 // Auskunft, kein Gate: Exit bleibt 0, auch wenn ein Reviewer fehlt. Wer daraus ein
 // Gate macht, ist der Skill — er kann den Menschen fragen, dieses Kommando nicht.
 function issueReviewCheck(args = {}) {
@@ -2072,14 +2308,15 @@ function issueReviewCheck(args = {}) {
   const nurPfad = args["nur-pfad"] === true;
   const { reviewers } = issueReviewConfig();
   const ergebnis = reviewers.map((r) => {
-    if (r.kind === "claude") return { name: r.name, kind: r.kind, verfuegbar: true };
+    const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
+    if (r.kind === "claude") return { ...basis, verfuegbar: true };
     const { datei, ok, pfad } = kommandoVerfuegbar(r.command);
-    if (!ok) return { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
-    if (nurPfad) return { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "pfad" };
+    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
     const probe = probelauf(r.command, pfad);
     return probe.ok
-      ? { name: r.name, kind: r.kind, verfuegbar: true, geprueft: "probelauf" }
-      : { name: r.name, kind: r.kind, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
+      ? { ...basis, verfuegbar: true, geprueft: "probelauf" }
+      : { ...basis, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
   });
   // Ohne konfigurierte Reviewer waere `every()` auf dem leeren Array true — der Vorflug
   // haette einen Lauf durchgelassen, der garantiert nichts liefert: Jede Session startet,
@@ -2097,6 +2334,7 @@ async function dispatchIssueReview(command, args) {
     case "reviewers": return issueReviewReviewers(args);
     case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
+    case "roles": return issueReviewRoles(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

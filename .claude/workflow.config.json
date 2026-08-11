@@ -1,6 +1,6 @@
 {
   "codeHost": "github",
-  "issueTracker": "github",
+  "issueTracker": "toolbox",
   "buildChecks": [
     "node --test",
     "node tools/sync-blobs.mjs --check"
@@ -25,9 +25,6 @@
     "in_review": "In review",
     "done": "Done"
   },
-  "github": {
-    "projectNumber": 14
-  },
   "issueReview": {
     "rounds": 1,
     "requiredBeforeReady": true,
@@ -50,7 +47,7 @@
       {
         "name": "codex",
         "kind": "command",
-        "command": "codex exec"
+        "command": "codex exec --model gpt-5.6-sol -c model_reasoning_effort=\"high\""
       }
     ],
     "pairs": {
@@ -75,5 +72,31 @@
         "sonnet"
       ]
     }
+  },
+  "reviewStufen": {
+    "fachlich": {
+      "reviewer": 2,
+      "rollen": [
+        "form-beobachtbarkeit",
+        "abgrenzung"
+      ]
+    },
+    "plan": {
+      "reviewer": 2,
+      "rollen": [
+        "architektur-bestand",
+        "schnitt-abhaengigkeiten"
+      ]
+    },
+    "issue": {
+      "reviewer": 1,
+      "rollen": [
+        "pruefbarkeit"
+      ]
+    }
+  },
+  "toolbox": {
+    "host": "https://kanban.mwolff.org",
+    "ideaStored": false
   }
 }

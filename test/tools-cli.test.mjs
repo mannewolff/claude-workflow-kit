@@ -213,7 +213,8 @@ test("changelog.mjs schreibt CHANGELOG.md aus der git-Historie", () => {
     assert.equal(res.stdout.trim(), "CHANGELOG.md geschrieben.");
 
     const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
-    assert.match(inhalt, /## \[1\.17\.0\]/, "die aktuelle Version bildet den obersten Block");
+    assert.match(inhalt, /## \[Unreleased\]/, "unveroeffentlichte Commits stehen unter [Unreleased] (Issue #265)");
+    assert.doesNotMatch(inhalt, /## \[1\.17\.0\]/, "die Version aus install.mjs gehoert nicht mehr in den Changelog");
     assert.match(inhalt, /Zweites Feature/);
     assert.match(inhalt, /## \[1\.16\.1\]/);
     assert.match(inhalt, /Erstes Feature/);
@@ -256,25 +257,18 @@ test("changelog.mjs bricht ohne Startmarke in der Historie ab", () => {
   }
 });
 
-test("changelog.mjs bricht bei fehlender install.mjs und fehlender VERSION ab", () => {
-  const ohneDatei = changelogFixture("changelog-noinstall-");
+test("changelog.mjs braucht install.mjs nicht mehr", () => {
+  // Bis Issue #265 las das Tool die VERSION aus install.mjs fuer den obersten
+  // Block. Seit der Block [Unreleased] heisst, ist die Datei gegenstandslos —
+  // changelog.mjs haengt nur noch an der git-Historie.
+  const dir = changelogFixture("changelog-noinstall-", { commits: ["Ein Feature (Issue #7)"] });
   try {
-    rmSync(join(ohneDatei, "install.mjs"));
-    const res = laufe(ohneDatei, CHANGELOG_TOOL);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /install\.mjs nicht gefunden/);
+    rmSync(join(dir, "install.mjs"));
+    const res = laufe(dir, CHANGELOG_TOOL);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(readFileSync(join(dir, "CHANGELOG.md"), "utf-8"), /Ein Feature \(#7\)/);
   } finally {
-    rmSync(ohneDatei, { recursive: true, force: true });
-  }
-
-  const ohneKonstante = changelogFixture("changelog-noconst-");
-  try {
-    writeFileSync(join(ohneKonstante, "install.mjs"), "const ETWAS = 1;\n", "utf-8");
-    const res = laufe(ohneKonstante, CHANGELOG_TOOL);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /VERSION-Konstante in install\.mjs nicht gefunden/);
-  } finally {
-    rmSync(ohneKonstante, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

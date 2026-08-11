@@ -36,6 +36,17 @@ Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Auto
 
 **Die Zeile wird nie weggelassen** — eine fehlende Zeile und ein unbekannter Autor sind zwei verschiedene Zustaende, und `/issue-review` muss sie unterscheiden koennen. Der Wert ist eine Selbstauskunft, kein Nachweis; das reicht fuer seinen Zweck: Der Autor soll nicht sein eigener Reviewer werden.
 
+**Seit Issue #266 ist das keine Bitte mehr, sondern eine Leitplanke.** `board.mjs issue create` legt kein Issue an, wenn die Zeile fehlt, und meldet stattdessen einen Fehler. Zwei Wege, sie zu liefern: im `--body` mitschreiben (der Normalfall dieses Skills) oder `--author-model <modell>` uebergeben — dann setzt der Adapter sie selbst in den Kontext-Abschnitt. Ist `KIT_AGENT_MODEL` gesetzt und weder Zeile noch Flag vorhanden, springt der Wert daraus ein; nachts kann eine Session also nicht an der eigenen Leitplanke scheitern.
+
+Plan-Modell-Konvention: Nennt der zugrunde liegende Plan eine Zeile `Plan-Modell: <wert>` (siehe `/plan`), traegt jedes technische Issue sie **zusaetzlich** im Kontext-Abschnitt:
+
+```
+Autor-Modell: claude-opus-5
+Plan-Modell: claude-sonnet-5
+```
+
+Stimmen beide ueberein, genuegt die `Autor-Modell`-Zeile. **Weichen sie ab, stehen beide da** — das ist kein Fehlerfall, sondern der interessante: Ein Plan von einem Modell und Issues von einem anderen sind zwei Autorschaften, und wer spaeter einen Mangel sucht, muss wissen, welche der beiden gemeint ist.
+
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet (Issue #213). Eine Bitte im Issue-Text ist genau die Leitplanke, die unter Druck uebersprungen wird: Am 2026-08-06 sind daran zwei Skill-Issues in einem Nachtlauf gescheitert, und zwei weitere Kopien waren davor schon still veraltet.
 
 Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschliesslich Kriterien, die eine Session selbst pruefen kann** — ausfuehrbare Kommandos, Dateizustaende, Testergebnisse. Was ein menschliches Urteil oder eine menschliche Handlung braucht (Klick durch eine UI, Blick auf ein gerendertes Dokument, Urteil ueber Textqualitaet, Livetest gegen eine fremde Instanz), kommt in einen eigenen Block mit **woertlich dieser Ueberschrift**:
@@ -77,13 +88,40 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 
 **Abhängigkeits-Konvention (maschinenlesbar):** Der Abschnitt enthält entweder exakt `Keine.` oder explizite Referenzen der Form `Issue #N` (mehrere möglich, je eine pro Zeile). Erläuternder Freitext ist zusätzlich erlaubt — aber wenn ein anderes Issue gemeint ist, muss die `#N`-Referenz dabeistehen. Grund: Der Nacht-Runner (`kit/night.mjs`) wertet ausschließlich `#N`-Referenzen aus und stellt Issues mit unerfüllten Abhängigkeiten automatisch zurück; eine nur in Prosa beschriebene Abhängigkeit ist für ihn unsichtbar. Abhängigkeiten auf fremde Repos als `owner/repo#N` schreiben (mit Repo-Präfix) — sie werden bewusst nicht als lokale Issues gewertet.
 
-**Rückverweis auf ein fachliches Issue (PO-Schleife):** Entstehen die Issues aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/plan #N`), bekommt jedes technische Issue den Rückverweis **im Kontext-Abschnitt** — Formulierung: „Fachliche Quelle: Issue #N". **Niemals in den Abhängigkeiten-Abschnitt:** Der Nacht-Runner würde die `Issue #N`-Referenz dort als unerfüllte Abhängigkeit werten, und da das fachliche Issue erst Done wird, wenn seine technischen Kinder fertig sind, würden alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
+**Rückverweise auf Plan und fachliche Quelle:** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Beide Verweise stehen **im Kontext-Abschnitt**, unmittelbar untereinander und in dieser Reihenfolge:
+
+```
+Plan: Issue #M
+Fachliche Quelle: Issue #N
+```
+
+- `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/plan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
+- `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/plan #N`), kommt dieser Verweis dazu.
+
+**Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
+
+**Abgrenzung zur Plan-Modell-Konvention (Issue #266):** `Plan-Modell:` sagt, **welches Modell** den Plan geschrieben hat — den Urheber. `Plan: Issue #M` sagt, **wo er steht** — den Fundort. Beide Zeilen sind unabhängig voneinander: `Plan-Modell:` darf bei identischem Plan- und Issue-Autor entfallen, die `Plan:`-Zeile wird davon nicht berührt und steht auch dann.
+
+**Zwei Randfälle:**
+
+- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile** und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
+- **Plan ohne fachliche Quelle:** Steht hinter dem Plandokument keine fachliche Anforderung, steht nur `Plan: Issue #M`.
 
 Issue anlegen ueber den Board-Adapter:
 
 ```bash
-node .claude/kit/board.mjs issue create --title "Titel" --body "..."
+node .claude/kit/board.mjs issue create --title "Titel" --body - <<'BODY'
+## Kontext
+...
+BODY
 ```
+
+**Der Body geht ueber stdin, nicht als Argument** (Issue #271). Ein Vier-Abschnitt-Body
+mit Codebloecken, Backticks und Tabellen ist der Normalfall, und genau daran scheitert
+das Quoting einer Kommandozeile. Wer stattdessen ein Hilfsskript baut, verliert den Weg
+im Nachtbetrieb: Ein selbstgebautes Script steht in keiner Allowlist. Alternativ
+`--body-file <pfad>` — dann gehoert die Datei **ausserhalb des Projektverzeichnisses**,
+sonst ist der Working Tree unsauber und der Nacht-Runner stoppt hart.
 
 Der Adapter legt das Issue an, haengt es ans Board und setzt den Status auf Backlog — provider-unabhaengig.
 

@@ -119,10 +119,10 @@ test("Unbekannter issueTracker und codeHost werden benannt", () => {
 
 test("parseArgs: Werte mit Leerzeichen bleiben zusammen, Flags ohne Wert werden true", () => {
   mitProjekt(LOKAL, (dir) => {
-    board(dir, "issue", "create", "--title", "Titel mit Leerzeichen", "--body", "Text");
+    board(dir, "issue", "create", "--title", "Titel mit Leerzeichen", "--body", "Autor-Modell: m\nText");
     const geholt = board(dir, "issue", "get", "0001");
     assert.equal(geholt.title, "Titel mit Leerzeichen");
-    assert.equal(geholt.body, "Text");
+    assert.equal(geholt.body, "Autor-Modell: m\nText");
 
     // --status ohne Wert am Zeilenende wird zu true und faellt in die Validierung.
     const res = runBoard(dir, ["issue", "list", "--status"]);

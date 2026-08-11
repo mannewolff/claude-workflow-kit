@@ -49,3 +49,6 @@ coverage/
 !.claude/skills/
 .claude/workflow.config.local.json
 .claude/board-meta-cache.json
+
+.agents/
+.codex/

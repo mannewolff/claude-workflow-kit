@@ -37,6 +37,12 @@ Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische 
 Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
 ```
 
+**Plandokumente überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Plan]` — ein Plandokument aus `/plan` beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden. Auch es wandert mit diesem Kommentar zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:
+
+```
+Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
+```
+
 **Ungepruefte Issues: Hinweis, kein Stopp.** Traegt ein Ready-Issue keine Marker-Zeile `Issue-Review:` im Kontext-Abschnitt, ist es nicht durch `/issue-review` gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
 
 ### 1. Issue nach In progress verschieben
@@ -90,8 +96,10 @@ node .claude/kit/board.mjs issue move <id> in_review
 Abschlussbericht als Issue-Kommentar:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "## Abschlussbericht Issue #N
-..."
+node .claude/kit/board.mjs issue comment <id> --text - <<'BERICHT'
+## Abschlussbericht Issue #N
+...
+BERICHT
 ```
 
 Format des Abschlussberichts:
@@ -122,7 +130,7 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel) und Ideen (`[Idee]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test

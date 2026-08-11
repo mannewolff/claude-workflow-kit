@@ -1,8 +1,54 @@
 # Changelog
 
-Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht.
+Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [1.35.1] - 2026-08-08
+## [1.37.0] - 2026-08-11
+- issue-review: ein Kommando fuer drei Stufen sichtbar machen
+- CLAUDE-workflow.md: Vorlage und Kopie wieder deckungsgleich
+- issues: Rueckverweis auf das Plandokument (#277)
+- Dokumentation: drei Pruefstufen und das Plandokument (#284)
+- issue-review: Arbeitspaket auf eine Rolle (#282)
+
+## [1.36.6] - 2026-08-11
+- night.mjs: eine Pruefstufe pro Lauf ueber --stufe (#283)
+- issue-review: die beiden Rollen der Plan-Stufe (#281)
+- issue-review: die beiden Rollen der fachlichen Stufe (#280)
+- issue-review: Stufe am Titel erkennen, drei getrennte Marker (#279)
+- fachplan: Autor-Modell gehoert ins Story-Format (#273)
+
+## [1.36.5] - 2026-08-11
+- Tracker-Wechsel dokumentiert, GitHub als Archiv (#294)
+- Tracker auf kanban-kit umgestellt (#293)
+- Implementierungsplan für codex hinzugefügt
+- migrate-issues.mjs: direct beim Import, Spalten-Abbildung im Gate (#291)
+
+## [1.36.4] - 2026-08-11
+- board.mjs: kanban-kit erwartet direct statt ideaStored (#295)
+- migrate-issues.mjs: Export-Query und sechste Board-Spalte (#291)
+- migrate-issues.mjs: verify-Lauf als Gate (#290)
+- migrate-issues.mjs: import-Lauf mit Trockenlauf und Idempotenz (#289)
+- migrate-issues.mjs: Geruest und export-Lauf (#288)
+- plan: Plandokument als [Plan]-Issue anlegen (#275)
+- .agents und .codex ins .gitignore übernommen wie auch .claude
+
+## [1.36.3] - 2026-08-10
+- reviewStufen-Config und issue-review roles --stufe (#278)
+- Gate fuer Plandokumente: [Plan]-Titel werden nie implementiert (#276)
+- Reviewer-Vorflug in einer Session statt im Runner (#269)
+- config: codex-Reviewer mit festem Modell und hohem Reasoning-Aufwand
+- plan: verbindliches Format fuer das Plandokument (#274)
+- issue create: Body aus Datei oder stdin (#271)
+- issue-review: der Reviewer darf den Bestand lesen (#268)
+- Changelog: Ablauf umdrehen, unveroeffentlichte Commits als [Unreleased] (#265)
+
+## [1.36.2] - 2026-08-08
+- board.mjs: Text aus Datei oder stdin statt nur als Argument (#270)
+
+## [1.36.1] - 2026-08-08
+- issue-review: nachts nie fragen, auch bei Ausfall beim Start (#267)
+- Autor-Modell erzwingen statt erbitten (#266)
+
+## [1.36.0] - 2026-08-08
 - reviewer für die review session hinzugefügt
 - issue-review check: Probelauf statt reiner PATH-Suche (#262)
 - Changelog: aufeinanderfolgende Bump-Marken zusammenfassen (#245)
