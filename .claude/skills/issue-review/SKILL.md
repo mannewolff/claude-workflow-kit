@@ -272,6 +272,73 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
+#### Stufe `plan`: die beiden Rollen des Plandokuments
+
+Hier zahlt sich der Bestandszugriff aus Issue #268 am meisten aus: Ein Plan behauptet, **wie** etwas gebaut wird — ob das mit dem vorhandenen Code zusammengeht, sieht nur ein Prüfer, der hineinschaut. Am 2026-08-08 wies ein Reviewer nach, dass ein im Plan referenziertes Kommando im Adapter gar nicht existiert und eine genannte Funktion anders heißt. Beides wäre sonst in dreizehn Arbeitspakete gewandert.
+
+Maßstab ist das verbindliche Plan-Format aus Issue #274, insbesondere die Begründungspflicht bei den Entscheidungen.
+
+**Rolle `architektur-bestand`** (erster Reviewer der Stufe):
+
+```
+Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du
+kennst die Entstehungsgeschichte nicht — nicht das Gespräch, aus dem er stammt.
+Den Bestand darfst und sollst du lesen: Schlag im Repository nach.
+
+0. Entspricht der Plan dem verbindlichen Plan-Format? Enthält er genau einmal und
+   in dieser Reihenfolge `## Ziel`, `## Betroffene Bereiche`, `## Architektonische
+   Entscheidungen`, `## Geplante Änderungen`, `## Offene Fragen` und
+   `## Verifizierung`? Sind leere Pflichtabschnitte ausdrücklich mit `- Keine.`
+   ausgewiesen?
+1. Stimmt jede Behauptung über den Bestand? Existieren die genannten Dateien,
+   Funktionen, Kommandos und Konfigurationsfelder wirklich, und heißen sie so?
+2. Trägt jede Entscheidung unter "Architektonische Entscheidungen" eine
+   Begründung? Eine Entscheidung ohne Begründung ist nicht überprüfbar — das ist
+   ein Fund.
+3. Widerspricht eine Entscheidung einer erkennbaren Konvention des Projekts?
+4. Was bricht, das der Plan nicht nennt? Welches bestehende Verhalten, welcher
+   Test, welche Kopie ist betroffen?
+5. Was kann RAUS? Welche Entscheidung, welcher Abschnitt trägt nichts?
+
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Zitat, ein konkreter Formulierungsvorschlag. Bei Behauptungen über den Bestand:
+nenne die Datei und die Stelle, an der du nachgesehen hast.
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- PLAN ---
+{{ISSUE_BODY}}
+```
+
+**Rolle `schnitt-abhaengigkeiten`** (zweiter Reviewer der Stufe):
+
+```
+Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du
+kennst die Entstehungsgeschichte nicht. Den Bestand darfst du lesen.
+
+Prüfe den Schnitt:
+
+1. Lässt sich der Plan überhaupt in einzeln abschließbare Arbeitspakete zerlegen?
+   Wo hängt alles an allem?
+2. Welche Reihenfolge erzwingt er, und ist sie im Plan erkennbar? Ein Paket, das
+   ein anderes voraussetzt, ohne dass der Plan es sagt, wird später zur
+   unsichtbaren Abhängigkeit.
+3. Ist ein Teil zu groß — brauchte er einen eigenen Plan?
+4. Sagt "Verifizierung", WIE geprüft wird, oder behauptet sie nur, dass geprüft
+   wird?
+5. Sind die offenen Fragen wirklich Stopp-Fragen — solche, deren Antwort den
+   Zuschnitt ändert? Nachträglich entscheidbare Fragen blähen den Plan.
+6. Was kann RAUS?
+
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Zitat, ein konkreter Formulierungsvorschlag.
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- PLAN ---
+{{ISSUE_BODY}}
+```
+
 **Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, Rolle A und Rolle B für das Arbeitspaket. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}`. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
 
 **Ausführung je nach `kind`:**
@@ -424,7 +491,7 @@ Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten i
 
 **Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
-**Diese Marker-Regel gilt nur für die Stufen `plan` und `issue`, nicht für `fachlich`.** Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben, und in einer fachlichen Anforderung stehen die Antworten des Product Owners, also Entscheidungen über das Produkt. Für die Stufe `fachlich` gilt deshalb in **jedem unbeaufsichtigten Lauf** — nicht nur nachts —: `issue update` wird nie ausgeführt, und auch bei befundfreiem Review wird kein Marker gesetzt. Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+**Diese Marker-Regel gilt nur für die Stufe `issue`, nicht für `fachlich` und nicht für `plan`.** Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen. Für die Stufen `fachlich` und `plan` gilt deshalb in **jedem unbeaufsichtigten Lauf** — nicht nur nachts —: `issue update` wird nie ausgeführt, und auch bei befundfreiem Review wird kein Marker gesetzt. Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
 
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
@@ -477,6 +544,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
+- **Kein Schreiben in ein Plandokument in einem unbeaufsichtigten Lauf** — bei Stufe `plan` weder `issue update` noch ein Marker. Auch der Plan trägt architektonische Entscheidungen, die ein Mensch getroffen hat
 - **Kein Schreiben in eine fachliche Anforderung in einem unbeaufsichtigten Lauf** — bei Stufe `fachlich` weder `issue update` noch ein Marker, auch nicht bei befundfreiem Review. Dort stehen die Antworten des Product Owners
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Idee]`-Issues — `[Fachlich]` und `[Plan]` bestimmen dagegen die Stufe (Schritt 1b)
