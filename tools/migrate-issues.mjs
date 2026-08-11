@@ -209,7 +209,7 @@ async function kanbanFetch(zugang, pfad, optionen = {}) {
 const ISSUES_QUERY = `
 query($owner:String!,$repo:String!,$cursor:String){
   repository(owner:$owner,name:$repo){
-    issues(first:50,states:OPEN,after:$cursor,orderBy:{field:NUMBER,direction:ASC}){
+    issues(first:50,states:OPEN,after:$cursor,orderBy:{field:CREATED_AT,direction:ASC}){
       pageInfo{ hasNextPage endCursor }
       nodes{
         number title body
@@ -452,6 +452,14 @@ const ZIELSPALTEN = {
   in_progress: "IN_PROGRESS",
   in_review: "IN_REVIEW",
   done: "DONE",
+  // Das GitHub-Board dieses Repos fuehrt eine sechste Spalte, die kanban-kit nicht
+  // kennt. Sie wird ausdruecklich abgebildet, nicht ueber ein stilles Fallback
+  // aufgefangen: Eine unbekannte Spalte bleibt ein Abbruch (Issue #289), sonst
+  // landet irgendwann eine falsch geschriebene Spalte lautlos im Backlog.
+  // Die Information geht nicht verloren — die Herkunfts-Kopfzeile im Body nennt
+  // weiterhin "Zurückgestellt" (Plan-Entscheidung 10).
+  "zurückgestellt": "BACKLOG",
+  zurueckgestellt: "BACKLOG",
 };
 
 function zielSpalte(wert) {
