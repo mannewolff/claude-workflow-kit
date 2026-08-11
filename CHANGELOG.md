@@ -2,6 +2,15 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.36.4] - 2026-08-11
+- board.mjs: kanban-kit erwartet direct statt ideaStored (#295)
+- migrate-issues.mjs: Export-Query und sechste Board-Spalte (#291)
+- migrate-issues.mjs: verify-Lauf als Gate (#290)
+- migrate-issues.mjs: import-Lauf mit Trockenlauf und Idempotenz (#289)
+- migrate-issues.mjs: Geruest und export-Lauf (#288)
+- plan: Plandokument als [Plan]-Issue anlegen (#275)
+- .agents und .codex ins .gitignore übernommen wie auch .claude
+
 ## [1.36.3] - 2026-08-10
 - reviewStufen-Config und issue-review roles --stufe (#278)
 - Gate fuer Plandokumente: [Plan]-Titel werden nie implementiert (#276)
