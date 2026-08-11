@@ -165,7 +165,7 @@ Absolut bindend:
 ```json
 {
   "codeHost": "github",
-  "issueTracker": "toolbox",
+  "issueTracker": "github",
   "buildChecks": ["<build-kommando>", "<test-kommando>"],
   "mutationCommand": "<mutations-test-kommando oder leer>",
   "mainBranch": "main",
@@ -180,18 +180,6 @@ Absolut bindend:
 `codeHost` steuert den Code-Host (github | gitlab | local).
 `issueTracker` steuert Issues und Board (github | gitlab | local | toolbox).
 Bei GitHub und GitLab zeigen beide auf denselben Wert.
-
-**Dieses Repository seit dem 2026-08-11:** Der Issue-Tracker ist **kanban-kit**
-(`issueTracker: "toolbox"` — `toolbox` ist der Adapterwert, `kanban-kit` der
-Produktname und kein gueltiger Config-Wert). Der Code-Host bleibt
-`codeHost: "github"`; der Code liegt weiter dort, nur der Tracker ist gewandert.
-`toolbox.tokenFile` steht nicht in dieser Datei, sondern in der gitignorten
-`workflow.config.local.json`.
-
-**GitHub Issues bleiben aktiviert und sind das Archiv.** Die beim Umzug
-geschlossenen Issues sind dort geblieben; bestehende Commit-Botschaften mit
-`#N` behalten damit ein erreichbares Ziel. Fuer neue Arbeit werden sie nicht
-mehr verwendet. Details in `docs/dokumentation.md`.
 Bestehende Configs mit `provider` werden automatisch migriert.
 
 `buildChecks` und `mutationCommand` anpassen. Alle anderen Felder haben sinnvolle Defaults.
