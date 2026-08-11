@@ -37,6 +37,17 @@ test("der Review laeuft mit den verbleibenden Reviewern zu Ende", () => {
     "ohne diesen Satz verfaellt die Arbeit des anderen Reviewers wieder");
 });
 
+// Seit Issue #282 laeuft die Stufe `issue` mit einem einzigen Reviewer. Faellt er
+// aus, bleibt niemand uebrig — die Regel oben liefe leer, und eine Session ohne
+// Anschlussregel improvisiert. Genau diese Luecke hat am 2026-08-08 vier
+// Naechte gekostet, nur eine Stufe hoeher.
+test("der Fall 'kein Reviewer bleibt uebrig' hat eine Anschlussregel", () => {
+  assert.match(nachtAbschnitt, /Bleibt keiner übrig|Bleibt kein(er)? Reviewer/i,
+    "die Lage ohne verbleibenden Reviewer ist nicht geregelt");
+  assert.match(nachtAbschnitt, /protokoll/i,
+    "die Folge (nur noch protokollieren) fehlt");
+});
+
 test("kein Ersatz-Reviewer aus eigenem Antrieb", () => {
   assert.match(nachtAbschnitt, /Kein Ersatz-Reviewer/i);
   assert.match(nachtAbschnitt, /pairs/,

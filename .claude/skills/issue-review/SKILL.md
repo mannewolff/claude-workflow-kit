@@ -1,12 +1,14 @@
 ---
 name: issue-review
-description: Lässt ein Issue von zwei Modellen prüfen, die es nicht geschrieben haben, bevor es nach Ready wandert. Nutze diesen Skill wenn der Nutzer /issue-review aufruft oder Issues vor dem GO schärfen will.
+description: Lässt ein Dokument von fremden Modellen prüfen, die es nicht geschrieben haben, bevor es nach Ready wandert. Nutze diesen Skill wenn der Nutzer /issue-review aufruft oder Issues vor dem GO schärfen will.
 user-invocable: true
 ---
 
 # Issue Review
 
-Werkzeug neben dem Prozess, zwischen `/issues` (Schritt 3) und dem GO (Schritt 4). Zwei Modelle, die das Issue nicht geschrieben haben, prüfen es — und schärfen es, bevor jemand es implementiert.
+Werkzeug neben dem Prozess, zwischen `/issues` (Schritt 3) und dem GO (Schritt 4). Ein Dokument wird von Modellen gelesen, die es nicht geschrieben haben — und geschärft, bevor jemand danach implementiert.
+
+**Wie viele prüfen, entscheidet die Stufe** (Schritt 1b): Die fachliche Anforderung und das Plandokument bekommen je zwei Prüfer, das einzelne Arbeitspaket nur noch einen. Der Grund steht bei der Stufe `issue`.
 
 **Warum das trägt:** Der Autor eines Issues hat den Kontext im Kopf, aus dem es entstanden ist. Was er nicht hingeschrieben hat, fällt ihm beim Lesen nicht auf — er ergänzt es unbewusst. Ein fremdes Modell war bei dieser Entstehung nicht dabei — es liest, was dasteht, und stolpert dort, wo später die Implementierung stolpert. (Den Bestand darf es dabei lesen; kontextlos heißt ohne Entstehungsgeschichte, nicht ohne Code — siehe Schritt 3.) Das ist derselbe Grund, aus dem der Code-Review in Schritt 7 funktioniert, nur eine Stufe früher und mit höherem Einsatz: Ein Fehler im Issue pflanzt sich in die ganze Umsetzung fort.
 
@@ -48,9 +50,9 @@ node .claude/kit/board.mjs issue-review check
 
 Meldet je Reviewer, ob er laufen kann. **Ist nicht alles verfügbar, frage den Menschen, bevor irgendetwas startet** — mit der Liste, was fehlt und warum:
 
-> `codex` ist nicht im PATH. Ich kann mit einem Reviewer weitermachen oder abbrechen. Wie möchtest du?
+> `codex` ist nicht im PATH. Ich kann mit dem verbleibenden Reviewer weitermachen oder abbrechen. Wie möchtest du?
 
-Der Grund für die Rückfrage: Ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Wer das nicht merkt, hält ein halb geprüftes Issue für geprüft.
+Der Grund für die Rückfrage: Ein unterbesetzter Lauf sieht am Board aus wie ein vollständiger. Wer das nicht merkt, hält ein halb geprüftes Dokument für geprüft. Maßstab ist die Sollbesetzung der Stufe aus `issue-review roles` (Feld `reviewer`), nicht eine feste Zahl — auf der Stufe `issue` ist ein Reviewer die volle Besetzung, auf den Stufen `fachlich` und `plan` sind es zwei.
 
 **Im Nachtbetrieb wird hier nicht gefragt** (siehe unten): Der Runner hat den Vorflug vor dem Lauf gefahren und bei fehlendem Reviewer gar nicht erst gestartet.
 
@@ -91,29 +93,33 @@ node .claude/kit/board.mjs issue-review roles \
   --author <modell>
 ```
 
-`--author` ist Pflicht. Die Antwort liefert `rollen`, `reviewer` und `gewaehlt`; **`gewaehlt[i]` wird mit `rollen[i]` gepaart** — der erste gewählte Reviewer bekommt die erste Rolle. Für die Ausführung wird `issue-review reviewers` nicht mehr verwendet.
+`--author` ist Pflicht. Die Antwort liefert `rollen`, `reviewer` und `gewaehlt`; **`gewaehlt[i]` wird mit `rollen[i]` gepaart** — der erste gewählte Reviewer bekommt die erste Rolle. **Gestartet wird ausschließlich, was in `gewaehlt` steht.** Das stufenlose `reviewers`-Kommando wird für die Ausführung nicht mehr benutzt: Es liefert per Definition zwei Reviewer und würde die Besetzung der Stufe `issue` still verdoppeln.
+
+Die Antwort trägt außerdem `stufenQuelle`. Steht dort `"stufen"`, gilt die konfigurierte Besetzung; steht dort `"default"`, fehlt der `reviewStufen`-Block und es gilt der Legacy-Fallback (siehe Schritt 3).
 
 **Auswahl ohne Argumente:** Erst alle Backlog-Dokumente laden, dann je Dokument die Stufe aus dem Titel bestimmen und **nur den Marker dieser Stufe** prüfen. Ein Marker einer anderen Stufe zählt nicht als Nachweis. Ohne diese Reihenfolge würde ein bereits geprüftes fachliches Dokument erneut ausgewählt, weil sonst auf `Issue-Review:` gefiltert wird. Mit expliziten Nummern bleibt ein erneuter Review unabhängig vom vorhandenen Marker erlaubt.
 
-**Abgrenzung:** Dieses Verfahren wirkt vorerst **nur interaktiv**. Die stufenabhängige Kandidatenauswahl und der stufenabhängige Marker-Vergleich im Nacht-Runner sind Gegenstand von Issue #283; bis dahin sortiert `selectReviewCandidates` `[Fachlich]`- und `[Plan]`-Titel weiterhin aus, ein Nachtlauf schlägt sie also nie vor. Die ausformulierten Rollen-Prompts der beiden neuen Stufen entstehen in Issue #280 (fachlich) und Issue #281 (Plan) — bis dahin wählt die Stufenwahl Rollennamen aus, zu denen es noch keinen Prompt gibt.
+**Abgrenzung:** Die stufenabhängige Kandidatenauswahl und der stufenabhängige Marker-Vergleich im Nacht-Runner sind Gegenstand von Issue #283. Die ausformulierten Rollen-Prompts stehen in Schritt 3: fachlich aus Issue #280, Plan aus Issue #281, Arbeitspaket aus Issue #282.
 
 ### 2. Autor-Modell lesen und Reviewer wählen
 
 Das Autor-Modell steht als Zeile im Kontext-Abschnitt (`Autor-Modell: …`, angelegt von `/issues`).
 
-**Fehlt sie oder lautet sie `unbekannt`, frage einmal nach** — mit den vorgeschlagenen Reviewern:
+**Fehlt sie oder lautet sie `unbekannt`, frage einmal nach** — mit dem vorgeschlagenen Reviewer:
 
-> #205 nennt kein Autor-Modell. Vorschlag: `opus`, `sonnet`. Wer hat es geschrieben? (Modellname / weiter mit Vorschlag)
+> #205 nennt kein Autor-Modell. Vorschlag: `codex`. Wer hat es geschrieben? (Modellname / weiter mit Vorschlag)
 
-Das ist der einzige neue Stopp-Punkt und er kostet ein Wort. Ohne ihn ist bei jedem Issue, das vor der Konvention entstanden ist, die Hälfte des Reviews Selbstprüfung — und der Marker suggeriert am Ende trotzdem, es sei geprüft worden.
+Das ist der einzige neue Stopp-Punkt und er kostet ein Wort. Ohne ihn prüft bei jedem Issue, das vor der Konvention entstanden ist, womöglich der Autor sein eigenes Dokument — und der Marker suggeriert am Ende trotzdem, es sei geprüft worden. Auf der Stufe `issue`, wo genau ein Reviewer läuft, ist der Review dann vollständig wertlos.
 
 **Ausnahme im Nachtbetrieb:** Läuft der Skill ohne Menschen (erkennbar an gesetztem `KIT_AGENT_MODEL`), wird **nicht** gefragt. Dann gilt der Regel-Vorschlag, und der Board-Kommentar vermerkt das ausdrücklich. Dieselbe Asymmetrie wie beim Gate aus Issue #223, aus demselben Grund: Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden.
 
+Steht das Autor-Modell fest, wird die Besetzung stufenbezogen abgefragt — für ein Arbeitspaket also:
+
 ```bash
-node .claude/kit/board.mjs issue-review reviewers --author <modell>
+node .claude/kit/board.mjs issue-review roles --stufe issue --author <modell>
 ```
 
-Meldet die Antwort `unterbesetzt: true`, läuft der Review trotzdem — aber die **erste Zeile** des Board-Kommentars sagt, mit wie vielen Reviewern gefahren wurde.
+Meldet die Antwort `unterbesetzt: true`, läuft der Review trotzdem — aber die **erste Zeile** des Board-Kommentars sagt, mit wie vielen Reviewern gefahren wurde. Auf der Stufe `issue` heißt `unterbesetzt` allerdings: gar kein Reviewer. Dann gilt die Ausfall-Regel im Unterabschnitt zur Stufe `issue`.
 
 Die Antwort trägt außerdem `quelle: "pairs" | "regel"` (Issue #225). Nenne den Wert im Board-Kommentar: Wer eine `pairs`-Zeile für seinen Autor erwartet hat und `regel` liest, sieht sofort, dass der Name dort fehlt oder anders geschrieben ist.
 
@@ -125,28 +131,39 @@ Wer wissen will, wer wen prüft, muss dafür nicht die Config lesen:
 node .claude/kit/board.mjs issue-review matrix
 ```
 
-### 3. Reviewer starten — zwei Rollen, nicht zweimal dasselbe
+### 3. Reviewer starten — jede Rolle ein anderer Blickwinkel
 
-Beide Reviewer bekommen denselben Issue-Body, aber **verschiedene Rollen**. Zwei Modelle mit identischem Prompt finden großenteils dasselbe; der Gewinn liegt im Blickwinkel, nicht in der Anzahl.
+Jeder Reviewer bekommt denselben unveränderten Body, aber **seine eigene Rolle** aus `rollen`. Wo eine Stufe mehrere Prüfer vorsieht, ist der Gewinn der Blickwinkel und nicht die Anzahl: Derselbe Prompt an mehrere Modelle findet großenteils dasselbe.
+
+Welcher Unterabschnitt gilt, entscheidet die Stufe aus Schritt 1b.
+
+**Die Streich-Frage ist Pflicht in jeder Rolle.** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ein Dokument, das nach dem Review doppelt so lang ist, ist nicht automatisch besser implementierbar — ohne diese Frage kippt der Roundtrip in Aufblähung.
 
 #### Darf ein Reviewer den Bestand lesen? Ja.
 
 **Kontextlosigkeit meint die Entstehungsgeschichte, nicht den Code.** Der Wert des fremden Modells liegt darin, dass es das Gespräch nicht kennt, aus dem das Issue entstand — die Absicht, die Datei, die dabei offen war, die Entscheidung von vorgestern. Davon hat es auch dann nichts, wenn es das Repository liest.
 
-Der Reviewer darf und soll deshalb den Bestand lesen: Dateien öffnen, suchen, nachschlagen. Rolle B fragt ausdrücklich „Was bricht, das im Issue nicht steht?" — diese Frage ist ohne Blick in den Bestand nicht zu beantworten, und ein Prompt, der sie stellt und den Blick zugleich verbietet, verlangt Unmögliches.
+Der Reviewer darf und soll deshalb den Bestand lesen: Dateien öffnen, suchen, nachschlagen. Die Rolle `architektur-bestand` fragt ausdrücklich, ob jede Behauptung über den Bestand stimmt — diese Frage ist ohne Blick in den Code nicht zu beantworten, und ein Prompt, der sie stellt und den Blick zugleich verbietet, verlangt Unmögliches.
 
-**Woher die Klarstellung kommt:** Bis Issue #268 stand in beiden Rollen der Satz „du hast nur den Text". Subagents mit Werkzeugen haben ihn folgerichtig ignoriert — am 2026-08-08 in zwei Läufen protokolliert, jeweils mit deutlich konkreteren Funden (der Reviewer wies nach, dass ein referenziertes Kommando im Adapter gar nicht existiert). Ein Satz, den das Werkzeug ohnehin nicht einhält, ist keine Regel, sondern eine Fehlerquelle: Er macht Befunde unvergleichbar, weil am Board nicht steht, welcher Reviewer nachgesehen hat.
+**Woher die Klarstellung kommt:** Bis Issue #268 stand in den Rollen-Prompts der Satz „du hast nur den Text". Subagents mit Werkzeugen haben ihn folgerichtig ignoriert — am 2026-08-08 in zwei Läufen protokolliert, jeweils mit deutlich konkreteren Funden (der Reviewer wies nach, dass ein referenziertes Kommando im Adapter gar nicht existiert). Ein Satz, den das Werkzeug ohnehin nicht einhält, ist keine Regel, sondern eine Fehlerquelle: Er macht Befunde unvergleichbar, weil am Board nicht steht, welcher Reviewer nachgesehen hat.
 
 **Deshalb wird der Zugriff ausgewiesen, nicht verboten.** Der Board-Kommentar nennt je Reviewer eine Zeile der Form:
 
 ```
-opus (Vollständigkeit) — Bestand: gelesen
-codex (Scope) — Bestand: nein
+codex (pruefbarkeit) — Bestand: gelesen
 ```
+
+Wer nicht nachgesehen hat, steht mit `Bestand: nein` da. Bei mehreren Prüfern eine Zeile je Reviewer.
 
 **Bei `kind: "command"`-Reviewern ist das nicht durchsetzbar.** Ein fremdes Werkzeug bringt seine eigenen Rechte mit; ob es ins Repository sieht, entscheidet es selbst. Genau deshalb gehört es in den Kommentar — was man nicht erzwingen kann, muss man wenigstens ablesen können.
 
-**Rolle A — Vollständigkeit und Prüfbarkeit** (erster Reviewer):
+#### Stufe `issue`: die eine Rolle des Arbeitspakets
+
+Diese Stufe läuft mit **einem** Reviewer. Nicht aus Sparsamkeit: Zuschnitt, Abhängigkeiten und Kollateralschäden entscheiden sich im Plan und werden dort geprüft — ein Prüfer, der nur ein einzelnes Paket sieht, kann sie ohnehin nicht beurteilen. Belegt am 2026-08-08: Drei der vier Scope-Befunde jenes Laufs waren Fehlalarme an Abhängigkeitsgrenzen, weil der Prüfer das Nachbar-Issue nicht sah.
+
+**Rolle B ist nicht gestrichen, sie ist gewandert** — als `schnitt-abhaengigkeiten` in die Stufe `plan`, wo der Prüfer den ganzen Zuschnitt vor sich hat. Was hier bleibt, ist die maschinelle Prüfbarkeit der Akzeptanzkriterien; sie hat auf den oberen Stufen kein Gegenstück, weil Akzeptanzkriterien erst beim Schreiben der Arbeitspakete entstehen.
+
+**Rolle `pruefbarkeit`:**
 
 ```
 Du prüfst ein Issue, das gleich implementiert werden soll. Du kennst die
@@ -174,35 +191,9 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
-**Rolle B — Scope, Risiko und Bestand** (zweiter Reviewer):
+**Fällt der Reviewer aus** — vor dem Start oder während der Ausführung, gleich aus welchem Grund —, läuft die Session nur noch **zur Protokollierung** weiter. Sie schreibt einen Board-Kommentar, dessen erste Zeile den Ausfall und den Grund nennt. Es entstehen **keine Befunde, keine Synthese, kein Body-Vorschlag** und **nie ein Marker**. Kein Ersatz-Reviewer.
 
-```
-Du prüfst ein Issue, das gleich implementiert werden soll. Du kennst die
-Entstehungsgeschichte nicht — nicht das Gespräch, nicht die Absicht dahinter. Das
-ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen;
-schlag im Repository nach, wo es deinen Befund schärft.
-
-Prüfe auf Scope und Risiko:
-1. Ist der Schnitt zu groß für eine Arbeitseinheit? Wäre ein Teil ein eigenes Issue?
-2. Fehlen Abhängigkeiten? Sie müssen als "Issue #N" im Abhängigkeiten-Abschnitt
-   stehen, sonst sind sie für den Nacht-Runner unsichtbar.
-3. Was bricht, das im Issue nicht steht? Welche bestehende Datei, welches Verhalten
-   ist betroffen, ohne erwähnt zu sein?
-4. Widerspricht die Aufgabe einer erkennbaren Entscheidung im Projekt?
-5. Was kann RAUS? Welcher Teil gehört nicht in dieses Issue?
-
-Für jeden Fund:
-- Schweregrad: BLOCKER / WICHTIG / HINWEIS
-- Wo im Issue (Abschnitt, zitierter Satz)
-- Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
-
-Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
-
---- ISSUE ---
-{{ISSUE_BODY}}
-```
-
-**Die Streich-Frage ist Pflicht in beiden Rollen.** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ein Issue, das nach drei Modellen doppelt so lang ist, ist nicht automatisch besser implementierbar — ohne diese Frage kippt der Roundtrip in Aufblähung.
+Der Grund ist der Rechenweg: Bei einem einzigen Prüfer gibt es nichts zu synthetisieren, und ein Vorschlag ohne Befund wäre die Meinung der Session über ein Issue, das sie nicht prüfen sollte. „Unterbesetzt" und „gar nicht geprüft" fallen auf dieser Stufe zusammen. Die Nachtregel aus Issue #267 gilt unverändert daneben.
 
 #### Stufe `fachlich`: die beiden Rollen der fachlichen Anforderung
 
@@ -339,7 +330,41 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
-**Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, Rolle A und Rolle B für das Arbeitspaket. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}`. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
+#### Legacy-Fallback ohne `reviewStufen`
+
+Meldet `issue-review roles` die `stufenQuelle: "default"`, fehlt der `reviewStufen`-Block in der Config — der Normalfall in jedem Bestandsprojekt. Dann gilt für alle drei Stufen die alte Besetzung: **zwei Reviewer mit den Rollen `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand`.** Ohne diese Regel wäre für Bestandsprojekte undefiniert, was mit der zweiten gelieferten Rolle geschieht.
+
+**Rolle `vollstaendigkeit-pruefbarkeit`** verwendet wörtlich den Prompt der Rolle `pruefbarkeit` oben.
+
+**Rolle `scope-risiko-bestand`:**
+
+```
+Du prüfst ein Issue, das gleich implementiert werden soll. Du kennst die
+Entstehungsgeschichte nicht — nicht das Gespräch, nicht die Absicht dahinter. Das
+ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen;
+schlag im Repository nach, wo es deinen Befund schärft.
+
+Prüfe auf Scope und Risiko:
+1. Ist der Schnitt zu groß für eine Arbeitseinheit? Wäre ein Teil ein eigenes Issue?
+2. Fehlen Abhängigkeiten? Sie müssen als "Issue #N" im Abhängigkeiten-Abschnitt
+   stehen, sonst sind sie für den Nacht-Runner unsichtbar.
+3. Was bricht, das im Issue nicht steht? Welche bestehende Datei, welches Verhalten
+   ist betroffen, ohne erwähnt zu sein?
+4. Widerspricht die Aufgabe einer erkennbaren Entscheidung im Projekt?
+5. Was kann RAUS? Welcher Teil gehört nicht in dieses Issue?
+
+Für jeden Fund:
+- Schweregrad: BLOCKER / WICHTIG / HINWEIS
+- Wo im Issue (Abschnitt, zitierter Satz)
+- Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- ISSUE ---
+{{ISSUE_BODY}}
+```
+
+**Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `pruefbarkeit` für das Arbeitspaket, `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, `architektur-bestand` und `schnitt-abhaengigkeiten` für den Plan, `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand` im Legacy-Fallback. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}`. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
 
 **Ausführung je nach `kind`:**
 
@@ -352,7 +377,7 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 
   Nicht als Argument. Ein Issue-Body mit Backticks, Anführungszeichen und Zeilenumbrüchen durch eine Kommandozeile zu quoten ist genau der Fehler, den Issue #196 aus `board.mjs` entfernt hat. Die Kommandozeile ist frei konfiguriert und läuft deshalb über die Plattform-Shell — dieselbe Abgrenzung wie bei `buildChecks` in `night.mjs` (Issue #199).
 
-  Schlägt das Kommando fehl (Exit ungleich 0), gilt der Reviewer als ausgefallen. Das ist ein Fund für den Bericht, kein Abbruch: Die Befunde des anderen Reviewers bleiben wertvoll.
+  Schlägt das Kommando fehl (Exit ungleich 0), gilt der Reviewer als ausgefallen. Das ist ein Fund für den Bericht, kein Abbruch: Auf den Stufen `fachlich` und `plan` bleiben die Befunde des verbliebenen Prüfers wertvoll. Auf der Stufe `issue` gibt es keinen zweiten — dort greift die Ausfall-Regel ihres Unterabschnitts, und die Session protokolliert nur noch.
 
 ### 4. Runden
 
@@ -368,20 +393,18 @@ Die Reviewer-Ausgaben gehen **unverändert** als Board-Kommentar ans Issue. Sie 
 node .claude/kit/board.mjs issue comment <id> --text - <<'BEFUNDE'
 ## Issue-Review, Runde 1
 
-Reviewer: opus (Vollständigkeit), codex (Scope)
-opus — Bestand: gelesen
+Reviewer: codex (pruefbarkeit)
 codex — Bestand: nein
 
-### opus — Vollständigkeit und Prüfbarkeit
-<Befunde>
-
-### codex — Scope, Risiko und Bestand
+### codex — Vollständigkeit und Prüfbarkeit
 <Befunde>
 BEFUNDE
 ```
 
-**Der Text geht über stdin, nicht als Argument** (Issue #270). Befunde zweier
-Reviewer liegen regelmäßig bei über zehntausend Zeichen; als Kommandozeilen-Argument
+Je gelaufener Reviewer eine Überschrift, in der Reihenfolge aus `gewaehlt`. Auf den Stufen `fachlich` und `plan` sind es zwei Blöcke, auf der Stufe `issue` einer.
+
+**Der Text geht über stdin, nicht als Argument** (Issue #270). Reviewer-Befunde
+liegen regelmäßig bei über zehntausend Zeichen; als Kommandozeilen-Argument
 scheitert daran das Quoting, und eine Session, die sich daraufhin ein Hilfsskript
 baut, wird headless abgelehnt — sie endet ohne Board-Spur, und der Runner bucht sie
 als Fehlschlag. Der Heredoc mit **quotiertem** Marker (`<<'BEFUNDE'`) verhindert
@@ -395,11 +418,13 @@ Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der
 
 ### 5b. Synthese protokollieren — ein zweiter, getrennter Kommentar
 
-Zwischen den Befunden und dem neuen Body liegt eine Arbeit, die sonst unsichtbar bleibt: Aus zwei Listen wird ein Text. Dabei wird entschieden, welcher Fund einfließt, welcher verworfen wird, und bei Widerspruch, wer recht bekommt.
+Zwischen den Befunden und dem neuen Body liegt eine Arbeit, die sonst unsichtbar bleibt: Aus einer Befundliste wird ein Text. Dabei wird entschieden, welcher Fund einfließt und welcher verworfen wird — und wo eine Stufe mehrere Prüfer hat, bei Widerspruch auch, wer recht bekommt.
 
 **Ohne Protokoll sieht ein bewusst verworfener Fund genauso aus wie ein übersehener.** Wer später Kommentar und Body nebeneinanderlegt, findet eine Differenz und kann die beiden Fälle nicht unterscheiden.
 
 Der Kommentar ist **getrennt** vom Befunde-Kommentar aus Schritt 5. Der bleibt unverändert Verlauf (Issue #155); die Synthese ist bewertet und gehört nicht in denselben Block.
+
+Beispiel einer Stufe mit zwei Prüfern (`fachlich` oder `plan`) — auf der Stufe `issue` entfällt der Abschnitt „Dissens", weil es nur eine Befundliste gibt:
 
 ```bash
 node .claude/kit/board.mjs issue comment <id> --text - <<'SYNTHESE'
@@ -426,7 +451,7 @@ SYNTHESE
 - Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen` oder `verworfen` — und bei `verworfen` ein Satz Begründung.
 - `HINWEIS`-Funde nur, wenn sie **verworfen** wurden. Sonst wird die Liste länger als ihr Nutzen.
 - **Ein verworfener `BLOCKER` braucht immer eine Begründung.** Das ist die Kategorie, bei der stilles Verwerfen am teuersten ist.
-- Widersprechen sich die Reviewer, steht das als eigener Punkt: welche beiden Vorschläge kollidierten, welcher gewonnen hat, warum, und welche Folgeänderungen daraus entstanden sind.
+- Auf den Stufen `fachlich` und `plan`: Widersprechen sich die Prüfer, steht das als eigener Punkt — welche Vorschläge kollidierten, welcher gewonnen hat, warum, und welche Folgeänderungen daraus entstanden sind. Auf der Stufe `issue` gibt es diesen Fall nicht.
 
 **Ein Muster, das man kennen sollte:** Die Kontextlosigkeit, die den Review überhaupt trägt, produziert an Abhängigkeitsgrenzen zuverlässig Fehlalarme — ein Reviewer sieht das Nachbar-Issue nicht und meldet als fehlend, was dort steht. Solche Funde zu verwerfen ist richtig. Es bleibt eine Entscheidung und gehört protokolliert.
 
@@ -434,11 +459,11 @@ SYNTHESE
 
 **Der Body wird nie automatisch geschrieben.** Zeige einen Vorschlag mit den eingearbeiteten Funden und frage einmal:
 
-> Zwei Reviewer, 3 Funde (1 BLOCKER, 2 HINWEIS). Vorschlag für den neuen Body:
+> Stufe `issue`, Reviewer `codex` (pruefbarkeit), 3 Funde (1 BLOCKER, 2 HINWEIS). Vorschlag für den neuen Body:
 > …
 > Übernehmen? (ja / nein / einzelne Funde nennen)
 
-Kein Konsens-Automatismus: Zwei Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
+Kein Konsens-Automatismus: Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
 **Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** in den Kontext-Abschnitt aufnehmen, wörtlich in einer dieser drei Formen:
 
@@ -448,10 +473,10 @@ Plan-Review:     <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
 Issue-Review:    <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
 ```
 
-Beispiel für ein Arbeitspaket:
+Beispiel für ein Arbeitspaket, das mit seinem einen Reviewer gelaufen ist:
 
 ```
-Issue-Review: opus, codex (2026-08-06)
+Issue-Review: codex (2026-08-06)
 ```
 
 Die Namen stammen aus `gewaehlt` (Schritt 1b), in Auswahlreihenfolge, und nennen die **tatsächlich gelaufenen** Reviewer — nicht eine feste Liste aus der Config. Bei einem erneuten Review wird der Marker **derselben** Stufe ersetzt, nicht dupliziert.
@@ -480,7 +505,7 @@ Drei Abweichungen, sonst gilt alles unverändert:
 
 Konkret bei einem ausgefallenen Reviewer, gleich zu welchem Zeitpunkt und aus welchem Grund:
 
-1. Der Review **läuft mit den verbleibenden Reviewern zu Ende**. Die Befunde des anderen sind wertvoll und dürfen nicht verfallen.
+1. Der Review **läuft mit den verbleibenden Reviewern zu Ende**. Ihre Befunde sind wertvoll und dürfen nicht verfallen. Bleibt keiner übrig — auf der Stufe `issue` ist das nach einem Ausfall immer der Fall —, greift deren Ausfall-Regel: Die Session protokolliert nur noch, ohne Befunde, Synthese und Body-Vorschlag.
 2. Die **erste Zeile** des Board-Kommentars nennt den Ausfall mit Grund.
 3. Der **Marker bleibt aus** — ein unterbesetzter Lauf ist nie befundfrei im Sinne der Marker-Regel unten.
 4. **Kein Ersatz-Reviewer aus eigenem Antrieb.** Wer die Besetzung ändert, ändert das Verfahren; dafür gibt es `pairs`. Nachts wird die Lücke protokolliert, nicht gefüllt.
@@ -509,7 +534,7 @@ Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt beim Ändern
 **Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
 
 ```
-Issue-Review: opus, codex (2026-08-06, Nachtlauf)
+Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
@@ -527,6 +552,7 @@ Zusammenfassung über alle bearbeiteten Issues:
 - #207 → keine Funde, Marker gesetzt
 - #210 → 2 Funde, 0 übernommen / 2 verworfen, Vorschlag abgelehnt, kein Marker
 - #212 → übersprungen ([Idee]-Präfix)
+- #214 → Reviewer `codex` ausgefallen (nicht startbar), nur protokolliert, kein Marker
 - #272 → fachliche Stufe, 2 Funde, 2 übernommen / 0 verworfen, Body übernommen, Marker `Fachplan-Review:` gesetzt
 ```
 
@@ -544,6 +570,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
+- **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet
 - **Kein Schreiben in ein Plandokument in einem unbeaufsichtigten Lauf** — bei Stufe `plan` weder `issue update` noch ein Marker. Auch der Plan trägt architektonische Entscheidungen, die ein Mensch getroffen hat
 - **Kein Schreiben in eine fachliche Anforderung in einem unbeaufsichtigten Lauf** — bei Stufe `fachlich` weder `issue update` noch ein Marker, auch nicht bei befundfreiem Review. Dort stehen die Antworten des Product Owners
 - Kein Ziehen nach Ready — das ist das menschliche GO

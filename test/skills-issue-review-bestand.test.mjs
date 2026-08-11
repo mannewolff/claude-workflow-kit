@@ -29,14 +29,18 @@ test("der Abschnitt trennt Entstehungskontext von Bestandskenntnis", () => {
 });
 
 test("der widerspruechliche Satz steht nicht mehr in den Rollen-Prompts", () => {
-  // "du hast nur den Text" neben Rolle Bs Bestandsfrage war der Widerspruch.
-  // Geprueft wird der Bereich der beiden Prompts — im Erklaertext darueber wird
+  // "du hast nur den Text" neben einer Bestandsfrage war der Widerspruch.
+  // Geprueft wird der Bereich aller Rollen-Prompts — im Erklaertext darueber wird
   // der alte Satz bewusst zitiert, um die Aenderung nachvollziehbar zu machen.
-  const prompts = SKILL.slice(SKILL.indexOf("**Rolle A —"), SKILL.indexOf("### 4."));
+  // Anker ist seit Issue #282 die Rolle `pruefbarkeit`; "Rolle A" gibt es nur
+  // noch als historischen Verweis auf die gewanderte Rolle B.
+  const prompts = SKILL.slice(SKILL.indexOf("**Rolle `pruefbarkeit`:**"), SKILL.indexOf("### 4."));
   assert.doesNotMatch(prompts, /du hast nur den Text/,
     "die alte Formulierung steht noch in einem Rollen-Prompt");
-  // Rolle Bs Frage bleibt — sie ist der Grund, warum der Zugriff noetig ist.
-  assert.match(prompts, /Was bricht, das im Issue nicht steht\?/);
+  // Eine Frage, die den Blick in den Bestand erzwingt, bleibt — sie ist der
+  // Grund, warum der Zugriff noetig ist. Sie steht jetzt in der Plan-Stufe.
+  assert.match(prompts, /Stimmt jede Behauptung über den Bestand\?/,
+    "keine Rolle stellt mehr eine Frage, die den Bestandszugriff verlangt");
 });
 
 test("der Board-Kommentar weist den Bestandszugriff je Reviewer aus", () => {
