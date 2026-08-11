@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.36.7] - 2026-08-11
+- issue-review: ein Kommando fuer drei Stufen sichtbar machen
+- CLAUDE-workflow.md: Vorlage und Kopie wieder deckungsgleich
+- issues: Rueckverweis auf das Plandokument (#277)
+- Dokumentation: drei Pruefstufen und das Plandokument (#284)
+- issue-review: Arbeitspaket auf eine Rolle (#282)
+
 ## [1.36.6] - 2026-08-11
 - night.mjs: eine Pruefstufe pro Lauf ueber --stufe (#283)
 - issue-review: die beiden Rollen der Plan-Stufe (#281)
