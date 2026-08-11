@@ -895,7 +895,30 @@ Die Kopfzeile nennt die Spalte auch dann, wenn kanban-kit sie nicht kennt. Das G
 
 **Der Nummernzähler beginnt oberhalb des alten Nummernraums.** Beim Umzug stand die höchste je vergebene GitHub-Nummer bei 296, `next_card_number` wurde auf 298 gesetzt. Der Zähler darf nie unter diesen Startwert zurückgesetzt werden: Sonst bekäme eine neue Karte eine Nummer, die auf GitHub bereits vergeben ist, und `#150` bezeichnete zwei verschiedene Dinge.
 
-**`tools/migrate-issues.mjs` ist ein Einmalwerkzeug** für den Tracker-Wechsel, kein Bestandteil des laufenden Workflows. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate).
+**`tools/migrate-issues.mjs`** war das Werkzeug des Umzugs und bleibt für Nachzügler nützlich. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate). Teil des laufenden Workflows ist es nicht — für neue Arbeit legt `/issues` direkt in kanban-kit an.
+
+### Ein einzelnes GitHub-Issue nachträglich überführen
+
+Der Normalfall nach einem Umzug: Jemand von außen meldet einen Bug auf GitHub, weil das Repository dort öffentlich ist. Das Issue soll in kanban-kit, ohne dass der Melder verlorengeht.
+
+```bash
+node tools/migrate-issues.mjs export
+```
+
+```bash
+node tools/migrate-issues.mjs import --file <exportdatei> --from 302 --to 302 --yes
+```
+
+`--from N --to N` mit derselben Nummer holt genau ein Issue. Was dabei erhalten bleibt und ein Copy-Paste nicht leistet:
+
+- Der **Quellverweis** steht als Kopfzeile im Body (`> Quelle: …`), die GitHub-Diskussion bleibt also erreichbar.
+- Die **Kommentare** wandern mit, jeweils mit Autor und Datum. Bei einem Fremdreport ist genau das der Wert — der Wortlaut des Melders bleibt lesbar.
+- Der Import ist **idempotent** über `externalKey`: Ein zweiter Lauf legt nichts doppelt an.
+- Die **Originalnummer** bleibt. Verweise aus Commit-Botschaften zeigen weiterhin auf dasselbe Ticket.
+
+Zwei Einschränkungen. `export` liest **alle** offenen Issues, nicht nur das gewünschte — einen Filter auf der Export-Seite gibt es nicht. Und vor dem allerersten `--yes`-Lauf eines Projekts verlangt das Werkzeug einen vollständigen `--dry-run`; in einem Repo, das den Umzug hinter sich hat, ist diese Bedingung erfüllt.
+
+Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh issue view <N> --json title,body` lesen und den Body per `board.mjs issue create --body -` anlegen. Dann fehlt allerdings der Quellverweis, und wer später wissen will, wer das gemeldet hat, findet es nicht mehr — bei einem Fremdreport ist das der falsche Weg.
 
 ### Voraussetzungen je nach Konfiguration
 
