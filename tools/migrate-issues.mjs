@@ -682,6 +682,13 @@ async function legeKarteAn(zugang, eintrag, repoUrl) {
       column: zielSpalte(eintrag.spalte),
       title: eintrag.title,
       body: kartenBody(eintrag, repoUrl),
+      // Ohne `direct` legt kanban-kit die Karte als board-lose Idee im Pool an --
+      // und lehnt sie mit HTTP 400 ab, sobald zugleich eine `number` vorgegeben
+      // ist: Eine Pool-Idee bekommt ihre Nummer erst beim Einplanen, beides
+      // zusammen ist ein Widerspruch. Die Migration will immer direkt aufs Board.
+      // Issue #295 hat dieselbe Umstellung in kit/board.mjs gemacht; dieses
+      // Werkzeug spricht die API mit eigenem fetch an und war davon nicht erfasst.
+      direct: true,
     }),
   });
 
@@ -769,10 +776,21 @@ async function fuehreImportAus(cliArgs) {
 const ABWEICHUNG = 1;
 const BETRIEBSFEHLER = 2;
 
-/** Die Spalte auf den Workflow-Status normalisieren — "In progress" und "IN_PROGRESS" sind dasselbe. */
+/**
+ * Die Spalte auf den Workflow-Status normalisieren — "In progress" und
+ * "IN_PROGRESS" sind dasselbe.
+ *
+ * Fuer Quellspalten, die der Import auf eine andere Zielspalte abbildet, wird
+ * dieselbe Abbildung angewandt: Sonst meldete das Gate genau die Karten als
+ * abweichend, die spezifikationsgemaess umgezogen sind. Die Abbildung wird aus
+ * ZIELSPALTEN abgeleitet und nicht zweitgeschrieben — zwei Tabellen, die dasselbe
+ * meinen, laufen auseinander.
+ */
 function normalisiereSpalte(wert) {
   if (wert == null || String(wert).trim() === "") return null;
-  return String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const schluessel = String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const ziel = ZIELSPALTEN[schluessel];
+  return ziel ? ziel.toLowerCase() : schluessel;
 }
 
 /**
