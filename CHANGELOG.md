@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.37.1] - 2026-08-12
+- docs: welche Dokumente ein issue-review erfasst
+- docs: einzelnes GitHub-Issue nachtraeglich nach kanban-kit ueberfuehren
+
 ## [1.37.0] - 2026-08-11
 - issue-review: ein Kommando fuer drei Stufen sichtbar machen
 - CLAUDE-workflow.md: Vorlage und Kopie wieder deckungsgleich
