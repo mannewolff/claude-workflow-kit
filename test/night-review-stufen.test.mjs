@@ -102,8 +102,18 @@ test("hasReviewMarker ist unveraendert und ohne Stufenparameter", () => {
   const quelle = readFileSync(NIGHT, "utf-8");
   assert.match(quelle, /function hasReviewMarker\(body\)\s*\{/,
     "hasReviewMarker hat eine andere Signatur bekommen");
-  const gateZeile = quelle.split("\n").find((z) => /requiredBeforeReady/.test(z) && /hasReviewMarker/.test(z));
-  assert.ok(gateZeile, "das Implementierungs-Gate nutzt hasReviewMarker nicht mehr");
+  // Kein Aufruf mit zweitem Argument — der Stufenparameter waere genau der
+  // naheliegende, aber falsche Weg (er wuerde das Ready-Gate mitveraendern).
+  assert.doesNotMatch(quelle, /hasReviewMarker\([^)]*,/,
+    "hasReviewMarker wird mit einem zweiten Argument aufgerufen");
+  // Seit Issue #304 fragt das Implementierungs-Gate nicht mehr direkt, sondern ueber
+  // reviewFreigabe — der Marker bleibt aber dessen ERSTE Frage. Faellt er dort heraus,
+  // haengt das Gate nur noch an der Pruefvorgabe.
+  assert.match(quelle, /function reviewFreigabe\(body\)\s*\{\s*\n\s*if \(hasReviewMarker\(body\)\)/,
+    "reviewFreigabe prueft den Marker nicht mehr zuerst");
+  assert.ok(quelle.split("\n").some((z) => /requiredBeforeReady/.test(z) && /reviewFreigabe/.test(z))
+    || /requiredBeforeReady[\s\S]{0,200}reviewFreigabe\(/.test(quelle),
+    "das Implementierungs-Gate nutzt reviewFreigabe nicht mehr");
 });
 
 // --- Flag-Validierung ueber den echten Prozess ----------------------------

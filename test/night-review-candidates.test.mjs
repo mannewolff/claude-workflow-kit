@@ -141,3 +141,56 @@ test("selectReviewCandidates: Praefix-Erkennung ist tolerant, aber nicht beliebi
   assert.deepEqual(ids(kandidaten), ["4", "6"],
     "ein Praefix mitten im Titel darf nicht zaehlen");
 });
+
+// --- Verzicht in der Auswahl (Issue #304) ---------------------------------
+//
+// Ein Dokument mit bewusstem Verzicht traegt nie einen Marker. Ohne einen eigenen
+// Ausschluss geriete es deshalb in JEDEN Review-Lauf erneut — und weil die Session
+// den Verzicht kommentiert statt zu pruefen, verbuchte der Runner das Ergebnis als
+// "Review mit Befund". Eine verfallene Vorgabe schliesst dagegen NICHT aus: Sie ist
+// ueberholt, damit gilt wieder der Regelfall.
+
+const KONTEXT = (zeilen) => `## Kontext\n\nAutor-Modell: claude-opus-5\n${zeilen}\n\n## Aufgabe\n\nEtwas tun.\n`;
+
+test("selectReviewCandidates: gueltiger Verzicht schliesst das Dokument aus", () => {
+  const issues = [
+    { id: "1", title: "Mit bewusster Freigabe", labels: [LABEL], body: KONTEXT("Pruefung: Verzicht") },
+    { id: "2", title: "Ohne Vorgabe", labels: [LABEL], body: KONTEXT("") },
+  ];
+  const r = selectReviewCandidates(issues, { label: LABEL });
+  assert.deepEqual(r.kandidaten.map((i) => i.id), ["2"]);
+  assert.equal(r.uebersprungen.length, 1);
+  assert.equal(r.uebersprungen[0].id, "1");
+  assert.match(r.uebersprungen[0].grund, /verzicht/i);
+});
+
+test("selectReviewCandidates: eine verfallene Vorgabe schliesst nicht aus", () => {
+  const issues = [{
+    id: "1", title: "Nach der Freigabe geaendert", labels: [LABEL],
+    body: KONTEXT(`Pruefung: Verzicht\nPruefung-Stand: ${"b".repeat(64)}`),
+  }];
+  const r = selectReviewCandidates(issues, { label: LABEL });
+  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1"]);
+  assert.deepEqual(r.uebersprungen, []);
+});
+
+test("selectReviewCandidates: eine Stufenvorgabe ist kein Verzicht", () => {
+  // `Pruefung: 2` sagt "pruefe mit zwei Runden", nicht "pruefe nicht".
+  const issues = [{ id: "1", title: "Mit Stufenvorgabe", labels: [LABEL], body: KONTEXT("Pruefung: 2") }];
+  assert.deepEqual(selectReviewCandidates(issues, { label: LABEL }).kandidaten.map((i) => i.id), ["1"]);
+});
+
+test("selectReviewCandidates: eine kaputte Vorgabe wirft nicht und bleibt Kandidat", () => {
+  // Die Auswahl ist eine reine Funktion und darf an einem Tippfehler nicht scheitern.
+  // Im Review laesst sich die Zeile reparieren — vor dem Review auszuschliessen waere
+  // das Gegenteil dessen, was der Lauf soll.
+  const issues = [{ id: "1", title: "Mit Tippfehler", labels: [LABEL], body: KONTEXT("Pruefung: vielleicht") }];
+  assert.deepEqual(selectReviewCandidates(issues, { label: LABEL }).kandidaten.map((i) => i.id), ["1"]);
+});
+
+test("selectReviewCandidates: ein fehlendes body-Feld stuerzt nicht ab", () => {
+  // `issue list` liefert den Body bei allen Trackern mit; fehlt er doch einmal,
+  // gilt das als "keine Vorgabe" und nicht als Ausschluss.
+  const r = selectReviewCandidates([{ id: "1", title: "Ohne body-Feld", labels: [LABEL] }], { label: LABEL });
+  assert.deepEqual(r.kandidaten.map((i) => i.id), ["1"]);
+});
