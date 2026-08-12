@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.37.2] - 2026-08-12
+- Pruefvorgabe parsen und Bezugsstand berechnen (#301)
+- Marker-Beispiele, Nacht-Ausnahme und Ablageort stufengerecht (#314)
+
 ## [1.37.1] - 2026-08-12
 - docs: welche Dokumente ein issue-review erfasst
 - docs: einzelnes GitHub-Issue nachtraeglich nach kanban-kit ueberfuehren
