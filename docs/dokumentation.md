@@ -681,6 +681,24 @@ Welche Rolle welcher Reviewer übernimmt, lässt sich ablesen statt ausrechnen:
 node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5
 ```
 
+### Welche Dokumente drankommen
+
+**Ohne Argumente** nimmt `/issue-review` die Dokumente aus dem **Backlog**, die noch keinen Marker **ihrer Stufe** tragen. Ein bereits geprüftes Dokument läuft nicht erneut — und ein Marker der falschen Stufe zählt nicht: Ein `[Plan]`-Dokument mit `Plan-Review:` ist geprüft, eines mit `Issue-Review:` wäre es nicht.
+
+**Ready wird nie automatisch erfasst**, auch interaktiv nicht. Der Grund ist derselbe wie beim [Nacht-Review](#zweiter-modus-der-nacht-review): Zwischen Prüfung und Implementierung liegt dein GO. Ready heißt „freigegeben zur Umsetzung" — dorthin soll nichts Ungeprüftes mehr gelangen, also prüft der Skill davor.
+
+**Mit Nummern** arbeitet er genau die genannten ab — **unabhängig von Spalte und Marker**:
+
+```bash
+/issue-review #205 #207
+```
+
+Damit lässt sich ein bereits geprüftes Dokument erneut prüfen (etwa nachdem sich die Anforderung geändert hat), und ebenso ein Ready-Issue nachträglich.
+
+**Einzelne Issues ausnehmen** braucht keine Markierung am Ticket: Nenn sie einfach nicht. Wer von acht Ready-Issues zwei auslassen will, listet die anderen sechs auf. Aus dem Review ausgenommen zu sein heißt allerdings nicht, dass das Gate sie durchlässt — bei `"requiredBeforeReady": true` stellt der Nachtlauf ein Issue ohne `Issue-Review:`-Marker weiterhin zurück.
+
+`[Idee]`-Dokumente sind in jedem Fall ausgeschlossen, auch mit expliziter Nummer. Eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument; der Skill nennt sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+
 ### Konfiguration
 
 Der Installer legt eine Vorlage zum Abschreiben neben die echte Config:
@@ -810,7 +828,7 @@ Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht 
 
 ### Was es kostet
 
-Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: Ohne Argumente nimmt der Skill die ungeprüften Dokumente aus dem Backlog, mit Nummern genau die genannten (siehe [Welche Dokumente drankommen](#welche-dokumente-drankommen)).
 
 `rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
