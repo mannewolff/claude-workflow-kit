@@ -31,6 +31,7 @@
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+                                    [--issue <N>]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -90,6 +91,9 @@ Nutzung:
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+                                    [--issue <N>]
+      --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
+      runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
 
   node board.mjs --version
 
@@ -2377,7 +2381,42 @@ function issueReviewReviewers(args) {
 }
 
 /**
- * Besetzung und Blickwinkel einer Pruefstufe (Issue #278).
+ * Die effektive Pruefvorgabe eines Tickets (Issue #302).
+ *
+ * Ohne `--issue` gilt der Regelfall aus der Config — das ist das Bestandsverhalten
+ * und bleibt es. Mit `--issue` entscheidet die Zeile am Ticket, sofern sie gueltig
+ * und nicht verfallen ist.
+ *
+ * `verfallen` bekommt einen EIGENEN Quellenwert, obwohl die Rundenzahl dieselbe ist
+ * wie bei "config": Nur er sagt, dass dort einmal etwas stand. Wer morgens den
+ * Nachtbericht liest, soll "nie entschieden" von "entschieden, aber ueberholt"
+ * unterscheiden koennen.
+ */
+async function pruefvorgabeFuerRoles(args) {
+  const konfig = { runden: issueReviewConfig().rounds, verzicht: false, vorgabeQuelle: "config" };
+  if (args.issue === undefined) return konfig;
+  const id = args.issue === true ? fail("--issue braucht einen Wert") : String(args.issue);
+
+  const tracker = resolveTracker(loadConfig());
+  const { body } = await tracker.getIssue(id);
+  // Wirft bei mehreren Zeilen oder unbekanntem Wert — der Aufruf endet dann mit der
+  // Meldung des Parsers. Eine kaputte Vorgabe still zum Regelfall zu machen waere die
+  // gefaehrlichere Variante: Ein Tippfehler in `Pruefung:` bliebe unsichtbar.
+  const { wert, verfallen } = parsePruefvorgabe(body || "");
+
+  if (wert === null) return konfig;
+  if (verfallen) return { ...konfig, vorgabeQuelle: "verfallen" };
+  return {
+    // Bei Verzicht laeuft keine Runde; die Aussage traegt `verzicht`, die 0 ist die
+    // dazu passende Rundenzahl (derselbe Effektivwert wie in der Leitplanke aus #303).
+    runden: wert === "verzicht" ? 0 : wert,
+    verzicht: wert === "verzicht",
+    vorgabeQuelle: "issue",
+  };
+}
+
+/**
+ * Besetzung, Blickwinkel und Pruefvorgabe einer Pruefstufe (Issue #278, #302).
  *
  * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
  * `pairs` und fuer den Selbstausschluss. Ohne ihn koennte der Befehl genau das nicht
@@ -2386,8 +2425,12 @@ function issueReviewReviewers(args) {
  * Zwei Quellen, zwei Felder: `quelle` bleibt die Quelle der Reviewer-AUSWAHL
  * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
  * STUFENBESETZUNG ("stufen" | "default").
+ *
+ * `runden`, `verzicht` und `vorgabeQuelle` kommen additiv dazu und sind immer da:
+ * Ein Kommando soll die vollstaendige Pruefvorgabe liefern, damit der Skill sie nicht
+ * aus einer zweiten Quelle (der Config) zusammensuchen muss.
  */
-function issueReviewRoles(args) {
+async function issueReviewRoles(args) {
   const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
   if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
   if (!REVIEW_STUFEN.includes(stufe)) {
@@ -2396,6 +2439,7 @@ function issueReviewRoles(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
   if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
 
+  const vorgabe = await pruefvorgabeFuerRoles(args);
   const { reviewers, pairs, reviewStufen } = issueReviewConfig();
   const { reviewer, rollen } = reviewStufen.stufen[stufe];
   out({
@@ -2405,6 +2449,7 @@ function issueReviewRoles(args) {
     stufenQuelle: reviewStufen.stufenQuelle,
     autor,
     ...pickReviewers(reviewers, autor, reviewer, pairs),
+    ...vorgabe,
   });
 }
 
