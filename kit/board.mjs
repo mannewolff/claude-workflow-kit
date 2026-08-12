@@ -1774,6 +1774,31 @@ function normalisiereZeilenenden(body) {
 }
 
 /**
+ * Zustandsautomat fuer Code-Fences, zeilenweise gefuettert.
+ *
+ * Liefert true, solange die Zeile zu einem Fence gehoert (die oeffnende und die
+ * schliessende Zeile eingeschlossen). Drei Stellen brauchen dieselbe Auslegung —
+ * Abschnittsgrenzen, Parser und das Setzen des Bezugsstands. Eine dritte Kopie der
+ * Bedingung waere die Stelle, an der die drei auseinanderlaufen, ohne dass es
+ * jemandem auffiele.
+ */
+function fenceLauf() {
+  let fence = null;
+  return (zeile) => {
+    const fm = zeile.match(FENCE_ZEILE);
+    if (fence) {
+      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
+      return true;
+    }
+    if (fm) {
+      fence = { zeichen: fm[1][0], laenge: fm[1].length };
+      return true;
+    }
+    return false;
+  };
+}
+
+/**
  * Grenzen des ersten `## Kontext`-Abschnitts im normalisierten Body.
  *
  * Code-Fences (drei oder mehr Backticks/Tilden) zaehlen nicht: Ein Issue, das
@@ -1785,19 +1810,16 @@ function normalisiereZeilenenden(body) {
  * verhaelt sich `autorModellSicherstellen` heute schon.
  */
 function kontextGrenzen(text) {
-  let fence = null;
+  const imFence = fenceLauf();
   let start = -1;
   let offset = 0;
   for (const zeile of text.split("\n")) {
-    const fm = zeile.match(FENCE_ZEILE);
-    if (fence) {
-      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
-    } else if (fm) {
-      fence = { zeichen: fm[1][0], laenge: fm[1].length };
-    } else if (start === -1) {
-      if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
-    } else if (zeile.startsWith("## ")) {
-      return { start, ende: offset };
+    if (!imFence(zeile)) {
+      if (start === -1) {
+        if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
+      } else if (zeile.startsWith("## ")) {
+        return { start, ende: offset };
+      }
     }
     offset += zeile.length + 1;
   }
@@ -1837,14 +1859,9 @@ export function parsePruefvorgabe(body) {
 
   const vorgaben = [];
   const staende = [];
-  let fence = null;
+  const imFence = fenceLauf();
   for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
-    const fm = zeile.match(FENCE_ZEILE);
-    if (fence) {
-      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
-      continue;
-    }
-    if (fm) { fence = { zeichen: fm[1][0], laenge: fm[1].length }; continue; }
+    if (imFence(zeile)) continue;
     const vorgabe = zeile.match(PRUEFUNG_ZEILE);
     if (vorgabe) vorgaben.push(vorgabe[1]);
     const stand = zeile.match(PRUEFUNG_STAND_ZEILE);
@@ -1877,6 +1894,83 @@ export function parsePruefvorgabe(body) {
   }
 
   return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
+}
+
+/**
+ * Setzt `Pruefung-Stand:` unmittelbar unter die Vorgabezeile (Issue #303).
+ *
+ * Eine vorhandene Standzeile faellt weg, egal wo im Kontext sie lag — sonst haette
+ * der Body danach zwei, und `parsePruefvorgabe` wiese ihn ab. Zeilen in Fences
+ * bleiben unangetastet: Dort steht ein Beispiel, keine Vorgabe.
+ *
+ * Der Stand selbst haengt nur am Body AUSSERHALB des Kontexts. Die eingefuegte
+ * Zeile veraendert ihn also nicht — es braucht keine zweite Runde.
+ */
+function mitPruefstand(body, stand) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  if (!grenzen) return body;
+
+  const imFence = fenceLauf();
+  const zeilen = [];
+  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
+    if (imFence(zeile)) { zeilen.push(zeile); continue; }
+    if (PRUEFUNG_STAND_ZEILE.test(zeile)) continue;
+    zeilen.push(zeile);
+    if (PRUEFUNG_ZEILE.test(zeile)) zeilen.push(`Pruefung-Stand: ${stand}`);
+  }
+  return text.slice(0, grenzen.start) + zeilen.join("\n") + text.slice(grenzen.ende);
+}
+
+/**
+ * Der Umfang, der nach dem Schreiben dieses Bodys tatsaechlich gilt.
+ *
+ * `verfallenZaehlt` trennt die beiden Seiten des Vergleichs: Fuer den ALTEN Body
+ * macht eine verfallene Vorgabe den Regelfall gueltig — sie ist ueberholt. Fuer den
+ * NEUEN zaehlt der mitgelieferte Stand nicht, weil er ohnehin gleich ueberschrieben
+ * wird. Wuerde er zaehlen, waere die Leitplanke mit einem Handgriff zu umgehen:
+ * `Pruefung: Verzicht` plus irgendein Stand saehe als "verfallen" nach einer
+ * ERHOEHUNG auf den Regelfall aus — und der frisch gesetzte Stand machte den
+ * Verzicht unmittelbar danach gueltig.
+ */
+function effektiverUmfang(body, regel, verfallenZaehlt) {
+  const { wert, verfallen } = parsePruefvorgabe(body);
+  if (wert === null || (verfallen && verfallenZaehlt)) return regel;
+  return wert === "verzicht" ? 0 : wert;
+}
+
+/**
+ * Human-only-Leitplanke fuer die Pruefvorgabe (Issue #303, fachliche Quelle #285).
+ *
+ * Eine Verringerung darf nur ein Mensch setzen. Diese Forderung ist nicht von
+ * allein erfuellt: Der Nacht-Review schreibt bei Stufe `issue` den geschaerften
+ * Body selbst — per `issue update` mit gesetztem `KIT_AGENT_MODEL`. Deshalb liegt
+ * die Regel im Adapter und nicht in einem Prompt (Prinzip aus Issue #122).
+ *
+ * Verglichen werden EFFEKTIVWERTE, nicht Zeilen. Eine fehlende Zeile im neuen Body
+ * ist keine Loeschung, sondern der Regelfall: Stand vorher `Pruefung: 3` bei
+ * Regelfall 1, ist das eine Verringerung; stand vorher nichts, aendert sich nichts.
+ * Erhoehungen bleiben immer erlaubt — sie verringern nichts.
+ *
+ * Liefert den zu schreibenden Body; wirft, wenn nicht geschrieben werden darf.
+ */
+export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
+  const regel = regelRunden();
+  const alt = effektiverUmfang(altBody, regel, true);
+  const neu = effektiverUmfang(neuBody, regel, false);
+
+  if (neu < alt && (env.KIT_AGENT_MODEL || "").trim() !== "") {
+    throw new BoardError(
+      `Verringerung der Pruefung (${alt} -> ${neu}) setzt nur ein Mensch. ` +
+      "Ein unbeaufsichtigter Lauf (KIT_AGENT_MODEL gesetzt) vergibt sie nie sich selbst — " +
+      "die Zeile 'Pruefung:' unveraendert aus dem alten Stand uebernehmen.",
+    );
+  }
+
+  // Ohne Vorgabezeile bleibt der Body unangetastet: Ein Stand ohne Vorgabe traegt
+  // keine Aussage, und der Regelfall braucht keinen Bezugspunkt.
+  if (parsePruefvorgabe(neuBody).wert === null) return neuBody;
+  return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
 }
 
 async function issueCreate(tracker, args) {
@@ -1995,7 +2089,13 @@ async function issueComment(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  await tracker.updateIssue(id, { body: leseTextQuelle(args.body, args["body-file"], "body") });
+  const neu = leseTextQuelle(args.body, args["body-file"], "body");
+  // Read before write (Issue #303): Ohne den alten Body laesst sich nicht sagen, ob
+  // der neue die Pruefung verringert. Scheitert das Lesen, endet der Aufruf hier —
+  // ein Schreibzugriff auf halbem Wissen waere genau der Bypass, den die Leitplanke
+  // schliessen soll.
+  const { body: alt } = await tracker.getIssue(id);
+  await tracker.updateIssue(id, { body: pruefvorgabeDurchsetzen(alt || "", neu) });
   out({ ok: true, id });
 }
 
@@ -2096,6 +2196,17 @@ async function kontextLastLog(args) {
 
 const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
+
+/**
+ * Der Regelfall: wie oft geprueft wird, wenn das Ticket nichts anderes vorgibt.
+ *
+ * Bewusst ohne die Validierung aus `issueReviewConfig`: Die Pruefvorgabe-Leitplanke
+ * in `issue update` braucht nur diese Zahl. Eine kaputte Reviewer-Liste duerfte
+ * nicht dazu fuehren, dass sich kein Issue-Body mehr schreiben laesst.
+ */
+function regelRunden(config = loadConfig()) {
+  return (config.issueReview || {}).rounds || ISSUE_REVIEW_DEFAULT_ROUNDS;
+}
 
 // Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
 // das einzelne Arbeitspaket. Jede schaut anders hin und ist anders besetzt — fachlich
@@ -2248,7 +2359,7 @@ function issueReviewConfig() {
   const block = config.issueReview || {};
   const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
-    rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
+    rounds: regelRunden(config),
     reviewers,
     pairs: validatePairs(block.pairs, reviewers),
     // `reviewStufen` steht auf oberster Ebene, nicht in `issueReview`: Die Besetzung

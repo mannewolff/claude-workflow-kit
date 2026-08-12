@@ -11,10 +11,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
 import { parsePruefvorgabe, pruefvorgabeStand } from "../kit/board.mjs";
 
 /** Body im Vier-Abschnitt-Format mit frei waehlbarem Kontext-Inhalt. */
@@ -345,5 +345,148 @@ test("Die Hilfe nennt --issue bei roles", () => {
     assert.match(res.stdout, /issue-review roles --stufe/);
     assert.match(res.stdout, /\[--issue <N>\]/);
     assert.match(res.stdout, /vorgabeQuelle/, "die Hilfe nennt auch, was --issue liefert");
+  });
+});
+
+// --- CLI: issue update, Human-only-Leitplanke und Bezugsstand (Issue #303) ---
+//
+// Die fachliche Forderung lautet: Eine VERRINGERUNG der Pruefung setzt nur ein
+// Mensch. Sie ist nicht von allein erfuellt — der Nacht-Review schreibt bei Stufe
+// `issue` den geschaerften Body selbst, per `issue update` mit gesetztem
+// KIT_AGENT_MODEL. Deshalb liegt die Leitplanke im Adapter und nicht in einem
+// Prompt (Plan #300, Prinzip aus Issue #122).
+//
+// Verglichen werden EFFEKTIVWERTE, nicht Zeilen: Eine fehlende Zeile im neuen Body
+// ist keine Loeschung, sondern der Regelfall. Nur so faellt auf, dass das Streichen
+// einer `Pruefung: 3` bei Regelfall 1 eine Verringerung ist — und dass das
+// Streichen bei Regelfall 3 keine ist.
+
+const KOERPER_REST = "## Aufgabe\n\nA\n";
+const koerperVon = (kontext) => `\n## Kontext\n\n${kontext}\n\n${KOERPER_REST}`;
+const KOPF = `---\nid: "0001"\ntype: task\nstatus: ready\ntitle: Ticket\ncreated: 2026-08-12\n---\n`;
+const ticketDatei = (dir) => join(dir, "issues", "0001.md");
+
+/** Fixture mit frei waehlbarer Regel-Rundenzahl und altem Ticket-Kontext. */
+function mitUpdate({ rounds, alt }, fn) {
+  const dir = setupProjekt({ ...KONFIG, issueReview: { ...KONFIG.issueReview, rounds } }, "board-update-vorgabe-");
+  try {
+    mkdirSync(join(dir, "issues"), { recursive: true });
+    writeFileSync(ticketDatei(dir), KOPF + koerperVon(alt), "utf-8");
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** `issue update` mit neuem Kontext; `agent: false` steht fuer den Menschen am Rechner. */
+const update = (dir, kontext, agent = true) =>
+  runBoard(dir, ["issue", "update", "1", "--body", koerperVon(kontext)], agent ? {} : { KIT_AGENT_MODEL: "" });
+
+// Regelfall und Vorgaben sind so gewaehlt, dass jede Zeile genau EINEN Uebergang
+// misst — bei Regelfall 3 waere "3 → keine Zeile" gar keine Verringerung.
+const UEBERGAENGE = [
+  { name: "3 → 2", rounds: 1, alt: "Pruefung: 3", neu: "Pruefung: 2", verringert: true },
+  { name: "3 → keine Zeile", rounds: 1, alt: "Pruefung: 3", neu: "Autor-Modell: claude-opus-5", verringert: true },
+  { name: "keine Zeile → 1 bei Regelfall 3", rounds: 3, alt: "Autor-Modell: claude-opus-5", neu: "Pruefung: 1", verringert: true },
+  { name: "Verzicht → keine Zeile", rounds: 1, alt: "Pruefung: Verzicht", neu: "Autor-Modell: claude-opus-5", verringert: false },
+  { name: "verfallen → 1", rounds: 3, alt: `Pruefung: Verzicht\nPruefung-Stand: ${"b".repeat(64)}`, neu: "Pruefung: 1", verringert: true },
+  { name: "1 → 3 (Erhoehung)", rounds: 1, alt: "Pruefung: 1", neu: "Pruefung: 3", verringert: false },
+];
+
+for (const fall of UEBERGAENGE) {
+  test(`issue update mit KIT_AGENT_MODEL: ${fall.name}`, () => {
+    mitUpdate(fall, (dir) => {
+      const vorher = readFileSync(ticketDatei(dir), "utf-8");
+      const res = update(dir, fall.neu);
+      if (fall.verringert) {
+        assert.notEqual(res.status, 0, "die Verringerung haette abgewiesen werden muessen");
+        assert.match(res.stderr, /Pruefung/);
+        assert.equal(readFileSync(ticketDatei(dir), "utf-8"), vorher, "trotz Abbruch wurde geschrieben");
+      } else {
+        assert.equal(res.status, 0, res.stderr);
+        assert.match(readFileSync(ticketDatei(dir), "utf-8"), /## Aufgabe/);
+      }
+    });
+  });
+
+  test(`issue update ohne KIT_AGENT_MODEL: ${fall.name}`, () => {
+    // Der Mensch am Rechner darf jeden Uebergang setzen — auch die Verringerung.
+    mitUpdate(fall, (dir) => {
+      const res = update(dir, fall.neu, false);
+      assert.equal(res.status, 0, res.stderr);
+      const nachher = board(dir, "issue", "get", "1").body;
+      const gelesen = parsePruefvorgabe(nachher);
+      assert.equal(gelesen.verfallen, false, "nach dem Schreiben muss die Vorgabe gelten");
+      if (/^Pruefung: /m.test(fall.neu)) {
+        assert.equal(gelesen.stand, pruefvorgabeStand(nachher), "der Bezugsstand passt nicht zum Body");
+      }
+    });
+  });
+}
+
+test("issue update setzt den Bezugsstand unmittelbar unter die Vorgabezeile", () => {
+  mitUpdate({ rounds: 1, alt: "Pruefung: 1" }, (dir) => {
+    assert.equal(update(dir, "Autor-Modell: claude-opus-5\nPruefung: 2").status, 0);
+    const body = board(dir, "issue", "get", "1").body;
+    assert.match(body, /Pruefung: 2\nPruefung-Stand: [0-9a-f]{64}\n/, "die Standzeile steht nicht direkt darunter");
+    assert.equal(parsePruefvorgabe(body).verfallen, false);
+  });
+});
+
+test("issue update ersetzt einen vorhandenen Bezugsstand, statt ihn zu verdoppeln", () => {
+  mitUpdate({ rounds: 1, alt: "Pruefung: 1" }, (dir) => {
+    assert.equal(update(dir, "Pruefung: 2").status, 0);
+    const erst = board(dir, "issue", "get", "1").body;
+    // Zweites Update mit veraendertem Inhalt: derselbe Wert, neuer Stand.
+    const res = runBoard(dir, ["issue", "update", "1", "--body", `\n## Kontext\n\n${erst.match(/Pruefung: 2\nPruefung-Stand: [0-9a-f]{64}/)[0]}\n\n## Aufgabe\n\nB\n`]);
+    assert.equal(res.status, 0, res.stderr);
+
+    const zweit = board(dir, "issue", "get", "1").body;
+    assert.equal((zweit.match(/^Pruefung-Stand: /gm) || []).length, 1, "die Standzeile wurde verdoppelt");
+    assert.equal(parsePruefvorgabe(zweit).verfallen, false, "der Stand wurde nicht neu berechnet");
+    assert.notEqual(parsePruefvorgabe(zweit).stand, parsePruefvorgabe(erst).stand);
+  });
+});
+
+test("issue update erfindet ohne Vorgabezeile keinen Bezugsstand", () => {
+  mitUpdate({ rounds: 1, alt: "Autor-Modell: claude-opus-5" }, (dir) => {
+    assert.equal(update(dir, "Autor-Modell: claude-opus-5").status, 0);
+    assert.doesNotMatch(board(dir, "issue", "get", "1").body, /Pruefung-Stand:/);
+  });
+});
+
+test("issue update bricht bei ungueltiger Vorgabe im NEUEN Body ab, ohne zu schreiben", () => {
+  mitUpdate({ rounds: 1, alt: "Pruefung: 1" }, (dir) => {
+    const vorher = readFileSync(ticketDatei(dir), "utf-8");
+    const res = update(dir, "Pruefung: manchmal");
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /Pruefung/);
+    assert.equal(readFileSync(ticketDatei(dir), "utf-8"), vorher);
+  });
+});
+
+test("issue update bricht bei ungueltiger Vorgabe im ALTEN Body ab, ohne zu schreiben", () => {
+  // Sonst wuerde eine kaputte Zeile still ueberschrieben — und mit ihr die Frage,
+  // welchen Umfang der Mensch eigentlich gemeint hatte.
+  mitUpdate({ rounds: 1, alt: "Pruefung: 1\nPruefung: 3" }, (dir) => {
+    const vorher = readFileSync(ticketDatei(dir), "utf-8");
+    const res = update(dir, "Pruefung: 3");
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /Pruefung/);
+    assert.equal(readFileSync(ticketDatei(dir), "utf-8"), vorher);
+  });
+});
+
+test("ein maschineller Verzicht mit ueberholtem Stand bleibt eine Verringerung", () => {
+  // Der Bypass, den ein Vergleich der ROHEN Effektivwerte offen liesse: Ein Agent
+  // schreibt `Pruefung: Verzicht` mit einem nicht passenden Stand. Wuerde der neue
+  // Body als "verfallen" (= Regelfall) gewertet, saehe das nach einer ERHOEHUNG aus
+  // — und der frisch gesetzte Stand machte den Verzicht danach gueltig. Der Stand
+  // des neuen Bodys zaehlt deshalb nicht mit; er wird ohnehin neu geschrieben.
+  mitUpdate({ rounds: 3, alt: "Autor-Modell: claude-opus-5" }, (dir) => {
+    const vorher = readFileSync(ticketDatei(dir), "utf-8");
+    const res = update(dir, `Pruefung: Verzicht\nPruefung-Stand: ${"c".repeat(64)}`);
+    assert.notEqual(res.status, 0, "der Verzicht kam durch die Leitplanke");
+    assert.equal(readFileSync(ticketDatei(dir), "utf-8"), vorher);
   });
 });
