@@ -180,11 +180,91 @@ test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
   // 2026-08-11 nicht mehr: Die Kopie dokumentiert den projekteigenen Tracker,
   // die Vorlage liefert den Auslieferungsdefault. Was gleich sein MUSS, ist der
   // Stoff dieses Issues — sonst driftet die Auslieferung von der gelebten Datei.
-  const bloecke = ["## Nachtbetrieb", "## Issue-Format"];
+  // Die Ortsangabe des Markers steht in `### Die drei Pruefstufen`, einem
+  // Unterabschnitt von `## Die drei Stop-Punkte` — ohne diesen dritten Block
+  // waere gerade die Stelle ungedeckt, die Issue #314 korrigiert.
+  const bloecke = ["## Die drei Stop-Punkte (nie automatisiert)", "## Nachtbetrieb", "## Issue-Format"];
   for (const marke of bloecke) {
     const ausVorlage = VORLAGE.slice(VORLAGE.indexOf(marke)).split(/\n## /)[0];
     const ausKopie = KOPIE.slice(KOPIE.indexOf(marke)).split(/\n## /)[0];
     assert.equal(ausKopie, ausVorlage, `Abschnitt '${marke}' ist zwischen Vorlage und Kopie gedriftet`);
+  }
+});
+
+// --- Issue #314: die Marker-Konvention in der Doku ---
+//
+// Die Doku fuehrt oben drei Nachweiszeilen und warnt ausdruecklich davor, sie zu
+// verwechseln — weiter unten illustrierte sie die Marker-Konvention zweimal mit
+// `Issue-Review:` ohne jede Stufenangabe. Wer nur diese Stellen liest, haelt
+// `Issue-Review:` fuer den Marker aller drei Stufen und traegt ihn an ein
+// Plandokument, an dem das Gate `requiredBeforeReady` haengt.
+//
+// Bewusst KEIN pauschaler Test ueber alle Absaetze mit `Issue-Review:`: Die Datei
+// enthaelt davon sechs, und vier sind korrekt (Stufentabelle, Freigabe-Regel,
+// Auswahlregel, Gate-Hinweis). Ein pauschaler Filter waere nur gruen zu bekommen,
+// indem man richtigen Text beschaedigt.
+
+/** Ein `###`-Abschnitt aus der Doku, bis zur naechsten Ueberschrift gleicher Ebene. */
+function dokuAbschnitt(ueberschrift) {
+  const idx = DOKU.indexOf(`### ${ueberschrift}`);
+  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
+  return DOKU.slice(idx).split(/\n### /)[0];
+}
+
+test("die Marker-Beispiele der Doku nennen die Stufe, zu der sie gehoeren", () => {
+  for (const ueberschrift of ["Wer entscheidet", "Im Nachtbetrieb"]) {
+    const abschnitt = dokuAbschnitt(ueberschrift);
+    const beispiel = abschnitt.indexOf("Issue-Review: codex");
+    assert.ok(beispiel >= 0, `'${ueberschrift}': kein Issue-Review-Beispiel gefunden`);
+    // Der einleitende Text steht VOR dem Beispiel — nur er wird geprueft, damit
+    // eine spaetere Erwaehnung weiter unten den Test nicht faelschlich rettet.
+    const davor = abschnitt.slice(0, beispiel);
+    assert.match(
+      davor,
+      /Stufe\s+`?issue`?|Arbeitspaket/,
+      `'${ueberschrift}': der Text vor dem Issue-Review-Beispiel bindet es nicht an die Stufe issue`
+    );
+  }
+});
+
+test("der Nachtbetrieb-Abschnitt der Doku nimmt fachlich und plan aus", () => {
+  const abschnitt = dokuAbschnitt("Im Nachtbetrieb");
+  for (const [was, muster] of [
+    ["die Stufe fachlich", /`fachlich`/],
+    ["die Stufe plan", /`plan`/],
+    ["das Schreibverbot am Body", /issue update|Body wird nie|kein Body/i],
+    ["das Ausbleiben des Markers", /kein Marker|nie ein Marker|Marker.{0,30}nicht gesetzt/i],
+    ["die PO-Antworten als Begruendung", /Product Owner|PO-Antworten/],
+    ["die Architekturentscheidungen als Begruendung", /architektonische[nr]? Entscheidungen|Architekturentscheidungen/i],
+    ["den Menschen als Entscheider", /ein Mensch|Mensch getroffen/i],
+  ]) {
+    assert.match(abschnitt, muster, `der Nachtbetrieb-Abschnitt nennt ${was} nicht`);
+  }
+});
+
+// Story- und Plan-Format haben keinen `## Kontext`. Die pauschale Ansage "im
+// Kontext-Abschnitt" war deshalb fuer zwei von drei Stufen nicht befolgbar.
+// Massgeblich fuer die fachliche Anforderung ist skills/fachplan/SKILL.md: dort
+// gehoert `Autor-Modell:` in den Abschnitt `## Ziel`.
+test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
+  const dateien = [
+    ["docs/dokumentation.md", DOKU],
+    ["templates/CLAUDE-workflow.md", VORLAGE],
+    [".claude/CLAUDE-workflow.md", KOPIE],
+    ["skills/issue-review/SKILL.md", lies("skills", "issue-review", "SKILL.md")],
+  ];
+  for (const [name, text] of dateien) {
+    assert.match(text, /Arbeitspaket[\s\S]{0,160}`## Kontext`|`## Kontext`[\s\S]{0,160}Arbeitspaket/,
+      `${name}: der Ort beim Arbeitspaket (## Kontext) ist nicht benannt`);
+    assert.match(text, /fachliche[rn]? Anforderung[\s\S]{0,160}`## Ziel`/,
+      `${name}: der Ort bei der fachlichen Anforderung (## Ziel) ist nicht benannt`);
+    assert.match(text, /Plandokument[\s\S]{0,200}`Plan-Modell:`/,
+      `${name}: der Ort beim Plandokument (bei Plan-Modell:) ist nicht benannt`);
+    assert.doesNotMatch(
+      text,
+      /jede Stufe hinterl(ä|ae)sst ihren eigenen Nachweis im\s+Kontext-Abschnitt/,
+      `${name}: die pauschale Ortsangabe 'im Kontext-Abschnitt' steht noch da`
+    );
   }
 });
 

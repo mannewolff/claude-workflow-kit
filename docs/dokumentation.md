@@ -634,13 +634,23 @@ Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin
 
 ### Drei Prüfstufen — die Prüfung wandert nach oben
 
-Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis im Kontext-Abschnitt:
+Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis:
 
 | Stufe | Prüft | Nachweis |
 |---|---|---|
 | `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+
+**Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format führen ihre Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
+
+| Dokument | Ort des Markers |
+|---|---|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und gegebenenfalls `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unverändert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
 
@@ -795,11 +805,13 @@ Die Befunde gehen als Board-Kommentar ans Issue — das ist Verlauf. Der **Body*
 
 Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist kein Wahrheitskriterium. Und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-Nach der Zustimmung trägt das Issue eine Marker-Zeile:
+Nach der Zustimmung trägt das Dokument die Marker-Zeile **seiner Stufe** — `Fachplan-Review:`, `Plan-Review:` oder `Issue-Review:`, nie eine andere. Für ein Arbeitspaket, geprüft auf der Stufe `issue` mit seinem einen Reviewer, sieht sie so aus:
 
 ```
 Issue-Review: codex (2026-08-06)
 ```
+
+Eine fachliche Anforderung trüge an derselben Stelle `Fachplan-Review: codex, sonnet (2026-08-06)`, ein Plandokument `Plan-Review: …`. Der Anker `Issue-Review:` bleibt dem Arbeitspaket vorbehalten: An ihm hängt das Gate, und ein Plan mit dieser Zeile sähe für den Nacht-Runner freigabereif aus.
 
 Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
 
@@ -814,7 +826,11 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 
 Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
-Ein nächtlich gesetzter Marker ist als solcher erkennbar:
+**Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+
+Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen, und nachts schreibt niemand darin.
+
+Ein nächtlich gesetzter Marker — es kann nur einer der Stufe `issue` sein — ist als solcher erkennbar:
 
 ```
 Issue-Review: codex (2026-08-06, Nachtlauf)

@@ -465,7 +465,7 @@ SYNTHESE
 
 Kein Konsens-Automatismus: Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** in den Kontext-Abschnitt aufnehmen, wörtlich in einer dieser drei Formen:
+**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** aufnehmen, wörtlich in einer dieser drei Formen:
 
 ```
 Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
@@ -478,6 +478,16 @@ Beispiel für ein Arbeitspaket, das mit seinem einen Reviewer gelaufen ist:
 ```
 Issue-Review: codex (2026-08-06)
 ```
+
+**Wohin die Zeile gehört**, entscheidet das Format des Dokuments — nur das Arbeitspaket hat einen `## Kontext`:
+
+| Dokument | Ort des Markers |
+|---|---|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und gegebenenfalls `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt unverändert — der Marker stellt sich dazu, er verdrängt nichts.
 
 Die Namen stammen aus `gewaehlt` (Schritt 1b), in Auswahlreihenfolge, und nennen die **tatsächlich gelaufenen** Reviewer — nicht eine feste Liste aus der Config. Bei einem erneuten Review wird der Marker **derselben** Stufe ersetzt, nicht dupliziert.
 

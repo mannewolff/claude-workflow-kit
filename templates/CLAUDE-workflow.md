@@ -64,14 +64,25 @@ Nacht-Runner ungepruefte Ready-Issues zurueck.
 ### Die drei Pruefstufen
 
 Der Skill prueft drei verschiedene Dokumente. Welche Stufe greift, entscheidet
-das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis im
-Kontext-Abschnitt:
+das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis:
 
 | Stufe | Prueft | Nachweis |
 |-------|--------|----------|
 | `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue (Plandokument aus `/plan`) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
+
+**Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das
+Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format fuehren ihre
+Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
+
+| Dokument | Ort des Markers |
+|----------|-----------------|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und ggf. `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unveraendert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt kein eigenes
 Kommando je Stufe — welche greift, liest der Skill am Titel-Praefix ab. Das gilt
