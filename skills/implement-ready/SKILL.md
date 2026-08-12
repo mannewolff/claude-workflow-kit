@@ -43,7 +43,13 @@ Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
 Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
 
-**Ungepruefte Issues: Hinweis, kein Stopp.** Traegt ein Ready-Issue keine Marker-Zeile `Issue-Review:` im Kontext-Abschnitt, ist es nicht durch `/issue-review` gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
+**Ungepruefte Issues: Hinweis, kein Stopp.** Ein Ready-Issue steht in einem von **drei Zustaenden** — und nur der dritte ist eine Luecke:
+
+1. **Marker vorhanden.** Der Kontext-Abschnitt traegt die Zeile `Issue-Review:`, das Issue ist durch `/issue-review` gelaufen. **Kein Hinweis**, es geht wie bisher weiter.
+2. **Bewusst ohne Pruefung freigegeben.** Der Kontext-Abschnitt traegt `Pruefung: Verzicht`, und diese Vorgabe ist gueltig, also nicht verfallen. Melde sie als "bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)" und fahre fort — **keine Rueckfrage**. Das ist keine Luecke, sondern die Entscheidung des Menschen; sie zur Rueckfrage zu machen hiesse, ihr zu widersprechen.
+3. **Weder Marker noch gueltiger Verzicht.** Das Issue ist nicht durch `/issue-review` gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
+
+**Eine verfallene Vorgabe ist nicht Fall 3.** Wurde das Issue nach der Entscheidung inhaltlich geaendert — Aufgabe, Akzeptanzkriterium oder Abhaengigkeiten —, ist die Vorgabe verfallen. Benenne dann genau das: "die Pruefvorgabe ist mit einer inhaltlichen Aenderung verfallen". Das sagt dem Menschen etwas anderes als "wurde nie geprueft"; nur er kann entscheiden, ob die alte Freigabe noch traegt. Fuer den Lauf gilt danach der Regelfall, also der Hinweis aus Fall 3. Ob eine Vorgabe gueltig, verfallen oder gar nicht vorhanden ist, sagt `node .claude/kit/board.mjs issue-review roles --stufe issue --author <Autor-Modell aus dem Kontext> --issue <id>` in den Feldern `verzicht` und `vorgabeQuelle` (`issue` | `verfallen` | `config`).
 
 ### 1. Issue nach In progress verschieben
 
