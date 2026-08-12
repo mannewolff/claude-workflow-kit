@@ -37,6 +37,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpa
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1738,6 +1739,140 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
   const davor = body.slice(0, ende).replace(/\n*$/, "");
   return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
+}
+
+// ============================================================
+// Pruefvorgabe am Ticket (Issue #301, fachliche Quelle #285)
+// ============================================================
+//
+// Zwei Zeilen im Kontext-Abschnitt tragen die Entscheidung, wie oft ein Dokument
+// geprueft wird: `Pruefung: <1|2|3|Verzicht>` setzt der Mensch, `Pruefung-Stand:`
+// pflegt die Maschine. Weicht der Stand vom Bezugsstand des Bodys ab, hat sich
+// der Inhalt seit der Entscheidung geaendert — die Vorgabe ist verfallen.
+//
+// Beides lebt hier und nur hier. Der Nacht-Runner importiert diesen Parser,
+// statt die Zeilen mit einer zweiten Regex zu lesen: Ein `SYNC:`-Kommentar
+// erzwingt keine identische Semantik, und zwei Auslegungen derselben Zeile
+// waeren am Board nicht zu sehen.
+
+/** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
+const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
+const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
+const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
+const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const GUELTIGE_VORGABEN = new Map([
+  ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
+]);
+
+/** \r\n und einzelne \r zu \n — sonst haengt der Stand am Zeilenende des Editors. */
+function normalisiereZeilenenden(body) {
+  return String(body || "").replace(/\r\n?/g, "\n");
+}
+
+/**
+ * Grenzen des ersten `## Kontext`-Abschnitts im normalisierten Body.
+ *
+ * Code-Fences (drei oder mehr Backticks/Tilden) zaehlen nicht: Ein Issue, das
+ * das Vier-Abschnitt-Format als Beispiel zeigt, traegt `## Aufgabe` dort am
+ * Zeilenanfang — das darf den Abschnitt nicht beenden. Eingerueckte Codebloecke
+ * bleiben bewusst aussen vor.
+ *
+ * Mehrere Kontext-Abschnitte sind kein Fehler, es gilt der erste — genau so
+ * verhaelt sich `autorModellSicherstellen` heute schon.
+ */
+function kontextGrenzen(text) {
+  let fence = null;
+  let start = -1;
+  let offset = 0;
+  for (const zeile of text.split("\n")) {
+    const fm = zeile.match(FENCE_ZEILE);
+    if (fence) {
+      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
+    } else if (fm) {
+      fence = { zeichen: fm[1][0], laenge: fm[1].length };
+    } else if (start === -1) {
+      if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
+    } else if (zeile.startsWith("## ")) {
+      return { start, ende: offset };
+    }
+    offset += zeile.length + 1;
+  }
+  return start === -1 ? null : { start, ende: text.length };
+}
+
+/**
+ * Bezugsstand des Bodys: SHA-256 ueber alles ausser dem Kontext-Abschnitt.
+ *
+ * Der Kontext bleibt ganz aussen vor, weil dort ALLE Kennzeichnungszeilen
+ * stehen. Eine Ausnahmeliste einzelner Zeilen waere dauerhafter Pflegeaufwand:
+ * Wer kuenftig eine Kennzeichnungszeile einfuehrt und sie dort vergisst,
+ * erzeugte stillen Verfall.
+ */
+export function pruefvorgabeStand(body) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  const rest = grenzen ? text.slice(0, grenzen.start) + text.slice(grenzen.ende) : text;
+  const gestutzt = rest.replace(/^\n+/, "").replace(/\n+$/, "");
+  return createHash("sha256").update(gestutzt, "utf8").digest("hex");
+}
+
+/**
+ * Liest die Pruefvorgabe aus dem Kontext-Abschnitt.
+ *
+ * Rueckgabe: `{ wert: 1|2|3|"verzicht"|null, stand: string|null, verfallen: boolean }`
+ *
+ * Fehlt der Stand, ist `verfallen` immer false: Ohne Bezugsstand laesst sich
+ * kein Verfall feststellen, und im Zweifel gilt die menschliche Entscheidung —
+ * die Zeile kann im Board-UI gesetzt worden sein, ohne dass je ein
+ * `issue update` lief.
+ */
+export function parsePruefvorgabe(body) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  if (!grenzen) return { wert: null, stand: null, verfallen: false };
+
+  const vorgaben = [];
+  const staende = [];
+  let fence = null;
+  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
+    const fm = zeile.match(FENCE_ZEILE);
+    if (fence) {
+      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
+      continue;
+    }
+    if (fm) { fence = { zeichen: fm[1][0], laenge: fm[1].length }; continue; }
+    const vorgabe = zeile.match(PRUEFUNG_ZEILE);
+    if (vorgabe) vorgaben.push(vorgabe[1]);
+    const stand = zeile.match(PRUEFUNG_STAND_ZEILE);
+    if (stand) staende.push(stand[1]);
+  }
+
+  if (vorgaben.length > 1) {
+    throw new BoardError(`Mehrere 'Pruefung:'-Zeilen im Kontext-Abschnitt (${vorgaben.length}). Genau eine ist erlaubt.`);
+  }
+  if (staende.length > 1) {
+    throw new BoardError(`Mehrere 'Pruefung-Stand:'-Zeilen im Kontext-Abschnitt (${staende.length}). Hoechstens eine ist erlaubt.`);
+  }
+
+  let wert = null;
+  if (vorgaben.length === 1) {
+    const roh = vorgaben[0].toLowerCase();
+    if (!GUELTIGE_VORGABEN.has(roh)) {
+      throw new BoardError(`Ungueltiger Wert in 'Pruefung: ${vorgaben[0]}'. Erlaubt: 1, 2, 3 oder Verzicht.`);
+    }
+    wert = GUELTIGE_VORGABEN.get(roh);
+  }
+
+  let stand = null;
+  if (staende.length === 1) {
+    const roh = staende[0].toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(roh)) {
+      throw new BoardError(`Ungueltiger Wert in 'Pruefung-Stand: ${staende[0]}'. Erwartet: 64 Hex-Zeichen.`);
+    }
+    stand = roh;
+  }
+
+  return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
 }
 
 async function issueCreate(tracker, args) {
