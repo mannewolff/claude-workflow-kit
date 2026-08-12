@@ -842,6 +842,37 @@ Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Mark
 
 Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
 
+### Prüfumfang am Ticket: Vorgabe, Verzicht, Verfall
+
+Nicht jedes Arbeitspaket verdient denselben Aufwand. Ein Einzeiler mit offensichtlichem Kriterium braucht keine Runde durch ein fremdes Modell, ein architekturnahes Paket vielleicht zwei. Das entscheidest du am einzelnen Ticket — und ein Arbeitspaket steht deshalb in einem von **drei Zuständen**:
+
+| Zustand | Woran erkennbar | Was `/implement-next` und der Nacht-Runner tun |
+|---|---|---|
+| geprüft | Marker `Issue-Review: …`, im Umfang der Vorgabe bzw. des Regelfalls | umsetzen, kein Hinweis |
+| bewusst ohne Prüfung freigegeben | gültige Zeile `Pruefung: Verzicht` | umsetzen und das im Bericht vermerken — keine Rückfrage |
+| noch nicht geprüft | weder Marker noch gültiger Verzicht | interaktiv nachfragen, nachts bei `requiredBeforeReady` zurückstellen |
+
+Der mittlere Zustand ist der neue: Ein Verzicht ist **keine Lücke**, sondern eine Entscheidung. Ihn zur Rückfrage zu machen hieße, ihr zu widersprechen — deshalb ist er der zweite Freigabegrund am Gate, gleichwertig zum Marker.
+
+**Zwei Zeilen, zwei Besitzer.** Beide stehen im `## Kontext` des Arbeitspakets und sehen sich zum Verwechseln ähnlich. Geschrieben werden sie von verschiedenen Seiten:
+
+- `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**. Die Zahl ist die Zahl der Review-Runden, `Verzicht` heißt: ohne Prüfung freigegeben. Ohne die Zeile gilt der Regelfall aus `issueReview.rounds`.
+- `Pruefung-Stand: <hex>` — **schreibt die Maschine**: `issue update` setzt sie beim Speichern unter die Vorgabezeile. Von Hand anfassen entwertet die eigene Vorgabe, ohne dass eine Fehlermeldung darauf hinweist.
+
+Was tatsächlich gilt, lässt sich ablesen statt ausrechnen — die Felder `verzicht` und `vorgabeQuelle` (`issue` · `verfallen` · `config`) sagen es:
+
+```bash
+node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5 --issue 307
+```
+
+**Der Verfall.** Der Stand ist ein SHA-256 über den Body **ohne** den Kontext-Abschnitt — also über Aufgabe, Akzeptanzkriterium und Abhängigkeiten samt allem Weiteren außerhalb des Kontexts. Ändert sich dort etwas, passt der gespeicherte Stand nicht mehr: Die Vorgabe ist verfallen, und es gilt wieder der Regelfall, bis du neu entscheidest. Das ist der Sinn der Zeile — eine Freigabe „das braucht keine Prüfung" gilt für die Aufgabe, die du gelesen hast, nicht für die, die danach hineingeschrieben wurde.
+
+Der Kontext-Abschnitt zählt dabei bewusst nicht mit, denn dort stehen die Kennzeichnungszeilen selbst — `Autor-Modell:`, `Issue-Review:`, die Vorgabe. Zählte er mit, wäre jede Markierung ihr eigener Verfall. Eine Ausnahmeliste einzelner Zeilen wäre die Alternative gewesen, und sie wäre dauerhafter Pflegeaufwand: Wer künftig eine Kennzeichnungszeile einführt und sie dort vergisst, erzeugte stillen Verfall.
+
+**Fehlt der Stand, gilt die Vorgabe.** Eine `Pruefung:`-Zeile ohne `Pruefung-Stand:` — etwa weil sie im Board-UI von Hand gesetzt wurde und nie ein `issue update` lief — ist voll wirksam. Ohne Bezugsstand lässt sich kein Verfall feststellen, und im Zweifel gilt die Entscheidung des Menschen und nicht ihre Annullierung durch eine fehlende Zeile.
+
+**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt auf der Stufe `issue` den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
+
 ### Was es kostet
 
 Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: Ohne Argumente nimmt der Skill die ungeprüften Dokumente aus dem Backlog, mit Nummern genau die genannten (siehe [Welche Dokumente drankommen](#welche-dokumente-drankommen)).

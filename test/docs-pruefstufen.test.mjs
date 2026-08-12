@@ -268,6 +268,115 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   }
 });
 
+// --- Issue #307: Pruefvorgabe, Verzicht und Verfall in der Doku ---
+//
+// Am Ticket stehen zwei Zeilen, die sich zum Verwechseln aehnlich sehen und
+// trotzdem verschiedene Besitzer haben: `Pruefung:` schreibt der Mensch,
+// `Pruefung-Stand:` die Maschine. Wer die zweite von Hand anfasst, laesst seine
+// eigene Vorgabe verfallen — lautlos, denn der Verfall ist kein Fehler, sondern
+// der Rueckfall auf den Regelfall. Diese Arbeitsteilung ist nirgends erkennbar,
+// wenn sie nirgends steht.
+
+/** Der Doku-Abschnitt zur Pruefvorgabe — ueber seine Ueberschrift gefunden. */
+function pruefvorgabeAbschnitt() {
+  const treffer = DOKU.split(/\n(?=### )/).find((a) =>
+    /^### .*(Verzicht|Prüfvorgabe|Pruefvorgabe|Prüfumfang)/.test(a)
+  );
+  assert.ok(treffer, "kein ###-Abschnitt zur Pruefvorgabe in docs/dokumentation.md");
+  return treffer;
+}
+
+test("beide Prozessdateien erklaeren beide Pruefzeilen und ihre Besitzer", () => {
+  for (const [name, text] of beide) {
+    const idx = text.indexOf("## Issue-Format");
+    assert.ok(idx >= 0, `${name}: kein Issue-Format-Abschnitt`);
+    // Abgegrenzt am `---`-Trenner, NICHT an der naechsten `## `-Zeile: Der
+    // Abschnitt zeigt das Vier-Abschnitt-Format in einem Codeblock, und dessen
+    // `## Kontext` wuerde den Abschnitt gleich hinter der Ueberschrift kappen.
+    const abschnitt = text.slice(idx).split(/\n---\n/)[0];
+
+    assert.match(abschnitt, /`?Pruefung: *<1\|2\|3\|Verzicht>`?/,
+      `${name}: die Vorgabezeile 'Pruefung: <1|2|3|Verzicht>' fehlt`);
+    assert.match(abschnitt, /Pruefung-Stand:/,
+      `${name}: die Standzeile 'Pruefung-Stand:' fehlt`);
+
+    // Wer schreibt was — ohne diese Zuordnung sind beide Zeilen nur Syntax.
+    assert.match(abschnitt, /`?Pruefung:`?[\s\S]{0,200}(setzt der Mensch|schreibt der Mensch|nur der Mensch)/i,
+      `${name}: es steht nicht, dass 'Pruefung:' der Mensch setzt`);
+    assert.match(abschnitt, /Pruefung-Stand:[\s\S]{0,240}(maschinell|die Maschine|nicht von Hand)/i,
+      `${name}: es steht nicht, dass 'Pruefung-Stand:' maschinell gepflegt wird`);
+
+    assert.match(abschnitt, /issueReview\.rounds|`rounds`/,
+      `${name}: der Regelfall aus issueReview.rounds ist nicht als Default benannt`);
+    assert.match(abschnitt, /Verringerung|verringer/i,
+      `${name}: die Regel zur Verringerung fehlt`);
+    assert.match(abschnitt, /unbeaufsichtigt|Nachtlauf|Nacht-Runner/i,
+      `${name}: es steht nicht, dass ein unbeaufsichtigter Lauf dabei abgewiesen wird`);
+    assert.match(abschnitt, /verfall|verfäll/i,
+      `${name}: der Verfall bei inhaltlicher Aenderung fehlt`);
+    assert.match(abschnitt, /verfall[\s\S]{0,300}Regelfall|Regelfall[\s\S]{0,300}verfall/i,
+      `${name}: es steht nicht, dass nach dem Verfall wieder der Regelfall gilt`);
+  }
+});
+
+test("die Doku nennt die drei Zustaende eines Arbeitspakets", () => {
+  const abschnitt = pruefvorgabeAbschnitt();
+  for (const [was, muster] of [
+    ["geprueft", /geprüft/],
+    ["bewusst ohne Pruefung freigegeben", /bewusst ohne Prüfung freigegeben/i],
+    ["noch nicht geprueft", /noch nicht geprüft/i],
+  ]) {
+    assert.match(abschnitt, muster, `der Zustand '${was}' fehlt in der Doku`);
+  }
+});
+
+test("die Doku erklaert die Arbeitsteilung an den beiden Zeilen", () => {
+  const abschnitt = pruefvorgabeAbschnitt();
+  assert.match(abschnitt, /`Pruefung: *<1\|2\|3\|Verzicht>`|`Pruefung:`/,
+    "die Vorgabezeile ist nicht benannt");
+  assert.match(abschnitt, /`Pruefung-Stand:`|`Pruefung-Stand: *<hex>`/,
+    "die Standzeile ist nicht benannt");
+  assert.match(abschnitt, /(setzt|schreibt) der Mensch|nur der Mensch/i,
+    "es steht nicht, welche Zeile der Mensch setzt");
+  assert.match(abschnitt, /maschinell|die Maschine|`issue update`/,
+    "es steht nicht, dass der Stand maschinell gepflegt wird");
+});
+
+test("die Doku bindet den Verfall an Aufgabe, Kriterien und Abhaengigkeiten", () => {
+  const abschnitt = pruefvorgabeAbschnitt();
+  for (const [was, muster] of [
+    ["die Aufgabe", /Aufgabe/],
+    ["das Akzeptanzkriterium", /Akzeptanzkriteri|Kriterien/],
+    ["die Abhaengigkeiten", /Abhängigkeiten|Abhaengigkeiten/],
+  ]) {
+    assert.match(abschnitt, muster, `der Umfang des Bezugsstands nennt ${was} nicht`);
+  }
+  // Die Grenze ist die eigentliche Aussage: Der Kontext zaehlt NICHT mit, weil
+  // dort die Kennzeichnungszeilen stehen — sonst waere jede Markierung Verfall.
+  assert.match(abschnitt, /nicht[\s\S]{0,80}(der )?Kontext-Abschnitt|Kontext-Abschnitt[\s\S]{0,80}(zählt nicht|bleibt außen vor|nicht mit)/i,
+    "es steht nicht, dass der Kontext-Abschnitt nicht zum Bezugsstand gehoert");
+  assert.match(abschnitt, /Regelfall/,
+    "es steht nicht, was nach dem Verfall gilt");
+});
+
+test("die Doku nennt den Randfall des fehlenden Bezugsstands", () => {
+  const abschnitt = pruefvorgabeAbschnitt();
+  const absatz = abschnitt.split(/\n\n/).find((a) => /Fehlt `Pruefung-Stand:`|ohne (Bezugs)?[Ss]tand|fehlt der Stand/i.test(a));
+  assert.ok(absatz, "kein Absatz zum fehlenden Pruefung-Stand");
+  assert.match(absatz, /gilt die Vorgabe|Vorgabe gilt|kein Verfall/i,
+    "es steht nicht, dass ohne Stand die Vorgabe gilt");
+});
+
+test("die Doku benennt die Grenze der Human-only-Regel", () => {
+  const abschnitt = pruefvorgabeAbschnitt();
+  assert.match(abschnitt, /KIT_AGENT_MODEL/,
+    "die Regel haengt an KIT_AGENT_MODEL — das steht nicht da");
+  assert.match(abschnitt, /interaktiv/i,
+    "die interaktive Session ist als Gegenstueck nicht benannt");
+  assert.match(abschnitt, /verlängerter Arm|verlaengerter Arm|auf Ansage/i,
+    "es steht nicht, dass eine interaktive Session als verlaengerter Arm des Menschen gilt");
+});
+
 test("die dokumentierten --stufe-Werte stimmen mit night.mjs --help ueberein", () => {
   const help = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], {
     encoding: "utf-8",

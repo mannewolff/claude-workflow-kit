@@ -243,6 +243,30 @@ Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein ander
 gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
+### Wie viel geprueft wird: zwei Zeilen im Kontext
+
+Der Kontext-Abschnitt kann festlegen, wie umfangreich das Issue vor dem GO
+geprueft wird. Zwei Zeilen gehoeren dazu — und nur eine davon schreibt der Mensch
+selbst:
+
+- `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**, im Kontext-Abschnitt.
+  Die Zahl ist die Zahl der Review-Runden, `Verzicht` heisst: bewusst ohne
+  Pruefung freigegeben. Ohne die Zeile gilt der Regelfall aus
+  `issueReview.rounds`.
+- `Pruefung-Stand: <hex>` — **maschinell gepflegt**, von `issue update` unter die
+  Vorgabezeile geschrieben. Nie von Hand anfassen: Wer sie aendert, laesst die
+  eigene Vorgabe verfallen.
+
+Eine **Verringerung** — `Verzicht` oder ein Wert unterhalb des Regelfalls — setzt
+nur der Mensch. Ein unbeaufsichtigter Lauf (gesetztes `KIT_AGENT_MODEL`, also der
+Nacht-Runner) wird dabei abgewiesen; er vergibt sich die Pruefung nie selbst.
+Erhoehungen sind immer erlaubt.
+
+Eine **inhaltliche Aenderung** — an Aufgabe, Akzeptanzkriterium oder
+Abhaengigkeiten — laesst die Vorgabe verfallen; danach gilt wieder der Regelfall,
+bis der Mensch neu entscheidet. Der Kontext-Abschnitt zaehlt dabei bewusst nicht
+mit, denn dort stehen die Kennzeichnungszeilen selbst.
+
 ### Drei Titel-Praefixe, drei Sonderfaelle
 
 Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei
