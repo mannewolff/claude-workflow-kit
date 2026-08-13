@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.38.0] - 2026-08-13
+- Dokumentation: Pruefvorgabe, Verzicht und Verfall (#307)
+- implement-Skills: Verzicht als dritter Zustand (#306)
+- issue-review: Pruefvorgabe in Auswahl, Rundenzahl und Schritt 6 (#305)
+- night.mjs: Verzicht als zweiter Freigabegrund, auch im Dry-Run (#304)
+- issue update pflegt den Bezugsstand und sperrt maschinelle Verringerung (#303)
+- roles liefert die effektive Pruefvorgabe (#302)
+
 ## [1.37.2] - 2026-08-12
 - Pruefvorgabe parsen und Bezugsstand berechnen (#301)
 - Marker-Beispiele, Nacht-Ausnahme und Ablageort stufengerecht (#314)
