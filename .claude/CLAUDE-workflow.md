@@ -64,14 +64,25 @@ Nacht-Runner ungepruefte Ready-Issues zurueck.
 ### Die drei Pruefstufen
 
 Der Skill prueft drei verschiedene Dokumente. Welche Stufe greift, entscheidet
-das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis im
-Kontext-Abschnitt:
+das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis:
 
 | Stufe | Prueft | Nachweis |
 |-------|--------|----------|
 | `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue (Plandokument aus `/plan`) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
+
+**Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das
+Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format fuehren ihre
+Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
+
+| Dokument | Ort des Markers |
+|----------|-----------------|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und ggf. `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unveraendert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt kein eigenes
 Kommando je Stufe — welche greift, liest der Skill am Titel-Praefix ab. Das gilt
@@ -231,6 +242,30 @@ Abhaengigkeits-Konvention: exakt "Keine." oder explizite Referenzen der Form `Is
 Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein anderes Issue
 gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
+
+### Wie viel geprueft wird: zwei Zeilen im Kontext
+
+Der Kontext-Abschnitt kann festlegen, wie umfangreich das Issue vor dem GO
+geprueft wird. Zwei Zeilen gehoeren dazu — und nur eine davon schreibt der Mensch
+selbst:
+
+- `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**, im Kontext-Abschnitt.
+  Die Zahl ist die Zahl der Review-Runden, `Verzicht` heisst: bewusst ohne
+  Pruefung freigegeben. Ohne die Zeile gilt der Regelfall aus
+  `issueReview.rounds`.
+- `Pruefung-Stand: <hex>` — **maschinell gepflegt**, von `issue update` unter die
+  Vorgabezeile geschrieben. Nie von Hand anfassen: Wer sie aendert, laesst die
+  eigene Vorgabe verfallen.
+
+Eine **Verringerung** — `Verzicht` oder ein Wert unterhalb des Regelfalls — setzt
+nur der Mensch. Ein unbeaufsichtigter Lauf (gesetztes `KIT_AGENT_MODEL`, also der
+Nacht-Runner) wird dabei abgewiesen; er vergibt sich die Pruefung nie selbst.
+Erhoehungen sind immer erlaubt.
+
+Eine **inhaltliche Aenderung** — an Aufgabe, Akzeptanzkriterium oder
+Abhaengigkeiten — laesst die Vorgabe verfallen; danach gilt wieder der Regelfall,
+bis der Mensch neu entscheidet. Der Kontext-Abschnitt zaehlt dabei bewusst nicht
+mit, denn dort stehen die Kennzeichnungszeilen selbst.
 
 ### Drei Titel-Praefixe, drei Sonderfaelle
 

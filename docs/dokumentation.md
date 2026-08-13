@@ -634,13 +634,23 @@ Ein Issue ist die Quelle der Wahrheit für die Implementierung. Ein Fehler darin
 
 ### Drei Prüfstufen — die Prüfung wandert nach oben
 
-Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis im Kontext-Abschnitt:
+Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihren eigenen Nachweis:
 
 | Stufe | Prüft | Nachweis |
 |---|---|---|
 | `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+
+**Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format führen ihre Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
+
+| Dokument | Ort des Markers |
+|---|---|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und gegebenenfalls `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unverändert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
 
@@ -680,6 +690,24 @@ Welche Rolle welcher Reviewer übernimmt, lässt sich ablesen statt ausrechnen:
 ```bash
 node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5
 ```
+
+### Welche Dokumente drankommen
+
+**Ohne Argumente** nimmt `/issue-review` die Dokumente aus dem **Backlog**, die noch keinen Marker **ihrer Stufe** tragen. Ein bereits geprüftes Dokument läuft nicht erneut — und ein Marker der falschen Stufe zählt nicht: Ein `[Plan]`-Dokument mit `Plan-Review:` ist geprüft, eines mit `Issue-Review:` wäre es nicht.
+
+**Ready wird nie automatisch erfasst**, auch interaktiv nicht. Der Grund ist derselbe wie beim [Nacht-Review](#zweiter-modus-der-nacht-review): Zwischen Prüfung und Implementierung liegt dein GO. Ready heißt „freigegeben zur Umsetzung" — dorthin soll nichts Ungeprüftes mehr gelangen, also prüft der Skill davor.
+
+**Mit Nummern** arbeitet er genau die genannten ab — **unabhängig von Spalte und Marker**:
+
+```bash
+/issue-review #205 #207
+```
+
+Damit lässt sich ein bereits geprüftes Dokument erneut prüfen (etwa nachdem sich die Anforderung geändert hat), und ebenso ein Ready-Issue nachträglich.
+
+**Einzelne Issues ausnehmen** braucht keine Markierung am Ticket: Nenn sie einfach nicht. Wer von acht Ready-Issues zwei auslassen will, listet die anderen sechs auf. Aus dem Review ausgenommen zu sein heißt allerdings nicht, dass das Gate sie durchlässt — bei `"requiredBeforeReady": true` stellt der Nachtlauf ein Issue ohne `Issue-Review:`-Marker weiterhin zurück.
+
+`[Idee]`-Dokumente sind in jedem Fall ausgeschlossen, auch mit expliziter Nummer. Eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument; der Skill nennt sie in der Zusammenfassung, damit niemand sie für geprüft hält.
 
 ### Konfiguration
 
@@ -777,11 +805,13 @@ Die Befunde gehen als Board-Kommentar ans Issue — das ist Verlauf. Der **Body*
 
 Zwei Modelle können sich einig und trotzdem falsch sein; Übereinstimmung ist kein Wahrheitskriterium. Und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-Nach der Zustimmung trägt das Issue eine Marker-Zeile:
+Nach der Zustimmung trägt das Dokument die Marker-Zeile **seiner Stufe** — `Fachplan-Review:`, `Plan-Review:` oder `Issue-Review:`, nie eine andere. Für ein Arbeitspaket, geprüft auf der Stufe `issue` mit seinem einen Reviewer, sieht sie so aus:
 
 ```
 Issue-Review: codex (2026-08-06)
 ```
+
+Eine fachliche Anforderung trüge an derselben Stelle `Fachplan-Review: codex, sonnet (2026-08-06)`, ein Plandokument `Plan-Review: …`. Der Anker `Issue-Review:` bleibt dem Arbeitspaket vorbehalten: An ihm hängt das Gate, und ein Plan mit dieser Zeile sähe für den Nacht-Runner freigabereif aus.
 
 Wird der Vorschlag abgelehnt, entsteht **kein** Marker: Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
 
@@ -796,7 +826,11 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 
 Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
-Ein nächtlich gesetzter Marker ist als solcher erkennbar:
+**Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+
+Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen, und nachts schreibt niemand darin.
+
+Ein nächtlich gesetzter Marker — es kann nur einer der Stufe `issue` sein — ist als solcher erkennbar:
 
 ```
 Issue-Review: codex (2026-08-06, Nachtlauf)
@@ -808,9 +842,40 @@ Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Mark
 
 Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
 
+### Prüfumfang am Ticket: Vorgabe, Verzicht, Verfall
+
+Nicht jedes Arbeitspaket verdient denselben Aufwand. Ein Einzeiler mit offensichtlichem Kriterium braucht keine Runde durch ein fremdes Modell, ein architekturnahes Paket vielleicht zwei. Das entscheidest du am einzelnen Ticket — und ein Arbeitspaket steht deshalb in einem von **drei Zuständen**:
+
+| Zustand | Woran erkennbar | Was `/implement-next` und der Nacht-Runner tun |
+|---|---|---|
+| geprüft | Marker `Issue-Review: …`, im Umfang der Vorgabe bzw. des Regelfalls | umsetzen, kein Hinweis |
+| bewusst ohne Prüfung freigegeben | gültige Zeile `Pruefung: Verzicht` | umsetzen und das im Bericht vermerken — keine Rückfrage |
+| noch nicht geprüft | weder Marker noch gültiger Verzicht | interaktiv nachfragen, nachts bei `requiredBeforeReady` zurückstellen |
+
+Der mittlere Zustand ist der neue: Ein Verzicht ist **keine Lücke**, sondern eine Entscheidung. Ihn zur Rückfrage zu machen hieße, ihr zu widersprechen — deshalb ist er der zweite Freigabegrund am Gate, gleichwertig zum Marker.
+
+**Zwei Zeilen, zwei Besitzer.** Beide stehen im `## Kontext` des Arbeitspakets und sehen sich zum Verwechseln ähnlich. Geschrieben werden sie von verschiedenen Seiten:
+
+- `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**. Die Zahl ist die Zahl der Review-Runden, `Verzicht` heißt: ohne Prüfung freigegeben. Ohne die Zeile gilt der Regelfall aus `issueReview.rounds`.
+- `Pruefung-Stand: <hex>` — **schreibt die Maschine**: `issue update` setzt sie beim Speichern unter die Vorgabezeile. Von Hand anfassen entwertet die eigene Vorgabe, ohne dass eine Fehlermeldung darauf hinweist.
+
+Was tatsächlich gilt, lässt sich ablesen statt ausrechnen — die Felder `verzicht` und `vorgabeQuelle` (`issue` · `verfallen` · `config`) sagen es:
+
+```bash
+node .claude/kit/board.mjs issue-review roles --stufe issue --author claude-opus-5 --issue 307
+```
+
+**Der Verfall.** Der Stand ist ein SHA-256 über den Body **ohne** den Kontext-Abschnitt — also über Aufgabe, Akzeptanzkriterium und Abhängigkeiten samt allem Weiteren außerhalb des Kontexts. Ändert sich dort etwas, passt der gespeicherte Stand nicht mehr: Die Vorgabe ist verfallen, und es gilt wieder der Regelfall, bis du neu entscheidest. Das ist der Sinn der Zeile — eine Freigabe „das braucht keine Prüfung" gilt für die Aufgabe, die du gelesen hast, nicht für die, die danach hineingeschrieben wurde.
+
+Der Kontext-Abschnitt zählt dabei bewusst nicht mit, denn dort stehen die Kennzeichnungszeilen selbst — `Autor-Modell:`, `Issue-Review:`, die Vorgabe. Zählte er mit, wäre jede Markierung ihr eigener Verfall. Eine Ausnahmeliste einzelner Zeilen wäre die Alternative gewesen, und sie wäre dauerhafter Pflegeaufwand: Wer künftig eine Kennzeichnungszeile einführt und sie dort vergisst, erzeugte stillen Verfall.
+
+**Fehlt der Stand, gilt die Vorgabe.** Eine `Pruefung:`-Zeile ohne `Pruefung-Stand:` — etwa weil sie im Board-UI von Hand gesetzt wurde und nie ein `issue update` lief — ist voll wirksam. Ohne Bezugsstand lässt sich kein Verfall feststellen, und im Zweifel gilt die Entscheidung des Menschen und nicht ihre Annullierung durch eine fehlende Zeile.
+
+**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt auf der Stufe `issue` den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
+
 ### Was es kostet
 
-Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: `/issue-review` ohne Argumente nimmt das ganze Backlog, mit Nummern genau die genannten.
+Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert ist, kostet ein Plan mit dreizehn Arbeitspaketen 17 Läufe statt 26 — zweimal Anforderung, zweimal Plan, dann je einmal pro Paket. Das Verfahren lohnt sich bei Issues, die etwas kosten, wenn sie falsch sind — nicht bei jedem Einzeiler. Deshalb ist es opt-in: Ohne Argumente nimmt der Skill die ungeprüften Dokumente aus dem Backlog, mit Nummern genau die genannten (siehe [Welche Dokumente drankommen](#welche-dokumente-drankommen)).
 
 `rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
@@ -895,7 +960,30 @@ Die Kopfzeile nennt die Spalte auch dann, wenn kanban-kit sie nicht kennt. Das G
 
 **Der Nummernzähler beginnt oberhalb des alten Nummernraums.** Beim Umzug stand die höchste je vergebene GitHub-Nummer bei 296, `next_card_number` wurde auf 298 gesetzt. Der Zähler darf nie unter diesen Startwert zurückgesetzt werden: Sonst bekäme eine neue Karte eine Nummer, die auf GitHub bereits vergeben ist, und `#150` bezeichnete zwei verschiedene Dinge.
 
-**`tools/migrate-issues.mjs` ist ein Einmalwerkzeug** für den Tracker-Wechsel, kein Bestandteil des laufenden Workflows. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate).
+**`tools/migrate-issues.mjs`** war das Werkzeug des Umzugs und bleibt für Nachzügler nützlich. Es hat drei Läufe: `export` (liest GitHub), `import` (schreibt kanban-kit, idempotent über `externalKey`) und `verify` (vergleicht beide Seiten als Gate). Teil des laufenden Workflows ist es nicht — für neue Arbeit legt `/issues` direkt in kanban-kit an.
+
+### Ein einzelnes GitHub-Issue nachträglich überführen
+
+Der Normalfall nach einem Umzug: Jemand von außen meldet einen Bug auf GitHub, weil das Repository dort öffentlich ist. Das Issue soll in kanban-kit, ohne dass der Melder verlorengeht.
+
+```bash
+node tools/migrate-issues.mjs export
+```
+
+```bash
+node tools/migrate-issues.mjs import --file <exportdatei> --from 302 --to 302 --yes
+```
+
+`--from N --to N` mit derselben Nummer holt genau ein Issue. Was dabei erhalten bleibt und ein Copy-Paste nicht leistet:
+
+- Der **Quellverweis** steht als Kopfzeile im Body (`> Quelle: …`), die GitHub-Diskussion bleibt also erreichbar.
+- Die **Kommentare** wandern mit, jeweils mit Autor und Datum. Bei einem Fremdreport ist genau das der Wert — der Wortlaut des Melders bleibt lesbar.
+- Der Import ist **idempotent** über `externalKey`: Ein zweiter Lauf legt nichts doppelt an.
+- Die **Originalnummer** bleibt. Verweise aus Commit-Botschaften zeigen weiterhin auf dasselbe Ticket.
+
+Zwei Einschränkungen. `export` liest **alle** offenen Issues, nicht nur das gewünschte — einen Filter auf der Export-Seite gibt es nicht. Und vor dem allerersten `--yes`-Lauf eines Projekts verlangt das Werkzeug einen vollständigen `--dry-run`; in einem Repo, das den Umzug hinter sich hat, ist diese Bedingung erfüllt.
+
+Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh issue view <N> --json title,body` lesen und den Body per `board.mjs issue create --body -` anlegen. Dann fehlt allerdings der Quellverweis, und wer später wissen will, wer das gemeldet hat, findet es nicht mehr — bei einem Fremdreport ist das der falsche Weg.
 
 ### Voraussetzungen je nach Konfiguration
 

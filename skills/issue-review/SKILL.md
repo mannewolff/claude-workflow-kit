@@ -32,6 +32,8 @@ Relevant ist der Block `issueReview`:
 
 Fehlt der Block, sag das und beende — ohne Reviewer gibt es nichts zu tun.
 
+`rounds` ist der **Regelfall**, nicht die Rundenzahl dieses Laufs: Ein Ticket kann sie mit einer `Pruefung:`-Zeile überschreiben. Gelesen wird sie deshalb nie hier, sondern über `issue-review roles --issue <N>` (Schritt 2 und 4).
+
 ## Aufruf
 
 ```
@@ -68,7 +70,14 @@ node .claude/kit/board.mjs issue list --status backlog
 
 **Mit Argumenten:** genau die übergebenen Nummern, unabhängig von Spalte und Marker. Ein erneuter Review ist ausdrücklich erlaubt — etwa nachdem sich die Anforderung geändert hat.
 
-**Übersprungen werden** nur Issues mit Titel-Präfix `[Idee]` — eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument. Nenne sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+**Übersprungen werden** Dokumente aus zwei Gründen. Beide gehören in die Zusammenfassung, damit niemand ein übersprungenes Dokument für geprüft hält:
+
+1. **Titel-Präfix `[Idee]`** — eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument.
+2. **Ein gültiger, nicht verfallener Verzicht** (`Pruefung: Verzicht` im Kontext-Abschnitt). Der Mensch hat entschieden, dass dieses Dokument ohne Prüfung freigegeben wird — ein Review, der trotzdem liefe, würde diese Entscheidung überschreiben. Ob der Verzicht noch gilt, sagt nicht die Zeile allein: Maßgeblich ist das Feld `verzicht` der `roles`-Antwort (Schritt 2), denn nur sie kennt den Bezugsstand und damit den Verfall. Ist der Verzicht **verfallen**, ist er kein Ausschlussgrund — dann läuft der Review normal (Schritt 4).
+
+**Auch mit expliziter Nummer schließt ein gültiger Verzicht den Review aus.** Ein erneuter Review ist unabhängig vom Marker erlaubt, ein Verzicht ist aber keine Marker-Frage, sondern eine Entscheidung des Menschen. Sie wird **einmal sichtbar gemeldet**, danach endet der Lauf für dieses Dokument **ohne Reviewer-Start**:
+
+> #205 trägt `Pruefung: Verzicht` — bewusst ohne Prüfung freigegeben. Kein Reviewer gestartet.
 
 `[Fachlich]` und `[Plan]` werden **nicht mehr übersprungen**: Sie bestimmen die Prüfstufe (Schritt 1b).
 
@@ -90,12 +99,15 @@ Rollen, Reviewer-Zahl und die einzusetzenden Reviewer kommen aus:
 ```bash
 node .claude/kit/board.mjs issue-review roles \
   --stufe <fachlich|plan|issue> \
-  --author <modell>
+  --author <modell> \
+  --issue <N>
 ```
 
 `--author` ist Pflicht. Die Antwort liefert `rollen`, `reviewer` und `gewaehlt`; **`gewaehlt[i]` wird mit `rollen[i]` gepaart** — der erste gewählte Reviewer bekommt die erste Rolle. **Gestartet wird ausschließlich, was in `gewaehlt` steht.** Das stufenlose `reviewers`-Kommando wird für die Ausführung nicht mehr benutzt: Es liefert per Definition zwei Reviewer und würde die Besetzung der Stufe `issue` still verdoppeln.
 
 Die Antwort trägt außerdem `stufenQuelle`. Steht dort `"stufen"`, gilt die konfigurierte Besetzung; steht dort `"default"`, fehlt der `reviewStufen`-Block und es gilt der Legacy-Fallback (siehe Schritt 3).
+
+**`--issue <N>` ist in diesem Skill nicht optional.** Nur mit der Nummer liest das Kommando die Prüfvorgabe am Ticket und liefert die drei Felder `runden`, `verzicht` und `vorgabeQuelle` (Issue #302) — sie tragen die Auswahl (Schritt 1) und die Rundenzahl (Schritt 4). Ohne die Nummer antwortet es mit dem Regelfall und meldet `vorgabeQuelle: "config"`; die Entscheidung des Menschen am Ticket bliebe dann unsichtbar.
 
 **Auswahl ohne Argumente:** Erst alle Backlog-Dokumente laden, dann je Dokument die Stufe aus dem Titel bestimmen und **nur den Marker dieser Stufe** prüfen. Ein Marker einer anderen Stufe zählt nicht als Nachweis. Ohne diese Reihenfolge würde ein bereits geprüftes fachliches Dokument erneut ausgewählt, weil sonst auf `Issue-Review:` gefiltert wird. Mit expliziten Nummern bleibt ein erneuter Review unabhängig vom vorhandenen Marker erlaubt.
 
@@ -116,7 +128,7 @@ Das ist der einzige neue Stopp-Punkt und er kostet ein Wort. Ohne ihn prüft bei
 Steht das Autor-Modell fest, wird die Besetzung stufenbezogen abgefragt — für ein Arbeitspaket also:
 
 ```bash
-node .claude/kit/board.mjs issue-review roles --stufe issue --author <modell>
+node .claude/kit/board.mjs issue-review roles --stufe issue --author <modell> --issue <N>
 ```
 
 Meldet die Antwort `unterbesetzt: true`, läuft der Review trotzdem — aber die **erste Zeile** des Board-Kommentars sagt, mit wie vielen Reviewern gefahren wurde. Auf der Stufe `issue` heißt `unterbesetzt` allerdings: gar kein Reviewer. Dann gilt die Ausfall-Regel im Unterabschnitt zur Stufe `issue`.
@@ -381,7 +393,26 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 
 ### 4. Runden
 
-`issueReview.rounds` aus der Config, **Default 1**. Bei mehr als einer Runde bekommt die zweite Runde den bereits geschärften Body, nicht den ursprünglichen. Jede Runde erzeugt einen eigenen Board-Kommentar, damit der Verlauf lesbar bleibt.
+**Die Rundenzahl kommt aus dem Feld `runden` der `roles`-Antwort (Schritt 2), nicht aus der Config.** Das Kommando hat die Vorgabe am Ticket bereits mit dem Regelfall verrechnet und liefert den fertigen Wert. Wer daneben noch einmal selbst in `issueReview.rounds` sieht, baut eine zweite Wahrheit darüber, wie oft geprüft wird — und übergeht dabei genau die Entscheidung, die der Mensch am Ticket getroffen hat.
+
+Drei Lagen, ablesbar an `verzicht` und `vorgabeQuelle`:
+
+| Antwort | Was läuft | Was der Board-Kommentar sagt |
+|---|---|---|
+| `verzicht: true` | **kein Reviewer** | den Verzicht |
+| `vorgabeQuelle: "verfallen"` | Review normal mit `runden` (Regel-Rundenzahl) | dass eine Vorgabe verfallen ist |
+| `vorgabeQuelle: "issue"` oder `"config"` | Review mit `runden` | die Quelle der Rundenzahl |
+
+**Bei `verzicht: true` startet kein Reviewer** — auch nicht einer, auch nicht bei explizit übergebener Nummer (Schritt 1). Es entstehen keine Befunde, keine Synthese, kein Body-Vorschlag und **nie ein Marker**: Ein Verzicht ist keine Prüfung, und ein Marker behauptete das Gegenteil. Was bleibt, ist der Board-Kommentar — er ist die einzige Spur, dass hier bewusst nicht geprüft wurde:
+
+```
+Kein Review: `Pruefung: Verzicht` am Ticket — bewusst ohne Pruefung freigegeben.
+Kein Reviewer gestartet, kein Marker gesetzt.
+```
+
+**Bei `vorgabeQuelle: "verfallen"`** läuft der Review ganz normal mit der Regel-Rundenzahl, die `runden` liefert. Der Kommentar nennt den Verfall trotzdem — für den, der ihn morgens liest, ist „nie entschieden" etwas anderes als „entschieden, aber durch eine inhaltliche Änderung überholt". Wer nur das eine sieht, weiß nicht, dass er noch einmal entscheiden sollte.
+
+Bei mehr als einer Runde bekommt die zweite Runde den bereits geschärften Body, nicht den ursprünglichen. Jede Runde erzeugt einen eigenen Board-Kommentar, damit der Verlauf lesbar bleibt.
 
 Mehr als eine Runde findet erfahrungsgemäß vor allem Geschmacksfragen. Wenn die zweite Runde nichts mit Schweregrad BLOCKER oder WICHTIG mehr liefert, sag das — es ist die Information, ob sich weitere Runden lohnen.
 
@@ -465,7 +496,7 @@ SYNTHESE
 
 Kein Konsens-Automatismus: Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** in den Kontext-Abschnitt aufnehmen, wörtlich in einer dieser drei Formen:
+**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** aufnehmen, wörtlich in einer dieser drei Formen:
 
 ```
 Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
@@ -479,9 +510,26 @@ Beispiel für ein Arbeitspaket, das mit seinem einen Reviewer gelaufen ist:
 Issue-Review: codex (2026-08-06)
 ```
 
+**Wohin die Zeile gehört**, entscheidet das Format des Dokuments — nur das Arbeitspaket hat einen `## Kontext`:
+
+| Dokument | Ort des Markers |
+|---|---|
+| Arbeitspaket | im Abschnitt `## Kontext` |
+| fachliche Anforderung | im Abschnitt `## Ziel`, unmittelbar bei `Autor-Modell:` |
+| Plandokument | vor `## Ziel`, unmittelbar bei `Plan-Modell:` und gegebenenfalls `Fachliche Quelle:` |
+
+Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt unverändert — der Marker stellt sich dazu, er verdrängt nichts.
+
 Die Namen stammen aus `gewaehlt` (Schritt 1b), in Auswahlreihenfolge, und nennen die **tatsächlich gelaufenen** Reviewer — nicht eine feste Liste aus der Config. Bei einem erneuten Review wird der Marker **derselben** Stufe ersetzt, nicht dupliziert.
 
 **Der Anker `Issue-Review:` bleibt ausschliesslich dem Arbeitspaket vorbehalten.** An ihm hängt in `kit/night.mjs` das Gate `requiredBeforeReady`, also die Bedingung für die Freigabe zur Umsetzung. Trüge ein fachliches Dokument oder ein Plan denselben Marker, hielte der Nacht-Runner es für freigabereif und zöge es in die Implementierung. Ein Dokument einer anderen Stufe darf ihn deshalb nie tragen.
+
+**Die vorhandenen Zeilen `Pruefung:` und `Pruefung-Stand:` müssen dabei erhalten bleiben.** `issue update` prüft sie nicht: Der Body wird durchgeschrieben, wie er kommt. Eine Session, die den Body neu formuliert und die beiden Zeilen dabei vergisst, verliert sie stillschweigend — ohne Fehler, ohne Warnung. Wer den Body ersetzt, übernimmt **beide** Zeilen unverändert aus dem alten Stand. Es ist dieselbe Fehlerklasse wie bei `Autor-Modell:` in `/fachplan`, mit zwei zusätzlichen Folgen:
+
+- `Pruefung:` trägt die Vorgabe des Menschen. Fällt sie weg, gilt wieder der Regelfall — bei `Pruefung: 3` still weniger Prüfung als entschieden, bei `Pruefung: Verzicht` das Gegenteil des Entschiedenen.
+- Wo der Wegfall eine **Verringerung** wäre, weist `issue update` bei gesetztem `KIT_AGENT_MODEL` den Schreibzugriff ab (Issue #303). Dann bleibt nachts der Body ungeschrieben und der Marker ungesetzt: Der ganze Review ist gelaufen und verfällt an einer vergessenen Zeile.
+
+`Pruefung-Stand:` pflegt der Adapter selbst — er berechnet sie beim Schreiben neu, sofern der Body eine Vorgabe trägt. Sie mitzunehmen ist trotzdem richtig und sie von Hand zu ändern immer falsch: Ohne Vorgabezeile bekommt der neue Body auch keinen Stand.
 
 Geschrieben wird über den Adapter, nicht am Tracker vorbei:
 
@@ -539,7 +587,7 @@ Issue-Review: codex (2026-08-06, Nachtlauf)
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
 
-Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
+Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, kein Reviewer bei gültigem Verzicht (Schritt 1 und 4), Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
 
 ## Abschluss
 
@@ -552,6 +600,7 @@ Zusammenfassung über alle bearbeiteten Issues:
 - #207 → keine Funde, Marker gesetzt
 - #210 → 2 Funde, 0 übernommen / 2 verworfen, Vorschlag abgelehnt, kein Marker
 - #212 → übersprungen ([Idee]-Präfix)
+- #213 → übersprungen (`Pruefung: Verzicht`, gültig) — bewusst ohne Prüfung freigegeben
 - #214 → Reviewer `codex` ausgefallen (nicht startbar), nur protokolliert, kein Marker
 - #272 → fachliche Stufe, 2 Funde, 2 übernommen / 0 verworfen, Body übernommen, Marker `Fachplan-Review:` gesetzt
 ```
@@ -575,4 +624,6 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Kein Schreiben in eine fachliche Anforderung in einem unbeaufsichtigten Lauf** — bei Stufe `fachlich` weder `issue update` noch ein Marker, auch nicht bei befundfreiem Review. Dort stehen die Antworten des Product Owners
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Idee]`-Issues — `[Fachlich]` und `[Plan]` bestimmen dagegen die Stufe (Schritt 1b)
+- **Kein Reviewer bei gültigem, nicht verfallenem Verzicht** — auch nicht bei explizit übergebener Nummer. Der Verzicht wird gemeldet und protokolliert, nicht übergangen
+- **Kein Body-Rewrite ohne die Zeilen `Pruefung:` und `Pruefung-Stand:`** — sie werden aus dem alten Stand übernommen, sonst verfällt die Entscheidung des Menschen still (Schritt 6)
 - Kein Start, wenn Reviewer fehlen und der Mensch nicht gefragt wurde

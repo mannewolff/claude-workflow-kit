@@ -125,10 +125,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BOARD_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
   : join(__dirname, "board.mjs");
+
+// Der Parser der Pruefvorgabe kommt aus board.mjs und wird NICHT nachgebaut (Issue #304).
+// Eine zweite Regex fuer `Pruefung:` liefe frueher oder spaeter auseinander — und ein
+// Runner, der die Zeile anders liest als das Board, waere genau die zweite Wahrheit, die
+// dieses Kit ueberall vermeidet. board.mjs laeuft beim Import nicht los; sein Haupt-
+// programm liegt seit Issue #135 hinter einem CLI-Guard.
+//
+// Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
+// dann Auskunft geben, wenn NICHTS neben der Datei liegt (Issue #170) — ein statischer
+// Import scheitert vor jeder Zeile Code und nimmt genau diese Auskunft. Fehlt der Nachbar,
+// bleibt der Stub stehen; arbeitsfaehig ist der Runner ohne board.mjs ohnehin nicht, main()
+// bricht dafuer mit eigener Meldung ab.
+//
+// Bewusst der Nachbarpfad und nicht BOARD_PATH: KIT_ROOT verlegt die CLI-AUFRUFE in ein
+// fremdes Projekt (Test-Hook); eine reine Funktion holt man sich dort nicht her, sondern
+// aus dem board.mjs, das zu dieser Datei gehoert.
+const NACHBAR_BOARD = join(__dirname, "board.mjs");
+let parsePruefvorgabe = () => {
+  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
+};
+if (existsSync(NACHBAR_BOARD)) ({ parsePruefvorgabe } = await import("./board.mjs"));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.37.0";
+const KIT_VERSION = "1.38.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -354,6 +375,62 @@ function hasReviewMarker(body) {
   return /^\s*Issue-Review:\s*\S/im.test(body || "");
 }
 
+/**
+ * Der Freigabe-Befund eines Ready-Issues fuer das Gate `requiredBeforeReady` (#304).
+ *
+ * Zwei Gruende lassen ein Issue durch, und sie sind verschiedene Dinge:
+ *   `marker`  — es ist geprueft worden (Issue-Review-Marker im Body)
+ *   `verzicht`— der Mensch hat ausdruecklich ohne Pruefung freigegeben
+ *
+ * Drei Gruende halten es zurueck, und auch die duerfen nicht zu einem verschmelzen:
+ *   `ungeprueft` — nie entschieden
+ *   `verfallen`  — entschieden, aber durch eine inhaltliche Aenderung ueberholt
+ *   `ungueltig`  — die Zeile selbst ist kaputt
+ * Morgens verlangt jeder dieser drei einen anderen Handgriff; eine pauschale
+ * Meldung "ungeprueft" naehme dem Menschen genau diese Unterscheidung.
+ *
+ * Der Marker wird ZUERST geprueft, noch vor dem Parser. Ein geprueftes Issue soll an
+ * einem Formfehler in der `Pruefung:`-Zeile nicht haengenbleiben — das waere strenger
+ * als das Bestandsverhalten und stuende in keinem Verhaeltnis zum Anlass.
+ */
+function reviewFreigabe(body) {
+  if (hasReviewMarker(body)) return { frei: true, art: "marker" };
+  let vorgabe;
+  try {
+    vorgabe = parsePruefvorgabe(body || "");
+  } catch (e) {
+    return { frei: false, art: "ungueltig", detail: e.message };
+  }
+  // Der gefaehrlichste Fall zuerst: Ein Ticket, das nach der Freigabe inhaltlich
+  // veraendert wurde, darf nicht weiter ungeprueft durchlaufen.
+  if (vorgabe.verfallen) return { frei: false, art: "verfallen" };
+  if (vorgabe.wert === "verzicht") return { frei: true, art: "verzicht" };
+  // `Pruefung: 2` sagt "pruefe mit zwei Runden" — das ist keine Freigabe.
+  return { frei: false, art: "ungeprueft" };
+}
+
+/** Protokollzeile, Board-Kommentar und Dry-Run-Grund je Ablehnungsart (#304). */
+const GATE_ABLEHNUNG = {
+  ungeprueft: {
+    kurz: () => "ungeprueft, kein Issue-Review-Marker",
+    log: () => "uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).",
+    kommentar: (id) => `Ungeprueft — bitte erst /issue-review #${id} laufen lassen, dann wieder nach Ready.`,
+  },
+  verfallen: {
+    kurz: () => "Pruefvorgabe verfallen",
+    log: () => "zurueckgestellt: die Pruefvorgabe ist verfallen — der Inhalt hat sich seit der Entscheidung geaendert.",
+    kommentar: (id) =>
+      "Pruefvorgabe verfallen — der Inhalt hat sich seit der Entscheidung geaendert, damit gilt wieder der Regelfall. " +
+      `Bitte /issue-review #${id} laufen lassen oder die Zeile 'Pruefung:' neu setzen, dann wieder nach Ready.`,
+  },
+  ungueltig: {
+    kurz: () => "ungueltige Pruefvorgabe",
+    log: (detail) => `zurueckgestellt: ungueltige Pruefvorgabe (${detail}).`,
+    kommentar: (id, detail) =>
+      `Ungueltige Pruefvorgabe — ${detail} Bitte die Zeile 'Pruefung:' im Kontext-Abschnitt korrigieren, dann wieder nach Ready.`,
+  },
+};
+
 // SYNC: dieselben Werte wie REVIEW_STUFEN in kit/board.mjs (Issue #278). Bekommt
 // board.mjs eine vierte Stufe, muss sie hier mit — sonst nimmt der Runner sie als
 // unbekannten Wert an und bricht ab, waehrend der Skill sie kennt.
@@ -412,6 +489,26 @@ function isPlan(title) {
  * Liste — ein Lauf ohne Arbeit ist sonst im Protokoll nicht von einem abgearbeiteten
  * Board zu unterscheiden (dieselbe Ueberlegung wie bei der Label-Warnung, #179).
  */
+/**
+ * Gueltiger, nicht verfallener Verzicht am Dokument (Issue #304).
+ *
+ * Anders als im Gate wirft eine kaputte `Pruefung:`-Zeile hier nicht: Die Auswahl ist
+ * eine reine Funktion, und ein Tippfehler darf den ganzen Review-Lauf nicht anhalten.
+ * Das Dokument bleibt dann Kandidat — im Review laesst sich die Zeile reparieren, es
+ * davor auszuschliessen waere das Gegenteil des Gewollten.
+ *
+ * Eine VERFALLENE Vorgabe schliesst nicht aus: Sie ist ueberholt, es gilt wieder der
+ * Regelfall — und der heisst pruefen.
+ */
+function hatGueltigenVerzicht(body) {
+  try {
+    const { wert, verfallen } = parsePruefvorgabe(body || "");
+    return wert === "verzicht" && !verfallen;
+  } catch {
+    return false;
+  }
+}
+
 export function selectReviewCandidates(issues, opts = {}) {
   const label = opts.label ?? null;
   const stufe = opts.stufe ?? "issue";
@@ -428,6 +525,12 @@ export function selectReviewCandidates(issues, opts = {}) {
       // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
       // ist kein pruefbares Dokument (Issue #192).
       eintrag("Idee ([Idee])");
+    } else if (hatGueltigenVerzicht(issue.body)) {
+      // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
+      // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
+      // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
+      // Runner verbuchte diesen Kommentar als "Review mit Befund".
+      eintrag("bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)");
     } else if (stufe === "fachlich") {
       if (isFachlich(issue.title)) kandidaten.push(issue);
       else eintrag("kein fachliches Issue ([Fachlich])");
@@ -1397,7 +1500,22 @@ async function main() {
         continue;
       }
       const full = board("issue", "get", String(issue.id));
+      // Dasselbe Review-Gate wie im echten Lauf (Issue #304). Bis dahin lief es hier
+      // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
+      // wies Tickets als Session aus, die der echte Lauf zurueckstellt. Wer damit
+      // prueft, ob die Nacht laeuft, bekaeme eine Antwort ueber einen anderen Lauf.
+      let freigabe = { frei: true, art: "marker" };
+      if (config.issueReview?.requiredBeforeReady) {
+        freigabe = reviewFreigabe(full.body);
+        if (!freigabe.frei) {
+          log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (${GATE_ABLEHNUNG[freigabe.art].kurz()})`);
+          continue;
+        }
+      }
       const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
+      // Der Verzicht wird an der Session-Zeile mitgenannt, nicht in einer eigenen:
+      // Wer den Dry-Run liest, soll die Freigabe dort sehen, wo das Ticket steht.
+      const vermerk = freigabe.art === "verzicht" ? " (bewusst ohne Pruefung freigegeben)" : "";
       if (unmet.length > 0) {
         log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
       } else if (planned >= args.max) {
@@ -1405,7 +1523,7 @@ async function main() {
       } else {
         planned++;
         assumedDone.add(Number(issue.id));
-        log(`  #${issue.id} ${issue.title} -> Session ${planned}`);
+        log(`  #${issue.id} ${issue.title} -> Session ${planned}${vermerk}`);
       }
     }
     log(`Dry-Run beendet: ${planned} Session(s) wuerden starten.`);
@@ -1461,13 +1579,24 @@ async function main() {
     // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
     // ungepruftes Issue nicht ablehnen — er wuerde es implementieren, und die Maengel
     // fielen erst im Code auf.
-    if (config.issueReview?.requiredBeforeReady && !hasReviewMarker(full.body)) {
-      log(`#${top.id} uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Ungeprueft — bitte erst /issue-review #${top.id} laufen lassen, dann wieder nach Ready.`);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
-      continue;
+    //
+    // Seit Issue #304 hat das Gate einen zweiten Freigabegrund: den bewussten Verzicht
+    // (fachliche Quelle #285). Ein Ticket, das der Mensch ausdruecklich ohne Pruefung
+    // freigegeben hat, traegt nie einen Marker — es hier zurueckzustellen hiesse, seine
+    // Entscheidung jede Nacht aufs Neue zu ueberstimmen.
+    if (config.issueReview?.requiredBeforeReady) {
+      const freigabe = reviewFreigabe(full.body);
+      if (!freigabe.frei) {
+        const texte = GATE_ABLEHNUNG[freigabe.art];
+        log(`#${top.id} ${texte.log(freigabe.detail)}`);
+        board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${texte.kommentar(top.id, freigabe.detail)}`);
+        board("issue", "move", String(top.id), "backlog");
+        deferred++;
+        continue;
+      }
+      if (freigabe.art === "verzicht") {
+        log(`#${top.id} bewusst ohne Pruefung freigegeben (Pruefung: Verzicht), wird implementiert.`);
+      }
     }
     const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
     if (unmet.length > 0) {

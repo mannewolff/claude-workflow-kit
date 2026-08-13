@@ -9,6 +9,12 @@
 // Geprueft wird vor allem eines: dass ein Body mit Backticks, Anfuehrungszeichen,
 // Command-Substitution und Zeilenumbruechen **byte-identisch** ankommt. Das ist die
 // Stelle, an der ein Shell-Aufruf falsch waere (Issue #196).
+//
+// Seit Issue #303 liest `issue update` den alten Body, BEVOR es schreibt — die
+// Pruefvorgabe-Leitplanke braucht den Vergleich. Alle vier Adapterfaelle mocken
+// deshalb auch den Lesebefehl; ein Mock, der nur den Schreibbefehl kennt, faellt
+// hier durch. Der Lesefehler-Test haelt fest, was daran die Hauptsache ist: kein
+// Schreibzugriff auf halbem Wissen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -119,17 +125,46 @@ test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", NUR_PO
   try {
     fakeCli(dir, "gh", [
       { match: "^repo view", stdout: "besitzer/mein-repo\n" },
+      { match: "^issue view", stdout: { number: 42, title: "T", body: "## Kontext\n\nalt\n", state: "OPEN", comments: [] } },
       { match: "^issue edit", stdout: "" },
     ]);
     const res = runBoard(dir, ["issue", "update", "42", "--body", BOESER_BODY]);
     assert.equal(res.status, 0, res.stderr);
 
-    const call = aufrufe(dir, "gh").find((a) => a[0] === "issue" && a[1] === "edit");
+    const alle = aufrufe(dir, "gh");
+    const call = alle.find((a) => a[0] === "issue" && a[1] === "edit");
     assert.ok(call, "gh issue edit wurde nicht aufgerufen");
     assert.deepEqual(call.slice(0, 3), ["issue", "edit", "42"]);
     assert.ok(call.includes("--repo"));
     // Der Kern: der Body kommt als EIN Argument an, byte-identisch.
     assert.ok(call.includes(BOESER_BODY), "Body kam nicht unveraendert an");
+    // Read-before-write (Issue #303): Ohne den alten Body gaebe es nichts zu vergleichen.
+    const gelesen = alle.findIndex((a) => a[0] === "issue" && a[1] === "view");
+    assert.ok(gelesen !== -1, "der alte Body wurde nicht gelesen");
+    assert.ok(gelesen < alle.indexOf(call), "gelesen wurde erst nach dem Schreiben");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("issue update: ein Lesefehler loest keinen Schreibzugriff aus", NUR_POSIX, () => {
+  // Die gefaehrlichste Variante eines halben Wissens: Der alte Body ist unbekannt,
+  // also ist auch unbekannt, ob der neue die Pruefung verringert. Dann lieber nicht
+  // schreiben — ein durchgewinktes Update waere genau der Bypass, den #303 schliesst.
+  const dir = setupProjekt(GITHUB, "board-update-gh-lesefehler-");
+  try {
+    fakeCli(dir, "gh", [
+      { match: "^repo view", stdout: "besitzer/mein-repo\n" },
+      { match: "^issue view", stderr: "GraphQL: Could not resolve\n", exit: 1 },
+      { match: "^issue edit", stdout: "" },
+    ]);
+    const res = runBoard(dir, ["issue", "update", "42", "--body", BOESER_BODY]);
+    assert.notEqual(res.status, 0, "ein Lesefehler muss den Aufruf beenden");
+
+    assert.ok(
+      !aufrufe(dir, "gh").some((a) => a[0] === "issue" && a[1] === "edit"),
+      "trotz Lesefehler wurde geschrieben",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -142,10 +177,18 @@ const GITLAB = { codeHost: "gitlab", issueTracker: "gitlab" };
 test("issue update: GitLab ruft 'glab issue update' mit --description", NUR_POSIX, () => {
   const dir = setupProjekt(GITLAB, "board-update-glab-");
   try {
-    fakeCli(dir, "glab", [{ match: "^issue update", stdout: "" }]);
+    fakeCli(dir, "glab", [
+      { match: "^issue view", stdout: { iid: 7, title: "T", description: "## Kontext\n\nalt\n", state: "opened", labels: [] } },
+      { match: "^api projects", stdout: [] },
+      { match: "^issue update", stdout: "" },
+    ]);
     const res = runBoard(dir, ["issue", "update", "7", "--body", BOESER_BODY]);
     assert.equal(res.status, 0, res.stderr);
 
+    assert.ok(
+      aufrufe(dir, "glab").some((a) => a[0] === "issue" && a[1] === "view"),
+      "der alte Body wurde nicht gelesen (Issue #303)",
+    );
     const call = aufrufe(dir, "glab").find((a) => a[0] === "issue" && a[1] === "update");
     assert.ok(call, "glab issue update wurde nicht aufgerufen");
     assert.deepEqual(call.slice(0, 3), ["issue", "update", "7"]);
@@ -159,7 +202,7 @@ test("issue update: GitLab ruft 'glab issue update' mit --description", NUR_POSI
 // --- Toolbox (HTTP) ---
 
 test("issue update: Toolbox schickt den Body an das Item", async () => {
-  const KARTE = { id: 900, number: 9, title: "T", body: "alt", column: "BACKLOG", position: 0 };
+  const KARTE = { id: 900, number: 9, title: "T", body: "## Kontext\n\nalt\n", column: "BACKLOG", position: 0 };
   const { server, requests, host } = await starteServer((req) => {
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       return { status: 200, json: { BACKLOG: [KARTE] } };
@@ -177,6 +220,11 @@ test("issue update: Toolbox schickt den Body an das Item", async () => {
     const schreibend = requests.find((r) => r.method !== "GET" && r.url.includes("/items/900"));
     assert.ok(schreibend, "kein Schreibzugriff auf das Item");
     assert.equal(JSON.parse(schreibend.body).body, BOESER_BODY);
+    // Read-before-write (Issue #303): Der Lesezugriff liegt vor dem Schreibzugriff.
+    assert.ok(
+      requests.indexOf(requests.find((r) => r.method === "GET")) < requests.indexOf(schreibend),
+      "der alte Body wurde nicht vor dem Schreiben gelesen",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
     server.close();

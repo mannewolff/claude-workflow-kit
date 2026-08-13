@@ -31,12 +31,14 @@
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+                                    [--issue <N>]
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +46,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.37.0";
+const KIT_VERSION = "1.38.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -89,6 +91,9 @@ Nutzung:
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+                                    [--issue <N>]
+      --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
+      runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
 
   node board.mjs --version
 
@@ -1740,6 +1745,234 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
 }
 
+// ============================================================
+// Pruefvorgabe am Ticket (Issue #301, fachliche Quelle #285)
+// ============================================================
+//
+// Zwei Zeilen im Kontext-Abschnitt tragen die Entscheidung, wie oft ein Dokument
+// geprueft wird: `Pruefung: <1|2|3|Verzicht>` setzt der Mensch, `Pruefung-Stand:`
+// pflegt die Maschine. Weicht der Stand vom Bezugsstand des Bodys ab, hat sich
+// der Inhalt seit der Entscheidung geaendert — die Vorgabe ist verfallen.
+//
+// Beides lebt hier und nur hier. Der Nacht-Runner importiert diesen Parser,
+// statt die Zeilen mit einer zweiten Regex zu lesen: Ein `SYNC:`-Kommentar
+// erzwingt keine identische Semantik, und zwei Auslegungen derselben Zeile
+// waeren am Board nicht zu sehen.
+
+/** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
+const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
+const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
+const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
+const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const GUELTIGE_VORGABEN = new Map([
+  ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
+]);
+
+/** \r\n und einzelne \r zu \n — sonst haengt der Stand am Zeilenende des Editors. */
+function normalisiereZeilenenden(body) {
+  return String(body || "").replace(/\r\n?/g, "\n");
+}
+
+/**
+ * Zustandsautomat fuer Code-Fences, zeilenweise gefuettert.
+ *
+ * Liefert true, solange die Zeile zu einem Fence gehoert (die oeffnende und die
+ * schliessende Zeile eingeschlossen). Drei Stellen brauchen dieselbe Auslegung —
+ * Abschnittsgrenzen, Parser und das Setzen des Bezugsstands. Eine dritte Kopie der
+ * Bedingung waere die Stelle, an der die drei auseinanderlaufen, ohne dass es
+ * jemandem auffiele.
+ */
+function fenceLauf() {
+  let fence = null;
+  return (zeile) => {
+    const fm = zeile.match(FENCE_ZEILE);
+    if (fence) {
+      if (fm && fm[1][0] === fence.zeichen && fm[1].length >= fence.laenge && fm[2].trim() === "") fence = null;
+      return true;
+    }
+    if (fm) {
+      fence = { zeichen: fm[1][0], laenge: fm[1].length };
+      return true;
+    }
+    return false;
+  };
+}
+
+/**
+ * Grenzen des ersten `## Kontext`-Abschnitts im normalisierten Body.
+ *
+ * Code-Fences (drei oder mehr Backticks/Tilden) zaehlen nicht: Ein Issue, das
+ * das Vier-Abschnitt-Format als Beispiel zeigt, traegt `## Aufgabe` dort am
+ * Zeilenanfang — das darf den Abschnitt nicht beenden. Eingerueckte Codebloecke
+ * bleiben bewusst aussen vor.
+ *
+ * Mehrere Kontext-Abschnitte sind kein Fehler, es gilt der erste — genau so
+ * verhaelt sich `autorModellSicherstellen` heute schon.
+ */
+function kontextGrenzen(text) {
+  const imFence = fenceLauf();
+  let start = -1;
+  let offset = 0;
+  for (const zeile of text.split("\n")) {
+    if (!imFence(zeile)) {
+      if (start === -1) {
+        if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
+      } else if (zeile.startsWith("## ")) {
+        return { start, ende: offset };
+      }
+    }
+    offset += zeile.length + 1;
+  }
+  return start === -1 ? null : { start, ende: text.length };
+}
+
+/**
+ * Bezugsstand des Bodys: SHA-256 ueber alles ausser dem Kontext-Abschnitt.
+ *
+ * Der Kontext bleibt ganz aussen vor, weil dort ALLE Kennzeichnungszeilen
+ * stehen. Eine Ausnahmeliste einzelner Zeilen waere dauerhafter Pflegeaufwand:
+ * Wer kuenftig eine Kennzeichnungszeile einfuehrt und sie dort vergisst,
+ * erzeugte stillen Verfall.
+ */
+export function pruefvorgabeStand(body) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  const rest = grenzen ? text.slice(0, grenzen.start) + text.slice(grenzen.ende) : text;
+  const gestutzt = rest.replace(/^\n+/, "").replace(/\n+$/, "");
+  return createHash("sha256").update(gestutzt, "utf8").digest("hex");
+}
+
+/**
+ * Liest die Pruefvorgabe aus dem Kontext-Abschnitt.
+ *
+ * Rueckgabe: `{ wert: 1|2|3|"verzicht"|null, stand: string|null, verfallen: boolean }`
+ *
+ * Fehlt der Stand, ist `verfallen` immer false: Ohne Bezugsstand laesst sich
+ * kein Verfall feststellen, und im Zweifel gilt die menschliche Entscheidung —
+ * die Zeile kann im Board-UI gesetzt worden sein, ohne dass je ein
+ * `issue update` lief.
+ */
+export function parsePruefvorgabe(body) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  if (!grenzen) return { wert: null, stand: null, verfallen: false };
+
+  const vorgaben = [];
+  const staende = [];
+  const imFence = fenceLauf();
+  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
+    if (imFence(zeile)) continue;
+    const vorgabe = zeile.match(PRUEFUNG_ZEILE);
+    if (vorgabe) vorgaben.push(vorgabe[1]);
+    const stand = zeile.match(PRUEFUNG_STAND_ZEILE);
+    if (stand) staende.push(stand[1]);
+  }
+
+  if (vorgaben.length > 1) {
+    throw new BoardError(`Mehrere 'Pruefung:'-Zeilen im Kontext-Abschnitt (${vorgaben.length}). Genau eine ist erlaubt.`);
+  }
+  if (staende.length > 1) {
+    throw new BoardError(`Mehrere 'Pruefung-Stand:'-Zeilen im Kontext-Abschnitt (${staende.length}). Hoechstens eine ist erlaubt.`);
+  }
+
+  let wert = null;
+  if (vorgaben.length === 1) {
+    const roh = vorgaben[0].toLowerCase();
+    if (!GUELTIGE_VORGABEN.has(roh)) {
+      throw new BoardError(`Ungueltiger Wert in 'Pruefung: ${vorgaben[0]}'. Erlaubt: 1, 2, 3 oder Verzicht.`);
+    }
+    wert = GUELTIGE_VORGABEN.get(roh);
+  }
+
+  let stand = null;
+  if (staende.length === 1) {
+    const roh = staende[0].toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(roh)) {
+      throw new BoardError(`Ungueltiger Wert in 'Pruefung-Stand: ${staende[0]}'. Erwartet: 64 Hex-Zeichen.`);
+    }
+    stand = roh;
+  }
+
+  return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
+}
+
+/**
+ * Setzt `Pruefung-Stand:` unmittelbar unter die Vorgabezeile (Issue #303).
+ *
+ * Eine vorhandene Standzeile faellt weg, egal wo im Kontext sie lag — sonst haette
+ * der Body danach zwei, und `parsePruefvorgabe` wiese ihn ab. Zeilen in Fences
+ * bleiben unangetastet: Dort steht ein Beispiel, keine Vorgabe.
+ *
+ * Der Stand selbst haengt nur am Body AUSSERHALB des Kontexts. Die eingefuegte
+ * Zeile veraendert ihn also nicht — es braucht keine zweite Runde.
+ */
+function mitPruefstand(body, stand) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  if (!grenzen) return body;
+
+  const imFence = fenceLauf();
+  const zeilen = [];
+  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
+    if (imFence(zeile)) { zeilen.push(zeile); continue; }
+    if (PRUEFUNG_STAND_ZEILE.test(zeile)) continue;
+    zeilen.push(zeile);
+    if (PRUEFUNG_ZEILE.test(zeile)) zeilen.push(`Pruefung-Stand: ${stand}`);
+  }
+  return text.slice(0, grenzen.start) + zeilen.join("\n") + text.slice(grenzen.ende);
+}
+
+/**
+ * Der Umfang, der nach dem Schreiben dieses Bodys tatsaechlich gilt.
+ *
+ * `verfallenZaehlt` trennt die beiden Seiten des Vergleichs: Fuer den ALTEN Body
+ * macht eine verfallene Vorgabe den Regelfall gueltig — sie ist ueberholt. Fuer den
+ * NEUEN zaehlt der mitgelieferte Stand nicht, weil er ohnehin gleich ueberschrieben
+ * wird. Wuerde er zaehlen, waere die Leitplanke mit einem Handgriff zu umgehen:
+ * `Pruefung: Verzicht` plus irgendein Stand saehe als "verfallen" nach einer
+ * ERHOEHUNG auf den Regelfall aus — und der frisch gesetzte Stand machte den
+ * Verzicht unmittelbar danach gueltig.
+ */
+function effektiverUmfang(body, regel, verfallenZaehlt) {
+  const { wert, verfallen } = parsePruefvorgabe(body);
+  if (wert === null || (verfallen && verfallenZaehlt)) return regel;
+  return wert === "verzicht" ? 0 : wert;
+}
+
+/**
+ * Human-only-Leitplanke fuer die Pruefvorgabe (Issue #303, fachliche Quelle #285).
+ *
+ * Eine Verringerung darf nur ein Mensch setzen. Diese Forderung ist nicht von
+ * allein erfuellt: Der Nacht-Review schreibt bei Stufe `issue` den geschaerften
+ * Body selbst — per `issue update` mit gesetztem `KIT_AGENT_MODEL`. Deshalb liegt
+ * die Regel im Adapter und nicht in einem Prompt (Prinzip aus Issue #122).
+ *
+ * Verglichen werden EFFEKTIVWERTE, nicht Zeilen. Eine fehlende Zeile im neuen Body
+ * ist keine Loeschung, sondern der Regelfall: Stand vorher `Pruefung: 3` bei
+ * Regelfall 1, ist das eine Verringerung; stand vorher nichts, aendert sich nichts.
+ * Erhoehungen bleiben immer erlaubt — sie verringern nichts.
+ *
+ * Liefert den zu schreibenden Body; wirft, wenn nicht geschrieben werden darf.
+ */
+export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
+  const regel = regelRunden();
+  const alt = effektiverUmfang(altBody, regel, true);
+  const neu = effektiverUmfang(neuBody, regel, false);
+
+  if (neu < alt && (env.KIT_AGENT_MODEL || "").trim() !== "") {
+    throw new BoardError(
+      `Verringerung der Pruefung (${alt} -> ${neu}) setzt nur ein Mensch. ` +
+      "Ein unbeaufsichtigter Lauf (KIT_AGENT_MODEL gesetzt) vergibt sie nie sich selbst — " +
+      "die Zeile 'Pruefung:' unveraendert aus dem alten Stand uebernehmen.",
+    );
+  }
+
+  // Ohne Vorgabezeile bleibt der Body unangetastet: Ein Stand ohne Vorgabe traegt
+  // keine Aussage, und der Regelfall braucht keinen Bezugspunkt.
+  if (parsePruefvorgabe(neuBody).wert === null) return neuBody;
+  return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
@@ -1856,7 +2089,13 @@ async function issueComment(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  await tracker.updateIssue(id, { body: leseTextQuelle(args.body, args["body-file"], "body") });
+  const neu = leseTextQuelle(args.body, args["body-file"], "body");
+  // Read before write (Issue #303): Ohne den alten Body laesst sich nicht sagen, ob
+  // der neue die Pruefung verringert. Scheitert das Lesen, endet der Aufruf hier —
+  // ein Schreibzugriff auf halbem Wissen waere genau der Bypass, den die Leitplanke
+  // schliessen soll.
+  const { body: alt } = await tracker.getIssue(id);
+  await tracker.updateIssue(id, { body: pruefvorgabeDurchsetzen(alt || "", neu) });
   out({ ok: true, id });
 }
 
@@ -1957,6 +2196,17 @@ async function kontextLastLog(args) {
 
 const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
+
+/**
+ * Der Regelfall: wie oft geprueft wird, wenn das Ticket nichts anderes vorgibt.
+ *
+ * Bewusst ohne die Validierung aus `issueReviewConfig`: Die Pruefvorgabe-Leitplanke
+ * in `issue update` braucht nur diese Zahl. Eine kaputte Reviewer-Liste duerfte
+ * nicht dazu fuehren, dass sich kein Issue-Body mehr schreiben laesst.
+ */
+function regelRunden(config = loadConfig()) {
+  return (config.issueReview || {}).rounds || ISSUE_REVIEW_DEFAULT_ROUNDS;
+}
 
 // Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
 // das einzelne Arbeitspaket. Jede schaut anders hin und ist anders besetzt — fachlich
@@ -2109,7 +2359,7 @@ function issueReviewConfig() {
   const block = config.issueReview || {};
   const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
-    rounds: block.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS,
+    rounds: regelRunden(config),
     reviewers,
     pairs: validatePairs(block.pairs, reviewers),
     // `reviewStufen` steht auf oberster Ebene, nicht in `issueReview`: Die Besetzung
@@ -2242,7 +2492,42 @@ function issueReviewReviewers(args) {
 }
 
 /**
- * Besetzung und Blickwinkel einer Pruefstufe (Issue #278).
+ * Die effektive Pruefvorgabe eines Tickets (Issue #302).
+ *
+ * Ohne `--issue` gilt der Regelfall aus der Config — das ist das Bestandsverhalten
+ * und bleibt es. Mit `--issue` entscheidet die Zeile am Ticket, sofern sie gueltig
+ * und nicht verfallen ist.
+ *
+ * `verfallen` bekommt einen EIGENEN Quellenwert, obwohl die Rundenzahl dieselbe ist
+ * wie bei "config": Nur er sagt, dass dort einmal etwas stand. Wer morgens den
+ * Nachtbericht liest, soll "nie entschieden" von "entschieden, aber ueberholt"
+ * unterscheiden koennen.
+ */
+async function pruefvorgabeFuerRoles(args) {
+  const konfig = { runden: issueReviewConfig().rounds, verzicht: false, vorgabeQuelle: "config" };
+  if (args.issue === undefined) return konfig;
+  const id = args.issue === true ? fail("--issue braucht einen Wert") : String(args.issue);
+
+  const tracker = resolveTracker(loadConfig());
+  const { body } = await tracker.getIssue(id);
+  // Wirft bei mehreren Zeilen oder unbekanntem Wert — der Aufruf endet dann mit der
+  // Meldung des Parsers. Eine kaputte Vorgabe still zum Regelfall zu machen waere die
+  // gefaehrlichere Variante: Ein Tippfehler in `Pruefung:` bliebe unsichtbar.
+  const { wert, verfallen } = parsePruefvorgabe(body || "");
+
+  if (wert === null) return konfig;
+  if (verfallen) return { ...konfig, vorgabeQuelle: "verfallen" };
+  return {
+    // Bei Verzicht laeuft keine Runde; die Aussage traegt `verzicht`, die 0 ist die
+    // dazu passende Rundenzahl (derselbe Effektivwert wie in der Leitplanke aus #303).
+    runden: wert === "verzicht" ? 0 : wert,
+    verzicht: wert === "verzicht",
+    vorgabeQuelle: "issue",
+  };
+}
+
+/**
+ * Besetzung, Blickwinkel und Pruefvorgabe einer Pruefstufe (Issue #278, #302).
  *
  * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
  * `pairs` und fuer den Selbstausschluss. Ohne ihn koennte der Befehl genau das nicht
@@ -2251,8 +2536,12 @@ function issueReviewReviewers(args) {
  * Zwei Quellen, zwei Felder: `quelle` bleibt die Quelle der Reviewer-AUSWAHL
  * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
  * STUFENBESETZUNG ("stufen" | "default").
+ *
+ * `runden`, `verzicht` und `vorgabeQuelle` kommen additiv dazu und sind immer da:
+ * Ein Kommando soll die vollstaendige Pruefvorgabe liefern, damit der Skill sie nicht
+ * aus einer zweiten Quelle (der Config) zusammensuchen muss.
  */
-function issueReviewRoles(args) {
+async function issueReviewRoles(args) {
   const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
   if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
   if (!REVIEW_STUFEN.includes(stufe)) {
@@ -2261,6 +2550,7 @@ function issueReviewRoles(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
   if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
 
+  const vorgabe = await pruefvorgabeFuerRoles(args);
   const { reviewers, pairs, reviewStufen } = issueReviewConfig();
   const { reviewer, rollen } = reviewStufen.stufen[stufe];
   out({
@@ -2270,6 +2560,7 @@ function issueReviewRoles(args) {
     stufenQuelle: reviewStufen.stufenQuelle,
     autor,
     ...pickReviewers(reviewers, autor, reviewer, pairs),
+    ...vorgabe,
   });
 }
 
