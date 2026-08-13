@@ -859,6 +859,32 @@ Der mittlere Zustand ist der neue: Ein Verzicht ist **keine Lücke**, sondern ei
 - `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**. Die Zahl ist die Zahl der Review-Runden, `Verzicht` heißt: ohne Prüfung freigegeben. Ohne die Zeile gilt der Regelfall aus `issueReview.rounds`.
 - `Pruefung-Stand: <hex>` — **schreibt die Maschine**: `issue update` setzt sie beim Speichern unter die Vorgabezeile. Von Hand anfassen entwertet die eigene Vorgabe, ohne dass eine Fehlermeldung darauf hinweist.
 
+So sieht ein Arbeitspaket aus, das du bewusst ohne Prüfung freigibst:
+
+```markdown
+## Kontext
+
+Autor-Modell: claude-opus-5
+Pruefung: Verzicht
+Pruefung-Stand: 4f2b8e1c…
+
+Die Fußzeile nennt noch die alte Domain.
+
+## Aufgabe
+
+`src/footer.html`: `example.org` durch `example.com` ersetzen.
+
+## Akzeptanzkriterium
+
+- Kein Vorkommen von `example.org` mehr im Repository.
+
+## Abhängigkeiten
+
+Keine.
+```
+
+Getippt hast du davon **eine** Zeile: `Pruefung: Verzicht`. Die Standzeile darunter kam beim Speichern durch `issue update` dazu — der Hash ist hier gekürzt, echt sind es 64 Hex-Zeichen. Ab jetzt gilt: Solange Aufgabe, Akzeptanzkriterium und Abhängigkeiten so bleiben, setzt der Nacht-Runner das Paket um, ohne es zurückzustellen. Schreibst du ein zweites Akzeptanzkriterium dazu, passt der Stand nicht mehr, und es gilt wieder der Regelfall.
+
 Was tatsächlich gilt, lässt sich ablesen statt ausrechnen — die Felder `verzicht` und `vorgabeQuelle` (`issue` · `verfallen` · `config`) sagen es:
 
 ```bash
