@@ -113,6 +113,25 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+/**
+ * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
+ * einzige Auslegung fuer Abschnittsgrenzen, Parser und Bezugsstand, und ihr eigener
+ * Kommentar warnt vor einer weiteren. Der Import ist nebenwirkungsfrei — die CLI von
+ * board.mjs haengt an ihrem runAsCli-Guard.
+ *
+ * Bewusst DYNAMISCH und abgefangen, nicht statisch. night.mjs traegt seit Issue #170
+ * die Zusage, `--version` und `--help` auch als allein kopierte Datei zu beantworten
+ * — genau dort will man wissen, aus welchem Kit-Stand eine gefundene Datei stammt.
+ * Ein statischer Import scheitert vor der ersten Codezeile und nimmt diese Auskunft
+ * mit; der Ersatz unten laesst sie durch und meldet den fehlenden Nachbarn erst,
+ * wenn ihn wirklich jemand braucht. Ehrlich ist das, weil night.mjs ohne board.mjs
+ * ohnehin nichts tun kann: Jeder Board-Zugriff startet sie als Subprozess.
+ */
+const { fenceLauf } = await import("./board.mjs").catch(() => ({
+  fenceLauf: () => {
+    throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
+  },
+}));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
@@ -550,13 +569,53 @@ export function selectReviewCandidates(issues, opts = {}) {
 
 // --- Abhaengigkeiten ---
 
-// Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
-// Bewusst nur nackte #N-Tokens: Referenzen wie `owner/repo`#245 (Backtick/Slash davor)
-// sind fremde Repos und werden nicht als lokale Issues gewertet.
-function parseDeps(body) {
-  const m = (body || "").match(/##\s*Abh(?:ä|ae)ngigkeiten([\s\S]*?)(?=\n##\s|$)/i);
-  if (!m) return [];
-  const refs = [...m[1].matchAll(/(?<![\w`/#])#(\d+)/g)].map((x) => Number(x[1]));
+const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
+const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
+
+/**
+ * Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
+ *
+ * Bewusst nur nackte #N-Tokens: Referenzen wie `owner/repo`#245 (Backtick/Slash
+ * davor) sind fremde Repos und werden nicht als lokale Issues gewertet.
+ *
+ * Die Ueberschrift zaehlt nur als EIGENE ZEILE und nur AUSSERHALB eines Code-Fence
+ * (Issue #308). Vorher traf der Ausdruck auch eine Nennung im Fliesstext und nahm
+ * die erste Fundstelle — bei einem Issue, das ueber das Issue-Format selbst
+ * handelt, las er dann einen Teil des Aufgabentextes. Das Schadensbild geht in
+ * beide Richtungen und faellt am Board nie auf: Eine echte Referenz im richtigen
+ * Abschnitt wird unsichtbar (der Runner implementiert zu frueh), oder eine
+ * Referenz im falsch gelesenen Bereich erfindet eine Abhaengigkeit (das Issue
+ * bleibt dauerhaft liegen).
+ *
+ * Die Fence-Regel gilt an BEIDEN Enden: Eine `##`-Zeile innerhalb eines Fence
+ * beendet den echten Abschnitt nicht. Sonst haette ein Beispielblock im Abschnitt
+ * selbst ihn vorzeitig geschlossen — zwei Auslegungen, beide mit dem Anspruch,
+ * "Fences ausnehmen" zu erfuellen.
+ *
+ * Bei mehreren echten Ueberschriften gilt die LETZTE: In einem korrekt
+ * formatierten Issue ist der Abschnitt der letzte des Dokuments, und ein
+ * vorangestelltes Beispiel ausserhalb eines Fence bleibt damit wirkungslos.
+ */
+export function parseDeps(body) {
+  const zeilen = String(body || "").split(/\r\n|\r|\n/);
+  const imFence = fenceLauf();
+  const ausserhalb = [];
+  let start = -1;
+
+  for (let i = 0; i < zeilen.length; i++) {
+    ausserhalb[i] = !imFence(zeilen[i]);
+    if (ausserhalb[i] && DEPS_UEBERSCHRIFT.test(zeilen[i])) start = i;
+  }
+  if (start < 0) return [];
+
+  let ende = zeilen.length;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (ausserhalb[i] && ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
+  }
+
+  const abschnitt = zeilen.slice(start + 1, ende).join("\n");
+  const refs = [...abschnitt.matchAll(LOKALE_REFERENZ)].map((x) => Number(x[1]));
   return [...new Set(refs)];
 }
 

@@ -1865,7 +1865,7 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
 const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
 const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
-const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
 ]);
@@ -1883,8 +1883,14 @@ function normalisiereZeilenenden(body) {
  * Abschnittsgrenzen, Parser und das Setzen des Bezugsstands. Eine dritte Kopie der
  * Bedingung waere die Stelle, an der die drei auseinanderlaufen, ohne dass es
  * jemandem auffiele.
+ *
+ * Seit Issue #308 ist es eine vierte: `parseDeps` in `kit/night.mjs` importiert die
+ * Funktion von hier. night.mjs ruft board.mjs sonst als Subprozess auf — fuer eine
+ * reine Regel waere das der falsche Weg, und eine Kopie waere genau die Kopie, vor
+ * der dieser Kommentar warnt. Der Import ist nebenwirkungsfrei: Die CLI haengt am
+ * runAsCli-Guard.
  */
-function fenceLauf() {
+export function fenceLauf() {
   let fence = null;
   return (zeile) => {
     const fm = zeile.match(FENCE_ZEILE);
