@@ -52,24 +52,24 @@
     ],
     "pairs": {
       "opus": [
-        "codex",
+        "fable",
         "sonnet"
       ],
       "sonnet": [
-        "codex",
+        "fable",
         "opus"
       ],
       "fable": [
-        "codex",
+        "sonnet",
         "opus"
       ],
       "haiku": [
-        "codex",
+        "opus",
         "sonnet"
       ],
       "codex": [
         "opus",
-        "sonnet"
+        "fable"
       ]
     }
   },
