@@ -98,7 +98,14 @@ Issue-Review: opus, sonnet (2026-08-06, Nachtlauf)
 ## Abhaengigkeiten
 
 Keine."`;
-const FAKE_KOMMENTAR = `echo "$NIGHT_PROMPT" >> aufrufe.log; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "BLOCKER: fehlt was"`;
+// Zwei Kommentare: Befunde und der uebernehmbare Body-Vorschlag. Seit Issue #310
+// verlangt das Gate beides — einfache Quotes, damit sh die Zeilenumbrueche nicht
+// literal weitergibt.
+const FAKE_KOMMENTAR = `echo "$NIGHT_PROMPT" >> aufrufe.log; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "BLOCKER: fehlt was"; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text '## Body-Vorschlag, Runde 1
+
+## Kontext
+
+Geschaerfter Text.'`;
 const FAKE_STUMM = 'echo "$NIGHT_PROMPT" >> aufrufe.log';
 
 function aufrufe(dir) {
@@ -119,7 +126,10 @@ test("Marker gesetzt -> geprueft ohne Befund, Exit 0", NUR_POSIX, () => {
   });
 });
 
-test("nur ein Kommentar -> geprueft mit Befund, Exit 0, kein Fehlschlag", NUR_POSIX, () => {
+// Seit Issue #310 gehoert zu "mit Befund" auch der uebernehmbare Body-Vorschlag:
+// Befunde ohne ihn sind die halbe Arbeit und zaehlen als "Schaerfung fehlt" (eigene
+// Tests in night-body-vorschlag.test.mjs). Der Fake schreibt ihn deshalb mit.
+test("Kommentare mit Body-Vorschlag -> geprueft mit Befund, Exit 0, kein Fehlschlag", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const id = backlogIssue(dir, "Ein Issue", OHNE_MARKER);
     const res = run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: FAKE_KOMMENTAR });
