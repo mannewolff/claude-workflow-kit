@@ -306,6 +306,11 @@ Leere Pflichtabschnitte werden ausdruecklich mit `- Keine.` ausgewiesen. Das
 Format ist zugleich der Maszstab der Pruefstufe `plan`: Ohne festgelegte Form
 kann ein Pruefer nur Geschmack aeussern.
 
+**Done setzt ausschliesslich der Mensch** — auch hier. Ein Plandokument darf bis
+zum Abschluss seiner Arbeitspakete als Klammer in **In review** offen bleiben,
+damit der Zusammenhang waehrend der Umsetzung sichtbar ist; ebenso gut kann es
+direkt nach Done gehen. Beides ist zulaessig, kein Skill bewegt es von selbst.
+
 **Ideen** (`[Idee]`) sind ohne `/plan`-Zyklus kein implementierbares Issue. Ohne
 das Gate wuerde eine Session sie zwar korrekt ablehnen, aber der Runner kann
 diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist
