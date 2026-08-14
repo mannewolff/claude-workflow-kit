@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.38.1] - 2026-08-14
+- Windows-CI: migrate-issues-Tests nehmen das Fake-gh, nicht das echte (#315)
+- board.mjs: toolbox.ideaStored gilt ohne Angabe als false (#313)
+- board.mjs: issue get liefert labels in allen vier Adaptern (#312)
+- night.mjs: Review ohne Body-Vorschlag ist kein Erfolg (#310)
+- night.mjs: parseDeps erkennt die Abhaengigkeits-Ueberschrift zuverlaessig (#308)
+- Dokumentation: Lebenszyklus auch fuer Plandokumente (#299)
+- kontext paths findet die Projektnotiz, statt sie zu konstruieren (#286)
+- board.mjs: Labels setzen und entfernen (#249)
+- Neue Spezifiskation zum spec driven development
+- docs: Beispiel fuer ein Arbeitspaket mit Pruefung: Verzicht
+
 ## [1.38.0] - 2026-08-13
 - Dokumentation: Pruefvorgabe, Verzicht und Verfall (#307)
 - implement-Skills: Verzicht als dritter Zustand (#306)
