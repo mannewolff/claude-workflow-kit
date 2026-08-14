@@ -1635,7 +1635,7 @@ export function mergeKontextConfig(globalCfg, localCfg) {
  * Ohne `vault` ist das Ergebnis mode "degraded" statt eines Fehlers: /kontext und
  * /document haben dafuer einen dokumentierten Modus ohne persistentes Memory.
  */
-export function resolveKontextPaths({ cfg = {}, project, date }) {
+export function resolveKontextPaths({ cfg = {}, project, date, projectNoteFile = null, parentNoteFile = null }) {
   const projectName = project || cfg.project || "";
   const parentProject = cfg.parentProject || null;
   // projectDocs sind Glob-Muster relativ zum PROJEKT-Verzeichnis, keine Vault-Pfade:
@@ -1662,11 +1662,52 @@ export function resolveKontextPaths({ cfg = {}, project, date }) {
     project: projectName,
     parentProject,
     log: join(vault, logPath.replaceAll("{date}", date).replaceAll("{project}", projectName)),
-    projectNote: join(vault, "Projekte", notizOrdner, `${projectName}.md`),
-    parentNote: parentProject ? join(vault, "Projekte", parentProject, `${parentProject}.md`) : null,
+    // Ohne uebergebenen Dateinamen bleibt es beim konstruierten — das ist der Fall
+    // der Erstanlage und zugleich die Form, in der diese Funktion ohne Vault
+    // aufrufbar bleibt (Issue #286).
+    projectNote: join(vault, "Projekte", notizOrdner, projectNoteFile || `${projectName}.md`),
+    parentNote: parentProject
+      ? join(vault, "Projekte", parentProject, parentNoteFile || `${parentProject}.md`)
+      : null,
     always: (cfg.always || []).map((datei) => join(vault, datei)),
     projectDocs,
   };
+}
+
+/**
+ * Waehlt aus den Dateinamen eines Notizordners den tatsaechlichen Namen der Notiz
+ * (Issue #286). Reine Funktion ueber Namen — der Dateisystem-Zugriff liegt im
+ * Wrapper, wie bei pickLatestLog/kontextLastLog.
+ *
+ * Der Vault gibt die Schreibweise vor, nicht der Repo-Name: Ein Ordner
+ * `Projekte/shell-app/` mit der Notiz `Shell-App.md` ist gewachsene Konvention, und
+ * Projekte sollen ihre Ablage nicht nach dem Werkzeug umbenennen muessen. Auf einem
+ * case-insensitiven Dateisystem faellt der Unterschied nicht auf; auf einem
+ * case-sensitiven legt /document eine ZWEITE Notiz an, und ab da laeuft die Historie
+ * doppelt weiter, ohne dass ein Schreibvorgang fehlschlaegt.
+ *
+ * Vier Ausgaenge:
+ *   1. genau eine .md im Ordner            -> ihr Name (siehe `alleinstehend`)
+ *   2. keine oder keine passende .md       -> null (Erstanlage, konstruierter Pfad)
+ *   3. genau ein case-insensitiver Treffer -> dessen Name
+ *   4. mehrere Treffer                     -> kollision, der Aufrufer bricht ab
+ *
+ * `alleinstehend: false` schaltet Regel 1 ab. Im Multi-Repo-Fall teilen sich
+ * Dach- und Service-Notiz EIN Verzeichnis; dort wuerde "die einzige Datei ist es"
+ * beide auf dieselbe Datei zeigen lassen — und /document schriebe den Stand des
+ * einen Service in die Notiz des Gesamtsystems.
+ */
+export function pickNoteFile(fileNames, notizName, { alleinstehend = true } = {}) {
+  const leer = { name: null, kollision: null };
+  const mds = (fileNames || []).filter((n) => n.toLowerCase().endsWith(".md"));
+  if (mds.length === 0) return leer;
+  if (mds.length === 1 && alleinstehend) return { name: mds[0], kollision: null };
+
+  const ziel = notizName.toLowerCase();
+  const treffer = mds.filter((n) => n.toLowerCase() === ziel);
+  if (treffer.length === 0) return leer;
+  if (treffer.length === 1) return { name: treffer[0], kollision: null };
+  return { name: null, kollision: treffer };
 }
 
 /** Ein Datum ist nur gueltig, wenn es den Tag auch wirklich gibt: 2026-13-99 nicht. */
@@ -2261,11 +2302,61 @@ function kontextOption(args, name) {
   return args[name];
 }
 
+/**
+ * Liest die Dateinamen eines Notizordners (Issue #286).
+ *
+ * Ein fehlender Ordner ist der Normalfall der Erstanlage und liefert []. Jeder
+ * ANDERE Fehler — der Pfad ist eine Datei, das Verzeichnis ist nicht lesbar —
+ * bricht ab: Ihn wie einen leeren Ordner zu behandeln hiesse, still auf den
+ * konstruierten Namen zurueckzufallen und genau die zweite Notiz anzulegen, die
+ * dieses Issue verhindert.
+ */
+function leseNotizOrdner(ordner) {
+  try {
+    return readdirSync(ordner);
+  } catch (e) {
+    if (e.code === "ENOENT") return [];
+    fail(`Notizordner nicht lesbar: ${ordner} (${e.code || e.message})`);
+  }
+}
+
+// Macht aus einer Mehrdeutigkeit einen Abbruch. Ein stiller Griff ins Ungewisse
+// waere genau der Fehler, den Issue #286 behebt — deshalb Exit 1 mit beiden Namen,
+// statt eine der beiden Dateien zu raten.
+function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
+  const { name, kollision } = pickNoteFile(dateien, notizName, { alleinstehend });
+  if (kollision) {
+    fail(
+      `Mehrdeutige Notiz in ${ordner}: ${kollision.join(", ")}. ` +
+      "Die Dateinamen unterscheiden sich nur in der Gross-/Kleinschreibung — " +
+      "im Vault auf einen Namen zusammenfuehren."
+    );
+  }
+  return name;
+}
+
 // Praezedenz des Projektnamens: --project > cfg.project > Repo-Name > basename(cwd).
+//
+// Der Dateisystem-Zugriff liegt hier und nicht in resolveKontextPaths: Die Funktion
+// traegt den Vertrag "rein, ohne Dateisystem" und bleibt damit ohne vorhandenen
+// Vault aufrufbar — dieselbe Naht wie bei pickLatestLog/kontextLastLog (Issue #286).
 async function kontextPaths(args) {
   const cfg = loadKontextConfig();
   const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
-  out(resolveKontextPaths({ cfg, project, date: kontextOption(args, "date") || heute() }));
+  const date = kontextOption(args, "date") || heute();
+  const basis = resolveKontextPaths({ cfg, project, date });
+  if (basis.mode === "degraded") return out(basis);
+
+  // Mit parentProject liegen Dach- und Service-Notiz im selben Ordner; er wird
+  // einmal gelesen und beide Namen daraus aufgeloest.
+  const parent = basis.parentProject;
+  const ordner = join(basis.vault, "Projekte", parent || basis.project);
+  const dateien = leseNotizOrdner(ordner);
+  out(resolveKontextPaths({
+    cfg, project, date,
+    projectNoteFile: waehleNotiz(dateien, `${basis.project}.md`, ordner, !parent),
+    parentNoteFile: parent ? waehleNotiz(dateien, `${parent}.md`, ordner, false) : null,
+  }));
 }
 
 // Der juengste vorhandene Log-Eintrag desselben Projekts, als Anknuepfung fuer /document.
