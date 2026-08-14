@@ -634,12 +634,13 @@ class GitHubIssueTracker {
 
   async getIssue(id) {
     const repo = this._repo();
-    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments"]);
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels"]);
     return {
       id: String(data.number),
       title: data.title,
       body: data.body,
       status: null, // Board-Status nicht im Issue-Objekt, erfordert Project-Abfrage
+      labels: labelNamesFrom(data.labels),
       comments: normalizeComments(data.comments),
     };
   }
@@ -825,13 +826,14 @@ class GitLabIssueTracker {
 
   async getIssue(id) {
     const data = execJSON("glab", ["issue", "view", String(id), "--output", "json"]);
-    const labelNames = (data.labels || []).map((l) => l.name || l);
+    const labelNames = labelNamesFrom(data.labels);
     const status = labelToStatus(labelNames, this._cfg, data.state) || null;
     return {
       id: String(data.iid || data.id),
       title: data.title,
       body: data.description,
       status,
+      labels: labelNames,
       comments: this._notes(id),
     };
   }
@@ -1031,7 +1033,7 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
-    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
+    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1391,6 +1393,7 @@ class ToolboxIssueTracker {
       title: item.title,
       body: item.body,
       status: item.status,
+      labels: labelNamesFrom(item.labels),
       comments: await this._comments(item.id),
     };
   }
@@ -1422,8 +1425,10 @@ class ToolboxIssueTracker {
     // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
     // ungefiltert bleibt die stabile numerische Sortierung.
     if (!status) filtered.sort((a, b) => a.number - b.number);
-    // labels erst echt gefuellt, sobald kanbancompat sie exponiert (mannewolff/kanban-kit#457);
-    // bis dahin liefert die Karten-API kein labels-Feld -> [] (rueckwaertskompatibel).
+    // Die Karten-API liefert Labels — gegen die Live-Instanz belegt am 2026-08-12
+    // (Issue #312). Eine aeltere Antwort ohne das Feld bleibt bei [], deshalb der
+    // Normalisierer statt eines direkten Zugriffs. Offen ist bei diesem Adapter
+    // allein der SCHREIBpfad (mannewolff/kanban-kit#457, siehe labelIssue).
     return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
   }
 
@@ -1495,9 +1500,13 @@ class ToolboxIssueTracker {
 
 // Normalisiert die roh vom Backend gelieferten Labels auf ein flaches Array von
 // Namen: GitLab liefert Objekte ({name}), andere Backends evtl. nackte Strings,
-// oder das Feld fehlt ganz. Fehlform oder fehlendes Feld -> []. Von GitLab- und
-// Toolbox-listIssues geteilt, damit Aufrufer (z. B. night.mjs Routing-Label,
-// Issue #159) verlaesslich ein Array bekommen (Issue #158).
+// oder das Feld fehlt ganz. Fehlform oder fehlendes Feld -> [].
+//
+// Von `listIssues` UND `getIssue` aller Tracker geteilt (Issue #312), damit
+// dieselbe Karte ueber beide Wege dieselben Labels liefert. Aufrufer (z. B. das
+// Routing-Label in night.mjs, Issue #159) bekommen verlaesslich ein Array — ein
+// fehlendes Feld wuerde sonst still zu "keine Labels" statt zu einem Fehler
+// (Issue #158).
 export function labelNamesFrom(rawLabels) {
   if (!Array.isArray(rawLabels)) return [];
   return rawLabels

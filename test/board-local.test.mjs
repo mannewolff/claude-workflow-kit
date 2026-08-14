@@ -100,7 +100,7 @@ test("get liefert alle Frontmatter-Felder und den Body", () => {
     const geholt = board(dir, "issue", "get", "0003");
     assert.deepEqual(geholt, {
       id: "0003", type: "task", parent: "0001", title: "Gelesen",
-      status: "ready", created: "2026-01-02", body: "Der Body.\n",
+      status: "ready", created: "2026-01-02", labels: [], body: "Der Body.\n",
     });
   });
 });
@@ -282,5 +282,34 @@ test("create legt das issues-Verzeichnis an, wenn es fehlt", () => {
   mitProjekt((dir) => {
     board(dir, "issue", "create", "--title", "Legt Verzeichnis an");
     assert.deepEqual(readdirSync(join(dir, "issues")), ["0001.md"]);
+  });
+});
+
+// --- Labels bei `issue get` (Issue #312) ---
+//
+// listIssues zerlegte den kommaseparierten Frontmatter-String bereits, _read nicht.
+// Beide teilen sich jetzt denselben Helfer — zwei Lesarten desselben Feldes waeren
+// die Stelle, an der sie auseinanderlaufen.
+
+test("get liefert die Labels aus dem Frontmatter als Array", () => {
+  mitProjekt((dir) => {
+    schreibeIssue(dir, "0007.md", '---\nid: "0007"\nstatus: ready\ntitle: Mit Labels\nlabels: kit:nightrun, fix\n---\nText\n');
+    assert.deepEqual(board(dir, "issue", "get", "7").labels, ["kit:nightrun", "fix"]);
+  });
+});
+
+test("get ohne labels-Zeile im Frontmatter liefert ein leeres Array, nie undefined", () => {
+  mitProjekt((dir) => {
+    schreibeIssue(dir, "0007.md", '---\nid: "0007"\nstatus: ready\ntitle: Ohne Labels\n---\nText\n');
+    assert.deepEqual(board(dir, "issue", "get", "7").labels, []);
+  });
+});
+
+test("get und list liefern fuer dieselbe Datei dieselben Labels", () => {
+  mitProjekt((dir) => {
+    schreibeIssue(dir, "0007.md", '---\nid: "0007"\nstatus: ready\ntitle: Mit Labels\nlabels: kit:nightrun, fix\n---\nText\n');
+    const ausGet = board(dir, "issue", "get", "7").labels;
+    const ausList = board(dir, "issue", "list").find((i) => i.id === "0007").labels;
+    assert.deepEqual(ausGet, ausList);
   });
 });

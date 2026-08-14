@@ -122,7 +122,7 @@ test("get liefert die Karte samt Kommentaren", async () => {
       const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
       assert.equal(res.status, 0, res.stderr);
       assert.deepEqual(JSON.parse(res.stdout), {
-        id: "7", title: "Karte 7", body: "Body 7", status: "ready",
+        id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [],
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
       });
     }
@@ -431,4 +431,54 @@ test("Fehlerantwort ohne JSON-Rumpf faellt auf den HTTP-Status zurueck", async (
     assert.equal(res.status, 1);
     assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 503/);
   });
+});
+
+// --- Labels bei `issue get` (Issue #312) ---
+//
+// Die Karten-API liefert Labels (gegen die Live-Instanz belegt am 2026-08-12);
+// getIssue reichte sie nur nicht durch. Eine aeltere Antwort ohne das Feld bleibt
+// bei [] — rueckwaertskompatibel, aber nie undefined.
+
+test("get liefert die Labels als Namen-Array", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items"
+      ? { status: 200, json: gruppiert([karte(7, "READY", { labels: ["kit:nightrun", "fix"] })]) }
+      : { status: 200, json: [] }),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.deepEqual(JSON.parse(res.stdout).labels, ["kit:nightrun", "fix"]);
+    },
+  );
+});
+
+test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items"
+      ? { status: 200, json: gruppiert([karte(7, "READY")]) }
+      : { status: 200, json: [] }),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.deepEqual(JSON.parse(res.stdout).labels, []);
+    },
+  );
+});
+
+test("get und list liefern fuer dieselbe Karte dieselben Labels", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items"
+      ? { status: 200, json: gruppiert([karte(7, "READY", { labels: [{ name: "kit:nightrun" }] })]) }
+      : { status: 200, json: [] }),
+    async (dir) => {
+      const geholt = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+      const gelistet = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
+      assert.equal(geholt.status, 0, geholt.stderr);
+      assert.equal(gelistet.status, 0, gelistet.stderr);
+      assert.deepEqual(
+        JSON.parse(geholt.stdout).labels,
+        JSON.parse(gelistet.stdout).find((i) => i.id === "7").labels,
+      );
+    },
+  );
 });

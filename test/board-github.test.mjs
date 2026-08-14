@@ -80,6 +80,7 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
       title: "Ein Issue",
       body: "Der Body",
       status: null, // Board-Status steht nicht im Issue-Objekt
+      labels: [], // Antwort ohne Label-Feld -> leeres Array (Issue #312)
       comments: [{ author: "mannewolff", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
     });
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /issue view 42 --repo besitzer\/mein-repo --json number,title,body,state,comments/);
@@ -542,5 +543,51 @@ test("Leeres stderr eines gh-Fehlschlags liefert trotzdem eine Meldung", NUR_POS
     assert.match(res.stderr, /Fehler: \S/);
   }, {
     regeln: [{ match: "^issue view", exit: 3 }],
+  });
+});
+
+// --- Labels bei `issue get` (Issue #312) ---
+//
+// `issue list` lieferte Labels, `issue get` nicht — und der Fehler war still: Jeder
+// Aufrufer schreibt `(issue.labels || [])`, ein fehlendes Feld wird damit zu einem
+// leeren Array. Wer ein Label ueber `issue get` prueft, bekommt "kein Label" und
+// glaubt es.
+
+const GH_MIT_LABELS = {
+  match: "^issue view",
+  stdout: {
+    number: 42, title: "Ein Issue", body: "Der Body", state: "OPEN", comments: [],
+    labels: [{ name: "kit:nightrun" }, { name: "fix" }],
+  },
+};
+
+test("get liefert die Labels als Namen-Array", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(board(dir, "issue", "get", "42").labels, ["kit:nightrun", "fix"]);
+    assert.match(aufrufZeilen(dir, "gh").join("\n"), /--json number,title,body,state,comments,labels/);
+  }, { regeln: [GH_MIT_LABELS] });
+});
+
+test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(board(dir, "issue", "get", "42").labels, []);
+  }, {
+    regeln: [{
+      match: "^issue view",
+      stdout: { number: 42, title: "Ohne Labels", body: "", state: "OPEN", comments: [] },
+    }],
+  });
+});
+
+test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const ausGet = board(dir, "issue", "get", "42").labels;
+    const ausList = board(dir, "issue", "list").find((i) => i.id === "42").labels;
+    assert.deepEqual(ausGet, ausList);
+  }, {
+    regeln: [GH_MIT_LABELS, {
+      match: "^issue list",
+      stdout: [{ number: 42, title: "Ein Issue", body: "Der Body", labels: [{ name: "kit:nightrun" }, { name: "fix" }] }],
+    }],
   });
 });
