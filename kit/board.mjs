@@ -23,6 +23,10 @@
  *   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
  *       '-' liest von stdin. Fuer lange Texte (Review-Befunde) der bevorzugte Weg:
  *       keine Datei, die jemand aufraeumen muss (Issue #270).
+ *   node board.mjs issue label add <id> <name>
+ *   node board.mjs issue label remove <id> <name>
+ *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
+ *       aendert `issue move` (Issue #249).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -83,6 +87,9 @@ Nutzung:
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
       '-' liest von stdin; fuer lange Texte der bevorzugte Weg (Issue #270).
+  node board.mjs issue label add <id> <name>
+  node board.mjs issue label remove <id> <name>
+      Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -747,6 +754,16 @@ class GitHubIssueTracker {
     const repo = this._repo();
     exec("gh", ["issue", "edit", String(id), "--repo", repo, "--body", body]);
   }
+
+  // gh setzt und entfernt Labels namentlich und additiv: Die uebrigen Labels des
+  // Issues bleiben unberuehrt, und beide Richtungen sind von sich aus idempotent.
+  // Eine unbekannte Labeldefinition meldet gh mit Exit != 0 — das schlaegt bewusst
+  // durch, damit eine nie gesetzte Zeichnung nicht als gesetzt gilt.
+  async labelIssue(id, name, aktion) {
+    const repo = this._repo();
+    const flag = aktion === "add" ? "--add-label" : "--remove-label";
+    exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+  }
 }
 
 function githubStatusName(status, config) {
@@ -905,6 +922,14 @@ class GitLabIssueTracker {
     // Bei GitLab heisst der Body 'description' — dasselbe Flag wie in createIssue.
     exec("glab", ["issue", "update", String(id), "--description", body]);
   }
+
+  // Dieselben Flags wie in moveIssue, nur mit genau einem Namen und ohne die
+  // Status-Labels anzufassen: Die Sperre gegen Spaltennamen sitzt im Dispatcher,
+  // bevor irgendein Adapter gerufen wird.
+  async labelIssue(id, name, aktion) {
+    const flag = aktion === "add" ? "--label" : "--unlabel";
+    exec("glab", ["issue", "update", String(id), flag, name]);
+  }
 }
 
 class GitLabCodeHost {
@@ -954,6 +979,16 @@ function parseFrontmatter(content) {
 function serializeFrontmatter(meta, body) {
   const lines = Object.entries(meta).map(([k, v]) => `${k}: ${v}`);
   return `---\n${lines.join("\n")}\n---\n${body}`;
+}
+
+// Labels des lokalen Trackers liegen als kommaseparierter Frontmatter-String —
+// parseFrontmatter kann kein YAML-Array (Issue #158/#159). Lesen und Schreiben
+// teilen sich diese Form, damit listIssues und labelIssue nicht zwei Lesarten
+// desselben Feldes entwickeln.
+function labelsAusFrontmatter(meta) {
+  return typeof meta.labels === "string" && meta.labels.trim()
+    ? meta.labels.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
 }
 
 function issuesDir(config) {
@@ -1042,11 +1077,7 @@ class LocalIssueTracker {
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
-        // Labels als kommaseparierter Frontmatter-String (parseFrontmatter kann kein
-        // YAML-Array) -> Namen-Array, analog zu den anderen Trackern (Issue #158/#159).
-        const labels = typeof meta.labels === "string" && meta.labels.trim()
-          ? meta.labels.split(",").map((s) => s.trim()).filter(Boolean)
-          : [];
+        const labels = labelsAusFrontmatter(meta);
         return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", labels, body };
       })
       // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
@@ -1084,6 +1115,23 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const { meta } = parseFrontmatter(readFileSync(p, "utf-8"));
     // Nur der Body wird ersetzt; Status, Titel und Labels gehoeren anderen Kommandos.
+    writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
+  }
+
+  // Nur das Feld `labels` wird angefasst — alle uebrigen Metadaten und der Body
+  // gehen unveraendert durch serializeFrontmatter zurueck. Bleibt kein Label uebrig,
+  // verschwindet das Feld ganz: `labels: ` waere beim naechsten Lesen zwar ebenfalls
+  // ein leeres Array, aber eine Zeile, die etwas zu behaupten scheint.
+  async labelIssue(id, name, aktion) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const { meta, body } = parseFrontmatter(readFileSync(p, "utf-8"));
+    const vorhanden = labelsAusFrontmatter(meta);
+    const neu = aktion === "add"
+      ? (vorhanden.includes(name) ? vorhanden : [...vorhanden, name])
+      : vorhanden.filter((l) => l !== name);
+    if (neu.length > 0) meta.labels = neu.join(", ");
+    else delete meta.labels;
     writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
   }
 }
@@ -1425,6 +1473,19 @@ class ToolboxIssueTracker {
       // Backend das PUT als Vollersatz, ginge er sonst verloren.
       body: JSON.stringify({ title: item.title, body }),
     });
+  }
+
+  // Kein Schreibpfad: Die PAT-geschuetzte kanbancompat-API bietet kein atomares
+  // Hinzufuegen oder Entfernen eines Labels per Name (mannewolff/kanban-kit#457).
+  // Ein erfundener Aufruf waere hier keine Implementierung, sondern eine erfundene
+  // API — und eine, die die ganze Label-Liste ersetzt, waere fuer diesen Zweck
+  // unbrauchbar, weil sie die uebrigen Labels der Karte mitloescht.
+  async labelIssue() {
+    throw new BoardError(
+      "Labels schreiben kann der toolbox-Adapter noch nicht: Die Kanban-API bietet kein " +
+      "atomares Hinzufuegen/Entfernen eines Labels per Name (mannewolff/kanban-kit#457). " +
+      "Wird nachgereicht, sobald der Server es anbietet."
+    );
   }
 }
 
@@ -2024,6 +2085,57 @@ async function issueMove(tracker, args) {
   out({ ok: true, id, status: toStatus });
 }
 
+const LABEL_AKTIONEN = ["add", "remove"];
+
+// Abbruch mit Hilfe: dieselbe Form wie die Dispatcher-Zweige fuer unbekannte Befehle.
+function labelFail(msg) {
+  process.stdout.write(HELP);
+  fail(msg);
+}
+
+/**
+ * `issue label add|remove <id> <name>` — zeichnet ein Issue (Issue #249).
+ *
+ * Die Operandenpruefung laeuft vollstaendig VOR dem Adapter: Ein Schreibzugriff auf
+ * halbem Wissen — falsche ID, halber Name — waere schlimmer als eine Fehlermeldung,
+ * und bei den externen Trackern ist er nicht ohne Weiteres zurueckzunehmen.
+ *
+ * Verboten sind Komma und Zeilenumbruch im Namen. Das Komma folgt aus dem lokalen
+ * Speicherformat (kommaseparierter Frontmatter-String, siehe labelsAusFrontmatter):
+ * Ein Name mit Komma liesse sich daraus nicht mehr eindeutig zurueckgewinnen. Ein
+ * Verbot bei allen vier Trackern statt nur bei local, damit derselbe Aufruf nicht je
+ * nach Projekt etwas anderes bedeutet.
+ *
+ * Leerzeichen und Doppelpunkt bleiben erlaubt und gehen als EIN argv-Element durch —
+ * `kit:klaeren` und `needs: triage` sind gaengige Labelnamen.
+ */
+async function issueLabel(tracker, config, args) {
+  const [aktion, id, name, ...zuviel] = args._;
+  if (!LABEL_AKTIONEN.includes(aktion)) {
+    labelFail(`Unbekannter label-Befehl: '${aktion ?? ""}'. Erwartet: ${LABEL_AKTIONEN.join(" | ")}`);
+  }
+  if (!id) labelFail("id ist erforderlich: board.mjs issue label add <id> <name>");
+  if (!name) labelFail("name ist erforderlich: board.mjs issue label add <id> <name>");
+  if (zuviel.length > 0) {
+    labelFail(`Zu viele Argumente: '${zuviel.join(" ")}'. Erwartet genau <id> und <name>.`);
+  }
+  if (/[,\n]/.test(name)) {
+    labelFail(`Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '${name}'`);
+  }
+
+  // Spaltennamen sind bei GitLab selbst Labels — ohne diese Sperre koennte das
+  // generische Label-Kommando `issue move` umgehen und den Boardzustand
+  // beschaedigen. Die Sperre gilt bei allen Trackern: Ein Kommando, das je nach
+  // Projekt einmal den Status aendert und einmal nicht, ist die schlechtere Wahl.
+  // Verglichen wird exakt — nur der wortgleiche Name ist das Statuslabel.
+  if (Object.values(columnLabels(config)).includes(name)) {
+    fail(`Status-Label \`${name}\` nur ueber \`issue move\` aendern`);
+  }
+
+  await tracker.labelIssue(id, name, aktion);
+  out({ ok: true, id, label: name, aktion });
+}
+
 /**
  * Loest den Text eines Schreibbefehls aus Argument, Datei oder stdin auf (Issue #270).
  *
@@ -2100,7 +2212,8 @@ async function issueUpdate(tracker, args) {
 }
 
 async function dispatchIssue(command, args) {
-  const tracker = resolveTracker(loadConfig());
+  const config = loadConfig();
+  const tracker = resolveTracker(config);
   switch (command) {
     case "create":  return issueCreate(tracker, args);
     case "get":     return issueGet(tracker, args);
@@ -2109,6 +2222,7 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
+    case "label":   return issueLabel(tracker, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
