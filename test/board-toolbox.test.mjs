@@ -183,17 +183,19 @@ test("epics vertraegt eine Antwort, die kein Array ist", async () => {
 // --- Anlegen ---
 
 test("create legt eine Karte an und liefert die Board-Nummer", async () => {
+  // Ausdruecklich im Pool-Modus: Seit Issue #313 ist das Direktanlegen die Vorgabe,
+  // und dieser Test prueft den Payload OHNE `direct`.
   await mitBoard(standardAntwort, async (dir, requests, host) => {
     const res = await runBoardAsync(dir, ["issue", "create", "--title", "Neu", "--body", "Autor-Modell: m\nText"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
 
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items");
-    // Weder `direct` noch `ideaStored`: Der Pool ist die Vorgabe, und das tote
-    // Wire-Feld wird seit Issue #295 in keinem Modus mehr gesendet.
+    // Weder `direct` noch `ideaStored`: Der Pool ist ausdruecklich gewaehlt, und das
+    // tote Wire-Feld wird seit Issue #295 in keinem Modus mehr gesendet.
     assert.deepEqual(JSON.parse(post.body), { title: "Neu", body: "Autor-Modell: m\nText", column: "BACKLOG" });
     assert.equal(post.headers["x-kanban-token"], "test-token");
-  });
+  }, { config: { toolbox: { ideaStored: true } } });
 });
 
 // kanban-kit >= 1.5 legt Creates als board-lose Idee im Pool an: nur { id }, die
@@ -208,7 +210,8 @@ test("create meldet eine Pool-Idee als pending", async () => {
         id: null, ideaId: "80", pending: true, url: `${host}/kanban`,
         hinweis: "Als Idee im Projekt-Ideen-Pool angelegt; die Board-Nummer entsteht beim Einplanen.",
       });
-    }
+    },
+    { config: { toolbox: { ideaStored: true } } }
   );
 });
 
@@ -224,6 +227,22 @@ test("create schickt bei toolbox.ideaStored: false ein direct: true", async () =
     assert.ok(!("ideaStored" in payload), "das tote Wire-Feld darf nicht mehr mitgehen");
     assert.equal(payload.column, "BACKLOG");
   }, { config: { toolbox: { ideaStored: false } } });
+});
+
+// Der eigentliche Nachweis von Issue #313: OHNE den Schluessel gilt das
+// Direktanlegen. Der alte Code verglich strikt auf `false` — ein fehlendes Feld
+// lenkte die Karte damit in den Pool, ohne Nummer, in keiner Spalte. Aufgefallen
+// ist das niemandem, weil dieses Repo den Wert explizit setzt und das Dogfooding
+// deshalb am Default vorbeilaeuft.
+test("create schickt ohne toolbox.ideaStored ein direct: true", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Ohne Schluessel"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
+    assert.equal(payload.direct, true, "ohne Angabe muss direkt angelegt werden");
+    assert.ok(!("ideaStored" in payload), "das tote Wire-Feld darf nicht mitgehen");
+    assert.equal(payload.column, "BACKLOG");
+  });
 });
 
 test("create schickt bei toolbox.ideaStored: true weder direct noch ideaStored", async () => {
@@ -248,8 +267,10 @@ test("create bricht ab, wenn direct angefordert war und keine Nummer kam", async
       assert.match(res.stderr, /Direktes Anlegen lieferte keine Board-Nummer/);
       assert.ok(!/pending/.test(res.stdout), "kein pending im Erfolgskanal");
       assert.ok(!/Ideen-Pool/.test(res.stdout), "kein Pool-Hinweis");
+      // Ohne gesetzten Schluessel kann diesen Abbruch seit Issue #313 auch ein
+      // Projekt sehen, das ihn nie kannte — die Meldung muss den Weg zurueck nennen.
+      assert.match(res.stderr, /toolbox\.ideaStored: true/);
     },
-    { config: { toolbox: { ideaStored: false } } }
   );
 });
 

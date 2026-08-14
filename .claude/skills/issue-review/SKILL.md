@@ -455,6 +455,8 @@ Zwischen den Befunden und dem neuen Body liegt eine Arbeit, die sonst unsichtbar
 
 Der Kommentar ist **getrennt** vom Befunde-Kommentar aus Schritt 5. Der bleibt unverändert Verlauf (Issue #155); die Synthese ist bewertet und gehört nicht in denselben Block.
 
+**Die Synthese beschreibt Entscheidungen über den Vorschlag, nicht über einen bereits geänderten Body.** „Übernommen" heißt: Der Fund ist in den vorgeschlagenen Text eingearbeitet — im Nachtbetrieb in den Body-Vorschlag aus Schritt 6, interaktiv in den Vorschlag, den der Mensch noch freigeben muss. Geschrieben ist damit nichts. Die Perfekt-Formulierung („nennt jetzt beide") ist genau der Ort, an dem die Verwechslung entsteht: Am 2026-08-12 behaupteten neun Synthesen Schärfungen, die in keinem Text standen.
+
 Beispiel einer Stufe mit zwei Prüfern (`fachlich` oder `plan`) — auf der Stufe `issue` entfällt der Abschnitt „Dissens", weil es nur eine Befundliste gibt:
 
 ```bash
@@ -563,6 +565,23 @@ Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für `night.mj
 Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten ihre Reviewer-Arbeit fertig — bei einer davon drei BLOCKER — und haben sie verworfen, weil sie auf eine Antwort warteten, die nachts niemand geben kann. Fünf bis sechs Minuten Arbeit je Issue, viermal, für nichts. Der bisherige Text deckte nur zwei Lagen ab: Reviewer fehlt beim Vorflug (dann startet der Runner nicht) und Reviewer fällt mitten im Lauf aus (dann ist es ein Fund für den Bericht). Die dritte — Vorflug meldet ihn, Start scheitert — kannte er nicht, und für eine Lage ohne Regel improvisiert jede Session neu.
 
 **Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
+
+Die **erste Zeile** dieses Kommentars lautet wörtlich `## Body-Vorschlag, Runde <n>`, mit der Nummer der Runde:
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text - <<'VORSCHLAG'
+## Body-Vorschlag, Runde 1
+
+## Kontext
+… der vollständige neue Body, Abschnitt für Abschnitt …
+VORSCHLAG
+```
+
+Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine Liste der vorzunehmenden Änderungen. Wer ihn übernimmt, kopiert ihn unverändert in `issue update`.
+
+**Die Reihenfolge ist verbindlich: erst der Body-Vorschlag, dann die Synthese.** Wer die Synthese zuerst schreibt, hat die Abwägung protokolliert und den Text noch nicht — und genau dann fällt das Aufschreiben aus. Am 2026-08-12 ist das neunmal in einem Lauf passiert: Befunde und Synthese lagen vor, der übernehmbare Text fehlte in allen neun Fällen, und die Synthesen behaupteten im Perfekt Schärfungen, die in keinem Body standen.
+
+**`night.mjs --review` prüft das.** Fehlt der neue Vorschlag und wurde kein Marker der aktiven Stufe gesetzt, meldet der Lauf „Schärfung fehlt" statt eines Erfolgs. Gewertet wird nur, was **in dieser Session** hinzugekommen ist — ein Vorschlag aus einem früheren Lauf zählt nicht. Bei mehreren Runden zählt die höchste geschriebene Runde.
 
 **Diese Marker-Regel gilt nur für die Stufe `issue`, nicht für `fachlich` und nicht für `plan`.** Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen. Für die Stufen `fachlich` und `plan` gilt deshalb in **jedem unbeaufsichtigten Lauf** — nicht nur nachts —: `issue update` wird nie ausgeführt, und auch bei befundfreiem Review wird kein Marker gesetzt. Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
 

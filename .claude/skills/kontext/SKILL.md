@@ -57,7 +57,9 @@ Lesereihenfolge: **`parentNote` zuerst** (sofern nicht `null`), **`projectNote` 
 
 Fehlt eine der beiden Dateien im Vault: leise überspringen, kein Fehler. Nur die `always`-Dateien zeigen reicht.
 
-**Wenn das Kommando fehlschlägt** (unbekannte Achse `kontext` — ein Projekt mit älterer `board.mjs`): auf das bisherige Verhalten zurückfallen statt abzubrechen. Also Projektname über `node .claude/kit/board.mjs code repo-name` (letztes Segment ohne `.git`, `project`-Feld aus der Config gewinnt), Projektnotiz `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. Ein Session-Start darf daran nicht scheitern.
+**Der Fallback gilt genau einem Fall: unbekannte Achse `kontext`** — ein Projekt mit älterer `board.mjs`. Dann auf das bisherige Verhalten zurückfallen statt abzubrechen: Projektname über `node .claude/kit/board.mjs code repo-name` (letztes Segment ohne `.git`, `project`-Feld aus der Config gewinnt), Projektnotiz `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. Ein Session-Start darf daran nicht scheitern.
+
+**Jeder andere Fehler wird sichtbar gemeldet**, insbesondere eine mehrdeutige Notiz (zwei Dateien, die sich nur in der Groß-/Kleinschreibung unterscheiden) und ein nicht lesbarer Notizordner. Die Meldung des Kommandos unverändert ausgeben und keinen Pfad selbst konstruieren. Wer hier zurückfällt, verdeckt genau den Befund, den das Kommando gerade gemeldet hat (Issue #286).
 
 ### 4. Projekt-spezifische Docs lesen (beide Modi)
 

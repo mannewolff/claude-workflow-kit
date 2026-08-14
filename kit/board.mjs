@@ -1345,17 +1345,23 @@ class ToolboxIssueTracker {
 
   async createIssue({ title, body }) {
     const { host } = this._auth();
-    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im
-    // Sammelbecken statt direkt im Backlog. Das ist die Vorgabe.
+    // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
+    // Board-Nummer. Das ist die Vorgabe (Issue #313); der Ideen-Speicher
+    // (kanban-kit #245) ist die bewusste Abwahl per `ideaStored: true`.
     //
-    // Das Wire-Feld dafuer heisst seit kanban-kit 2026-08 `direct` (Issue #295) —
-    // der frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und
-    // geht deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst
-    // seinen Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und
-    // eine Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
+    // Deshalb `!== true` und nicht `=== false`: Frueher lenkte ein FEHLENDES Feld
+    // die Karte in den Pool — ohne Nummer, in keiner Spalte, sichtbar erst nach dem
+    // manuellen Einplanen. Aufgefallen ist das niemandem, weil dieses Repo den Wert
+    // explizit setzt und das Dogfooding damit am Default vorbeilief.
+    //
+    // Das Wire-Feld heisst seit kanban-kit 2026-08 `direct` (Issue #295) — der
+    // frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und geht
+    // deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst seinen
+    // Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und eine
+    // Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
     //
     // Backends ohne `direct` ignorieren das Feld und legen wie bisher an.
-    const direkt = this._cfg.toolbox?.ideaStored === false;
+    const direkt = this._cfg.toolbox?.ideaStored !== true;
     const payload = { title, body: body || "", column: "BACKLOG" };
     if (direkt) payload.direct = true;
     const res = await this._fetch("/api/kanban/items", {
@@ -1372,7 +1378,9 @@ class ToolboxIssueTracker {
     // keine Nummer, und niemand bemerkt es.
     if (direkt && result.pending) {
       throw new BoardError(
-        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht."
+        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht. "
+        + "Direkt ins Backlog ist die Vorgabe; wer bewusst in den Ideen-Pool anlegen will, "
+        + "setzt 'toolbox.ideaStored: true' in .claude/workflow.config.json."
       );
     }
     if (result.pending) {
