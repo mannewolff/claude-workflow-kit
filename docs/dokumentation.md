@@ -1032,6 +1032,40 @@ Die Skills rufen ausschließlich den Adapter auf — sie wissen nichts von `gh` 
 
 **Abarbeitungsreihenfolge = Board-Reihenfolge.** `issue list --status <spalte>` liefert die Issues in der Reihenfolge der Board-Spalte (oben zuerst), nicht numerisch — du steuerst die Abarbeitung von `/implement-ready` also per Drag&Drop in der Ready-Spalte. Umgesetzt pro Tracker: GitHub über die manuelle Projekt-Reihenfolge von `gh project item-list` (gilt für die Standard-Board-View; eine View mit eigener Sortierung zeigt anders an, als die API liefert), GitLab über `--order relative_position`, das eigene Kanban über die Spalten-Position der API. Zwei bewusste Ausnahmen: der lokale Datei-Tracker kennt keine Positionen und bleibt numerisch, und `issue list` ohne Status-Filter bleibt überall stabil numerisch (eine spaltenübergreifende Board-Reihenfolge gibt es nicht). Konsequenz: Die Abarbeitungsreihenfolge hängt am Board-Zustand und ist nicht mehr deterministisch-numerisch — das ist gewollt.
 
+#### Herkunft am Board: `--derived-from`
+
+`issue create` nimmt optional `--derived-from <nummer>` entgegen und schickt die **projektweite Kartennummer** des **nächsten Vorfahren** als Feld `derivedFrom` mit. Damit kennt das Board die Kette Fachplan → Plan → Arbeitspaket als Daten und muss sie nicht aus Beschreibungstexten zusammensuchen.
+
+Gesetzt wird immer nur **ein** Verweis, der auf die nächsthöhere Stufe — der Rest ergibt sich durchs Weiterlaufen der Kette. Wer sie setzt:
+
+| Skill | Verweis |
+|---|---|
+| `/fachplan` | **nie** — die fachliche Anforderung ist die Wurzel und hat keinen Vorfahren |
+| `/plan` | auf das `[Fachlich]`-Issue, wenn der Plan aus `/plan #N` entstand; beim Plan aus dem Chat gar keiner |
+| `/issues` | auf das `[Plan]`-Issue, ersatzweise auf das fachliche Issue, sonst gar keiner |
+
+Die Form prüft der Adapter vor jedem Netzaufruf: Was keine positive Ganzzahl ist, endet mit Exit 1 — ausdrücklich auch das **nackte Flag** ohne Wert, das sonst als `1` durchginge. Ob die Nummer existiert, auf die Karte selbst zeigt oder einen Zyklus schließt, prüft der Server; die Obergrenze ist ebenfalls seine Sache und wird hier bewusst nicht nachgebaut.
+
+**Nur `kanbancompat` wertet das Feld aus.** GitHub, GitLab und local nehmen die Option ohne Fehler an und übertragen sie nicht — kein Abbruch, keine veränderte Ausgabe. Ein Skill kann sie deshalb unabhängig vom eingestellten Tracker setzen.
+
+**Die Option wirkt nur beim Anlegen.** Ein Nachtragen gibt es nicht: Eine board-lose Pool-Idee ist für den Adapter unerreichbar (kein `get`, kein `comment`, kein `update`), und ein wiederholter Ingest auf dieselbe Karte verwirft den Wert.
+
+#### Die Luecke: ein Tracker ohne das Feld schweigt
+
+Läuft der Aufruf gegen eine Instanz, die `derivedFrom` noch nicht kennt, wird der unbekannte Schlüssel **stillschweigend** ignoriert: Der Aufruf endet mit **Exit 0**, die Karte entsteht, und die Herkunft fehlt — ohne Fehler, ohne Warnung, ohne Unterschied in der Ausgabe.
+
+**Das ist bekannt und wird bewusst nicht abgesichert.** Die naheliegende Absicherung wäre ein Echo: nach dem Anlegen zurücklesen und prüfen, ob der Wert angekommen ist. Genau das scheitert am wichtigsten Fall — eine board-lose **Pool-Idee** ist nicht lesbar, ihre Antwort trägt kein Echo. Eine Absicherung, die dort nicht greift, wäre schlechter als eine benannte Lücke: Sie erzeugte Vertrauen, das im entscheidenden Fall nicht trägt.
+
+Praktisch heißt das: **Ein erfolgreicher `issue create` ist kein Beleg dafür, dass die Herkunft gesetzt wurde.** Wer das sicher wissen will, liest die Karte am Board nach — sofern sie eine Nummer hat.
+
+#### Warum die Body-Zeilen daneben stehen bleiben
+
+Die Herkunft steht doppelt: als Feld am Board und als Zeile im Body (`Plan: Issue #M`, `Fachliche Quelle: Issue #N`, beide im Kontext-Abschnitt). Das ist keine Dopplung, sondern zwei verschieden haltbare Formen.
+
+Das Feld ist die **abfragbare** Form — das Board gruppiert danach, ohne Bodies zu zerlegen. Die Zeilen sind die **dauerhafte**: Ein **Projektwechsel löscht die Herkunft** am Board, und zwar in beide Richtungen — die der verschobenen Karte und die aller Karten, **die auf sie zeigen**. Grund ist die Eindeutigkeit der Nummern: Sie werden projektweit vergeben, ein übernommener Verweis zeigte nach dem Umzug auf eine fremde Karte. Die Body-Zeilen überleben das, weil sie Text sind.
+
+Dazu kennen `github`, `gitlab` und `local` gar kein solches Feld. Wer die Zeilen später als redundant streicht, verliert die Herkunft beim ersten Umzug — und in drei von vier Trackern sofort.
+
 ### Lokaler Modus
 
 Mit `issueTracker: local` legt der Adapter Issues als Markdown-Dateien in `issues/` an:

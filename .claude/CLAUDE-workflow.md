@@ -243,6 +243,12 @@ Freitext zusaetzlich erlaubt, aber die `#N`-Referenz ist Pflicht, wenn ein ander
 gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen aus.
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
+Herkunfts-Konvention: `issue create --derived-from <nummer>` traegt die Kartennummer des
+naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/plan` auf
+das fachliche Issue, `/issues` auf das Plandokument. Die Body-Zeilen `Plan:` und
+`Fachliche Quelle:` bleiben daneben stehen: Ein Projektwechsel loescht das Feld, der Text
+ueberlebt ihn. Nur beim Anlegen wirksam, Nachtragen gibt es nicht.
+
 ### Wie viel geprueft wird: zwei Zeilen im Kontext
 
 Der Kontext-Abschnitt kann festlegen, wie umfangreich das Issue vor dem GO
