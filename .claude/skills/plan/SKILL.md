@@ -114,10 +114,15 @@ Ist der Plan freigegeben, hält der Skill ihn als eigenes Issue fest — das **P
 node .claude/kit/board.mjs issue create \
   --title "[Plan] <Titel>" \
   --author-model "<Wert aus Plan-Modell>" \
+  --derived-from <N> \
   --body -
 ```
 
 Der Body geht über **stdin** (`--body -`, Issue #271) — ein Plan mit Codeblöcken und Tabellen läuft als Kommandozeilen-Argument in die Quoting-Grenze.
+
+**`--derived-from <N>` genau dann, wenn der Plan aus `/plan #N` gegen ein `[Fachlich]`-Issue entstand** (Issue #356). Die Option trägt die Kartennummer des nächsten Vorfahren als Feld ans Board, damit es die Kette Fachplan → Plan → Arbeitspaket als Daten kennt und nicht nur als Zeichen im Beschreibungstext. Bei einem Plan aus dem Chat **entfällt sie** — genauso, wie dort die `Fachliche Quelle`-Zeile entfällt; eine Nummer zu erfinden behauptete eine Quelle, die es nicht gibt.
+
+Die Option wirkt **nur beim Anlegen**. Nachtragen geht nicht: Eine board-lose Pool-Idee ist für den Adapter unerreichbar, und ein späterer Ingest verwirft den Wert. Trackern, die das Feld nicht kennen (`github`, `gitlab`, `local`), schadet die Option nicht — sie nehmen sie folgenlos an.
 
 **`--author-model` ist Pflicht.** Der Adapter lehnt jeden Body ohne `Autor-Modell:`-Zeile ab, sofern weder das Flag noch `KIT_AGENT_MODEL` gesetzt ist (`kit/board.mjs`, Issue #266). Ein Plan-Body trägt aber `Plan-Modell:`, nicht `Autor-Modell:` — ohne das Flag scheitert das Anlegen bei jedem interaktiven Durchlauf zur Laufzeit, während jeder Texttest grün bleibt.
 
