@@ -101,6 +101,7 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
       title: "Ein Issue",
       body: "Die Beschreibung",
       status: "ready",
+      labels: ["Ready"], // seit Issue #312 auch bei get
       comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z" }],
     });
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /api projects\/:id\/issues\/42\/notes/);
@@ -329,5 +330,45 @@ test("pr nimmt die ganze Ausgabe, wenn keine URL darin steht", NUR_POSIX, () => 
       { url: "MR angelegt (offline)" });
   }, {
     regeln: [{ match: "^mr create", stdout: "MR angelegt (offline)\n" }],
+  });
+});
+
+// --- Labels bei `issue get` (Issue #312) ---
+//
+// Bei GitLab tragen die Status-Labels die Spalte — `get` las sie bereits, gab sie
+// aber nicht zurueck. Der Vertrag ist derselbe wie bei `list`: ein Namen-Array.
+
+const GL_MIT_LABELS = {
+  match: "^issue view",
+  stdout: {
+    iid: 42, title: "Ein Issue", description: "Die Beschreibung", state: "opened",
+    labels: [{ name: "Ready" }, { name: "kit:nightrun" }],
+  },
+};
+
+test("get liefert die Labels als Namen-Array", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(board(dir, "issue", "get", "42").labels, ["Ready", "kit:nightrun"]);
+  }, { regeln: [GL_MIT_LABELS] });
+});
+
+test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(board(dir, "issue", "get", "42").labels, []);
+  }, {
+    regeln: [{ match: "^issue view", stdout: { iid: 42, title: "Ohne Labels", description: "", state: "opened" } }],
+  });
+});
+
+test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const ausGet = board(dir, "issue", "get", "42").labels;
+    const ausList = board(dir, "issue", "list").find((i) => i.id === "42").labels;
+    assert.deepEqual(ausGet, ausList);
+  }, {
+    regeln: [GL_MIT_LABELS, {
+      match: "^issue list",
+      stdout: [{ iid: 42, title: "Ein Issue", description: "Die Beschreibung", state: "opened", labels: [{ name: "Ready" }, { name: "kit:nightrun" }] }],
+    }],
   });
 });

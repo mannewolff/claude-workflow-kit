@@ -176,10 +176,9 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
 });
 
 test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
-  // Byte-Gleichheit der ganzen Dateien gibt es seit dem Tracker-Umzug am
-  // 2026-08-11 nicht mehr: Die Kopie dokumentiert den projekteigenen Tracker,
-  // die Vorlage liefert den Auslieferungsdefault. Was gleich sein MUSS, ist der
-  // Stoff dieses Issues — sonst driftet die Auslieferung von der gelebten Datei.
+  // Die vollstaendige Byte-Gleichheit beider Dateien steht als eigenes Kriterium
+  // in test/docs-lebenszyklus.test.mjs. Der Abschnitts-Vergleich hier bleibt
+  // trotzdem: Er zeigt bei Drift zusaetzlich, WELCHER Abschnitt gedriftet ist.
   // Die Ortsangabe des Markers steht in `### Die drei Pruefstufen`, einem
   // Unterabschnitt von `## Die drei Stop-Punkte` — ohne diesen dritten Block
   // waere gerade die Stelle ungedeckt, die Issue #314 korrigiert.

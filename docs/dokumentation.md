@@ -418,7 +418,9 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
   Die `Plan:`-Zeile entsteht nur, wenn ein `[Plan]`-Issue als Quelle vorliegt; wurde der Plan bloß in derselben Session freigegeben, bleibt sie weg. Sie ist unabhängig von `Plan-Modell:` — jene nennt den **Urheber** des Plans, diese seinen **Fundort**.
 - **Nie in den Abhängigkeiten — beide nicht.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten. Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument wird durch Umsetzung nie Done — alle Kinder blieben dauerhaft zurückgestellt (Henne-Ei).
 - **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/plan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
-- **Lebenszyklus:** Das fachliche Issue bleibt als Klammer offen; Done setzt der Mensch, wenn die technischen Kinder durch sind.
+- **Lebenszyklus:** Fachliche Issues und Plandokumente bewegt **ausschließlich der Mensch** aus dem Backlog heraus — kein Skill zieht sie je selbst weiter, die Leitplanken schieben sie nur aus Ready zurück. Zwei Wege stehen offen, und sie sind **gleichwertig**: entweder **direkt nach Done**, sobald das Dokument seinen Zweck erfüllt hat, oder zunächst nach **In review** als Klammer, die den fachlichen Kontext während der Umsetzung sichtbar hält — Done dann, wenn die technischen Arbeitspakete durch sind. Welcher Weg passt, entscheidet der Mensch.
+
+  **Eine Falle gehört dazu:** `night.mjs --review` liest ausschließlich die Backlog-Spalte. Wer ein Dokument **vor** seiner Prüfung als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — es ist dann kein Kandidat mehr, und zwar ohne dass irgendetwas fehlschlägt. Der Ausweg ist der interaktive Aufruf `/issue-review #N` mit expliziter Nummer: Er arbeitet **unabhängig von Spalte und vorhandenem Marker**. Genau das macht ihn zum Ausweg.
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
 - **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/plan #N` = fachlich freigegeben.
 
@@ -859,6 +861,32 @@ Der mittlere Zustand ist der neue: Ein Verzicht ist **keine Lücke**, sondern ei
 - `Pruefung: <1|2|3|Verzicht>` — **setzt der Mensch**. Die Zahl ist die Zahl der Review-Runden, `Verzicht` heißt: ohne Prüfung freigegeben. Ohne die Zeile gilt der Regelfall aus `issueReview.rounds`.
 - `Pruefung-Stand: <hex>` — **schreibt die Maschine**: `issue update` setzt sie beim Speichern unter die Vorgabezeile. Von Hand anfassen entwertet die eigene Vorgabe, ohne dass eine Fehlermeldung darauf hinweist.
 
+So sieht ein Arbeitspaket aus, das du bewusst ohne Prüfung freigibst:
+
+```markdown
+## Kontext
+
+Autor-Modell: claude-opus-5
+Pruefung: Verzicht
+Pruefung-Stand: 4f2b8e1c…
+
+Die Fußzeile nennt noch die alte Domain.
+
+## Aufgabe
+
+`src/footer.html`: `example.org` durch `example.com` ersetzen.
+
+## Akzeptanzkriterium
+
+- Kein Vorkommen von `example.org` mehr im Repository.
+
+## Abhängigkeiten
+
+Keine.
+```
+
+Getippt hast du davon **eine** Zeile: `Pruefung: Verzicht`. Die Standzeile darunter kam beim Speichern durch `issue update` dazu — der Hash ist hier gekürzt, echt sind es 64 Hex-Zeichen. Ab jetzt gilt: Solange Aufgabe, Akzeptanzkriterium und Abhängigkeiten so bleiben, setzt der Nacht-Runner das Paket um, ohne es zurückzustellen. Schreibst du ein zweites Akzeptanzkriterium dazu, passt der Stand nicht mehr, und es gilt wieder der Regelfall.
+
 Was tatsächlich gilt, lässt sich ablesen statt ausrechnen — die Felder `verzicht` und `vorgabeQuelle` (`issue` · `verfallen` · `config`) sagen es:
 
 ```bash
@@ -1004,6 +1032,78 @@ Die Skills rufen ausschließlich den Adapter auf — sie wissen nichts von `gh` 
 
 **Abarbeitungsreihenfolge = Board-Reihenfolge.** `issue list --status <spalte>` liefert die Issues in der Reihenfolge der Board-Spalte (oben zuerst), nicht numerisch — du steuerst die Abarbeitung von `/implement-ready` also per Drag&Drop in der Ready-Spalte. Umgesetzt pro Tracker: GitHub über die manuelle Projekt-Reihenfolge von `gh project item-list` (gilt für die Standard-Board-View; eine View mit eigener Sortierung zeigt anders an, als die API liefert), GitLab über `--order relative_position`, das eigene Kanban über die Spalten-Position der API. Zwei bewusste Ausnahmen: der lokale Datei-Tracker kennt keine Positionen und bleibt numerisch, und `issue list` ohne Status-Filter bleibt überall stabil numerisch (eine spaltenübergreifende Board-Reihenfolge gibt es nicht). Konsequenz: Die Abarbeitungsreihenfolge hängt am Board-Zustand und ist nicht mehr deterministisch-numerisch — das ist gewollt.
 
+#### Herkunft am Board: `--derived-from`
+
+`issue create` nimmt optional `--derived-from <nummer>` entgegen und schickt die **projektweite Kartennummer** des **nächsten Vorfahren** als Feld `derivedFrom` mit. Damit kennt das Board die Kette Fachplan → Plan → Arbeitspaket als Daten und muss sie nicht aus Beschreibungstexten zusammensuchen.
+
+Gesetzt wird immer nur **ein** Verweis, der auf die nächsthöhere Stufe — der Rest ergibt sich durchs Weiterlaufen der Kette. Wer sie setzt:
+
+| Skill | Verweis |
+|---|---|
+| `/fachplan` | **nie** — die fachliche Anforderung ist die Wurzel und hat keinen Vorfahren |
+| `/plan` | auf das `[Fachlich]`-Issue, wenn der Plan aus `/plan #N` entstand; beim Plan aus dem Chat gar keiner |
+| `/issues` | auf das `[Plan]`-Issue, ersatzweise auf das fachliche Issue, sonst gar keiner |
+
+Die Form prüft der Adapter vor jedem Netzaufruf: Was keine positive Ganzzahl ist, endet mit Exit 1 — ausdrücklich auch das **nackte Flag** ohne Wert, das sonst als `1` durchginge. Ob die Nummer existiert, auf die Karte selbst zeigt oder einen Zyklus schließt, prüft der Server; die Obergrenze ist ebenfalls seine Sache und wird hier bewusst nicht nachgebaut.
+
+**Nur `kanbancompat` wertet das Feld aus.** GitHub, GitLab und local nehmen die Option ohne Fehler an und übertragen sie nicht — kein Abbruch, keine veränderte Ausgabe. Ein Skill kann sie deshalb unabhängig vom eingestellten Tracker setzen.
+
+**Die Option wirkt nur beim Anlegen.** Ein Nachtragen gibt es nicht: Eine board-lose Pool-Idee ist für den Adapter unerreichbar (kein `get`, kein `comment`, kein `update`), und ein wiederholter Ingest auf dieselbe Karte verwirft den Wert.
+
+#### Die Luecke: ein Tracker ohne das Feld schweigt
+
+Läuft der Aufruf gegen eine Instanz, die `derivedFrom` noch nicht kennt, wird der unbekannte Schlüssel **stillschweigend** ignoriert: Der Aufruf endet mit **Exit 0**, die Karte entsteht, und die Herkunft fehlt — ohne Fehler, ohne Warnung, ohne Unterschied in der Ausgabe.
+
+**Das ist bekannt und wird bewusst nicht abgesichert.** Die naheliegende Absicherung wäre ein Echo: nach dem Anlegen zurücklesen und prüfen, ob der Wert angekommen ist. Genau das scheitert am wichtigsten Fall — eine board-lose **Pool-Idee** ist nicht lesbar, ihre Antwort trägt kein Echo. Eine Absicherung, die dort nicht greift, wäre schlechter als eine benannte Lücke: Sie erzeugte Vertrauen, das im entscheidenden Fall nicht trägt.
+
+Praktisch heißt das: **Ein erfolgreicher `issue create` ist kein Beleg dafür, dass die Herkunft gesetzt wurde.** Wer das sicher wissen will, liest die Karte am Board nach — sofern sie eine Nummer hat.
+
+#### Warum die Body-Zeilen daneben stehen bleiben
+
+Die Herkunft steht doppelt: als Feld am Board und als Zeile im Body (`Plan: Issue #M`, `Fachliche Quelle: Issue #N`, beide im Kontext-Abschnitt). Das ist keine Dopplung, sondern zwei verschieden haltbare Formen.
+
+Das Feld ist die **abfragbare** Form — das Board gruppiert danach, ohne Bodies zu zerlegen. Die Zeilen sind die **dauerhafte**: Ein **Projektwechsel löscht die Herkunft** am Board, und zwar in beide Richtungen — die der verschobenen Karte und die aller Karten, **die auf sie zeigen**. Grund ist die Eindeutigkeit der Nummern: Sie werden projektweit vergeben, ein übernommener Verweis zeigte nach dem Umzug auf eine fremde Karte. Die Body-Zeilen überleben das, weil sie Text sind.
+
+Dazu kennen `github`, `gitlab` und `local` gar kein solches Feld. Wer die Zeilen später als redundant streicht, verliert die Herkunft beim ersten Umzug — und in drei von vier Trackern sofort.
+
+#### Herkunft auswerten: derived-from-report
+
+`tools/derived-from-report.mjs` liest die Body-Zeilen zurück und weist für jede Karte aus, welchen Verweis sie bekäme — als Vorbereitung einer möglichen Nachpflege des Bestands. Die Karten kommen über stdin, das Werkzeug holt sie nicht selbst:
+
+```bash
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs --json
+node tools/derived-from-report.mjs --help
+```
+
+Ohne Flag entsteht eine lesbare Zusammenfassung mit einem Zähler je Zustand und einer Liste der Karten, die Aufmerksamkeit brauchen. `--json` gibt dieselben Daten roh aus, damit eine spätere Migration sie verarbeiten kann. Dass die Karten gereicht statt geholt werden, hat drei Gründe: Es ist ohne Mock-Server testbar, es funktioniert für **jeden** Tracker statt nur für kanbancompat, und derselbe Schnappschuss lässt sich zweimal auswerten.
+
+**Das Werkzeug schreibt nichts** — weder ans Board noch ins Dateisystem. Es ist ein Trockenlauf und bleibt einer, solange es keinen **Schreibpfad** für `derivedFrom` gibt: Das Feld wird beim Anlegen gesetzt und danach nie geändert. Ob und wie der Bestand nachgepflegt wird, hängt an einer Entscheidung im Projekt kanban-kit und liegt als Idee **#355**.
+
+**Wo gesucht wird, hängt am Dokumenttyp** — sonst wirkt der Zustand `fehlplatziert` willkürlich:
+
+| Dokument | gültiger Fundort |
+|---|---|
+| Arbeitspaket | Abschnitt `## Kontext` |
+| `[Plan]`-Dokument | Kopfbereich vor `## Ziel`, also vor der ersten `##`-Überschrift |
+
+Plandokumente haben gar keinen Kontext-Abschnitt; ein Leser, der nur ihn kennt, übersähe jede Zwischenstufe der Kette. In beiden Fällen zählen nur Zeilen **außerhalb von Code-Fences** — ein Issue, das die Konvention als Beispiel zeigt, darf keinen Verweis erfinden.
+
+Je Karte entsteht genau ein Zustand:
+
+| Zustand | Bedeutung |
+|---|---|
+| `vorfahr` | genau ein eindeutiger Verweis, die Zielkarte existiert |
+| `keiner` | keine Verweiszeile — die Karte bliebe leer. **Kein Fehler**, sondern der Normalfall für alles, was vor der Konvention entstanden ist |
+| `unbekannt` | der Verweis nennt eine Nummer, die es in der übergebenen Kartenmenge nicht gibt |
+| `selbstverweis` | der Verweis zeigt auf die eigene Karte |
+| `mehrdeutig` | mehrere Zeilen desselben Typs mit verschiedenen Nummern — hier wird nicht geraten |
+| `fehlplatziert` | eine Verweiszeile steht außerhalb des gültigen Fundorts, während dort keine steht |
+
+Bei `unbekannt` und `selbstverweis` trägt das Ergebnis zusätzlich das Feld `gelesen` mit der Nummer, auf die gezeigt wurde.
+
+**Wozu das gut ist, zeigte der erste Lauf:** Von 47 Karten mit Verweis waren null fehlplatziert und null mehrdeutig — aber **14 zeigten auf zwei Vorfahren, die es am Board nicht mehr gab**. Eine Migration wäre daran gescheitert, weil der Server unbekannte Nummern beim Anlegen ablehnt. Genau dafür läuft man trocken.
+
 ### Lokaler Modus
 
 Mit `issueTracker: local` legt der Adapter Issues als Markdown-Dateien in `issues/` an:
@@ -1105,17 +1205,22 @@ Der globale `tbx`-Login von App 1 bleibt dabei unangetastet — App 1 fällt wei
 
 **Spaltennamen sind fix.** Anders als bei GitHub und GitLab lassen sich die fünf Status (`backlog`, `ready`, `in_progress`, `in_review`, `done`) hier nicht über `columns` in der Config umbenennen — sie werden intern 1:1 auf die Kanban-Spalten `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` der Toolbox abgebildet.
 
-**Neue Issues landen im Projekt-Ideen-Pool.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` **immer** eine board-lose Idee im Ideen-Pool des Projekts an — sie erscheint in keiner Board-Spalte, und die Board-Nummer entsteht erst, wenn du die Idee einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher. **`ideaStored: false` legt wieder direkt im Backlog an.** Der Schalter heißt in der Config unverändert `ideaStored`, das Feld auf der Leitung aber `direct`: Ein `ideaStored: false` sendet `direct: true`, und die Karte entsteht sofort mit ihrer Board-Nummer. Bei `true` oder fehlendem Wert geht kein `direct` mit, und es bleibt beim Ideen-Pool. Das früher gesendete Wire-Feld `ideaStored` wandert in **keinem** der beiden Fälle mehr über die Leitung — der Server ignoriert es ohnehin.
+**Neue Issues landen direkt im Backlog.** Gegen ein kanban-kit ≥ 1.5 legt `issue create` die Karte sofort mit ihrer Board-Nummer an — sie steht unmittelbar in der Backlog-Spalte und ist ab da über `#N` adressierbar. Das ist die Vorgabe; ein Projekt muss dafür nichts konfigurieren.
 
-Drei Fälle, damit klar ist, was wann passiert:
+**`ideaStored: true` lenkt stattdessen in den Projekt-Ideen-Pool.** Dann entsteht eine board-lose Idee: Sie erscheint in keiner Spalte, und die Board-Nummer gibt es erst, wenn du sie einplanst. Der Adapter meldet das ehrlich zurück (`ideaId` + `pending: true` statt einer Nummer, mit Hinweistext); eine Response ohne verwertbare Kennung bricht hart ab. Das Einplanen ist bewusst dir vorbehalten — es ist dieselbe menschliche Sichtung wie das frühere Hochziehen aus dem Ideen-Speicher.
+
+Der Schalter heißt in der Config `ideaStored`, das Feld auf der Leitung aber `direct`: Ein fehlendes oder auf `false` gesetztes `ideaStored` sendet `direct: true`, ein `ideaStored: true` sendet gar nichts. Das früher gesendete Wire-Feld `ideaStored` wandert in **keinem** Fall mehr über die Leitung — der Server ignoriert es ohnehin.
+
+Vier Fälle, damit klar ist, was wann passiert:
 
 | Config | Gesendet | Ergebnis |
 |---|---|---|
+| nicht gesetzt | `direct: true` | Karte im Backlog, mit Nummer |
 | `ideaStored: false` | `direct: true` | Karte im Backlog, mit Nummer |
-| `ideaStored: true` oder nicht gesetzt | kein `direct` | Idee im Pool, `ideaId` + `pending` |
+| `ideaStored: true` | kein `direct` | Idee im Pool, `ideaId` + `pending` |
 | Legacy-Backend ohne `direct` | egal | wie bisher: Nummer zurück |
 
-Fordert die Config das direkte Anlegen an, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden — sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
+Wird direkt angelegt — also im Regelfall —, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden: Sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Die Meldung nennt `ideaStored: true` als Weg in den Pool-Modus. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
 
 ## Aktualisieren und mehrere Projekte
 

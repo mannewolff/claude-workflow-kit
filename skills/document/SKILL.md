@@ -29,7 +29,9 @@ Das JSON enthaelt:
 - `parentNote`: absolute Datei der Dach-Notiz — nur gesetzt wenn `parentProject` konfiguriert ist, sonst `null`
 - `project`, `parentProject`, `vault`: fuer die Bestaetigungsmeldung
 
-**Wenn das Kommando fehlschlaegt** (unbekannte Achse `kontext` — ein Projekt mit aelterer `board.mjs`): auf das bisherige Verhalten zurueckfallen statt abzubrechen. Also `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
+**Der Fallback gilt genau einem Fall: unbekannte Achse `kontext`** — ein Projekt mit aelterer `board.mjs`. Dann auf das bisherige Verhalten zurueckfallen statt abzubrechen: `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
+
+**Jeder andere Fehler wird sichtbar abgebrochen**, insbesondere eine mehrdeutige Notiz (zwei Dateien, die sich nur in der Gross-/Kleinschreibung unterscheiden) und ein nicht lesbarer Notizordner. Die Meldung des Kommandos unveraendert ausgeben und nichts schreiben. Wuerde der Fallback hier greifen, faenge er genau den neuen Fehler ab und legte am Ende doch die zweite Notiz an (Issue #286).
 
 ### 1b. Vorgaenger-Eintrag lesen (nur Modus `full`)
 

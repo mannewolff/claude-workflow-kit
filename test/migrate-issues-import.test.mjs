@@ -20,6 +20,18 @@ import { fileURLToPath } from "node:url";
 import { setupProjekt, fakeCli, aufrufe, starteServer } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Unter Windows uebersprungen: `fakeCli` legt das Fake-`gh` als endungslose Datei mit
+// Shebang an, und dort entscheidet die ENDUNG (.cmd/.bat/.exe), ob etwas startbar
+// ist. Die Tests unten erreichen das Fake deshalb nicht und starten das echte `gh` —
+// in der CI scheitert das an GH_TOKEN (25 Fehlschlaege, Windows-Job rot seit dem
+// 2026-08-11). Wortgleich zu test/board-issue-review.test.mjs (Issue #315).
+//
+// Ausgenommen wird genau die Menge, die das Fake-`gh` startet; die uebrigen Tests
+// dieser Datei laufen unter Windows weiter.
+const NUR_POSIX = process.platform === "win32"
+  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
+  : {};
+
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
 const FIXTURES = join(repoRoot, "test", "fixtures");
 
@@ -195,7 +207,7 @@ test("--help nennt den ungefilterten Trockenlauf als Vorbedingung des ersten --y
 // Trockenlauf
 // ============================================================
 
-test("--dry-run schreibt je Eintrag github-<N>.md, meldet die Anzahl und beschreibt den Mock nicht", async () => {
+test("--dry-run schreibt je Eintrag github-<N>.md, meldet die Anzahl und beschreibt den Mock nicht", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-dry-", { daten: [eintrag(101), eintrag(102), eintrag(103)] });
   try {
     const res = await runMigrate(f.dir, ["import", "--file", f.datei, "--dry-run", "--out-dir", f.outDir]);
@@ -230,7 +242,7 @@ test("eine vorhandene Zieldatei bricht den Trockenlauf vor dem ersten Schreiben 
 // Filter
 // ============================================================
 
-test("--limit verarbeitet genau die ersten N Eintraege in Nummernreihenfolge", async () => {
+test("--limit verarbeitet genau die ersten N Eintraege in Nummernreihenfolge", NUR_POSIX, async () => {
   const daten = [12, 3, 7, 1, 9, 2, 11, 4, 8, 5, 10, 6].map((n) => eintrag(n));
   const f = await fixture("migrate-import-limit-", { daten });
   try {
@@ -245,7 +257,7 @@ test("--limit verarbeitet genau die ersten N Eintraege in Nummernreihenfolge", a
   }
 });
 
-test("--from und --to bilden einen inklusiven Bereich", async () => {
+test("--from und --to bilden einen inklusiven Bereich", NUR_POSIX, async () => {
   const daten = [195, 199, 200, 210, 220, 221, 300].map((n) => eintrag(n));
   const f = await fixture("migrate-import-bereich-", { daten });
   try {
@@ -299,7 +311,7 @@ test("eine leere Auswahl ist ein erfolgreicher Lauf ohne Verarbeitung", async ()
 // Zielspalten
 // ============================================================
 
-test("jeder Create-Request traegt number, externalKey und die abgebildete Spalte", async () => {
+test("jeder Create-Request traegt number, externalKey und die abgebildete Spalte", NUR_POSIX, async () => {
   const daten = [
     eintrag(101, { spalte: "Backlog" }),
     eintrag(102, { spalte: "Ready" }),
@@ -325,7 +337,7 @@ test("jeder Create-Request traegt number, externalKey und die abgebildete Spalte
   }
 });
 
-test("ein Eintrag ohne Spalte landet in BACKLOG und traegt den Literal-Wert 'keine'", async () => {
+test("ein Eintrag ohne Spalte landet in BACKLOG und traegt den Literal-Wert 'keine'", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-ohne-spalte-", { daten: [eintrag(101, { spalte: null, body: "Text" })] });
   try {
     const res = await runMigrate(f.dir, ["import", "--file", f.datei, "--yes"]);
@@ -356,7 +368,7 @@ test("ein unbekannter Spaltenwert beendet den Lauf vor dem ersten Schreibzugriff
 // Kartenformat und Kommentare
 // ============================================================
 
-test("der zusammengesetzte Karten-Body entspricht der Fixture einschliesslich Umlauten und Codeblock", async () => {
+test("der zusammengesetzte Karten-Body entspricht der Fixture einschliesslich Umlauten und Codeblock", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-body-", {
     daten: [eintrag(101, { spalte: "Ready", body: BODY_101 })],
   });
@@ -372,7 +384,7 @@ test("der zusammengesetzte Karten-Body entspricht der Fixture einschliesslich Um
   }
 });
 
-test("der Trockenlauf schreibt denselben Body in die Vorschaudatei", async () => {
+test("der Trockenlauf schreibt denselben Body in die Vorschaudatei", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-dry-body-", {
     daten: [eintrag(101, { spalte: "Ready", body: BODY_101 })],
   });
@@ -388,7 +400,7 @@ test("der Trockenlauf schreibt denselben Body in die Vorschaudatei", async () =>
   }
 });
 
-test("jeder Kommentar wird als eigener Board-Kommentar mit Herkunfts-Kopfzeile angelegt", async () => {
+test("jeder Kommentar wird als eigener Board-Kommentar mit Herkunfts-Kopfzeile angelegt", NUR_POSIX, async () => {
   const daten = [eintrag(101, {
     comments: [
       kommentar("mannewolff", "Zweiter", "2026-08-02T11:00:00Z"),
@@ -420,7 +432,7 @@ test("jeder Kommentar wird als eigener Board-Kommentar mit Herkunfts-Kopfzeile a
   }
 });
 
-test("Kommentare gleichen Zeitpunkts behalten die Reihenfolge der Exportdatei", async () => {
+test("Kommentare gleichen Zeitpunkts behalten die Reihenfolge der Exportdatei", NUR_POSIX, async () => {
   const daten = [eintrag(101, {
     comments: [
       kommentar("a", "Zuerst notiert", "2026-08-01T10:00:00Z"),
@@ -442,7 +454,7 @@ test("Kommentare gleichen Zeitpunkts behalten die Reihenfolge der Exportdatei", 
 // Idempotenz
 // ============================================================
 
-test("ein zweiter Lauf ueber denselben Block legt nichts neu an und zaehlt alles als skipped", async () => {
+test("ein zweiter Lauf ueber denselben Block legt nichts neu an und zaehlt alles als skipped", NUR_POSIX, async () => {
   const daten = [eintrag(101), eintrag(102)];
   const bestand = { BACKLOG: [karte(101, "github#101"), karte(102, "github#102")] };
   const f = await fixture("migrate-import-idempotent-", { daten, bestand });
@@ -457,7 +469,7 @@ test("ein zweiter Lauf ueber denselben Block legt nichts neu an und zaehlt alles
   }
 });
 
-test("eine belegte Zielnummer mit fremdem externalKey bricht den Lauf ohne Ueberschreiben ab", async () => {
+test("eine belegte Zielnummer mit fremdem externalKey bricht den Lauf ohne Ueberschreiben ab", NUR_POSIX, async () => {
   const daten = [eintrag(101), eintrag(102)];
   const bestand = { BACKLOG: [karte(102, "manuell#7")] };
   const f = await fixture("migrate-import-konflikt-", { daten, bestand });
@@ -529,7 +541,7 @@ test("import ohne --file endet mit Exit 1 und ohne Request", async () => {
   }
 });
 
-test("ein fehlgeschlagener Karten-Request bricht ab und meldet die Bilanz bis dahin", async () => {
+test("ein fehlgeschlagener Karten-Request bricht ab und meldet die Bilanz bis dahin", NUR_POSIX, async () => {
   const daten = [eintrag(101), eintrag(102), eintrag(103)];
   const bestand = { BACKLOG: [karte(101, "github#101")] };
   const f = await fixture("migrate-import-abbruch-", { daten, bestand, mockOptionen: { fehlerAbPost: 2 } });
@@ -549,7 +561,7 @@ test("ein fehlgeschlagener Karten-Request bricht ab und meldet die Bilanz bis da
 // Zugriffe
 // ============================================================
 
-test("der Trockenlauf fragt den Kartenbestand nicht ab und ruft gh nur lesend auf", async () => {
+test("der Trockenlauf fragt den Kartenbestand nicht ab und ruft gh nur lesend auf", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-lesend-", { daten: [eintrag(101)] });
   try {
     const res = await runMigrate(f.dir, ["import", "--file", f.datei, "--dry-run", "--out-dir", f.outDir]);
@@ -563,7 +575,7 @@ test("der Trockenlauf fragt den Kartenbestand nicht ab und ruft gh nur lesend au
   }
 });
 
-test("jeder Request an kanban-kit traegt den Token-Header", async () => {
+test("jeder Request an kanban-kit traegt den Token-Header", NUR_POSIX, async () => {
   const f = await fixture("migrate-import-token-", { daten: [eintrag(101, { comments: [kommentar("a", "x", "2026-08-01T10:00:00Z")] })] });
   try {
     const res = await runMigrate(f.dir, ["import", "--file", f.datei, "--yes"]);

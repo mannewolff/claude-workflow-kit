@@ -100,6 +100,21 @@ Fachliche Quelle: Issue #N
 
 **Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
 
+Der Satz bleibt trotz des Feldes `--derived-from` (siehe unten) korrekt: `derivedFrom` ist keine Body-Zeile und kann in gar keinem Abschnitt stehen; „beide" meint weiterhin die zwei Zeilen. Der Grund ist schärfer, als der Wortlaut vermuten lässt — `parseDeps` in `kit/night.mjs` wertet über `LOKALE_REFERENZ` **jedes** `#N` im Abhängigkeiten-Abschnitt als Abhängigkeit, auch ohne das Wort `Issue` davor.
+
+**Dasselbe zusätzlich als Feld ans Board: `--derived-from`.** Neben den Body-Zeilen bekommt `issue create` die Kartennummer des **nächsten Vorfahren** mit (Issue #356) — das `[Plan]`-Issue `#M`, sonst das fachliche Issue `#N`, sonst gar nichts:
+
+```bash
+node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --body - <<'BODY'
+```
+
+- Liegt ein `[Plan]`-Issue vor: `--derived-from <M>`.
+- Fehlt es (Plan nur in der Session freigegeben, oder Bahn 1 ohne Plandokument): Rückfall auf `--derived-from <N>`, das fachliche Issue.
+- Fehlt beides: Die Option entfällt ersatzlos — kein Platzhalter, keine Null.
+- **Sonderfall Pool-Idee:** Lieferte `issue create` für das Plandokument `{ideaId, pending: true}`, existiert keine Nummer `#M`. Dann greift **derselbe Rückfall** auf das fachliche Issue — kein eigener Zweig, nur derselbe.
+
+**Feld und Zeile sagen dasselbe, sind aber verschieden haltbar — und keines ersetzt das andere.** Das Feld ist die **abfragbare** Form: Das Board kann danach gruppieren, ohne Bodies zu zerlegen. Die Zeile ist die **dauerhafte**: Ein **Projektwechsel löscht die Herkunft** am Board — die der verschobenen Karte und die aller Karten, die auf sie zeigen —, die Body-Zeilen überleben ihn. Dazu kennen `github`, `gitlab` und `local` gar kein solches Feld. Wer die Zeilen später als Dopplung zum Feld streicht, verliert die Herkunft beim ersten Umzug.
+
 **Abgrenzung zur Plan-Modell-Konvention (Issue #266):** `Plan-Modell:` sagt, **welches Modell** den Plan geschrieben hat — den Urheber. `Plan: Issue #M` sagt, **wo er steht** — den Fundort. Beide Zeilen sind unabhängig voneinander: `Plan-Modell:` darf bei identischem Plan- und Issue-Autor entfallen, die `Plan:`-Zeile wird davon nicht berührt und steht auch dann.
 
 **Zwei Randfälle:**

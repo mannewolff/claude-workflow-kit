@@ -64,6 +64,8 @@ BODY
 
 Der Body geht über **stdin** (Issue #271). Ein Story-Body mit Aufzählungen und Anführungszeichen läuft als Kommandozeilen-Argument in dieselbe Quoting-Grenze wie ein technischer. Der Heredoc-Marker ist **quotiert** (`<<'BODY'`), damit die Shell Backticks und `$` im Text nicht auswertet.
 
+**Kein `--derived-from` — nie.** Die Option trägt die Kartennummer des nächsten Vorfahren ans Board (Issue #356). Das fachliche Issue **ist** die Wurzel der Kette: Es hat keinen Vorfahren, und ein Verweis von hier aus zeigte entweder ins Leere oder auf eine fremde Karte. `/plan` setzt die Option auf dieses Issue hier, `/issues` auf das Plandokument — die Wurzel selbst bleibt ohne.
+
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` eine `ideaId` mit `pending: true`, liegt das fachliche Issue als board-lose Idee im Projekt-Ideen-Pool. Adressierbar (#N) und groombar wird es erst, wenn der Mensch es einplant — Pool = ungesichtete Rohanforderung, Backlog = fachlich in Arbeit.
 
 ### 3. Abschluss

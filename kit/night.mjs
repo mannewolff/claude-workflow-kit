@@ -113,6 +113,25 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+/**
+ * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
+ * einzige Auslegung fuer Abschnittsgrenzen, Parser und Bezugsstand, und ihr eigener
+ * Kommentar warnt vor einer weiteren. Der Import ist nebenwirkungsfrei — die CLI von
+ * board.mjs haengt an ihrem runAsCli-Guard.
+ *
+ * Bewusst DYNAMISCH und abgefangen, nicht statisch. night.mjs traegt seit Issue #170
+ * die Zusage, `--version` und `--help` auch als allein kopierte Datei zu beantworten
+ * — genau dort will man wissen, aus welchem Kit-Stand eine gefundene Datei stammt.
+ * Ein statischer Import scheitert vor der ersten Codezeile und nimmt diese Auskunft
+ * mit; der Ersatz unten laesst sie durch und meldet den fehlenden Nachbarn erst,
+ * wenn ihn wirklich jemand braucht. Ehrlich ist das, weil night.mjs ohne board.mjs
+ * ohnehin nichts tun kann: Jeder Board-Zugriff startet sie als Subprozess.
+ */
+const { fenceLauf } = await import("./board.mjs").catch(() => ({
+  fenceLauf: () => {
+    throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
+  },
+}));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
@@ -149,7 +168,7 @@ if (existsSync(NACHBAR_BOARD)) ({ parsePruefvorgabe } = await import("./board.mj
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.38.0";
+const KIT_VERSION = "1.39.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -550,13 +569,53 @@ export function selectReviewCandidates(issues, opts = {}) {
 
 // --- Abhaengigkeiten ---
 
-// Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
-// Bewusst nur nackte #N-Tokens: Referenzen wie `owner/repo`#245 (Backtick/Slash davor)
-// sind fremde Repos und werden nicht als lokale Issues gewertet.
-function parseDeps(body) {
-  const m = (body || "").match(/##\s*Abh(?:ä|ae)ngigkeiten([\s\S]*?)(?=\n##\s|$)/i);
-  if (!m) return [];
-  const refs = [...m[1].matchAll(/(?<![\w`/#])#(\d+)/g)].map((x) => Number(x[1]));
+const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
+const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
+
+/**
+ * Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
+ *
+ * Bewusst nur nackte #N-Tokens: Referenzen wie `owner/repo`#245 (Backtick/Slash
+ * davor) sind fremde Repos und werden nicht als lokale Issues gewertet.
+ *
+ * Die Ueberschrift zaehlt nur als EIGENE ZEILE und nur AUSSERHALB eines Code-Fence
+ * (Issue #308). Vorher traf der Ausdruck auch eine Nennung im Fliesstext und nahm
+ * die erste Fundstelle — bei einem Issue, das ueber das Issue-Format selbst
+ * handelt, las er dann einen Teil des Aufgabentextes. Das Schadensbild geht in
+ * beide Richtungen und faellt am Board nie auf: Eine echte Referenz im richtigen
+ * Abschnitt wird unsichtbar (der Runner implementiert zu frueh), oder eine
+ * Referenz im falsch gelesenen Bereich erfindet eine Abhaengigkeit (das Issue
+ * bleibt dauerhaft liegen).
+ *
+ * Die Fence-Regel gilt an BEIDEN Enden: Eine `##`-Zeile innerhalb eines Fence
+ * beendet den echten Abschnitt nicht. Sonst haette ein Beispielblock im Abschnitt
+ * selbst ihn vorzeitig geschlossen — zwei Auslegungen, beide mit dem Anspruch,
+ * "Fences ausnehmen" zu erfuellen.
+ *
+ * Bei mehreren echten Ueberschriften gilt die LETZTE: In einem korrekt
+ * formatierten Issue ist der Abschnitt der letzte des Dokuments, und ein
+ * vorangestelltes Beispiel ausserhalb eines Fence bleibt damit wirkungslos.
+ */
+export function parseDeps(body) {
+  const zeilen = String(body || "").split(/\r\n|\r|\n/);
+  const imFence = fenceLauf();
+  const ausserhalb = [];
+  let start = -1;
+
+  for (let i = 0; i < zeilen.length; i++) {
+    ausserhalb[i] = !imFence(zeilen[i]);
+    if (ausserhalb[i] && DEPS_UEBERSCHRIFT.test(zeilen[i])) start = i;
+  }
+  if (start < 0) return [];
+
+  let ende = zeilen.length;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (ausserhalb[i] && ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
+  }
+
+  const abschnitt = zeilen.slice(start + 1, ende).join("\n");
+  const refs = [...abschnitt.matchAll(LOKALE_REFERENZ)].map((x) => Number(x[1]));
   return [...new Set(refs)];
 }
 
@@ -1187,6 +1246,84 @@ function issueSpur(full) {
   return `${(full?.body || "").length}:${(full?.comments || []).length}`;
 }
 
+// Wie der lokale Tracker einen Kommentar an den Body anhaengt (board.mjs,
+// commentIssue). Die Kopplung ist bewusst und eng begrenzt: Nur mit ihr laesst sich
+// der neu angehaengte Abschnitt wieder in einzelne Kommentare zerlegen, und nur
+// einzelne Kommentare haben eine "erste Zeile".
+const LOKALER_KOMMENTARKOPF = /\n\n---\n\*\*Kommentar\*\* \([^\n)]*\)\n\n/;
+
+/**
+ * Die Kommentare, die WAEHREND dieser Session hinzugekommen sind (Issue #310).
+ *
+ * Zwei Speicherformen, ein Ergebnis: GitHub, GitLab und Toolbox liefern ein
+ * `comments`-Array, der lokale Tracker haengt Kommentare an den Body. Dieselbe
+ * Zweiteilung, die `issueSpur` schon beruecksichtigt.
+ *
+ * Gewertet wird nur das Neue. Ein Body-Vorschlag aus einem frueheren Lauf ist kein
+ * Ergebnis dieser Session — er wuerde das Gate sonst dauerhaft offen halten, gerade
+ * bei den Issues, die schon einmal durch einen Review gegangen sind.
+ */
+export function neueKommentare(vorher, nachher) {
+  if (Array.isArray(nachher?.comments) || Array.isArray(vorher?.comments)) {
+    const alt = (vorher?.comments || []).length;
+    return (nachher?.comments || []).slice(alt).map((k) => String(k?.body ?? ""));
+  }
+
+  const altBody = vorher?.body || "";
+  const neuBody = nachher?.body || "";
+  // Kein Praefix heisst: Der Body selbst wurde geaendert. Dann ist der Anhang nicht
+  // mehr sauber abzugrenzen — und der Marker-Zweig hat ohnehin schon entschieden.
+  if (!neuBody.startsWith(altBody) || neuBody.length === altBody.length) return [];
+  return neuBody
+    .slice(altBody.length)
+    .split(LOKALER_KOMMENTARKOPF)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
+const RUNDEN_KOPF = /^##\s*[^\n]*?,\s*Runde\s*(\d+)\s*$/;
+
+/** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
+function kopfUndRest(text) {
+  const zeilen = String(text || "").split(/\r\n|\r|\n/);
+  return { kopf: zeilen[0] ?? "", hatText: zeilen.slice(1).some((z) => z.trim() !== "") };
+}
+
+/**
+ * Traegt diese Session einen uebernehmbaren Body-Vorschlag bei (Issue #310)?
+ *
+ * Gueltig ist ein Kommentar, dessen ERSTE Zeile exakt `## Body-Vorschlag, Runde <n>`
+ * lautet (n positiv) und unter der mindestens eine nicht leere Textzeile steht. Die
+ * Bindung an die erste Zeile schliesst zitierte oder in Befunden erwaehnte Treffer
+ * aus; die Textzeile schliesst die blosse Ueberschrift aus, mit der das Gate sonst
+ * mit einem Handgriff zu umgehen waere.
+ *
+ * Bei mehreren Runden zaehlt die HOECHSTE in dieser Session geschriebene Runde:
+ * Nur der letzte Vorschlag ist der uebernehmbare Text, fruehere sind Verlauf. Eine
+ * Paarungspflicht je Runde bestrafte einen Lauf, der korrekt nur den Endstand
+ * vorschlaegt. Kommt gar keine Rundenangabe vor, genuegt irgendein gueltiger
+ * Vorschlag.
+ */
+export function bodyVorschlagVorhanden(kommentare) {
+  const vorschlaege = [];
+  let hoechsteRunde = null;
+
+  for (const text of kommentare || []) {
+    const { kopf, hatText } = kopfUndRest(text);
+    const runde = RUNDEN_KOPF.exec(kopf);
+    if (runde) {
+      const n = Number(runde[1]);
+      if (n > 0 && (hoechsteRunde === null || n > hoechsteRunde)) hoechsteRunde = n;
+    }
+    const m = VORSCHLAG_KOPF.exec(kopf);
+    if (m && hatText && Number(m[1]) > 0) vorschlaege.push(Number(m[1]));
+  }
+
+  if (vorschlaege.length === 0) return false;
+  return hoechsteRunde === null || vorschlaege.includes(hoechsteRunde);
+}
+
 /**
  * Laesst jeden Kandidaten von einer frischen /issue-review-Session pruefen.
  *
@@ -1209,6 +1346,7 @@ async function runReviewLoop(kandidaten, args) {
   let ohneBefund = 0;
   let mitBefund = 0;
   let ohneErgebnis = 0;
+  let schaerfungFehlt = 0;
   let uebersprungen = 0;
   let hardStop = false;
 
@@ -1260,8 +1398,21 @@ async function runReviewLoop(kandidaten, args) {
       ohneBefund++;
       log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
     } else if (issueSpur(nachher) !== spurVorher) {
-      mitBefund++;
-      log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
+      // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
+      // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
+      // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
+      // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
+      if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
+        mitBefund++;
+        log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
+      } else {
+        schaerfungFehlt++;
+        log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
+        board("issue", "comment", String(kandidat.id),
+          "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
+          + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
+          + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
+      }
     } else {
       ohneErgebnis++;
       log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
@@ -1270,7 +1421,11 @@ async function runReviewLoop(kandidaten, args) {
     }
   }
 
-  log(`Nacht-Review beendet (Stufe ${stufe}): ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
+  // morgens verlangt er einen anderen Handgriff als beide (Issue #310). Der
+  // Gesamt-Exit bleibt trotzdem 0 — die Befunde stehen am Board, ein harter Stopp
+  // waere unverhaeltnismaessig.
+  log(`Nacht-Review beendet (Stufe ${stufe}): ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   process.exit(hardStop ? 1 : 0);
 }

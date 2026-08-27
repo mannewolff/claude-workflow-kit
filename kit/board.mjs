@@ -16,6 +16,8 @@
       KIT_AGENT_MODEL setzen sie, sonst Abbruch. [--author-model <modell>]
  *       Der Body braucht eine Zeile "Autor-Modell: <modell>" (Issue #266);
  *       --author-model oder KIT_AGENT_MODEL setzen sie, sonst bricht der Aufruf ab.
+ *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
+ *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
@@ -23,6 +25,10 @@
  *   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
  *       '-' liest von stdin. Fuer lange Texte (Review-Befunde) der bevorzugte Weg:
  *       keine Datei, die jemand aufraeumen muss (Issue #270).
+ *   node board.mjs issue label add <id> <name>
+ *   node board.mjs issue label remove <id> <name>
+ *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
+ *       aendert `issue move` (Issue #249).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -46,7 +52,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.38.0";
+const KIT_VERSION = "1.39.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -76,13 +82,19 @@ const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
-                             [--author-model <modell>]
+                             [--author-model <modell>] [--derived-from <nummer>]
+      --derived-from traegt die Kartennummer des naechsten Vorfahren ins Board
+      (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
+      sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
       '-' liest von stdin; fuer lange Texte der bevorzugte Weg (Issue #270).
+  node board.mjs issue label add <id> <name>
+  node board.mjs issue label remove <id> <name>
+      Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -627,12 +639,13 @@ class GitHubIssueTracker {
 
   async getIssue(id) {
     const repo = this._repo();
-    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments"]);
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels"]);
     return {
       id: String(data.number),
       title: data.title,
       body: data.body,
       status: null, // Board-Status nicht im Issue-Objekt, erfordert Project-Abfrage
+      labels: labelNamesFrom(data.labels),
       comments: normalizeComments(data.comments),
     };
   }
@@ -747,6 +760,16 @@ class GitHubIssueTracker {
     const repo = this._repo();
     exec("gh", ["issue", "edit", String(id), "--repo", repo, "--body", body]);
   }
+
+  // gh setzt und entfernt Labels namentlich und additiv: Die uebrigen Labels des
+  // Issues bleiben unberuehrt, und beide Richtungen sind von sich aus idempotent.
+  // Eine unbekannte Labeldefinition meldet gh mit Exit != 0 — das schlaegt bewusst
+  // durch, damit eine nie gesetzte Zeichnung nicht als gesetzt gilt.
+  async labelIssue(id, name, aktion) {
+    const repo = this._repo();
+    const flag = aktion === "add" ? "--add-label" : "--remove-label";
+    exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+  }
 }
 
 function githubStatusName(status, config) {
@@ -808,13 +831,14 @@ class GitLabIssueTracker {
 
   async getIssue(id) {
     const data = execJSON("glab", ["issue", "view", String(id), "--output", "json"]);
-    const labelNames = (data.labels || []).map((l) => l.name || l);
+    const labelNames = labelNamesFrom(data.labels);
     const status = labelToStatus(labelNames, this._cfg, data.state) || null;
     return {
       id: String(data.iid || data.id),
       title: data.title,
       body: data.description,
       status,
+      labels: labelNames,
       comments: this._notes(id),
     };
   }
@@ -905,6 +929,14 @@ class GitLabIssueTracker {
     // Bei GitLab heisst der Body 'description' — dasselbe Flag wie in createIssue.
     exec("glab", ["issue", "update", String(id), "--description", body]);
   }
+
+  // Dieselben Flags wie in moveIssue, nur mit genau einem Namen und ohne die
+  // Status-Labels anzufassen: Die Sperre gegen Spaltennamen sitzt im Dispatcher,
+  // bevor irgendein Adapter gerufen wird.
+  async labelIssue(id, name, aktion) {
+    const flag = aktion === "add" ? "--label" : "--unlabel";
+    exec("glab", ["issue", "update", String(id), flag, name]);
+  }
 }
 
 class GitLabCodeHost {
@@ -956,6 +988,16 @@ function serializeFrontmatter(meta, body) {
   return `---\n${lines.join("\n")}\n---\n${body}`;
 }
 
+// Labels des lokalen Trackers liegen als kommaseparierter Frontmatter-String —
+// parseFrontmatter kann kein YAML-Array (Issue #158/#159). Lesen und Schreiben
+// teilen sich diese Form, damit listIssues und labelIssue nicht zwei Lesarten
+// desselben Feldes entwickeln.
+function labelsAusFrontmatter(meta) {
+  return typeof meta.labels === "string" && meta.labels.trim()
+    ? meta.labels.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+}
+
 function issuesDir(config) {
   return resolve(config.local?.issuesDir || "issues");
 }
@@ -996,7 +1038,7 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
-    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", body };
+    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1042,11 +1084,7 @@ class LocalIssueTracker {
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
-        // Labels als kommaseparierter Frontmatter-String (parseFrontmatter kann kein
-        // YAML-Array) -> Namen-Array, analog zu den anderen Trackern (Issue #158/#159).
-        const labels = typeof meta.labels === "string" && meta.labels.trim()
-          ? meta.labels.split(",").map((s) => s.trim()).filter(Boolean)
-          : [];
+        const labels = labelsAusFrontmatter(meta);
         return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", labels, body };
       })
       // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
@@ -1084,6 +1122,23 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const { meta } = parseFrontmatter(readFileSync(p, "utf-8"));
     // Nur der Body wird ersetzt; Status, Titel und Labels gehoeren anderen Kommandos.
+    writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
+  }
+
+  // Nur das Feld `labels` wird angefasst — alle uebrigen Metadaten und der Body
+  // gehen unveraendert durch serializeFrontmatter zurueck. Bleibt kein Label uebrig,
+  // verschwindet das Feld ganz: `labels: ` waere beim naechsten Lesen zwar ebenfalls
+  // ein leeres Array, aber eine Zeile, die etwas zu behaupten scheint.
+  async labelIssue(id, name, aktion) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const { meta, body } = parseFrontmatter(readFileSync(p, "utf-8"));
+    const vorhanden = labelsAusFrontmatter(meta);
+    const neu = aktion === "add"
+      ? (vorhanden.includes(name) ? vorhanden : [...vorhanden, name])
+      : vorhanden.filter((l) => l !== name);
+    if (neu.length > 0) meta.labels = neu.join(", ");
+    else delete meta.labels;
     writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
   }
 }
@@ -1293,21 +1348,38 @@ class ToolboxIssueTracker {
     return item;
   }
 
-  async createIssue({ title, body }) {
+  async createIssue({ title, body, derivedFrom }) {
     const { host } = this._auth();
-    // Ideen-Speicher (kanban-kit #245): neu angelegte Issues landen als Idee im
-    // Sammelbecken statt direkt im Backlog. Das ist die Vorgabe.
+    // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
+    // Board-Nummer. Das ist die Vorgabe (Issue #313); der Ideen-Speicher
+    // (kanban-kit #245) ist die bewusste Abwahl per `ideaStored: true`.
     //
-    // Das Wire-Feld dafuer heisst seit kanban-kit 2026-08 `direct` (Issue #295) —
-    // der frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und
-    // geht deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst
-    // seinen Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und
-    // eine Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
+    // Deshalb `!== true` und nicht `=== false`: Frueher lenkte ein FEHLENDES Feld
+    // die Karte in den Pool — ohne Nummer, in keiner Spalte, sichtbar erst nach dem
+    // manuellen Einplanen. Aufgefallen ist das niemandem, weil dieses Repo den Wert
+    // explizit setzt und das Dogfooding damit am Default vorbeilief.
+    //
+    // Das Wire-Feld heisst seit kanban-kit 2026-08 `direct` (Issue #295) — der
+    // frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und geht
+    // deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst seinen
+    // Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und eine
+    // Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
     //
     // Backends ohne `direct` ignorieren das Feld und legen wie bisher an.
-    const direkt = this._cfg.toolbox?.ideaStored === false;
+    const direkt = this._cfg.toolbox?.ideaStored !== true;
     const payload = { title, body: body || "", column: "BACKLOG" };
     if (direkt) payload.direct = true;
+    // Die Herkunft geht nur beim Anlegen mit (Issue #356). Ein Nachtragen gibt es
+    // nicht: Eine board-lose Pool-Idee ist fuer den Adapter unerreichbar, und der
+    // idempotente Wiederholungs-Ingest verwirft ein spaeter mitgeschicktes Feld.
+    //
+    // Instanzen, die `derivedFrom` nicht kennen, ignorieren den Schluessel still —
+    // die Karte entsteht, die Herkunft fehlt, nichts weist darauf hin. Anders als
+    // bei `direct` daneben gibt es hier bewusst KEINEN Waechter: Er braeuchte ein
+    // Echo in der Antwort, und genau die Pool-Idee liefert keines. Eine Absicherung,
+    // die im wichtigsten Fall nicht greift, waere schlechter als die benannte
+    // Luecke — sie steht in docs/dokumentation.md.
+    if (derivedFrom !== undefined) payload.derivedFrom = derivedFrom;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1322,7 +1394,9 @@ class ToolboxIssueTracker {
     // keine Nummer, und niemand bemerkt es.
     if (direkt && result.pending) {
       throw new BoardError(
-        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht."
+        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht. "
+        + "Direkt ins Backlog ist die Vorgabe; wer bewusst in den Ideen-Pool anlegen will, "
+        + "setzt 'toolbox.ideaStored: true' in .claude/workflow.config.json."
       );
     }
     if (result.pending) {
@@ -1343,6 +1417,7 @@ class ToolboxIssueTracker {
       title: item.title,
       body: item.body,
       status: item.status,
+      labels: labelNamesFrom(item.labels),
       comments: await this._comments(item.id),
     };
   }
@@ -1374,8 +1449,10 @@ class ToolboxIssueTracker {
     // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
     // ungefiltert bleibt die stabile numerische Sortierung.
     if (!status) filtered.sort((a, b) => a.number - b.number);
-    // labels erst echt gefuellt, sobald kanbancompat sie exponiert (mannewolff/kanban-kit#457);
-    // bis dahin liefert die Karten-API kein labels-Feld -> [] (rueckwaertskompatibel).
+    // Die Karten-API liefert Labels — gegen die Live-Instanz belegt am 2026-08-12
+    // (Issue #312). Eine aeltere Antwort ohne das Feld bleibt bei [], deshalb der
+    // Normalisierer statt eines direkten Zugriffs. Offen ist bei diesem Adapter
+    // allein der SCHREIBpfad (mannewolff/kanban-kit#457, siehe labelIssue).
     return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
   }
 
@@ -1426,6 +1503,19 @@ class ToolboxIssueTracker {
       body: JSON.stringify({ title: item.title, body }),
     });
   }
+
+  // Kein Schreibpfad: Die PAT-geschuetzte kanbancompat-API bietet kein atomares
+  // Hinzufuegen oder Entfernen eines Labels per Name (mannewolff/kanban-kit#457).
+  // Ein erfundener Aufruf waere hier keine Implementierung, sondern eine erfundene
+  // API — und eine, die die ganze Label-Liste ersetzt, waere fuer diesen Zweck
+  // unbrauchbar, weil sie die uebrigen Labels der Karte mitloescht.
+  async labelIssue() {
+    throw new BoardError(
+      "Labels schreiben kann der toolbox-Adapter noch nicht: Die Kanban-API bietet kein " +
+      "atomares Hinzufuegen/Entfernen eines Labels per Name (mannewolff/kanban-kit#457). " +
+      "Wird nachgereicht, sobald der Server es anbietet."
+    );
+  }
 }
 
 // ============================================================
@@ -1434,9 +1524,13 @@ class ToolboxIssueTracker {
 
 // Normalisiert die roh vom Backend gelieferten Labels auf ein flaches Array von
 // Namen: GitLab liefert Objekte ({name}), andere Backends evtl. nackte Strings,
-// oder das Feld fehlt ganz. Fehlform oder fehlendes Feld -> []. Von GitLab- und
-// Toolbox-listIssues geteilt, damit Aufrufer (z. B. night.mjs Routing-Label,
-// Issue #159) verlaesslich ein Array bekommen (Issue #158).
+// oder das Feld fehlt ganz. Fehlform oder fehlendes Feld -> [].
+//
+// Von `listIssues` UND `getIssue` aller Tracker geteilt (Issue #312), damit
+// dieselbe Karte ueber beide Wege dieselben Labels liefert. Aufrufer (z. B. das
+// Routing-Label in night.mjs, Issue #159) bekommen verlaesslich ein Array — ein
+// fehlendes Feld wuerde sonst still zu "keine Labels" statt zu einem Fehler
+// (Issue #158).
 export function labelNamesFrom(rawLabels) {
   if (!Array.isArray(rawLabels)) return [];
   return rawLabels
@@ -1574,7 +1668,7 @@ export function mergeKontextConfig(globalCfg, localCfg) {
  * Ohne `vault` ist das Ergebnis mode "degraded" statt eines Fehlers: /kontext und
  * /document haben dafuer einen dokumentierten Modus ohne persistentes Memory.
  */
-export function resolveKontextPaths({ cfg = {}, project, date }) {
+export function resolveKontextPaths({ cfg = {}, project, date, projectNoteFile = null, parentNoteFile = null }) {
   const projectName = project || cfg.project || "";
   const parentProject = cfg.parentProject || null;
   // projectDocs sind Glob-Muster relativ zum PROJEKT-Verzeichnis, keine Vault-Pfade:
@@ -1601,11 +1695,52 @@ export function resolveKontextPaths({ cfg = {}, project, date }) {
     project: projectName,
     parentProject,
     log: join(vault, logPath.replaceAll("{date}", date).replaceAll("{project}", projectName)),
-    projectNote: join(vault, "Projekte", notizOrdner, `${projectName}.md`),
-    parentNote: parentProject ? join(vault, "Projekte", parentProject, `${parentProject}.md`) : null,
+    // Ohne uebergebenen Dateinamen bleibt es beim konstruierten — das ist der Fall
+    // der Erstanlage und zugleich die Form, in der diese Funktion ohne Vault
+    // aufrufbar bleibt (Issue #286).
+    projectNote: join(vault, "Projekte", notizOrdner, projectNoteFile || `${projectName}.md`),
+    parentNote: parentProject
+      ? join(vault, "Projekte", parentProject, parentNoteFile || `${parentProject}.md`)
+      : null,
     always: (cfg.always || []).map((datei) => join(vault, datei)),
     projectDocs,
   };
+}
+
+/**
+ * Waehlt aus den Dateinamen eines Notizordners den tatsaechlichen Namen der Notiz
+ * (Issue #286). Reine Funktion ueber Namen — der Dateisystem-Zugriff liegt im
+ * Wrapper, wie bei pickLatestLog/kontextLastLog.
+ *
+ * Der Vault gibt die Schreibweise vor, nicht der Repo-Name: Ein Ordner
+ * `Projekte/shell-app/` mit der Notiz `Shell-App.md` ist gewachsene Konvention, und
+ * Projekte sollen ihre Ablage nicht nach dem Werkzeug umbenennen muessen. Auf einem
+ * case-insensitiven Dateisystem faellt der Unterschied nicht auf; auf einem
+ * case-sensitiven legt /document eine ZWEITE Notiz an, und ab da laeuft die Historie
+ * doppelt weiter, ohne dass ein Schreibvorgang fehlschlaegt.
+ *
+ * Vier Ausgaenge:
+ *   1. genau eine .md im Ordner            -> ihr Name (siehe `alleinstehend`)
+ *   2. keine oder keine passende .md       -> null (Erstanlage, konstruierter Pfad)
+ *   3. genau ein case-insensitiver Treffer -> dessen Name
+ *   4. mehrere Treffer                     -> kollision, der Aufrufer bricht ab
+ *
+ * `alleinstehend: false` schaltet Regel 1 ab. Im Multi-Repo-Fall teilen sich
+ * Dach- und Service-Notiz EIN Verzeichnis; dort wuerde "die einzige Datei ist es"
+ * beide auf dieselbe Datei zeigen lassen — und /document schriebe den Stand des
+ * einen Service in die Notiz des Gesamtsystems.
+ */
+export function pickNoteFile(fileNames, notizName, { alleinstehend = true } = {}) {
+  const leer = { name: null, kollision: null };
+  const mds = (fileNames || []).filter((n) => n.toLowerCase().endsWith(".md"));
+  if (mds.length === 0) return leer;
+  if (mds.length === 1 && alleinstehend) return { name: mds[0], kollision: null };
+
+  const ziel = notizName.toLowerCase();
+  const treffer = mds.filter((n) => n.toLowerCase() === ziel);
+  if (treffer.length === 0) return leer;
+  if (treffer.length === 1) return { name: treffer[0], kollision: null };
+  return { name: null, kollision: treffer };
 }
 
 /** Ein Datum ist nur gueltig, wenn es den Tag auch wirklich gibt: 2026-13-99 nicht. */
@@ -1763,7 +1898,7 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
 const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
 const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
-const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
 ]);
@@ -1781,8 +1916,14 @@ function normalisiereZeilenenden(body) {
  * Abschnittsgrenzen, Parser und das Setzen des Bezugsstands. Eine dritte Kopie der
  * Bedingung waere die Stelle, an der die drei auseinanderlaufen, ohne dass es
  * jemandem auffiele.
+ *
+ * Seit Issue #308 ist es eine vierte: `parseDeps` in `kit/night.mjs` importiert die
+ * Funktion von hier. night.mjs ruft board.mjs sonst als Subprozess auf — fuer eine
+ * reine Regel waere das der falsche Weg, und eine Kopie waere genau die Kopie, vor
+ * der dieser Kommentar warnt. Der Import ist nebenwirkungsfrei: Die CLI haengt am
+ * runAsCli-Guard.
  */
-function fenceLauf() {
+export function fenceLauf() {
   let fence = null;
   return (zeile) => {
     const fm = zeile.match(FENCE_ZEILE);
@@ -1809,7 +1950,7 @@ function fenceLauf() {
  * Mehrere Kontext-Abschnitte sind kein Fehler, es gilt der erste — genau so
  * verhaelt sich `autorModellSicherstellen` heute schon.
  */
-function kontextGrenzen(text) {
+export function kontextGrenzen(text) {
   const imFence = fenceLauf();
   let start = -1;
   let offset = 0;
@@ -1973,14 +2114,40 @@ export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
   return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
 }
 
+/**
+ * Liest `--derived-from` und prueft die FORM, nicht den Inhalt (Issue #356).
+ *
+ * Die Obergrenze bleibt bewusst ungeprueft: `CardNumbers.MAX` ist eine
+ * kanban-kit-Konstante. Eine Kopie hier waere eine zweite Wahrheit, die beim
+ * naechsten Serverwechsel still falsch wird. Ob die Nummer existiert, auf die Karte
+ * selbst zeigt oder einen Zyklus schliesst, prueft der Server — dort liegen die Daten.
+ *
+ * Der eigene Zweig fuer `true` ist der Kern: `parseArgs` macht aus einem Flag ohne
+ * Wert ein `true`, und `Number(true) === 1`. Ohne ihn kaeme ein nacktes
+ * `--derived-from` durch jede Number/isInteger-Pruefung und schickte still die
+ * Herkunft "Karte 1" ans Board. Dieselbe Falle wie bei `kontextOption`.
+ */
+function derivedFromOption(wert) {
+  if (wert === undefined) return undefined;
+  if (wert === true) fail("--derived-from braucht einen Wert (Kartennummer des naechsten Vorfahren)");
+  const nummer = Number(wert);
+  if (!Number.isInteger(nummer) || nummer < 1) {
+    fail(`--derived-from '${wert}' ist keine positive Ganzzahl.`);
+  }
+  return nummer;
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
   // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
   const hatQuelle = args.body !== undefined || args["body-file"] !== undefined;
+  // Vor jeder Body-Aufloesung und damit vor jedem Netzaufruf: Ein Tippfehler in der
+  // Nummer soll keine Karte anlegen und keine Datei lesen.
+  const derivedFrom = derivedFromOption(args["derived-from"]);
   const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
-  out(await tracker.createIssue({
+  const felder = {
     title: args.title,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
     // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
@@ -1990,7 +2157,11 @@ async function issueCreate(tracker, args) {
     parent: args.parent,
     color: args.color,
     shortcode: args.shortcode,
-  }));
+  };
+  // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
+  // vom bewussten Weglassen zu unterscheiden.
+  if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
+  out(await tracker.createIssue(felder));
 }
 
 async function issueGet(tracker, args) {
@@ -2022,6 +2193,57 @@ async function issueMove(tracker, args) {
   }
   await tracker.moveIssue(id, toStatus);
   out({ ok: true, id, status: toStatus });
+}
+
+const LABEL_AKTIONEN = ["add", "remove"];
+
+// Abbruch mit Hilfe: dieselbe Form wie die Dispatcher-Zweige fuer unbekannte Befehle.
+function labelFail(msg) {
+  process.stdout.write(HELP);
+  fail(msg);
+}
+
+/**
+ * `issue label add|remove <id> <name>` — zeichnet ein Issue (Issue #249).
+ *
+ * Die Operandenpruefung laeuft vollstaendig VOR dem Adapter: Ein Schreibzugriff auf
+ * halbem Wissen — falsche ID, halber Name — waere schlimmer als eine Fehlermeldung,
+ * und bei den externen Trackern ist er nicht ohne Weiteres zurueckzunehmen.
+ *
+ * Verboten sind Komma und Zeilenumbruch im Namen. Das Komma folgt aus dem lokalen
+ * Speicherformat (kommaseparierter Frontmatter-String, siehe labelsAusFrontmatter):
+ * Ein Name mit Komma liesse sich daraus nicht mehr eindeutig zurueckgewinnen. Ein
+ * Verbot bei allen vier Trackern statt nur bei local, damit derselbe Aufruf nicht je
+ * nach Projekt etwas anderes bedeutet.
+ *
+ * Leerzeichen und Doppelpunkt bleiben erlaubt und gehen als EIN argv-Element durch —
+ * `kit:klaeren` und `needs: triage` sind gaengige Labelnamen.
+ */
+async function issueLabel(tracker, config, args) {
+  const [aktion, id, name, ...zuviel] = args._;
+  if (!LABEL_AKTIONEN.includes(aktion)) {
+    labelFail(`Unbekannter label-Befehl: '${aktion ?? ""}'. Erwartet: ${LABEL_AKTIONEN.join(" | ")}`);
+  }
+  if (!id) labelFail("id ist erforderlich: board.mjs issue label add <id> <name>");
+  if (!name) labelFail("name ist erforderlich: board.mjs issue label add <id> <name>");
+  if (zuviel.length > 0) {
+    labelFail(`Zu viele Argumente: '${zuviel.join(" ")}'. Erwartet genau <id> und <name>.`);
+  }
+  if (/[,\n]/.test(name)) {
+    labelFail(`Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '${name}'`);
+  }
+
+  // Spaltennamen sind bei GitLab selbst Labels — ohne diese Sperre koennte das
+  // generische Label-Kommando `issue move` umgehen und den Boardzustand
+  // beschaedigen. Die Sperre gilt bei allen Trackern: Ein Kommando, das je nach
+  // Projekt einmal den Status aendert und einmal nicht, ist die schlechtere Wahl.
+  // Verglichen wird exakt — nur der wortgleiche Name ist das Statuslabel.
+  if (Object.values(columnLabels(config)).includes(name)) {
+    fail(`Status-Label \`${name}\` nur ueber \`issue move\` aendern`);
+  }
+
+  await tracker.labelIssue(id, name, aktion);
+  out({ ok: true, id, label: name, aktion });
 }
 
 /**
@@ -2100,7 +2322,8 @@ async function issueUpdate(tracker, args) {
 }
 
 async function dispatchIssue(command, args) {
-  const tracker = resolveTracker(loadConfig());
+  const config = loadConfig();
+  const tracker = resolveTracker(config);
   switch (command) {
     case "create":  return issueCreate(tracker, args);
     case "get":     return issueGet(tracker, args);
@@ -2109,6 +2332,7 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
+    case "label":   return issueLabel(tracker, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
@@ -2147,11 +2371,61 @@ function kontextOption(args, name) {
   return args[name];
 }
 
+/**
+ * Liest die Dateinamen eines Notizordners (Issue #286).
+ *
+ * Ein fehlender Ordner ist der Normalfall der Erstanlage und liefert []. Jeder
+ * ANDERE Fehler — der Pfad ist eine Datei, das Verzeichnis ist nicht lesbar —
+ * bricht ab: Ihn wie einen leeren Ordner zu behandeln hiesse, still auf den
+ * konstruierten Namen zurueckzufallen und genau die zweite Notiz anzulegen, die
+ * dieses Issue verhindert.
+ */
+function leseNotizOrdner(ordner) {
+  try {
+    return readdirSync(ordner);
+  } catch (e) {
+    if (e.code === "ENOENT") return [];
+    fail(`Notizordner nicht lesbar: ${ordner} (${e.code || e.message})`);
+  }
+}
+
+// Macht aus einer Mehrdeutigkeit einen Abbruch. Ein stiller Griff ins Ungewisse
+// waere genau der Fehler, den Issue #286 behebt — deshalb Exit 1 mit beiden Namen,
+// statt eine der beiden Dateien zu raten.
+function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
+  const { name, kollision } = pickNoteFile(dateien, notizName, { alleinstehend });
+  if (kollision) {
+    fail(
+      `Mehrdeutige Notiz in ${ordner}: ${kollision.join(", ")}. ` +
+      "Die Dateinamen unterscheiden sich nur in der Gross-/Kleinschreibung — " +
+      "im Vault auf einen Namen zusammenfuehren."
+    );
+  }
+  return name;
+}
+
 // Praezedenz des Projektnamens: --project > cfg.project > Repo-Name > basename(cwd).
+//
+// Der Dateisystem-Zugriff liegt hier und nicht in resolveKontextPaths: Die Funktion
+// traegt den Vertrag "rein, ohne Dateisystem" und bleibt damit ohne vorhandenen
+// Vault aufrufbar — dieselbe Naht wie bei pickLatestLog/kontextLastLog (Issue #286).
 async function kontextPaths(args) {
   const cfg = loadKontextConfig();
   const project = kontextOption(args, "project") || cfg.project || await kontextRepoName();
-  out(resolveKontextPaths({ cfg, project, date: kontextOption(args, "date") || heute() }));
+  const date = kontextOption(args, "date") || heute();
+  const basis = resolveKontextPaths({ cfg, project, date });
+  if (basis.mode === "degraded") return out(basis);
+
+  // Mit parentProject liegen Dach- und Service-Notiz im selben Ordner; er wird
+  // einmal gelesen und beide Namen daraus aufgeloest.
+  const parent = basis.parentProject;
+  const ordner = join(basis.vault, "Projekte", parent || basis.project);
+  const dateien = leseNotizOrdner(ordner);
+  out(resolveKontextPaths({
+    cfg, project, date,
+    projectNoteFile: waehleNotiz(dateien, `${basis.project}.md`, ordner, !parent),
+    parentNoteFile: parent ? waehleNotiz(dateien, `${parent}.md`, ordner, false) : null,
+  }));
 }
 
 // Der juengste vorhandene Log-Eintrag desselben Projekts, als Anknuepfung fuer /document.
