@@ -18,7 +18,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { herkunftAusBody } from "../tools/derived-from-report.mjs";
+import { herkunftAusBody, bestandsPruefung, ZUSTAENDE } from "../tools/derived-from-report.mjs";
 import { kontextGrenzen } from "../kit/board.mjs";
 
 /** Kurzschreibweise: nur was der Leser braucht. */
@@ -212,4 +212,70 @@ test("kontextGrenzen ist aus kit/board.mjs importierbar", () => {
   const grenzen = kontextGrenzen(text);
   assert.ok(grenzen, "kontextGrenzen liefert keine Grenzen");
   assert.match(text.slice(grenzen.start, grenzen.ende), /Plan: Issue #363/);
+});
+
+// --- Bestandspruefung ueber die ganze Kartenmenge (Issue #365) ---
+//
+// Zwei Zustaende lassen sich an einer einzelnen Karte gar nicht bestimmen: ob die
+// genannte Nummer am Board existiert und ob sie auf die eigene Karte zeigt. Beides
+// braucht die ganze Menge.
+
+const menge = (...karten) => karten.map((k, n) => ({ id: String(n + 1), title: "Paket", ...k }));
+
+test("Verweis auf eine Nummer ausserhalb der Menge ist unbekannt", () => {
+  const [r] = bestandsPruefung(menge({ id: "1", body: KONTEXT("Plan: Issue #999") }));
+  assert.equal(r.zustand, "unbekannt");
+  assert.equal(r.vorfahr, null);
+  assert.equal(r.gelesen, 999);
+});
+
+test("Verweis auf die eigene Karte ist selbstverweis", () => {
+  const [r] = bestandsPruefung(menge({ id: "7", body: KONTEXT("Plan: Issue #7") }));
+  assert.equal(r.zustand, "selbstverweis");
+  assert.equal(r.vorfahr, null);
+  assert.equal(r.gelesen, 7);
+});
+
+test("gueltiger Verweis auf eine vorhandene Karte bleibt vorfahr", () => {
+  const [kind] = bestandsPruefung(menge(
+    { id: "9", body: KONTEXT("Plan: Issue #3") },
+    { id: "3", body: KONTEXT("Autor-Modell: m") },
+  ));
+  assert.equal(kind.zustand, "vorfahr");
+  assert.equal(kind.vorfahr, 3);
+});
+
+// `board.mjs issue list` liefert id als String, der Leser eine Zahl. Ein naiver
+// ===-Vergleich meldete jede Karte als `unbekannt` — der Fund des Issue-Reviews.
+test("der Existenz-Abgleich gelingt bei id als String wie als Zahl", () => {
+  const alsZahl = bestandsPruefung([
+    { id: 9, title: "Paket", body: KONTEXT("Plan: Issue #3") },
+    { id: 3, title: "Paket", body: KONTEXT("Autor-Modell: m") },
+  ]);
+  assert.equal(alsZahl[0].zustand, "vorfahr", "Zahlen-ids muessen abgeglichen werden");
+  const alsString = bestandsPruefung([
+    { id: "9", title: "Paket", body: KONTEXT("Plan: Issue #3") },
+    { id: "3", title: "Paket", body: KONTEXT("Autor-Modell: m") },
+  ]);
+  assert.equal(alsString[0].zustand, "vorfahr", "String-ids muessen abgeglichen werden");
+});
+
+test("das Feld gelesen fehlt bei vorfahr und bei keiner", () => {
+  const r = bestandsPruefung(menge(
+    { id: "9", body: KONTEXT("Plan: Issue #3") },
+    { id: "3", body: KONTEXT("Autor-Modell: m") },
+  ));
+  for (const eintrag of r) {
+    assert.ok(!("gelesen" in eintrag), `${eintrag.zustand} darf kein gelesen tragen`);
+  }
+});
+
+test("bestandsPruefung auf leerer Menge liefert einen leeren Bericht", () => {
+  assert.deepEqual(bestandsPruefung([]), []);
+});
+
+test("ZUSTAENDE nennt alle sechs Zustaende", () => {
+  assert.deepEqual([...ZUSTAENDE].sort(), [
+    "fehlplatziert", "keiner", "mehrdeutig", "selbstverweis", "unbekannt", "vorfahr",
+  ]);
 });
