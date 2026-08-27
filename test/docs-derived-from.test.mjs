@@ -23,6 +23,8 @@ const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 const DOKU = lies("docs", "dokumentation.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 
+import { ZUSTAENDE } from "../tools/derived-from-report.mjs";
+
 /**
  * Schneidet den Abschnitt ab einer Ueberschrift bis zur naechsten Ueberschrift
  * gleicher oder hoeherer Ebene. Findet die Ueberschrift nicht statt, schlaegt der
@@ -96,4 +98,55 @@ test("die Prozessdatei-Vorlage traegt eine Herkunfts-Konvention", () => {
   assert.match(a, /--derived-from/, "die Vorlage nennt die Option nicht");
   assert.match(a, /nächsten Vorfahren|naechsten Vorfahren/i,
     "die Vorlage sagt nicht, worauf der Verweis zeigt");
+});
+
+// --- Der Trockenlauf: derived-from-report (Issue #366) ---
+
+const AUSWERTEN = () => abschnitt(DOKU, "\n#### Herkunft auswerten: derived-from-report\n");
+
+test("die Doku beschreibt den Aufruf des Trockenlaufs", () => {
+  const a = AUSWERTEN();
+  assert.match(a, /issue list \| node tools\/derived-from-report\.mjs/,
+    "der Pipe-Aufruf fehlt");
+  assert.match(a, /--json/, "das Flag --json fehlt");
+  assert.match(a, /--help/, "das Flag --help fehlt");
+});
+
+test("die Doku sagt, dass nichts geschrieben wird, und warum", () => {
+  const a = AUSWERTEN();
+  assert.match(a, /schreibt nichts|nichts geschrieben|schreibt weder/i,
+    "das Nicht-Schreiben ist nicht benannt");
+  assert.match(a, /Schreibpfad/, "der fehlende Schreibpfad als Grund fehlt");
+  assert.match(a, /#355/, "der Verweis auf Idee #355 fehlt");
+});
+
+test("die Doku nennt beide Fundorte", () => {
+  const a = AUSWERTEN();
+  assert.match(a, /## Kontext/, "der Fundort des Arbeitspakets fehlt");
+  assert.match(a, /\[Plan\]/, "das Plandokument ist nicht als eigener Fall benannt");
+  assert.match(a, /Kopfbereich|vor `## Ziel`/,
+    "der Kopfbereich als zweiter Fundort fehlt — ohne ihn wirkt fehlplatziert willkuerlich");
+});
+
+// Die Namen kommen aus dem Werkzeug, nicht aus einer Liste im Test. Waeren sie hier
+// fest verdrahtet, bliebe der Test bei einem siebten Zustand gruen und die Doku still
+// zurueck — genau der Fall, den dieses Kriterium verhindern soll.
+test("jeder Zustand, den das Werkzeug kennt, steht in der Doku", () => {
+  const a = AUSWERTEN();
+  for (const zustand of ZUSTAENDE) {
+    assert.match(a, new RegExp(`\\b${zustand}\\b`), `der Zustand ${zustand} fehlt in der Doku`);
+  }
+  // Heutiger Erwartungswert, damit ein versehentliches Leeren von ZUSTAENDE auffaellt.
+  assert.equal(ZUSTAENDE.length, 6);
+});
+
+// Die Prozessdatei beschreibt den taeglichen Prozess, nicht die einmaligen
+// Analysewerkzeuge dieses Repos. Geprueft wird der WERKZEUGNAME — `derived-from`
+// allein steht dort seit Issue #358 zu Recht (Herkunfts-Konvention), ein naives
+// /derived-from/ waere schon am unveraenderten Bestand rot.
+test("die Prozessdatei nennt das Werkzeug nicht", () => {
+  assert.doesNotMatch(VORLAGE, /derived-from-report/,
+    "die Prozessdatei soll die Analysewerkzeuge dieses Repos nicht fuehren");
+  assert.match(VORLAGE, /--derived-from/,
+    "die Herkunfts-Konvention aus Issue #358 muss dort weiterhin stehen");
 });

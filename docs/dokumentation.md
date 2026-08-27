@@ -1066,6 +1066,44 @@ Das Feld ist die **abfragbare** Form — das Board gruppiert danach, ohne Bodies
 
 Dazu kennen `github`, `gitlab` und `local` gar kein solches Feld. Wer die Zeilen später als redundant streicht, verliert die Herkunft beim ersten Umzug — und in drei von vier Trackern sofort.
 
+#### Herkunft auswerten: derived-from-report
+
+`tools/derived-from-report.mjs` liest die Body-Zeilen zurück und weist für jede Karte aus, welchen Verweis sie bekäme — als Vorbereitung einer möglichen Nachpflege des Bestands. Die Karten kommen über stdin, das Werkzeug holt sie nicht selbst:
+
+```bash
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs --json
+node tools/derived-from-report.mjs --help
+```
+
+Ohne Flag entsteht eine lesbare Zusammenfassung mit einem Zähler je Zustand und einer Liste der Karten, die Aufmerksamkeit brauchen. `--json` gibt dieselben Daten roh aus, damit eine spätere Migration sie verarbeiten kann. Dass die Karten gereicht statt geholt werden, hat drei Gründe: Es ist ohne Mock-Server testbar, es funktioniert für **jeden** Tracker statt nur für kanbancompat, und derselbe Schnappschuss lässt sich zweimal auswerten.
+
+**Das Werkzeug schreibt nichts** — weder ans Board noch ins Dateisystem. Es ist ein Trockenlauf und bleibt einer, solange es keinen **Schreibpfad** für `derivedFrom` gibt: Das Feld wird beim Anlegen gesetzt und danach nie geändert. Ob und wie der Bestand nachgepflegt wird, hängt an einer Entscheidung im Projekt kanban-kit und liegt als Idee **#355**.
+
+**Wo gesucht wird, hängt am Dokumenttyp** — sonst wirkt der Zustand `fehlplatziert` willkürlich:
+
+| Dokument | gültiger Fundort |
+|---|---|
+| Arbeitspaket | Abschnitt `## Kontext` |
+| `[Plan]`-Dokument | Kopfbereich vor `## Ziel`, also vor der ersten `##`-Überschrift |
+
+Plandokumente haben gar keinen Kontext-Abschnitt; ein Leser, der nur ihn kennt, übersähe jede Zwischenstufe der Kette. In beiden Fällen zählen nur Zeilen **außerhalb von Code-Fences** — ein Issue, das die Konvention als Beispiel zeigt, darf keinen Verweis erfinden.
+
+Je Karte entsteht genau ein Zustand:
+
+| Zustand | Bedeutung |
+|---|---|
+| `vorfahr` | genau ein eindeutiger Verweis, die Zielkarte existiert |
+| `keiner` | keine Verweiszeile — die Karte bliebe leer. **Kein Fehler**, sondern der Normalfall für alles, was vor der Konvention entstanden ist |
+| `unbekannt` | der Verweis nennt eine Nummer, die es in der übergebenen Kartenmenge nicht gibt |
+| `selbstverweis` | der Verweis zeigt auf die eigene Karte |
+| `mehrdeutig` | mehrere Zeilen desselben Typs mit verschiedenen Nummern — hier wird nicht geraten |
+| `fehlplatziert` | eine Verweiszeile steht außerhalb des gültigen Fundorts, während dort keine steht |
+
+Bei `unbekannt` und `selbstverweis` trägt das Ergebnis zusätzlich das Feld `gelesen` mit der Nummer, auf die gezeigt wurde.
+
+**Wozu das gut ist, zeigte der erste Lauf:** Von 47 Karten mit Verweis waren null fehlplatziert und null mehrdeutig — aber **14 zeigten auf zwei Vorfahren, die es am Board nicht mehr gab**. Eine Migration wäre daran gescheitert, weil der Server unbekannte Nummern beim Anlegen ablehnt. Genau dafür läuft man trocken.
+
 ### Lokaler Modus
 
 Mit `issueTracker: local` legt der Adapter Issues als Markdown-Dateien in `issues/` an:
