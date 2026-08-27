@@ -16,6 +16,8 @@
       KIT_AGENT_MODEL setzen sie, sonst Abbruch. [--author-model <modell>]
  *       Der Body braucht eine Zeile "Autor-Modell: <modell>" (Issue #266);
  *       --author-model oder KIT_AGENT_MODEL setzen sie, sonst bricht der Aufruf ab.
+ *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
+ *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
@@ -80,7 +82,10 @@ const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
-                             [--author-model <modell>]
+                             [--author-model <modell>] [--derived-from <nummer>]
+      --derived-from traegt die Kartennummer des naechsten Vorfahren ins Board
+      (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
+      sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
@@ -1343,7 +1348,7 @@ class ToolboxIssueTracker {
     return item;
   }
 
-  async createIssue({ title, body }) {
+  async createIssue({ title, body, derivedFrom }) {
     const { host } = this._auth();
     // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
     // Board-Nummer. Das ist die Vorgabe (Issue #313); der Ideen-Speicher
@@ -1364,6 +1369,17 @@ class ToolboxIssueTracker {
     const direkt = this._cfg.toolbox?.ideaStored !== true;
     const payload = { title, body: body || "", column: "BACKLOG" };
     if (direkt) payload.direct = true;
+    // Die Herkunft geht nur beim Anlegen mit (Issue #356). Ein Nachtragen gibt es
+    // nicht: Eine board-lose Pool-Idee ist fuer den Adapter unerreichbar, und der
+    // idempotente Wiederholungs-Ingest verwirft ein spaeter mitgeschicktes Feld.
+    //
+    // Instanzen, die `derivedFrom` nicht kennen, ignorieren den Schluessel still —
+    // die Karte entsteht, die Herkunft fehlt, nichts weist darauf hin. Anders als
+    // bei `direct` daneben gibt es hier bewusst KEINEN Waechter: Er braeuchte ein
+    // Echo in der Antwort, und genau die Pool-Idee liefert keines. Eine Absicherung,
+    // die im wichtigsten Fall nicht greift, waere schlechter als die benannte
+    // Luecke — sie steht in docs/dokumentation.md.
+    if (derivedFrom !== undefined) payload.derivedFrom = derivedFrom;
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2098,14 +2114,40 @@ export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
   return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
 }
 
+/**
+ * Liest `--derived-from` und prueft die FORM, nicht den Inhalt (Issue #356).
+ *
+ * Die Obergrenze bleibt bewusst ungeprueft: `CardNumbers.MAX` ist eine
+ * kanban-kit-Konstante. Eine Kopie hier waere eine zweite Wahrheit, die beim
+ * naechsten Serverwechsel still falsch wird. Ob die Nummer existiert, auf die Karte
+ * selbst zeigt oder einen Zyklus schliesst, prueft der Server — dort liegen die Daten.
+ *
+ * Der eigene Zweig fuer `true` ist der Kern: `parseArgs` macht aus einem Flag ohne
+ * Wert ein `true`, und `Number(true) === 1`. Ohne ihn kaeme ein nacktes
+ * `--derived-from` durch jede Number/isInteger-Pruefung und schickte still die
+ * Herkunft "Karte 1" ans Board. Dieselbe Falle wie bei `kontextOption`.
+ */
+function derivedFromOption(wert) {
+  if (wert === undefined) return undefined;
+  if (wert === true) fail("--derived-from braucht einen Wert (Kartennummer des naechsten Vorfahren)");
+  const nummer = Number(wert);
+  if (!Number.isInteger(nummer) || nummer < 1) {
+    fail(`--derived-from '${wert}' ist keine positive Ganzzahl.`);
+  }
+  return nummer;
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
   // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
   const hatQuelle = args.body !== undefined || args["body-file"] !== undefined;
+  // Vor jeder Body-Aufloesung und damit vor jedem Netzaufruf: Ein Tippfehler in der
+  // Nummer soll keine Karte anlegen und keine Datei lesen.
+  const derivedFrom = derivedFromOption(args["derived-from"]);
   const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
-  out(await tracker.createIssue({
+  const felder = {
     title: args.title,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
     // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
@@ -2115,7 +2157,11 @@ async function issueCreate(tracker, args) {
     parent: args.parent,
     color: args.color,
     shortcode: args.shortcode,
-  }));
+  };
+  // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
+  // vom bewussten Weglassen zu unterscheiden.
+  if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
+  out(await tracker.createIssue(felder));
 }
 
 async function issueGet(tracker, args) {
