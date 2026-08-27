@@ -1950,7 +1950,7 @@ export function fenceLauf() {
  * Mehrere Kontext-Abschnitte sind kein Fehler, es gilt der erste — genau so
  * verhaelt sich `autorModellSicherstellen` heute schon.
  */
-function kontextGrenzen(text) {
+export function kontextGrenzen(text) {
   const imFence = fenceLauf();
   let start = -1;
   let offset = 0;
