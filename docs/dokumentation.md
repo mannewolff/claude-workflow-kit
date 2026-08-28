@@ -75,6 +75,21 @@ Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
 
+### Was der Installer schreibt — und warum es nicht ins Repo gehoert
+
+Alles, was der Installer unter `.claude/` ablegt, ist **Generat**: die Skills, `CLAUDE-workflow.md` und die beiden Gate-Register. Beim naechsten Lauf schreibt er es neu. Eine dieser Dateien im Repo zu versionieren, hiesse einen zweiten Stand zu fuehren, der bis zum naechsten Install driftet — und es naehme jedem die Entscheidung ab, **ob** er ueberhaupt neu installiert.
+
+Dieses Repo haelt es deshalb selbst so, und fuer dein Projekt ist es die empfohlene Aufteilung:
+
+```gitignore
+.claude/*
+!.claude/workflow.config.json
+```
+
+Die erste Zeile muss `.claude/*` lauten, nicht `.claude`: Git wertet innerhalb eines gesperrten Verzeichnisses kein `!`-Muster mehr aus — die Ausnahme fiele still mit heraus.
+
+`workflow.config.json` ist die begruendete Ausnahme. Der Installer **ueberschreibt sie nicht, er mergt**: Basis sind die Vorgabewerte, darueber die vorhandene Datei, zuoberst die abgefragten Antworten. Nicht abgefragte Felder wie `buildChecks` oder `issueReview` bleiben erhalten. Sie ist Team-Einstellung, kein Generat — und gehoert deshalb versioniert.
+
 ### Welchen Stand hat meine Installation?
 
 Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:
