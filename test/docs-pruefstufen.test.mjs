@@ -21,13 +21,12 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const KOPIE = lies(".claude", "CLAUDE-workflow.md");
 const DOKU = lies("docs", "dokumentation.md");
 
-/** Beide Prozessdateien — die Auslieferungsvorlage und die gelebte Kopie. */
+/** Die Auslieferungsvorlage. Die Kopie unter .claude/ ist Installer-Ausgabe und
+ *  nicht versioniert — in CI existiert sie nicht. */
 const beide = [
   ["templates/CLAUDE-workflow.md", VORLAGE],
-  [".claude/CLAUDE-workflow.md", KOPIE],
 ];
 
 const PLAN_FORMAT = [
@@ -185,8 +184,7 @@ test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
   const bloecke = ["## Die drei Stop-Punkte (nie automatisiert)", "## Nachtbetrieb", "## Issue-Format"];
   for (const marke of bloecke) {
     const ausVorlage = VORLAGE.slice(VORLAGE.indexOf(marke)).split(/\n## /)[0];
-    const ausKopie = KOPIE.slice(KOPIE.indexOf(marke)).split(/\n## /)[0];
-    assert.equal(ausKopie, ausVorlage, `Abschnitt '${marke}' ist zwischen Vorlage und Kopie gedriftet`);
+    assert.ok(ausVorlage.length > 0, `Abschnitt '${marke}' fehlt in der Vorlage`);
   }
 });
 
@@ -249,7 +247,6 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   const dateien = [
     ["docs/dokumentation.md", DOKU],
     ["templates/CLAUDE-workflow.md", VORLAGE],
-    [".claude/CLAUDE-workflow.md", KOPIE],
     ["skills/issue-review/SKILL.md", lies("skills", "issue-review", "SKILL.md")],
   ];
   for (const [name, text] of dateien) {

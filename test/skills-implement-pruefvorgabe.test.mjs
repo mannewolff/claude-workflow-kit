@@ -25,7 +25,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = ["implement-next", "implement-ready"];
 
 const quelle = (name) => join(repoRoot, "skills", name, "SKILL.md");
-const kopie = (name) => join(repoRoot, ".claude", "skills", name, "SKILL.md");
 const text = (name) => readFileSync(quelle(name), "utf-8");
 
 /**
@@ -97,8 +96,7 @@ for (const name of SKILLS) {
       "der Abschnitt benennt die Dreiteilung nicht — dann liest sie sich als Aufzaehlung von Sonderfaellen");
   });
 
-  test(`${name}: die Dogfooding-Kopie unter .claude ist identisch`, () => {
-    assert.equal(readFileSync(kopie(name), "utf-8"), text(name),
-      "sync-blobs wurde nicht ausgefuehrt");
-  });
+  // Kein Abgleich mit .claude/skills/ mehr: die Kopie dort ist Installer-Ausgabe und
+  // nicht versioniert (install.mjs schreibt sie bei jedem Lauf neu). Dass der Blob in
+  // install.mjs zur Quelle unter skills/ passt, bewacht tools/sync-blobs.mjs --check.
 }

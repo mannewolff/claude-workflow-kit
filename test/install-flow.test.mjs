@@ -86,6 +86,10 @@ test("Projektlokaler Install legt Config, Skills und CLAUDE-workflow.md an", () 
       { codeHost: "github", issueTracker: "github" }
     );
     assert.ok(existsSync(join(dir, ".claude", "CLAUDE-workflow.md")));
+    // Die beiden Gate-Register liegen neben der Prozessdatei: `/kontext` laedt sie ueber
+    // projectDocs, `/issue-review` klassifiziert damit einen Fund als `gate`.
+    assert.ok(existsSync(join(dir, ".claude", "CLAUDE-Fachplan.md")));
+    assert.ok(existsSync(join(dir, ".claude", "CLAUDE-Plan.md")));
     assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")),
       "die Skills muessen aus dem eingebetteten Blob entpackt werden");
     assert.ok(existsSync(join(dir, ".claude", "kit", "board.mjs")));
@@ -232,6 +236,9 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
     const home = join(dir, "home", ".claude");
     assert.ok(existsSync(join(home, "workflow.config.json")));
     assert.ok(existsSync(join(home, "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(home, "CLAUDE-workflow.md")));
+    assert.ok(existsSync(join(home, "CLAUDE-Fachplan.md")));
+    assert.ok(existsSync(join(home, "CLAUDE-Plan.md")));
 
     const kontext = JSON.parse(readFileSync(join(home, "kontext.config.json"), "utf-8"));
     assert.equal(kontext.vault, vault);

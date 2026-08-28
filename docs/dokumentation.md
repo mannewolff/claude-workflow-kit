@@ -69,11 +69,26 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die fünfzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die fünfzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
 Nach der Installation startest du Claude Code neu. Die Skills erscheinen dann unter `/help`.
+
+### Was der Installer schreibt — und warum es nicht ins Repo gehoert
+
+Alles, was der Installer unter `.claude/` ablegt, ist **Generat**: die Skills, `CLAUDE-workflow.md` und die beiden Gate-Register. Beim naechsten Lauf schreibt er es neu. Eine dieser Dateien im Repo zu versionieren, hiesse einen zweiten Stand zu fuehren, der bis zum naechsten Install driftet — und es naehme jedem die Entscheidung ab, **ob** er ueberhaupt neu installiert.
+
+Dieses Repo haelt es deshalb selbst so, und fuer dein Projekt ist es die empfohlene Aufteilung:
+
+```gitignore
+.claude/*
+!.claude/workflow.config.json
+```
+
+Die erste Zeile muss `.claude/*` lauten, nicht `.claude`: Git wertet innerhalb eines gesperrten Verzeichnisses kein `!`-Muster mehr aus — die Ausnahme fiele still mit heraus.
+
+`workflow.config.json` ist die begruendete Ausnahme. Der Installer **ueberschreibt sie nicht, er mergt**: Basis sind die Vorgabewerte, darueber die vorhandene Datei, zuoberst die abgefragten Antworten. Nicht abgefragte Felder wie `buildChecks` oder `issueReview` bleiben erhalten. Sie ist Team-Einstellung, kein Generat — und gehoert deshalb versioniert.
 
 ### Welchen Stand hat meine Installation?
 
@@ -800,6 +815,27 @@ Mehrere Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe
 Ohne konfigurierten `reviewStufen`-Block gilt für alle Stufen der Legacy-Fallback: zwei Reviewer mit den Rollen `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand`, inhaltlich die bisherigen beiden.
 
 **Jede Rolle trägt die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Dokument nach dem Review doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+
+### Die Gate-Register: woran ein Fund gemessen wird
+
+Nicht jeder Fund wiegt gleich. Die meisten sind Schärfungen, die man anwendet oder verwirft. Manche verletzen eine Regel, an der etwas hängt — und dann soll nicht die Maschine entscheiden, sondern ein Mensch.
+
+Welche Regeln das sind, steht in zwei Dateien, die der Installer neben `CLAUDE-workflow.md` ablegt:
+
+| Datei | Gilt für | Gates |
+|---|---|---|
+| `CLAUDE-Fachplan.md` | fachliche Anforderung (`[Fachlich]`) | F1–F11 |
+| `CLAUDE-Plan.md` | Plandokument (`[Plan]`) | P1–P12 |
+
+Beide sind **Register, keine Ratgeber**: Jeder Eintrag ist eine Regel, gegen die ein Dokument verstoßen *kann*, und jeder trägt eine Nummer. Wer im Review „F5 verletzt" schreibt, zeigt auf eine Stelle statt auf einen Geschmack. Die prozessweiten Regeln — drei Stop-Punkte, Git-Workflow, Pflichtchecks — stehen weiterhin in `CLAUDE-workflow.md` und gelten daneben.
+
+**Ein Fund ist `gate`, wenn eines von beiden zutrifft:** Er zeigt, dass das Dokument gegen eine dieser Regeln verstößt — oder das, was er vorschlägt, würde bei Übernahme dagegen verstoßen. Beide Richtungen zählen, weil der Schaden derselbe ist: einmal ist die Regel schon verletzt, einmal würde das automatische Anwenden sie verletzen. In beiden Fällen wird `kit:klaeren` gesetzt statt angewendet.
+
+Umgekehrt gilt: **Alles, was nicht im Register steht, ist kein Gate.** Ob ein solcher Fund trotzdem einen Menschen ruft, hängt allein daran, ob er mehrere sinnvolle Alternativen aufmacht — das ist eine Eigenschaft des Fundes, nicht des Registers. Beide Dateien haben deshalb einen Abschnitt **„Ausdrücklich kein Gate"**. Ohne ihn erklärt ein Reviewer irgendwann jeden Fund zum Verstoß, und dann steht `kit:klaeren` an jedem Ticket.
+
+Jedes Gate ist als `[maschinell]` oder `[Urteil]` markiert — maschinell heißt: ohne menschliches Urteil prüfbar, also später ein Testfall. Für diese gelten zwei Ausführungsregeln, die im Register selbst stehen: Der Body wird **ohne Codeblöcke** gelesen (Fence-Regel, Issue #308 — sonst zählt jedes Dokument, das das Format an einem Beispiel zeigt, seine Überschriften doppelt), und **Umlaute zählen in beiden Schreibweisen** (`Änderungen` wie `Aenderungen`).
+
+Nummern werden **nie neu vergeben**. Ein gestrichenes Gate behält seine Nummer und wandert in den Abschnitt „Verbrannte Nummern", damit ein älterer Befund eindeutig bleibt.
 
 ### Wer entscheidet
 

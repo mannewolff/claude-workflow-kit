@@ -21,7 +21,6 @@ const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const DOKU = lies("docs", "dokumentation.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const KOPIE = lies(".claude", "CLAUDE-workflow.md");
 
 /**
  * Der eine Listeneintrag, der mit `- **Lebenszyklus:**` beginnt — bis zum naechsten
@@ -80,9 +79,10 @@ test("der Lebenszyklus-Eintrag nennt den interaktiven Ausweg mit seiner Eigensch
 
 // --- Prozessdateien ---
 
+// Nur noch die Vorlage: .claude/CLAUDE-workflow.md ist Installer-Ausgabe und nicht
+// versioniert (install.mjs schreibt sie bei jedem Lauf neu).
 const beide = [
   ["templates/CLAUDE-workflow.md", VORLAGE],
-  [".claude/CLAUDE-workflow.md", KOPIE],
 ];
 
 /** Der Absatz, der mit `**Plandokumente**` beginnt, bis zur naechsten Leerzeile-Gruppe. */
@@ -105,9 +105,5 @@ for (const [name, inhalt] of beide) {
   });
 }
 
-// Die Vorlage ist der Blob, den install.mjs ausliefert; die Kopie ist die gelebte
-// Datei dieses Repos. Driften sie, bekommt jedes neue Projekt einen anderen Prozess
-// als das Kit selbst — und zwar ohne dass irgendetwas fehlschlaegt.
-test("Vorlage und Kopie der Prozessdatei sind byte-identisch", () => {
-  assert.equal(KOPIE, VORLAGE, "templates/CLAUDE-workflow.md und .claude/CLAUDE-workflow.md sind gedriftet");
-});
+// Kein Drift-Test mehr zwischen Vorlage und Kopie: die Kopie unter .claude/ ist
+// Installer-Ausgabe und liegt nicht im Repo — in CI existiert sie gar nicht.
