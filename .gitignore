@@ -41,14 +41,18 @@ coverage/
 # '.claude/': Git wertet ein !-Muster nicht aus, wenn das Verzeichnis ausgeschlossen ist —
 # ein gesperrtes Verzeichnis macht jede Ausnahme darin wirkungslos, auch die fuer
 # workflow.config.json.
-# Die CLAUDE*.md-Dateien stehen bewusst NICHT hier: install.mjs schreibt sie bei jedem
-# Lauf neu, sie sind Installer-Ausgabe und keine Quelle. Quelle ist templates/.
-# Befreit bleiben die Dogfooding-Kopien, die dieses Repo als Quelle mitfuehrt.
-# .claude/kit/ bleibt draussen — Laufzeitzustand, den tools/sync-blobs.mjs erzeugt.
+# Die Regel dahinter: Was install.mjs schreibt, gehoert nicht ins Repo. Der Installer
+# ueberschreibt es beim naechsten Lauf ohnehin, und jeder soll selbst entscheiden, ob er
+# neu installiert — eine versionierte Kopie nimmt ihm die Entscheidung ab und driftet
+# bis dahin. Das betrifft die CLAUDE*.md-Dateien, .claude/skills/ und .claude/kit/;
+# Quelle sind templates/, skills/ und kit/.
+# workflow.config.json ist die eine Ausnahme, und zwar begruendet: Der Installer
+# ueberschreibt sie nicht, er MERGT sie ({...DEFAULTS, ...existingConfig, <abgefragt>}).
+# Sie ist Team-Einstellung, kein Generat.
+# launch.json legt der Installer gar nicht erst an.
 .claude/*
 !.claude/workflow.config.json
 !.claude/launch.json
-!.claude/skills/
 .claude/workflow.config.local.json
 .claude/board-meta-cache.json
 

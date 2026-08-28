@@ -18,7 +18,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = join(repoRoot, "skills", "fachplan", "SKILL.md");
-const KOPIE = join(repoRoot, ".claude", "skills", "fachplan", "SKILL.md");
 
 function text() {
   return readFileSync(SKILL, "utf-8");
@@ -108,6 +107,6 @@ test("der Skill warnt, dass die Autor-Modell-Zeile beim Body-Rewrite erhalten bl
   assert.match(absatz, /erhalten|bleibt|verliert/, "der Absatz muss die Erhaltungspflicht aussprechen");
 });
 
-test("die Dogfooding-Kopie unter .claude ist identisch", () => {
-  assert.equal(readFileSync(KOPIE, "utf-8"), text(), "sync-blobs wurde nicht ausgefuehrt");
-});
+// Kein Abgleich mit .claude/skills/ mehr: die Kopie dort ist Installer-Ausgabe und
+// nicht versioniert (install.mjs schreibt sie bei jedem Lauf neu). Dass der Blob in
+// install.mjs zur Quelle unter skills/ passt, bewacht tools/sync-blobs.mjs --check.
