@@ -35,6 +35,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   if (lokaleKopie) mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
+  writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
+  writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   for (const datei of ["board.mjs", "night.mjs"]) {
@@ -45,6 +47,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const VERSION = "${installVersion}";`,
     `const CONFIG_EXAMPLE_B64 = "";`,
     `const CLAUDE_WORKFLOW_MD_B64 = "";`,
+    `const CLAUDE_FACHPLAN_MD_B64 = "";`,
+    `const CLAUDE_PLAN_MD_B64 = "";`,
     `const BOARD_MJS_B64 = "";`,
     `const NIGHT_MJS_B64 = "";`,
     `const SKILLS_B64 = "";`,

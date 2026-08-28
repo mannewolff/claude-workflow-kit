@@ -51,6 +51,8 @@ function buildDirJson(dir) {
 
 const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
+  { constName: "CLAUDE_FACHPLAN_MD_B64", source: join(root, "templates", "CLAUDE-Fachplan.md") },
+  { constName: "CLAUDE_PLAN_MD_B64", source: join(root, "templates", "CLAUDE-Plan.md") },
   // Beispiel-Config, die der Installer als .claude/workflow.config.example.json ablegt.
   // Sie ist der einzige Ort, an dem ein Nutzer den issueReview-Block zu sehen bekommt,
   // ohne die Doku zu lesen — der Installer fragt ihn nicht ab (reviewers ist
