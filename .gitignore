@@ -38,13 +38,15 @@ coverage/
 .idea/
 # claude-workflow-kit (Issue #208/#209): workflow.config.json gehoert ins Repo, alles
 # andere unter .claude/ ist lokaler Zustand. Erste Zeile MUSS '.claude/*' lauten, nicht
-# '.claude/': Git wertet ein !-Muster nicht aus, wenn das Verzeichnis ausgeschlossen ist.
-# Zusaetzlich zum Installer-Block sind hier die Dogfooding-Kopien befreit, die dieses
-# Repo als Quelle mitfuehrt. .claude/kit/ bleibt bewusst draussen — es ist Laufzeit-
-# zustand, den tools/sync-blobs.mjs erzeugt (siehe Kommentar dort).
+# '.claude/': Git wertet ein !-Muster nicht aus, wenn das Verzeichnis ausgeschlossen ist —
+# ein gesperrtes Verzeichnis macht jede Ausnahme darin wirkungslos, auch die fuer
+# workflow.config.json.
+# Die CLAUDE*.md-Dateien stehen bewusst NICHT hier: install.mjs schreibt sie bei jedem
+# Lauf neu, sie sind Installer-Ausgabe und keine Quelle. Quelle ist templates/.
+# Befreit bleiben die Dogfooding-Kopien, die dieses Repo als Quelle mitfuehrt.
+# .claude/kit/ bleibt draussen — Laufzeitzustand, den tools/sync-blobs.mjs erzeugt.
 .claude/*
 !.claude/workflow.config.json
-!.claude/CLAUDE-workflow.md
 !.claude/launch.json
 !.claude/skills/
 .claude/workflow.config.local.json
