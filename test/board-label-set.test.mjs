@@ -222,17 +222,22 @@ test("local: unbekanntes Issue meldet den Pfad", () => {
 
 // --- toolbox ---
 
-// Der Schreibpfad fehlt serverseitig: Die PAT-geschuetzte API bietet kein atomares
-// Hinzufuegen/Entfernen eines Labels per Name (mannewolff/kanban-kit#457). Ein
-// erfundener Aufruf waere keine Implementierung — der Zweig weist sich deshalb
-// ausdruecklich als nicht verfuegbar aus, statt still etwas anderes zu tun.
-test("toolbox: label wird mit Hinweis auf die fehlende Server-Faehigkeit abgewiesen", () => {
+// Bis Issue #375 hat dieser Zweig sich ausdruecklich als nicht verfuegbar ausgewiesen:
+// die PAT-geschuetzte API biete kein atomares Hinzufuegen/Entfernen per Name
+// (mannewolff/kanban-kit#457). Seit kanban-kit#574 bietet sie genau das, die Sperre
+// ist gefallen. Was hier bleibt, ist die Gegenprobe dazu — der Adapter greift jetzt
+// zum Server, statt vorab abzuweisen. Die Routen selbst und ihre Kodierung pruefen
+// die Mock-Server-Tests in board-toolbox.test.mjs.
+test("toolbox: label greift zum Server, statt vorab abzuweisen", () => {
   const dir = setupProjekt(TOOLBOX, "board-label-tbx-");
   try {
     const res = runBoard(dir, ["issue", "label", "add", "7", "kit:klaeren"], { TBX_TOKEN: "t" });
+    // Der Host im Fixture ist unerreichbar — genau daran ist zu erkennen, dass der
+    // Adapter es ueberhaupt versucht hat.
     assert.notEqual(res.status, 0);
-    assert.match(res.stderr, /kanban-kit#457/);
-    assert.match(res.stderr, /Labels/);
+    assert.match(res.stderr, /nicht erreichbar/);
+    // Kehrt die alte Sperre versehentlich zurueck, faellt dieser Test.
+    assert.doesNotMatch(res.stderr, /kanban-kit#457/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

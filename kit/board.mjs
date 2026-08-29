@@ -1451,8 +1451,9 @@ class ToolboxIssueTracker {
     if (!status) filtered.sort((a, b) => a.number - b.number);
     // Die Karten-API liefert Labels — gegen die Live-Instanz belegt am 2026-08-12
     // (Issue #312). Eine aeltere Antwort ohne das Feld bleibt bei [], deshalb der
-    // Normalisierer statt eines direkten Zugriffs. Offen ist bei diesem Adapter
-    // allein der SCHREIBpfad (mannewolff/kanban-kit#457, siehe labelIssue).
+    // Normalisierer statt eines direkten Zugriffs. Der Schreibpfad steht seit
+    // Issue #375 daneben (siehe labelIssue) — dieser Adapter kann Labels lesen
+    // und schreiben.
     return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
   }
 
@@ -1504,17 +1505,33 @@ class ToolboxIssueTracker {
     });
   }
 
-  // Kein Schreibpfad: Die PAT-geschuetzte kanbancompat-API bietet kein atomares
-  // Hinzufuegen oder Entfernen eines Labels per Name (mannewolff/kanban-kit#457).
-  // Ein erfundener Aufruf waere hier keine Implementierung, sondern eine erfundene
-  // API — und eine, die die ganze Label-Liste ersetzt, waere fuer diesen Zweck
-  // unbrauchbar, weil sie die uebrigen Labels der Karte mitloescht.
-  async labelIssue() {
-    throw new BoardError(
-      "Labels schreiben kann der toolbox-Adapter noch nicht: Die Kanban-API bietet kein " +
-      "atomares Hinzufuegen/Entfernen eines Labels per Name (mannewolff/kanban-kit#457). " +
-      "Wird nachgereicht, sobald der Server es anbietet."
-    );
+  // Diese Stelle hat lange geworfen, mit Verweis auf mannewolff/kanban-kit#457: die
+  // API biete kein atomares Setzen per Name, und eine listenersetzende Route waere
+  // unbrauchbar. Seit kanban-kit#574 stimmt beides nicht mehr — POST ergaenzt genau
+  // ein Label, DELETE entfernt genau eines, die uebrige Liste bleibt unangetastet
+  // (Issue #375).
+  //
+  // Zwei Eigenheiten der Routen zaehlen hier:
+  //  - Adressiert wird die INTERNE Karten-ID, nicht die Kartennummer — wie bei
+  //    /move und /comments. Daher der Umweg ueber _resolveByNumber.
+  //  - Beim Entfernen steht der Name im QUERY, nicht im Pfad. Der Server trimmt ihn
+  //    nur und lehnt allein Leerstrings ab; jedes andere Zeichen ist gueltig, auch
+  //    `/`. Ein Pfadsegment truege das nicht, weil Tomcat kodierte Slashes per
+  //    Default ablehnt — deshalb encodeURIComponent statt Interpolation.
+  async labelIssue(number, name, aktion) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    if (aktion === "add") {
+      await this._fetch(`/api/kanban/items/${item.id}/labels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      return;
+    }
+    await this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
   }
 }
 
