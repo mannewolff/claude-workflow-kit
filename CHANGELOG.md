@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.40.2] - 2026-08-29
+- Doku: Arbeitspakete und Vorhaben im Adapter-Abschnitt trennen (#379)
+- kontext-Skill: Vorhaben laden und getrennt ausgeben (#378)
+- board.mjs: Vorhaben sind keine Arbeitspakete mehr (#377)
+
 ## [1.40.1] - 2026-08-29
 - toolbox-Adapter: labelIssue entsperren (#375)
 - Windows-CI: den local-Ausgabetest ueber die geparste Ausgabe vergleichen (#374)
