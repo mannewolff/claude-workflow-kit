@@ -165,21 +165,32 @@ test("gitlab nimmt die Option an und veraendert die Ausgabe nicht", NUR_POSIX, (
 // liefert { id, path }, und der Pfad zeigt ins jeweilige Fixture. Verglichen wird
 // deshalb nach Ersetzen des Fixture-Verzeichnisses — die id muss in beiden Laeufen
 // `0001` sein, weil jeder Lauf ein frisches Projekt bekommt.
+//
+// Normalisiert wird die GEPARSTE Ausgabe, nicht der rohe Text (Issue #374). stdout
+// ist JSON: unter Windows steht jeder Backslash des Pfades dort in der escapten Form
+// (`C:\\Users\\...`), waehrend das `dir` aus mkdtempSync die einfache traegt. Ein
+// `split(dir)` auf dem Rohtext kann deshalb nie greifen — das zufaellige
+// mkdtemp-Suffix bleibt stehen und die beiden Laeufe sind nie gleich. Unter POSIX
+// faellt das nicht auf, weil es dort keine Backslashes zu escapen gibt; die Luecke
+// ist strukturell nur auf Windows sichtbar und hat v1.40.0 mit rotem Gate passieren
+// lassen.
 test("local nimmt die Option an und veraendert die Ausgabe nicht", () => {
   const laufe = (extra) => {
     const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-derived-lo-");
     try {
       const res = runBoard(dir, ["issue", "create", "--title", "Kind", ...extra]);
-      return { res, normalisiert: res.stdout.split(dir).join("<FIXTURE>") };
+      // Vor dem Parsen pruefen: sonst verdeckt ein SyntaxError die stderr-Meldung.
+      assert.equal(res.status, 0, res.stderr);
+      const roh = JSON.parse(res.stdout);
+      return { res, normalisiert: { ...roh, path: String(roh.path).split(dir).join("<FIXTURE>") } };
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   };
   const ohne = laufe([]);
   const mit = laufe(["--derived-from", "42"]);
-  assert.equal(mit.res.status, 0, mit.res.stderr);
-  assert.equal(JSON.parse(mit.res.stdout).id, "0001");
-  assert.equal(mit.normalisiert, ohne.normalisiert);
+  assert.equal(mit.normalisiert.id, "0001");
+  assert.deepEqual(mit.normalisiert, ohne.normalisiert);
 });
 
 // --- CLI ---
