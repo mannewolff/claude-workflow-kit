@@ -73,14 +73,26 @@ Fehlende Dateien und Muster ohne Treffer leise überspringen (kein Fehler).
 
 ### 5. Offene Issues holen (beide Modi)
 
-Offene Issues und Repo-Name ueber den Board-Adapter:
+Offene Issues, Vorhaben und Repo-Name ueber den Board-Adapter:
 
 ```bash
 node .claude/kit/board.mjs issue list
+node .claude/kit/board.mjs issue epics
 node .claude/kit/board.mjs code repo-name
 ```
 
-Wenn der Adapter einen Fehler zurueckgibt: Schritt ueberspringen, kein harter Abbruch.
+`issue list` liefert **nur Arbeitspakete** — Vorhaben sind dort seit Issue #377
+ausgeschlossen, unabhaengig vom Status-Filter. Sie kommen ueber `issue epics`, und
+zwar mit Kuerzel und Fortschritt.
+
+**Ein Fehlschlag von `issue epics` wird still uebersprungen**, nicht gemeldet:
+GitHub und GitLab kennen keine Vorhaben, der Adapter weist das Kommando dort ab.
+Ein Fehler ist bei diesen Trackern der Normalfall und kein Befund — wer ihn
+ausgibt, produziert bei jedem Session-Start in einem GitHub-Projekt eine Warnung
+ueber eine Faehigkeit, die es dort nie geben wird.
+
+Wenn der Adapter bei den uebrigen Aufrufen einen Fehler zurueckgibt: Schritt
+ueberspringen, kein harter Abbruch.
 
 ### 6. Zusammenfassung ausgeben
 
@@ -90,6 +102,11 @@ Kompakter Session-Start-Stand.
 
 ```
 ## Session-Start — {Projektname}
+
+### Vorhaben
+- #N [KUERZEL] Titel — done/total
+- ...
+(aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
 ### Aktive Issues
 - #N Titel [Status]
@@ -107,6 +124,11 @@ Kompakter Session-Start-Stand.
 ```
 ## Session-Start — {parentProject} / {project}
 
+### Vorhaben
+- #N [KUERZEL] Titel — done/total
+- ...
+(aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
+
 ### Aktive Issues
 - #N Titel [Status]
 - ...
@@ -120,6 +142,11 @@ Kompakter Session-Start-Stand.
 ### Was als nächstes kommt
 (aus der Projektnotiz oder Board-Ready-Spalte)
 ```
+
+**Die Vorhaben stehen vor den Issues**, weil sie die Gliederung sind, unter der die
+Arbeit haengt: Wer zuerst die Klammern sieht, liest die Nummernliste darunter als
+Inhalt und nicht als Haufen. Ein Vorhaben ohne Fortschritt (`0/0`) bleibt stehen —
+dass es leer ist, ist beim Einstieg eine Information.
 
 Im Degraded Mode am Ende anfuegen:
 > "Kein Vault konfiguriert, arbeite ohne persistentes Memory. Fuer Vollmodus: `~/.claude/kontext.config.json` anlegen mit vault-Pfad."
