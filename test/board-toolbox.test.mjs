@@ -83,8 +83,8 @@ test("list --status behaelt die Board-Reihenfolge der Spalte", async () => {
     const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), [
-      { id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [] },
-      { id: "9", title: "Karte 9", body: "Body 9", status: "ready", labels: [] },
+      { id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task" },
+      { id: "9", title: "Karte 9", body: "Body 9", status: "ready", labels: [], type: "task" },
     ]);
   });
 });
@@ -97,6 +97,51 @@ test("list --status laesst Epics aussen vor", async () => {
     async (dir) => {
       const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
       assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+    }
+  );
+});
+
+// Ohne Status-Filter galt der Epic-Ausschluss frueher nicht — Vorhaben erschienen
+// als gewoehnliche Karten mit erfundenem Status (Issue #377).
+test("list ohne Filter laesst Epics ebenfalls aussen vor", async () => {
+  const karten = [karte(7, "READY"), karte(8, "BACKLOG", { type: "epic" })];
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(karten) } : null),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+    }
+  );
+});
+
+// Der Default haelt die Form stabil: Ein Item ohne type-Feld darf das Feld nicht
+// fehlen lassen — JSON.stringify wuerde undefined auslassen (Issue #377).
+test("list liefert type, auch bei einer Karte ohne type-Feld", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert([karte(7, "READY")]) } : null),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
+      assert.equal(JSON.parse(res.stdout)[0].type, "task");
+    }
+  );
+});
+
+// Ein Vorhaben hat keinen Status: CardService.move laesst es gar nicht auf dem
+// Board positionieren. Die Compat-API liefert BACKLOG als Fallback (Issue #377).
+test("get auf ein Vorhaben liefert status null und type epic", async () => {
+  await mitBoard(
+    (req) => {
+      if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(8, "BACKLOG", { type: "epic" })]) };
+      if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
+      return null;
+    },
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "8"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      const karte8 = JSON.parse(res.stdout);
+      assert.equal(karte8.status, null);
+      assert.equal(karte8.type, "epic");
     }
   );
 });
@@ -125,7 +170,7 @@ test("get liefert die Karte samt Kommentaren", async () => {
       const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
       assert.equal(res.status, 0, res.stderr);
       assert.deepEqual(JSON.parse(res.stdout), {
-        id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [],
+        id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task",
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
       });
     }

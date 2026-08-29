@@ -1038,7 +1038,11 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
-    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
+    const type = meta.type || "task";
+    // Fuer ein Vorhaben ist `status` bedingungslos null — ein etwaiges Feld im
+    // Frontmatter wird ignoriert. `createIssue` schreibt bei Epics keins, aber
+    // `moveIssue` setzt `meta.status` ohne Typpruefung (Issue #377).
+    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1079,21 +1083,28 @@ class LocalIssueTracker {
     return this._read(id);
   }
 
-  async listIssues(status) {
+  // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
+  // (das Vorhaben ausschliesst) und listEpics (das genau sie braucht) — ohne die
+  // Trennung liefe listEpics nach dem Epic-Ausschluss leer (Issue #377).
+  _alleItems() {
     return this._allFiles()
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
         const labels = labelsAusFrontmatter(meta);
         return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", labels, body };
-      })
-      // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
-      // (z.B. --status ready für implement-ready) tauchen sie nie auf.
-      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+      });
+  }
+
+  async listIssues(status) {
+    // Epics nehmen nicht am Spalten-Workflow teil (E5) — der Ausschluss gilt
+    // unabhaengig vom Filter (Issue #377), siehe die Begruendung im Toolbox-Adapter.
+    return this._alleItems()
+      .filter((i) => i.type !== "epic" && (!status || i.status === status));
   }
 
   async listEpics() {
-    const all = await this.listIssues();
+    const all = this._alleItems();
     return all
       .filter((i) => i.type === "epic")
       .map((e) => ({ ...e, progress: epicProgress(all, e.id) }));
@@ -1412,12 +1423,17 @@ class ToolboxIssueTracker {
   async getIssue(number) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
+    const type = item.type || "task";
     return {
       id: String(item.number),
       title: item.title,
       body: item.body,
-      status: item.status,
+      // Ein Vorhaben hat keinen Status: `CardService.move` laesst es gar nicht auf
+      // dem Board positionieren, die Compat-API liefert BACKLOG nur als Fallback.
+      // `null` heisst "hat keinen" — das ist die Wahrheit (Issue #377).
+      status: type === "epic" ? null : item.status,
       labels: labelNamesFrom(item.labels),
+      type,
       comments: await this._comments(item.id),
     };
   }
@@ -1444,7 +1460,12 @@ class ToolboxIssueTracker {
     const items = await this._boardItems();
     const filtered = items
       // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
-      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+      // Vorhaben sind nie Arbeitspakete — der Ausschluss gilt unabhaengig vom Filter
+      // (Issue #377). Die frueher fuehrende Bedingung `!status ||` schaltete ihn ab,
+      // sobald ungefiltert gelistet wurde. Sie ersatzlos zu streichen waere falsch:
+      // ohne Filter ist `status` undefined, und `i.status === undefined` trifft auf
+      // keine echte Karte zu — die Liste kaeme leer zurueck.
+      .filter((i) => i.type !== "epic" && (!status || i.status === status));
     // Mit Status-Filter liegen alle Items in derselben Spalte: die API-Reihenfolge
     // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
     // ungefiltert bleibt die stabile numerische Sortierung.
@@ -1454,7 +1475,10 @@ class ToolboxIssueTracker {
     // Normalisierer statt eines direkten Zugriffs. Der Schreibpfad steht seit
     // Issue #375 daneben (siehe labelIssue) — dieser Adapter kann Labels lesen
     // und schreiben.
-    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
+    // `type` wird durchgereicht wie beim lokalen Tracker, samt dessen Default: ein
+    // Item ohne das Feld liefert "task" statt undefined, das JSON.stringify auslassen
+    // wuerde (Issue #377).
+    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels), type: i.type || "task" }));
   }
 
   async listEpics() {
@@ -2196,7 +2220,7 @@ async function issueList(tracker, args) {
 
 async function issueEpics(tracker) {
   if (typeof tracker.listEpics !== "function") {
-    fail("epics wird nur im lokalen Modus unterstuetzt (issueTracker: local)");
+    fail("epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)");
   }
   out(await tracker.listEpics());
 }
