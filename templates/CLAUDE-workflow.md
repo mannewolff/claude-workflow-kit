@@ -352,6 +352,82 @@ verbrannt und der Kommentar am Board irrefuehrend.
 
 ---
 
+## Gates (prozessweit)
+
+Register der bindenden Regeln, die **unabhaengig von der Pruefstufe** gelten. Es ergaenzt
+die beiden Stufen-Register `CLAUDE-Fachplan.md` (F1–F11) und `CLAUDE-Plan.md` (P1–P12);
+die stellen Anforderungen an die *Form* eines Dokuments, dieses hier an das *Vorgehen*.
+
+**Kein neuer Inhalt.** Jedes Gate zitiert eine Regel, die weiter oben in dieser Datei
+steht, und nennt ihre Fundstelle. Wo eine Regel unscharf formuliert ist, steht sie hier
+unscharf — sie zu schaerfen waere eine eigene Entscheidung, kein Registereintrag.
+
+**Wozu das Register dient:** Ein Reviewer, dem gesagt wird „pruefe gegen die Gates",
+muesste sonst raten, welche Saetze gemeint sind. Ein Fund, der gegen eines dieser Gates
+verstoesst, wird nicht automatisch angewendet, sondern ruft einen Menschen.
+
+Alle prozessweiten Gates tragen `[Urteil]`: Sie richten sich gegen *Vorschlaege* in
+Dokumenten, nicht gegen deren Form. Ob ein Vorschlag einen Stop-Punkt aushebelt, sieht
+man beim Lesen, nicht an einem regulaeren Ausdruck.
+
+### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`
+
+GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Fundstelle:
+„Die drei Stop-Punkte (nie automatisiert)".
+
+*Warum Gate:* Sie sind die Verantwortungsschwellen des ganzen Prozesses. Ein Vorschlag,
+der einen davon automatisiert — auch als Bequemlichkeit, auch nur fuer einen Sonderfall —
+aendert nicht ein Detail, sondern die Bauart.
+
+### W2 — Der Git-Workflow ist strikt bindend `[Urteil]`
+
+Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelanweisung;
+Hooks werden nicht mit `--no-verify` umgangen; `productionBranch` wird nie direkt
+gepusht. Fundstelle: „Git-Workflow (strikt bindend)", Abschnitt „Absolut bindend".
+
+*Warum Gate:* Diese drei Saetze stehen in der Datei ausdruecklich unter „Absolut
+bindend". Ein Vorschlag, der eine Ausnahme einbaut, verschiebt eine Grenze, die als
+ausnahmslos gesetzt wurde.
+
+### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`
+
+Alle `buildChecks` laufen gruen, bevor gepusht wird; ein nicht lokal ausfuehrbarer Check
+wird im Abschlussbericht vermerkt, nicht verschwiegen. Fundstelle: „Pflichtchecks vor
+Push (Schritt 6)".
+
+*Warum Gate:* Das Wort ist „mechanisch". Ein Vorschlag, der einen Check zur Empfehlung
+macht, ihn ueberspringbar macht oder eine Schwelle senkt, damit er gruen wird, hebt die
+Mechanik auf — und genau darauf verlaesst sich der Push.
+
+### W4 — Die Prioritaetenordnung bei Zielkonflikten `[Urteil]`
+
+Sicherheit, Korrektheit, Datenintegritaet, Accessibility, Wartbarkeit, Performance,
+visuelle Praeferenz, Bequemlichkeit der Implementierung — in dieser Reihenfolge.
+Fundstelle: „Prioritaeten bei Zielkonflikten".
+
+*Warum Gate:* Die Ordnung ist der Schiedsspruch fuer jeden Konflikt, der im Dokument
+selbst nicht entschieden wird. Ein Vorschlag, der sie fuer einen Einzelfall umdreht —
+etwa Bequemlichkeit vor Korrektheit —, entscheidet den Konflikt neu, statt ihn zu
+loesen.
+
+### Ausdruecklich kein prozessweites Gate
+
+Alles, was hier nicht steht. Insbesondere:
+
+- **Die Form eines Dokuments.** Dafuer sind `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md`
+  zustaendig; ein Formverstoss ist dort ein Gate, nicht hier.
+- **Die neun Schritte, die Board-Spalten, die Zwei-Bahnen-Aufteilung.** Sie beschreiben,
+  wie gearbeitet wird, und sind aenderbar — anders als die vier Regeln oben, die den
+  Rahmen tragen.
+- **Konventionen mit Begruendung im Text** (Commit-Format, Abschlussbericht-Format,
+  Autor-Modell-Zeile). Ein Verstoss dagegen ist ein Fund wie jeder andere.
+
+Ob ein Fund ausserhalb dieses Registers trotzdem einen Menschen ruft, entscheidet allein,
+ob es mehrere sinnvolle Wege gibt — das ist eine Eigenschaft des Fundes, nicht dieses
+Registers.
+
+---
+
 ## KI-Retro (alle 1-2 Wochen)
 
 `/retro` startet die KI-Retrospektive. Drei Fragen:
