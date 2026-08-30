@@ -38,6 +38,7 @@
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
                                     [--issue <N>]
+  node board.mjs issue-review label-sync <id>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -52,7 +53,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.40.0";
+const KIT_VERSION = "1.41.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -106,6 +107,9 @@ Nutzung:
                                     [--issue <N>]
       --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
       runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
+  node board.mjs issue-review label-sync <id>
+      Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
+      Braucht issueReview.statusLabels; ohne den Schalter passiert nichts.
 
   node board.mjs --version
 
@@ -1038,7 +1042,11 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
-    return { id: meta.id || padId(id), type: meta.type || "task", parent: meta.parent || "", title: meta.title || "", status: meta.status || "backlog", created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
+    const type = meta.type || "task";
+    // Fuer ein Vorhaben ist `status` bedingungslos null — ein etwaiges Feld im
+    // Frontmatter wird ignoriert. `createIssue` schreibt bei Epics keins, aber
+    // `moveIssue` setzt `meta.status` ohne Typpruefung (Issue #377).
+    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1079,21 +1087,28 @@ class LocalIssueTracker {
     return this._read(id);
   }
 
-  async listIssues(status) {
+  // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
+  // (das Vorhaben ausschliesst) und listEpics (das genau sie braucht) — ohne die
+  // Trennung liefe listEpics nach dem Epic-Ausschluss leer (Issue #377).
+  _alleItems() {
     return this._allFiles()
       .map((f) => {
         const raw = readFileSync(join(this._dir(), f), "utf-8");
         const { meta, body } = parseFrontmatter(raw);
         const labels = labelsAusFrontmatter(meta);
         return { id: meta.id || basename(f, ".md"), type: meta.type || "task", parent: meta.parent || "", color: meta.color || "", shortcode: meta.shortcode || "", title: meta.title || "", status: meta.status || "backlog", labels, body };
-      })
-      // Epics nehmen nicht am Spalten-Workflow teil (E5): bei Status-Filterung
-      // (z.B. --status ready für implement-ready) tauchen sie nie auf.
-      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+      });
+  }
+
+  async listIssues(status) {
+    // Epics nehmen nicht am Spalten-Workflow teil (E5) — der Ausschluss gilt
+    // unabhaengig vom Filter (Issue #377), siehe die Begruendung im Toolbox-Adapter.
+    return this._alleItems()
+      .filter((i) => i.type !== "epic" && (!status || i.status === status));
   }
 
   async listEpics() {
-    const all = await this.listIssues();
+    const all = this._alleItems();
     return all
       .filter((i) => i.type === "epic")
       .map((e) => ({ ...e, progress: epicProgress(all, e.id) }));
@@ -1412,12 +1427,17 @@ class ToolboxIssueTracker {
   async getIssue(number) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
+    const type = item.type || "task";
     return {
       id: String(item.number),
       title: item.title,
       body: item.body,
-      status: item.status,
+      // Ein Vorhaben hat keinen Status: `CardService.move` laesst es gar nicht auf
+      // dem Board positionieren, die Compat-API liefert BACKLOG nur als Fallback.
+      // `null` heisst "hat keinen" — das ist die Wahrheit (Issue #377).
+      status: type === "epic" ? null : item.status,
       labels: labelNamesFrom(item.labels),
+      type,
       comments: await this._comments(item.id),
     };
   }
@@ -1444,16 +1464,25 @@ class ToolboxIssueTracker {
     const items = await this._boardItems();
     const filtered = items
       // Epics nehmen nicht am Spalten-Workflow teil: bei Status-Filter ausschliessen.
-      .filter((i) => !status || (i.type !== "epic" && i.status === status));
+      // Vorhaben sind nie Arbeitspakete — der Ausschluss gilt unabhaengig vom Filter
+      // (Issue #377). Die frueher fuehrende Bedingung `!status ||` schaltete ihn ab,
+      // sobald ungefiltert gelistet wurde. Sie ersatzlos zu streichen waere falsch:
+      // ohne Filter ist `status` undefined, und `i.status === undefined` trifft auf
+      // keine echte Karte zu — die Liste kaeme leer zurueck.
+      .filter((i) => i.type !== "epic" && (!status || i.status === status));
     // Mit Status-Filter liegen alle Items in derselben Spalte: die API-Reihenfolge
     // (positionInColumn) ist die Board-/Listen-Reihenfolge und bleibt erhalten (#128);
     // ungefiltert bleibt die stabile numerische Sortierung.
     if (!status) filtered.sort((a, b) => a.number - b.number);
     // Die Karten-API liefert Labels — gegen die Live-Instanz belegt am 2026-08-12
     // (Issue #312). Eine aeltere Antwort ohne das Feld bleibt bei [], deshalb der
-    // Normalisierer statt eines direkten Zugriffs. Offen ist bei diesem Adapter
-    // allein der SCHREIBpfad (mannewolff/kanban-kit#457, siehe labelIssue).
-    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels) }));
+    // Normalisierer statt eines direkten Zugriffs. Der Schreibpfad steht seit
+    // Issue #375 daneben (siehe labelIssue) — dieser Adapter kann Labels lesen
+    // und schreiben.
+    // `type` wird durchgereicht wie beim lokalen Tracker, samt dessen Default: ein
+    // Item ohne das Feld liefert "task" statt undefined, das JSON.stringify auslassen
+    // wuerde (Issue #377).
+    return filtered.map((i) => ({ id: String(i.number), title: i.title, body: i.body, status: i.status, labels: labelNamesFrom(i.labels), type: i.type || "task" }));
   }
 
   async listEpics() {
@@ -1504,17 +1533,49 @@ class ToolboxIssueTracker {
     });
   }
 
-  // Kein Schreibpfad: Die PAT-geschuetzte kanbancompat-API bietet kein atomares
-  // Hinzufuegen oder Entfernen eines Labels per Name (mannewolff/kanban-kit#457).
-  // Ein erfundener Aufruf waere hier keine Implementierung, sondern eine erfundene
-  // API — und eine, die die ganze Label-Liste ersetzt, waere fuer diesen Zweck
-  // unbrauchbar, weil sie die uebrigen Labels der Karte mitloescht.
-  async labelIssue() {
-    throw new BoardError(
-      "Labels schreiben kann der toolbox-Adapter noch nicht: Die Kanban-API bietet kein " +
-      "atomares Hinzufuegen/Entfernen eines Labels per Name (mannewolff/kanban-kit#457). " +
-      "Wird nachgereicht, sobald der Server es anbietet."
-    );
+  // Diese Stelle hat lange geworfen, mit Verweis auf mannewolff/kanban-kit#457: die
+  // API biete kein atomares Setzen per Name, und eine listenersetzende Route waere
+  // unbrauchbar. Seit kanban-kit#574 stimmt beides nicht mehr — POST ergaenzt genau
+  // ein Label, DELETE entfernt genau eines, die uebrige Liste bleibt unangetastet
+  // (Issue #375).
+  //
+  // Zwei Eigenheiten der Routen zaehlen hier:
+  //  - Adressiert wird die INTERNE Karten-ID, nicht die Kartennummer — wie bei
+  //    /move und /comments. Daher der Umweg ueber _resolveByNumber.
+  //  - Beim Entfernen steht der Name im QUERY, nicht im Pfad. Der Server trimmt ihn
+  //    nur und lehnt allein Leerstrings ab; jedes andere Zeichen ist gueltig, auch
+  //    `/`. Ein Pfadsegment truege das nicht, weil Tomcat kodierte Slashes per
+  //    Default ablehnt — deshalb encodeURIComponent statt Interpolation.
+  async labelIssue(number, name, aktion) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    // Der Server antwortet mit 404, wenn das Board keine Definition dieses Namens
+    // fuehrt (LabelNotFoundException) — absichtlich hart, damit ein Tippfehler im
+    // Nachtlauf keinen Label-Muell erzeugt. Roh durchgereicht ist dieser 404 aber
+    // nicht zu deuten: Er nennt weder den Namen noch den Ausweg (Issue #384).
+    const uebersetze = async (fn) => {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) {
+          throw new BoardError(
+            `Label '${name}' ist am Board nicht definiert. Die Definition muss einmal je Board angelegt werden (POST /api/boards/{boardId}/labels), danach setzt und entfernt die Automatik sie.`
+          );
+        }
+        throw e;
+      }
+    };
+    if (aktion === "add") {
+      await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }));
+      return;
+    }
+    await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }));
   }
 }
 
@@ -2037,6 +2098,79 @@ export function parsePruefvorgabe(body) {
   return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
 }
 
+// Welcher Marker und welcher Kommentar-Anker die jeweilige Stufe nachweisen.
+// Dieselbe Zuordnung fuehrt `kit/night.mjs` fuer den Review-Modus; sie steht hier
+// eigenstaendig, weil die Importrichtung umgekehrt ist — night.mjs importiert aus
+// board.mjs, nicht andersherum.
+const REVIEW_STUFEN_MARKER = {
+  fachlich: "Fachplan-Review",
+  plan: "Plan-Review",
+  issue: "Issue-Review",
+};
+
+/**
+ * Der Pruefzustand eines Dokuments, abgeleitet aus Body und Kommentaren (Issue #381).
+ *
+ * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen`. Die Funktion ist rein:
+ * Sie schreibt nichts, ruft nichts und kennt kein Label. Das Zustandslabel aus
+ * Issue #384 ist ihr erster Leser, nicht ihre Definition — haenge ein Gate am
+ * Label statt an dieser Ableitung, gaebe es zwei Wahrheiten ueber den Pruefstand.
+ *
+ * Regeln, in dieser Reihenfolge:
+ *
+ *  1. Marker der EIGENEN Stufe nicht leer -> `fertig`. Ein Marker einer fremden
+ *     Stufe zaehlt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis.
+ *  2. Gueltiger, nicht verfallener `Pruefung: Verzicht` -> `fertig`. Der Mensch hat
+ *     entschieden, dass hier nicht geprueft wird; das ist ein Ergebnis, kein Loch.
+ *  3. Juengster Review-Kommentar der Stufe mit Ausfall-Vermerk -> `ausgefallen`.
+ *  4. Juengster Review-Kommentar der Stufe -> `befunde`.
+ *  5. sonst -> `offen`.
+ *
+ * **Woran ein Ausfall erkannt wird**, muss festgelegt sein, sonst ist Regel 3 nicht
+ * anwendbar: Der Skill verlangt heute den Anker `## <Stufe>-Review, Runde n` in der
+ * ersten Zeile UND den Ausfall in der ersten Zeile — beides zugleich geht nicht.
+ * Diese Funktion liest den Anker in Zeile 1 und den Ausfallvermerk in Zeile 2
+ * (Festlegung aus Issue #381); Issue #385 zieht das Kommentarformat im Skill nach.
+ *
+ * Bis dahin ist die Funktion gegenueber Alt-Bestand tolerant: Ein Kommentar ohne
+ * Anker gilt nicht als Review-Kommentar der Stufe und aendert nichts. Das ist die
+ * sichere Richtung — ein fremder Kommentar, der zufaellig "ausgefallen" enthaelt,
+ * darf den Zustand nicht kippen.
+ *
+ * Marker in Codebloecken zaehlen nicht (Fence-Regel, Issue #308): Ein Dokument, das
+ * das Marker-Format als Beispiel zeigt, weist damit nichts nach.
+ */
+export function reviewZustand(body, comments, stufe) {
+  const marker = REVIEW_STUFEN_MARKER[stufe];
+  if (!marker) return "offen";
+
+  const text = normalisiereZeilenenden(body || "");
+
+  const imFence = fenceLauf();
+  const markerZeile = new RegExp(`^\\s*${marker}:\\s*\\S`);
+  for (const zeile of text.split("\n")) {
+    if (imFence(zeile)) continue;
+    if (markerZeile.test(zeile)) return "fertig";
+  }
+
+  // Wirft bei mehreren oder unbekannten Vorgaben — bewusst nicht abgefangen: Eine
+  // kaputte `Pruefung:`-Zeile still zum Regelfall zu machen waere die gefaehrlichere
+  // Variante, dieselbe Linie wie in `pruefvorgabeFuerRoles`.
+  const { wert, verfallen } = parsePruefvorgabe(text);
+  if (wert === "verzicht" && !verfallen) return "fertig";
+
+  const anker = new RegExp(`^\\s*##\\s*${marker},\\s*Runde\\b`, "i");
+  const eigene = (Array.isArray(comments) ? comments : []).filter((k) =>
+    anker.test(String(k?.body || "").split("\n")[0] || "")
+  );
+  if (eigene.length > 0) {
+    const zeilen = normalisiereZeilenenden(String(eigene[eigene.length - 1].body || "")).split("\n");
+    return /ausgefallen|ausfall/i.test(zeilen[1] || "") ? "ausgefallen" : "befunde";
+  }
+
+  return "offen";
+}
+
 /**
  * Setzt `Pruefung-Stand:` unmittelbar unter die Vorgabezeile (Issue #303).
  *
@@ -2179,7 +2313,7 @@ async function issueList(tracker, args) {
 
 async function issueEpics(tracker) {
   if (typeof tracker.listEpics !== "function") {
-    fail("epics wird nur im lokalen Modus unterstuetzt (issueTracker: local)");
+    fail("epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)");
   }
   out(await tracker.listEpics());
 }
@@ -2894,12 +3028,93 @@ function issueReviewCheck(args = {}) {
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
+// Die drei Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
+// Konfigurierbare Namen waeren eine zweite Wahrheit und zerstoerten die
+// Wiedererkennbarkeit ueber Projekte hinweg.
+const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig"];
+
+// `ausgefallen` bildet auf `review:offen` ab (Plan #368, A3): Ein ausgefallener
+// Reviewer ist kein Pruefergebnis — das Ticket ist so ungeprueft wie zuvor.
+const ZUSTAND_ZU_LABEL = {
+  offen: "review:offen",
+  befunde: "review:befunde",
+  fertig: "review:fertig",
+  ausgefallen: "review:offen",
+};
+
+/** Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt. */
+function stufeAusTitel(title) {
+  const t = String(title || "");
+  if (/^\s*\[fachlich\]/i.test(t)) return "fachlich";
+  if (/^\s*\[plan\]/i.test(t)) return "plan";
+  return "issue";
+}
+
+/**
+ * Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
+ *
+ * Das Label ist **Projektion, nie Wahrheit** (Plan #368, A1): Kein Gate liest es.
+ * `requiredBeforeReady` haengt am Marker, die Kandidatenauswahl des Nacht-Runners
+ * an Marker und Routing-Label. Weil das Kommando aus dem Ist-Zustand ableitet statt
+ * Uebergaenge zu buchen, ist es zugleich die Reparatur fuer von Hand verstellte
+ * Labels — zweimal ausfuehren aendert nichts.
+ */
+async function issueReviewLabelSync(args) {
+  const id = args._[0];
+  if (id === undefined) fail("label-sync braucht eine Issue-Nummer");
+
+  const config = loadConfig();
+
+  // Opt-in (Plan #347, A4): Ein Kit-Update darf Bestandsprojekten nicht ungefragt
+  // Labels in die Boards schreiben. Die Meldung geht auf stderr — stdout traegt bei
+  // den uebrigen Kommandos JSON, und ein Prosa-Satz dort braeche Skript-Konsumenten.
+  if (!config.issueReview?.statusLabels) {
+    process.stderr.write("label-sync uebersprungen: issueReview.statusLabels ist nicht gesetzt.\n");
+    return;
+  }
+
+  // Kollisions-Guard (Plan #347, A5): Bei GitLab SIND Spalten Labels, und
+  // `labelToStatus` laese ein kollidierendes Zustandslabel als Spaltenbewegung.
+  const spalten = Object.values(columnLabels(config));
+  const kollision = ZUSTANDS_LABELS.find((l) => spalten.includes(l));
+  if (kollision) {
+    fail(`Zustandslabel '${kollision}' kollidiert mit einem Spalten-Label aus der Config. label-sync bricht ab, sonst laese der Tracker es als Spaltenbewegung.`);
+  }
+
+  const tracker = resolveTracker(config);
+  const issue = await tracker.getIssue(String(id));
+
+  // Vorhaben tragen keine Labels: `requireLabelableCard` lehnt serverseitig alles ab,
+  // was nicht CARD ist (Plan #368, A12). Ein harter Abbruch waere falsch — das
+  // Vorhaben ist kein Fehler, es ist nur kein Ziel fuer ein Label.
+  if (issue.type === "epic") {
+    process.stderr.write(`label-sync uebersprungen: #${id} ist ein Vorhaben, Vorhaben tragen keine Labels.\n`);
+    return;
+  }
+
+  const zustand = reviewZustand(issue.body, issue.comments, stufeAusTitel(issue.title));
+  const ziel = ZUSTAND_ZU_LABEL[zustand];
+
+  // Reihenfolge verbindlich: erst die anderen entfernen, dann das Ziel setzen. Umgekehrt
+  // traegt die Karte einen Moment lang zwei Zustandslabels — sichtbar am Live-Beleg zu
+  // Issue #375. Ein halb getauschter Zustand (entfernt, aber nicht gesetzt) ist zulaessig:
+  // Das Label ist Projektion, der naechste Lauf stellt es her.
+  const ist = issue.labels || [];
+  for (const l of ZUSTANDS_LABELS) {
+    if (l !== ziel && ist.includes(l)) await tracker.labelIssue(String(id), l, "remove");
+  }
+  await tracker.labelIssue(String(id), ziel, "add");
+
+  out({ ok: true, id: String(id), zustand, label: ziel });
+}
+
 async function dispatchIssueReview(command, args) {
   switch (command) {
     case "reviewers": return issueReviewReviewers(args);
     case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
     case "roles": return issueReviewRoles(args);
+    case "label-sync": return issueReviewLabelSync(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

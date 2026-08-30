@@ -73,6 +73,32 @@ test("Jedes Register grenzt ab, was ausdruecklich kein Gate ist", () => {
 
 // Eine neu vergebene Nummer macht jeden aelteren Befund zweideutig ("F4 verletzt" —
 // welches F4?). Gestrichene Gates behalten die Nummer und stehen hier.
+// Das prozessweite Register (Issue #380) steht in CLAUDE-workflow.md und ergaenzt die
+// beiden Stufen-Register. Es wird hier getrennt geprueft, weil die Datei anders
+// ausgeliefert wird als jene: Sie hat eine Kopie unter .claude/ und einen eigenen Blob.
+test("CLAUDE-workflow.md fuehrt die prozessweiten Gates nummeriert und markiert", () => {
+  const text = lies("templates", "CLAUDE-workflow.md");
+  assert.match(text, /^## Gates \(prozessweit\)$/m, "Abschnitt 'Gates (prozessweit)' fehlt");
+  const ueberschriften = text.match(/^### W\d+ .*$/gm) || [];
+  assert.ok(ueberschriften.length >= 4, `nur ${ueberschriften.length} prozessweite Gates`);
+  for (const zeile of ueberschriften) {
+    if (/gestrichen/.test(zeile)) continue;
+    assert.match(zeile, /`\[(maschinell|Urteil|maschinell \+ Urteil)\]`$/,
+      `"${zeile}" traegt keinen gueltigen Marker`);
+  }
+});
+
+test("Das prozessweite Register grenzt ab, was kein Gate ist", () => {
+  assert.match(lies("templates", "CLAUDE-workflow.md"), /^### Ausdruecklich kein prozessweites Gate$/m);
+});
+
+// Bis Issue #380 zeigte dieser Verweis ins Leere: CLAUDE-Plan.md nannte die
+// prozessweiten Gates, und in CLAUDE-workflow.md kam das Wort genau einmal vor.
+test("Der Verweis aus CLAUDE-Plan.md zeigt auf einen existierenden Abschnitt", () => {
+  assert.match(lies("templates", "CLAUDE-Plan.md"), /prozessweiten Gates stehen in `CLAUDE-workflow.md`/);
+  assert.match(lies("templates", "CLAUDE-workflow.md"), /^## Gates \(prozessweit\)$/m);
+});
+
 test("Gestrichene Gates stehen unter 'Verbrannte Nummern'", () => {
   for (const [datei, praefix] of REGISTER) {
     const text = lies("templates", datei);

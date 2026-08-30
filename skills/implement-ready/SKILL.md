@@ -43,6 +43,18 @@ Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
 Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
 
+**Gezeichnete Issues ueberspringen (Leitplanke):** Ein Issue mit dem Label
+`kit:klaeren` traegt eine offene Entscheidung, auf die ein Mensch antworten muss.
+Es wandert mit diesem Kommentar zurueck nach Backlog, der Lauf geht weiter:
+
+```
+Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.
+```
+
+**Das Label wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf
+es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:klaeren`
+abraeumen duerfte, koennte sich selbst freigeben.
+
 **Ungepruefte Issues: Hinweis, kein Stopp.** Ein Ready-Issue steht in einem von **drei Zustaenden** — und nur der dritte ist eine Luecke:
 
 1. **Marker vorhanden.** Der Kontext-Abschnitt traegt die Zeile `Issue-Review:`, das Issue ist durch `/issue-review` gelaufen. **Kein Hinweis**, es geht wie bisher weiter.

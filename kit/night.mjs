@@ -168,7 +168,7 @@ if (existsSync(NACHBAR_BOARD)) ({ parsePruefvorgabe } = await import("./board.mj
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.40.0";
+const KIT_VERSION = "1.41.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -476,6 +476,24 @@ export function hasStageMarker(body, stufe) {
   return new RegExp(`^\\s*${marker}\\s*\\S`, "im").test(body || "");
 }
 
+/**
+ * Das Zeichen fuer eine offene menschliche Entscheidung (Plan #368, A4).
+ *
+ * Anders als die Titel-Praefixe haengt dieses Gate an einem Label — und es hat eine
+ * Richtung: Die Maschine darf es SETZEN, aber nie ABNEHMEN. Ein Lauf, der sein
+ * eigenes `kit:klaeren` abraeumen duerfte, koennte sich selbst freigeben. Deshalb
+ * kommt `issue label remove` mit diesem Namen im ganzen Runner nicht vor.
+ *
+ * Die beiden Labelsorten leisten Verschiedenes: `review:*` **beschreibt** einen
+ * abgeleiteten Zustand und ist jederzeit neu berechenbar, `kit:klaeren`
+ * **entscheidet** und bleibt stehen, bis ein Mensch es abnimmt.
+ */
+export const KLAEREN_LABEL = "kit:klaeren";
+
+export function hatKlaerenLabel(issue) {
+  return (issue?.labels || []).includes(KLAEREN_LABEL);
+}
+
 function isIdee(title) {
   return /^\s*\[idee\]/i.test(title || "");
 }
@@ -550,6 +568,11 @@ export function selectReviewCandidates(issues, opts = {}) {
       // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
       // Runner verbuchte diesen Kommentar als "Review mit Befund".
       eintrag("bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)");
+    } else if (hatKlaerenLabel(issue)) {
+      // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
+      // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
+      // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
+      eintrag("kit:klaeren, offene Entscheidung");
     } else if (stufe === "fachlich") {
       if (isFachlich(issue.title)) kandidaten.push(issue);
       else eintrag("kein fachliches Issue ([Fachlich])");
@@ -1654,6 +1677,10 @@ async function main() {
         log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)`);
         continue;
       }
+      if (hatKlaerenLabel(issue)) {
+        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (kit:klaeren, offene Entscheidung)`);
+        continue;
+      }
       const full = board("issue", "get", String(issue.id));
       // Dasselbe Review-Gate wie im echten Lauf (Issue #304). Bis dahin lief es hier
       // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
@@ -1724,6 +1751,15 @@ async function main() {
       log(`#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`);
       board("issue", "comment", String(top.id), "--text",
         `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`);
+      board("issue", "move", String(top.id), "backlog");
+      deferred++;
+      continue;
+    }
+    // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
+    if (hatKlaerenLabel(top)) {
+      log(`#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`);
+      board("issue", "comment", String(top.id), "--text",
+        `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`);
       board("issue", "move", String(top.id), "backlog");
       deferred++;
       continue;

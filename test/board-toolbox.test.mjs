@@ -61,6 +61,9 @@ function standardAntwort(req) {
   if (req.url === "/api/kanban/items" && req.method === "POST") return { status: 200, json: { id: 700, number: 7 } };
   if (/^\/api\/kanban\/items\/\d+\/move$/.test(req.url)) return { status: 200, json: { ok: true } };
   if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
+  // Beide Label-Routen antworten 204 ohne Rumpf — genau wie KanbanCompatController.
+  if (/^\/api\/kanban\/items\/\d+\/labels$/.test(req.url) && req.method === "POST") return { status: 204, text: "" };
+  if (/^\/api\/kanban\/items\/\d+\/labels\?/.test(req.url) && req.method === "DELETE") return { status: 204, text: "" };
   if (req.url === "/api/kanban/epics") return { status: 200, json: [] };
   return null;
 }
@@ -80,8 +83,8 @@ test("list --status behaelt die Board-Reihenfolge der Spalte", async () => {
     const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), [
-      { id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [] },
-      { id: "9", title: "Karte 9", body: "Body 9", status: "ready", labels: [] },
+      { id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task" },
+      { id: "9", title: "Karte 9", body: "Body 9", status: "ready", labels: [], type: "task" },
     ]);
   });
 });
@@ -94,6 +97,51 @@ test("list --status laesst Epics aussen vor", async () => {
     async (dir) => {
       const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
       assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+    }
+  );
+});
+
+// Ohne Status-Filter galt der Epic-Ausschluss frueher nicht — Vorhaben erschienen
+// als gewoehnliche Karten mit erfundenem Status (Issue #377).
+test("list ohne Filter laesst Epics ebenfalls aussen vor", async () => {
+  const karten = [karte(7, "READY"), karte(8, "BACKLOG", { type: "epic" })];
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(karten) } : null),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+    }
+  );
+});
+
+// Der Default haelt die Form stabil: Ein Item ohne type-Feld darf das Feld nicht
+// fehlen lassen — JSON.stringify wuerde undefined auslassen (Issue #377).
+test("list liefert type, auch bei einer Karte ohne type-Feld", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert([karte(7, "READY")]) } : null),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
+      assert.equal(JSON.parse(res.stdout)[0].type, "task");
+    }
+  );
+});
+
+// Ein Vorhaben hat keinen Status: CardService.move laesst es gar nicht auf dem
+// Board positionieren. Die Compat-API liefert BACKLOG als Fallback (Issue #377).
+test("get auf ein Vorhaben liefert status null und type epic", async () => {
+  await mitBoard(
+    (req) => {
+      if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(8, "BACKLOG", { type: "epic" })]) };
+      if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
+      return null;
+    },
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "8"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      const karte8 = JSON.parse(res.stdout);
+      assert.equal(karte8.status, null);
+      assert.equal(karte8.type, "epic");
     }
   );
 });
@@ -122,7 +170,7 @@ test("get liefert die Karte samt Kommentaren", async () => {
       const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
       assert.equal(res.status, 0, res.stderr);
       assert.deepEqual(JSON.parse(res.stdout), {
-        id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [],
+        id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task",
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
       });
     }
@@ -334,6 +382,56 @@ test("comment schickt den Text an den Kommentar-Endpunkt", async () => {
     assert.equal(res.status, 0, res.stderr);
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/700/comments");
     assert.deepEqual(JSON.parse(post.body), { body: "## Abschlussbericht" });
+  });
+});
+
+// --- Labels ---
+//
+// Der toolbox-Adapter hat den Schreibpfad lange verweigert, weil die kanbancompat-API
+// angeblich kein atomares Setzen per Name bot. Seit kanban-kit#574 kann sie es
+// (POST/DELETE /items/{id}/labels). Diese Tests nageln die drei Stellen fest, an denen
+// eine naive Umsetzung falsch liegt (Issue #375).
+
+// Adressiert wird die INTERNE Karten-ID, nicht die Kartennummer — wie bei move und
+// comments. Karte 7 liegt intern unter 700: eine ungeprueft durchgereichte Nummer
+// traefe eine fremde Karte oder nichts.
+test("label add loest die Kartennummer in die interne ID auf", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "label", "add", "3", "review:offen"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/300/labels");
+    assert.ok(post, "POST auf die interne ID 300 erwartet");
+  });
+});
+
+test("label add schickt den Namen als JSON-Rumpf", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "label", "add", "7", "review:offen"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/700/labels");
+    assert.deepEqual(JSON.parse(post.body), { name: "review:offen" });
+  });
+});
+
+// Beim Entfernen steht der Name im Query, nicht im Pfad: der Server laesst jedes
+// Zeichen ausser Leerstring zu, und ein Pfadsegment truege einen Slash nicht.
+test("label remove nimmt den Namen im Query-Parameter", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "label", "remove", "7", "review:offen"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const del = requests.find((r) => r.method === "DELETE" && r.url.startsWith("/api/kanban/items/700/labels"));
+    assert.ok(del, "DELETE auf die Label-Route erwartet");
+    assert.equal(del.url, "/api/kanban/items/700/labels?name=review%3Aoffen");
+  });
+});
+
+// Der Fall, an dem eine ungekapselte Query bricht.
+test("label remove kodiert einen Namen mit Schraegstrich", async () => {
+  await mitBoard(standardAntwort, async (dir, requests) => {
+    const res = await runBoardAsync(dir, ["issue", "label", "remove", "7", "bereich/ui"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const del = requests.find((r) => r.method === "DELETE" && r.url.startsWith("/api/kanban/items/700/labels"));
+    assert.equal(del.url, "/api/kanban/items/700/labels?name=bereich%2Fui");
   });
 });
 

@@ -196,6 +196,37 @@ test("epics liefert je Epic den Fortschritt aus den Kindern", () => {
   });
 });
 
+// Ohne Status-Filter galt der Epic-Ausschluss frueher nicht (Issue #377).
+test("list ohne Filter laesst Epics aussen vor", () => {
+  mitProjekt((dir) => {
+    board(dir, "issue", "create", "--title", "Ein Epic", "--type", "epic");
+    board(dir, "issue", "create", "--title", "Ein Arbeitspaket");
+    const liste = board(dir, "issue", "list");
+    assert.deepEqual(liste.map((i) => i.title), ["Ein Arbeitspaket"]);
+  });
+});
+
+// _read setzte den Default "backlog" auch ueber ein Vorhaben, das per createIssue
+// bewusst gar kein status-Feld traegt (Issue #377).
+test("get auf ein lokales Vorhaben liefert status null", () => {
+  mitProjekt((dir) => {
+    const epic = board(dir, "issue", "create", "--title", "Vorhaben ohne Status", "--type", "epic");
+    const gelesen = board(dir, "issue", "get", epic.id);
+    assert.equal(gelesen.status, null);
+    assert.equal(gelesen.type, "epic");
+  });
+});
+
+// Auch ein per move geschriebenes status-Feld darf die Aussage nicht kippen:
+// moveIssue schreibt meta.status ohne Typpruefung (Issue #377).
+test("get auf ein Vorhaben mit geschriebenem status-Feld bleibt null", () => {
+  mitProjekt((dir) => {
+    const epic = board(dir, "issue", "create", "--title", "Verschobenes Vorhaben", "--type", "epic");
+    board(dir, "issue", "move", epic.id, "done");
+    assert.equal(board(dir, "issue", "get", epic.id).status, null);
+  });
+});
+
 // --- Verschieben und Kommentieren ---
 
 test("move schreibt den neuen Status ins Frontmatter und laesst den Body unberuehrt", () => {
@@ -273,7 +304,8 @@ test("epics wird fuer Tracker ohne Epic-Begriff sauber abgelehnt", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "epics"]);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /epics wird nur im lokalen Modus unterstuetzt/);
+    assert.match(res.stderr, /epics wird von diesem Tracker nicht unterstuetzt/);
+    assert.match(res.stderr, /local, toolbox/);
   }, { codeHost: "local", issueTracker: "gitlab" });
 });
 

@@ -859,10 +859,10 @@ Geschrieben wird über den Adapter, nicht am Tracker vorbei — `node .claude/ki
 
 Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Review](#zweiter-modus-der-nacht-review)), ist niemand da, der zustimmen könnte. Die Regel wird deshalb geteilt:
 
-- **Der Body wird nie geschrieben** — auch nicht bei befundfreiem Review. Der fertig formulierte Vorschlag geht als Kommentar ans Issue, als übernehmbarer Text. Beim Groomen liest du ihn von dort (`issue get` liefert die Kommentare mit).
-- **Der Marker wird gesetzt, wenn nichts zu ändern ist**: kein Fund mit Schweregrad `BLOCKER` oder `WICHTIG`, und kein Reviewer ausgefallen oder unterbesetzt gefahren. Ein einziger gewichtiger Fund reicht, und der Marker bleibt aus.
+- **Der Body wird geschrieben, wenn alle Funde `korrektur` sind** (Issue #387). Bleibt mindestens ein `gate`- oder `alternativen`-Fund, werden die übernommenen `korrektur`-Funde trotzdem angewendet, `kit:klaeren` wird gesetzt und der Marker bleibt aus. Der fertig formulierte Vorschlag geht in beiden Fällen als Kommentar ans Issue.
+- **Der Marker wird gesetzt**, wenn alle Funde `korrektur` sind und kein Reviewer ausgefallen oder unterbesetzt gefahren ist.
 
-Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
+Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Ein wörtlich vorgeschlagener Fund, der nur einen Weg kennt, ist keine Produktentscheidung — ihn anzuwenden auch nicht. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` das am Ticket sichtbar. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
 **Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
 
@@ -879,6 +879,58 @@ Issue-Review: codex (2026-08-06, Nachtlauf)
 Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Marker kommentiert ins Backlog zurück und fährt mit dem nächsten fort. Interaktiv weisen `/implement-ready` und `/implement-next` nur darauf hin und fragen — nachts antwortet niemand, tagsüber steht ein Mensch daneben.
 
 Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
+
+### Zustandslabels: der Prüfstand am Ticket
+
+Mit `"issueReview": { "statusLabels": true }` schreibt `issue-review label-sync <id>` den abgeleiteten Prüfzustand als Label ans Ticket. Im Board ist damit ablesbar, wie weit die Prüfung ist, ohne Body oder Kommentare zu öffnen.
+
+**Der Default ist `false`.** Ein Kit-Update darf Bestandsprojekten nicht ungefragt Labels in ihre Boards schreiben; wer das Verfahren einführt, schaltet es bewusst ein — und legt vorher die Definitionen an (siehe unten).
+
+Vier Zustände, abgeleitet aus Body und Kommentaren:
+
+| Zustand | Woraus abgeleitet | Label |
+|---|---|---|
+| `fertig` | Marker der eigenen Stufe gesetzt, **oder** gültiger `Pruefung: Verzicht` | `review:fertig` |
+| `befunde` | jüngster Review-Kommentar der Stufe, ohne Ausfallvermerk | `review:befunde` |
+| `ausgefallen` | jüngster Review-Kommentar der Stufe **mit** Ausfallvermerk in Zeile 2 | `review:offen` |
+| `offen` | nichts von alledem | `review:offen` |
+
+`ausgefallen` ist der einzige Zustand, dessen Label anders heißt: Ein ausgefallener Reviewer ist **kein Prüfergebnis** — das Ticket ist so ungeprüft wie zuvor. Der Zustand steht trotzdem eigenständig da, weil er für den Menschen etwas anderes bedeutet als „noch nicht angefangen".
+
+Ein Marker einer **fremden** Stufe zählt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis. Marker in Codeblöcken zählen ebenfalls nicht — ein Dokument, das das Format als Beispiel zeigt, weist damit nichts nach.
+
+#### `review:*` beschreibt, `kit:klaeren` entscheidet
+
+Die beiden Labelsorten sehen ähnlich aus und leisten Verschiedenes:
+
+- **`review:*` beschreibt.** Es ist eine Projektion des abgeleiteten Zustands, jederzeit neu berechenbar. Kein Gate liest es: `requiredBeforeReady` hängt am Marker, die Kandidatenauswahl des Nacht-Runners an Marker und Routing-Label. Ein von Hand verstelltes `review:*` repariert der nächste `label-sync` von selbst.
+- **`kit:klaeren` entscheidet.** Es sagt, dass eine Frage offen ist, die ein Mensch beantworten muss. Der Nacht-Runner **setzt** es, aber **nimmt es nie ab** — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben. Solange es steht, wird das Ticket weder implementiert noch erneut geprüft.
+
+Kurz: Ein `review:*` von Hand zu entfernen ist folgenlos, ein `kit:klaeren` von Hand zu entfernen ist die Antwort.
+
+#### Die Klassifikation der Funde
+
+Jeder Reviewer-Fund trägt neben dem Schweregrad eine Klasse. Sie entscheidet, ob die Maschine ihn anwenden darf:
+
+| Klasse | Bedeutung | Folge |
+|---|---|---|
+| `korrektur` | plausibel, wichtig, **ein** Weg | wird angewendet |
+| `gate` | Verstoß gegen eine Registerregel | ruft den Menschen, `kit:klaeren` |
+| `alternativen` | mehr als ein gangbarer Weg | ruft den Menschen, `kit:klaeren` |
+
+Die Register, gegen die `gate` gemessen wird, sind zwei: `CLAUDE-workflow.md` führt die prozessweiten Gates (Stop-Punkte, Git-Workflow, Pflichtchecks, Prioritäten), `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` die Formregeln ihrer Stufe. Für die Stufe `issue` gibt es kein eigenes Formregister; dort zählt allein das prozessweite.
+
+`gate` und `alternativen` kann die Synthese **nicht verwerfen** — verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
+
+#### Einrichtung: die vier Definitionen je Board
+
+Die Labels müssen am Board **definiert** sein, bevor `statusLabels` eingeschaltet wird. Fehlt eine Definition, scheitert der erste `label-sync` hart; der Adapter übersetzt den 404 des Servers in einen Hinweis, der den fehlenden Namen nennt.
+
+Anzulegen sind vier: `review:offen`, `review:befunde`, `review:fertig` und `kit:klaeren`. Die Namen sind **fest und nicht konfigurierbar** — konfigurierbare Namen wären eine zweite Wahrheit und zerstörten die Wiedererkennbarkeit über Projekte hinweg.
+
+- **kanban-kit:** `POST /api/boards/{boardId}/labels`. Über `/api/kanban` gibt es dafür keinen Weg — das ist der einzige Einrichtungsschritt, den keine Session erledigen kann.
+- **GitHub:** `gh label create review:offen` und so fort.
+- **GitLab:** `glab label create` bzw. die Label-Verwaltung des Projekts. **Achtung:** Bei GitLab sind Spalten selbst Labels. Kollidiert einer der drei Namen mit einem konfigurierten Spalten-Label, bricht `label-sync` ab, statt die Spaltenlogik zu beschädigen.
 
 ### Prüfumfang am Ticket: Vorgabe, Verzicht, Verfall
 
@@ -1061,8 +1113,14 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
-- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue move`, `issue comment`
+- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue move`, `issue comment`, `issue epics`
 - **Code-Host-Interface:** `code repo-name`, `code pr`
+
+**`issue list` liefert Arbeitspakete, `issue epics` liefert Vorhaben.** Die Trennung ist scharf: Vorhaben erscheinen in `issue list` nie, auch nicht ohne Status-Filter. Sie sind Klammern über mehreren Karten, keine Arbeit — wer sie in einer Liste offener Issues mitzählt, hält sie für Arbeitspakete mit dünner Beschreibung. `issue epics` liefert sie mit Kürzel und Fortschritt (`#360 [HER] … 8/8`), also mit der Information, die ein Vorhaben tatsächlich trägt.
+
+**Ein Vorhaben hat keinen Status.** `issue get` liefert darauf `status: null`, nicht `backlog`. Der Grund liegt im Server: Er lässt ein Vorhaben per `move` gar nicht auf dem Board positionieren („Epics werden nicht auf dem Board positioniert"). Ein Status, den kein `move` je ändern kann, wäre eine Behauptung über etwas, das es nicht gibt; `null` heißt „hat keinen".
+
+Vorhaben kennen nur die Tracker **local** und **toolbox**. Bei **github** und **gitlab** weist `issue epics` mit einer Meldung ab, die beide fähigen Tracker nennt — dort ist der Fehlschlag der Normalfall, und Aufrufer wie `/kontext` überspringen ihn still.
 
 Die Skills rufen ausschließlich den Adapter auf — sie wissen nichts von `gh` oder `glab`. Du kannst `issueTracker` und `codeHost` jederzeit in der Config ändern; alle Skills passen sich beim nächsten Aufruf an.
 

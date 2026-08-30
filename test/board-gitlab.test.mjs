@@ -372,3 +372,37 @@ test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () 
     }],
   });
 });
+
+// Bei GitLab SIND Spalten Labels — deshalb der Kollisions-Guard in `label-sync`
+// (Issue #384, Plan #347/A5). Solange kein Zustandslabel mit einem Spalten-Label
+// kollidiert, darf es den abgeleiteten Status nicht beruehren.
+test("Ein Zustandslabel aendert weder den Status noch die Spaltenlogik", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const geholt = board(dir, "issue", "get", "42");
+    assert.equal(geholt.status, "ready", "das Zustandslabel hat den Status verschoben");
+    assert.deepEqual(geholt.labels, ["Ready", "review:befunde"]);
+  }, {
+    regeln: [
+      {
+        match: "^issue view",
+        stdout: { iid: 42, title: "Mit Zustandslabel", description: "", state: "opened", labels: [{ name: "Ready" }, { name: "review:befunde" }] },
+      },
+      { match: "^api projects", stdout: [] },
+    ],
+  });
+});
+
+test("Ein Zustandslabel allein ergibt keinen Status", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.equal(board(dir, "issue", "get", "42").status, null,
+      "review:offen wurde als Spalte gelesen");
+  }, {
+    regeln: [
+      {
+        match: "^issue view",
+        stdout: { iid: 42, title: "Nur Zustandslabel", description: "", state: "opened", labels: [{ name: "review:offen" }] },
+      },
+      { match: "^api projects", stdout: [] },
+    ],
+  });
+});

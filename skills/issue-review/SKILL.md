@@ -194,6 +194,12 @@ Prüfe auf Vollständigkeit und Prüfbarkeit:
 
 Für jeden Fund:
 - Schweregrad: BLOCKER / WICHTIG / HINWEIS
+- **Klasse:** `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+  `alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+  (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+  gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+  bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+  Format-Register**; dort zählt allein das prozessweite.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -203,7 +209,7 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
-**Fällt der Reviewer aus** — vor dem Start oder während der Ausführung, gleich aus welchem Grund —, läuft die Session nur noch **zur Protokollierung** weiter. Sie schreibt einen Board-Kommentar, dessen erste Zeile den Ausfall und den Grund nennt. Es entstehen **keine Befunde, keine Synthese, kein Body-Vorschlag** und **nie ein Marker**. Kein Ersatz-Reviewer.
+**Fällt der Reviewer aus** — vor dem Start oder während der Ausführung, gleich aus welchem Grund —, läuft die Session nur noch **zur Protokollierung** weiter. Sie schreibt einen Board-Kommentar mit dem üblichen Anker `## <Stufe>-Review, Runde n` in Zeile 1 und dem Ausfall samt Grund in **Zeile 2**. Beides zugleich in der ersten Zeile ginge nicht — und ohne den Anker erkennt `reviewZustand` (Issue #381) den Kommentar nicht als Review-Kommentar der Stufe. Es entstehen **keine Befunde, keine Synthese, kein Body-Vorschlag** und **nie ein Marker**. Kein Ersatz-Reviewer.
 
 Der Grund ist der Rechenweg: Bei einem einzigen Prüfer gibt es nichts zu synthetisieren, und ein Vorschlag ohne Befund wäre die Meinung der Session über ein Issue, das sie nicht prüfen sollte. „Unterbesetzt" und „gar nicht geprüft" fallen auf dieser Stufe zusammen. Die Nachtregel aus Issue #267 gilt unverändert daneben.
 
@@ -238,7 +244,13 @@ Offene Fragen an den PO.
 4. Ist das Ziel als Nutzerwirkung formuliert, oder beschreibt es eine Lösung?
 5. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -266,7 +278,13 @@ Prüfe auf Abgrenzung und Widerspruch:
    raten müssen?
 5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -303,7 +321,13 @@ Den Bestand darfst und sollst du lesen: Schlag im Repository nach.
    Test, welche Kopie ist betroffen?
 5. Was kann RAUS? Welche Entscheidung, welcher Abschnitt trägt nichts?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag. Bei Behauptungen über den Bestand:
 nenne die Datei und die Stelle, an der du nachgesehen hast.
 
@@ -333,7 +357,13 @@ Prüfe den Schnitt:
    Zuschnitt ändert? Nachträglich entscheidbare Fragen blähen den Plan.
 6. Was kann RAUS?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -367,6 +397,12 @@ Prüfe auf Scope und Risiko:
 
 Für jeden Fund:
 - Schweregrad: BLOCKER / WICHTIG / HINWEIS
+- **Klasse:** `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+  `alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+  (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+  gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+  bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+  Format-Register**; dort zählt allein das prozessweite.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -410,6 +446,12 @@ Kein Review: `Pruefung: Verzicht` am Ticket — bewusst ohne Pruefung freigegebe
 Kein Reviewer gestartet, kein Marker gesetzt.
 ```
 
+**Auch hier `label-sync`:** Ein gültiger Verzicht ergibt `fertig` — der Mensch hat entschieden, dass nicht geprüft wird, und das ist ein Ergebnis, kein Loch. Ohne den Aufruf bliebe das Ticket auf `review:offen` stehen und sähe aus wie eines, das noch wartet.
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
 **Bei `vorgabeQuelle: "verfallen"`** läuft der Review ganz normal mit der Regel-Rundenzahl, die `runden` liefert. Der Kommentar nennt den Verfall trotzdem — für den, der ihn morgens liest, ist „nie entschieden" etwas anderes als „entschieden, aber durch eine inhaltliche Änderung überholt". Wer nur das eine sieht, weiß nicht, dass er noch einmal entscheiden sollte.
 
 Bei mehr als einer Runde bekommt die zweite Runde den bereits geschärften Body, nicht den ursprünglichen. Jede Runde erzeugt einen eigenen Board-Kommentar, damit der Verlauf lesbar bleibt.
@@ -445,7 +487,15 @@ Braucht ein Werkzeug doch eine Datei, gehört sie **außerhalb des Projektverzei
 — eine Datei im Repo macht den Working Tree unsauber, und darauf stoppt der
 Nacht-Runner hart (Issue #152).
 
-Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **ersten Zeile** des Kommentars.
+Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **zweiten Zeile** des Kommentars — die erste trägt den Anker.
+
+**Danach `label-sync`** — der erste von drei Aufrufen in diesem Skill: **nach dem Befunde-Kommentar** (hier), **nach dem Schreiben von Body und Marker** (Schritt 6) und **nach der Verzicht-Meldung** (Schritt 4):
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
+Der Zustand hat sich gerade geändert (von `offen` auf `befunde`, oder auf `ausgefallen`), und das Label soll ihn zeigen. Das Kommando leitet selbst ab — es bekommt keinen Zustand übergeben, und es gibt hier nichts zu entscheiden.
 
 ### 5b. Synthese protokollieren — ein zweiter, getrennter Kommentar
 
@@ -481,7 +531,15 @@ SYNTHESE
 
 **Was hineingehört:**
 
-- Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen` oder `verworfen` — und bei `verworfen` ein Satz Begründung.
+- Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen`, `verworfen` oder **`zur Entscheidung`** — und bei `verworfen` ein Satz Begründung.
+- **`zur Entscheidung`** ist der dritte Ausgang (Issue #386): Ein Fund der Klasse
+  `gate` oder `alternativen` ruft einen Menschen. Die Zeile nennt den offenen
+  Punkt im Klartext und den Auslöser dazu — welche Regel berührt ist, oder welche
+  Wege zur Wahl stehen. Diese beiden Klassen kann die Synthese **nicht verwerfen**;
+  verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
+- **Die Abbildung auf das Verhalten:** `korrektur` wird angewendet; `gate` und
+  `alternativen` werden nicht angewendet und zeichnen das Ticket mit
+  `kit:klaeren` (siehe Issue #387).
 - `HINWEIS`-Funde nur, wenn sie **verworfen** wurden. Sonst wird die Liste länger als ihr Nutzen.
 - **Ein verworfener `BLOCKER` braucht immer eine Begründung.** Das ist die Kategorie, bei der stilles Verwerfen am teuersten ist.
 - Auf den Stufen `fachlich` und `plan`: Widersprechen sich die Prüfer, steht das als eigener Punkt — welche Vorschläge kollidierten, welcher gewonnen hat, warum, und welche Folgeänderungen daraus entstanden sind. Auf der Stufe `issue` gibt es diesen Fall nicht.
@@ -543,6 +601,12 @@ BODY
 
 Die Formulierung des Markers ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.
 
+**Danach `label-sync`** — der Marker macht aus `befunde` ein `fertig`:
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
 **Bei Ablehnung:** Body bleibt unverändert und **kein Marker** wird gesetzt. Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
 
 ## Im Nachtbetrieb
@@ -564,7 +628,36 @@ Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für `night.mj
 
 Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten ihre Reviewer-Arbeit fertig — bei einer davon drei BLOCKER — und haben sie verworfen, weil sie auf eine Antwort warteten, die nachts niemand geben kann. Fünf bis sechs Minuten Arbeit je Issue, viermal, für nichts. Der bisherige Text deckte nur zwei Lagen ab: Reviewer fehlt beim Vorflug (dann startet der Runner nicht) und Reviewer fällt mitten im Lauf aus (dann ist es ein Fund für den Bericht). Die dritte — Vorflug meldet ihn, Start scheitert — kannte er nicht, und für eine Lage ohne Regel improvisiert jede Session neu.
 
-**Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
+**Schritt 6 nachts: Der Body wird geschrieben, wenn alle Funde `korrektur` sind.**
+
+Die Verantwortungsschwelle liegt nicht mehr am Text, sondern an der **Entscheidung**: Automatisiert wird, was automatisierbar ist; wo eine Entscheidung fehlt, zeichnet ein Label sie sichtbar.
+
+- **Alle Funde `korrektur`:** Der Body wird geschrieben, der Marker gesetzt.
+- **Mindestens ein `gate`- oder `alternativen`-Fund** — diese beiden Klassen kann die Synthese **nicht verwerfen**, sie rufen nach A9 immer den Menschen: Die übernommenen `korrektur`-Funde werden trotzdem angewendet, `kit:klaeren` wird gesetzt, der Marker bleibt aus, und die Synthese benennt jeden offenen Punkt einzeln.
+
+Für `korrektur`-Funde bleibt die Abwägung übernommen/verworfen mit Begründung bestehen; **angewendet wird, was übernommen ist** — nicht ausnahmslos jeder.
+
+Das Label wird so gesetzt:
+
+```bash
+node .claude/kit/board.mjs issue label add <id> kit:klaeren
+```
+
+Ein bereits vorhandenes Label ist kein Fehler.
+
+**Angewendet wird nur wörtlich Vorgeschlagenes** (A10): Was der Reviewer nicht wörtlich geliefert hat, verändert den Body nicht — keine Umformulierung, keine sinngemäße Übertragung, keine eigene Ergänzung an der Stelle. Der `## Body-Vorschlag`-Kommentar bleibt in beiden Fällen daneben bestehen; er ist die Spur, was die Maschine getan hat.
+
+**Reihenfolge der Schreibbefehle und Fehlerpfad:**
+
+1. `## Body-Vorschlag`-Kommentar
+2. `issue update` (der neue Body)
+3. gegebenenfalls `issue label add kit:klaeren`
+4. Synthese-Kommentar
+5. gegebenenfalls der Marker
+
+**Schlägt ein Schreibbefehl fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus** — insbesondere **nie einen Marker ohne** erfolgreich geschriebenen Body und Synthese-Kommentar. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
+
+**Für die Stufen `fachlich` und `plan` gilt das alles nicht — dort wird der Body unbeaufsichtigt nie geschrieben:** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
 Die **erste Zeile** dieses Kommentars lautet wörtlich `## Body-Vorschlag, Runde <n>`, mit der Nummer der Runde:
 
@@ -587,8 +680,10 @@ Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine List
 
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
-1. Kein Fund trägt den Schweregrad `BLOCKER` oder `WICHTIG`. Ein einziger reicht, und der Marker bleibt aus.
+1. **Alle Funde tragen die Klasse `korrektur`**, und die übernommenen wurden angewendet. Ein einziger `gate`- oder `alternativen`-Fund reicht, und der Marker bleibt aus — stattdessen wird `kit:klaeren` gesetzt.
 2. Kein Reviewer ist ausgefallen, und der Lauf war nicht unterbesetzt.
+
+Bis Issue #387 stand an Stelle 1 der Schweregrad: kein Fund mit `BLOCKER` oder `WICHTIG`. Das kollidierte mit der Klassifikation, sobald es sie gab — ein `korrektur`-Fund kann `WICHTIG` sein, und ein solches Ticket bliebe nach dem Anwenden weder markiert noch gezeichnet liegen.
 
 Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den Menschen.
 
@@ -596,7 +691,7 @@ Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den 
 
 **Daraus folgt eine Schärfung der Marker-Regel:** Wird der Marker gesetzt, obwohl ein Fund verworfen wurde, **muss die Synthese das benennen**. Sonst behauptet der Marker eine Befundfreiheit, die es nicht gab — ein `HINWEIS`, den die Nacht verworfen hat, ist kein Grund, den Marker zurückzuhalten, aber er darf nicht unsichtbar bleiben.
 
-Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden; den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
+Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Was ein Reviewer wörtlich vorschlägt und was nur einen Weg kennt, kann die Maschine anwenden — daran ist nichts zu entscheiden. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` genau das sichtbar, statt es in einem Kommentar zu vergraben. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
 
 **Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
 
@@ -605,6 +700,8 @@ Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
+
+**`label-sync` läuft nachts identisch**, ohne Ausnahme: Ein Label ist weder Body noch Marker, es fällt also nicht unter das nächtliche Schreibverbot für die Stufen `fachlich` und `plan`. Der Zustand ist abgeleitet und jederzeit neu berechenbar — ihn zu zeigen ist keine Produktentscheidung.
 
 Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, kein Reviewer bei gültigem Verzicht (Schritt 1 und 4), Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
 
@@ -635,7 +732,8 @@ Dann der Hinweis auf den nächsten Schritt:
 - Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
 - **Nachts wird nie gefragt, in keiner Lage** — auch nicht, wenn ein Reviewer beim Start ausfällt oder das Autor-Modell fehlt. Es wird mit dem verfahren, was da ist, und der Rest protokolliert
 - **Nachts kein Ersatz-Reviewer** — die Besetzung folgt `pairs`, eine Lücke wird vermerkt, nicht gefüllt
-- **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
+- **Nachts kein Schreiben in den Issue-Body bei den Stufen `fachlich` und `plan`** — dort nur Kommentare und nie ein Marker. Auf der Stufe `issue` wird der Body geschrieben, wenn alle Funde `korrektur` sind (Issue #387)
+- **Nie ein Marker ohne erfolgreich geschriebenen Body und Synthese-Kommentar** — schlägt ein Schreibbefehl fehl, endet der Skill und führt keine weitere Mutation aus
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet
