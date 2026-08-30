@@ -859,10 +859,10 @@ Geschrieben wird über den Adapter, nicht am Tracker vorbei — `node .claude/ki
 
 Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Review](#zweiter-modus-der-nacht-review)), ist niemand da, der zustimmen könnte. Die Regel wird deshalb geteilt:
 
-- **Der Body wird nie geschrieben** — auch nicht bei befundfreiem Review. Der fertig formulierte Vorschlag geht als Kommentar ans Issue, als übernehmbarer Text. Beim Groomen liest du ihn von dort (`issue get` liefert die Kommentare mit).
-- **Der Marker wird gesetzt, wenn nichts zu ändern ist**: kein Fund mit Schweregrad `BLOCKER` oder `WICHTIG`, und kein Reviewer ausgefallen oder unterbesetzt gefahren. Ein einziger gewichtiger Fund reicht, und der Marker bleibt aus.
+- **Der Body wird geschrieben, wenn alle Funde `korrektur` sind** (Issue #387). Bleibt mindestens ein `gate`- oder `alternativen`-Fund, werden die übernommenen `korrektur`-Funde trotzdem angewendet, `kit:klaeren` wird gesetzt und der Marker bleibt aus. Der fertig formulierte Vorschlag geht in beiden Fällen als Kommentar ans Issue.
+- **Der Marker wird gesetzt**, wenn alle Funde `korrektur` sind und kein Reviewer ausgefallen oder unterbesetzt gefahren ist.
 
-Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Dokument, an dem die fremden Modelle seiner Stufe nichts Gewichtiges finden, hat den Review bestanden — den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
+Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Ein wörtlich vorgeschlagener Fund, der nur einen Weg kennt, ist keine Produktentscheidung — ihn anzuwenden auch nicht. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` das am Ticket sichtbar. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
 **Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
 

@@ -628,7 +628,36 @@ Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für `night.mj
 
 Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten ihre Reviewer-Arbeit fertig — bei einer davon drei BLOCKER — und haben sie verworfen, weil sie auf eine Antwort warteten, die nachts niemand geben kann. Fünf bis sechs Minuten Arbeit je Issue, viermal, für nichts. Der bisherige Text deckte nur zwei Lagen ab: Reviewer fehlt beim Vorflug (dann startet der Runner nicht) und Reviewer fällt mitten im Lauf aus (dann ist es ein Fund für den Bericht). Die dritte — Vorflug meldet ihn, Start scheitert — kannte er nicht, und für eine Lage ohne Regel improvisiert jede Session neu.
 
-**Schritt 6: Der Body wird nie geschrieben — auch nicht bei befundfreiem Review.** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
+**Schritt 6 nachts: Der Body wird geschrieben, wenn alle Funde `korrektur` sind.**
+
+Die Verantwortungsschwelle liegt nicht mehr am Text, sondern an der **Entscheidung**: Automatisiert wird, was automatisierbar ist; wo eine Entscheidung fehlt, zeichnet ein Label sie sichtbar.
+
+- **Alle Funde `korrektur`:** Der Body wird geschrieben, der Marker gesetzt.
+- **Mindestens ein `gate`- oder `alternativen`-Fund** — diese beiden Klassen kann die Synthese **nicht verwerfen**, sie rufen nach A9 immer den Menschen: Die übernommenen `korrektur`-Funde werden trotzdem angewendet, `kit:klaeren` wird gesetzt, der Marker bleibt aus, und die Synthese benennt jeden offenen Punkt einzeln.
+
+Für `korrektur`-Funde bleibt die Abwägung übernommen/verworfen mit Begründung bestehen; **angewendet wird, was übernommen ist** — nicht ausnahmslos jeder.
+
+Das Label wird so gesetzt:
+
+```bash
+node .claude/kit/board.mjs issue label add <id> kit:klaeren
+```
+
+Ein bereits vorhandenes Label ist kein Fehler.
+
+**Angewendet wird nur wörtlich Vorgeschlagenes** (A10): Was der Reviewer nicht wörtlich geliefert hat, verändert den Body nicht — keine Umformulierung, keine sinngemäße Übertragung, keine eigene Ergänzung an der Stelle. Der `## Body-Vorschlag`-Kommentar bleibt in beiden Fällen daneben bestehen; er ist die Spur, was die Maschine getan hat.
+
+**Reihenfolge der Schreibbefehle und Fehlerpfad:**
+
+1. `## Body-Vorschlag`-Kommentar
+2. `issue update` (der neue Body)
+3. gegebenenfalls `issue label add kit:klaeren`
+4. Synthese-Kommentar
+5. gegebenenfalls der Marker
+
+**Schlägt ein Schreibbefehl fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus** — insbesondere **nie einen Marker ohne** erfolgreich geschriebenen Body und Synthese-Kommentar. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
+
+**Für die Stufen `fachlich` und `plan` gilt das alles nicht — dort wird der Body unbeaufsichtigt nie geschrieben:** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
 Die **erste Zeile** dieses Kommentars lautet wörtlich `## Body-Vorschlag, Runde <n>`, mit der Nummer der Runde:
 
@@ -651,8 +680,10 @@ Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine List
 
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
-1. Kein Fund trägt den Schweregrad `BLOCKER` oder `WICHTIG`. Ein einziger reicht, und der Marker bleibt aus.
+1. **Alle Funde tragen die Klasse `korrektur`**, und die übernommenen wurden angewendet. Ein einziger `gate`- oder `alternativen`-Fund reicht, und der Marker bleibt aus — stattdessen wird `kit:klaeren` gesetzt.
 2. Kein Reviewer ist ausgefallen, und der Lauf war nicht unterbesetzt.
+
+Bis Issue #387 stand an Stelle 1 der Schweregrad: kein Fund mit `BLOCKER` oder `WICHTIG`. Das kollidierte mit der Klassifikation, sobald es sie gab — ein `korrektur`-Fund kann `WICHTIG` sein, und ein solches Ticket bliebe nach dem Anwenden weder markiert noch gezeichnet liegen.
 
 Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den Menschen.
 
@@ -660,7 +691,7 @@ Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den 
 
 **Daraus folgt eine Schärfung der Marker-Regel:** Wird der Marker gesetzt, obwohl ein Fund verworfen wurde, **muss die Synthese das benennen**. Sonst behauptet der Marker eine Befundfreiheit, die es nicht gab — ein `HINWEIS`, den die Nacht verworfen hat, ist kein Grund, den Marker zurückzuhalten, aber er darf nicht unsichtbar bleiben.
 
-Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt beim Ändern der Anforderung, nicht beim Feststellen, dass nichts zu ändern ist.** Ein Issue, an dem zwei fremde Modelle nichts Gewichtiges finden, hat den Review bestanden; den Marker dafür zu setzen ist eine Protokollhandlung, keine Produktentscheidung. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
+Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Was ein Reviewer wörtlich vorschlägt und was nur einen Weg kennt, kann die Maschine anwenden — daran ist nichts zu entscheiden. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` genau das sichtbar, statt es in einem Kommentar zu vergraben. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
 
 **Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
 
@@ -701,7 +732,8 @@ Dann der Hinweis auf den nächsten Schritt:
 - Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
 - **Nachts wird nie gefragt, in keiner Lage** — auch nicht, wenn ein Reviewer beim Start ausfällt oder das Autor-Modell fehlt. Es wird mit dem verfahren, was da ist, und der Rest protokolliert
 - **Nachts kein Ersatz-Reviewer** — die Besetzung folgt `pairs`, eine Lücke wird vermerkt, nicht gefüllt
-- **Nachts kein Schreiben in den Issue-Body** — nur Kommentar und, bei befundfreiem Review, der Marker
+- **Nachts kein Schreiben in den Issue-Body bei den Stufen `fachlich` und `plan`** — dort nur Kommentare und nie ein Marker. Auf der Stufe `issue` wird der Body geschrieben, wenn alle Funde `korrektur` sind (Issue #387)
+- **Nie ein Marker ohne erfolgreich geschriebenen Body und Synthese-Kommentar** — schlägt ein Schreibbefehl fehl, endet der Skill und führt keine weitere Mutation aus
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet
