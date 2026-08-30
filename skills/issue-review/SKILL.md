@@ -203,7 +203,7 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
-**Fällt der Reviewer aus** — vor dem Start oder während der Ausführung, gleich aus welchem Grund —, läuft die Session nur noch **zur Protokollierung** weiter. Sie schreibt einen Board-Kommentar, dessen erste Zeile den Ausfall und den Grund nennt. Es entstehen **keine Befunde, keine Synthese, kein Body-Vorschlag** und **nie ein Marker**. Kein Ersatz-Reviewer.
+**Fällt der Reviewer aus** — vor dem Start oder während der Ausführung, gleich aus welchem Grund —, läuft die Session nur noch **zur Protokollierung** weiter. Sie schreibt einen Board-Kommentar mit dem üblichen Anker `## <Stufe>-Review, Runde n` in Zeile 1 und dem Ausfall samt Grund in **Zeile 2**. Beides zugleich in der ersten Zeile ginge nicht — und ohne den Anker erkennt `reviewZustand` (Issue #381) den Kommentar nicht als Review-Kommentar der Stufe. Es entstehen **keine Befunde, keine Synthese, kein Body-Vorschlag** und **nie ein Marker**. Kein Ersatz-Reviewer.
 
 Der Grund ist der Rechenweg: Bei einem einzigen Prüfer gibt es nichts zu synthetisieren, und ein Vorschlag ohne Befund wäre die Meinung der Session über ein Issue, das sie nicht prüfen sollte. „Unterbesetzt" und „gar nicht geprüft" fallen auf dieser Stufe zusammen. Die Nachtregel aus Issue #267 gilt unverändert daneben.
 
@@ -410,6 +410,12 @@ Kein Review: `Pruefung: Verzicht` am Ticket — bewusst ohne Pruefung freigegebe
 Kein Reviewer gestartet, kein Marker gesetzt.
 ```
 
+**Auch hier `label-sync`:** Ein gültiger Verzicht ergibt `fertig` — der Mensch hat entschieden, dass nicht geprüft wird, und das ist ein Ergebnis, kein Loch. Ohne den Aufruf bliebe das Ticket auf `review:offen` stehen und sähe aus wie eines, das noch wartet.
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
 **Bei `vorgabeQuelle: "verfallen"`** läuft der Review ganz normal mit der Regel-Rundenzahl, die `runden` liefert. Der Kommentar nennt den Verfall trotzdem — für den, der ihn morgens liest, ist „nie entschieden" etwas anderes als „entschieden, aber durch eine inhaltliche Änderung überholt". Wer nur das eine sieht, weiß nicht, dass er noch einmal entscheiden sollte.
 
 Bei mehr als einer Runde bekommt die zweite Runde den bereits geschärften Body, nicht den ursprünglichen. Jede Runde erzeugt einen eigenen Board-Kommentar, damit der Verlauf lesbar bleibt.
@@ -445,7 +451,15 @@ Braucht ein Werkzeug doch eine Datei, gehört sie **außerhalb des Projektverzei
 — eine Datei im Repo macht den Working Tree unsauber, und darauf stoppt der
 Nacht-Runner hart (Issue #152).
 
-Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **ersten Zeile** des Kommentars.
+Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **zweiten Zeile** des Kommentars — die erste trägt den Anker.
+
+**Danach `label-sync`** — der erste von drei Aufrufen in diesem Skill: **nach dem Befunde-Kommentar** (hier), **nach dem Schreiben von Body und Marker** (Schritt 6) und **nach der Verzicht-Meldung** (Schritt 4):
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
+Der Zustand hat sich gerade geändert (von `offen` auf `befunde`, oder auf `ausgefallen`), und das Label soll ihn zeigen. Das Kommando leitet selbst ab — es bekommt keinen Zustand übergeben, und es gibt hier nichts zu entscheiden.
 
 ### 5b. Synthese protokollieren — ein zweiter, getrennter Kommentar
 
@@ -543,6 +557,12 @@ BODY
 
 Die Formulierung des Markers ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.
 
+**Danach `label-sync`** — der Marker macht aus `befunde` ein `fertig`:
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <id>
+```
+
 **Bei Ablehnung:** Body bleibt unverändert und **kein Marker** wird gesetzt. Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
 
 ## Im Nachtbetrieb
@@ -605,6 +625,8 @@ Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
 Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
+
+**`label-sync` läuft nachts identisch**, ohne Ausnahme: Ein Label ist weder Body noch Marker, es fällt also nicht unter das nächtliche Schreibverbot für die Stufen `fachlich` und `plan`. Der Zustand ist abgeleitet und jederzeit neu berechenbar — ihn zu zeigen ist keine Produktentscheidung.
 
 Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, kein Reviewer bei gültigem Verzicht (Schritt 1 und 4), Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
 

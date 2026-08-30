@@ -128,6 +128,14 @@ Die Option wirkt **nur beim Anlegen**. Nachtragen geht nicht: Eine board-lose Po
 
 **Rückmeldung.** Der Skill meldet die Nummer des Plan-Dokuments und nennt sie als Bezug für den nächsten Schritt.
 
+**Nach dem Anlegen `label-sync`:**
+
+```bash
+node .claude/kit/board.mjs issue-review label-sync <neue-id>
+```
+
+Ein frisches Dokument ist ungeprüft; das Kommando setzt `review:offen`. Ohne den Aufruf trägt es gar kein Zustandslabel und fällt in der Board-Ansicht aus der Reihe. Bei einer Pool-Idee ohne Nummer entfällt er ersatzlos.
+
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` statt einer Nummer `{ ideaId, pending: true }`, liegt das Plan-Dokument als board-lose Idee im Projekt-Ideen-Pool. Der Skill meldet dann die `ideaId` und weist darauf hin, dass der Mensch es erst einplanen muss — vorher existiert keine Nummer, unter der es adressierbar wäre.
 
 **Fehlerfall:** Schlägt das Anlegen fehl, meldet der Skill **weder eine Nummer noch einen erfolgreichen Abschluss**. Ein Plan, der nirgends steht, ist kein festgehaltener Plan.
