@@ -446,7 +446,61 @@ test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", NU
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
     assert.ok(existsSync(mitschrift), "das Kommando hat nichts auf stdin bekommen");
-    assert.ok(readFileSync(mitschrift, "utf-8").trim().length > 0, "der Probeprompt war leer");
+    // Exakt, nicht nur nicht-leer: Seit es mit KIT_PROBE_PROMPT einen Weg gibt, den
+    // Prompt zu ersetzen, muss belegt sein, dass er ohne die Variable unveraendert
+    // bleibt. `length > 0` haette auch ein versehentlich ueberschriebener Prompt
+    // erfuellt (Issue #393).
+    assert.equal(readFileSync(mitschrift, "utf-8"), "Antworte nur mit dem Wort OK.\n");
+  });
+});
+
+// Ein Prompt oberhalb des Pipe-Puffers (64 KiB unter Linux) und unterhalb der
+// Grenze, die Linux ueber MAX_ARG_STRLEN fuer eine einzelne Umgebungsvariable
+// setzt (128 KiB). Er erzwingt EPIPE deterministisch, sobald das Kommando endet,
+// ohne stdin zu lesen — 1 MiB liesse dagegen schon den Spawn mit E2BIG scheitern.
+const GROSSER_PROBE_PROMPT = "x".repeat(100 * 1024);
+
+test("issue-review check: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", NUR_POSIX, () => {
+  // Der Fall aus dem roten CI-Lauf (Issue #393): Das Kommando ist weg, bevor der
+  // Prompt geschrieben ist. spawnSync meldet dann EPIPE *zusaetzlich* zum
+  // Exit-Status — und der Grund, den der Vorflug ausgeben soll, steht in stderr.
+  const rumpf = 'echo "model is not supported for this account" >&2\nexit 1';
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt --flag" }] }, (dir) => {
+    fakeBinary(dir, "kaputt", 0o755, rumpf);
+    const res = runBoard(dir, ["issue-review", "check"], { KIT_PROBE_PROMPT: GROSSER_PROBE_PROMPT });
+    assert.equal(res.status, 0, res.stderr, "check bleibt eine Auskunft, kein Gate");
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.equal(out.reviewers[0].geprueft, "probelauf");
+    assert.match(out.reviewers[0].grund, /model is not supported/);
+    assert.doesNotMatch(out.reviewers[0].grund, /EPIPE/, "EPIPE ist der Nebeneffekt, nicht der Grund");
+  });
+});
+
+test("issue-review check: ein Kommando, das stdin nicht liest, bleibt verfuegbar", NUR_POSIX, () => {
+  // Die Gegenrichtung desselben Fehlers: exit 0 mit EPIPE ist ein Erfolg. Wer den
+  // error-Zweig zuerst prueft, meldet ein funktionierendes Werkzeug als Ausfall.
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "still --flag" }] }, (dir) => {
+    fakeBinary(dir, "still", 0o755, "exit 0");
+    const res = runBoard(dir, ["issue-review", "check"], { KIT_PROBE_PROMPT: GROSSER_PROBE_PROMPT });
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, true);
+    assert.equal(out.alleVerfuegbar, true);
+  });
+});
+
+test("issue-review check: ein per Signal gestorbenes Kommando gilt als Ausfall", NUR_POSIX, () => {
+  // Der dritte Zustand neben "gelaufen" und "nie gestartet": kein Exit-Status, kein
+  // error — nur ein Signal. Ohne eigenen Zweig faellt er auf ok: true durch, und ein
+  // abgestuerzter Reviewer gilt als verfuegbar (Issue #393).
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "stirbt --flag" }] }, (dir) => {
+    fakeBinary(dir, "stirbt", 0o755, "kill -SEGV $$");
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.match(out.reviewers[0].grund, /SIGSEGV/);
   });
 });
 

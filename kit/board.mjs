@@ -2853,7 +2853,11 @@ function kommandoVerfuegbar(kommandozeile) {
 // Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
 // fremdes Werkzeug, das seinerseits ein Agent sein kann. Er soll feststellen, ob es
 // laeuft — nicht, was es kann.
-const PROBE_PROMPT = "Antworte nur mit dem Wort OK.\n";
+// KIT_PROBE_PROMPT ist ein Test-Hook (dasselbe Muster wie KIT_PROBE_TIMEOUT_MS): Nur
+// mit einem Prompt oberhalb des Pipe-Puffers laesst sich EPIPE deterministisch
+// erzeugen, also der Fall, dass das Kommando weg ist, bevor der Prompt geschrieben
+// wurde (Issue #393).
+const PROBE_PROMPT = process.env.KIT_PROBE_PROMPT || "Antworte nur mit dem Wort OK.\n";
 
 // Zeitlimit ist Pflicht, nicht Kuer: Ein haengender Reviewer ist fuer den Vorflug
 // dasselbe Problem wie ein fehlender, und ohne Limit haengt der Vorflug mit.
@@ -2883,14 +2887,23 @@ function probelauf(kommandozeile, pfad) {
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
     return { ok: false, grund: `Zeitlimit von ${PROBE_TIMEOUT_MS} ms ueberschritten` };
   }
-  if (res.error) return { ok: false, grund: res.error.message };
-  if (res.status !== 0) {
+  // Der Exit-Status schlaegt den Fehler (Issue #393). Endet das Kommando, bevor der
+  // Prompt in seine stdin geschrieben ist, meldet spawnSync EPIPE — zusaetzlich zum
+  // Status und zusaetzlich zu dem, was in stderr steht. Wer den Fehler zuerst prueft,
+  // gibt `spawnSync ... EPIPE` aus und wirft genau die Auskunft weg, fuer die es den
+  // Probelauf gibt.
+  if (res.status !== null) {
+    if (res.status === 0) return { ok: true };
     // Die Fehlermeldung des Werkzeugs ist die eigentliche Auskunft — sie sagt, ob ein
     // Modell fehlt, ein Token abgelaufen ist oder etwas ganz anderes klemmt.
     const letzte = (res.stderr || "").trim().split("\n").filter(Boolean).at(-1);
     return { ok: false, grund: (letzte || `Exit ${res.status}`).slice(0, 300) };
   }
-  return { ok: true };
+  if (res.error) return { ok: false, grund: res.error.message };
+  // Kein Status und kein Fehler heisst: durch ein Signal gestorben (SIGSEGV, SIGKILL).
+  // Ohne diesen Zweig fiele der Fall auf `ok: true` durch, und ein abgestuerzter
+  // Reviewer gaelte als verfuegbar.
+  return { ok: false, grund: `Durch Signal ${res.signal} beendet` };
 }
 
 function issueReviewReviewers(args) {
