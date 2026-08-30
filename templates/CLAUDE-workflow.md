@@ -352,6 +352,16 @@ verbrannt und der Kommentar am Board irrefuehrend.
 
 ---
 
+## Zustandslabels (optional)
+
+Mit `issueReview.statusLabels: true` schreibt `issue-review label-sync <id>` den abgeleiteten Pruefstand ans Ticket: `review:offen`, `review:befunde` oder `review:fertig`. Default ist `false`.
+
+**Vorher einrichten:** Die vier Definitionen `review:offen`, `review:befunde`, `review:fertig` und `kit:klaeren` muessen einmal je Board angelegt sein, sonst scheitert der erste Lauf. Die Namen sind fest.
+
+`review:*` **beschreibt** einen abgeleiteten Zustand und ist jederzeit neu berechenbar. `kit:klaeren` **entscheidet**: Die Maschine setzt es, abnehmen darf es nur der Mensch.
+
+---
+
 ## Gates (prozessweit)
 
 Register der bindenden Regeln, die **unabhaengig von der Pruefstufe** gelten. Es ergaenzt

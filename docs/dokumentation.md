@@ -880,6 +880,58 @@ Mit `"requiredBeforeReady": true` stellt der Nacht-Runner Ready-Issues ohne Mark
 
 Der Default ist `false`. Ein Kit-Update darf keinem Bestandsprojekt über Nacht den Runner anhalten; wer das Verfahren einführt, schaltet es bewusst ein.
 
+### Zustandslabels: der Prüfstand am Ticket
+
+Mit `"issueReview": { "statusLabels": true }` schreibt `issue-review label-sync <id>` den abgeleiteten Prüfzustand als Label ans Ticket. Im Board ist damit ablesbar, wie weit die Prüfung ist, ohne Body oder Kommentare zu öffnen.
+
+**Der Default ist `false`.** Ein Kit-Update darf Bestandsprojekten nicht ungefragt Labels in ihre Boards schreiben; wer das Verfahren einführt, schaltet es bewusst ein — und legt vorher die Definitionen an (siehe unten).
+
+Vier Zustände, abgeleitet aus Body und Kommentaren:
+
+| Zustand | Woraus abgeleitet | Label |
+|---|---|---|
+| `fertig` | Marker der eigenen Stufe gesetzt, **oder** gültiger `Pruefung: Verzicht` | `review:fertig` |
+| `befunde` | jüngster Review-Kommentar der Stufe, ohne Ausfallvermerk | `review:befunde` |
+| `ausgefallen` | jüngster Review-Kommentar der Stufe **mit** Ausfallvermerk in Zeile 2 | `review:offen` |
+| `offen` | nichts von alledem | `review:offen` |
+
+`ausgefallen` ist der einzige Zustand, dessen Label anders heißt: Ein ausgefallener Reviewer ist **kein Prüfergebnis** — das Ticket ist so ungeprüft wie zuvor. Der Zustand steht trotzdem eigenständig da, weil er für den Menschen etwas anderes bedeutet als „noch nicht angefangen".
+
+Ein Marker einer **fremden** Stufe zählt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis. Marker in Codeblöcken zählen ebenfalls nicht — ein Dokument, das das Format als Beispiel zeigt, weist damit nichts nach.
+
+#### `review:*` beschreibt, `kit:klaeren` entscheidet
+
+Die beiden Labelsorten sehen ähnlich aus und leisten Verschiedenes:
+
+- **`review:*` beschreibt.** Es ist eine Projektion des abgeleiteten Zustands, jederzeit neu berechenbar. Kein Gate liest es: `requiredBeforeReady` hängt am Marker, die Kandidatenauswahl des Nacht-Runners an Marker und Routing-Label. Ein von Hand verstelltes `review:*` repariert der nächste `label-sync` von selbst.
+- **`kit:klaeren` entscheidet.** Es sagt, dass eine Frage offen ist, die ein Mensch beantworten muss. Der Nacht-Runner **setzt** es, aber **nimmt es nie ab** — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben. Solange es steht, wird das Ticket weder implementiert noch erneut geprüft.
+
+Kurz: Ein `review:*` von Hand zu entfernen ist folgenlos, ein `kit:klaeren` von Hand zu entfernen ist die Antwort.
+
+#### Die Klassifikation der Funde
+
+Jeder Reviewer-Fund trägt neben dem Schweregrad eine Klasse. Sie entscheidet, ob die Maschine ihn anwenden darf:
+
+| Klasse | Bedeutung | Folge |
+|---|---|---|
+| `korrektur` | plausibel, wichtig, **ein** Weg | wird angewendet |
+| `gate` | Verstoß gegen eine Registerregel | ruft den Menschen, `kit:klaeren` |
+| `alternativen` | mehr als ein gangbarer Weg | ruft den Menschen, `kit:klaeren` |
+
+Die Register, gegen die `gate` gemessen wird, sind zwei: `CLAUDE-workflow.md` führt die prozessweiten Gates (Stop-Punkte, Git-Workflow, Pflichtchecks, Prioritäten), `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` die Formregeln ihrer Stufe. Für die Stufe `issue` gibt es kein eigenes Formregister; dort zählt allein das prozessweite.
+
+`gate` und `alternativen` kann die Synthese **nicht verwerfen** — verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
+
+#### Einrichtung: die vier Definitionen je Board
+
+Die Labels müssen am Board **definiert** sein, bevor `statusLabels` eingeschaltet wird. Fehlt eine Definition, scheitert der erste `label-sync` hart; der Adapter übersetzt den 404 des Servers in einen Hinweis, der den fehlenden Namen nennt.
+
+Anzulegen sind vier: `review:offen`, `review:befunde`, `review:fertig` und `kit:klaeren`. Die Namen sind **fest und nicht konfigurierbar** — konfigurierbare Namen wären eine zweite Wahrheit und zerstörten die Wiedererkennbarkeit über Projekte hinweg.
+
+- **kanban-kit:** `POST /api/boards/{boardId}/labels`. Über `/api/kanban` gibt es dafür keinen Weg — das ist der einzige Einrichtungsschritt, den keine Session erledigen kann.
+- **GitHub:** `gh label create review:offen` und so fort.
+- **GitLab:** `glab label create` bzw. die Label-Verwaltung des Projekts. **Achtung:** Bei GitLab sind Spalten selbst Labels. Kollidiert einer der drei Namen mit einem konfigurierten Spalten-Label, bricht `label-sync` ab, statt die Spaltenlogik zu beschädigen.
+
 ### Prüfumfang am Ticket: Vorgabe, Verzicht, Verfall
 
 Nicht jedes Arbeitspaket verdient denselben Aufwand. Ein Einzeiler mit offensichtlichem Kriterium braucht keine Runde durch ein fremdes Modell, ein architekturnahes Paket vielleicht zwei. Das entscheidest du am einzelnen Ticket — und ein Arbeitspaket steht deshalb in einem von **drei Zuständen**:
