@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.40.3] - 2026-08-30
+- Doku: Zustandstabelle, Klassifikation, Einrichtung, Opt-in (#388)
+- Automatisches Anwenden der korrektur-Funde (#387)
+- Klassifikation der Funde: gate, alternativen, korrektur (#386)
+- Uebergaenge: label-sync an den Stellen der Skills aufrufen (#385)
+- issue-review label-sync: Pruefzustand als Label ans Board (#384)
+- kit:klaeren im Nacht-Runner nachbauen (#382)
+- reviewZustand: Pruefzustand aus Body und Kommentaren ableiten (#381)
+- Prozessweites Gate-Register in CLAUDE-workflow.md (#380)
+
 ## [1.40.2] - 2026-08-29
 - Doku: Arbeitspakete und Vorhaben im Adapter-Abschnitt trennen (#379)
 - kontext-Skill: Vorhaben laden und getrennt ausgeben (#378)
