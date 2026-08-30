@@ -199,7 +199,7 @@ Für jeden Fund:
   (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
   gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
   bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-  Format-Register**; dort zählt allein das prozessweite.
+  Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -249,7 +249,7 @@ Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `ga
 (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
 gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
 bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-Format-Register**; dort zählt allein das prozessweite.
+Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
@@ -283,7 +283,7 @@ Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `ga
 (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
 gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
 bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-Format-Register**; dort zählt allein das prozessweite.
+Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
@@ -326,7 +326,7 @@ Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `ga
 (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
 gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
 bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-Format-Register**; dort zählt allein das prozessweite.
+Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag. Bei Behauptungen über den Bestand:
 nenne die Datei und die Stelle, an der du nachgesehen hast.
@@ -362,7 +362,7 @@ Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `ga
 (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
 gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
 bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-Format-Register**; dort zählt allein das prozessweite.
+Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
@@ -402,7 +402,7 @@ Für jeden Fund:
   (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
   gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
   bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
-  Format-Register**; dort zählt allein das prozessweite.
+  Format-Register**; dort zählt allein das prozessweite. Die Angabe ist **Pflicht**: Lässt du sie aus, gilt der Fund wie `gate` und ruft einen Menschen.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -535,7 +535,13 @@ SYNTHESE
 - **`zur Entscheidung`** ist der dritte Ausgang (Issue #386): Ein Fund der Klasse
   `gate` oder `alternativen` ruft einen Menschen. Die Zeile nennt den offenen
   Punkt im Klartext und den Auslöser dazu — welche Regel berührt ist, oder welche
-  Wege zur Wahl stehen. Diese beiden Klassen kann die Synthese **nicht verwerfen**;
+  Wege zur Wahl stehen.
+- **Eine fehlende Klasse ist ein eigener Auslöser** und wird als solcher benannt,
+  nicht als erfundene Regelverletzung. Ein klassenloser Fund und ein echter
+  `gate`-Fund führen zum selben Verhalten, bedeuten aber Verschiedenes: „der
+  Reviewer sah eine Regel berührt" gegen „der Reviewer sagte nichts". Wer die
+  Synthese liest, muss das unterscheiden können — sonst sucht er nach einer Regel,
+  die niemand genannt hat. Diese beiden Klassen kann die Synthese **nicht verwerfen**;
   verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
 - **Die Abbildung auf das Verhalten:** `korrektur` wird angewendet; `gate` und
   `alternativen` werden nicht angewendet und zeichnen das Ticket mit
@@ -637,6 +643,15 @@ Die Verantwortungsschwelle liegt nicht mehr am Text, sondern an der **Entscheidu
 
 Für `korrektur`-Funde bleibt die Abwägung übernommen/verworfen mit Begründung bestehen; **angewendet wird, was übernommen ist** — nicht ausnahmslos jeder.
 
+**Ein Fund ohne Klassenangabe gilt wie `gate`.** Er wird **nicht angewendet**, er
+zeichnet das Ticket mit `kit:klaeren`, und der **Marker bleibt aus** — genau wie ein
+echter `gate`-Fund.
+
+Die Richtung ist Absicht: Im Zweifel ruft der Fund einen Menschen. Die Gegenrichtung —
+fehlende Angabe gilt als `korrektur` — wäre bequemer und genau falsch, weil sie das
+Auslassen zur billigsten Variante machte. Ein Prompt wird nicht immer befolgt; die Regel
+darf nicht daran hängen, dass er es wird.
+
 Das Label wird so gesetzt:
 
 ```bash
@@ -680,7 +695,7 @@ Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine List
 
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
-1. **Alle Funde tragen die Klasse `korrektur`**, und die übernommenen wurden angewendet. Ein einziger `gate`- oder `alternativen`-Fund reicht, und der Marker bleibt aus — stattdessen wird `kit:klaeren` gesetzt.
+1. **Alle Funde tragen die Klasse `korrektur`**, und die übernommenen wurden angewendet. Ein einziger `gate`- oder `alternativen`-Fund reicht, und der Marker bleibt aus — stattdessen wird `kit:klaeren` gesetzt. **Ein Fund ohne Klassenangabe trägt `korrektur` nicht** und hält den Marker damit ebenso zurück.
 2. Kein Reviewer ist ausgefallen, und der Lauf war nicht unterbesetzt.
 
 Bis Issue #387 stand an Stelle 1 der Schweregrad: kein Fund mit `BLOCKER` oder `WICHTIG`. Das kollidierte mit der Klassifikation, sobald es sie gab — ein `korrektur`-Fund kann `WICHTIG` sein, und ein solches Ticket bliebe nach dem Anwenden weder markiert noch gezeichnet liegen.
