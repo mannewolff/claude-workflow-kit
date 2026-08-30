@@ -194,6 +194,12 @@ Prüfe auf Vollständigkeit und Prüfbarkeit:
 
 Für jeden Fund:
 - Schweregrad: BLOCKER / WICHTIG / HINWEIS
+- **Klasse:** `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+  `alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+  (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+  gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+  bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+  Format-Register**; dort zählt allein das prozessweite.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -238,7 +244,13 @@ Offene Fragen an den PO.
 4. Ist das Ziel als Nutzerwirkung formuliert, oder beschreibt es eine Lösung?
 5. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -266,7 +278,13 @@ Prüfe auf Abgrenzung und Widerspruch:
    raten müssen?
 5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -303,7 +321,13 @@ Den Bestand darfst und sollst du lesen: Schlag im Repository nach.
    Test, welche Kopie ist betroffen?
 5. Was kann RAUS? Welche Entscheidung, welcher Abschnitt trägt nichts?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag. Bei Behauptungen über den Bestand:
 nenne die Datei und die Stelle, an der du nachgesehen hast.
 
@@ -333,7 +357,13 @@ Prüfe den Schnitt:
    Zuschnitt ändert? Nachträglich entscheidbare Fragen blähen den Plan.
 6. Was kann RAUS?
 
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die Fundstelle mit
+Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, die **Klasse** — `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+`alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+(plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+Format-Register**; dort zählt allein das prozessweite.
+Dazu die Fundstelle mit
 Zitat, ein konkreter Formulierungsvorschlag.
 
 Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
@@ -367,6 +397,12 @@ Prüfe auf Scope und Risiko:
 
 Für jeden Fund:
 - Schweregrad: BLOCKER / WICHTIG / HINWEIS
+- **Klasse:** `gate` (Verstoß gegen eine Regel aus einem Register — nenne welche),
+  `alternativen` (mehr als ein gangbarer Weg — nenne welche) oder `korrektur`
+  (plausibel, wichtig, ein Weg). Die Register: `CLAUDE-workflow.md` (prozessweit,
+  gilt immer) und das Stufen-Register der geprüften Stufe — `CLAUDE-Fachplan.md`
+  bzw. `CLAUDE-Plan.md`. Für die Stufe `issue` gibt es **kein eigenes
+  Format-Register**; dort zählt allein das prozessweite.
 - Wo im Issue (Abschnitt, zitierter Satz)
 - Ein konkreter Formulierungsvorschlag — keine allgemeine Kritik
 
@@ -495,7 +531,15 @@ SYNTHESE
 
 **Was hineingehört:**
 
-- Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen` oder `verworfen` — und bei `verworfen` ein Satz Begründung.
+- Je Fund mit Schweregrad `BLOCKER` oder `WICHTIG` **eine Zeile**: Reviewer, Kurzbezeichnung, `übernommen`, `verworfen` oder **`zur Entscheidung`** — und bei `verworfen` ein Satz Begründung.
+- **`zur Entscheidung`** ist der dritte Ausgang (Issue #386): Ein Fund der Klasse
+  `gate` oder `alternativen` ruft einen Menschen. Die Zeile nennt den offenen
+  Punkt im Klartext und den Auslöser dazu — welche Regel berührt ist, oder welche
+  Wege zur Wahl stehen. Diese beiden Klassen kann die Synthese **nicht verwerfen**;
+  verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
+- **Die Abbildung auf das Verhalten:** `korrektur` wird angewendet; `gate` und
+  `alternativen` werden nicht angewendet und zeichnen das Ticket mit
+  `kit:klaeren` (siehe Issue #387).
 - `HINWEIS`-Funde nur, wenn sie **verworfen** wurden. Sonst wird die Liste länger als ihr Nutzen.
 - **Ein verworfener `BLOCKER` braucht immer eine Begründung.** Das ist die Kategorie, bei der stilles Verwerfen am teuersten ist.
 - Auf den Stufen `fachlich` und `plan`: Widersprechen sich die Prüfer, steht das als eigener Punkt — welche Vorschläge kollidierten, welcher gewonnen hat, warum, und welche Folgeänderungen daraus entstanden sind. Auf der Stufe `issue` gibt es diesen Fall nicht.
