@@ -226,6 +226,11 @@
           "default": false,
           "description": "Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurueck. Default false, damit ein Kit-Update keinem Bestandsprojekt ueber Nacht den Runner anhaelt."
         },
+        "statusLabels": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ist es true, schreibt 'issue-review label-sync' den abgeleiteten Pruefzustand als Label ans Ticket (review:offen | review:befunde | review:fertig). Default false, damit ein Kit-Update Bestandsprojekten nicht ungefragt Labels in die Boards schreibt. Die vier Label-Definitionen muessen vorher je Board angelegt sein, sonst scheitert der erste Lauf. Die Namen sind fest und nicht konfigurierbar."
+        },
         "reviewers": {
           "type": "array",
           "description": "Reihenfolge ist die Steuerung: Genommen werden die ersten zwei Eintraege, die nicht der Autor sind.",

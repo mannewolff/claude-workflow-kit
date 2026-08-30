@@ -38,6 +38,7 @@
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
                                     [--issue <N>]
+  node board.mjs issue-review label-sync <id>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -106,6 +107,9 @@ Nutzung:
                                     [--issue <N>]
       --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
       runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
+  node board.mjs issue-review label-sync <id>
+      Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
+      Braucht issueReview.statusLabels; ohne den Schalter passiert nichts.
 
   node board.mjs --version
 
@@ -1545,17 +1549,33 @@ class ToolboxIssueTracker {
   async labelIssue(number, name, aktion) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
+    // Der Server antwortet mit 404, wenn das Board keine Definition dieses Namens
+    // fuehrt (LabelNotFoundException) — absichtlich hart, damit ein Tippfehler im
+    // Nachtlauf keinen Label-Muell erzeugt. Roh durchgereicht ist dieser 404 aber
+    // nicht zu deuten: Er nennt weder den Namen noch den Ausweg (Issue #384).
+    const uebersetze = async (fn) => {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) {
+          throw new BoardError(
+            `Label '${name}' ist am Board nicht definiert. Die Definition muss einmal je Board angelegt werden (POST /api/boards/{boardId}/labels), danach setzt und entfernt die Automatik sie.`
+          );
+        }
+        throw e;
+      }
+    };
     if (aktion === "add") {
-      await this._fetch(`/api/kanban/items/${item.id}/labels`, {
+      await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
-      });
+      }));
       return;
     }
-    await this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
+    await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
       method: "DELETE",
-    });
+    }));
   }
 }
 
@@ -3008,12 +3028,93 @@ function issueReviewCheck(args = {}) {
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
+// Die drei Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
+// Konfigurierbare Namen waeren eine zweite Wahrheit und zerstoerten die
+// Wiedererkennbarkeit ueber Projekte hinweg.
+const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig"];
+
+// `ausgefallen` bildet auf `review:offen` ab (Plan #368, A3): Ein ausgefallener
+// Reviewer ist kein Pruefergebnis — das Ticket ist so ungeprueft wie zuvor.
+const ZUSTAND_ZU_LABEL = {
+  offen: "review:offen",
+  befunde: "review:befunde",
+  fertig: "review:fertig",
+  ausgefallen: "review:offen",
+};
+
+/** Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt. */
+function stufeAusTitel(title) {
+  const t = String(title || "");
+  if (/^\s*\[fachlich\]/i.test(t)) return "fachlich";
+  if (/^\s*\[plan\]/i.test(t)) return "plan";
+  return "issue";
+}
+
+/**
+ * Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
+ *
+ * Das Label ist **Projektion, nie Wahrheit** (Plan #368, A1): Kein Gate liest es.
+ * `requiredBeforeReady` haengt am Marker, die Kandidatenauswahl des Nacht-Runners
+ * an Marker und Routing-Label. Weil das Kommando aus dem Ist-Zustand ableitet statt
+ * Uebergaenge zu buchen, ist es zugleich die Reparatur fuer von Hand verstellte
+ * Labels — zweimal ausfuehren aendert nichts.
+ */
+async function issueReviewLabelSync(args) {
+  const id = args._[0];
+  if (id === undefined) fail("label-sync braucht eine Issue-Nummer");
+
+  const config = loadConfig();
+
+  // Opt-in (Plan #347, A4): Ein Kit-Update darf Bestandsprojekten nicht ungefragt
+  // Labels in die Boards schreiben. Die Meldung geht auf stderr — stdout traegt bei
+  // den uebrigen Kommandos JSON, und ein Prosa-Satz dort braeche Skript-Konsumenten.
+  if (!config.issueReview?.statusLabels) {
+    process.stderr.write("label-sync uebersprungen: issueReview.statusLabels ist nicht gesetzt.\n");
+    return;
+  }
+
+  // Kollisions-Guard (Plan #347, A5): Bei GitLab SIND Spalten Labels, und
+  // `labelToStatus` laese ein kollidierendes Zustandslabel als Spaltenbewegung.
+  const spalten = Object.values(columnLabels(config));
+  const kollision = ZUSTANDS_LABELS.find((l) => spalten.includes(l));
+  if (kollision) {
+    fail(`Zustandslabel '${kollision}' kollidiert mit einem Spalten-Label aus der Config. label-sync bricht ab, sonst laese der Tracker es als Spaltenbewegung.`);
+  }
+
+  const tracker = resolveTracker(config);
+  const issue = await tracker.getIssue(String(id));
+
+  // Vorhaben tragen keine Labels: `requireLabelableCard` lehnt serverseitig alles ab,
+  // was nicht CARD ist (Plan #368, A12). Ein harter Abbruch waere falsch — das
+  // Vorhaben ist kein Fehler, es ist nur kein Ziel fuer ein Label.
+  if (issue.type === "epic") {
+    process.stderr.write(`label-sync uebersprungen: #${id} ist ein Vorhaben, Vorhaben tragen keine Labels.\n`);
+    return;
+  }
+
+  const zustand = reviewZustand(issue.body, issue.comments, stufeAusTitel(issue.title));
+  const ziel = ZUSTAND_ZU_LABEL[zustand];
+
+  // Reihenfolge verbindlich: erst die anderen entfernen, dann das Ziel setzen. Umgekehrt
+  // traegt die Karte einen Moment lang zwei Zustandslabels — sichtbar am Live-Beleg zu
+  // Issue #375. Ein halb getauschter Zustand (entfernt, aber nicht gesetzt) ist zulaessig:
+  // Das Label ist Projektion, der naechste Lauf stellt es her.
+  const ist = issue.labels || [];
+  for (const l of ZUSTANDS_LABELS) {
+    if (l !== ziel && ist.includes(l)) await tracker.labelIssue(String(id), l, "remove");
+  }
+  await tracker.labelIssue(String(id), ziel, "add");
+
+  out({ ok: true, id: String(id), zustand, label: ziel });
+}
+
 async function dispatchIssueReview(command, args) {
   switch (command) {
     case "reviewers": return issueReviewReviewers(args);
     case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
     case "roles": return issueReviewRoles(args);
+    case "label-sync": return issueReviewLabelSync(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

@@ -28,6 +28,7 @@
   "issueReview": {
     "rounds": 1,
     "requiredBeforeReady": true,
+    "statusLabels": true,
     "reviewers": [
       {
         "name": "opus",
