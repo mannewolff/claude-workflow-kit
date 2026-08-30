@@ -2078,6 +2078,79 @@ export function parsePruefvorgabe(body) {
   return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
 }
 
+// Welcher Marker und welcher Kommentar-Anker die jeweilige Stufe nachweisen.
+// Dieselbe Zuordnung fuehrt `kit/night.mjs` fuer den Review-Modus; sie steht hier
+// eigenstaendig, weil die Importrichtung umgekehrt ist — night.mjs importiert aus
+// board.mjs, nicht andersherum.
+const REVIEW_STUFEN_MARKER = {
+  fachlich: "Fachplan-Review",
+  plan: "Plan-Review",
+  issue: "Issue-Review",
+};
+
+/**
+ * Der Pruefzustand eines Dokuments, abgeleitet aus Body und Kommentaren (Issue #381).
+ *
+ * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen`. Die Funktion ist rein:
+ * Sie schreibt nichts, ruft nichts und kennt kein Label. Das Zustandslabel aus
+ * Issue #384 ist ihr erster Leser, nicht ihre Definition — haenge ein Gate am
+ * Label statt an dieser Ableitung, gaebe es zwei Wahrheiten ueber den Pruefstand.
+ *
+ * Regeln, in dieser Reihenfolge:
+ *
+ *  1. Marker der EIGENEN Stufe nicht leer -> `fertig`. Ein Marker einer fremden
+ *     Stufe zaehlt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis.
+ *  2. Gueltiger, nicht verfallener `Pruefung: Verzicht` -> `fertig`. Der Mensch hat
+ *     entschieden, dass hier nicht geprueft wird; das ist ein Ergebnis, kein Loch.
+ *  3. Juengster Review-Kommentar der Stufe mit Ausfall-Vermerk -> `ausgefallen`.
+ *  4. Juengster Review-Kommentar der Stufe -> `befunde`.
+ *  5. sonst -> `offen`.
+ *
+ * **Woran ein Ausfall erkannt wird**, muss festgelegt sein, sonst ist Regel 3 nicht
+ * anwendbar: Der Skill verlangt heute den Anker `## <Stufe>-Review, Runde n` in der
+ * ersten Zeile UND den Ausfall in der ersten Zeile — beides zugleich geht nicht.
+ * Diese Funktion liest den Anker in Zeile 1 und den Ausfallvermerk in Zeile 2
+ * (Festlegung aus Issue #381); Issue #385 zieht das Kommentarformat im Skill nach.
+ *
+ * Bis dahin ist die Funktion gegenueber Alt-Bestand tolerant: Ein Kommentar ohne
+ * Anker gilt nicht als Review-Kommentar der Stufe und aendert nichts. Das ist die
+ * sichere Richtung — ein fremder Kommentar, der zufaellig "ausgefallen" enthaelt,
+ * darf den Zustand nicht kippen.
+ *
+ * Marker in Codebloecken zaehlen nicht (Fence-Regel, Issue #308): Ein Dokument, das
+ * das Marker-Format als Beispiel zeigt, weist damit nichts nach.
+ */
+export function reviewZustand(body, comments, stufe) {
+  const marker = REVIEW_STUFEN_MARKER[stufe];
+  if (!marker) return "offen";
+
+  const text = normalisiereZeilenenden(body || "");
+
+  const imFence = fenceLauf();
+  const markerZeile = new RegExp(`^\\s*${marker}:\\s*\\S`);
+  for (const zeile of text.split("\n")) {
+    if (imFence(zeile)) continue;
+    if (markerZeile.test(zeile)) return "fertig";
+  }
+
+  // Wirft bei mehreren oder unbekannten Vorgaben — bewusst nicht abgefangen: Eine
+  // kaputte `Pruefung:`-Zeile still zum Regelfall zu machen waere die gefaehrlichere
+  // Variante, dieselbe Linie wie in `pruefvorgabeFuerRoles`.
+  const { wert, verfallen } = parsePruefvorgabe(text);
+  if (wert === "verzicht" && !verfallen) return "fertig";
+
+  const anker = new RegExp(`^\\s*##\\s*${marker},\\s*Runde\\b`, "i");
+  const eigene = (Array.isArray(comments) ? comments : []).filter((k) =>
+    anker.test(String(k?.body || "").split("\n")[0] || "")
+  );
+  if (eigene.length > 0) {
+    const zeilen = normalisiereZeilenenden(String(eigene[eigene.length - 1].body || "")).split("\n");
+    return /ausgefallen|ausfall/i.test(zeilen[1] || "") ? "ausgefallen" : "befunde";
+  }
+
+  return "offen";
+}
+
 /**
  * Setzt `Pruefung-Stand:` unmittelbar unter die Vorgabezeile (Issue #303).
  *
