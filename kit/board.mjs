@@ -1977,7 +1977,11 @@ const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
 // Der Capture traegt deshalb den ROHEN Wert; `parsePruefvorgabe` trimmt ihn.
 export const PRUEFUNG_ZEILE = /^Pruefung:([^\n]*)$/;
 export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand:([^\n]*)$/;
-export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})([^\n]*)$/;
+// Der negative Lookahead ist der Kern (Issue #403): Ohne ihn akzeptieren `{3,} und
+// [^\n]* dieselben Zeichen, und eine Zeile aus lauter Backticks ohne Zeilenende
+// laesst die Engine jede Aufteilung durchprobieren — 78 ms bei 16 KiB, quadratisch
+// wachsend. Mit ihm ist die Fence-Laenge eindeutig: 0,04 ms, linear.
+export const FENCE_ZEILE = /^ {0,3}(`{3,}(?!`)|~{3,}(?!~))([^\n]*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
 ]);
