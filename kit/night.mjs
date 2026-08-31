@@ -1123,7 +1123,7 @@ export function trackerProbeId(kandidaten, alleIssues) {
 }
 
 /** Baut den Auftrag der Vorflug-Session. */
-function vorflugPrompt(kommandoReviewers, trackerId) {
+export function vorflugPrompt(kommandoReviewers, trackerId) {
   const zeilen = [
     `Du bist der technische Vorflug eines Nacht-Reviews. Fuehre genau die Schritte unten aus`,
     `und gib zum Schluss genau einen Befund-Block aus.`,
