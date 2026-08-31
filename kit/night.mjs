@@ -161,10 +161,23 @@ const BOARD_PATH = process.env.KIT_ROOT
 // fremdes Projekt (Test-Hook); eine reine Funktion holt man sich dort nicht her, sondern
 // aus dem board.mjs, das zu dieser Datei gehoert.
 const NACHBAR_BOARD = join(__dirname, "board.mjs");
-let parsePruefvorgabe = () => {
+
+// Der Fallback traegt dieselbe Signatur wie die echte Funktion — ein Parameter, und
+// er wirft, statt etwas zu liefern. Das ist nicht Kosmetik (Issue #394): Die frueher
+// hier stehende `let`-Bindung mit spaeterem Reassignment liess die statische Analyse
+// nur den Stub sehen — keine Parameter, kein Rueckgabewert — und meldete jeden
+// korrekten Aufruf als Fehler. Vier gemeldete Bugs, null echte, und ein rotes Quality
+// Gate, das deshalb niemand mehr gelesen hat.
+//
+// Die Bindung ist jetzt `const` mit einem Ternaer: Liegt der Nachbar da, kommt die
+// echte Signatur aus dem Modul; liegt er nicht da, wirft der Stub.
+const parsePruefvorgabeFallback = (body) => {
+  void body;
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
 };
-if (existsSync(NACHBAR_BOARD)) ({ parsePruefvorgabe } = await import("./board.mjs"));
+const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
+  ? await import("./board.mjs")
+  : { parsePruefvorgabe: parsePruefvorgabeFallback };
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
@@ -412,7 +425,7 @@ function hasReviewMarker(body) {
  * einem Formfehler in der `Pruefung:`-Zeile nicht haengenbleiben — das waere strenger
  * als das Bestandsverhalten und stuende in keinem Verhaeltnis zum Anlass.
  */
-function reviewFreigabe(body) {
+export function reviewFreigabe(body) {
   if (hasReviewMarker(body)) return { frei: true, art: "marker" };
   let vorgabe;
   try {
@@ -537,7 +550,7 @@ function isPlan(title) {
  * Eine VERFALLENE Vorgabe schliesst nicht aus: Sie ist ueberholt, es gilt wieder der
  * Regelfall — und der heisst pruefen.
  */
-function hatGueltigenVerzicht(body) {
+export function hatGueltigenVerzicht(body) {
   try {
     const { wert, verfallen } = parsePruefvorgabe(body || "");
     return wert === "verzicht" && !verfallen;
