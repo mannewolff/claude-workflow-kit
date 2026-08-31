@@ -3,7 +3,8 @@
   "issueTracker": "toolbox",
   "buildChecks": [
     "node --test",
-    "node tools/sync-blobs.mjs --check"
+    "node tools/sync-blobs.mjs --check",
+    "npx eslint kit tools test install.mjs"
   ],
   "mutationCommand": "",
   "mainBranch": "main",

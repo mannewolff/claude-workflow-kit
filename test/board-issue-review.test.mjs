@@ -180,7 +180,7 @@ function fs_mit(...pfade) {
 const WIN = {
   platform: "win32",
   pathext: ".COM;.EXE;.BAT;.CMD",
-  path: "C:\\bin;C:\\npm",
+  path: String.raw`C:\bin;C:\npm`,
 };
 // `ausfuehrbar` gehoert zur Grundausstattung: Unter POSIX prueft findeImPath das
 // X-Bit, und die Fixture-Pfade existieren real nicht — ohne Injektion wuerde der
@@ -191,43 +191,43 @@ test("findeImPath: win32 findet 'codex' als codex.cmd", () => {
   // Der Kernfall, an dem die fruehere Implementierung scheiterte.
   // Verglichen wird case-insensitiv: Zurueck kommt der aus PATHEXT gebildete Pfad
   // (.CMD), die Datei heisst .cmd — auf einem Windows-Dateisystem derselbe Pfad.
-  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit("C:\\npm\\codex.cmd") });
-  assert.equal(treffer?.toLowerCase(), "c:\\npm\\codex.cmd");
+  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit(String.raw`C:\npm\codex.cmd`) });
+  assert.equal(treffer?.toLowerCase(), String.raw`c:\npm\codex.cmd`);
 });
 
 test("findeImPath: win32 haelt die PATHEXT-Reihenfolge ein", () => {
   // .EXE steht in PATHEXT vor .CMD — liegen beide da, gewinnt .EXE.
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\bin\\codex.EXE"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\bin\codex.EXE`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.EXE");
+  assert.equal(treffer, String.raw`C:\bin\codex.EXE`);
 });
 
 test("findeImPath: win32 durchsucht die PATH-Eintraege in ihrer Reihenfolge", () => {
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\npm\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\npm\codex.CMD`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: win32 ergaenzt einen Namen mit Endung nicht noch einmal", () => {
   // 'codex.exe' darf nicht zu 'codex.exe.CMD' werden.
-  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe") });
-  assert.equal(treffer, "C:\\bin\\codex.exe");
-  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe.CMD") });
+  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe`) });
+  assert.equal(treffer, String.raw`C:\bin\codex.exe`);
+  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe.CMD`) });
   assert.equal(daneben, null);
 });
 
 test("findeImPath: win32 ohne PATHEXT nutzt die Windows-Default-Liste", () => {
   const treffer = findeImPath("codex", {
     platform: "win32",
-    path: "C:\\bin",
+    path: String.raw`C:\bin`,
     pathext: undefined,
-    existiert: fs_mit("C:\\bin\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: posix probiert keine Endungen", () => {
@@ -240,8 +240,8 @@ test("findeImPath: posix probiert keine Endungen", () => {
 test("findeImPath: der PATH-Trenner haengt an der Plattform", () => {
   // Unter win32 trennt ';' — ein ':' im Pfad ist dort Teil des Laufwerksbuchstabens.
   assert.equal(
-    findeImPath("codex", { ...WIN, path: "C:\\a;C:\\b", existiert: fs_mit("C:\\b\\codex.CMD") }),
-    "C:\\b\\codex.CMD",
+    findeImPath("codex", { ...WIN, path: String.raw`C:\a;C:\b`, existiert: fs_mit(String.raw`C:\b\codex.CMD`) }),
+    String.raw`C:\b\codex.CMD`,
   );
   assert.equal(
     findeImPath("codex", { ...POSIX, path: "/a:/b", existiert: fs_mit("/b/codex") }),
@@ -253,7 +253,7 @@ test("findeImPath: der Trenner im Ergebnis folgt der uebergebenen Plattform, nic
   // Die Invariante, an der der Windows-Job gescheitert ist: join() aus node:path ist
   // immer die Variante des LAUFENDEN Hosts. Dieser Test faellt auf, egal auf welcher
   // Seite jemand sie wieder einbaut — er laeuft unter POSIX und Windows gleich.
-  const win = findeImPath("codex", { ...WIN, path: "C:\\bin", existiert: () => true });
+  const win = findeImPath("codex", { ...WIN, path: String.raw`C:\bin`, existiert: () => true });
   assert.ok(win.includes("\\"), `win32-Ergebnis ohne Backslash: ${win}`);
   assert.ok(!win.includes("/"), `win32-Ergebnis mit Slash: ${win}`);
 
@@ -299,10 +299,10 @@ test("findeImPath: win32 prueft kein Ausfuehrbar-Bit", () => {
   // Unter Windows entscheidet die Endung, nicht ein Modus-Bit.
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
     ausfuehrbar: () => false,
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: leerer PATH liefert null statt zu werfen", () => {
@@ -446,7 +446,61 @@ test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", NU
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
     assert.ok(existsSync(mitschrift), "das Kommando hat nichts auf stdin bekommen");
-    assert.ok(readFileSync(mitschrift, "utf-8").trim().length > 0, "der Probeprompt war leer");
+    // Exakt, nicht nur nicht-leer: Seit es mit KIT_PROBE_PROMPT einen Weg gibt, den
+    // Prompt zu ersetzen, muss belegt sein, dass er ohne die Variable unveraendert
+    // bleibt. `length > 0` haette auch ein versehentlich ueberschriebener Prompt
+    // erfuellt (Issue #393).
+    assert.equal(readFileSync(mitschrift, "utf-8"), "Antworte nur mit dem Wort OK.\n");
+  });
+});
+
+// Ein Prompt oberhalb des Pipe-Puffers (64 KiB unter Linux) und unterhalb der
+// Grenze, die Linux ueber MAX_ARG_STRLEN fuer eine einzelne Umgebungsvariable
+// setzt (128 KiB). Er erzwingt EPIPE deterministisch, sobald das Kommando endet,
+// ohne stdin zu lesen — 1 MiB liesse dagegen schon den Spawn mit E2BIG scheitern.
+const GROSSER_PROBE_PROMPT = "x".repeat(100 * 1024);
+
+test("issue-review check: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", NUR_POSIX, () => {
+  // Der Fall aus dem roten CI-Lauf (Issue #393): Das Kommando ist weg, bevor der
+  // Prompt geschrieben ist. spawnSync meldet dann EPIPE *zusaetzlich* zum
+  // Exit-Status — und der Grund, den der Vorflug ausgeben soll, steht in stderr.
+  const rumpf = 'echo "model is not supported for this account" >&2\nexit 1';
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt --flag" }] }, (dir) => {
+    fakeBinary(dir, "kaputt", 0o755, rumpf);
+    const res = runBoard(dir, ["issue-review", "check"], { KIT_PROBE_PROMPT: GROSSER_PROBE_PROMPT });
+    assert.equal(res.status, 0, res.stderr, "check bleibt eine Auskunft, kein Gate");
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.equal(out.reviewers[0].geprueft, "probelauf");
+    assert.match(out.reviewers[0].grund, /model is not supported/);
+    assert.doesNotMatch(out.reviewers[0].grund, /EPIPE/, "EPIPE ist der Nebeneffekt, nicht der Grund");
+  });
+});
+
+test("issue-review check: ein Kommando, das stdin nicht liest, bleibt verfuegbar", NUR_POSIX, () => {
+  // Die Gegenrichtung desselben Fehlers: exit 0 mit EPIPE ist ein Erfolg. Wer den
+  // error-Zweig zuerst prueft, meldet ein funktionierendes Werkzeug als Ausfall.
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "still --flag" }] }, (dir) => {
+    fakeBinary(dir, "still", 0o755, "exit 0");
+    const res = runBoard(dir, ["issue-review", "check"], { KIT_PROBE_PROMPT: GROSSER_PROBE_PROMPT });
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, true);
+    assert.equal(out.alleVerfuegbar, true);
+  });
+});
+
+test("issue-review check: ein per Signal gestorbenes Kommando gilt als Ausfall", NUR_POSIX, () => {
+  // Der dritte Zustand neben "gelaufen" und "nie gestartet": kein Exit-Status, kein
+  // error — nur ein Signal. Ohne eigenen Zweig faellt er auf ok: true durch, und ein
+  // abgestuerzter Reviewer gilt als verfuegbar (Issue #393).
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "stirbt --flag" }] }, (dir) => {
+    fakeBinary(dir, "stirbt", 0o755, "kill -SEGV $$");
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewers[0].verfuegbar, false);
+    assert.match(out.reviewers[0].grund, /SIGSEGV/);
   });
 });
 

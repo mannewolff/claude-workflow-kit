@@ -133,7 +133,7 @@ function runMigrate(dir, cliArgs, extraEnv = {}) {
 /** Das Zaehlerobjekt der letzten stdout-Zeile. */
 function bilanz(res) {
   const zeilen = res.stdout.trim().split("\n").filter(Boolean);
-  return JSON.parse(zeilen[zeilen.length - 1]);
+  return JSON.parse(zeilen.at(-1));
 }
 
 function createRequests(requests) {

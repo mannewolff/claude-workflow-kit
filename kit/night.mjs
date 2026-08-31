@@ -161,14 +161,27 @@ const BOARD_PATH = process.env.KIT_ROOT
 // fremdes Projekt (Test-Hook); eine reine Funktion holt man sich dort nicht her, sondern
 // aus dem board.mjs, das zu dieser Datei gehoert.
 const NACHBAR_BOARD = join(__dirname, "board.mjs");
-let parsePruefvorgabe = () => {
+
+// Der Fallback traegt dieselbe Signatur wie die echte Funktion — ein Parameter, und
+// er wirft, statt etwas zu liefern. Das ist nicht Kosmetik (Issue #394): Die frueher
+// hier stehende `let`-Bindung mit spaeterem Reassignment liess die statische Analyse
+// nur den Stub sehen — keine Parameter, kein Rueckgabewert — und meldete jeden
+// korrekten Aufruf als Fehler. Vier gemeldete Bugs, null echte, und ein rotes Quality
+// Gate, das deshalb niemand mehr gelesen hat.
+//
+// Die Bindung ist jetzt `const` mit einem Ternaer: Liegt der Nachbar da, kommt die
+// echte Signatur aus dem Modul; liegt er nicht da, wirft der Stub.
+const parsePruefvorgabeFallback = (body) => {
+  void body;
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
 };
-if (existsSync(NACHBAR_BOARD)) ({ parsePruefvorgabe } = await import("./board.mjs"));
+const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
+  ? await import("./board.mjs")
+  : { parsePruefvorgabe: parsePruefvorgabeFallback };
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.42.0";
+const KIT_VERSION = "1.43.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -269,13 +282,24 @@ function parseArgs(argv) {
     else if (a === "--verbose") args.verbose = true;
     else fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
+  pruefeArgs(args);
+  return args;
+}
+
+/**
+ * Prueft die eingelesenen Argumente auf Plausibilitaet und bricht bei Verstoss ab.
+ *
+ * Getrennt vom Einlesen, weil es eine andere Frage ist: parseArgs uebersetzt argv in
+ * ein Objekt, diese Funktion entscheidet, ob damit gearbeitet werden darf.
+ *
+ * Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem Board-Zugriff
+ * und Session-Start greifen. Ein stiller Rueckfall auf `issue` waere der schlimmere
+ * Ausgang — der Lauf saehe erfolgreich aus und pruefte die falsche Sorte Dokument.
+ */
+function pruefeArgs(args) {
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
 
-  // Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem
-  // Board-Zugriff und Session-Start greifen. Ein stiller Rueckfall auf `issue`
-  // waere der schlimmere Ausgang — der Lauf saehe erfolgreich aus und pruefte
-  // die falsche Sorte Dokument.
   if (args.stufe !== null) {
     if (!args.review) {
       fail("--stufe gilt nur im Review-Modus — zusammen mit --review verwenden.");
@@ -287,7 +311,6 @@ function parseArgs(argv) {
       fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
     }
   }
-  return args;
 }
 
 // --- Logging ---
@@ -412,7 +435,7 @@ function hasReviewMarker(body) {
  * einem Formfehler in der `Pruefung:`-Zeile nicht haengenbleiben — das waere strenger
  * als das Bestandsverhalten und stuende in keinem Verhaeltnis zum Anlass.
  */
-function reviewFreigabe(body) {
+export function reviewFreigabe(body) {
   if (hasReviewMarker(body)) return { frei: true, art: "marker" };
   let vorgabe;
   try {
@@ -537,7 +560,7 @@ function isPlan(title) {
  * Eine VERFALLENE Vorgabe schliesst nicht aus: Sie ist ueberholt, es gilt wieder der
  * Regelfall — und der heisst pruefen.
  */
-function hatGueltigenVerzicht(body) {
+export function hatGueltigenVerzicht(body) {
   try {
     const { wert, verfallen } = parsePruefvorgabe(body || "");
     return wert === "verzicht" && !verfallen;
@@ -652,7 +675,7 @@ function satisfiedIds() {
 
 // Kuerzt Text auf eine kompakte, einzeilige Log-Zeile.
 function flatten(str, max) {
-  const flat = (str || "").replace(/\s+/g, " ").trim();
+  const flat = (str || "").replaceAll(/\s+/g, " ").trim();
   return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
 }
 
@@ -991,6 +1014,25 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 // ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
 
+// SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
+// Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
+// (`reviewModel`) und einzelne Blaetter unter einem Kopf (`toolbox.tokenFile`). Eigene
+// Funktion, weil das eine andere Frage beantwortet als das Mischen darunter.
+function zerlegeAllowlist(allowlist) {
+  const erlaubteBlaetter = new Map();
+  const erlaubteFelder = new Set();
+  for (const pfad of allowlist) {
+    const [kopf, blatt] = pfad.split(".");
+    if (blatt) {
+      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
+      erlaubteBlaetter.get(kopf).add(blatt);
+    } else {
+      erlaubteFelder.add(kopf);
+    }
+  }
+  return { erlaubteFelder, erlaubteBlaetter };
+}
+
 function ladeConfigMitOverrides(sharedPfad) {
   const shared = JSON.parse(readFileSync(sharedPfad, "utf-8"));
   const lokalPfad = join(dirname(sharedPfad), "workflow.config.local.json");
@@ -1006,24 +1048,14 @@ function ladeConfigMitOverrides(sharedPfad) {
   }
 
   const config = { ...shared };
-  const erlaubteBlaetter = new Map();
-  const erlaubteFelder = new Set();
-  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
-    const [kopf, blatt] = pfad.split(".");
-    if (blatt) {
-      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
-      erlaubteBlaetter.get(kopf).add(blatt);
-    } else {
-      erlaubteFelder.add(kopf);
-    }
-  }
+  const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
       config[feld] = wert;
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       const blaetter = erlaubteBlaetter.get(feld);
-      const zusammen = { ...(config[feld] || {}) };
+      const zusammen = { ...config[feld] };
       for (const [unterfeld, unterwert] of Object.entries(wert)) {
         if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
         else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
@@ -1140,8 +1172,8 @@ function vorflugPrompt(kommandoReviewers, trackerId) {
 }
 
 /** Schneidet den Befund-Block aus der Session-Ausgabe. null = nichts Auswertbares. */
-export function parseVorflugBefund(stdout) {
-  const text = stdout || "";
+export function parseVorflugBefund(stdout = "") {
+  const text = stdout;
   // lastIndexOf: Erklaert das Modell seinen Befund erst und gibt ihn dann aus, gilt der
   // letzte Block — der Auftrag lautet, ihn als allerletzte Ausgabe zu schreiben.
   const start = text.lastIndexOf(VORFLUG_START);
@@ -1169,7 +1201,7 @@ export function parseVorflugBefund(stdout) {
  */
 export function normalisiereVorflug(roh, reviewers) {
   const gemeldet = new Map(
-    (roh?.reviewers || []).filter((r) => r && r.name).map((r) => [String(r.name), r]),
+    (roh?.reviewers || []).filter((r) => r?.name).map((r) => [String(r.name), r]),
   );
   const befunde = (reviewers || []).map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: UMGEBUNG_SESSION };
@@ -1499,7 +1531,10 @@ async function main() {
 
   const modus = args.review ? "Review" : "Implementierung";
   const aktivesLabel = args.review ? args.reviewLabel : args.label;
-  log(`Nacht-Runner startet (Modus ${modus}${args.review ? `, Stufe ${args.stufe ?? "issue"}` : ""}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
+  const stufenAngabe = args.review ? `, Stufe ${args.stufe ?? "issue"}` : "";
+  const dryRunAngabe = args.dryRun ? ", DRY-RUN" : "";
+  const yoloAngabe = args.yolo ? ", YOLO" : "";
+  log(`Nacht-Runner startet (Modus ${modus}${stufenAngabe}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -1575,7 +1610,8 @@ async function main() {
       .map((r) => ({ name: r.name, kind: r.kind === "command" ? "command" : "claude", command: r.command }));
     const trackerId = trackerProbeId(kandidaten, kandidaten.length > 0 ? null : board("issue", "list"));
 
-    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${trackerId ? `Issue #${trackerId}` : "nur issue list"}).`);
+    const probeAngabe = trackerId ? `Issue #${trackerId}` : "nur issue list";
+    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${probeAngabe}).`);
     const vorflug = await reviewerVorflug(args, reviewerListe, trackerId);
 
     // Eine Vorflug-Session darf so wenig am Repository anfassen wie eine Review-Session.
@@ -1591,15 +1627,20 @@ async function main() {
       log(`  Vorflug-Session nicht auswertbar: ${vorflug.grund}`);
     }
     for (const r of vorflug.reviewers) {
-      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
+      const stand = r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`;
+      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${stand}`);
     }
     // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
     // nicht "Werkzeug installieren", sondern "Block uebernehmen".
     const KEIN_REVIEWER = "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen";
     if (reviewerListe.length === 0) log(`  Kein Reviewer konfiguriert: ${KEIN_REVIEWER}`);
-    log(`  Tracker (${vorflug.tracker.umgebung}): ${vorflug.tracker.erreichbar
-      ? `erreichbar${vorflug.tracker.uebersprungen ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}` : ""}`
-      : `NICHT erreichbar — ${vorflug.tracker.grund}`}`);
+    const getVermerk = vorflug.tracker.uebersprungen
+      ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}`
+      : "";
+    const trackerStand = vorflug.tracker.erreichbar
+      ? `erreichbar${getVermerk}`
+      : `NICHT erreichbar — ${vorflug.tracker.grund}`;
+    log(`  Tracker (${vorflug.tracker.umgebung}): ${trackerStand}`);
 
     // Drei getrennte Befunde, drei getrennte Meldungen. Ein `verfuegbar: false`, das in
     // Wahrheit ein toter Tracker war, schickt den Menschen morgens in die falsche Ecke.

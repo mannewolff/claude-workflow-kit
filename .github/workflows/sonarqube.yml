@@ -6,6 +6,12 @@ name: SonarQube Cloud
 # Trigger: production hat zum Merge-Zeitpunkt denselben Inhalt wie main (Release-Flow ist
 # main -> production per PR-Merge, siehe RELEASING.md), ein zusaetzlicher Scan dort waere
 # nur eine redundante Zweitanalyse desselben Commits.
+#
+# Der Lauf wartet auf das Quality Gate und FEHLSCHLAEGT, wenn es rot ist (Issue #395).
+# Vorher endete er, sobald die Analyse uebermittelt war — der gruene Haken bedeutete
+# also "hochgeladen", nicht "Schwellen eingehalten". Genau dieser Unterschied hat
+# v1.40.0 mit zwei roten Checks nach production gehen lassen: Ein gruener SonarCloud-
+# Haken stand daneben und verstellte den Blick.
 on:
   push:
     branches: [main]
@@ -53,5 +59,7 @@ jobs:
         with:
           args: >
             -Dsonar.branch.name=main
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.timeout=300
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -30,6 +30,18 @@ node install.mjs
 
 Erst danach stehen `/kontext`, `/plan`, `/issues` und die uebrigen Skills in Claude Code zur Verfuegung.
 
+Zum Entwickeln kommt ein zweiter Schritt dazu:
+
+```bash
+npm ci
+```
+
+Damit steht ESLint bereit — einer der Pflicht-Checks aus `buildChecks` ist
+`npx eslint kit tools test install.mjs`, und ohne `node_modules` liefe er aus dem
+falschen Grund rot. **Die ausgelieferten Werkzeuge selbst bleiben
+abhaengigkeitsfrei:** `install.mjs`, `kit/` und `tools/` laufen mit blossem Node,
+die Abhaengigkeiten sind reine `devDependencies` (Issue #399).
+
 Gepflegt wird immer die **Quelle**, nie die Kopie unter `.claude/`:
 
 | Quelle im Repo | Kopie beim Nutzer |

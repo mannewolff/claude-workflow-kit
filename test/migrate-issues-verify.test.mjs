@@ -122,7 +122,7 @@ function abweichungen(res) {
 
 function schlusszeile(res) {
   const zeilen = res.stdout.trim().split("\n").filter(Boolean);
-  return zeilen[zeilen.length - 1];
+  return zeilen.at(-1);
 }
 
 // ------------------------------------------------------------

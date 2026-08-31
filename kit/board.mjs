@@ -53,7 +53,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.42.0";
+const KIT_VERSION = "1.43.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -242,14 +242,17 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "too
  * Liefert `{ config, ignored }` — `ignored` nennt jedes verworfene Feld beim Namen,
  * damit der Aufrufer es melden kann statt still das Falsche zu tun.
  */
-export function mergeWorkflowConfig(shared, local) {
-  const config = { ...(shared || {}) };
-  const ignored = [];
-  if (!local) return { config, ignored };
-
+/**
+ * Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
+ * (`reviewModel`) und einzelne Blaetter unter einem Kopf (`toolbox.tokenFile`).
+ *
+ * Eigene Funktion, weil das eine andere Frage beantwortet als das Mischen darunter:
+ * hier wird eine Schreibweise ausgewertet, dort eine Config zusammengefuehrt.
+ */
+function zerlegeAllowlist(allowlist) {
   const erlaubteBlaetter = new Map();
   const erlaubteFelder = new Set();
-  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
+  for (const pfad of allowlist) {
     const [kopf, blatt] = pfad.split(".");
     if (blatt) {
       if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
@@ -258,13 +261,22 @@ export function mergeWorkflowConfig(shared, local) {
       erlaubteFelder.add(kopf);
     }
   }
+  return { erlaubteFelder, erlaubteBlaetter };
+}
+
+export function mergeWorkflowConfig(shared, local) {
+  const config = { ...shared };
+  const ignored = [];
+  if (!local) return { config, ignored };
+
+  const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
       config[feld] = wert;
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       const blaetter = erlaubteBlaetter.get(feld);
-      const zusammen = { ...(config[feld] || {}) };
+      const zusammen = { ...config[feld] };
       for (const [unterfeld, unterwert] of Object.entries(wert)) {
         if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
         else ignored.push(`${feld}.${unterfeld}`);
@@ -982,7 +994,7 @@ function parseFrontmatter(content) {
     // Fuehrende Leerzeichen nach dem Doppelpunkt uebernimmt das nachgelagerte .trim();
     // deshalb hier bewusst kein \s* (vermeidet ueberlappende Zeichenklassen/Backtracking).
     const m = line.match(/^(\w+):(.*)$/);
-    if (m) meta[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    if (m) meta[m[1]] = m[2].trim().replaceAll(/^["']|["']$/g, "");
   }
   return { meta, body: match[2] };
 }
@@ -1077,7 +1089,9 @@ class LocalIssueTracker {
     // `create` ohne --body still die Vorlage verloren.
     const nurAutorZeile = /^\s*Autor-Modell: *\S[^\n]*\s*$/.test(body || "");
     const VORLAGE = "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n";
-    const rumpf = !body ? VORLAGE : (nurAutorZeile ? `${body.trimEnd()}\n${VORLAGE}` : body);
+    let rumpf = body;
+    if (!body) rumpf = VORLAGE;
+    else if (nurAutorZeile) rumpf = `${body.trimEnd()}\n${VORLAGE}`;
     const content = serializeFrontmatter(meta, rumpf);
     writeFileSync(this._filePath(n), content, "utf-8");
     return { id, path: this._filePath(n) };
@@ -1149,9 +1163,8 @@ class LocalIssueTracker {
     if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
     const { meta, body } = parseFrontmatter(readFileSync(p, "utf-8"));
     const vorhanden = labelsAusFrontmatter(meta);
-    const neu = aktion === "add"
-      ? (vorhanden.includes(name) ? vorhanden : [...vorhanden, name])
-      : vorhanden.filter((l) => l !== name);
+    const ergaenzt = vorhanden.includes(name) ? vorhanden : [...vorhanden, name];
+    const neu = aktion === "add" ? ergaenzt : vorhanden.filter((l) => l !== name);
     if (neu.length > 0) meta.labels = neu.join(", ");
     else delete meta.labels;
     writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
@@ -1707,7 +1720,7 @@ const KONTEXT_DEFAULTS = {
   projectDocs: ["CLAUDE-*", ".claude/CLAUDE-*"],
 };
 
-const KNOWN_CODE_HOSTS = ["github", "gitlab", "local"];
+const KNOWN_CODE_HOSTS = new Set(["github", "gitlab", "local"]);
 
 /**
  * Feldweiser Merge der beiden kontext.config.json, lokale Felder gewinnen. Fehlende
@@ -1718,7 +1731,7 @@ const KNOWN_CODE_HOSTS = ["github", "gitlab", "local"];
  * bei "erstes gewinnt" waere der Vault-Pfad verloren.
  */
 export function mergeKontextConfig(globalCfg, localCfg) {
-  return { ...(globalCfg || {}), ...(localCfg || {}) };
+  return { ...globalCfg, ...localCfg };
 }
 
 /**
@@ -1831,9 +1844,9 @@ export function pickLatestLog(fileNames, { template, project = "", before = null
   const quelle = muster
     .split(/(\{date\}|\{project\})/)
     .map((teil) => {
-      if (teil === "{date}") return "(\\d{4}-\\d{2}-\\d{2})";
+      if (teil === "{date}") return String.raw`(\d{4}-\d{2}-\d{2})`;
       const literal = teil === "{project}" ? project : teil;
-      return literal.replace(REGEX_SONDERZEICHEN, "\\$&");
+      return literal.replaceAll(REGEX_SONDERZEICHEN, String.raw`\$&`);
     })
     .join("");
   const regex = new RegExp(`^${quelle}$`);
@@ -1875,7 +1888,7 @@ function loadKontextConfig() {
 // abbrechen, deshalb die Pruefung davor.
 async function kontextRepoName() {
   const config = readWorkflowConfig();
-  if (!config || !KNOWN_CODE_HOSTS.includes(config.codeHost)) return basename(resolve("."));
+  if (!config || !KNOWN_CODE_HOSTS.has(config.codeHost)) return basename(resolve("."));
   const repoName = await resolveCodeHost(config).getRepoName();
   return repoName.replace(/\.git$/, "").split("/").pop();
 }
@@ -1966,7 +1979,7 @@ const GUELTIGE_VORGABEN = new Map([
 
 /** \r\n und einzelne \r zu \n — sonst haengt der Stand am Zeilenende des Editors. */
 function normalisiereZeilenenden(body) {
-  return String(body || "").replace(/\r\n?/g, "\n");
+  return String(body || "").replaceAll(/\r\n?/g, "\n");
 }
 
 /**
@@ -2064,9 +2077,9 @@ export function parsePruefvorgabe(body) {
   const imFence = fenceLauf();
   for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
     if (imFence(zeile)) continue;
-    const vorgabe = zeile.match(PRUEFUNG_ZEILE);
+    const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
     if (vorgabe) vorgaben.push(vorgabe[1]);
-    const stand = zeile.match(PRUEFUNG_STAND_ZEILE);
+    const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
     if (stand) staende.push(stand[1]);
   }
 
@@ -2164,7 +2177,7 @@ export function reviewZustand(body, comments, stufe) {
     anker.test(String(k?.body || "").split("\n")[0] || "")
   );
   if (eigene.length > 0) {
-    const zeilen = normalisiereZeilenenden(String(eigene[eigene.length - 1].body || "")).split("\n");
+    const zeilen = normalisiereZeilenenden(String(eigene.at(-1).body || "")).split("\n");
     return /ausgefallen|ausfall/i.test(zeilen[1] || "") ? "ausgefallen" : "befunde";
   }
 
@@ -2613,7 +2626,7 @@ const REVIEWER_KINDS = ["claude", "command"];
  * nicht dazu fuehren, dass sich kein Issue-Body mehr schreiben laesst.
  */
 function regelRunden(config = loadConfig()) {
-  return (config.issueReview || {}).rounds || ISSUE_REVIEW_DEFAULT_ROUNDS;
+  return config.issueReview?.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS;
 }
 
 // Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
@@ -2853,7 +2866,11 @@ function kommandoVerfuegbar(kommandozeile) {
 // Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
 // fremdes Werkzeug, das seinerseits ein Agent sein kann. Er soll feststellen, ob es
 // laeuft — nicht, was es kann.
-const PROBE_PROMPT = "Antworte nur mit dem Wort OK.\n";
+// KIT_PROBE_PROMPT ist ein Test-Hook (dasselbe Muster wie KIT_PROBE_TIMEOUT_MS): Nur
+// mit einem Prompt oberhalb des Pipe-Puffers laesst sich EPIPE deterministisch
+// erzeugen, also der Fall, dass das Kommando weg ist, bevor der Prompt geschrieben
+// wurde (Issue #393).
+const PROBE_PROMPT = process.env.KIT_PROBE_PROMPT || "Antworte nur mit dem Wort OK.\n";
 
 // Zeitlimit ist Pflicht, nicht Kuer: Ein haengender Reviewer ist fuer den Vorflug
 // dasselbe Problem wie ein fehlender, und ohne Limit haengt der Vorflug mit.
@@ -2883,14 +2900,23 @@ function probelauf(kommandozeile, pfad) {
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
     return { ok: false, grund: `Zeitlimit von ${PROBE_TIMEOUT_MS} ms ueberschritten` };
   }
-  if (res.error) return { ok: false, grund: res.error.message };
-  if (res.status !== 0) {
+  // Der Exit-Status schlaegt den Fehler (Issue #393). Endet das Kommando, bevor der
+  // Prompt in seine stdin geschrieben ist, meldet spawnSync EPIPE — zusaetzlich zum
+  // Status und zusaetzlich zu dem, was in stderr steht. Wer den Fehler zuerst prueft,
+  // gibt `spawnSync ... EPIPE` aus und wirft genau die Auskunft weg, fuer die es den
+  // Probelauf gibt.
+  if (res.status !== null) {
+    if (res.status === 0) return { ok: true };
     // Die Fehlermeldung des Werkzeugs ist die eigentliche Auskunft — sie sagt, ob ein
     // Modell fehlt, ein Token abgelaufen ist oder etwas ganz anderes klemmt.
-    const letzte = (res.stderr || "").trim().split("\n").filter(Boolean).at(-1);
+    const letzte = (res.stderr || "").trim().split("\n").findLast(Boolean);
     return { ok: false, grund: (letzte || `Exit ${res.status}`).slice(0, 300) };
   }
-  return { ok: true };
+  if (res.error) return { ok: false, grund: res.error.message };
+  // Kein Status und kein Fehler heisst: durch ein Signal gestorben (SIGSEGV, SIGKILL).
+  // Ohne diesen Zweig fiele der Fall auf `ok: true` durch, und ein abgestuerzter
+  // Reviewer gaelte als verfuegbar.
+  return { ok: false, grund: `Durch Signal ${res.signal} beendet` };
 }
 
 function issueReviewReviewers(args) {

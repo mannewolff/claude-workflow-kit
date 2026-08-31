@@ -197,7 +197,7 @@ function changelogFixture(praefix, { version = "1.17.0", commits = [] } = {}) {
   git("add", "-A");
   git("commit", "-q", "-m", "chore: v1.16.0");
   for (const betreff of commits) {
-    writeFileSync(join(dir, `${betreff.replace(/\W+/g, "-")}.txt`), betreff, "utf-8");
+    writeFileSync(join(dir, `${betreff.replaceAll(/\W+/g, "-")}.txt`), betreff, "utf-8");
     git("add", "-A");
     git("commit", "-q", "-m", betreff);
   }

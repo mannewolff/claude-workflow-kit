@@ -44,7 +44,7 @@ for (const datei of ["board.mjs", "night.mjs"]) {
       `${datei} --version haette mit Exit 0 enden muessen: ${res.stderr}${res.stdout}`);
     assert.match(res.stdout, /claude-workflow-kit v\d+\.\d+\.\d+/,
       `${datei} --version nennt keine Kit-Version: ${JSON.stringify(res.stdout)}`);
-    assert.match(res.stdout, new RegExp(datei.replace(".", "\\.")),
+    assert.match(res.stdout, new RegExp(datei.replace(".", String.raw`\.`)),
       `${datei} --version nennt die Datei nicht, aus der die Auskunft stammt`);
     assert.equal(res.stderr.trim(), "",
       `${datei} --version darf nichts auf stderr schreiben: ${res.stderr}`);

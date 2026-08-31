@@ -36,7 +36,7 @@ const BOESER_BODY = [
   "const x = `template ${literal}`;",
   "```",
   "Command-Substitution: $(rm -rf /) und `echo boom`",
-  "Ein Backslash: C:\\bin\\codex.cmd",
+  String.raw`Ein Backslash: C:\bin\codex.cmd`,
   "",
   "## Abhaengigkeiten",
   "",

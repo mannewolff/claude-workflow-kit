@@ -21,6 +21,10 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+# ESLint als Entwicklungsabhaengigkeit (Issue #399). Die ausgelieferten Werkzeuge
+# laufen weiterhin ohne jede Laufzeit-Abhaengigkeit; node_modules gehoert nicht ins Repo.
+node_modules/
+
 # Docs / VitePress
 docs/node_modules
 docs-site/node_modules

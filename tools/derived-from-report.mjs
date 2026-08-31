@@ -59,7 +59,7 @@ const PLAN_PRAEFIX = /^\s*\[plan\]/i;
  * board.mjs macht dasselbe vor jedem Parsen (`normalisiereZeilenenden`).
  */
 function normalisiere(body) {
-  return String(body || "").replace(/\r\n?/g, "\n");
+  return String(body || "").replaceAll(/\r\n?/g, "\n");
 }
 
 /**
