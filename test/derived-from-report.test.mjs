@@ -279,3 +279,35 @@ test("ZUSTAENDE nennt alle sechs Zustaende", () => {
     "fehlplatziert", "keiner", "mehrdeutig", "selbstverweis", "unbekannt", "vorfahr",
   ]);
 });
+
+// --- Fehlende Felder und Dokumente ohne Ueberschriften (Issue #405) ---
+//
+// Der Leser bekommt seine Karten aus `board.mjs issue list`. Was dort fehlen kann,
+// darf ihn nicht kippen: Ein Body ist `null`, wenn eine Karte ohne Beschreibung
+// angelegt wurde, und ein Plandokument ohne jede `##`-Ueberschrift ist zwar
+// formwidrig, aber kein Grund, den Bestandsbericht abzubrechen.
+
+test("eine Karte ohne Body ist keiner, statt zu werfen", () => {
+  for (const body of [null, undefined, ""]) {
+    const r = herkunftAusBody(karte(body));
+    assert.equal(r.zustand, "keiner", `ein Body '${body}' haette 'keiner' ergeben muessen`);
+  }
+});
+
+test("ein Plandokument ohne jede Ueberschrift wird ganz als Kopfbereich gelesen", () => {
+  // Ohne `##` gibt es keine Grenze — der ganze Text ist Kopfbereich. Sonst waere die
+  // Herkunftszeile eines formwidrigen Plans unsichtbar, und die Karte fiele stumm
+  // auf `keiner`.
+  const body = "Plan-Modell: m\nFachliche Quelle: Issue #285\n\nNur Fliesstext, keine Ueberschrift.\n";
+  const r = herkunftAusBody(karte(body, { title: "[Plan] Ohne Ueberschriften" }));
+  assert.equal(r.zustand, "vorfahr");
+  assert.equal(r.vorfahr, 285);
+});
+
+test("eine Karte ohne Titel wird als Arbeitspaket gelesen", () => {
+  // Ohne Titel greift das Plan-Praefix nicht: Es gilt der Kontext-Abschnitt, nicht
+  // der Kopfbereich. Eine Zeile ausserhalb des Kontexts ist dann fehlplatziert.
+  const r = herkunftAusBody({ id: "1", body: KONTEXT("Plan: Issue #363") });
+  assert.equal(r.zustand, "vorfahr");
+  assert.equal(r.vorfahr, 363);
+});
