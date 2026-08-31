@@ -1970,8 +1970,8 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 
 /** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
-const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
-const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
+export const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
+export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
 export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],

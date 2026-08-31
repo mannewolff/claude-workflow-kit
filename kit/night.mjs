@@ -412,8 +412,10 @@ function isFachlich(title) {
 // Bewusst streng: Nur eine Zeile, die mit 'Issue-Review:' beginnt und danach etwas
 // traegt, zaehlt. 'Issue-Review folgt noch' ist das Gegenteil einer Freigabe und darf
 // nicht als eine durchgehen.
-function hasReviewMarker(body) {
-  return /^\s*Issue-Review:\s*\S/im.test(body || "");
+export const REVIEW_MARKER_ZEILE = /^\s*Issue-Review:\s*\S/im;
+
+export function hasReviewMarker(body) {
+  return REVIEW_MARKER_ZEILE.test(body || "");
 }
 
 /**
@@ -1336,7 +1338,7 @@ export function neueKommentare(vorher, nachher) {
 }
 
 const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
-const RUNDEN_KOPF = /^##\s*[^\n]*?,\s*Runde\s*(\d+)\s*$/;
+export const RUNDEN_KOPF = /^##\s*[^\n]*?,\s*Runde\s*(\d+)\s*$/;
 
 /** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
 function kopfUndRest(text) {
