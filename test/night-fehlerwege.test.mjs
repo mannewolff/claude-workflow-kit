@@ -280,3 +280,38 @@ test("ohne jedes Issue beschraenkt sich die Probe auf issue list", NUR_POSIX, ()
       "ohne Issue gibt es nichts zu holen — das muss so dastehen");
   }, {}, "night-fehler-probe-leer-");
 });
+
+test("scheitert board.mjs wortlos, nennt die Meldung wenigstens das Kommando", () => {
+  // Weder stdout noch stderr: Der dritte Rueckfall greift, und die Meldung besteht
+  // nur noch aus dem Kommando. Das ist wenig — aber es ist der Unterschied zwischen
+  // "board.mjs issue list --status ready schlug fehl" und einem stillen Abbruch.
+  mitProjekt((dir) => {
+    const res = run(dir, ["--dry-run", "--label", "none"]);
+
+    assert.equal(res.status, 1, "ein kaputter Adapter haette den Lauf stoppen muessen");
+    assert.match(res.stderr, /board\.mjs issue list .* schlug fehl:/,
+      "das abgesetzte Kommando fehlt in der Meldung");
+  }, { boardInhalt: "process.exit(1);\n" }, "night-fehler-board-stumm-");
+});
+
+test("ohne buildChecks-Feld gilt die leere Pruefliste", NUR_POSIX, () => {
+  // Nicht `buildChecks: []`, sondern das Feld GANZ WEG — der Zustand einer Config,
+  // die nie fuer den Nachtbetrieb ergaenzt wurde. Mit --no-checks-ok muss der Lauf
+  // trotzdem tragen.
+  mitProjekt((dir) => {
+    readyIssue(dir);
+    const fake = [
+      'if [ -n "$NIGHT_SALVAGE" ]; then',
+      "  exit 0",
+      "else",
+      '  echo arbeit > "work.txt"',
+      "fi",
+    ].join("\n");
+
+    const res = run(dir, ["--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 1, "die gescheiterte Runde haette hart stoppen muessen");
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
+      "ohne buildChecks-Feld gilt die leere Liste als gruen — der Salvage haette starten muessen");
+  }, { config: { buildChecks: undefined } }, "night-fehler-ohne-checks-feld-");
+});

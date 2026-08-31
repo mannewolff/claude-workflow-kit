@@ -148,6 +148,7 @@ test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
       `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"   "}]}}'`, // leerer Text
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use"}]}}'`,          // ohne Namen
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}'`,
+      `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep"}]}}'`,  // ganz ohne input
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Glob","input":{"zahl":7}}]}}'`,
       `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
     ].join(" && ");
@@ -158,6 +159,8 @@ test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
     // Ein Tool-Aufruf ohne brauchbares Argument erscheint mit blossem Namen ...
     assert.match(res.stdout, new RegExp(`#${issue.id} > Read$`, "m"),
       "ein Tool ohne Argument muss mit blossem Namen erscheinen");
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Grep$`, "m"),
+      "ein Tool ganz ohne input-Feld muss mit blossem Namen erscheinen");
     // ... eines mit nicht-textlichem Argument als kompaktes JSON.
     assert.match(res.stdout, new RegExp(`#${issue.id} > Glob: \\{"zahl":7\\}`),
       "ein nicht-textliches Argument muss als JSON erscheinen");
@@ -194,6 +197,30 @@ test("--verbose kuerzt lange Texte und Argumente", NUR_POSIX, () => {
     assert.ok(textZeile.length < 300, `die Textzeile ist zu lang: ${textZeile.length} Zeichen`);
     const bashZeile = res.stdout.split("\n").find((z) => z.includes("> Bash: "));
     assert.ok(bashZeile?.includes("…"), "das lange Kommando wurde nicht gekuerzt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--verbose wertet auch eine letzte Zeile ohne Zeilenumbruch aus", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(issue.id), "ready");
+
+    // `printf` ohne \n: Das Ereignis bleibt im Puffer, bis der Prozess endet. Ohne
+    // die Auswertung beim Schliessen ginge die letzte Meldung einer Session verloren
+    // — und das ist oft die interessanteste.
+    const fake = [
+      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+      `printf '%s' '{"type":"assistant","message":{"content":[{"type":"text","text":"Letzte Zeile ohne Umbruch"}]}}'`,
+    ].join(" && ");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `der Lauf haette durchlaufen muessen: ${res.stderr}${res.stdout}`);
+    assert.match(res.stdout, /> Claude: Letzte Zeile ohne Umbruch/,
+      "die letzte Zeile ohne Umbruch wurde verschluckt");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
