@@ -308,31 +308,41 @@ function readLocalOverrides(sharedPfad) {
 // ohne Config weiterarbeiten koennen (kontext paths, Issue #202). Eine vorhandene, aber
 // kaputte Datei bleibt ein harter Fehler: Sie stillschweigend wie "keine Config" zu
 // behandeln, wuerde einen Tippfehler in einen unsichtbaren Verhaltenswechsel verwandeln.
+/**
+ * Liest eine konkrete Config-Datei und bringt sie auf den heutigen Stand (Issue #404).
+ *
+ * Getrennt von der Kandidatensuche, weil es eine andere Frage ist: readWorkflowConfig
+ * entscheidet, WELCHE Datei gilt; diese Funktion, WIE ihr Inhalt zu lesen ist —
+ * Kompatibilitaets-Abbildung, persoenliche Overrides, Hinweise auf Ignoriertes.
+ */
+function ladeConfigDatei(p) {
+  const raw = JSON.parse(readFileSync(p, "utf-8"));
+  // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
+  if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
+  if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
+  const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+  // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
+  // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
+  // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+  for (const feld of ignored) {
+    process.stderr.write(
+      `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
+    );
+  }
+  return config;
+}
+
 function readWorkflowConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
     join(configRoot(), ".claude", "workflow.config.json"),
   ];
   for (const p of candidates) {
-    if (existsSync(p)) {
-      try {
-        const raw = JSON.parse(readFileSync(p, "utf-8"));
-        // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
-        if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
-        if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-        const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
-        // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
-        // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
-        // harter Fehler waere bei jedem board.mjs-Aufruf laut.
-        for (const feld of ignored) {
-          process.stderr.write(
-            `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
-          );
-        }
-        return config;
-      } catch {
-        fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
-      }
+    if (!existsSync(p)) continue;
+    try {
+      return ladeConfigDatei(p);
+    } catch {
+      fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
     }
   }
   return null;
@@ -871,29 +881,40 @@ class GitLabIssueTracker {
     }
   }
 
-  async listIssues(status) {
+  /**
+   * Uebersetzt einen Board-Status in die CLI-Flags von `glab issue list` (Issue #404).
+   *
+   * Eigene Funktion, weil hier eine Uebersetzung stattfindet und keine Abfrage: Der
+   * Status ist ein Kit-Begriff, die Flags sind GitLabs Modell aus Zustaenden und
+   * Labels. listIssues fragt danach ab und formt das Ergebnis — zwei Aufgaben, die
+   * ineinander nur schwer zu lesen waren.
+   */
+  _listArgs(status) {
     const args = ["issue", "list", "--output", "json"];
-    if (status) {
-      // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
-      // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
-      args.push("--order", "relative_position", "--sort", "asc");
-      if (isStateColumn(status, this._cfg)) {
-        if (status === "done") {
-          args.push("--closed");
-        } else {
-          // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
-          const otherLabels = Object.entries(columnLabels(this._cfg))
-            .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
-            .map(([, l]) => l);
-          for (const l of otherLabels) args.push("--not-label", l);
-        }
-      } else {
-        const label = columnLabels(this._cfg)[status];
-        if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
-        args.push("--label", label);
-      }
+    if (!status) return args;
+    // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
+    // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
+    args.push("--order", "relative_position", "--sort", "asc");
+    if (!isStateColumn(status, this._cfg)) {
+      const label = columnLabels(this._cfg)[status];
+      if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
+      args.push("--label", label);
+      return args;
     }
-    const items = execJSON("glab", args);
+    if (status === "done") {
+      args.push("--closed");
+      return args;
+    }
+    // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
+    const otherLabels = Object.entries(columnLabels(this._cfg))
+      .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
+      .map(([, l]) => l);
+    for (const l of otherLabels) args.push("--not-label", l);
+    return args;
+  }
+
+  async listIssues(status) {
+    const items = execJSON("glab", this._listArgs(status));
     const mapped = (Array.isArray(items) ? items : []).map((i) => {
       const labelNames = labelNamesFrom(i.labels);
       return {
@@ -2076,21 +2097,33 @@ export function pruefvorgabeStand(body) {
  * die Zeile kann im Board-UI gesetzt worden sein, ohne dass je ein
  * `issue update` lief.
  */
-export function parsePruefvorgabe(body) {
-  const text = normalisiereZeilenenden(body);
-  const grenzen = kontextGrenzen(text);
-  if (!grenzen) return { wert: null, stand: null, verfallen: false };
-
+/**
+ * Sammelt die beiden Kennzeichnungszeilen aus dem Kontext-Abschnitt (Issue #404).
+ *
+ * Reines Einsammeln, ohne Urteil: Mehrfachvorkommen und ungueltige Werte werden hier
+ * nicht beanstandet, sondern weitergereicht. Das Trennen macht beide Haelften lesbar
+ * — die Schleife kennt nur Zeilen, die Pruefung nur Werte.
+ */
+function sammlePruefzeilen(abschnitt) {
   const vorgaben = [];
   const staende = [];
   const imFence = fenceLauf();
-  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
+  for (const zeile of abschnitt.split("\n")) {
     if (imFence(zeile)) continue;
     const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
     if (vorgabe) vorgaben.push(vorgabe[1].trim());
     const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
     if (stand) staende.push(stand[1].trim());
   }
+  return { vorgaben, staende };
+}
+
+export function parsePruefvorgabe(body) {
+  const text = normalisiereZeilenenden(body);
+  const grenzen = kontextGrenzen(text);
+  if (!grenzen) return { wert: null, stand: null, verfallen: false };
+
+  const { vorgaben, staende } = sammlePruefzeilen(text.slice(grenzen.start, grenzen.ende));
 
   if (vorgaben.length > 1) {
     throw new BoardError(`Mehrere 'Pruefung:'-Zeilen im Kontext-Abschnitt (${vorgaben.length}). Genau eine ist erlaubt.`);

@@ -256,30 +256,60 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 `);
 }
 
+// Die drei Sorten Argument als Tabellen statt als Kette (Issue #404). Der Schnitt
+// folgt dem, was ein Flag mit dem Lauf macht, nicht seinem Namen: Auskunft geben und
+// enden, einen Wert mitbringen, oder einen Schalter umlegen. Wer ein Flag ergaenzt,
+// traegt es in genau eine Tabelle ein und aendert die Schleife nicht mehr.
+
+// Auskunftsflags: antworten sofort und beenden den Prozess. Sie greifen vor allen
+// Vorflug-Checks, damit sie auch in einem Verzeichnis ohne Config und ohne board.mjs
+// funktionieren.
+const SOFORT_FLAGS = {
+  "--help": () => { printHelp(); process.exit(0); },
+  "-h": () => { printHelp(); process.exit(0); },
+  "--version": () => {
+    process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
+    process.exit(0);
+  },
+};
+
+// Flags mit Wert: der jeweils naechste argv-Eintrag, bei Zahlen konvertiert. Ob der
+// Wert plausibel ist, entscheidet pruefeArgs — nicht diese Tabelle.
+const WERT_FLAGS = {
+  "--max": (args, wert) => { args.max = Number(wert); },
+  "--model": (args, wert) => { args.model = wert; },
+  "--label": (args, wert) => { args.label = wert; },
+  "--review-label": (args, wert) => { args.reviewLabel = wert; },
+  "--stufe": (args, wert) => { args.stufe = wert; },
+  "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
+};
+
+// Schalter ohne Wert: Flag -> Feldname, immer auf true.
+const SCHALTER_FLAGS = {
+  "--review": "review",
+  "--dry-run": "dryRun",
+  "--yolo": "yolo",
+  "--no-checks-ok": "noChecksOk",
+  "--verbose": "verbose",
+};
+
 function parseArgs(argv) {
   const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, stufe: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--help" || a === "-h") {
-      printHelp();
-      process.exit(0);
-    } else if (a === "--version") {
-      // Wie --help: greift vor allen Vorflug-Checks, damit die Auskunft auch in
-      // einem Verzeichnis ohne Config und ohne board.mjs funktioniert.
-      process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
-      process.exit(0);
-    } else if (a === "--max") args.max = Number(argv[++i]);
-    else if (a === "--model") args.model = argv[++i];
-    else if (a === "--label") args.label = argv[++i];
-    else if (a === "--review") args.review = true;
-    else if (a === "--review-label") args.reviewLabel = argv[++i];
-    else if (a === "--stufe") args.stufe = argv[++i];
-    else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
-    else if (a === "--dry-run") args.dryRun = true;
-    else if (a === "--yolo") args.yolo = true;
-    else if (a === "--no-checks-ok") args.noChecksOk = true;
-    else if (a === "--verbose") args.verbose = true;
-    else fail(`Unbekanntes Argument: ${a} — siehe --help`);
+    if (Object.hasOwn(SOFORT_FLAGS, a)) {
+      SOFORT_FLAGS[a]();
+      continue;
+    }
+    if (Object.hasOwn(WERT_FLAGS, a)) {
+      WERT_FLAGS[a](args, argv[++i]);
+      continue;
+    }
+    if (Object.hasOwn(SCHALTER_FLAGS, a)) {
+      args[SCHALTER_FLAGS[a]] = true;
+      continue;
+    }
+    fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
   pruefeArgs(args);
   return args;
@@ -1052,6 +1082,17 @@ function ladeConfigMitOverrides(sharedPfad) {
     return shared;
   }
 
+  return mischeErlaubteFelder(shared, local);
+}
+
+/**
+ * Legt die erlaubten Felder der persoenlichen Config ueber die geteilte (Issue #404).
+ *
+ * Getrennt vom Laden, weil es eine andere Frage ist: ladeConfigMitOverrides
+ * beschafft die beiden Dateien und entscheidet, ob es ueberhaupt etwas zu mischen
+ * gibt; diese Funktion entscheidet Feld fuer Feld, was uebernommen wird.
+ */
+function mischeErlaubteFelder(shared, local) {
   const config = { ...shared };
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
@@ -1059,18 +1100,29 @@ function ladeConfigMitOverrides(sharedPfad) {
     if (erlaubteFelder.has(feld)) {
       config[feld] = wert;
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
-      const blaetter = erlaubteBlaetter.get(feld);
-      const zusammen = { ...config[feld] };
-      for (const [unterfeld, unterwert] of Object.entries(wert)) {
-        if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
-        else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
-      }
-      config[feld] = zusammen;
+      config[feld] = mischeBlattfelder(config[feld], wert, erlaubteBlaetter.get(feld), feld);
     } else {
       process.stderr.write(`Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
     }
   }
   return config;
+}
+
+/**
+ * Mischt die erlaubten Unterfelder eines Blocks (etwa `toolbox.tokenFile`).
+ *
+ * Eigene Funktion, weil hier eine zweite Allowlist gilt: Nicht der Block ist
+ * freigegeben, sondern einzelne Blaetter darin. Ein nicht freigegebenes Unterfeld
+ * wird gemeldet und faellt weg — es teamweit zu ueberschreiben waere genau das,
+ * was die Trennung der beiden Dateien verhindern soll.
+ */
+function mischeBlattfelder(bisher, wert, blaetter, feld) {
+  const zusammen = { ...bisher };
+  for (const [unterfeld, unterwert] of Object.entries(wert)) {
+    if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
+    else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+  }
+  return zusammen;
 }
 
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---

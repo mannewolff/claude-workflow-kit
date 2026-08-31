@@ -35,6 +35,12 @@ export default [
       "unicorn/prefer-string-replace-all": "error",    // S7781
       "unicorn/prefer-default-parameters": "error",    // S7760
       "unicorn/prefer-array-find": ["error", { checkFromLast: true }], // S7750
+      // S3776 (kognitive Komplexitaet, Issue #404). Dieselbe Metrik wie SonarCloud:
+      // die Regel ist SonarSources eigene S3776-Implementierung, die Schwelle 15 ist
+      // die dort eingestellte. Ohne sie waere das Kernziel erst beim naechsten
+      // SonarCloud-Lauf messbar — eine Session koennte "fertig" melden, waehrend eine
+      // Funktion noch bei 16 liegt.
+      "sonarjs/cognitive-complexity": ["error", 15],
       // S6594 (RegExp.exec statt String.match) und S6582 (Optional Chaining) haben
       // hier KEIN Pendant: Beide entsprechen Regeln aus typescript-eslint
       // (prefer-regexp-exec, prefer-optional-chain), die Typinformationen brauchen —
