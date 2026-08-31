@@ -604,6 +604,37 @@ export function hatGueltigenVerzicht(body) {
   }
 }
 
+/**
+ * Der Ausschlussgrund eines Dokuments — `null`, wenn es Kandidat ist (Issue #404).
+ *
+ * Getrennt vom Einsammeln, weil hier je Dokument EINE Frage beantwortet wird:
+ * kommt es dran? Die Reihenfolge der Gruende ist Teil der Antwort und bleibt
+ * deshalb unveraendert; nur die Bauform wechselt von einer else-if-Kette zu
+ * fruehen Rueckgaben.
+ */
+function reviewAusschluss(issue, label, stufe) {
+  // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
+  // aus, sie umgeht die Freigabe nicht.
+  if (label !== null && !(issue.labels || []).includes(label)) return `kein Label '${label}'`;
+  // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
+  // ist kein pruefbares Dokument (Issue #192).
+  if (isIdee(issue.title)) return "Idee ([Idee])";
+  // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
+  // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
+  // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
+  // Runner verbuchte diesen Kommentar als "Review mit Befund".
+  if (hatGueltigenVerzicht(issue.body)) return "bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)";
+  // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
+  // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
+  // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
+  if (hatKlaerenLabel(issue)) return "kit:klaeren, offene Entscheidung";
+  if (stufe === "fachlich") return isFachlich(issue.title) ? null : "kein fachliches Issue ([Fachlich])";
+  if (stufe === "plan") return isPlan(issue.title) ? null : "kein Plan-Dokument ([Plan])";
+  if (isFachlich(issue.title)) return "fachliches Issue ([Fachlich])";
+  if (isPlan(issue.title)) return "Plan-Dokument ([Plan])";
+  return null;
+}
+
 export function selectReviewCandidates(issues, opts = {}) {
   const label = opts.label ?? null;
   const stufe = opts.stufe ?? "issue";
@@ -611,39 +642,9 @@ export function selectReviewCandidates(issues, opts = {}) {
   const uebersprungen = [];
 
   for (const issue of issues || []) {
-    const eintrag = (grund) => uebersprungen.push({ id: issue.id, title: issue.title, grund });
-    // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
-    // aus, sie umgeht die Freigabe nicht.
-    if (label !== null && !(issue.labels || []).includes(label)) {
-      eintrag(`kein Label '${label}'`);
-    } else if (isIdee(issue.title)) {
-      // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
-      // ist kein pruefbares Dokument (Issue #192).
-      eintrag("Idee ([Idee])");
-    } else if (hatGueltigenVerzicht(issue.body)) {
-      // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
-      // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
-      // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
-      // Runner verbuchte diesen Kommentar als "Review mit Befund".
-      eintrag("bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)");
-    } else if (hatKlaerenLabel(issue)) {
-      // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
-      // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
-      // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
-      eintrag("kit:klaeren, offene Entscheidung");
-    } else if (stufe === "fachlich") {
-      if (isFachlich(issue.title)) kandidaten.push(issue);
-      else eintrag("kein fachliches Issue ([Fachlich])");
-    } else if (stufe === "plan") {
-      if (isPlan(issue.title)) kandidaten.push(issue);
-      else eintrag("kein Plan-Dokument ([Plan])");
-    } else if (isFachlich(issue.title)) {
-      eintrag("fachliches Issue ([Fachlich])");
-    } else if (isPlan(issue.title)) {
-      eintrag("Plan-Dokument ([Plan])");
-    } else {
-      kandidaten.push(issue);
-    }
+    const grund = reviewAusschluss(issue, label, stufe);
+    if (grund === null) kandidaten.push(issue);
+    else uebersprungen.push({ id: issue.id, title: issue.title, grund });
   }
   return { kandidaten, uebersprungen };
 }
@@ -1452,15 +1453,55 @@ export function bodyVorschlagVorhanden(kommentare) {
  * keinen Code schreibt, gegenstandslos. Und kein Board-Move in keinem Ausgang; die
  * Kandidaten liegen bereits im Backlog.
  */
+/**
+ * Wertet aus, was eine Review-Session am Board hinterlassen hat (Issue #404).
+ *
+ * Vier Ausgaenge, und der Aufrufer soll sie nur zaehlen muessen: `ohneBefund`
+ * (Marker gesetzt), `mitBefund` (Befunde samt uebernehmbarem Body-Vorschlag),
+ * `schaerfungFehlt` (Befunde ohne Vorschlag) und `ohneErgebnis` (die Session hat
+ * nichts hinterlassen). Die beiden letzten hinterlassen ausserdem einen Kommentar
+ * am Ticket — sie verlangen morgens je einen anderen Handgriff.
+ *
+ * Getrennt von der Schleife, weil die Schleife eine andere Aufgabe hat: Sie
+ * entscheidet, WELCHE Dokumente drankommen und wann der Lauf hart stoppt. Was
+ * dabei herauskam, ist die Frage dieser Funktion.
+ */
+function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
+  if (hasStageMarker(nachher.body, stufe)) {
+    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
+    return "ohneBefund";
+  }
+
+  if (issueSpur(nachher) === issueSpur(vorher)) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
+    board("issue", "comment", String(kandidat.id),
+      "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
+    return "ohneErgebnis";
+  }
+
+  // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
+  // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
+  // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
+  // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
+  if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
+    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
+    return "mitBefund";
+  }
+
+  log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
+  board("issue", "comment", String(kandidat.id),
+    "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
+    + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
+    + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
+  return "schaerfungFehlt";
+}
+
 async function runReviewLoop(kandidaten, args) {
   const stufe = args.stufe ?? "issue";
   let sessions = 0;
-  let ohneBefund = 0;
-  let mitBefund = 0;
-  let ohneErgebnis = 0;
-  let schaerfungFehlt = 0;
   let uebersprungen = 0;
   let hardStop = false;
+  const zaehler = { ohneBefund: 0, mitBefund: 0, schaerfungFehlt: 0, ohneErgebnis: 0 };
 
   for (const kandidat of kandidaten) {
     if (sessions >= args.max) {
@@ -1476,7 +1517,6 @@ async function runReviewLoop(kandidaten, args) {
 
     sessions++;
     log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
-    const spurVorher = issueSpur(vorher);
     const started = Date.now();
     const res = await runSession(kandidat.id, args, {
       prompt: `/issue-review #${kandidat.id}`,
@@ -1506,38 +1546,14 @@ async function runReviewLoop(kandidaten, args) {
     }
 
     const nachher = board("issue", "get", String(kandidat.id));
-    if (hasStageMarker(nachher.body, stufe)) {
-      ohneBefund++;
-      log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
-    } else if (issueSpur(nachher) !== spurVorher) {
-      // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
-      // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
-      // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
-      // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
-      if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
-        mitBefund++;
-        log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
-      } else {
-        schaerfungFehlt++;
-        log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
-        board("issue", "comment", String(kandidat.id),
-          "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
-          + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
-          + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
-      }
-    } else {
-      ohneErgebnis++;
-      log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
-      board("issue", "comment", String(kandidat.id),
-        "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
-    }
+    zaehler[werteReviewSession(kandidat, vorher, nachher, stufe, minutes)]++;
   }
 
   // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
   // morgens verlangt er einen anderen Handgriff als beide (Issue #310). Der
   // Gesamt-Exit bleibt trotzdem 0 — die Befunde stehen am Board, ein harter Stopp
   // waere unverhaeltnismaessig.
-  log(`Nacht-Review beendet (Stufe ${stufe}): ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   process.exit(hardStop ? 1 : 0);
 }
