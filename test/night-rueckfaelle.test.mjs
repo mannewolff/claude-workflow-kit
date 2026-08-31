@@ -216,3 +216,18 @@ test("bodyVorschlagVorhanden verlangt den Vorschlag zur HOECHSTEN Runde", () => 
 
   assert.equal(bodyVorschlagVorhanden([...kommentare, "## Body-Vorschlag, Runde 2\n\nNeuer Vorschlag."]), true);
 });
+
+test("die Praefix-Pruefungen halten eine Karte ohne Titel aus", () => {
+  // Ein Titel kann fehlen: Der lokale Tracker liest ihn aus dem Frontmatter, und eine
+  // von Hand angelegte Datei hat ihn nicht zwingend. Ohne Titel ist die Karte ein
+  // gewoehnliches Arbeitspaket — kein [Fachlich], keine [Idee], kein [Plan].
+  const r = selectReviewCandidates([{ id: "1", body: KONTEXT("Autor-Modell: m") }]);
+  assert.deepEqual(r.uebersprungen, [], "eine Karte ohne Titel wurde faelschlich aussortiert");
+  assert.equal(r.kandidaten.length, 1);
+
+  // Und in den oberen Stufen faellt sie heraus, weil das Praefix fehlt — mit Grund.
+  const fachlich = selectReviewCandidates([{ id: "1", body: "" }], { stufe: "fachlich" });
+  assert.equal(fachlich.uebersprungen[0].grund, "kein fachliches Issue ([Fachlich])");
+  const plan = selectReviewCandidates([{ id: "1", body: "" }], { stufe: "plan" });
+  assert.equal(plan.uebersprungen[0].grund, "kein Plan-Dokument ([Plan])");
+});
