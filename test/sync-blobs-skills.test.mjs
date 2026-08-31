@@ -158,3 +158,30 @@ test("--check meldet die abweichende Skill-Kopie, ohne sie zu schreiben", () => 
       "--check darf nichts schreiben");
   }, { kopien: { beispiel: "alt\n" } });
 });
+
+test("ohne KIT_ROOT gilt das Repo, aus dem das Script stammt", () => {
+  // Der Test-Hook KIT_ROOT verlegt die Suche ins Fixture; ohne ihn muss sync-blobs
+  // sein EIGENES Repo finden — unabhaengig davon, von wo es gestartet wird. Genau
+  // dieser Weg laeuft im Pflichtcheck, und er ist der einzige, den kein anderer Test
+  // betritt.
+  //
+  // `--check` ist dabei rein lesend: Es vergleicht und schreibt nichts. Ein cwd
+  // ausserhalb des Repos belegt zugleich, dass die Aufloesung nicht am
+  // Arbeitsverzeichnis haengt.
+  const fremd = mkdtempSync(join(tmpdir(), "sync-fremdes-cwd-"));
+  try {
+    const env = { ...process.env };
+    delete env.KIT_ROOT;
+    const res = spawnSync(process.execPath, [join(repoRoot, "tools", "sync-blobs.mjs"), "--check"],
+      { cwd: fremd, encoding: "utf-8", env });
+
+    assert.equal(res.status, 0,
+      `--check gegen das eigene Repo war rot — entweder ist das Repo wirklich unsynchron `
+      + `(dann behebt es 'node tools/sync-blobs.mjs'), oder die Root-Aufloesung ohne `
+      + `KIT_ROOT ist kaputt: ${res.stdout}${res.stderr}`);
+    assert.match(res.stdout, /synchron mit kit\//,
+      "die Meldung bestaetigt den Abgleich nicht");
+  } finally {
+    rmSync(fremd, { recursive: true, force: true });
+  }
+});

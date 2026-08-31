@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -100,6 +100,60 @@ test("ein Commit nach dem Release erzeugt keinen zweiten Block mit derselben Num
     const ueberschriften = (readFileSync(join(dir, "CHANGELOG.md"), "utf-8").match(/^## \[.*?\]/gm) || []);
     assert.deepEqual(ueberschriften, ["## [Unreleased]", "## [1.16.1]"]);
     assert.equal(new Set(ueberschriften).size, ueberschriften.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Die beiden Wege, auf denen das Werkzeug gar nicht arbeiten kann (Issue #405) ---
+
+test("--check ohne vorhandene CHANGELOG.md meldet 'nicht aktuell' statt zu crashen", () => {
+  const dir = wegwerfRepo();
+  try {
+    commit(dir, "Ein Feature (Issue #1)");
+    commit(dir, "chore: v1.16.1");
+    // Es wurde nie ein Changelog geschrieben: Der Vergleich laeuft gegen den leeren
+    // Text. Das ist der Zustand eines frisch aufgesetzten Projekts, und er muss als
+    // "nicht aktuell" enden — nicht als Lesefehler.
+    assert.equal(existsSync(join(dir, "CHANGELOG.md")), false, "das Fixture bringt schon ein Changelog mit");
+
+    let fehler = null;
+    try {
+      changelog(dir, "--check");
+    } catch (e) {
+      fehler = e;
+    }
+
+    assert.ok(fehler, "--check haette ohne Changelog nicht gruen sein duerfen");
+    assert.equal(fehler.status, 1, "erwartet wird der regulaere Fehler-Exit, kein Absturz");
+    assert.match(String(fehler.stderr), /CHANGELOG\.md ist nicht aktuell/,
+      "die Meldung nennt weder Datei noch Abhilfe");
+    assert.equal(existsSync(join(dir, "CHANGELOG.md")), false, "--check darf nichts anlegen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ausserhalb eines git-Repos bricht changelog mit der git-Meldung ab", () => {
+  // Kein `git init`: `git log` scheitert, und die eigene Meldung des Werkzeugs muss
+  // die von git mitfuehren — sonst sucht man den Fehler im Changelog statt im Repo.
+  const dir = mkdtempSync(join(tmpdir(), "changelog-ohne-repo-"));
+  try {
+    let fehler = null;
+    try {
+      // LC_ALL=C erzwingt die englische git-Meldung: Sonst haengt der Test an der
+      // Sprache der Maschine — lokal deutsch, in der CI englisch.
+      execFileSync(process.execPath, [CHANGELOG], {
+        cwd: dir, encoding: "utf-8", env: { ...process.env, LC_ALL: "C", LANG: "C" },
+      });
+    } catch (e) {
+      fehler = e;
+    }
+
+    assert.ok(fehler, "ohne git-Repo haette changelog nicht durchlaufen duerfen");
+    assert.match(String(fehler.stderr), /git .* schlug fehl/, "die eigene Meldung fehlt");
+    assert.match(String(fehler.stderr), /not a git repository/i,
+      "die Meldung von git selbst fehlt — ohne sie ist die Ursache nicht zuzuordnen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

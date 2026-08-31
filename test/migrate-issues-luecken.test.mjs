@@ -509,3 +509,17 @@ test("ein nicht ausfuehrbares gh meldet den Systemfehler im Klartext", NUR_POSIX
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("gibt gh gar nichts aus, bricht export mit dem leeren Wert ab", NUR_POSIX, () => {
+  // `gh repo view` mit leerer Ausgabe: Der Rueckfall auf den leeren Text greift, und
+  // die Pruefung darunter faengt ihn. Ohne den Rueckfall stuende hier ein Aufruf auf
+  // `undefined.split` — ein Absturz statt einer Meldung.
+  const f = exportiere("migrate-gh-leer-", [], { repoView: "" });
+  try {
+    assert.equal(f.res.status, 1, "export haette mit Exit 1 enden muessen");
+    assert.match(f.res.stderr, /Konnte das Repository nicht bestimmen: ''/,
+      "die Meldung zeigt den leeren Wert nicht");
+  } finally {
+    f.ende();
+  }
+});
