@@ -1,9 +1,8 @@
 {
   "name": "claude-workflow-kit",
-  "version": "1.42.1",
   "private": true,
   "type": "module",
-  "description": "Entwicklungsabhaengigkeiten des Kits. Die ausgelieferten Werkzeuge (install.mjs, kit/, tools/) laufen bewusst ohne jede Laufzeit-Abhaengigkeit — hier steht nur, was zum Entwickeln gebraucht wird.",
+  "description": "Entwicklungsabhaengigkeiten des Kits. Die ausgelieferten Werkzeuge (install.mjs, kit/, tools/) laufen bewusst ohne jede Laufzeit-Abhaengigkeit — hier steht nur, was zum Entwickeln gebraucht wird. Bewusst OHNE version-Feld: Die Kit-Version lebt in install.mjs und wird von tools/version.mjs gepflegt; eine zweite Angabe hier wuerde beim naechsten Bump still driften.",
   "devDependencies": {
     "eslint": "^9.0.0",
     "eslint-plugin-sonarjs": "^2.0.4",
