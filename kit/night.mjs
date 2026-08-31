@@ -282,13 +282,24 @@ function parseArgs(argv) {
     else if (a === "--verbose") args.verbose = true;
     else fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
+  pruefeArgs(args);
+  return args;
+}
+
+/**
+ * Prueft die eingelesenen Argumente auf Plausibilitaet und bricht bei Verstoss ab.
+ *
+ * Getrennt vom Einlesen, weil es eine andere Frage ist: parseArgs uebersetzt argv in
+ * ein Objekt, diese Funktion entscheidet, ob damit gearbeitet werden darf.
+ *
+ * Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem Board-Zugriff
+ * und Session-Start greifen. Ein stiller Rueckfall auf `issue` waere der schlimmere
+ * Ausgang — der Lauf saehe erfolgreich aus und pruefte die falsche Sorte Dokument.
+ */
+function pruefeArgs(args) {
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
 
-  // Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem
-  // Board-Zugriff und Session-Start greifen. Ein stiller Rueckfall auf `issue`
-  // waere der schlimmere Ausgang — der Lauf saehe erfolgreich aus und pruefte
-  // die falsche Sorte Dokument.
   if (args.stufe !== null) {
     if (!args.review) {
       fail("--stufe gilt nur im Review-Modus — zusammen mit --review verwenden.");
@@ -300,7 +311,6 @@ function parseArgs(argv) {
       fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
     }
   }
-  return args;
 }
 
 // --- Logging ---
@@ -1004,6 +1014,25 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 // ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
 
+// SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
+// Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
+// (`reviewModel`) und einzelne Blaetter unter einem Kopf (`toolbox.tokenFile`). Eigene
+// Funktion, weil das eine andere Frage beantwortet als das Mischen darunter.
+function zerlegeAllowlist(allowlist) {
+  const erlaubteBlaetter = new Map();
+  const erlaubteFelder = new Set();
+  for (const pfad of allowlist) {
+    const [kopf, blatt] = pfad.split(".");
+    if (blatt) {
+      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
+      erlaubteBlaetter.get(kopf).add(blatt);
+    } else {
+      erlaubteFelder.add(kopf);
+    }
+  }
+  return { erlaubteFelder, erlaubteBlaetter };
+}
+
 function ladeConfigMitOverrides(sharedPfad) {
   const shared = JSON.parse(readFileSync(sharedPfad, "utf-8"));
   const lokalPfad = join(dirname(sharedPfad), "workflow.config.local.json");
@@ -1019,17 +1048,7 @@ function ladeConfigMitOverrides(sharedPfad) {
   }
 
   const config = { ...shared };
-  const erlaubteBlaetter = new Map();
-  const erlaubteFelder = new Set();
-  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
-    const [kopf, blatt] = pfad.split(".");
-    if (blatt) {
-      if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
-      erlaubteBlaetter.get(kopf).add(blatt);
-    } else {
-      erlaubteFelder.add(kopf);
-    }
-  }
+  const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {

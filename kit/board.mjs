@@ -242,14 +242,17 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "too
  * Liefert `{ config, ignored }` — `ignored` nennt jedes verworfene Feld beim Namen,
  * damit der Aufrufer es melden kann statt still das Falsche zu tun.
  */
-export function mergeWorkflowConfig(shared, local) {
-  const config = { ...(shared || {}) };
-  const ignored = [];
-  if (!local) return { config, ignored };
-
+/**
+ * Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
+ * (`reviewModel`) und einzelne Blaetter unter einem Kopf (`toolbox.tokenFile`).
+ *
+ * Eigene Funktion, weil das eine andere Frage beantwortet als das Mischen darunter:
+ * hier wird eine Schreibweise ausgewertet, dort eine Config zusammengefuehrt.
+ */
+function zerlegeAllowlist(allowlist) {
   const erlaubteBlaetter = new Map();
   const erlaubteFelder = new Set();
-  for (const pfad of LOCAL_OVERRIDE_ALLOWLIST) {
+  for (const pfad of allowlist) {
     const [kopf, blatt] = pfad.split(".");
     if (blatt) {
       if (!erlaubteBlaetter.has(kopf)) erlaubteBlaetter.set(kopf, new Set());
@@ -258,6 +261,15 @@ export function mergeWorkflowConfig(shared, local) {
       erlaubteFelder.add(kopf);
     }
   }
+  return { erlaubteFelder, erlaubteBlaetter };
+}
+
+export function mergeWorkflowConfig(shared, local) {
+  const config = { ...(shared || {}) };
+  const ignored = [];
+  if (!local) return { config, ignored };
+
+  const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
