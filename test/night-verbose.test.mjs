@@ -124,3 +124,77 @@ test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haen
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Was der Stream sonst noch liefert (Issue #405) ---
+//
+// Die Ereigniszeilen entstehen aus fremdem NDJSON. Was dort ankommt, bestimmt nicht
+// der Runner — und alles, was er nicht versteht, muss er ueberspringen, statt den
+// Lauf daran zu kippen. Ein Verbose-Modus, der an einer unparsebaren Zeile stirbt,
+// waere schlimmer als keiner.
+
+test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(issue.id), "ready");
+
+    const fake = [
+      `echo 'kein JSON'`,                                   // unparsebar
+      `echo ''`,                                            // leer
+      `echo 'null'`,                                        // JSON, aber kein Objekt
+      `echo '"nur ein String"'`,
+      `echo '{"type":"system","subtype":"init"}'`,          // Objekt ohne content
+      `echo '{"type":"assistant","message":{}}'`,           // ohne content-Array
+      `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"   "}]}}'`, // leerer Text
+      `echo '{"type":"assistant","message":{"content":[{"type":"tool_use"}]}}'`,          // ohne Namen
+      `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}'`,
+      `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Glob","input":{"zahl":7}}]}}'`,
+      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+    ].join(" && ");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `der Lauf haette durchlaufen muessen: ${res.stderr}${res.stdout}`);
+    // Ein Tool-Aufruf ohne brauchbares Argument erscheint mit blossem Namen ...
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Read$`, "m"),
+      "ein Tool ohne Argument muss mit blossem Namen erscheinen");
+    // ... eines mit nicht-textlichem Argument als kompaktes JSON.
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Glob: \\{"zahl":7\\}`),
+      "ein nicht-textliches Argument muss als JSON erscheinen");
+    // Und nichts davon erzeugt eine leere oder kaputte Ereigniszeile.
+    assert.doesNotMatch(res.stdout, /> undefined|> null|> \s*$/m,
+      "aus einer unverstandenen Zeile wurde ein Ereignis gebaut");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--verbose kuerzt lange Texte und Argumente", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(issue.id), "ready");
+
+    // Ein Text ueber 200 Zeichen und ein Kommando ueber 160: Beide muessen gekuerzt
+    // ankommen, sonst walzt eine einzelne Session das Protokoll platt.
+    const langerText = "T".repeat(400);
+    const langesKommando = `echo ${"x".repeat(400)}`;
+    const fake = [
+      `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"${langerText}"}]}}'`,
+      `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"${langesKommando}"}}]}}'`,
+      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+    ].join(" && ");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `der Lauf haette durchlaufen muessen: ${res.stderr}${res.stdout}`);
+    const textZeile = res.stdout.split("\n").find((z) => z.includes("> Claude: "));
+    assert.ok(textZeile, "die Textzeile fehlt");
+    assert.ok(textZeile.includes("…"), "der lange Text wurde nicht gekuerzt");
+    assert.ok(textZeile.length < 300, `die Textzeile ist zu lang: ${textZeile.length} Zeichen`);
+    const bashZeile = res.stdout.split("\n").find((z) => z.includes("> Bash: "));
+    assert.ok(bashZeile?.includes("…"), "das lange Kommando wurde nicht gekuerzt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
