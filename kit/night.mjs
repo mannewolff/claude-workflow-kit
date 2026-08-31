@@ -412,7 +412,11 @@ function isFachlich(title) {
 // Bewusst streng: Nur eine Zeile, die mit 'Issue-Review:' beginnt und danach etwas
 // traegt, zaehlt. 'Issue-Review folgt noch' ist das Gegenteil einer Freigabe und darf
 // nicht als eine durchgehen.
-export const REVIEW_MARKER_ZEILE = /^\s*Issue-Review:\s*\S/im;
+// `[^\S\n]*` statt `\s*` nach dem Doppelpunkt (Issue #403): Der Wert muss auf
+// derselben Zeile stehen. Vorher lief `\s*` in die Folgezeile, sodass
+// "Issue-Review:\nGO" als Marker galt — das Gegenteil dessen, was der Kommentar
+// oben seit jeher beschreibt. Die einzige gewollte Verhaltensaenderung dieser Etappe.
+export const REVIEW_MARKER_ZEILE = /^[^\S\n]*Issue-Review:[^\S\n]*\S/im;
 
 export function hasReviewMarker(body) {
   return REVIEW_MARKER_ZEILE.test(body || "");
@@ -1338,7 +1342,7 @@ export function neueKommentare(vorher, nachher) {
 }
 
 const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
-export const RUNDEN_KOPF = /^##\s*[^\n]*?,\s*Runde\s*(\d+)\s*$/;
+export const RUNDEN_KOPF = /^##[^\n]*?,[^\S\n]*Runde[^\S\n]*(\d+)[^\S\n]*$/;
 
 /** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
 function kopfUndRest(text) {

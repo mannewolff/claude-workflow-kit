@@ -42,12 +42,12 @@ test("AUTOR_MODELL_ZEILE: Treffer und Nicht-Treffer", () => {
 // --- 2. board.mjs: PRUEFUNG_ZEILE ---
 
 test("PRUEFUNG_ZEILE: Treffer, Nicht-Treffer und der leere Wert", () => {
-  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: 3")[1], "3");
-  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: Verzicht")[1], "Verzicht");
-  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: 2   ")[1], "2");
+  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: 3")[1].trim(), "3");
+  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: Verzicht")[1].trim(), "Verzicht");
+  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung: 2   ")[1].trim(), "2");
   // Der Kern: Der leere Wert MUSS treffen, mit leerem Capture.
-  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung:")[1], "");
-  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung:    ")[1], "");
+  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung:")[1].trim(), "");
+  assert.equal(PRUEFUNG_ZEILE.exec("Pruefung:    ")[1].trim(), "");
   assert.equal(PRUEFUNG_ZEILE.exec("Pruefung-Stand: abc"), null);
   assert.equal(PRUEFUNG_ZEILE.exec("  Pruefung: 3"), null, "kein fuehrender Leerraum erlaubt");
 });
@@ -65,9 +65,9 @@ test("die leere Pruefung-Zeile wird erkannt und abgelehnt", () => {
 
 test("PRUEFUNG_STAND_ZEILE: Treffer, Nicht-Treffer und der leere Wert", () => {
   const hex = "a".repeat(64);
-  assert.equal(PRUEFUNG_STAND_ZEILE.exec(`Pruefung-Stand: ${hex}`)[1], hex);
-  assert.equal(PRUEFUNG_STAND_ZEILE.exec(`Pruefung-Stand: ${hex}   `)[1], hex);
-  assert.equal(PRUEFUNG_STAND_ZEILE.exec("Pruefung-Stand:")[1], "");
+  assert.equal(PRUEFUNG_STAND_ZEILE.exec(`Pruefung-Stand: ${hex}`)[1].trim(), hex);
+  assert.equal(PRUEFUNG_STAND_ZEILE.exec(`Pruefung-Stand: ${hex}   `)[1].trim(), hex);
+  assert.equal(PRUEFUNG_STAND_ZEILE.exec("Pruefung-Stand:")[1].trim(), "");
   assert.equal(PRUEFUNG_STAND_ZEILE.exec("Pruefung: 3"), null);
 });
 
@@ -164,4 +164,61 @@ test("RUNDEN_KOPF: Treffer, Rundennummer und Nicht-Treffer", () => {
   // Das ist heutiges Verhalten; das Umschreiben darf es nicht nebenbei kippen.
   assert.equal(RUNDEN_KOPF.exec("### Issue-Review, Runde 1")[1], "1");
   assert.equal(RUNDEN_KOPF.exec("Issue-Review, Runde 1"), null, "ohne Rauten kein Treffer");
+});
+
+// --- Laufzeitprobe: der Fall, der vor dem Umschreiben explodierte ---
+//
+// Gemessen in Issue #396: Mit einem Zeilenumbruch im Eingabetext brauchte
+// `/^Pruefung: *(.*?) *$/` bei 1 KiB rund 280 ms und ab 4 KiB laenger als zehn
+// Sekunden — die beiden Wiederholungen ` *` und `(.*?)` akzeptierten dieselben
+// Zeichen, und `.` kann das `\n` nicht ueberspringen. Nach dem Umschreiben ist
+// derselbe Text harmlos.
+//
+// Erreichbar war der Fall im Bestand nicht (die Aufrufer splitten vorher an
+// `\n`). Genau deshalb wird hier direkt gegen den Ausdruck gemessen: Nur so
+// trifft die Probe den Pfad, den SonarCloud bemaengelt.
+
+const GROSS = 16 * 1024;
+const GRENZE_MS = 100;
+
+function dauer(fn) {
+  const t0 = process.hrtime.bigint();
+  fn();
+  return Number(process.hrtime.bigint() - t0) / 1e6;
+}
+
+const WORST_CASE = [
+  ["AUTOR_MODELL_ZEILE", AUTOR_MODELL_ZEILE, (n) => `Autor-Modell: x${" ".repeat(n)}\n`],
+  ["PRUEFUNG_ZEILE", PRUEFUNG_ZEILE, (n) => `Pruefung: ${" ".repeat(n)}\n`],
+  ["PRUEFUNG_STAND_ZEILE", PRUEFUNG_STAND_ZEILE, (n) => `Pruefung-Stand: ${" ".repeat(n)}\n`],
+  ["FENCE_ZEILE", FENCE_ZEILE, (n) => `   ${"`".repeat(n)}\n`],
+  ["REVIEW_MARKER_ZEILE", REVIEW_MARKER_ZEILE, (n) => `${" ".repeat(n)}Issue-Review:`],
+  ["RUNDEN_KOPF", RUNDEN_KOPF, (n) => `## ${"x".repeat(n)}, Runde `],
+];
+
+for (const [name, re, bau] of WORST_CASE) {
+  test(`${name} bleibt beim Worst-Case mit Zeilenumbruch unter ${GRENZE_MS} ms`, () => {
+    const text = bau(GROSS);
+    const ms = dauer(() => re.test(text));
+    assert.ok(ms < GRENZE_MS, `${name}: ${ms.toFixed(1)} ms bei 16 KiB — erwartet unter ${GRENZE_MS} ms`);
+  });
+}
+
+test("die Trim-Replaces bleiben beim Worst-Case schnell", () => {
+  const viele = `x${"\n".repeat(GROSS)}`;
+  assert.ok(dauer(() => viele.replace(/\n+$/, "")) < GRENZE_MS);
+  assert.ok(dauer(() => viele.replaceAll(/^\n+|\n+$/g, "")) < GRENZE_MS);
+});
+
+// --- Die eine gewollte Verhaltensaenderung ---
+
+test("ein Marker ueber Zeilengrenzen zaehlt nicht mehr", () => {
+  // Vorher matchte `\s*` in die Folgezeile hinein, sodass dieser Body als
+  // freigegeben galt. Der Kommentar an hasReviewMarker beschrieb seit jeher das
+  // Gegenteil: Nur eine Zeile, die mit 'Issue-Review:' beginnt und DANACH etwas
+  // traegt, zaehlt. Entscheidung vom 2026-08-31: Die Doku gewinnt.
+  assert.equal(hasReviewMarker("Issue-Review:\nGO"), false);
+  assert.equal(hasReviewMarker("## Kontext\nIssue-Review:\nfable"), false);
+  // Unveraendert: der Marker mit Wert auf derselben Zeile.
+  assert.equal(hasReviewMarker("Issue-Review: fable (2026-08-31)"), true);
 });

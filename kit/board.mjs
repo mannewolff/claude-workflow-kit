@@ -1087,7 +1087,7 @@ class LocalIssueTracker {
     // Autor-Modell-Zeile besteht (Issue #266). Seit der Leitplanke in issueCreate
     // ist ein Body nie mehr wirklich leer — ohne diese Erweiterung haette ein
     // `create` ohne --body still die Vorlage verloren.
-    const nurAutorZeile = /^\s*Autor-Modell: *\S[^\n]*\s*$/.test(body || "");
+    const nurAutorZeile = /^\s*Autor-Modell:[^\S\n]*\S[^\n]*\s*$/.test(body || "");
     const VORLAGE = "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n";
     let rumpf = body;
     if (!body) rumpf = VORLAGE;
@@ -1918,7 +1918,7 @@ function heute() {
 //
 // Bis hierher war die Zeile eine Bitte im /issues-Skill. Eine Bitte wird unter Druck
 // uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in /local-check.
-export const AUTOR_MODELL_ZEILE = /^Autor-Modell: *(\S.*?) *$/m;
+export const AUTOR_MODELL_ZEILE = /^Autor-Modell:[^\S\n]*(\S[^\n]*?)[^\S\n]*$/m;
 const AUTOR_MODELL_HILFE =
   'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
   'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
@@ -1950,7 +1950,7 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   const start = kontext.index + kontext[0].length;
   const naechsterAbschnitt = body.slice(start).search(/^## /m);
   const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
-  const davor = body.slice(0, ende).replace(/\n*$/, "");
+  const davor = body.slice(0, ende).replace(/\n+$/, "");
   return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
 }
 
@@ -1970,9 +1970,14 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 
 /** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
-export const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
-export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
-export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+// Kein Trimmen im Ausdruck, sondern per `.trim()` am Aufrufer (Issue #403): Jede
+// Variante, die fuehrenden und folgenden Leerraum im Muster abraeumt, laesst zwei
+// Wiederholungen dieselben Zeichen akzeptieren — und genau daran hing die
+// super-lineare Laufzeit. `[^\n]*` ist eindeutig und kann nicht backtracken.
+// Der Capture traegt deshalb den ROHEN Wert; `parsePruefvorgabe` trimmt ihn.
+export const PRUEFUNG_ZEILE = /^Pruefung:([^\n]*)$/;
+export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand:([^\n]*)$/;
+export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})([^\n]*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
 ]);
@@ -2053,7 +2058,7 @@ export function pruefvorgabeStand(body) {
   const text = normalisiereZeilenenden(body);
   const grenzen = kontextGrenzen(text);
   const rest = grenzen ? text.slice(0, grenzen.start) + text.slice(grenzen.ende) : text;
-  const gestutzt = rest.replace(/^\n+/, "").replace(/\n+$/, "");
+  const gestutzt = rest.replaceAll(/^\n+|\n+$/g, "");
   return createHash("sha256").update(gestutzt, "utf8").digest("hex");
 }
 
@@ -2078,9 +2083,9 @@ export function parsePruefvorgabe(body) {
   for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
     if (imFence(zeile)) continue;
     const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
-    if (vorgabe) vorgaben.push(vorgabe[1]);
+    if (vorgabe) vorgaben.push(vorgabe[1].trim());
     const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
-    if (stand) staende.push(stand[1]);
+    if (stand) staende.push(stand[1].trim());
   }
 
   if (vorgaben.length > 1) {
