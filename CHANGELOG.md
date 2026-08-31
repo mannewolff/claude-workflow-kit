@@ -2,6 +2,30 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.43.3] - 2026-08-31
+- sonar-project.properties: der Coverage-Kommentar stimmte nicht mehr (#405)
+- night.mjs: Restpuffer, wortloser Adapter, fehlendes buildChecks-Feld (#405)
+- night.mjs: die letzten erreichbaren Zweige (#405)
+- board.mjs: die letzten erreichbaren Zweige (#405)
+- night.mjs: der Verbose-Stream und die Vorflug-Fehlerarten (#405)
+- night.mjs: die Fehlerwege im echten Lauf (#405)
+- board.mjs: Toolbox, Vault-Pfade, Probelauf, Zustandslabels (#405)
+- board.mjs: lueckenhafte Antworten von gh und glab (#405)
+- board.mjs: der lokale Tracker und die CLI-Achse (#405)
+- night.mjs: die Vorbedingungen und die Label-Warnung (#405)
+- night.mjs: die Rueckfaelle der reinen Funktionen (#405)
+- install.mjs und die reinen Funktionen aus board.mjs (#405)
+- Die kleinen tools/-Dateien: Zweige geschlossen (#405)
+- board.mjs und derived-from-report: die restlichen offenen Zeilen (#405)
+- sync-blobs: die Skill-Kopien und ihr Schreibschutz (#405)
+- night.mjs: --version, Overrides und die echte Vorflug-Kommandozeile (#405)
+- migrate-issues: Fehler-, Validierungs- und Rueckfallpfade abgedeckt (#405)
+- Codex reviewer hinzugefügt
+- main() zerlegt: drei Programme statt einer Funktion (#404)
+- selectReviewCandidates und runReviewLoop unter die Schwelle (#404)
+- Messregel und die fuenf kleinen Faelle unter die Schwelle (#404)
+- Testnetz vor dem main()-Umbau: der vierte hardStop-Ausgang (#404)
+
 ## [1.43.2] - 2026-08-31
 - FENCE_ZEILE: negativer Lookahead macht die Fence-Laenge eindeutig (#403)
 
