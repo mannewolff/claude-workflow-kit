@@ -24,6 +24,7 @@ import {
   parsePruefvorgabe,
   pruefvorgabeStand,
   autorModellSicherstellen,
+  nurAutorZeileTrifft,
 } from "../kit/board.mjs";
 import { REVIEW_MARKER_ZEILE, RUNDEN_KOPF, hasReviewMarker } from "../kit/night.mjs";
 
@@ -37,6 +38,23 @@ test("AUTOR_MODELL_ZEILE: Treffer und Nicht-Treffer", () => {
   assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell:"), null);
   assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell:    "), null);
   assert.equal(AUTOR_MODELL_ZEILE.exec("kein Autor hier"), null);
+});
+
+test("AUTOR_MODELL_ZEILE: der Capture reicht vom ersten bis zum letzten Nicht-Leerzeichen", () => {
+  // Der Kern des Capture-Vertrags, festgehalten vor dem Umschreiben in Issue
+  // #406: Das lazy `(\S[^\n]*?)` mit nachfolgendem `[^\S\n]*$` fasst genau die
+  // Spanne vom ersten bis zum letzten Nicht-Leerzeichen der Zeile — INNEN
+  // liegender Leerraum gehoert dazu, aussen liegender nicht. Eine Umschreibung,
+  // die nur am ersten Wort endet, faellt hier auf.
+  assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell: claude opus 5")[1], "claude opus 5");
+  assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell:   claude  opus   ")[1], "claude  opus");
+  assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell:\tclaude-opus-5\t")[1], "claude-opus-5", "Tabs zaehlen als Leerraum");
+  assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell: x")[1], "x", "ein einzelnes Zeichen");
+  // Der Wert endet am Zeilenende, nicht am Bodyende.
+  assert.equal(AUTOR_MODELL_ZEILE.exec("Autor-Modell: opus  \nText\n")[1], "opus");
+  // Nur die Zeile ab Zeilenanfang zaehlt — `^` mit m-Flag, kein Leerraum davor.
+  assert.equal(AUTOR_MODELL_ZEILE.exec("  Autor-Modell: opus"), null, "kein fuehrender Leerraum erlaubt");
+  assert.equal(AUTOR_MODELL_ZEILE.exec("x Autor-Modell: opus"), null);
 });
 
 // --- 2. board.mjs: PRUEFUNG_ZEILE ---
@@ -98,6 +116,25 @@ test("autorModellSicherstellen stutzt Leerzeilen vor und nach der Einfuegestelle
   assert.equal(ohneKontext, "Autor-Modell: opus\n\nnur Text");
 });
 
+test("der Trim-Replace hinter dem Kontext-Abschnitt: Ein- und Ausgabepaare", () => {
+  // Ein-/Ausgabepaare fuer `\n+$` -> `(?<!\n)\n+$` (Issue #406). Der Lookbehind
+  // erlaubt nur den Anfang des Newline-Laufs als Startpunkt; das Ergebnis des
+  // Ersetzens bleibt dasselbe.
+  const paare = [
+    // Ein Kontext-Abschnitt ohne Leerzeilen am Ende — nichts zu stutzen.
+    ["## Kontext\nText\n## Aufgabe\nmehr\n", "## Kontext\nText\nAutor-Modell: opus\n\n## Aufgabe\nmehr\n"],
+    // Mehrere Leerzeilen am Ende des Abschnitts: alle fallen weg.
+    ["## Kontext\nText\n\n\n\n\n## Aufgabe\n", "## Kontext\nText\nAutor-Modell: opus\n\n## Aufgabe\n"],
+    // Kontext ganz ohne Inhalt: der Lauf beginnt direkt hinter der Ueberschrift.
+    ["## Kontext\n\n\n## Aufgabe\n", "## Kontext\nAutor-Modell: opus\n\n## Aufgabe\n"],
+    // Letzter Abschnitt im Body: gestutzt wird bis zum Dateiende.
+    ["## Kontext\nText\n\n\n", "## Kontext\nText\nAutor-Modell: opus\n\n"],
+  ];
+  for (const [ein, aus] of paare) {
+    assert.equal(autorModellSicherstellen(ein, "opus"), aus, `Eingabe ${JSON.stringify(ein)}`);
+  }
+});
+
 // --- 6. board.mjs: die Trim-Replaces in pruefvorgabeStand ---
 
 test("pruefvorgabeStand ignoriert fuehrende und folgende Leerzeilen", () => {
@@ -105,6 +142,47 @@ test("pruefvorgabeStand ignoriert fuehrende und folgende Leerzeilen", () => {
   const b = pruefvorgabeStand("\n\n## Aufgabe\nText\n\n\n");
   assert.equal(a, b, "gestutzt wird vorn und hinten — derselbe Stand");
   assert.notEqual(a, pruefvorgabeStand("## Aufgabe\nAnderer Text\n"));
+});
+
+test("der Trim-Replace in pruefvorgabeStand: dieselben Aequivalenzklassen wie vorher", () => {
+  // `^\n+|\n+$` -> `^\n+|(?<!\n)\n+$` (Issue #406). Der Lookbehind aendert nur
+  // den Startpunkt des zweiten Zweigs, nicht das Ergebnis. Geprueft wird ueber
+  // den Hash: Was vorher denselben Stand ergab, muss ihn weiter ergeben — und
+  // was sich unterschied, muss sich weiter unterscheiden.
+  const stand = pruefvorgabeStand("## Aufgabe\nText\n");
+  const gleich = [
+    "## Aufgabe\nText",                 // ohne abschliessenden Umbruch
+    "\n## Aufgabe\nText\n",             // eine Leerzeile vorn
+    "\n\n\n\n## Aufgabe\nText\n\n\n\n", // viele vorn und hinten
+  ];
+  for (const ein of gleich) {
+    assert.equal(pruefvorgabeStand(ein), stand, `Eingabe ${JSON.stringify(ein)} muss denselben Stand ergeben`);
+  }
+  // Innenliegende Leerzeilen werden NICHT gestutzt — sie gehoeren zum Inhalt.
+  assert.notEqual(pruefvorgabeStand("## Aufgabe\n\nText\n"), stand, "eine Leerzeile mittendrin zaehlt");
+  // Ein Body ganz aus Leerzeilen stutzt auf den leeren String — der Sonderfall,
+  // in dem der Lauf am Stringanfang beginnt und der Lookbehind trotzdem greift.
+  assert.equal(pruefvorgabeStand("\n\n\n"), pruefvorgabeStand(""));
+});
+
+// --- 6b. board.mjs: nurAutorZeileTrifft ---
+
+test("nurAutorZeileTrifft: Treffer und Nicht-Treffer", () => {
+  // Der Ausdruck fasst seit Issue #406 nur noch die rohe Zeile, das Trimmen
+  // macht die Funktion — dasselbe Muster wie bei PRUEFUNG_ZEILE in #403. Die
+  // Bedeutung bleibt die des alten `^\s*Autor-Modell:...\s*$`.
+  assert.equal(nurAutorZeileTrifft("Autor-Modell: opus"), true);
+  assert.equal(nurAutorZeileTrifft("Autor-Modell:   opus   "), true, "Leerraum um den Wert ist erlaubt");
+  assert.equal(nurAutorZeileTrifft("\n\nAutor-Modell: opus\n\n"), true, "Leerzeilen davor und danach zaehlen nicht");
+  assert.equal(nurAutorZeileTrifft("  \n Autor-Modell: opus \n "), true, "auch gemischter Leerraum");
+  // Kein Treffer: leerer Wert, fremder Text, zweite Inhaltszeile.
+  assert.equal(nurAutorZeileTrifft("Autor-Modell:"), false, "ohne Wert kein Treffer");
+  assert.equal(nurAutorZeileTrifft("Autor-Modell:    "), false);
+  assert.equal(nurAutorZeileTrifft("## Kontext\nAutor-Modell: opus"), false, "eine Zeile davor zaehlt");
+  assert.equal(nurAutorZeileTrifft("Autor-Modell: opus\nText"), false, "eine Zeile danach zaehlt");
+  assert.equal(nurAutorZeileTrifft(""), false);
+  assert.equal(nurAutorZeileTrifft(null), false);
+  assert.equal(nurAutorZeileTrifft(undefined), false);
 });
 
 // --- 7. board.mjs: nurAutorZeile (inline in issueCreate) ---
@@ -205,9 +283,16 @@ for (const [name, re, bau] of WORST_CASE) {
 }
 
 test("die Trim-Replaces bleiben beim Worst-Case schnell", () => {
-  const viele = `x${"\n".repeat(GROSS)}`;
-  assert.ok(dauer(() => viele.replace(/\n+$/, "")) < GRENZE_MS);
-  assert.ok(dauer(() => viele.replaceAll(/^\n+|\n+$/g, "")) < GRENZE_MS);
+  // Gemessen wird gegen die Funktionen des Bestands, nicht gegen kopierte
+  // Literale (Issue #406). Der alte Stand dieser Probe kopierte `/\n+$/` und
+  // `/^\n+|\n+$/g` und fuetterte sie mit `x` + lauter Umbruechen — der Ausdruck
+  // trifft dort SOFORT, also mass die Probe kein Backtracking und blieb auch
+  // gegen die quadratische Fassung gruen. Der Worst-Case braucht die umgekehrte
+  // Form: Umbrueche zuerst, dann ein Zeichen, an dem das Ende scheitert.
+  const viele = `${"\n".repeat(GROSS)}x`;
+  assert.ok(dauer(() => autorModellSicherstellen(`## Kontext\n${viele}`, "opus")) < GRENZE_MS);
+  assert.ok(dauer(() => pruefvorgabeStand(`## Aufgabe\n${viele}`)) < GRENZE_MS);
+  assert.ok(dauer(() => nurAutorZeileTrifft(`Autor-Modell: x${" ".repeat(GROSS)}\ny`)) < GRENZE_MS);
 });
 
 // --- Die eine gewollte Verhaltensaenderung ---
