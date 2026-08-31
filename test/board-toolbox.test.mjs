@@ -522,7 +522,8 @@ test("Nicht erreichbarer Host nennt den Host in der Meldung", async () => {
   try {
     const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, new RegExp(`Toolbox-API nicht erreichbar \\(${host.replace(/[.]/g, "\\.")}\\)`));
+    const hostMuster = host.replaceAll(/[.]/g, String.raw`\.`);
+    assert.match(res.stderr, new RegExp(`Toolbox-API nicht erreichbar \\(${hostMuster}\\)`));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

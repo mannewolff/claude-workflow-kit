@@ -109,8 +109,8 @@ test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsver
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)) && inReview.includes(String(zweites.id)),
+    const inReview = new Set(board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id)));
+    assert.ok(inReview.has(String(erstes.id)) && inReview.has(String(zweites.id)),
       "beide Issues haetten in In review landen muessen");
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
     assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");

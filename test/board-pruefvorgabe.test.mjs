@@ -154,8 +154,8 @@ test("ein zusaetzlicher Abschnitt ausserhalb des Kontexts veraendert den Stand",
 });
 
 test("CRLF und LF liefern denselben Stand", () => {
-  assert.equal(pruefvorgabeStand(VEKTOR_BODY.replace(/\n/g, "\r\n")), VEKTOR_STAND);
-  assert.equal(pruefvorgabeStand(VEKTOR_BODY.replace(/\n/g, "\r")), VEKTOR_STAND);
+  assert.equal(pruefvorgabeStand(VEKTOR_BODY.replaceAll('\n', "\r\n")), VEKTOR_STAND);
+  assert.equal(pruefvorgabeStand(VEKTOR_BODY.replaceAll('\n', "\r")), VEKTOR_STAND);
 });
 
 test("ohne Kontext-Abschnitt wird der ganze Body gehasht", () => {

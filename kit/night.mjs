@@ -675,7 +675,7 @@ function satisfiedIds() {
 
 // Kuerzt Text auf eine kompakte, einzeilige Log-Zeile.
 function flatten(str, max) {
-  const flat = (str || "").replace(/\s+/g, " ").trim();
+  const flat = (str || "").replaceAll(/\s+/g, " ").trim();
   return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
 }
 
@@ -1055,7 +1055,7 @@ function ladeConfigMitOverrides(sharedPfad) {
       config[feld] = wert;
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       const blaetter = erlaubteBlaetter.get(feld);
-      const zusammen = { ...(config[feld] || {}) };
+      const zusammen = { ...config[feld] };
       for (const [unterfeld, unterwert] of Object.entries(wert)) {
         if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
         else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
@@ -1172,8 +1172,8 @@ function vorflugPrompt(kommandoReviewers, trackerId) {
 }
 
 /** Schneidet den Befund-Block aus der Session-Ausgabe. null = nichts Auswertbares. */
-export function parseVorflugBefund(stdout) {
-  const text = stdout || "";
+export function parseVorflugBefund(stdout = "") {
+  const text = stdout;
   // lastIndexOf: Erklaert das Modell seinen Befund erst und gibt ihn dann aus, gilt der
   // letzte Block — der Auftrag lautet, ihn als allerletzte Ausgabe zu schreiben.
   const start = text.lastIndexOf(VORFLUG_START);
@@ -1201,7 +1201,7 @@ export function parseVorflugBefund(stdout) {
  */
 export function normalisiereVorflug(roh, reviewers) {
   const gemeldet = new Map(
-    (roh?.reviewers || []).filter((r) => r && r.name).map((r) => [String(r.name), r]),
+    (roh?.reviewers || []).filter((r) => r?.name).map((r) => [String(r.name), r]),
   );
   const befunde = (reviewers || []).map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: UMGEBUNG_SESSION };
@@ -1531,7 +1531,10 @@ async function main() {
 
   const modus = args.review ? "Review" : "Implementierung";
   const aktivesLabel = args.review ? args.reviewLabel : args.label;
-  log(`Nacht-Runner startet (Modus ${modus}${args.review ? `, Stufe ${args.stufe ?? "issue"}` : ""}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${args.dryRun ? ", DRY-RUN" : ""}${args.yolo ? ", YOLO" : ""})`);
+  const stufenAngabe = args.review ? `, Stufe ${args.stufe ?? "issue"}` : "";
+  const dryRunAngabe = args.dryRun ? ", DRY-RUN" : "";
+  const yoloAngabe = args.yolo ? ", YOLO" : "";
+  log(`Nacht-Runner startet (Modus ${modus}${stufenAngabe}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -1607,7 +1610,8 @@ async function main() {
       .map((r) => ({ name: r.name, kind: r.kind === "command" ? "command" : "claude", command: r.command }));
     const trackerId = trackerProbeId(kandidaten, kandidaten.length > 0 ? null : board("issue", "list"));
 
-    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${trackerId ? `Issue #${trackerId}` : "nur issue list"}).`);
+    const probeAngabe = trackerId ? `Issue #${trackerId}` : "nur issue list";
+    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${probeAngabe}).`);
     const vorflug = await reviewerVorflug(args, reviewerListe, trackerId);
 
     // Eine Vorflug-Session darf so wenig am Repository anfassen wie eine Review-Session.
@@ -1623,15 +1627,20 @@ async function main() {
       log(`  Vorflug-Session nicht auswertbar: ${vorflug.grund}`);
     }
     for (const r of vorflug.reviewers) {
-      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`}`);
+      const stand = r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`;
+      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${stand}`);
     }
     // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
     // nicht "Werkzeug installieren", sondern "Block uebernehmen".
     const KEIN_REVIEWER = "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen";
     if (reviewerListe.length === 0) log(`  Kein Reviewer konfiguriert: ${KEIN_REVIEWER}`);
-    log(`  Tracker (${vorflug.tracker.umgebung}): ${vorflug.tracker.erreichbar
-      ? `erreichbar${vorflug.tracker.uebersprungen ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}` : ""}`
-      : `NICHT erreichbar — ${vorflug.tracker.grund}`}`);
+    const getVermerk = vorflug.tracker.uebersprungen
+      ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}`
+      : "";
+    const trackerStand = vorflug.tracker.erreichbar
+      ? `erreichbar${getVermerk}`
+      : `NICHT erreichbar — ${vorflug.tracker.grund}`;
+    log(`  Tracker (${vorflug.tracker.umgebung}): ${trackerStand}`);
 
     // Drei getrennte Befunde, drei getrennte Meldungen. Ein `verfuegbar: false`, das in
     // Wahrheit ein toter Tracker war, schickt den Menschen morgens in die falsche Ecke.

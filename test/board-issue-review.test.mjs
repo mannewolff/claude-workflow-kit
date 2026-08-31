@@ -180,7 +180,7 @@ function fs_mit(...pfade) {
 const WIN = {
   platform: "win32",
   pathext: ".COM;.EXE;.BAT;.CMD",
-  path: "C:\\bin;C:\\npm",
+  path: String.raw`C:\bin;C:\npm`,
 };
 // `ausfuehrbar` gehoert zur Grundausstattung: Unter POSIX prueft findeImPath das
 // X-Bit, und die Fixture-Pfade existieren real nicht — ohne Injektion wuerde der
@@ -191,43 +191,43 @@ test("findeImPath: win32 findet 'codex' als codex.cmd", () => {
   // Der Kernfall, an dem die fruehere Implementierung scheiterte.
   // Verglichen wird case-insensitiv: Zurueck kommt der aus PATHEXT gebildete Pfad
   // (.CMD), die Datei heisst .cmd — auf einem Windows-Dateisystem derselbe Pfad.
-  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit("C:\\npm\\codex.cmd") });
-  assert.equal(treffer?.toLowerCase(), "c:\\npm\\codex.cmd");
+  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit(String.raw`C:\npm\codex.cmd`) });
+  assert.equal(treffer?.toLowerCase(), String.raw`c:\npm\codex.cmd`);
 });
 
 test("findeImPath: win32 haelt die PATHEXT-Reihenfolge ein", () => {
   // .EXE steht in PATHEXT vor .CMD — liegen beide da, gewinnt .EXE.
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\bin\\codex.EXE"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\bin\codex.EXE`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.EXE");
+  assert.equal(treffer, String.raw`C:\bin\codex.EXE`);
 });
 
 test("findeImPath: win32 durchsucht die PATH-Eintraege in ihrer Reihenfolge", () => {
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD", "C:\\npm\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\npm\codex.CMD`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: win32 ergaenzt einen Namen mit Endung nicht noch einmal", () => {
   // 'codex.exe' darf nicht zu 'codex.exe.CMD' werden.
-  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe") });
-  assert.equal(treffer, "C:\\bin\\codex.exe");
-  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit("C:\\bin\\codex.exe.CMD") });
+  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe`) });
+  assert.equal(treffer, String.raw`C:\bin\codex.exe`);
+  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe.CMD`) });
   assert.equal(daneben, null);
 });
 
 test("findeImPath: win32 ohne PATHEXT nutzt die Windows-Default-Liste", () => {
   const treffer = findeImPath("codex", {
     platform: "win32",
-    path: "C:\\bin",
+    path: String.raw`C:\bin`,
     pathext: undefined,
-    existiert: fs_mit("C:\\bin\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: posix probiert keine Endungen", () => {
@@ -240,8 +240,8 @@ test("findeImPath: posix probiert keine Endungen", () => {
 test("findeImPath: der PATH-Trenner haengt an der Plattform", () => {
   // Unter win32 trennt ';' — ein ':' im Pfad ist dort Teil des Laufwerksbuchstabens.
   assert.equal(
-    findeImPath("codex", { ...WIN, path: "C:\\a;C:\\b", existiert: fs_mit("C:\\b\\codex.CMD") }),
-    "C:\\b\\codex.CMD",
+    findeImPath("codex", { ...WIN, path: String.raw`C:\a;C:\b`, existiert: fs_mit(String.raw`C:\b\codex.CMD`) }),
+    String.raw`C:\b\codex.CMD`,
   );
   assert.equal(
     findeImPath("codex", { ...POSIX, path: "/a:/b", existiert: fs_mit("/b/codex") }),
@@ -253,7 +253,7 @@ test("findeImPath: der Trenner im Ergebnis folgt der uebergebenen Plattform, nic
   // Die Invariante, an der der Windows-Job gescheitert ist: join() aus node:path ist
   // immer die Variante des LAUFENDEN Hosts. Dieser Test faellt auf, egal auf welcher
   // Seite jemand sie wieder einbaut — er laeuft unter POSIX und Windows gleich.
-  const win = findeImPath("codex", { ...WIN, path: "C:\\bin", existiert: () => true });
+  const win = findeImPath("codex", { ...WIN, path: String.raw`C:\bin`, existiert: () => true });
   assert.ok(win.includes("\\"), `win32-Ergebnis ohne Backslash: ${win}`);
   assert.ok(!win.includes("/"), `win32-Ergebnis mit Slash: ${win}`);
 
@@ -299,10 +299,10 @@ test("findeImPath: win32 prueft kein Ausfuehrbar-Bit", () => {
   // Unter Windows entscheidet die Endung, nicht ein Modus-Bit.
   const treffer = findeImPath("codex", {
     ...WIN,
-    existiert: fs_mit("C:\\bin\\codex.CMD"),
+    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
     ausfuehrbar: () => false,
   });
-  assert.equal(treffer, "C:\\bin\\codex.CMD");
+  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
 test("findeImPath: leerer PATH liefert null statt zu werfen", () => {

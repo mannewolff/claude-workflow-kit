@@ -87,9 +87,9 @@ test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt u
     assert.match(res.stdout, /Failed to authenticate/, "Log nennt die CLI-Fehlermeldung nicht");
 
     // Beide Issues unangetastet in Ready — nichts wandert ins Backlog.
-    const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
-    assert.ok(ready.includes(String(erstes.id)), "erstes Issue liegt nicht mehr in Ready");
-    assert.ok(ready.includes(String(zweites.id)), "zweites Issue liegt nicht mehr in Ready");
+    const ready = new Set(board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id)));
+    assert.ok(ready.has(String(erstes.id)), "erstes Issue liegt nicht mehr in Ready");
+    assert.ok(ready.has(String(zweites.id)), "zweites Issue liegt nicht mehr in Ready");
     const backlog = board(dir, "issue", "list", "--status", "backlog");
     assert.equal(backlog.length, 0, "Backlog haette leer bleiben muessen");
 

@@ -194,7 +194,7 @@ function erfolgsRegeln() {
     { match: "cursor=PROJ-C1", stdout: projektSeite2 },
     { match: "projectV2", stdout: projektSeite1 },
     { match: "states:OPEN", stdout: seite1 },
-    { match: "issues\\(", stdout: ohneFilter },
+    { match: String.raw`issues\(`, stdout: ohneFilter },
   ];
 }
 
@@ -453,7 +453,7 @@ test("eine leer gelesene Issue-Liste wird als [] geschrieben", NUR_POSIX, () => 
   const dir = fixture("migrate-leer-", [
     { match: "repo view", stdout: `${ZIEL_REPO}\n` },
     { match: "projectV2", stdout: projektLeer },
-    { match: "issues\\(", stdout: leer },
+    { match: String.raw`issues\(`, stdout: leer },
   ]);
   try {
     const { res } = exportiere(dir);
@@ -471,8 +471,8 @@ test("eine leer gelesene Issue-Liste wird als [] geschrieben", NUR_POSIX, () => 
 
 test("ein fehlgeschlagener oder unlesbarer gh-Aufruf hinterlaesst keine Datei", () => {
   const faelle = [
-    { name: "exit", regel: { match: "issues\\(", stderr: "gh: Kontingent leer\n", exit: 1 } },
-    { name: "json", regel: { match: "issues\\(", stdout: "<html>kein JSON</html>" } },
+    { name: "exit", regel: { match: String.raw`issues\(`, stderr: "gh: Kontingent leer\n", exit: 1 } },
+    { name: "json", regel: { match: String.raw`issues\(`, stdout: "<html>kein JSON</html>" } },
   ];
   for (const fall of faelle) {
     const dir = fixture(`migrate-fehler-${fall.name}-`, [

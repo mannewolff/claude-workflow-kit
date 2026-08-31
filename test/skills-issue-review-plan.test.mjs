@@ -61,8 +61,8 @@ test("architektur-bestand: prueft das Plan-Format vollstaendig", () => {
   ]) {
     // Der Prompt bricht die Ueberschriften ueber Zeilen um
     // ("## Architektonische\n   Entscheidungen") — ohne \s+ liefe der Test daran vorbei.
-    const escaped = ueberschrift.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const muster = new RegExp(escaped.replace(/\s+/g, "\\s+"));
+    const escaped = ueberschrift.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+    const muster = new RegExp(escaped.replaceAll(/\s+/g, String.raw`\s+`));
     assert.match(p, muster, `Pflichtabschnitt fehlt im Prompt: ${ueberschrift}`);
   }
   assert.match(p, /Reihenfolge/i, "die Reihenfolge wird nicht gefordert");

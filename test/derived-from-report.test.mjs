@@ -50,7 +50,7 @@ test("Karte ohne jede Verweiszeile ist keiner", () => {
 // Ohne Normalisierung laufen die verankerten Ausdruecke leer und die Karte faellt
 // stumm auf `keiner` — der teuerste Fund des Issue-Reviews.
 test("CRLF-Zeilenenden aendern nichts am Ergebnis", () => {
-  const body = KONTEXT("Autor-Modell: m", "Plan: Issue #363").replace(/\n/g, "\r\n");
+  const body = KONTEXT("Autor-Modell: m", "Plan: Issue #363").replaceAll('\n', "\r\n");
   const r = herkunftAusBody(karte(body));
   assert.equal(r.zustand, "vorfahr");
   assert.equal(r.vorfahr, 363);

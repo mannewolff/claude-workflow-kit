@@ -27,7 +27,8 @@ const text = () => readFileSync(SKILL, "utf-8");
 
 /** Ein nummerierter Schritt bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
 function abschnitt(ueberschrift) {
-  const muster = new RegExp(`\\n#{2,3} *${ueberschrift.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+  const maskiert = ueberschrift.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  const muster = new RegExp(`\\n#{2,3} *${maskiert}`, "i");
   const teile = text().split(muster);
   assert.equal(teile.length, 2, `Abschnitt "${ueberschrift}" nicht genau einmal gefunden`);
   return teile[1].split(/\n#{2,4} /)[0];

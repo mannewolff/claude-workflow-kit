@@ -42,7 +42,7 @@ import { join, resolve } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const UNTERKOMMANDOS = ["export", "import", "verify"];
+const UNTERKOMMANDOS = new Set(["export", "import", "verify"]);
 const DEFAULT_OUT = join(tmpdir(), "claude-workflow-kit-migrationen");
 
 const HILFE = [
@@ -372,7 +372,7 @@ function leseSpalten(owner, repoVoll, num) {
   const spalten = new Map();
   for (const item of items) {
     const inhalt = item?.content;
-    if (!inhalt || inhalt.number == null) continue;
+    if (inhalt?.number == null) continue;
     if (inhalt.repository?.nameWithOwner !== repoVoll) continue;
     const name = item.fieldValueByName?.name;
     spalten.set(Number(inhalt.number), name ? String(name) : null);
@@ -385,7 +385,7 @@ function zeitstempel() {
   // ("Zieldatei existiert schon") nur ueber Zeitmanipulation pruefbar.
   const gesetzt = process.env.KIT_MIGRATE_STAMP;
   if (gesetzt) return gesetzt;
-  return new Date().toISOString().replace(/:/g, "-");
+  return new Date().toISOString().replaceAll(':', "-");
 }
 
 /**
@@ -468,7 +468,7 @@ const ZIELSPALTEN = {
 
 function zielSpalte(wert) {
   if (wert == null || String(wert).trim() === "") return "BACKLOG";
-  const schluessel = String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const schluessel = String(wert).trim().toLowerCase().replaceAll(/[\s-]+/g, "_");
   const spalte = ZIELSPALTEN[schluessel];
   if (!spalte) {
     throw new MigrateError(`Unbekannte Spalte '${wert}' — bekannt sind: ${Object.keys(ZIELSPALTEN).join(", ")}.`);
@@ -792,7 +792,7 @@ const BETRIEBSFEHLER = 2;
  */
 function normalisiereSpalte(wert) {
   if (wert == null || String(wert).trim() === "") return null;
-  const schluessel = String(wert).trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const schluessel = String(wert).trim().toLowerCase().replaceAll(/[\s-]+/g, "_");
   const ziel = ZIELSPALTEN[schluessel];
   return ziel ? ziel.toLowerCase() : schluessel;
 }
@@ -915,7 +915,7 @@ export async function main(argv) {
   }
 
   const [unterkommando, ...rest] = argv;
-  if (!UNTERKOMMANDOS.includes(unterkommando)) return hilfeAufStderr();
+  if (!UNTERKOMMANDOS.has(unterkommando)) return hilfeAufStderr();
 
   // verify trennt zwei Lagen ueber den Exit-Code und faengt deshalb selbst:
   // 1 = fachliche Abweichung, 2 = Betriebsfehler. Wer beides auf 1 abbildet, kann
