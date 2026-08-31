@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.42.2] - 2026-08-31
+- package.json ohne version-Feld — die Kit-Version lebt in install.mjs
+- ESLint-Leitplanke gegen die Stilfunde, 36 Fundstellen abgeraeumt (#399)
+- Komplexitaet: drei Funktionen zerteilt, sechs begruendet stehen gelassen (#397)
+- Regex-Laufzeit gemessen: der Aufrufvertrag schuetzt, nicht die Form (#396)
+- Sonar-Workflow: bei rotem Quality Gate fehlschlagen (#395)
+- night.mjs: der Fallback fuer parsePruefvorgabe traegt die echte Signatur (#394)
+
 ## [1.42.1] - 2026-08-30
 - probelauf: der Exit-Status schlaegt den EPIPE-Fehler (#393)
 
