@@ -180,7 +180,7 @@ const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.43.0";
+const KIT_VERSION = "1.43.1";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
