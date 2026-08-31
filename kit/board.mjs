@@ -2160,7 +2160,7 @@ export function reviewZustand(body, comments, stufe) {
   const text = normalisiereZeilenenden(body || "");
 
   const imFence = fenceLauf();
-  const markerZeile = new RegExp(`^\\s*${marker}:\\s*\\S`);
+  const markerZeile = new RegExp(String.raw`^\s*${marker}:\s*\S`);
   for (const zeile of text.split("\n")) {
     if (imFence(zeile)) continue;
     if (markerZeile.test(zeile)) return "fertig";
@@ -2172,7 +2172,7 @@ export function reviewZustand(body, comments, stufe) {
   const { wert, verfallen } = parsePruefvorgabe(text);
   if (wert === "verzicht" && !verfallen) return "fertig";
 
-  const anker = new RegExp(`^\\s*##\\s*${marker},\\s*Runde\\b`, "i");
+  const anker = new RegExp(String.raw`^\s*##\s*${marker},\s*Runde\b`, "i");
   const eigene = (Array.isArray(comments) ? comments : []).filter((k) =>
     anker.test(String(k?.body || "").split("\n")[0] || "")
   );

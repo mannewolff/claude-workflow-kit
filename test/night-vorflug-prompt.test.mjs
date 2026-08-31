@@ -16,18 +16,18 @@ import assert from "node:assert/strict";
 
 import { vorflugPrompt } from "../kit/night.mjs";
 
-test("der Vorflug-Prompt baut die printf-Zeile mit maskiertem \\n", () => {
+test(String.raw`der Vorflug-Prompt baut die printf-Zeile mit maskiertem \n`, () => {
   const prompt = vorflugPrompt([{ name: "codex", command: "codex exec --model gpt-5" }], null);
   const zeile = prompt.split("\n").find((z) => z.includes("printf"));
 
   assert.ok(zeile, "keine printf-Zeile im Prompt gefunden");
   assert.equal(
     zeile,
-    "  printf '%s\\n' 'Antworte nur mit dem Wort OK.' | codex exec --model gpt-5   # Reviewer: codex"
+    String.raw`  printf '%s\n' 'Antworte nur mit dem Wort OK.' | codex exec --model gpt-5   # Reviewer: codex`
   );
   // Der Kern: zwei Zeichen, kein Umbruch. Ein echter Umbruch wuerde die Zeile
   // beim split oben zerreissen und die Zusicherung darueber fallen lassen.
-  assert.ok(zeile.includes("%s\\n"), "das Format-Argument traegt kein maskiertes \\n");
+  assert.ok(zeile.includes(String.raw`%s\n`), String.raw`das Format-Argument traegt kein maskiertes \n`);
 });
 
 test("ohne command-Reviewer entsteht keine printf-Zeile", () => {

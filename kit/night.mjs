@@ -172,7 +172,6 @@ const NACHBAR_BOARD = join(__dirname, "board.mjs");
 // Die Bindung ist jetzt `const` mit einem Ternaer: Liegt der Nachbar da, kommt die
 // echte Signatur aus dem Modul; liegt er nicht da, wirft der Stub.
 const parsePruefvorgabeFallback = (body) => {
-  void body;
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
 };
 const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
@@ -496,7 +495,7 @@ const STUFEN_MARKER = {
 export function hasStageMarker(body, stufe) {
   const marker = STUFEN_MARKER[stufe];
   if (!marker) return false;
-  return new RegExp(`^\\s*${marker}\\s*\\S`, "im").test(body || "");
+  return new RegExp(String.raw`^\s*${marker}\s*\S`, "im").test(body || "");
 }
 
 /**
@@ -1141,7 +1140,7 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     zeilen.push(
       `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
       ``,
-      ...kommandoReviewers.map((r) => `  printf '%s\\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
+      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
