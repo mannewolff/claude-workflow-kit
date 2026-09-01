@@ -28,8 +28,11 @@ test("issue-review ruft label-sync an drei Stellen auf", () => {
   assert.match(text, /nach der Verzicht-Meldung/i);
 });
 
-// Ein Label ist weder Body noch Marker — es faellt nicht unter das naechtliche
-// Schreibverbot fuer die Stufen fachlich und plan.
+// Ein Label ist weder Body noch Marker — es zu zeigen ist keine
+// Produktentscheidung, sondern ein abgeleiteter Zustand. Bis Issue #418 stand hier
+// als Begruendung das naechtliche Schreibverbot fuer `fachlich` und `plan`; seit
+// die Stufen unbeaufsichtigt schreiben duerfen, verwiese sie auf ein Verbot, das
+// es nicht mehr gibt.
 test("Der Nachtbetrieb nimmt label-sync ausdruecklich NICHT aus", () => {
   const text = skill("issue-review");
   assert.match(text, /nachts identisch|auch nachts|nachts genauso/i);

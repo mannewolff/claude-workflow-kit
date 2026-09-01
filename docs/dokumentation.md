@@ -671,7 +671,7 @@ Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unverändert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
 
-Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob geschrieben werden darf — nachts nie in eine fachliche Anforderung und nie in einen Plan, weil dort PO-Antworten und Architekturentscheidungen stehen, die ein Mensch getroffen hat.
+Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob vor dem Schreiben gefragt wird: interaktiv zeigt der Skill den geschärften Body und fragt einmal, unbeaufsichtigt schreibt er ihn, sobald alle Funde die Klasse `korrektur` tragen. Geschützt sind dabei nicht die Stufen, sondern die Inhalte, die ein Mensch gesetzt hat — ein Fund auf eine PO-Antwort oder auf eine Architekturentscheidung wird nie angewendet, er zeichnet das Dokument mit `kit:klaeren`.
 
 **Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.** An ihr hängt das Gate `requiredBeforeReady`; `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie. Sie belegen die Prüfung einer früheren Stufe, nicht die des Arbeitspakets — wer sie verwechselt, zieht ein ungeprüftes Arbeitspaket nach Ready.
 
@@ -864,11 +864,11 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 
 Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Ein wörtlich vorgeschlagener Fund, der nur einen Weg kennt, ist keine Produktentscheidung — ihn anzuwenden auch nicht. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` das am Ticket sichtbar. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
-**Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+**Beide Regeln gelten für alle drei Stufen** — auch für `fachlich` und `plan`. Wird der Body geschrieben, trägt das Dokument danach den Marker seiner Stufe; sonst bliebe es auf `review:offen` stehen und sähe ungeprüft aus, obwohl sein Body den Review bereits trägt. Am Gate ändert das nichts: `requiredBeforeReady` prüft allein `Issue-Review:`, und die oberen Stufen gehen ohnehin nie nach Ready.
 
-Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen, und nachts schreibt niemand darin.
+Geschützt sind nicht die Stufen, sondern die Inhalte: In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen. Ein `korrektur`-Fund, der eine dokumentierte PO-Antwort oder eine solche Begründung berührt, ist deshalb keiner: Er wird nicht angewendet, sondern zeichnet das Dokument mit `kit:klaeren`, und der Marker bleibt aus.
 
-Ein nächtlich gesetzter Marker — es kann nur einer der Stufe `issue` sein — ist als solcher erkennbar:
+Ein nächtlich gesetzter Marker ist als solcher erkennbar — hier der eines Arbeitspakets, Stufe `issue`:
 
 ```
 Issue-Review: codex (2026-08-06, Nachtlauf)
@@ -987,7 +987,7 @@ Der Kontext-Abschnitt zählt dabei bewusst nicht mit, denn dort stehen die Kennz
 
 **Fehlt der Stand, gilt die Vorgabe.** Eine `Pruefung:`-Zeile ohne `Pruefung-Stand:` — etwa weil sie im Board-UI von Hand gesetzt wurde und nie ein `issue update` lief — ist voll wirksam. Ohne Bezugsstand lässt sich kein Verfall feststellen, und im Zweifel gilt die Entscheidung des Menschen und nicht ihre Annullierung durch eine fehlende Zeile.
 
-**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt auf der Stufe `issue` den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
+**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Seit die Schärfung auf allen drei Stufen schreibt, greift dieser Schutz gerade bei `fachlich` und `plan`: Dort steht die Vorgabe des Menschen in einem Dokument, das die Maschine nun ebenfalls anfasst. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
 
 ### Was es kostet
 

@@ -89,7 +89,7 @@ Kommando je Stufe — welche greift, liest der Skill am Titel-Praefix ab. Das gi
 **interaktiv genauso wie im Nachtbetrieb**: Ein `[Plan]`-Issue laesst sich
 jederzeit tagsueber pruefen, es muss nicht auf einen Nachtlauf warten. Der
 Unterschied zwischen beiden Betriebsarten liegt nicht in der Stufenwahl, sondern
-darin, ob der Body geschrieben werden darf (siehe Nachtbetrieb).
+darin, ob vor dem Schreiben gefragt wird (siehe Nachtbetrieb).
 
 **Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.**
 `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie — sie belegen die Pruefung
