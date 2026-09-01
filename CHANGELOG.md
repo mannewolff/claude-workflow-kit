@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.43.4] - 2026-09-01
+- Doku: bereichsbezogene Pruefungen beschreiben (#429)
+- night.mjs: Pruef-Zusammenfassungen einsammeln und im Lauf-Bericht zeigen (#428)
+- local-check: Pruefung vor dem Push mit merge-base-Anker (#427)
+- implement-Skills: Pruefung vor dem Commit (#426)
+- Auslieferung: checks.mjs in install.mjs und sync-blobs (#425)
+- checks: run fuehrt die Auswahl aus und hinterlaesst sie (#424)
+- checks: die Auswahl als Kommando, ohne auszufuehren (#423)
+- checks: Config-Form fuer bereichsbezogene Pruefungen (#422)
+- night.mjs: der Review-Auftrag nennt die Betriebsart (#419)
+- issue-review: geschuetzt sind die Inhalte, nicht die Stufen (#418)
+- issue-review: Schritt 6 traegt beide Betriebsarten (#417)
+- issue-review: der Marker ist eine Body-Zeile, kein eigener Schreibbefehl (#415)
+- S8786: vier quadratische Ausdruecke formseitig aufloesen (#406)
+
 ## [1.43.3] - 2026-08-31
 - sonar-project.properties: der Coverage-Kommentar stimmte nicht mehr (#405)
 - night.mjs: Restpuffer, wortloser Adapter, fehlendes buildChecks-Feld (#405)
