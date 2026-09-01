@@ -191,3 +191,36 @@ test("renderChangelog schreibt Unreleased ohne Datum", () => {
   assert.match(md, /## \[Unreleased\]\n/, "Unreleased traegt ein Datum, das nichts bedeutet");
   assert.match(md, /## \[1\.35\.0\] - 2026-08-07/);
 });
+
+// --- Commits ohne Issue-Referenz (Issue #405) ---
+//
+// Nicht jeder Commit traegt "(Issue #N)": Release-Bumps sind Marken, aber auch ein
+// Fix am Prozess oder eine Doku-Korrektur entsteht mitunter ohne Ticket. Solche
+// Eintraege gehoeren in den Changelog — nur eben ohne Referenz. Faellt der
+// Rueckfall weg, steht dort "(#undefined)" oder der Eintrag verschwindet.
+
+test("ein Commit ohne (Issue #N) behaelt seinen vollen Text und traegt ref null", () => {
+  const blocks = parseVersions([
+    { date: "2026-08-01", subject: "Mit Referenz (Issue #7)" },
+    { date: "2026-08-01", subject: "Ohne Referenz, aber mit Klammer (nicht Issue)" },
+    { date: "2026-08-02", subject: "chore: v2.0.0" },
+  ], "2026-08-02");
+
+  assert.equal(blocks.length, 1);
+  const ohne = blocks[0].items.find((i) => i.ref === null);
+  assert.ok(ohne, "der Eintrag ohne Referenz fehlt ganz");
+  assert.equal(ohne.text, "Ohne Referenz, aber mit Klammer (nicht Issue)",
+    "der Text wurde beschnitten, obwohl keine Referenz zu loesen war");
+});
+
+test("renderChangelog haengt nur an Eintraege mit ref eine Nummer an", () => {
+  const text = renderChangelog([{
+    version: "2.0.0",
+    date: "2026-08-02",
+    items: [{ text: "Mit Referenz", ref: "7" }, { text: "Ohne Referenz", ref: null }],
+  }]);
+
+  assert.match(text, /- Mit Referenz \(#7\)/, "die Referenz fehlt");
+  assert.match(text, /- Ohne Referenz$/m, "ohne ref darf keine Klammer entstehen");
+  assert.doesNotMatch(text, /#null|#undefined/, "aus einer fehlenden ref wurde eine Nummer gebaut");
+});

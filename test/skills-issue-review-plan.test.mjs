@@ -120,9 +120,16 @@ test("beide Rollennamen zeigen auf verschiedene Bloecke", () => {
   );
 });
 
-test("Stop-Punkt: kein Schreiben in ein Plandokument im unbeaufsichtigten Lauf", () => {
+// Seit Issue #418 schreibt der unbeaufsichtigte Lauf auch in ein Plandokument.
+// Unangetastet bleiben die architektonischen Entscheidungen — ein Fund darauf
+// wird nicht angewendet, sondern ruft einen Menschen.
+test("Stop-Punkt: kein Anwenden eines Funds auf eine architektonische Begruendung", () => {
   const stop = SKILL.split(/##\s*Stop-Punkte/)[1];
   assert.ok(stop, "kein Stop-Punkte-Abschnitt");
-  const zeile = stop.split("\n").find((z) => /Plandokument|Plan-Dokument/i.test(z) && /unbeaufsichtigt/i.test(z));
-  assert.ok(zeile, "der Stop-Punkt fuer die Plan-Stufe fehlt");
+  const zeile = stop
+    .split("\n")
+    .find((z) => /Architektonische Entscheidungen/i.test(z) && /kit:klaeren/.test(z));
+  assert.ok(zeile, "der Stop-Punkt zum Schutz der architektonischen Entscheidungen fehlt");
+  assert.match(zeile, /nicht angewendet/,
+    "es steht nicht, dass ein solcher Fund nicht angewendet wird");
 });

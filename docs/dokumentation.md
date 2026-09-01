@@ -156,7 +156,7 @@ Bei `issueTracker: github` legt der Adapter beim ersten Zugriff eine Cache-Datei
 
 `columns` steuert die Spaltennamen auf dem Board. Die fünf Schlüssel (`backlog`, `ready`, `in_progress`, `in_review`, `done`) sind fix — sie stehen im Frontmatter der Issue-Dateien und sind die internen Status-Werte. Die Werte sind die angezeigten Bezeichnungen und frei wählbar. Bei GitHub entsprechen die Werte den Spaltennamen im Project Board, bei GitLab den Label-Namen. Ohne `columns` in der Config gelten die Defaults: Backlog, Ready, In progress, In review, Done.
 
-`buildChecks` enthält die Kommandos, die `/local-check` sequenziell ausführt. Alle müssen grün sein, bevor der Skill Vollzug meldet. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
+`buildChecks` enthält die Kommandos, die `/local-check` ausführt — die **betroffenen**, ausgewählt nach den Bereichen, die das Arbeitspaket berührt hat (siehe [Bereichsbezogene Prüfungen](#bereichsbezogene-prüfungen-checkareas)); alle ausgeführten müssen grün sein, bevor der Skill Vollzug meldet. Ohne `checkAreas` laufen wie bisher alle. `mutationCommand` ist aus `buildChecks` ausgelagert, weil Mutation Testing deutlich länger läuft (ein leerer String deaktiviert es). `reviewScope` steuert den Umfang für `/review`. `reviewModel` pinnt das Modell über Sessiongrenzen hinweg. `triggers` hält die natürlichsprachlichen Phrasen, falls du lieber tippst als Slash-Befehle nutzt.
 
 **Rückwärtskompatibilität:** Repos, die noch `"provider": "github"` oder `"provider": "gitlab"` in der Config haben, funktionieren weiter. Der Adapter migriert das Feld beim Lesen automatisch auf `codeHost` und `issueTracker`.
 
@@ -170,6 +170,52 @@ Beispiele für verschiedene Stacks:
 | Go | `["go test ./...", "go build ./..."]` | `""` |
 
 Du kannst die Config-Datei jederzeit manuell bearbeiten. Der Installer überschreibt sie beim erneuten Ausführen nur, wenn du das explizit bestätigst.
+
+### Bereichsbezogene Prüfungen: `checkAreas`
+
+Ein Arbeitspaket berührt selten das ganze Projekt. Ein `buildChecks`-Eintrag kann deshalb sagen, für welche Bereiche er zuständig ist — dann läuft er nur, wenn einer davon berührt wurde. Ausgewählt und ausgeführt wird von dem mitgelieferten Kommando `.claude/kit/checks.mjs`; die Skills rufen es selbst auf. Du brauchst es nur, wenn du nachsehen willst: `node .claude/kit/checks.mjs plan` zeigt die Auswahl als JSON, ohne etwas auszuführen.
+
+**Die drei Formen eines `buildChecks`-Eintrags:**
+
+```json
+{
+  "buildChecks": [
+    "npx eslint .",
+    { "cmd": "npm --prefix frontend run build", "areas": ["frontend"] },
+    { "cmd": "mvn verify", "always": true }
+  ],
+  "checkAreas": {
+    "frontend": ["frontend/**"],
+    "backend": ["src/main/**", "pom.xml"]
+  }
+}
+```
+
+1. **Der bloße Kommandostring** — nicht zugeordnet, läuft immer. Ein Objekt nur mit `cmd` bedeutet dasselbe.
+2. **`{ "cmd", "areas" }`** — läuft, wenn mindestens einer der genannten Bereiche berührt ist. Die Namen stehen in `checkAreas`.
+3. **`{ "cmd", "always": true }`** — entschieden immer laufend.
+
+Form 1 und Form 3 verhalten sich gleich und bedeuten trotzdem Verschiedenes: **vergessen** gegen **entschieden**. Wer einen Eintrag als String stehen lässt, hat die Zuordnung vielleicht nur nicht getroffen; wer `always: true` schreibt, hat sie getroffen und sichtbar gemacht. Der Unterschied kostet nichts und trägt die Absicht bis zum nächsten Leser.
+
+`areas` und `always` **schließen sich aus** — eine Vorrangregel für den Fall, dass beide dastehen, würde niemand lesen. `areas` darf außerdem nicht leer sein: Ein leeres Array liefe nie, und eine Prüfung, die nie läuft, gehört gelöscht statt stillgelegt.
+
+**`checkAreas`: Bereichsname → Pfadmuster.** Die Muster kennen `*` innerhalb eines Pfadsegments (`src/*.ts` erfasst keine Unterverzeichnisse) und `**` über Segmentgrenzen hinweg; `/` ist der Trenner, auf den Pfade vorher normalisiert werden — unter Windows also auch die rückwärtigen Schrägstriche. Ein Verzeichnis samt Inhalt erfasst man als `frontend/**`. Die Auswertung bringt das Kit selbst mit: **keine externe Laufzeitabhängigkeit**, wie bei allen ausgelieferten Werkzeugen.
+
+**Zwei Anker — und sie sind verschieden.** Welche Dateien als „berührt" gelten, entscheidet ein Anker: der Git-Stand, gegen den verglichen wird. Die `implement-*`-Skills prüfen **vor dem Commit** gegen den Default `HEAD`; der Diff gegen `HEAD` ist dann genau dieses eine Arbeitspaket, und ein roter Check gehört dem Paket, das ihn ausgelöst hat — auch wenn eine Session mehrfach festschreibt. `/local-check` prüft **vor dem Push** gegen `git merge-base HEAD origin/<mainBranch>` und misst damit alles, was seit dem letzten Push dazugekommen ist, also genau das, was gleich hinausgeht.
+
+Beide Vertauschungen gehen schief, und beide sähen im Bericht korrekt aus. Ein `merge-base`-Anker **vor dem Commit** sammelte fremde Arbeitspakete ein: Ein roter Check spräche dann über Änderungen, mit denen das laufende Paket nichts zu tun hat — nachts würde der Fehlschlag dem falschen Issue zugeschrieben.
+
+Ein `HEAD`-Anker **vor dem Push** sähe umgekehrt auf sauberem Arbeitsbaum gar nichts: Das Kommando meldete `leeresPaket` und ließe jede Prüfung aus, während der Bericht das als vollständigen Lauf auswiese. Deshalb steht in jedem Skill genau ein Anker, und er steht dort begründet.
+
+**Im Zweifel läuft alles. Nicht abschaltbar.** Drei Wege führen zum vollen Umfang: eine geänderte Datei, die sich **keinem Bereich** zuordnen lässt; eine **nicht zugeordnete Prüfung**, die ohnehin immer läuft; und ein **leerer oder nicht auflösbarer Anker**. Ein leerer zählt dabei wie ein nicht auflösbarer, nie wie ein fehlender — ein fehlender ergäbe den Default `HEAD` und auf committetem Stand gar keine Prüfung. Einen Schalter, der die Regel abstellt, gibt es nicht: Eine Auswahl, die falsch ausfällt, nimmt Prüfung weg, und dieser Fehler geht in die Richtung, in der er niemandem auffällt.
+
+Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuordnung**, nicht über die Regel: Dann fehlt ein Bereich, oder ein Muster ist zu eng. Die Zuordnung gehört dann verbessert, nicht die Regel aufgeweicht — die Zeit, die eine aufgeweichte Regel spart, zahlt der erste Fehler zurück, den niemand gesucht hat.
+
+**Ohne `checkAreas` ändert sich nichts.** Ein Projekt ohne diesen Block bekommt das Verhalten von vorher, unverändert: Jeder Eintrag ist die String-Form, also nicht zugeordnet, also laufen alle Prüfungen wie bisher. Die Umstellung nimmt niemandem still Prüfung weg — wer die Auswahl will, konfiguriert sie.
+
+**`mutationCommand` bleibt außen vor.** Es steht nicht in `buildChecks` und ist damit **nicht Teil der Auswahl**: Es läuft unverändert immer und direkt, unabhängig davon, welche Bereiche der Anker findet.
+
+Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
 ## Die fünfzehn Skills und der 9-Schritt-Kernprozess
 
@@ -257,7 +303,7 @@ Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach R
 
 **Schritt 5, nach dem GO.**
 
-Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben (testgetrieben: Tests zuerst, rot, dann implementieren bis grün), lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
+Der Skill liest die Ready-Spalte, sortiert nach Issue-Nummer und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben (testgetrieben: Tests zuerst, rot, dann implementieren bis grün), die betroffenen Prüfungen **vor dem Commit** laufen lassen (`node .claude/kit/checks.mjs run`, Anker `HEAD`, also genau dieses Arbeitspaket), lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
 
 Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmächtig nach Ready.
 
@@ -267,13 +313,13 @@ Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmäc
 
 `/implement-ready` erledigt Test und Implementierung eines Issues in einem Rutsch. Wer den Rot-Grün-Übergang bewusst sehen will, nutzt stattdessen zwei Skills nacheinander: `/implement-test` nimmt das nächste Ready-Issue, bewegt es nach In progress und schreibt ausschließlich die Tests dagegen — kein Produktionscode, kein Commit. Läuft bereits ein Issue in In progress, stoppt der Skill und verweist auf `/implement-done`.
 
-`/implement-done` findet das laufende Issue über die In-progress-Spalte, implementiert gegen die vorbereiteten Tests, bis sie grün sind, und committet Tests und Implementierung gemeinsam — Format und Stop-Punkte identisch zu `/implement-ready`.
+`/implement-done` findet das laufende Issue über die In-progress-Spalte, implementiert gegen die vorbereiteten Tests, bis sie grün sind, lässt die betroffenen Prüfungen vor dem Commit laufen und committet Tests und Implementierung gemeinsam — Format und Stop-Punkte identisch zu `/implement-ready`.
 
 ### /implement-next
 
 **Genau ein Issue — der Baustein des Nachtbetriebs.**
 
-Die Single-Issue-Variante von `/implement-ready`: nimmt genau ein Ready-Issue, setzt es um, committet lokal, verschiebt es mit Abschlussbericht nach In review — und endet. Kein weiteres Issue, auch wenn Ready noch gefüllt ist. Bei leerem Ready meldet der Skill das und endet ohne Fehler.
+Die Single-Issue-Variante von `/implement-ready`: nimmt genau ein Ready-Issue, setzt es um, lässt die betroffenen Prüfungen vor dem Commit laufen, committet lokal, verschiebt es mit Abschlussbericht nach In review — und endet. Kein weiteres Issue, auch wenn Ready noch gefüllt ist. Bei leerem Ready meldet der Skill das und endet ohne Fehler.
 
 Welches Issue dran ist, entscheidet das Argument. `/implement-next` ohne Argument nimmt das oberste Ready-Issue (Board-Reihenfolge). `/implement-next #N` ist ein **verbindlicher Auftrag**: Der Skill arbeitet ausschließlich dieses Issue und weicht nie auf ein anderes aus — liegt `#N` nicht mehr in Ready, endet der Lauf ergebnislos mit einer klaren Meldung. So bleibt die Auswahl an genau einer Stelle: Der Auftraggeber hat bereits nach Routing-Label, Abhängigkeiten und Board-Reihenfolge gefiltert und misst den Erfolg an diesem Issue.
 
@@ -291,9 +337,9 @@ Wie viele prüfen und mit welchen Rollen, entscheidet die Prüfstufe; jede Rolle
 
 **Schritt 6, vor dem Review.**
 
-Der Skill führt alle Kommandos aus `buildChecks` sequenziell aus und führt danach `mutationCommand` aus, sofern gesetzt. Bei Frontend-Änderungen erinnert er an die manuelle UI-Verifikation im Browser und vermerkt im Bericht, wenn diese nicht automatisch möglich war.
+Der Skill ruft `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"` auf: Das Kommando wählt die **betroffenen** `buildChecks` aus und führt genau sie sequenziell aus. Der `merge-base`-Anker ist hier der richtige, weil der Skill nach dem lokalen Commit läuft — er misst alles, was seit dem letzten Push dazugekommen ist (siehe [Bereichsbezogene Prüfungen](#bereichsbezogene-prüfungen-checkareas)). Danach läuft `mutationCommand`, sofern gesetzt; es steht außerhalb der Auswahl. Bei Frontend-Änderungen erinnert der Skill an die manuelle UI-Verifikation im Browser und vermerkt im Bericht, wenn diese nicht automatisch möglich war.
 
-Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp. Ein roter Check blockiert den weiteren Prozess. Es gibt keine Ausnahmen und kein Übergehen.
+Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp; ausgelassene Prüfungen stehen mit ihrem Grund als eigene Zeile darin, damit ein verkürzter Lauf nicht wie ein vollständiger aussieht. Ein roter Check blockiert den weiteren Prozess. Es gibt keine Ausnahmen und kein Übergehen.
 
 ### /review
 
@@ -468,6 +514,8 @@ Ohne `--verbose` protokolliert der Runner pro Runde nur Start und Ende — bei e
 
 Die finale Abschlussnachricht landet wie gehabt zusätzlich im Log; das Streaming ergänzt sie, ersetzt sie nicht.
 
+**Was geprüft wurde — und was nicht.** Die Sessions prüfen bereichsbezogen (siehe [Bereichsbezogene Prüfungen](#bereichsbezogene-prüfungen-checkareas)), und die Auslassungen sind an **zwei** Stellen sichtbar: im **Abschlussbericht am Arbeitspaket**, wo die Session gelaufene und ausgelassene Prüfungen jeweils mit Grund aufführt, und im **Lauf-Bericht des Durchgangs** — dort je Session eine Zeile und darunter eine Summenzeile über den ganzen Lauf. Eine Session ohne Prüfung erscheint ausdrücklich als „ungeprüft", ein Paket ohne Änderungen als „leeres Paket"; nichts davon versteckt sich hinter einer leeren Liste. Der Runner liest das nicht aus dem Abschlussbericht, sondern aus der Zusammenfassung, die `checks.mjs` in `.claude/checks-summary.json` hinterlässt: Was die Maschine auswertet, geht hier nirgends durch von einem Modell formulierten Text.
+
 **Nachtlauf gegen ein anderes Board (Toolbox/kanban-kit).** Läuft dein Projekt gegen einen kanban-kit-Tracker, kannst du den ganzen Nachtlauf auf ein eigenes Night-Board umschalten: Token in der Admin-UI erzeugen und an das Night-Board binden, als zweite gitignorete Datei neben dem normalen `tokenFile` ablegen (z. B. `.claude/tbx-night.token`) und den Runner mit `TBX_TOKEN` pro Aufruf starten:
 
 ```bash
@@ -527,7 +575,7 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 **Wenn etwas schiefgeht:** Der Runner unterscheidet drei Fälle. **Infrastruktur-Fehlstart** — die Session selbst endet mit Exit ≠ 0 (Auth abgelaufen, CLI kaputt): harter Stopp, das Issue bleibt unangetastet in Ready, denn mit ihm ist nichts falsch; die CLI-Fehlermeldung steht direkt im Konsolen-Log. So räumt eine kaputte Umgebung nicht die ganze Ready-Spalte leer. **Fachlicher Fehlschlag** — die Session endet sauber (Exit 0), aber das Issue steht nicht in In review: der Runner kommentiert es und stellt es zurück ins Backlog, der Lauf geht mit dem nächsten Issue weiter. Ein **Timeout** (`--timeout-min`) zählt als issue-spezifisch (Aufgabe zu groß) und wird wie ein fachlicher Fehlschlag behandelt. Hinterlässt eine Runde einen unsauberen Working Tree, stoppt der Lauf in jedem Fall hart (Exit ≠ 0): Auf halben Änderungen wird nicht weitergebaut. Vor dem Start prüft der Runner außerdem: kein Issue in In progress (Crash-Rest), sauberer Working Tree, `buildChecks` vorhanden.
 
-**Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus. Sind sie grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
+**Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus — und zwar die **volle Liste**, ohne bereichsbezogene Auswahl. Das ist kein Versehen: Die beiden Prüfungen beantworten verschiedene Fragen. Nach einem sauberen Arbeitspaket lautet sie „hat diese Arbeit etwas kaputtgemacht?", und dafür genügen die berührten Bereiche. Beim Retten lautet sie „ist dieser unklare Zwischenstand überhaupt brauchbar?" — niemand weiß dann, was die abgebrochene Session angefasst hat, also wird alles gefragt. Sind die Checks grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
 
 **Plattform-Shell für `buildChecks` und `formatFixCommand`.** Beide Werte sind frei konfigurierte Kommandozeilen und brauchen deshalb zwingend eine Shell — anders als die festen Kommandos des Board-Adapters, der seit v1.27 ganz ohne Shell auskommt. Der Runner startet sie in der Shell der jeweiligen Plattform: `/bin/sh` unter macOS und Linux, die ComSpec-Shell (im Regelfall `cmd.exe`) unter Windows. Bewusst nicht PowerShell — der Wert ist eine Nutzer-Konfiguration, und `cmd.exe` ist das, was beim Eintragen eines Build-Kommandos unter Windows erwartet wird; PowerShell hätte zudem eine eigene Operator-Syntax (kein `&&` vor Version 7). **Folge:** Deine `buildChecks` sind damit potenziell plattformspezifisch. Ein `mvn verify` oder `npm test` läuft überall; eine Verkettung mit `&&`, eine Pipe oder eine Umleitung wie `2>/dev/null` verhält sich unter `cmd.exe` anders oder gar nicht. Wer dasselbe Projekt auf beiden Welten nachts laufen lässt, hält die Kommandos am besten einfach und ohne Shell-Operatoren.
 
@@ -671,7 +719,7 @@ Die Reihenfolge der vorhandenen Kennzeichnungszeilen bleibt dabei unverändert.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein `/fachplan-review` und kein `/plan-review` — welche Stufe greift, liest der Skill am Titel-Präfix ab. Drei Kommandos wären drei Wege, die Stufe falsch zu wählen; das Dokument weiß selbst, was es ist.
 
-Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob geschrieben werden darf — nachts nie in eine fachliche Anforderung und nie in einen Plan, weil dort PO-Antworten und Architekturentscheidungen stehen, die ein Mensch getroffen hat.
+Das gilt **interaktiv genauso wie im Nachtbetrieb**. Ein Plandokument muss nicht auf einen Nachtlauf warten: `/issue-review #276` fährt tagsüber die Plan-Rollen und fragt dich am Ende nach dem geschärften Body. Der Unterschied zwischen den Betriebsarten liegt nicht in der Stufenwahl, sondern darin, ob vor dem Schreiben gefragt wird: interaktiv zeigt der Skill den geschärften Body und fragt einmal, unbeaufsichtigt schreibt er ihn, sobald alle Funde die Klasse `korrektur` tragen. Geschützt sind dabei nicht die Stufen, sondern die Inhalte, die ein Mensch gesetzt hat — ein Fund auf eine PO-Antwort oder auf eine Architekturentscheidung wird nie angewendet, er zeichnet das Dokument mit `kit:klaeren`.
 
 **Nur eine nicht leere Zeile `Issue-Review:` gibt die Umsetzung frei.** An ihr hängt das Gate `requiredBeforeReady`; `Fachplan-Review:` und `Plan-Review:` ersetzen sie nie. Sie belegen die Prüfung einer früheren Stufe, nicht die des Arbeitspakets — wer sie verwechselt, zieht ein ungeprüftes Arbeitspaket nach Ready.
 
@@ -864,11 +912,11 @@ Läuft der Review über `night.mjs --review` (siehe [Zweiter Modus: der Nacht-Re
 
 Der Grund für den Schnitt: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Ein wörtlich vorgeschlagener Fund, der nur einen Weg kennt, ist keine Produktentscheidung — ihn anzuwenden auch nicht. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` das am Ticket sichtbar. Das GO bleibt vollständig deins: Nach Ready zieht weiterhin nur der Mensch.
 
-**Diese Marker-Regel gilt nur für die Stufe `issue`.** Für `fachlich` und `plan` wird in einem unbeaufsichtigten Lauf **weder der Body geschrieben noch ein Marker gesetzt** — auch dann nicht, wenn der Review befundfrei war. Kein `issue update`, kein Marker; Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+**Beide Regeln gelten für alle drei Stufen** — auch für `fachlich` und `plan`. Wird der Body geschrieben, trägt das Dokument danach den Marker seiner Stufe; sonst bliebe es auf `review:offen` stehen und sähe ungeprüft aus, obwohl sein Body den Review bereits trägt. Am Gate ändert das nichts: `requiredBeforeReady` prüft allein `Issue-Review:`, und die oberen Stufen gehen ohnehin nie nach Ready.
 
-Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen, und nachts schreibt niemand darin.
+Geschützt sind nicht die Stufen, sondern die Inhalte: In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen. Ein `korrektur`-Fund, der eine dokumentierte PO-Antwort oder eine solche Begründung berührt, ist deshalb keiner: Er wird nicht angewendet, sondern zeichnet das Dokument mit `kit:klaeren`, und der Marker bleibt aus.
 
-Ein nächtlich gesetzter Marker — es kann nur einer der Stufe `issue` sein — ist als solcher erkennbar:
+Ein nächtlich gesetzter Marker ist als solcher erkennbar — hier der eines Arbeitspakets, Stufe `issue`:
 
 ```
 Issue-Review: codex (2026-08-06, Nachtlauf)
@@ -987,7 +1035,7 @@ Der Kontext-Abschnitt zählt dabei bewusst nicht mit, denn dort stehen die Kennz
 
 **Fehlt der Stand, gilt die Vorgabe.** Eine `Pruefung:`-Zeile ohne `Pruefung-Stand:` — etwa weil sie im Board-UI von Hand gesetzt wurde und nie ein `issue update` lief — ist voll wirksam. Ohne Bezugsstand lässt sich kein Verfall feststellen, und im Zweifel gilt die Entscheidung des Menschen und nicht ihre Annullierung durch eine fehlende Zeile.
 
-**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt auf der Stufe `issue` den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
+**Die Grenze der Human-only-Regel.** Eine Verringerung — `Verzicht` oder ein Wert unter dem Regelfall — weist der Adapter ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Das trifft genau den unbeaufsichtigten Lauf: Der Nacht-Runner setzt die Variable, und der Nacht-Review schreibt den geschärften Body selbst — ohne die Regel könnte er sich die eigene Prüfung wegschreiben. Seit die Schärfung auf allen drei Stufen schreibt, greift dieser Schutz gerade bei `fachlich` und `plan`: Dort steht die Vorgabe des Menschen in einem Dokument, das die Maschine nun ebenfalls anfasst. Eine interaktive Session hat die Variable nicht: Wenn du ihr sagst, sie solle `Pruefung: Verzicht` eintragen, trägt sie es ein. Das ist Absicht — sie handelt dann als verlängerter Arm des Menschen, der danebensitzt. Die Regel schützt vor unbeaufsichtigter Selbstfreigabe, nicht vor dir.
 
 ### Was es kostet
 

@@ -224,19 +224,29 @@ test("die Marker-Beispiele der Doku nennen die Stufe, zu der sie gehoeren", () =
   }
 });
 
-test("der Nachtbetrieb-Abschnitt der Doku nimmt fachlich und plan aus", () => {
+// Seit Issue #418 schreibt der unbeaufsichtigte Lauf auf allen drei Stufen. Der
+// Test prueft deshalb die neue Fallunterscheidung — und die Schutzregel, die an
+// die Stelle des Stufenverbots getreten ist. Die Begruendung bleibt dieselbe:
+// PO-Antworten und Architekturentscheidungen hat ein Mensch getroffen. Nur der
+// Schutz haengt jetzt am Inhalt statt an der Stufe.
+test("der Nachtbetrieb-Abschnitt der Doku erklaert die Fallunterscheidung und die Schutzregel", () => {
   const abschnitt = dokuAbschnitt("Im Nachtbetrieb");
   for (const [was, muster] of [
     ["die Stufe fachlich", /`fachlich`/],
     ["die Stufe plan", /`plan`/],
-    ["das Schreibverbot am Body", /issue update|Body wird nie|kein Body/i],
-    ["das Ausbleiben des Markers", /kein Marker|nie ein Marker|Marker.{0,30}nicht gesetzt/i],
-    ["die PO-Antworten als Begruendung", /Product Owner|PO-Antworten/],
+    ["die Geltung fuer alle drei Stufen", /alle drei Stufen|jede[rn]? Stufe/i],
+    ["das Schreiben bei lauter korrektur-Funden", /alle Funde `korrektur`/],
+    ["das Ausbleiben des Markers im Klaerungsfall", /kein Marker|Marker bleibt aus|Marker.{0,30}nicht gesetzt/i],
+    ["das Zeichnen mit kit:klaeren", /kit:klaeren/],
+    ["die PO-Antworten als Begruendung", /Product Owner|PO-Antworten|PO-Antwort/],
     ["die Architekturentscheidungen als Begruendung", /architektonische[nr]? Entscheidungen|Architekturentscheidungen/i],
     ["den Menschen als Entscheider", /ein Mensch|Mensch getroffen/i],
   ]) {
     assert.match(abschnitt, muster, `der Nachtbetrieb-Abschnitt nennt ${was} nicht`);
   }
+  // Die eigentliche Aussage von #418: geschuetzt ist der Inhalt, nicht der Ort.
+  assert.match(abschnitt, /nicht die Stufen, sondern die Inhalte|nicht die Stufe, sondern/i,
+    "die Verlagerung vom Ort auf den Inhalt ist nicht ausgesprochen");
 });
 
 // Story- und Plan-Format haben keinen `## Kontext`. Die pauschale Ansage "im

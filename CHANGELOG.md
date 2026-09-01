@@ -2,6 +2,54 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.44.0] - 2026-09-01
+- Doku: bereichsbezogene Pruefungen beschreiben (#429)
+- night.mjs: Pruef-Zusammenfassungen einsammeln und im Lauf-Bericht zeigen (#428)
+- local-check: Pruefung vor dem Push mit merge-base-Anker (#427)
+- implement-Skills: Pruefung vor dem Commit (#426)
+- Auslieferung: checks.mjs in install.mjs und sync-blobs (#425)
+- checks: run fuehrt die Auswahl aus und hinterlaesst sie (#424)
+- checks: die Auswahl als Kommando, ohne auszufuehren (#423)
+- checks: Config-Form fuer bereichsbezogene Pruefungen (#422)
+- night.mjs: der Review-Auftrag nennt die Betriebsart (#419)
+- issue-review: geschuetzt sind die Inhalte, nicht die Stufen (#418)
+- issue-review: Schritt 6 traegt beide Betriebsarten (#417)
+- issue-review: der Marker ist eine Body-Zeile, kein eigener Schreibbefehl (#415)
+- S8786: vier quadratische Ausdruecke formseitig aufloesen (#406)
+
+## [1.43.3] - 2026-08-31
+- sonar-project.properties: der Coverage-Kommentar stimmte nicht mehr (#405)
+- night.mjs: Restpuffer, wortloser Adapter, fehlendes buildChecks-Feld (#405)
+- night.mjs: die letzten erreichbaren Zweige (#405)
+- board.mjs: die letzten erreichbaren Zweige (#405)
+- night.mjs: der Verbose-Stream und die Vorflug-Fehlerarten (#405)
+- night.mjs: die Fehlerwege im echten Lauf (#405)
+- board.mjs: Toolbox, Vault-Pfade, Probelauf, Zustandslabels (#405)
+- board.mjs: lueckenhafte Antworten von gh und glab (#405)
+- board.mjs: der lokale Tracker und die CLI-Achse (#405)
+- night.mjs: die Vorbedingungen und die Label-Warnung (#405)
+- night.mjs: die Rueckfaelle der reinen Funktionen (#405)
+- install.mjs und die reinen Funktionen aus board.mjs (#405)
+- Die kleinen tools/-Dateien: Zweige geschlossen (#405)
+- board.mjs und derived-from-report: die restlichen offenen Zeilen (#405)
+- sync-blobs: die Skill-Kopien und ihr Schreibschutz (#405)
+- night.mjs: --version, Overrides und die echte Vorflug-Kommandozeile (#405)
+- migrate-issues: Fehler-, Validierungs- und Rueckfallpfade abgedeckt (#405)
+- Codex reviewer hinzugefügt
+- main() zerlegt: drei Programme statt einer Funktion (#404)
+- selectReviewCandidates und runReviewLoop unter die Schwelle (#404)
+- Messregel und die fuenf kleinen Faelle unter die Schwelle (#404)
+- Testnetz vor dem main()-Umbau: der vierte hardStop-Ausgang (#404)
+
+## [1.43.2] - 2026-08-31
+- FENCE_ZEILE: negativer Lookahead macht die Fence-Laenge eindeutig (#403)
+
+## [1.43.1] - 2026-08-31
+- refactor: die neun super-linearen Regexe entschaerfen (#403)
+- test: die Bedeutung der neun Regexe festhalten (#403)
+- String.raw an vier Stellen, void-Operator raus (#402)
+- test: die printf-Zeile des Vorflug-Prompts woertlich festhalten (#402)
+
 ## [1.43.0] - 2026-08-31
 - package.json ohne version-Feld — die Kit-Version lebt in install.mjs
 - ESLint-Leitplanke gegen die Stilfunde, 36 Fundstellen abgeraeumt (#399)

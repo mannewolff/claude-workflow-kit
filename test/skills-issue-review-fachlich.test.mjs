@@ -103,21 +103,31 @@ test("ein Rollenname ohne Prompt fuehrt zum Abbruch vor dem Reviewer-Start", () 
   assert.ok(treffer, "kein Absatz nennt Abbruch UND Zeitpunkt — nach dem Start waere die Session bereits verbrannt");
 });
 
-test("Stop-Punkt: kein Schreiben in eine fachliche Anforderung ohne Aufsicht", () => {
+// Seit Issue #418 schreibt der unbeaufsichtigte Lauf auch in eine fachliche
+// Anforderung. Geschuetzt wird nicht mehr die Stufe, sondern der Inhalt: Die
+// Antworten des Product Owners bleiben unangetastet, ein Fund darauf ruft einen
+// Menschen. Der Stop-Punkt haelt genau diese Verlagerung fest.
+test("Stop-Punkt: kein Anwenden eines Funds auf eine dokumentierte PO-Antwort", () => {
   const stop = SKILL.split(/##\s*Stop-Punkte/)[1];
   assert.ok(stop, "kein Stop-Punkte-Abschnitt gefunden");
-  const zeile = stop.split("\n").find((z) => /fachlich/i.test(z) && /unbeaufsichtigt/i.test(z));
-  assert.ok(zeile, "der Stop-Punkt fuer die fachliche Stufe fehlt in der Liste");
+  const zeile = stop
+    .split("\n")
+    .find((z) => /Offene Fragen an den PO|PO-Antwort/.test(z) && /kit:klaeren/.test(z));
+  assert.ok(zeile, "der Stop-Punkt zum Schutz der PO-Antworten fehlt in der Liste");
+  assert.match(zeile, /nicht angewendet/,
+    "es steht nicht, dass ein solcher Fund nicht angewendet wird");
 });
 
-// Der eigentliche Fund des Reviews zu diesem Issue: Ein Satz in den Stop-Punkten
+// Der eigentliche Fund des Reviews zu Issue #280: Ein Satz in den Stop-Punkten
 // reicht nicht, weil der Abschnitt "Im Nachtbetrieb" die generische Marker-Regel
-// traegt — und die schreibt in den Body.
-test("die naechtliche Marker-Regel ist auf plan und issue eingeschraenkt", () => {
+// traegt — und die schreibt in den Body. Seit #418 traegt sie fuer alle drei
+// Stufen; die Zusicherung prueft deshalb, dass sie das ausdruecklich sagt, statt
+// die fachliche Stufe stillschweigend mitzumeinen.
+test("die naechtliche Marker-Regel benennt die Geltung fuer alle drei Stufen", () => {
   const nacht = SKILL.split(/##\s*Im Nachtbetrieb/)[1];
   assert.ok(nacht, "kein Nachtbetrieb-Abschnitt gefunden");
-  const absatz = nacht.split(/\n\n/).find((a) => /Marker/i.test(a) && /(plan|issue)/.test(a) && /fachlich/i.test(a));
-  assert.ok(absatz, "die Marker-Regel nennt die Stufen nicht");
-  assert.match(absatz, /(nur fuer|nur für|gilt fuer|gilt für|eingeschr)/i,
-    "die Einschraenkung auf plan und issue ist nicht ausgesprochen");
+  const absatz = nacht.split(/\n\n/).find((a) => /Marker-Regel/i.test(a) && /alle drei Stufen/i.test(a));
+  assert.ok(absatz, "die Marker-Regel sagt nicht, fuer welche Stufen sie gilt");
+  assert.match(absatz, /`Fachplan-Review:`/,
+    "der Marker der fachlichen Stufe ist nicht benannt");
 });

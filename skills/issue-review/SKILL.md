@@ -552,9 +552,68 @@ SYNTHESE
 
 **Ein Muster, das man kennen sollte:** Die Kontextlosigkeit, die den Review überhaupt trägt, produziert an Abhängigkeitsgrenzen zuverlässig Fehlalarme — ein Reviewer sieht das Nachbar-Issue nicht und meldet als fehlend, was dort steht. Solche Funde zu verwerfen ist richtig. Es bleibt eine Entscheidung und gehört protokolliert.
 
-### 6. Body schärfen — nur mit Freigabe
+### 6. Body schärfen
 
-**Der Body wird nie automatisch geschrieben.** Zeige einen Vorschlag mit den eingearbeiteten Funden und frage einmal:
+Was hier geschieht, hängt an der Betriebsart — **und an nichts sonst**. Für alle drei Stufen gilt dieselbe Regel. **Die unbeaufsichtigte steht zuerst**, weil eine Session von oben liest und nach dem ersten Fall handelt, den sie findet:
+
+**Unbeaufsichtigt** (`KIT_AGENT_MODEL` gesetzt): Sind alle Funde `korrektur`, wird der Body geschrieben und der Marker gesetzt. Ist mindestens ein Fund `gate`, `alternativen` oder klassenlos, werden die übernommenen `korrektur`-Funde trotzdem angewendet, `kit:klaeren` wird gesetzt und der Marker bleibt aus.
+
+**Interaktiv:** Vorschlag zeigen, einmal fragen.
+
+Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb". Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
+
+**Unbeaufsichtigt gilt im Einzelnen:**
+
+Die Verantwortungsschwelle liegt nicht am Text, sondern an der **Entscheidung**: Automatisiert wird, was automatisierbar ist; wo eine Entscheidung fehlt, zeichnet ein Label sie sichtbar.
+
+Für `korrektur`-Funde bleibt die Abwägung übernommen/verworfen mit Begründung bestehen; **angewendet wird, was übernommen ist** — nicht ausnahmslos jeder. Die Klassen `gate` und `alternativen` kann die Synthese **nicht verwerfen**, sie rufen nach A9 immer den Menschen; sie benennt dann jeden offenen Punkt einzeln.
+
+**Ein Fund ohne Klassenangabe gilt wie `gate`.** Er wird **nicht angewendet**, er
+zeichnet das Ticket mit `kit:klaeren`, und der **Marker bleibt aus** — genau wie ein
+echter `gate`-Fund.
+
+Die Richtung ist Absicht: Im Zweifel ruft der Fund einen Menschen. Die Gegenrichtung —
+fehlende Angabe gilt als `korrektur` — wäre bequemer und genau falsch, weil sie das
+Auslassen zur billigsten Variante machte. Ein Prompt wird nicht immer befolgt; die Regel
+darf nicht daran hängen, dass er es wird.
+
+**Ein `korrektur`-Fund auf einen menschlich gesetzten Inhalt ist kein `korrektur`-Fund.**
+Berührt er eine dokumentierte PO-Antwort unter `## Offene Fragen an den PO` oder eine
+Begründung unter `## Architektonische Entscheidungen`, wird er **nicht angewendet**; er
+zeichnet das Ticket mit `kit:klaeren` und hält damit über die Klassenlos-Regel auch den
+**Marker** zurück. Geschützt sind nicht die Stufen, sondern die Inhalte, die ein Mensch
+gesetzt hat — dieselbe Aufgabe erfüllt weiter unten die Liste der Kennzeichnungszeilen,
+die aus dem alten Stand übernommen werden. Deshalb steht die Regel hier oben, bei der
+Klassifikation der Funde: Wer erst unten davon liest, hat sie schon angewendet.
+
+Das Label wird so gesetzt:
+
+```bash
+node .claude/kit/board.mjs issue label add <id> kit:klaeren
+```
+
+Ein bereits vorhandenes Label ist kein Fehler.
+
+**Angewendet wird nur wörtlich Vorgeschlagenes** (A10): Was der Reviewer nicht wörtlich geliefert hat, verändert den Body nicht — keine Umformulierung, keine sinngemäße Übertragung, keine eigene Ergänzung an der Stelle. Der `## Body-Vorschlag`-Kommentar bleibt in beiden Fällen daneben bestehen; er ist die Spur, was die Maschine getan hat.
+
+**Reihenfolge der Schreibbefehle und Fehlerpfad:**
+
+1. `## Body-Vorschlag`-Kommentar
+2. `issue update` — der geschärfte Body OHNE Marker (ein vorhandener Marker derselben Stufe wird dabei entfernt; endet der Lauf mit `kit:klaeren`, bleibt er entfernt)
+3. gegebenenfalls `issue label add kit:klaeren`
+4. Synthese-Kommentar
+5. gegebenenfalls ein ZWEITES `issue update` — derselbe Body, ergänzt um die Marker-Zeile; `Pruefung:` und `Pruefung-Stand:` werden wie bei jeder Body-Schreibung aus dem aktuellen Stand übernommen
+6. `issue-review label-sync <id>` — wie weiter unten beschrieben, unbeaufsichtigt identisch
+
+Der Marker ist keine eigene Operation, sondern eine **Zeile im Body**. Er kann deshalb nur mit einer Body-Schreibung entstehen — und weil er nie ohne Synthese dastehen darf, wird der Body zweimal geschrieben: erst geschärft ohne Marker, nach erfolgreicher Synthese ein zweites Mal mit.
+
+Bei befundfreiem Lauf entfallen die Schritte 1 bis 3; das `issue update` mit der Marker-Zeile ist dann die einzige Body-Schreibung und schreibt den unveränderten Body plus Marker.
+
+**Schlägt einer der Befehle fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus.** Scheitert die **zweite** Body-Schreibung, bleibt der Body geschärft und ohne Marker zurück — das Ticket sieht dann aus wie eines mit Befunden, was es zu diesem Zeitpunkt auch ist. Ein Marker ohne Synthese kann nicht mehr entstehen. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
+
+Wie der `## Body-Vorschlag`-Kommentar (Schreibbefehl 1) aufgebaut ist und welche Kopfzeile er wörtlich trägt, steht im Abschnitt „Im Nachtbetrieb".
+
+**Interaktiv wird nichts ohne Zustimmung geschrieben.** Zeige einen Vorschlag mit den eingearbeiteten Funden und frage einmal:
 
 > Stufe `issue`, Reviewer `codex` (pruefbarkeit), 3 Funde (1 BLOCKER, 2 HINWEIS). Vorschlag für den neuen Body:
 > …
@@ -562,7 +621,11 @@ SYNTHESE
 
 Kein Konsens-Automatismus: Modelle können sich einig und trotzdem falsch sein. Übereinstimmung ist kein Wahrheitskriterium, und wer über die Anforderung entscheidet, entscheidet über das Produkt — das ist keine Modellfrage.
 
-**Nach der Zustimmung:** Body schreiben und die Marker-Zeile **der geprüften Stufe** aufnehmen, wörtlich in einer dieser drei Formen:
+**Bei Ablehnung:** Body bleibt unverändert und **kein Marker** wird gesetzt. Ein Review, dessen Ergebnis verworfen wurde, hat das Issue nicht geschärft.
+
+**In beiden Betriebsarten gilt:**
+
+**Wird der Body geschrieben** — interaktiv nach der Zustimmung, unbeaufsichtigt nach der Fallunterscheidung oben —, wird die Marker-Zeile **der geprüften Stufe** aufgenommen, wörtlich in einer dieser drei Formen:
 
 ```
 Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
@@ -634,45 +697,11 @@ Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für `night.mj
 
 Der Grund steht im Protokoll vom 2026-08-08 (Issue #267): Vier Sessions hatten ihre Reviewer-Arbeit fertig — bei einer davon drei BLOCKER — und haben sie verworfen, weil sie auf eine Antwort warteten, die nachts niemand geben kann. Fünf bis sechs Minuten Arbeit je Issue, viermal, für nichts. Der bisherige Text deckte nur zwei Lagen ab: Reviewer fehlt beim Vorflug (dann startet der Runner nicht) und Reviewer fällt mitten im Lauf aus (dann ist es ein Fund für den Bericht). Die dritte — Vorflug meldet ihn, Start scheitert — kannte er nicht, und für eine Lage ohne Regel improvisiert jede Session neu.
 
-**Schritt 6 nachts: Der Body wird geschrieben, wenn alle Funde `korrektur` sind.**
+**Schritt 6 steht in Schritt 6.** Was unbeaufsichtigt mit dem Body geschieht — die Fallunterscheidung, die Regel für den Fund ohne Klassenangabe, das `kit:klaeren`-Kommando, in welcher Folge geschrieben wird und was ein fehlgeschlagener Befehl hinterlässt — ist dort geregelt, wo die Session es liest, bevor sie handelt. Hier steht nur, was allein nachts gilt.
 
-Die Verantwortungsschwelle liegt nicht mehr am Text, sondern an der **Entscheidung**: Automatisiert wird, was automatisierbar ist; wo eine Entscheidung fehlt, zeichnet ein Label sie sichtbar.
+Der Grund ist derselbe wie beim Reviewer-Ausfall oben: Stand die Ausnahme achtzig Zeilen unter der Regel, handelte die Session, bevor sie sie las. Am 2026-08-31 endeten so vier von vier Nacht-Sessions mit „Schärfung fehlt" — Befunde vollständig, Body ungeschrieben. Zweimal war zuvor die Formulierung geschärft worden, beide Male ohne Wirkung (Issue #417).
 
-- **Alle Funde `korrektur`:** Der Body wird geschrieben, der Marker gesetzt.
-- **Mindestens ein `gate`- oder `alternativen`-Fund** — diese beiden Klassen kann die Synthese **nicht verwerfen**, sie rufen nach A9 immer den Menschen: Die übernommenen `korrektur`-Funde werden trotzdem angewendet, `kit:klaeren` wird gesetzt, der Marker bleibt aus, und die Synthese benennt jeden offenen Punkt einzeln.
-
-Für `korrektur`-Funde bleibt die Abwägung übernommen/verworfen mit Begründung bestehen; **angewendet wird, was übernommen ist** — nicht ausnahmslos jeder.
-
-**Ein Fund ohne Klassenangabe gilt wie `gate`.** Er wird **nicht angewendet**, er
-zeichnet das Ticket mit `kit:klaeren`, und der **Marker bleibt aus** — genau wie ein
-echter `gate`-Fund.
-
-Die Richtung ist Absicht: Im Zweifel ruft der Fund einen Menschen. Die Gegenrichtung —
-fehlende Angabe gilt als `korrektur` — wäre bequemer und genau falsch, weil sie das
-Auslassen zur billigsten Variante machte. Ein Prompt wird nicht immer befolgt; die Regel
-darf nicht daran hängen, dass er es wird.
-
-Das Label wird so gesetzt:
-
-```bash
-node .claude/kit/board.mjs issue label add <id> kit:klaeren
-```
-
-Ein bereits vorhandenes Label ist kein Fehler.
-
-**Angewendet wird nur wörtlich Vorgeschlagenes** (A10): Was der Reviewer nicht wörtlich geliefert hat, verändert den Body nicht — keine Umformulierung, keine sinngemäße Übertragung, keine eigene Ergänzung an der Stelle. Der `## Body-Vorschlag`-Kommentar bleibt in beiden Fällen daneben bestehen; er ist die Spur, was die Maschine getan hat.
-
-**Reihenfolge der Schreibbefehle und Fehlerpfad:**
-
-1. `## Body-Vorschlag`-Kommentar
-2. `issue update` (der neue Body)
-3. gegebenenfalls `issue label add kit:klaeren`
-4. Synthese-Kommentar
-5. gegebenenfalls der Marker
-
-**Schlägt ein Schreibbefehl fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus** — insbesondere **nie einen Marker ohne** erfolgreich geschriebenen Body und Synthese-Kommentar. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
-
-**Für die Stufen `fachlich` und `plan` gilt das alles nicht — dort wird der Body unbeaufsichtigt nie geschrieben:** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
+**Der `## Body-Vorschlag`-Kommentar (Schreibbefehl 1 aus Schritt 6) trägt den fertig formulierten Text ans Board** — als übernehmbaren Text und nicht als Beschreibung dessen, was zu ändern wäre. Er entsteht auf jeder Stufe und auch dann, wenn der Body anschließend geschrieben wird: Er ist die Spur, was die Maschine getan hat, und beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
 Die **erste Zeile** dieses Kommentars lautet wörtlich `## Body-Vorschlag, Runde <n>`, mit der Nummer der Runde:
 
@@ -691,7 +720,7 @@ Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine List
 
 **`night.mjs --review` prüft das.** Fehlt der neue Vorschlag und wurde kein Marker der aktiven Stufe gesetzt, meldet der Lauf „Schärfung fehlt" statt eines Erfolgs. Gewertet wird nur, was **in dieser Session** hinzugekommen ist — ein Vorschlag aus einem früheren Lauf zählt nicht. Bei mehreren Runden zählt die höchste geschriebene Runde.
 
-**Diese Marker-Regel gilt nur für die Stufe `issue`, nicht für `fachlich` und nicht für `plan`.** Der Grund ist der Ort: Der Marker wird *in den Body* geschrieben. In einer fachlichen Anforderung stehen die Antworten des Product Owners, in einem Plandokument die architektonischen Entscheidungen — beides hat ein Mensch getroffen. Für die Stufen `fachlich` und `plan` gilt deshalb in **jedem unbeaufsichtigten Lauf** — nicht nur nachts —: `issue update` wird nie ausgeführt, und auch bei befundfreiem Review wird kein Marker gesetzt. Befunde, Synthese und der vollständig formulierte Body-Vorschlag gehen ausschließlich als Kommentare ans Board.
+**Die Marker-Regel unten gilt für alle drei Stufen.** Wird der Body geschrieben, muss das Dokument als geprüft erkennbar sein — sonst bleibt es auf `review:offen` stehen und sieht ungeprüft aus, obwohl sein Body den Review bereits trägt. Gefahrlos ist das, weil an `Fachplan-Review:` und `Plan-Review:` kein Gate hängt: `requiredBeforeReady` prüft allein `Issue-Review:` (`kit/night.mjs`), und die oberen Stufen gehen ohnehin nie nach Ready. Nicht die Stufe schützt, was ein Mensch entschieden hat, sondern die Schutzregel aus Schritt 6.
 
 **Der Marker wird gesetzt, wenn nichts zu ändern ist.** Genauer, beide Bedingungen zusammen:
 
@@ -708,15 +737,15 @@ Trifft eines davon nicht zu, bleibt der Marker aus und das Issue wartet auf den 
 
 Der Grund für diese Aufteilung: **Die Verantwortungsschwelle liegt auf der Entscheidung, nicht am Text.** Was ein Reviewer wörtlich vorschlägt und was nur einen Weg kennt, kann die Maschine anwenden — daran ist nichts zu entscheiden. Wo dagegen eine Regel berührt ist oder mehrere Wege offenstehen, macht `kit:klaeren` genau das sichtbar, statt es in einem Kommentar zu vergraben. Das GO bleibt unangetastet — nach Ready zieht weiterhin nur der Mensch.
 
-**Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat:
+**Marker-Form nachts** — wörtlich so, damit ablesbar bleibt, dass niemand zugestimmt hat. Hier der Marker eines Arbeitspakets, Stufe `issue`:
 
 ```
 Issue-Review: codex (2026-08-06, Nachtlauf)
 ```
 
-Der Zusatz steht innerhalb der Klammer; der Anker `Issue-Review:` bleibt unverändert.
+Der Zusatz steht innerhalb der Klammer; der Anker bleibt unverändert. Für `Fachplan-Review:` und `Plan-Review:` gilt dieselbe Form mit demselben Zusatz.
 
-**`label-sync` läuft nachts identisch**, ohne Ausnahme: Ein Label ist weder Body noch Marker, es fällt also nicht unter das nächtliche Schreibverbot für die Stufen `fachlich` und `plan`. Der Zustand ist abgeleitet und jederzeit neu berechenbar — ihn zu zeigen ist keine Produktentscheidung.
+**`label-sync` läuft nachts identisch**, ohne Ausnahme: Ein Label ist weder Body noch Marker; ihn zu zeigen ist keine Produktentscheidung. Der Zustand ist abgeleitet und jederzeit neu berechenbar.
 
 Unverändert nachts: kein Ziehen nach Ready, kein Review von `[Idee]`-Issues, kein Reviewer bei gültigem Verzicht (Schritt 1 und 4), Befunde gehen unverändert als Kommentar ans Board. `[Fachlich]` und `[Plan]` schlägt der Runner bis Issue #283 ohnehin nicht vor.
 
@@ -744,16 +773,14 @@ Dann der Hinweis auf den nächsten Schritt:
 
 ## Stop-Punkte
 
-- Kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung
+- Interaktiv kein Schreiben in den Issue-Body ohne ausdrückliche Zustimmung; unbeaufsichtigt nur nach der Fallunterscheidung in Schritt 6
 - **Nachts wird nie gefragt, in keiner Lage** — auch nicht, wenn ein Reviewer beim Start ausfällt oder das Autor-Modell fehlt. Es wird mit dem verfahren, was da ist, und der Rest protokolliert
 - **Nachts kein Ersatz-Reviewer** — die Besetzung folgt `pairs`, eine Lücke wird vermerkt, nicht gefüllt
-- **Nachts kein Schreiben in den Issue-Body bei den Stufen `fachlich` und `plan`** — dort nur Kommentare und nie ein Marker. Auf der Stufe `issue` wird der Body geschrieben, wenn alle Funde `korrektur` sind (Issue #387)
+- **Kein Anwenden eines Funds auf einen menschlich gesetzten Inhalt** — berührt er eine dokumentierte PO-Antwort unter `## Offene Fragen an den PO` oder eine architektonische Begründung unter `## Architektonische Entscheidungen`, ist er kein `korrektur`-Fund: Er wird nicht angewendet, zeichnet das Ticket mit `kit:klaeren` und hält den Marker zurück (Schritt 6, Issue #418)
 - **Nie ein Marker ohne erfolgreich geschriebenen Body und Synthese-Kommentar** — schlägt ein Schreibbefehl fehl, endet der Skill und führt keine weitere Mutation aus
-- Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne befundfreien Review (nachts)
+- Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne dass alle Funde `korrektur` tragen und die übernommenen angewendet sind (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet
-- **Kein Schreiben in ein Plandokument in einem unbeaufsichtigten Lauf** — bei Stufe `plan` weder `issue update` noch ein Marker. Auch der Plan trägt architektonische Entscheidungen, die ein Mensch getroffen hat
-- **Kein Schreiben in eine fachliche Anforderung in einem unbeaufsichtigten Lauf** — bei Stufe `fachlich` weder `issue update` noch ein Marker, auch nicht bei befundfreiem Review. Dort stehen die Antworten des Product Owners
 - Kein Ziehen nach Ready — das ist das menschliche GO
 - Kein Review von `[Idee]`-Issues — `[Fachlich]` und `[Plan]` bestimmen dagegen die Stufe (Schritt 1b)
 - **Kein Reviewer bei gültigem, nicht verfallenem Verzicht** — auch nicht bei explizit übergebener Nummer. Der Verzicht wird gemeldet und protokolliert, nicht übergangen

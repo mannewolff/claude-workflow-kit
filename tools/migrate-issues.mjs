@@ -924,10 +924,12 @@ export async function main(argv) {
     try {
       return await fuehreVerifyAus(rest);
     } catch (e) {
-      if (e instanceof CliError) {
-        process.stderr.write(`Fehler: ${e.message}\n`);
-        return BETRIEBSFEHLER;
-      }
+      // Anders als bei den uebrigen Unterkommandos fuehrt ein CliError hier NICHT zur
+      // Hilfe: Ein Bedienfehler ist fuer verify genauso ein Betriebsfehler wie ein
+      // toter Endpunkt — in beiden Faellen hat die Pruefung nicht stattgefunden, und
+      // genau das soll der Exit-Code sagen. Bis Issue #405 stand die Unterscheidung
+      // als if/else da, mit identischen Zweigen: eine Verzweigung ohne Wirkung, die
+      // beim Lesen einen Unterschied behauptete, den es nicht gab.
       process.stderr.write(`Fehler: ${e.message}\n`);
       return BETRIEBSFEHLER;
     }

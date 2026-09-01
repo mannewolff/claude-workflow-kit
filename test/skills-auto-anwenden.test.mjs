@@ -58,9 +58,20 @@ test("Reihenfolge und Fehlerpfad der Schreibbefehle stehen da", () => {
   assert.match(SKILL, /keine weitere Mutation|fuehrt keine weitere/i);
 });
 
-test("Fuer fachlich und plan bleibt es beim Marker-Verbot", () => {
-  assert.match(SKILL, /`fachlich`.*`plan`.*kein.*Marker|kein.*Marker.*`fachlich`/is);
-  assert.match(DOKU, /Für `fachlich` und `plan`/);
+// Bis Issue #418 stand hier das Marker-Verbot fuer `fachlich` und `plan`. Seit
+// beide Stufen unbeaufsichtigt schreiben duerfen, schuetzt nicht mehr der Ort,
+// sondern der Inhalt — die Zusicherung zieht mit. Der alte Ausdruck lief mit
+// `s`-Flag ueber den ganzen Skill und haette den Wegfall ohnehin nicht bemerkt.
+test("Fuer fachlich und plan gilt dieselbe Regel — geschuetzt sind die Inhalte", () => {
+  assert.match(SKILL, /Die Marker-Regel unten gilt für alle drei Stufen/,
+    "der Skill nimmt fachlich und plan weiterhin von der Marker-Regel aus");
+  assert.match(
+    SKILL,
+    /## Offene Fragen an den PO[\s\S]{0,240}kit:klaeren/,
+    "die Schutzregel fuer dokumentierte PO-Antworten fehlt im Skill"
+  );
+  assert.match(DOKU, /Geschützt sind nicht die Stufen, sondern die Inhalte/,
+    "die Doku sagt nicht, dass der Schutz am Inhalt haengt");
 });
 
 // night.mjs waehlt je Aufruf genau einen Modus — eine "Implementierungsauswahl

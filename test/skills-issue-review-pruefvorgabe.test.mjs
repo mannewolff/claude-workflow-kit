@@ -112,10 +112,13 @@ test("Schritt 4 benennt den Fall vorgabeQuelle: verfallen", () => {
 // verliert seinen Marker.
 test("Schritt 6 verlangt die Erhaltung von Pruefung: und Pruefung-Stand:", () => {
   const a = abschnitt("6. Body schärfen");
-  const absatz = a.split(/\n\n/).find((p) => /Pruefung:/.test(p) && /Pruefung-Stand:/.test(p));
-  assert.ok(absatz, "kein Absatz nennt beide Zeilen zusammen");
-  assert.match(absatz, /erhalten|uebernimm|übernimm|verliert/i,
-    "der Absatz muss die Erhaltungspflicht aussprechen, nicht nur die Zeilen erwaehnen");
+  // Seit Issue #417 nennt auch die Liste der Schreibbefehle beide Zeilen. Gesucht
+  // ist irgendein Absatz, der die Erhaltungspflicht ausspricht — nicht der erste,
+  // der die Zeilen nur erwaehnt.
+  const kandidaten = a.split(/\n\n/).filter((p) => /Pruefung:/.test(p) && /Pruefung-Stand:/.test(p));
+  assert.ok(kandidaten.length > 0, "kein Absatz nennt beide Zeilen zusammen");
+  assert.ok(kandidaten.some((p) => /erhalten|uebernimm|übernimm|verliert/i.test(p)),
+    "kein Absatz spricht die Erhaltungspflicht aus, die Zeilen sind nur erwaehnt");
   assert.match(a, /#303|alten Stand/i,
     "der Grund (Leitplanke aus Issue #303 bzw. Uebernahme aus dem alten Stand) fehlt");
 });

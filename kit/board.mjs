@@ -53,7 +53,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.43.0";
+const KIT_VERSION = "1.44.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -308,31 +308,41 @@ function readLocalOverrides(sharedPfad) {
 // ohne Config weiterarbeiten koennen (kontext paths, Issue #202). Eine vorhandene, aber
 // kaputte Datei bleibt ein harter Fehler: Sie stillschweigend wie "keine Config" zu
 // behandeln, wuerde einen Tippfehler in einen unsichtbaren Verhaltenswechsel verwandeln.
+/**
+ * Liest eine konkrete Config-Datei und bringt sie auf den heutigen Stand (Issue #404).
+ *
+ * Getrennt von der Kandidatensuche, weil es eine andere Frage ist: readWorkflowConfig
+ * entscheidet, WELCHE Datei gilt; diese Funktion, WIE ihr Inhalt zu lesen ist —
+ * Kompatibilitaets-Abbildung, persoenliche Overrides, Hinweise auf Ignoriertes.
+ */
+function ladeConfigDatei(p) {
+  const raw = JSON.parse(readFileSync(p, "utf-8"));
+  // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
+  if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
+  if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
+  const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+  // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
+  // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
+  // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+  for (const feld of ignored) {
+    process.stderr.write(
+      `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
+    );
+  }
+  return config;
+}
+
 function readWorkflowConfig() {
   const candidates = [
     resolve(".claude", "workflow.config.json"),
     join(configRoot(), ".claude", "workflow.config.json"),
   ];
   for (const p of candidates) {
-    if (existsSync(p)) {
-      try {
-        const raw = JSON.parse(readFileSync(p, "utf-8"));
-        // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
-        if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
-        if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-        const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
-        // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
-        // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
-        // harter Fehler waere bei jedem board.mjs-Aufruf laut.
-        for (const feld of ignored) {
-          process.stderr.write(
-            `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
-          );
-        }
-        return config;
-      } catch {
-        fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
-      }
+    if (!existsSync(p)) continue;
+    try {
+      return ladeConfigDatei(p);
+    } catch {
+      fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
     }
   }
   return null;
@@ -871,29 +881,40 @@ class GitLabIssueTracker {
     }
   }
 
-  async listIssues(status) {
+  /**
+   * Uebersetzt einen Board-Status in die CLI-Flags von `glab issue list` (Issue #404).
+   *
+   * Eigene Funktion, weil hier eine Uebersetzung stattfindet und keine Abfrage: Der
+   * Status ist ein Kit-Begriff, die Flags sind GitLabs Modell aus Zustaenden und
+   * Labels. listIssues fragt danach ab und formt das Ergebnis — zwei Aufgaben, die
+   * ineinander nur schwer zu lesen waren.
+   */
+  _listArgs(status) {
     const args = ["issue", "list", "--output", "json"];
-    if (status) {
-      // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
-      // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
-      args.push("--order", "relative_position", "--sort", "asc");
-      if (isStateColumn(status, this._cfg)) {
-        if (status === "done") {
-          args.push("--closed");
-        } else {
-          // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
-          const otherLabels = Object.entries(columnLabels(this._cfg))
-            .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
-            .map(([, l]) => l);
-          for (const l of otherLabels) args.push("--not-label", l);
-        }
-      } else {
-        const label = columnLabels(this._cfg)[status];
-        if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
-        args.push("--label", label);
-      }
+    if (!status) return args;
+    // Board-Reihenfolge statt numerisch: relative_position ist GitLabs Feld fuer die
+    // manuelle Board-Sortierung (oben zuerst, #128). Nur im Status-Filter-Pfad.
+    args.push("--order", "relative_position", "--sort", "asc");
+    if (!isStateColumn(status, this._cfg)) {
+      const label = columnLabels(this._cfg)[status];
+      if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
+      args.push("--label", label);
+      return args;
     }
-    const items = execJSON("glab", args);
+    if (status === "done") {
+      args.push("--closed");
+      return args;
+    }
+    // backlog als Open-Zustand: offene Issues ohne die anderen Status-Labels.
+    const otherLabels = Object.entries(columnLabels(this._cfg))
+      .filter(([s]) => s !== "backlog" && !isStateColumn(s, this._cfg))
+      .map(([, l]) => l);
+    for (const l of otherLabels) args.push("--not-label", l);
+    return args;
+  }
+
+  async listIssues(status) {
+    const items = execJSON("glab", this._listArgs(status));
     const mapped = (Array.isArray(items) ? items : []).map((i) => {
       const labelNames = labelNamesFrom(i.labels);
       return {
@@ -1030,6 +1051,23 @@ function epicProgress(issues, epicId) {
   return { total: children.length, done };
 }
 
+// Trifft ein Body, der NUR aus der Autor-Modell-Zeile besteht? Dann bekommt er
+// die Abschnitts-Vorlage angehaengt (Issue #266, angewandt in createIssue).
+//
+// Der Ausdruck fasst die rohe Zeile, den umgebenden Leerraum raeumt der Aufrufer
+// per `trim()` ab — dasselbe Muster, das #403 bei PRUEFUNG_ZEILE angewandt hat.
+// Die fruehere Fassung `/^\s*Autor-Modell:[^\S\n]*\S[^\n]*\s*$/` legte `\s*` um
+// den GANZEN Body: `[^\n]*` und `\s*` akzeptieren beide Leerzeichen, also
+// probierte die Engine bei einem scheiternden Rest jede Aufteilung durch
+// (S8786, Issue #406). Gemessen mit 256 KiB Leerraum hinter der Zeile: 21,7 s
+// vorher, 0,3 ms danach. Der Aufrufvertrag aus #396 schuetzte hier nicht — der
+// Ausdruck laeuft ueber den ganzen Body, nicht ueber eine Zeile aus `.split()`.
+const NUR_AUTOR_ZEILE = /^Autor-Modell:[^\S\n]*\S[^\n]*$/;
+
+export function nurAutorZeileTrifft(body) {
+  return NUR_AUTOR_ZEILE.test((body || "").trim());
+}
+
 class LocalIssueTracker {
   constructor(config) { this._cfg = config; }
 
@@ -1087,7 +1125,7 @@ class LocalIssueTracker {
     // Autor-Modell-Zeile besteht (Issue #266). Seit der Leitplanke in issueCreate
     // ist ein Body nie mehr wirklich leer — ohne diese Erweiterung haette ein
     // `create` ohne --body still die Vorlage verloren.
-    const nurAutorZeile = /^\s*Autor-Modell: *\S[^\n]*\s*$/.test(body || "");
+    const nurAutorZeile = nurAutorZeileTrifft(body);
     const VORLAGE = "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n";
     let rumpf = body;
     if (!body) rumpf = VORLAGE;
@@ -1918,7 +1956,23 @@ function heute() {
 //
 // Bis hierher war die Zeile eine Bitte im /issues-Skill. Eine Bitte wird unter Druck
 // uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in /local-check.
-export const AUTOR_MODELL_ZEILE = /^Autor-Modell: *(\S.*?) *$/m;
+//
+// `(\S(?:[^\n]*\S)?)` statt `(\S[^\n]*?)` mit nachfolgendem `[^\S\n]*$`
+// (S8786, Issue #406): Die fruehere Fassung liess die Aufteilung offen — das
+// lazy `[^\n]*?` und das folgende `[^\S\n]*` akzeptieren beide Leerzeichen,
+// also probierte die Engine jede Grenze zwischen Wert und Leerraum durch.
+// Gemessen mit `Autor-Modell: x`, 256 KiB Leerzeichen und einem Zeichen
+// dahinter: 61,6 s vorher, 0,2 ms danach.
+//
+// Der Capture bleibt derselbe: erstes bis letztes Nicht-Leerzeichen der Zeile,
+// innen liegender Leerraum inklusive. Jetzt sagt die Form das aber selbst —
+// greedy bis zum letzten `\S` —, statt es der Engine zu ueberlassen.
+//
+// Dass die Messung hier ueberhaupt etwas fand, lag an der Eingabe: Das Ticket
+// stufte den Ausdruck nach einem Text als linear ein, bei dem die Zeile sauber
+// endet. Erst ein Text, dessen PRAEFIX passt und dessen Rest scheitert, loest
+// das Backtracking aus.
+export const AUTOR_MODELL_ZEILE = /^Autor-Modell:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/m;
 const AUTOR_MODELL_HILFE =
   'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
   'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
@@ -1950,7 +2004,13 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   const start = kontext.index + kontext[0].length;
   const naechsterAbschnitt = body.slice(start).search(/^## /m);
   const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
-  const davor = body.slice(0, ende).replace(/\n*$/, "");
+  // `(?<!\n)` statt blossem `\n+$`: Der Lookbehind laesst nur den ANFANG des
+  // abschliessenden Umbruch-Laufs als Startpunkt zu. Ohne ihn probierte die
+  // Engine bei einem Abschnitt, der nicht auf `\n` endet, jede Startposition
+  // durch und frass sich jedesmal bis ans Ende (S8786, Issue #406) — 18,8 s bei
+  // 256 KiB Leerzeilen, danach 0,4 ms. Das Ergebnis des Ersetzens ist dasselbe:
+  // Der erste Treffer lag auch vorher am Anfang des Laufs.
+  const davor = body.slice(0, ende).replace(/(?<!\n)\n+$/, "");
   return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
 }
 
@@ -1970,9 +2030,18 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 
 /** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
-const PRUEFUNG_ZEILE = /^Pruefung: *(.*?) *$/;
-const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand: *(.*?) *$/;
-export const FENCE_ZEILE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+// Kein Trimmen im Ausdruck, sondern per `.trim()` am Aufrufer (Issue #403): Jede
+// Variante, die fuehrenden und folgenden Leerraum im Muster abraeumt, laesst zwei
+// Wiederholungen dieselben Zeichen akzeptieren — und genau daran hing die
+// super-lineare Laufzeit. `[^\n]*` ist eindeutig und kann nicht backtracken.
+// Der Capture traegt deshalb den ROHEN Wert; `parsePruefvorgabe` trimmt ihn.
+export const PRUEFUNG_ZEILE = /^Pruefung:([^\n]*)$/;
+export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand:([^\n]*)$/;
+// Der negative Lookahead ist der Kern (Issue #403): Ohne ihn akzeptieren `{3,} und
+// [^\n]* dieselben Zeichen, und eine Zeile aus lauter Backticks ohne Zeilenende
+// laesst die Engine jede Aufteilung durchprobieren — 78 ms bei 16 KiB, quadratisch
+// wachsend. Mit ihm ist die Fence-Laenge eindeutig: 0,04 ms, linear.
+export const FENCE_ZEILE = /^ {0,3}(`{3,}(?!`)|~{3,}(?!~))([^\n]*)$/;
 const GUELTIGE_VORGABEN = new Map([
   ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
 ]);
@@ -2053,7 +2122,12 @@ export function pruefvorgabeStand(body) {
   const text = normalisiereZeilenenden(body);
   const grenzen = kontextGrenzen(text);
   const rest = grenzen ? text.slice(0, grenzen.start) + text.slice(grenzen.ende) : text;
-  const gestutzt = rest.replace(/^\n+/, "").replace(/\n+$/, "");
+  // Der zweite Zweig traegt denselben Lookbehind wie in autorModellSicherstellen
+  // (Issue #406): nur der Anfang des abschliessenden Umbruch-Laufs zaehlt als
+  // Startpunkt. 18,9 s bei 256 KiB Leerzeilen vorher, 3 ms danach. Der erste
+  // Zweig `^\n+` ist bereits linear — ohne `m`-Flag gibt es nur eine
+  // Startposition.
+  const gestutzt = rest.replaceAll(/^\n+|(?<!\n)\n+$/g, "");
   return createHash("sha256").update(gestutzt, "utf8").digest("hex");
 }
 
@@ -2067,21 +2141,33 @@ export function pruefvorgabeStand(body) {
  * die Zeile kann im Board-UI gesetzt worden sein, ohne dass je ein
  * `issue update` lief.
  */
+/**
+ * Sammelt die beiden Kennzeichnungszeilen aus dem Kontext-Abschnitt (Issue #404).
+ *
+ * Reines Einsammeln, ohne Urteil: Mehrfachvorkommen und ungueltige Werte werden hier
+ * nicht beanstandet, sondern weitergereicht. Das Trennen macht beide Haelften lesbar
+ * — die Schleife kennt nur Zeilen, die Pruefung nur Werte.
+ */
+function sammlePruefzeilen(abschnitt) {
+  const vorgaben = [];
+  const staende = [];
+  const imFence = fenceLauf();
+  for (const zeile of abschnitt.split("\n")) {
+    if (imFence(zeile)) continue;
+    const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
+    if (vorgabe) vorgaben.push(vorgabe[1].trim());
+    const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
+    if (stand) staende.push(stand[1].trim());
+  }
+  return { vorgaben, staende };
+}
+
 export function parsePruefvorgabe(body) {
   const text = normalisiereZeilenenden(body);
   const grenzen = kontextGrenzen(text);
   if (!grenzen) return { wert: null, stand: null, verfallen: false };
 
-  const vorgaben = [];
-  const staende = [];
-  const imFence = fenceLauf();
-  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
-    if (imFence(zeile)) continue;
-    const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
-    if (vorgabe) vorgaben.push(vorgabe[1]);
-    const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
-    if (stand) staende.push(stand[1]);
-  }
+  const { vorgaben, staende } = sammlePruefzeilen(text.slice(grenzen.start, grenzen.ende));
 
   if (vorgaben.length > 1) {
     throw new BoardError(`Mehrere 'Pruefung:'-Zeilen im Kontext-Abschnitt (${vorgaben.length}). Genau eine ist erlaubt.`);
@@ -2160,7 +2246,7 @@ export function reviewZustand(body, comments, stufe) {
   const text = normalisiereZeilenenden(body || "");
 
   const imFence = fenceLauf();
-  const markerZeile = new RegExp(`^\\s*${marker}:\\s*\\S`);
+  const markerZeile = new RegExp(String.raw`^\s*${marker}:\s*\S`);
   for (const zeile of text.split("\n")) {
     if (imFence(zeile)) continue;
     if (markerZeile.test(zeile)) return "fertig";
@@ -2172,7 +2258,7 @@ export function reviewZustand(body, comments, stufe) {
   const { wert, verfallen } = parsePruefvorgabe(text);
   if (wert === "verzicht" && !verfallen) return "fertig";
 
-  const anker = new RegExp(`^\\s*##\\s*${marker},\\s*Runde\\b`, "i");
+  const anker = new RegExp(String.raw`^\s*##\s*${marker},\s*Runde\b`, "i");
   const eigene = (Array.isArray(comments) ? comments : []).filter((k) =>
     anker.test(String(k?.body || "").split("\n")[0] || "")
   );

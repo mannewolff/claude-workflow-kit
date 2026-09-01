@@ -330,3 +330,46 @@ test("normalisiereVorflug: nur ein ausdrueckliches true zaehlt", () => {
     assert.equal(befunde[0].verfuegbar, false, `verfuegbar: ${JSON.stringify(wert)} darf nicht als ja gelten`);
   }
 });
+
+// --- Wenn die Vorflug-Session selbst nicht startet (Issue #405) ---
+//
+// Drei Fehlerarten, drei Meldungen. Sie zu unterscheiden ist nicht Kosmetik: Ein
+// Zeitlimit heisst "zu langsam", ein ENOENT "gar nicht installiert", alles andere
+// "etwas Drittes". Wer sie zusammenfasst, schickt den Menschen morgens in die
+// falsche Ecke — genau der Fehler, den Issue #269 an den Reviewern behoben hat.
+
+test("Vorflug: ein fehlendes claude-CLI wird als solches gemeldet", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    backlogIssue(dir, "Ein Kandidat");
+    // Ein PATH, der `git` enthaelt (der Runner braucht es fuer gitClean), aber kein
+    // `claude`: Dann liefert spawn ENOENT genau fuer die Vorflug-Session. Der
+    // Wrapper zeigt auf das echte git — ein leerer PATH kippte schon die
+    // Vorbedingung, bevor der Vorflug ueberhaupt startet.
+    const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+    // Ausserhalb des Fixtures: ein neues Verzeichnis DARIN machte den Working Tree
+    // schmutzig, und der Lauf endete an der Vorbedingung statt am Vorflug.
+    const nurGit = mkdtempSync(join(tmpdir(), "night-nur-git-"));
+    writeFileSync(join(nurGit, "git"), `#!/bin/sh\nexec ${echtesGit} "$@"\n`, { mode: 0o755 });
+
+    const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run"], {
+      NIGHT_VORFLUG_CMD: "", PATH: nurGit,
+    });
+
+    assert.equal(res.status, 0, `der Dry-Run haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
+    assert.match(res.stdout, /claude-CLI nicht gefunden\. Ist Claude Code installiert und im PATH\?/,
+      "ein fehlendes CLI muss als solches benannt werden, nicht als leerer Befund");
+  });
+});
+
+test("Vorflug: ein Zeitlimit wird mit der Zahl gemeldet", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    backlogIssue(dir, "Ein Kandidat");
+    const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run"], {
+      NIGHT_VORFLUG_CMD: "sleep 30", NIGHT_VORFLUG_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "200",
+    });
+
+    assert.equal(res.status, 0, `der Dry-Run haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
+    assert.match(res.stdout, /Zeitlimit von 400 ms ueberschritten/,
+      "ohne die Zahl ist nicht erkennbar, ob das Limit zu knapp war");
+  });
+});

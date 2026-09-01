@@ -110,7 +110,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
@@ -172,16 +172,32 @@ const NACHBAR_BOARD = join(__dirname, "board.mjs");
 // Die Bindung ist jetzt `const` mit einem Ternaer: Liegt der Nachbar da, kommt die
 // echte Signatur aus dem Modul; liegt er nicht da, wirft der Stub.
 const parsePruefvorgabeFallback = (body) => {
-  void body;
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
 };
 const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
   ? await import("./board.mjs")
   : { parsePruefvorgabe: parsePruefvorgabeFallback };
+
+// Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
+// (Issue #428). Ein zweiter Rechenweg waere genau das, was checks.mjs fuer die Auswahl
+// ausdruecklich ausschliesst — und "das Kommando nennt den Ort in seiner Ausgabe" hilft
+// dem Runner nicht: Er sieht von einer Session nur Exit-Code, Board und Working Tree,
+// nie ihren Text.
+//
+// Bedingt und abgefangen wie oben beim Board: `--version` und `--help` muessen auch
+// dann antworten, wenn nichts neben der Datei liegt (Issue #170). Fehlt der Nachbar,
+// bleibt der Stub stehen — er wirft erst, wenn wirklich jemand den Pfad braucht.
+const NACHBAR_CHECKS = join(__dirname, "checks.mjs");
+const zusammenfassungPfadFallback = (root) => {
+  throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
+};
+const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
+  ? await import("./checks.mjs")
+  : { zusammenfassungPfad: zusammenfassungPfadFallback };
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.43.0";
+const KIT_VERSION = "1.44.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -257,30 +273,61 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
 `);
 }
 
+// Die drei Sorten Argument als Tabellen statt als Kette (Issue #404). Der Schnitt
+// folgt dem, was ein Flag mit dem Lauf macht, nicht seinem Namen: Auskunft geben und
+// enden, einen Wert mitbringen, oder einen Schalter umlegen. Wer ein Flag ergaenzt,
+// traegt es in genau eine Tabelle ein und aendert die Schleife nicht mehr.
+
+// Auskunftsflags: antworten sofort und beenden den Prozess. Sie greifen vor allen
+// Vorflug-Checks, damit sie auch in einem Verzeichnis ohne Config und ohne board.mjs
+// funktionieren.
+const zeigeHilfe = () => { printHelp(); process.exit(0); };
+const SOFORT_FLAGS = {
+  "--help": zeigeHilfe,
+  "-h": zeigeHilfe,
+  "--version": () => {
+    process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
+    process.exit(0);
+  },
+};
+
+// Flags mit Wert: der jeweils naechste argv-Eintrag, bei Zahlen konvertiert. Ob der
+// Wert plausibel ist, entscheidet pruefeArgs — nicht diese Tabelle.
+const WERT_FLAGS = {
+  "--max": (args, wert) => { args.max = Number(wert); },
+  "--model": (args, wert) => { args.model = wert; },
+  "--label": (args, wert) => { args.label = wert; },
+  "--review-label": (args, wert) => { args.reviewLabel = wert; },
+  "--stufe": (args, wert) => { args.stufe = wert; },
+  "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
+};
+
+// Schalter ohne Wert: Flag -> Feldname, immer auf true.
+const SCHALTER_FLAGS = {
+  "--review": "review",
+  "--dry-run": "dryRun",
+  "--yolo": "yolo",
+  "--no-checks-ok": "noChecksOk",
+  "--verbose": "verbose",
+};
+
 function parseArgs(argv) {
   const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, stufe: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--help" || a === "-h") {
-      printHelp();
-      process.exit(0);
-    } else if (a === "--version") {
-      // Wie --help: greift vor allen Vorflug-Checks, damit die Auskunft auch in
-      // einem Verzeichnis ohne Config und ohne board.mjs funktioniert.
-      process.stdout.write(`night.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
-      process.exit(0);
-    } else if (a === "--max") args.max = Number(argv[++i]);
-    else if (a === "--model") args.model = argv[++i];
-    else if (a === "--label") args.label = argv[++i];
-    else if (a === "--review") args.review = true;
-    else if (a === "--review-label") args.reviewLabel = argv[++i];
-    else if (a === "--stufe") args.stufe = argv[++i];
-    else if (a === "--timeout-min") args.timeoutMin = Number(argv[++i]);
-    else if (a === "--dry-run") args.dryRun = true;
-    else if (a === "--yolo") args.yolo = true;
-    else if (a === "--no-checks-ok") args.noChecksOk = true;
-    else if (a === "--verbose") args.verbose = true;
-    else fail(`Unbekanntes Argument: ${a} — siehe --help`);
+    if (Object.hasOwn(SOFORT_FLAGS, a)) {
+      SOFORT_FLAGS[a]();
+      continue;
+    }
+    if (Object.hasOwn(WERT_FLAGS, a)) {
+      WERT_FLAGS[a](args, argv[++i]);
+      continue;
+    }
+    if (Object.hasOwn(SCHALTER_FLAGS, a)) {
+      args[SCHALTER_FLAGS[a]] = true;
+      continue;
+    }
+    fail(`Unbekanntes Argument: ${a} — siehe --help`);
   }
   pruefeArgs(args);
   return args;
@@ -413,8 +460,14 @@ function isFachlich(title) {
 // Bewusst streng: Nur eine Zeile, die mit 'Issue-Review:' beginnt und danach etwas
 // traegt, zaehlt. 'Issue-Review folgt noch' ist das Gegenteil einer Freigabe und darf
 // nicht als eine durchgehen.
-function hasReviewMarker(body) {
-  return /^\s*Issue-Review:\s*\S/im.test(body || "");
+// `[^\S\n]*` statt `\s*` nach dem Doppelpunkt (Issue #403): Der Wert muss auf
+// derselben Zeile stehen. Vorher lief `\s*` in die Folgezeile, sodass
+// "Issue-Review:\nGO" als Marker galt — das Gegenteil dessen, was der Kommentar
+// oben seit jeher beschreibt. Die einzige gewollte Verhaltensaenderung dieser Etappe.
+export const REVIEW_MARKER_ZEILE = /^[^\S\n]*Issue-Review:[^\S\n]*\S/im;
+
+export function hasReviewMarker(body) {
+  return REVIEW_MARKER_ZEILE.test(body || "");
 }
 
 /**
@@ -496,7 +549,7 @@ const STUFEN_MARKER = {
 export function hasStageMarker(body, stufe) {
   const marker = STUFEN_MARKER[stufe];
   if (!marker) return false;
-  return new RegExp(`^\\s*${marker}\\s*\\S`, "im").test(body || "");
+  return new RegExp(String.raw`^\s*${marker}\s*\S`, "im").test(body || "");
 }
 
 /**
@@ -569,6 +622,37 @@ export function hatGueltigenVerzicht(body) {
   }
 }
 
+/**
+ * Der Ausschlussgrund eines Dokuments — `null`, wenn es Kandidat ist (Issue #404).
+ *
+ * Getrennt vom Einsammeln, weil hier je Dokument EINE Frage beantwortet wird:
+ * kommt es dran? Die Reihenfolge der Gruende ist Teil der Antwort und bleibt
+ * deshalb unveraendert; nur die Bauform wechselt von einer else-if-Kette zu
+ * fruehen Rueckgaben.
+ */
+function reviewAusschluss(issue, label, stufe) {
+  // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
+  // aus, sie umgeht die Freigabe nicht.
+  if (label !== null && !(issue.labels || []).includes(label)) return `kein Label '${label}'`;
+  // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
+  // ist kein pruefbares Dokument (Issue #192).
+  if (isIdee(issue.title)) return "Idee ([Idee])";
+  // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
+  // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
+  // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
+  // Runner verbuchte diesen Kommentar als "Review mit Befund".
+  if (hatGueltigenVerzicht(issue.body)) return "bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)";
+  // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
+  // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
+  // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
+  if (hatKlaerenLabel(issue)) return "kit:klaeren, offene Entscheidung";
+  if (stufe === "fachlich") return isFachlich(issue.title) ? null : "kein fachliches Issue ([Fachlich])";
+  if (stufe === "plan") return isPlan(issue.title) ? null : "kein Plan-Dokument ([Plan])";
+  if (isFachlich(issue.title)) return "fachliches Issue ([Fachlich])";
+  if (isPlan(issue.title)) return "Plan-Dokument ([Plan])";
+  return null;
+}
+
 export function selectReviewCandidates(issues, opts = {}) {
   const label = opts.label ?? null;
   const stufe = opts.stufe ?? "issue";
@@ -576,39 +660,9 @@ export function selectReviewCandidates(issues, opts = {}) {
   const uebersprungen = [];
 
   for (const issue of issues || []) {
-    const eintrag = (grund) => uebersprungen.push({ id: issue.id, title: issue.title, grund });
-    // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
-    // aus, sie umgeht die Freigabe nicht.
-    if (label !== null && !(issue.labels || []).includes(label)) {
-      eintrag(`kein Label '${label}'`);
-    } else if (isIdee(issue.title)) {
-      // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
-      // ist kein pruefbares Dokument (Issue #192).
-      eintrag("Idee ([Idee])");
-    } else if (hatGueltigenVerzicht(issue.body)) {
-      // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
-      // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
-      // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
-      // Runner verbuchte diesen Kommentar als "Review mit Befund".
-      eintrag("bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)");
-    } else if (hatKlaerenLabel(issue)) {
-      // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
-      // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
-      // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
-      eintrag("kit:klaeren, offene Entscheidung");
-    } else if (stufe === "fachlich") {
-      if (isFachlich(issue.title)) kandidaten.push(issue);
-      else eintrag("kein fachliches Issue ([Fachlich])");
-    } else if (stufe === "plan") {
-      if (isPlan(issue.title)) kandidaten.push(issue);
-      else eintrag("kein Plan-Dokument ([Plan])");
-    } else if (isFachlich(issue.title)) {
-      eintrag("fachliches Issue ([Fachlich])");
-    } else if (isPlan(issue.title)) {
-      eintrag("Plan-Dokument ([Plan])");
-    } else {
-      kandidaten.push(issue);
-    }
+    const grund = reviewAusschluss(issue, label, stufe);
+    if (grund === null) kandidaten.push(issue);
+    else uebersprungen.push({ id: issue.id, title: issue.title, grund });
   }
   return { kandidaten, uebersprungen };
 }
@@ -869,6 +923,96 @@ async function runSession(issueId, args, opts = {}) {
   return res;
 }
 
+// --- Pruef-Zusammenfassungen der Sessions (Issue #428) ---
+//
+// Der Runner sieht von einer Session nur Exit-Code, Board-Zustand und Working Tree.
+// Was sie INNERHALB gepruft und was sie ausgelassen hat, erfaehrt er allein aus der
+// Zusammenfassung, die `checks.mjs run` hinterlaesst (Issue #424). Bewusst NICHT aus
+// dem Abschlussbericht: Der ist von einem Modell formulierter Text, und was die
+// Maschine braucht, geht in diesem Repo nirgends durch Text.
+//
+// Nur die regulaeren Implementierungs-Runden liefern hier etwas ab. Die
+// Salvage-Session ist strukturell aussen vor — sie laeuft erst nach dem Einsammeln,
+// und ihr Prompt verbietet ihr Checks ausdruecklich; sie erschiene sonst als
+// "ungeprueft", obwohl verifyChecksForSalvage extern die volle Liste gruen gefahren
+// hat. Der Vorflug ebenso: Er gehoert zum Review-Modus, der diese Schleife nicht
+// durchlaeuft.
+
+/**
+ * Loescht die Zusammenfassung vor dem Start einer Runde. Ohne diesen Schritt liesse
+ * eine liegengebliebene Datei — vom Vortag oder von einer Session, die vor ihrer
+ * Pruefung starb — eine ungepruefte Session als geprueft erscheinen. Erst dadurch
+ * genuegt der feste Dateiname aus Issue #424.
+ */
+function verwerfeZusammenfassung() {
+  try {
+    rmSync(zusammenfassungPfad(process.cwd()), { force: true });
+  } catch (err) {
+    // Nicht loeschbar ist ein Grund, der Datei danach nicht zu glauben — aber kein
+    // Grund, einen Nachtlauf zu beenden. Die Runde laeuft, der Vermerk steht im Log.
+    log(`  Hinweis: die vorherige Pruef-Zusammenfassung liess sich nicht loeschen (${err.message}).`);
+  }
+}
+
+/**
+ * Liest, was die soeben beendete Session hinterlassen hat. Fehlt die Datei, ist das
+ * KEIN harter Stopp: Die Session hat dann keine Pruefung gefahren, und der Bericht
+ * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
+ * der letzte Lauf — daraus entsteht bewusst keine Historie.
+ */
+function lesePruefung(issueId) {
+  const pfad = zusammenfassungPfad(process.cwd());
+  if (!existsSync(pfad)) return { id: String(issueId), zustand: "ungeprueft" };
+  try {
+    const daten = JSON.parse(readFileSync(pfad, "utf-8"));
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket" };
+    return {
+      id: String(issueId),
+      zustand: "geprueft",
+      laufen: daten.laufen ?? [],
+      ausgelassen: daten.ausgelassen ?? [],
+    };
+  } catch (err) {
+    // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
+    // "kaputt" sagt etwas anderes als "gar nicht gelaufen".
+    return { id: String(issueId), zustand: "unlesbar", fehler: err.message };
+  }
+}
+
+function pruefListe(eintraege, leerText) {
+  return eintraege.length === 0 ? leerText : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
+}
+
+/** Eine Zeile je Session — auch die ohne Pruefung, sonst saehe sie aus wie keine. */
+function pruefZeile(p) {
+  if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
+  if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
+  if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
+  const gelaufen = p.laufen.map((e) => `${e.cmd} -> ${e.ergebnis} (${e.grund})`).join("; ") || "keine";
+  return `  Issue #${p.id}: gelaufen: ${gelaufen} | ausgelassen: ${pruefListe(p.ausgelassen, "keine")}`;
+}
+
+function pruefSummenzeile(pruefungen) {
+  const zaehle = (zustand) => pruefungen.filter((p) => p.zustand === zustand).length;
+  const geprueft = pruefungen.filter((p) => p.zustand === "geprueft");
+  const summe = (feld, filter = () => true) =>
+    geprueft.reduce((n, p) => n + p[feld].filter(filter).length, 0);
+  const rot = summe("laufen", (e) => e.ergebnis === "rot");
+  return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
+    + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft; `
+    + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
+}
+
+/**
+ * Der Pruefteil des Lauf-Berichts: je Session eine Zeile, darunter eine Summe.
+ * Kriterium 11 aus Issue #420 verlangt die Auslassungen an zwei Stellen — am
+ * Arbeitspaket (Abschlussbericht, Issue #426) und hier.
+ */
+function pruefBericht(pruefungen) {
+  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen."];
+  return ["Pruefungen der Sessions:", ...pruefungen.map(pruefZeile), pruefSummenzeile(pruefungen)];
+}
+
 // --- Salvage (Issue #167) ---
 
 // Zeitlimit der Salvage-Session: sie fuehrt keinen Build mehr aus, sondern prueft
@@ -931,10 +1075,23 @@ function checkEnv() {
 // zwingend. Das steht so im Nachtbetrieb-Kapitel der Doku.
 //
 // PATH-Aufloesung bewusst (S4036, Issue #183).
+//
+// Die VOLLE Liste, absichtlich (Entscheidung A6 des Plans #421, Issue #428): Hier
+// laeuft KEINE bereichsbezogene Auswahl, auch nicht ueber checks.mjs. Wer das
+// spaeter als Luecke liest, dreht die Frage um, die diese Pruefung beantwortet.
+// Nach einem sauberen Arbeitspaket lautet sie "hat diese Arbeit etwas
+// kaputtgemacht?" — dort genuegen die beruehrten Bereiche. Beim Retten lautet sie
+// "ist dieser unklare Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne
+// Ergebnis ist genau die, deren Absicht niemand kennt: Was sie angefasst hat, sagt
+// kein Anker verlaesslich.
+//
+// Die drei Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
+// meinen hier alle dasselbe — nur das Kommando zaehlt. `areas` wird nicht gelesen.
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
-  for (const cmd of cfg.buildChecks || []) {
+  for (const eintrag of cfg.buildChecks || []) {
+    const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
@@ -1047,6 +1204,17 @@ function ladeConfigMitOverrides(sharedPfad) {
     return shared;
   }
 
+  return mischeErlaubteFelder(shared, local);
+}
+
+/**
+ * Legt die erlaubten Felder der persoenlichen Config ueber die geteilte (Issue #404).
+ *
+ * Getrennt vom Laden, weil es eine andere Frage ist: ladeConfigMitOverrides
+ * beschafft die beiden Dateien und entscheidet, ob es ueberhaupt etwas zu mischen
+ * gibt; diese Funktion entscheidet Feld fuer Feld, was uebernommen wird.
+ */
+function mischeErlaubteFelder(shared, local) {
   const config = { ...shared };
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
@@ -1054,18 +1222,29 @@ function ladeConfigMitOverrides(sharedPfad) {
     if (erlaubteFelder.has(feld)) {
       config[feld] = wert;
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
-      const blaetter = erlaubteBlaetter.get(feld);
-      const zusammen = { ...config[feld] };
-      for (const [unterfeld, unterwert] of Object.entries(wert)) {
-        if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
-        else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
-      }
-      config[feld] = zusammen;
+      config[feld] = mischeBlattfelder(config[feld], wert, erlaubteBlaetter.get(feld), feld);
     } else {
       process.stderr.write(`Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
     }
   }
   return config;
+}
+
+/**
+ * Mischt die erlaubten Unterfelder eines Blocks (etwa `toolbox.tokenFile`).
+ *
+ * Eigene Funktion, weil hier eine zweite Allowlist gilt: Nicht der Block ist
+ * freigegeben, sondern einzelne Blaetter darin. Ein nicht freigegebenes Unterfeld
+ * wird gemeldet und faellt weg — es teamweit zu ueberschreiben waere genau das,
+ * was die Trennung der beiden Dateien verhindern soll.
+ */
+function mischeBlattfelder(bisher, wert, blaetter, feld) {
+  const zusammen = { ...bisher };
+  for (const [unterfeld, unterwert] of Object.entries(wert)) {
+    if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
+    else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+  }
+  return zusammen;
 }
 
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
@@ -1123,7 +1302,7 @@ export function trackerProbeId(kandidaten, alleIssues) {
 }
 
 /** Baut den Auftrag der Vorflug-Session. */
-function vorflugPrompt(kommandoReviewers, trackerId) {
+export function vorflugPrompt(kommandoReviewers, trackerId) {
   const zeilen = [
     `Du bist der technische Vorflug eines Nacht-Reviews. Fuehre genau die Schritte unten aus`,
     `und gib zum Schluss genau einen Befund-Block aus.`,
@@ -1141,7 +1320,7 @@ function vorflugPrompt(kommandoReviewers, trackerId) {
     zeilen.push(
       `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
       ``,
-      ...kommandoReviewers.map((r) => `  printf '%s\\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
+      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
@@ -1337,7 +1516,7 @@ export function neueKommentare(vorher, nachher) {
 }
 
 const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
-const RUNDEN_KOPF = /^##\s*[^\n]*?,\s*Runde\s*(\d+)\s*$/;
+export const RUNDEN_KOPF = /^##[^\n]*?,[^\S\n]*Runde[^\S\n]*(\d+)[^\S\n]*$/;
 
 /** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
 function kopfUndRest(text) {
@@ -1395,15 +1574,55 @@ export function bodyVorschlagVorhanden(kommentare) {
  * keinen Code schreibt, gegenstandslos. Und kein Board-Move in keinem Ausgang; die
  * Kandidaten liegen bereits im Backlog.
  */
+/**
+ * Wertet aus, was eine Review-Session am Board hinterlassen hat (Issue #404).
+ *
+ * Vier Ausgaenge, und der Aufrufer soll sie nur zaehlen muessen: `ohneBefund`
+ * (Marker gesetzt), `mitBefund` (Befunde samt uebernehmbarem Body-Vorschlag),
+ * `schaerfungFehlt` (Befunde ohne Vorschlag) und `ohneErgebnis` (die Session hat
+ * nichts hinterlassen). Die beiden letzten hinterlassen ausserdem einen Kommentar
+ * am Ticket — sie verlangen morgens je einen anderen Handgriff.
+ *
+ * Getrennt von der Schleife, weil die Schleife eine andere Aufgabe hat: Sie
+ * entscheidet, WELCHE Dokumente drankommen und wann der Lauf hart stoppt. Was
+ * dabei herauskam, ist die Frage dieser Funktion.
+ */
+function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
+  if (hasStageMarker(nachher.body, stufe)) {
+    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
+    return "ohneBefund";
+  }
+
+  if (issueSpur(nachher) === issueSpur(vorher)) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
+    board("issue", "comment", String(kandidat.id),
+      "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
+    return "ohneErgebnis";
+  }
+
+  // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
+  // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
+  // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
+  // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
+  if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
+    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
+    return "mitBefund";
+  }
+
+  log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
+  board("issue", "comment", String(kandidat.id),
+    "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
+    + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
+    + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
+  return "schaerfungFehlt";
+}
+
 async function runReviewLoop(kandidaten, args) {
   const stufe = args.stufe ?? "issue";
   let sessions = 0;
-  let ohneBefund = 0;
-  let mitBefund = 0;
-  let ohneErgebnis = 0;
-  let schaerfungFehlt = 0;
   let uebersprungen = 0;
   let hardStop = false;
+  const zaehler = { ohneBefund: 0, mitBefund: 0, schaerfungFehlt: 0, ohneErgebnis: 0 };
 
   for (const kandidat of kandidaten) {
     if (sessions >= args.max) {
@@ -1419,10 +1638,12 @@ async function runReviewLoop(kandidaten, args) {
 
     sessions++;
     log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
-    const spurVorher = issueSpur(vorher);
     const started = Date.now();
+    // Der Modus-Hinweis (Issue #419) greift als einziger Hebel, BEVOR die Session
+    // das Dokument liest. Massgeblich bleibt allein KIT_AGENT_MODEL — der Hinweis
+    // wiederholt es nur an der Stelle, an der es ankommt.
     const res = await runSession(kandidat.id, args, {
-      prompt: `/issue-review #${kandidat.id}`,
+      prompt: `/issue-review #${kandidat.id}\n\nDieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.`,
       timeoutMs: REVIEW_TIMEOUT_MS,
     });
     const minutes = ((Date.now() - started) / 60000).toFixed(1);
@@ -1449,38 +1670,14 @@ async function runReviewLoop(kandidaten, args) {
     }
 
     const nachher = board("issue", "get", String(kandidat.id));
-    if (hasStageMarker(nachher.body, stufe)) {
-      ohneBefund++;
-      log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
-    } else if (issueSpur(nachher) !== spurVorher) {
-      // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
-      // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
-      // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
-      // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
-      if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
-        mitBefund++;
-        log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
-      } else {
-        schaerfungFehlt++;
-        log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
-        board("issue", "comment", String(kandidat.id),
-          "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
-          + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
-          + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
-      }
-    } else {
-      ohneErgebnis++;
-      log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
-      board("issue", "comment", String(kandidat.id),
-        "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
-    }
+    zaehler[werteReviewSession(kandidat, vorher, nachher, stufe, minutes)]++;
   }
 
   // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
   // morgens verlangt er einen anderen Handgriff als beide (Issue #310). Der
   // Gesamt-Exit bleibt trotzdem 0 — die Befunde stehen am Board, ein harter Stopp
   // waere unverhaeltnismaessig.
-  log(`Nacht-Review beendet (Stufe ${stufe}): ${ohneBefund} ohne Befund, ${mitBefund} mit Befund, ${schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   process.exit(hardStop ? 1 : 0);
 }
@@ -1491,11 +1688,71 @@ async function runReviewLoop(kandidaten, args) {
 // sind, ohne dass der Runner losläuft (Issue #232). Vorher lag das Hauptprogramm auf
 // Top-Level: Ein `import { selectReviewCandidates }` haette einen kompletten Nachtlauf
 // gestartet. Dieselbe Loesung wie in board.mjs seit Issue #135.
+//
+// Seit Issue #404 ist es kein einzelner Block mehr. Die Vermessung in #398 hatte den
+// Befund geliefert, an dem der Schnitt haengt: main() war nicht eine Funktion, sondern
+// DREI einander ausschliessende Programme mit gemeinsamem Vorspann — Review, Dry-Run,
+// Implementierung. Der Vorspann heisst jetzt vorbereiten() und liefert den Kontext, die
+// drei Programme stehen daneben, und main() dirigiert nur noch.
 
-async function main() {
+// Versions-Drift zwischen den beiden Kit-Dateien (Issue #172). Sie werden
+// gemeinsam installiert, koennen aber auseinanderlaufen (einzeln kopiert,
+// abgebrochenes Re-Install). Der Runner ruft dann Adapter-Funktionen auf, die eine
+// aeltere board.mjs nicht kennt — das aeussert sich als schwer zuzuordnendes
+// Fehlverhalten. Bewusst nur eine Warnung: ein Unterschied macht den Lauf nicht
+// zwingend kaputt, und ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer
+// als das Problem, das er meldet.
+function boardKitVersion() {
+  try {
+    const m = readFileSync(BOARD_PATH, "utf-8").match(/const KIT_VERSION = "([^"]*)";/);
+    return m ? m[1] : null;
+  } catch {
+    return null; // nicht lesbar -> wie fehlende Konstante behandeln
+  }
+}
 
-  const args = parseArgs(process.argv.slice(2));
+function warnBeiVersionsDrift() {
+  const andere = boardKitVersion();
+  if (andere === KIT_VERSION) return;
+  const andereAngabe = andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)";
+  log(
+    `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
+    `board.mjs ist ${andereAngabe}. ` +
+    `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
+  );
+}
 
+// Vorflug-Warnung zum Routing-Label (Issue #179). Ein Vertipper im --label-Wert ist
+// syntaktisch gueltig: --label no filtert auf ein Label namens "no", findet nichts,
+// und der Lauf endet ohne Arbeit — im Protokoll nicht von einem abgearbeiteten Board
+// zu unterscheiden. Die Warnung trennt die beiden Faelle.
+//
+// Bewusst nur eine Warnung, kein Stopp: Ein Lauf ohne passende Issues ist ein
+// legitimer Zustand. Ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer als
+// das Problem, das er meldet (dieselbe Abwaegung wie bei der Versions-Drift, #172).
+//
+// Der "einmal zeigen"-Zustand steht im Kontext statt in einer Closure: Beide
+// Programme, die warnen koennen (Dry-Run und Implementierung), teilen sich denselben
+// Kontext, und die Warnung soll je Lauf einmal erscheinen — nicht je Programm.
+function warnWennLabelNirgendsVorkommt(ctx, ready) {
+  if (ctx.labelWarnungGezeigt || ctx.labelFilter === null || ready.length === 0) return;
+  if (ready.some(ctx.hasLabel)) return;
+  ctx.labelWarnungGezeigt = true;
+  const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
+  log(`WARNUNG: kein Ready-Issue traegt das Label '${ctx.labelFilter}' — es wird nichts verarbeitet.`);
+  log(`  In Ready vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+  log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
+}
+
+/**
+ * Der gemeinsame Vorspann aller drei Programme: Phasen 2 bis 6 aus Issue #398.
+ *
+ * Config lesen, Logdatei festlegen, Label-Filter bilden, Versions-Drift melden,
+ * Vorbedingungen pruefen. Liefert den Kontext, mit dem Dry-Run und Implementierung
+ * arbeiten. Bricht bei verletzten Vorbedingungen selbst ab (`fail`) — das ist die
+ * Stelle, an der ein Lauf gar nicht erst beginnen darf.
+ */
+export function vorbereiten(args) {
   if (!existsSync(BOARD_PATH)) fail(`board.mjs nicht gefunden unter ${BOARD_PATH}`);
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
@@ -1508,26 +1765,11 @@ async function main() {
   // alle anderen bleiben unangetastet liegen. --label none schaltet den Filter ab
   // (null = striktes ready[0], das Verhalten vor #159).
   const labelFilter = args.label === "none" ? null : args.label;
-  const hasLabel = (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter);
-
-  // Vorflug-Warnung zum Routing-Label (Issue #179). Ein Vertipper im --label-Wert ist
-  // syntaktisch gueltig: --label no filtert auf ein Label namens "no", findet nichts,
-  // und der Lauf endet ohne Arbeit — im Protokoll nicht von einem abgearbeiteten Board
-  // zu unterscheiden. Die Warnung trennt die beiden Faelle.
-  //
-  // Bewusst nur eine Warnung, kein Stopp: Ein Lauf ohne passende Issues ist ein
-  // legitimer Zustand. Ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer als
-  // das Problem, das er meldet (dieselbe Abwaegung wie bei der Versions-Drift, #172).
-  let labelWarnungGezeigt = false;
-  function warnWennLabelNirgendsVorkommt(ready) {
-    if (labelWarnungGezeigt || labelFilter === null || ready.length === 0) return;
-    if (ready.some(hasLabel)) return;
-    labelWarnungGezeigt = true;
-    const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
-    log(`WARNUNG: kein Ready-Issue traegt das Label '${labelFilter}' — es wird nichts verarbeitet.`);
-    log(`  In Ready vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
-    log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
-  }
+  const ctx = {
+    labelFilter,
+    hasLabel: (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter),
+    labelWarnungGezeigt: false,
+  };
 
   const modus = args.review ? "Review" : "Implementierung";
   const aktivesLabel = args.review ? args.reviewLabel : args.label;
@@ -1537,33 +1779,6 @@ async function main() {
   log(`Nacht-Runner startet (Modus ${modus}${stufenAngabe}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
-  }
-
-  // Versions-Drift zwischen den beiden Kit-Dateien (Issue #172). Sie werden
-  // gemeinsam installiert, koennen aber auseinanderlaufen (einzeln kopiert,
-  // abgebrochenes Re-Install). Der Runner ruft dann Adapter-Funktionen auf, die eine
-  // aeltere board.mjs nicht kennt — das aeussert sich als schwer zuzuordnendes
-  // Fehlverhalten. Bewusst nur eine Warnung: ein Unterschied macht den Lauf nicht
-  // zwingend kaputt, und ein zusaetzlicher naechtlicher Abbruchgrund waere schlimmer
-  // als das Problem, das er meldet.
-  function boardKitVersion() {
-    try {
-      const m = readFileSync(BOARD_PATH, "utf-8").match(/const KIT_VERSION = "([^"]*)";/);
-      return m ? m[1] : null;
-    } catch {
-      return null; // nicht lesbar -> wie fehlende Konstante behandeln
-    }
-  }
-
-  function warnBeiVersionsDrift() {
-    const andere = boardKitVersion();
-    if (andere === KIT_VERSION) return;
-    const andereAngabe = andere ? `v${andere}` : "unbekannt (Kopie ohne Versionsstempel)";
-    log(
-      `WARNUNG: Versions-Drift in .claude/kit/ — night.mjs ist v${KIT_VERSION}, ` +
-      `board.mjs ist ${andereAngabe}. ` +
-      `Die Installation ist halb aufgefrischt; bitte per install.mjs erneuern. Der Lauf geht weiter.`
-    );
   }
 
   // Vorflug-Checks
@@ -1580,180 +1795,403 @@ async function main() {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok");
   }
 
-  // --- Review-Modus (Issue #233) ---
+  return ctx;
+}
+
+/**
+ * Wertet den Vorflug einer Review-Nacht aus und meldet ihn (Issue #404).
+ *
+ * Getrennt vom Programm, weil hier drei Befunde getrennt gehalten werden muessen:
+ * Ein `verfuegbar: false`, das in Wahrheit ein toter Tracker war, schickt den
+ * Menschen morgens in die falsche Ecke. Liefert die Liste der Probleme; ob sie den
+ * Lauf anhalten, entscheidet der Aufrufer — im Dry-Run wird nur berichtet.
+ */
+function meldeVorflug(vorflug, reviewerListe) {
+  if (!vorflug.sessionStartbar) {
+    log(`  Vorflug-Session nicht auswertbar: ${vorflug.grund}`);
+  }
+  for (const r of vorflug.reviewers) {
+    const stand = r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`;
+    log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${stand}`);
+  }
+  // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
+  // nicht "Werkzeug installieren", sondern "Block uebernehmen".
+  const KEIN_REVIEWER = "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen";
+  if (reviewerListe.length === 0) log(`  Kein Reviewer konfiguriert: ${KEIN_REVIEWER}`);
+  const getVermerk = vorflug.tracker.uebersprungen
+    ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}`
+    : "";
+  const trackerStand = vorflug.tracker.erreichbar
+    ? `erreichbar${getVermerk}`
+    : `NICHT erreichbar — ${vorflug.tracker.grund}`;
+  log(`  Tracker (${vorflug.tracker.umgebung}): ${trackerStand}`);
+
+  // Drei getrennte Befunde, drei getrennte Meldungen.
+  const probleme = [];
+  if (!vorflug.sessionStartbar) probleme.push(`Die Vorflug-Session lieferte kein Ergebnis (${vorflug.grund})`);
+  if (reviewerListe.length === 0) {
+    probleme.push(`Kein Reviewer konfiguriert (${KEIN_REVIEWER}). Ohne Reviewer wuerde jede Session ergebnislos enden`);
+  } else if (vorflug.sessionStartbar) {
+    const fehlen = vorflug.reviewers.filter((r) => r.verfuegbar !== true).map((r) => `${r.name} (${r.grund})`);
+    if (fehlen.length > 0) probleme.push(`Reviewer in der Session nicht verfuegbar: ${fehlen.join(", ")}`);
+  }
+  if (vorflug.sessionStartbar && vorflug.tracker.erreichbar !== true) {
+    probleme.push(`Tracker aus der Session nicht erreichbar: ${vorflug.tracker.grund}`);
+  }
+  return probleme;
+}
+
+/**
+ * Zeigt, welche Review-Sessions starten wuerden, und beendet den Prozess (Issue #404).
+ */
+function berichteReviewDryRun(kandidaten, args, stufe) {
+  let geplant = 0;
+  for (const k of kandidaten) {
+    const full = board("issue", "get", String(k.id));
+    if (hasStageMarker(full.body, stufe)) {
+      log(`  #${k.id} ${k.title} -> wuerde uebersprungen (Review-Marker schon im Body)`);
+    } else if (geplant >= args.max) {
+      log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
+    } else {
+      geplant++;
+      log(`  #${k.id} ${k.title} -> Review-Session ${geplant}`);
+    }
+  }
+  log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Review-Session(s) wuerden starten.`);
+  process.exit(0);
+}
+
+/**
+ * Programm 1 — der Review-Modus (Phase 7 aus Issue #398, eingefuehrt in #233).
+ *
+ * Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
+ * das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
+ *
+ * Ohne Kontext-Parameter: Der Review-Modus filtert ueber --review-label und ruehrt
+ * das Routing-Label der Implementierung nicht an.
+ */
+export async function laufeReviewModus(args) {
+  const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
+  const stufe = args.stufe ?? "issue";
+  const backlog = board("issue", "list", "--status", "backlog");
+  const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
+
+  for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+
+  // Vorflug (Issue #233, Umgebung korrigiert in #269). `issue-review check` ist fuer
+  // sich eine Auskunft, kein Gate — der interaktive Skill fragt den Menschen, wenn
+  // einer fehlt. Nachts fragt niemand, und ein unterbesetzter Lauf sieht am Board aus
+  // wie ein vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer
+  // wissen will, ob alles steht, faehrt vorher --dry-run.
   //
-  // Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
-  // das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
-  if (args.review) {
-    const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
-    const stufe = args.stufe ?? "issue";
-    const backlog = board("issue", "list", "--status", "backlog");
-    const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
+  // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
+  // der Lauf nichts an, der das Problem aufklaeren soll. Die eine Vorflug-Session
+  // laeuft auch dort, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall.
+  //
+  // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
+  // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
+  // und die Verfuegbarkeit misst ohnehin nur noch die Session.
+  const reviewerListe = (config.issueReview?.reviewers || [])
+    .filter((r) => r && typeof r.name === "string")
+    .map((r) => ({ name: r.name, kind: r.kind === "command" ? "command" : "claude", command: r.command }));
+  const trackerId = trackerProbeId(kandidaten, kandidaten.length > 0 ? null : board("issue", "list"));
 
-    for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+  const probeAngabe = trackerId ? `Issue #${trackerId}` : "nur issue list";
+  log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${probeAngabe}).`);
+  const vorflug = await reviewerVorflug(args, reviewerListe, trackerId);
 
-    // Vorflug (Issue #233, Umgebung korrigiert in #269). `issue-review check` ist fuer
-    // sich eine Auskunft, kein Gate — der interaktive Skill fragt den Menschen, wenn
-    // einer fehlt. Nachts fragt niemand, und ein unterbesetzter Lauf sieht am Board aus
-    // wie ein vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer
-    // wissen will, ob alles steht, faehrt vorher --dry-run.
-    //
-    // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
-    // der Lauf nichts an, der das Problem aufklaeren soll. Die eine Vorflug-Session
-    // laeuft auch dort, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall.
-    //
-    // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
-    // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
-    // und die Verfuegbarkeit misst ohnehin nur noch die Session.
-    const reviewerListe = (config.issueReview?.reviewers || [])
-      .filter((r) => r && typeof r.name === "string")
-      .map((r) => ({ name: r.name, kind: r.kind === "command" ? "command" : "claude", command: r.command }));
-    const trackerId = trackerProbeId(kandidaten, kandidaten.length > 0 ? null : board("issue", "list"));
-
-    const probeAngabe = trackerId ? `Issue #${trackerId}` : "nur issue list";
-    log(`  Vorflug-Session startet (Modell ${VORFLUG_MODEL}, Tracker-Probe ${probeAngabe}).`);
-    const vorflug = await reviewerVorflug(args, reviewerListe, trackerId);
-
-    // Eine Vorflug-Session darf so wenig am Repository anfassen wie eine Review-Session.
-    // Tut sie es doch, ist die Lage unklar und der Lauf endet hier — dieselbe Leitplanke
-    // wie nach einer Review-Session (Issue #152), und sie gilt auch im Dry-Run: Ein
-    // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
-    if (!gitClean()) {
-      log("  HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.");
-      process.exit(1);
-    }
-
-    if (!vorflug.sessionStartbar) {
-      log(`  Vorflug-Session nicht auswertbar: ${vorflug.grund}`);
-    }
-    for (const r of vorflug.reviewers) {
-      const stand = r.verfuegbar ? "verfuegbar" : `NICHT verfuegbar — ${r.grund}`;
-      log(`  Reviewer ${r.name} (${r.kind}) in ${r.umgebung}: ${stand}`);
-    }
-    // Gar kein Reviewer konfiguriert: eigener Text, weil die Abhilfe eine andere ist —
-    // nicht "Werkzeug installieren", sondern "Block uebernehmen".
-    const KEIN_REVIEWER = "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen";
-    if (reviewerListe.length === 0) log(`  Kein Reviewer konfiguriert: ${KEIN_REVIEWER}`);
-    const getVermerk = vorflug.tracker.uebersprungen
-      ? ` — issue get uebersprungen: ${vorflug.tracker.uebersprungen}`
-      : "";
-    const trackerStand = vorflug.tracker.erreichbar
-      ? `erreichbar${getVermerk}`
-      : `NICHT erreichbar — ${vorflug.tracker.grund}`;
-    log(`  Tracker (${vorflug.tracker.umgebung}): ${trackerStand}`);
-
-    // Drei getrennte Befunde, drei getrennte Meldungen. Ein `verfuegbar: false`, das in
-    // Wahrheit ein toter Tracker war, schickt den Menschen morgens in die falsche Ecke.
-    const probleme = [];
-    if (!vorflug.sessionStartbar) probleme.push(`Die Vorflug-Session lieferte kein Ergebnis (${vorflug.grund})`);
-    if (reviewerListe.length === 0) {
-      probleme.push(`Kein Reviewer konfiguriert (${KEIN_REVIEWER}). Ohne Reviewer wuerde jede Session ergebnislos enden`);
-    } else if (vorflug.sessionStartbar) {
-      const fehlen = vorflug.reviewers.filter((r) => r.verfuegbar !== true).map((r) => `${r.name} (${r.grund})`);
-      if (fehlen.length > 0) probleme.push(`Reviewer in der Session nicht verfuegbar: ${fehlen.join(", ")}`);
-    }
-    if (vorflug.sessionStartbar && vorflug.tracker.erreichbar !== true) {
-      probleme.push(`Tracker aus der Session nicht erreichbar: ${vorflug.tracker.grund}`);
-    }
-    if (probleme.length > 0 && !args.dryRun) {
-      fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
-    }
-
-    if (kandidaten.length === 0) {
-      log(`Keine Review-Kandidaten im Backlog (Stufe ${stufe}) — nichts zu tun.`);
-      if (reviewLabel !== null && backlog.length > 0) {
-        const vorhanden = [...new Set(backlog.flatMap((i) => i.labels || []))];
-        log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
-        log(`  Tippfehler im --review-label-Wert? Mit --review-label none laeuft der Lauf ohne Label-Filter.`);
-      }
-      process.exit(0);
-    }
-
-    if (args.dryRun) {
-      let geplant = 0;
-      for (const k of kandidaten) {
-        const full = board("issue", "get", String(k.id));
-        if (hasStageMarker(full.body, stufe)) {
-          log(`  #${k.id} ${k.title} -> wuerde uebersprungen (Review-Marker schon im Body)`);
-        } else if (geplant >= args.max) {
-          log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
-        } else {
-          geplant++;
-          log(`  #${k.id} ${k.title} -> Review-Session ${geplant}`);
-        }
-      }
-      log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Review-Session(s) wuerden starten.`);
-      process.exit(0);
-    }
-
-    await runReviewLoop(kandidaten, args);
-    return;
+  // Eine Vorflug-Session darf so wenig am Repository anfassen wie eine Review-Session.
+  // Tut sie es doch, ist die Lage unklar und der Lauf endet hier — dieselbe Leitplanke
+  // wie nach einer Review-Session (Issue #152), und sie gilt auch im Dry-Run: Ein
+  // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
+  if (!gitClean()) {
+    log("  HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.");
+    process.exit(1);
   }
 
-  // Dry-Run: Reihenfolge + Abhaengigkeits-Bewertung anzeigen, nichts bewegen, nichts starten.
-  if (args.dryRun) {
-    const ready = board("issue", "list", "--status", "ready");
-    if (ready.length === 0) {
-      log("Ready ist leer — nichts zu tun.");
-      process.exit(0);
+  const probleme = meldeVorflug(vorflug, reviewerListe);
+  if (probleme.length > 0 && !args.dryRun) {
+    fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
+  }
+
+  if (kandidaten.length === 0) {
+    log(`Keine Review-Kandidaten im Backlog (Stufe ${stufe}) — nichts zu tun.`);
+    if (reviewLabel !== null && backlog.length > 0) {
+      const vorhanden = [...new Set(backlog.flatMap((i) => i.labels || []))];
+      log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+      log(`  Tippfehler im --review-label-Wert? Mit --review-label none laeuft der Lauf ohne Label-Filter.`);
     }
-    warnWennLabelNirgendsVorkommt(ready);
-    const satisfied = satisfiedIds();
-    const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
-    let planned = 0;
-    for (const issue of ready) {
-      if (!hasLabel(issue)) {
-        log(`  #${issue.id} ${issue.title} -> uebersprungen (kein Label '${labelFilter}')`);
-        continue;
-      }
-      if (isFachlich(issue.title)) {
-        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (fachliches Issue, wird nicht implementiert)`);
-        continue;
-      }
-      if (isIdee(issue.title)) {
-        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Idee, wird nicht implementiert)`);
-        continue;
-      }
-      if (isPlan(issue.title)) {
-        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)`);
-        continue;
-      }
-      if (hatKlaerenLabel(issue)) {
-        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (kit:klaeren, offene Entscheidung)`);
-        continue;
-      }
-      const full = board("issue", "get", String(issue.id));
-      // Dasselbe Review-Gate wie im echten Lauf (Issue #304). Bis dahin lief es hier
-      // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
-      // wies Tickets als Session aus, die der echte Lauf zurueckstellt. Wer damit
-      // prueft, ob die Nacht laeuft, bekaeme eine Antwort ueber einen anderen Lauf.
-      let freigabe = { frei: true, art: "marker" };
-      if (config.issueReview?.requiredBeforeReady) {
-        freigabe = reviewFreigabe(full.body);
-        if (!freigabe.frei) {
-          log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (${GATE_ABLEHNUNG[freigabe.art].kurz()})`);
-          continue;
-        }
-      }
-      const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
-      // Der Verzicht wird an der Session-Zeile mitgenannt, nicht in einer eigenen:
-      // Wer den Dry-Run liest, soll die Freigabe dort sehen, wo das Ticket steht.
-      const vermerk = freigabe.art === "verzicht" ? " (bewusst ohne Pruefung freigegeben)" : "";
-      if (unmet.length > 0) {
-        log(`  #${issue.id} ${issue.title} -> wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
-      } else if (planned >= args.max) {
-        log(`  #${issue.id} ${issue.title} -> ueber --max ${args.max}, bliebe liegen`);
-      } else {
-        planned++;
-        assumedDone.add(Number(issue.id));
-        log(`  #${issue.id} ${issue.title} -> Session ${planned}${vermerk}`);
-      }
-    }
-    log(`Dry-Run beendet: ${planned} Session(s) wuerden starten.`);
     process.exit(0);
   }
 
-  // Echter Lauf
+  if (args.dryRun) berichteReviewDryRun(kandidaten, args, stufe);
+
+  await runReviewLoop(kandidaten, args);
+}
+
+/**
+ * Was der Dry-Run zu einem Ready-Issue melden wuerde (Issue #404).
+ *
+ * Rueckgabe: `{ grund, vermerk }`. Ist `grund` null, liefe das Issue — `vermerk`
+ * traegt dann den Zusatz, der an die Session-Zeile gehoert.
+ *
+ * Dieselben Gruende wie im echten Lauf (pruefeIssueGates), aber im Konjunktiv und
+ * ohne jede Wirkung am Board: Der Dry-Run kommentiert nichts und verschiebt nichts.
+ * Getrennt gehalten statt geteilt, weil die Texte verschieden sein muessen — "wuerde
+ * ins Backlog" ist eine andere Aussage als "ins Backlog verschoben".
+ */
+function dryRunBefund(issue, ctx, assumedDone) {
+  const aus = (grund) => ({ grund, vermerk: "" });
+  if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
+  if (isFachlich(issue.title)) return aus("wuerde ins Backlog (fachliches Issue, wird nicht implementiert)");
+  if (isIdee(issue.title)) return aus("wuerde ins Backlog (Idee, wird nicht implementiert)");
+  if (isPlan(issue.title)) return aus("wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)");
+  if (hatKlaerenLabel(issue)) return aus("wuerde ins Backlog (kit:klaeren, offene Entscheidung)");
+
+  const full = board("issue", "get", String(issue.id));
+  // Dasselbe Review-Gate wie im echten Lauf (Issue #304). Bis dahin lief es hier
+  // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
+  // wies Tickets als Session aus, die der echte Lauf zurueckstellt. Wer damit
+  // prueft, ob die Nacht laeuft, bekaeme eine Antwort ueber einen anderen Lauf.
+  let freigabe = { frei: true, art: "marker" };
+  if (config.issueReview?.requiredBeforeReady) {
+    freigabe = reviewFreigabe(full.body);
+    if (!freigabe.frei) return aus(`wuerde ins Backlog (${GATE_ABLEHNUNG[freigabe.art].kurz()})`);
+  }
+  const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
+  if (unmet.length > 0) {
+    return aus(`wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
+  }
+  // Der Verzicht wird an der Session-Zeile mitgenannt, nicht in einer eigenen:
+  // Wer den Dry-Run liest, soll die Freigabe dort sehen, wo das Ticket steht.
+  return { grund: null, vermerk: freigabe.art === "verzicht" ? " (bewusst ohne Pruefung freigegeben)" : "" };
+}
+
+/**
+ * Programm 2 — der Dry-Run (Phase 8 aus Issue #398).
+ *
+ * Zeigt Reihenfolge und Abhaengigkeits-Bewertung an, bewegt nichts und startet
+ * nichts. Beendet den Prozess selbst; deshalb bleibt die Testbarkeit auf
+ * Subprozess-Tests beschraenkt.
+ */
+export function laufeDryRun(args, ctx) {
+  const ready = board("issue", "list", "--status", "ready");
+  if (ready.length === 0) {
+    log("Ready ist leer — nichts zu tun.");
+    process.exit(0);
+  }
+  warnWennLabelNirgendsVorkommt(ctx, ready);
+  const satisfied = satisfiedIds();
+  const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
+  let planned = 0;
+  for (const issue of ready) {
+    const { grund, vermerk } = dryRunBefund(issue, ctx, assumedDone);
+    if (grund !== null) {
+      log(`  #${issue.id} ${issue.title} -> ${grund}`);
+      continue;
+    }
+    if (planned >= args.max) {
+      log(`  #${issue.id} ${issue.title} -> ueber --max ${args.max}, bliebe liegen`);
+      continue;
+    }
+    planned++;
+    assumedDone.add(Number(issue.id));
+    log(`  #${issue.id} ${issue.title} -> Session ${planned}${vermerk}`);
+  }
+  log(`Dry-Run beendet: ${planned} Session(s) wuerden starten.`);
+  process.exit(0);
+}
+
+/**
+ * Die sechs Gruende, aus denen ein Ready-Issue nicht implementiert wird (Issue #404).
+ *
+ * Rueckgabe: `null`, wenn das Issue drankommt — sonst `{ log, kommentar }` mit der
+ * Protokollzeile und dem Text, der am Board haengen bleibt. Der Aufrufer verschiebt
+ * das Issue danach ins Backlog; welcher Grund gilt, entscheidet allein diese
+ * Funktion.
+ *
+ * Der volle Body wird erst geholt, wenn die vier Titel- und Label-Gates durch sind.
+ * Ihn vorher zu laden waere ein Board-Aufruf je Issue, das ohnehin ausscheidet.
+ */
+export function pruefeIssueGates(top) {
+  if (isFachlich(top.title)) {
+    return {
+      log: `#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`,
+      kommentar: `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`,
+    };
+  }
+  if (isIdee(top.title)) {
+    return {
+      log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
+      kommentar: `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`,
+    };
+  }
+  if (isPlan(top.title)) {
+    return {
+      log: `#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`,
+      kommentar: `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`,
+    };
+  }
+  // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
+  if (hatKlaerenLabel(top)) {
+    return {
+      log: `#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`,
+      kommentar: `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
+    };
+  }
+
+  const full = board("issue", "get", String(top.id));
+  // Ungepruefte Issues zurueckstellen (Issue #223). Nur wenn ausdruecklich aktiviert:
+  // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten, deshalb
+  // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
+  // ungepruftes Issue nicht ablehnen — er wuerde es implementieren, und die Maengel
+  // fielen erst im Code auf.
+  //
+  // Seit Issue #304 hat das Gate einen zweiten Freigabegrund: den bewussten Verzicht
+  // (fachliche Quelle #285). Ein Ticket, das der Mensch ausdruecklich ohne Pruefung
+  // freigegeben hat, traegt nie einen Marker — es hier zurueckzustellen hiesse, seine
+  // Entscheidung jede Nacht aufs Neue zu ueberstimmen.
+  if (config.issueReview?.requiredBeforeReady) {
+    const freigabe = reviewFreigabe(full.body);
+    if (!freigabe.frei) {
+      const texte = GATE_ABLEHNUNG[freigabe.art];
+      return {
+        log: `#${top.id} ${texte.log(freigabe.detail)}`,
+        kommentar: `Nachtlauf: ${texte.kommentar(top.id, freigabe.detail)}`,
+      };
+    }
+    if (freigabe.art === "verzicht") {
+      log(`#${top.id} bewusst ohne Pruefung freigegeben (Pruefung: Verzicht), wird implementiert.`);
+    }
+  }
+
+  const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
+  if (unmet.length > 0) {
+    return {
+      log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
+      kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Der Salvage-Versuch nach einer Runde, die nichts abgeschlossen hat (Issue #167).
+ *
+ * Bevor der Lauf hart stoppt, pruefen wir selbst, ob die Arbeit inhaltlich fertig
+ * ist. Gruene buildChecks sind das Indiz dafuer, dass die Session nur ihr Ergebnis
+ * verloren hat (Hintergrund-Check ohne Folge-Turn) und nicht wirklich gescheitert
+ * ist. Genau ein Versuch pro Issue.
+ *
+ * Drei Ausgaenge, und sie sind nicht dasselbe: `erfolg` (der Lauf geht weiter),
+ * `gescheitert` (harter Stopp, die Begruendung steht bereits im Protokoll) und
+ * `nichtMoeglich` (rote Checks — danach gilt die regulaere Fehlschlag-Meldung des
+ * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
+ * Fehlschlag-Zeile zu viel oder eine zu wenig.
+ */
+async function versucheSalvage(top, args) {
+  const checks = verifyChecksForSalvage(config);
+  if (!checks.ok) {
+    log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
+    return "nichtMoeglich";
+  }
+  log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
+  await runSession(top.id, args, {
+    prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
+    timeoutMs: SALVAGE_TIMEOUT_MS,
+    extraEnv: { NIGHT_SALVAGE: "1" },
+  });
+  const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
+  if (salvaged && gitClean()) {
+    log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    board("issue", "comment", String(top.id), "--text",
+      "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
+    return "erfolg";
+  }
+  log(`  SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`);
+  board("issue", "comment", String(top.id), "--text",
+    "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+  return "gescheitert";
+}
+
+/**
+ * Der vierte harte Stopp: die Runde hat nichts abgeschlossen und den Baum
+ * veraendert (Issue #404).
+ *
+ * Zuerst bekommt der Salvage seinen einen Versuch. Erst wenn der nicht moeglich war
+ * — rote Checks —, gilt die regulaere Fehlschlag-Meldung. Ein GESCHEITERTER Salvage
+ * hat seine Begruendung dagegen schon protokolliert und kommentiert; die Zeile hier
+ * waere die zweite zum selben Fall.
+ *
+ * Das Issue bleibt liegen, wo es ist: Ein Backlog-Move saehe morgens aus wie ein
+ * regulaer zurueckgestelltes Ticket, nicht wie ein Lauf, der stehengeblieben ist.
+ */
+async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
+  if (!salvageAttempted.has(String(top.id))) {
+    salvageAttempted.add(String(top.id));
+    const salvage = await versucheSalvage(top, args);
+    if (salvage === "erfolg") return "erfolg";
+    if (salvage === "gescheitert") return "hardStop";
+  }
+  log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
+  board("issue", "comment", String(top.id), "--text",
+    "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+  return "hardStop";
+}
+
+/**
+ * Wertet aus, was eine Implementierungs-Runde hinterlassen hat (Issue #404).
+ *
+ * Rueckgabe: `"erfolg"`, `"hardStop"` oder `"deferred"`. Die drei Worte sind die
+ * Zaehler des Laufs; der Unterschied zwischen ihnen ist das Signal, das der Morgen
+ * liest.
+ */
+async function werteRunde(top, res, minutes, args, salvageAttempted) {
+  const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
+  if (nowInReview) {
+    log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
+    // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
+    // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
+    // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
+    if (gitClean()) return "erfolg";
+    log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
+    return "hardStop";
+  }
+
+  // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
+  // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
+  // falsch. Harter Stopp ohne Kommentar und ohne Backlog-Move, sonst raeumt eine
+  // kaputte Umgebung die ganze Ready-Spalte leer.
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (!timedOut && (res.error || res.status !== 0)) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
+    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
+    if (detail) log(`  CLI-Meldung: ${detail}`);
+    return "hardStop";
+  }
+
+  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
+
+  log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
+  board("issue", "comment", String(top.id), "--text",
+    "Nachtlauf: Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.");
+  board("issue", "move", String(top.id), "backlog");
+  return "deferred";
+}
+
+/**
+ * Programm 3 — die Implementierungsschleife (Phase 9 aus Issue #398).
+ *
+ * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
+ * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
+ * und brachen mit `break` ab, die uebrigen Enden liessen es ungesetzt, und der
+ * Exit-Code entstand am Ende von main(). Wuerde die Schleife selbst exiten, ginge der
+ * Unterschied zwischen "sauber beendet" und "hart gestoppt" verloren — und das ist
+ * das Signal, das der Morgen liest.
+ */
+export async function laufeImplementierung(args, ctx) {
   let sessions = 0;
   let succeeded = 0;
   let deferred = 0;
@@ -1761,80 +2199,25 @@ async function main() {
   let hardStop = false;
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
   const salvageAttempted = new Set();
+  // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
+  // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
+  const pruefungen = [];
 
   while (sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) break;
-    warnWennLabelNirgendsVorkommt(ready);
+    warnWennLabelNirgendsVorkommt(ctx, ready);
 
     // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
     // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.
-    const top = labelFilter === null ? ready[0] : ready.find(hasLabel);
+    const top = ctx.labelFilter === null ? ready[0] : ready.find(ctx.hasLabel);
     if (!top) break;
-    if (isFachlich(top.title)) {
-      log(`#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
-      continue;
-    }
-    if (isIdee(top.title)) {
-      log(`#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
-      continue;
-    }
-    if (isPlan(top.title)) {
-      log(`#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
-      continue;
-    }
-    // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
-    if (hatKlaerenLabel(top)) {
-      log(`#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
-      continue;
-    }
-    const full = board("issue", "get", String(top.id));
-    // Ungepruefte Issues zurueckstellen (Issue #223). Nur wenn ausdruecklich aktiviert:
-    // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten, deshalb
-    // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
-    // ungepruftes Issue nicht ablehnen — er wuerde es implementieren, und die Maengel
-    // fielen erst im Code auf.
-    //
-    // Seit Issue #304 hat das Gate einen zweiten Freigabegrund: den bewussten Verzicht
-    // (fachliche Quelle #285). Ein Ticket, das der Mensch ausdruecklich ohne Pruefung
-    // freigegeben hat, traegt nie einen Marker — es hier zurueckzustellen hiesse, seine
-    // Entscheidung jede Nacht aufs Neue zu ueberstimmen.
-    if (config.issueReview?.requiredBeforeReady) {
-      const freigabe = reviewFreigabe(full.body);
-      if (!freigabe.frei) {
-        const texte = GATE_ABLEHNUNG[freigabe.art];
-        log(`#${top.id} ${texte.log(freigabe.detail)}`);
-        board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${texte.kommentar(top.id, freigabe.detail)}`);
-        board("issue", "move", String(top.id), "backlog");
-        deferred++;
-        continue;
-      }
-      if (freigabe.art === "verzicht") {
-        log(`#${top.id} bewusst ohne Pruefung freigegeben (Pruefung: Verzicht), wird implementiert.`);
-      }
-    }
-    const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
-    if (unmet.length > 0) {
-      log(`#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`);
-      board("issue", "comment", String(top.id), "--text",
-        `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`);
+
+    const gate = pruefeIssueGates(top);
+    if (gate) {
+      log(gate.log);
+      board("issue", "comment", String(top.id), "--text", gate.kommentar);
       board("issue", "move", String(top.id), "backlog");
       deferred++;
       continue;
@@ -1843,87 +2226,47 @@ async function main() {
     sessions++;
     log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
     const started = Date.now();
+    // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
+    // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
+    // weiter unten in werteRunde laufen kann, ist aussen vor.
+    verwerfeZusammenfassung();
     const res = await runSession(top.id, args);
+    pruefungen.push(lesePruefung(top.id));
     const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
-    const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
-    if (nowInReview) {
-      succeeded++;
-      log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
-      // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
-      // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
-      // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
-      // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
-      if (!gitClean()) {
-        log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
-        hardStop = true;
-        break;
-      }
-      continue;
-    }
-
-    // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
-    // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
-    // falsch. Harter Stopp ohne Kommentar und ohne Backlog-Move, sonst raeumt eine
-    // kaputte Umgebung die ganze Ready-Spalte leer.
-    const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
-    if (!timedOut && (res.error || res.status !== 0)) {
-      const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-      const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
-      log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
-      if (detail) log(`  CLI-Meldung: ${detail}`);
+    const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted);
+    if (ausgang === "erfolg") succeeded++;
+    else if (ausgang === "deferred") deferred++;
+    else {
       hardStop = true;
       break;
     }
-
-    if (!gitClean()) {
-      // Salvage (#167): Bevor der Lauf hart stoppt, pruefen wir selbst, ob die Arbeit
-      // inhaltlich fertig ist. Gruene buildChecks sind das Indiz dafuer, dass die
-      // Session nur ihr Ergebnis verloren hat (Hintergrund-Check ohne Folge-Turn) und
-      // nicht wirklich gescheitert ist. Genau ein Versuch pro Issue.
-      if (!salvageAttempted.has(String(top.id))) {
-        salvageAttempted.add(String(top.id));
-        const checks = verifyChecksForSalvage(config);
-        if (checks.ok) {
-          log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
-          await runSession(top.id, args, {
-            prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
-            timeoutMs: SALVAGE_TIMEOUT_MS,
-            extraEnv: { NIGHT_SALVAGE: "1" },
-          });
-          const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
-          if (salvaged && gitClean()) {
-            succeeded++;
-            log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
-            board("issue", "comment", String(top.id), "--text",
-              "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
-            continue;
-          }
-          log(`  SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`);
-          board("issue", "comment", String(top.id), "--text",
-            "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
-          hardStop = true;
-          break;
-        }
-        log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
-      }
-      log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
-      board("issue", "comment", String(top.id), "--text",
-        "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
-      hardStop = true;
-      break;
-    }
-
-    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
-    board("issue", "comment", String(top.id), "--text",
-      "Nachtlauf: Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.");
-    board("issue", "move", String(top.id), "backlog");
-    deferred++;
   }
 
-  log(`Nacht-Runner beendet: ${succeeded} erfolgreich, ${deferred} zurueckgestellt, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  return { sessions, succeeded, deferred, hardStop, pruefungen };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const ctx = vorbereiten(args);
+
+  // Drei einander ausschliessende Programme. Review und Dry-Run beenden den Prozess
+  // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code
+  // bilden.
+  if (args.review) {
+    await laufeReviewModus(args);
+    return;
+  }
+  if (args.dryRun) {
+    laufeDryRun(args, ctx);
+    return;
+  }
+
+  const ergebnis = await laufeImplementierung(args, ctx);
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
-  process.exit(hardStop ? 1 : 0);
+  process.exit(ergebnis.hardStop ? 1 : 0);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite).

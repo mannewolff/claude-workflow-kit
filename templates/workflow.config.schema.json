@@ -43,10 +43,59 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "type": "string"
+        "description": "Ein Eintrag hat eine von drei Formen. (1) Der blosse Kommandostring \"npx eslint .\": nicht zugeordnet, laeuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: laeuft, wenn einer der genannten Bereiche beruehrt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schliessen sich aus (eine Vorrangregel wuerde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). ACHTUNG: Die Objektform ist schemaseitig gueltig, wird von der Laufzeit (kit/night.mjs, /local-check) aber noch nicht verstanden — dort wird jeder Eintrag als Kommandostring ausgefuehrt. Wer sie vor dem Folgepaket in eine Config schreibt, bricht die Check-Ausfuehrung.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Die Kommandozeile, wie sie in der String-Form stuende."
+              },
+              "areas": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Bereichsnamen aus checkAreas. Die Pruefung laeuft, wenn mindestens einer der Bereiche beruehrt ist. Nicht zusammen mit \"always\"."
+              },
+              "always": {
+                "type": "boolean",
+                "description": "true = entschieden immer laufend, unabhaengig von den beruehrten Bereichen. Nicht zusammen mit \"areas\"."
+              }
+            },
+            "required": [
+              "cmd"
+            ],
+            "additionalProperties": false,
+            "not": {
+              "required": [
+                "areas",
+                "always"
+              ]
+            }
+          }
+        ]
       },
-      "description": "Kommandos, die /local-check sequenziell ausfuehrt (Build, Tests). Leer-Array = keine automatisierten Checks. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die /local-check sequenziell ausfuehrt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
+    },
+    "checkAreas": {
+      "type": "object",
+      "description": "Benannte Bereiche des Projekts: Schluessel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt \"areas\" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein blosser Kommandostring laeuft immer (nicht zugeordnet), { \"cmd\", \"areas\" } laeuft nur, wenn eines der hier hinterlegten Muster beruehrt ist, { \"cmd\", \"always\": true } laeuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. ACHTUNG: Ausgewertet wird dieser Block erst mit dem Folgepaket; bis dahin aendert er nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "mutationCommand": {
       "type": "string",

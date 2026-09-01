@@ -143,3 +143,25 @@ test("Regressionsanker: die verwaisten Verweise sind benannt", () => {
   assert.equal(unbekannt.length, 14);
   assert.deepEqual([...new Set(unbekannt.map((e) => e.gelesen))].sort((a, b) => a - b), [246, 285]);
 });
+
+// --- Auffaellige Karten ohne gelesenes Ziel (Issue #405) ---
+//
+// Die Zusammenfassung haengt "(gelesen: #N)" nur dort an, wo es ein gelesenes Ziel
+// gibt. Bei `mehrdeutig` gibt es keins — die Karte nennt zwei verschiedene Nummern,
+// und genau deshalb ist sie zu klaeren. Ein erfundenes "(gelesen: #undefined)"
+// waere an dieser Stelle schlimmer als gar keine Angabe.
+
+test("eine mehrdeutige Karte wird ohne gelesenes Ziel gemeldet", () => {
+  const karten = JSON.stringify([
+    { id: "9", title: "Kind", body: "## Kontext\n\nPlan: Issue #3\nPlan: Issue #4\n\n## Aufgabe\n" },
+    { id: "3", title: "[Plan] Eltern", body: "Plan-Modell: m\n\n## Ziel\n" },
+  ]);
+
+  const r = lauf(karten);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /mehrdeutig\s+1/, "der Zustand wird nicht gezaehlt");
+  assert.match(r.stdout, /#9\s+mehrdeutig$/m, "die Karte wird nicht ohne Zusatz gemeldet");
+  assert.doesNotMatch(r.stdout, /#9\s+mehrdeutig \(gelesen/,
+    "ohne gelesenes Ziel darf keine Nummer erfunden werden");
+});

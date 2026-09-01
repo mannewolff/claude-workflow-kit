@@ -33,9 +33,30 @@ Lies alle vier Abschnitte erneut. Das Akzeptanzkriterium ist der Maßstab für d
 - Testcode nicht anfassen — außer er ist nachweislich falsch formuliert (widerspricht dem Akzeptanzkriterium, testet das Falsche). Dann Rücksprache mit dem Menschen statt stillschweigender Änderung.
 - Bestehende Muster und Funktionen wiederverwenden. Kein Feature, keine Refactoring, keine Abstraktion, die das Issue nicht verlangt.
 
-### 3. Lokal committen (nicht pushen)
+### 3. Pruefungen vor dem Commit
 
-Gleiches Format wie `implement-ready` Schritt 4 — Tests und Implementierung zusammen in einem Commit:
+```bash
+node .claude/kit/checks.mjs run
+```
+
+Das Kommando waehlt die betroffenen `buildChecks` aus und fuehrt genau sie aus.
+**Ohne `--since`** — den Anker bestimmt das Kommando (Default `HEAD`), der Skill
+uebergibt nie selbst einen. Weil der Aufruf **vor** dem Commit steht, misst `HEAD`
+genau dieses eine Arbeitspaket: Ein Fehlschlag gehoert dem Paket, das ihn ausgeloest
+hat — in beiden Betriebsarten und auch dann, wenn eine Session mehrfach festschreibt.
+
+Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
+
+Das Kommando nennt in seiner Ausgabe die **gelaufenen und die ausgelassenen**
+Pruefungen, jeweils mit Grund. Beides gehoert in den Abschlussbericht (Schritt 5):
+Nur die Laeufe zu nennen genuegt nicht — dann muesste man die Auslassungen indirekt
+erschliessen, und ein verkuerzter Lauf saehe aus wie ein vollstaendiger. Meldet das
+Kommando `leeresPaket`, steht das ausdruecklich als "keine Pruefung, weil nichts
+veraendert wurde" im Bericht, nicht als leere Liste.
+
+### 4. Lokal committen (nicht pushen)
+
+Gleiches Format wie `implement-ready` Schritt 5 — Tests und Implementierung zusammen in einem Commit:
 
 ```bash
 git add <geänderte Dateien>
@@ -52,19 +73,21 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch beim Push/Merge, und die Board-Automation zieht es dann sofort nach Done — noch bevor der Mensch getestet hat. `Refs #N` verlinkt, ohne zu schließen. Das Schließen macht ausschließlich der Mensch.
 
-### 4. Issue nach In review verschieben + Abschlussbericht
+**Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
+
+### 5. Issue nach In review verschieben + Abschlussbericht
 
 ```bash
 node .claude/kit/board.mjs issue move <id> in_review
 ```
 
-Abschlussbericht als Issue-Kommentar, gleiches Format wie `implement-ready` Schritt 5:
+Abschlussbericht als Issue-Kommentar, gleiches Format wie `implement-ready` Schritt 6:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text "**Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
-
+node .claude/kit/board.mjs issue comment <id> --text - <<'BERICHT'
 ## Abschlussbericht Issue #N
-..."
+...
+BERICHT
 ```
 
 ```
@@ -75,7 +98,9 @@ node .claude/kit/board.mjs issue comment <id> --text "**Manuelle Pruefpunkte blo
 - `DateiTest.java` — was getestet wird (von /implement-test vorbereitet)
 
 ### Tests und Checks
-- <ausgeführtes Kommando> → <Ergebnis>
+- gelaufen: <Kommando> → <Ergebnis>
+- ausgelassen: <Kommando> → <Grund>
+- bei `leeresPaket`: keine Pruefung, weil nichts veraendert wurde
 
 ### Hinweise
 - <verbleibende Risiken, offene Punkte, manuelle Folgeschritte>
