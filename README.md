@@ -62,6 +62,10 @@ node tools/sync-blobs.mjs
 
 Zwei Dateien unter `.claude/` liegen trotzdem im Repo, beide aus einem eigenen Grund: `workflow.config.json` wird vom Installer **gemergt** statt ueberschrieben und ist Team-Einstellung; `launch.json` legt er gar nicht erst an.
 
+## Bereichsbezogene Pruefungen
+
+Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zustaendig ist (`areas`), und der Block `checkAreas` ordnet diesen Bereichen Pfadmuster zu. Dann laeuft eine Pruefung nur, wenn ihr Bereich beruehrt wurde; im Zweifel laeuft alles, und ohne `checkAreas` aendert sich nichts. Die Formen, die beiden Pruef-Anker und die Zweifelsregel stehen im Kapitel „Bereichsbezogene Pruefungen" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text, zwei Orte fuer dieselbe Aussage driften auseinander.
+
 ## Dokumentation
 
 Ausfuehrliche Anleitung, Konfigurationsreferenz und den vollstaendigen 9-Schritt-Prozess findest du hier:

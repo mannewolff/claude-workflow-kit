@@ -215,7 +215,8 @@ Beispiele fuer verschiedene Stacks:
 
 ## Pflichtchecks vor Push (Schritt 6)
 
-Alle `buildChecks` aus der Config laufen gruen. Rote Checks blockieren den Push mechanisch.
+Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden
+mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch.
 Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen.
 Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen.
 
@@ -401,13 +402,17 @@ ausnahmslos gesetzt wurde.
 
 ### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`
 
-Alle `buildChecks` laufen gruen, bevor gepusht wird; ein nicht lokal ausfuehrbarer Check
-wird im Abschlussbericht vermerkt, nicht verschwiegen. Fundstelle: „Pflichtchecks vor
+Alle **betroffenen** `buildChecks` laufen gruen, bevor gepusht wird; unberuehrte Bereiche
+werden mit Nachweis ausgelassen. Ein nicht lokal ausfuehrbarer Check wird im
+Abschlussbericht vermerkt, nicht verschwiegen. Fundstelle: „Pflichtchecks vor
 Push (Schritt 6)".
 
 *Warum Gate:* Das Wort ist „mechanisch". Ein Vorschlag, der einen Check zur Empfehlung
 macht, ihn ueberspringbar macht oder eine Schwelle senkt, damit er gruen wird, hebt die
-Mechanik auf — und genau darauf verlaesst sich der Push.
+Mechanik auf — und genau darauf verlaesst sich der Push. Die bereichsbezogene Auswahl
+ist kein solcher Vorschlag: Sie laesst eine Pruefung aus, weil ihr Bereich unberuehrt
+ist, weist die Auslassung mit Grund aus und faellt im Zweifel auf den vollen Umfang
+zurueck. Wer dagegen eine Pruefung ohne diesen Nachweis weglaesst, faellt unter W3.
 
 ### W4 — Die Prioritaetenordnung bei Zielkonflikten `[Urteil]`
 
