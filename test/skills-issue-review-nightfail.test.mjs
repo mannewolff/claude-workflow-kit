@@ -18,9 +18,18 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
 
-// Der Nachtbetriebs-Abschnitt allein — damit ein Treffer im interaktiven Teil
-// (wo Rueckfragen ausdruecklich erwuenscht sind) nicht faelschlich zaehlt.
+// Der Nachtbetriebs-Abschnitt allein. Er begrenzt die Zusicherungen zum
+// Reviewer-Ausfall: Rueckfragen sind interaktiv ausdruecklich erwuenscht, ein
+// Treffer dort duerfte hier nicht zaehlen. Seit Issue #417 traegt der Abschnitt
+// nur noch diese Regel — die Fallunterscheidung zum Body-Schreiben steht in
+// Schritt 6 und wird ueber `schritt6` geprueft.
 const nachtAbschnitt = SKILL.slice(SKILL.indexOf("## Im Nachtbetrieb"));
+
+// Schritt 6 allein — von seiner Ueberschrift bis zum Nachtbetriebs-Abschnitt.
+const schritt6 = SKILL.slice(
+  SKILL.indexOf("### 6. Body schärfen"),
+  SKILL.indexOf("## Im Nachtbetrieb")
+);
 
 test("die Regel schliesst den Ausfall BEIM START ein, nicht nur waehrend des Laufs", () => {
   assert.match(nachtAbschnitt, /beim Start ausf/i,
@@ -65,4 +74,37 @@ test("der bestehende Satz zum Ausfall waehrend des Laufs bleibt erhalten", () =>
   // die neue Nachtregel ersetzt ihn nicht, sie verschaerft ihn nur fuer die Nacht.
   assert.match(SKILL, /gilt der Reviewer als ausgefallen.*kein Abbruch/s,
     "der Bestandssatz wurde ersatzlos entfernt");
+});
+
+// Issue #417: Dieselbe Fehlerklasse wie oben, eine Etage tiefer. Schritt 6 trug
+// den Absolutsatz "Der Body wird nie automatisch geschrieben.", die Ausnahme
+// stand rund 80 Zeilen tiefer im Nachtabschnitt — die Session handelte, bevor sie
+// sie las. Am 2026-08-31 endeten vier von vier Nacht-Sessions mit "Schaerfung
+// fehlt". Zwei frueheren Gegenmassnahmen war die Formulierung geschaerft worden,
+// beide ohne Wirkung; der Fehler ist strukturell. Deshalb wird hier die Struktur
+// zugesichert, nicht der Wortlaut.
+
+test("Schritt 6 traegt beide Betriebsarten, die unbeaufsichtigte zuerst", () => {
+  assert.notEqual(schritt6, "", "der Schritt-6-Abschnitt wurde nicht gefunden");
+
+  const unbeaufsichtigt = schritt6.search(/unbeaufsichtigt/i);
+  const interaktiv = schritt6.search(/interaktiv/i);
+  assert.notEqual(unbeaufsichtigt, -1,
+    "Schritt 6 nennt die unbeaufsichtigte Betriebsart nicht — dann liest die Nacht-Session hier nur die interaktive Regel");
+  assert.notEqual(interaktiv, -1,
+    "Schritt 6 nennt die interaktive Betriebsart nicht");
+  assert.ok(unbeaufsichtigt < interaktiv,
+    "die unbeaufsichtigte Betriebsart muss zuerst stehen — wer von oben liest, handelt nach dem ersten Fall");
+});
+
+test("die Ueberschrift von Schritt 6 traegt nicht mehr die halbe Regel", () => {
+  assert.doesNotMatch(SKILL, /### 6\. Body schärfen — nur mit Freigabe/,
+    "\"nur mit Freigabe\" ist fuer den unbeaufsichtigten Anwendungsfall falsch");
+});
+
+test("die Reihenfolge der Schreibbefehle steht in Schritt 6 und nicht mehr im Nachtabschnitt", () => {
+  assert.match(schritt6, /Reihenfolge der Schreibbefehle/,
+    "die Reihenfolge gehoert in den Schritt, den sie regelt");
+  assert.doesNotMatch(nachtAbschnitt, /Reihenfolge der Schreibbefehle/,
+    "zwei Orte fuer dieselbe Regel driften — im Nachtabschnitt darf sie nicht stehenbleiben");
 });

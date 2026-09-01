@@ -22,16 +22,22 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
 
-const nachtAbschnitt = SKILL.slice(SKILL.indexOf("## Im Nachtbetrieb"));
+// Seit Issue #417 steht die Reihenfolge in Schritt 6 selbst statt im
+// Nachtabschnitt — dort, wo die Session sie liest, bevor sie handelt. Der
+// Ausschnitt zieht mit; die Zusicherungen darunter sind unveraendert.
+const schritt6 = SKILL.slice(
+  SKILL.indexOf("### 6. Body schärfen"),
+  SKILL.indexOf("## Im Nachtbetrieb")
+);
 
 // Die nummerierte Liste allein — sie endet vor dem Fehlerpfad-Absatz.
-const listeStart = nachtAbschnitt.indexOf("Reihenfolge der Schreibbefehle");
-const fehlerpfadStart = nachtAbschnitt.indexOf("**Schlägt", listeStart);
+const listeStart = schritt6.indexOf("Reihenfolge der Schreibbefehle");
+const fehlerpfadStart = schritt6.indexOf("**Schlägt", listeStart);
 const liste = listeStart === -1 || fehlerpfadStart === -1
   ? ""
-  : nachtAbschnitt.slice(listeStart, fehlerpfadStart);
+  : schritt6.slice(listeStart, fehlerpfadStart);
 
-test("die Reihenfolge steht ueberhaupt noch im Nachtabschnitt", () => {
+test("die Reihenfolge steht ueberhaupt noch in Schritt 6", () => {
   assert.notEqual(listeStart, -1, "die Liste der Schreibbefehle fehlt");
   assert.notEqual(fehlerpfadStart, -1, "der Fehlerpfad hinter der Liste fehlt");
 });
@@ -71,7 +77,7 @@ test("Schritt 6 ist label-sync", () => {
 });
 
 test("der befundfreie Lauf ist geregelt", () => {
-  const nachDerListe = nachtAbschnitt.slice(listeStart, fehlerpfadStart + 2000);
+  const nachDerListe = schritt6.slice(listeStart, fehlerpfadStart + 2000);
   assert.match(nachDerListe, /befundfrei/i,
     "ohne diesen Satz schreibt eine Session bei null Funden einen inhaltsgleichen Vorschlag");
   assert.match(nachDerListe, /entfallen/i,
@@ -79,7 +85,7 @@ test("der befundfreie Lauf ist geregelt", () => {
 });
 
 test("der Fehlerpfad benennt, was nach einem Fehlschlag der zweiten Body-Schreibung zurueckbleibt", () => {
-  const fehlerpfad = nachtAbschnitt.slice(fehlerpfadStart, fehlerpfadStart + 1200);
+  const fehlerpfad = schritt6.slice(fehlerpfadStart, fehlerpfadStart + 1200);
   // Die Hervorhebung des "zweite" ist Markup und darf den Treffer nicht kosten.
   assert.match(fehlerpfad, /zweite\w*\*{0,2}\s+Body-Schreibung/i,
     "der Fehlerpfad der zweiten Schreibung ist nicht benannt");
@@ -90,6 +96,6 @@ test("der Fehlerpfad benennt, was nach einem Fehlschlag der zweiten Body-Schreib
 test("der Bestandssatz ueber die zwei angelegten Fehlerpfade bleibt stehen", () => {
   // Er steht im selben Absatz wie der alte Fehlerpfad und wuerde bei woertlicher
   // Ersetzung stillschweigend mitverschwinden.
-  assert.match(nachtAbschnitt, /Zwei Fehlerpfade sind im Bestand angelegt/,
+  assert.match(schritt6, /Zwei Fehlerpfade sind im Bestand angelegt/,
     "der Hinweis auf #303 und die fehlende Label-Definition wurde mitentfernt");
 });
