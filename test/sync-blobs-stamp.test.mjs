@@ -24,8 +24,13 @@ import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Minimales Repo mit allem, was sync-blobs.mjs anfasst: die vier Blob-Quellen und
-// eine install.mjs mit den vier Konstanten plus VERSION.
+// Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
+// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425), faellt hier genau eine Stelle
+// an statt drei ueber die Datei verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs"];
+
+// Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
+// eine install.mjs mit allen Konstanten plus VERSION.
 function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sync-stamp-"));
   mkdirSync(join(dir, "tools"), { recursive: true });
@@ -39,7 +44,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
-  for (const datei of ["board.mjs", "night.mjs"]) {
+  for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
@@ -51,6 +56,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const CLAUDE_PLAN_MD_B64 = "";`,
     `const BOARD_MJS_B64 = "";`,
     `const NIGHT_MJS_B64 = "";`,
+    `const CHECKS_MJS_B64 = "";`,
     `const SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -70,14 +76,15 @@ function stempel(dir, datei) {
   return m ? m[1] : null;
 }
 
-test("Stempel: sync-blobs schreibt die install.mjs-VERSION in beide Kit-Dateien", () => {
+test("Stempel: sync-blobs schreibt die install.mjs-VERSION in alle Kit-Dateien", () => {
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     const res = syncBlobs(dir);
     assert.equal(res.status, 0, `sync-blobs schlug fehl: ${res.stderr}${res.stdout}`);
 
-    assert.equal(stempel(dir, "board.mjs"), "2.5.0", "board.mjs wurde nicht gestempelt");
-    assert.equal(stempel(dir, "night.mjs"), "2.5.0", "night.mjs wurde nicht gestempelt");
+    for (const datei of KIT_DATEIEN) {
+      assert.equal(stempel(dir, datei), "2.5.0", `${datei} wurde nicht gestempelt`);
+    }
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -121,7 +128,7 @@ test("Stempel: --check meldet Stempel-Drift getrennt vom Blob-Drift", () => {
   }
 });
 
-test("Stempel: nach einem Versions-Bump zieht sync-blobs beide Dateien nach", () => {
+test("Stempel: nach einem Versions-Bump zieht sync-blobs alle Dateien nach", () => {
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
@@ -131,8 +138,7 @@ test("Stempel: nach einem Versions-Bump zieht sync-blobs beide Dateien nach", ()
 
     assert.equal(syncBlobs(dir, "--check").status, 1, "--check haette den Bump als Drift melden muessen");
     assert.equal(syncBlobs(dir).status, 0, "sync-blobs haette den Bump nachziehen muessen");
-    assert.equal(stempel(dir, "board.mjs"), "2.5.1");
-    assert.equal(stempel(dir, "night.mjs"), "2.5.1");
+    for (const datei of KIT_DATEIEN) assert.equal(stempel(dir, datei), "2.5.1");
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -155,7 +161,7 @@ test("Stempel: fehlende KIT_VERSION-Konstante ist ein harter Fehler, kein stille
 
 // --- Dogfooding-Kopie unter .claude/kit/ (Issue #173) ---
 //
-// Das Kit betreibt eine eigene Kopie von board.mjs und night.mjs unter
+// Das Kit betreibt eine eigene Kopie seiner Kit-Werkzeuge unter
 // .claude/kit/ und liess sie bis #173 von Hand per cp auffrischen — ein Schritt,
 // den man vergisst (bei Issue #167 waere er beinahe untergegangen). Mit den
 // Versionsstempeln wuerde eine vergessene Kopie eine falsche Version behaupten.
@@ -172,7 +178,7 @@ test("Lokale Kopie: sync-blobs frischt .claude/kit/ mit der gestempelten Fassung
     const res = syncBlobs(dir);
     assert.equal(res.status, 0, `sync-blobs schlug fehl: ${res.stderr}${res.stdout}`);
 
-    for (const datei of ["board.mjs", "night.mjs"]) {
+    for (const datei of KIT_DATEIEN) {
       assert.equal(
         readFileSync(join(dir, ".claude", "kit", datei), "utf-8"),
         readFileSync(join(dir, "kit", datei), "utf-8"),

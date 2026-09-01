@@ -152,17 +152,42 @@ test("buildChecks: unbekannte Felder in der Objektform sind ungueltig", () => {
 
 // --- Bestand ---
 
+const beispielConfig = JSON.parse(
+  readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8")
+);
+
 test("eine Bestandsconfig mit reiner String-Liste bleibt gueltig", () => {
-  // Die ausgelieferte Beispiel-Config ist die Bestandsform: buildChecks als flache
-  // Liste von Kommandozeilen. Sie muss ohne jede Aenderung gueltig bleiben.
-  const bestand = JSON.parse(
-    readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8")
-  );
-  assert.ok(
-    bestand.buildChecks.every((e) => typeof e === "string"),
-    "Vorbedingung: die Beispiel-Config ist eine reine String-Liste"
-  );
+  // Die Bestandsform ist buildChecks als flache Liste von Kommandozeilen. Sie muss
+  // ohne jede Aenderung gueltig bleiben — jedes Projekt da draussen fuehrt sie.
+  // Konstruiert aus der ausgelieferten Vorlage, damit der Test die echte Config
+  // trifft und nicht ein erfundenes Beispiel.
+  const bestand = {
+    ...beispielConfig,
+    buildChecks: beispielConfig.buildChecks.map((e) => (typeof e === "string" ? e : e.cmd)),
+  };
   assert.deepEqual(pruefe(schema, bestand), []);
+});
+
+test("die ausgelieferte Beispiel-Config zeigt beide Formen nebeneinander (Issue #425)", () => {
+  // Die Vorlage ist der einzige Ort, an dem ein Nutzer die Objektform zu sehen
+  // bekommt, ohne die Doku zu lesen. Nur die zugeordnete Form zu zeigen waere
+  // irrefuehrend: dass ein blosser String weiterhin gilt, ist die halbe Aussage.
+  assert.deepEqual(pruefe(schema, beispielConfig), []);
+
+  const strings = beispielConfig.buildChecks.filter((e) => typeof e === "string");
+  const objekte = beispielConfig.buildChecks.filter((e) => istObjekt(e) && e.areas);
+  assert.ok(strings.length > 0, "die nicht zugeordnete Form fehlt in der Vorlage");
+  assert.ok(objekte.length > 0, "die zugeordnete Form fehlt in der Vorlage");
+
+  // Ein Bereichsname ohne Eintrag in checkAreas laesst checks.mjs abbrechen — in
+  // einer Datei, die zum Abschreiben gedacht ist, waere das der teuerste Tippfehler.
+  const bekannt = new Set(Object.keys(beispielConfig.checkAreas ?? {}));
+  assert.ok(bekannt.size > 0, "checkAreas fehlt in der Vorlage");
+  for (const eintrag of objekte) {
+    for (const name of eintrag.areas) {
+      assert.ok(bekannt.has(name), `'${eintrag.cmd}' zeigt auf unbekannten Bereich '${name}'`);
+    }
+  }
 });
 
 // --- checkAreas ---

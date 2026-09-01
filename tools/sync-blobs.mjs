@@ -62,11 +62,15 @@ const BLOBS = [
   { constName: "CONFIG_EXAMPLE_B64", source: join(root, "templates", "workflow.config.json") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
+  { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 
 // Dateien, die den Kit-Stand als KIT_VERSION tragen (Issue #170/#171).
-const STAMPED = ["board.mjs", "night.mjs"];
+// Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
+// Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
+// riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs"];
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;
 

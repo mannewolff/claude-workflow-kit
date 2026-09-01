@@ -2,8 +2,19 @@
   "codeHost": "github",
   "issueTracker": "github",
   "buildChecks": [
-    "mvn verify"
+    "mvn verify",
+    {
+      "cmd": "npm --prefix frontend run build",
+      "areas": [
+        "frontend"
+      ]
+    }
   ],
+  "checkAreas": {
+    "frontend": [
+      "frontend/**"
+    ]
+  },
   "mutationCommand": "mvn org.pitest:pitest-maven:mutationCoverage",
   "formatFixCommand": "",
   "mainBranch": "main",
