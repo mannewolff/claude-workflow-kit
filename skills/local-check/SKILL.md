@@ -12,10 +12,11 @@ Schritt 6 des 9-Schritt-Prozesses: Alle Pflicht-Checks laufen lokal durch. Outpu
 
 Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
 
-Relevante Felder — alle drei gelten **teamweit** und sind lokal nicht überschreibbar:
+Relevante Felder — alle gelten **teamweit** und sind lokal nicht überschreibbar:
 - `buildChecks`: Liste der auszuführenden Build-/Test-Kommandos (z.B. `["mvn verify", "npm run build"]`)
 - `mutationCommand`: Mutations-Test-Kommando (optional, z.B. `"mvn org.pitest:pitest-maven:mutationCoverage"`)
 - `formatFixCommand`: Kommando, das Formatierungsverstöße mechanisch behebt (optional, z.B. `"mvn spotless:apply"` oder `"npx prettier --write ."`). Wird heute nur vom Nacht-Runner genutzt (Issue #169).
+- `mainBranch`: Basis-Branch für den Prüf-Anker (Default: `main`). Der Platzhalter `<mainBranch>` in den Kommandos unten steht für diesen Wert aus `.claude/workflow.config.json` — wie ihn die Push-Skills bereits lesen.
 
 Dass diese Felder im Repository liegen, ist der Punkt: Hätte jeder seine eigenen `buildChecks`, hieße „grün" bei zwei Entwicklern nicht dasselbe.
 
@@ -33,13 +34,15 @@ Fehlt die Config: Führe `buildChecks: []` aus und weise darauf hin, dass keine 
 
 ### 1. Build-Checks aus der Config
 
-Führe alle Kommandos in `buildChecks` sequenziell aus:
-
 ```bash
-<kommando aus buildChecks[0]>
-<kommando aus buildChecks[1]>
-...
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
 ```
+
+Das Kommando wählt die betroffenen `buildChecks` aus und führt genau sie aus. `<mainBranch>` ist der Wert aus `.claude/workflow.config.json` (Default: `main`).
+
+**Warum dieser Anker und nicht `HEAD`.** Dieser Schritt läuft **nach** dem lokalen Commit aus Schritt 5. Auf sauberem Arbeitsbaum sähe `git diff HEAD` nichts — das Kommando meldete `leeresPaket`, ließe **jede** Prüfung aus, und der Bericht wiese das als korrekt aus. Der letzte gepushte Stand ist der richtige Bezug: Der Schritt sichert alles ab, was seit dem letzten Push dazugekommen ist, also genau das, was gleich hinausgeht. (Die `implement-*`-Skills prüfen dagegen **vor** dem Commit gegen den Default `HEAD` — dort misst er genau ein Arbeitspaket.)
+
+**Randfall: leerer Anker.** Schlägt `git merge-base` fehl (kein `origin`, detached HEAD, kein gemeinsamer Vorfahre), liefert die Substitution einen **leeren String**, und der Aufruf wird zu `--since ""`. `checks.mjs` behandelt einen leeren Anker wie einen nicht auflösbaren und fährt den **vollen Umfang** — nie wie einen fehlenden. Ein fehlender ergäbe den Default `HEAD` und damit auf committetem Stand gar keine Prüfung. Diese Zusicherung nicht „vereinfachen": Sie ist der Grund, warum ein kaputter Anker zu mehr Prüfung führt statt zu keiner.
 
 Bei Fehler: Ausgabe zeigen, Ursache analysieren, Fix vorschlagen. Nicht stillschweigend weitermachen.
 
@@ -63,7 +66,15 @@ Nur wenn mindestens ein `buildChecks`-Kommando rot ist **und** `formatFixCommand
 <formatFixCommand>
 ```
 
-Danach die `buildChecks` **genau einmal** erneut ausführen. Kein Loop, keine zweite Runde — dieselbe Grenze wie im Nacht-Runner (Issue #169), aus demselben Grund: Ein Fix, der beim ersten Mal nichts bewirkt, bewirkt beim zweiten Mal auch nichts, kostet aber die volle Laufzeit noch einmal.
+Danach die Prüfung **genau einmal** erneut ausführen — derselbe `checks.mjs run`-Aufruf mit demselben Anker:
+
+```bash
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+Kein Loop, keine zweite Runde — dieselbe Grenze wie im Nacht-Runner (Issue #169), aus demselben Grund: Ein Fix, der beim ersten Mal nichts bewirkt, bewirkt beim zweiten Mal auch nichts, kostet aber die volle Laufzeit noch einmal.
+
+Dass die Auswahl beim zweiten Lauf größer ausfallen kann als beim ersten, ist gewollt: Der Fix hat Dateien geändert, also hat sich die Betroffenheit geändert.
 
 Nicht nachfragen, bevor der Fix läuft — eine Formatierung ist mechanisch und über `git diff` vollständig einsehbar. Wohl aber melden, dass er lief.
 
@@ -90,6 +101,8 @@ Ohne gesetztes `formatFixCommand` entfällt dieser Schritt ersatzlos.
 
 Nur wenn `mutationCommand` in der Config gesetzt ist. Wenn der Test nicht lokal ausführbar ist (kein Build-Tool, kein Daemon), das explizit vermerken.
 
+**`mutationCommand` bleibt unverändert und läuft weiterhin immer.** Es steht nicht in `buildChecks` und ist damit **nicht Teil der bereichsbezogenen Auswahl** — es wird direkt ausgeführt, ohne `checks.mjs`, unabhängig davon, welche Bereiche der Anker findet. Das ist Absicht und keine Lücke: Es war im Bestand schon dem Build nachgelagert, und es in die Auswahl zu ziehen erweiterte den Zuschnitt der Umstellung.
+
 ### 3. Manuelle UI-Verifikation (bei Frontend-Änderungen)
 
 Wenn die letzten Commits Frontend-Dateien betreffen:
@@ -109,13 +122,16 @@ Checklist im Format:
 ```
 ### Lokale Prüfung
 
-- ✅ <buildChecks[0]> → <Ergebnis>
-- ✅ <buildChecks[1]> → <Ergebnis>
+- ✅ <gelaufener Check> → <Ergebnis>
+- ✅ <gelaufener Check> → <Ergebnis>
+- ⏭️ <ausgelassener Check> → ausgelassen (<Grund aus checks.mjs>)
 - ✅ Mutations-Test → <Ergebnis>
 - ⏳ UI-Verifikation → manuelle Prüfung ausstehend
 
-Alle automatisierten Checks grün. UI-Check steht aus.
+Alle betroffenen Checks grün. UI-Check steht aus.
 ```
+
+Die Checklist nennt **gelaufene und ausgelassene** Prüfungen, jede Auslassung mit dem Grund, den `checks.mjs` ausgibt. Nur die Läufe zu nennen genügt nicht: Ein verkürzter Lauf sähe sonst aus wie ein vollständiger, und der Mensch müsste die Auslassungen indirekt erschließen. Meldet das Kommando `leeresPaket`, steht das ausdrücklich als eigene Zeile („keine Prüfung, weil seit dem letzten Push nichts verändert wurde") — nicht als leere Liste.
 
 Wenn `buildChecks` leer ist: Hinweis ausgeben "Keine buildChecks konfiguriert. Passe `.claude/workflow.config.json` an — die Datei gehört ins Repository, die Änderung also committen." Kein Fehler, kein Abbruch.
 
