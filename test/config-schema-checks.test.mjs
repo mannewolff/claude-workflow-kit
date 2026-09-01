@@ -15,10 +15,15 @@
 // 2026-09-01): Das Repo fuehrt heute keinen Schema-Validator, und das Kit liefert
 // seine Werkzeuge bewusst abhaengigkeitsfrei aus. Der Validator kennt nur die
 // Schluesselwoerter, die dieses Schema hier braucht — type, oneOf, required, not,
-// minItems, additionalProperties, properties, items. Alles andere (pattern, enum,
+// pattern, minItems, additionalProperties, properties, items. Alles andere (enum,
 // minLength, minimum, uniqueItems) ignoriert er; er ist damit nachsichtiger als ein
 // echter Validator, aber fuer die hier belegten Aussagen genau scharf genug: Jede
 // negative Aussage haengt an einem der unterstuetzten Schluesselwoerter.
+//
+// Seit Issue #432 traegt die Datei ausserdem die Regel des Reviewer-Paares: genau
+// eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt
+// ueber stdin) ist gesetzt. Dafuer kam 'pattern' hinzu — ohne es bliebe die
+// ^claude--Regel fuer reviewModel unbelegt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -87,6 +92,10 @@ function pruefe(teilschema, wert, pfad = "$") {
   }
 
   const fehler = [];
+  if (typeof teilschema.pattern === "string" && typeof wert === "string"
+      && !new RegExp(teilschema.pattern).test(wert)) {
+    fehler.push(`${pfad}: passt nicht auf '${teilschema.pattern}'`);
+  }
   if (Array.isArray(teilschema.oneOf)) {
     const treffer = teilschema.oneOf.filter((zweig) => pruefe(zweig, wert, pfad).length === 0);
     if (treffer.length !== 1) fehler.push(`${pfad}: oneOf traf ${treffer.length} Zweige statt genau einen`);
@@ -110,6 +119,8 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.equal(pruefe(s, { a: "x", b: 1 }).length, 1, "unbekanntes Feld");
   assert.equal(pruefe({ type: "array", minItems: 1 }, []).length, 1, "minItems");
   assert.equal(pruefe({ not: { required: ["a"] } }, { a: 1 }).length, 1, "not");
+  assert.deepEqual(pruefe({ type: "string", pattern: "^claude-" }, "claude-opus-5"), [], "pattern trifft");
+  assert.equal(pruefe({ type: "string", pattern: "^claude-" }, "gpt-5").length, 1, "pattern trifft nicht");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -202,6 +213,53 @@ test("checkAreas: Bereichsnamen auf Pfadmuster sind gueltig", () => {
 
 test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig", () => {
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
+});
+
+// --- Das Reviewer-Paar: genau eines von reviewModel und reviewCommand (Issue #432) ---
+
+// Gebaut aus der ausgelieferten Vorlage, damit die Faelle eine echte Config treffen
+// und sich nur im Reviewer-Paar unterscheiden. Beide Felder fliegen erst raus, dann
+// setzt der Aufruf, was er belegen will — sonst schleppte jeder Fall das reviewModel
+// der Vorlage mit und die Aussage waere eine andere.
+function configMitReviewer(felder) {
+  const { reviewModel, reviewCommand, ...rest } = beispielConfig;
+  return { ...rest, ...felder };
+}
+
+test("Reviewer-Paar: reviewModel allein ist gueltig", () => {
+  assert.deepEqual(pruefe(schema, configMitReviewer({ reviewModel: "claude-opus-5" })), []);
+});
+
+test("Reviewer-Paar: reviewCommand allein ist gueltig", () => {
+  assert.deepEqual(pruefe(schema, configMitReviewer({ reviewCommand: "codex exec --model gpt-5" })), []);
+});
+
+test("Reviewer-Paar: beide Felder zusammen sind ungueltig", () => {
+  // Sonst braeuchte es eine Vorrangregel — welcher Reviewer laeuft dann?
+  assert.notDeepEqual(
+    pruefe(schema, configMitReviewer({ reviewModel: "claude-opus-5", reviewCommand: "codex exec --model gpt-5" })),
+    []
+  );
+});
+
+test("Reviewer-Paar: keines der beiden Felder ist ungueltig", () => {
+  // Ein fehlendes Feld ist unter der Oder-Regel ein Fehler, kein Default-Fall: Der
+  // defaults-Block ist die Installer-Vorgabe, keine Laufzeit-Auffuellung.
+  assert.notDeepEqual(pruefe(schema, configMitReviewer({})), []);
+});
+
+test("Reviewer-Paar: reviewModel muss weiterhin auf ^claude- passen", () => {
+  // Die Oder-Regel loest die Modell-Regel nicht ab: Wer reviewModel waehlt, waehlt
+  // den Claude-Subagent. Eine fremde CLI gehoert nach reviewCommand.
+  assert.notDeepEqual(pruefe(schema, configMitReviewer({ reviewModel: "gpt-5.6-sol" })), []);
+});
+
+test("die ausgelieferte Vorlage bleibt unter der neuen Regel gueltig", () => {
+  // Der Default traegt weiterhin einen Claude-Reviewer, damit ein neues Projekt ohne
+  // Zusatzangabe startet.
+  assert.deepEqual(pruefe(schema, beispielConfig), []);
+  assert.ok(beispielConfig.reviewModel?.startsWith("claude-"), "die Vorlage traegt einen Claude-Reviewer");
+  assert.ok(!("reviewCommand" in beispielConfig), "die Vorlage setzt kein reviewCommand daneben");
 });
 
 // --- Doku im Schema ---

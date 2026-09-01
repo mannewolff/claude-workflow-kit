@@ -131,8 +131,14 @@
     "reviewModel": {
       "type": "string",
       "minLength": 1,
-      "description": "Modell-ID fuer den Reviewer-Subagent (Opus-Pin). Muss ein gueltiger Claude-Modell-Identifier sein. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
+      "pattern": "^claude-",
+      "description": "Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID fuer den Reviewer-Subagent (Opus-Pin). Muss ein gueltiger Claude-Modell-Identifier sein. Genau eines der beiden Felder ist gesetzt — eine fremde CLI gehoert nach reviewCommand. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
       "default": "claude-opus-4-8"
+    },
+    "reviewCommand": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt ueber stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heisst, dass der Schluessel vorhanden ist — ein Leer-String ist ungueltig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persoenlich ueberschrieben werden."
     },
     "triggers": {
       "type": "object",
@@ -421,6 +427,28 @@
   },
   "required": [],
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": [
+        "reviewModel"
+      ],
+      "not": {
+        "required": [
+          "reviewCommand"
+        ]
+      }
+    },
+    {
+      "required": [
+        "reviewCommand"
+      ],
+      "not": {
+        "required": [
+          "reviewModel"
+        ]
+      }
+    }
+  ],
   "defaults": {
     "codeHost": "github",
     "issueTracker": "github",
@@ -481,6 +509,14 @@
       "rule": "pattern",
       "pattern": "^claude-",
       "error": "reviewModel muss eine Claude-Modell-ID sein (z.B. 'claude-opus-4-8')."
+    },
+    {
+      "fields": [
+        "reviewModel",
+        "reviewCommand"
+      ],
+      "rule": "exactlyOne",
+      "error": "Genau eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt ueber stdin) muss gesetzt sein."
     }
   ]
 }
