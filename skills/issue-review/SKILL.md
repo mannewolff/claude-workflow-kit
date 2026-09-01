@@ -665,12 +665,17 @@ Ein bereits vorhandenes Label ist kein Fehler.
 **Reihenfolge der Schreibbefehle und Fehlerpfad:**
 
 1. `## Body-Vorschlag`-Kommentar
-2. `issue update` (der neue Body)
+2. `issue update` — der geschärfte Body OHNE Marker (ein vorhandener Marker derselben Stufe wird dabei entfernt; endet der Lauf mit `kit:klaeren`, bleibt er entfernt)
 3. gegebenenfalls `issue label add kit:klaeren`
 4. Synthese-Kommentar
-5. gegebenenfalls der Marker
+5. gegebenenfalls ein ZWEITES `issue update` — derselbe Body, ergänzt um die Marker-Zeile; `Pruefung:` und `Pruefung-Stand:` werden wie bei jeder Body-Schreibung aus dem aktuellen Stand übernommen
+6. `issue-review label-sync <id>` — wie in Schritt 6 beschrieben, nachts identisch
 
-**Schlägt ein Schreibbefehl fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus** — insbesondere **nie einen Marker ohne** erfolgreich geschriebenen Body und Synthese-Kommentar. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
+Der Marker ist keine eigene Operation, sondern eine **Zeile im Body**. Er kann deshalb nur mit einer Body-Schreibung entstehen — und weil er nie ohne Synthese dastehen darf, wird der Body zweimal geschrieben: erst geschärft ohne Marker, nach erfolgreicher Synthese ein zweites Mal mit.
+
+Bei befundfreiem Lauf entfallen die Schritte 1 bis 3; das `issue update` mit der Marker-Zeile ist dann die einzige Body-Schreibung und schreibt den unveränderten Body plus Marker.
+
+**Schlägt einer der Befehle fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus.** Scheitert die **zweite** Body-Schreibung, bleibt der Body geschärft und ohne Marker zurück — das Ticket sieht dann aus wie eines mit Befunden, was es zu diesem Zeitpunkt auch ist. Ein Marker ohne Synthese kann nicht mehr entstehen. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
 
 **Für die Stufen `fachlich` und `plan` gilt das alles nicht — dort wird der Body unbeaufsichtigt nie geschrieben:** Stattdessen geht der fertig formulierte Body-Vorschlag als Board-Kommentar ans Issue, als übernehmbarer Text und nicht als Beschreibung dessen, was zu ändern wäre. Beim Groomen liest man ihn von dort (`issue get` liefert `comments`).
 
