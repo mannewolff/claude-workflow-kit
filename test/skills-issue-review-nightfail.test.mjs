@@ -102,6 +102,20 @@ test("die Ueberschrift von Schritt 6 traegt nicht mehr die halbe Regel", () => {
     "\"nur mit Freigabe\" ist fuer den unbeaufsichtigten Anwendungsfall falsch");
 });
 
+// Issue #419: Der Nacht-Runner sagt der Session im Prompt, dass sie unbeaufsichtigt
+// laeuft. Schritt 6 muss festhalten, dass das nur eine Wiederholung ist — sonst
+// koennte eine Session das FEHLEN des Hinweises als Entwarnung lesen und den
+// interaktiven Pfad nehmen, obwohl KIT_AGENT_MODEL gesetzt ist. Zwei
+// Erkennungsmerkmale waeren die zweite Wahrheit, die dieses Repo ueberall vermeidet.
+test("Schritt 6 benennt KIT_AGENT_MODEL als alleiniges Erkennungsmerkmal", () => {
+  assert.match(schritt6, /KIT_AGENT_MODEL/,
+    "Schritt 6 nennt das Erkennungsmerkmal nicht");
+  assert.match(schritt6, /kein zweites Signal/,
+    "ohne diesen Satz darf ein weiteres Signal danebentreten");
+  assert.match(schritt6, /Ma(ß|ss)geblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur/i,
+    "der Prompt-Hinweis des Nacht-Runners ist nicht als blosse Wiederholung eingeordnet");
+});
+
 test("die Reihenfolge der Schreibbefehle steht in Schritt 6 und nicht mehr im Nachtabschnitt", () => {
   assert.match(schritt6, /Reihenfolge der Schreibbefehle/,
     "die Reihenfolge gehoert in den Schritt, den sie regelt");

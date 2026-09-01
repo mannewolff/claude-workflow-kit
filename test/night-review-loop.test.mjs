@@ -89,8 +89,15 @@ function mitProjekt(fn, config = {}) {
 }
 
 // Fakes fuer die drei Ausgaenge. NIGHT_ISSUE_ID nennt das beauftragte Issue.
+//
+// Geloggt wird nur die ERSTE Prompt-Zeile (Issue #419): Seit dem Modus-Hinweis ist
+// der Auftrag mehrzeilig, und `aufrufe()` unten zaehlt Zeilen. Ohne head -1 wuerde
+// ein Session-Aufruf als zwei Aufrufe erscheinen. Der volle Wortlaut wird in
+// night-review-prompt.test.mjs geprueft — hier zaehlt, DASS und WIE OFT beauftragt
+// wurde.
 const BOARD = '"$KIT_ROOT/.claude/kit/board.mjs"';
-const FAKE_MARKER = `echo "$NIGHT_PROMPT" >> aufrufe.log; node ${BOARD} issue update "$NIGHT_ISSUE_ID" --body "## Kontext
+const LOG_PROMPT = 'echo "$NIGHT_PROMPT" | head -1 >> aufrufe.log';
+const FAKE_MARKER = `${LOG_PROMPT}; node ${BOARD} issue update "$NIGHT_ISSUE_ID" --body "## Kontext
 
 Autor-Modell: claude-opus-5
 Issue-Review: opus, sonnet (2026-08-06, Nachtlauf)
@@ -101,13 +108,14 @@ Keine."`;
 // Zwei Kommentare: Befunde und der uebernehmbare Body-Vorschlag. Seit Issue #310
 // verlangt das Gate beides — einfache Quotes, damit sh die Zeilenumbrueche nicht
 // literal weitergibt.
-const FAKE_KOMMENTAR = `echo "$NIGHT_PROMPT" >> aufrufe.log; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "BLOCKER: fehlt was"; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text '## Body-Vorschlag, Runde 1
+const FAKE_KOMMENTAR = `${LOG_PROMPT}; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "BLOCKER: fehlt was"; node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text '## Body-Vorschlag, Runde 1
 
 ## Kontext
 
 Geschaerfter Text.'`;
-const FAKE_STUMM = 'echo "$NIGHT_PROMPT" >> aufrufe.log';
+const FAKE_STUMM = LOG_PROMPT;
 
+// Ein Eintrag je Session — der Fake logt dafuer nur die erste Prompt-Zeile.
 function aufrufe(dir) {
   const p = join(dir, "aufrufe.log");
   return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean) : [];
@@ -198,7 +206,10 @@ test("ein Issue mit vorhandenem Marker bekommt keine Session", NUR_POSIX, () => 
   });
 });
 
-test("der Prompt lautet exakt /issue-review #<id>", NUR_POSIX, () => {
+// Seit Issue #419 traegt der Auftrag hinter dem Skill-Aufruf den Modus-Hinweis. Die
+// erste Zeile bleibt der Aufruf — sie startet den Skill; was dahinter steht, prueft
+// night-review-prompt.test.mjs.
+test("der Auftrag beginnt mit /issue-review #<id>", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const id = backlogIssue(dir, "Ein Issue", OHNE_MARKER);
     run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: FAKE_STUMM });

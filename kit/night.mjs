@@ -1519,8 +1519,11 @@ async function runReviewLoop(kandidaten, args) {
     sessions++;
     log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
     const started = Date.now();
+    // Der Modus-Hinweis (Issue #419) greift als einziger Hebel, BEVOR die Session
+    // das Dokument liest. Massgeblich bleibt allein KIT_AGENT_MODEL — der Hinweis
+    // wiederholt es nur an der Stelle, an der es ankommt.
     const res = await runSession(kandidat.id, args, {
-      prompt: `/issue-review #${kandidat.id}`,
+      prompt: `/issue-review #${kandidat.id}\n\nDieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.`,
       timeoutMs: REVIEW_TIMEOUT_MS,
     });
     const minutes = ((Date.now() - started) / 60000).toFixed(1);

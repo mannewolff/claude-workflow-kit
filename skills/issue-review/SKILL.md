@@ -560,7 +560,7 @@ Was hier geschieht, hängt an der Betriebsart — **und an nichts sonst**. Für 
 
 **Interaktiv:** Vorschlag zeigen, einmal fragen.
 
-Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb".
+Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb". Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
 
 **Unbeaufsichtigt gilt im Einzelnen:**
 
