@@ -110,7 +110,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
@@ -177,6 +177,23 @@ const parsePruefvorgabeFallback = (body) => {
 const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
   ? await import("./board.mjs")
   : { parsePruefvorgabe: parsePruefvorgabeFallback };
+
+// Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
+// (Issue #428). Ein zweiter Rechenweg waere genau das, was checks.mjs fuer die Auswahl
+// ausdruecklich ausschliesst — und "das Kommando nennt den Ort in seiner Ausgabe" hilft
+// dem Runner nicht: Er sieht von einer Session nur Exit-Code, Board und Working Tree,
+// nie ihren Text.
+//
+// Bedingt und abgefangen wie oben beim Board: `--version` und `--help` muessen auch
+// dann antworten, wenn nichts neben der Datei liegt (Issue #170). Fehlt der Nachbar,
+// bleibt der Stub stehen — er wirft erst, wenn wirklich jemand den Pfad braucht.
+const NACHBAR_CHECKS = join(__dirname, "checks.mjs");
+const zusammenfassungPfadFallback = (root) => {
+  throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
+};
+const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
+  ? await import("./checks.mjs")
+  : { zusammenfassungPfad: zusammenfassungPfadFallback };
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
@@ -906,6 +923,96 @@ async function runSession(issueId, args, opts = {}) {
   return res;
 }
 
+// --- Pruef-Zusammenfassungen der Sessions (Issue #428) ---
+//
+// Der Runner sieht von einer Session nur Exit-Code, Board-Zustand und Working Tree.
+// Was sie INNERHALB gepruft und was sie ausgelassen hat, erfaehrt er allein aus der
+// Zusammenfassung, die `checks.mjs run` hinterlaesst (Issue #424). Bewusst NICHT aus
+// dem Abschlussbericht: Der ist von einem Modell formulierter Text, und was die
+// Maschine braucht, geht in diesem Repo nirgends durch Text.
+//
+// Nur die regulaeren Implementierungs-Runden liefern hier etwas ab. Die
+// Salvage-Session ist strukturell aussen vor — sie laeuft erst nach dem Einsammeln,
+// und ihr Prompt verbietet ihr Checks ausdruecklich; sie erschiene sonst als
+// "ungeprueft", obwohl verifyChecksForSalvage extern die volle Liste gruen gefahren
+// hat. Der Vorflug ebenso: Er gehoert zum Review-Modus, der diese Schleife nicht
+// durchlaeuft.
+
+/**
+ * Loescht die Zusammenfassung vor dem Start einer Runde. Ohne diesen Schritt liesse
+ * eine liegengebliebene Datei — vom Vortag oder von einer Session, die vor ihrer
+ * Pruefung starb — eine ungepruefte Session als geprueft erscheinen. Erst dadurch
+ * genuegt der feste Dateiname aus Issue #424.
+ */
+function verwerfeZusammenfassung() {
+  try {
+    rmSync(zusammenfassungPfad(process.cwd()), { force: true });
+  } catch (err) {
+    // Nicht loeschbar ist ein Grund, der Datei danach nicht zu glauben — aber kein
+    // Grund, einen Nachtlauf zu beenden. Die Runde laeuft, der Vermerk steht im Log.
+    log(`  Hinweis: die vorherige Pruef-Zusammenfassung liess sich nicht loeschen (${err.message}).`);
+  }
+}
+
+/**
+ * Liest, was die soeben beendete Session hinterlassen hat. Fehlt die Datei, ist das
+ * KEIN harter Stopp: Die Session hat dann keine Pruefung gefahren, und der Bericht
+ * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
+ * der letzte Lauf — daraus entsteht bewusst keine Historie.
+ */
+function lesePruefung(issueId) {
+  const pfad = zusammenfassungPfad(process.cwd());
+  if (!existsSync(pfad)) return { id: String(issueId), zustand: "ungeprueft" };
+  try {
+    const daten = JSON.parse(readFileSync(pfad, "utf-8"));
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket" };
+    return {
+      id: String(issueId),
+      zustand: "geprueft",
+      laufen: daten.laufen ?? [],
+      ausgelassen: daten.ausgelassen ?? [],
+    };
+  } catch (err) {
+    // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
+    // "kaputt" sagt etwas anderes als "gar nicht gelaufen".
+    return { id: String(issueId), zustand: "unlesbar", fehler: err.message };
+  }
+}
+
+function pruefListe(eintraege, leerText) {
+  return eintraege.length === 0 ? leerText : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
+}
+
+/** Eine Zeile je Session — auch die ohne Pruefung, sonst saehe sie aus wie keine. */
+function pruefZeile(p) {
+  if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
+  if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
+  if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
+  const gelaufen = p.laufen.map((e) => `${e.cmd} -> ${e.ergebnis} (${e.grund})`).join("; ") || "keine";
+  return `  Issue #${p.id}: gelaufen: ${gelaufen} | ausgelassen: ${pruefListe(p.ausgelassen, "keine")}`;
+}
+
+function pruefSummenzeile(pruefungen) {
+  const zaehle = (zustand) => pruefungen.filter((p) => p.zustand === zustand).length;
+  const geprueft = pruefungen.filter((p) => p.zustand === "geprueft");
+  const summe = (feld, filter = () => true) =>
+    geprueft.reduce((n, p) => n + p[feld].filter(filter).length, 0);
+  const rot = summe("laufen", (e) => e.ergebnis === "rot");
+  return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
+    + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft; `
+    + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
+}
+
+/**
+ * Der Pruefteil des Lauf-Berichts: je Session eine Zeile, darunter eine Summe.
+ * Kriterium 11 aus Issue #420 verlangt die Auslassungen an zwei Stellen — am
+ * Arbeitspaket (Abschlussbericht, Issue #426) und hier.
+ */
+function pruefBericht(pruefungen) {
+  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen."];
+  return ["Pruefungen der Sessions:", ...pruefungen.map(pruefZeile), pruefSummenzeile(pruefungen)];
+}
+
 // --- Salvage (Issue #167) ---
 
 // Zeitlimit der Salvage-Session: sie fuehrt keinen Build mehr aus, sondern prueft
@@ -968,10 +1075,23 @@ function checkEnv() {
 // zwingend. Das steht so im Nachtbetrieb-Kapitel der Doku.
 //
 // PATH-Aufloesung bewusst (S4036, Issue #183).
+//
+// Die VOLLE Liste, absichtlich (Entscheidung A6 des Plans #421, Issue #428): Hier
+// laeuft KEINE bereichsbezogene Auswahl, auch nicht ueber checks.mjs. Wer das
+// spaeter als Luecke liest, dreht die Frage um, die diese Pruefung beantwortet.
+// Nach einem sauberen Arbeitspaket lautet sie "hat diese Arbeit etwas
+// kaputtgemacht?" — dort genuegen die beruehrten Bereiche. Beim Retten lautet sie
+// "ist dieser unklare Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne
+// Ergebnis ist genau die, deren Absicht niemand kennt: Was sie angefasst hat, sagt
+// kein Anker verlaesslich.
+//
+// Die drei Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
+// meinen hier alle dasselbe — nur das Kommando zaehlt. `areas` wird nicht gelesen.
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
-  for (const cmd of cfg.buildChecks || []) {
+  for (const eintrag of cfg.buildChecks || []) {
+    const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
     if (res.status !== 0) return { ok: false, output };
@@ -2079,6 +2199,9 @@ export async function laufeImplementierung(args, ctx) {
   let hardStop = false;
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
   const salvageAttempted = new Set();
+  // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
+  // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
+  const pruefungen = [];
 
   while (sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
@@ -2103,7 +2226,12 @@ export async function laufeImplementierung(args, ctx) {
     sessions++;
     log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
     const started = Date.now();
+    // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
+    // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
+    // weiter unten in werteRunde laufen kann, ist aussen vor.
+    verwerfeZusammenfassung();
     const res = await runSession(top.id, args);
+    pruefungen.push(lesePruefung(top.id));
     const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
     const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted);
@@ -2115,7 +2243,7 @@ export async function laufeImplementierung(args, ctx) {
     }
   }
 
-  return { sessions, succeeded, deferred, hardStop };
+  return { sessions, succeeded, deferred, hardStop, pruefungen };
 }
 
 async function main() {
@@ -2136,6 +2264,7 @@ async function main() {
 
   const ergebnis = await laufeImplementierung(args, ctx);
   log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);
 }
