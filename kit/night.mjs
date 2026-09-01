@@ -1303,6 +1303,9 @@ export function trackerProbeId(kandidaten, alleIssues) {
 
 /** Baut den Auftrag der Vorflug-Session. */
 export function vorflugPrompt(kommandoReviewers, trackerId) {
+  // Die zulaessigen Werte fuer "name" stehen zur Bauzeit des Prompts fest — das Modell
+  // soll sie nicht aus dem Kommandostring ableiten muessen (Issue #409).
+  const erlaubteNamen = kommandoReviewers.map((r) => JSON.stringify(String(r.name))).join(", ");
   const zeilen = [
     `Du bist der technische Vorflug eines Nacht-Reviews. Fuehre genau die Schritte unten aus`,
     `und gib zum Schluss genau einen Befund-Block aus.`,
@@ -1320,7 +1323,7 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     zeilen.push(
       `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
       ``,
-      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
+      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer-Name fuer den Befund: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
@@ -1341,6 +1344,19 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     `Dieser Befund ist eigenstaendig — vermische ihn nicht mit der Reviewer-Verfuegbarkeit.`,
     ``,
     `SCHRITT 3 — Befund`,
+    // Der Name entscheidet, ob der Befund ankommt: Der Runner gleicht ueber den
+    // Reviewer-Namen aus der Config ab. Wird stattdessen der Modellname aus der
+    // Kommandozeile gemeldet, findet er keinen Treffer und traegt fuer einen
+    // verfuegbaren Reviewer "nichts gemeldet" ein — der Lauf bricht ab, obwohl
+    // nichts fehlt (Issue #409).
+    ...(kommandoReviewers.length === 0
+      ? []
+      : [
+        `"name" ist WOERTLICH der Reviewer-Name aus dem Kommentar "# Reviewer-Name fuer den Befund:"`,
+        `am Ende der jeweiligen Zeile in Schritt 1 — gib dort AUF KEINEN FALL den Modellnamen aus der Kommandozeile zurueck.`,
+        `Zulaessig sind genau diese Werte: ${erlaubteNamen}.`,
+        ``,
+      ]),
     `Gib als ALLERLETZTE Ausgabe genau diesen Block aus, ohne Code-Fence und ohne Text danach:`,
     ``,
     VORFLUG_START,
