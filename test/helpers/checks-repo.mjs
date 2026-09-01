@@ -8,7 +8,7 @@
 // Temp-Verzeichnis, nach dem Muster der night-*-Tests.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -36,6 +36,24 @@ export function plan(dir, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
+/** Roher `run`-Aufruf — bei `run` ist der Exit-Code selbst ein Ergebnis (Issue #424). */
+export function run(dir, ...cliArgs) {
+  return checks(dir, "run", ...cliArgs);
+}
+
+/** Die Zusammenfassung, die `run` hinterlaesst. */
+export function zusammenfassung(dir) {
+  return JSON.parse(readFileSync(join(dir, ".claude", "checks-summary.json"), "utf-8"));
+}
+
+/**
+ * Der Stand des Working Tree als Text. `--untracked-files=all` wie in checks.mjs:
+ * sonst faellt eine einzelne Datei in einem neuen Verzeichnis unter den Tisch.
+ */
+export function treeStand(dir) {
+  return git(dir, "status", "--porcelain", "--untracked-files=all");
+}
+
 export function datei(dir, pfad, inhalt = "Inhalt\n") {
   const ziel = join(dir, pfad);
   mkdirSync(dirname(ziel), { recursive: true });
@@ -47,6 +65,12 @@ export function repoAnlegen({ config = {}, ohneConfig = false } = {}) {
   // Eine getrackte Datei von Anfang an: sonst haette der Setup-Commit im Fall
   // `ohneConfig` nichts zu committen und das Repo bliebe ohne HEAD.
   datei(dir, "README.md", "# Wegwerf\n");
+  // Dieselbe Ignore-Regel, die ein installiertes Projekt hat (Issue #208/#209):
+  // alles unter .claude/ ist lokaler Zustand, nur die workflow.config.json gehoert
+  // ins Repo. Ohne sie wuerde die Zusammenfassung aus `run` (Issue #424) hier als
+  // Tree-Aenderung erscheinen, waehrend sie es im echten Projekt nie tut — das
+  // Wegwerf-Repo wuerde dann etwas anderes pruefen als den Ernstfall.
+  datei(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\n");
   if (!ohneConfig) {
     mkdirSync(join(dir, ".claude"), { recursive: true });
     writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config, null, 2) + "\n", "utf-8");
