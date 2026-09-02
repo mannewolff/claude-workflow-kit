@@ -364,6 +364,64 @@ async function promptReviewerPaar(rl, D, existingConfig) {
   }
 }
 
+// Frage 9 (nur projektlokal): das beschriebene Verhalten unter specs/ (Issue #439).
+//
+// Die einzige Frage des Installers, deren Antwort sich nicht zurueckholen laesst: Das
+// Vorhandensein des spec-Blocks IST der Schalter — es gibt kein Feld 'enabled' und
+// damit keinen Aus-Zustand (Issue #438). Deshalb steht der Hinweis VOR dem Prompt;
+// hinter ihm gelesen kaeme er zu spaet.
+//
+// Eigene Schleife wie promptScope: Sie kennt nur j/n und traegt ihre Wiederholung
+// selbst. askWithDefault passt nicht — dessen Default-Semantik ("leer = Default
+// uebernehmen") gilt hier zwar auch, aber die Antwort ist ein Wahrheitswert, kein
+// Feld der Config.
+const SPEC_UMKEHR_HINWEIS = "  Diese Entscheidung ist nicht zurueckzunehmen: Der Block selbst ist der";
+
+async function promptSpec(rl) {
+  console.log(`\n${SPEC_UMKEHR_HINWEIS}`);
+  console.log("  Schalter, es gibt kein 'enabled' und keinen Weg zurueck.");
+  while (true) {
+    const raw = await ask(rl, "Soll dieses Projekt ein beschriebenes Verhalten fuehren? [j/N]: ");
+    const antwort = raw.trim().toLowerCase();
+    if (antwort === "j" || antwort === "ja") return true;
+    if (antwort === "" || antwort === "n" || antwort === "nein") return false;
+    // Eine unverstaendliche Antwort still als Nein zu werten hiesse, eine Entscheidung
+    // zu erfinden, die niemand getroffen hat. Interaktiv wird nachgefragt, im
+    // Pipe-Modus bricht es ab — wie bei askWithDefault, dort antwortet niemand nach.
+    const fehler = "Bitte 'j' oder 'n' eingeben.";
+    console.error(`  Fehler: ${fehler}`);
+    if (_pipedLines !== null) throw new Error(`Validation failed in non-interactive mode: ${fehler}`);
+  }
+}
+
+// Tagesdatum lokal statt per toISOString(), wie in kit/board.mjs: Um 00:30 MESZ liefert
+// UTC den Vortag — und an spec.seit haengt spaeter das Gate.
+function heute() {
+  const jetzt = new Date();
+  const zweistellig = (n) => String(n).padStart(2, "0");
+  return `${jetzt.getFullYear()}-${zweistellig(jetzt.getMonth() + 1)}-${zweistellig(jetzt.getDate())}`;
+}
+
+// Liefert den neuen spec-Block — oder null, wenn nicht gefragt wird oder die Antwort
+// Nein lautet. Die beiden Bedingungen stehen hier statt in main(): Sie gehoeren zur
+// Frage, nicht zum Ablauf, und main() traegt schon genug Verzweigungen.
+//
+// Bei `global` entfaellt die Frage: spec.bereiche sind Code-Globs EINES Projekts, und
+// ein Block in ~/.claude/workflow.config.json haette jedes Projekt eingeschaltet, ohne
+// dass es dort entschieden wurde.
+//
+// Ist der Block schon da, wird ebenfalls nicht gefragt — ein 'Nein' duerfte ihn sonst
+// entfernen, und damit boete der Installer genau den Weg zurueck an, den es nicht gibt.
+//
+// 'bereiche' traegt einen erkennbaren Platzhalter statt eines geratenen Musters: Der
+// Installer kennt die Codebasis nicht (Plan #437, A8), ein leeres Objekt waere aber
+// schemawidrig (#438 verlangt minProperties: 1) und die Config damit ungueltig.
+async function frageSpecBlock(rl, scope, existingConfig) {
+  if (scope !== "projekt" || existingConfig.spec) return null;
+  if (!(await promptSpec(rl))) return null;
+  return { seit: heute(), bereiche: { beispiel: ["src/**"] } };
+}
+
 // Bestehende workflow.config.json als Update-Defaults laden und das alte provider-Feld
 // (Rueckwaertskompatibilitaet) auf codeHost/issueTracker migrieren.
 function loadExistingConfig(configPath) {
@@ -457,7 +515,7 @@ async function main() {
 
   console.log("\n=== claude-workflow-kit Installer ===\n");
   console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Acht Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
+  console.log("Neun Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   const scope = await promptScope(rl);
@@ -502,7 +560,11 @@ async function main() {
   // Frage 7 und 8: das Reviewer-Paar — genau eines von beiden (Issue #433).
   const { reviewModel, reviewCommand } = await promptReviewerPaar(rl, D, existingConfig);
 
-  // Frage 9 (nur bei globalem Install): Vault-Pfad für kontext.config.json
+  // Frage 9 (nur projektlokal, und nur wenn noch kein Block da ist): das beschriebene
+  // Verhalten (Issue #439).
+  const specBlock = await frageSpecBlock(rl, scope, existingConfig);
+
+  // Frage 10 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
   if (scope === "global") {
     const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
@@ -552,9 +614,15 @@ async function main() {
     config.reviewCommand = reviewCommand;
     delete config.reviewModel;
   }
+  // Der spec-Block entsteht nur auf ausdrueckliches Ja (Issue #439). Ein vorhandener
+  // kommt ueber den existingConfig-Spread unveraendert mit — er wird hier weder
+  // ergaenzt noch angefasst.
+  if (specBlock) config.spec = specBlock;
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(`\n✓ Config geschrieben: ${configTarget}`);
+  // Ohne diese Zeile merkt niemand, dass der Platzhalter ersetzt gehoert.
+  if (specBlock) console.log("  spec.bereiche bitte von Hand pflegen.");
 
   // --- kontext.config.json schreiben (nur bei globalem Install mit Vault-Pfad) ---
   if (scope === "global" && vaultPath) {

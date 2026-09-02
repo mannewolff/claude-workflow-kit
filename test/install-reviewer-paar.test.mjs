@@ -49,8 +49,9 @@ function schreibeConfig(dir, werte) {
 }
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
-// reviewModel, reviewCommand — alles ab Frage 4 leer, also Default uebernehmen.
-const ALLES_DEFAULT = ["projekt", "github", "github", "", "", "", "", ""];
+// reviewModel, reviewCommand und die Spec-Frage (#439) — alles ab Frage 4 leer, also
+// Default uebernehmen bzw. Nein.
+const ALLES_DEFAULT = ["projekt", "github", "github", "", "", "", "", "", ""];
 
 // --- Frischer Install: der DEFAULTS-Spread setzt den Claude-Reviewer ---
 
@@ -81,7 +82,7 @@ test("frischer Install mit Kommando-Reviewer schreibt reviewCommand und KEIN rev
   const dir = fixture("paar-frisch-kommando-");
   try {
     const res = installiere(dir,
-      ["projekt", "github", "github", "", "", "", "-", "codex exec --model gpt-5"]);
+      ["projekt", "github", "github", "", "", "", "-", "codex exec --model gpt-5", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const c = config(dir);
@@ -122,7 +123,7 @@ test("Bestandsconfig mit beiden Reviewer-Feldern bricht ab und erklaert beide Fe
 test("werden beide Felder aktiv geleert, bricht der Installer ab", () => {
   const dir = fixture("paar-keins-");
   try {
-    const res = installiere(dir, ["projekt", "github", "github", "", "", "", "-", "-"]);
+    const res = installiere(dir, ["projekt", "github", "github", "", "", "", "-", "-", ""]);
     assert.equal(res.status, 1, "ohne Reviewer laeuft /review ins Leere — das darf nicht durchgehen");
     assert.match(res.stdout + res.stderr, /reviewModel[\s\S]*reviewCommand|reviewCommand[\s\S]*reviewModel/);
   } finally {

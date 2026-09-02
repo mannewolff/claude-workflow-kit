@@ -26,8 +26,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 const QUELLE = join(repoRoot, "kit", "checks.mjs");
 
-// Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", ""];
+// Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults. Die letzte
+// Leerzeile ist die Spec-Frage (leer = Nein, Issue #439).
+const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

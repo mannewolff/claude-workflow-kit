@@ -11,15 +11,12 @@
 // Vorhaben verhindern soll. Was das Schema verhindert, muss die Laufzeit nicht
 // erklaeren.
 //
-// Geprueft wird mit dem Mini-Validator unten statt mit ajv (entschieden am
-// 2026-09-01): Das Repo fuehrt heute keinen Schema-Validator, und das Kit liefert
-// seine Werkzeuge bewusst abhaengigkeitsfrei aus. Der Validator kennt nur die
-// Schluesselwoerter, die dieses Schema hier braucht — type, oneOf, required, not,
-// pattern, minItems, minProperties, additionalProperties, properties, items. Alles
-// andere (enum, minLength, minimum, uniqueItems) ignoriert er; er ist damit
-// nachsichtiger als ein echter Validator, aber fuer die hier belegten Aussagen genau
-// scharf genug: Jede negative Aussage haengt an einem der unterstuetzten
-// Schluesselwoerter.
+// Geprueft wird mit dem Mini-Validator aus helpers/mini-validator.mjs statt mit ajv
+// (entschieden am 2026-09-01): Das Repo fuehrt heute keinen Schema-Validator, und das
+// Kit liefert seine Werkzeuge bewusst abhaengigkeitsfrei aus. Er stand bis Issue #439
+// hier in der Datei und ist in die Hilfsdatei gezogen, weil der Installer-Test fuer
+// den spec-Block dieselbe Aussage belegt und dieselbe Funktion braucht. Sein
+// Selbsttest ist hier geblieben — er misst weiterhin genau dieses eine Exemplar.
 //
 // Seit Issue #432 traegt die Datei ausserdem die Regel des Reviewer-Paares: genau
 // eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt
@@ -35,86 +32,14 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { pruefe, istObjekt } from "./helpers/mini-validator.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const schema = JSON.parse(
   readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8")
 );
 const eintragSchema = schema.properties.buildChecks.items;
-
-// --- Mini-Validator ---
-
-const istObjekt = (w) => w !== null && typeof w === "object" && !Array.isArray(w);
-
-function typPasst(typ, wert) {
-  switch (typ) {
-    case "object": return istObjekt(wert);
-    case "array": return Array.isArray(wert);
-    case "string": return typeof wert === "string";
-    case "boolean": return typeof wert === "boolean";
-    case "integer": return Number.isInteger(wert);
-    case "number": return typeof wert === "number";
-    default: return true;
-  }
-}
-
-/** minItems und items. */
-function pruefeArray(teilschema, wert, pfad) {
-  const fehler = [];
-  if (typeof teilschema.minItems === "number" && wert.length < teilschema.minItems) {
-    fehler.push(`${pfad}: braucht mindestens ${teilschema.minItems} Eintraege`);
-  }
-  if (teilschema.items) {
-    wert.forEach((el, i) => fehler.push(...pruefe(teilschema.items, el, `${pfad}[${i}]`)));
-  }
-  return fehler;
-}
-
-/** minProperties, required, properties und additionalProperties. */
-function pruefeObjekt(teilschema, wert, pfad) {
-  const fehler = [];
-  if (typeof teilschema.minProperties === "number"
-      && Object.keys(wert).length < teilschema.minProperties) {
-    fehler.push(`${pfad}: braucht mindestens ${teilschema.minProperties} Eintraege`);
-  }
-  for (const name of teilschema.required || []) {
-    if (!(name in wert)) fehler.push(`${pfad}: Pflichtfeld '${name}' fehlt`);
-  }
-  for (const [name, teilwert] of Object.entries(wert)) {
-    const feldschema = teilschema.properties?.[name] ?? teilschema.additionalProperties;
-    if (istObjekt(feldschema)) {
-      fehler.push(...pruefe(feldschema, teilwert, `${pfad}.${name}`));
-    } else if (feldschema === false) {
-      fehler.push(`${pfad}: unbekanntes Feld '${name}'`);
-    }
-  }
-  return fehler;
-}
-
-/** Liefert die Liste der Verstoesse; leer heisst gueltig. */
-function pruefe(teilschema, wert, pfad = "$") {
-  if (!istObjekt(teilschema)) return [];
-  if (teilschema.type && !typPasst(teilschema.type, wert)) {
-    // Passt schon der Typ nicht, sagen Folgepruefungen nichts mehr aus.
-    return [`${pfad}: erwartet Typ '${teilschema.type}'`];
-  }
-
-  const fehler = [];
-  if (typeof teilschema.pattern === "string" && typeof wert === "string"
-      && !new RegExp(teilschema.pattern).test(wert)) {
-    fehler.push(`${pfad}: passt nicht auf '${teilschema.pattern}'`);
-  }
-  if (Array.isArray(teilschema.oneOf)) {
-    const treffer = teilschema.oneOf.filter((zweig) => pruefe(zweig, wert, pfad).length === 0);
-    if (treffer.length !== 1) fehler.push(`${pfad}: oneOf traf ${treffer.length} Zweige statt genau einen`);
-  }
-  if (istObjekt(teilschema.not) && pruefe(teilschema.not, wert, pfad).length === 0) {
-    fehler.push(`${pfad}: verbotene Kombination (not) trifft zu`);
-  }
-  if (Array.isArray(wert)) fehler.push(...pruefeArray(teilschema, wert, pfad));
-  if (istObjekt(wert)) fehler.push(...pruefeObjekt(teilschema, wert, pfad));
-  return fehler;
-}
 
 // Der Validator ist selbst Pruefgegenstand: Eine Funktion, die immer [] liefert,
 // wuerde jede positive Aussage unten bestehen lassen. Die negativen Aussagen sind
