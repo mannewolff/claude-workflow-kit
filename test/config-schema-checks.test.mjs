@@ -15,15 +15,19 @@
 // 2026-09-01): Das Repo fuehrt heute keinen Schema-Validator, und das Kit liefert
 // seine Werkzeuge bewusst abhaengigkeitsfrei aus. Der Validator kennt nur die
 // Schluesselwoerter, die dieses Schema hier braucht — type, oneOf, required, not,
-// pattern, minItems, additionalProperties, properties, items. Alles andere (enum,
-// minLength, minimum, uniqueItems) ignoriert er; er ist damit nachsichtiger als ein
-// echter Validator, aber fuer die hier belegten Aussagen genau scharf genug: Jede
-// negative Aussage haengt an einem der unterstuetzten Schluesselwoerter.
+// pattern, minItems, minProperties, additionalProperties, properties, items. Alles
+// andere (enum, minLength, minimum, uniqueItems) ignoriert er; er ist damit
+// nachsichtiger als ein echter Validator, aber fuer die hier belegten Aussagen genau
+// scharf genug: Jede negative Aussage haengt an einem der unterstuetzten
+// Schluesselwoerter.
 //
 // Seit Issue #432 traegt die Datei ausserdem die Regel des Reviewer-Paares: genau
 // eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt
 // ueber stdin) ist gesetzt. Dafuer kam 'pattern' hinzu — ohne es bliebe die
 // ^claude--Regel fuer reviewModel unbelegt.
+//
+// Seit Issue #438 traegt sie den spec-Block. Dafuer kam 'minProperties' hinzu — ohne
+// es bliebe die Aussage 'ein leeres bereiche wird abgewiesen' unbelegt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -66,9 +70,13 @@ function pruefeArray(teilschema, wert, pfad) {
   return fehler;
 }
 
-/** required, properties und additionalProperties. */
+/** minProperties, required, properties und additionalProperties. */
 function pruefeObjekt(teilschema, wert, pfad) {
   const fehler = [];
+  if (typeof teilschema.minProperties === "number"
+      && Object.keys(wert).length < teilschema.minProperties) {
+    fehler.push(`${pfad}: braucht mindestens ${teilschema.minProperties} Eintraege`);
+  }
   for (const name of teilschema.required || []) {
     if (!(name in wert)) fehler.push(`${pfad}: Pflichtfeld '${name}' fehlt`);
   }
@@ -119,6 +127,8 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.equal(pruefe(s, { a: "x", b: 1 }).length, 1, "unbekanntes Feld");
   assert.equal(pruefe({ type: "array", minItems: 1 }, []).length, 1, "minItems");
   assert.equal(pruefe({ not: { required: ["a"] } }, { a: 1 }).length, 1, "not");
+  assert.deepEqual(pruefe({ type: "object", minProperties: 1 }, { a: 1 }), [], "minProperties erfuellt");
+  assert.equal(pruefe({ type: "object", minProperties: 1 }, {}).length, 1, "minProperties weist das leere Objekt ab");
   assert.deepEqual(pruefe({ type: "string", pattern: "^claude-" }, "claude-opus-5"), [], "pattern trifft");
   assert.equal(pruefe({ type: "string", pattern: "^claude-" }, "gpt-5").length, 1, "pattern trifft nicht");
 });
@@ -213,6 +223,86 @@ test("checkAreas: Bereichsnamen auf Pfadmuster sind gueltig", () => {
 
 test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig", () => {
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
+});
+
+// --- spec: der Schalter fuer das beschriebene Verhalten (Issue #438) ---
+
+// Der Block selbst ist der Schalter, sein Feld 'seit' der Zeitpunkt. Gebaut aus der
+// ausgelieferten Vorlage, damit die Faelle eine echte Config treffen und sich nur im
+// spec-Block unterscheiden.
+function configMitSpec(spec) {
+  return { ...beispielConfig, spec };
+}
+
+const gueltigerSpec = {
+  seit: "2026-09-02",
+  bereiche: { kit: ["kit/**"], skills: [".claude/skills/**"] },
+};
+
+test("spec: der Block ist im Schema definiert und die Wurzel bleibt geschlossen", () => {
+  // Ohne diese Zusicherung bestuenden die Faelle unten auch ganz ohne spec-Block: Der
+  // Validator hat zu einem fehlenden Teilschema nichts zu beanstanden — und ein Block,
+  // der in der geschlossenen Wurzel nicht eingetragen ist, macht jede Config schemawidrig.
+  assert.ok(schema.properties.spec, "spec ist im Schema definiert");
+  assert.equal(schema.additionalProperties, false, "die Wurzel bleibt geschlossen");
+});
+
+test("spec: eine Config mit gueltigem Block validiert", () => {
+  assert.deepEqual(pruefe(schema, configMitSpec(gueltigerSpec)), []);
+});
+
+test("spec: die optionalen Felder testPattern und testGlobs sind gueltig", () => {
+  assert.deepEqual(
+    pruefe(schema, configMitSpec({ ...gueltigerSpec, testPattern: String.raw`\[<ID>\]`, testGlobs: ["test/**"] })),
+    []
+  );
+});
+
+test("spec: seit im falschen Format ist ungueltig", () => {
+  // Das Gate vergleicht Kalendertage — ein '2.9.2026' waere kein Tag, den es lesen kann.
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, seit: "2.9.2026" })), []);
+});
+
+test("spec: ein leeres bereiche ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: {} })), []);
+});
+
+test("spec: ein Bereich mit leerem Muster-Array ist ungueltig", () => {
+  // Anders als bei checkAreas, wo ein Bereich ohne Muster schlicht nichts erfasst: hier
+  // waere er ein Bereich, den das Gate nie zuordnen kann.
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: { kit: [] } })), []);
+});
+
+test("spec: ein unbekannter Schluessel im Block ist ungueltig", () => {
+  // Insbesondere 'enabled': Der Block selbst ist der Schalter, ein Bool haette einen
+  // Aus-Zustand — und den gibt es nicht.
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, enabled: true })), []);
+});
+
+test("spec: die Pflichtfelder seit und bereiche fehlen nicht ungestraft", () => {
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ bereiche: gueltigerSpec.bereiche })), []);
+  assert.notDeepEqual(pruefe(schema, configMitSpec({ seit: gueltigerSpec.seit })), []);
+});
+
+test("spec: der defaults-Block traegt keinen spec-Eintrag", () => {
+  // Ein Default schaltete jeden Installer-Lauf ein — das Vorhandensein IST der Schalter.
+  assert.ok(schema.defaults, "der defaults-Block ist da");
+  assert.ok(!("spec" in schema.defaults), "defaults traegt kein spec");
+});
+
+test("spec: die description warnt vor der Wirkungslosigkeit und nennt die Teamweit-Formel", () => {
+  // JSON kennt keine Kommentare — die description ist der einzige Ort, an dem die Lage
+  // im Schema selbst steht: eingeschaltet durch Vorhandensein, kein Weg zurueck, und bis
+  // zur Ausbaustufe 4 ohne Wirkung. Genau daraus entstand bei checkAreas eine Falle.
+  const text = schema.properties.spec.description;
+  assert.ok(text, "spec hat eine description");
+  assert.match(text, /ACHTUNG/, "der Warnton folgt dem ACHTUNG-Satz an buildChecks");
+  assert.match(text, /keine Wirkung/, "die description sagt, dass der Block noch nichts bewirkt");
+  assert.match(text, /enabled/, "die description sagt, dass es kein enabled gibt");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die description endet mit der Standardformel der Top-Level-Felder"
+  );
 });
 
 // --- Das Reviewer-Paar: genau eines von reviewModel und reviewCommand (Issue #432) ---
