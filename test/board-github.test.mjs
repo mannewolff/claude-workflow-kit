@@ -82,6 +82,7 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
       status: null, // Board-Status steht nicht im Issue-Objekt
       labels: [], // Antwort ohne Label-Feld -> leeres Array (Issue #312)
       comments: [{ author: "mannewolff", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
+      created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
     });
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /issue view 42 --repo besitzer\/mein-repo --json number,title,body,state,comments/);
   }, {
@@ -89,8 +90,40 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
       match: "^issue view",
       stdout: {
         number: 42, title: "Ein Issue", body: "Der Body", state: "OPEN",
+        createdAt: "2026-08-14T09:12:33Z",
         comments: [{ author: { login: "mannewolff" }, body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
       },
+    }],
+  });
+});
+
+// --- Anlagedatum bei `issue get` (Issue #457) ---
+//
+// Das Gate aus Ausbaustufe 4 wertet nur Pakete ab einem Stichtag. `createdAt` muss
+// dafuer in der --json-Feldliste stehen: gh liefert nur, was ausdruecklich
+// angefordert wird — ein fehlendes Feld waere still zu "kein Anlagedatum" geworden.
+
+test("get fordert createdAt an und liefert es als Kalendertag", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.match(board(dir, "issue", "get", "42").created, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(aufrufZeilen(dir, "gh").join("\n"), /--json \S*createdAt/);
+  }, {
+    regeln: [{
+      match: "^issue view",
+      stdout: { number: 42, title: "Ein Issue", body: "Der Body", state: "OPEN", createdAt: "2026-08-14T09:12:33Z" },
+    }],
+  });
+});
+
+// Eine Antwort ohne createdAt (aeltere gh-Version, fremder Mock) darf kein Datum
+// erfinden — sonst wertet das Gate ein altes Paket als neu.
+test("get ohne createdAt laesst das Feld weg", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.equal("created" in board(dir, "issue", "get", "42"), false);
+  }, {
+    regeln: [{
+      match: "^issue view",
+      stdout: { number: 42, title: "Ein Issue", body: "Der Body", state: "OPEN" },
     }],
   });
 });

@@ -692,7 +692,9 @@ class GitHubIssueTracker {
 
   async getIssue(id) {
     const repo = this._repo();
-    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels"]);
+    // createdAt muss ausdruecklich angefordert werden — gh liefert nur die Felder aus
+    // dieser Liste, ein Weglassen waere still zu "kein Anlagedatum" geworden (#457).
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels,createdAt"]);
     return {
       id: String(data.number),
       title: data.title,
@@ -700,6 +702,7 @@ class GitHubIssueTracker {
       status: null, // Board-Status nicht im Issue-Objekt, erfordert Project-Abfrage
       labels: labelNamesFrom(data.labels),
       comments: normalizeComments(data.comments),
+      ...createdFrom(data.createdAt),
     };
   }
 
@@ -893,6 +896,7 @@ class GitLabIssueTracker {
       status,
       labels: labelNames,
       comments: this._notes(id),
+      ...createdFrom(data.created_at),
     };
   }
 
@@ -1123,7 +1127,10 @@ class LocalIssueTracker {
     // Fuer ein Vorhaben ist `status` bedingungslos null — ein etwaiges Feld im
     // Frontmatter wird ignoriert. `createIssue` schreibt bei Epics keins, aber
     // `moveIssue` setzt `meta.status` ohne Typpruefung (Issue #377).
-    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
+    // `created` faellt weg statt "" zu liefern, wenn das Frontmatter keins oder ein
+    // formwidriges traegt (Issue #457) — sonst muessten Aufrufer zwei Formen von
+    // "kein Datum" unterscheiden.
+    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), ...createdFrom(meta.created), labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1517,6 +1524,12 @@ class ToolboxIssueTracker {
       labels: labelNamesFrom(item.labels),
       type,
       comments: await this._comments(item.id),
+      // Der Feldname der Karten-API ist nicht gegen die Live-Instanz belegt (#457,
+      // manueller Pruefpunkt). Darum drei Kandidaten statt eines geratenen Namens:
+      // createdAt fuehrt der Kommentar-Endpunkt derselben API bereits, created_at
+      // ist die REST-uebliche Form, created die knappe. Liefert die Instanz keins
+      // davon, fehlt `created` — #450/#451 muessen damit rechnen.
+      ...createdFrom(item.createdAt, item.created_at, item.created),
     };
   }
 
@@ -1734,6 +1747,34 @@ export function normalizeComments(rawComments) {
       createdAt: String(c.createdAt ?? c.created_at ?? ""),
     }))
     .filter((c) => c.body !== "");
+}
+
+// Normalisiert das Anlagedatum eines Issues auf den Kalendertag `JJJJ-MM-TT`
+// (Issue #457). Von `getIssue` aller vier Tracker geteilt, analog zu
+// labelNamesFrom (#158) und normalizeComments (kanban-kit#449) — sonst stuende
+// dieselbe Kuerzung viermal da und koennte viermal auseinanderlaufen.
+//
+// Uebernommen werden die ersten zehn Zeichen des Plattformwerts, OHNE Umrechnung
+// in eine Zeitzone: GitHub liefert UTC mit `Z`, GitLab mit Offset. "In UTC
+// umrechnen" und "den Tag nehmen, den die Plattform nennt" sind verschiedene
+// Ergebnisse, und das Gate aus Ausbaustufe 4 vergleicht Tage.
+//
+// Rueckgabe ist ein Objekt zum Spreaden, kein String: Fehlt oder taugt der Wert
+// nicht, kommt {} zurueck und das Feld `created` fehlt im Ergebnis. Weder "" noch
+// "heute" — ein erfundenes Anlagedatum waere schlimmer als keins, weil das Gate ein
+// altes Paket als neu werten und an ihm scheitern wuerde. Das gilt auch fuer das
+// handgeschriebene Frontmatter des local-Trackers: `14.08.2026` wird nicht
+// umgedeutet, es faellt weg.
+//
+// Variadisch, weil der Toolbox-Adapter mehrere Feldnamen in Betracht zieht: Der
+// erste Kandidat, der einen gueltigen Tag ergibt, gewinnt.
+export function createdFrom(...kandidaten) {
+  for (const roh of kandidaten) {
+    if (typeof roh !== "string") continue;
+    const tag = roh.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(tag)) return { created: tag };
+  }
+  return {};
 }
 
 function labelToStatus(labelNames, config, state) {
