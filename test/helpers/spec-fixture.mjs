@@ -10,7 +10,7 @@
 // kennt weder Anker noch Working Tree.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, cpSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -52,4 +52,21 @@ export function mitFixture(name, fn) {
 /** Der geschriebene Index als Text — Byte fuer Byte, ohne Normalisierung. */
 export function indexText(dir) {
   return readFileSync(join(dir, "specs", "INDEX.md"), "utf-8");
+}
+
+/**
+ * Schreibt .claude/workflow.config.json ins Fixture-Verzeichnis (Issue #442).
+ * Ohne Aufruf hat das Verzeichnis keine Config — der Zustand eines Projekts,
+ * das den spec-Block nie gesetzt hat, und ein eigener Pfad in `check`.
+ */
+export function configSchreiben(dir, config) {
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config, null, 2), "utf-8");
+}
+
+/** Legt eine Paketdatei im Fixture-Verzeichnis an und gibt ihren Pfad zurueck. */
+export function paketSchreiben(dir, text, name = "paket.md") {
+  const pfad = join(dir, name);
+  writeFileSync(pfad, text, "utf-8");
+  return pfad;
 }
