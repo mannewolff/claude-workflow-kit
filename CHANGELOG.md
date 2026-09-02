@@ -2,6 +2,35 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.44.1] - 2026-09-02
+- Doku: Beschriebenes Verhalten in dokumentation.md und README (#454)
+- Ausbaustufe 5: Das Kit schaltet sich selbst ein (#453)
+- spec.mjs: github und gitlab tragen das beschriebene Verhalten nicht (#461)
+- spec.mjs: Anlagedatum aus dem Aktivitaetsverlauf (#460)
+- push-main: Vorschau, apply und Gate in der richtigen Reihenfolge (#452)
+- kit/spec.mjs: check --anker ist das Gate vor dem Push (#451)
+- kit/spec.mjs: apply schreibt die Beschreibung fort (#450)
+- implement-Skills: Aussage-ID in den Testnamen schreiben (#449)
+- kontext-Skill: specs/INDEX.md mitladen und Veralten melden (#448)
+- plan-Skill: Lueckenliste, Code-Ausweis, Vorhaben-Notiz (#447)
+- kit/spec.mjs: vorhaben legt die Notiz zum Code-Lesen an (#446)
+- kit/spec.mjs: luecken meldet, wozu die Beschreibung schweigt (#445)
+- issues-Skill: fuenfter Abschnitt Spec-Wirkung und ID-Vergabe (#444)
+- board.mjs: Leitplanke Spec-Wirkung in issueCreate (#443)
+- kit/spec.mjs: check --paket prueft die Form der Spec-Wirkung (#442)
+- Auslieferung: spec.mjs in install.mjs und sync-blobs (#441)
+- spec: Installer-Frage mit Einbahnstrassen-Hinweis (#439)
+- board.mjs: issue get liefert created bei allen vier Trackern (#457)
+- kit/spec.mjs: Geruest, index und show (#440)
+- spec: Config-Block als Schalter im Schema (#438)
+- reviewCommand persoenlich ueberschreibbar (#435)
+- skills/review: Kommando-Reviewer starten und Ausfallpfad benennen (#434)
+- install.mjs: Oder-Regel fuer das Reviewer-Paar (#433)
+- Alte Spezifikationen gelöscht
+- Datei ins Vault verschoben (codes)
+- Schema: reviewCommand aufnehmen und die Oder-Regel verankern (#432)
+- Vorflug: Reviewer-Name statt Modellname im Befund verlangen (#409)
+
 ## [1.44.0] - 2026-09-01
 - Doku: bereichsbezogene Pruefungen beschreiben (#429)
 - night.mjs: Pruef-Zusammenfassungen einsammeln und im Lauf-Bericht zeigen (#428)
