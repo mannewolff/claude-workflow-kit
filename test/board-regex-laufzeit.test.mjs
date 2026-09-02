@@ -25,6 +25,7 @@ import {
   autorModellSicherstellen,
   pruefvorgabeStand,
   AUTOR_MODELL_ZEILE,
+  SPEC_WIRKUNG_UEBERSCHRIFT,
 } from "../kit/board.mjs";
 import { REVIEW_MARKER_ZEILE } from "../kit/night.mjs";
 
@@ -159,6 +160,34 @@ test("REVIEW_MARKER_ZEILE ist bei 256 KiB gemessen linear und bleibt unveraender
   for (const [was, bau] of REVIEW_FORMEN) {
     const text = bau(SEHR_GROSS);
     const ms = dauer(() => REVIEW_MARKER_ZEILE.test(text));
+    t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
+    assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+  }
+});
+
+// --- SPEC_WIRKUNG_UEBERSCHRIFT: dieselbe Bauart, dieselbe Probe (Issue #443) ---
+//
+// `[^\S\n]*` vor `$` ist genau die Stelle, an der AUTOR_MODELL_ZEILE teuer war.
+// Der Unterschied: Hier folgt keine zweite Wiederholung, die dieselben Zeichen
+// akzeptiert — die Aufteilung ist eindeutig, es bleibt ein Ruecksetzpfad ueber
+// den Leerraum. Gemessen wird trotzdem, weil man einem Ausdruck nicht ansieht,
+// welche Form die teuerste ist; genau diese Annahme hat Issue #406 bei
+// AUTOR_MODELL_ZEILE einmal falsch getroffen.
+//
+// Gemessen gegen die EXPORTIERTE Konstante des Bestands, nicht gegen ein
+// kopiertes Literal: Eine Kopie driftet ab, sobald der Ausdruck sich aendert.
+
+const WIRKUNG_FORMEN = [
+  // Der einzige Fall, in dem die Engine ueberhaupt zuruecksetzt: Hinter dem
+  // Leerraum steht ein Zeichen, an dem `$` scheitert.
+  ["Ueberschrift, dann Leerraum, dann Zeichen", (n) => `## Spec-Wirkung${" ".repeat(n)}z`],
+  ["Ueberschrift, dann nur Leerraum", (n) => `## Spec-Wirkung${" ".repeat(n)}`],
+];
+
+test("SPEC_WIRKUNG_UEBERSCHRIFT bleibt bei 256 KiB in beiden Formen schnell", (t) => {
+  for (const [was, bau] of WIRKUNG_FORMEN) {
+    const text = bau(SEHR_GROSS);
+    const ms = dauer(() => SPEC_WIRKUNG_UEBERSCHRIFT.test(text));
     t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
     assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
   }

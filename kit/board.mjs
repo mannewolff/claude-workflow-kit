@@ -2083,6 +2083,73 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 }
 
 // ============================================================
+// Spec-Wirkung am Arbeitspaket (Issue #443, Plan #437)
+// ============================================================
+//
+// Ein Arbeitspaket muss sagen, was es an der Beschreibung unter specs/ aendert.
+// Dieselbe Bauart wie die Autor-Modell-Leitplanke darueber, aus demselben Grund
+// (A7): Eine Bitte im Skill-Text ist genau die Leitplanke, die unter Druck
+// uebersprungen wird — in diesem Repo dreimal belegt.
+//
+// Geprueft wird hier NUR die Anwesenheit des Abschnitts. Welche Zeilen darin
+// stehen duerfen, prueft `spec.mjs check --paket` (Issue #442) — und nur dort.
+// Zwei Fassungen derselben Grammatik waeren zwei Wahrheiten, von denen die
+// zweite still veraltet.
+//
+// Anders als beim Autor-Modell ergaenzt der Adapter nichts: Es gibt keinen Wert,
+// den er kennen koennte. Eine erfundene Wirkungsangabe waere schlimmer als keine.
+
+/**
+ * Die Ueberschrift des Abschnitts — dieselbe Form, die
+ * `WIRKUNG_UEBERSCHRIFT_RE` in kit/spec.mjs liest.
+ *
+ * Exportiert, weil der Laufzeitwaechter in test/board-regex-laufzeit.test.mjs
+ * gegen die Konstante des Bestands misst und kein Literal kopieren soll — eine
+ * Kopie driftet ab, sobald der Ausdruck sich aendert.
+ *
+ * `[^\S\n]*` statt `\s*`, wie bei AUTOR_MODELL_ZEILE: So folgt dem Leerraum-Lauf
+ * keine zweite Wiederholung, die dieselben Zeichen akzeptiert (S8786).
+ */
+export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
+
+// Der Hilfetext nennt den fehlenden Abschnitt und den Ort der Formpruefung. Die
+// Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der die
+// Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
+// Regex.
+const SPEC_WIRKUNG_HILFE =
+  'Der Body braucht einen Abschnitt "## Spec-Wirkung" (eigene Zeile, ausserhalb eines Code-Fences), ' +
+  "der sagt, was das Paket an der Beschreibung unter specs/ aendert. " +
+  "Die Form der Zeilen darin prueft `node .claude/kit/spec.mjs check --paket <datei>`.";
+
+/**
+ * Traegt der Body die Ueberschrift ausserhalb eines Code-Fences?
+ *
+ * Die Fence-Behandlung ist der Kern — dieselbe wie bei `kontextGrenzen`: Ohne sie
+ * kaeme eine Doku-Karte durch, die die Grammatik als Beispiel zeigt, statt sie
+ * anzuwenden.
+ */
+function specWirkungVorhanden(body) {
+  const imFence = fenceLauf();
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (!imFence(zeile) && SPEC_WIRKUNG_UEBERSCHRIFT.test(zeile)) return true;
+  }
+  return false;
+}
+
+/**
+ * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt.
+ *
+ * Der Schalter ist das Vorhandensein des `spec`-Blocks, nicht ein Feld darin
+ * (A1). Ohne Block bleibt `issue create` unveraendert — das Kit selbst ist so ein
+ * Projekt, und waere diese Bedingung falsch, lehnte die Leitplanke die Pakete ab,
+ * mit denen sie gebaut wird.
+ */
+function specWirkungSicherstellen(config, body) {
+  if (!config?.spec || specWirkungVorhanden(body)) return;
+  fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
+}
+
+// ============================================================
 // Pruefvorgabe am Ticket (Issue #301, fachliche Quelle #285)
 // ============================================================
 //
@@ -2438,7 +2505,7 @@ function derivedFromOption(wert) {
   return nummer;
 }
 
-async function issueCreate(tracker, args) {
+async function issueCreate(tracker, config, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
@@ -2459,6 +2526,11 @@ async function issueCreate(tracker, args) {
     color: args.color,
     shortcode: args.shortcode,
   };
+  // Nach der Autor-Modell-Leitplanke und auf demselben aufgeloesten Body
+  // (Issue #443): Fehlt beides, meldet der Adapter das Autor-Modell zuerst, weil
+  // die aeltere Pruefung schon in der Zeile darueber abbricht. Und vor jedem
+  // Netzaufruf — ein Body ohne Wirkungsangabe soll keine Karte anlegen.
+  specWirkungSicherstellen(config, felder.body);
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
@@ -2626,7 +2698,7 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, args);
+    case "create":  return issueCreate(tracker, config, args);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
