@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, #450, Plan #437)
+ * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, #450, #451, Plan #437)
  *
  * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
- * specs/ — und beantwortet sechs Fragen: `index` schreibt die Uebersicht ueber
+ * specs/ — und beantwortet sieben Fragen: `index` schreibt die Uebersicht ueber
  * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
- * Arbeitspakets gegen die Grammatik aus A12, `luecken` sagt, wozu die
- * Beschreibung schweigt, `vorhaben` haelt fest, ob fuer ein Vorhaben
+ * Arbeitspakets gegen die Grammatik aus A12, `check --anker` haelt als Gate den
+ * Push auf, wenn Paket und Beschreibung nicht zusammenpassen, `luecken` sagt,
+ * wozu die Beschreibung schweigt, `vorhaben` haelt fest, ob fuer ein Vorhaben
  * Produktionscode gelesen wurde, und `apply` schreibt die Beschreibung aus den
  * Wirkungsangaben der Pakete fort.
  *
@@ -41,12 +42,12 @@
  * Netz: Die Datei ist eigenstaendig portabel und laesst sich einzeln in ein
  * Projekt kopieren, wie board.mjs, night.mjs und checks.mjs.
  *
- * Zwei Unterprozesse braucht allein `apply` (Issue #450), und beide ohne Shell:
- * `git log` fuer die Paketnummern zwischen Anker und HEAD, und der Adapter unter
- * .claude/kit/ fuer die Bodies. Das ist keine Aufweichung der Portabilitaet — es
- * ist die Datenlage: Die Spec-Wirkung steht im Body des Arbeitspakets, und der
- * liegt bei `github` und `gitlab` nicht im Repo (Plan #437, A11). Die Kommandos
- * bleiben lesend; geschrieben wird allein unter specs/.
+ * Zwei Unterprozesse brauchen `apply` (Issue #450) und `check --anker` (#451),
+ * und beide ohne Shell: `git log` fuer die Paketnummern zwischen Anker und HEAD,
+ * und der Adapter unter .claude/kit/ fuer die Bodies. Das ist keine Aufweichung
+ * der Portabilitaet — es ist die Datenlage: Die Spec-Wirkung steht im Body des
+ * Arbeitspakets, und der liegt bei `github` und `gitlab` nicht im Repo (Plan
+ * #437, A11). Die Kommandos bleiben lesend; geschrieben wird allein unter specs/.
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
@@ -76,6 +77,7 @@ const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes V
   node spec.mjs index
   node spec.mjs show <id>
   node spec.mjs check --paket <datei>
+  node spec.mjs check --anker <sha>
   node spec.mjs luecken --bereich <name>…
   node spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund <text>]
   node spec.mjs apply --anker <sha> [--dry-run]
@@ -85,10 +87,21 @@ index   Schreibt ${SPECS_DIR}/${INDEX_DATEI} neu: eine Zeile je Bereich mit der 
         das und endet gruen.
 show    Gibt die Aussage zu einer ID aus, mit Bereich und Status. Bei einer
         entfallenen Aussage auch Datum und Paketnummer.
-check   Prueft den Abschnitt '${WIRKUNG_UEBERSCHRIFT}' einer Paketdatei: Zeilenform,
-        bekannter Bereich, ID-Vergabe. Alle Befunde gehen auf stderr, je einer
-        als 'Zeile <n>: <Grund>'; Exit 1, sobald einer vorliegt. Ohne
+check   Prueft die Spec-Wirkung — genau eines der beiden Flags je Aufruf. Alle
+        Befunde gehen auf stderr; Exit 1, sobald einer vorliegt. Ohne
         'spec'-Block in ${CONFIG_DATEI} wird nicht geprueft.
+
+  --paket <datei> Der Abschnitt '${WIRKUNG_UEBERSCHRIFT}' einer Paketdatei:
+                  Zeilenform, bekannter Bereich, ID-Vergabe. Je Befund eine
+                  Zeile 'Zeile <n>: <Grund>'.
+  --anker <sha>   Das Gate vor dem Push: Kam bei den Paketen zwischen <sha> und
+                  HEAD an, was sie angekuendigt haben, und verweist auf jede
+                  neue oder geaenderte Aussage ein Test? Je Befund eine Zeile
+                  mit Paketnummer, Aussage-ID und Grund. Ein leerer oder nicht
+                  aufloesbarer Anker endet rot, ebenso ein fehlendes
+                  'spec.testGlobs' — das Gate oeffnet nie aus Unwissen. Ohne
+                  Paket im Bereich nennt die Ausgabe Anker und '0 Pakete
+                  gewertet'.
 luecken Nennt je Bereich die Dateien, die keine gueltige Aussage beruehrt —
         als JSON auf stdout, immer, auch mit leerer Liste. Eine Luecke ist ein
         Befund und kein Fehler: Exit 0. Die Bereichsnamen kommen aus
@@ -560,13 +573,48 @@ function wirkungPruefen(text, bekannte, root = null) {
   ].sort((a, b) => a.nr - b.nr);
 }
 
-function paketArgument(argv) {
-  const stelle = argv.indexOf("--paket");
-  if (stelle === -1) fail("check verlangt --paket <datei>. Aufruf: node spec.mjs check --paket <datei>");
+const CHECK_SCHALTER = ["--paket", "--anker"];
 
-  const wert = argv[stelle + 1];
-  if (!wert || wert.startsWith("--")) fail("--paket braucht eine Datei als Wert.");
-  return wert;
+/**
+ * Die Schalter von `check` als Paare '--name <wert>'.
+ *
+ * Der leere Anker kommt durch: Er ist ein eigener Befund und wird beim Aufloesen
+ * gemeldet, nicht hier als fehlender Wert — dieselbe Trennung wie bei `apply`.
+ * Ein '--paket' ohne Wert bleibt dagegen ein Fehler des Aufrufs.
+ */
+function checkArgumente(argv) {
+  const werte = new Map();
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const name = argv[i];
+    if (!CHECK_SCHALTER.includes(name)) {
+      fail(`Unerwartetes Argument: '${name}'. Erwartet: ${CHECK_SCHALTER.join(" oder ")}.`);
+    }
+    const wert = argv[i + 1];
+    if (wert === undefined || wert.startsWith("--")) fail(`'${name}' braucht einen Wert.`);
+    werte.set(name, wert);
+    i += 1;
+  }
+  return werte;
+}
+
+/**
+ * Die beiden Fragen von `check` — genau eine je Aufruf.
+ *
+ * Weder noch heisst: keine Frage. Beides zugleich heisst: zwei Umfaenge in einem
+ * Aufruf, und welcher gilt, waere nicht zu entscheiden. In beiden Faellen endet
+ * der Lauf rot und zeigt die Hilfe, statt sich einen der beiden auszusuchen.
+ */
+function check(argv) {
+  const werte = checkArgumente(argv);
+  const datei = werte.get("--paket");
+  const anker = werte.get("--anker");
+
+  if ((datei === undefined) === (anker === undefined)) {
+    process.stderr.write(`check verlangt genau eines von --paket und --anker.\n\n${HELP}`);
+    return 1;
+  }
+  return datei !== undefined ? checkPaket(datei) : checkAnker(anker);
 }
 
 /**
@@ -576,9 +624,7 @@ function paketArgument(argv) {
  * ein Skript, das seine Ausgabe liest, darf eine Fehlermeldung nie fuer ein
  * Ergebnis halten — dieselbe Trennung wie bei `show`.
  */
-function check(argv) {
-  const datei = paketArgument(argv);
-
+function checkPaket(datei) {
   // Ohne Schalter wird nicht geprueft (Kriterium 2): Ein Projekt, das den Block
   // nie gesetzt hat, schreibt den Abschnitt nicht und soll hier nicht scheitern.
   const config = configLesen();
@@ -1527,6 +1573,183 @@ function apply(argv) {
     return 0;
   }
   standSchreiben(neu, indexNeu === indexAlt ? null : indexNeu);
+  return 0;
+}
+
+// --- check --anker: das Gate vor dem Push (Issue #451) -----------------------
+
+// Der Platzhalter in 'spec.testPattern' und der Default, wenn das Feld fehlt
+// (A5): der Verweis in eckigen Klammern, wie ihn die implement-Skills schreiben.
+const ID_PLATZHALTER = "<ID>";
+const TEST_PATTERN_DEFAULT = String.raw`\[<ID>\]`;
+
+/** Eine Zeichenkette als Literal im regulaeren Ausdruck. */
+function regexLiteral(text) {
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * Der Sucher nach Test-Verweisen — oder null, wenn nicht gesucht werden kann.
+ *
+ * null heisst 'nicht pruefbar' und ist kein leises Auslassen: Der Aufrufer macht
+ * daraus einen Befund. 'spec.testGlobs' ist im Schema optional, und ein Gate,
+ * das ohne Suchraum still oeffnete, waere genau die Fehlerklasse aus #316 — es
+ * saehe aus wie ein sauberer Durchlauf.
+ *
+ * Die Dateien werden einmal gelesen, nicht je Aussage: Ein zweiter Durchlauf
+ * koennte einen anderen Stand sehen als der erste — dieselbe Haltung wie bei
+ * `luecken`.
+ */
+function verweisSucher(spec, root) {
+  const globs = (Array.isArray(spec.testGlobs) ? spec.testGlobs : []).filter((m) => typeof m === "string" && m !== "");
+  if (globs.length === 0) return null;
+
+  const muster = typeof spec.testPattern === "string" && spec.testPattern !== ""
+    ? spec.testPattern
+    : TEST_PATTERN_DEFAULT;
+  if (!muster.includes(ID_PLATZHALTER)) {
+    fail(`'spec.testPattern' in ${CONFIG_DATEI} enthaelt den Platzhalter '${ID_PLATZHALTER}' nicht — ohne ihn faende die Suche jede ID oder keine.`);
+  }
+
+  const regexe = globs.map((m) => globZuRegex(m));
+  const texte = dateienSammeln(root)
+    .filter((pfad) => regexe.some((r) => r.test(pfad)))
+    .map((pfad) => readFileSync(join(root, pfad), "utf-8"));
+
+  return (id) => {
+    let gesucht;
+    try {
+      gesucht = new RegExp(muster.replaceAll(ID_PLATZHALTER, regexLiteral(id)));
+    } catch (err) {
+      return fail(`'spec.testPattern' in ${CONFIG_DATEI} ist kein gueltiger regulaerer Ausdruck: ${err.message}`);
+    }
+    return texte.some((text) => gesucht.test(text));
+  };
+}
+
+/** Die Aussagen eines Bereichs als Map ID -> Eintrag, je Bereich einmal gelesen. */
+function aussagenWissen(root) {
+  const bekannt = new Map();
+  return (bereich) => {
+    if (!bekannt.has(bereich)) {
+      bekannt.set(bereich, new Map(aussagenDesBereichs(bereich, root).map((a) => [a.id, a])));
+    }
+    return bekannt.get(bereich);
+  };
+}
+
+/**
+ * Was zwischen Wirkungszeile und Beschreibung auseinandergeht — oder null.
+ *
+ * Gemessen wird gegen den Text, nicht nur gegen die Existenz der ID: Eine
+ * Aussage mit derselben Nummer und anderem Wortlaut ist eine andere Zusage, und
+ * genau die soll das Gate sehen. Bei ENTFAELLT zaehlt zusaetzlich die
+ * Paketnummer im Klammerzusatz — sonst ginge eine Streichung als erledigt durch,
+ * die ein ganz anderes Paket vorgenommen hat.
+ */
+function abweichung(form, nummer, aussagen) {
+  const bereich = form.art === "NEU" ? form.bereich : praefix(form.id);
+  const datei = bereichsDatei(bereich);
+  const ist = aussagen(bereich).get(form.id);
+
+  if (!ist) return `steht nicht in ${datei}`;
+
+  if (form.art === "ENTFAELLT") {
+    if (!ist.entfallen) return `steht in ${datei} noch oberhalb von '${ENTFALLEN_UEBERSCHRIFT}'`;
+    return ist.paket === String(nummer)
+      ? null
+      : `steht in ${datei} unter '${ENTFALLEN_UEBERSCHRIFT}', aber mit Paket #${ist.paket ?? "(ohne Nummer)"}`;
+  }
+
+  if (ist.entfallen) return `steht in ${datei} unter '${ENTFALLEN_UEBERSCHRIFT}'`;
+  return ist.aussage === form.aussage ? null : `traegt in ${datei} einen anderen Text: '${ist.aussage}'`;
+}
+
+/**
+ * Pruefung 1 — stimmt die Beschreibung mit den Wirkungsangaben ueberein?
+ *
+ * Rueckgabe sind die Aussagen, die anschliessend einen Test-Verweis brauchen:
+ * die neuen und die geaenderten. ENTFAELLT gehoert nicht dazu (A5) — was nicht
+ * mehr gilt, wird nicht mehr belegt.
+ *
+ * Eine Aussage, die schon hier abweicht, wird nicht auch noch nach ihrem Test
+ * gefragt: Zwei Befunde zu derselben Zeile sagen nichts, was der erste nicht
+ * schon sagt.
+ */
+function uebereinstimmungPruefen(pakete, aussagen, befunde) {
+  const zuBelegen = [];
+
+  for (const { nummer, zeilen } of pakete) {
+    for (const form of zeilen) {
+      if (form.art === "KEINE") continue;
+
+      const grund = abweichung(form, nummer, aussagen);
+      if (grund !== null) {
+        befunde.push(`Paket #${nummer}: Die Aussage '${form.id}' ${grund}.`);
+        continue;
+      }
+      if (form.art !== "ENTFAELLT") zuBelegen.push({ nummer, id: form.id });
+    }
+  }
+  return zuBelegen;
+}
+
+/**
+ * Pruefung 2 — verweist auf jede neue oder geaenderte Aussage ein Test (A5)?
+ *
+ * Der Sucher wird erst gebaut, wenn es etwas zu belegen gibt: Sein Aufbau liest
+ * den Dateibaum, und ein Batch ohne Wirkung hat daran nichts zu suchen.
+ */
+function verweisePruefen(zuBelegen, spec, root, befunde) {
+  if (zuBelegen.length === 0) return;
+
+  const sucher = verweisSucher(spec, root);
+  for (const { nummer, id } of zuBelegen) {
+    if (sucher === null) {
+      befunde.push(`Paket #${nummer}: Der Test-Verweis auf '${id}' ist nicht pruefbar — 'spec.testGlobs' fehlt in ${CONFIG_DATEI}.`);
+    } else if (!sucher(id)) {
+      befunde.push(`Paket #${nummer}: Auf die Aussage '${id}' verweist kein Test (A5).`);
+    }
+  }
+}
+
+function paketWort(anzahl) {
+  return `${anzahl} ${anzahl === 1 ? "Paket" : "Pakete"}`;
+}
+
+/**
+ * Haelt den Push auf, wenn Paket und Beschreibung nicht zusammenpassen.
+ *
+ * Jeder Ausfallpfad endet rot: ein unbrauchbarer Anker, ein nicht lesbarer Body
+ * (in `paketLesen`), ein fehlender Suchraum. Ein Gate, das bei Stoerung oeffnet,
+ * ist schlimmer als keins — es bescheinigt eine Pruefung, die nicht stattfand.
+ *
+ * Nur der leere Bereich ist gruen, und auch der nennt den Anker: Sonst saehe ein
+ * falscher Anker aus wie ein sauberer Lauf.
+ */
+function checkAnker(anker) {
+  // Vor jedem Lesen, wie bei `apply`: Ein unbrauchbarer Anker ist kein Umfang,
+  // den man notfalls weiter fasst, sondern eine Angabe, die fehlt.
+  const basis = ankerAufloesen(anker);
+  if (basis === null) fail(`Der Anker '${anker}' laesst sich nicht aufloesen — ohne ihn gibt es keinen Bereich, den das Gate pruefen koennte.`);
+
+  const config = configLesen();
+  if (!config?.spec) {
+    process.stderr.write(`Kein 'spec'-Block in ${CONFIG_DATEI} — die Spec-Wirkung wird nicht geprueft.\n`);
+    return 0;
+  }
+
+  const root = process.cwd();
+  const befunde = [];
+  const pakete = paketeLesen(paketNummern(basis), config.spec.seit, Object.keys(config.spec.bereiche ?? {}), befunde);
+
+  verweisePruefen(uebereinstimmungPruefen(pakete, aussagenWissen(root), befunde), config.spec, root, befunde);
+
+  if (befunde.length > 0) {
+    for (const befund of befunde) process.stderr.write(`${befund}\n`);
+    return 1;
+  }
+  process.stdout.write(`Anker ${basis}: ${paketWort(pakete.length)} gewertet, ohne Befund.\n`);
   return 0;
 }
 
