@@ -66,6 +66,10 @@ Zwei Dateien unter `.claude/` liegen trotzdem im Repo, beide aus einem eigenen G
 
 Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zustaendig ist (`areas`), und der Block `checkAreas` ordnet diesen Bereichen Pfadmuster zu. Dann laeuft eine Pruefung nur, wenn ihr Bereich beruehrt wurde; im Zweifel laeuft alles, und ohne `checkAreas` aendert sich nichts. Die Formen, die beiden Pruef-Anker und die Zweifelsregel stehen im Kapitel „Bereichsbezogene Pruefungen" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text, zwei Orte fuer dieselbe Aussage driften auseinander.
 
+## Beschriebenes Verhalten
+
+Ein Projekt kann unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens fuehren. Wer plant, liest sie statt Produktionscode und bekommt gesagt, wo sie schweigt; wer ein Arbeitspaket schneidet, sagt, was es an ihr aendert; wer pusht, wird aufgehalten, wenn beides nicht zusammenpasst. Der Schalter ist ein Block in der Config, die Entscheidung ist nicht zurueckzunehmen, und sie setzt `issueTracker: toolbox` oder `local` voraus — GitHub und GitLab fuehren keinen Aktivitaetsverlauf, an dem der Stichtag haengt. Ein Projekt ohne diesen Block merkt von alldem nichts. Das Kapitel „Beschriebenes Verhalten" in [`docs/dokumentation.md`](docs/dokumentation.md) hat die Einzelheiten — hier bewusst kein zweiter vollstaendiger Text.
+
 ## Dokumentation
 
 Ausfuehrliche Anleitung, Konfigurationsreferenz und den vollstaendigen 9-Schritt-Prozess findest du hier:

@@ -338,6 +338,21 @@ function show(id) {
  * gueltigen Form zum Verwechseln aehnlich, und die Aussagen unter ${SPECS_DIR}/
  * werden mit derselben Regel gelesen (AUSSAGE_RE).
  */
+/**
+ * Die vier Zeilenformen als Text — die eine Quelle, gegen die sich alles andere
+ * vergleicht (Issue #454).
+ *
+ * Ohne sie gaebe es drei Abschriften desselben Textes: im Plan, in der Doku und im
+ * Test, der die Doku prueft. Genau dieses Argument hat die Grammatik ueberhaupt erst
+ * in den Plan gezogen (A12) — es gilt eine Ebene tiefer genauso.
+ */
+export const WIRKUNG_GRAMMATIK = [
+  "NEU       <BEREICH> <ID> — <Aussage>",
+  "GEAENDERT <ID> — <neuer Aussage-Text>",
+  "ENTFAELLT <ID> — <Grund>",
+  "KEINE     — <Begruendung>",
+].join("\n");
+
 const NEU_RE = /^NEU\s+(\S+)\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
 const GEAENDERT_RE = /^GEAENDERT\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
 const ENTFAELLT_RE = /^ENTFAELLT\s+(\S+-\d+)\s+—\s+\S/;
