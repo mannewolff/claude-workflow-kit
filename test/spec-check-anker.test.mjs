@@ -175,6 +175,20 @@ test("A18: nur Pakete von vor dem Stichtag — Exit 0, auch ohne '## Spec-Wirkun
   });
 });
 
+test("A18: ein Paket ohne Anlage-Eintrag gilt als alt und wird sichtbar uebersprungen", () => {
+  // Der Aktivitaetsverlauf im kanban-kit beginnt erst mit V13 (2026-07-14) und wurde
+  // nicht rueckgefuellt: Karten von davor haben keinen CREATED-Eintrag. Sie zu werten
+  // hiesse, jede Altkarte dauerhaft zu blockieren — sie als Fehler zu behandeln
+  // ebenso. Beim lokalen Tracker entspricht das einer Datei ohne `created:`.
+  mitGate({}, (dir) => {
+    const { res } = checkMit(dir, [[34, { wirkung: null, created: null }]], { fortschreiben: false });
+
+    assert.equal(res.status, 0, `ein Paket ohne Anlage-Eintrag ist kein Befund: ${res.stderr}`);
+    assert.match(res.stdout, /#34.*ohne Anlage-Eintrag/, "das uebersprungene Paket wurde nicht benannt");
+    assert.doesNotMatch(res.stderr, /#34\b/, "das Paket wurde trotzdem gewertet");
+  });
+});
+
 // --- Der Ausfallpfad --------------------------------------------------------
 
 test("ein nicht lesbarer Body: Exit 1, die Meldung nennt die Paketnummer", () => {

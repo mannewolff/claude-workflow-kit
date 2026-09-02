@@ -19,6 +19,7 @@
  *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
  *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
+ *   node board.mjs issue activity <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
  *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -88,6 +89,7 @@ Nutzung:
       (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
+  node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -1173,6 +1175,25 @@ class LocalIssueTracker {
     return this._read(id);
   }
 
+  /**
+   * Aktivitaetsverlauf, synthetisch (Issue #460).
+   *
+   * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
+   * entsteht **ein** Eintrag vom Typ CREATED, damit `spec.mjs` hier dieselbe Quelle
+   * lesen kann wie beim Board. Ohne diese Bruecke waere in jedem local-Projekt jedes
+   * Paket „ohne Anlage-Eintrag" — und die gesamte Spec-Testsuite, die ueber `local`
+   * und `created:` laeuft, haette keine Grundlage mehr.
+   *
+   * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes
+   * Datum: `spec.mjs` behandelt ein Paket ohne CREATED-Eintrag als vor `seit`
+   * angelegt, und genau das trifft auf eine Datei ohne Anlagedatum zu.
+   */
+  async listActivity(id) {
+    const { created } = this._read(id);
+    if (!created) return [];
+    return [{ type: "CREATED", createdAt: created, detail: "Karte angelegt" }];
+  }
+
   // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
   // (das Vorhaben ausschliesst) und listEpics (das genau sie braucht) — ohne die
   // Trennung liefe listEpics nach dem Epic-Ausschluss leer (Issue #377).
@@ -1409,10 +1430,14 @@ class ToolboxIssueTracker {
       throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
     }
     if (!res.ok) {
+      // Der Status bleibt stehen, auch wenn der Server eine eigene Meldung schickt
+      // (Issue #460): Fuer den Aufrufer ist der Unterschied zwischen 404 und 500
+      // die Diagnose — "Route gibt es nicht" gegen "Route ist kaputt". Frueher
+      // ersetzte body.message den Status und nahm sie mit.
       let msg = `HTTP ${res.status}`;
       try {
         const body = await res.json();
-        if (body?.message) msg = body.message;
+        if (body?.message) msg = `${msg}: ${body.message}`;
       } catch { /* kein JSON-Body */ }
       throw new BoardError(`Toolbox-API-Fehler: ${msg}`);
     }
@@ -1546,6 +1571,27 @@ class ToolboxIssueTracker {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
     }
+  }
+
+  /**
+   * Aktivitaetsverlauf einer Karte (Issue #460).
+   *
+   * Zwei Unterschiede zu `_comments`, beide beabsichtigt:
+   *
+   * 1. Die Route liegt unter `/api/cards/{cardId}/...`, nicht unter
+   *    `/api/kanban/items/...`, und adressiert die **interne** ID — dieselbe Falle wie
+   *    bei move, comments und labels (Befund vom 2026-08-29). Daher `_resolveByNumber`.
+   * 2. **Ein Fehler wird nicht geschluckt.** `_comments` faengt 404/405 aelterer
+   *    Instanzen ab und liefert `[]`; hier waere das falsch. Der Verlauf ist die
+   *    Quelle des Anlagedatums — eine leere Liste hiesse „Karte ohne Geschichte" und
+   *    liesse das Gate ein altes Paket fuer neu halten. Der Aufrufer soll den Fehler
+   *    sehen, samt HTTP-Status.
+   */
+  async listActivity(number) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    const res = await this._fetch(`/api/cards/${item.id}/activity`);
+    return await res.json();
   }
 
   // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
@@ -2557,6 +2603,25 @@ async function issueEpics(tracker) {
   out(await tracker.listEpics());
 }
 
+/**
+ * Aktivitaetsverlauf einer Karte (Issue #460).
+ *
+ * `spec.mjs` liest daraus das Anlagedatum: Die Karten-Route fuehrt keins — an der
+ * Instanz belegt am 2026-09-02 (manuelle Pruefung zu Issue #457). Der Verlauf geht
+ * unveraendert durch, einschliesslich seiner Reihenfolge; wer das aelteste Ereignis
+ * braucht, sucht nach dem kleinsten `createdAt` und verlaesst sich nicht auf die
+ * Sortierung der Antwort.
+ */
+async function issueActivity(tracker, config, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue activity <id>");
+  if (typeof tracker.listActivity !== "function") {
+    const name = config?.issueTracker ?? "dieser Tracker";
+    fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+  }
+  out(await tracker.listActivity(id));
+}
+
 async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
   if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
@@ -2702,6 +2767,7 @@ async function dispatchIssue(command, args) {
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
+    case "activity": return issueActivity(tracker, config, args);
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);

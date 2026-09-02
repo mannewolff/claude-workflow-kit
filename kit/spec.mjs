@@ -1067,17 +1067,65 @@ function paketLesen(nummer) {
 }
 
 /**
+ * Der Aktivitaetsverlauf eines Pakets, ueber den Adapter (A11, Issue #460).
+ *
+ * Ist er nicht lesbar, ist das ein Fehler und kein leerer Verlauf: Eine leere Liste
+ * hiesse „Karte ohne Anlage-Eintrag" und damit „aelter als `seit`" — ein Adapterfehler
+ * wuerde so zu einem stillen Ueberspringen. Dieselbe Haltung wie beim unlesbaren Body.
+ */
+function verlaufLesen(nummer) {
+  const res = ohneShell(process.execPath, [join(process.cwd(), ...BOARD_KOMMANDO), "issue", "activity", nummer]);
+  if (res.status !== 0) {
+    const grund = (res.stderr || "").trim() || `der Adapter endete mit ${res.status}`;
+    fail(`Paket #${nummer}: Aktivitaetsverlauf nicht lesbar: ${grund}`);
+  }
+  try {
+    return JSON.parse(res.stdout);
+  } catch (err) {
+    return fail(`Paket #${nummer}: Aktivitaetsverlauf nicht lesbar: der Adapter lieferte kein JSON (${err.message}).`);
+  }
+}
+
+/**
+ * Das Anlagedatum eines Pakets aus dem Aktivitaetsverlauf (A17, Issue #460).
+ *
+ * Die Karten-Route fuehrt kein Anlagedatum — an der Instanz belegt am 2026-09-02
+ * (Issue #457). Der Verlauf fuehrt es: Der aelteste Eintrag vom Typ CREATED ist das
+ * Anlegen.
+ *
+ * Drei Feinheiten, die alle drei aus dem Review von #460 stammen:
+ *
+ * 1. **Aeltester heisst kleinstes `createdAt`**, nicht `eintraege[0]`. Der Server
+ *    sortiert heute aufsteigend, aber ein Test, der sich darauf verlaesst, prueft
+ *    die Fixture statt den Code.
+ * 2. **Nur CREATED zaehlt.** Der Verlauf existiert erst seit kanban-kit V13
+ *    (2026-07-14) und wurde nicht rueckgefuellt. Eine alte, kuerzlich bewegte Karte
+ *    haette als aeltesten Eintrag ein MOVED von letzter Woche — wer den aeltesten
+ *    Eintrag beliebigen Typs naehme, hielte sie fuer neu.
+ * 3. **Kein CREATED heisst: aelter als jedes `seit`.** Eine Karte aus der Zeit vor
+ *    dem Verlauf soll nicht dauerhaft blockieren; `null` bedeutet hier „vor `seit`",
+ *    nicht „unbekannt".
+ */
+export function anlagedatum(verlauf) {
+  const angelegt = (Array.isArray(verlauf) ? verlauf : [])
+    .filter((e) => e?.type === "CREATED" && typeof e.createdAt === "string" && e.createdAt !== "");
+  if (angelegt.length === 0) return null;
+  const aeltester = angelegt.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+  return aeltester.createdAt.slice(0, 10);
+}
+
+/**
  * Ob ein Paket gewertet wird (A18).
  *
- * Ohne Anlagedatum wird gewertet: Das Feld fehlt, wenn der Tracker keins liefert
- * (Issue #457), und ein Paket deshalb stillschweigend zu ueberspringen naehme
- * Fortschreibung weg, ohne dass es jemandem auffiele. Der Fehler soll in die
- * andere Richtung gehen — lieber eine Angabe zu viel pruefen als eine zu wenig.
+ * `datum` ist `null`, wenn der Verlauf keinen CREATED-Eintrag traegt. Dann gilt das
+ * Paket als **vor** `seit` angelegt und wird nicht gewertet — die Gegenrichtung
+ * (im Zweifel werten) haette jede Karte aus der Zeit vor dem Verlauf dauerhaft
+ * blockiert, ohne Reparaturweg.
  */
-function gewertet(paket, seit) {
+function gewertet(datum, seit) {
   if (typeof seit !== "string" || seit === "") return true;
-  if (typeof paket.created !== "string" || paket.created === "") return true;
-  return paket.created >= seit;
+  if (datum === null) return false;
+  return datum >= seit;
 }
 
 // --- Der Sollzustand des Batches --------------------------------------------
@@ -1460,8 +1508,14 @@ function paketeLesen(nummern, seit, bekannte, befunde) {
   const gewertete = [];
 
   for (const nummer of nummern) {
+    const datum = anlagedatum(verlaufLesen(nummer));
+    if (!gewertet(datum, seit)) {
+      // Sichtbar, nicht still: Wer die Ausgabe liest, soll sehen, dass es das Paket
+      // gibt und warum es nicht gewertet wurde.
+      if (datum === null) process.stdout.write(`Paket #${nummer}: ohne Anlage-Eintrag, nicht gewertet.\n`);
+      continue;
+    }
     const paket = paketLesen(nummer);
-    if (!gewertet(paket, seit)) continue;
 
     const fehler = wirkungPruefen(paket.body ?? "", bekannte);
     for (const { nr, grund } of fehler) {

@@ -1164,7 +1164,7 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
-- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue move`, `issue comment`, `issue epics`
+- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue epics`
 - **Code-Host-Interface:** `code repo-name`, `code pr`
 
 **`issue list` liefert Arbeitspakete, `issue epics` liefert Vorhaben.** Die Trennung ist scharf: Vorhaben erscheinen in `issue list` nie, auch nicht ohne Status-Filter. Sie sind Klammern über mehreren Karten, keine Arbeit — wer sie in einer Liste offener Issues mitzählt, hält sie für Arbeitspakete mit dünner Beschreibung. `issue epics` liefert sie mit Kürzel und Fortschritt (`#360 [HER] … 8/8`), also mit der Information, die ein Vorhaben tatsächlich trägt.

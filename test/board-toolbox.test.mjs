@@ -544,11 +544,16 @@ test("401 verweist auf einen erneuten tbx-Login", async () => {
   });
 });
 
-test("Fehlerantwort mit JSON-Rumpf zeigt dessen message", async () => {
+test("Fehlerantwort mit JSON-Rumpf zeigt Status UND dessen message", async () => {
+  // Seit Issue #460 bleibt der HTTP-Status stehen, statt von der Server-Meldung
+  // ersetzt zu werden: Fuer die Diagnose ist der Unterschied zwischen 404 und 500
+  // ("Route gibt es nicht" gegen "Route ist kaputt") die halbe Information, und
+  // `spec.mjs` braucht ihn, um einen fehlenden Endpunkt von einem defekten zu
+  // unterscheiden.
   await mitBoard(() => ({ status: 500, json: { message: "Board kaputt" } }), async (dir) => {
     const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /Toolbox-API-Fehler: Board kaputt/);
+    assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 500: Board kaputt/);
   });
 });
 
