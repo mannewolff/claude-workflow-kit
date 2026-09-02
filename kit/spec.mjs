@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, Plan #437)
+ * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, Plan #437)
  *
  * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
- * specs/ — und beantwortet vier Fragen: `index` schreibt die Uebersicht ueber
+ * specs/ — und beantwortet fuenf Fragen: `index` schreibt die Uebersicht ueber
  * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
- * Arbeitspakets gegen die Grammatik aus A12, und `luecken` sagt, wozu die
- * Beschreibung schweigt.
+ * Arbeitspakets gegen die Grammatik aus A12, `luecken` sagt, wozu die
+ * Beschreibung schweigt, und `vorhaben` haelt fest, ob fuer ein Vorhaben
+ * Produktionscode gelesen wurde.
  *
  * Warum ein eigenes Werkzeug und keine Achse in board.mjs (Plan #437, A2):
  * board.mjs spricht mit Issue-Trackern, hier geht es um Dateien im Repo. Die
@@ -40,7 +41,7 @@
  * sich einzeln in ein Projekt kopieren, wie board.mjs, night.mjs und checks.mjs.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -50,6 +51,7 @@ import { fileURLToPath } from "node:url";
 const KIT_VERSION = "1.44.0";
 
 const SPECS_DIR = "specs";
+const VORHABEN_DIR = "vorhaben";
 const INDEX_DATEI = "INDEX.md";
 const CONFIG_DATEI = ".claude/workflow.config.json";
 const WIRKUNG_UEBERSCHRIFT = "## Spec-Wirkung";
@@ -60,6 +62,7 @@ const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes V
   node spec.mjs show <id>
   node spec.mjs check --paket <datei>
   node spec.mjs luecken --bereich <name>…
+  node spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund <text>]
 
 index   Schreibt ${SPECS_DIR}/${INDEX_DATEI} neu: eine Zeile je Bereich mit der Zahl der
         gueltigen und der entfallenen Aussagen. Fehlt ${SPECS_DIR}/, sagt das Kommando
@@ -74,6 +77,10 @@ luecken Nennt je Bereich die Dateien, die keine gueltige Aussage beruehrt —
         als JSON auf stdout, immer, auch mit leerer Liste. Eine Luecke ist ein
         Befund und kein Fehler: Exit 0. Die Bereichsnamen kommen aus
         'spec.bereiche'; ohne den Block wird nichts gemeldet.
+vorhaben Schreibt ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md neu: Einheit, Kuerzel bzw.
+        Plannummer, ob Produktionscode gelesen wurde, der Grund und der Stand.
+        Das Kuerzel kommt vom Aufrufer, nicht aus dem Tracker. Ohne
+        'spec'-Block in ${CONFIG_DATEI} wird nichts geschrieben.
 
   --version       Kit-Stand dieser Datei.
   --help, -h      Diese Uebersicht.
@@ -709,6 +716,146 @@ function luecken(argv) {
   return 0;
 }
 
+// --- vorhaben ---------------------------------------------------------------
+
+/**
+ * Das Kuerzel wird zum Dateinamen — deshalb die Pruefung, nicht aus Ordnungsliebe:
+ * Ohne sie schriebe '--kuerzel ../../x' ausserhalb von ${SPECS_DIR}/.
+ */
+const KUERZEL_RE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Der Rueckfall auf ein Plandokument (A9), genau in dieser Schreibweise.
+ *
+ * Ein Toolbox-Shortcode koennte 'PLAN' heissen — das ist ein Vorhaben. Waere die
+ * Erkennung locker (etwa auf 'plan' beginnend), wuerde so ein Vorhaben still zum
+ * Plandokument umgedeutet, und die Notiz behauptete eine andere Einheit als die,
+ * fuer die sie gilt.
+ */
+const RUECKFALL_RE = /^plan-(\d+)$/;
+
+// Wortgleich fest, nicht gebaut: Die Zeile sagt, warum die Einheit nicht das
+// Vorhaben ist, und wer sie spaeter sucht, sucht diesen einen Satz.
+const RUECKFALL_HINWEIS = `- Hinweis: Plandokument statt Vorhaben, weil der Tracker keine Vorhaben kennt (A9).`;
+
+const CODE_GELESEN_WERTE = ["ja", "nein"];
+
+const VORHABEN_SCHALTER = ["--kuerzel", "--code-gelesen", "--grund"];
+
+// Tagesdatum lokal statt per toISOString(), wie `heute()` in board.mjs: Eine
+// Notiz um 23:30 MESZ traegt den Tag, an dem der Code gelesen wurde — in UTC
+// waere er da schon gewechselt.
+function heute() {
+  const jetzt = new Date();
+  const zweistellig = (n) => String(n).padStart(2, "0");
+  return `${jetzt.getFullYear()}-${zweistellig(jetzt.getMonth() + 1)}-${zweistellig(jetzt.getDate())}`;
+}
+
+/**
+ * Liest die Schalter als Paare '--name <wert>'.
+ *
+ * Ein unbekanntes Argument ist ein Fehler und keine stille Auslassung: Ein
+ * vertipptes '--kuerzl' saehe sonst aus wie ein fehlendes Kuerzel, und ein
+ * vertipptes '--grund' liesse die Notiz ohne Grund durchgehen, obwohl einer
+ * angegeben war — dieselbe Haltung wie bei `bereichArgumente`.
+ */
+function vorhabenArgumente(argv) {
+  const werte = new Map();
+
+  for (let i = 0; i < argv.length; i += 2) {
+    const name = argv[i];
+    if (!VORHABEN_SCHALTER.includes(name)) {
+      fail(`Unerwartetes Argument: '${name}'. Erwartet: ${VORHABEN_SCHALTER.join(", ")}.`);
+    }
+    const wert = argv[i + 1];
+    if (wert === undefined || wert.startsWith("--")) fail(`'${name}' braucht einen Wert.`);
+    werte.set(name, wert);
+  }
+  return werte;
+}
+
+/**
+ * Die geprueften Angaben des Aufrufs.
+ *
+ * `--code-gelesen` ist Pflicht und nimmt nur ja oder nein: Ein Feld, das man leer
+ * lassen kann, ist kein Nachweis — und eine Notiz, die die Frage offen laesst,
+ * saehe aus wie eine beantwortete.
+ */
+function vorhabenAngaben(argv) {
+  const werte = vorhabenArgumente(argv);
+
+  const kuerzel = werte.get("--kuerzel");
+  if (!kuerzel) fail("vorhaben verlangt --kuerzel <k>.");
+  if (!KUERZEL_RE.test(kuerzel)) {
+    fail(`Das Kuerzel '${kuerzel}' enthaelt mehr als Buchstaben, Ziffern, '-' und '_' — es wird zum Dateinamen.`);
+  }
+
+  const codeGelesen = werte.get("--code-gelesen");
+  if (!codeGelesen) fail("vorhaben verlangt --code-gelesen ja|nein.");
+  if (!CODE_GELESEN_WERTE.includes(codeGelesen)) {
+    fail(`'--code-gelesen' nimmt nur ${CODE_GELESEN_WERTE.join(" oder ")}, nicht '${codeGelesen}'.`);
+  }
+
+  return { kuerzel, codeGelesen, grund: werte.get("--grund") };
+}
+
+/**
+ * Die Notiz als Text, in der Form aus A15.
+ *
+ * Welche Einheit gilt, steht in der Datei selbst — sonst ist spaeter nicht
+ * erkennbar, worauf sich die Angabe bezieht: Ein Plandokument taucht nur auf,
+ * weil der Tracker keine Vorhaben kennt, und wer die Notiz zwei Monate spaeter
+ * liest, muss das sehen, ohne den Tracker von damals zu kennen.
+ */
+function vorhabenText({ kuerzel, codeGelesen, grund }) {
+  const plan = RUECKFALL_RE.exec(kuerzel);
+  const zeilen = [
+    `# Vorhaben-Notiz ${kuerzel}`,
+    plan ? "- Einheit: Plandokument" : "- Einheit: Vorhaben",
+    plan ? `- Plan: ${plan[1]}` : `- Kuerzel: ${kuerzel}`,
+    `- Code gelesen: ${codeGelesen}`,
+  ];
+  if (grund !== undefined) zeilen.push(`- Grund: ${grund}`);
+  zeilen.push(`- Stand: ${heute()}`);
+  if (plan) zeilen.push(RUECKFALL_HINWEIS);
+
+  return `${zeilen.join("\n")}\n`;
+}
+
+/**
+ * Schreibt die Notiz zum Code-Lesen.
+ *
+ * Die Datei wird vollstaendig neu geschrieben, kein Merge und kein Verlauf: Sie
+ * sagt, was heute gilt. Ein zusammengefuehrter Stand behielte den Grund eines
+ * frueheren Laufs neben einem 'nein' von heute — die Notiz behauptete dann eine
+ * Begruendung, die niemand fuer sie gegeben hat.
+ *
+ * Ob der Rueckfall berechtigt ist, prueft das Kommando nicht: Es kennt den
+ * Tracker nicht. Das entscheidet der Aufrufer (#447).
+ */
+function vorhaben(argv) {
+  // Erst der Aufruf, dann der Schalter — wie bei `check`: Ein falscher Aufruf ist
+  // ein Irrtum, gleich ob das Projekt Specs fuehrt.
+  const angaben = vorhabenAngaben(argv);
+
+  const config = configLesen();
+  if (!config?.spec) {
+    process.stderr.write(`Kein 'spec'-Block in ${CONFIG_DATEI} — es wird keine Vorhaben-Notiz geschrieben.\n`);
+    return 0;
+  }
+
+  const verzeichnis = join(specsPfad(), VORHABEN_DIR);
+  mkdirSync(verzeichnis, { recursive: true });
+
+  const pfad = join(verzeichnis, `${angaben.kuerzel}.md`);
+  const vorhanden = existsSync(pfad);
+  writeFileSync(pfad, vorhabenText(angaben), "utf-8");
+
+  const wort = vorhanden ? "aktualisiert" : "geschrieben";
+  process.stdout.write(`Vorhaben-Notiz ${wort}: ${SPECS_DIR}/${VORHABEN_DIR}/${angaben.kuerzel}.md\n`);
+  return 0;
+}
+
 // --- CLI --------------------------------------------------------------------
 
 function main() {
@@ -731,10 +878,11 @@ function main() {
   if (command === "show") return show(rest[0]);
   if (command === "check") return check(rest);
   if (command === "luecken") return luecken(rest);
+  if (command === "vorhaben") return vorhaben(rest);
 
   // Keine Hilfe auf stdout wie bei board.mjs: `show` haelt stdout fuer seine
   // Aussagen frei, und ein Vertipper darf dort nichts hinterlassen.
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check oder luecken — 'node spec.mjs --help' zeigt die Uebersicht.`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check, luecken oder vorhaben — 'node spec.mjs --help' zeigt die Uebersicht.`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
