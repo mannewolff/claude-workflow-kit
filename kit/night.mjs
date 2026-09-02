@@ -197,7 +197,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.44.0";
+const KIT_VERSION = "1.45.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -1169,7 +1169,13 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 // Fuer den Runner ist die Allowlist besonders wichtig: Die Pruefung auf leere
 // buildChecks weiter unten ist sein einziges Gate. Waere das Feld lokal
 // ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+// Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
+// Beide sind persoenlich ueberschreibbar — sonst koennte jemand seinen Claude-Reviewer
+// lokal setzen, seinen Kommando-Reviewer aber nicht.
+// SYNC: dieselbe Zuordnung steckt in kit/board.mjs.
+const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
 // Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
@@ -1214,13 +1220,29 @@ function ladeConfigMitOverrides(sharedPfad) {
  * beschafft die beiden Dateien und entscheidet, ob es ueberhaupt etwas zu mischen
  * gibt; diese Funktion entscheidet Feld fuer Feld, was uebernommen wird.
  */
+/**
+ * Setzt ein persoenliches Feld und raeumt beim Reviewer-Paar das Gegenstueck weg.
+ *
+ * Von reviewModel und reviewCommand darf genau eines gelten (Issue #432); striktes
+ * feldweises Mischen liesse sonst beide stehen, sobald das Team den Claude-Default
+ * faehrt und einer lokal mit fremder CLI reviewt. Stehen beide Felder in der lokalen
+ * Datei, bleiben beide — die Datei ist dann schon fuer sich ungueltig.
+ *
+ * SYNC: strukturgleich zu setzePersoenlichesFeld in kit/board.mjs.
+ */
+function setzePersoenlichesFeld(config, feld, wert, local) {
+  config[feld] = wert;
+  const gegenstueck = REVIEWER_PAAR[feld];
+  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+}
+
 function mischeErlaubteFelder(shared, local) {
   const config = { ...shared };
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
-      config[feld] = wert;
+      setzePersoenlichesFeld(config, feld, wert, local);
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       config[feld] = mischeBlattfelder(config[feld], wert, erlaubteBlaetter.get(feld), feld);
     } else {
@@ -1303,6 +1325,9 @@ export function trackerProbeId(kandidaten, alleIssues) {
 
 /** Baut den Auftrag der Vorflug-Session. */
 export function vorflugPrompt(kommandoReviewers, trackerId) {
+  // Die zulaessigen Werte fuer "name" stehen zur Bauzeit des Prompts fest — das Modell
+  // soll sie nicht aus dem Kommandostring ableiten muessen (Issue #409).
+  const erlaubteNamen = kommandoReviewers.map((r) => JSON.stringify(String(r.name))).join(", ");
   const zeilen = [
     `Du bist der technische Vorflug eines Nacht-Reviews. Fuehre genau die Schritte unten aus`,
     `und gib zum Schluss genau einen Befund-Block aus.`,
@@ -1320,7 +1345,7 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     zeilen.push(
       `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
       ``,
-      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer: ${r.name}`),
+      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer-Name fuer den Befund: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
@@ -1341,6 +1366,19 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     `Dieser Befund ist eigenstaendig — vermische ihn nicht mit der Reviewer-Verfuegbarkeit.`,
     ``,
     `SCHRITT 3 — Befund`,
+    // Der Name entscheidet, ob der Befund ankommt: Der Runner gleicht ueber den
+    // Reviewer-Namen aus der Config ab. Wird stattdessen der Modellname aus der
+    // Kommandozeile gemeldet, findet er keinen Treffer und traegt fuer einen
+    // verfuegbaren Reviewer "nichts gemeldet" ein — der Lauf bricht ab, obwohl
+    // nichts fehlt (Issue #409).
+    ...(kommandoReviewers.length === 0
+      ? []
+      : [
+        `"name" ist WOERTLICH der Reviewer-Name aus dem Kommentar "# Reviewer-Name fuer den Befund:"`,
+        `am Ende der jeweiligen Zeile in Schritt 1 — gib dort AUF KEINEN FALL den Modellnamen aus der Kommandozeile zurueck.`,
+        `Zulaessig sind genau diese Werte: ${erlaubteNamen}.`,
+        ``,
+      ]),
     `Gib als ALLERLETZTE Ausgabe genau diesen Block aus, ohne Code-Fence und ohne Text danach:`,
     ``,
     VORFLUG_START,

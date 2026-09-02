@@ -40,7 +40,7 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
   writeFileSync(join(dir, "install.mjs"), [
@@ -52,6 +52,7 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
     'const BOARD_MJS_B64 = "";',
     'const NIGHT_MJS_B64 = "";',
     'const CHECKS_MJS_B64 = "";',
+    'const SPEC_MJS_B64 = "";',
     'const SKILLS_B64 = "";',
     "",
   ].join("\n"));

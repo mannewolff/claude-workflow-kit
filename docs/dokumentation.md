@@ -51,7 +51,7 @@ Oder in einem Schritt ohne lokale Datei:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-Der Installer stellt sieben Fragen — bei globaler Installation folgt eine achte:
+Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte:
 
 **1. Global oder projektlokal.** Global legt die Skills in `~/.claude/skills/` ab. Sie stehen dann in allen deinen Projekten zur Verfügung. Projektlokal legt sie in `./.claude/skills/` ab. Sie gehören zum Repo. Für teamverbindliche Prozesse wähle projektlokal, für die persönliche Nutzung global. Bei projektlokal fügt der Installer `.claude/` automatisch in `.gitignore` ein.
 
@@ -65,9 +65,11 @@ Der Installer stellt sieben Fragen — bei globaler Installation folgt eine acht
 
 **6. Review-Umfang (`diff` oder `full`).** Mit `diff` bekommt der Review-Skill nur die geänderten Zeilen zu sehen. Mit `full` alle Dateien im Repo. Für kleine Änderungen reicht `diff`. Für größere Refactorings ist `full` aussagekräftiger, kann aber bei sehr großen Repos das Kontextfenster überlasten.
 
-**7. Review-Modell.** Das Modell, das in der frischen Review-Session läuft. Standard ist `claude-opus-4-8`.
+**7. Review-Modell** und **8. Review-Kommando.** Wer den Code-Review in Schritt 7 fährt — **genau eines von beiden**. Ein Modell (Standard `claude-opus-4-8`) läuft als Subagent; ein Kommando startet ein fremdes Werkzeug und bekommt den Prompt über stdin. Beides zu setzen wird abgewiesen, keines von beidem auch: Sonst liefe Schritt 7 ins Leere.
 
-**8. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
+**9. Beschriebenes Verhalten (nur projektlokal).** Ob das Projekt unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens führt — siehe [Beschriebenes Verhalten](#beschriebenes-verhalten). Die Frage erscheint nur bei `issueTracker: toolbox` oder `local` und nur, wenn noch kein `spec`-Block in der Config steht. **Die Entscheidung ist nicht zurückzunehmen**; der Installer sagt das vor der Antwort.
+
+**10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
 Der Installer kopiert die fünfzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
@@ -129,6 +131,8 @@ Wenn du einen Vault einrichten willst, lege ein Verzeichnis an und trage den Pfa
 Die Dateinamen der always-Dateien (Index.md, Profil.md) konfigurierst du selbst in `kontext.config.json`. Die Verzeichnisstruktur unter `Projekte/` und `Log/` wird von den Skills erwartet und muss einmalig manuell angelegt werden.
 
 ## Die Config-Datei
+
+Der Block `spec` ist hier nicht aufgeführt — er steht bei [Beschriebenes Verhalten](#beschriebenes-verhalten).
 
 Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Skills lesen ausschließlich aus dieser Datei (nirgendwo sonst werden Projektparameter hart kodiert).
 
@@ -261,6 +265,8 @@ Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge sp
 
 ### /kontext
 
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), lädt der Skill zusätzlich `specs/INDEX.md` und meldet einen veralteten Index.
+
 **Werkzeug neben dem Prozess, Session-Start.**
 
 Der Skill lädt den Kontext, den du brauchst, um sofort arbeitsfähig zu sein, ohne den Chat der letzten Session im Kopf haben zu müssen. Er liest `kontext.config.json` (zuerst global aus `~/.claude/`, dann lokal aus `.claude/`, wobei lokale Werte die globalen überschreiben).
@@ -277,6 +283,8 @@ Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kom
 
 ### /plan
 
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), liest der Skill zuerst die Beschreibung und weist aus, wo sie schweigt.
+
 **Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
 Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Anschließend stellt er den Plan zur Diskussion.
@@ -286,6 +294,8 @@ Der Skill implementiert nichts. **Technische Issues stellt er nicht an** — die
 Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 das Plandokument selbst als Issue mit dem Titel-Präfix `[Plan]` an — mit dem Plan als Body, `Plan-Modell:` im Kopf und, falls der Plan aus `/plan #N` gegen ein fachliches Issue entstand, `Fachliche Quelle: Issue #N`. Es hält den freigegebenen Stand fest, statt ihn umzusetzen: Was zwischen Anforderung und Arbeitspaketen entschieden wurde — Architektur, Schnitt, Abwägungen — stünde sonst nirgends. `[Plan]`-Issues werden nie implementiert (siehe das Gate weiter unten); zerlegt werden sie per `/issues #N`. Bei Bahn 1 entsteht kein Plandokument.
 
 ### /issues
+
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an.
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -350,6 +360,8 @@ Der Skill öffnet eine neue Claude-Session ohne den Implementierungskontext der 
 Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (im Modell aus `reviewModel`). Die Befunde landen als Kommentar im Issue oder PR. Für Security-Muster, die einen korpusgetriebenen Ansatz erfordern (Secrets-Scan, SQL-Konkatenation, fehlendes Input-Validation), verlässt sich der Skill nicht allein auf das Modell. Diese Prüfungen gehören in dein CI.
 
 ### /push-main
+
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), läuft vor den Pflicht-Checks zusätzlich die Fortschreibung der Beschreibung, und das Spec-Gate kann den Push aufhalten.
 
 **Schritt 8, nach dem Review, auf dein explizites Kommando.**
 
@@ -1043,6 +1055,105 @@ Jeder Prüfer ist ein zusätzlicher Lauf. Seit die Prüfung nach oben gewandert 
 
 `rounds` bleibt bei 1. Weitere Runden finden erfahrungsgemäß vor allem Geschmacksfragen; wenn eine zweite Runde nichts mehr mit Schweregrad BLOCKER oder WICHTIG liefert, sagt der Skill das.
 
+## Beschriebenes Verhalten
+
+Ein Projekt kann unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens führen. Wer plant, liest sie statt Produktionscode — und bekommt ausdrücklich gesagt, wo sie schweigt. Wer ein Arbeitspaket schneidet, sagt, was es an ihr ändert. Wer pusht, sieht vorher den Diff und wird aufgehalten, wenn Paket und Beschreibung nicht zusammenpassen.
+
+**Ein Projekt ohne diesen Block merkt davon nichts.** Keine zusätzliche Frage im Ablauf, keine Warnung, kein verändertes Verhalten in irgendeinem Skill — ohne den `spec`-Block bleibt alles unverändert.
+
+### Der Schalter
+
+Eingeschaltet wird über den Block `spec` in `.claude/workflow.config.json`. **Das Vorhandensein des Blocks ist der Schalter** — es gibt bewusst kein Feld `enabled`. Ein Bool hätte einen Aus-Zustand, und den soll es nicht geben.
+
+```json
+"spec": {
+  "seit": "2026-09-03",
+  "bereiche": {
+    "board": ["kit/board.mjs"],
+    "installer": ["install.mjs", "tools/sync-blobs.mjs"]
+  },
+  "testGlobs": ["test/*.test.mjs"],
+  "testPattern": "\\[<ID>\\]"
+}
+```
+
+`seit` ist der Zeitpunkt: Nur Pakete mit einem Anlagedatum ab diesem Tag wertet das Gate. Alles davor bleibt unberührt — es wird nichts nachgetragen.
+
+`bereiche` bildet Bereichsnamen auf Code-Globs ab. **Diesen Schnitt macht ein Mensch.** Kein Werkzeug schlägt ihn vor: Die Bereiche aus dem vorhandenen Code abzuleiten hieße, das Soll aus dem Ist zu rechnen — genau das, was dieses Verfahren vermeiden soll.
+
+`testPattern` und `testGlobs` sagen, wo das Gate den Verweis auf eine Aussage sucht (Standard: `\[<ID>\]`).
+
+Der Installer fragt danach — projektlokal, und nur wenn noch kein Block da ist. Ist er vorhanden, entfällt die Frage: Ein „Nein" dürfte ihn sonst entfernen.
+
+### Es gibt keinen Weg zurück
+
+Die Entscheidung ist nicht zurückzunehmen, und der Installer sagt das vor der Antwort. Ehrlich dazu gehört, was das heißt: **Das Kit bietet keinen Weg zurück an** — es gibt kein Kommando, keine Frage, keine Option dafür. Ein Mensch kann den Block natürlich von Hand aus der Config löschen; niemand hindert ihn daran. Zugesichert ist nur, dass das Werkzeug es nicht anbietet, und mehr wäre auch nicht ehrlich zuzusichern.
+
+### Nicht auf jedem Tracker
+
+Das beschriebene Verhalten setzt auf einem Board mit Aktivitätsverlauf auf: Das Anlagedatum eines Pakets, an dem `seit` hängt, kommt von dort. **Bei `issueTracker: github` und `gitlab` weist `spec.mjs` deshalb jeden Lauf ab** — dort gibt es weder Verlauf noch Suche über Aussagen. Möglich sind `toolbox` und `local`. Die Einschränkung fällt sofort auf und nicht erst beim ersten Push: Der Installer stellt die Frage bei diesen Trackern gar nicht.
+
+### Wie die Beschreibung aussieht
+
+Eine Datei je Bereich, benannt nach ihm:
+
+```
+specs/
+  INDEX.md              eine Zeile je Bereich, erzeugt von `spec.mjs index`
+  board.md              die Aussagen des Bereichs `board`
+  vorhaben/VER.md       je Vorhaben: wurde Produktionscode gelesen?
+```
+
+Eine Aussage ist eine Zeile mit ID und Text. Gestrichene Aussagen wandern unter `## Entfallen` ans Dateiende — mit Datum und der Nummer des Pakets, das sie gestrichen hat:
+
+```markdown
+- board-1 — issue activity gibt den Aktivitätsverlauf einer Karte aus.
+- board-2 — issue get liefert die Labels als Namen-Array.
+
+## Entfallen
+
+- board-3 — Der Adapter liest das Anlagedatum aus der Karte. (entfallen 2026-09-02, Paket #460)
+```
+
+**Gestrichene Aussagen bleiben unter `## Entfallen` stehen, und ihre Nummern werden nie wieder vergeben.** Der Grund ist die Rückverfolgbarkeit: Ein Test, ein Commit oder ein altes Paket kann Jahre später auf `board-3` verweisen. Würde die Nummer neu vergeben, zeigte der Verweis auf etwas anderes — eine stillschweigende Umdeutung, die niemand bemerkt. So zeigt er auf das ausdrücklich Gestrichene, samt Datum und Anlass.
+
+### Was ein Arbeitspaket sagt
+
+Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Er besteht ausschließlich aus Zeilen dieser vier Formen:
+
+```
+NEU       <BEREICH> <ID> — <Aussage>
+GEAENDERT <ID> — <neuer Aussage-Text>
+ENTFAELLT <ID> — <Grund>
+KEINE     — <Begruendung>
+```
+
+Vor dem Freitext steht der Gedankenstrich `—`, nicht der Bindestrich. `KEINE` steht allein und braucht eine Begründung: „keine Wirkung" ist eine Aussage, kein Weglassen.
+
+Der Adapter lehnt ein Paket ohne diesen Abschnitt ab — nicht als Bitte im Skill-Text, sondern beim Anlegen. Eine Bitte ist die Leitplanke, die unter Druck übersprungen wird.
+
+### Das Gate beim Push
+
+`/push-main` bekommt bei eingeschaltetem Projekt einen zusätzlichen Schritt, und seine Lage ist nicht beliebig:
+
+1. **Vorschau.** `spec.mjs apply --dry-run` zeigt, was sich an der Beschreibung ändern würde.
+2. **Zustimmung.** Ohne sie wird nicht gepusht.
+3. **`apply` und Commit** — **vor** den Pflicht-Checks. `apply` schreibt Dateien, die in denselben Push gehen; liefen die Checks vorher, prüften sie einen Stand, der nicht der gepushte ist.
+4. **Pflicht-Checks, dann `check`** auf dem Batch, wie er gepusht wird. Ein Befund hält den Push auf.
+
+Geprüft wird zweierlei: dass jede Wirkungsangabe in der Beschreibung angekommen ist, und dass jede neue oder geänderte Aussage von mindestens einem Test referenziert wird. **Gewertet werden nur Pakete ab `seit`** — der Bestand bleibt außen vor.
+
+### Die Kommandos
+
+| Kommando | Was es tut |
+|---|---|
+| `node .claude/kit/spec.mjs index` | Schreibt `specs/INDEX.md` neu: je Bereich die Zahl der gültigen und der entfallenen Aussagen. |
+| `node .claude/kit/spec.mjs show` | Gibt die Aussage zu einer ID aus, mit Bereich und Status. |
+| `node .claude/kit/spec.mjs check` | Prüft die Spec-Wirkung — `--paket` die Form einer Paketdatei, `--anker` als Gate den ganzen Batch. |
+| `node .claude/kit/spec.mjs luecken` | Meldet je Bereich, wozu die Beschreibung schweigt — auch wenn die Liste leer ist. |
+| `node .claude/kit/spec.mjs vorhaben` | Legt die Notiz an, ob für ein Vorhaben Produktionscode gelesen wurde. |
+| `node .claude/kit/spec.mjs apply` | Schreibt die Beschreibung aus den Wirkungsangaben fort. |
+
 ## Team-Config und persönliche Abweichungen
 
 Dieselbe Frage wie oben, eine Ebene tiefer: Was gehört ins Repository, und was darf jeder für sich anders haben?
@@ -1061,11 +1172,14 @@ Aus der lokalen Datei gewinnen nur diese Felder:
 | Feld | Warum persönlich |
 |---|---|
 | `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
+| `reviewCommand` | die Alternative zu `reviewModel`: wer mit fremder CLI reviewt, hat sie lokal installiert |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere wird ignoriert und auf stderr gemeldet.
+
+**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt.
 
 **Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
 
@@ -1161,7 +1275,7 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
-- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue move`, `issue comment`, `issue epics`
+- **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue epics`
 - **Code-Host-Interface:** `code repo-name`, `code pr`
 
 **`issue list` liefert Arbeitspakete, `issue epics` liefert Vorhaben.** Die Trennung ist scharf: Vorhaben erscheinen in `issue list` nie, auch nicht ohne Status-Filter. Sie sind Klammern über mehreren Karten, keine Arbeit — wer sie in einer Liste offener Issues mitzählt, hält sie für Arbeitspakete mit dünner Beschreibung. `issue epics` liefert sie mit Kürzel und Fortschritt (`#360 [HER] … 8/8`), also mit der Information, die ein Vorhaben tatsächlich trägt.

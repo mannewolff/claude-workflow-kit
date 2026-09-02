@@ -19,6 +19,7 @@
  *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
  *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
+ *   node board.mjs issue activity <id>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
  *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -53,7 +54,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.44.0";
+const KIT_VERSION = "1.45.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -88,6 +89,7 @@ Nutzung:
       (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
+  node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -235,7 +237,13 @@ function configRoot() {
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
 // SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+// Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
+// Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
+// koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
+// SYNC: dieselbe Zuordnung steckt in kit/night.mjs.
+const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 /**
  * Mergt die persoenliche Config in die geteilte, aber nur an den erlaubten Pfaden.
@@ -264,6 +272,27 @@ function zerlegeAllowlist(allowlist) {
   return { erlaubteFelder, erlaubteBlaetter };
 }
 
+/**
+ * Setzt ein persoenliches Feld und raeumt beim Reviewer-Paar das Gegenstueck weg.
+ *
+ * Eigene Funktion, weil hier eine Regel greift, die dem strikt feldweisen Mischen
+ * fehlt: Von reviewModel und reviewCommand darf genau eines gelten (Issue #432). Ein
+ * lokales reviewCommand neben dem geteilten reviewModel ergaebe sonst eine Config mit
+ * beiden Feldern — und das ist kein Randfall, sondern der Normalfall, wenn das Team
+ * den Claude-Default faehrt und einer mit fremder CLI reviewt.
+ *
+ * Stehen beide Felder in der lokalen Datei, bleiben auch beide stehen: Diese Datei ist
+ * dann schon fuer sich ungueltig, und eines davon wegzuwerfen wuerde den Fehler
+ * verstecken statt ihn der Schema-Pruefung zu ueberlassen.
+ *
+ * SYNC: strukturgleich in kit/night.mjs.
+ */
+function setzePersoenlichesFeld(config, feld, wert, local) {
+  config[feld] = wert;
+  const gegenstueck = REVIEWER_PAAR[feld];
+  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+}
+
 export function mergeWorkflowConfig(shared, local) {
   const config = { ...shared };
   const ignored = [];
@@ -273,7 +302,7 @@ export function mergeWorkflowConfig(shared, local) {
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
-      config[feld] = wert;
+      setzePersoenlichesFeld(config, feld, wert, local);
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       const blaetter = erlaubteBlaetter.get(feld);
       const zusammen = { ...config[feld] };
@@ -665,7 +694,9 @@ class GitHubIssueTracker {
 
   async getIssue(id) {
     const repo = this._repo();
-    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels"]);
+    // createdAt muss ausdruecklich angefordert werden — gh liefert nur die Felder aus
+    // dieser Liste, ein Weglassen waere still zu "kein Anlagedatum" geworden (#457).
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "number,title,body,state,comments,labels,createdAt"]);
     return {
       id: String(data.number),
       title: data.title,
@@ -673,6 +704,7 @@ class GitHubIssueTracker {
       status: null, // Board-Status nicht im Issue-Objekt, erfordert Project-Abfrage
       labels: labelNamesFrom(data.labels),
       comments: normalizeComments(data.comments),
+      ...createdFrom(data.createdAt),
     };
   }
 
@@ -866,6 +898,7 @@ class GitLabIssueTracker {
       status,
       labels: labelNames,
       comments: this._notes(id),
+      ...createdFrom(data.created_at),
     };
   }
 
@@ -1096,7 +1129,10 @@ class LocalIssueTracker {
     // Fuer ein Vorhaben ist `status` bedingungslos null — ein etwaiges Feld im
     // Frontmatter wird ignoriert. `createIssue` schreibt bei Epics keins, aber
     // `moveIssue` setzt `meta.status` ohne Typpruefung (Issue #377).
-    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), created: meta.created || "", labels: labelsAusFrontmatter(meta), body };
+    // `created` faellt weg statt "" zu liefern, wenn das Frontmatter keins oder ein
+    // formwidriges traegt (Issue #457) — sonst muessten Aufrufer zwei Formen von
+    // "kein Datum" unterscheiden.
+    return { id: meta.id || padId(id), type, parent: meta.parent || "", title: meta.title || "", status: type === "epic" ? null : (meta.status || "backlog"), ...createdFrom(meta.created), labels: labelsAusFrontmatter(meta), body };
   }
 
   _nextId() {
@@ -1137,6 +1173,25 @@ class LocalIssueTracker {
 
   async getIssue(id) {
     return this._read(id);
+  }
+
+  /**
+   * Aktivitaetsverlauf, synthetisch (Issue #460).
+   *
+   * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
+   * entsteht **ein** Eintrag vom Typ CREATED, damit `spec.mjs` hier dieselbe Quelle
+   * lesen kann wie beim Board. Ohne diese Bruecke waere in jedem local-Projekt jedes
+   * Paket „ohne Anlage-Eintrag" — und die gesamte Spec-Testsuite, die ueber `local`
+   * und `created:` laeuft, haette keine Grundlage mehr.
+   *
+   * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes
+   * Datum: `spec.mjs` behandelt ein Paket ohne CREATED-Eintrag als vor `seit`
+   * angelegt, und genau das trifft auf eine Datei ohne Anlagedatum zu.
+   */
+  async listActivity(id) {
+    const { created } = this._read(id);
+    if (!created) return [];
+    return [{ type: "CREATED", createdAt: created, detail: "Karte angelegt" }];
   }
 
   // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
@@ -1375,10 +1430,14 @@ class ToolboxIssueTracker {
       throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
     }
     if (!res.ok) {
+      // Der Status bleibt stehen, auch wenn der Server eine eigene Meldung schickt
+      // (Issue #460): Fuer den Aufrufer ist der Unterschied zwischen 404 und 500
+      // die Diagnose — "Route gibt es nicht" gegen "Route ist kaputt". Frueher
+      // ersetzte body.message den Status und nahm sie mit.
       let msg = `HTTP ${res.status}`;
       try {
         const body = await res.json();
-        if (body?.message) msg = body.message;
+        if (body?.message) msg = `${msg}: ${body.message}`;
       } catch { /* kein JSON-Body */ }
       throw new BoardError(`Toolbox-API-Fehler: ${msg}`);
     }
@@ -1490,6 +1549,12 @@ class ToolboxIssueTracker {
       labels: labelNamesFrom(item.labels),
       type,
       comments: await this._comments(item.id),
+      // Der Feldname der Karten-API ist nicht gegen die Live-Instanz belegt (#457,
+      // manueller Pruefpunkt). Darum drei Kandidaten statt eines geratenen Namens:
+      // createdAt fuehrt der Kommentar-Endpunkt derselben API bereits, created_at
+      // ist die REST-uebliche Form, created die knappe. Liefert die Instanz keins
+      // davon, fehlt `created` — #450/#451 muessen damit rechnen.
+      ...createdFrom(item.createdAt, item.created_at, item.created),
     };
   }
 
@@ -1506,6 +1571,27 @@ class ToolboxIssueTracker {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
     }
+  }
+
+  /**
+   * Aktivitaetsverlauf einer Karte (Issue #460).
+   *
+   * Zwei Unterschiede zu `_comments`, beide beabsichtigt:
+   *
+   * 1. Die Route liegt unter `/api/cards/{cardId}/...`, nicht unter
+   *    `/api/kanban/items/...`, und adressiert die **interne** ID — dieselbe Falle wie
+   *    bei move, comments und labels (Befund vom 2026-08-29). Daher `_resolveByNumber`.
+   * 2. **Ein Fehler wird nicht geschluckt.** `_comments` faengt 404/405 aelterer
+   *    Instanzen ab und liefert `[]`; hier waere das falsch. Der Verlauf ist die
+   *    Quelle des Anlagedatums — eine leere Liste hiesse „Karte ohne Geschichte" und
+   *    liesse das Gate ein altes Paket fuer neu halten. Der Aufrufer soll den Fehler
+   *    sehen, samt HTTP-Status.
+   */
+  async listActivity(number) {
+    const num = Number(number);
+    const item = this._resolveByNumber(await this._boardItems(), num);
+    const res = await this._fetch(`/api/cards/${item.id}/activity`);
+    return await res.json();
   }
 
   // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
@@ -1707,6 +1793,34 @@ export function normalizeComments(rawComments) {
       createdAt: String(c.createdAt ?? c.created_at ?? ""),
     }))
     .filter((c) => c.body !== "");
+}
+
+// Normalisiert das Anlagedatum eines Issues auf den Kalendertag `JJJJ-MM-TT`
+// (Issue #457). Von `getIssue` aller vier Tracker geteilt, analog zu
+// labelNamesFrom (#158) und normalizeComments (kanban-kit#449) — sonst stuende
+// dieselbe Kuerzung viermal da und koennte viermal auseinanderlaufen.
+//
+// Uebernommen werden die ersten zehn Zeichen des Plattformwerts, OHNE Umrechnung
+// in eine Zeitzone: GitHub liefert UTC mit `Z`, GitLab mit Offset. "In UTC
+// umrechnen" und "den Tag nehmen, den die Plattform nennt" sind verschiedene
+// Ergebnisse, und das Gate aus Ausbaustufe 4 vergleicht Tage.
+//
+// Rueckgabe ist ein Objekt zum Spreaden, kein String: Fehlt oder taugt der Wert
+// nicht, kommt {} zurueck und das Feld `created` fehlt im Ergebnis. Weder "" noch
+// "heute" — ein erfundenes Anlagedatum waere schlimmer als keins, weil das Gate ein
+// altes Paket als neu werten und an ihm scheitern wuerde. Das gilt auch fuer das
+// handgeschriebene Frontmatter des local-Trackers: `14.08.2026` wird nicht
+// umgedeutet, es faellt weg.
+//
+// Variadisch, weil der Toolbox-Adapter mehrere Feldnamen in Betracht zieht: Der
+// erste Kandidat, der einen gueltigen Tag ergibt, gewinnt.
+export function createdFrom(...kandidaten) {
+  for (const roh of kandidaten) {
+    if (typeof roh !== "string") continue;
+    const tag = roh.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(tag)) return { created: tag };
+  }
+  return {};
 }
 
 function labelToStatus(labelNames, config, state) {
@@ -2012,6 +2126,73 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   // Der erste Treffer lag auch vorher am Anfang des Laufs.
   const davor = body.slice(0, ende).replace(/(?<!\n)\n+$/, "");
   return `${davor}\nAutor-Modell: ${wert}\n\n${body.slice(ende).replace(/^\n+/, "")}`;
+}
+
+// ============================================================
+// Spec-Wirkung am Arbeitspaket (Issue #443, Plan #437)
+// ============================================================
+//
+// Ein Arbeitspaket muss sagen, was es an der Beschreibung unter specs/ aendert.
+// Dieselbe Bauart wie die Autor-Modell-Leitplanke darueber, aus demselben Grund
+// (A7): Eine Bitte im Skill-Text ist genau die Leitplanke, die unter Druck
+// uebersprungen wird — in diesem Repo dreimal belegt.
+//
+// Geprueft wird hier NUR die Anwesenheit des Abschnitts. Welche Zeilen darin
+// stehen duerfen, prueft `spec.mjs check --paket` (Issue #442) — und nur dort.
+// Zwei Fassungen derselben Grammatik waeren zwei Wahrheiten, von denen die
+// zweite still veraltet.
+//
+// Anders als beim Autor-Modell ergaenzt der Adapter nichts: Es gibt keinen Wert,
+// den er kennen koennte. Eine erfundene Wirkungsangabe waere schlimmer als keine.
+
+/**
+ * Die Ueberschrift des Abschnitts — dieselbe Form, die
+ * `WIRKUNG_UEBERSCHRIFT_RE` in kit/spec.mjs liest.
+ *
+ * Exportiert, weil der Laufzeitwaechter in test/board-regex-laufzeit.test.mjs
+ * gegen die Konstante des Bestands misst und kein Literal kopieren soll — eine
+ * Kopie driftet ab, sobald der Ausdruck sich aendert.
+ *
+ * `[^\S\n]*` statt `\s*`, wie bei AUTOR_MODELL_ZEILE: So folgt dem Leerraum-Lauf
+ * keine zweite Wiederholung, die dieselben Zeichen akzeptiert (S8786).
+ */
+export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
+
+// Der Hilfetext nennt den fehlenden Abschnitt und den Ort der Formpruefung. Die
+// Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der die
+// Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
+// Regex.
+const SPEC_WIRKUNG_HILFE =
+  'Der Body braucht einen Abschnitt "## Spec-Wirkung" (eigene Zeile, ausserhalb eines Code-Fences), ' +
+  "der sagt, was das Paket an der Beschreibung unter specs/ aendert. " +
+  "Die Form der Zeilen darin prueft `node .claude/kit/spec.mjs check --paket <datei>`.";
+
+/**
+ * Traegt der Body die Ueberschrift ausserhalb eines Code-Fences?
+ *
+ * Die Fence-Behandlung ist der Kern — dieselbe wie bei `kontextGrenzen`: Ohne sie
+ * kaeme eine Doku-Karte durch, die die Grammatik als Beispiel zeigt, statt sie
+ * anzuwenden.
+ */
+function specWirkungVorhanden(body) {
+  const imFence = fenceLauf();
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (!imFence(zeile) && SPEC_WIRKUNG_UEBERSCHRIFT.test(zeile)) return true;
+  }
+  return false;
+}
+
+/**
+ * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt.
+ *
+ * Der Schalter ist das Vorhandensein des `spec`-Blocks, nicht ein Feld darin
+ * (A1). Ohne Block bleibt `issue create` unveraendert — das Kit selbst ist so ein
+ * Projekt, und waere diese Bedingung falsch, lehnte die Leitplanke die Pakete ab,
+ * mit denen sie gebaut wird.
+ */
+function specWirkungSicherstellen(config, body) {
+  if (!config?.spec || specWirkungVorhanden(body)) return;
+  fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
 }
 
 // ============================================================
@@ -2370,7 +2551,7 @@ function derivedFromOption(wert) {
   return nummer;
 }
 
-async function issueCreate(tracker, args) {
+async function issueCreate(tracker, config, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
@@ -2391,6 +2572,11 @@ async function issueCreate(tracker, args) {
     color: args.color,
     shortcode: args.shortcode,
   };
+  // Nach der Autor-Modell-Leitplanke und auf demselben aufgeloesten Body
+  // (Issue #443): Fehlt beides, meldet der Adapter das Autor-Modell zuerst, weil
+  // die aeltere Pruefung schon in der Zeile darueber abbricht. Und vor jedem
+  // Netzaufruf — ein Body ohne Wirkungsangabe soll keine Karte anlegen.
+  specWirkungSicherstellen(config, felder.body);
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
@@ -2415,6 +2601,25 @@ async function issueEpics(tracker) {
     fail("epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)");
   }
   out(await tracker.listEpics());
+}
+
+/**
+ * Aktivitaetsverlauf einer Karte (Issue #460).
+ *
+ * `spec.mjs` liest daraus das Anlagedatum: Die Karten-Route fuehrt keins — an der
+ * Instanz belegt am 2026-09-02 (manuelle Pruefung zu Issue #457). Der Verlauf geht
+ * unveraendert durch, einschliesslich seiner Reihenfolge; wer das aelteste Ereignis
+ * braucht, sucht nach dem kleinsten `createdAt` und verlaesst sich nicht auf die
+ * Sortierung der Antwort.
+ */
+async function issueActivity(tracker, config, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue activity <id>");
+  if (typeof tracker.listActivity !== "function") {
+    const name = config?.issueTracker ?? "dieser Tracker";
+    fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+  }
+  out(await tracker.listActivity(id));
 }
 
 async function issueMove(tracker, args) {
@@ -2558,10 +2763,11 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, args);
+    case "create":  return issueCreate(tracker, config, args);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
+    case "activity": return issueActivity(tracker, config, args);
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);

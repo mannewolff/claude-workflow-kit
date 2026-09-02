@@ -55,6 +55,14 @@ Frage nach, wenn etwas unklar ist. Raten ist kein Ersatz für eine kurze Rückfr
 
 Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten, wenn der Scope unklar ist. Suche aktiv nach wiederverwendbaren Funktionen und Mustern — vermeide neuen Code, wenn eine passende Implementierung bereits existiert.
 
+**Trägt `.claude/workflow.config.json` einen Top-Level-Block `spec`, gilt für das Bestandsverhalten eine Rangfolge.** Dann ist die Beschreibung unter `specs/` die **erste** Quelle: Lies vor dem Planen `specs/INDEX.md` und lade die Specs der betroffenen Bereiche. Produktionscode kommt als Quelle für Bestandsverhalten **erst, wenn** die geladenen Specs die Frage nicht beantworten — und jede solche Stelle wird im Unterabschnitt `### Beschreibungs-Luecken` unter `## Betroffene Bereiche` ausgewiesen (Schritt 3). Die Rangfolge betrifft die Frage, *wie sich der Bestand heute verhält*; wer eine Datei ändern will, sieht sie sich weiterhin an.
+
+**Betroffene Bereiche** sind die Einträge aus `specs/INDEX.md`, deren Titel die Anforderung treffen. `checkAreas` aus derselben Config ist ein **anderer Namensraum** — es schneidet die Pflicht-Checks zu, nicht die Beschreibung, und wird hier nicht benutzt. Die beiden Namen sehen sich ähnlich genug, dass eine Verwechslung unbemerkt bliebe: Der Plan lüde dann die falschen Specs und meldete Lücken, die zu einem anderen Zuschnitt gehören.
+
+**Degraded Mode: Block gesetzt, aber kein Index.** Fehlt `specs/INDEX.md` oder ist die Datei leer, meldet der Skill das **einmal** im Plan-Text — etwa als „`spec`-Block gesetzt, aber `specs/INDEX.md` fehlt oder ist leer: geplant wurde gegen den Code" — und läuft ansonsten wie ohne Block weiter. Kein Abbruch, und **keine leere Lückenliste**: Der Unterabschnitt entfällt dann ganz, statt mit einem Leerfall Vollständigkeit zu behaupten, die niemand geprüft hat.
+
+**Ohne `spec`-Block sieht ein Projekt nichts davon.** Keine Rangfolge, keine Beschreibungs-Lücken, keine Vorhaben-Notiz — `/plan` läuft unverändert wie vor Issue #447. Der Schalter ist das Vorhandensein des Blocks, kein Feld darin.
+
 ### 3. Plan erstellen
 
 Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der Arbeitspakete in `/issues`, nicht als Anregung. Jeder Plan enthält die folgenden sechs `##`-Überschriften **genau einmal und in dieser Reihenfolge**. Dazwischen dürfen Unterüberschriften ab Ebene `###` stehen, aber keine weiteren Überschriften der Ebene `##`:
@@ -87,6 +95,49 @@ Was in die Abschnitte gehört:
 **Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.`
 
 **Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
+
+#### Beschreibungs-Luecken: ein Unterabschnitt von `## Betroffene Bereiche` (nur mit `spec`-Block)
+
+Bei gesetztem `spec`-Block trägt `## Betroffene Bereiche` einen Unterabschnitt mit der wörtlichen Überschrift `### Beschreibungs-Luecken` — Ebene `###`, nicht `##`. Ein `##` wäre ein siebter Abschnitt und damit ein Formverstoß gegen die sechs Überschriften oben. Die Schreibweise ist transliteriert wie die Kommando- und Feldnamen des Kits (`luecken`, `--kuerzel`), nicht `Lücken`.
+
+Gefüllt wird der Unterabschnitt aus **zwei** Quellen. Die erste ist das Kommando:
+
+```bash
+node .claude/kit/spec.mjs luecken --bereich <name> [<name> …]
+```
+
+Es meldet je Bereich die Dateien, die keine gültige Aussage berührt — als JSON auf stdout, immer, auch mit leerer Liste. Übergeben werden genau die Bereiche, die in Schritt 2 als betroffen bestimmt wurden.
+
+Die zweite Quelle ist die Session selbst: **jede Stelle, an der Produktionscode als Quelle gedient hat.** Sie steht in dieser Form:
+
+```
+- <Bereich>: <Frage, die die Spec nicht beantwortet> — gelesen: <Datei>
+```
+
+Das ist **kein Verbot** — Code lesen bleibt erlaubt, es muss nur dastehen. Ein Plan, der schweigend aus dem Code abgeleitet ist, sieht aus wie einer, der gegen die Beschreibung geplant wurde; später ist nicht mehr zu unterscheiden, welcher von beiden er war.
+
+**Die Leerfälle stehen wörtlich fest.** Wurden Bereiche geladen und keine Lücke gefunden:
+
+```
+- Keine Beschreibungs-Luecken in den geladenen Bereichen: <Liste der Bereiche>.
+```
+
+Ist gar kein Bereich betroffen:
+
+```
+- Kein Spec-Bereich betroffen.
+```
+
+Bewusst **nicht** `- Keine.` — diese Form ist in `CLAUDE-Plan.md` (P6) für die beiden Pflichtabschnitte `## Architektonische Entscheidungen` und `## Offene Fragen` reserviert. Hier verwendet, wären drei verschiedene Aussagen — „nichts zu entscheiden", „keine Lücke gefunden", „kein Bereich betroffen" — nicht mehr auseinanderzuhalten.
+
+So sieht der Unterabschnitt gefüllt aus:
+
+```
+### Beschreibungs-Luecken
+
+- board: kit/board.mjs wird von keiner gueltigen Aussage beruehrt.
+- spec: Wie verhaelt sich `luecken` bei einem Bereich ohne Datei? — gelesen: kit/spec.mjs
+```
 
 ### 4. Plan zur Diskussion stellen
 
@@ -139,6 +190,31 @@ Ein frisches Dokument ist ungeprüft; das Kommando setzt `review:offen`. Ohne de
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` statt einer Nummer `{ ideaId, pending: true }`, liegt das Plan-Dokument als board-lose Idee im Projekt-Ideen-Pool. Der Skill meldet dann die `ideaId` und weist darauf hin, dass der Mensch es erst einplanen muss — vorher existiert keine Nummer, unter der es adressierbar wäre.
 
 **Fehlerfall:** Schlägt das Anlegen fehl, meldet der Skill **weder eine Nummer noch einen erfolgreichen Abschluss**. Ein Plan, der nirgends steht, ist kein festgehaltener Plan.
+
+#### Vorhaben-Notiz (nur mit `spec`-Block)
+
+Trägt `.claude/workflow.config.json` einen Top-Level-Block `spec`, hält der Skill **unmittelbar nach dem Anlegen des Plan-Dokuments** fest, ob für dieses Vorhaben Produktionscode als Quelle gedient hat. Ohne den Block entfällt der Unterschritt ersatzlos.
+
+**Erst das Kürzel** — es kommt aus dem Tracker:
+
+```bash
+node .claude/kit/board.mjs issue epics
+```
+
+- **Genau ein Vorhaben in der Liste:** dessen `shortcode` gilt.
+- **Mehrere Vorhaben:** Der Skill **fragt den Menschen** und nennt die Kürzel zur Auswahl. Geraten wird nicht: Die Notiz landete unter einem fremden Vorhaben und wäre dort weder zu finden noch als falsch zu erkennen.
+- **Leere Liste _oder_ Exitcode ungleich 0:** Rückfall auf `plan-<M>`. **Beides löst ihn aus** — bei `github` und `gitlab` kennt der Adapter keine Vorhaben und endet mit `fail(...)`, also einem Fehler und nicht mit einer leeren Liste. Wer nur die leere Liste abfängt, bekommt bei genau diesen beiden Trackern gar keine Notiz.
+- **Leerer `shortcode`:** ebenfalls Rückfall auf `plan-<M>`.
+
+`<M>` ist die Nummer des Plan-Dokuments. Lieferte `issue create` statt einer Nummer eine `ideaId` (Pool-Idee, siehe oben), ist `<M>` die `ideaId`. **Bei Bahn 1 entfällt der Aufruf ganz** — dort entsteht kein Plan-Dokument, und ohne Einheit gibt es nichts zu notieren.
+
+**Dann die Notiz:**
+
+```bash
+node .claude/kit/spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund <text>]
+```
+
+`--code-gelesen` beantwortet die Frage aus Schritt 2: Musste die Session Produktionscode als Quelle für Bestandsverhalten heranziehen? **`--grund` ist Pflicht bei `--code-gelesen ja`** und nennt die Bereiche und Fragen, für die die Spec schwieg — dieselben Stellen, die als `gelesen:`-Zeilen in `### Beschreibungs-Luecken` stehen. Bei `nein` entfällt der Schalter.
 
 ## Stop-Punkt
 

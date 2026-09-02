@@ -10,7 +10,7 @@ Ersetzt Schritt 5 durch eine feinere Gangart: **Genau ein** Ready-Issue wird vol
 
 ## Vorbedingung
 
-Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
 
 Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
@@ -83,7 +83,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 ### 2. Issue vollständig lesen
 
-Lies alle vier Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
+Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wirkung`; daraus stammen die IDs fuer die Testnamen. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
 
 ### 3. Implementieren
 
@@ -95,6 +95,15 @@ Lies alle vier Abschnitte des Issues. Implementiere **gegen das Issue**, nicht g
 - Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
 - Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
 - Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten und den geschriebenen Exit-Code einlesen — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
+
+**Aussage-ID in den Testnamen (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Die ID-Form ist `<bereich>-<N>`; vergeben hat sie `/issues`, und sie steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
+
+- **„Im Testnamen" heisst:** im Titel-String des Tests — `test("[<ID>] …")`, `it("[<ID>] …")`. Wo der Testname ein Bezeichner ist und keine eckigen Klammern erlaubt (JUnit, pytest), steht der Verweis in `@DisplayName` bzw. im Docstring. Massgeblich ist, dass `spec.testPattern` ihn im **Dateitext** findet.
+- Belegt ein Test mehrere Aussagen, steht jede ID in einer eigenen Klammer: `[board-7] [board-8]`.
+- Bei **`GEAENDERT`** wird der vorhandene Test mit `[<ID>]` an den neuen Aussage-Text angepasst; ein zweiter Verweis ist nicht noetig, aber ein **unveraenderter Test ist kein Beleg**. Der Verweis allein sagt bei `GEAENDERT` nichts — er stuende sonst ueber einem Test, der noch das alte Verhalten prueft, und das Gate saehe die Aussage als belegt.
+- **`ENTFAELLT` braucht keinen** neuen Verweis.
+- Gesucht wird mit `spec.testPattern` (regulaerer Ausdruck mit dem Platzhalter `<ID>`, Default `\[<ID>\]`) in den Dateien aus `spec.testGlobs` — beide Felder stehen im `spec`-Block der `.claude/workflow.config.json`.
+- Bei einem Paket mit `KEINE` und in Projekten ohne `spec`-Block aendert sich nichts.
 
 ### 4. Pruefungen vor dem Commit
 

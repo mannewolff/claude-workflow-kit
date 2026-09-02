@@ -29,8 +29,17 @@ const INSTALLER = join(repoRoot, "install.mjs");
 
 // Die Antworten auf die Installer-Fragen, in der Reihenfolge von main():
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
-// reviewModel (leer = Default uebernehmen) und zuletzt das j fuer die Labels.
-const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "j"].join("\n") + "\n";
+// reviewModel und reviewCommand (leer = Default uebernehmen), die Spec-Frage (leer =
+// Nein, Issue #439) und zuletzt das j fuer die Labels.
+//
+// Die neunte Zeile gehoert der Spec-Frage: Im Pipe-Modus verbraucht jede Frage genau
+// eine Zeile. Ohne sie fraesse die Spec-Frage das 'j' der Label-Frage — und der Test
+// pruefte anschliessend Labels, die nie angelegt wurden.
+// Eine Antwortzeile weniger als frueher: Bei issueTracker 'gitlab' entfaellt die Frage
+// nach dem beschriebenen Verhalten seit Issue #461 (A19). Bliebe die Zeile stehen,
+// fraesse die Label-Frage sie, das 'j' bliebe uebrig — und die Labels wuerden nie
+// angelegt, ohne dass der Test es merkt.
+const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "j"].join("\n") + "\n";
 
 test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", NUR_POSIX, () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-"));

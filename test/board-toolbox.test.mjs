@@ -12,8 +12,14 @@ import { join } from "node:path";
 
 import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
+// `createdAt` ist der Feldname, den der Kommentar-Endpunkt derselben API bereits
+// fuehrt (kanban-kit#449). Fuer die Karten-Route ist er zum Zeitpunkt von Issue #457
+// NICHT gegen die Live-Instanz belegt — dieser Mock belegt darum nur, dass der
+// Adapter die Form verarbeitet, nicht dass die Plattform sie liefert. Der Adapter
+// nimmt deshalb auch created_at und created an; die Klaerung steht als manueller
+// Pruefpunkt an Issue #457.
 function karte(number, spalte, extra = {}) {
-  return { id: number * 100, number, title: `Karte ${number}`, body: `Body ${number}`, column: spalte, position: 0, ...extra };
+  return { id: number * 100, number, title: `Karte ${number}`, body: `Body ${number}`, column: spalte, position: 0, createdAt: "2026-08-14T09:12:33Z", ...extra };
 }
 
 // Antwortet auf die Board-Abfrage mit dem gruppierten Format der Kanban-API.
@@ -172,6 +178,7 @@ test("get liefert die Karte samt Kommentaren", async () => {
       assert.deepEqual(JSON.parse(res.stdout), {
         id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task",
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
+        created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
       });
     }
   );
@@ -537,11 +544,16 @@ test("401 verweist auf einen erneuten tbx-Login", async () => {
   });
 });
 
-test("Fehlerantwort mit JSON-Rumpf zeigt dessen message", async () => {
+test("Fehlerantwort mit JSON-Rumpf zeigt Status UND dessen message", async () => {
+  // Seit Issue #460 bleibt der HTTP-Status stehen, statt von der Server-Meldung
+  // ersetzt zu werden: Fuer die Diagnose ist der Unterschied zwischen 404 und 500
+  // ("Route gibt es nicht" gegen "Route ist kaputt") die halbe Information, und
+  // `spec.mjs` braucht ihn, um einen fehlenden Endpunkt von einem defekten zu
+  // unterscheiden.
   await mitBoard(() => ({ status: 500, json: { message: "Board kaputt" } }), async (dir) => {
     const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /Toolbox-API-Fehler: Board kaputt/);
+    assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 500: Board kaputt/);
   });
 });
 
@@ -599,6 +611,57 @@ test("get und list liefern fuer dieselbe Karte dieselben Labels", async () => {
         JSON.parse(geholt.stdout).labels,
         JSON.parse(gelistet.stdout).find((i) => i.id === "7").labels,
       );
+    },
+  );
+});
+
+// --- Anlagedatum bei `issue get` (Issue #457) ---
+//
+// ACHTUNG: Anders als bei den Labels (#312) ist der Feldname der Karten-API hier
+// NICHT gegen die Live-Instanz belegt. Diese Tests zeigen, dass der Adapter die
+// drei plausiblen Formen verarbeitet und ohne Datum kein Feld erfindet — welche
+// Form die Instanz tatsaechlich liefert (oder ob sie gar keine liefert), ist der
+// manuelle Pruefpunkt an Issue #457.
+
+test("get liefert das Anlagedatum als Kalendertag", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items"
+      ? { status: 200, json: gruppiert([karte(7, "READY")]) }
+      : { status: 200, json: [] }),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.match(JSON.parse(res.stdout).created, /^\d{4}-\d{2}-\d{2}$/);
+    },
+  );
+});
+
+test("get nimmt auch created_at und created als Anlagefeld", async () => {
+  for (const feld of ["created_at", "created"]) {
+    await mitBoard(
+      (req) => (req.url === "/api/kanban/items"
+        ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined, [feld]: "2026-08-14T23:30:00+02:00" })]) }
+        : { status: 200, json: [] }),
+      async (dir) => {
+        const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+        assert.equal(res.status, 0, res.stderr);
+        assert.equal(JSON.parse(res.stdout).created, "2026-08-14", `Feld ${feld}`);
+      },
+    );
+  }
+});
+
+// Liefert die Instanz gar kein Anlagefeld, fehlt `created` — kein erfundener Wert,
+// sonst wertet das Gate ein altes Paket als neu (#450/#451 muessen damit rechnen).
+test("get ohne Anlagefeld in der Antwort laesst created weg", async () => {
+  await mitBoard(
+    (req) => (req.url === "/api/kanban/items"
+      ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined })]) }
+      : { status: 200, json: [] }),
+    async (dir) => {
+      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
+      assert.equal(res.status, 0, res.stderr);
+      assert.equal("created" in JSON.parse(res.stdout), false);
     },
   );
 });

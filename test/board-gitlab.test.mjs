@@ -103,13 +103,17 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
       status: "ready",
       labels: ["Ready"], // seit Issue #312 auch bei get
       comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z" }],
+      created: "2026-08-14", // Anlagedatum aus created_at (Issue #457)
     });
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /api projects\/:id\/issues\/42\/notes/);
   }, {
     regeln: [
       {
         match: "^issue view",
-        stdout: { iid: 42, title: "Ein Issue", description: "Die Beschreibung", state: "opened", labels: [{ name: "Ready" }] },
+        stdout: {
+          iid: 42, title: "Ein Issue", description: "Die Beschreibung", state: "opened",
+          labels: [{ name: "Ready" }], created_at: "2026-08-14T09:12:33.000+02:00",
+        },
       },
       {
         match: "^api projects",
@@ -118,6 +122,31 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
           { author: { username: "manne" }, body: "changed the description", created_at: "2026-07-28T10:01:00Z", system: true },
         ],
       },
+    ],
+  });
+});
+
+// --- Anlagedatum bei `issue get` (Issue #457) ---
+
+test("get liefert created_at als Kalendertag", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.match(board(dir, "issue", "get", "42").created, /^\d{4}-\d{2}-\d{2}$/);
+  }, {
+    regeln: [
+      { match: "^issue view", stdout: { iid: 42, title: "T", description: "B", state: "opened", created_at: "2026-08-14T23:30:00+02:00" } },
+      { match: "^api projects", stdout: [] },
+    ],
+  });
+});
+
+// Kein erfundenes Datum, wenn die Antwort keins traegt (Issue #457).
+test("get ohne created_at laesst das Feld weg", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    assert.equal("created" in board(dir, "issue", "get", "42"), false);
+  }, {
+    regeln: [
+      { match: "^issue view", stdout: { iid: 42, title: "T", description: "B", state: "opened" } },
+      { match: "^api projects", stdout: [] },
     ],
   });
 });

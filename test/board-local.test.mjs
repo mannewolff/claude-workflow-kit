@@ -102,6 +102,26 @@ test("get liefert alle Frontmatter-Felder und den Body", () => {
       id: "0003", type: "task", parent: "0001", title: "Gelesen",
       status: "ready", created: "2026-01-02", labels: [], body: "Der Body.\n",
     });
+    assert.match(geholt.created, /^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// --- Anlagedatum bei `issue get` (Issue #457) ---
+//
+// Das Frontmatter ist handgeschrieben — ein Wert wie 14.08.2026 kommt vor. Er wird
+// NICHT umgeformt: Das Gate aus Ausbaustufe 4 braucht ein verlaessliches Datum, und
+// ein umgedeutetes waere schlimmer als keins.
+test("get laesst ein formwidriges created im Frontmatter weg", () => {
+  mitProjekt((dir) => {
+    schreibeIssue(dir, "0006.md", '---\nid: "0006"\ntitle: Krumm\ncreated: 14.08.2026\n---\nBody.\n');
+    assert.equal("created" in board(dir, "issue", "get", "0006"), false);
+  });
+});
+
+test("get liefert created auch mit Uhrzeit als reinen Kalendertag", () => {
+  mitProjekt((dir) => {
+    schreibeIssue(dir, "0007.md", '---\nid: "0007"\ntitle: Mit Zeit\ncreated: 2026-08-14T09:12:33Z\n---\nBody.\n');
+    assert.equal(board(dir, "issue", "get", "0007").created, "2026-08-14");
   });
 });
 
@@ -116,7 +136,9 @@ test("get ohne Frontmatter: Datei ist Body, Felder tragen Defaults", () => {
     assert.equal(geholt.status, "backlog");
     assert.equal(geholt.title, "");
     assert.equal(geholt.parent, "");
-    assert.equal(geholt.created, "");
+    // Ohne Frontmatter fehlt `created` ganz — frueher kam "" zurueck (Issue #457).
+    // #450/#451 muessen sonst zwei Formen von "kein Datum" unterscheiden.
+    assert.equal("created" in geholt, false);
     assert.equal(geholt.body, "Nur Text, kein Frontmatter.\n");
   });
 });

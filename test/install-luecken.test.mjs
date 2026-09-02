@@ -73,7 +73,9 @@ test("ohne glab im PATH warnt das Label-Setup, ohne die Installation zu kippen",
     const leer = join(dir, "leerbin");
     mkdirSync(leer, { recursive: true });
 
-    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "j"], { PATH: leer });
+    // Keine Spec-Antwortzeile: Bei issueTracker 'gitlab' entfaellt die Frage seit
+    // Issue #461 (A19). Die neunte Zeile ist damit direkt das 'j' der Label-Frage.
+    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "j"], { PATH: leer });
 
     assert.equal(res.status, 0,
       `ein fehlendes glab darf die Installation nicht kippen: ${res.stderr}\n${res.stdout}`);
