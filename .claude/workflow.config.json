@@ -105,5 +105,33 @@
   "toolbox": {
     "host": "https://kanban.mwolff.org",
     "ideaStored": false
+  },
+  "spec": {
+    "seit": "2026-09-03",
+    "bereiche": {
+      "board": [
+        "kit/board.mjs"
+      ],
+      "night": [
+        "kit/night.mjs"
+      ],
+      "checks": [
+        "kit/checks.mjs"
+      ],
+      "spec": [
+        "kit/spec.mjs"
+      ],
+      "installer": [
+        "install.mjs",
+        "tools/sync-blobs.mjs"
+      ],
+      "skills": [
+        "skills/**/SKILL.md"
+      ]
+    },
+    "testGlobs": [
+      "test/*.test.mjs"
+    ],
+    "testPattern": "\\[<ID>\\]"
   }
 }

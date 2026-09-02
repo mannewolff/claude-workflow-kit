@@ -98,13 +98,20 @@ test("specs/ ohne Bereichsdatei: der Index entsteht mit leerer Tabelle", () => {
 
 test("index schreibt ausschliesslich ins Arbeitsverzeichnis, nie in den Repo-Baum", () => {
   // Die Leitplanke zu diesen Tests selbst: `index` ist das einzige schreibende
-  // Kommando des Kits, das ohne Anker arbeitet. Entstuende specs/ im Repo, meldete
-  // der naechste git status eine Aenderung, die niemand gemacht hat.
+  // Kommando des Kits, das ohne Anker arbeitet. Veraenderte ein Testlauf specs/ im
+  // Repo, meldete der naechste git status eine Aenderung, die niemand gemacht hat.
+  //
+  // Geprueft wird der ZUSTAND VORHER GEGEN NACHHER, nicht die Abwesenheit von specs/:
+  // Seit Issue #453 fuehrt dieses Repo ein eigenes, versioniertes specs/. Ein Test auf
+  // `existsSync(...) === false` wuerde ab da rot, ohne dass ein Testlauf etwas
+  // angefasst haette — er verwechselte "der Test hat geschrieben" mit "es gibt es".
+  const vorher = existsSync(join(repoRoot, "specs"));
+
   mitFixture("zwei-bereiche", (dir) => {
     assert.equal(spec(dir, "index").status, 0);
     assert.ok(readdirSync(join(dir, "specs")).includes("INDEX.md"), "im Fixture entstand kein Index");
   });
 
-  assert.equal(existsSync(join(repoRoot, "specs")), false,
-    "die Testlaeufe haben ein specs/ im Repo-Baum hinterlassen");
+  assert.equal(existsSync(join(repoRoot, "specs")), vorher,
+    "die Testlaeufe haben den Zustand von specs/ im Repo-Baum veraendert");
 });
