@@ -61,7 +61,12 @@ export function indexText(dir) {
  */
 export function configSchreiben(dir, config) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config, null, 2), "utf-8");
+  // `issueTracker` gehoert seit Issue #461 dazu: Ein fehlendes Feld gilt als 'github'
+  // (Schema-Default), und github traegt das beschriebene Verhalten nicht (A19) — jede
+  // Fixture ohne das Feld wuerde abgewiesen. 'local' ist der Tracker dieser Tests und
+  // ausdruecklich erlaubt; ein Test, der einen anderen braucht, setzt ihn selbst.
+  const vollstaendig = { issueTracker: "local", ...config };
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(vollstaendig, null, 2), "utf-8");
 }
 
 /** Legt eine Paketdatei im Fixture-Verzeichnis an und gibt ihren Pfad zurueck. */

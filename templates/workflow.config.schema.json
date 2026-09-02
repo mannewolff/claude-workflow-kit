@@ -99,7 +99,7 @@
     },
     "spec": {
       "type": "object",
-      "description": "Schalter fuer das beschriebene Soll-Verhalten unter specs/ (Plan #437, fachlich #431). Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool haette einen Aus-Zustand, und die Entscheidung ist nicht zurueckzunehmen: Es gibt keinen Weg zurueck. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spaetere Gate. ACHTUNG: Bis zur Umsetzung von Ausbaustufe 4 hat der Block keine Wirkung — kein Werkzeug liest ihn, kein Skill fragt danach. Wer ihn vorher setzt, bekommt weder Leitplanke noch Gate. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Schalter fuer das beschriebene Soll-Verhalten unter specs/ (Plan #437, fachlich #431). Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool haette einen Aus-Zustand, und die Entscheidung ist nicht zurueckzunehmen: Es gibt keinen Weg zurueck. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spaetere Gate. ACHTUNG: Bis zur Umsetzung von Ausbaustufe 4 hat der Block keine Wirkung — kein Werkzeug liest ihn, kein Skill fragt danach. Wer ihn vorher setzt, bekommt weder Leitplanke noch Gate. ACHTUNG: Der Block traegt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab (A19 in Plan #437) — dort gibt es weder Aktivitaetsverlauf noch Suche ueber Aussagen, auf denen dieses Verhalten aufsetzt. Moeglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "seit": {
           "type": "string",

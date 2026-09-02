@@ -457,7 +457,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
 
     // Leere Antworten uebernehmen die migrierten Werte als Defaults; vorletzte Zeile
     // ist die Spec-Frage (#439), letzte das 'n' der GitLab-Label-Frage.
-    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     const c = config(dir);
     assert.equal(c.codeHost, "gitlab");
@@ -473,7 +473,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
 test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   const dir = fixture("install-gitlab-nein-");
   try {
-    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Labels manuell anlegen: Backlog, Ready/);
     assert.match(res.stdout, /Leerzeichen in den Namen verwenden, kein Bindestrich/);

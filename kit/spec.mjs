@@ -365,6 +365,38 @@ function configLesen(root = process.cwd()) {
   }
 }
 
+// Tracker, die das beschriebene Verhalten nicht tragen (A19, Issue #461).
+//
+// Der Ausschluss richtet sich gegen diese beiden, nicht gegen alle ausser einem:
+// `toolbox` bringt Aktivitaetsverlauf und Suche mit, `local` braucht beides nicht —
+// er hat keinen Server, und den Verlauf synthetisiert er seit Issue #460 aus dem
+// Frontmatter. Waere er ausgeschlossen, verloeren die Spec-Tests ihre Grundlage.
+const TRACKER_OHNE_SPEC = new Set(["github", "gitlab"]);
+
+// Das Schema fuehrt `issueTracker` mit default "github" und required: []. Ein Block
+// ohne das Feld ist gueltig — und darf den Schalter nicht stillschweigend freigeben.
+const TRACKER_DEFAULT = "github";
+
+/**
+ * A19: Bricht ab, wenn ein `spec`-Block auf einem Tracker steht, der ihn nicht traegt.
+ *
+ * Ohne `spec`-Block passiert nichts — ein Projekt ohne Schalter merkt von dieser Regel
+ * so wenig wie vom Rest (Kriterium 2). Die Meldung geht auf stderr: `show` und
+ * `luecken` halten stdout fuer ihre Ausgabe frei.
+ */
+function trackerPruefen(root = process.cwd()) {
+  const config = configLesen(root);
+  if (!config?.spec) return;
+  const tracker = config.issueTracker ?? TRACKER_DEFAULT;
+  if (!TRACKER_OHNE_SPEC.has(tracker)) return;
+  fail(
+    `Das beschriebene Verhalten traegt 'issueTracker: ${tracker}' nicht (A19 in Plan #437): ` +
+    `Aktivitaetsverlauf und Suche ueber Aussagen gibt es dort nicht. ` +
+    `Moeglich sind 'toolbox' und 'local'. Entweder den Tracker wechseln oder den 'spec'-Block ` +
+    `aus ${CONFIG_DATEI} entfernen.`
+  );
+}
+
 /** Der Bereich einer ID: alles vor der letzten Nummer (A16). */
 function praefix(id) {
   return id.slice(0, id.lastIndexOf("-"));
@@ -1823,6 +1855,12 @@ function main() {
     process.stdout.write(`spec.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
     return 0;
   }
+
+  // A19 an genau einer Stelle, vor jedem Kommando und vor jeder Argumentpruefung:
+  // Sonst braeuchte der Test fuer `check --anker` und `apply` ein Git-Repo mit
+  // aufloesbarem Anker, um ueberhaupt bis zur Abweisung zu kommen. `--help` und
+  // `--version` sind oben schon beantwortet und damit ausgenommen.
+  trackerPruefen();
 
   const [command, ...rest] = argv;
   if (command === "index") return index();

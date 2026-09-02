@@ -224,6 +224,10 @@ test("spec: die description warnt vor der Wirkungslosigkeit und nennt die Teamwe
   assert.match(text, /ACHTUNG/, "der Warnton folgt dem ACHTUNG-Satz an buildChecks");
   assert.match(text, /keine Wirkung/, "die description sagt, dass der Block noch nichts bewirkt");
   assert.match(text, /enabled/, "die description sagt, dass es kein enabled gibt");
+  // Seit Issue #461 (A19) traegt der Block nicht auf jedem Tracker. Wer die Lage nur
+  // im Plan festhaelt, laesst denjenigen im Regen, der die Config vor sich hat.
+  assert.match(text, /github und gitlab/, "die description nennt die ausgeschlossenen Tracker nicht");
+  assert.match(text, /toolbox und local/, "die description nennt die moeglichen Tracker nicht");
   assert.ok(
     text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
     "die description endet mit der Standardformel der Top-Level-Felder"

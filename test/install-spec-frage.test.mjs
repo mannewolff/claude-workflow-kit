@@ -60,7 +60,11 @@ function schreibeConfig(dir, werte) {
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand — und an neunter Stelle die Antwort auf die Spec-Frage.
-const bisSpec = (antwort) => ["projekt", "github", "github", "", "", "", "", "", antwort];
+// Der Tracker ist 'toolbox', nicht 'github': Seit Issue #461 entfaellt die Frage bei
+// github und gitlab ersatzlos (A19) — mit ihnen waere kein Ja-Pfad mehr erreichbar.
+// 'toolbox' ist in validationRules erlaubt, auch wenn der Prompt-Text nur github,
+// gitlab und local nennt.
+const bisSpec = (antwort) => ["projekt", "github", "toolbox", "", "", "", "", "", antwort];
 
 // --- Ja und Nein ---
 
@@ -79,6 +83,39 @@ test("Antwort 'j' schreibt einen spec-Block mit Datum und einem Bereich", () => 
     // Der Installer raet keine Bereiche (Plan A8). Was er setzt, ist ein erkennbarer
     // Platzhalter — ohne diese Zeile merkt niemand, dass er ihn ersetzen muss.
     assert.match(res.stdout, /spec\.bereiche bitte von Hand pflegen\./);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1] Bei github wird die Frage gar nicht erst gestellt", () => {
+  // A19 (Issue #461): 'github' und 'gitlab' tragen das beschriebene Verhalten nicht.
+  // Der Installer bietet die Entscheidung dann nicht an, statt eine zu erfragen, die
+  // er anschliessend nicht einloest — spec.mjs wuerde jeden Lauf abweisen.
+  //
+  // Eine Antwortzeile weniger als bei bisSpec: Die Frage entfaellt, also verbraucht
+  // niemand die Zeile. Stuende sie hier, verschoebe sie alles Nachfolgende.
+  const dir = fixture("install-spec-github-");
+  try {
+    const res = installiere(dir, ["projekt", "github", "github", "", "", "", "", ""]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal("spec" in config(dir), false, "bei github darf kein spec-Block entstehen");
+    assert.doesNotMatch(res.stdout, /beschriebenes Verhalten fuehren\?/,
+      "die Frage wurde trotz github gestellt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1] Bei toolbox wird die Frage gestellt und 'j' erzeugt den Block", () => {
+  // Der Ja-Pfad muss erreichbar bleiben — sonst schuetzt die Regel aus A19 nicht,
+  // sondern schaltet das Vorhaben ganz ab.
+  const dir = fixture("install-spec-toolbox-");
+  try {
+    const res = installiere(dir, bisSpec("j"));
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /beschriebenes Verhalten fuehren\?/, "die Frage fehlte");
+    assert.ok(config(dir).spec, "bei toolbox muss 'j' den Block erzeugen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
