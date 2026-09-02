@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, Plan #437)
+ * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, #450, Plan #437)
  *
  * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
- * specs/ — und beantwortet fuenf Fragen: `index` schreibt die Uebersicht ueber
+ * specs/ — und beantwortet sechs Fragen: `index` schreibt die Uebersicht ueber
  * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
  * Arbeitspakets gegen die Grammatik aus A12, `luecken` sagt, wozu die
- * Beschreibung schweigt, und `vorhaben` haelt fest, ob fuer ein Vorhaben
- * Produktionscode gelesen wurde.
+ * Beschreibung schweigt, `vorhaben` haelt fest, ob fuer ein Vorhaben
+ * Produktionscode gelesen wurde, und `apply` schreibt die Beschreibung aus den
+ * Wirkungsangaben der Pakete fort.
  *
  * Warum ein eigenes Werkzeug und keine Achse in board.mjs (Plan #437, A2):
  * board.mjs spricht mit Issue-Trackern, hier geht es um Dateien im Repo. Die
@@ -36,14 +37,22 @@
  * board.mjs — kein --root-Parameter. Fehlt das Verzeichnis, ist das der
  * Normalzustand eines Projekts ohne Specs und kein Fehler.
  *
- * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek, kein Netz,
- * kein Zugriff auf den Adapter: Die Datei ist eigenstaendig portabel und laesst
- * sich einzeln in ein Projekt kopieren, wie board.mjs, night.mjs und checks.mjs.
+ * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek und kein
+ * Netz: Die Datei ist eigenstaendig portabel und laesst sich einzeln in ein
+ * Projekt kopieren, wie board.mjs, night.mjs und checks.mjs.
+ *
+ * Zwei Unterprozesse braucht allein `apply` (Issue #450), und beide ohne Shell:
+ * `git log` fuer die Paketnummern zwischen Anker und HEAD, und der Adapter unter
+ * .claude/kit/ fuer die Bodies. Das ist keine Aufweichung der Portabilitaet — es
+ * ist die Datenlage: Die Spec-Wirkung steht im Body des Arbeitspakets, und der
+ * liegt bei `github` und `gitlab` nicht im Repo (Plan #437, A11). Die Kommandos
+ * bleiben lesend; geschrieben wird allein unter specs/.
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
@@ -55,6 +64,12 @@ const VORHABEN_DIR = "vorhaben";
 const INDEX_DATEI = "INDEX.md";
 const CONFIG_DATEI = ".claude/workflow.config.json";
 const WIRKUNG_UEBERSCHRIFT = "## Spec-Wirkung";
+const ENTFALLEN_UEBERSCHRIFT = "## Entfallen";
+
+// Der Adapter, ueber den `apply` die Paket-Bodies liest (A11). Als Pfadsegmente
+// statt als Zeichenkette, damit der Aufruf ohne Shell auskommt — dieselbe Haltung
+// wie in board.mjs seit Issue #196.
+const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
 
 const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes Verhalten lesen
 
@@ -63,6 +78,7 @@ const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes V
   node spec.mjs check --paket <datei>
   node spec.mjs luecken --bereich <name>…
   node spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund <text>]
+  node spec.mjs apply --anker <sha> [--dry-run]
 
 index   Schreibt ${SPECS_DIR}/${INDEX_DATEI} neu: eine Zeile je Bereich mit der Zahl der
         gueltigen und der entfallenen Aussagen. Fehlt ${SPECS_DIR}/, sagt das Kommando
@@ -81,6 +97,17 @@ vorhaben Schreibt ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md neu: Einheit, Kuerze
         Plannummer, ob Produktionscode gelesen wurde, der Grund und der Stand.
         Das Kuerzel kommt vom Aufrufer, nicht aus dem Tracker. Ohne
         'spec'-Block in ${CONFIG_DATEI} wird nichts geschrieben.
+apply   Schreibt die Beschreibung aus den Wirkungsangaben der Pakete zwischen
+        <sha> und HEAD fort und aktualisiert danach ${SPECS_DIR}/${INDEX_DATEI}. Die
+        Paketnummern kommen aus den Commit-Betreffs, die Bodies ueber
+        ${BOARD_KOMMANDO.join("/")}. Erst wenn alle Bodies gelesen und
+        geprueft sind, wird die erste Datei geschrieben; jeder Befund endet
+        mit Exit 1 und unveraenderten Dateien. --dry-run zeigt nur den Diff.
+
+  --anker <sha>   Pflicht. Ein leerer oder nicht aufloesbarer Wert endet rot —
+                  fuer eine Fortschreibung gibt es keinen vollen Umfang.
+  --dry-run       Unified Diff je Datei auf stdout, nichts wird geschrieben
+                  und nichts angelegt.
 
   --version       Kit-Stand dieser Datei.
   --help, -h      Diese Uebersicht.
@@ -189,6 +216,39 @@ const INDEX_KOPF = ["# Spec-Index", "", "| Bereich | Datei | Gueltig | Entfallen
  * Der Index behauptete dann ein beschriebenes Verhalten, zu dem es keine Datei
  * mehr gibt. Lieber eine Zeile zu wenig als eine erfundene.
  */
+/**
+ * Der Index zu einem Stand der Bereiche: Name -> Dateitext.
+ *
+ * Der Stand kommt als Text herein und nicht als Verzeichnis, weil `apply` seinen
+ * Index vor dem Schreiben braucht (--dry-run legt nichts an, Issue #450). Aus der
+ * Platte gelesen zeigte die Vorschau den alten Index — also gerade das, was sie
+ * nicht zeigen soll.
+ */
+function indexAusTexten(texte) {
+  const zeilen = [...texte.keys()].sort().map((bereich) => {
+    const aussagen = aussagenLesen(bereich, texte.get(bereich));
+    const entfallen = aussagen.filter((a) => a.entfallen).length;
+    return `| ${bereich} | ${bereichsDatei(bereich)} | ${aussagen.length - entfallen} | ${entfallen} |`;
+  });
+  return { text: [...INDEX_KOPF, ...zeilen, ""].join("\n"), anzahl: zeilen.length };
+}
+
+/** Der Index, wie er auf der Platte liegt — null, wenn es ihn nicht gibt. */
+function indexDatei(root = process.cwd()) {
+  const pfad = join(specsPfad(root), INDEX_DATEI);
+  return existsSync(pfad) ? readFileSync(pfad, "utf-8") : null;
+}
+
+/** Der Stand aller Bereiche, wie er unter ${SPECS_DIR}/ liegt. */
+function bereichsTexte(root = process.cwd()) {
+  const texte = new Map();
+  if (!existsSync(specsPfad(root))) return texte;
+  for (const bereich of bereiche(root)) {
+    texte.set(bereich, readFileSync(join(specsPfad(root), `${bereich}.md`), "utf-8"));
+  }
+  return texte;
+}
+
 function index() {
   const verzeichnis = specsPfad();
   if (!existsSync(verzeichnis)) {
@@ -196,15 +256,9 @@ function index() {
     return 0;
   }
 
-  const zeilen = bereiche().map((bereich) => {
-    const aussagen = bereichLesen(bereich);
-    const entfallen = aussagen.filter((a) => a.entfallen).length;
-    return `| ${bereich} | ${bereichsDatei(bereich)} | ${aussagen.length - entfallen} | ${entfallen} |`;
-  });
-
-  const pfad = join(verzeichnis, INDEX_DATEI);
-  writeFileSync(pfad, [...INDEX_KOPF, ...zeilen, ""].join("\n"), "utf-8");
-  process.stdout.write(`${SPECS_DIR}/${INDEX_DATEI} geschrieben: ${zeilen.length} ${zeilen.length === 1 ? "Bereich" : "Bereiche"}.\n`);
+  const { text, anzahl } = indexAusTexten(bereichsTexte());
+  writeFileSync(join(verzeichnis, INDEX_DATEI), text, "utf-8");
+  process.stdout.write(`${SPECS_DIR}/${INDEX_DATEI} geschrieben: ${anzahl} ${anzahl === 1 ? "Bereich" : "Bereiche"}.\n`);
   return 0;
 }
 
@@ -271,8 +325,8 @@ function show(id) {
  * gueltigen Form zum Verwechseln aehnlich, und die Aussagen unter ${SPECS_DIR}/
  * werden mit derselben Regel gelesen (AUSSAGE_RE).
  */
-const NEU_RE = /^NEU\s+(\S+)\s+(\S+-\d+)\s+—\s+\S/;
-const GEAENDERT_RE = /^GEAENDERT\s+(\S+-\d+)\s+—\s+\S/;
+const NEU_RE = /^NEU\s+(\S+)\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
+const GEAENDERT_RE = /^GEAENDERT\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
 const ENTFAELLT_RE = /^ENTFAELLT\s+(\S+-\d+)\s+—\s+\S/;
 const KEINE_RE = /^KEINE\s+—\s+\S/;
 
@@ -330,13 +384,21 @@ function bereichZustand(bereich, root) {
   };
 }
 
-/** Zerlegt eine Wirkungszeile; null heisst: keine der vier Formen. */
+/**
+ * Zerlegt eine Wirkungszeile; null heisst: keine der vier Formen.
+ *
+ * Der Aussagetext wird mitgelesen, obwohl `check` ihn nicht braucht: `apply`
+ * traegt genau ihn in die Beschreibung ein (Issue #450), und ein zweiter Leser
+ * mit eigener Grammatik waere eine zweite Wahrheit darueber, wo die Aussage
+ * anfaengt. Bei ENTFAELLT steht hinter dem Gedankenstrich der Grund, nicht die
+ * Aussage — er bleibt im Paket und wandert nie in die Datei (A13).
+ */
 function zeileLesen(text) {
   const neu = NEU_RE.exec(text);
-  if (neu) return { art: "NEU", bereich: neu[1], id: neu[2] };
+  if (neu) return { art: "NEU", bereich: neu[1], id: neu[2], aussage: neu[3] };
 
   const geaendert = GEAENDERT_RE.exec(text);
-  if (geaendert) return { art: "GEAENDERT", id: geaendert[1] };
+  if (geaendert) return { art: "GEAENDERT", id: geaendert[1], aussage: geaendert[2] };
 
   const entfaellt = ENTFAELLT_RE.exec(text);
   if (entfaellt) return { art: "ENTFAELLT", id: entfaellt[1] };
@@ -357,6 +419,13 @@ function formFehler(text) {
  * Die letzte Pruefung ist die schaerfste (A13): Eine entfallene ID bleibt
  * vergeben. Ohne sie bekaeme die naechste Aussage die Nummer einer
  * gestrichenen, und aus zwei verschiedenen Zusagen wuerde stillschweigend eine.
+ *
+ * `wissen === null` laesst genau diese beiden letzten Pruefungen aus — der Weg
+ * von `apply` (Issue #450). Der Grund ist kein Sparen: `apply` sieht mehrere
+ * Pakete auf einmal, und ein Paket darf anlegen, was ein spaeteres aendert. Gegen
+ * den Dateistand einzeln geprueft, waere die zweite Angabe stets ein Befund und
+ * ein wiederholter Lauf immer rot. Was formal falsch ist, bleibt formal falsch:
+ * ein unbekannter Bereich und eine ID, die nicht zu ihm passt.
  */
 function neuFehler(form, wissen, bekannte) {
   const { bereich, id } = form;
@@ -366,11 +435,12 @@ function neuFehler(form, wissen, bekannte) {
   if (praefix(id) !== bereich) {
     return `Die ID '${id}' passt nicht zum Bereich '${bereich}' — eine ID hat die Form <bereich>-<N> (A16).`;
   }
+  if (wissen === null) return null;
 
   const zustand = wissen(bereich);
   if (zustand.gueltig.has(id)) return `Die ID '${id}' ist bereits vergeben.`;
   if (zustand.entfallen.has(id)) {
-    return `Die ID '${id}' war schon vergeben und steht unter '## Entfallen' — IDs werden nie wiederverwendet (A13).`;
+    return `Die ID '${id}' war schon vergeben und steht unter '${ENTFALLEN_UEBERSCHRIFT}' — IDs werden nie wiederverwendet (A13).`;
   }
   return null;
 }
@@ -390,7 +460,10 @@ function bestandsFehler(form, wissen) {
 
 function inhaltsFehler(form, wissen, bekannte) {
   if (form.art === "KEINE") return null;
-  return form.art === "NEU" ? neuFehler(form, wissen, bekannte) : bestandsFehler(form, wissen);
+  if (form.art === "NEU") return neuFehler(form, wissen, bekannte);
+  // GEAENDERT und ENTFAELLT sagen nichts ueber die Form, nur ueber den Bestand —
+  // ohne Dateiwissen bleibt an ihnen nichts zu pruefen (siehe neuFehler).
+  return wissen === null ? null : bestandsFehler(form, wissen);
 }
 
 /**
@@ -441,33 +514,49 @@ function wirkungsAbschnitt(text) {
 }
 
 /**
+ * Die nicht leeren Zeilen des Abschnitts, jede mit ihrer gelesenen Form.
+ * `fehlt` und `leer` sind die beiden Faelle, in denen es nichts zu lesen gibt —
+ * beide sind Befunde, aber verschiedene, und die Meldungen sagen Verschiedenes.
+ */
+function wirkungsZeilen(text) {
+  const abschnitt = wirkungsAbschnitt(text);
+  if (!abschnitt) return { fehlt: true, zeilen: [] };
+
+  const zeilen = abschnitt.zeilen
+    .filter((z) => z.text.trim() !== "")
+    .map(({ nr, text: zeilenText }) => ({ nr, text: zeilenText.trim(), form: zeileLesen(zeilenText.trim()) }));
+
+  return { fehlt: false, leer: zeilen.length === 0, kopf: abschnitt.kopf, zeilen };
+}
+
+/**
  * Alle Befunde des Abschnitts, nach Zeilennummer sortiert.
  *
  * Gemeldet wird jeder Befund, nicht nur der erste: Wer nach jedem Lauf einen
  * einzigen Fehler bekommt, braucht so viele Laeufe wie das Paket Fehler hat.
+ *
+ * `root === null` prueft nur die Form und laesst den Bestand aus — der Weg von
+ * `apply`, begruendet bei `neuFehler`. Es ist dieselbe Funktion, nicht eine
+ * zweite Grammatik: Zwei Pruefungen desselben Abschnitts waeren zwei Wahrheiten
+ * darueber, was ein gueltiges Paket ist.
  */
-function wirkungPruefen(text, bekannte, root = process.cwd()) {
-  const abschnitt = wirkungsAbschnitt(text);
-  if (!abschnitt) {
+function wirkungPruefen(text, bekannte, root = null) {
+  const { fehlt, leer, kopf, zeilen } = wirkungsZeilen(text);
+  if (fehlt) {
     return [{ nr: null, grund: `Abschnitt '${WIRKUNG_UEBERSCHRIFT}' fehlt — jedes Paket sagt, was es an der Beschreibung aendert.` }];
   }
-
-  const gelesen = abschnitt.zeilen
-    .filter((z) => z.text.trim() !== "")
-    .map(({ nr, text: zeilenText }) => ({ nr, text: zeilenText.trim(), form: zeileLesen(zeilenText.trim()) }));
-
-  if (gelesen.length === 0) {
-    return [{ nr: abschnitt.kopf, grund: "Abschnitt ohne Wirkungszeile — wer nichts aendert, schreibt 'KEINE — <Begruendung>'." }];
+  if (leer) {
+    return [{ nr: kopf, grund: "Abschnitt ohne Wirkungszeile — wer nichts aendert, schreibt 'KEINE — <Begruendung>'." }];
   }
 
-  const wissen = bereichsWissen(root);
+  const wissen = root === null ? null : bereichsWissen(root);
   return [
-    ...gelesen.filter((z) => !z.form).map(({ nr, text: zeilenText }) => ({ nr, grund: formFehler(zeilenText) })),
-    ...gelesen.filter((z) => z.form)
+    ...zeilen.filter((z) => !z.form).map(({ nr, text: zeilenText }) => ({ nr, grund: formFehler(zeilenText) })),
+    ...zeilen.filter((z) => z.form)
       .map(({ nr, form }) => ({ nr, grund: inhaltsFehler(form, wissen, bekannte) }))
       .filter((f) => f.grund !== null),
-    ...doppelteIds(gelesen),
-    ...keineAllein(gelesen),
+    ...doppelteIds(zeilen),
+    ...keineAllein(zeilen),
   ].sort((a, b) => a.nr - b.nr);
 }
 
@@ -505,7 +594,7 @@ function check(argv) {
     return fail(`Paketdatei '${datei}' ist nicht lesbar: ${err.message}`);
   }
 
-  const fehler = wirkungPruefen(text, Object.keys(config.spec.bereiche ?? {}));
+  const fehler = wirkungPruefen(text, Object.keys(config.spec.bereiche ?? {}), process.cwd());
   if (fehler.length === 0) {
     process.stdout.write(`${WIRKUNG_UEBERSCHRIFT} in ${datei}: ohne Befund.\n`);
     return 0;
@@ -856,6 +945,591 @@ function vorhaben(argv) {
   return 0;
 }
 
+// --- apply --anker (Issue #450) ---------------------------------------------
+
+/**
+ * Die Marke im Commit-Betreff, Zeichen fuer Zeichen dieselbe Regel wie in
+ * tools/changelog.mjs: am Zeilenende und mit dem Wort 'Issue'.
+ *
+ * Gelesen wird allein die Betreffzeile. Der Commit-BODY zitiert regelmaessig
+ * fremde Nummern ("siehe auch #431", "Refs #450"), und eine davon als Paket zu
+ * werten hiesse, eine Wirkungsangabe aus einem Vorgang zu holen, der mit diesem
+ * Commit nichts zu tun hat. Aus demselben Grund traegt das Muster das Wort
+ * 'Issue': 'owner/repo#N' und ein blosses '#N' sind keine Marke.
+ */
+const MARKE_RE = /\(Issue #(\d+)\)$/;
+
+function ohneShell(kommando, args) {
+  return spawnSync(kommando, args, { cwd: process.cwd(), encoding: "utf-8" });
+}
+
+/**
+ * Der Anker als voller SHA, oder null.
+ *
+ * Der leere Wert wird gar nicht erst gefragt — er ist die Spur einer
+ * fehlgeschlagenen merge-base-Substitution im Skill. Anders als in checks.mjs
+ * faellt `apply` dann NICHT auf vollen Umfang zurueck: Fuer eine Fortschreibung
+ * gibt es keinen vollen Umfang, und ein Lauf ueber die ganze Historie schriebe
+ * jede je gemachte Angabe erneut.
+ */
+function ankerAufloesen(ref) {
+  if (ref === "") return null;
+  const res = ohneShell("git", ["rev-parse", "--verify", `${ref}^{commit}`]);
+  const sha = (res.stdout || "").trim();
+  return res.status === 0 && sha ? sha : null;
+}
+
+/**
+ * Die Paketnummern zwischen Anker und HEAD, aelteste zuerst und jede genau
+ * einmal. Ein Paket darf mehrere Commits haben; gewertet wird es trotzdem nur
+ * einmal, sonst haenge seine Wirkung so oft an, wie daran gearbeitet wurde.
+ */
+function paketNummern(anker) {
+  const res = ohneShell("git", ["log", "--reverse", "--no-merges", "--format=%s", `${anker}..HEAD`]);
+  if (res.status !== 0) fail(`git log ${anker}..HEAD schlug fehl: ${(res.stderr || "").trim()}`);
+
+  const nummern = [];
+  const gesehen = new Set();
+  for (const zeile of res.stdout.split("\n")) {
+    const treffer = MARKE_RE.exec(zeile.trim());
+    if (!treffer || gesehen.has(treffer[1])) continue;
+    gesehen.add(treffer[1]);
+    nummern.push(treffer[1]);
+  }
+  return nummern;
+}
+
+/**
+ * Der Body eines Pakets ueber den Adapter (A11).
+ *
+ * Ein nicht lesbarer Body ist ein Fehler und kein leeres Paket: Ein Ausfall des
+ * Trackers saehe sonst aus wie ein Paket ohne Wirkung, und die Fortschreibung
+ * liefe still an ihm vorbei — dieselbe Fehlerklasse, die am 2026-09-01 an Issue
+ * #316 gefunden wurde.
+ */
+function paketLesen(nummer) {
+  const res = ohneShell(process.execPath, [join(process.cwd(), ...BOARD_KOMMANDO), "issue", "get", nummer]);
+  if (res.status !== 0) {
+    const grund = (res.stderr || "").trim() || `der Adapter endete mit ${res.status}`;
+    fail(`Paket #${nummer} ist nicht lesbar: ${grund}`);
+  }
+  try {
+    return JSON.parse(res.stdout);
+  } catch (err) {
+    return fail(`Paket #${nummer} ist nicht lesbar: der Adapter lieferte kein JSON (${err.message}).`);
+  }
+}
+
+/**
+ * Ob ein Paket gewertet wird (A18).
+ *
+ * Ohne Anlagedatum wird gewertet: Das Feld fehlt, wenn der Tracker keins liefert
+ * (Issue #457), und ein Paket deshalb stillschweigend zu ueberspringen naehme
+ * Fortschreibung weg, ohne dass es jemandem auffiele. Der Fehler soll in die
+ * andere Richtung gehen — lieber eine Angabe zu viel pruefen als eine zu wenig.
+ */
+function gewertet(paket, seit) {
+  if (typeof seit !== "string" || seit === "") return true;
+  if (typeof paket.created !== "string" || paket.created === "") return true;
+  return paket.created >= seit;
+}
+
+// --- Der Sollzustand des Batches --------------------------------------------
+
+/**
+ * Fasst die Wirkungen aller Pakete zu einem Ziel je ID zusammen — in
+ * Commit-Reihenfolge, aeltestes Paket zuerst.
+ *
+ * Der Umweg ueber ein Ziel statt der Anwendung Zeile fuer Zeile ist der Kern der
+ * Idempotenz: Legt Paket 1 eine Aussage an und aendert Paket 2 sie, ist das Ziel
+ * der geaenderte Text. Ein zweiter Lauf mit demselben Anker findet genau diesen
+ * Text vor und hat nichts zu tun. Zeile fuer Zeile angewandt haette er dagegen
+ * einen Konflikt gesehen — die Angabe von Paket 1 passt nach dem ersten Lauf
+ * nicht mehr auf die Datei.
+ */
+function wirkungVerbuchen(ziele, form, nummer, befunde) {
+  if (form.art === "KEINE") return;
+  const vorhanden = ziele.get(form.id);
+
+  if (form.art === "NEU") {
+    if (vorhanden) {
+      befunde.push(`Paket #${nummer}: Die ID '${form.id}' wird in diesem Bereich mehrfach vergeben.`);
+      return;
+    }
+    ziele.set(form.id, {
+      id: form.id, bereich: form.bereich, aussage: form.aussage,
+      entfallen: false, neuVon: nummer, entfallenVon: null, paket: nummer,
+    });
+    return;
+  }
+
+  // GEAENDERT und ENTFAELLT knuepfen an ein Ziel an, das es noch nicht geben
+  // muss: Beruehrt kein frueheres Paket die ID, steht sie schon in der Datei.
+  const ziel = vorhanden ?? {
+    id: form.id, bereich: praefix(form.id), aussage: null,
+    entfallen: false, neuVon: null, entfallenVon: null,
+  };
+  if (form.art === "GEAENDERT") ziel.aussage = form.aussage;
+  else {
+    ziel.entfallen = true;
+    ziel.entfallenVon = nummer;
+  }
+  ziel.paket = nummer;
+  ziele.set(form.id, ziel);
+}
+
+function zielZustand(pakete, befunde) {
+  const ziele = new Map();
+  for (const { nummer, zeilen } of pakete) {
+    for (const form of zeilen) wirkungVerbuchen(ziele, form, nummer, befunde);
+  }
+  return [...ziele.values()];
+}
+
+// --- Die Dateiform (A15) ----------------------------------------------------
+
+function gueltigeZeile(id, aussage) {
+  return `- ${id} — ${aussage}`;
+}
+
+function entfalleneZeile(id, aussage, datum, paket) {
+  return `- ${id} — ${aussage} (entfallen ${datum}, Paket #${paket})`;
+}
+
+function entfallenIndex(zeilen) {
+  return zeilen.findIndex((z) => ENTFALLEN_UEBERSCHRIFT_RE.test(z.trim()));
+}
+
+/**
+ * Die Aussage einer ID in einer Datei, samt ihrer Zeile und ihrem Status.
+ *
+ * Ueber den Status entscheidet die Position zur Ueberschrift, nie das Suffix —
+ * dieselbe Regel wie in `aussagenLesen`, und aus demselben Grund: Eine Zeile ohne
+ * Klammerzusatz unterhalb der Ueberschrift ist gestrichen, sonst zaehlte ein
+ * vergessener Zusatz sie wieder als gueltig.
+ */
+function aussageFinden(zeilen, id) {
+  const grenze = entfallenIndex(zeilen);
+  for (const [i, zeile] of zeilen.entries()) {
+    const treffer = AUSSAGE_RE.exec(zeile);
+    if (!treffer || treffer[1] !== id) continue;
+
+    const entfallen = grenze !== -1 && i > grenze;
+    const zusatz = entfallen ? ENTFALLEN_RE.exec(treffer[2]) : null;
+    return {
+      index: i, entfallen, zeile,
+      aussage: zusatz ? zusatz[1] : treffer[2],
+      datum: zusatz?.[2], paket: zusatz?.[3],
+    };
+  }
+  return null;
+}
+
+/** Die letzte Aussagezeile in [von, bis), oder -1. */
+function letzteAussage(zeilen, von, bis) {
+  for (let i = bis - 1; i >= von; i -= 1) {
+    if (AUSSAGE_RE.test(zeilen[i])) return i;
+  }
+  return -1;
+}
+
+/**
+ * Haengt eine gueltige Aussage an: hinter die letzte gueltige, sonst unmittelbar
+ * vor '## Entfallen' bzw. ans Dateiende. Die Aussage rutscht damit nie unter die
+ * Ueberschrift — dort gaelte sie ab dem ersten Tag als gestrichen.
+ */
+function gueltigAnfuegen(zeilen, neu) {
+  const kopf = entfallenIndex(zeilen);
+  const grenze = kopf === -1 ? zeilen.length : kopf;
+  const letzte = letzteAussage(zeilen, 0, grenze);
+  if (letzte !== -1) {
+    zeilen.splice(letzte + 1, 0, neu);
+    return;
+  }
+
+  let stelle = grenze;
+  while (stelle > 0 && zeilen[stelle - 1].trim() === "") stelle -= 1;
+  zeilen.splice(stelle, 0, ...(stelle === 0 ? [neu] : ["", neu]));
+}
+
+/**
+ * Haengt eine entfallene Aussage an und legt '## Entfallen' an, wenn es die
+ * Ueberschrift noch nicht gibt.
+ */
+function entfallenAnfuegen(zeilen, neu) {
+  if (entfallenIndex(zeilen) === -1) {
+    let stelle = zeilen.length;
+    while (stelle > 0 && zeilen[stelle - 1].trim() === "") stelle -= 1;
+    zeilen.splice(stelle, 0, ...(stelle === 0 ? [ENTFALLEN_UEBERSCHRIFT] : ["", ENTFALLEN_UEBERSCHRIFT]));
+  }
+
+  const kopf = entfallenIndex(zeilen);
+  const letzte = letzteAussage(zeilen, kopf + 1, zeilen.length);
+  if (letzte !== -1) {
+    zeilen.splice(letzte + 1, 0, neu);
+    return;
+  }
+
+  let stelle = kopf + 1;
+  while (stelle < zeilen.length && zeilen[stelle].trim() === "") stelle += 1;
+  zeilen.splice(stelle, 0, ...(stelle === kopf + 1 ? ["", neu] : [neu]));
+}
+
+/** Genau ein abschliessender Zeilenumbruch, keine leeren Zeilen davor. */
+function zusammenfuegen(zeilen) {
+  const kopie = [...zeilen];
+  while (kopie.length > 0 && kopie.at(-1).trim() === "") kopie.pop();
+  return `${kopie.join("\n")}\n`;
+}
+
+/** Eine frisch angelegte Bereichsdatei, in der Form aus A15. */
+function neueBereichsDatei(bereich) {
+  return `# ${bereich}\n\n${ENTFALLEN_UEBERSCHRIFT}\n`;
+}
+
+/**
+ * Die Soll-Zeile eines Ziels und der Befund, falls sie nicht gesetzt werden darf.
+ *
+ * Bei einer bereits entfallenen Aussage bleibt das Datum des ersten Laufs stehen,
+ * solange dieselbe Paketnummer sie gestrichen hat: Sonst wanderte das Datum bei
+ * jedem Lauf mit, und zwei Laeufe ueber Mitternacht ergaeben verschiedene
+ * Dateien — die Idempotenz haenge an der Uhrzeit.
+ */
+function sollZeile(ziel, ist) {
+  const aussage = ziel.aussage ?? ist?.aussage ?? "";
+  if (!ziel.entfallen) return gueltigeZeile(ziel.id, aussage);
+
+  const fortgeschrieben = ist?.entfallen && ist.paket === String(ziel.entfallenVon) && ist.datum;
+  return entfalleneZeile(ziel.id, aussage, fortgeschrieben ? ist.datum : heute(), ziel.entfallenVon);
+}
+
+/**
+ * Was einem Ziel im Weg steht — oder null.
+ *
+ * Der Konflikt bei `NEU` misst gegen die SOLL-Zeile, nicht gegen den Text der
+ * Wirkungszeile: Nach einem ersten Lauf steht dort schon, was der Batch als
+ * Ganzes will, und das ist kein Konflikt, sondern der Beweis, dass nichts zu tun
+ * ist. Verschieden ist die Zeile nur, wenn die ID jemand anderem gehoert.
+ */
+function zielBefund(ziel, ist, soll) {
+  if (ist === null) {
+    if (ziel.neuVon !== null) return null;
+    return `Paket #${ziel.paket}: Die ID '${ziel.id}' ist nicht vergeben.`;
+  }
+  if (ziel.neuVon !== null) {
+    return ist.zeile === soll && ist.entfallen === ziel.entfallen
+      ? null
+      : `Paket #${ziel.neuVon}: Die ID '${ziel.id}' ist bereits vergeben und traegt einen anderen Text — IDs werden nie wiederverwendet (A13).`;
+  }
+  if (ist.entfallen && !(ziel.entfallen && ist.paket === String(ziel.entfallenVon))) {
+    return `Paket #${ziel.paket}: Die ID '${ziel.id}' ist bereits entfallen.`;
+  }
+  return null;
+}
+
+/**
+ * Schreibt die Ziele eines Bereichs in dessen Dateitext fort und gibt den neuen
+ * Text zurueck — oder null, wenn nichts zu tun ist.
+ */
+function bereichFortschreiben(text, ziele, befunde) {
+  const zeilen = text.split("\n");
+  let veraendert = false;
+
+  for (const ziel of ziele) {
+    const ist = aussageFinden(zeilen, ziel.id);
+    const soll = sollZeile(ziel, ist);
+
+    const befund = zielBefund(ziel, ist, soll);
+    if (befund !== null) befunde.push(befund);
+    else veraendert = zielSetzen(zeilen, ziel, ist, soll) || veraendert;
+  }
+
+  if (!veraendert) return null;
+  const neu = zusammenfuegen(zeilen);
+  return neu === text ? null : neu;
+}
+
+/** Setzt ein Ziel in die Zeilen; false heisst: es stand schon so da. */
+function zielSetzen(zeilen, ziel, ist, soll) {
+  if (ist !== null && ist.entfallen === ziel.entfallen) {
+    // Bleibt die Aussage auf ihrer Seite der Ueberschrift, wird sie an Ort und
+    // Stelle ersetzt: Ihre Nachbarn haben mit dieser Aenderung nichts zu tun.
+    if (ist.zeile === soll) return false;
+    zeilen[ist.index] = soll;
+    return true;
+  }
+
+  if (ist !== null) zeilen.splice(ist.index, 1);
+  if (ziel.entfallen) entfallenAnfuegen(zeilen, soll);
+  else gueltigAnfuegen(zeilen, soll);
+  return true;
+}
+
+// --- Unified Diff -----------------------------------------------------------
+
+/**
+ * Das Diff-Skript zweier Zeilenlisten: je Eintrag ' ', '-' oder '+'.
+ *
+ * Gemeinsamer Anfang und gemeinsames Ende werden vorab abgezogen, damit die
+ * quadratische Tabelle nur ueber den wirklich verschiedenen Teil laeuft — bei
+ * einer angehaengten Aussage sind das zwei, drei Zeilen statt der ganzen Datei.
+ */
+function diffSkript(alt, neu) {
+  let start = 0;
+  while (start < alt.length && start < neu.length && alt[start] === neu[start]) start += 1;
+
+  let endeAlt = alt.length;
+  let endeNeu = neu.length;
+  while (endeAlt > start && endeNeu > start && alt[endeAlt - 1] === neu[endeNeu - 1]) {
+    endeAlt -= 1;
+    endeNeu -= 1;
+  }
+
+  return [
+    ...alt.slice(0, start).map((text) => ({ typ: " ", text })),
+    ...lcsSkript(alt.slice(start, endeAlt), neu.slice(start, endeNeu)),
+    ...alt.slice(endeAlt).map((text) => ({ typ: " ", text })),
+  ];
+}
+
+function lcsSkript(a, b) {
+  const tabelle = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      tabelle[i][j] = a[i] === b[j]
+        ? tabelle[i + 1][j + 1] + 1
+        : Math.max(tabelle[i + 1][j], tabelle[i][j + 1]);
+    }
+  }
+
+  const skript = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      skript.push({ typ: " ", text: a[i] });
+      i += 1;
+      j += 1;
+    } else if (tabelle[i + 1][j] >= tabelle[i][j + 1]) {
+      skript.push({ typ: "-", text: a[i++] });
+    } else {
+      skript.push({ typ: "+", text: b[j++] });
+    }
+  }
+  while (i < a.length) skript.push({ typ: "-", text: a[i++] });
+  while (j < b.length) skript.push({ typ: "+", text: b[j++] });
+  return skript;
+}
+
+const DIFF_KONTEXT = 3;
+
+/** Die Bloecke des Skripts, die in einen Hunk gehoeren. */
+function hunkGrenzen(skript) {
+  const geaendert = skript.map((e, i) => (e.typ === " " ? -1 : i)).filter((i) => i >= 0);
+  if (geaendert.length === 0) return [];
+
+  const bloecke = [[geaendert[0]]];
+  for (const i of geaendert.slice(1)) {
+    if (i - bloecke.at(-1).at(-1) <= 2 * DIFF_KONTEXT + 1) bloecke.at(-1).push(i);
+    else bloecke.push([i]);
+  }
+  return bloecke.map((block) => ({
+    von: Math.max(0, block[0] - DIFF_KONTEXT),
+    bis: Math.min(skript.length - 1, block.at(-1) + DIFF_KONTEXT),
+  }));
+}
+
+/** Je Skript-Eintrag die alte und die neue Zeilennummer, beide 1-basiert. */
+function zeilenNummern(skript) {
+  let alt = 0;
+  let neu = 0;
+  return skript.map((eintrag) => {
+    const stelle = { alt: alt + 1, neu: neu + 1 };
+    if (eintrag.typ !== "+") alt += 1;
+    if (eintrag.typ !== "-") neu += 1;
+    return stelle;
+  });
+}
+
+function hunkKopf(anzahl, stelle) {
+  // Ein Hunk ohne Zeile auf einer Seite beginnt nach der Konvention des Formats
+  // bei der Zeile davor — sonst zeigte er auf eine Zeile, die es nicht gibt.
+  return `${anzahl === 0 ? stelle - 1 : stelle},${anzahl}`;
+}
+
+/**
+ * Der Unified Diff zweier Texte, oder "" bei Gleichheit.
+ * Eine neue Datei bekommt '/dev/null' als alte Seite, wie git es schreibt.
+ */
+function unifiedDiff(pfad, alt, neu) {
+  if (alt === neu) return "";
+
+  const skript = diffSkript(alt === null ? [] : alt.split("\n"), neu.split("\n"));
+  const stellen = zeilenNummern(skript);
+
+  const bloecke = hunkGrenzen(skript).map(({ von, bis }) => {
+    const teil = skript.slice(von, bis + 1);
+    const altAnzahl = teil.filter((e) => e.typ !== "+").length;
+    const neuAnzahl = teil.filter((e) => e.typ !== "-").length;
+    return [
+      `@@ -${hunkKopf(altAnzahl, stellen[von].alt)} +${hunkKopf(neuAnzahl, stellen[von].neu)} @@`,
+      ...teil.map((e) => `${e.typ}${e.text}`),
+    ].join("\n");
+  });
+
+  return [`--- ${alt === null ? "/dev/null" : pfad}`, `+++ ${pfad}`, ...bloecke, ""].join("\n");
+}
+
+// --- Das Kommando -----------------------------------------------------------
+
+function applyArgumente(argv) {
+  let anker;
+  let dryRun = false;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (argv[i] !== "--anker") {
+      fail(`Unerwartetes Argument: '${argv[i]}'. Aufruf: node spec.mjs apply --anker <sha> [--dry-run]`);
+    }
+    const wert = argv[i + 1];
+    if (wert === undefined || wert.startsWith("--")) fail("'--anker' braucht einen Wert.");
+    anker = wert;
+    i += 1;
+  }
+
+  // Der leere Wert kommt durch: Er ist ein eigener Befund und wird beim
+  // Aufloesen gemeldet, nicht hier als fehlender Schalter.
+  if (anker === undefined) fail("apply verlangt --anker <sha>. Aufruf: node spec.mjs apply --anker <sha> [--dry-run]");
+  return { anker, dryRun };
+}
+
+/**
+ * Liest die Pakete des Bereichs und prueft die Form ihrer Wirkungsangaben.
+ * Alles wird gelesen, bevor irgendetwas geschrieben wird (Atomaritaet).
+ */
+function paketeLesen(nummern, seit, bekannte, befunde) {
+  const gewertete = [];
+
+  for (const nummer of nummern) {
+    const paket = paketLesen(nummer);
+    if (!gewertet(paket, seit)) continue;
+
+    const fehler = wirkungPruefen(paket.body ?? "", bekannte);
+    for (const { nr, grund } of fehler) {
+      // Der fehlende Abschnitt hat keine Zeile — dort bleibt die Angabe weg,
+      // statt eine Zeilennummer zu erfinden, wie bei `check`.
+      const stelle = nr === null ? "" : `, Zeile ${nr}`;
+      befunde.push(`Paket #${nummer}${stelle}: ${grund}`);
+    }
+    if (fehler.length > 0) continue;
+
+    const { zeilen } = wirkungsZeilen(paket.body ?? "");
+    gewertete.push({ nummer, zeilen: zeilen.map((z) => z.form) });
+  }
+  return gewertete;
+}
+
+/**
+ * Berechnet den neuen Stand aller beruehrten Bereiche, ohne zu schreiben.
+ * Rueckgabe: Map Bereich -> neuer Text. Fehlt ein Bereich darin, bleibt seine
+ * Datei unangetastet.
+ */
+function standBerechnen(ziele, vorhanden, befunde) {
+  const neu = new Map();
+
+  for (const bereich of [...new Set(ziele.map((z) => z.bereich))]) {
+    const alt = vorhanden.get(bereich) ?? neueBereichsDatei(bereich);
+    const text = bereichFortschreiben(alt, ziele.filter((z) => z.bereich === bereich), befunde);
+    if (text !== null) neu.set(bereich, text);
+  }
+  return neu;
+}
+
+function vorschauZeigen(vorhanden, neu, indexDiff) {
+  const teile = [...neu.keys()].sort()
+    .map((bereich) => unifiedDiff(bereichsDatei(bereich), vorhanden.get(bereich) ?? null, neu.get(bereich)));
+  teile.push(indexDiff);
+
+  const ausgabe = teile.filter((t) => t !== "").join("");
+  process.stdout.write(ausgabe === "" ? "keine Aenderung\n" : ausgabe);
+  return 0;
+}
+
+function standSchreiben(neu, indexText) {
+  const verzeichnis = specsPfad();
+  mkdirSync(verzeichnis, { recursive: true });
+
+  for (const bereich of [...neu.keys()].sort()) {
+    writeFileSync(join(verzeichnis, `${bereich}.md`), neu.get(bereich), "utf-8");
+    process.stdout.write(`${bereichsDatei(bereich)} geschrieben.\n`);
+  }
+  if (indexText !== null) {
+    writeFileSync(join(verzeichnis, INDEX_DATEI), indexText, "utf-8");
+    process.stdout.write(`${SPECS_DIR}/${INDEX_DATEI} geschrieben.\n`);
+  }
+}
+
+/**
+ * Schreibt die Beschreibung aus den Wirkungsangaben der Pakete fort.
+ *
+ * Die Reihenfolge ist die ganze Zusage dieses Kommandos: Anker pruefen, alles
+ * lesen, alles pruefen — und erst dann schreiben. Ein Befund an irgendeiner
+ * Stelle endet mit Exit 1 und unveraenderten Dateien; ein halb fortgeschriebener
+ * Stand saehe aus wie ein Ergebnis und waere keins.
+ */
+function apply(argv) {
+  const { anker, dryRun } = applyArgumente(argv);
+
+  // Vor jedem Lesen und Schreiben: Ein unbrauchbarer Anker ist kein Umfang, den
+  // man notfalls weiter fasst, sondern eine Angabe, die fehlt.
+  const basis = ankerAufloesen(anker);
+  if (basis === null) fail(`Der Anker '${anker}' laesst sich nicht aufloesen — ohne ihn gibt es keinen Bereich, den 'apply' fortschreiben koennte.`);
+
+  const config = configLesen();
+  if (!config?.spec) {
+    process.stderr.write(`Kein 'spec'-Block in ${CONFIG_DATEI} — die Beschreibung wird nicht fortgeschrieben.\n`);
+    return 0;
+  }
+
+  const nummern = paketNummern(basis);
+  if (nummern.length === 0) {
+    process.stderr.write(`Kein Paket zwischen ${basis} und HEAD — nichts fortzuschreiben.\n`);
+    return 0;
+  }
+
+  const befunde = [];
+  const pakete = paketeLesen(nummern, config.spec.seit, Object.keys(config.spec.bereiche ?? {}), befunde);
+  const ziele = zielZustand(pakete, befunde);
+
+  const vorhanden = bereichsTexte();
+  const neu = befunde.length === 0 ? standBerechnen(ziele, vorhanden, befunde) : new Map();
+
+  if (befunde.length > 0) {
+    for (const befund of befunde) process.stderr.write(`${befund}\n`);
+    return 1;
+  }
+
+  // Der Index wird nur angefasst, wenn eine Bereichsdatei sich aendert: Sonst
+  // schriebe ein Lauf ohne Wirkung an einer Datei, an der er nichts zu tun hat.
+  const indexAlt = indexDatei();
+  const indexNeu = neu.size === 0 ? indexAlt : indexAusTexten(new Map([...vorhanden, ...neu])).text;
+
+  if (dryRun) {
+    const indexDiff = indexNeu === indexAlt ? "" : unifiedDiff(`${SPECS_DIR}/${INDEX_DATEI}`, indexAlt, indexNeu);
+    return vorschauZeigen(vorhanden, neu, indexDiff);
+  }
+
+  if (neu.size === 0) {
+    process.stdout.write("keine Aenderung\n");
+    return 0;
+  }
+  standSchreiben(neu, indexNeu === indexAlt ? null : indexNeu);
+  return 0;
+}
+
 // --- CLI --------------------------------------------------------------------
 
 function main() {
@@ -879,10 +1553,11 @@ function main() {
   if (command === "check") return check(rest);
   if (command === "luecken") return luecken(rest);
   if (command === "vorhaben") return vorhaben(rest);
+  if (command === "apply") return apply(rest);
 
   // Keine Hilfe auf stdout wie bei board.mjs: `show` haelt stdout fuer seine
   // Aussagen frei, und ein Vertipper darf dort nichts hinterlassen.
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check, luecken oder vorhaben — 'node spec.mjs --help' zeigt die Uebersicht.`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check, luecken, vorhaben oder apply — 'node spec.mjs --help' zeigt die Uebersicht.`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
