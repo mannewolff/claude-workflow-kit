@@ -29,8 +29,9 @@ const INSTALLER = join(repoRoot, "install.mjs");
 
 // Die Antworten auf die Installer-Fragen, in der Reihenfolge von main():
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
-// reviewModel (leer = Default uebernehmen) und zuletzt das j fuer die Labels.
-const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "j"].join("\n") + "\n";
+// reviewModel und reviewCommand (leer = Default uebernehmen) und zuletzt das j fuer
+// die Labels.
+const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "j"].join("\n") + "\n";
 
 test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", NUR_POSIX, () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-"));

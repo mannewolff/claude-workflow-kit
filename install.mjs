@@ -110,6 +110,25 @@ const schema = {
       pattern: "^claude-",
       error: "reviewModel muss eine Claude-Modell-ID sein (z.B. 'claude-opus-4-8').",
     },
+    // Das Reviewer-Paar (Issue #432/#433). `validate()` arbeitet feldlokal und prueft
+    // genau ein Feld — zum Zeitpunkt der reviewModel-Frage ist reviewCommand noch gar
+    // nicht erfragt. Diese Regel braucht deshalb beide Werte und laeuft als
+    // Gesamtpruefung nach der letzten der beiden Fragen (validateFelder).
+    //
+    // Die Meldung erklaert das Paar, statt nur "falsch" zu sagen: Wer sie liest, sitzt
+    // vor einem abgebrochenen Installer und muss ohne Doku wissen, welches der beiden
+    // Felder er wegnimmt.
+    {
+      fields: ["reviewModel", "reviewCommand"],
+      rule: "exactlyOne",
+      error:
+        "Genau eines von reviewModel und reviewCommand muss gesetzt sein.\n" +
+        "    reviewModel   = ein Claude-Modell, das als Reviewer-Subagent laeuft; es muss\n" +
+        "                    mit 'claude-' beginnen (z.B. 'claude-opus-4-8').\n" +
+        "    reviewCommand = eine fremde CLI, die den Review-Prompt ueber stdin bekommt\n" +
+        "                    (z.B. 'codex exec --model gpt-5').\n" +
+        "    Fuer einen gpt-Reviewer: reviewModel mit '-' leeren und reviewCommand setzen.",
+    },
   ],
 };
 const DEFAULTS = schema.defaults;
@@ -146,17 +165,42 @@ function validate(field, value) {
     if (rule.rule === "enum" && !rule.allowed.includes(value)) {
       return rule.error;
     }
-    if (rule.rule === "pattern" && !new RegExp(rule.pattern).test(value)) {
+    // Ein leerer Wert heisst "nicht gesetzt"; Muster gelten fuer gesetzte Werte. Ohne
+    // diese Ausnahme liesse sich reviewModel nie leeren — die ^claude-Regel wuerde
+    // genau die Eingabe abweisen, mit der man auf einen Kommando-Reviewer wechselt
+    // (Issue #433). Dass ueberhaupt eines der beiden Felder gesetzt ist, sichert die
+    // exactlyOne-Regel.
+    if (rule.rule === "pattern" && value !== "" && !new RegExp(rule.pattern).test(value)) {
       return rule.error;
     }
   }
   return null;
 }
 
-async function askWithDefault(rl, question, defaultValue, field) {
+// Regeln ueber MEHRERE Felder, geprueft, wenn alle beteiligten Antworten vorliegen.
+// `werte` ist ein Objekt Feldname → Antwort; ein leerer Wert gilt als nicht gesetzt.
+function validateFelder(werte) {
+  const rules = schema.validationRules || [];
+  for (const rule of rules) {
+    if (rule.rule !== "exactlyOne") continue;
+    const gesetzt = rule.fields.filter((f) => (werte[f] ?? "") !== "");
+    if (gesetzt.length !== 1) return rule.error;
+  }
+  return null;
+}
+
+// Eingabe, die ein Feld bewusst LEERT. Eine leere Eingabe bedeutet in askWithDefault
+// "Default uebernehmen" — "kein Wert" waere damit gar nicht ausdrueckbar, solange ein
+// Default gesetzt ist. Nur die beiden Reviewer-Fragen sind leerbar (Issue #433).
+const LEER_EINGABE = "-";
+
+async function askWithDefault(rl, question, defaultValue, field, leerbar = false) {
   while (true) {
     const raw = await ask(rl, `${question} [${defaultValue}]: `);
-    const value = raw.trim() === "" ? defaultValue : raw.trim();
+    const eingabe = raw.trim();
+    let value;
+    if (leerbar && eingabe === LEER_EINGABE) value = "";
+    else value = eingabe === "" ? defaultValue : eingabe;
     const error = field ? validate(field, value) : null;
     if (error) {
       console.error(`  Fehler: ${error}`);
@@ -282,6 +326,44 @@ async function promptScope(rl) {
   }
 }
 
+// Fragen 7 und 8 (das Reviewer-Paar) als eigene Schleife, wie promptScope: Sie werden
+// gemeinsam wiederholt, weil die Regel "genau eines von beiden" erst mit beiden Antworten
+// pruefbar ist (Issue #433).
+//
+// Der leere Default fuer reviewModel gilt nur, wenn die Bestandsconfig einen
+// Kommando-Reviewer ALLEIN traegt. Das ist der ausloesende Fall: Er soll sich per Enter
+// bestaetigen lassen. Stehen dort beide Felder, bleiben beide Defaults stehen und die
+// Gesamtpruefung bricht ab — still eines der beiden zu verwerfen hiesse, eine kaputte
+// Config wortlos umzuschreiben.
+async function promptReviewerPaar(rl, D, existingConfig) {
+  const reviewModelDefault = existingConfig.reviewCommand && !existingConfig.reviewModel
+    ? ""
+    : D.reviewModel;
+
+  while (true) {
+    const reviewModel = await askWithDefault(
+      rl,
+      `Reviewer-Modell (Claude-Subagent, beginnt mit 'claude-'; '${LEER_EINGABE}' = keines)`,
+      reviewModelDefault,
+      "reviewModel",
+      true
+    );
+    const reviewCommand = await askWithDefault(
+      rl,
+      `Reviewer-Kommando (fremde CLI, Prompt ueber stdin; '${LEER_EINGABE}' = keines)`,
+      D.reviewCommand ?? "",
+      "reviewCommand",
+      true
+    );
+    const fehler = validateFelder({ reviewModel, reviewCommand });
+    if (!fehler) return { reviewModel, reviewCommand };
+    console.error(`  Fehler: ${fehler}`);
+    // Interaktiv werden genau diese beiden Fragen erneut gestellt; die uebrigen
+    // Antworten bleiben stehen. Im Pipe-Modus antwortet niemand nach — dort bricht es ab.
+    if (_pipedLines !== null) throw new Error(`Validation failed in non-interactive mode: ${fehler}`);
+  }
+}
+
 // Bestehende workflow.config.json als Update-Defaults laden und das alte provider-Feld
 // (Rueckwaertskompatibilitaet) auf codeHost/issueTracker migrieren.
 function loadExistingConfig(configPath) {
@@ -375,7 +457,7 @@ async function main() {
 
   console.log("\n=== claude-workflow-kit Installer ===\n");
   console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Sieben Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
+  console.log("Acht Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   const scope = await promptScope(rl);
@@ -417,15 +499,10 @@ async function main() {
     "reviewScope"
   );
 
-  // Frage 7: reviewModel
-  const reviewModel = await askWithDefault(
-    rl,
-    "Reviewer-Modell (muss mit 'claude-' beginnen)",
-    D.reviewModel,
-    "reviewModel"
-  );
+  // Frage 7 und 8: das Reviewer-Paar — genau eines von beiden (Issue #433).
+  const { reviewModel, reviewCommand } = await promptReviewerPaar(rl, D, existingConfig);
 
-  // Frage 8 (nur bei globalem Install): Vault-Pfad für kontext.config.json
+  // Frage 9 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
   if (scope === "global") {
     const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
@@ -450,7 +527,7 @@ async function main() {
   // --- Config schreiben ---
   // Basis sind die DEFAULTS (fuellen echte Luecken), darueber die bestehende Config
   // (nicht abgefragte Felder wie buildChecks, toolbox, github oder unbekannte
-  // Zusatzfelder bleiben erhalten, #125), zuoberst die sieben abgefragten Werte.
+  // Zusatzfelder bleiben erhalten, #125), zuoberst die abgefragten Werte.
   const config = {
     ...DEFAULTS,
     ...existingConfig,
@@ -459,11 +536,22 @@ async function main() {
     mainBranch,
     productionBranch,
     reviewScope,
-    reviewModel,
   };
   // Das alte provider-Feld ist beim Laden auf codeHost/issueTracker migriert worden
   // und wird nicht zurueckgeschrieben.
   delete config.provider;
+  // Das Reviewer-Paar wird als Paar geschrieben, nicht feldweise gespreadet: Genau
+  // eines der beiden Felder steht in der Datei, das andere wird entfernt. Beide
+  // Vorlagen fuellen sonst ein bewusst geleertes reviewModel wieder auf —
+  // `schema.defaults.reviewModel` ueber den DEFAULTS-Spread und die Bestandsconfig
+  // ueber ihren eigenen (Issue #433).
+  if (reviewModel) {
+    config.reviewModel = reviewModel;
+    delete config.reviewCommand;
+  } else {
+    config.reviewCommand = reviewCommand;
+    delete config.reviewModel;
+  }
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(`\n✓ Config geschrieben: ${configTarget}`);

@@ -50,8 +50,9 @@ function installiere(dir, antworten, extraEnv = {}) {
   });
 }
 
-// Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults.
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", ""];
+// Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults. Die letzten
+// beiden Leerzeilen sind das Reviewer-Paar reviewModel/reviewCommand (Issue #433).
+const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", ""];
 
 function config(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"));
@@ -230,7 +231,7 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
   const dir = fixture("install-global-");
   try {
     const vault = join(dir, "mein-vault");
-    const res = installiere(dir, ["global", "github", "github", "", "", "", "", vault]);
+    const res = installiere(dir, ["global", "github", "github", "", "", "", "", "", vault]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const home = join(dir, "home", ".claude");
@@ -254,7 +255,7 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
 test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () => {
   const dir = fixture("install-global-novault-");
   try {
-    const res = installiere(dir, ["global", "github", "github", "", "", "", "", ""]);
+    const res = installiere(dir, ["global", "github", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.ok(!existsSync(join(dir, "home", ".claude", "kontext.config.json")),
       "ohne Vault-Pfad darf keine kontext.config.json entstehen");
@@ -268,7 +269,7 @@ test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () =>
 test("Eine leere Antwort auf die Scope-Frage bedeutet global", () => {
   const dir = fixture("install-scope-default-");
   try {
-    const res = installiere(dir, ["", "github", "github", "", "", "", "", ""]);
+    const res = installiere(dir, ["", "github", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, res.stderr);
     assert.ok(existsSync(join(dir, "home", ".claude", "workflow.config.json")));
   } finally {
@@ -279,7 +280,7 @@ test("Eine leere Antwort auf die Scope-Frage bedeutet global", () => {
 test("Eine unverstaendliche Scope-Antwort wird zurueckgewiesen und neu gefragt", () => {
   const dir = fixture("install-scope-ungueltig-");
   try {
-    const res = installiere(dir, ["vielleicht", "projekt", "github", "github", "", "", "", ""]);
+    const res = installiere(dir, ["vielleicht", "projekt", "github", "github", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout + res.stderr, /Bitte 'global' oder 'projekt' eingeben/);
     assert.ok(existsSync(join(dir, ".claude", "workflow.config.json")),
@@ -420,7 +421,7 @@ test("Re-Install akzeptiert ein bestehendes issueTracker: toolbox (#124)", () =>
       JSON.stringify({ ...vorher, issueTracker: "toolbox", toolbox: { host: "https://beispiel.invalid" } }, null, 2), "utf-8");
 
     // Leere Antwort auf die issueTracker-Frage = bestehenden Wert uebernehmen.
-    const res = installiere(dir, ["projekt", "github", "", "", "", "", ""]);
+    const res = installiere(dir, ["projekt", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(config(dir).issueTracker, "toolbox",
       "toolbox muss als bestehender Wert durch die Validierung kommen");
@@ -453,7 +454,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
       JSON.stringify({ provider: "gitlab", mainBranch: "trunk" }, null, 2), "utf-8");
 
     // Leere Antworten uebernehmen die migrierten Werte als Defaults.
-    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     const c = config(dir);
     assert.equal(c.codeHost, "gitlab");
@@ -469,7 +470,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
 test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   const dir = fixture("install-gitlab-nein-");
   try {
-    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Labels manuell anlegen: Backlog, Ready/);
     assert.match(res.stdout, /Leerzeichen in den Namen verwenden, kein Bindestrich/);
