@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, Plan #437)
+ * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, Plan #437)
  *
  * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
- * specs/ — und beantwortet drei Fragen: `index` schreibt die Uebersicht ueber
- * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus, und
+ * specs/ — und beantwortet vier Fragen: `index` schreibt die Uebersicht ueber
+ * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
- * Arbeitspakets gegen die Grammatik aus A12.
+ * Arbeitspakets gegen die Grammatik aus A12, und `luecken` sagt, wozu die
+ * Beschreibung schweigt.
  *
  * Warum ein eigenes Werkzeug und keine Achse in board.mjs (Plan #437, A2):
  * board.mjs spricht mit Issue-Trackern, hier geht es um Dateien im Repo. Die
@@ -58,6 +59,7 @@ const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes V
   node spec.mjs index
   node spec.mjs show <id>
   node spec.mjs check --paket <datei>
+  node spec.mjs luecken --bereich <name>…
 
 index   Schreibt ${SPECS_DIR}/${INDEX_DATEI} neu: eine Zeile je Bereich mit der Zahl der
         gueltigen und der entfallenen Aussagen. Fehlt ${SPECS_DIR}/, sagt das Kommando
@@ -68,6 +70,10 @@ check   Prueft den Abschnitt '${WIRKUNG_UEBERSCHRIFT}' einer Paketdatei: Zeilenf
         bekannter Bereich, ID-Vergabe. Alle Befunde gehen auf stderr, je einer
         als 'Zeile <n>: <Grund>'; Exit 1, sobald einer vorliegt. Ohne
         'spec'-Block in ${CONFIG_DATEI} wird nicht geprueft.
+luecken Nennt je Bereich die Dateien, die keine gueltige Aussage beruehrt —
+        als JSON auf stdout, immer, auch mit leerer Liste. Eine Luecke ist ein
+        Befund und kein Fehler: Exit 0. Die Bereichsnamen kommen aus
+        'spec.bereiche'; ohne den Block wird nichts gemeldet.
 
   --version       Kit-Stand dieser Datei.
   --help, -h      Diese Uebersicht.
@@ -507,6 +513,202 @@ function check(argv) {
   return 1;
 }
 
+// --- luecken ----------------------------------------------------------------
+
+const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
+
+/**
+ * Minimal-Glob, Zeichen fuer Zeichen dieselbe Fassung wie in kit/checks.mjs:
+ * '*' innerhalb eines Pfadsegments, '**' ueber Segmentgrenzen, '/' als Trenner.
+ * Ein '**' samt folgendem Trenner darf ganz verschwinden, damit ein Muster wie
+ * "doppelstern, Trenner, *.md" auch eine Datei im Wurzelverzeichnis trifft.
+ *
+ * Bewusst nachgebaut statt importiert: spec.mjs bleibt eine eigenstaendig
+ * portable Datei (#440) und laesst sich einzeln in ein Projekt kopieren. Ein
+ * Import aus checks.mjs waere genau die Abhaengigkeit, die das verhindert.
+ * Wer eine der beiden Fassungen aendert, aendert die andere mit.
+ */
+function globZuRegex(muster) {
+  let quelle = "";
+  let i = 0;
+  while (i < muster.length) {
+    const zeichen = muster[i];
+    if (zeichen !== "*") {
+      quelle += REGEX_SONDERZEICHEN.test(zeichen) ? `\\${zeichen}` : zeichen;
+      i += 1;
+    } else if (muster[i + 1] === "*") {
+      const mitTrenner = muster[i + 2] === "/";
+      quelle += mitTrenner ? "(?:.*/)?" : ".*";
+      i += mitTrenner ? 3 : 2;
+    } else {
+      quelle += "[^/]*";
+      i += 1;
+    }
+  }
+  return new RegExp(`^${quelle}$`);
+}
+
+/**
+ * Verzeichnisse, die nie Punkte enthalten.
+ *
+ * '.git' ist die Buchhaltung des Repos und 'node_modules' fremder Code — beides
+ * ist kein Verhalten, das dieses Projekt zusagt. Ohne diese Grenze flutete schon
+ * ein Muster mit fuehrendem Doppelstern die Lueckenliste mit tausenden Dateien,
+ * die niemand beschreiben will, und der Befund ginge darin unter.
+ */
+const KEINE_PUNKTE = new Set([".git", "node_modules"]);
+
+/**
+ * Alle Dateien unterhalb von `root`, als Pfade relativ zum Projekt-Root mit '/'
+ * als Trenner — genau die Form, in der auch die Globs der Config sie sehen.
+ *
+ * Symlinks fallen durch die isFile()-Pruefung heraus: Ihnen zu folgen hiesse,
+ * eine Datei doppelt zu zaehlen oder in einen Zyklus zu laufen.
+ */
+function dateienSammeln(root) {
+  const gefunden = [];
+  const offen = [""];
+
+  while (offen.length > 0) {
+    const rel = offen.pop();
+    for (const eintrag of readdirSync(join(root, rel), { withFileTypes: true })) {
+      const pfad = rel === "" ? eintrag.name : `${rel}/${eintrag.name}`;
+      if (eintrag.isDirectory()) {
+        if (!KEINE_PUNKTE.has(eintrag.name)) offen.push(pfad);
+      } else if (eintrag.isFile()) {
+        gefunden.push(pfad);
+      }
+    }
+  }
+  return gefunden;
+}
+
+/** Die Aussagen eines Bereichs; ohne Datei sind es keine (leere Beschreibung). */
+function aussagenDesBereichs(bereich, root) {
+  const pfad = join(specsPfad(root), `${bereich}.md`);
+  if (!existsSync(pfad)) return [];
+  return aussagenLesen(bereich, readFileSync(pfad, "utf-8"));
+}
+
+/**
+ * Die Luecken eines Bereichs — und die entfallenen IDs, die sie beruehren.
+ *
+ * Keine Rueckwaerts-Rechnung: Es wird nicht abgeleitet, welche Aussage fehlen
+ * *muesste*, sondern nur berichtet, welche Datei keine beruehrt. Was
+ * zusammengehoert, weiss der Mensch (A8).
+ *
+ * Nur gueltige Aussagen beruehren (A15). Zaehlte eine entfallene mit, deckte
+ * eine gestrichene Zusage den Punkt zu und die Luecke bliebe unsichtbar — der
+ * Fehler ginge in die unsichere Richtung. Die entfallene ID wird trotzdem
+ * genannt: Sie ist die Spur zu dem, was einmal galt.
+ */
+function bereichsLuecken(bereich, muster, dateien, root) {
+  const regexe = (muster ?? []).map((m) => globZuRegex(m));
+  const punkte = dateien.filter((p) => regexe.some((r) => r.test(p)));
+
+  const aussagen = aussagenDesBereichs(bereich, root);
+  const gueltig = aussagen.filter((a) => !a.entfallen);
+  const entfallen = aussagen.filter((a) => a.entfallen);
+
+  const offen = [];
+  const spuren = new Set();
+  for (const punkt of punkte) {
+    if (gueltig.some((a) => a.aussage.includes(punkt))) continue;
+    offen.push(punkt);
+    for (const a of entfallen) if (a.aussage.includes(punkt)) spuren.add(a.id);
+  }
+
+  // Standardvergleich statt localeCompare, wie bei `bereiche()`: Die Reihenfolge
+  // von localeCompare haengt an der Locale der Maschine, und zwei Laeufe muessen
+  // ueberall dieselbe Liste ergeben.
+  return { luecken: offen.sort(), entfallen: [...spuren].sort() };
+}
+
+/**
+ * Die Bereichsnamen aus der Kommandozeile, in der Reihenfolge ihrer ersten
+ * Nennung und ohne Dopplung.
+ *
+ * Beide Schreibweisen sind zulaessig — '--bereich a --bereich b' und
+ * '--bereich a b': Der Plan schreibt die Signatur als '--bereich <name>…', das
+ * Paket spricht von mehreren '--bereich'-Angaben. Ein '--bereich' ohne Wert ist
+ * ein Fehler und keine stille Null, sonst verschwaende ein Vertipper einen
+ * ganzen Bereich aus der Ausgabe, ohne dass es jemand merkt.
+ */
+function bereichArgumente(argv, bekannte) {
+  const namen = [];
+
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] !== "--bereich") {
+      fail(`Unerwartetes Argument: '${argv[i]}'. ${mitBekannten("Aufruf: node spec.mjs luecken --bereich <name>…", bekannte)}`);
+    }
+    const vorher = namen.length;
+    while (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+      namen.push(argv[i + 1]);
+      i += 1;
+    }
+    if (namen.length === vorher) fail(mitBekannten("'--bereich' braucht mindestens einen Bereichsnamen.", bekannte));
+  }
+
+  if (namen.length === 0) fail(mitBekannten("luecken verlangt --bereich <name>…", bekannte));
+  return [...new Set(namen)];
+}
+
+function mitBekannten(satz, bekannte) {
+  return `${satz} Bekannt sind: ${bekannte.join(", ")}.`;
+}
+
+/**
+ * Nennt je Bereich die Dateien, zu denen die Beschreibung schweigt.
+ *
+ * Die Liste ist das Ergebnis, nicht ihr Inhalt: Ein Bereich ohne Luecken steht
+ * mit `"luecken": []` in der Ausgabe. Fehlte er dort, waere nicht zu
+ * unterscheiden, ob geprueft wurde und nichts fehlte, oder ob gar nicht geprueft
+ * wurde — und die Beschreibung sieht im zweiten Fall aus wie Vollstaendigkeit.
+ *
+ * Die Ausgabe ist immer JSON und hat kein --json-Flag, wie `checks.mjs plan`:
+ * Sie wird von Skills gelesen, nicht von Menschen. Meldungen gehen auf stderr.
+ *
+ * Der Schalter wird vor den Argumenten geprueft, obwohl der Fehlerfall damit
+ * spaeter kommt: Die Meldung zu einem fehlenden oder falschen Bereichsnamen
+ * nennt die bekannten Bereiche, und die kennt erst, wer die Config gelesen hat.
+ * Ein Projekt ohne 'spec'-Block hat keine — dort endet der Lauf mit dem Hinweis,
+ * nicht mit einer Liste, die es nicht gibt.
+ */
+function luecken(argv) {
+  const config = configLesen();
+  if (!config?.spec) {
+    process.stderr.write(`Kein 'spec'-Block in ${CONFIG_DATEI} — es ist kein Verhalten beschrieben, zu dem etwas fehlen koennte.\n`);
+    return 0;
+  }
+
+  const definiert = config.spec.bereiche;
+  if (typeof definiert !== "object" || definiert === null || Array.isArray(definiert) || Object.keys(definiert).length === 0) {
+    fail(`'spec.bereiche' in ${CONFIG_DATEI} ist leer oder kein Objekt — ein eingeschaltetes Projekt benennt mindestens einen Bereich.`);
+  }
+
+  const bekannte = Object.keys(definiert);
+  const namen = bereichArgumente(argv, bekannte);
+  const unbekannt = namen.filter((n) => !bekannte.includes(n));
+  if (unbekannt.length > 0) {
+    // Ein einziger vertippter Name bricht den ganzen Lauf ab, auch neben
+    // richtigen: Eine Teilausgabe saehe aus wie ein vollstaendiges Ergebnis —
+    // dieselbe Haltung wie checks.mjs bei einem unbekannten Bereichsnamen.
+    fail(mitBekannten(`Unbekannte Bereiche: ${unbekannt.join(", ")}.`, bekannte));
+  }
+
+  // Der Baum wird einmal gelesen, nicht je Bereich: Die Punkte mehrerer Bereiche
+  // ueberschneiden sich, und ein zweiter Durchlauf koennte einen anderen Stand
+  // sehen als der erste.
+  const root = process.cwd();
+  const dateien = dateienSammeln(root);
+
+  const bericht = {};
+  for (const name of namen) bericht[name] = bereichsLuecken(name, definiert[name], dateien, root);
+
+  process.stdout.write(`${JSON.stringify({ bereiche: bericht }, null, 2)}\n`);
+  return 0;
+}
+
 // --- CLI --------------------------------------------------------------------
 
 function main() {
@@ -528,10 +730,11 @@ function main() {
   if (command === "index") return index();
   if (command === "show") return show(rest[0]);
   if (command === "check") return check(rest);
+  if (command === "luecken") return luecken(rest);
 
   // Keine Hilfe auf stdout wie bei board.mjs: `show` haelt stdout fuer seine
   // Aussagen frei, und ein Vertipper darf dort nichts hinterlassen.
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show oder check — 'node spec.mjs --help' zeigt die Uebersicht.`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check oder luecken — 'node spec.mjs --help' zeigt die Uebersicht.`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

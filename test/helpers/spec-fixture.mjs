@@ -70,3 +70,16 @@ export function paketSchreiben(dir, text, name = "paket.md") {
   writeFileSync(pfad, text, "utf-8");
   return pfad;
 }
+
+/**
+ * Legt eine Datei samt Zwischenverzeichnissen an (Issue #445).
+ * `luecken` zaehlt Dateien als Punkte — die Tests brauchen deshalb einen Weg,
+ * Code neben der Beschreibung abzulegen, nicht nur unter specs/. Der Pfad wird
+ * mit '/' geschrieben, wie ihn auch die Globs der Config sehen.
+ */
+export function dateiSchreiben(dir, relPfad, text = "") {
+  const pfad = join(dir, ...relPfad.split("/"));
+  mkdirSync(dirname(pfad), { recursive: true });
+  writeFileSync(pfad, text, "utf-8");
+  return pfad;
+}

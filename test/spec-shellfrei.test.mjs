@@ -37,6 +37,16 @@ test("kit/spec.mjs ruft board.mjs nicht auf", () => {
     "spec.mjs muss ohne den Adapter auskommen: Bereiche ergeben sich allein aus den Dateien unter specs/");
 });
 
+test("kit/spec.mjs importiert nur aus der Node-Standardbibliothek", () => {
+  // Auch ein Import aus dem Repo selbst — etwa die Glob-Fassung aus checks.mjs —
+  // waere ein Weg nach draussen: Die Datei liesse sich dann nicht mehr einzeln
+  // in ein fremdes Projekt kopieren (Issue #445).
+  for (const [, modul] of QUELLE.matchAll(/^\s*import\s[^;]*?from\s+"([^"]+)"/gm)) {
+    assert.ok(modul.startsWith("node:"),
+      `'${modul}' ist kein Standardmodul — spec.mjs traegt seine Abhaengigkeiten selbst`);
+  }
+});
+
 test("kit/spec.mjs startet keine Unterprozesse", () => {
   // Ohne Netz und ohne Adapter bliebe der Kindprozess der letzte Weg nach
   // draussen — und mit ihm die Shell, die board.mjs mit Issue #196 abgeschafft hat.
