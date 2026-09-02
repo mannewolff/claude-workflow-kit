@@ -25,15 +25,24 @@ node .claude/kit/board.mjs issue list --status in_progress
 
 ### 1. Issue vollständig lesen
 
-Lies alle vier Abschnitte erneut. Das Akzeptanzkriterium ist der Maßstab für die Implementierung, nicht die bereits vorhandenen Tests allein.
+Lies alle Abschnitte des Issues erneut — bei gesetztem `spec`-Block auch `## Spec-Wirkung`; daraus stammen die IDs fuer die Testnamen. Das Akzeptanzkriterium ist der Maßstab für die Implementierung, nicht die bereits vorhandenen Tests allein.
 
 ### 2. Gegen die Tests implementieren
 
 - Implementieren, bis die von `/implement-test` geschriebenen Tests grün sind.
-- Testcode nicht anfassen — außer er ist nachweislich falsch formuliert (widerspricht dem Akzeptanzkriterium, testet das Falsche). Dann Rücksprache mit dem Menschen statt stillschweigender Änderung.
+- Testcode nicht anfassen — außer er ist nachweislich falsch formuliert (widerspricht dem Akzeptanzkriterium, testet das Falsche). Dann Rücksprache mit dem Menschen statt stillschweigender Änderung. Einzige Ausnahme ohne Rücksprache: der nachgetragene Aussage-Verweis `[<ID>]` aus Schritt 3.
 - Bestehende Muster und Funktionen wiederverwenden. Kein Feature, keine Refactoring, keine Abstraktion, die das Issue nicht verlangt.
 
 ### 3. Pruefungen vor dem Commit
+
+**Aussage-ID in den Testnamen — Pruefung vor dem Commit (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Fehlt der Verweis, wird er **nachgetragen** — das ist die eine Aenderung an Testcode, die dieser Skill ohne Ruecksprache vornimmt, weil sie kein Verhalten aendert. Die ID-Form ist `<bereich>-<N>` und steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
+
+- **„Im Testnamen" heisst:** im Titel-String des Tests — `test("[<ID>] …")`, `it("[<ID>] …")`. Wo der Testname ein Bezeichner ist und keine eckigen Klammern erlaubt (JUnit, pytest), steht der Verweis in `@DisplayName` bzw. im Docstring. Massgeblich ist, dass `spec.testPattern` ihn im **Dateitext** findet.
+- Belegt ein Test mehrere Aussagen, steht jede ID in einer eigenen Klammer: `[board-7] [board-8]`.
+- Bei **`GEAENDERT`** genuegt der nachgetragene Verweis nicht, wenn der Test noch das alte Verhalten prueft: ein **unveraenderter Test ist kein Beleg**. Ihn an den neuen Aussage-Text anzupassen ist eine inhaltliche Aenderung — dafuer gilt die Ruecksprache-Regel aus Schritt 2.
+- **`ENTFAELLT` braucht keinen** neuen Verweis.
+- Gesucht wird mit `spec.testPattern` (regulaerer Ausdruck mit dem Platzhalter `<ID>`, Default `\[<ID>\]`) in den Dateien aus `spec.testGlobs` — beide Felder stehen im `spec`-Block der `.claude/workflow.config.json`.
+- Bei einem Paket mit `KEINE` und in Projekten ohne `spec`-Block aendert sich nichts.
 
 ```bash
 node .claude/kit/checks.mjs run
@@ -112,4 +121,4 @@ BERICHT
 - Backlog nach Ready ziehen: nie — das ist Mannes GO
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
 - Issue-schließende Commit-Keywords (`Closes`/`Fixes`/`Resolves #N`): nie — nur `Refs #N`
-- Testcode stillschweigend ändern: nie — bei Zweifel Rücksprache statt eigenmächtiger Korrektur
+- Testcode stillschweigend ändern: nie — bei Zweifel Rücksprache statt eigenmächtiger Korrektur; einzige Ausnahme ist der nachgetragene Aussage-Verweis `[<ID>]` aus Schritt 3
