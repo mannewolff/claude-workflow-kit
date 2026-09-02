@@ -1169,7 +1169,13 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 // Fuer den Runner ist die Allowlist besonders wichtig: Die Pruefung auf leere
 // buildChecks weiter unten ist sein einziges Gate. Waere das Feld lokal
 // ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+// Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
+// Beide sind persoenlich ueberschreibbar — sonst koennte jemand seinen Claude-Reviewer
+// lokal setzen, seinen Kommando-Reviewer aber nicht.
+// SYNC: dieselbe Zuordnung steckt in kit/board.mjs.
+const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
 // Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
@@ -1214,13 +1220,29 @@ function ladeConfigMitOverrides(sharedPfad) {
  * beschafft die beiden Dateien und entscheidet, ob es ueberhaupt etwas zu mischen
  * gibt; diese Funktion entscheidet Feld fuer Feld, was uebernommen wird.
  */
+/**
+ * Setzt ein persoenliches Feld und raeumt beim Reviewer-Paar das Gegenstueck weg.
+ *
+ * Von reviewModel und reviewCommand darf genau eines gelten (Issue #432); striktes
+ * feldweises Mischen liesse sonst beide stehen, sobald das Team den Claude-Default
+ * faehrt und einer lokal mit fremder CLI reviewt. Stehen beide Felder in der lokalen
+ * Datei, bleiben beide — die Datei ist dann schon fuer sich ungueltig.
+ *
+ * SYNC: strukturgleich zu setzePersoenlichesFeld in kit/board.mjs.
+ */
+function setzePersoenlichesFeld(config, feld, wert, local) {
+  config[feld] = wert;
+  const gegenstueck = REVIEWER_PAAR[feld];
+  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+}
+
 function mischeErlaubteFelder(shared, local) {
   const config = { ...shared };
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
-      config[feld] = wert;
+      setzePersoenlichesFeld(config, feld, wert, local);
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       config[feld] = mischeBlattfelder(config[feld], wert, erlaubteBlaetter.get(feld), feld);
     } else {

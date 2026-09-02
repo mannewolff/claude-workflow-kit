@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persoenliche Abweichungen gehoeren in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet (Issue #207).",
+  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persoenliche Abweichungen gehoeren in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet (Issue #207). Setzt die persoenliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge (Issue #435).",
   "type": "object",
   "properties": {
     "version": {

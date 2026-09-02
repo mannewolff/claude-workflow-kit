@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { rmSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync } from "node:fs";
+import { rmSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -119,6 +119,61 @@ test("mergeWorkflowConfig: nicht erlaubte toolbox-Felder werden einzeln ignorier
 test("mergeWorkflowConfig: toolbox.tokenFile funktioniert auch ohne toolbox in der geteilten Config", () => {
   const { config } = mergeWorkflowConfig(GETEILT, { toolbox: { tokenFile: "~/token" } });
   assert.deepEqual(config.toolbox, { tokenFile: "~/token" });
+});
+
+// --- Das Reviewer-Paar in der persoenlichen Config (Issue #435) ---
+//
+// `reviewCommand` ist die Alternative zu `reviewModel` und damit genauso persoenlich.
+// Fehlte es in der Allowlist, waere ein `reviewCommand` in der lokalen Datei still
+// wirkungslos — nur eine Zeile auf stderr, und der Review liefe gegen das falsche
+// Werkzeug. Weil beide Felder ein Paar sind (Issue #432: genau eines gilt), reicht
+// striktes feldweises Mischen nicht: Geteiltes `reviewModel` plus lokales
+// `reviewCommand` ergaebe sonst eine Config mit beiden Feldern.
+
+const GETEILT_KOMMANDO = (() => {
+  const { reviewModel, ...rest } = GETEILT;
+  return { ...rest, reviewCommand: "codex exec --model gpt-5" };
+})();
+
+test("mergeWorkflowConfig: reviewCommand gewinnt lokal", () => {
+  const { config, ignored } = mergeWorkflowConfig(GETEILT_KOMMANDO, {
+    reviewCommand: "codex exec --model gpt-5.6-sol",
+  });
+  assert.equal(config.reviewCommand, "codex exec --model gpt-5.6-sol");
+  assert.deepEqual(ignored, []);
+});
+
+test("mergeWorkflowConfig: lokales reviewCommand entfernt das geteilte reviewModel", () => {
+  // Der Normalfall dieser Entscheidung: Das Team faehrt den Claude-Default, einer
+  // reviewt mit fremder CLI. Bliebe reviewModel stehen, haette das Ergebnis beide
+  // Felder und verletzte die Oder-Regel aus Issue #432.
+  const { config, ignored } = mergeWorkflowConfig(GETEILT, {
+    reviewCommand: "codex exec --model gpt-5",
+  });
+  assert.equal(config.reviewCommand, "codex exec --model gpt-5");
+  assert.equal("reviewModel" in config, false, "reviewModel muss beim Merge weichen");
+  assert.deepEqual(ignored, []);
+  assert.deepEqual(config.buildChecks, ["node --test"], "geteilte Felder bleiben unberuehrt");
+});
+
+test("mergeWorkflowConfig: lokales reviewModel entfernt das geteilte reviewCommand", () => {
+  const { config } = mergeWorkflowConfig(GETEILT_KOMMANDO, { reviewModel: "claude-sonnet-5" });
+  assert.equal(config.reviewModel, "claude-sonnet-5");
+  assert.equal("reviewCommand" in config, false, "reviewCommand muss beim Merge weichen");
+});
+
+test("die Allowlist steht in board.mjs und night.mjs identisch", () => {
+  // SYNC-Paar: board.mjs und night.mjs sind eigenstaendige Single-File-Tools, die
+  // Liste ist bewusst dupliziert. Dieser Test haelt die Kopien zusammen.
+  const listeAus = (datei) => {
+    const quelle = readFileSync(join(repoRoot, "kit", datei), "utf-8");
+    const treffer = quelle.match(/const LOCAL_OVERRIDE_ALLOWLIST = (\[[^\]]*\]);/);
+    assert.ok(treffer, `LOCAL_OVERRIDE_ALLOWLIST nicht in kit/${datei} gefunden`);
+    return JSON.parse(treffer[1].replace(/,\s*\]/, "]"));
+  };
+  const board = listeAus("board.mjs");
+  assert.ok(board.includes("reviewCommand"), "reviewCommand fehlt in der Allowlist von board.mjs");
+  assert.deepEqual(listeAus("night.mjs"), board);
 });
 
 // --- CLI ---

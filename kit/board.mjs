@@ -235,7 +235,13 @@ function configRoot() {
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
 // SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+
+// Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
+// Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
+// koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
+// SYNC: dieselbe Zuordnung steckt in kit/night.mjs.
+const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 /**
  * Mergt die persoenliche Config in die geteilte, aber nur an den erlaubten Pfaden.
@@ -264,6 +270,27 @@ function zerlegeAllowlist(allowlist) {
   return { erlaubteFelder, erlaubteBlaetter };
 }
 
+/**
+ * Setzt ein persoenliches Feld und raeumt beim Reviewer-Paar das Gegenstueck weg.
+ *
+ * Eigene Funktion, weil hier eine Regel greift, die dem strikt feldweisen Mischen
+ * fehlt: Von reviewModel und reviewCommand darf genau eines gelten (Issue #432). Ein
+ * lokales reviewCommand neben dem geteilten reviewModel ergaebe sonst eine Config mit
+ * beiden Feldern — und das ist kein Randfall, sondern der Normalfall, wenn das Team
+ * den Claude-Default faehrt und einer mit fremder CLI reviewt.
+ *
+ * Stehen beide Felder in der lokalen Datei, bleiben auch beide stehen: Diese Datei ist
+ * dann schon fuer sich ungueltig, und eines davon wegzuwerfen wuerde den Fehler
+ * verstecken statt ihn der Schema-Pruefung zu ueberlassen.
+ *
+ * SYNC: strukturgleich in kit/night.mjs.
+ */
+function setzePersoenlichesFeld(config, feld, wert, local) {
+  config[feld] = wert;
+  const gegenstueck = REVIEWER_PAAR[feld];
+  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+}
+
 export function mergeWorkflowConfig(shared, local) {
   const config = { ...shared };
   const ignored = [];
@@ -273,7 +300,7 @@ export function mergeWorkflowConfig(shared, local) {
 
   for (const [feld, wert] of Object.entries(local)) {
     if (erlaubteFelder.has(feld)) {
-      config[feld] = wert;
+      setzePersoenlichesFeld(config, feld, wert, local);
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       const blaetter = erlaubteBlaetter.get(feld);
       const zusammen = { ...config[feld] };

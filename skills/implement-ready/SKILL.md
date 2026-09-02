@@ -10,7 +10,7 @@ Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell 
 
 ## Vorbedingung
 
-Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
 
 Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)

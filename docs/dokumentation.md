@@ -1061,11 +1061,14 @@ Aus der lokalen Datei gewinnen nur diese Felder:
 | Feld | Warum persönlich |
 |---|---|
 | `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
+| `reviewCommand` | die Alternative zu `reviewModel`: wer mit fremder CLI reviewt, hat sie lokal installiert |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere wird ignoriert und auf stderr gemeldet.
+
+**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt.
 
 **Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
 

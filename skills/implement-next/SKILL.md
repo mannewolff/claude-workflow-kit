@@ -10,7 +10,7 @@ Ersetzt Schritt 5 durch eine feinere Gangart: **Genau ein** Ready-Issue wird vol
 
 ## Vorbedingung
 
-Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
+Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
 
 Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
