@@ -1,6 +1,6 @@
-// Versionskennung der beiden Kit-Dateien (Issue #170).
+// Versionskennung der Kit-Dateien mit --version (Issue #170, spec.mjs mit #440).
 //
-// board.mjs und night.mjs werden in Konsumenten-Projekte kopiert. Ohne
+// board.mjs, night.mjs und spec.mjs werden in Konsumenten-Projekte kopiert. Ohne
 // Versionskennung kann man einer installierten Kopie nicht ansehen, aus welchem
 // Kit-Stand sie stammt — und damit auch nicht, ob ein Auffrischen noetig ist.
 //
@@ -36,7 +36,11 @@ function isoliertAufrufen(datei, cliArgs) {
   }
 }
 
-for (const datei of ["board.mjs", "night.mjs"]) {
+// Die Dateien, die --version kennen. checks.mjs traegt zwar denselben Stempel,
+// hat aber bewusst kein --version-Flag; es gehoert deshalb nicht in diese Liste.
+const MIT_VERSION_FLAG = ["board.mjs", "night.mjs", "spec.mjs"];
+
+for (const datei of MIT_VERSION_FLAG) {
   test(`${datei}: --version gibt die Kit-Version aus, ohne weiteren Repo-Kontext`, () => {
     const res = isoliertAufrufen(datei, ["--version"]);
 
@@ -59,9 +63,9 @@ for (const datei of ["board.mjs", "night.mjs"]) {
   });
 }
 
-test("beide Kit-Dateien tragen dieselbe Versionskonstante", () => {
-  // Eine Installation besteht aus beiden Dateien. Waeren ihre Stempel schon in
-  // der Quelle verschieden, waere jede spaetere Drift-Diagnose wertlos.
+test("alle Kit-Dateien tragen dieselbe Versionskonstante", () => {
+  // Eine Installation besteht aus diesen Dateien zusammen. Waeren ihre Stempel
+  // schon in der Quelle verschieden, waere jede spaetere Drift-Diagnose wertlos.
   const version = (datei) => {
     const raw = readFileSync(join(repoRoot, "kit", datei), "utf-8");
     const m = raw.match(/const KIT_VERSION = "(\d+\.\d+\.\d+)";/);
@@ -69,6 +73,9 @@ test("beide Kit-Dateien tragen dieselbe Versionskonstante", () => {
     return m[1];
   };
 
-  assert.equal(version("board.mjs"), version("night.mjs"),
-    "board.mjs und night.mjs tragen unterschiedliche KIT_VERSION-Werte");
+  const erwartet = version("board.mjs");
+  for (const datei of MIT_VERSION_FLAG) {
+    assert.equal(version(datei), erwartet,
+      `kit/${datei} traegt einen anderen KIT_VERSION-Wert als kit/board.mjs`);
+  }
 });
