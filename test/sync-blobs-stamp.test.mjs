@@ -25,9 +25,9 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
-// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425), faellt hier genau eine Stelle
-// an statt drei ueber die Datei verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs"];
+// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441),
+// faellt hier genau eine Stelle an statt drei ueber die Datei verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -57,6 +57,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const BOARD_MJS_B64 = "";`,
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
+    `const SPEC_MJS_B64 = "";`,
     `const SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -154,6 +155,34 @@ test("Stempel: fehlende KIT_VERSION-Konstante ist ein harter Fehler, kein stille
     assert.equal(res.status, 1, "eine fehlende Konstante haette abbrechen muessen");
     assert.match(res.stderr, /KIT_VERSION/, "die Fehlermeldung nennt die Konstante nicht");
     assert.match(res.stderr, /board\.mjs/, "die Fehlermeldung nennt die Datei nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Blob-Drift: eine Aenderung an kit/spec.mjs ohne Sync macht --check rot", () => {
+  // Der Beleg fuer den BLOBS-Eintrag von spec.mjs (Issue #441). Mit STAMPED allein
+  // bliebe SPEC_MJS_B64 leer und dieser Lauf gruen — genau der Drift, gegen den das
+  // Werkzeug existiert.
+  //
+  // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf
+  // waere ebenso rot, wenn spec.mjs nur in STAMPED stuende.
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette gruen sein muessen");
+
+    // Nur den Inhalt aendern, den Stempel unberuehrt lassen: So kann allein der Blob
+    // driften.
+    const pfad = join(dir, "kit", "spec.mjs");
+    writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
+    const meldung = res.stderr + res.stdout;
+    assert.match(meldung, /Blob-Drift/, "die Meldung nennt den Blob-Drift nicht");
+    assert.match(meldung, /SPEC_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+    assert.doesNotMatch(meldung, /Versions-Stempel/, "Stempel-Drift faelschlich gemeldet");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

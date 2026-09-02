@@ -63,6 +63,7 @@ const BLOBS = [
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
+  { constName: "SPEC_MJS_B64", source: join(root, "kit", "spec.mjs") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 
@@ -70,7 +71,7 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;
 

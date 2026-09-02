@@ -121,14 +121,14 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
   writeFileSync(join(dir, "install.mjs"), installZeilen.join("\n") + "\n");
   return dir;
 }
 
-const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SKILLS_B64"];
+const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SPEC_MJS_B64", "SKILLS_B64"];
 
 test("sync-blobs bricht ab, wenn install.mjs keine VERSION-Konstante hat", () => {
   const dir = syncFixture("sync-noversion-", {
