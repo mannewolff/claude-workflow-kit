@@ -9,6 +9,13 @@
 // Gemessen wird die REIHENFOLGE im Text, und zwar zwischen benachbarten Markern:
 // Ein einzelner Aufruf am Dateianfang wuerde eine Pruefung "vor jedem Commit" nur
 // vortaeuschen.
+//
+// Geprueft wird ausschliesslich die QUELLE unter `skills/`, nicht die
+// Dogfooding-Kopie unter `.claude/skills/`: Die ist per `.gitignore` ausgeschlossen
+// und fehlt in jedem frischen Checkout — ein Test, der sie liest, ist lokal gruen
+// und in der CI rot. Dass Quelle und Kopie zusammenpassen, prueft
+// `node tools/sync-blobs.mjs --check` als eigener buildCheck; das hier ein zweites
+// Mal zu tun waere ohnehin eine zweite Wahrheit.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -47,7 +54,7 @@ function prueflaufVorJedemMarker(text, marker, wo) {
 }
 
 test("[skills-1] push-main faehrt einen Prueflauf vor dem Spec-Commit", () => {
-  for (const pfad of [["skills", "push-main", "SKILL.md"], [".claude", "skills", "push-main", "SKILL.md"]]) {
+  for (const pfad of [["skills", "push-main", "SKILL.md"]]) {
     const text = lies(...pfad);
     prueflaufVorJedemMarker(text, [
       { name: "Spec-Commit", muster: /git commit -m "chore: Spec fortgeschrieben/g },
@@ -68,7 +75,7 @@ test("[skills-1] RELEASING.md faehrt in BEIDEN Ablauflisten einen Prueflauf vor 
 });
 
 test("[skills-1] merge-production nennt den Prueflauf vor seinen Release-Schritten", () => {
-  for (const pfad of [["skills", "merge-production", "SKILL.md"], [".claude", "skills", "merge-production", "SKILL.md"]]) {
+  for (const pfad of [["skills", "merge-production", "SKILL.md"]]) {
     const text = lies(...pfad);
     assert.match(text, LAUF_EINZELN, `${pfad.join("/")}: der Prueflauf fehlt`);
   }
