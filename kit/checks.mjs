@@ -39,7 +39,7 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -378,6 +378,58 @@ function kommandoAusfuehren(cmd, env) {
   return { gruen: res.status === 0, ausgabe: `${res.stdout || ""}${res.stderr || ""}` };
 }
 
+/**
+ * Blob-Hash je Pfad — der Nachweis, gegen den das Commit-Gate den Index prueft.
+ *
+ * Zwei Entscheidungen stecken hier drin, beide aus Issue #469:
+ *
+ * `null` haengt an der NICHTEXISTENZ (`lstat` -> ENOENT), nicht am Exit-Code von
+ * `git hash-object`. Waere es der Exit-Code, bekaeme eine vorhandene, nur
+ * unlesbare Datei denselben Tombstone wie eine geloeschte — und das Gate liest
+ * ihn als "geprufte Loeschung". `lstat` statt `stat`, damit ein toter Symlink als
+ * vorhanden gilt und nicht stillschweigend zum Tombstone wird.
+ *
+ * Gehasht wird ueber `git hash-object --stdin-paths`, also EIN Prozess statt einer
+ * je Datei: Bei vollem Umfang stehen leicht hundert Pfade in `geaendert`, und die
+ * CI faehrt eine Windows-Matrix, wo Prozessstarts teuer sind. Der Aufruf traegt
+ * die Pfade und nicht den Inhalt, damit gits Filterkette (`autocrlf`, `clean`)
+ * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
+ * dem Gate zeigt.
+ */
+function blobHashes(pfade) {
+  const hashes = {};
+  const vorhanden = [];
+  for (const pfad of pfade) {
+    try {
+      lstatSync(join(process.cwd(), pfad));
+      vorhanden.push(pfad);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        fail(`Der Stand von '${pfad}' liess sich nicht lesen: ${err.message}`);
+      }
+      hashes[pfad] = null;
+    }
+  }
+  if (vorhanden.length === 0) return hashes;
+
+  const res = spawnSync("git", ["hash-object", "--stdin-paths"], {
+    cwd: process.cwd(),
+    encoding: "utf-8",
+    input: `${vorhanden.join("\n")}\n`,
+  });
+  if (res.status !== 0) {
+    fail(`git hash-object schlug fehl: ${(res.stderr || "").trim()}`);
+  }
+  const zeilen = res.stdout.split("\n").filter((z) => z.length > 0);
+  if (zeilen.length !== vorhanden.length) {
+    fail(`git hash-object lieferte ${zeilen.length} Hashes fuer ${vorhanden.length} Pfade.`);
+  }
+  vorhanden.forEach((pfad, i) => {
+    hashes[pfad] = zeilen[i];
+  });
+  return hashes;
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -402,6 +454,13 @@ function ausfuehren(args) {
   const auswahl = planen(args);
   const env = { ...process.env, ...settingsEnv() };
 
+  // VOR dem ersten Kommando (Issue #469): Der Hash bezeugt den Inhalt, der in die
+  // Pruefung ging. Danach gehasht, bescheinigte er einen Stand, den kein Check
+  // gesehen hat, sobald ein Kommando eine Datei anfasst — ein Formatter mit
+  // `--fix` genuegt. Veraendert ein Check die Datei, passt der Hash beim Commit
+  // nicht mehr und das Gate weist ab: die sichere Richtung.
+  const hashes = blobHashes(auswahl.geaendert);
+
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
@@ -421,7 +480,7 @@ function ausfuehren(args) {
 
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen });
+  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, hashes });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
