@@ -111,6 +111,19 @@ Sie liegen dort und nicht unter `.claude/kit/`, weil der `.gitignore`-Block oben
 
 **Ausserhalb eines Git-Repos** — und wenn `git` nicht im PATH liegt — entfaellt die Frage; der Installer schreibt die Dateien und sagt, warum das Gate nicht aktiv ist. Bei globalem Install entfaellt sie ebenfalls.
 
+**Was das Gate prüft.** `checks.mjs run` hinterlässt eine Zusammenfassung unter `.claude/checks-summary.json`. Sie trägt neben Auswahl und Ergebnis je geänderter Datei einen **Blob-Hash**, gebildet **vor** dem ersten Kommando — so bezeugt er den Inhalt, der in die Prüfung ging, und nicht einen, den ein Formatter danach geschrieben hat. Beim Commit vergleicht das Gate diese Hashes gegen den **Index**, also gegen das, was wirklich committet wird. Grün nur, wenn die Zusammenfassung lesbar ist, kein Lauf ungrün war und jede gestagte Datei mit passendem Hash darin steht. Eine gestagte **Löschung** ist durch einen `null`-Eintrag gedeckt; hat die Prüfung nichts zu tun gefunden (`leeresPaket`), deckt sie auch nichts.
+
+**Für wen es gilt.** Für jeden Commit im Repo: die Implementierungs-Skills, **Bahn 1**, den Commit von Hand, den aus einem GUI-Client. Ein Werkzeug ohne `node` im PATH wird dabei **abgewiesen**, nicht durchgelassen — ein nicht lauffähiges Gate lässt nicht durch.
+
+**Was es nicht leistet** — vier Grenzen, und sie stehen hier, weil eine Regel, die ihre Lücken verschweigt, falsches Vertrauen erzeugt:
+
+1. `--no-verify` umgeht den Hook. Der Git-Workflow verbietet das, mechanisch verhindert es nichts.
+2. Ein frischer Klon hat das Gate erst nach einem Installer-Lauf oder `git config core.hooksPath .githooks`.
+3. Bei belegtem `core.hooksPath` hängt ein Projekt mit eigenem Hook-Manager den Aufruf selbst ein.
+4. Die Zusicherung gilt **je committeter Datei**, nicht für den Stand als Ganzes: Wer `A` committet und das dazugehörige `B` ungestagt liegen lässt, erzeugt einen Stand, den so nie jemand geprüft hat. Das ist der Preis dafür, dass die Skills selektiv stagen dürfen.
+
+**Was in den Lücken greift.** Läuft der Nacht-Runner, wertet er den Nachweis nachträglich: Fehlt er oder ist er rot, gilt die Runde als Fehlschlag, mit eigenem Board-Kommentar. **Interaktiv greift niemand** — dort bleibt die Regel im Git-Workflow die einzige Sicherung.
+
 ### Welchen Stand hat meine Installation?
 
 Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:
@@ -477,7 +490,7 @@ Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist d
 
 Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
 
-**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO.
+**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO. Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus: Das Commit-Gate ist mechanisch und kennt keine Bahn.
 
 **Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
 
