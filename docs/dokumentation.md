@@ -295,7 +295,7 @@ Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 d
 
 ### /issues
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an.
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Beschreibung nichts ändern (Issue #464).
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -1119,7 +1119,7 @@ Eine Aussage ist eine Zeile mit ID und Text. Gestrichene Aussagen wandern unter 
 
 ### Was ein Arbeitspaket sagt
 
-Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Er besteht ausschließlich aus Zeilen dieser vier Formen:
+Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Die Pflicht gilt für Arbeitspakete — ein Titel mit `[Fachlich]`, `[Plan]` oder `[Idee]` wird auch ohne den Abschnitt angelegt, weil aus ihm nie ein Commit entsteht. Wer ihn dort freiwillig schreibt, wird an derselben Grammatik gemessen. Er besteht ausschließlich aus Zeilen dieser vier Formen:
 
 ```
 NEU       <BEREICH> <ID> — <Aussage>

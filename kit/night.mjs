@@ -174,9 +174,27 @@ const NACHBAR_BOARD = join(__dirname, "board.mjs");
 const parsePruefvorgabeFallback = (body) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
 };
-const { parsePruefvorgabe } = existsSync(NACHBAR_BOARD)
+// Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
+// zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
+// bewusst kein `false`: Ein stilles `false` liesse ein Plandokument als
+// Arbeitspaket durch — der Runner implementierte es, und am Board saehe das wie
+// ein Erfolg aus. Genau davor schuetzen die Praefixe.
+const praefixFallback = (was) => (title) => {
+  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
+};
+const {
+  parsePruefvorgabe,
+  istFachlich: isFachlich,
+  istPlan: isPlan,
+  istIdee: isIdee,
+} = existsSync(NACHBAR_BOARD)
   ? await import("./board.mjs")
-  : { parsePruefvorgabe: parsePruefvorgabeFallback };
+  : {
+      parsePruefvorgabe: parsePruefvorgabeFallback,
+      istFachlich: praefixFallback("[Fachlich]"),
+      istPlan: praefixFallback("[Plan]"),
+      istIdee: praefixFallback("[Idee]"),
+    };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
 // (Issue #428). Ein zweiter Rechenweg waere genau das, was checks.mjs fuer die Auswahl
@@ -437,22 +455,6 @@ function lastCommitHash() {
   return res.status === 0 ? res.stdout.trim() : "?";
 }
 
-// --- Nicht implementierbare Issues: fachlich (#146) und Idee (#192) ---
-
-// [Fachlich]-Titelpraefix = Discovery-Issue: wird gegroomt, nie implementiert.
-// Titel-basiert, weil issue list den Titel bei allen Trackern ohne Adapter-
-// Erweiterung liefert (Stufe 1; Label-Achse ist als Folgepaket benannt).
-function isFachlich(title) {
-  return /^\s*\[fachlich\]/i.test(title || "");
-}
-
-// [Idee]-Titelpraefix = rohe Idee ohne /plan-Zyklus, ebenfalls nicht nachtlauf-faehig
-// (Issue #192). Ohne Gate startet der Runner eine Session, die das Issue korrekt
-// ablehnt und ohne In-review-Ergebnis endet — eine korrekte Ablehnung, die der
-// Runner nicht von einem Fehlschlag unterscheiden kann. Beobachtet an zwei Tagen
-// mit demselben Issue (kanban-kit#494): je Lauf eine verbrannte Session plus ein
-// Kommentar, der wie ein Infrastrukturproblem aussieht. Vorhersehbare Modell-
-// Entscheidungen gehoeren ins Gate, nicht in Prompts.
 // Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
 // greift dieser am BODY: Der Marker steht im Kontext-Abschnitt, nicht im Titel. Der
 // Body liegt ohnehin vor, weil parseDeps ihn braucht — kein zusaetzlicher Board-Aufruf.
@@ -570,17 +572,6 @@ export function hatKlaerenLabel(issue) {
   return (issue?.labels || []).includes(KLAEREN_LABEL);
 }
 
-function isIdee(title) {
-  return /^\s*\[idee\]/i.test(title || "");
-}
-
-// [Plan]-Titelpraefix = Plandokument aus /plan (Issue #276). Ein Plan beschreibt einen
-// Weg, er ist keine Aufgabe: Er wird per /issues erst in Arbeitspakete zerlegt. Ohne
-// dieses Gate faellt er unter keine der beiden Sorten darueber und kaeme als normales
-// Arbeitspaket durch — er wuerde implementiert, und das saehe am Board wie ein Erfolg aus.
-function isPlan(title) {
-  return /^\s*\[plan\]/i.test(title || "");
-}
 
 // --- Review-Kandidaten (Issue #232) ---
 

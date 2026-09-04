@@ -29,7 +29,9 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { kontextGrenzen, fenceLauf } from "../kit/board.mjs";
+// `istPlan` kommt seit Issue #464 aus board.mjs, wo die Praefix-Form genau einmal
+// steht. Vorher lag hier die zweite Fassung derselben Regel.
+import { kontextGrenzen, fenceLauf, istPlan } from "../kit/board.mjs";
 
 /**
  * Die moeglichen Zustaende — die einzige Wahrheit darueber.
@@ -45,10 +47,6 @@ export const ZUSTAENDE = [
 const PLAN_ZEILE = /^Plan: Issue #(\d+)[ \t]*$/;
 const FACH_ZEILE = /^Fachliche Quelle: Issue #(\d+)[ \t]*$/;
 
-// Dieselbe Praefix-Konvention wie in skills/issue-review/SKILL.md: unabhaengig von
-// Gross-/Kleinschreibung, nach optional fuehrendem Leerraum, auch ohne Leerzeichen
-// nach `]`. Ein Praefix mitten im Titel zaehlt nicht — deshalb `^`.
-const PLAN_PRAEFIX = /^\s*\[plan\]/i;
 
 /**
  * Zeilenenden vereinheitlichen, bevor irgendetwas gelesen wird.
@@ -116,7 +114,7 @@ function ausGruppe(nummern) {
  */
 export function herkunftAusBody({ id, title, body }) {
   const text = normalisiere(body);
-  const grenzen = PLAN_PRAEFIX.test(String(title || "")) ? kopfGrenzen(text) : kontextGrenzen(text);
+  const grenzen = istPlan(title) ? kopfGrenzen(text) : kontextGrenzen(text);
 
   // Kein gueltiger Fundort (Arbeitspaket ohne `## Kontext`): Es gibt kein "dort",
   // an dem eine Zeile stehen duerfte. Dann entscheidet allein, ob irgendwo im Body

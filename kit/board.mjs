@@ -2158,6 +2158,51 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
  */
 export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
 
+/**
+ * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
+ * (PO-Schleife), `[Plan]` (Plandokument aus /plan) und `[Idee]` (rohe Idee).
+ *
+ * Hier und nur hier. Bis Issue #464 lag die Form doppelt im Bestand — als
+ * `isFachlich`/`isIdee`/`isPlan` in kit/night.mjs und als `PLAN_PRAEFIX` in
+ * tools/derived-from-report.mjs — und an keiner Stelle abrufbar. Beide Nutzer
+ * importieren jetzt von hier; der `runAsCli`-Waechter macht den Import
+ * nebenwirkungsfrei.
+ *
+ * Warum es die Gates gibt — die Begruendungen standen bis #464 an den entfernten
+ * Fassungen im Nacht-Runner: `[Fachlich]` wird gegroomt und nie implementiert
+ * (#146). Bei `[Idee]` startete der Runner ohne Gate eine Session, die das Issue
+ * korrekt ablehnt und ohne In-review-Ergebnis endet — eine korrekte Ablehnung, die
+ * er nicht von einem Fehlschlag unterscheiden kann (#192, beobachtet an zwei Tagen
+ * mit kanban-kit#494). `[Plan]` beschreibt einen Weg und ist keine Aufgabe; ohne
+ * Gate kaeme er als normales Arbeitspaket durch, wuerde implementiert, und am Board
+ * saehe das wie ein Erfolg aus (#276).
+ *
+ * `\s*` und `i` wie im Nacht-Runner, damit die Erkennung zeichengleich bleibt:
+ * fuehrender Leerraum erlaubt, Gross- und Kleinschreibung gleichgueltig, das
+ * Praefix steht am Titelanfang. `[Fachplan]`, `[Konzept]`, `Fachlich: …` und ein
+ * `[Plan]` mitten im Titel sind KEIN Praefix — sie bezeichnen Arbeitspakete.
+ */
+export const FACHLICH_PRAEFIX = /^\s*\[fachlich\]/i;
+export const PLAN_PRAEFIX = /^\s*\[plan\]/i;
+export const IDEE_PRAEFIX = /^\s*\[idee\]/i;
+
+export function istFachlich(title) {
+  return FACHLICH_PRAEFIX.test(title || "");
+}
+
+export function istPlan(title) {
+  return PLAN_PRAEFIX.test(title || "");
+}
+
+export function istIdee(title) {
+  return IDEE_PRAEFIX.test(title || "");
+}
+
+/** Traegt der Titel eines der drei Dokument-Praefixe? */
+export function istDokumentPraefix(title) {
+  return istFachlich(title) || istPlan(title) || istIdee(title);
+}
+
 // Der Hilfetext nennt den fehlenden Abschnitt und den Ort der Formpruefung. Die
 // Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der die
 // Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
@@ -2190,8 +2235,8 @@ function specWirkungVorhanden(body) {
  * Projekt, und waere diese Bedingung falsch, lehnte die Leitplanke die Pakete ab,
  * mit denen sie gebaut wird.
  */
-function specWirkungSicherstellen(config, body) {
-  if (!config?.spec || specWirkungVorhanden(body)) return;
+function specWirkungSicherstellen(config, body, title) {
+  if (!config?.spec || istDokumentPraefix(title) || specWirkungVorhanden(body)) return;
   fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
 }
 
@@ -2576,7 +2621,7 @@ async function issueCreate(tracker, config, args) {
   // (Issue #443): Fehlt beides, meldet der Adapter das Autor-Modell zuerst, weil
   // die aeltere Pruefung schon in der Zeile darueber abbricht. Und vor jedem
   // Netzaufruf — ein Body ohne Wirkungsangabe soll keine Karte anlegen.
-  specWirkungSicherstellen(config, felder.body);
+  specWirkungSicherstellen(config, felder.body, felder.title);
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
@@ -3360,11 +3405,15 @@ const ZUSTAND_ZU_LABEL = {
   ausgefallen: "review:offen",
 };
 
-/** Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt. */
+/**
+ * Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt.
+ *
+ * Nutzt die Praedikate von oben. Bis Issue #464 stand die Praefix-Form hier ein
+ * drittes Mal — in derselben Datei, in der sie seither definiert ist.
+ */
 function stufeAusTitel(title) {
-  const t = String(title || "");
-  if (/^\s*\[fachlich\]/i.test(t)) return "fachlich";
-  if (/^\s*\[plan\]/i.test(t)) return "plan";
+  if (istFachlich(title)) return "fachlich";
+  if (istPlan(title)) return "plan";
   return "issue";
 }
 
