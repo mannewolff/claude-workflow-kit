@@ -67,8 +67,20 @@ Fortschreibung seiner Beschreibung sieht, bevor sie geschrieben wird.
 ```bash
 node .claude/kit/spec.mjs apply --anker "$(git merge-base HEAD origin/<mainBranch>)"
 git add specs/
+node .claude/kit/checks.mjs run
 git commit -m "chore: Spec fortgeschrieben (<Paketnummern>)"
 ```
+
+**Warum hier geprüft wird, obwohl Schritt 4 gleich noch einmal prüft:** Der Nachweis
+gehört zum **Commit**, Schritt 4 gehört zum **Push**. `apply` hat gerade Dateien unter
+`specs/` geschrieben, die der Lauf aus `/local-check` nicht gesehen haben kann — und
+ohne Nachweis für genau diesen Stand weist das Commit-Gate den Commit ab. Der Aufruf
+läuft **ohne `--since`**: Gemessen wird der uncommittete Stand, der gleich in den
+Commit geht, nicht der Batch seit `merge-base` wie zwei Zeilen darüber bei `apply`.
+Schritt 4 bleibt daneben unverändert bestehen — er ist kein Duplikat, sondern das Gate
+vor dem Push.
+
+Ein **roter** Lauf hält hier an: kein Spec-Commit, kein Push.
 
 In den Commit gehören **nur** die Dateien unter `specs/` (inklusive `specs/INDEX.md`).
 In der Botschaft stehen **keine** `#N`-Referenzen auf Nicht-Pakete: `apply` und `check`
@@ -77,13 +89,15 @@ dieses Commits würde dort als Arbeitspaket gewertet.
 
 **Leere Vorschau.** Ist keine Änderung an `specs/` zu erwarten — alle Wirkungen `KEINE`,
 oder nur Pakete vor `seit` —, entfallen Zustimmung und Commit. Melde
-„Keine Spec-Fortschreibung in diesem Batch" und gehe direkt zu Schritt 4. Das Spec-Gate
+„Keine Spec-Fortschreibung in diesem Batch" und gehe direkt zu Schritt 4. Mit dem
+Commit entfällt auch sein Prüflauf — es gibt nichts, wofür ein Nachweis nötig wäre. Das Spec-Gate
 läuft dort trotzdem — es prüft den Batch, nicht die Fortschreibung. Das ist der
 Regelfall.
 
 **Fehlerpfade.** Endet `apply` (auch mit `--dry-run`) mit einem Exitcode ungleich 0,
-oder liefert die `merge-base`-Substitution einen **leeren** Anker, hält der Ablauf an:
-kein Commit, keine Pflicht-Checks, kein Push. Meldung mit dem Grund. Ein roter
+liefert die `merge-base`-Substitution einen **leeren** Anker, oder endet der
+`checks.mjs run` vor dem Commit **rot**, hält der Ablauf an: kein Commit, keine
+Pflicht-Checks, kein Push. Meldung mit dem Grund. Ein roter
 `apply`-Lauf ist kein Randfall, den man übergeht — er heißt, dass Paket und Beschreibung
 nicht zusammenpassen.
 

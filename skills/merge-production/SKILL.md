@@ -35,6 +35,12 @@ Diese Commits kommen in den PR-Body als Änderungsübersicht.
 
 ### 3. Release-Schritte (falls `RELEASING.md` existiert)
 
+**Vor jedem Commit dieses Wegs steht ein `node .claude/kit/checks.mjs run`** — beide
+Stellen nennt `RELEASING.md` in seiner `merge production`-Liste. Der Nachweis gehört
+zum Commit: Bump und Changelog erzeugen Dateien, die kein früherer Lauf gesehen haben
+kann, und ohne Nachweis für genau diesen Stand weist das Commit-Gate sie ab. Der
+Aufruf läuft ohne `--since`. Ein roter Lauf hält an: kein Commit, kein Push, kein PR.
+
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
   Release-Schritte aus — typischerweise ein Version-Bump, optional ergänzt um eine
