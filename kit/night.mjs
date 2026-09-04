@@ -957,10 +957,17 @@ function lesePruefung(issueId) {
   try {
     const daten = JSON.parse(readFileSync(pfad, "utf-8"));
     if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket" };
+    const laufen = daten.laufen ?? [];
+    // Ein nicht gruener Eintrag ist etwas anderes als eine fehlende Datei: Dort ist
+    // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
+    // #471 fielen beide zusammen — jede lesbare Datei galt als "geprueft", auch
+    // eine mit rotem Lauf, und der Zustand floss in werteRunde gar nicht ein.
+    const ungruen = laufen.find((e) => e.ergebnis !== "gruen");
     return {
       id: String(issueId),
-      zustand: "geprueft",
-      laufen: daten.laufen ?? [],
+      zustand: ungruen ? "rot" : "geprueft",
+      ...(ungruen ? { rotesKommando: ungruen.cmd, rotesErgebnis: ungruen.ergebnis } : {}),
+      laufen,
       ausgelassen: daten.ausgelassen ?? [],
     };
   } catch (err) {
@@ -979,6 +986,7 @@ function pruefZeile(p) {
   if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
   if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
   if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
+  if (p.zustand === "rot") return `  Issue #${p.id}: rot — ${p.rotesKommando} endete ${p.rotesErgebnis}.`;
   const gelaufen = p.laufen.map((e) => `${e.cmd} -> ${e.ergebnis} (${e.grund})`).join("; ") || "keine";
   return `  Issue #${p.id}: gelaufen: ${gelaufen} | ausgelassen: ${pruefListe(p.ausgelassen, "keine")}`;
 }
@@ -990,7 +998,8 @@ function pruefSummenzeile(pruefungen) {
     geprueft.reduce((n, p) => n + p[feld].filter(filter).length, 0);
   const rot = summe("laufen", (e) => e.ergebnis === "rot");
   return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
-    + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft; `
+    + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft, `
+    + `${zaehle("rot")} rot; `
     + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
 }
 
@@ -2175,7 +2184,29 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
  * Zaehler des Laufs; der Unterschied zwischen ihnen ist das Signal, das der Morgen
  * liest.
  */
-async function werteRunde(top, res, minutes, args, salvageAttempted) {
+/**
+ * Der Mangel am Nachweis, oder `null` — Grund fuer Log und Board in einem.
+ *
+ * `geprueft` und `leeresPaket` sind Erfolg wie bisher; die drei uebrigen Zustaende
+ * sind es nicht. Jeder traegt seinen eigenen Text: #463 verlangt, dass der Betreiber
+ * den Grund von Absturz und Infrastrukturfehler unterscheiden kann, und der
+ * generische "Session ohne In-review-Ergebnis" leistet das nicht.
+ */
+function nachweisMangel(pruefung) {
+  const zustand = pruefung?.zustand;
+  if (zustand === "ungeprueft") {
+    return "Nachweis fehlt — die Session hat keine Pruefung gefahren";
+  }
+  if (zustand === "unlesbar") {
+    return `Nachweis unlesbar (${pruefung.fehler})`;
+  }
+  if (zustand === "rot") {
+    return `Nachweis rot — ${pruefung.rotesKommando} endete ${pruefung.rotesErgebnis}`;
+  }
+  return null;
+}
+
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -2183,9 +2214,24 @@ async function werteRunde(top, res, minutes, args, salvageAttempted) {
     // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
     // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
     // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
-    if (gitClean()) return "erfolg";
-    log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
-    return "hardStop";
+    if (!gitClean()) {
+      log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
+      return "hardStop";
+    }
+    // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
+    // In-review-Pfad. Stuende er weiter oben, griffe er auch fuer eine Karte in
+    // Ready — und weil die Karte dabei liegen bleibt, zoege die naechste Iteration
+    // dasselbe Issue erneut, bis MAX_ITERATIONS erschoepft ist. Dazu bekaeme ein
+    // gescheiterter CLI-Start (Infrastruktur-Guard, #149) den Kommentar "keine
+    // Pruefung gefahren", und der Dirty-Guard waere umgangen.
+    const mangel = nachweisMangel(pruefung);
+    if (mangel) {
+      log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
+      board("issue", "comment", String(top.id),
+        "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
+      return "fehlschlag";
+    }
+    return "erfolg";
   }
 
   // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
@@ -2224,6 +2270,7 @@ export async function laufeImplementierung(args, ctx) {
   let sessions = 0;
   let succeeded = 0;
   let deferred = 0;
+  let ohneNachweis = 0;
   let iterations = 0;
   let hardStop = false;
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
@@ -2260,19 +2307,24 @@ export async function laufeImplementierung(args, ctx) {
     // weiter unten in werteRunde laufen kann, ist aussen vor.
     verwerfeZusammenfassung();
     const res = await runSession(top.id, args);
-    pruefungen.push(lesePruefung(top.id));
+    // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
+    // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
+    // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
+    const pruefung = lesePruefung(top.id);
+    pruefungen.push(pruefung);
     const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
-    const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted);
+    const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
     if (ausgang === "erfolg") succeeded++;
     else if (ausgang === "deferred") deferred++;
+    else if (ausgang === "fehlschlag") ohneNachweis++;
     else {
       hardStop = true;
       break;
     }
   }
 
-  return { sessions, succeeded, deferred, hardStop, pruefungen };
+  return { sessions, succeeded, deferred, ohneNachweis, hardStop, pruefungen };
 }
 
 async function main() {
@@ -2292,7 +2344,7 @@ async function main() {
   }
 
   const ergebnis = await laufeImplementierung(args, ctx);
-  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
   for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);

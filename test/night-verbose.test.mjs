@@ -38,13 +38,14 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-verbose-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
     buildChecks: ["true"],
     local: { issuesDir: "issues" },
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\n");
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -64,6 +65,7 @@ function streamFake() {
   return [
     `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"mvn -q verify"}}]}}'`,
     `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Tests gruen, ich committe jetzt."}]}}'`,
+    "node .claude/kit/checks.mjs run > /dev/null 2>&1",
     `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
   ].join(" && ");
 }
@@ -150,7 +152,8 @@ test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}'`,
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep"}]}}'`,  // ganz ohne input
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Glob","input":{"zahl":7}}]}}'`,
-      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+      "node .claude/kit/checks.mjs run > /dev/null 2>&1",
+    `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
     ].join(" && ");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
@@ -185,7 +188,8 @@ test("--verbose kuerzt lange Texte und Argumente", NUR_POSIX, () => {
     const fake = [
       `echo '{"type":"assistant","message":{"content":[{"type":"text","text":"${langerText}"}]}}'`,
       `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"${langesKommando}"}}]}}'`,
-      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+      "node .claude/kit/checks.mjs run > /dev/null 2>&1",
+    `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
     ].join(" && ");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
@@ -212,7 +216,8 @@ test("--verbose wertet auch eine letzte Zeile ohne Zeilenumbruch aus", NUR_POSIX
     // die Auswertung beim Schliessen ginge die letzte Meldung einer Session verloren
     // — und das ist oft die interessanteste.
     const fake = [
-      `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
+      "node .claude/kit/checks.mjs run > /dev/null 2>&1",
+    `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`,
       `printf '%s' '{"type":"assistant","message":{"content":[{"type":"text","text":"Letzte Zeile ohne Umbruch"}]}}'`,
     ].join(" && ");
 

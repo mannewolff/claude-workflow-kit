@@ -49,6 +49,7 @@ function setupProjekt({ config = {}, mitCommit = true, boardInhalt = null, alles
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   if (boardInhalt === null) {
     copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+    copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   } else {
     writeFileSync(join(dir, ".claude", "kit", "board.mjs"), boardInhalt, "utf-8");
   }
@@ -142,7 +143,7 @@ test("in einem Repo ohne Commit meldet der Erfolg den Hash als '?'", NUR_POSIX, 
   // Erfolgsmeldung lesbar, statt den ganzen Lauf an einer Protokollzeile zu kippen.
   mitProjekt((dir) => {
     const id = readyIssue(dir);
-    const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+    const fake = `node .claude/kit/checks.mjs run > /dev/null 2>&1 && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 

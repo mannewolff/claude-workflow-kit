@@ -45,11 +45,12 @@ function setupProjekt(config = {}, praefix = "night-letzte-") {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" }, ...config,
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\n");
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");
@@ -84,7 +85,7 @@ test("ohne local-Block zaehlen die Board-Dateien im Default-Verzeichnis nicht al
   // Board-Move fuer eine Code-Aenderung und stoppte sofort hart.
   mitProjekt((dir) => {
     const id = readyIssue(dir);
-    const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+    const fake = `node .claude/kit/checks.mjs run > /dev/null 2>&1 && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 

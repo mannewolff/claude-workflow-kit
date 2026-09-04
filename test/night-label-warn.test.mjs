@@ -154,7 +154,7 @@ test("Gegenprobe: leeres Ready -> keine Warnung, es gibt nichts zu unterscheiden
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     // Im echten Lauf endet leeres Ready ueber die Zusammenfassung; die Meldung
     // "Ready ist leer" gibt es nur im Dry-Run-Pfad.
-    assert.match(res.stdout, /0 erfolgreich, 0 zurueckgestellt, 0 Session/, "der Lauf haette leer enden muessen");
+    assert.match(res.stdout, /0 erfolgreich, 0 zurueckgestellt, 0 ohne gueltigen Nachweis, 0 Session/, "der Lauf haette leer enden muessen");
     assert.doesNotMatch(res.stdout, WARNUNG, "bei leerem Ready darf keine Warnung erscheinen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
