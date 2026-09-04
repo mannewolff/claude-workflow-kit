@@ -114,6 +114,11 @@ test("version.mjs bricht bei fehlender oder unlesbarer VERSION-Konstante ab", ()
 function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   const dir = tempDir(praefix);
   mkdirSync(join(dir, "kit"), { recursive: true });
+  mkdirSync(join(dir, ".githooks"), { recursive: true });
+  // Hook und Gate stehen seit Issue #473 im Blob-Register; gate.mjs bewusst
+  // ohne Versions-Stempel (nicht in STAMPED).
+  writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
+  writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   mkdirSync(join(dir, "templates"), { recursive: true });
   mkdirSync(join(dir, "skills", "beispiel"), { recursive: true });
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
@@ -128,7 +133,7 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   return dir;
 }
 
-const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SPEC_MJS_B64", "SKILLS_B64"];
+const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SPEC_MJS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64"];
 
 test("sync-blobs bricht ab, wenn install.mjs keine VERSION-Konstante hat", () => {
   const dir = syncFixture("sync-noversion-", {

@@ -30,23 +30,38 @@ Gebumpt wird ueber das Single-File-Tool `tools/version.mjs` (`--get`, `--patch`,
 | `merge production` | `node tools/version.mjs --minor` | y + 1, z = 0 |
 | explizit angesagt | `node tools/version.mjs --major` | x + 1, y = 0, z = 0 |
 
+## Einrichtung (einmalig je Klon)
+
+Das Commit-Gate liegt versioniert unter `.githooks/`, aktiviert wird es aber ueber
+lokale git-Config — die wandert nicht mit dem Klon:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Ohne diesen Schritt weist nichts einen Commit ohne Pruefnachweis ab; es bleibt allein
+die nachtraegliche Wertung im Nacht-Runner (Issue #471).
+
 ## Ablauf
 
 **Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --patch`
 2. `node tools/sync-blobs.mjs` — stempelt die neue Version in die Kit-Dateien.
-3. Version-Commit: `chore: vX.Y.Z` (`install.mjs` und die gestempelten Kit-Dateien).
+3. `node .claude/kit/checks.mjs run`, dann Version-Commit: `chore: vX.Y.Z`
+   (`install.mjs` und die gestempelten Kit-Dateien).
 4. `node tools/changelog.mjs` — **jetzt**, nachdem die Marke existiert.
-5. `git add CHANGELOG.md && git commit --amend --no-edit` — der Changelog wandert in
+5. `node .claude/kit/checks.mjs run`, dann
+   `git add CHANGELOG.md && git commit --amend --no-edit` — der Changelog wandert in
    denselben Commit.
 6. Push auf `main`.
 
 **Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
 1. `node tools/version.mjs --minor`
 2. `node tools/sync-blobs.mjs`
-3. Version-Commit: `chore: vX.Y.Z`
+3. `node .claude/kit/checks.mjs run`, dann Version-Commit: `chore: vX.Y.Z`
 4. `node tools/changelog.mjs`
-5. `git add CHANGELOG.md && git commit --amend --no-edit`
+5. `node .claude/kit/checks.mjs run`, dann
+   `git add CHANGELOG.md && git commit --amend --no-edit`
 6. Push auf `main`.
 7. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
 
@@ -61,6 +76,14 @@ Release v1.36.0: die veroeffentlichte Version fehlte im Changelog).
 Der `--amend` passiert **lokal vor dem Push** und braucht deshalb keinen
 Force-Push. Er aendert weder Betreff noch Datum des Commits — und nur an denen
 haengt das Generat, weshalb `--check` danach stabil gruen bleibt.
+
+**Warum vor jedem Commit ein eigener Prueflauf steht:** Der Nachweis gehoert zum
+Commit, nicht zum Push. Der Lauf aus Schritt 4 des `push-main`-Skills kann die
+Dateien, die der Bump und der Changelog erst danach erzeugen, gar nicht gesehen
+haben — `install.mjs`, die gestempelten Kit-Dateien und `CHANGELOG.md`. Der Aufruf
+laeuft deshalb **ohne `--since`**: Gemessen wird der uncommittete Stand, der gleich
+in den Commit geht, nicht der Batch seit `merge-base` wie in `/local-check`. Wer die
+Anker angleicht, misst das Falsche.
 
 **Nicht umdrehen:** Erst Bump, dann Commit, dann Changelog, dann Amend. Wer den
 Changelog wieder vor den Commit zieht, bekommt denselben Fehler zurueck.

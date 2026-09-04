@@ -89,3 +89,53 @@ test("bei fehlendem Autor-Modell UND fehlender Spec-Wirkung meldet der Adapter d
   assert.match(res.stderr, /Autor-Modell/);
   assert.deepEqual(board(dir, "issue", "list"), []);
 });
+
+// --- Ausnahme fuer Dokument-Praefixe (Issue #464) ---------------------------
+//
+// `[Fachlich]`, `[Plan]` und `[Idee]` werden nie implementiert und nie nach Ready
+// gezogen. Sie koennen an der Beschreibung nichts aendern, ihr Abschnitt kann nur
+// `KEINE — <Begruendung>` lauten — und eine Leitplanke, die immer dieselbe leere
+// Zeile erzwingt, prueft nichts mehr. Belegt an #462 und #463: zwei Sessions, die
+// einander nicht kannten, schrieben unabhaengig dieselbe Pflichtzeile.
+
+test("[board-2] mit spec-Block wird jedes der drei Dokument-Praefixe ohne Spec-Wirkung angelegt", () => {
+  const dir = mitSpec();
+  // Auch die Schreibvarianten, die die Erkennung ausdruecklich deckt: fuehrender
+  // Leerraum und Gross-/Kleinschreibung sind gleichgueltig.
+  for (const titel of ["[Fachlich] Eine Anforderung", "[Plan] Ein Weg", "[Idee] Ein Einfall", "  [FACHLICH] Mit Leerraum", "[plan] klein geschrieben"]) {
+    const angelegt = board(dir, "issue", "create", "--title", titel, "--body", KOPF);
+    assert.ok(angelegt.id, `'${titel}' haette angelegt werden muessen`);
+    assert.equal(board(dir, "issue", "get", String(angelegt.id)).body, KOPF, `'${titel}': der Body wurde veraendert`);
+  }
+});
+
+test("[board-2] ein Beinahe-Praefix wird weiter abgewiesen, mit unveraenderter Meldung", () => {
+  const dir = mitSpec();
+  // Das Praefix muss am Titelanfang stehen und wortgleich sein. `[Fachplan]` und
+  // `[Konzept]` sind andere Woerter, `Foo [Plan]` steht mitten im Titel — keiner
+  // dieser Titel ist ein Dokument-Praefix, alle drei sind Arbeitspakete.
+  for (const titel of ["Ohne jedes Praefix", "[Fachplan] Beinahe", "[Konzept] Auch nicht", "Text ueber [Plan] mittendrin", "Fachlich: ohne Klammern"]) {
+    const res = runBoard(dir, ["issue", "create", "--title", titel, "--body", KOPF]);
+    assert.notEqual(res.status, 0, `'${titel}' haette abgewiesen werden muessen`);
+    assert.match(res.stderr, /## Spec-Wirkung/, `'${titel}': die Meldung muss den fehlenden Abschnitt nennen`);
+    assert.match(res.stderr, /spec\.mjs check --paket/, `'${titel}': die Meldung muss auf die Formpruefung verweisen`);
+  }
+  assert.deepEqual(board(dir, "issue", "list"), [], "trotz Fehler wurde ein Issue angelegt");
+});
+
+test("[board-2] ein Praefix-Dokument mit freiwilligem Abschnitt wird angelegt", () => {
+  const dir = mitSpec();
+  // Die Ausnahme erlaubt das Weglassen, sie verbietet den Abschnitt nicht: Wer
+  // ihn schreibt, wird weiter an derselben Grammatik gemessen.
+  const body = `${KOPF}\n## Spec-Wirkung\nKEINE — Plandokument, die Wirkung tragen die Pakete.\n`;
+  const angelegt = board(dir, "issue", "create", "--title", "[Plan] Mit freiwilliger Wirkung", "--body", body);
+  assert.match(board(dir, "issue", "get", String(angelegt.id)).body, /^## Spec-Wirkung$/m);
+});
+
+test("[board-2] ohne spec-Block bleibt ein Praefix-Titel ohne Abschnitt zeichengleich", () => {
+  // Byte-Vergleich wie im Bestandstest: Ein Adapter, der den Abschnitt still
+  // ergaenzt oder den Titel anfasst, faellt nur so auf.
+  const dir = ohneSpec();
+  const angelegt = board(dir, "issue", "create", "--title", "[Fachlich] Ohne Schalter", "--body", KOPF);
+  assert.equal(board(dir, "issue", "get", String(angelegt.id)).body, KOPF);
+});

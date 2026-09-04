@@ -4,7 +4,7 @@
   "buildChecks": [
     "node --test",
     "node tools/sync-blobs.mjs --check",
-    "npx eslint kit tools test install.mjs"
+    "npx eslint kit tools test install.mjs .githooks"
   ],
   "mutationCommand": "",
   "mainBranch": "main",
@@ -120,6 +120,9 @@
       ],
       "spec": [
         "kit/spec.mjs"
+      ],
+      "gate": [
+        ".githooks/gate.mjs"
       ],
       "installer": [
         "install.mjs",

@@ -64,6 +64,11 @@ const BLOBS = [
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
   { constName: "SPEC_MJS_B64", source: join(root, "kit", "spec.mjs") },
+  // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
+  // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
+  // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
+  { constName: "GATE_MJS_B64", source: join(root, ".githooks", "gate.mjs") },
+  { constName: "PRE_COMMIT_B64", source: join(root, ".githooks", "pre-commit") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 

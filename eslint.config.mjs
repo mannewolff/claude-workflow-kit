@@ -21,7 +21,7 @@ export default [
     ],
   },
   {
-    files: ["kit/**/*.mjs", "tools/**/*.mjs", "test/**/*.mjs", "install.mjs"],
+    files: ["kit/**/*.mjs", "tools/**/*.mjs", "test/**/*.mjs", "install.mjs", ".githooks/**/*.mjs"],
     languageOptions: { ecmaVersion: "latest", sourceType: "module" },
     plugins: { unicorn, sonarjs },
     rules: {

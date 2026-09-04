@@ -123,7 +123,7 @@ test("kein Label-Treffer -> Lauf endet wie bei leerem Ready", NUR_POSIX, () => {
     const sessionLog = join(dir, "sessions.log");
     const res = run(dir, process.execPath, [NIGHT], { NIGHT_CLAUDE_CMD: successFake(sessionLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /0 erfolgreich, 0 zurueckgestellt, 0 Session/, "kein-Treffer-Lauf haette leer enden muessen");
+    assert.match(res.stdout, /0 erfolgreich, 0 zurueckgestellt, 0 ohne gueltigen Nachweis, 0 Session/, "kein-Treffer-Lauf haette leer enden muessen");
     assert.ok(!existsSync(sessionLog), "es haette keine Session laufen duerfen");
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => i.id);
     assert.ok(ready.includes(a.id), "A haette in Ready bleiben muessen");

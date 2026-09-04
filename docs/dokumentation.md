@@ -92,6 +92,38 @@ Die erste Zeile muss `.claude/*` lauten, nicht `.claude`: Git wertet innerhalb e
 
 `workflow.config.json` ist die begruendete Ausnahme. Der Installer **ueberschreibt sie nicht, er mergt**: Basis sind die Vorgabewerte, darueber die vorhandene Datei, zuoberst die abgefragten Antworten. Nicht abgefragte Felder wie `buildChecks` oder `issueReview` bleiben erhalten. Sie ist Team-Einstellung, kein Generat — und gehoert deshalb versioniert.
 
+### Das Commit-Gate
+
+Bei projektlokaler Installation fragt der Installer, ob das **Commit-Gate** eingehaengt werden soll. Es weist jeden Commit ab, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging.
+
+Zwei Dateien tragen es, beide unter `.githooks/` und damit **versioniert**:
+
+| Datei | Rolle |
+|---|---|
+| `.githooks/pre-commit` | POSIX-sh, wenige Zeilen, delegiert an das Gate |
+| `.githooks/gate.mjs` | die Pruefung selbst |
+
+Sie liegen dort und nicht unter `.claude/kit/`, weil der `.gitignore`-Block oben `.claude/*` ausschliesst: Ein frischer Klon haette den Hook sonst ohne das Programm, das er aufruft.
+
+**Was mitwandert und was nicht.** Die Dateien wandern mit dem Klon, die **Aktivierung nicht** — `core.hooksPath` ist lokale git-Config. Wer klont, hat das Gate erst, wenn er den Installer laufen laesst oder `git config core.hooksPath .githooks` selbst setzt.
+
+**Ein belegter `core.hooksPath` wird nicht ueberschrieben.** Faehrt das Projekt Husky oder ein eigenes Hook-Framework, meldet der Installer den gefundenen Wert und aendert nichts — sonst verloere das Projekt mit einem Schreibbefehl alle vorhandenen Hooks. Zum Einhaengen ergaenzt man den eigenen Hook um `node .githooks/gate.mjs pre-commit`. Dasselbe gilt fuer ein bereits vorhandenes `.githooks/pre-commit`, das nicht aus diesem Kit stammt: Es bleibt unangetastet.
+
+**Ausserhalb eines Git-Repos** — und wenn `git` nicht im PATH liegt — entfaellt die Frage; der Installer schreibt die Dateien und sagt, warum das Gate nicht aktiv ist. Bei globalem Install entfaellt sie ebenfalls.
+
+**Was das Gate prüft.** `checks.mjs run` hinterlässt eine Zusammenfassung unter `.claude/checks-summary.json`. Sie trägt neben Auswahl und Ergebnis je geänderter Datei einen **Blob-Hash**, gebildet **vor** dem ersten Kommando — so bezeugt er den Inhalt, der in die Prüfung ging, und nicht einen, den ein Formatter danach geschrieben hat. Beim Commit vergleicht das Gate diese Hashes gegen den **Index**, also gegen das, was wirklich committet wird. Grün nur, wenn die Zusammenfassung lesbar ist, kein Lauf ungrün war und jede gestagte Datei mit passendem Hash darin steht. Eine gestagte **Löschung** ist durch einen `null`-Eintrag gedeckt; hat die Prüfung nichts zu tun gefunden (`leeresPaket`), deckt sie auch nichts.
+
+**Für wen es gilt.** Für jeden Commit im Repo: die Implementierungs-Skills, **Bahn 1**, den Commit von Hand, den aus einem GUI-Client. Ein Werkzeug ohne `node` im PATH wird dabei **abgewiesen**, nicht durchgelassen — ein nicht lauffähiges Gate lässt nicht durch.
+
+**Was es nicht leistet** — vier Grenzen, und sie stehen hier, weil eine Regel, die ihre Lücken verschweigt, falsches Vertrauen erzeugt:
+
+1. `--no-verify` umgeht den Hook. Der Git-Workflow verbietet das, mechanisch verhindert es nichts.
+2. Ein frischer Klon hat das Gate erst nach einem Installer-Lauf oder `git config core.hooksPath .githooks`.
+3. Bei belegtem `core.hooksPath` hängt ein Projekt mit eigenem Hook-Manager den Aufruf selbst ein.
+4. Die Zusicherung gilt **je committeter Datei**, nicht für den Stand als Ganzes: Wer `A` committet und das dazugehörige `B` ungestagt liegen lässt, erzeugt einen Stand, den so nie jemand geprüft hat. Das ist der Preis dafür, dass die Skills selektiv stagen dürfen.
+
+**Was in den Lücken greift.** Läuft der Nacht-Runner, wertet er den Nachweis nachträglich: Fehlt er oder ist er rot, gilt die Runde als Fehlschlag, mit eigenem Board-Kommentar. **Interaktiv greift niemand** — dort bleibt die Regel im Git-Workflow die einzige Sicherung.
+
 ### Welchen Stand hat meine Installation?
 
 Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:
@@ -295,7 +327,7 @@ Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 d
 
 ### /issues
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an.
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Beschreibung nichts ändern (Issue #464).
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -458,7 +490,7 @@ Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist d
 
 Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
 
-**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO.
+**Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO. Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus: Das Commit-Gate ist mechanisch und kennt keine Bahn.
 
 **Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
 
@@ -1119,7 +1151,7 @@ Eine Aussage ist eine Zeile mit ID und Text. Gestrichene Aussagen wandern unter 
 
 ### Was ein Arbeitspaket sagt
 
-Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Er besteht ausschließlich aus Zeilen dieser vier Formen:
+Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Die Pflicht gilt für Arbeitspakete — ein Titel mit `[Fachlich]`, `[Plan]` oder `[Idee]` wird auch ohne den Abschnitt angelegt, weil aus ihm nie ein Commit entsteht. Wer ihn dort freiwillig schreibt, wird an derselben Grammatik gemessen. Er besteht ausschließlich aus Zeilen dieser vier Formen:
 
 ```
 NEU       <BEREICH> <ID> — <Aussage>

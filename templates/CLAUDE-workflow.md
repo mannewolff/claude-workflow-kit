@@ -131,7 +131,7 @@ Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 ## Zwei Bahnen
 
-**Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger.
+**Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger. **Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus** — das Commit-Gate ist mechanisch und kennt keine Bahn. Dasselbe gilt für jeden Commit von Hand. Was das Gate nicht leistet — `--no-verify` und der frische Klon ohne Installer-Lauf — steht unter „Git-Workflow (strikt bindend)“.
 
 **Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/plan` → `/issues` → GO → `/implement-ready`.
 
@@ -164,7 +164,7 @@ Claude geht nur bis **In review**. Done setzt der Mensch nach seinem Test.
 
 ## Git-Workflow (strikt bindend)
 
-1. Claude committet lokal, pusht NICHT automatisch.
+1. Claude committet lokal, pusht NICHT automatisch. Jeder Commit — auch Bahn 1, auch von Hand, auch aus einem GUI-Client — setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus; ein Werkzeug ohne `node` im PATH wird abgewiesen, nicht durchgelassen.
 2. Mensch testet lokal (Dev-Server starten, Golden Path durchklicken).
 3. Mensch tippt `push main` — Claude pusht auf `mainBranch`.
 4. Mensch testet auf Testserver.
@@ -175,6 +175,13 @@ Absolut bindend:
 - Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelanweisung.
 - Hooks (Pre-Commit / Pre-Push) werden nicht mit `--no-verify` umgangen.
 - `productionBranch` wird nie direkt gepusht.
+
+**Was das Commit-Gate nicht leistet.** `--no-verify` umgeht es (die Zeile darüber
+verbietet das, mechanisch verhindert es nichts), und ein frischer Klon hat es erst
+nach einem Installer-Lauf oder `git config core.hooksPath .githooks` — die Dateien
+wandern mit, die Aktivierung ist lokale git-Config. In beiden Fällen greift **nachts**
+die Wertung des Nacht-Runners, die einen fehlenden oder roten Nachweis zum Fehlschlag
+macht — **interaktiv greift niemand**. Dort bleibt die Zeile oben die einzige Regel.
 
 ---
 
