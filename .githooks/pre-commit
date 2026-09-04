@@ -1,0 +1,19 @@
+#!/bin/sh
+# claude-workflow-kit pre-commit (Issue #470)
+#
+# Delegiert sofort an Node: Die Logik gehoert nach gate.mjs, weil sie testbar sein
+# muss — ein Shell-Skript waere im Suite-Bestand ein Fremdkoerper. POSIX-sh, damit
+# dieselbe Datei auf der Windows-Matrix laeuft, wo git seine eigene sh mitbringt.
+#
+# Faellt node aus oder fehlt gate.mjs, endet der Hook mit Exit ungleich 0: Ein
+# nicht lauffaehiges Gate laesst nicht durch.
+gate="$(dirname "$0")/gate.mjs"
+if [ ! -f "$gate" ]; then
+  echo "pre-commit: $gate fehlt — Commit abgewiesen." >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node nicht im PATH — Commit abgewiesen." >&2
+  exit 1
+fi
+exec node "$gate" pre-commit
