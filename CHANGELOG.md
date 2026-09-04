@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [1.45.1] - 2026-09-04
+## [1.46.0] - 2026-09-04
 - chore: Spec fortgeschrieben (469, 470, 471, 472, 473, 474, 464)
 - Register und Doku: Bahn 1 und Handcommits brauchen einen gruenen Lauf (#474)
 - Auslieferung: Hook und Gate im Installer, core.hooksPath mit Vorpruefung (#473)
