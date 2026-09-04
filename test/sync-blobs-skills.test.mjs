@@ -35,6 +35,7 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
   mkdirSync(join(dir, "kit"), { recursive: true });
   mkdirSync(join(dir, "templates"), { recursive: true });
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  mkdirSync(join(dir, ".githooks"), { recursive: true });
 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
@@ -43,6 +44,10 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
   for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
+  // Hook und Gate liegen ausserhalb von kit/ und tragen keinen Versions-Stempel
+  // (Issue #473): gate.mjs steht bewusst nicht in STAMPED.
+  writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
+  writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   writeFileSync(join(dir, "install.mjs"), [
     'const VERSION = "1.0.0";',
     'const CONFIG_EXAMPLE_B64 = "";',
@@ -53,6 +58,8 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
     'const NIGHT_MJS_B64 = "";',
     'const CHECKS_MJS_B64 = "";',
     'const SPEC_MJS_B64 = "";',
+    'const GATE_MJS_B64 = "";',
+    'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
     "",
   ].join("\n"));

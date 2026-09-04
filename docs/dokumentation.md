@@ -92,6 +92,25 @@ Die erste Zeile muss `.claude/*` lauten, nicht `.claude`: Git wertet innerhalb e
 
 `workflow.config.json` ist die begruendete Ausnahme. Der Installer **ueberschreibt sie nicht, er mergt**: Basis sind die Vorgabewerte, darueber die vorhandene Datei, zuoberst die abgefragten Antworten. Nicht abgefragte Felder wie `buildChecks` oder `issueReview` bleiben erhalten. Sie ist Team-Einstellung, kein Generat — und gehoert deshalb versioniert.
 
+### Das Commit-Gate
+
+Bei projektlokaler Installation fragt der Installer, ob das **Commit-Gate** eingehaengt werden soll. Es weist jeden Commit ab, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging.
+
+Zwei Dateien tragen es, beide unter `.githooks/` und damit **versioniert**:
+
+| Datei | Rolle |
+|---|---|
+| `.githooks/pre-commit` | POSIX-sh, wenige Zeilen, delegiert an das Gate |
+| `.githooks/gate.mjs` | die Pruefung selbst |
+
+Sie liegen dort und nicht unter `.claude/kit/`, weil der `.gitignore`-Block oben `.claude/*` ausschliesst: Ein frischer Klon haette den Hook sonst ohne das Programm, das er aufruft.
+
+**Was mitwandert und was nicht.** Die Dateien wandern mit dem Klon, die **Aktivierung nicht** — `core.hooksPath` ist lokale git-Config. Wer klont, hat das Gate erst, wenn er den Installer laufen laesst oder `git config core.hooksPath .githooks` selbst setzt.
+
+**Ein belegter `core.hooksPath` wird nicht ueberschrieben.** Faehrt das Projekt Husky oder ein eigenes Hook-Framework, meldet der Installer den gefundenen Wert und aendert nichts — sonst verloere das Projekt mit einem Schreibbefehl alle vorhandenen Hooks. Zum Einhaengen ergaenzt man den eigenen Hook um `node .githooks/gate.mjs pre-commit`. Dasselbe gilt fuer ein bereits vorhandenes `.githooks/pre-commit`, das nicht aus diesem Kit stammt: Es bleibt unangetastet.
+
+**Ausserhalb eines Git-Repos** — und wenn `git` nicht im PATH liegt — entfaellt die Frage; der Installer schreibt die Dateien und sagt, warum das Gate nicht aktiv ist. Bei globalem Install entfaellt sie ebenfalls.
+
 ### Welchen Stand hat meine Installation?
 
 Der Board-Adapter und der Nacht-Runner sind Kopien — sie liegen nach der Installation in deinem Projekt und altern dort, während das Kit weiterentwickelt wird. Beide sagen dir auf Nachfrage, aus welchem Kit-Stand sie stammen:

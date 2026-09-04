@@ -303,10 +303,11 @@ test("Der Hinweis auf die Unumkehrbarkeit steht im Installer und VOR dem Prompt"
   }
 });
 
-test("Der Installer zaehlt neun Fragen und nennt den Vault-Pfad als Frage 10", () => {
+test("Der Installer zaehlt zehn Fragen und nennt den Vault-Pfad als Frage 11", () => {
   // Das Zahlwort stand hier schon zweimal falsch, weil es von Hand gepflegt wird.
-  assert.ok(QUELLE.includes("Neun Fragen"), "der Intro-Text zaehlt nicht neun Fragen");
-  assert.ok(QUELLE.includes("Frage 10 (nur bei globalem Install)"),
+  // Seit Issue #473 kommt die Hook-Frage als zehnte dazu.
+  assert.ok(QUELLE.includes("Zehn Fragen"), "der Intro-Text zaehlt nicht zehn Fragen");
+  assert.ok(QUELLE.includes("Frage 11 (nur bei globalem Install)"),
     "der Kommentar der Vault-Frage wurde nicht nachgezogen");
-  assert.ok(!QUELLE.includes("Acht Fragen"), "der alte Intro-Text steht noch da");
+  assert.ok(!QUELLE.includes("Neun Fragen"), "der alte Intro-Text steht noch da");
 });

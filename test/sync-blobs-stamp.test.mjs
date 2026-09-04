@@ -38,6 +38,11 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   mkdirSync(join(dir, "templates"), { recursive: true });
   mkdirSync(join(dir, "skills", "beispiel"), { recursive: true });
   if (lokaleKopie) mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  mkdirSync(join(dir, ".githooks"), { recursive: true });
+  // Hook und Gate stehen seit Issue #473 im Blob-Register; gate.mjs bewusst
+  // ohne Versions-Stempel (nicht in STAMPED).
+  writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
+  writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
@@ -58,7 +63,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
     `const SPEC_MJS_B64 = "";`,
-    `const SKILLS_B64 = "";`,
+    `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));
   return dir;

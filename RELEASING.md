@@ -30,6 +30,18 @@ Gebumpt wird ueber das Single-File-Tool `tools/version.mjs` (`--get`, `--patch`,
 | `merge production` | `node tools/version.mjs --minor` | y + 1, z = 0 |
 | explizit angesagt | `node tools/version.mjs --major` | x + 1, y = 0, z = 0 |
 
+## Einrichtung (einmalig je Klon)
+
+Das Commit-Gate liegt versioniert unter `.githooks/`, aktiviert wird es aber ueber
+lokale git-Config — die wandert nicht mit dem Klon:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Ohne diesen Schritt weist nichts einen Commit ohne Pruefnachweis ab; es bleibt allein
+die nachtraegliche Wertung im Nacht-Runner (Issue #471).
+
 ## Ablauf
 
 **Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
