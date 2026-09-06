@@ -832,6 +832,64 @@ function emitVerbose(issueId, line) {
   }
 }
 
+// --- Session-Kennzahlen (Issue #487) ---
+
+// Ein Feld gilt nur als gelesen, wenn es eine endliche Zahl ist — auch die 0. Alles
+// andere (fehlend, null, String, Objekt) wird zu null. Ein `|| null` taete das nicht:
+// Es machte aus einer echten 0 ein "nicht verfuegbar", und im Ergebnisstand liesse sich
+// eine Session ohne Zug nicht mehr von einer ohne Messwert unterscheiden.
+function endlicheZahl(wert) {
+  return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
+}
+
+/**
+ * Liest Kosten, API-Dauer und Zahl der Zuege aus dem `result`-Ereignis eines
+ * Session-Streams.
+ *
+ * Reine Funktion ueber dem stdout aus `runSession`: Board, Dateisystem und Subprozesse
+ * bleiben draussen, damit das Fehlerverhalten an Fixtures pruefbar ist (Linie von
+ * `parseDeps` und `selectReviewCandidates`). Exportiert genau deshalb.
+ *
+ * `interpretStreamEvent` bleibt unberuehrt — es wertet ausschliesslich `assistant`-
+ * Ereignisse fuer das Live-Protokoll aus. Diese Funktion tritt daneben, nicht an seine
+ * Stelle.
+ *
+ * Das `result`-Ereignis gibt es nur mit `--verbose`; ohne das Flag liefert `claude -p`
+ * reinen Text, und die Antwort ist `null`. Unlesbare Zeilen (abgeschnitten beim Kill am
+ * Zeitlimit, Fremdausgabe) werden uebersprungen statt geworfen: Eine Kennzahl darf einen
+ * ausgewerteten Lauf nicht zu Fall bringen.
+ *
+ * Bei mehreren `result`-Zeilen zaehlt die letzte. `subtype` und `is_error` bleiben
+ * unbeachtet — auch eine abgebrochene Session hat gekostet, und ihr Ausgang steht
+ * ohnehin am Board.
+ *
+ * Rueckgabe: `{ kostenUsd, apiDauerMs, zuege }` in US-Dollar, Millisekunden und Anzahl —
+ * je eine Zahl oder `null` —, oder `null`, wenn keine `result`-Zeile im stdout steht.
+ * Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand.
+ */
+export function leseKennzahlen(stdout) {
+  let letzte = null;
+  for (const zeile of String(stdout ?? "").split(/\r\n|\r|\n/)) {
+    const trimmed = zeile.trim();
+    // Billiger Vorfilter: Ein Stream-Ereignis ist immer ein JSON-Objekt. Das haelt
+    // JSON.parse von jeder Fliesstext-Zeile fern.
+    if (!trimmed.startsWith("{")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue; // unlesbare Zeile tolerant ueberspringen, wie in emitVerbose
+    }
+    if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
+  }
+  if (!letzte) return null;
+  return {
+    kostenUsd: endlicheZahl(letzte.total_cost_usd),
+    apiDauerMs: endlicheZahl(letzte.duration_api_ms),
+    zuege: endlicheZahl(letzte.num_turns),
+  };
+}
+
 // --- Nacht-Session ---
 
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
