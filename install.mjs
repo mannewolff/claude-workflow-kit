@@ -401,13 +401,31 @@ async function promptReviewerPaar(rl, D, existingConfig) {
 // selbst. askWithDefault passt nicht — dessen Default-Semantik ("leer = Default
 // uebernehmen") gilt hier zwar auch, aber die Antwort ist ein Wahrheitswert, kein
 // Feld der Config.
-const SPEC_UMKEHR_HINWEIS = "  Diese Entscheidung ist nicht zurueckzunehmen: Der Block selbst ist der";
+// Der Vorspann nennt die Sache beim Namen, bevor er vor ihrer Unumkehrbarkeit warnt
+// (Issue #481): Wer das Vorhaben nicht selbst gebaut hat, entschied sonst dauerhaft
+// ueber etwas, dessen Namen und Wirkung er nicht kennt. Drei Angaben tragen das —
+// Methode, Wirkung auf die taegliche Arbeit, Stelle zum Nachlesen; die einzelnen
+// beruehrten Arbeitsschritte bleiben draussen, sie machten den Block lang statt klar.
+//
+// Der Umkehr-Hinweis begruendet an der Sache statt am Aufbau der Config und verspricht
+// nicht mehr, als die Doku zusichert: Das Kit BIETET kein Zuruecknehmen an — von Hand
+// aus der Config entfernen laesst der Block sich sehr wohl.
+const SPEC_VORSPANN = [
+  "  Spec-Driven Development (SDD): Das Projekt fuehrt unter specs/ eine Spec — die",
+  "  verbindliche Beschreibung seines Verhaltens.",
+  "  Sie wirkt bei jedem Arbeitspaket und jedem Push: Was sich am Verhalten aendert, wird",
+  "  in der Spec nachgezogen und von einem Test belegt, sonst weist das Gate es ab.",
+  '  Zum Nachlesen: Abschnitt "Beschriebenes Verhalten" in docs/dokumentation.md.',
+  "",
+  "  Diese Entscheidung ist nicht zurueckzunehmen: Ab spec.seit misst das Gate jedes",
+  "  Arbeitspaket an der Spec, und das Kit bietet kein Zuruecknehmen an — kein Kommando,",
+  "  keine Frage, keine Option. (Der Block in der Config ist selbst der Schalter.)",
+];
 
 async function promptSpec(rl) {
-  console.log(`\n${SPEC_UMKEHR_HINWEIS}`);
-  console.log("  Schalter, es gibt kein 'enabled' und keinen Weg zurueck.");
+  console.log(`\n${SPEC_VORSPANN.join("\n")}`);
   while (true) {
-    const raw = await ask(rl, "Soll dieses Projekt ein beschriebenes Verhalten fuehren? [j/N]: ");
+    const raw = await ask(rl, "Soll dieses Projekt eine Spec fuehren (Spec-Driven Development)? [j/N]: ");
     const antwort = raw.trim().toLowerCase();
     if (antwort === "j" || antwort === "ja") return true;
     if (antwort === "" || antwort === "n" || antwort === "nein") return false;
