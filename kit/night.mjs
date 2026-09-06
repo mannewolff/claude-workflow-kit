@@ -402,11 +402,66 @@ function log(msg) {
   if (LOG_FILE) appendFileSync(LOG_FILE, line + "\n", "utf-8");
 }
 
-function fail(msg) {
+/**
+ * Bricht den Lauf ab und schliesst den Ergebnisstand ab (Issue #488).
+ *
+ * Die Klasse sagt, WO es gerissen ist: `umgebung`, `tracker`, `zustand`,
+ * `harterStopp` oder `unbekannt`. Sie steht hier und nicht nur im Fehlertext, weil eine Auswertung sonst
+ * Meldungen parsen muesste; der Text bleibt trotzdem erhalten, damit der Mensch die
+ * Einordnung nachpruefen kann.
+ *
+ * Der Abschluss gehoert an genau diese Stelle: Die Datei kennt kein try/finally und
+ * keinen exit-Handler, und ein Stand, der erst am regulaeren Ende entstuende, fehlte
+ * im interessantesten Fall. Ohne ihn saehe ein erkannter Stopp aus wie ein Absturz.
+ */
+function fail(msg, klasse = "unbekannt") {
   const line = `Fehler: ${msg}`;
   process.stderr.write(line + "\n");
   if (LOG_FILE) appendFileSync(LOG_FILE, line + "\n", "utf-8");
+  if (LAUF) {
+    LAUF.fehlerklasse = klasse;
+    LAUF.fehlerText = msg;
+    LAUF.abschluss = "harterStopp";
+    schreibeErgebnisstand();
+  }
   process.exit(1);
+}
+
+/**
+ * Vermerkt die Fehlerklasse eines harten Stopps, der NICHT ueber fail() laeuft
+ * (Issue #488).
+ *
+ * Die hardStop-Pfade in werteRunde und behandleDirtyRunde geben einen String zurueck
+ * und beenden den Prozess nicht selbst — sie hinterlegen die Klasse hier, bevor sie
+ * zurueckkehren. Ihre Rueckgabewerte bleiben dadurch unveraendert.
+ */
+function merkeFehlerklasse(klasse) {
+  if (LAUF) LAUF.fehlerklasse = klasse;
+}
+
+/** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
+function einheitAnlegen(id, titel) {
+  // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Ohne
+  // --verbose haengt es an nichts und wird nie geschrieben.
+  const einheit = { id: String(id), titel, ausgang: "unbekannt" };
+  if (LAUF) {
+    LAUF.einheiten.push(einheit);
+    schreibeErgebnisstand();
+  }
+  return einheit;
+}
+
+/** Ergaenzt eine Einheit um das Ergebnis ihrer Runde und schreibt erneut. */
+function einheitErgaenzen(einheit, felder) {
+  Object.assign(einheit, felder);
+  schreibeErgebnisstand();
+}
+
+/** Schliesst den Lauf ab — `regulaer` oder `harterStopp`, aber nie mehr `null`. */
+function laufAbschliessen(abschluss) {
+  if (!LAUF) return;
+  LAUF.abschluss = abschluss;
+  schreibeErgebnisstand();
 }
 
 /**
@@ -466,12 +521,12 @@ function schreibeErgebnisstand() {
 function board(...cliArgs) {
   const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
   if (res.status !== 0) {
-    fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
+    fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`, "tracker");
   }
   try {
     return JSON.parse(res.stdout);
   } catch {
-    fail(`board.mjs ${cliArgs.join(" ")} lieferte kein JSON: ${res.stdout.slice(0, 200)}`);
+    fail(`board.mjs ${cliArgs.join(" ")} lieferte kein JSON: ${res.stdout.slice(0, 200)}`, "tracker");
   }
 }
 
@@ -1029,7 +1084,7 @@ async function runSession(issueId, args, opts = {}) {
     extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: args.model, ...opts.extraEnv },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
-    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
+    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
   }
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
@@ -1950,14 +2005,14 @@ export function vorbereiten(args) {
   warnBeiVersionsDrift();
   const inProgress = board("issue", "list", "--status", "in_progress");
   if (inProgress.length > 0) {
-    fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`);
+    fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`, "zustand");
   }
-  if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.");
+  if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.", "zustand");
   // Die buildChecks-Pflicht gilt nur der Implementierung. Im Review-Modus wird nichts
   // gebaut und nichts committet — dort waere die Pruefung gegenstandslos und wuerde
   // Projekte ohne buildChecks zu --no-checks-ok zwingen fuer einen Lauf, der gar nichts baut.
   if (!args.review && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
-    fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok");
+    fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
   }
 
   // Erst hinter dem Vorflug (Issue #486): Ein Baum, der schon vor dem Lauf unsauber
@@ -2301,11 +2356,15 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args);
     if (salvage === "erfolg") return "erfolg";
-    if (salvage === "gescheitert") return "hardStop";
+    if (salvage === "gescheitert") {
+      merkeFehlerklasse("harterStopp");
+      return "hardStop";
+    }
   }
   log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
   board("issue", "comment", String(top.id), "--text",
     "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+  merkeFehlerklasse("harterStopp");
   return "hardStop";
 }
 
@@ -2338,6 +2397,27 @@ function nachweisMangel(pruefung) {
   return null;
 }
 
+/**
+ * Der Grund, aus dem werteRunde ein Paket zuruecklegt (Issue #488).
+ *
+ * Ein Text fuer Board-Kommentar und Ergebnisstand: Zwei Formulierungen desselben
+ * Vorgangs waeren zwei Wahrheiten darueber, warum das Paket liegen blieb.
+ */
+const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
+
+/**
+ * Uebersetzt den Rueckgabewert von werteRunde in die Felder der Einheit (Issue #488).
+ *
+ * Die Woerter der Zaehler (`deferred`, `hardStop`) und das Vokabular des
+ * Ergebnisstands (`zurueckgestellt`, `harterStopp`) bleiben getrennt: Die Zaehler
+ * gehoeren dem Textprotokoll und den bestehenden Tests, die Einheit dem Leitstand.
+ */
+function ausgangsFelder(ausgang) {
+  if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
+  if (ausgang === "hardStop") return { ausgang: "harterStopp" };
+  return { ausgang };
+}
+
 async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
@@ -2348,6 +2428,7 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
     // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
     if (!gitClean()) {
       log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
+      merkeFehlerklasse("harterStopp");
       return "hardStop";
     }
     // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
@@ -2376,16 +2457,74 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
     const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
     log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
     if (detail) log(`  CLI-Meldung: ${detail}`);
+    merkeFehlerklasse("umgebung");
     return "hardStop";
   }
 
   if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
 
   log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
-  board("issue", "comment", String(top.id), "--text",
-    "Nachtlauf: Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.");
+  board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
   return "deferred";
+}
+
+/**
+ * Ein Paket, das an einem Gate haengenbleibt: Log, Board-Kommentar, Backlog — und
+ * seine Einheit im Ergebnisstand (Issue #404, erweitert um #488).
+ *
+ * Die Einheit traegt denselben Text, der am Board haengt. Als blosser Zaehler bliebe
+ * morgens offen, WELCHES Issue an welchem Gate liegt.
+ */
+function stelleAmGateZurueck(top, gate) {
+  log(gate.log);
+  board("issue", "comment", String(top.id), "--text", gate.kommentar);
+  board("issue", "move", String(top.id), "backlog");
+  einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.kommentar });
+}
+
+/**
+ * Eine vollstaendige Runde: Session starten, auswerten, Einheit fuellen (Issue #488).
+ *
+ * Liefert den Ausgang aus `werteRunde` unveraendert zurueck — die Uebersetzung ins
+ * Vokabular des Ergebnisstands passiert hier drin, die Zaehler des Aufrufers bleiben
+ * bei ihren alten Woertern.
+ */
+async function laufeRunde(top, args, salvageAttempted, pruefungen) {
+  // Die Einheit entsteht VOR der Session und wird sofort geschrieben: Bricht der Lauf
+  // mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand — mit ausgang
+  // "unbekannt", was etwas anderes sagt als ein Fehlschlag.
+  const einheit = einheitAnlegen(top.id, top.title);
+  const commitVorher = lastCommitHash();
+  const started = Date.now();
+  // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
+  // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
+  // weiter unten in werteRunde laufen kann, ist aussen vor.
+  verwerfeZusammenfassung();
+  const res = await runSession(top.id, args);
+  // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
+  // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
+  // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
+  const pruefung = lesePruefung(top.id);
+  pruefungen.push(pruefung);
+  // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
+  // Textzeile (Issue #488): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.
+  const dauerMs = Date.now() - started;
+  const minutes = (dauerMs / 60000).toFixed(1);
+
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
+  const commitNachher = lastCommitHash();
+  einheitErgaenzen(einheit, {
+    ...ausgangsFelder(ausgang),
+    dauerMs,
+    // Nur ein WIRKLICH neuer Hash zaehlt: Ein unveraenderter Stand hiesse sonst,
+    // dem Paket den Commit des vorigen zuzuschreiben.
+    commit: commitNachher === commitVorher ? null : commitNachher,
+    endStatus: board("issue", "get", String(top.id)).status,
+    pruefung,
+    kennzahlen: leseKennzahlen(res.stdout),
+  });
+  return ausgang;
 }
 
 /**
@@ -2400,11 +2539,12 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
  */
 export async function laufeImplementierung(args, ctx) {
   let sessions = 0;
-  let succeeded = 0;
-  let deferred = 0;
-  let ohneNachweis = 0;
   let iterations = 0;
   let hardStop = false;
+  // Die drei Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
+  // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
+  // die Woerter des Laufs stehen.
+  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0 };
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
   const salvageAttempted = new Set();
   // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
@@ -2424,39 +2564,30 @@ export async function laufeImplementierung(args, ctx) {
 
     const gate = pruefeIssueGates(top);
     if (gate) {
-      log(gate.log);
-      board("issue", "comment", String(top.id), "--text", gate.kommentar);
-      board("issue", "move", String(top.id), "backlog");
-      deferred++;
+      stelleAmGateZurueck(top, gate);
+      zaehler.deferred++;
       continue;
     }
 
     sessions++;
     log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
-    const started = Date.now();
-    // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
-    // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
-    // weiter unten in werteRunde laufen kann, ist aussen vor.
-    verwerfeZusammenfassung();
-    const res = await runSession(top.id, args);
-    // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
-    // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
-    // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
-    const pruefung = lesePruefung(top.id);
-    pruefungen.push(pruefung);
-    const minutes = ((Date.now() - started) / 60000).toFixed(1);
-
-    const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
-    if (ausgang === "erfolg") succeeded++;
-    else if (ausgang === "deferred") deferred++;
-    else if (ausgang === "fehlschlag") ohneNachweis++;
-    else {
+    const ausgang = await laufeRunde(top, args, salvageAttempted, pruefungen);
+    if (ausgang === "hardStop") {
       hardStop = true;
       break;
     }
+    zaehler[ausgang]++;
   }
 
-  return { sessions, succeeded, deferred, ohneNachweis, hardStop, pruefungen };
+  // Der Abschluss gehoert hierher und nicht in main(): Review-Modus und Dry-Run
+  // beenden den Prozess selbst und kaemen an einer Stelle in main() nie an.
+  laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
+  return {
+    sessions, hardStop, pruefungen,
+    succeeded: zaehler.erfolg,
+    deferred: zaehler.deferred,
+    ohneNachweis: zaehler.fehlschlag,
+  };
 }
 
 async function main() {
