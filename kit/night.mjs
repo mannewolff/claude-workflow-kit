@@ -1833,6 +1833,38 @@ function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
   return "schaerfungFehlt";
 }
 
+/**
+ * Die beiden harten Stopps einer Review-Runde — true heisst: der Lauf endet hier.
+ *
+ * Getrennt von der Schleife, weil beide Guards VOR jeder Bewertung greifen und keinen
+ * der vier Ausgaenge liefern: Sie sagen nicht, was der Review ergeben hat, sondern
+ * dass die Lage unklar ist. Die Fehlerklasse fuer den Ergebnisstand (#489) hinterlegen
+ * sie hier, damit der Rueckgabewert ein blosses Ja/Nein bleibt.
+ */
+function reviewRundeGestoppt(kandidat, res, minutes) {
+  // Infrastruktur-Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
+  // Timeout heisst, das CLI selbst ist gescheitert — mit dem Issue ist nichts falsch.
+  // Harter Stopp ohne Kommentar, sonst kommentiert eine kaputte Umgebung den ganzen
+  // Backlog voll.
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (!timedOut && (res.error || res.status !== 0)) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`);
+    merkeFehlerklasse("umgebung");
+    return true;
+  }
+
+  // Eine Review-Session arbeitet ausschliesslich am Board. Hinterlaesst sie
+  // Aenderungen im Working Tree, hat sie etwas getan, was sie nicht sollte — und
+  // die naechste Runde wuerde darauf aufbauen.
+  if (!gitClean()) {
+    log(`  HARTER STOPP: die Review-Session zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine Review-Session darf keinen Code anfassen — bitte morgens sichten.`);
+    merkeFehlerklasse("harterStopp");
+    return true;
+  }
+  return false;
+}
+
 async function runReviewLoop(kandidaten, args) {
   const stufe = args.stufe ?? "issue";
   let sessions = 0;
@@ -1843,17 +1875,28 @@ async function runReviewLoop(kandidaten, args) {
   for (const kandidat of kandidaten) {
     if (sessions >= args.max) {
       log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
+      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "liegengeblieben" });
       continue;
     }
     const vorher = board("issue", "get", String(kandidat.id));
     if (hasStageMarker(vorher.body, stufe)) {
       log(`#${kandidat.id} uebersprungen: traegt bereits einen Issue-Review-Marker.`);
       uebersprungen++;
+      // Die dritte Kategorie neben den Ausschluessen aus selectReviewCandidates und
+      // den liegengebliebenen (Issue #489): Ohne sie zaehlte der Ergebnisstand
+      // weniger Kandidaten als das Textprotokoll daneben.
+      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), {
+        ausgang: "uebersprungen", grund: "traegt bereits einen Issue-Review-Marker",
+      });
       continue;
     }
 
     sessions++;
     log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
+    // Wie in der Implementierungsschleife VOR der Session (Issue #488): Bricht der Lauf
+    // mitten in der Runde ab, steht der Kandidat trotzdem im Stand — mit "unbekannt",
+    // was etwas anderes sagt als ein Fehlschlag.
+    const einheit = einheitAnlegen(kandidat.id, kandidat.title);
     const started = Date.now();
     // Der Modus-Hinweis (Issue #419) greift als einziger Hebel, BEVOR die Session
     // das Dokument liest. Massgeblich bleibt allein KIT_AGENT_MODEL — der Hinweis
@@ -1862,31 +1905,23 @@ async function runReviewLoop(kandidaten, args) {
       prompt: `/issue-review #${kandidat.id}\n\nDieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.`,
       timeoutMs: REVIEW_TIMEOUT_MS,
     });
-    const minutes = ((Date.now() - started) / 60000).toFixed(1);
+    // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
+    // Textzeile (Issue #489): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.
+    const dauerMs = Date.now() - started;
+    const minutes = (dauerMs / 60000).toFixed(1);
 
-    // Infrastruktur-Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
-    // Timeout heisst, das CLI selbst ist gescheitert — mit dem Issue ist nichts falsch.
-    // Harter Stopp ohne Kommentar, sonst kommentiert eine kaputte Umgebung den ganzen
-    // Backlog voll.
-    const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
-    if (!timedOut && (res.error || res.status !== 0)) {
-      const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-      log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`);
-      hardStop = true;
-      break;
-    }
-
-    // Eine Review-Session arbeitet ausschliesslich am Board. Hinterlaesst sie
-    // Aenderungen im Working Tree, hat sie etwas getan, was sie nicht sollte — und
-    // die naechste Runde wuerde darauf aufbauen.
-    if (!gitClean()) {
-      log(`  HARTER STOPP: die Review-Session zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine Review-Session darf keinen Code anfassen — bitte morgens sichten.`);
+    if (reviewRundeGestoppt(kandidat, res, minutes)) {
       hardStop = true;
       break;
     }
 
     const nachher = board("issue", "get", String(kandidat.id));
-    zaehler[werteReviewSession(kandidat, vorher, nachher, stufe, minutes)]++;
+    const ausgang = werteReviewSession(kandidat, vorher, nachher, stufe, minutes);
+    zaehler[ausgang]++;
+    // Der Ausgang woertlich, wie ihn werteReviewSession liefert (Issue #489): Ein
+    // eigenes Vokabular hier waere eine zweite Stelle, an der die vier Faelle stehen.
+    // Kein Pruefstand — ein Review-Lauf faehrt keine Pflicht-Checks.
+    einheitErgaenzen(einheit, { ausgang, dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
   }
 
   // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
@@ -1895,6 +1930,10 @@ async function runReviewLoop(kandidaten, args) {
   // waere unverhaeltnismaessig.
   log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
+  // Der Abschluss gehoert hierher und nicht in main(): Der Review-Modus beendet den
+  // Prozess selbst und kaeme an einer Stelle in main() nie an (Issue #489). Ein
+  // Ergebnisstand ohne Abschluss saehe aus wie ein Absturz.
+  laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
   process.exit(hardStop ? 1 : 0);
 }
 
@@ -2101,7 +2140,14 @@ export async function laufeReviewModus(args) {
   const backlog = board("issue", "list", "--status", "backlog");
   const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
 
-  for (const u of uebersprungen) log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+  // Die Ausschluesse liegen bereits in der Form des Ergebnisstands vor (Issue #489):
+  // {id, title, grund}. Sie wandern hier hinein, bevor der Vorflug abbrechen kann —
+  // ein Stand, der erst am regulaeren Ende entstuende, verschwiege sie im
+  // interessantesten Fall.
+  for (const u of uebersprungen) {
+    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+  }
 
   // Vorflug (Issue #233, Umgebung korrigiert in #269). `issue-review check` ist fuer
   // sich eine Auskunft, kein Gate — der interaktive Skill fragt den Menschen, wenn
@@ -2131,6 +2177,8 @@ export async function laufeReviewModus(args) {
   // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
   if (!gitClean()) {
     log("  HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.");
+    merkeFehlerklasse("harterStopp");
+    laufAbschliessen("harterStopp");
     process.exit(1);
   }
 
@@ -2146,6 +2194,7 @@ export async function laufeReviewModus(args) {
       log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
       log(`  Tippfehler im --review-label-Wert? Mit --review-label none laeuft der Lauf ohne Label-Filter.`);
     }
+    laufAbschliessen("regulaer");
     process.exit(0);
   }
 
