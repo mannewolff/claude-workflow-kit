@@ -110,7 +110,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 /**
@@ -382,6 +382,13 @@ function pruefeArgs(args) {
 
 let LOG_FILE = null;
 
+// Der maschinenlesbare Ergebnisstand (Issue #486): Pfad und Objekt liegen im
+// Modul-Zustand wie LOG_FILE darueber, nicht im Kontext — nur so erreicht auch
+// fail() sie, das von ueberall her abbricht. Beide bleiben null, solange der Lauf
+// nicht --verbose ohne --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
+let ERGEBNIS_FILE = null;
+let LAUF = null;
+
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
 // Muster wie LOG_FILE darueber, und aus demselben Grund: gitClean() braucht sie, wird
 // aber aus der Hauptschleife heraus aufgerufen. Seit das Hauptprogramm in main()
@@ -400,6 +407,58 @@ function fail(msg) {
   process.stderr.write(line + "\n");
   if (LOG_FILE) appendFileSync(LOG_FILE, line + "\n", "utf-8");
   process.exit(1);
+}
+
+/**
+ * Legt Pfad und Grundgeruest des Ergebnisstands an (Issue #486).
+ *
+ * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab, und ohne
+ * --verbose faehrt der Runner sein altes, knappes Protokoll. Bleiben beide Variablen
+ * null, schreibt schreibeErgebnisstand() nichts.
+ *
+ * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
+ * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
+ * ueberschriebe sonst den ersten. Ohne Trennzeichen, weil Doppelpunkte unter Windows
+ * in Dateinamen verboten sind; eine Kollision innerhalb derselben Sekunde ist
+ * hingenommen.
+ */
+function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
+  if (!args.verbose || args.dryRun) return;
+  const iso = jetzt.toISOString();
+  const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
+  ERGEBNIS_FILE = join(process.cwd(), ".claude", `night-run-${stempel}.json`);
+  // Feldreihenfolge und Schluessel sind der Vertrag mit allen Auswertungen —
+  // schemaFassung steht zuerst, damit ein Leser die Fassung kennt, bevor er den
+  // Rest deutet.
+  LAUF = {
+    schemaFassung: 1,
+    erzeugtVon: KIT_VERSION,
+    start: iso,
+    art: args.review ? "review" : "implementierung",
+    modell: args.model,
+    max: args.max,
+    label: aktivesLabel === "none" ? null : aktivesLabel,
+    einheiten: [],
+    abschluss: null,
+  };
+}
+
+/**
+ * Schreibt den Ergebnisstand vollstaendig neu (Issue #486).
+ *
+ * Idempotent und ohne Anhaengen: JSON kennt kein Append, die Datei traegt immer den
+ * ganzen Stand. Sie darf den Lauf nie abbrechen — ein Schreibfehler ist eine Zeile
+ * im Textprotokoll und kein fail(): Der Ergebnisstand ist Protokoll, nicht Auftrag,
+ * und eine Nacht wegen eines vollen Datentraegers zu beenden hiesse, das Protokoll
+ * ueber die Arbeit zu stellen.
+ */
+function schreibeErgebnisstand() {
+  if (!ERGEBNIS_FILE || !LAUF) return;
+  try {
+    writeFileSync(ERGEBNIS_FILE, JSON.stringify(LAUF, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    log(`Ergebnisstand konnte nicht geschrieben werden: ${err.message}`);
+  }
 }
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
@@ -444,6 +503,12 @@ function gitClean() {
   if (config.issueTracker === "local") {
     pathspec.push(`:(exclude)${config.local?.issuesDir || "issues"}`);
   }
+  // Das Nacht-Protokoll (Textdatei und Ergebnisstand, Issue #486) entsteht waehrend
+  // des Laufs im Arbeitsbaum: Protokoll-Zustand ist kein Code-Zustand. Anders als die
+  // issuesDir-Ausnahme gilt diese unabhaengig vom Tracker — der Runner legt seine
+  // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
+  // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
+  pathspec.push(":(exclude).claude/night-run-*");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8" });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.trim() === "";
@@ -1796,8 +1861,9 @@ export function vorbereiten(args) {
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
 
+  const jetzt = new Date();
   mkdirSync(join(process.cwd(), ".claude"), { recursive: true });
-  LOG_FILE = join(process.cwd(), ".claude", `night-run-${new Date().toISOString().slice(0, 10)}.log`);
+  LOG_FILE = join(process.cwd(), ".claude", `night-run-${jetzt.toISOString().slice(0, 10)}.log`);
 
   // Routing-Label (Issue #159): nur Ready-Issues mit diesem Label werden verarbeitet,
   // alle anderen bleiben unangetastet liegen. --label none schaltet den Filter ab
@@ -1814,6 +1880,9 @@ export function vorbereiten(args) {
   const stufenAngabe = args.review ? `, Stufe ${args.stufe ?? "issue"}` : "";
   const dryRunAngabe = args.dryRun ? ", DRY-RUN" : "";
   const yoloAngabe = args.yolo ? ", YOLO" : "";
+
+  ergebnisstandAnlegen(args, aktivesLabel, jetzt);
+
   log(`Nacht-Runner startet (Modus ${modus}${stufenAngabe}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
@@ -1832,6 +1901,11 @@ export function vorbereiten(args) {
   if (!args.review && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok");
   }
+
+  // Erst hinter dem Vorflug (Issue #486): Ein Baum, der schon vor dem Lauf unsauber
+  // war, soll weiterhin die alte Meldung bekommen und nicht eine, die die eben
+  // angelegte Datei mitverschuldet haben koennte.
+  schreibeErgebnisstand();
 
   return ctx;
 }
