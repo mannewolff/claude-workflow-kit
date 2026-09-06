@@ -138,7 +138,8 @@ const schema = {
         "                    mit 'claude-' beginnen (z.B. 'claude-opus-4-8').\n" +
         "    reviewCommand = eine fremde CLI, die den Review-Prompt ueber stdin bekommt\n" +
         "                    (z.B. 'codex exec --model gpt-5').\n" +
-        "    Fuer einen gpt-Reviewer: reviewModel mit '-' leeren und reviewCommand setzen.",
+        "    Fuer einen Kommando-Reviewer: reviewModel mit '-' leeren.\n" +
+        "    Fuer den Claude-Reviewer: reviewCommand mit '-' leeren.",
     },
   ],
 };
@@ -340,15 +341,30 @@ async function promptScope(rl) {
 // gemeinsam wiederholt, weil die Regel "genau eines von beiden" erst mit beiden Antworten
 // pruefbar ist (Issue #433).
 //
-// Der leere Default fuer reviewModel gilt nur, wenn die Bestandsconfig einen
-// Kommando-Reviewer ALLEIN traegt. Das ist der ausloesende Fall: Er soll sich per Enter
-// bestaetigen lassen. Stehen dort beide Felder, bleiben beide Defaults stehen und die
-// Gesamtpruefung bricht ab — still eines der beiden zu verwerfen hiesse, eine kaputte
-// Config wortlos umzuschreiben.
+// Der leere Default fuer reviewModel gilt in zwei Faellen. Traegt die Bestandsconfig
+// einen Kommando-Reviewer ALLEIN, ist das der ausloesende Fall aus Issue #433: Er soll
+// sich per Enter bestaetigen lassen. Traegt sie BEIDE Felder nicht-leer, wird der
+// Widerspruch hier aufgeloest, statt ihn nur abzuweisen — vorgeschlagen wurden sonst
+// beide Bestandswerte und abgewiesen genau diese Kombination, und wer bestaetigt, was
+// ihm vorgeschlagen wird, kam nicht heraus (Issue #480). Weil das Kommando ohne eigene
+// Frage nicht rekonstruierbar waere, das Modell aber jederzeit neu eingetippt ist,
+// behaelt reviewCommand seinen Bestandswert; still umgeschrieben wird nichts, der
+// Hinweis unten benennt den Eingriff vor der ersten Frage.
+const REVIEWER_WIDERSPRUCH_HINWEIS =
+  "  Diese Config traegt beide Reviewer — gelten kann nur einer: reviewModel entfaellt,";
+
 async function promptReviewerPaar(rl, D, existingConfig) {
-  const reviewModelDefault = existingConfig.reviewCommand && !existingConfig.reviewModel
-    ? ""
-    : D.reviewModel;
+  const beideGesetzt = Boolean(existingConfig.reviewModel && existingConfig.reviewCommand);
+  const reviewModelDefault =
+    beideGesetzt || (existingConfig.reviewCommand && !existingConfig.reviewModel)
+      ? ""
+      : D.reviewModel;
+
+  if (beideGesetzt) {
+    console.log(`\n${REVIEWER_WIDERSPRUCH_HINWEIS}`);
+    console.log(`  reviewCommand bleibt: ${existingConfig.reviewCommand}`);
+    console.log(`  Umgekehrt: reviewCommand mit '${LEER_EINGABE}' leeren und reviewModel eintragen.`);
+  }
 
   while (true) {
     const reviewModel = await askWithDefault(
