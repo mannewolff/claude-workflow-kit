@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [1.47.1] - 2026-09-07
+## [1.48.0] - 2026-09-07
 - chore: Spec fortgeschrieben (#497, #498, #499)
 - Spec von Nachtbahn 3 committet, weil umgesetzt
 - Planungs-Skill heisst techplan, alter Name bleibt Wegweiser (#514)
