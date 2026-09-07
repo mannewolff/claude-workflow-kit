@@ -164,6 +164,7 @@ function pruefeBereichsnamen(checks, checkAreas) {
 
 // --- Muster ----------------------------------------------------------------
 
+// SYNC: strukturgleich in kit/spec.mjs — Aenderungen dort nachziehen.
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**

@@ -764,6 +764,8 @@ function checkPaket(datei) {
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**
+ * SYNC: strukturgleich in kit/checks.mjs — Aenderungen dort nachziehen.
+ *
  * Minimal-Glob, Zeichen fuer Zeichen dieselbe Fassung wie in kit/checks.mjs:
  * '*' innerhalb eines Pfadsegments, '**' ueber Segmentgrenzen, '/' als Trenner.
  * Ein '**' samt folgendem Trenner darf ganz verschwinden, damit ein Muster wie
