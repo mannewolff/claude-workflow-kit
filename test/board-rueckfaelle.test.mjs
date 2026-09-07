@@ -224,11 +224,15 @@ test("pickReviewers: die Regel nimmt nie den Autor selbst", () => {
 // pruefvorgabeDurchsetzen: Bodies ohne Kontext-Abschnitt
 // ============================================================
 
+// Beide Faelle verringern die Pruefung (2 -> keine Vorgabe). Die Umgebung wird
+// deshalb explizit als leer uebergeben (Issue #502): Mit dem `process.env` des
+// laufenden Rechners haengt das Ergebnis daran, ob dort KIT_AGENT_MODEL gesetzt ist —
+// und die Leitplanke aus #303 wirft dann, bevor der gepruefte Weg erreicht ist.
 test("pruefvorgabeDurchsetzen laesst einen Body ohne Kontext-Abschnitt unveraendert", () => {
   // Ohne `## Kontext` gibt es keinen Ort, an dem die Zeile stehen duerfte — dann wird
   // auch keiner erfunden.
   const neu = "Nur Fliesstext, keine Ueberschrift.\n";
-  assert.equal(pruefvorgabeDurchsetzen("## Kontext\n\nPruefung: 2\n", neu), neu);
+  assert.equal(pruefvorgabeDurchsetzen("## Kontext\n\nPruefung: 2\n", neu, {}), neu);
 });
 
 test("pruefvorgabeDurchsetzen ruehrt Zeilen in einem Code-Fence nicht an", () => {
@@ -236,7 +240,7 @@ test("pruefvorgabeDurchsetzen ruehrt Zeilen in einem Code-Fence nicht an", () =>
   // Wird die Zeile dort angefasst, veraendert sich der Beispieltext des Dokuments.
   const alt = "## Kontext\n\nPruefung: 2\n\n## Aufgabe\n";
   const neu = "## Kontext\n\n```\nPruefung: 3\n```\n\n## Aufgabe\n";
-  const ergebnis = pruefvorgabeDurchsetzen(alt, neu);
+  const ergebnis = pruefvorgabeDurchsetzen(alt, neu, {});
   assert.match(ergebnis, /```\nPruefung: 3\n```/, "die Zeile im Fence wurde veraendert");
 });
 

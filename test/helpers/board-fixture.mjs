@@ -57,7 +57,7 @@ export function schreibeConfig(dir, config) {
  * auf ~/.config/toolbox-cli), TBX_TOKEN und KIT_AGENT_MODEL werden entfernt. Sonst
  * haengt das Testergebnis am Zustand des Rechners.
  */
-export function runBoard(dir, cliArgs, extraEnv = {}) {
+export function runBoard(dir, cliArgs, extraEnv = {}, spawnOpts = {}) {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
   Object.assign(env, {
@@ -71,7 +71,10 @@ export function runBoard(dir, cliArgs, extraEnv = {}) {
     // gerade das Fehlen pruefen, uebergeben KIT_AGENT_MODEL: "" in extraEnv.
     KIT_AGENT_MODEL: "fixture-modell",
   }, extraEnv);
-  return spawnSync(process.execPath, [BOARD, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
+  // `spawnOpts` reicht einzelne spawnSync-Optionen durch (Issue #502): Nur ueber
+  // `stdio` laesst sich eine stdin herstellen, aus der nicht gelesen werden kann —
+  // der Fehlerweg von `--text -`. Alles andere bleibt wie gehabt.
+  return spawnSync(process.execPath, [BOARD, ...cliArgs], { cwd: dir, encoding: "utf-8", env, ...spawnOpts });
 }
 
 /** Wie runBoard, erwartet aber Exit 0 und liefert die geparste JSON-Ausgabe. */
@@ -144,7 +147,9 @@ export function starteServer(antwort) {
  * Das `times`-Feld macht Retry-Pfade testbar (erster Aufruf scheitert, zweiter
  * gelingt). `schreibt: { pfad, inhalt }` legt vor der Antwort eine Datei relativ zum
  * cwd an — damit laesst sich nachstellen, dass ein fremder Prozess dem Adapter
- * mitten im Ablauf die Cache-Datei unter den Fuessen wegzieht.
+ * mitten im Ablauf die Cache-Datei unter den Fuessen wegzieht. `loescht: pfad` ist
+ * die zweite Haelfte davon (Issue #502): Der fremde Prozess kann die Datei auch
+ * ganz entfernen, und das ist ein anderer Weg als eine zerschossene Datei.
  * Passt keine Regel, endet der Aufruf mit Exit 127 und einer sprechenden Meldung —
  * ein unerwartetes Kommando faellt so im Test auf, statt still zu gelingen.
  */
@@ -191,7 +196,7 @@ export function aufrufZeilen(dir, name) {
 }
 
 const FAKE_IMPL = `// Generiert von test/helpers/board-fixture.mjs (Issue #188) — kein Produktivcode.
-import { appendFileSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const [specPfad, logPfad, grammatikPfad, ...argv] = process.argv.slice(2);
@@ -261,6 +266,7 @@ if (index === -1) {
 }
 const regel = regeln[index];
 if (regel.schreibt) writeFileSync(resolve(regel.schreibt.pfad), regel.schreibt.inhalt, "utf-8");
+if (regel.loescht) rmSync(resolve(regel.loescht), { force: true });
 if (regel.stdout != null) {
   process.stdout.write(typeof regel.stdout === "string" ? regel.stdout : JSON.stringify(regel.stdout));
 }
