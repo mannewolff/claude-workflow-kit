@@ -69,6 +69,27 @@ export function zusammenfassungPfad(root = process.cwd()) {
   return join(root, ...SUMMARY_DATEI.split("/"));
 }
 
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
+ * Bericht und in der Zusammenfassung.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/spec.mjs — Aenderungen dort nachziehen.
+ * kit/checks.mjs und kit/spec.mjs sind bewusst eigenstaendige Single-File-Tools
+ * ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert und hier
+ * markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>]
@@ -250,7 +271,7 @@ function geaenderteDateien(basis) {
   if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
-  return [...dateien].map((p) => p.replaceAll("\\", "/")).sort();
+  return [...dateien].map((p) => p.replaceAll("\\", "/")).sort(vergleicheText);
 }
 
 // --- Auswahl ---------------------------------------------------------------
@@ -301,7 +322,7 @@ function planen(args) {
   }
 
   const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
-  const bereiche = [...beruehrt].sort();
+  const bereiche = [...beruehrt].sort(vergleicheText);
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({ basis, geaendert, bereiche, laufen: mitGrund(checks, grund), vollerUmfang: true });

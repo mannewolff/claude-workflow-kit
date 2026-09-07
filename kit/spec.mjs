@@ -137,6 +137,27 @@ function fail(nachricht) {
   throw new SpecError(nachricht);
 }
 
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — `index` etwa muss auf jeder Maschine
+ * dieselbe Datei erzeugen.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs — Aenderungen dort
+ * nachziehen. kit/spec.mjs und kit/checks.mjs sind bewusst eigenstaendige
+ * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird
+ * dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 // --- Lesen ------------------------------------------------------------------
 
 function specsPfad(root = process.cwd()) {
@@ -144,11 +165,8 @@ function specsPfad(root = process.cwd()) {
 }
 
 /**
- * Die Bereiche in alphabetischer Reihenfolge.
- *
- * Sortiert wird mit dem Standardvergleich, nicht mit localeCompare: Dessen
- * Reihenfolge haengt an der Locale der Maschine, und `index` muss auf jeder
- * Maschine dieselbe Datei erzeugen.
+ * Die Bereiche in alphabetischer Reihenfolge — sortiert mit `vergleicheText`,
+ * dort steht die Begruendung.
  *
  * Unterverzeichnisse fallen durch die isFile()-Pruefung heraus — damit ist
  * specs/vorhaben/** ohne Sonderfall draussen, und ein spaeter dazukommendes
@@ -158,7 +176,7 @@ function bereiche(root = process.cwd()) {
   return readdirSync(specsPfad(root), { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== INDEX_DATEI)
     .map((e) => e.name.slice(0, -3))
-    .sort();
+    .sort(vergleicheText);
 }
 
 // '- <ID> — <Aussage>'. Die ID muss der Form <bereich>-<N> genuegen (A16): ohne
@@ -238,7 +256,7 @@ const INDEX_KOPF = ["# Spec-Index", "", "| Bereich | Datei | Gueltig | Entfallen
  * nicht zeigen soll.
  */
 function indexAusTexten(texte) {
-  const zeilen = [...texte.keys()].sort().map((bereich) => {
+  const zeilen = [...texte.keys()].sort(vergleicheText).map((bereich) => {
     const aussagen = aussagenLesen(bereich, texte.get(bereich));
     const entfallen = aussagen.filter((a) => a.entfallen).length;
     return `| ${bereich} | ${bereichsDatei(bereich)} | ${aussagen.length - entfallen} | ${entfallen} |`;
@@ -807,10 +825,14 @@ function bereichsLuecken(bereich, muster, dateien, root) {
     for (const a of entfallen) if (a.aussage.includes(punkt)) spuren.add(a.id);
   }
 
-  // Standardvergleich statt localeCompare, wie bei `bereiche()`: Die Reihenfolge
-  // von localeCompare haengt an der Locale der Maschine, und zwei Laeufe muessen
-  // ueberall dieselbe Liste ergeben.
-  return { luecken: offen.sort(), entfallen: [...spuren].sort() };
+  // Sortiert mit `vergleicheText`, dort steht die Begruendung. Die Sortierung
+  // steht als eigene Anweisung vor dem `return` und nicht im Rueckgabeausdruck
+  // (S4043): `sort` aendert `offen` an Ort und Stelle, und im Ausdruck sieht das
+  // nach einer Kopie aus. Die kopierende Sortiermethode aus ES2023 waere die
+  // Alternative, gibt es aber erst ab Node 20 — README.md nennt Node 18 als
+  // Untergrenze.
+  offen.sort(vergleicheText);
+  return { luecken: offen, entfallen: [...spuren].sort(vergleicheText) };
 }
 
 /**
@@ -1157,7 +1179,11 @@ export function anlagedatum(verlauf) {
   const angelegt = (Array.isArray(verlauf) ? verlauf : [])
     .filter((e) => e?.type === "CREATED" && typeof e.createdAt === "string" && e.createdAt !== "");
   if (angelegt.length === 0) return null;
-  const aeltester = angelegt.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+  // Startwert `angelegt[0]` statt keiner (S6959): Ohne ihn wirft `reduce` auf der
+  // leeren Liste. Der Leerfall ist eine Zeile darueber schon abgefangen, aber das
+  // sieht man dem `reduce` nicht an — und ein spaeter verschobenes Return macht
+  // die Zusicherung still zunichte.
+  const aeltester = angelegt.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b), angelegt[0]);
   return aeltester.createdAt.slice(0, 10);
 }
 
@@ -1596,7 +1622,7 @@ function standBerechnen(ziele, vorhanden, befunde) {
 }
 
 function vorschauZeigen(vorhanden, neu, indexDiff) {
-  const teile = [...neu.keys()].sort()
+  const teile = [...neu.keys()].sort(vergleicheText)
     .map((bereich) => unifiedDiff(bereichsDatei(bereich), vorhanden.get(bereich) ?? null, neu.get(bereich)));
   teile.push(indexDiff);
 
@@ -1609,7 +1635,7 @@ function standSchreiben(neu, indexText) {
   const verzeichnis = specsPfad();
   mkdirSync(verzeichnis, { recursive: true });
 
-  for (const bereich of [...neu.keys()].sort()) {
+  for (const bereich of [...neu.keys()].sort(vergleicheText)) {
     writeFileSync(join(verzeichnis, `${bereich}.md`), neu.get(bereich), "utf-8");
     process.stdout.write(`${bereichsDatei(bereich)} geschrieben.\n`);
   }
