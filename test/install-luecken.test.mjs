@@ -111,6 +111,33 @@ test("eine .gitignore ohne Schlusszeilenumbruch bekommt einen eingefuegt", () =>
   }
 });
 
+test("eine Bestandsconfig ohne issueTracker-Wert bekommt den codeHost als Default", () => {
+  const dir = fixture("install-tracker-null-");
+  try {
+    // `"issueTracker": null` ist gueltiges JSON und ueberschreibt beim Spread den
+    // eingebauten Default. Ohne den Rueckfall auf codeHost stuende in der Frage
+    // "[null]", und die Enter-Antwort schriebe null in die Config — die enum-Regel
+    // wiese sie ab und der gepipte Lauf braeche ab.
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(
+      join(dir, ".claude", "workflow.config.json"),
+      JSON.stringify({ codeHost: "local", issueTracker: null }, null, 2),
+      "utf-8",
+    );
+
+    // Frage 3 mit Enter bestaetigen: Sie muss den codeHost aus Frage 2 anbieten.
+    const res = installiere(dir, ["projekt", "local", "", "", "", "", ""]);
+
+    assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /Issue-Tracker:[^\n]*\[local\]/,
+      "die Frage haette 'local' als Default anbieten muessen");
+    assert.equal(config(dir).issueTracker, "local",
+      "der bestaetigte Default gehoert in die Config");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("bei codeHost local und issueTracker github kommt der gh-Hinweis trotzdem", () => {
   const dir = fixture("install-gemischt-");
   try {
