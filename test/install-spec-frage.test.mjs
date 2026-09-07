@@ -31,8 +31,22 @@ const schema = JSON.parse(
 
 // Woertlich so, wie sie im Installer steht — der Test sucht sie im stdout und belegt
 // mit ihrer Abwesenheit, dass die Frage NICHT gestellt wurde.
-const FRAGE = "Soll dieses Projekt ein beschriebenes Verhalten fuehren?";
+const FRAGE = "Soll dieses Projekt eine Spec fuehren (Spec-Driven Development)?";
 const HINWEIS = "nicht zurueckzunehmen";
+
+// Die drei festen Suchanker des Blocks vor der Frage (Issue #481): Name der Methode,
+// ihre Wirkung auf die taegliche Arbeit, der Abschnitt zum Nachlesen. Der Wortlaut
+// steht so im Issue — sonst waehlte die Implementierung den Text und der Test prueefte
+// gegen ihre eigene Wahl.
+//
+// Das Kuerzel `(SDD)` traegt nur der Block, nicht der Fragetext. Ohne diesen
+// Unterschied faende indexOf den ersten Treffer innerhalb der Frage, und der
+// Positionsvergleich unten haengt am Zufall der Reihenfolge statt an der Sache.
+const ANKER = [
+  "Spec-Driven Development (SDD)",
+  "bei jedem Arbeitspaket und jedem Push",
+  'Abschnitt "Beschriebenes Verhalten" in docs/dokumentation.md',
+];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
@@ -100,8 +114,10 @@ test("[installer-1] Bei github wird die Frage gar nicht erst gestellt", () => {
     const res = installiere(dir, ["projekt", "github", "github", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal("spec" in config(dir), false, "bei github darf kein spec-Block entstehen");
-    assert.doesNotMatch(res.stdout, /beschriebenes Verhalten fuehren\?/,
-      "die Frage wurde trotz github gestellt");
+    // Ueber FRAGE, nicht ueber einen Inline-Regex: Ein fest eingetippter alter Wortlaut
+    // erschiene hier nie und liesse den Test stumm gruen, waehrend die Aussage
+    // "bei github wird die Frage nicht gestellt" laengst nichts mehr pruefte.
+    assert.ok(!res.stdout.includes(FRAGE), "die Frage wurde trotz github gestellt");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -114,7 +130,7 @@ test("[installer-1] Bei toolbox wird die Frage gestellt und 'j' erzeugt den Bloc
   try {
     const res = installiere(dir, bisSpec("j"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /beschriebenes Verhalten fuehren\?/, "die Frage fehlte");
+    assert.ok(res.stdout.includes(FRAGE), "die Frage fehlte");
     assert.ok(config(dir).spec, "bei toolbox muss 'j' den Block erzeugen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -298,6 +314,29 @@ test("Der Hinweis auf die Unumkehrbarkeit steht im Installer und VOR dem Prompt"
     assert.ok(frage !== -1, "die Frage erscheint nicht in der Ausgabe");
     assert.ok(hinweis < frage,
       "der Hinweis steht hinter dem Prompt — gelesen wird er dann erst nach der Antwort");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-4] Name, Wirkung und Doku-Verweis stehen VOR der Spec-Frage", () => {
+  // Der Hinweis auf die Unumkehrbarkeit allein sagt nicht, worueber entschieden wird.
+  // Wer das Vorhaben nicht gebaut hat, braucht vor der Antwort den Namen der Methode,
+  // ihre Wirkung auf jedes Arbeitspaket und jeden Push und die Stelle zum Nachlesen —
+  // hinter dem Prompt gelesen kaemen alle drei zu spaet.
+  const dir = fixture("install-spec-anker-");
+  try {
+    const res = installiere(dir, bisSpec(""));
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const frage = res.stdout.indexOf(FRAGE);
+    assert.ok(frage !== -1, "die Frage erscheint nicht in der Ausgabe");
+
+    for (const anker of ANKER) {
+      const pos = res.stdout.indexOf(anker);
+      assert.ok(pos !== -1, `der Text vor der Frage nennt '${anker}' nicht`);
+      assert.ok(pos < frage, `'${anker}' steht hinter dem Prompt und wird erst nach der Antwort gelesen`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

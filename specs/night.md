@@ -1,5 +1,9 @@
 # night
 
 - night-1 — Steht eine Karte nach der Session in In review, wertet der Nacht-Runner ihre Pruef-Zusammenfassung: Fehlt sie, ist sie unlesbar oder traegt sie einen nicht gruenen Lauf, gilt die Runde als Fehlschlag mit eigenem Board-Kommentar und eigener Log-Zeile, ohne die Karte zu bewegen, ohne den Commit anzutasten und ohne den Lauf zu beenden.
+- night-2 — Bei `--verbose` und ohne `--dry-run` legt der Nacht-Runner nach den Vorflug-Pruefungen eine Ergebnisstand-Datei `.claude/night-run-<datum>-<uhrzeit>.json` an, deren erstes Feld die Schemafassung ist und die den erzeugenden Kit-Stand nennt; ein Schreibfehler wird protokolliert und bricht den Lauf nicht ab.
+- night-3 — `gitClean()` wertet Dateien, deren Name auf `.claude/night-run-*` passt — Textprotokoll und Ergebnisstand —, nicht als unsaubere Arbeitsbaum-Reste, unabhaengig vom Tracker.
+- night-4 — Im Implementierungslauf traegt der Ergebnisstand je Arbeitspaket eine Einheit: beim Ziehen mit unbekanntem Ausgang, nach der Runde ergaenzt um Ausgang, Dauer in Millisekunden, Commit, End-Status, den Pruefstand aus der Pruef-Zusammenfassung und die Session-Kennzahlen; zurueckgestellte Pakete erscheinen mit Grund, und ein vom Runner erkannter harter Stopp schliesst den Stand mit Abschlussart und Fehlerklasse ab.
+- night-5 — Ein Review-Lauf mit `--verbose` hinterlaesst denselben Ergebnisstand wie ein Implementierungslauf, unterschieden durch die Art `review`: Je Kandidat eine Einheit mit Ausgang, Dauer und Kennzahlen, dazu uebersprungene, wegen eines vorhandenen Stufen-Markers ausgelassene und wegen der Obergrenze liegengebliebene Kandidaten mit Grund; die Abschlussart setzt der Review-Lauf selbst, bevor er den Prozess beendet.
 
 ## Entfallen
