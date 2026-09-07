@@ -54,7 +54,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.47.0";
+const KIT_VERSION = "1.48.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -2160,7 +2160,7 @@ export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
 
 /**
  * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
- * (PO-Schleife), `[Plan]` (Plandokument aus /plan) und `[Idee]` (rohe Idee).
+ * (PO-Schleife), `[Plan]` (Plandokument aus /techplan) und `[Idee]` (rohe Idee).
  *
  * Hier und nur hier. Bis Issue #464 lag die Form doppelt im Bestand — als
  * `isFachlich`/`isIdee`/`isPlan` in kit/night.mjs und als `PLAN_PRAEFIX` in

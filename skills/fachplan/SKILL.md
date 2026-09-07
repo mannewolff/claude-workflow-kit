@@ -6,9 +6,9 @@ user-invocable: true
 
 # Fachplan
 
-Werkzeug neben dem Prozess, vor Schritt 2 (`/plan`): Eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) wird in ein **fachliches Issue** überführt — die Diskussionsgrundlage für den Product Owner. Fachliche Issues beschreiben das Was und Warum, nie das Wie. Sie werden gegroomt, nie implementiert.
+Werkzeug neben dem Prozess, vor Schritt 2 (`/techplan`): Eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) wird in ein **fachliches Issue** überführt — die Diskussionsgrundlage für den Product Owner. Fachliche Issues beschreiben das Was und Warum, nie das Wie. Sie werden gegroomt, nie implementiert.
 
-Die PO-Schleife ist **opt-in**: Wer keinen PO hat, überspringt diesen Skill und ruft direkt `/plan` auf — am übrigen Prozess ändert sich nichts.
+Die PO-Schleife ist **opt-in**: Wer keinen PO hat, überspringt diesen Skill und ruft direkt `/techplan` auf — am übrigen Prozess ändert sich nichts.
 
 ## Ablauf
 
@@ -64,7 +64,7 @@ BODY
 
 Der Body geht über **stdin** (Issue #271). Ein Story-Body mit Aufzählungen und Anführungszeichen läuft als Kommandozeilen-Argument in dieselbe Quoting-Grenze wie ein technischer. Der Heredoc-Marker ist **quotiert** (`<<'BODY'`), damit die Shell Backticks und `$` im Text nicht auswertet.
 
-**Kein `--derived-from` — nie.** Die Option trägt die Kartennummer des nächsten Vorfahren ans Board (Issue #356). Das fachliche Issue **ist** die Wurzel der Kette: Es hat keinen Vorfahren, und ein Verweis von hier aus zeigte entweder ins Leere oder auf eine fremde Karte. `/plan` setzt die Option auf dieses Issue hier, `/issues` auf das Plandokument — die Wurzel selbst bleibt ohne.
+**Kein `--derived-from` — nie.** Die Option trägt die Kartennummer des nächsten Vorfahren ans Board (Issue #356). Das fachliche Issue **ist** die Wurzel der Kette: Es hat keinen Vorfahren, und ein Verweis von hier aus zeigte entweder ins Leere oder auf eine fremde Karte. `/techplan` setzt die Option auf dieses Issue hier, `/issues` auf das Plandokument — die Wurzel selbst bleibt ohne.
 
 **Nach dem Anlegen `label-sync`:**
 
@@ -80,7 +80,7 @@ Ein frisches Dokument ist ungeprüft; das Kommando setzt `review:offen`. Ohne de
 
 Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
 
-> "Das fachliche Issue ist angelegt. Groomt es mit dem PO — Antworten und Ergänzungen direkt in den Body. Wenn der PO sagt: das ist es — dann `/plan #N` für den technischen Plan."
+> "Das fachliche Issue ist angelegt. Groomt es mit dem PO — Antworten und Ergänzungen direkt in den Body. Wenn der PO sagt: das ist es — dann `/techplan #N` für den technischen Plan."
 
 ## Grooming findet im Body statt, nie in Kommentaren
 
@@ -109,6 +109,6 @@ node .claude/kit/board.mjs issue update <id> --body-file <pfad>
 
 ## Stop-Punkte
 
-- Kein technischer Plan, keine technischen Issues — das kommt erst nach der PO-Freigabe über `/plan #N` und `/issues`.
+- Kein technischer Plan, keine technischen Issues — das kommt erst nach der PO-Freigabe über `/techplan #N` und `/issues`.
 - Kein Code, kein Commit.
 - Fachliche Issues nie nach Ready ziehen — Ready heißt implementierbar, und fachliche Issues werden nie implementiert.

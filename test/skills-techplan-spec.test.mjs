@@ -1,10 +1,10 @@
-// Die Beschreibung als erste Quelle in /plan (Issue #447, Plan #437).
+// Die Beschreibung als erste Quelle in /techplan (Issue #447, Plan #437).
 //
 // Sie pruefen Text, nicht Verhalten — was ein Skill tut, entscheidet das Modell,
 // das ihn liest. Wert haben sie trotzdem: Der Kern des Vorhabens ist eine
 // Rangfolge zwischen zwei Quellen, und eine Rangfolge, die nur ungefaehr
 // dasteht, ist keine. Faellt die Passage bei einer Umformulierung heraus, plant
-// /plan wieder schweigend gegen den Produktionscode — und nichts geht kaputt,
+// /techplan wieder schweigend gegen den Produktionscode — und nichts geht kaputt,
 // woran man es merken wuerde.
 //
 // Die heikelste Stelle ist die Ebene der Lueckenliste: `### Beschreibungs-Luecken`
@@ -20,7 +20,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = readFileSync(join(repoRoot, "skills", "plan", "SKILL.md"), "utf-8");
+const SKILL = readFileSync(join(repoRoot, "skills", "techplan", "SKILL.md"), "utf-8");
 
 /** Ein `###`-Schritt des Skills, bis zur naechsten Ueberschrift gleicher Ebene. */
 function schritt(ueberschrift) {

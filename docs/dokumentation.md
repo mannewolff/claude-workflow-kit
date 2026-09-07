@@ -260,7 +260,7 @@ Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen acht Ski
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
 | **1** | **Anforderung formulieren** | **Mensch** | (kein Skill) |
-| 2 | Anforderung planen | KI | /plan |
+| 2 | Anforderung planen | KI | /techplan |
 | 3 | Issues anlegen | KI | /issues |
 | **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
 | 5 | Ready-Issues implementieren | KI | /implement-ready |
@@ -311,9 +311,9 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 
 Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
-Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/plan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/plan`.
+Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/techplan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/techplan`.
 
-### /plan
+### /techplan
 
 Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), liest der Skill zuerst die Beschreibung und weist aus, wo sie schweigt.
 
@@ -323,7 +323,7 @@ Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel un
 
 Der Skill implementiert nichts. **Technische Issues stellt er nicht an** — die entstehen erst in `/issues`, nach deinem GO. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
 
-Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 das Plandokument selbst als Issue mit dem Titel-Präfix `[Plan]` an — mit dem Plan als Body, `Plan-Modell:` im Kopf und, falls der Plan aus `/plan #N` gegen ein fachliches Issue entstand, `Fachliche Quelle: Issue #N`. Es hält den freigegebenen Stand fest, statt ihn umzusetzen: Was zwischen Anforderung und Arbeitspaketen entschieden wurde — Architektur, Schnitt, Abwägungen — stünde sonst nirgends. `[Plan]`-Issues werden nie implementiert (siehe das Gate weiter unten); zerlegt werden sie per `/issues #N`. Bei Bahn 1 entsteht kein Plandokument.
+Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 das Plandokument selbst als Issue mit dem Titel-Präfix `[Plan]` an — mit dem Plan als Body, `Plan-Modell:` im Kopf und, falls der Plan aus `/techplan #N` gegen ein fachliches Issue entstand, `Fachliche Quelle: Issue #N`. Es hält den freigegebenen Stand fest, statt ihn umzusetzen: Was zwischen Anforderung und Arbeitspaketen entschieden wurde — Architektur, Schnitt, Abwägungen — stünde sonst nirgends. `[Plan]`-Issues werden nie implementiert (siehe das Gate weiter unten); zerlegt werden sie per `/issues #N`. Bei Bahn 1 entsteht kein Plandokument.
 
 ### /issues
 
@@ -456,7 +456,7 @@ Die Dokumentation entsteht nicht als nachträgliche Pflicht, sondern als automat
 
 Du rufst `/kontext` auf, um mit einem frischen Lageüberblick in die Session zu starten.
 
-**Schritte 1 und 2:** Du diktierst die Anforderung (Schritt 1) und rufst `/plan` (Schritt 2). Du liest den Plan, gibst Feedback und genehmigst ihn.
+**Schritte 1 und 2:** Du diktierst die Anforderung (Schritt 1) und rufst `/techplan` (Schritt 2). Du liest den Plan, gibst Feedback und genehmigst ihn.
 
 **Schritt 3:** Du rufst `/issues`. Die Issues landen im Backlog.
 
@@ -492,7 +492,7 @@ Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet z
 
 **Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO. Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus: Das Commit-Gate ist mechanisch und kennt keine Bahn.
 
-**Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/plan` → `/issues` → GO → `/implement-ready`.
+**Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/techplan` → `/issues` → GO → `/implement-ready`.
 
 Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
 
@@ -501,13 +501,13 @@ Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("D
 In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anforderungen ein — und will den Plan fachlich abnehmen, bevor Technik entsteht. Dafür trennt das Kit optional zwei Issue-Sorten nach dem Discovery/Delivery-Muster:
 
 - **Fachliche Issues** (Titel-Präfix `[Fachlich]`, angelegt per [/fachplan](#fachplan)): beschreiben in PO-Sprache das Was und Warum — Story-Format mit Ziel, fachlichen Akzeptanzkriterien, Nicht-Zielen und offenen Fragen. Sie werden am Board **gegroomt** — die Verhandlung mit dem PO läuft **im Body** (Antworten und Ergänzungen direkt am Text), nicht in Kommentaren — und **nie implementiert**.
-- **Technische Issues** (Vier-Abschnitt-Format wie gehabt): entstehen erst, wenn der PO sagt „das ist es" — dann liest `/plan #N` das fachliche Issue **mit seinem vollständigen Body** als Anforderungsquelle, und `/issues` schneidet daraus die technischen Issues.
+- **Technische Issues** (Vier-Abschnitt-Format wie gehabt): entstehen erst, wenn der PO sagt „das ist es" — dann liest `/techplan #N` das fachliche Issue **mit seinem vollständigen Body** als Anforderungsquelle, und `/issues` schneidet daraus die technischen Issues.
 
 **Der Ablauf:**
 
 1. `/fachplan <Anforderung>` → fachliches Issue in Backlog (bzw. im Ideen-Pool, siehe unten).
 2. Groomen direkt am Issue, bis der PO die fachliche Freigabe gibt.
-3. `/plan #N` → technischer Plan aus dem fachlichen Issue.
+3. `/techplan #N` → technischer Plan aus dem fachlichen Issue.
 4. `/issues` → technische Issues; jedes trägt die Rückverweise **im Kontext-Abschnitt**.
 5. Ab hier der normale Weg: GO, `/implement-ready` oder Nachtbetrieb, Review, Push.
 
@@ -522,20 +522,20 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 
   Die `Plan:`-Zeile entsteht nur, wenn ein `[Plan]`-Issue als Quelle vorliegt; wurde der Plan bloß in derselben Session freigegeben, bleibt sie weg. Sie ist unabhängig von `Plan-Modell:` — jene nennt den **Urheber** des Plans, diese seinen **Fundort**.
 - **Nie in den Abhängigkeiten — beide nicht.** Eine `Issue #N`-Referenz im Abhängigkeiten-Abschnitt würde der Nacht-Runner als unerfüllte Abhängigkeit werten. Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument wird durch Umsetzung nie Done — alle Kinder blieben dauerhaft zurückgestellt (Henne-Ei).
-- **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/plan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
+- **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/techplan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
 - **Lebenszyklus:** Fachliche Issues und Plandokumente bewegt **ausschließlich der Mensch** aus dem Backlog heraus — kein Skill zieht sie je selbst weiter, die Leitplanken schieben sie nur aus Ready zurück. Zwei Wege stehen offen, und sie sind **gleichwertig**: entweder **direkt nach Done**, sobald das Dokument seinen Zweck erfüllt hat, oder zunächst nach **In review** als Klammer, die den fachlichen Kontext während der Umsetzung sichtbar hält — Done dann, wenn die technischen Arbeitspakete durch sind. Welcher Weg passt, entscheidet der Mensch.
 
   **Eine Falle gehört dazu:** `night.mjs --review` liest ausschließlich die Backlog-Spalte. Wer ein Dokument **vor** seiner Prüfung als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — es ist dann kein Kandidat mehr, und zwar ohne dass irgendetwas fehlschlägt. Der Ausweg ist der interaktive Aufruf `/issue-review #N` mit expliziter Nummer: Er arbeitet **unabhängig von Spalte und vorhandenem Marker**. Genau das macht ihn zum Ausweg.
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
-- **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/plan #N` = fachlich freigegeben.
+- **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/techplan #N` = fachlich freigegeben.
 
-Ohne PO ist die Schleife unsichtbar: `/plan` direkt aufzurufen bleibt der Normalweg.
+Ohne PO ist die Schleife unsichtbar: `/techplan` direkt aufzurufen bleibt der Normalweg.
 
 ## Nachtbetrieb
 
 Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
-**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Drei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idee]`-Titel) und **Plandokumente** (`[Plan]`-Titel). Eine rohe Idee ohne `/plan`-Zyklus ist kein implementierbares Issue; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus.
+**Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Drei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idee]`-Titel) und **Plandokumente** (`[Plan]`-Titel). Eine rohe Idee ohne `/techplan`-Zyklus ist kein implementierbares Issue; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus.
 
 **Start:**
 
@@ -752,7 +752,7 @@ Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, e
 | Stufe | Prüft | Nachweis |
 |---|---|---|
 | `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
-| `plan` | ein `[Plan]`-Issue — das Plandokument aus [/plan](#plan) | `Plan-Review: …` |
+| `plan` | ein `[Plan]`-Issue — das Plandokument aus [/techplan](#plan) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
 
 **Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format führen ihre Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
@@ -820,7 +820,7 @@ Damit lässt sich ein bereits geprüftes Dokument erneut prüfen (etwa nachdem s
 
 **Einzelne Issues ausnehmen** braucht keine Markierung am Ticket: Nenn sie einfach nicht. Wer von acht Ready-Issues zwei auslassen will, listet die anderen sechs auf. Aus dem Review ausgenommen zu sein heißt allerdings nicht, dass das Gate sie durchlässt — bei `"requiredBeforeReady": true` stellt der Nachtlauf ein Issue ohne `Issue-Review:`-Marker weiterhin zurück.
 
-`[Idee]`-Dokumente sind in jedem Fall ausgeschlossen, auch mit expliziter Nummer. Eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument; der Skill nennt sie in der Zusammenfassung, damit niemand sie für geprüft hält.
+`[Idee]`-Dokumente sind in jedem Fall ausgeschlossen, auch mit expliziter Nummer. Eine rohe Idee ohne `/techplan`-Zyklus ist kein prüfbares Dokument; der Skill nennt sie in der Zusammenfassung, damit niemand sie für geprüft hält.
 
 ### Konfiguration
 
@@ -1333,7 +1333,7 @@ Gesetzt wird immer nur **ein** Verweis, der auf die nächsthöhere Stufe — der
 | Skill | Verweis |
 |---|---|
 | `/fachplan` | **nie** — die fachliche Anforderung ist die Wurzel und hat keinen Vorfahren |
-| `/plan` | auf das `[Fachlich]`-Issue, wenn der Plan aus `/plan #N` entstand; beim Plan aus dem Chat gar keiner |
+| `/techplan` | auf das `[Fachlich]`-Issue, wenn der Plan aus `/techplan #N` entstand; beim Plan aus dem Chat gar keiner |
 | `/issues` | auf das `[Plan]`-Issue, ersatzweise auf das fachliche Issue, sonst gar keiner |
 
 Die Form prüft der Adapter vor jedem Netzaufruf: Was keine positive Ganzzahl ist, endet mit Exit 1 — ausdrücklich auch das **nackte Flag** ohne Wert, das sonst als `1` durchginge. Ob die Nummer existiert, auf die Karte selbst zeigt oder einen Zyklus schließt, prüft der Server; die Obergrenze ist ebenfalls seine Sache und wird hier bewusst nicht nachgebaut.

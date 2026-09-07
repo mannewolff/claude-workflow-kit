@@ -8,8 +8,8 @@
 // Temp-Verzeichnis, nach dem Muster der night-*-Tests.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync } from "node:fs";
+import { delimiter, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
@@ -27,6 +27,52 @@ export function git(dir, ...args) {
 /** Roher Aufruf — fuer die Faelle, in denen der Exit-Code selbst der Befund ist. */
 export function checks(dir, ...cliArgs) {
   return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8" });
+}
+
+/**
+ * Derselbe Aufruf, aber mit `fakebin` vorne im PATH (Issue #504). Die uebrige
+ * Umgebung wird durchgereicht — insbesondere NODE_V8_COVERAGE, sonst faende die
+ * Messung den Kindprozess nicht.
+ */
+export function checksMitFakeGit(dir, ...cliArgs) {
+  const env = { ...process.env, PATH: `${join(dir, "fakebin")}${delimiter}${process.env.PATH}` };
+  return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
+}
+
+/**
+ * Ein Fake-`git` in `<dir>/fakebin`, das genau ein Unterkommando scheitern laesst
+ * und alles andere an das echte git durchreicht (Issue #504, Muster `fakeCli` aus
+ * board-fixture.mjs). Anders als ein Mock laesst es die uebrigen git-Aufrufe von
+ * checks.mjs unangetastet: `rev-parse` loest weiter auf, nur der eine Schritt
+ * danach bricht ab — genau die Reihenfolge, um die es in den Fehlerpfaden geht.
+ *
+ * Der Pfad des echten git wird hier aufgeloest und fest eingetragen. Ein
+ * `exec git "$@"` im Wrapper riefe sich selbst wieder auf, weil `fakebin` im PATH
+ * vorne steht.
+ *
+ * `meldung: null` laesst das Unterkommando stumm scheitern — der Fall, in dem
+ * checks.mjs seine Meldung ohne Zutun von git bilden muss.
+ */
+export function fakeGitOhne(dir, unterkommando, meldung = "fake: absichtlich gescheitert") {
+  const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+  assert.ok(echtesGit, "das echte git liess sich nicht im PATH finden");
+
+  const binDir = join(dir, "fakebin");
+  mkdirSync(binDir, { recursive: true });
+  const wrapper = [
+    "#!/bin/sh",
+    "# Generiert von test/helpers/checks-repo.mjs (Issue #504) — kein Produktivcode.",
+    `if [ "$1" = ${JSON.stringify(unterkommando)} ]; then`,
+    meldung === null ? "  :" : `  printf '%s\\n' ${JSON.stringify(meldung)} >&2`,
+    "  exit 128",
+    "fi",
+    `exec ${JSON.stringify(echtesGit)} "$@"`,
+    "",
+  ].join("\n");
+  const cliPfad = join(binDir, "git");
+  writeFileSync(cliPfad, wrapper, "utf-8");
+  chmodSync(cliPfad, 0o755);
+  return binDir;
 }
 
 /** Erfolgreicher `plan`-Aufruf, JSON geparst. */
@@ -60,7 +106,7 @@ export function datei(dir, pfad, inhalt = "Inhalt\n") {
   writeFileSync(ziel, inhalt, "utf-8");
 }
 
-export function repoAnlegen({ config = {}, ohneConfig = false } = {}) {
+export function repoAnlegen({ config = {}, configText = null, ohneConfig = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "checks-"));
   // Eine getrackte Datei von Anfang an: sonst haette der Setup-Commit im Fall
   // `ohneConfig` nichts zu committen und das Repo bliebe ohne HEAD.
@@ -70,10 +116,15 @@ export function repoAnlegen({ config = {}, ohneConfig = false } = {}) {
   // ins Repo. Ohne sie wuerde die Zusammenfassung aus `run` (Issue #424) hier als
   // Tree-Aenderung erscheinen, waehrend sie es im echten Projekt nie tut — das
   // Wegwerf-Repo wuerde dann etwas anderes pruefen als den Ernstfall.
-  datei(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\n");
+  //
+  // `fakebin/` steht aus demselben Grund dabei (Issue #504): Das Fake-`git` ist
+  // Werkzeug des Tests und kein Teil des Arbeitspakets; ungetrackt wuerde es als
+  // geaenderte Datei zaehlen und jeden Lauf in den vollen Umfang ziehen.
+  datei(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\nfakebin/\n");
   if (!ohneConfig) {
     mkdirSync(join(dir, ".claude"), { recursive: true });
-    writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config, null, 2) + "\n", "utf-8");
+    const inhalt = configText ?? JSON.stringify(config, null, 2) + "\n";
+    writeFileSync(join(dir, ".claude", "workflow.config.json"), inhalt, "utf-8");
   }
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "user.email", "t@example.invalid");

@@ -5,5 +5,6 @@
 - night-3 — `gitClean()` wertet Dateien, deren Name auf `.claude/night-run-*` passt — Textprotokoll und Ergebnisstand —, nicht als unsaubere Arbeitsbaum-Reste, unabhaengig vom Tracker.
 - night-4 — Im Implementierungslauf traegt der Ergebnisstand je Arbeitspaket eine Einheit: beim Ziehen mit unbekanntem Ausgang, nach der Runde ergaenzt um Ausgang, Dauer in Millisekunden, Commit, End-Status, den Pruefstand aus der Pruef-Zusammenfassung und die Session-Kennzahlen; zurueckgestellte Pakete erscheinen mit Grund, und ein vom Runner erkannter harter Stopp schliesst den Stand mit Abschlussart und Fehlerklasse ab.
 - night-5 — Ein Review-Lauf mit `--verbose` hinterlaesst denselben Ergebnisstand wie ein Implementierungslauf, unterschieden durch die Art `review`: Je Kandidat eine Einheit mit Ausgang, Dauer und Kennzahlen, dazu uebersprungene, wegen eines vorhandenen Stufen-Markers ausgelassene und wegen der Obergrenze liegengebliebene Kandidaten mit Grund; die Abschlussart setzt der Review-Lauf selbst, bevor er den Prozess beendet.
+- night-6 — Der Nacht-Runner loest die Nachbardateien `board.mjs` und `checks.mjs` ueber den Test-Hook `NIGHT_NACHBAR_DIR` auf, wenn dieser gesetzt ist; ohne ihn gilt der Pfad neben der eigenen Datei, und die Ersatzfunktionen werfen mit benennender Meldung, statt einen Wert zu liefern.
 
 ## Entfallen

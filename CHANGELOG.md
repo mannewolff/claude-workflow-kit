@@ -2,6 +2,26 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.48.0] - 2026-09-07
+- chore: Spec fortgeschrieben (#497, #498, #499)
+- Spec von Nachtbahn 3 committet, weil umgesetzt
+- Planungs-Skill heisst techplan, alter Name bleibt Wegweiser (#514)
+- Duplications: SYNC-Marker nachziehen, CPD-Ausschluss je Paar (#507)
+- Coverage-Abschluss: Restliste zusammenfuehren, Sonar-Kommentar nachziehen (#506)
+- Coverage tools/: acht offene Zweige in vier Scripts schliessen (#505)
+- Coverage kit/checks.mjs: 16 Zeilen und 17 Bedingungen schliessen (#504)
+- Coverage install.mjs: neun Zeilen und neun Bedingungen schliessen (#503)
+- Coverage kit/board.mjs: sechs erreichbare Zweige schliessen (#502)
+- Coverage kit/night.mjs: alle erreichbaren Klasse-1-Zweige schliessen (#501)
+- Coverage kit/spec.mjs: 27 Zeilen und 38 Bedingungen schliessen (#500)
+- A9: Dateisystem-Fallback im Installer entfernen, Abbruch bleibt (#499)
+- A7-Hook in kit/night.mjs: Nachbarpfad injizierbar, Stubs testbar (#498)
+- A7-Hooks in install.mjs: Blob-Stoerung und TTY-Entscheidung injizierbar (#497)
+- S8786 und S7747: vier Regexe entschaerft, REVIEW_MARKER_ZEILE revidiert (#496)
+- S4036: Regelausschluss fuer den Kommandoaufruf ueber den PATH (#494)
+- S2871 und S6959: benannte Vergleichsfunktion, reduce mit Startwert (#493)
+- Neue installationsversion
+
 ## [1.47.0] - 2026-09-07
 - chore: Spec fortgeschrieben (#480, #481, #486, #488, #489)
 - Doku: der Nachtbetrieb-Abschnitt nennt den Ergebnisstand (#490)

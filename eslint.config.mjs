@@ -41,11 +41,28 @@ export default [
       // SonarCloud-Lauf messbar — eine Session koennte "fertig" melden, waehrend eine
       // Funktion noch bei 16 liegt.
       "sonarjs/cognitive-complexity": ["error", 15],
+      // S6959 (reduce ohne Startwert, Issue #493). Die Leitplanke faengt weniger
+      // als SonarCloud: Ohne Parser-Services prueft der typfreie Zweig der Regel
+      // (cjs/S6959/rule.js:35), ob der Empfaenger ein Array-Literal ist oder eine
+      // Variable, die genau einmal aus einem Array-Literal zugewiesen wurde.
+      // Ergebnisse von `filter`/`map` bleiben unbewacht — genau der Fund in
+      // kit/spec.mjs kam aus einem `filter()` und waere hier nie gemeldet worden.
+      // Die Regel steht trotzdem: Sie faengt die haeufigere, direkte Form.
+      "sonarjs/reduce-initial-value": "error",           // S6959
       // S6594 (RegExp.exec statt String.match) und S6582 (Optional Chaining) haben
       // hier KEIN Pendant: Beide entsprechen Regeln aus typescript-eslint
       // (prefer-regexp-exec, prefer-optional-chain), die Typinformationen brauchen —
       // die es fuer reine .mjs-Dateien ohne TS-Projekt nicht gibt. eslint-plugin-sonarjs
       // fuehrt sie nicht. Ihre fuenf Fundstellen sind von Hand behoben (Issue #399).
+      //
+      // S2871 (.sort() ohne Vergleichsfunktion) und S4043 (sort im Rueckgabe-
+      // ausdruck) haben hier aus demselben Grund KEIN Pendant: Beide Regeln aus
+      // eslint-plugin-sonarjs geben ohne Parser-Services ein leeres Regelobjekt
+      // zurueck (cjs/S2871/rule.js:52, cjs/S4043/rule.js:41) und melden fuer
+      // reine .mjs-Dateien nichts. Die benannte Vergleichsfunktion
+      // `vergleicheText` in kit/spec.mjs und kit/checks.mjs ist deshalb
+      // Konvention, keine Leitplanke — ein neuer `.sort()`-Aufruf faellt erst
+      // beim naechsten SonarCloud-Lauf auf (Issue #493).
     },
   },
 ];

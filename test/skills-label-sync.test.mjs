@@ -39,8 +39,8 @@ test("Der Nachtbetrieb nimmt label-sync ausdruecklich NICHT aus", () => {
   assert.match(text, /weder Body noch Marker/i);
 });
 
-test("issues, plan und fachplan rufen label-sync nach issue create auf", () => {
-  for (const name of ["issues", "plan", "fachplan"]) {
+test("issues, techplan und fachplan rufen label-sync nach issue create auf", () => {
+  for (const name of ["issues", "techplan", "fachplan"]) {
     assert.match(skill(name), /label-sync/, `${name} ruft label-sync nicht auf`);
   }
 });

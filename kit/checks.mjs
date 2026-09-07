@@ -47,7 +47,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.47.0";
+const KIT_VERSION = "1.48.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -67,6 +67,27 @@ const SUMMARY_DATEI = ".claude/checks-summary.json";
  */
 export function zusammenfassungPfad(root = process.cwd()) {
   return join(root, ...SUMMARY_DATEI.split("/"));
+}
+
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
+ * Bericht und in der Zusammenfassung.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/spec.mjs — Aenderungen dort nachziehen.
+ * kit/checks.mjs und kit/spec.mjs sind bewusst eigenstaendige Single-File-Tools
+ * ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert und hier
+ * markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
 }
 
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
@@ -143,6 +164,7 @@ function pruefeBereichsnamen(checks, checkAreas) {
 
 // --- Muster ----------------------------------------------------------------
 
+// SYNC: strukturgleich in kit/spec.mjs — Aenderungen dort nachziehen.
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**
@@ -250,7 +272,7 @@ function geaenderteDateien(basis) {
   if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
-  return [...dateien].map((p) => p.replaceAll("\\", "/")).sort();
+  return [...dateien].map((p) => p.replaceAll("\\", "/")).sort(vergleicheText);
 }
 
 // --- Auswahl ---------------------------------------------------------------
@@ -301,7 +323,7 @@ function planen(args) {
   }
 
   const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
-  const bereiche = [...beruehrt].sort();
+  const bereiche = [...beruehrt].sort(vergleicheText);
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({ basis, geaendert, bereiche, laufen: mitGrund(checks, grund), vollerUmfang: true });

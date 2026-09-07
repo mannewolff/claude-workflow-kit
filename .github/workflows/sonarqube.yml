@@ -1,8 +1,9 @@
 name: SonarQube Cloud
 
-# Rein statische Analyse (Bugs, Code Smells, Duplication, Security Hotspots) fuer die
-# Node-Scripts des Kits (kit/, install.mjs, tools/). Keine Coverage-Auswertung, da diese
-# Scripts aktuell keine Testsuite haben (siehe sonar-project.properties). Nur main als
+# Statische Analyse (Bugs, Code Smells, Duplication, Security Hotspots) und
+# Coverage-Auswertung fuer die Node-Scripts des Kits (kit/, install.mjs, tools/). Den
+# Report erzeugt der Schritt "Coverage erzeugen" unten; zugeordnet wird er ueber
+# sonar.javascript.lcov.reportPaths in sonar-project.properties. Nur main als
 # Trigger: production hat zum Merge-Zeitpunkt denselben Inhalt wie main (Release-Flow ist
 # main -> production per PR-Merge, siehe RELEASING.md), ein zusaetzlicher Scan dort waere
 # nur eine redundante Zweitanalyse desselben Commits.

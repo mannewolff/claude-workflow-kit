@@ -58,7 +58,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.47.0";
+const KIT_VERSION = "1.48.0";
 
 const SPECS_DIR = "specs";
 const VORHABEN_DIR = "vorhaben";
@@ -137,6 +137,27 @@ function fail(nachricht) {
   throw new SpecError(nachricht);
 }
 
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — `index` etwa muss auf jeder Maschine
+ * dieselbe Datei erzeugen.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs — Aenderungen dort
+ * nachziehen. kit/spec.mjs und kit/checks.mjs sind bewusst eigenstaendige
+ * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird
+ * dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 // --- Lesen ------------------------------------------------------------------
 
 function specsPfad(root = process.cwd()) {
@@ -144,11 +165,8 @@ function specsPfad(root = process.cwd()) {
 }
 
 /**
- * Die Bereiche in alphabetischer Reihenfolge.
- *
- * Sortiert wird mit dem Standardvergleich, nicht mit localeCompare: Dessen
- * Reihenfolge haengt an der Locale der Maschine, und `index` muss auf jeder
- * Maschine dieselbe Datei erzeugen.
+ * Die Bereiche in alphabetischer Reihenfolge — sortiert mit `vergleicheText`,
+ * dort steht die Begruendung.
  *
  * Unterverzeichnisse fallen durch die isFile()-Pruefung heraus — damit ist
  * specs/vorhaben/** ohne Sonderfall draussen, und ein spaeter dazukommendes
@@ -158,19 +176,53 @@ function bereiche(root = process.cwd()) {
   return readdirSync(specsPfad(root), { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith(".md") && e.name !== INDEX_DATEI)
     .map((e) => e.name.slice(0, -3))
-    .sort();
+    .sort(vergleicheText);
 }
+
+// Die vier Ausdruecke dieser Datei sind exportiert, damit die Regex-Proben in
+// test/spec-regex-*.test.mjs direkt gegen sie messen koennen — nur dafuer, kein
+// oeffentlicher Vertrag (Issue #496). Ueber die CLI gemessen wuerde der Parser
+// mitlaufen, und die Grenze von 100 ms verlore ihre Aussage.
 
 // '- <ID> — <Aussage>'. Die ID muss der Form <bereich>-<N> genuegen (A16): ohne
 // diese Bedingung wuerde jede Prosa-Aufzaehlung mit Gedankenstrich als Aussage
 // gelesen, und der Index zaehlte Saetze statt Zusagen.
-const AUSSAGE_RE = /^-\s+(\S+-\d+)\s+—\s+(.+?)\s*$/;
+//
+// Kein Trimmen im Ausdruck, sondern per `.trim()` in `aussageTeile` (Issue #496,
+// Muster aus #403): Der alte `(.+?)\s*$` liess zwei Wiederholungen dieselben
+// Zeichen akzeptieren — bei 32 KiB Leerraum vor einem letzten Zeichen waren das
+// 348 ms. `[^\n]+` ist eindeutig und kann nicht backtracken. Der Capture traegt
+// deshalb den ROHEN Rest der Zeile.
+//
+// Warum `[^\S\n]` und nicht `[ \t]` fuer das eine Pflicht-Leerzeichen hinter dem
+// Gedankenstrich: Es muss `\r` weiter einschliessen. Diese Datei entfernt
+// nirgends `\r` und splittet nur an `\n`.
+export const AUSSAGE_RE = /^-\s+(\S+-\d+)\s+—[^\S\n]([^\n]+)$/;
 
 // Das Suffix einer gestrichenen Aussage. Es steht am Zeilenende und wird von der
 // Aussage abgetrennt, damit `show` Datum und Paket getrennt nennen kann.
-const ENTFALLEN_RE = /^(.*?)\s*\(entfallen\s+(\d{4}-\d{2}-\d{2}),\s*Paket\s+#(\d+)\)$/;
+//
+// `([^\n]*\S|)` statt `(.*?)\s*` (Issue #496): Der Kopf endet auf einem
+// Nicht-Leerzeichen, der Leerraum davor faellt an die folgende Klasse — damit
+// akzeptieren keine zwei Wiederholungen mehr dieselben Zeichen. Der leere Zweig
+// der Alternative haelt den Fall ohne Text fest: Der Capture ist dort die leere
+// Zeichenkette, nicht `undefined`. `show` gibt ihn unveraendert aus.
+export const ENTFALLEN_RE = /^([^\n]*\S|)[^\S\n]*\(entfallen\s+(\d{4}-\d{2}-\d{2}),\s*Paket\s+#(\d+)\)$/;
 
 const ENTFALLEN_UEBERSCHRIFT_RE = /^##\s+Entfallen\s*$/;
+
+/**
+ * Zerlegt eine Zeile in ID und Aussage; null heisst: keine Aussagezeile.
+ *
+ * Hier und nur hier wird der rohe Capture aus AUSSAGE_RE getrimmt. Zwei Aufrufer
+ * lesen Aussagezeilen (`aussagenLesen` und `aussageFinden`); jeder mit eigenem
+ * `.trim()` waeren zwei Wahrheiten darueber, wo eine Aussage anfaengt — genau
+ * die Doppelung, die der Ausdruck selbst vermeidet.
+ */
+function aussageTeile(zeile) {
+  const treffer = AUSSAGE_RE.exec(zeile);
+  return treffer === null ? null : { id: treffer[1], aussage: treffer[2].trim() };
+}
 
 /**
  * Zerlegt eine Bereichsdatei in ihre Aussagen.
@@ -193,10 +245,10 @@ function aussagenLesen(bereich, text) {
       entfallenAbschnitt = true;
       continue;
     }
-    const treffer = AUSSAGE_RE.exec(zeile);
+    const treffer = aussageTeile(zeile);
     if (!treffer) continue;
 
-    const [, id, rest] = treffer;
+    const { id, aussage: rest } = treffer;
     const eintrag = { id, bereich, zeile: i + 1, entfallen: entfallenAbschnitt, aussage: rest };
     const zusatz = entfallenAbschnitt ? ENTFALLEN_RE.exec(rest) : null;
     if (zusatz) {
@@ -238,7 +290,7 @@ const INDEX_KOPF = ["# Spec-Index", "", "| Bereich | Datei | Gueltig | Entfallen
  * nicht zeigen soll.
  */
 function indexAusTexten(texte) {
-  const zeilen = [...texte.keys()].sort().map((bereich) => {
+  const zeilen = [...texte.keys()].sort(vergleicheText).map((bereich) => {
     const aussagen = aussagenLesen(bereich, texte.get(bereich));
     const entfallen = aussagen.filter((a) => a.entfallen).length;
     return `| ${bereich} | ${bereichsDatei(bereich)} | ${aussagen.length - entfallen} | ${entfallen} |`;
@@ -353,8 +405,13 @@ export const WIRKUNG_GRAMMATIK = [
   "KEINE     — <Begruendung>",
 ].join("\n");
 
-const NEU_RE = /^NEU\s+(\S+)\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
-const GEAENDERT_RE = /^GEAENDERT\s+(\S+-\d+)\s+—\s+(\S.*?)\s*$/;
+// `(\S(?:[^\n]*\S)?)[^\S\n]*$` statt `(\S.*?)\s*$` (Issue #496, Muster aus #403):
+// Der Capture endet garantiert auf einem Nicht-Leerzeichen, also akzeptieren die
+// benachbarten Wiederholungen nicht mehr dieselben Zeichen. Die Bedeutung bleibt —
+// beide Formen fassen die Spanne vom ersten bis zum letzten Nicht-Leerzeichen, und
+// `[^\S\n]*` verschluckt ein `\r` am Zeilenende wie der alte `\s*`.
+export const NEU_RE = /^NEU\s+(\S+)\s+(\S+-\d+)\s+—\s+(\S(?:[^\n]*\S)?)[^\S\n]*$/;
+export const GEAENDERT_RE = /^GEAENDERT\s+(\S+-\d+)\s+—\s+(\S(?:[^\n]*\S)?)[^\S\n]*$/;
 const ENTFAELLT_RE = /^ENTFAELLT\s+(\S+-\d+)\s+—\s+\S/;
 const KEINE_RE = /^KEINE\s+—\s+\S/;
 
@@ -707,6 +764,8 @@ function checkPaket(datei) {
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**
+ * SYNC: strukturgleich in kit/checks.mjs — Aenderungen dort nachziehen.
+ *
  * Minimal-Glob, Zeichen fuer Zeichen dieselbe Fassung wie in kit/checks.mjs:
  * '*' innerhalb eines Pfadsegments, '**' ueber Segmentgrenzen, '/' als Trenner.
  * Ein '**' samt folgendem Trenner darf ganz verschwinden, damit ein Muster wie
@@ -807,10 +866,14 @@ function bereichsLuecken(bereich, muster, dateien, root) {
     for (const a of entfallen) if (a.aussage.includes(punkt)) spuren.add(a.id);
   }
 
-  // Standardvergleich statt localeCompare, wie bei `bereiche()`: Die Reihenfolge
-  // von localeCompare haengt an der Locale der Maschine, und zwei Laeufe muessen
-  // ueberall dieselbe Liste ergeben.
-  return { luecken: offen.sort(), entfallen: [...spuren].sort() };
+  // Sortiert mit `vergleicheText`, dort steht die Begruendung. Die Sortierung
+  // steht als eigene Anweisung vor dem `return` und nicht im Rueckgabeausdruck
+  // (S4043): `sort` aendert `offen` an Ort und Stelle, und im Ausdruck sieht das
+  // nach einer Kopie aus. Die kopierende Sortiermethode aus ES2023 waere die
+  // Alternative, gibt es aber erst ab Node 20 — README.md nennt Node 18 als
+  // Untergrenze.
+  offen.sort(vergleicheText);
+  return { luecken: offen, entfallen: [...spuren].sort(vergleicheText) };
 }
 
 /**
@@ -1157,7 +1220,11 @@ export function anlagedatum(verlauf) {
   const angelegt = (Array.isArray(verlauf) ? verlauf : [])
     .filter((e) => e?.type === "CREATED" && typeof e.createdAt === "string" && e.createdAt !== "");
   if (angelegt.length === 0) return null;
-  const aeltester = angelegt.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+  // Startwert `angelegt[0]` statt keiner (S6959): Ohne ihn wirft `reduce` auf der
+  // leeren Liste. Der Leerfall ist eine Zeile darueber schon abgefangen, aber das
+  // sieht man dem `reduce` nicht an — und ein spaeter verschobenes Return macht
+  // die Zusicherung still zunichte.
+  const aeltester = angelegt.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b), angelegt[0]);
   return aeltester.createdAt.slice(0, 10);
 }
 
@@ -1252,14 +1319,14 @@ function entfallenIndex(zeilen) {
 function aussageFinden(zeilen, id) {
   const grenze = entfallenIndex(zeilen);
   for (const [i, zeile] of zeilen.entries()) {
-    const treffer = AUSSAGE_RE.exec(zeile);
-    if (!treffer || treffer[1] !== id) continue;
+    const treffer = aussageTeile(zeile);
+    if (!treffer || treffer.id !== id) continue;
 
     const entfallen = grenze !== -1 && i > grenze;
-    const zusatz = entfallen ? ENTFALLEN_RE.exec(treffer[2]) : null;
+    const zusatz = entfallen ? ENTFALLEN_RE.exec(treffer.aussage) : null;
     return {
       index: i, entfallen, zeile,
-      aussage: zusatz ? zusatz[1] : treffer[2],
+      aussage: zusatz ? zusatz[1] : treffer.aussage,
       datum: zusatz?.[2], paket: zusatz?.[3],
     };
   }
@@ -1587,7 +1654,9 @@ function paketeLesen(nummern, seit, bekannte, befunde) {
 function standBerechnen(ziele, vorhanden, befunde) {
   const neu = new Map();
 
-  for (const bereich of [...new Set(ziele.map((z) => z.bereich))]) {
+  // Direkt ueber das Set, ohne Zwischen-Array (S7747): Ein `for … of` braucht
+  // keine Indizierung, und die Einfuegereihenfolge halten beide gleich.
+  for (const bereich of new Set(ziele.map((z) => z.bereich))) {
     const alt = vorhanden.get(bereich) ?? neueBereichsDatei(bereich);
     const text = bereichFortschreiben(alt, ziele.filter((z) => z.bereich === bereich), befunde);
     if (text !== null) neu.set(bereich, text);
@@ -1596,7 +1665,7 @@ function standBerechnen(ziele, vorhanden, befunde) {
 }
 
 function vorschauZeigen(vorhanden, neu, indexDiff) {
-  const teile = [...neu.keys()].sort()
+  const teile = [...neu.keys()].sort(vergleicheText)
     .map((bereich) => unifiedDiff(bereichsDatei(bereich), vorhanden.get(bereich) ?? null, neu.get(bereich)));
   teile.push(indexDiff);
 
@@ -1609,7 +1678,7 @@ function standSchreiben(neu, indexText) {
   const verzeichnis = specsPfad();
   mkdirSync(verzeichnis, { recursive: true });
 
-  for (const bereich of [...neu.keys()].sort()) {
+  for (const bereich of [...neu.keys()].sort(vergleicheText)) {
     writeFileSync(join(verzeichnis, `${bereich}.md`), neu.get(bereich), "utf-8");
     process.stdout.write(`${bereichsDatei(bereich)} geschrieben.\n`);
   }

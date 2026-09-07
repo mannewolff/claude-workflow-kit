@@ -136,7 +136,7 @@ test("das Kapitel nennt weder Board-Nummern noch A-Kuerzel", () => {
 });
 
 test("die fuenf Bestandsabschnitte verweisen auf das Kapitel", () => {
-  for (const abschnitt of ["### /push-main", "### /issues", "### /plan", "### /kontext", "## Die Config-Datei"]) {
+  for (const abschnitt of ["### /push-main", "### /issues", "### /techplan", "### /kontext", "## Die Config-Datei"]) {
     const start = DOKU.indexOf(`\n${abschnitt}\n`);
     assert.notEqual(start, -1, `${abschnitt} fehlt`);
     const naechste = DOKU.indexOf("\n#", start + abschnitt.length + 2);

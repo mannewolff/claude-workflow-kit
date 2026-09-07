@@ -59,7 +59,7 @@ Weitere `##`-Ueberschriften sind erlaubt; die vier muessen vorhanden sein und
 untereinander in dieser Reihenfolge stehen. (Anders als im Plan-Register, wo P2
 zusaetzliche `##`-Ebenen verbietet — der `/fachplan`-Skill kennt kein solches Verbot.)
 
-*Warum Gate:* An diesen Ueberschriften haengen `/plan` und `/issue-review`. Sinngemaess
+*Warum Gate:* An diesen Ueberschriften haengen `/techplan` und `/issue-review`. Sinngemaess
 umformuliert wirken sie nicht.
 
 ## F2 — `Autor-Modell:` steht im Abschnitt `## Ziel` und ist nie leer `[maschinell]`
@@ -158,7 +158,8 @@ nicht entscheiden darf, was das Produkt tun soll.
 Der Marker dieser Stufe heisst `Fachplan-Review:`.
 
 *Warum Gate:* An `Issue-Review:` haengt in `kit/night.mjs` das Gate `requiredBeforeReady`
-(Zeile 394, `/^\s*Issue-Review:\s*\S/im`). Traegt eine fachliche Anforderung diesen
+(`REVIEW_MARKER_ZEILE`, `/^Issue-Review:[^\S\n]*\S/i`, von `hasReviewMarker` je Zeile
+nach `trimStart()` geprueft). Traegt eine fachliche Anforderung diesen
 Marker, haelt der Nacht-Runner sie fuer ein freigabereifes Arbeitspaket und zieht sie in
 die Implementierung.
 

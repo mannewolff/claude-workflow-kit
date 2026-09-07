@@ -230,6 +230,28 @@ test("REVIEW_MARKER_ZEILE: nur ein Wert auf derselben Zeile zaehlt", () => {
   assert.ok(REVIEW_MARKER_ZEILE instanceof RegExp);
 });
 
+test("REVIEW_MARKER_ZEILE: der Ausdruck traegt den Zeilenkopf, den Leerraum davor der Aufrufer", () => {
+  // Issue #496: Gemeldet war das FUEHRENDE `[^\S\n]*` hinter `^` mit m-Flag. Es
+  // ist gestrichen; den Leerraum am Zeilenanfang raeumt `hasReviewMarker` per
+  // `trimStart()` ab — derselbe Weg, den #403 fuer PRUEFUNG_ZEILE gegangen ist.
+  // Die Bedeutung der FUNKTION bleibt dieselbe, die des Ausdrucks allein nicht.
+  assert.equal(REVIEW_MARKER_ZEILE.test("Issue-Review: fable"), true);
+  assert.equal(REVIEW_MARKER_ZEILE.test("  Issue-Review: fable"), false,
+    "der Ausdruck selbst kennt keinen fuehrenden Leerraum mehr");
+  assert.equal(hasReviewMarker("  Issue-Review: fable"), true,
+    "die Funktion erkennt ihn weiter — sie trimmt je Zeile");
+  assert.equal(hasReviewMarker("\tIssue-Review: fable"), true, "Tabs zaehlen als Leerraum");
+});
+
+test("REVIEW_MARKER_ZEILE: der Marker wird auch bei CRLF erkannt", () => {
+  // night.mjs entfernt vor dieser Pruefung kein `\r`. Der alte `[^\S\n]*\S`
+  // uebersprang es, `trimStart()`/`\S` tun dasselbe — `[ \t]` haette es nicht.
+  assert.equal(hasReviewMarker("## Kontext\r\nIssue-Review: fable (2026-09-07)\r\n"), true);
+  assert.equal(hasReviewMarker("  \r\n  Issue-Review: fable\r\n"), true);
+  assert.equal(hasReviewMarker("Issue-Review:\r"), false, String.raw`ein \r ist kein Wert`);
+  assert.equal(hasReviewMarker("Issue-Review:  \r"), false);
+});
+
 // --- 9. night.mjs: RUNDEN_KOPF ---
 
 test("RUNDEN_KOPF: Treffer, Rundennummer und Nicht-Treffer", () => {
@@ -270,7 +292,10 @@ const WORST_CASE = [
   ["PRUEFUNG_ZEILE", PRUEFUNG_ZEILE, (n) => `Pruefung: ${" ".repeat(n)}\n`],
   ["PRUEFUNG_STAND_ZEILE", PRUEFUNG_STAND_ZEILE, (n) => `Pruefung-Stand: ${" ".repeat(n)}\n`],
   ["FENCE_ZEILE", FENCE_ZEILE, (n) => `   ${"`".repeat(n)}\n`],
-  ["REVIEW_MARKER_ZEILE", REVIEW_MARKER_ZEILE, (n) => `${" ".repeat(n)}Issue-Review:`],
+  // Der Leerraum steht hinter dem Doppelpunkt, nicht mehr davor: Seit Issue #496
+  // kennt der Ausdruck keinen fuehrenden Leerraum, eine Zeile mit Einrueckung
+  // scheiterte sofort und maesse nichts.
+  ["REVIEW_MARKER_ZEILE", REVIEW_MARKER_ZEILE, (n) => `Issue-Review:${" ".repeat(n)}`],
   ["RUNDEN_KOPF", RUNDEN_KOPF, (n) => `## ${"x".repeat(n)}, Runde `],
 ];
 

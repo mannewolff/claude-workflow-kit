@@ -54,7 +54,7 @@ dazwischen ab.
 
 ## P4 — `Fachliche Quelle: Issue #N` steht genau dann, wenn der Plan daraus entstand `[maschinell + Urteil]`
 
-Entstand der Plan aus `/plan #N` gegen ein `[Fachlich]`-Issue: Zeile steht. Sonst: Zeile
+Entstand der Plan aus `/techplan #N` gegen ein `[Fachlich]`-Issue: Zeile steht. Sonst: Zeile
 fehlt, auch kein Platzhalter.
 
 **`[maschinell]` ist davon nur die vorhandene Zeile:** #N muss existieren oder
@@ -63,7 +63,7 @@ ist kein Verstoss** — die Body-Zeile ist gerade die ueberlebende Spur, wenn di
 weg ist (Idee #367; #300 verweist auf das geloeschte #285).
 
 **Die Fehlen-Richtung ist `[Urteil]`:** Ob eine fehlende Zeile fehlen *darf*, haengt an
-der Entstehung (`/plan #N` oder freies Gespraech) und steht in keinem abfragbaren Feld.
+der Entstehung (`/techplan #N` oder freies Gespraech) und steht in keinem abfragbaren Feld.
 
 *Warum Gate:* Eine erfundene Quelle behauptet eine Verhandlung, die nie stattgefunden hat.
 
@@ -106,7 +106,7 @@ Stopp-Frage erfasst P7 nicht — das ist Sache der Rolle `schnitt-abhaengigkeite
 War „Ein Plan mit mindestens einer offenen Stopp-Frage geht nicht in `/issues`". Das ist
 eine **Prozessregel, kein Dokument-Gate**: Ein Dokument kann dagegen nicht verstossen,
 nur ein Lauf — und zum Review-Zeitpunkt, vor `/issues`, ist ein Verstoss gar nicht
-moeglich. Der Fehlerpfad steht im `/plan`-Skill; die pruefbare Form deckt P6 ab.
+moeglich. Der Fehlerpfad steht im `/techplan`-Skill; die pruefbare Form deckt P6 ab.
 **Die Nummer bleibt frei**, damit aeltere Befunde eindeutig bleiben.
 
 ## P9 — `## Verifizierung` beschreibt Pruefungen, nicht ihr Ergebnis `[Urteil]`
@@ -130,7 +130,8 @@ nicht existierte — es waere in dreizehn Pakete gewandert.
 Der Marker dieser Stufe heisst `Plan-Review:`.
 
 *Warum Gate:* An `Issue-Review:` haengt in `kit/night.mjs` das Gate `requiredBeforeReady`
-(Zeile 394, `/^\s*Issue-Review:\s*\S/im`). Traegt ein Plandokument diesen Marker, haelt
+(`REVIEW_MARKER_ZEILE`, `/^Issue-Review:[^\S\n]*\S/i`, von `hasReviewMarker` je Zeile
+nach `trimStart()` geprueft). Traegt ein Plandokument diesen Marker, haelt
 der Nacht-Runner es fuer ein freigabereifes Arbeitspaket und zieht es in die
 Implementierung.
 

@@ -28,7 +28,7 @@ Der erste Schritt nach dem Klonen ist deshalb:
 node install.mjs
 ```
 
-Erst danach stehen `/kontext`, `/plan`, `/issues` und die uebrigen Skills in Claude Code zur Verfuegung.
+Erst danach stehen `/kontext`, `/techplan`, `/issues` und die uebrigen Skills in Claude Code zur Verfuegung.
 
 Zum Entwickeln kommt ein zweiter Schritt dazu:
 
