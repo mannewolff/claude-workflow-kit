@@ -22,7 +22,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -316,16 +316,23 @@ test("Ein reviewModel ohne claude-Praefix wird von der pattern-Regel abgelehnt",
   }
 });
 
-// --- Skills-Blob: Fallback und Totalausfall ---
+// --- Die beiden Test-Hooks: Blob-Stoerung und TTY (Issue #497) ---
 //
-// Diese drei Pfade haengen an der eingebetteten Konstante SKILLS_B64, die im echten
-// install.mjs immer vollstaendig und gueltig ist. Um sie zu erreichen, laeuft hier
-// ausnahmsweise eine KOPIE mit manipulierter Konstante. Folge, bewusst in Kauf
-// genommen: Ihre Coverage laeuft unter dem Temp-Pfad und erscheint nicht unter
-// install.mjs. Die Alternative waere ein Override-Hook im Produktivcode gewesen —
-// ausgerechnet in der Datei, deren Portabilitaet zugesagt ist und die Nutzer per
-// `node <(curl ...)` starten. Verhalten pruefen ist das wert, drei Zeilen
-// Messwert nicht.
+// Zwei Zweige von install.mjs sind ohne Eingabe nicht erreichbar: der catch um
+// JSON.parse in copySkills — SKILLS_B64 ist eine feste Konstante der Datei — und
+// der TTY-Pfad der Fragen, denn im Testlauf ist stdin nie eine TTY. Frueher lief
+// dafuer eine KOPIE mit manipulierter Konstante; ihre Coverage entstand unter dem
+// Temp-Pfad und liess sich nicht auf install.mjs abbilden — genau daran lagen die
+// frueher gemeldeten 0 %. Seit A7 des Plans #492 macht der Produktionscode beide
+// Zweige ueber Umgebungsvariablen auf (Vorbild KIT_ROOT, Issue #189), und die
+// Tests fahren das ECHTE Script aus dem Repo.
+//
+// Der Blob-Hook traegt dabei ausdruecklich KEINEN Inhalt: Sein Wert wird nur auf
+// gesetzt/nicht gesetzt geprueft, nie geparst. Der erste Test belegt das, indem
+// er einen gueltigen Blob mit einem erfundenen Skill uebergibt und zeigt, dass
+// davon nichts auf der Platte landet.
+
+const HOOK_NAMEN = ["KIT_INSTALL_BLOB_DEFEKT", "KIT_INSTALL_TTY"];
 
 function installerMitBlob(dir, blobWert) {
   const quelle = readFileSync(INSTALLER, "utf-8");
@@ -345,33 +352,165 @@ function installiereKopie(dir, pfad, antworten) {
   });
 }
 
-test("Ein korrupter Skills-Blob wird gemeldet und der Dateisystem-Fallback greift", () => {
-  const dir = fixture("install-blob-korrupt-");
+/**
+ * Baut die Umgebung fuer einen Hook-Lauf. Die beiden Hook-Variablen werden
+ * ausdruecklich GELOESCHT, bevor `hooks` sie ggf. wieder setzt: Ein aus der
+ * Umgebung geerbter Wert darf keinen dieser Tests still umschalten.
+ */
+function hookEnv(dir, hooks) {
+  const env = { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home") };
+  for (const name of HOOK_NAMEN) delete env[name];
+  return Object.assign(env, hooks);
+}
+
+function installiereMitHooks(dir, antworten, hooks) {
+  return spawnSync(process.execPath, [INSTALLER], {
+    cwd: dir,
+    input: antworten.join("\n") + "\n",
+    encoding: "utf-8",
+    timeout: 60_000,
+    env: hookEnv(dir, hooks),
+  });
+}
+
+/**
+ * Fuehrt den Installer so, wie ein Mensch am Terminal antwortet: eine Zeile je
+ * Prompt, geschrieben erst wenn der Prompt da ist.
+ *
+ * Warum nicht `spawnSync` mit vorab gefuelltem stdin, wie im Issue #497 zuerst
+ * angenommen: readline puffert auf einer Pipe nichts. Zeilen, die eintreffen,
+ * waehrend gerade keine `rl.question` offen ist, gehen verloren — gemessen kam
+ * der Installer so nur bis zur zweiten Frage und endete mit einem unsettled
+ * top-level await (Exit 13). Der Piped-Modus des Installers existiert genau
+ * deshalb; wer den TTY-Pfad fahren will, muss taktweise fuettern.
+ *
+ * Die Frist ist die Leitplanke aus dem Issue: Im TTY-Pfad loest `rl.question`
+ * nach EOF nie auf. Ohne sie haenge `node --test` mit, statt rot zu werden.
+ * stdin bleibt deshalb bis zum Prozessende offen — eine Frage, fuer die keine
+ * Antwort mehr da ist, laeuft in die Frist und meldet einen roten Test, statt
+ * mit einem stillen EOF beantwortet zu werden.
+ */
+function installiereInteraktiv(dir, antworten, hooks) {
+  return new Promise((resolve, reject) => {
+    const kind = spawn(process.execPath, [INSTALLER], { cwd: dir, env: hookEnv(dir, hooks) });
+    const offen = [...antworten];
+    let ausgabe = "";
+    let letzte = "";
+    const frist = setTimeout(() => kind.kill("SIGTERM"), 60_000);
+
+    kind.stdout.setEncoding("utf-8");
+    kind.stderr.setEncoding("utf-8");
+    kind.stdout.on("data", (stueck) => {
+      ausgabe += stueck;
+      letzte += stueck;
+      if (!letzte.endsWith(": ")) return;
+      letzte = "";
+      if (offen.length === 0) return;
+      kind.stdin.write(offen.shift() + "\n");
+    });
+    kind.stderr.on("data", (stueck) => { ausgabe += stueck; });
+    kind.on("error", reject);
+    kind.on("close", (status, signal) => {
+      clearTimeout(frist);
+      resolve({ status, signal, ausgabe });
+    });
+  });
+}
+
+test("[installer-5] Der Blob-Hook erzwingt den Fehlerpfad, ohne Inhalt einzuschleusen", () => {
+  const dir = fixture("install-blob-hook-");
   try {
-    // Die Kopie liegt im Repo-Root, damit ihr __dirname/skills auf die echten Skills
-    // zeigt — genau der Fallback, der bei der Kit-Entwicklung im Klon greift.
-    const quelle = readFileSync(INSTALLER, "utf-8").replace(/const SKILLS_B64 = "[^"]*";/, 'const SKILLS_B64 = "kein-base64-json";');
-    const pfad = join(repoRoot, ".install-kopie-test.mjs");
-    writeFileSync(pfad, quelle, "utf-8");
-    try {
-      const res = installiereKopie(dir, pfad, PROJEKT_GITHUB);
-      assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-      assert.match(res.stdout + res.stderr, /Skills-Blob ist kein gueltiges JSON/);
-      assert.match(res.stdout, /aus Dateisystem/, "der Fallback muss greifen");
-      assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
-    } finally {
-      rmSync(pfad, { force: true });
-    }
+    // Ein GUELTIGER Blob mit einem erfundenen Skill: Wuerde der Hook eine Quelle
+    // liefern statt nur eine Stoerung, landete `fremd/SKILL.md` im Zielprojekt.
+    const fremderBlob = Buffer.from(
+      JSON.stringify({ fremd: { "SKILL.md": "# fremd\n" } }),
+      "utf-8",
+    ).toString("base64");
+    const res = installiereMitHooks(dir, PROJEKT_GITHUB, { KIT_INSTALL_BLOB_DEFEKT: fremderBlob });
+    const ausgabe = res.stdout + res.stderr;
+
+    assert.equal(res.status, 0, ausgabe);
+    assert.match(ausgabe, /Skills-Blob ist kein gueltiges JSON/);
+    assert.match(res.stdout, /aus Dateisystem/, "der Fallback muss greifen");
+    assert.equal(
+      existsSync(join(dir, ".claude", "skills", "fremd")),
+      false,
+      "der Hook darf keinen Skill aus seinem Wert schreiben",
+    );
+    assert.ok(
+      readFileSync(join(dir, ".claude", "skills", "plan", "SKILL.md")).equals(
+        readFileSync(join(repoRoot, "skills", "plan", "SKILL.md")),
+      ),
+      "die geschriebenen Skills muessen byteidentisch aus dem Repo stammen",
+    );
+    assert.doesNotMatch(ausgabe, /KIT_INSTALL_/, "der Hook-Name gehoert in keine Ausgabe");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
+test("[installer-5] Der TTY-Hook fuehrt die Fragen ueber readline statt ueber die Pipe", async () => {
+  const dir = fixture("install-tty-hook-");
+  try {
+    // Alle Antworten vollstaendig: Im TTY-Pfad ersetzt `ask` eine fehlende Zeile
+    // NICHT durch "", sondern wartet auf readline — nach EOF fuer immer.
+    const res = await installiereInteraktiv(dir, PROJEKT_GITHUB, { KIT_INSTALL_TTY: "1" });
+
+    assert.equal(res.signal, null, `der Installer hat im TTY-Pfad gehangen:\n${res.ausgabe}`);
+    assert.equal(res.status, 0, res.ausgabe);
+    // Der sichtbare Unterschied der beiden Wege: Im Piped-Modus schreibt `ask`
+    // die gelesene Antwort selbst hinter den Prompt; readline echot sie nicht.
+    assert.doesNotMatch(res.ausgabe, /\[global\/projekt\]: projekt/, "die Fragen liefen nicht ueber readline");
+    assert.equal(config(dir).codeHost, "github", "die Antworten muessen angekommen sein");
+    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.doesNotMatch(res.ausgabe, /KIT_INSTALL_/, "der Hook-Name gehoert in keine Ausgabe");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-5] Ohne gesetzte Hooks bleibt der Regelpfad unveraendert", () => {
+  const dir = fixture("install-ohne-hooks-");
+  try {
+    // Die Variablen werden geloescht, nicht nur weggelassen — ein aus der
+    // Umgebung geerbter Wert darf den Regelpfad nicht still umschalten.
+    const res = installiereMitHooks(dir, PROJEKT_GITHUB, {});
+    const ausgabe = res.stdout + res.stderr;
+
+    assert.equal(res.status, 0, ausgabe);
+    assert.doesNotMatch(ausgabe, /Skills-Blob ist kein gueltiges JSON/, "der Blob muss gelesen werden");
+    assert.doesNotMatch(res.stdout, /aus Dateisystem/, "ohne Hook kommen die Skills aus dem Blob");
+    assert.match(ausgabe, /\[global\/projekt\]: projekt/, "ohne Hook laufen die Fragen ueber die Pipe");
+    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.doesNotMatch(ausgabe, /KIT_INSTALL_/, "die Hook-Namen gehoeren in keine Ausgabe");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-5] Die Hook-Namen sind Umgebungsvariablen, kein Kommandozeilenflag", () => {
+  const quelle = readFileSync(INSTALLER, "utf-8");
+  for (const name of HOOK_NAMEN) {
+    const alsEnv = quelle.match(new RegExp(`process\\.env\\.${name}\\b`, "g")) ?? [];
+    assert.equal(alsEnv.length, 1, `${name} muss genau einmal als process.env.${name} vorkommen`);
+    for (const zeile of quelle.split("\n")) {
+      if (!zeile.includes(name)) continue;
+      assert.ok(!zeile.includes("process.argv"), `${name} darf nicht an process.argv haengen: ${zeile}`);
+    }
+  }
+});
+
+// --- Skills-Totalausfall ---
+//
+// Der einzige Weg, der weiterhin eine KOPIE braucht: Der Test verlangt einen
+// Installer, neben dem KEIN skills/ liegt. Der Blob-Hook allein genuegt dafuer
+// nicht — er oeffnet den Fehlerpfad, danach greift der Dateisystem-Fallback, und
+// im Repo existiert skills/ immer. Die Kopie liegt deshalb im Fixture, wo ihr
+// __dirname/skills ins Leere zeigt. #499 loest diesen letzten Kopie-Weg ab.
+
 test("Ohne Blob und ohne Dateisystem-Quelle bricht die Installation ab", () => {
   const dir = fixture("install-blob-leer-");
   try {
-    // Kopie im Fixture: __dirname/skills existiert dort nicht, der Fallback laeuft
-    // also ebenfalls ins Leere — kein einziger Skill ist kopierbar.
     const pfad = installerMitBlob(dir, "kein-base64-json");
     const res = installiereKopie(dir, pfad, PROJEKT_GITHUB);
     assert.equal(res.status, 1, "ohne jeden Skill darf die Installation nicht als Erfolg enden");

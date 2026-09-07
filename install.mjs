@@ -149,10 +149,23 @@ const DEFAULTS = schema.defaults;
 // Liest alle Zeilen vorab wenn kein TTY (Pipe/CI), liefert sie der Reihe nach.
 // Im TTY-Modus nutzt readline normal interaktiv.
 
+// KIT_INSTALL_TTY ist ein Test-Hook (Issue #497, dasselbe Muster wie KIT_ROOT in
+// kit/night.mjs, Issue #189): Er erzwingt die TTY-Fuehrung der Fragen und macht
+// damit `rl.question` in `ask` erreichbar, dazu beide Zweige der Bedingung in
+// `loadPipedLines` und des Ternaers in `main`. Ohne ihn ist der Weg im Testlauf
+// unerreichbar — dort ist stdin nie eine TTY. Ein leerer Wert gilt als nicht
+// gesetzt; ohne gesetzten Wert entscheidet allein `process.stdin.isTTY` wie
+// bisher.
+//
+// Die Entscheidung steht bewusst an EINER Stelle: Zwei getrennte Lesestellen
+// liessen sich einzeln umschalten, und der Installer fragte dann auf dem einen
+// Weg interaktiv und auf dem anderen nicht.
+const IST_TTY = Boolean(process.env.KIT_INSTALL_TTY) || Boolean(process.stdin.isTTY);
+
 let _pipedLines = null;
 
 async function loadPipedLines() {
-  if (process.stdin.isTTY) return;
+  if (IST_TTY) return;
   _pipedLines = [];
   for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
     _pipedLines.push(line);
@@ -223,13 +236,30 @@ async function askWithDefault(rl, question, defaultValue, field, leerbar = false
   }
 }
 
+// KIT_INSTALL_BLOB_DEFEKT ist ein Test-Hook (Issue #497, dasselbe Muster wie
+// KIT_ROOT in kit/night.mjs, Issue #189): Gesetzt, laesst er diese Funktion
+// werfen und erreicht damit den catch in copySkills, als waere der Blob korrupt.
+// Anders ist dieser Zweig nicht zu erreichen — SKILLS_B64 ist eine feste
+// Konstante dieser Datei, und eine manipulierte Kopie erzeugt Coverage unter
+// einem Temp-Pfad, den SonarCloud nicht auf install.mjs abbilden kann.
+//
+// Der Hook injiziert eine STOERUNG, keine Quelle: Sein Wert wird nur auf
+// gesetzt/nicht gesetzt geprueft, nie geparst und nie in den Blob uebernommen.
+// Er kann deshalb keinen Inhalt in die geschriebenen Skills einschleusen; nach
+// dem Fehlerpfad greift der Dateisystem-Fallback. Ein leerer Wert gilt als nicht
+// gesetzt, und ohne gesetzten Wert bleibt nur die Zeile darunter.
+function skillsBlobLesen() {
+  if (process.env.KIT_INSTALL_BLOB_DEFEKT) throw new Error("Test-Hook");
+  return JSON.parse(Buffer.from(SKILLS_B64, "base64").toString("utf-8"));
+}
+
 function copySkills(skillsSrc, targetDir) {
   // Primaerquelle: eingebetteter Blob (Single-File-Portabilitaet). Fallback aufs
   // Dateisystem nur fuer die Kit-Entwicklung direkt im geklonten Repo.
   let skillsBlob = {};
   if (SKILLS_B64) {
     try {
-      skillsBlob = JSON.parse(Buffer.from(SKILLS_B64, "base64").toString("utf-8"));
+      skillsBlob = skillsBlobLesen();
     } catch {
       console.warn("  Warnung: eingebetteter Skills-Blob ist kein gueltiges JSON, wird ignoriert.");
     }
@@ -720,7 +750,7 @@ async function main() {
   }
 
   await loadPipedLines();
-  const rl = process.stdin.isTTY
+  const rl = IST_TTY
     ? createInterface({ input: process.stdin, output: process.stdout })
     : { close: () => {} };
 
