@@ -9,7 +9,7 @@
 //    falsche Dateiname in den Absatz, sucht der Skill den Schalter dort, wo er
 //    nie liegt — und der Abschnitt entfaellt still, als gaebe es keine Specs.
 // 2. Die Ausnahme `specs/vorhaben/`. Ohne sie meldete `/kontext` nach jedem
-//    `/plan` einen Index als veraltet, der stimmt. Eine Meldung, die immer
+//    `/techplan` einen Index als veraltet, der stimmt. Eine Meldung, die immer
 //    kommt, liest bald niemand mehr — auch dann nicht, wenn sie zutrifft.
 
 import { test } from "node:test";

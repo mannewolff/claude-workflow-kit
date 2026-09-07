@@ -2160,7 +2160,7 @@ export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
 
 /**
  * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
- * (PO-Schleife), `[Plan]` (Plandokument aus /plan) und `[Idee]` (rohe Idee).
+ * (PO-Schleife), `[Plan]` (Plandokument aus /techplan) und `[Idee]` (rohe Idee).
  *
  * Hier und nur hier. Bis Issue #464 lag die Form doppelt im Bestand — als
  * `isFachlich`/`isIdee`/`isPlan` in kit/night.mjs und als `PLAN_PRAEFIX` in

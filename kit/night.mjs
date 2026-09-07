@@ -73,7 +73,7 @@
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
  * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146),
- * `[Idee]` (rohe Idee ohne /plan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
+ * `[Idee]` (rohe Idee ohne /techplan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
  * per /issues in Arbeitspakete zerlegt werden, #276).
  *
  * Review-Modus (--review, Issue #233): Statt Ready zu implementieren, laesst der
@@ -800,7 +800,7 @@ function reviewAusschluss(issue, label, stufe) {
   // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
   // aus, sie umgeht die Freigabe nicht.
   if (label !== null && !(issue.labels || []).includes(label)) return `kein Label '${label}'`;
-  // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /plan-Zyklus
+  // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /techplan-Zyklus
   // ist kein pruefbares Dokument (Issue #192).
   if (isIdee(issue.title)) return "Idee ([Idee])";
   // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
@@ -2346,13 +2346,13 @@ export function pruefeIssueGates(top) {
   if (isFachlich(top.title)) {
     return {
       log: `#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /plan #${top.id} in technische Issues ueberfuehren.`,
+      kommentar: `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /techplan #${top.id} in technische Issues ueberfuehren.`,
     };
   }
   if (isIdee(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Idee — braucht erst /plan #${top.id} + /issues, wird nachts nicht implementiert.`,
+      kommentar: `Nachtlauf: Idee — braucht erst /techplan #${top.id} + /issues, wird nachts nicht implementiert.`,
     };
   }
   if (isPlan(top.title)) {

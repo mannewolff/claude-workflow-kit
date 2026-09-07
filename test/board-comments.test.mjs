@@ -1,6 +1,6 @@
 // Kommentare in `issue get` (Issue kanban-kit#449).
 //
-// Damit /plan #N und andere Skills den Verlauf eines Issues sehen (Abschluss-
+// Damit /techplan #N und andere Skills den Verlauf eines Issues sehen (Abschluss-
 // berichte, /review-Befunde), liefert getIssue jetzt ein `comments`-Array.
 // Die drei Tracker liefern drei verschiedene Formen — GitHub `author.login` +
 // `createdAt`, GitLab `author.username` + `created_at` (plus System-Notes, die

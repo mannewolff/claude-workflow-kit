@@ -72,7 +72,7 @@ node .claude/kit/board.mjs issue list --status backlog
 
 **Übersprungen werden** Dokumente aus zwei Gründen. Beide gehören in die Zusammenfassung, damit niemand ein übersprungenes Dokument für geprüft hält:
 
-1. **Titel-Präfix `[Idee]`** — eine rohe Idee ohne `/plan`-Zyklus ist kein prüfbares Dokument.
+1. **Titel-Präfix `[Idee]`** — eine rohe Idee ohne `/techplan`-Zyklus ist kein prüfbares Dokument.
 2. **Ein gültiger, nicht verfallener Verzicht** (`Pruefung: Verzicht` im Kontext-Abschnitt). Der Mensch hat entschieden, dass dieses Dokument ohne Prüfung freigegeben wird — ein Review, der trotzdem liefe, würde diese Entscheidung überschreiben. Ob der Verzicht noch gilt, sagt nicht die Zeile allein: Maßgeblich ist das Feld `verzicht` der `roles`-Antwort (Schritt 2), denn nur sie kennt den Bezugsstand und damit den Verfall. Ist der Verzicht **verfallen**, ist er kein Ausschlussgrund — dann läuft der Review normal (Schritt 4).
 
 **Auch mit expliziter Nummer schließt ein gültiger Verzicht den Review aus.** Ein erneuter Review ist unabhängig vom Marker erlaubt, ein Verzicht ist aber keine Marker-Frage, sondern eine Entscheidung des Menschen. Sie wird **einmal sichtbar gemeldet**, danach endet der Lauf für dieses Dokument **ohne Reviewer-Start**:
@@ -88,7 +88,7 @@ Die Stufe folgt dem Titel-Präfix:
 | Präfix | Stufe | Dokument |
 |---|---|---|
 | `[Fachlich]` | `fachlich` | fachliche Anforderung aus `/fachplan` |
-| `[Plan]` | `plan` | Plandokument aus `/plan` |
+| `[Plan]` | `plan` | Plandokument aus `/techplan` |
 | kein Präfix | `issue` | Arbeitspaket aus `/issues` |
 | `[Idee]` | — | ausgeschlossen, siehe oben |
 

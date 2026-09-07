@@ -12,7 +12,7 @@ Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrer
 
 ### 1. Plan prüfen
 
-Prüfe, ob ein in **dieser Session** freigegebener Plan existiert. Wenn nein: **STOPP — keine Issues anlegen.** Verweise darauf, dass erst `/plan` laufen und freigegeben werden muss. Eine Ideen-/Use-Case-Liste im Chat ist **kein** freigegebener Plan.
+Prüfe, ob ein in **dieser Session** freigegebener Plan existiert. Wenn nein: **STOPP — keine Issues anlegen.** Verweise darauf, dass erst `/techplan` laufen und freigegeben werden muss. Eine Ideen-/Use-Case-Liste im Chat ist **kein** freigegebener Plan.
 
 ### 2. Issues schneiden
 
@@ -38,7 +38,7 @@ Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Auto
 
 **Seit Issue #266 ist das keine Bitte mehr, sondern eine Leitplanke.** `board.mjs issue create` legt kein Issue an, wenn die Zeile fehlt, und meldet stattdessen einen Fehler. Zwei Wege, sie zu liefern: im `--body` mitschreiben (der Normalfall dieses Skills) oder `--author-model <modell>` uebergeben — dann setzt der Adapter sie selbst in den Kontext-Abschnitt. Ist `KIT_AGENT_MODEL` gesetzt und weder Zeile noch Flag vorhanden, springt der Wert daraus ein; nachts kann eine Session also nicht an der eigenen Leitplanke scheitern.
 
-Plan-Modell-Konvention: Nennt der zugrunde liegende Plan eine Zeile `Plan-Modell: <wert>` (siehe `/plan`), traegt jedes technische Issue sie **zusaetzlich** im Kontext-Abschnitt:
+Plan-Modell-Konvention: Nennt der zugrunde liegende Plan eine Zeile `Plan-Modell: <wert>` (siehe `/techplan`), traegt jedes technische Issue sie **zusaetzlich** im Kontext-Abschnitt:
 
 ```
 Autor-Modell: claude-opus-5
@@ -99,8 +99,8 @@ Plan: Issue #M
 Fachliche Quelle: Issue #N
 ```
 
-- `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/plan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
-- `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/plan #N`), kommt dieser Verweis dazu.
+- `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/techplan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
+- `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/techplan #N`), kommt dieser Verweis dazu.
 
 **Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
 

@@ -1,4 +1,4 @@
-// Tests fuer das verbindliche Plan-Format in /plan (Issue #274).
+// Tests fuer das verbindliche Plan-Format in /techplan (Issue #274).
 //
 // Sie pruefen Text, nicht Verhalten — was ein Skill tut, entscheidet das Modell,
 // das ihn liest. Wert haben sie trotzdem: Die sechs Ueberschriften sind der Anker,
@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = readFileSync(join(repoRoot, "skills", "plan", "SKILL.md"), "utf-8");
+const SKILL = readFileSync(join(repoRoot, "skills", "techplan", "SKILL.md"), "utf-8");
 
 // Die verbindliche Form: genau diese sechs, genau in dieser Reihenfolge.
 const FORMAT = [

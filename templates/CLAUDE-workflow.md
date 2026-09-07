@@ -10,7 +10,7 @@ Basiert auf dem 9-Schritt-Prozess (Whitepaper "Ein Prozess zur KI-gestuetzten So
 | Schritt | Aktor | Was passiert | Skill |
 |---------|-------|-------------|-------|
 | 1. Anforderung | Mensch | Formuliert oder diktiert die Anforderung | — |
-| 2. Plan | KI | Erstellt Plan, stellt zur Diskussion, implementiert nichts | `/plan` |
+| 2. Plan | KI | Erstellt Plan, stellt zur Diskussion, implementiert nichts | `/techplan` |
 | 3. Plan zu Issues | KI | Uebertraegt Plan in Issues (Vier-Abschnitt-Format) | `/issues` |
 | 4. GO | Mensch | Zieht Issues nach Ready — das ist das GO | — |
 | 5. Implementierung | KI | Arbeitet Ready-Issues sequenziell ab, committet lokal | `/implement-ready` |
@@ -69,7 +69,7 @@ das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis:
 | Stufe | Prueft | Nachweis |
 |-------|--------|----------|
 | `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
-| `plan` | ein `[Plan]`-Issue (Plandokument aus `/plan`) | `Plan-Review: …` |
+| `plan` | ein `[Plan]`-Issue (Plandokument aus `/techplan`) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
 
 **Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das
@@ -133,7 +133,7 @@ Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 **Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger. **Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus** — das Commit-Gate ist mechanisch und kennt keine Bahn. Dasselbe gilt für jeden Commit von Hand. Was das Gate nicht leistet — `--no-verify` und der frische Klon ohne Installer-Lauf — steht unter „Git-Workflow (strikt bindend)“.
 
-**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/plan` → `/issues` → GO → `/implement-ready`.
+**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/techplan` → `/issues` → GO → `/implement-ready`.
 
 **Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2, ich …"); im Zweifel Bahn 2.
 
@@ -252,7 +252,7 @@ gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen au
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
 Herkunfts-Konvention: `issue create --derived-from <nummer>` traegt die Kartennummer des
-naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/plan` auf
+naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/techplan` auf
 das fachliche Issue, `/issues` auf das Plandokument. Die Body-Zeilen `Plan:` und
 `Fachliche Quelle:` bleiben daneben stehen: Ein Projektwechsel loescht das Feld, der Text
 ueberlebt ihn. Nur beim Anlegen wirksam, Nachtragen gibt es nicht.
@@ -290,9 +290,9 @@ kommentiert ins Backlog zurueck, ohne eine Session zu starten.
 
 | Praefix | Was es ist | Weg nach vorn |
 |---------|-----------|---------------|
-| `[Fachlich]` | fachliche Anforderung aus `/fachplan`, Story-Format | mit dem PO groomen, dann `/plan #N` |
-| `[Plan]` | Plandokument aus `/plan`, verbindliches Plan-Format | `/issues #N` zerlegt es in Arbeitspakete |
-| `[Idee]` | rohe Idee, noch kein Dokument | erst `/plan`, dann `/issues` |
+| `[Fachlich]` | fachliche Anforderung aus `/fachplan`, Story-Format | mit dem PO groomen, dann `/techplan #N` |
+| `[Plan]` | Plandokument aus `/techplan`, verbindliches Plan-Format | `/issues #N` zerlegt es in Arbeitspakete |
+| `[Idee]` | rohe Idee, noch kein Dokument | erst `/techplan`, dann `/issues` |
 
 **Fachliche Issues** (`[Fachlich]`) tragen Story-Format statt Vier-Abschnitt: Ziel,
 Fachliche Akzeptanzkriterien, Nicht-Ziele, Offene Fragen an den PO. Sie werden im
@@ -325,7 +325,7 @@ zum Abschluss seiner Arbeitspakete als Klammer in **In review** offen bleiben,
 damit der Zusammenhang waehrend der Umsetzung sichtbar ist; ebenso gut kann es
 direkt nach Done gehen. Beides ist zulaessig, kein Skill bewegt es von selbst.
 
-**Ideen** (`[Idee]`) sind ohne `/plan`-Zyklus kein implementierbares Issue. Ohne
+**Ideen** (`[Idee]`) sind ohne `/techplan`-Zyklus kein implementierbares Issue. Ohne
 das Gate wuerde eine Session sie zwar korrekt ablehnen, aber der Runner kann
 diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist
 verbrannt und der Kommentar am Board irrefuehrend.

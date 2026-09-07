@@ -59,7 +59,7 @@ Weitere `##`-Ueberschriften sind erlaubt; die vier muessen vorhanden sein und
 untereinander in dieser Reihenfolge stehen. (Anders als im Plan-Register, wo P2
 zusaetzliche `##`-Ebenen verbietet — der `/fachplan`-Skill kennt kein solches Verbot.)
 
-*Warum Gate:* An diesen Ueberschriften haengen `/plan` und `/issue-review`. Sinngemaess
+*Warum Gate:* An diesen Ueberschriften haengen `/techplan` und `/issue-review`. Sinngemaess
 umformuliert wirken sie nicht.
 
 ## F2 — `Autor-Modell:` steht im Abschnitt `## Ziel` und ist nie leer `[maschinell]`

@@ -44,7 +44,7 @@ Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claud
 |--------|-------|
 | `/kontext` | Kontext laden, Lageüberblick zu Session-Start |
 | `/fachplan` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
-| `/plan` | Plan aus der Anforderung, implementiert nichts |
+| `/techplan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
 | `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
@@ -60,7 +60,7 @@ Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claud
 ## Ein erster Durchlauf
 
 ```
-/plan baue ein Login-Formular mit E-Mail und Passwort
+/techplan baue ein Login-Formular mit E-Mail und Passwort
 ```
 
 Du liest den Plan. Passt er, gibst du frei:

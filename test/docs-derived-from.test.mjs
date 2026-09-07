@@ -50,7 +50,7 @@ test("die Doku beschreibt, was --derived-from sendet", () => {
 
 test("die Doku nennt, wer die Option setzt und was die uebrigen Tracker tun", () => {
   const a = HERKUNFT();
-  for (const skill of ["/fachplan", "/plan", "/issues"]) {
+  for (const skill of ["/fachplan", "/techplan", "/issues"]) {
     assert.ok(a.includes(skill), `der Skill ${skill} ist nicht als Setzer benannt`);
   }
   assert.match(a, /GitHub, GitLab und local|github.*gitlab.*local/i,

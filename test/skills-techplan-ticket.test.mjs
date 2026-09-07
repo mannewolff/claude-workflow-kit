@@ -1,4 +1,4 @@
-// Das Plan-Dokument als [Plan]-Issue in /plan (Issue #275).
+// Das Plan-Dokument als [Plan]-Issue in /techplan (Issue #275).
 //
 // Sie pruefen Text, nicht Verhalten — was ein Skill tut, entscheidet das Modell, das
 // ihn liest. Wert haben sie trotzdem: Zwei der Vorgaben scheitern sonst erst zur
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...pfad) => readFileSync(join(repoRoot, ...pfad), "utf-8");
 
-const SKILL = lies("skills", "plan", "SKILL.md");
+const SKILL = lies("skills", "techplan", "SKILL.md");
 const DOKU = lies("docs", "dokumentation.md");
 
 // Der Block, der das Issue anlegt — der einzige ```bash-Block mit `issue create`.
@@ -40,7 +40,7 @@ test("der Skill legt das Plan-Dokument mit dem Titel-Praefix [Plan] an", () => {
 
 test("die Titelherkunft ist festgelegt: Quell-Issue ohne [Fachlich], sonst aus dem Ziel", () => {
   assert.match(SKILL, /ohne dessen `\[Fachlich\]`-Präfix/,
-    "die Titelherkunft bei /plan #N fehlt — das Praefix wuerde sonst mitgeschleppt");
+    "die Titelherkunft bei /techplan #N fehlt — das Praefix wuerde sonst mitgeschleppt");
   assert.match(SKILL, /`## Ziel`-Abschnitts/,
     "die Titelherkunft ohne Quell-Issue fehlt");
 });
@@ -53,7 +53,7 @@ test("der Body ist der freigegebene Plan im verbindlichen Format", () => {
     "der Bezug auf das Sechs-Abschnitt-Format aus Schritt 3 fehlt");
 });
 
-test("Plan-Modell steht immer im Kopf, Fachliche Quelle nur bei /plan #N", () => {
+test("Plan-Modell steht immer im Kopf, Fachliche Quelle nur bei /techplan #N", () => {
   const abschnitt = SKILL.slice(SKILL.indexOf("### 5."));
   assert.match(abschnitt, /`Plan-Modell: [^`]*` — \*\*immer\*\*/,
     "die Unbedingtheit von `Plan-Modell:` ist nicht ausgesprochen");
@@ -117,8 +117,8 @@ test("der alte, widerspruechliche Stop-Punkt-Wortlaut ist weg", () => {
 });
 
 test("dokumentation: der /plan-Abschnitt widerspricht dem Anlegen nicht mehr", () => {
-  const von = DOKU.indexOf("### /plan");
-  assert.ok(von > -1, "der Abschnitt '### /plan' fehlt in docs/dokumentation.md");
+  const von = DOKU.indexOf("### /techplan");
+  assert.ok(von > -1, "der Abschnitt '### /techplan' fehlt in docs/dokumentation.md");
   const abschnitt = DOKU.slice(von, DOKU.indexOf("### /issues", von));
 
   assert.doesNotMatch(abschnitt, /Er stellt keine Issues an/,

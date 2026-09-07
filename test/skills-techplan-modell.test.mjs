@@ -1,4 +1,4 @@
-// Tests fuer die Modell-Angabe in /plan und /issues (Issue #266).
+// Tests fuer die Modell-Angabe in /techplan und /issues (Issue #266).
 //
 // Sie pruefen Text, nicht Verhalten — was ein Skill tut, entscheidet das Modell,
 // das ihn liest. Wert haben sie trotzdem: Sie halten die Formulierungen fest, an
@@ -15,14 +15,14 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (skill) => readFileSync(join(repoRoot, "skills", skill, "SKILL.md"), "utf-8");
 
-test("/plan schreibt eine Plan-Modell-Zeile vor", () => {
-  const text = lies("plan");
+test("/techplan schreibt eine Plan-Modell-Zeile vor", () => {
+  const text = lies("techplan");
   assert.match(text, /Plan-Modell: /, "die Zeilenform fehlt");
   assert.match(text, /KIT_AGENT_MODEL/, "die Herkunft des Werts ist nicht benannt");
 });
 
-test("/plan #N hinterlaesst den Plan-Autor am fachlichen Issue", () => {
-  const text = lies("plan");
+test("/techplan #N hinterlaesst den Plan-Autor am fachlichen Issue", () => {
+  const text = lies("techplan");
   assert.match(text, /issue comment/, "das Kommando fuer den Kommentar fehlt");
   assert.match(text, /Plan erstellt von/, "der vorgeschriebene Kommentartext fehlt");
 });

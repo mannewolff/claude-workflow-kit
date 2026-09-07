@@ -33,14 +33,14 @@ Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb de
 
 **Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
-**Fachliche Issues, Ideen und Plandokumente überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Idee ohne `/plan`-Zyklus) oder `[Plan]` (Plandokument aus `/plan` — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
+**Fachliche Issues, Ideen und Plandokumente überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Idee ohne `/techplan`-Zyklus) oder `[Plan]` (Plandokument aus `/techplan` — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
 
 ```
-Fachliches Issue — wird nicht implementiert, bitte per /plan #N in technische Issues ueberfuehren.
+Fachliches Issue — wird nicht implementiert, bitte per /techplan #N in technische Issues ueberfuehren.
 ```
 
 ```
-Idee — braucht erst /plan #N + /issues, wird nicht implementiert.
+Idee — braucht erst /techplan #N + /issues, wird nicht implementiert.
 ```
 
 ```

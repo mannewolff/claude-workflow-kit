@@ -93,7 +93,7 @@ test("Projektlokaler Install legt Config, Skills und CLAUDE-workflow.md an", () 
     // projectDocs, `/issue-review` klassifiziert damit einen Fund als `gate`.
     assert.ok(existsSync(join(dir, ".claude", "CLAUDE-Fachplan.md")));
     assert.ok(existsSync(join(dir, ".claude", "CLAUDE-Plan.md")));
-    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")),
+    assert.ok(existsSync(join(dir, ".claude", "skills", "techplan", "SKILL.md")),
       "die Skills muessen aus dem eingebetteten Blob entpackt werden");
     assert.ok(existsSync(join(dir, ".claude", "kit", "board.mjs")));
     // Der GitHub-Zweig am Ende weist auf gh auth login hin und fragt nichts nach.
@@ -238,7 +238,7 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
 
     const home = join(dir, "home", ".claude");
     assert.ok(existsSync(join(home, "workflow.config.json")));
-    assert.ok(existsSync(join(home, "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(home, "skills", "techplan", "SKILL.md")));
     assert.ok(existsSync(join(home, "CLAUDE-workflow.md")));
     assert.ok(existsSync(join(home, "CLAUDE-Fachplan.md")));
     assert.ok(existsSync(join(home, "CLAUDE-Plan.md")));
@@ -450,7 +450,7 @@ test("[installer-6] Ein Blob-Eintrag ohne Dateien wird gemeldet und uebersprunge
       geschrieben.length,
       "ein Ordner ohne SKILL.md ist entstanden — der leere Eintrag wurde angelegt",
     );
-    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(dir, ".claude", "skills", "techplan", "SKILL.md")));
     assert.doesNotMatch(ausgabe, /KIT_INSTALL_/, "der Hook-Name gehoert in keine Ausgabe");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -497,7 +497,7 @@ test("[installer-5] Der TTY-Hook fuehrt die Fragen ueber readline statt ueber di
     // die gelesene Antwort selbst hinter den Prompt; readline echot sie nicht.
     assert.doesNotMatch(res.ausgabe, /\[global\/projekt\]: projekt/, "die Fragen liefen nicht ueber readline");
     assert.equal(config(dir).codeHost, "github", "die Antworten muessen angekommen sein");
-    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(dir, ".claude", "skills", "techplan", "SKILL.md")));
     assert.doesNotMatch(res.ausgabe, /KIT_INSTALL_/, "der Hook-Name gehoert in keine Ausgabe");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -516,7 +516,7 @@ test("[installer-5] Ohne gesetzte Hooks bleibt der Regelpfad unveraendert", () =
     assert.doesNotMatch(ausgabe, /Skills-Blob ist kein gueltiges JSON/, "der Blob muss gelesen werden");
     assert.doesNotMatch(ausgabe, /ist im eingebetteten Blob leer/, "ohne Hook ist kein Eintrag leer");
     assert.match(ausgabe, /\[global\/projekt\]: projekt/, "ohne Hook laufen die Fragen ueber die Pipe");
-    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(dir, ".claude", "skills", "techplan", "SKILL.md")));
     assert.doesNotMatch(ausgabe, /KIT_INSTALL_/, "die Hook-Namen gehoeren in keine Ausgabe");
   } finally {
     rmSync(dir, { recursive: true, force: true });
