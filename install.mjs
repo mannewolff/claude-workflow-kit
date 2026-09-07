@@ -15,13 +15,13 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, cpSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join } from "node:path";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+// Kein __dirname mehr: Seit Issue #499 liest der Installer keine Datei neben sich
+// — alles Ausgelieferte steht als Base64-Konstante in dieser Datei.
 
 const VERSION = "1.47.0";
 
@@ -245,17 +245,36 @@ async function askWithDefault(rl, question, defaultValue, field, leerbar = false
 //
 // Der Hook injiziert eine STOERUNG, keine Quelle: Sein Wert wird nur auf
 // gesetzt/nicht gesetzt geprueft, nie geparst und nie in den Blob uebernommen.
-// Er kann deshalb keinen Inhalt in die geschriebenen Skills einschleusen; nach
-// dem Fehlerpfad greift der Dateisystem-Fallback. Ein leerer Wert gilt als nicht
-// gesetzt, und ohne gesetzten Wert bleibt nur die Zeile darunter.
+// Er kann deshalb keinen Inhalt in die geschriebenen Skills einschleusen; seit
+// Issue #499 fuehrt der Fehlerpfad direkt in den Abbruch, weil es keinen
+// Dateisystem-Fallback mehr gibt. Ein leerer Wert gilt als nicht gesetzt, und
+// ohne gesetzten Wert bleibt nur die Zeile darunter.
+//
+// KIT_INSTALL_BLOB_LEER ist der zweite Hook derselben Bauart (Issue #499): Er
+// ergaenzt den gelesenen Blob um einen Eintrag OHNE Dateien und erreicht damit
+// die Warnung, die genau diesen Fall meldet. Sonst waere sie an keiner Eingabe
+// erreichbar — der ausgelieferte Blob enthaelt keinen leeren Eintrag, weil jeder
+// Ordner unter skills/ eine SKILL.md traegt; erzeugen kann sync-blobs ihn aber
+// jederzeit (buildDirJson schreibt einen Ordner ohne Dateien als {}).
+// Auch er ist eine Stoerung, keine Quelle: Sein Wert wird nur auf gesetzt/nicht
+// gesetzt geprueft, der Eintragsname ist eine feste Konstante dieser Datei, und
+// ein Eintrag ohne Dateien schreibt per Definition nichts auf die Platte.
+const BLOB_LEER_NAME = "blob-eintrag-ohne-dateien";
+
 function skillsBlobLesen() {
   if (process.env.KIT_INSTALL_BLOB_DEFEKT) throw new Error("Test-Hook");
-  return JSON.parse(Buffer.from(SKILLS_B64, "base64").toString("utf-8"));
+  const blob = JSON.parse(Buffer.from(SKILLS_B64, "base64").toString("utf-8"));
+  if (process.env.KIT_INSTALL_BLOB_LEER) blob[BLOB_LEER_NAME] = {};
+  return blob;
 }
 
-function copySkills(skillsSrc, targetDir) {
-  // Primaerquelle: eingebetteter Blob (Single-File-Portabilitaet). Fallback aufs
-  // Dateisystem nur fuer die Kit-Entwicklung direkt im geklonten Repo.
+function copySkills(targetDir) {
+  // Einzige Quelle: der eingebettete Blob (Single-File-Portabilitaet). Den
+  // Rueckfall auf ein skills/ neben dem Installer gibt es seit Issue #499 nicht
+  // mehr — er war unerreichbar: SKILLS_B64 ist eine versionierte Konstante dieser
+  // Datei, die `tools/sync-blobs.mjs --check` als Pflicht-Check und ein eigener
+  // CI-Workflow synchron halten. Damit liest der Installer kein Verzeichnis neben
+  // sich mehr und ist ohne weiteren Repo-Kontext lauffaehig.
   let skillsBlob = {};
   if (SKILLS_B64) {
     try {
@@ -271,39 +290,33 @@ function copySkills(skillsSrc, targetDir) {
   // lautlos. Eine Liste, die man beim Hinzufuegen eines Skills pflegen muss, wird
   // irgendwann vergessen; der wiederkehrende Fehler gehoert mechanisch ausgeschlossen
   // statt der Sorgfalt ueberlassen (Leitplanken-Prinzip, Issue #122).
-  const ausBlob = Object.keys(skillsBlob);
-  const ausVerzeichnis = existsSync(skillsSrc)
-    ? readdirSync(skillsSrc, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
-    : [];
-  const skills = ausBlob.length > 0 ? ausBlob : ausVerzeichnis;
+  const skills = Object.keys(skillsBlob);
 
   let copied = 0;
   for (const skill of skills) {
     const files = skillsBlob[skill];
-    if (files && Object.keys(files).length > 0) {
-      const dest = join(targetDir, skill);
-      mkdirSync(dest, { recursive: true });
-      for (const [filename, content] of Object.entries(files)) {
-        writeFileSync(join(dest, filename), content, "utf-8");
-      }
-      console.log(`  ✓ ${skill}`);
-      copied++;
+    if (Object.keys(files).length === 0) {
+      // Ohne Pfadangabe — es gibt keinen Pfad mehr. Stumm ueberspringen waere
+      // schlimmer: Der Skill fehlte im Zielprojekt, ohne dass es jemand saehe.
+      console.warn(`  Warnung: ${skill} ist im eingebetteten Blob leer, wird uebersprungen.`);
       continue;
     }
-    const src = join(skillsSrc, skill);
-    if (existsSync(src)) {
-      cpSync(src, join(targetDir, skill), { recursive: true });
-      console.log(`  ✓ ${skill} (aus Dateisystem)`);
-      copied++;
-      continue;
+    const dest = join(targetDir, skill);
+    mkdirSync(dest, { recursive: true });
+    for (const [filename, content] of Object.entries(files)) {
+      writeFileSync(join(dest, filename), content, "utf-8");
     }
-    console.warn(`  Warnung: ${skill} weder im eingebetteten Blob noch unter ${src} gefunden, wird uebersprungen.`);
+    console.log(`  ✓ ${skill}`);
+    copied++;
   }
 
+  // Deckt alle Zustaende eines unbrauchbaren Blobs an einer Stelle ab: leerer
+  // String, korruptes Base64/JSON, gueltiges {}, und ein Blob, dessen Eintraege
+  // alle leer sind.
   if (copied === 0) {
     console.error(
       "Fehler: Kein einziger Skill konnte kopiert werden " +
-      "(eingebetteter Blob fehlt/korrupt und kein Dateisystem-Fallback vorhanden)."
+      "(eingebetteter Blob fehlt oder ist beschaedigt)."
     );
     process.exit(1);
   }
@@ -817,7 +830,6 @@ async function main() {
   }
 
   // --- Pfade berechnen ---
-  const skillsSrc = join(__dirname, "skills");
   const targetBase = scope === "global"
     ? join(homedir(), ".claude")
     : resolve(".claude");
@@ -829,7 +841,7 @@ async function main() {
 
   // --- Skills kopieren ---
   console.log(`\nKopiere Skills nach ${skillsTarget}:`);
-  const skillAnzahl = copySkills(skillsSrc, skillsTarget);
+  const skillAnzahl = copySkills(skillsTarget);
 
   // --- Config schreiben ---
   // Basis sind die DEFAULTS (fuellen echte Luecken), darueber die bestehende Config
