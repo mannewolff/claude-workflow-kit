@@ -130,7 +130,8 @@ nicht existierte — es waere in dreizehn Pakete gewandert.
 Der Marker dieser Stufe heisst `Plan-Review:`.
 
 *Warum Gate:* An `Issue-Review:` haengt in `kit/night.mjs` das Gate `requiredBeforeReady`
-(Zeile 394, `/^\s*Issue-Review:\s*\S/im`). Traegt ein Plandokument diesen Marker, haelt
+(`REVIEW_MARKER_ZEILE`, `/^Issue-Review:[^\S\n]*\S/i`, von `hasReviewMarker` je Zeile
+nach `trimStart()` geprueft). Traegt ein Plandokument diesen Marker, haelt
 der Nacht-Runner es fuer ein freigabereifes Arbeitspaket und zieht es in die
 Implementierung.
 

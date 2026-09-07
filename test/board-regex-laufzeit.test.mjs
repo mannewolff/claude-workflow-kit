@@ -27,7 +27,7 @@ import {
   AUTOR_MODELL_ZEILE,
   SPEC_WIRKUNG_UEBERSCHRIFT,
 } from "../kit/board.mjs";
-import { REVIEW_MARKER_ZEILE } from "../kit/night.mjs";
+import { REVIEW_MARKER_ZEILE, hasReviewMarker } from "../kit/night.mjs";
 
 const GROSS = 16 * 1024;
 const GRENZE_MS = 100;
@@ -138,17 +138,26 @@ test("AUTOR_MODELL_ZEILE bleibt bei 256 KiB in jeder Worst-Case-Form schnell", (
   }
 });
 
-// --- REVIEW_MARKER_ZEILE: der eine, der stehen bleibt ---
+// --- REVIEW_MARKER_ZEILE: der eine, den Issue #496 revidiert hat ---
 //
-// SonarCloud meldet ihn als S8786, die Messung widerspricht: linear in jeder
-// Form, die hier gefahren wird. Er bleibt deshalb unveraendert — diese Probe ist
-// der Beleg, auf den sich die `accepted`-Entscheidung in SonarCloud stuetzt.
+// Diese Probe stand hier einmal mit der umgekehrten Aussage: gemessen linear in
+// jeder Form, die sie faehrt, also sei der Ausdruck in SonarCloud von Hand als
+// hinzunehmen zu markieren. Die Markierung hielt nicht — der Fund stand weiter
+// offen. Issue #496 hat die Entscheidung umgedreht: umschreiben statt markieren,
+// im Code statt im Web-UI.
 //
-// Warum kein Umschreiben? `[^\S\n]*` ueberlappt zwar mit dem folgenden `\S`,
-// aber `\S` ist ein EINZELNES Zeichen, keine zweite Wiederholung, und es folgt
-// kein Endanker. Die Engine hat pro Startposition genau einen Ruecksetzpfad
-// ueber den Leerraum, kein Kreuzprodukt. Ein Lookahead wie bei FENCE_ZEILE
-// haette hier nichts zu verbieten: Die Aufteilung ist bereits eindeutig.
+// Gemeldet war das FUEHRENDE `[^\S\n]*` hinter `^` mit m-Flag, nicht das Paar aus
+// zwei Zeichenklassen. Nachgewiesen mit `sonarjs/slow-regex` (S5852) aus
+// eslint-plugin-sonarjs — die Regel meldet dieselben fuenf Ausdruecke wie
+// SonarCloud unter S8786, und in ihrem Urteil ist `/^[^\S\n]*Issue-Review:/im`
+// ein Fund, `/^Issue-Review:[^\S\n]*\S/i` keiner. Den Leerraum am Zeilenanfang
+// raeumt jetzt `hasReviewMarker` per `trimStart()` ab, wie #403 es fuer
+// PRUEFUNG_ZEILE getan hat.
+//
+// Die 256-KiB-Probe laeuft weiter, denn linear war der Ausdruck schon vorher —
+// die Umschrift darf das nicht kippen. Gemessen wird jetzt beides: der Ausdruck
+// und `hasReviewMarker`, das die Arbeit uebernommen hat, die aus ihm herausfiel.
+// Eine Probe nur am Ausdruck wuerde den teureren Weg gar nicht mehr sehen.
 
 const REVIEW_FORMEN = [
   ["Praefix passt, dann nur Leerraum", (n) => `Issue-Review:${" ".repeat(n)}`],
@@ -156,10 +165,19 @@ const REVIEW_FORMEN = [
   ["viele eingerueckte Zeilen ohne Wert", (n) => "   Issue-Review:\n".repeat(n / 18)],
 ];
 
-test("REVIEW_MARKER_ZEILE ist bei 256 KiB gemessen linear und bleibt unveraendert", (t) => {
+test("REVIEW_MARKER_ZEILE ist bei 256 KiB in jeder Form linear", (t) => {
   for (const [was, bau] of REVIEW_FORMEN) {
     const text = bau(SEHR_GROSS);
     const ms = dauer(() => REVIEW_MARKER_ZEILE.test(text));
+    t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
+    assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+  }
+});
+
+test("hasReviewMarker ist bei 256 KiB in jeder Form linear", (t) => {
+  for (const [was, bau] of REVIEW_FORMEN) {
+    const text = bau(SEHR_GROSS);
+    const ms = dauer(() => hasReviewMarker(text));
     t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
     assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
   }

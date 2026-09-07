@@ -586,10 +586,23 @@ function lastCommitHash() {
 // derselben Zeile stehen. Vorher lief `\s*` in die Folgezeile, sodass
 // "Issue-Review:\nGO" als Marker galt — das Gegenteil dessen, was der Kommentar
 // oben seit jeher beschreibt. Die einzige gewollte Verhaltensaenderung dieser Etappe.
-export const REVIEW_MARKER_ZEILE = /^[^\S\n]*Issue-Review:[^\S\n]*\S/im;
+//
+// Kein fuehrender Leerraum mehr im Ausdruck (Issue #496): `^[^\S\n]*` mit m-Flag
+// war der Teil, den SonarCloud als S8786 fuehrte — eine unbegrenzte Wiederholung
+// direkt hinter einem Zeilenanfang, der an jeder Zeile ansetzen kann. #403 hatte
+// den Ausdruck an dieser Stelle noch fuer harmlos gehalten und ihn nur gemessen;
+// der Fund blieb trotzdem offen. Die Einrueckung raeumt jetzt `hasReviewMarker`
+// je Zeile per `trimStart()` ab — derselbe Weg, den #403 fuer PRUEFUNG_ZEILE
+// gegangen ist. Die Funktion antwortet auf jeden Body wie zuvor; der Ausdruck
+// allein tut es nicht mehr, denn er sieht nur noch die getrimmte Zeile.
+export const REVIEW_MARKER_ZEILE = /^Issue-Review:[^\S\n]*\S/i;
 
 export function hasReviewMarker(body) {
-  return REVIEW_MARKER_ZEILE.test(body || "");
+  // `trimStart()` statt `[^\S\n]*` im Ausdruck: Es raeumt genau dieselben Zeichen
+  // ab — jeden Leerraum ausser dem Zeilenumbruch, den `split` schon entfernt hat.
+  // `[ \t]` waere hier zu eng gewesen: Ein `\r` aus CRLF-Zeilenenden faellt nicht
+  // darunter.
+  return (body || "").split("\n").some((zeile) => REVIEW_MARKER_ZEILE.test(zeile.trimStart()));
 }
 
 /**
