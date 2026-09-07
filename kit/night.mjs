@@ -107,12 +107,36 @@
  *   NIGHT_SALVAGE     wird der Salvage-Session als Umgebungsvariable gesetzt
  *                     (Wert "1"), damit ein Fake-Hook die beiden Session-Arten
  *                     unterscheiden kann.
+ *   NIGHT_NACHBAR_DIR Verzeichnis, aus dem night.mjs board.mjs und checks.mjs
+ *                     laedt (statt neben der eigenen Datei). Nur fuer Tests.
  */
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Woher diese Datei ihre beiden Nachbarn holt — board.mjs und checks.mjs. Der Pfad
+// steht hier oben, weil schon der erste dynamische Import unten ihn braucht.
+//
+// Bewusst der Nachbarpfad und nicht BOARD_PATH: KIT_ROOT verlegt die CLI-AUFRUFE in ein
+// fremdes Projekt (Test-Hook); eine reine Funktion holt man sich dort nicht her, sondern
+// aus dem board.mjs, das zu dieser Datei gehoert.
+//
+// NIGHT_NACHBAR_DIR ist die eine Ausnahme, und auch sie ist ein reiner Test-Hook
+// (Issue #498): Er verlegt die Suche nach den Nachbarn, aufgeloest mit resolve() wie
+// KIT_ROOT. Ohne ihn ergibt sich dieselbe Modul-URL wie bei einem literalen
+// "./board.mjs". Es gibt ihn, weil die Ersatzfunktionen weiter unten sonst
+// unerreichbar sind: Sie laufen nur, wenn der Nachbar fehlt, und das war bisher nur
+// mit einer Kopie im Temp-Verzeichnis herstellbar — deren Treffer bildet SonarCloud
+// nicht auf kit/night.mjs ab. Zeigt der Hook auf ein Verzeichnis mit einem eigenen
+// board.mjs, wird dieses geladen; das ist Absicht und nicht zu verhindern.
+const NACHBAR_DIR = process.env.NIGHT_NACHBAR_DIR ? resolve(process.env.NIGHT_NACHBAR_DIR) : __dirname;
+const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
+const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
+
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
  * einzige Auslegung fuer Abschnittsgrenzen, Parser und Bezugsstand, und ihr eigener
@@ -126,14 +150,18 @@ import { fileURLToPath } from "node:url";
  * mit; der Ersatz unten laesst sie durch und meldet den fehlenden Nachbarn erst,
  * wenn ihn wirklich jemand braucht. Ehrlich ist das, weil night.mjs ohne board.mjs
  * ohnehin nichts tun kann: Jeder Board-Zugriff startet sie als Subprozess.
+ *
+ * Ueber NACHBAR_BOARD und nicht ueber den literalen Spezifizierer "./board.mjs":
+ * Ein Literal haengt an keiner Pfadkonstante, NIGHT_NACHBAR_DIR erreichte dieses
+ * `.catch` also nie — und die beiden Board-Importe dieser Datei zeigten unter Hook
+ * auf verschiedene Dateien (Issue #498).
  */
-const { fenceLauf } = await import("./board.mjs").catch(() => ({
+const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => ({
   fenceLauf: () => {
     throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   },
 }));
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
 // verlegt die Suche in ein anderes Projekt und ist ein Test-Hook (Issue #189,
 // dasselbe Muster wie in kit/board.mjs und tools/sync-blobs.mjs): Nur so koennen
@@ -157,10 +185,8 @@ const BOARD_PATH = process.env.KIT_ROOT
 // bleibt der Stub stehen; arbeitsfaehig ist der Runner ohne board.mjs ohnehin nicht, main()
 // bricht dafuer mit eigener Meldung ab.
 //
-// Bewusst der Nachbarpfad und nicht BOARD_PATH: KIT_ROOT verlegt die CLI-AUFRUFE in ein
-// fremdes Projekt (Test-Hook); eine reine Funktion holt man sich dort nicht her, sondern
-// aus dem board.mjs, das zu dieser Datei gehoert.
-const NACHBAR_BOARD = join(__dirname, "board.mjs");
+// NACHBAR_BOARD steht oben, vor dem fenceLauf-Import; dort steht auch, warum es
+// nicht BOARD_PATH ist.
 
 // Der Fallback traegt dieselbe Signatur wie die echte Funktion — ein Parameter, und
 // er wirft, statt etwas zu liefern. Das ist nicht Kosmetik (Issue #394): Die frueher
@@ -188,7 +214,7 @@ const {
   istPlan: isPlan,
   istIdee: isIdee,
 } = existsSync(NACHBAR_BOARD)
-  ? await import("./board.mjs")
+  ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
       parsePruefvorgabe: parsePruefvorgabeFallback,
       istFachlich: praefixFallback("[Fachlich]"),
@@ -205,13 +231,29 @@ const {
 // Bedingt und abgefangen wie oben beim Board: `--version` und `--help` muessen auch
 // dann antworten, wenn nichts neben der Datei liegt (Issue #170). Fehlt der Nachbar,
 // bleibt der Stub stehen — er wirft erst, wenn wirklich jemand den Pfad braucht.
-const NACHBAR_CHECKS = join(__dirname, "checks.mjs");
+//
+// NACHBAR_CHECKS steht oben neben NACHBAR_BOARD: Beide Nachbarn kommen aus demselben
+// Verzeichnis, und beide folgen NIGHT_NACHBAR_DIR.
 const zusammenfassungPfadFallback = (root) => {
   throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
 };
 const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
-  ? await import("./checks.mjs")
+  ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : { zusammenfassungPfad: zusammenfassungPfadFallback };
+
+// Nur fuer Tests; der Runner nutzt die Bindungen direkt, nicht ueber dieses Objekt.
+// Ohne den Export ist der Identitaetsnachweis nicht fuehrbar — ob im Regelbetrieb die
+// echte Funktion oder ihr Ersatz gebunden ist, sieht man von aussen sonst an keinem
+// Ergebnis, und zusammenfassungPfad bliebe ganz unerreichbar (Issue #498).
+export const nachbarn = {
+  fenceLauf,
+  parsePruefvorgabe,
+  istFachlich: isFachlich,
+  istPlan: isPlan,
+  istIdee: isIdee,
+  zusammenfassungPfad,
+};
+
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
