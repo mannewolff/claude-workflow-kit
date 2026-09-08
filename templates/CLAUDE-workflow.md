@@ -125,6 +125,13 @@ Pruefstufe der Lauf faehrt; andere Werte weist der Runner ab. Ohne Angabe gilt
 menschliche Freigabe steht: Wer den Plan noch nicht abgenommen hat, will die
 Arbeitspakete daraus nicht schon geprueft haben.
 
+Ein dritter Modus erzeugt: `night.mjs --erzeuge --stufe plan` macht aus einem
+geprueften `[Fachlich]`-Issue ein `[Plan]`-Dokument, `--erzeuge --stufe issue`
+aus einem geprueften, freigegebenen `[Plan]`-Dokument die Arbeitspakete.
+Freigabe-Geste ist je Schritt ein eigenes Routing-Label — `kit:nightplan` bzw.
+`kit:nightissues` —, und es faellt erst, wenn jedes erzeugte Dokument einen
+Endzustand traegt. Dazwischen steht wieder der Mensch.
+
 Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 ---

@@ -683,6 +683,41 @@ Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permissio
 
 Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht davon nichts.
 
+### Dritter Modus: die Erzeugungsnacht
+
+Der dritte Modus implementiert nicht und prüft nicht als Selbstzweck: `--erzeuge` lässt aus einem **bereits geprüften** Dokument im Backlog die nächste Stufe entstehen — und lässt das Entstandene gleich in derselben Nacht prüfen. Zwei Schritte gibt es, und zwischen ihnen steht der Mensch:
+
+> geprüftes `[Fachlich]`-Issue → (`kit:nightplan`) → `[Plan]`-Dokument → **Freigabe durch dich** → (`kit:nightissues`) → Arbeitspakete
+
+**Der Aufruf je Schritt.** `--stufe` benennt hier das **entstehende** Dokument, nicht das gelesene, und ist zusammen mit `--erzeuge` Pflicht:
+
+```bash
+node .claude/kit/night.mjs --erzeuge --stufe plan --dry-run   # zeigt Ausgangsdokumente, startet nichts
+node .claude/kit/night.mjs --erzeuge --stufe plan             # aus [Fachlich] wird ein [Plan]-Dokument
+node .claude/kit/night.mjs --erzeuge --stufe issue            # aus [Plan] werden Arbeitspakete
+```
+
+Der erste Schritt (`--stufe plan`) liest `[Fachlich]`-Issues und hat das Routing-Label `kit:nightplan` als Default, der zweite (`--stufe issue`) liest `[Plan]`-Dokumente mit dem Default `kit:nightissues`. Gelesen wird in beiden Fällen aus dem **Backlog**, wie im Review-Modus. `--erzeuge` und `--review` schließen sich aus: ein Modus pro Lauf.
+
+Flags: `--erzeuge-label <name>` überschreibt **nur den Namen** des Routing-Labels und kennt — anders als `--review-label` — ausdrücklich **kein `none`**: Das Routing-Label ist die Freigabe-Geste des Menschen und lässt sich nicht abschalten. `--max` zählt in diesem Modus **Ausgangsdokumente** (Default 3), nicht Session-Starts; die Prüfrunden zu einem erzeugten Dokument laufen also nicht gegen dieses Limit. `--model`, `--verbose` und `--dry-run` wirken wie gehabt; ein Lauf mit `--verbose` hinterlässt denselben Ergebnisstand wie oben, unterschieden durch `art: "erzeugung"`.
+
+**Je Schritt die Bedingungen.** Erzeugt wird nur aus dem, was **geprüft ist** — der Marker ist hier Eintrittsbedingung, nicht Ausschlussgrund wie im Review-Modus:
+
+| Schritt | Eingang | verlangt |
+|---|---|---|
+| `--stufe plan` | `[Fachlich]`-Issue | Marker `Fachplan-Review:` im Body, Label `kit:nightplan` |
+| `--stufe issue` | `[Plan]`-Dokument | Marker `Plan-Review:` im Body, ein `## Offene Fragen`, dessen erste nicht leere Zeile mit `- Keine.` beginnt, Label `kit:nightissues` |
+
+Ein **fehlender** Abschnitt `## Offene Fragen` ist dabei ein Ausschluss, keine Erlaubnis: „keine Zeile, also keine offene Frage" ließe ausgerechnet einen Plan ohne den Pflichtabschnitt durch. Ausgeschlossen sind außerdem in jedem Schritt: `[Idee]`-Titel, ein Dokument mit `kit:klaeren` (dort wartet eine menschliche Entscheidung) und eines mit gültigem `Pruefung: Verzicht` — der Verzicht ist hier **kein** zweiter Freigabegrund, denn ohne Prüfung gibt es nichts, woraus erzeugt werden könnte.
+
+**Die Endzustände und der Label-Verbrauch.** Jedes erzeugte Dokument wird anschließend in derselben Nacht geprüft, Runde für Runde, bis es einen der drei Endzustände trägt: `review:fertig` (geprüft, kein gewichtiger Befund), `kit:klaeren` (eine offene Entscheidung wartet auf dich) oder `review:grenze` (dreimal geprüft, immer noch Befunde offen). Erst wenn **alle** aus einer Quelle erzeugten Dokumente einen Endzustand tragen, entfernt der Runner das Routing-Label an der Quelle — die Freigabe ist damit verbraucht. Ein Label, das schon nach dem ersten fertigen Paket fiele, ließe die übrigen ungeprüft liegen, und die nächste Nacht fände keine Freigabe mehr, das nachzuholen.
+
+Bricht die Nacht vorher ab, findet sie nichts oder bleibt ein Dokument ohne Endzustand, dann **bleibt stehen**, was der Mensch gesetzt hat: Das Routing-Label an der Quelle wird nicht entfernt, und der Schritt wiederholt sich in der nächsten Nacht ohne neue menschliche Geste. Der Umkehrschluss — die Freigabe schon beim Start zu verbrauchen — zwänge nach jedem technischen Ausfall zu einer neuen Geste, ohne dass etwas geschehen wäre. Findet ein Lauf ein Dokument, das aus derselben Quelle schon entstanden ist, erzeugt er es nicht ein zweites Mal, sondern nimmt es auf und prüft weiter.
+
+**Wenn ein Schritt angehalten hat.** Ein Plandokument mit `kit:klaeren` oder `review:grenze` trägt **keinen** Marker `Plan-Review:` — es ist damit kein Eingang für den zweiten Schritt und bleibt liegen, auch wenn du ihm das Label `kit:nightissues` gäbest. Beantworte die offene Frage bzw. arbeite die Befunde ein, und lass es danach erneut prüfen: interaktiv mit `/issue-review #N` oder in einer Review-Nacht mit `night.mjs --review --stufe plan`. Erst der neue Marker macht es wieder zum Eingang. `kit:klaeren` nimmt dabei ausschließlich der Mensch ab — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben.
+
+**Die beiden Routing-Labels musst du am Board anlegen.** `kit:nightplan` und `kit:nightissues` kommen zu `kit:nightrun` und `kit:nightreview` hinzu; bei kanban-kit wirft die Toolbox einen 404, solange eine Definition fehlt (`POST /api/boards/{boardId}/labels`, bei GitHub `gh label create`). Sie sind **keine** Zustandslabels: Zustandslabels beschreiben, was die Prüfung ergeben hat, und entstehen maschinell — ein Routing-Label ist deine Geste und sagt, was die Nacht anfassen darf.
+
 ### Mit einem lokalen Modell fahren
 
 > **Ungetestet.** Dieser Abschnitt beschreibt einen Weg, der sich aus der Architektur des Runners ergibt und ohne jede Änderung am Kit funktionieren sollte — er ist hier aber **nicht praktisch erprobt**. Weder wurde LiteLLM aufgesetzt noch ein Lauf gegen ein lokales Modell gefahren. Nimm ihn als begründeten Vorschlag, nicht als Erfahrungsbericht.
