@@ -656,8 +656,14 @@ function wirkungsZeilen(text) {
  * `apply`, begruendet bei `neuFehler`. Es ist dieselbe Funktion, nicht eine
  * zweite Grammatik: Zwei Pruefungen desselben Abschnitts waeren zwei Wahrheiten
  * darueber, was ein gueltiges Paket ist.
+ *
+ * Seit Issue #526 ist sie exportiert: `board.mjs` laedt sie als Nachbardatei und
+ * prueft damit schon beim Anlegen und Schreiben eines Pakets, statt den Fehler
+ * bis zum Push-Gate durchzureichen. Bewusst DIESE Funktion und kein Wrapper "nur
+ * Form" — `neuFehler` prueft auch bei `root === null` gegen `bekannte`, und ein
+ * Einstieg, der dort `[]` uebergaebe, wiese jede gueltige NEU-Zeile ab.
  */
-function wirkungPruefen(text, bekannte, root = null) {
+export function wirkungPruefen(text, bekannte, root = null) {
   const { fehlt, leer, kopf, zeilen } = wirkungsZeilen(text);
   if (fehlt) {
     return [{ nr: null, grund: `Abschnitt '${WIRKUNG_UEBERSCHRIFT}' fehlt — jedes Paket sagt, was es an der Beschreibung aendert.` }];

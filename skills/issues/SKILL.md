@@ -189,7 +189,7 @@ Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schri
 
 Traegt `.claude/workflow.config.json` einen `spec`-Block, bekommt jedes Arbeitspaket einen fuenften Body-Abschnitt `## Spec-Wirkung`. Er sagt, was das Paket an der Beschreibung unter `specs/` aendert. **Ohne `spec`-Block gilt das Vier-Abschnitt-Format unveraendert.** Der Schalter ist das Vorhandensein des Blocks, kein Feld darin.
 
-Das ist keine Bitte im Text: `board.mjs issue create` legt bei gesetztem Block **kein Issue ohne diesen Abschnitt** an (Issue #443), und `node .claude/kit/spec.mjs check --paket <datei>` prueft die Form der Zeilen darin (Issue #442).
+Das ist keine Bitte im Text: `board.mjs issue create` und `board.mjs issue update` legen bei gesetztem Block **kein Issue ohne diesen Abschnitt** an und schreiben keins (Issue #443, #526) — geprueft wird dabei auch die **Form** der Zeilen darin, ueber dieselbe Grammatik, die `spec.mjs` fuehrt (Issue #442). Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen; der Adapter faengt den Fehler ohnehin ab, bevor eine Karte entsteht.
 
 **Der Ort:** zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten` — so, wie der Format-Codeblock oben ihn zeigt. `## Abhängigkeiten` bleibt der **letzte** Abschnitt, weil `parseDeps` in `kit/night.mjs` das voraussetzt.
 
