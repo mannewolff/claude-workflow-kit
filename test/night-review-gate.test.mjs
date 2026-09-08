@@ -300,6 +300,32 @@ test("Dry-Run: das Gate laeuft mit — Verzicht wird Session, ungeprueft geht in
   }
 });
 
+// Die beiden uebrigen Ablehnungsarten im Dry-Run — wie beim Paar darueber in EINEM
+// Lauf, damit sichtbar wird, dass sie auseinandergehen. Dass hier je die eigene
+// Kurzform steht und nicht die pauschale "ungeprueft", ist genau die Unterscheidung,
+// die dem Menschen morgens den Handgriff nennt: Eine kaputte `Pruefung:`-Zeile
+// korrigiert man, eine verfallene Vorgabe entscheidet man neu.
+test("Dry-Run: verfallene und ungueltige Vorgabe erscheinen je mit ihrer eigenen Kurzform", NUR_POSIX, () => {
+  const dir = setupProjekt(GATE_AN);
+  try {
+    const verfallen = readyIssue(dir, "Erstes Ticket mit ueberholter Vorgabe", VERZICHT_VERFALLEN);
+    const kaputt = readyIssue(dir, "Zweites Ticket mit Tippfehler in der Zeile", VORGABE_KAPUTT);
+    const res = nightDryRun(dir);
+
+    assert.match(res.stdout, new RegExp(`#${verfallen}[^\\n]*wuerde ins Backlog \\(Pruefvorgabe verfallen\\)`),
+      "die ueberholte Vorgabe muss im Dry-Run als Verfall erscheinen");
+    assert.match(res.stdout, new RegExp(`#${kaputt}[^\\n]*wuerde ins Backlog \\(ungueltige Pruefvorgabe\\)`),
+      "die kaputte Zeile muss im Dry-Run mit ihrem eigenen Grund erscheinen");
+    assert.deepEqual(
+      board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id)).sort(),
+      [verfallen, kaputt].sort(),
+      "der Dry-Run bewegt nichts",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Dry-Run: ohne requiredBeforeReady bleibt der Dry-Run unveraendert", NUR_POSIX, () => {
   // Dieselbe Zurueckhaltung wie im echten Lauf: Ein Kit-Update darf keinem
   // Bestandsprojekt den Dry-Run umschreiben.

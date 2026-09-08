@@ -2876,7 +2876,7 @@ function leseNotizOrdner(ordner) {
 // Macht aus einer Mehrdeutigkeit einen Abbruch. Ein stiller Griff ins Ungewisse
 // waere genau der Fehler, den Issue #286 behebt — deshalb Exit 1 mit beiden Namen,
 // statt eine der beiden Dateien zu raten.
-function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
+export function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
   const { name, kollision } = pickNoteFile(dateien, notizName, { alleinstehend });
   if (kollision) {
     fail(

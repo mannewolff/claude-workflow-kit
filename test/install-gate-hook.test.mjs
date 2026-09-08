@@ -16,7 +16,7 @@ import {
   rmSync, existsSync, statSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -62,8 +62,8 @@ function git(dir, ...args) {
   });
 }
 
-function installiere(dir, antworten, extraEnv = {}) {
-  return spawnSync(process.execPath, [INSTALLER], {
+function installiere(dir, antworten, extraEnv = {}, nodeArgs = []) {
+  return spawnSync(process.execPath, [...nodeArgs, INSTALLER], {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
@@ -159,6 +159,78 @@ test("[installer-2] pre-commit ist ausfuehrbar", NUR_POSIX, () => {
     installiere(dir, antworten("n", "j"));
     const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
     assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
+  });
+});
+
+// Der Modus, den der Load-Hook unten einsetzt: Node uebersetzt ihn mit parseInt(…, 8)
+// und bekommt NaN, also wirft chmodSync. Genau FUENF Zeichen wie das ersetzte `0o755` —
+// siehe die Begruendung zur Laengentreue in mitWerfendemChmod.
+const CHMOD_ORIGINAL = "chmodSync(hookTarget, 0o755)";
+const CHMOD_WERFEND = 'chmodSync(hookTarget, "xxx")';
+
+/**
+ * Legt das Vorschaltmodul an, das dem Installer ein scheiterndes `chmodSync` unterschiebt,
+ * und liefert das Node-Argument dafuer.
+ *
+ * Ein blosses `fs.chmodSync = …` genuegt NICHT: install.mjs holt sich die Funktion als
+ * Named Import aus `node:fs`, und diese Bindung geht ein Monkey-Patch am Modulobjekt
+ * nicht mit — die erste Fassung dieses Tests war deshalb gruen, ohne den Rueckfall je zu
+ * betreten. Ersetzt wird darum der Aufruf selbst, ueber einen Load-Hook auf install.mjs.
+ *
+ * Die Ersetzung ist ZEICHENGENAU gleich lang. Die Abdeckung wird ueber V8-Byte-Offsets
+ * gefuehrt und ueber alle Prozesse unter derselben URL zusammengelegt; eine laengere
+ * Quelle verschoebe jeden Offset dahinter, und install.mjs faellt im Bericht von 100 %
+ * auf 83 % — gemessen mit einer ersten Fassung, die den Import umbog.
+ */
+function mitWerfendemChmod(dir) {
+  const hook = join(dir, "chmod-umbiegen.mjs");
+  const setup = join(dir, "hook-anmelden.mjs");
+
+  writeFileSync(hook, [
+    "let ziel;",
+    "export function initialize(data) { ziel = data.ziel; }",
+    "export async function load(url, context, nextLoad) {",
+    "  if (url !== ziel) return nextLoad(url, context);",
+    "  const geladen = await nextLoad(url, context);",
+    "  const quelle = geladen.source.toString();",
+    `  const neu = quelle.replace(${JSON.stringify(CHMOD_ORIGINAL)}, ${JSON.stringify(CHMOD_WERFEND)});`,
+    // Lieber laut scheitern als still den normalen Pfad messen: Aendert sich der Aufruf
+    // eines Tages, soll der Test rot werden und nicht scheingruen bleiben.
+    '  if (neu === quelle) throw new Error("Vorschaltmodul: der chmod-Aufruf steht so nicht mehr in install.mjs");',
+    '  return { format: "module", shortCircuit: true, source: neu };',
+    "}",
+    "",
+  ].join("\n"), "utf-8");
+
+  writeFileSync(setup, [
+    'import { register } from "node:module";',
+    `register(${JSON.stringify(pathToFileURL(hook).href)}, {`,
+    "  parentURL: import.meta.url,",
+    `  data: { ziel: ${JSON.stringify(pathToFileURL(INSTALLER).href)} },`,
+    "});",
+    "",
+  ].join("\n"), "utf-8");
+
+  return `--import=${pathToFileURL(setup).href}`;
+}
+
+// Die Gegenprobe zum Test darueber: Auf Windows gibt es kein x-Bit, und chmod kann dort
+// scheitern. Der Hook ist deswegen nicht weniger geschrieben — ein Abbruch an dieser
+// Stelle liesse den Installer auf einer ganzen Plattform rot enden. Ein echtes Fixture
+// gibt es fuer den Fall nicht: Auf POSIX gelingt chmod im eigenen Temp-Verzeichnis
+// immer, also wird der Fehlschlag untergeschoben.
+test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", NUR_POSIX, () => {
+  mitFixture("install-gate-chmod-", (dir) => {
+    const res = installiere(dir, antworten("n", "j"), {}, [mitWerfendemChmod(dir)]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /✓ pre-commit geschrieben/, "der Hook gilt trotzdem als geschrieben");
+
+    // Das fehlende x-Bit ist der Beleg, dass der Rueckfall wirklich betreten wurde:
+    // Waere der Aufruf durchgelaufen, stuende hier 0o755 wie im Test darueber. Ohne
+    // diese Zeile bestuende der Test auch dann, wenn die Ersetzung gar nicht griffe.
+    const hookDatei = join(dir, ".githooks", "pre-commit");
+    assert.ok(existsSync(hookDatei), "und er liegt auch wirklich da");
+    assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
   });
 });
 
