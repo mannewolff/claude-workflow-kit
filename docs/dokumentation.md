@@ -982,16 +982,23 @@ Mit `"issueReview": { "statusLabels": true }` schreibt `issue-review label-sync 
 
 **Der Default ist `false`.** Ein Kit-Update darf Bestandsprojekten nicht ungefragt Labels in ihre Boards schreiben; wer das Verfahren einführt, schaltet es bewusst ein — und legt vorher die Definitionen an (siehe unten).
 
-Vier Zustände, abgeleitet aus Body und Kommentaren:
+Fünf Zustände, abgeleitet aus Body und Kommentaren:
 
 | Zustand | Woraus abgeleitet | Label |
 |---|---|---|
 | `fertig` | Marker der eigenen Stufe gesetzt, **oder** gültiger `Pruefung: Verzicht` | `review:fertig` |
-| `befunde` | jüngster Review-Kommentar der Stufe, ohne Ausfallvermerk | `review:befunde` |
 | `ausgefallen` | jüngster Review-Kommentar der Stufe **mit** Ausfallvermerk in Zeile 2 | `review:offen` |
+| `grenze` | mindestens drei Review-Kommentare der Stufe **ohne** Ausfallvermerk, kein Marker | `review:grenze` |
+| `befunde` | jüngster Review-Kommentar der Stufe, ohne Ausfallvermerk | `review:befunde` |
 | `offen` | nichts von alledem | `review:offen` |
 
 `ausgefallen` ist der einzige Zustand, dessen Label anders heißt: Ein ausgefallener Reviewer ist **kein Prüfergebnis** — das Ticket ist so ungeprüft wie zuvor. Der Zustand steht trotzdem eigenständig da, weil er für den Menschen etwas anderes bedeutet als „noch nicht angefangen".
+
+`grenze` heißt „geprüft, so oft es sinnvoll ist — und immer noch Befunde offen". Ohne ihn sieht ein dreimal geprüftes Dokument aus wie eines, bei dem es gleich weitergeht; beides wäre `befunde`. Drei Dinge machen ihn belastbar:
+
+- **Gezählt wird die Anzahl der Runden-Kommentare, nicht die Rundennummer.** `/issue-review` nummeriert je Session ab 1; drei Nächte hinterlassen dreimal „Runde 1". Wer die höchste Nummer nähme, erreichte die Grenze nie.
+- **Ein Ausfall ist keine Prüfung.** Ausfall-Kommentare tragen denselben Anker, zählen aber nicht mit; trägt der jüngste einen Ausfallvermerk, bleibt es bei `ausgefallen`. Sonst stünde ein Dokument nach drei technisch gescheiterten Nächten auf `review:grenze`, ohne dass je jemand hineingesehen hätte.
+- **Die Schwelle ist fest** (`GRENZE_RUNDEN` in `kit/board.mjs`, Wert 3) und **unabhängig von `Pruefung:`**. `Pruefung:` sagt, wie viele Runden ein Ticket bekommen soll; die Schwelle sagt, ab wann weitere Runden nichts mehr bringen. Sie gilt für **jeden** Review, nicht nur nachts: Ein interaktiv dreimal geprüfter Plan zeigt ebenfalls `review:grenze`.
 
 Ein Marker einer **fremden** Stufe zählt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis. Marker in Codeblöcken zählen ebenfalls nicht — ein Dokument, das das Format als Beispiel zeigt, weist damit nichts nach.
 
@@ -1018,15 +1025,15 @@ Die Register, gegen die `gate` gemessen wird, sind zwei: `CLAUDE-workflow.md` f�
 
 `gate` und `alternativen` kann die Synthese **nicht verwerfen** — verworfen wird nur, was nicht plausibel oder nicht wichtig ist.
 
-#### Einrichtung: die vier Definitionen je Board
+#### Einrichtung: die fünf Definitionen je Board
 
 Die Labels müssen am Board **definiert** sein, bevor `statusLabels` eingeschaltet wird. Fehlt eine Definition, scheitert der erste `label-sync` hart; der Adapter übersetzt den 404 des Servers in einen Hinweis, der den fehlenden Namen nennt.
 
-Anzulegen sind vier: `review:offen`, `review:befunde`, `review:fertig` und `kit:klaeren`. Die Namen sind **fest und nicht konfigurierbar** — konfigurierbare Namen wären eine zweite Wahrheit und zerstörten die Wiedererkennbarkeit über Projekte hinweg.
+Anzulegen sind fünf: `review:offen`, `review:befunde`, `review:fertig`, `review:grenze` und `kit:klaeren`. Die Namen sind **fest und nicht konfigurierbar** — konfigurierbare Namen wären eine zweite Wahrheit und zerstörten die Wiedererkennbarkeit über Projekte hinweg.
 
 - **kanban-kit:** `POST /api/boards/{boardId}/labels`. Über `/api/kanban` gibt es dafür keinen Weg — das ist der einzige Einrichtungsschritt, den keine Session erledigen kann.
 - **GitHub:** `gh label create review:offen` und so fort.
-- **GitLab:** `glab label create` bzw. die Label-Verwaltung des Projekts. **Achtung:** Bei GitLab sind Spalten selbst Labels. Kollidiert einer der drei Namen mit einem konfigurierten Spalten-Label, bricht `label-sync` ab, statt die Spaltenlogik zu beschädigen.
+- **GitLab:** `glab label create` bzw. die Label-Verwaltung des Projekts. **Achtung:** Bei GitLab sind Spalten selbst Labels. Kollidiert einer der vier `review:*`-Namen mit einem konfigurierten Spalten-Label, bricht `label-sync` ab, statt die Spaltenlogik zu beschädigen.
 
 ### Prüfumfang am Ticket: Vorgabe, Verzicht, Verfall
 

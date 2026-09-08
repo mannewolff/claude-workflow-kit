@@ -2434,9 +2434,20 @@ const REVIEW_STUFEN_MARKER = {
 };
 
 /**
+ * Ab wie vielen geprueften Runden ein Dokument als „Pruefgrenze erreicht" gilt
+ * (Issue #516, fachlich #408). Exportiert, damit `kit/night.mjs` sie importieren
+ * kann statt sie zu wiederholen — dieselbe Linie wie bei `parsePruefvorgabe`.
+ * Eine zweite Drei dort waere eine zweite Wahrheit ueber die Grenze.
+ *
+ * Die Schwelle ist fest und unabhaengig von `Pruefung:`: Sie sagt nicht, wie oft
+ * geprueft werden SOLL, sondern ab wann weitere Runden nichts mehr bringen.
+ */
+export const GRENZE_RUNDEN = 3;
+
+/**
  * Der Pruefzustand eines Dokuments, abgeleitet aus Body und Kommentaren (Issue #381).
  *
- * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen`. Die Funktion ist rein:
+ * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen` | `grenze`. Die Funktion ist rein:
  * Sie schreibt nichts, ruft nichts und kennt kein Label. Das Zustandslabel aus
  * Issue #384 ist ihr erster Leser, nicht ihre Definition — haenge ein Gate am
  * Label statt an dieser Ableitung, gaebe es zwei Wahrheiten ueber den Pruefstand.
@@ -2448,8 +2459,19 @@ const REVIEW_STUFEN_MARKER = {
  *  2. Gueltiger, nicht verfallener `Pruefung: Verzicht` -> `fertig`. Der Mensch hat
  *     entschieden, dass hier nicht geprueft wird; das ist ein Ergebnis, kein Loch.
  *  3. Juengster Review-Kommentar der Stufe mit Ausfall-Vermerk -> `ausgefallen`.
- *  4. Juengster Review-Kommentar der Stufe -> `befunde`.
- *  5. sonst -> `offen`.
+ *  4. Mindestens `GRENZE_RUNDEN` Review-Kommentare der Stufe OHNE Ausfall-Vermerk
+ *     -> `grenze` (Issue #516). Gezaehlt wird die ANZAHL der Anker, nicht die Zahl
+ *     `n` darin: `/issue-review` nummeriert je Session ab 1, drei Naechte
+ *     hinterlassen dreimal `Runde 1`. Wer die hoechste Nummer naehme, erreichte die
+ *     Grenze nie. Verglichen wird mit `>=`, sonst fiele ein Dokument mit vier
+ *     Ankern auf `befunde` zurueck.
+ *  5. Juengster Review-Kommentar der Stufe -> `befunde`.
+ *  6. sonst -> `offen`.
+ *
+ * **Ein Ausfall ist keine Pruefung.** Ausfall-Kommentare tragen denselben Anker,
+ * zaehlen fuer die Grenze aber nicht mit, und Regel 3 steht bewusst vor Regel 4:
+ * Sonst stuende ein Dokument nach drei technisch gescheiterten Naechten auf
+ * `grenze`, obwohl nie jemand geprueft hat.
  *
  * **Woran ein Ausfall erkannt wird**, muss festgelegt sein, sonst ist Regel 3 nicht
  * anwendbar: Der Skill verlangt heute den Anker `## <Stufe>-Review, Runde n` in der
@@ -2489,8 +2511,11 @@ export function reviewZustand(body, comments, stufe) {
     anker.test(String(k?.body || "").split("\n")[0] || "")
   );
   if (eigene.length > 0) {
-    const zeilen = normalisiereZeilenenden(String(eigene.at(-1).body || "")).split("\n");
-    return /ausgefallen|ausfall/i.test(zeilen[1] || "") ? "ausgefallen" : "befunde";
+    const ausfall = (k) =>
+      /ausgefallen|ausfall/i.test(normalisiereZeilenenden(String(k?.body || "")).split("\n")[1] || "");
+    if (ausfall(eigene.at(-1))) return "ausgefallen";
+    if (eigene.filter((k) => !ausfall(k)).length >= GRENZE_RUNDEN) return "grenze";
+    return "befunde";
   }
 
   return "offen";
@@ -3391,10 +3416,10 @@ function issueReviewCheck(args = {}) {
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
-// Die drei Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
+// Die vier Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
 // Konfigurierbare Namen waeren eine zweite Wahrheit und zerstoerten die
 // Wiedererkennbarkeit ueber Projekte hinweg.
-const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig"];
+const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig", "review:grenze"];
 
 // `ausgefallen` bildet auf `review:offen` ab (Plan #368, A3): Ein ausgefallener
 // Reviewer ist kein Pruefergebnis — das Ticket ist so ungeprueft wie zuvor.
@@ -3403,6 +3428,7 @@ const ZUSTAND_ZU_LABEL = {
   befunde: "review:befunde",
   fertig: "review:fertig",
   ausgefallen: "review:offen",
+  grenze: "review:grenze",
 };
 
 /**
