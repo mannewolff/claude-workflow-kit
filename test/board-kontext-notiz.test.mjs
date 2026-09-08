@@ -12,10 +12,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { join, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 import { pickNoteFile } from "../kit/board.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -172,6 +176,24 @@ test("kontext paths: zwei case-insensitiv passende Notizen brechen ab", (t) => {
     assert.match(res.stderr, /shell-app\.md/);
     assert.match(res.stderr, /shell-app/);
   });
+});
+
+// Derselbe Abbruch, aber ohne Dateisystem: Der Test oben ueberspringt auf macOS,
+// weil sich zwei Schreibweisen dort gar nicht anlegen lassen — die Kollision waere
+// nur auf dem Linux-Runner gemessen. `waehleNotiz` nimmt die Dateiliste als ersten
+// Parameter, also wird sie hier direkt gereicht und der Abbruch auf jedem Rechner
+// gleich gemessen. Kindprozess, weil `fail` mit process.exit(1) endet.
+test("waehleNotiz: eine Kollision bricht mit beiden Namen ab", () => {
+  const script = [
+    `import { waehleNotiz } from ${JSON.stringify(pathToFileURL(join(repoRoot, "kit", "board.mjs")).href)};`,
+    `waehleNotiz(["Projekt.md", "projekt.md"], "projekt.md", "/vault/Projekte/projekt", true);`,
+  ].join("\n");
+  const res = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf-8" });
+
+  assert.equal(res.status, 1, `erwartet war ein Abbruch: ${res.stderr}`);
+  assert.equal(res.stdout, "", "stdout muss bei einem Abbruch leer bleiben");
+  assert.match(res.stderr, /Mehrdeutige Notiz in \/vault\/Projekte\/projekt/);
+  assert.match(res.stderr, /Projekt\.md, projekt\.md/, "beide Namen gehoeren in die Meldung");
 });
 
 test("kontext paths: Notizordner ist eine Datei -> Abbruch mit Pfad", () => {

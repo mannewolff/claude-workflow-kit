@@ -54,7 +54,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.48.0";
+const KIT_VERSION = "1.49.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -2876,7 +2876,7 @@ function leseNotizOrdner(ordner) {
 // Macht aus einer Mehrdeutigkeit einen Abbruch. Ein stiller Griff ins Ungewisse
 // waere genau der Fehler, den Issue #286 behebt — deshalb Exit 1 mit beiden Namen,
 // statt eine der beiden Dateien zu raten.
-function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
+export function waehleNotiz(dateien, notizName, ordner, alleinstehend) {
   const { name, kollision } = pickNoteFile(dateien, notizName, { alleinstehend });
   if (kollision) {
     fail(
