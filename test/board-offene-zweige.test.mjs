@@ -198,9 +198,12 @@ test("issue comment --text -: eine nicht lesbare stdin wird als solche gemeldet"
 
 // Die PATH-Suche prueft Existenz und X-Bit — mehr kann sie nicht. Eine Datei mit
 // gesetztem X-Bit ohne Shebang und ohne Binaerformat besteht diese Pruefung und
-// scheitert erst beim Start mit ENOEXEC: kein Exit-Status, kein Signal, nur ein
-// Fehler. Ohne den eigenen Zweig dafuer meldete der Vorflug "Durch Signal null
-// beendet" und verschwiege damit die einzige Auskunft, die es gibt.
+// scheitert erst beim Start. Wie sie scheitert, haengt an der Plattform (Issue #527):
+// Auf macOS meldet spawnSync ENOEXEC — kein Exit-Status, kein Signal, nur ein Fehler.
+// Auf Linux faellt execvp bei ENOEXEC historisch auf /bin/sh zurueck; die Shell liest
+// die Datei als Skript und beendet mit Status 127, der Fehler kommt bei Node nie an.
+// Gemeinsam ist beiden Wegen nur, was der Vorflug daraus macht: eine Begruendung, die
+// den Startfehler nennt statt "Durch Signal null beendet".
 test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehler", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const binDir = join(dir, "fakebin");
@@ -216,7 +219,10 @@ test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehle
     assert.equal(befund.verfuegbar, false, "ein nicht startbares Programm darf nicht als verfuegbar gelten");
     assert.equal(befund.geprueft, "probelauf",
       "die PATH-Pruefung haette die Datei finden muessen — der Befund kommt aus dem Probelauf");
-    assert.match(befund.grund, /ENOEXEC/,
+    // Auf Linux sind beide Formen moeglich: `not found` ist die letzte stderr-Zeile
+    // von /bin/sh, `Exit 127` der Rueckfall aus probelauf, wenn stderr leer bleibt.
+    const erwartet = process.platform === "darwin" ? /ENOEXEC/ : /not found|Exit 127/;
+    assert.match(befund.grund, erwartet,
       `der Startfehler fehlt in der Begruendung: ${befund.grund}`);
     assert.doesNotMatch(befund.grund, /Signal/,
       "der Fall ist als Signal-Tod gemeldet worden, obwohl ein Fehler vorlag");
@@ -224,6 +230,37 @@ test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehle
     ...LOKAL,
     issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-programm --flag" }] },
   }, "board-offen-enoexec-");
+});
+
+// Der Zweig `if (res.error)` in probelauf braucht einen Fall ohne Exit-Status, und
+// der Test darueber liefert ihn nur auf macOS (Issue #527): Auf Linux uebernimmt
+// /bin/sh die formatlose Datei und erzeugt einen Status. Der sh-Rueckfall von execvp
+// gilt aber allein fuer ENOEXEC — ein Shebang auf einen Interpreter, den es nicht
+// gibt, scheitert mit ENOENT, und dagegen faengt keine Shell auf. Das ist der Fall,
+// der auf beiden Plattformen ohne Status und mit Fehler endet.
+test("check: ein Shebang auf einen fehlenden Interpreter meldet den Startfehler", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const binDir = join(dir, "fakebin");
+    mkdirSync(binDir, { recursive: true });
+    const pfad = join(binDir, "kein-interpreter");
+    writeFileSync(pfad, "#!/nicht/vorhanden/interpreter\necho hi\n");
+    chmodSync(pfad, 0o755);
+
+    const res = runBoard(dir, ["issue-review", "check"]);
+
+    assert.equal(res.status, 0, `check bleibt eine Auskunft, kein Gate: ${res.stderr}`);
+    const befund = JSON.parse(res.stdout).reviewers[0];
+    assert.equal(befund.verfuegbar, false, "ein nicht startbares Programm darf nicht als verfuegbar gelten");
+    assert.equal(befund.geprueft, "probelauf",
+      "die PATH-Pruefung haette die Datei finden muessen — der Befund kommt aus dem Probelauf");
+    assert.match(befund.grund, /ENOENT/,
+      `der Startfehler fehlt in der Begruendung: ${befund.grund}`);
+    assert.doesNotMatch(befund.grund, /Signal/,
+      "der Fall ist als Signal-Tod gemeldet worden, obwohl ein Fehler vorlag");
+  }, {
+    ...LOKAL,
+    issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-interpreter --flag" }] },
+  }, "board-offen-enoent-");
 });
 
 // ============================================================
