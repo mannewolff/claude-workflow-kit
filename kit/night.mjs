@@ -291,6 +291,11 @@ const DEFAULT_MAX_ERZEUGUNG = 3;
 // Ein Review ist keine Implementierungsrunde: kein Build, kein Commit. Deshalb ein
 // eigenes, knapperes Limit statt --timeout-min (analog SALVAGE_TIMEOUT_MS).
 const REVIEW_TIMEOUT_MS = 15 * 60 * 1000;
+// Der Zusatz, der einer Session die Betriebsart nennt (Issue #419). Er steht als
+// Konstante, weil Review- und Erzeugungs-Session (Issue #520) denselben Satz tragen: Zwei
+// Kopien liefen auseinander, und die Wirkung — die Session weiss, dass niemand zusieht —
+// haengt an der Formulierung, nicht am Ort.
+const UNBEAUFSICHTIGT_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.";
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
 // --- Argumente ---
@@ -1037,6 +1042,62 @@ export function erzeugungsEintritt(body, stufe) {
   // Nur die Stufe `issue` liest ein Plandokument; ein Fachplan fuehrt den Abschnitt nicht.
   if (stufe !== "issue") return null;
   return stoppFragenGrund(body);
+}
+
+// --- Das Erfolgssignal der Erzeugung (Issue #520) ---
+
+// Welche Herkunftszeile ein erzeugtes Dokument seiner Quelle traegt: Ein Plandokument
+// nennt die `Fachliche Quelle`, ein Arbeitspaket den `Plan`. Nicht `derivedFrom` — das
+// Feld wertet allein der toolbox-Adapter aus, die uebrigen Tracker nehmen es folgenlos
+// an; die Zeilen stehen im Body und tragen ueberall.
+const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
+
+/**
+ * Traegt dieses Dokument die Zielstufe des Laufs (Issue #520)?
+ *
+ * `plan` erzeugt ein `[Plan]`-Dokument, `issue` erzeugt Arbeitspakete — und die tragen
+ * keines der drei Praefixe.
+ */
+function zielstufePasst(title, stufe) {
+  if (stufe === "plan") return isPlan(title);
+  return !isPlan(title) && !isFachlich(title) && !isIdee(title);
+}
+
+/**
+ * Ist dieses Dokument in diesem Lauf aus dieser Quelle entstanden (Issue #520)?
+ *
+ * Zwei Bedingungen, und beide muessen tragen:
+ *
+ *   1. eine GANZE Zeile `Fachliche Quelle: Issue #N` bzw. `Plan: Issue #M` mit exakt
+ *      dieser Nummer. Das Zeilenende hinter der Nummer ist der Kern: Ohne es zaehlte ein
+ *      Lauf zu Quelle #40 jedes Dokument aus #408 als sein eigenes Ergebnis. Eine
+ *      Erwaehnung im Fliesstext oder in Fettung ist keine Herkunftszeile.
+ *   2. die Zielstufe am Titel. Ohne sie unterdrueckten Arbeitspakete eines frueheren
+ *      Laufs die Plan-Session, weil sie dieselbe `Fachliche Quelle` tragen — und das
+ *      "vorhandene Dokument" waere dann ein Arbeitspaket statt eines Plans.
+ *
+ * Reine Funktion wie `erzeugungsEintritt`: Sie beantwortet dieselbe Frage fuer den
+ * Fortsetzen-Check VOR der Session und fuer die Backlog-Differenz DANACH — zwei
+ * Rechenwege liefen auseinander, und der Lauf legte Dokumente doppelt an.
+ */
+export function stammtAusErzeugung(issue, quelleId, stufe) {
+  // `Object.hasOwn` wie in `erzeugungsEingangsstufe`: 'constructor' als Stufe lieferte
+  // sonst eine Funktion statt eines Feldnamens.
+  if (!Object.hasOwn(HERKUNFT_FELD, stufe ?? "")) return false;
+  if (!zielstufePasst(issue?.title ?? "", stufe)) return false;
+  // Nur Ziffern, und die Nummer geht unveraendert in den Ausdruck: Kartennummern sind
+  // numerisch, und ein Sonderzeichen aus einer fremden Id wuerde hier zum Metazeichen.
+  // Die Session schreibt die Nummer so, wie der Auftrag sie ihr genannt hat — beim
+  // lokalen Tracker also mitsamt fuehrenden Nullen.
+  const nummer = String(quelleId ?? "");
+  if (!/^\d+$/.test(nummer)) return false;
+  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen und
+  // haette das Zeilenende damit wieder aufgeweicht.
+  const zeile = new RegExp(
+    String.raw`^[^\S\n]*${HERKUNFT_FELD[stufe]}:[^\S\n]*Issue[^\S\n]*#${nummer}[^\S\n]*$`,
+    "m",
+  );
+  return zeile.test(issue?.body || "");
 }
 
 // --- Abhaengigkeiten ---
@@ -2124,8 +2185,13 @@ function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
  * der vier Ausgaenge liefern: Sie sagen nicht, was der Review ergeben hat, sondern
  * dass die Lage unklar ist. Die Fehlerklasse fuer den Ergebnisstand (#489) hinterlegen
  * sie hier, damit der Rueckgabewert ein blosses Ja/Nein bleibt.
+ *
+ * `sessionart` seit Issue #520: Die Erzeugungsschleife fuehrt dieselben beiden Guards —
+ * auch eine Erzeugungs-Session committet nichts, und `/techplan` liest Code mit
+ * `--permission-mode acceptEdits`. Die Meldung nannte fest die Review-Session; morgens
+ * stuende sonst die falsche Sessionart im Protokoll.
  */
-function reviewRundeGestoppt(kandidat, res, minutes) {
+function reviewRundeGestoppt(kandidat, res, minutes, sessionart) {
   // Infrastruktur-Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
   // Timeout heisst, das CLI selbst ist gescheitert — mit dem Issue ist nichts falsch.
   // Harter Stopp ohne Kommentar, sonst kommentiert eine kaputte Umgebung den ganzen
@@ -2138,11 +2204,11 @@ function reviewRundeGestoppt(kandidat, res, minutes) {
     return true;
   }
 
-  // Eine Review-Session arbeitet ausschliesslich am Board. Hinterlaesst sie
-  // Aenderungen im Working Tree, hat sie etwas getan, was sie nicht sollte — und
-  // die naechste Runde wuerde darauf aufbauen.
+  // Eine Review- wie eine Erzeugungs-Session arbeitet ausschliesslich am Board.
+  // Hinterlaesst sie Aenderungen im Working Tree, hat sie etwas getan, was sie nicht
+  // sollte — und die naechste Runde wuerde darauf aufbauen.
   if (!gitClean()) {
-    log(`  HARTER STOPP: die Review-Session zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine Review-Session darf keinen Code anfassen — bitte morgens sichten.`);
+    log(`  HARTER STOPP: die ${sessionart} zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine ${sessionart} darf keinen Code anfassen — bitte morgens sichten.`);
     merkeFehlerklasse("harterStopp");
     return true;
   }
@@ -2186,7 +2252,7 @@ async function runReviewLoop(kandidaten, args) {
     // das Dokument liest. Massgeblich bleibt allein KIT_AGENT_MODEL — der Hinweis
     // wiederholt es nur an der Stelle, an der es ankommt.
     const res = await runSession(kandidat.id, args, {
-      prompt: `/issue-review #${kandidat.id}\n\nDieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.`,
+      prompt: `/issue-review #${kandidat.id}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
       timeoutMs: REVIEW_TIMEOUT_MS,
     });
     // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
@@ -2194,7 +2260,7 @@ async function runReviewLoop(kandidaten, args) {
     const dauerMs = Date.now() - started;
     const minutes = (dauerMs / 60000).toFixed(1);
 
-    if (reviewRundeGestoppt(kandidat, res, minutes)) {
+    if (reviewRundeGestoppt(kandidat, res, minutes, "Review-Session")) {
       hardStop = true;
       break;
     }
@@ -2559,6 +2625,130 @@ function erzeugungsTrackerPruefen() {
   );
 }
 
+// Welchen Skill der Erzeugungsmodus je Stufe beauftragt (Issue #520). `/plan` steht hier
+// bewusst nicht: Es ist seit Issue #514 ein Wegweiser und erzeugt kein Dokument.
+const ERZEUGE_SKILL = { plan: "techplan", issue: "issues" };
+
+const OHNE_DOKUMENT_KOMMENTAR = "Nachtlauf: Die Erzeugungs-Session endete ohne Dokument — "
+  + "bitte morgens sichten oder /techplan bzw. /issues von Hand fahren.";
+
+/** Die gefundenen Dokumente als Protokoll-Liste: `#X, #Y`. */
+function dokumentListe(ids) {
+  return ids.map((id) => `#${id}`).join(", ");
+}
+
+/**
+ * Phase 1 zu EINER Quelle: Fortsetzen-Check, Session, Erfolgssignal (Issue #520).
+ *
+ * Rueckgabe `{ ergebnis, hardStop }`. `ergebnis` traegt die Form, die Phase 2 (Issue #521)
+ * erwartet: `{ quelle, erzeugt: [ids], fortgesetzt }` — gefundene wie vorgefundene
+ * Dokumente in derselben Form, damit die Pruefschleife die beiden Faelle nicht
+ * unterscheiden muss.
+ *
+ * Der Fortsetzen-Check liest OHNE Status-Filter: Bei `--stufe issue` koennen Pakete des
+ * Plans schon in Ready oder In review liegen, und `/issues` kennt kein Teil-Fortsetzen —
+ * ein Check nur im Backlog liesse den Skill alle erneut anlegen. Die Differenz danach
+ * bleibt auf dem Backlog, denn dorthin legt eine Session an.
+ *
+ * Die Differenz zaehlt Karten, deren `id` vorher fehlte, statt `slice` wie
+ * `neueKommentare`: Die Backlog-Reihenfolge ist nicht stabil.
+ */
+async function erzeugeAusQuelle(kandidat, args, stufe, nummer) {
+  const quelle = String(kandidat.id);
+  const vorhanden = board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, quelle, stufe))
+    .map((i) => String(i.id));
+  if (vorhanden.length > 0) {
+    log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(vorhanden)} — schon vorhanden, die Erzeugungs-Session entfaellt.`);
+    return { ergebnis: { quelle, erzeugt: vorhanden, fortgesetzt: true }, hardStop: false };
+  }
+
+  const vorher = new Set(board("issue", "list", "--status", "backlog").map((i) => String(i.id)));
+  log(`Erzeugungs-Session ${nummer}/${args.max}: Issue #${quelle} — ${kandidat.title}`);
+  const started = Date.now();
+  // Ohne `timeoutMs`, also mit `args.timeoutMin` wie die Implementierungsrunde und nicht
+  // mit REVIEW_TIMEOUT_MS: `/techplan` liest Code und schreibt ein ganzes Plandokument,
+  // `/issues` legt mehrere Karten einzeln an, und die Toolbox drosselt dichte Aufrufe.
+  // Eine korrekte Session als Timeout zu verlieren ist der teurere Fehler.
+  const res = await runSession(kandidat.id, args, {
+    prompt: `/${ERZEUGE_SKILL[stufe]} #${quelle}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
+  });
+  const minutes = ((Date.now() - started) / 60000).toFixed(1);
+
+  if (reviewRundeGestoppt(kandidat, res, minutes, "Erzeugungs-Session")) {
+    return { ergebnis: null, hardStop: true };
+  }
+
+  const erzeugt = board("issue", "list", "--status", "backlog")
+    .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, quelle, stufe))
+    .map((i) => String(i.id));
+
+  if (erzeugt.length === 0) {
+    // Ergebnislos fuer DIESE Quelle, kein Grund anzuhalten. Das Routing-Label bleibt
+    // stehen: Ohne Pruefung gibt es keinen Endzustand, und der Verbrauch der Freigabe
+    // haengt am Endzustand (Plan #513, A3).
+    log(`  Fehlschlag nach ${minutes} min: Issue #${quelle} — die Erzeugungs-Session endete ohne Dokument, weiter mit dem naechsten.`);
+    board("issue", "comment", quelle, "--text", OHNE_DOKUMENT_KOMMENTAR);
+    return { ergebnis: { quelle, erzeugt: [], fortgesetzt: false }, hardStop: false };
+  }
+
+  log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(erzeugt)}`);
+  return { ergebnis: { quelle, erzeugt, fortgesetzt: false }, hardStop: false };
+}
+
+/**
+ * Phase 1 der Erzeugungsschleife ueber alle Kandidaten (Issue #520).
+ *
+ * `--max` zaehlt hier Ausgangsdokumente, nicht Sessions (Issue #408: "hoechstens drei
+ * Ausgangsdokumente je Nacht") — eine fortgesetzte Quelle ist verbraucht, auch wenn fuer
+ * sie keine Session lief. So zaehlt der Ernstfall dasselbe wie `berichteErzeugungDryRun`.
+ *
+ * Kein Board-Move in keinem Ausgang: Die Quellen liegen im Backlog und bleiben dort.
+ * Kein Ergebnisstand: Die Einheiten dafuer bestellt Issue #522.
+ */
+async function runErzeugungsLoop(kandidaten, args) {
+  const stufe = args.stufe;
+  const ergebnisse = [];
+  let verarbeitet = 0;
+  let uebersprungen = 0;
+  let hardStop = false;
+
+  for (const kandidat of kandidaten) {
+    if (verarbeitet >= args.max) {
+      log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
+      continue;
+    }
+    // Die teure zweite Stufe der Auswahl, an derselben Stelle, an der der Review-Modus
+    // seinen Marker prueft: Sie braucht den Body und damit ein `issue get` je Dokument.
+    const grund = erzeugungsEintritt(board("issue", "get", String(kandidat.id)).body, stufe);
+    if (grund !== null) {
+      log(`#${kandidat.id} uebersprungen: ${grund}.`);
+      uebersprungen++;
+      continue;
+    }
+
+    verarbeitet++;
+    const runde = await erzeugeAusQuelle(kandidat, args, stufe, verarbeitet);
+    if (runde.hardStop) {
+      hardStop = true;
+      break;
+    }
+    ergebnisse.push(runde.ergebnis);
+  }
+
+  const mitDokument = ergebnisse.filter((e) => e.erzeugt.length > 0);
+  const fortgesetzt = mitDokument.filter((e) => e.fortgesetzt).length;
+  log(`Nacht-Erzeugung beendet (Stufe ${stufe}): ${mitDokument.length - fortgesetzt} erzeugt, `
+    + `${fortgesetzt} fortgesetzt, ${ergebnisse.length - mitDokument.length} ohne Dokument, `
+    + `${uebersprungen} uebersprungen${hardStop ? ", HARTER STOPP" : ""}.`);
+  // Die Uebergabe an Phase 2 (Issue #521): Sie nimmt `mitDokument` und laesst die
+  // Dokumente pruefen. Bis dahin endet der Lauf hier — die Dokumente liegen im Backlog,
+  // und das Routing-Label steht noch an ihren Quellen.
+  log(`Morgen-Ritual: die ${mitDokument.length} entstandene(n) Dokument(e) sichten und pruefen lassen. Protokoll: ${LOG_FILE}`);
+  laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
+  process.exit(hardStop ? 1 : 0);
+}
+
 /**
  * Programm 3 — der Erzeugungsmodus (Issue #513, A1; Geruest aus Issue #518).
  *
@@ -2594,11 +2784,8 @@ export async function laufeErzeugungsModus(args) {
 
   if (args.dryRun) berichteErzeugungDryRun(kandidaten, args, stufe);
 
-  // Die Schleife des Ernstfalls folgt in Issue #520; sie ruft `erzeugungsEintritt` an
-  // derselben Stelle, an der der Review-Modus seinen Marker prueft.
-  log(`${kandidaten.length} Erzeugungs-Kandidat(en) (Stufe ${stufe}) — die Schleife folgt in Issue #520.`);
-  laufAbschliessen("regulaer");
-  process.exit(0);
+  log(`${kandidaten.length} Erzeugungs-Kandidat(en) (Stufe ${stufe}).`);
+  await runErzeugungsLoop(kandidaten, args);
 }
 
 /**
