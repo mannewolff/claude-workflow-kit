@@ -35,7 +35,14 @@
  *   --review-label <n> Routing-Label des Review-Modus (Default kit:nightreview)
  *   --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
  *                      (Default issue), nur mit --review. Genau eine Stufe pro
- *                      Aufruf (Issue #283).
+ *                      Aufruf (Issue #283). Im Erzeugungsmodus benennt --stufe
+ *                      das ENTSTEHENDE Dokument: plan | issue, dort Pflicht.
+ *   --erzeuge          Erzeugungsmodus (Issue #517): laesst aus geprueften
+ *                      Dokumenten die naechste Stufe entstehen. Exklusiv zu
+ *                      --review. --max zaehlt hier Ausgangsdokumente (Default 3).
+ *   --erzeuge-label <n> Routing-Label des Erzeugungsmodus; Default folgt der
+ *                      Stufe (kit:nightplan | kit:nightissues). Kennt kein
+ *                      'none' — das Label IST die menschliche Freigabe.
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -264,6 +271,15 @@ const DEFAULT_LABEL = "kit:nightrun";
 // laufen in verschiedenen Naechten und meinen verschiedene Spalten — Review den
 // Backlog, Implementierung die Ready-Spalte.
 const DEFAULT_REVIEW_LABEL = "kit:nightreview";
+// Der Erzeugungsmodus routet je Stufe ueber ein eigenes Label (Issue #517): Was zum
+// Plan werden darf, ist eine andere Freigabe als was zu Arbeitspaketen werden darf.
+// Ein gemeinsames Label zoege beide Sorten in denselben Lauf.
+const ERZEUGE_LABEL_JE_STUFE = { plan: "kit:nightplan", issue: "kit:nightissues" };
+// --max heisst in beiden Modi Verschiedenes und hat deshalb zwei Defaults: Sessions
+// in der Implementierung, Ausgangsdokumente in der Erzeugung (Issue #408: "hoechstens
+// drei Ausgangsdokumente je Nacht").
+const DEFAULT_MAX_SESSIONS = 10;
+const DEFAULT_MAX_ERZEUGUNG = 3;
 // Ein Review ist keine Implementierungsrunde: kein Build, kein Commit. Deshalb ein
 // eigenes, knapperes Limit statt --timeout-min (analog SALVAGE_TIMEOUT_MS).
 const REVIEW_TIMEOUT_MS = 15 * 60 * 1000;
@@ -299,11 +315,12 @@ Review-Modus (prueft statt zu implementieren):
                      Ready-Issues zu implementieren. Exklusiv: die
                      Implementierungsschleife laeuft dann nicht.
   --review-label <n> nur Backlog-Issues mit diesem Label pruefen
-  --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
-                     (Default issue). Nur zusammen mit --review. Genau eine
-                     Stufe pro Aufruf — zwischen den Stufen steht die
-                     menschliche Freigabe.
                      (Default ${DEFAULT_REVIEW_LABEL}); 'none' schaltet den Filter ab
+  --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
+                     (Default issue). Nur zusammen mit --review oder --erzeuge.
+                     Genau eine Stufe pro Aufruf — zwischen den Stufen steht die
+                     menschliche Freigabe.
+                     Im Erzeugungsmodus: plan | issue — das entstehende Dokument.
 
   Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich —
   deshalb sind es zwei Laeufe an zwei Abenden, nicht zwei Phasen in einer Nacht.
@@ -312,6 +329,19 @@ Review-Modus (prueft statt zu implementieren):
   .claude/workflow.config.json. Vorlage zum Uebernehmen liegt nach der
   Installation in .claude/workflow.config.example.json. Fehlt der Block,
   bricht der Vorflug ab, statt Sessions ergebnislos zu verbrennen.
+
+Erzeugungsmodus (erzeugt statt zu implementieren):
+  --erzeuge          laesst aus geprueften Dokumenten die naechste Stufe
+                     entstehen. Exklusiv zu --review: ein Modus pro Lauf.
+                     --stufe ist hier Pflicht und benennt das ENTSTEHENDE
+                     Dokument; --max zaehlt Ausgangsdokumente (Default
+                     ${DEFAULT_MAX_ERZEUGUNG} statt ${DEFAULT_MAX_SESSIONS}).
+  --erzeuge-label <n> nur Dokumente mit diesem Label verarbeiten (Default
+                     ${ERZEUGE_LABEL_JE_STUFE.plan} bei --stufe plan,
+                     ${ERZEUGE_LABEL_JE_STUFE.issue} bei --stufe issue). Anders als
+                     --review-label kennt es kein 'none': Das Routing-Label ist
+                     die Freigabe-Geste des Menschen und laesst sich nicht
+                     abschalten.
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
 Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
@@ -358,6 +388,7 @@ const WERT_FLAGS = {
   "--model": (args, wert) => { args.model = wert; },
   "--label": (args, wert) => { args.label = wert; },
   "--review-label": (args, wert) => { args.reviewLabel = wert; },
+  "--erzeuge-label": (args, wert) => { args.erzeugeLabel = wert; },
   "--stufe": (args, wert) => { args.stufe = wert; },
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
@@ -365,6 +396,7 @@ const WERT_FLAGS = {
 // Schalter ohne Wert: Flag -> Feldname, immer auf true.
 const SCHALTER_FLAGS = {
   "--review": "review",
+  "--erzeuge": "erzeuge",
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",
@@ -372,7 +404,10 @@ const SCHALTER_FLAGS = {
 };
 
 function parseArgs(argv) {
-  const args = { max: 10, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, stufe: null };
+  // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
+  // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
+  // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
+  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, erzeuge: false, erzeugeLabel: null, stufe: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (Object.hasOwn(SOFORT_FLAGS, a)) {
@@ -394,6 +429,59 @@ function parseArgs(argv) {
 }
 
 /**
+ * Loest die modusabhaengigen Defaults auf (Issue #517).
+ *
+ * Zwei Felder haengen am Modus statt am Flag allein: `max` zaehlt im Erzeugungsmodus
+ * Ausgangsdokumente (Default 3) und sonst Session-Starts (Default 10), und der Name des
+ * Routing-Labels folgt der Stufe. Ein gesetzter Wert gewinnt in beiden Faellen — auch
+ * ein unbrauchbarer: `--max abc` faellt hier NICHT auf einen Default zurueck, sondern
+ * geht als NaN in die Zahlenpruefung und wird dort abgewiesen.
+ *
+ * Eigene Funktion und exportiert, weil das Ergebnis von aussen sonst unsichtbar bleibt:
+ * `parseArgs`/`pruefeArgs` sind nicht exportiert, und ein angenommener Erzeugungslauf
+ * endet vor jeder Log-Zeile.
+ */
+export function loeseModusDefaults(args) {
+  const max = args.max ?? (args.erzeuge ? DEFAULT_MAX_ERZEUGUNG : DEFAULT_MAX_SESSIONS);
+  // Object.hasOwn statt direktem Zugriff: 'constructor' als Stufe lieferte sonst eine
+  // Funktion als Labelnamen, statt am Stufen-Default vorbeizulaufen.
+  const ausStufe = Object.hasOwn(ERZEUGE_LABEL_JE_STUFE, args.stufe ?? "") ? ERZEUGE_LABEL_JE_STUFE[args.stufe] : null;
+  const erzeugeLabel = args.erzeugeLabel ?? ausStufe;
+  return { max, erzeugeLabel };
+}
+
+/**
+ * Prueft --stufe gegen den gewaehlten Modus (Issue #283, erweitert in Issue #517).
+ *
+ * Eigene Funktion, weil dasselbe Flag zwei Bedeutungen traegt: im Review-Modus das
+ * GEPRUEFTE Dokument (drei Stufen, Default issue), im Erzeugungsmodus das ENTSTEHENDE
+ * (zwei Stufen, Pflichtangabe). Beides in pruefeArgs zu falten machte die Funktion
+ * unlesbar und verwischte genau die Unterscheidung, um die es geht.
+ */
+function pruefeStufe(args) {
+  if (args.stufe === null) {
+    // Pflicht statt stillem Default: Der Default entschiede, ob eine Nacht einen Plan
+    // oder Arbeitspakete erzeugt — das ist keine Voreinstellung, das ist der Auftrag.
+    if (args.erzeuge) fail(`--erzeuge braucht --stufe ${NIGHT_ERZEUGE_STUFEN.join(" | ")}`);
+    return;
+  }
+  if (!args.review && !args.erzeuge) {
+    fail("--stufe gilt nur im Review-Modus oder Erzeugungsmodus — zusammen mit --review oder --erzeuge verwenden.");
+  }
+  const erlaubt = args.erzeuge ? NIGHT_ERZEUGE_STUFEN : NIGHT_REVIEW_STUFEN;
+  if (typeof args.stufe !== "string" || args.stufe.startsWith("--") || args.stufe.trim() === "") {
+    fail(`--stufe braucht einen Wert: ${erlaubt.join(" | ")}`);
+  }
+  if (erlaubt.includes(args.stufe)) return;
+  // Im Erzeugungsmodus ist 'fachlich' kein unbekannter Wert, sondern ein bekannter an
+  // der falschen Stelle: Eine Nacht erzeugt keinen Fachplan, sie erzeugt aus einem.
+  if (args.erzeuge) {
+    fail(`--stufe ${args.stufe} gibt es im Erzeugungsmodus nicht — erlaubt: ${erlaubt.join(" | ")}`);
+  }
+  fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${erlaubt.join(" | ")}`);
+}
+
+/**
  * Prueft die eingelesenen Argumente auf Plausibilitaet und bricht bei Verstoss ab.
  *
  * Getrennt vom Einlesen, weil es eine andere Frage ist: parseArgs uebersetzt argv in
@@ -404,19 +492,25 @@ function parseArgs(argv) {
  * Ausgang — der Lauf saehe erfolgreich aus und pruefte die falsche Sorte Dokument.
  */
 function pruefeArgs(args) {
+  // Zuerst der Modus: Mit beiden Schaltern haette --stufe zwei Bedeutungen, --max zwei
+  // Defaults und das Label zwei Quellen — jede folgende Meldung waere zweideutig.
+  if (args.review && args.erzeuge) {
+    fail("--review und --erzeuge schliessen sich aus — ein Modus pro Lauf.");
+  }
+
+  // Die Aufloesung steht VOR der Zahlenpruefung: Die Vorbelegung ist null, und die
+  // Pruefung wiese sonst jeden Aufruf ohne --max ab.
+  Object.assign(args, loeseModusDefaults(args));
+
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
 
-  if (args.stufe !== null) {
-    if (!args.review) {
-      fail("--stufe gilt nur im Review-Modus — zusammen mit --review verwenden.");
-    }
-    if (typeof args.stufe !== "string" || args.stufe.startsWith("--") || args.stufe.trim() === "") {
-      fail(`--stufe braucht einen Wert: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
-    }
-    if (!NIGHT_REVIEW_STUFEN.includes(args.stufe)) {
-      fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${NIGHT_REVIEW_STUFEN.join(" | ")}`);
-    }
+  pruefeStufe(args);
+
+  // Nur im Erzeugungsmodus geprueft: Ohne --erzeuge ist --erzeuge-label wirkungslos,
+  // genau wie --review-label ohne --review.
+  if (args.erzeuge && args.erzeugeLabel === "none") {
+    fail("--erzeuge-label kennt kein 'none' — das Routing-Label ist die Freigabe-Geste des Menschen und laesst sich nicht abschalten.");
   }
 }
 
@@ -707,6 +801,12 @@ const GATE_ABLEHNUNG = {
 // board.mjs eine vierte Stufe, muss sie hier mit — sonst nimmt der Runner sie als
 // unbekannten Wert an und bricht ab, waehrend der Skill sie kennt.
 const NIGHT_REVIEW_STUFEN = ["fachlich", "plan", "issue"];
+
+// Was der Erzeugungsmodus herstellen kann (Issue #517) — dasselbe Vokabular, aber ein
+// Dokument weiter: --stufe benennt hier das ENTSTEHENDE Dokument, die Eingangsstufe ist
+// implizit sein Vorgaenger. 'fachlich' fehlt, weil ein Fachplan aus einem Menschen
+// entsteht und nicht aus einer Nacht.
+const NIGHT_ERZEUGE_STUFEN = ["plan", "issue"];
 
 // Welcher Marker die jeweilige Stufe nachweist (Issue #279).
 const STUFEN_MARKER = {
@@ -2696,6 +2796,15 @@ export async function laufeImplementierung(args, ctx) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+
+  // Der Erzeugungsmodus endet vor vorbereiten, solange seine Schleife fehlt (Issue #518).
+  // Faellt er stattdessen durch, landet er in laufeDryRun oder laufeImplementierung und
+  // liefe gegen Ready — ein Erzeugungsauftrag saehe am Board wie eine Implementierung aus.
+  // Die Meldung ist zugleich der einzige Beobachtungskanal fuer "Argumente angenommen".
+  if (args.erzeuge) {
+    fail("Erzeugungsmodus: Schleife folgt in Issue #518 — Argumente sind gueltig.", "zustand");
+  }
+
   const ctx = vorbereiten(args);
 
   // Drei einander ausschliessende Programme. Review und Dry-Run beenden den Prozess
