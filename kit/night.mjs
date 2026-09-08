@@ -223,11 +223,20 @@ const parsePruefvorgabeFallback = (body) => {
 const praefixFallback = (was) => (title) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
 };
+// Der Pruefzustand und die Rundengrenze kommen seit Issue #521 aus demselben Modul
+// (Issue #516 exportiert beide). Eine eigene Ableitung im Runner waere die zweite
+// Wahrheit ueber den Pruefstand, eine eigene Drei die zweite ueber die Grenze — genau
+// davor warnt der Kommentar an GRENZE_RUNDEN in board.mjs.
+const reviewZustandFallback = (body, comments, stufe) => {
+  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — der Pruefzustand ist nicht ableitbar.`);
+};
 const {
   parsePruefvorgabe,
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  reviewZustand,
+  GRENZE_RUNDEN,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
@@ -235,6 +244,13 @@ const {
       istFachlich: praefixFallback("[Fachlich]"),
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
+      reviewZustand: reviewZustandFallback,
+      // Bewusst keine Zahl: Eine Drei hier waere genau die zweite Wahrheit, die der
+      // Export in board.mjs vermeidet. `undefined` laesst `grenzeErreicht` unten in die
+      // sichere Richtung fallen — ohne Nachbarn laeuft keine Pruef-Session. Dorthin
+      // kommt der Runner ohnehin nicht: Jeder Board-Zugriff startet board.mjs als
+      // Subprozess und bricht vorher ab.
+      GRENZE_RUNDEN: undefined,
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -266,6 +282,8 @@ export const nachbarn = {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  reviewZustand,
+  GRENZE_RUNDEN,
   zusammenfassungPfad,
 };
 
@@ -2696,6 +2714,201 @@ async function erzeugeAusQuelle(kandidat, args, stufe, nummer) {
   return { ergebnis: { quelle, erzeugt, fortgesetzt: false }, hardStop: false };
 }
 
+// --- Erzeugungsschleife, Phase 2: Pruefrunden und Label-Verbrauch (Issue #521) ---
+
+/**
+ * Die Kommentare eines Dokuments als Array — bei jedem Tracker.
+ *
+ * GitHub, GitLab und Toolbox liefern ein `comments`-Feld, der lokale Tracker haengt
+ * Kommentare an den Body (`commentIssue`). `reviewZustand` liest die Runden-Anker
+ * ausschliesslich aus dem Array: Ohne diese Trennung ergaebe die Ableitung beim lokalen
+ * Tracker nie `befunde` oder `grenze`, und das Routing-Label fiele dort nach der ersten
+ * Runde statt nach der dritten.
+ *
+ * Dieselbe Zweiteilung und dieselbe eng begrenzte Kopplung an LOKALER_KOMMENTARKOPF wie
+ * in `neueKommentare` — nur ohne Vorher-Stand: Hier zaehlen alle Runden des Dokuments,
+ * nicht die dieser Session.
+ */
+function kommentareVon(full) {
+  if (Array.isArray(full?.comments)) return full.comments;
+  return String(full?.body || "")
+    .split(LOKALER_KOMMENTARKOPF)
+    .slice(1)
+    .map((t) => ({ body: t.trim() }))
+    .filter((k) => k.body !== "");
+}
+
+/**
+ * Wie viele Pruefrunden der Zielstufe am Dokument stehen.
+ *
+ * Gezaehlt wird die ANZAHL der Anker, nicht die Nummer darin: `/issue-review` nummeriert
+ * je Session ab 1, drei Naechte hinterlassen dreimal `Runde 1`. Wer die hoechste Nummer
+ * naehme, erreichte die Grenze nie.
+ *
+ * board.mjs bleibt die einzige Wahrheit ueber den ZUSTAND; gezaehlt wird hier nur fuer die
+ * beiden Schleifengrenzen, und dafuer liefert `reviewZustand` keine Zahl. Der Markername
+ * kommt aus STUFEN_MARKER und wird nicht zweitgeschrieben.
+ */
+function ankerZahl(kommentare, stufe) {
+  const marker = STUFEN_MARKER[stufe];
+  if (!marker) return 0;
+  const anker = new RegExp(String.raw`^\s*##\s*${marker.replace(/:$/, "")},\s*Runde\b`, "i");
+  return kommentare.filter((k) => anker.test(String(k?.body || "").split("\n")[0] || "")).length;
+}
+
+/**
+ * Ist die Rundengrenze aus board.mjs erreicht?
+ *
+ * Bewusst als Verneinung von `<`: Fehlt der Nachbar, ist `GRENZE_RUNDEN` undefined, jeder
+ * Vergleich false — und die Antwort faellt auf "ja, Grenze erreicht", also auf "keine
+ * Session". Das ist die sichere Richtung; ein `>=` haette dort endlos weitergeprueft.
+ */
+const grenzeErreicht = (anker) => !(anker < GRENZE_RUNDEN);
+
+// Wann ein Dokument fertig ist. `ausgefallen` steht bewusst NICHT dabei: Das ist ein
+// technisches Scheitern, kein Ergebnis — die Freigabe darf sich daran nicht verbrauchen.
+const ENDZUSTAENDE = new Set(["fertig", "grenze"]);
+
+/**
+ * Welches der vier Enden am aktuellen Board-Zustand greift — oder `null` fuer eine
+ * weitere Runde (Plan #513, A3).
+ *
+ * Rueckgabe `{ endzustand, meldung }`. Getrennt von der Schleife gehalten, weil beide
+ * Verschiedenes leisten: Die Schleife startet Sessions, diese Funktion liest, was der
+ * Board-Zustand bedeutet — und die Reihenfolge der vier Faelle steht so auf einem Blick.
+ *
+ *   1. Endzustand: `reviewZustand` liefert `fertig` oder `grenze`, oder das Dokument
+ *      traegt `kit:klaeren`. Die Labels `review:fertig`/`review:grenze` sind Projektion
+ *      davon und werden nicht gelesen — sie entstehen nur mit `statusLabels: true`, und
+ *      ohne Opt-in fiele das Routing-Label sonst nie.
+ *   2. Rundengrenze erreicht — ohne Endzustand, das Label bleibt.
+ *   3. Die letzte Session hat keine neue Runde hinterlassen. Ohne diese Bedingung kann
+ *      die Schleife endlos laufen: Eine Session, die per Timeout stirbt (ausdruecklich
+ *      KEIN harter Stopp) oder nichts schreibt, erhoeht den Rundenstand nicht, und
+ *      `--max` zaehlt hier Ausgangsdokumente, nicht Sessions.
+ *   4. Ein Reviewer ist ausgefallen.
+ *
+ * Die Reihenfolge ist nicht beliebig: Der Endzustand steht vor 3, sonst gaelte eine
+ * Session, die den Marker setzt ohne zu kommentieren, als ergebnislos.
+ *
+ * `vorAnker` ist `null`, solange in diesem Lauf keine Session gelaufen ist. Die Faelle 3
+ * und 4 beurteilen, was die letzte Session hinterlassen hat, und ohne Session gibt es
+ * nichts zu beurteilen: Als Vorpruefung bekaeme ein Dokument, das eine fruehere Nacht als
+ * `ausgefallen` zuruecklaesst, nie wieder eine Session — obwohl es keinen Endzustand
+ * traegt und der Schritt sich gerade deshalb wiederholen soll.
+ */
+function pruefEnde(stand, stufe, anker, vorAnker) {
+  const zustand = reviewZustand(stand.body, kommentareVon(stand), stufe);
+  const offen = (meldung) => ({ endzustand: false, meldung });
+
+  if (hatKlaerenLabel(stand)) {
+    return { endzustand: true, meldung: `traegt ${KLAEREN_LABEL} — eine offene Entscheidung wartet auf einen Menschen.` };
+  }
+  if (ENDZUSTAENDE.has(zustand)) {
+    return { endzustand: true, meldung: `Endzustand '${zustand}' nach ${anker} Runde(n) — keine weitere Pruef-Session.` };
+  }
+  if (grenzeErreicht(anker)) {
+    return offen(`${anker} Runde(n) gelaufen, Rundengrenze erreicht — ohne Endzustand.`);
+  }
+  if (vorAnker === null) return null;
+  if (anker <= vorAnker) {
+    return offen("die Pruef-Session hinterliess keine neue Runde — ohne Ergebnis, bitte morgens sichten.");
+  }
+  if (zustand === "ausgefallen") {
+    return offen("ein Reviewer ist ausgefallen — die Pruefung endet hier, das Dokument bleibt offen.");
+  }
+  return null;
+}
+
+/**
+ * Laesst EIN erzeugtes Dokument pruefen, bis `pruefEnde` ein Ende meldet.
+ *
+ * Rueckgabe `{ endzustand, hardStop }`. Der Zustand wird bei jedem Durchgang frisch vom
+ * Board gelesen und nicht aus dem fortgeschrieben, was der Runner sich gemerkt hat —
+ * geschrieben hat ihn eine fremde Session.
+ */
+async function pruefeDokument(dokId, args, stufe) {
+  let vorAnker = null; // null heisst: in diesem Lauf ist noch keine Session gelaufen
+  for (;;) {
+    const stand = board("issue", "get", dokId);
+    const anker = ankerZahl(kommentareVon(stand), stufe);
+    const ende = pruefEnde(stand, stufe, anker, vorAnker);
+    if (ende !== null) {
+      log(`  Dokument #${dokId}: ${ende.meldung}`);
+      return { endzustand: ende.endzustand, hardStop: false };
+    }
+
+    log(`Pruef-Session zu Dokument #${dokId}: Runde ${anker + 1} von hoechstens ${GRENZE_RUNDEN}.`);
+    const started = Date.now();
+    // Wie im Review-Modus mit REVIEW_TIMEOUT_MS und nicht mit --timeout-min: Es ist
+    // dieselbe /issue-review-Session, und die baut nichts und committet nichts.
+    const res = await runSession(dokId, args, {
+      prompt: `/issue-review #${dokId}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
+      timeoutMs: REVIEW_TIMEOUT_MS,
+    });
+    const minutes = ((Date.now() - started) / 60000).toFixed(1);
+    if (reviewRundeGestoppt({ id: dokId }, res, minutes, "Pruef-Session")) {
+      return { endzustand: false, hardStop: true };
+    }
+    vorAnker = anker;
+  }
+}
+
+/**
+ * Phase 2 zu EINER Quelle: alle ihre Dokumente pruefen, dann die Freigabe verbrauchen.
+ *
+ * Das Routing-Label faellt erst, wenn JEDES erzeugte Dokument einen Endzustand traegt.
+ * Ein Label, das nach dem ersten fertigen Paket faellt, liesse die uebrigen ungeprueft
+ * liegen — und die naechste Nacht faende keine Freigabe mehr, sie nachzuholen.
+ *
+ * Bricht die Nacht vorher ab, bleibt das Label stehen und der Schritt wiederholt sich ohne
+ * neue menschliche Geste. Die Alternative — Verbrauch beim Start — zwaenge nach jedem
+ * technischen Ausfall zu einer neuen Freigabe, ohne dass etwas geschehen waere.
+ *
+ * `issue label remove` und nie `add`: Ein Lauf, der Routing-Labels setzen koennte, koennte
+ * sich selbst freigeben.
+ */
+async function pruefeErzeugtes(ergebnis, args, stufe) {
+  let alleFertig = true;
+  for (const dokId of ergebnis.erzeugt) {
+    const runde = await pruefeDokument(dokId, args, stufe);
+    if (runde.hardStop) return { verbraucht: false, hardStop: true };
+    if (!runde.endzustand) alleFertig = false;
+  }
+
+  if (!alleFertig) {
+    log(`  Issue #${ergebnis.quelle}: nicht jedes Dokument traegt einen Endzustand — '${args.erzeugeLabel}' bleibt stehen.`);
+    return { verbraucht: false, hardStop: false };
+  }
+  board("issue", "label", "remove", ergebnis.quelle, args.erzeugeLabel);
+  log(`  Issue #${ergebnis.quelle}: ${dokumentListe(ergebnis.erzeugt)} geprueft — '${args.erzeugeLabel}' entfernt.`);
+  return { verbraucht: true, hardStop: false };
+}
+
+/**
+ * Phase 2 ueber alle Quellen, die ein Dokument hervorgebracht haben — `true` bei hartem Stopp.
+ *
+ * Quellen ohne Dokument bleiben draussen: Bei ihnen waere "alle Dokumente tragen einen
+ * Endzustand" leer erfuellt, und das Routing-Label fiele, obwohl nichts entstanden ist.
+ */
+async function laufePruefphase(mitDokument, args, stufe) {
+  let verbraucht = 0;
+  let hardStop = false;
+
+  for (const ergebnis of mitDokument) {
+    const runde = await pruefeErzeugtes(ergebnis, args, stufe);
+    if (runde.verbraucht) verbraucht++;
+    if (runde.hardStop) {
+      hardStop = true;
+      break;
+    }
+  }
+
+  log(`Nacht-Pruefung beendet (Stufe ${stufe}): ${verbraucht} von ${mitDokument.length} Quelle(n) `
+    + `freigegeben, ${mitDokument.length - verbraucht} behalten ihr Label${hardStop ? ", HARTER STOPP" : ""}.`);
+  return hardStop;
+}
+
 /**
  * Phase 1 der Erzeugungsschleife ueber alle Kandidaten (Issue #520).
  *
@@ -2741,10 +2954,13 @@ async function runErzeugungsLoop(kandidaten, args) {
   log(`Nacht-Erzeugung beendet (Stufe ${stufe}): ${mitDokument.length - fortgesetzt} erzeugt, `
     + `${fortgesetzt} fortgesetzt, ${ergebnisse.length - mitDokument.length} ohne Dokument, `
     + `${uebersprungen} uebersprungen${hardStop ? ", HARTER STOPP" : ""}.`);
-  // Die Uebergabe an Phase 2 (Issue #521): Sie nimmt `mitDokument` und laesst die
-  // Dokumente pruefen. Bis dahin endet der Lauf hier — die Dokumente liegen im Backlog,
-  // und das Routing-Label steht noch an ihren Quellen.
-  log(`Morgen-Ritual: die ${mitDokument.length} entstandene(n) Dokument(e) sichten und pruefen lassen. Protokoll: ${LOG_FILE}`);
+
+  // Phase 2 (Issue #521): Ein erzeugtes Dokument ist nichts wert, solange es ungeprueft im
+  // Backlog liegt. Nach einem harten Stopp in Phase 1 gar nicht mehr — dann ist die Lage
+  // unklar, und Sessions auf unklarer Lage sind genau das, was der Stopp verhindert.
+  if (!hardStop) hardStop = await laufePruefphase(mitDokument, args, stufe);
+
+  log(`Morgen-Ritual: die Befunde an den entstandenen Dokumenten sichten und nach Backlog ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
   process.exit(hardStop ? 1 : 0);
 }

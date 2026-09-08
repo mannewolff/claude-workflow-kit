@@ -30,6 +30,11 @@ test("[night-6] ohne Hook stammen die Board-Bindungen aus board.mjs, nicht aus d
   assert.equal(night.nachbarn.istFachlich, board.istFachlich);
   assert.equal(night.nachbarn.istPlan, board.istPlan);
   assert.equal(night.nachbarn.istIdee, board.istIdee);
+  // Seit Issue #521 auch der Pruefzustand und die Rundengrenze: Eine eigene Ableitung im
+  // Runner waere die zweite Wahrheit ueber den Pruefstand, eine eigene Drei die zweite
+  // ueber die Grenze — und beide saehe man an keinem Ergebnis.
+  assert.equal(night.nachbarn.reviewZustand, board.reviewZustand);
+  assert.equal(night.nachbarn.GRENZE_RUNDEN, board.GRENZE_RUNDEN);
 });
 
 test("[night-6] ohne Hook stammt zusammenfassungPfad aus checks.mjs", () => {

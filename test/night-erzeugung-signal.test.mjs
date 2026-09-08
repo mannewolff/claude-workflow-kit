@@ -171,9 +171,21 @@ const BOARD_IM_FAKE = '"$KIT_ROOT/.claude/kit/board.mjs"';
 // die Zahl der Sessions.
 const MITSCHRIFT = String.raw`printf "%s\n<<<ENDE>>>\n" "$NIGHT_PROMPT" >> prompt.log`;
 
+/**
+ * Laesst den Fake nur in der Erzeugungsphase handeln.
+ *
+ * Seit Issue #521 folgt Phase 2 mit `/issue-review`-Sessions, und die laufen gegen
+ * denselben Fake. Ohne diese Weiche legte er auch dort Karten an — die Ergebnisse von
+ * Phase 1 waeren dann nicht mehr abzaehlbar.
+ */
+function nurErzeugung(aktion) {
+  return `case "$NIGHT_PROMPT" in /issue-review*) ;; *) ${aktion} ;; esac`;
+}
+
 /** Fake-Session, die eine Karte mit Titel und Body anlegt. */
 function legtAn(titel, body) {
-  return `${MITSCHRIFT}; node ${BOARD_IM_FAKE} issue create --title '${titel}' --body '${body}' > /dev/null`;
+  const anlegen = `node ${BOARD_IM_FAKE} issue create --title '${titel}' --body '${body}' > /dev/null`;
+  return `${MITSCHRIFT}; ${nurErzeugung(anlegen)}`;
 }
 
 const FAKE_STUMM = MITSCHRIFT;
@@ -183,6 +195,17 @@ function prompts(dir) {
   const p = join(dir, "prompt.log");
   if (!existsSync(p)) return [];
   return readFileSync(p, "utf-8").split("<<<ENDE>>>\n").map((t) => t.replace(/\n$/, "")).filter(Boolean);
+}
+
+/**
+ * Nur die Auftraege der Erzeugungsphase.
+ *
+ * Phase 2 (Issue #521) beauftragt danach `/issue-review` je erzeugtem Dokument. Die
+ * Tests hier messen Phase 1 — `prompts(dir).length` zaehlte sonst beide Phasen zusammen
+ * und schluege bei jeder Aenderung an der Pruefschleife fehl.
+ */
+function erzeugungsPrompts(dir) {
+  return prompts(dir).filter((p) => !p.startsWith("/issue-review"));
 }
 
 function erzeuge(dir, stufe, fake, extraArgs = []) {
@@ -248,7 +271,8 @@ test("mehrere neue Dokumente werden alle gefunden", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const id = quelle(dir, "issue");
     const kopf = `## Kontext\n\nPlan: Issue #${id}\n`;
-    const fake = `${MITSCHRIFT}; for n in A B; do node ${BOARD_IM_FAKE} issue create --title "Paket $n" --body '${kopf}' > /dev/null; done`;
+    const schleife = `for n in A B; do node ${BOARD_IM_FAKE} issue create --title "Paket $n" --body '${kopf}' > /dev/null; done`;
+    const fake = `${MITSCHRIFT}; ${nurErzeugung(schleife)}`;
     const res = erzeuge(dir, "issue", fake);
 
     assert.equal(res.status, 0, res.stderr + res.stdout);
@@ -282,7 +306,7 @@ test("ein Arbeitspaket mit derselben Herkunftszeile verhindert die Plan-Session 
     const res = erzeuge(dir, "plan", legtAn("[Plan] Der Weg", `## Kontext\n\nFachliche Quelle: Issue #${id}\n`));
 
     assert.equal(res.status, 0, res.stderr + res.stdout);
-    assert.equal(prompts(dir).length, 1, "die Plan-Session ist nicht gelaufen");
+    assert.equal(erzeugungsPrompts(dir).length, 1, "die Plan-Session ist nicht gelaufen");
     assert.doesNotMatch(res.stdout, /schon vorhanden/);
   });
 });
@@ -298,7 +322,7 @@ test("ein Paket in Ready verhindert die /issues-Session", NUR_POSIX, () => {
     const res = erzeuge(dir, "issue", FAKE_STUMM);
 
     assert.equal(res.status, 0, res.stderr + res.stdout);
-    assert.equal(prompts(dir).length, 0, "es lief eine Session, obwohl Pakete des Plans vorliegen");
+    assert.equal(erzeugungsPrompts(dir).length, 0, "es lief eine Session, obwohl Pakete des Plans vorliegen");
     assert.match(res.stdout, new RegExp(`Erzeugt aus Issue #${id}: #${paket}`));
     assert.match(res.stdout, /schon vorhanden/);
   });
