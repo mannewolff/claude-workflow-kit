@@ -7,9 +7,11 @@
 // Leitplanke aus Issue #266, deshalb dasselbe Testmuster wie in
 // test/board-autor-modell.test.mjs.
 //
-// Geprueft wird hier nur die ANWESENHEIT des Abschnitts. Die Form der Zeilen
-// darin prueft `spec.mjs check --paket` (Issue #442) — zwei Pruefungen derselben
-// Grammatik waeren zwei Wahrheiten.
+// Geprueft wird hier nur die ANWESENHEIT des Abschnitts. Die FORM der Zeilen
+// darin prueft board.mjs seit Issue #526 ebenfalls — nicht mit einer eigenen
+// Grammatik, sondern ueber `wirkungPruefen` aus der Nachbardatei spec.mjs. Es
+// bleibt also bei genau einer Fassung der Grammatik; die Tests dafuer stehen in
+// test/board-spec-wirkung-form.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -44,7 +44,7 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -54,7 +54,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.49.0";
+const KIT_VERSION = "1.50.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -2203,14 +2203,51 @@ export function istDokumentPraefix(title) {
   return istFachlich(title) || istPlan(title) || istIdee(title);
 }
 
-// Der Hilfetext nennt den fehlenden Abschnitt und den Ort der Formpruefung. Die
-// Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der die
-// Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
+// Der Hilfetext nennt den fehlenden Abschnitt und einen Weg, eine Datei vorab zu
+// pruefen. Die Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der
+// die Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
 // Regex.
 const SPEC_WIRKUNG_HILFE =
   'Der Body braucht einen Abschnitt "## Spec-Wirkung" (eigene Zeile, ausserhalb eines Code-Fences), ' +
   "der sagt, was das Paket an der Beschreibung unter specs/ aendert. " +
-  "Die Form der Zeilen darin prueft `node .claude/kit/spec.mjs check --paket <datei>`.";
+  "Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen.";
+
+// Die Grammatik der Wirkungszeilen kommt aus spec.mjs und wird hier NICHT
+// nachgebaut (Issue #526, Entscheidung aus #443): Zwei Fassungen derselben
+// Grammatik waeren zwei Wahrheiten, von denen die zweite still veraltet. Geprueft
+// wird trotzdem hier, denn `spec.mjs check --paket` rief niemand auf — ein Paket
+// mit formal ungueltiger Wirkungsangabe ueberstand am 2026-09-08 einen ganzen
+// Nachtlauf und fiel erst am Push-Gate auf.
+//
+// Dieselbe Bauart wie die Nachbarn in kit/night.mjs: Verzeichniskonstante mit
+// Test-Hook, bedingtes `await import` und ein Ersatz, der erst BEIM AUFRUF wirft.
+// Bedingt und nicht statisch, weil board.mjs auch als allein kopierte Datei
+// Auskunft geben koennen muss; werfend und nicht still, weil ein stilles
+// Durchlassen genau die Luecke waere, die dieses Paket schliesst. Ein Projekt ohne
+// `spec`-Block ruft den Ersatz nie — damit ist "nur bei gesetztem Block" ohne
+// zweite Bauart erfuellt.
+//
+// BOARD_NACHBAR_DIR ist ein reiner Test-Hook (wie NIGHT_NACHBAR_DIR in night.mjs):
+// Ohne ihn sind die Ersatzfunktionen nur mit einer Kopie im Temp-Verzeichnis
+// erreichbar, deren Treffer die Coverage nicht auf kit/board.mjs abbildet.
+// Bewusst nicht KIT_ROOT: Das verlegt die Suche nach der CONFIG in ein fremdes
+// Projekt — eine reine Funktion holt man sich aus dem spec.mjs, das zu dieser
+// Datei gehoert.
+const NACHBAR_DIR = process.env.BOARD_NACHBAR_DIR ? resolve(process.env.BOARD_NACHBAR_DIR) : __dirname;
+const NACHBAR_SPEC = join(NACHBAR_DIR, "spec.mjs");
+
+// Dieselbe Signatur wie die echte Funktion, `const` statt spaeterem Reassignment
+// (Begruendung bei den Fallbacks in night.mjs, Issue #394): Eine `let`-Bindung
+// laesst die statische Analyse nur den Stub sehen und meldet jeden korrekten
+// Aufruf als Fehler.
+const wirkungPruefenFallback = (text, bekannte, root = null) => {
+  throw new Error(
+    `spec.mjs liegt nicht neben board.mjs (${NACHBAR_SPEC}) — die Form der Spec-Wirkung ist nicht pruefbar.`,
+  );
+};
+const { wirkungPruefen } = existsSync(NACHBAR_SPEC)
+  ? await import(pathToFileURL(NACHBAR_SPEC).href)
+  : { wirkungPruefen: wirkungPruefenFallback };
 
 /**
  * Traegt der Body die Ueberschrift ausserhalb eines Code-Fences?
@@ -2228,16 +2265,49 @@ function specWirkungVorhanden(body) {
 }
 
 /**
- * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt.
+ * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt oder nicht zur
+ * Grammatik passt.
  *
  * Der Schalter ist das Vorhandensein des `spec`-Blocks, nicht ein Feld darin
- * (A1). Ohne Block bleibt `issue create` unveraendert — das Kit selbst ist so ein
- * Projekt, und waere diese Bedingung falsch, lehnte die Leitplanke die Pakete ab,
- * mit denen sie gebaut wird.
+ * (A1). Ohne Block bleiben `issue create` und `issue update` unveraendert — das
+ * Kit selbst ist so ein Projekt, und waere diese Bedingung falsch, lehnte die
+ * Leitplanke die Pakete ab, mit denen sie gebaut wird.
+ *
+ * Zwei Schritte, zwei verschiedene Auskuenfte: Die Anwesenheit prueft
+ * `specWirkungVorhanden` hier (mit Fence-Regel), die FORM der Zeilen prueft
+ * `wirkungPruefen` aus spec.mjs. Uebergeben werden nur die Bereichsnamen aus der
+ * Config und KEIN root — damit misst die Leitplanke Form und Config-Wissen, nicht
+ * den Dateibestand unter specs/. Das ist derselbe Umfang, den `apply` waehlt:
+ * Ein Paket darf eine Aussage anlegen, die ein spaeteres aendert, und gegen den
+ * Dateistand geprueft waere die zweite Angabe stets ein Befund.
+ *
+ * Die beiden lesen den Abschnitt nicht gleich: `wirkungsAbschnitt` in spec.mjs
+ * nimmt die ERSTE `## Spec-Wirkung`-Zeile ohne Fence-Regel. Ein gefenctes
+ * Beispiel VOR dem echten Abschnitt wird deshalb von der Formpruefung gelesen.
+ * Die Grenze bleibt bewusst so — `fenceLauf` liegt hier, und ein Import aus
+ * spec.mjs heraus ergaebe einen Zyklus oder eine zweite Fence-Fassung.
+ * test/board-spec-wirkung-form.test.mjs haelt den Fall fest.
+ *
+ * Gemeldet wird JEDER Befund mit seiner Zeilennummer, nicht nur der erste: Wer je
+ * Lauf einen einzigen Fehler bekommt, braucht so viele Laeufe wie das Paket
+ * Fehler hat.
  */
 function specWirkungSicherstellen(config, body, title) {
-  if (!config?.spec || istDokumentPraefix(title) || specWirkungVorhanden(body)) return;
-  fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
+  if (!config?.spec || istDokumentPraefix(title)) return;
+  if (!specWirkungVorhanden(body)) {
+    fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
+  }
+
+  const fehler = wirkungPruefen(body, Object.keys(config.spec.bereiche ?? {}));
+  if (fehler.length === 0) return;
+
+  // Der fehlende Abschnitt hat keine Zeile — dort bleibt das Praefix weg, statt
+  // eine Zeilennummer zu erfinden, die niemand aufschlagen kann (wie in spec.mjs).
+  const zeilen = fehler.map(({ nr, grund }) => {
+    const stelle = nr === null ? "" : `Zeile ${nr}: `;
+    return `  ${stelle}${grund}`;
+  });
+  fail(`Der Abschnitt "## Spec-Wirkung" ist nicht gueltig:\n${zeilen.join("\n")}\n${SPEC_WIRKUNG_HILFE}`);
 }
 
 // ============================================================
@@ -2434,9 +2504,20 @@ const REVIEW_STUFEN_MARKER = {
 };
 
 /**
+ * Ab wie vielen geprueften Runden ein Dokument als „Pruefgrenze erreicht" gilt
+ * (Issue #516, fachlich #408). Exportiert, damit `kit/night.mjs` sie importieren
+ * kann statt sie zu wiederholen — dieselbe Linie wie bei `parsePruefvorgabe`.
+ * Eine zweite Drei dort waere eine zweite Wahrheit ueber die Grenze.
+ *
+ * Die Schwelle ist fest und unabhaengig von `Pruefung:`: Sie sagt nicht, wie oft
+ * geprueft werden SOLL, sondern ab wann weitere Runden nichts mehr bringen.
+ */
+export const GRENZE_RUNDEN = 3;
+
+/**
  * Der Pruefzustand eines Dokuments, abgeleitet aus Body und Kommentaren (Issue #381).
  *
- * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen`. Die Funktion ist rein:
+ * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen` | `grenze`. Die Funktion ist rein:
  * Sie schreibt nichts, ruft nichts und kennt kein Label. Das Zustandslabel aus
  * Issue #384 ist ihr erster Leser, nicht ihre Definition — haenge ein Gate am
  * Label statt an dieser Ableitung, gaebe es zwei Wahrheiten ueber den Pruefstand.
@@ -2448,8 +2529,19 @@ const REVIEW_STUFEN_MARKER = {
  *  2. Gueltiger, nicht verfallener `Pruefung: Verzicht` -> `fertig`. Der Mensch hat
  *     entschieden, dass hier nicht geprueft wird; das ist ein Ergebnis, kein Loch.
  *  3. Juengster Review-Kommentar der Stufe mit Ausfall-Vermerk -> `ausgefallen`.
- *  4. Juengster Review-Kommentar der Stufe -> `befunde`.
- *  5. sonst -> `offen`.
+ *  4. Mindestens `GRENZE_RUNDEN` Review-Kommentare der Stufe OHNE Ausfall-Vermerk
+ *     -> `grenze` (Issue #516). Gezaehlt wird die ANZAHL der Anker, nicht die Zahl
+ *     `n` darin: `/issue-review` nummeriert je Session ab 1, drei Naechte
+ *     hinterlassen dreimal `Runde 1`. Wer die hoechste Nummer naehme, erreichte die
+ *     Grenze nie. Verglichen wird mit `>=`, sonst fiele ein Dokument mit vier
+ *     Ankern auf `befunde` zurueck.
+ *  5. Juengster Review-Kommentar der Stufe -> `befunde`.
+ *  6. sonst -> `offen`.
+ *
+ * **Ein Ausfall ist keine Pruefung.** Ausfall-Kommentare tragen denselben Anker,
+ * zaehlen fuer die Grenze aber nicht mit, und Regel 3 steht bewusst vor Regel 4:
+ * Sonst stuende ein Dokument nach drei technisch gescheiterten Naechten auf
+ * `grenze`, obwohl nie jemand geprueft hat.
  *
  * **Woran ein Ausfall erkannt wird**, muss festgelegt sein, sonst ist Regel 3 nicht
  * anwendbar: Der Skill verlangt heute den Anker `## <Stufe>-Review, Runde n` in der
@@ -2489,8 +2581,11 @@ export function reviewZustand(body, comments, stufe) {
     anker.test(String(k?.body || "").split("\n")[0] || "")
   );
   if (eigene.length > 0) {
-    const zeilen = normalisiereZeilenenden(String(eigene.at(-1).body || "")).split("\n");
-    return /ausgefallen|ausfall/i.test(zeilen[1] || "") ? "ausgefallen" : "befunde";
+    const ausfall = (k) =>
+      /ausgefallen|ausfall/i.test(normalisiereZeilenenden(String(k?.body || "")).split("\n")[1] || "");
+    if (ausfall(eigene.at(-1))) return "ausgefallen";
+    if (eigene.filter((k) => !ausfall(k)).length >= GRENZE_RUNDEN) return "grenze";
+    return "befunde";
   }
 
   return "offen";
@@ -2791,7 +2886,7 @@ async function issueComment(tracker, args) {
 //
 // Ein leerer Body ist ein harter Fehler statt eines stillen No-ops — ein
 // versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
-async function issueUpdate(tracker, args) {
+async function issueUpdate(tracker, config, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
   const neu = leseTextQuelle(args.body, args["body-file"], "body");
@@ -2799,7 +2894,19 @@ async function issueUpdate(tracker, args) {
   // der neue die Pruefung verringert. Scheitert das Lesen, endet der Aufruf hier —
   // ein Schreibzugriff auf halbem Wissen waere genau der Bypass, den die Leitplanke
   // schliessen soll.
-  const { body: alt } = await tracker.getIssue(id);
+  const { body: alt, title } = await tracker.getIssue(id);
+  // Die Spec-Wirkung wird auch beim Schreiben geprueft (Issue #526): Genau ueber
+  // `update` schreibt `/issue-review` den geschaerften Body zurueck — auch nachts —,
+  // und eine Leitplanke, die nur beim Anlegen greift, hat dort ihre offene Tuer.
+  //
+  // NACH getIssue und VOR updateIssue: Der Lesezugriff ist zulaessig, der
+  // Schreibzugriff nicht. `update` traegt bewusst keinen Titel, und erst getIssue
+  // liefert ihn fuer die Praefix-Ausnahme — ohne diese Reihenfolge wiese der
+  // Adapter jedes `[Plan]`-Dokument ab, das der Nacht-Review zurueckschreibt.
+  //
+  // VOR pruefvorgabeDurchsetzen: Ein Body mit beiden Fehlern bekommt zuerst die
+  // Wirkungsangabe gemeldet.
+  specWirkungSicherstellen(config, neu, title);
   await tracker.updateIssue(id, { body: pruefvorgabeDurchsetzen(alt || "", neu) });
   out({ ok: true, id });
 }
@@ -2814,7 +2921,7 @@ async function dispatchIssue(command, args) {
     case "epics":   return issueEpics(tracker);
     case "activity": return issueActivity(tracker, config, args);
     case "move":    return issueMove(tracker, args);
-    case "update":  return issueUpdate(tracker, args);
+    case "update":  return issueUpdate(tracker, config, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     default:
@@ -3391,10 +3498,10 @@ function issueReviewCheck(args = {}) {
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
-// Die drei Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
+// Die vier Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
 // Konfigurierbare Namen waeren eine zweite Wahrheit und zerstoerten die
 // Wiedererkennbarkeit ueber Projekte hinweg.
-const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig"];
+const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig", "review:grenze"];
 
 // `ausgefallen` bildet auf `review:offen` ab (Plan #368, A3): Ein ausgefallener
 // Reviewer ist kein Pruefergebnis — das Ticket ist so ungeprueft wie zuvor.
@@ -3403,6 +3510,7 @@ const ZUSTAND_ZU_LABEL = {
   befunde: "review:befunde",
   fertig: "review:fertig",
   ausgefallen: "review:offen",
+  grenze: "review:grenze",
 };
 
 /**

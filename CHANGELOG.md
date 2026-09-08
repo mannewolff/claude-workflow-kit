@@ -2,6 +2,23 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.50.0] - 2026-09-08
+- chore: Spec fortgeschrieben (#518, #521, #522, #523, #526)
+- board.mjs: Formpruefung der Spec-Wirkung beim Anlegen und Schreiben (#526)
+- docs: die naechtliche Erzeugungskette dokumentieren (#525)
+- issues: ein geprueftes Plandokument aus der Vornacht als Eingang (#524)
+- techplan: Betriebsart-Schalter fuer den unbeaufsichtigten Lauf (#523)
+- night.mjs: Ergebnisstand der Erzeugungsnacht (art erzeugung) (#522)
+- night.mjs: Erzeugungsschleife Phase 2 — Pruefrunden und Label-Verbrauch (#521)
+- night.mjs: Erzeugungsschleife Phase 1 — Session, Erfolgssignal, Fortsetzen (#520)
+- night.mjs: Kandidatenauswahl mit Marker-Eintritt und Stopp-Fragen-Pruefung (#519)
+- night.mjs: Geruest des Erzeugungsmodus mit Vorflug und ideaStored-Guard (#518)
+- Vorhaben SPECNOTIZ einchecken
+- Vorhaben-Notiz plan-510 committen
+- night.mjs: Flags --erzeuge und --erzeuge-label (#517)
+- reviewZustand: fuenfter Zustand grenze mit Label review:grenze (#516)
+- Probelauf-Test plattformehrlich machen (#527)
+
 ## [1.49.0] - 2026-09-08
 - Drei ungedeckte Fehlerpfade testen (#515)
 - Fehler ist der Reviewzuordnung codex behoben

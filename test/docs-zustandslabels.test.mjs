@@ -17,8 +17,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DOKU = readFileSync(join(root, "docs", "dokumentation.md"), "utf-8");
 const VORLAGE = readFileSync(join(root, "templates", "CLAUDE-workflow.md"), "utf-8");
 
-test("Die Doku nennt alle vier Zustaende", () => {
-  for (const z of ["offen", "befunde", "fertig", "ausgefallen"]) {
+test("Die Doku nennt alle fuenf Zustaende", () => {
+  for (const z of ["offen", "befunde", "fertig", "ausgefallen", "grenze"]) {
     assert.match(DOKU, new RegExp("`" + z + "`"), `Zustand ${z} fehlt`);
   }
 });
@@ -38,10 +38,10 @@ test("Die Tabelle zeigt ausgefallen -> review:offen", () => {
 });
 
 test("Jede Zustandszeile nennt Ableitungsregel und Label", () => {
-  const zeilen = DOKU.split("\n").filter((z) => /^\|\s*`(offen|befunde|fertig|ausgefallen)`/.test(z));
-  assert.equal(zeilen.length, 4, `${zeilen.length} Zustandszeilen statt 4`);
+  const zeilen = DOKU.split("\n").filter((z) => /^\|\s*`(offen|befunde|fertig|ausgefallen|grenze)`/.test(z));
+  assert.equal(zeilen.length, 5, `${zeilen.length} Zustandszeilen statt 5`);
   for (const z of zeilen) {
-    assert.match(z, /`review:(offen|befunde|fertig)`/, `Zeile ohne Label: ${z}`);
+    assert.match(z, /`review:(offen|befunde|fertig|grenze)`/, `Zeile ohne Label: ${z}`);
     assert.ok(z.split("|").filter((s) => s.trim()).length >= 3, `Zeile ohne Ableitungsregel: ${z}`);
   }
 });

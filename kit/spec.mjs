@@ -58,7 +58,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.49.0";
+const KIT_VERSION = "1.50.0";
 
 const SPECS_DIR = "specs";
 const VORHABEN_DIR = "vorhaben";
@@ -656,8 +656,14 @@ function wirkungsZeilen(text) {
  * `apply`, begruendet bei `neuFehler`. Es ist dieselbe Funktion, nicht eine
  * zweite Grammatik: Zwei Pruefungen desselben Abschnitts waeren zwei Wahrheiten
  * darueber, was ein gueltiges Paket ist.
+ *
+ * Seit Issue #526 ist sie exportiert: `board.mjs` laedt sie als Nachbardatei und
+ * prueft damit schon beim Anlegen und Schreiben eines Pakets, statt den Fehler
+ * bis zum Push-Gate durchzureichen. Bewusst DIESE Funktion und kein Wrapper "nur
+ * Form" — `neuFehler` prueft auch bei `root === null` gegen `bekannte`, und ein
+ * Einstieg, der dort `[]` uebergaebe, wiese jede gueltige NEU-Zeile ab.
  */
-function wirkungPruefen(text, bekannte, root = null) {
+export function wirkungPruefen(text, bekannte, root = null) {
   const { fehlt, leer, kopf, zeilen } = wirkungsZeilen(text);
   if (fehlt) {
     return [{ nr: null, grund: `Abschnitt '${WIRKUNG_UEBERSCHRIFT}' fehlt — jedes Paket sagt, was es an der Beschreibung aendert.` }];

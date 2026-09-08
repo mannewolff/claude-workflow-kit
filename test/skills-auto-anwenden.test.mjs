@@ -77,6 +77,11 @@ test("Fuer fachlich und plan gilt dieselbe Regel — geschuetzt sind die Inhalte
 // night.mjs waehlt je Aufruf genau einen Modus — eine "Implementierungsauswahl
 // desselben Laufs" gibt es im Review-Modus nicht. Der Ausschluss von kit:klaeren
 // aus der Implementierungsauswahl liegt in Issue #382.
+//
+// Seit Issue #522 sind es drei Arten, und die Wahl steht als Lookup statt als Ternaer
+// da: `laufArt` liefert genau einen Wert, `modus` liest ihn. Die Zusicherung zieht mit
+// — ein Ternaer mit zwei Aesten kann die dritte Art gar nicht mehr nennen.
 test("night.mjs waehlt je Aufruf genau einen Modus", () => {
-  assert.match(NIGHT, /const modus = args\.review \? "Review" : "Implementierung"/);
+  assert.match(NIGHT, /const modus = ART_MODUS\[art\];/);
+  assert.match(NIGHT, /const ART_MODUS = \{ erzeugung: "Erzeugung", review: "Review", implementierung: "Implementierung" \};/);
 });

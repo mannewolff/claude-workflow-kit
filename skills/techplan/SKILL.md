@@ -8,6 +8,26 @@ user-invocable: true
 
 Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
 
+## Im Nachtbetrieb
+
+Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb" von `/issue-review`. Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
+
+Gestartet wird der Skill nachts vom Nacht-Runner:
+
+```bash
+node .claude/kit/night.mjs --erzeuge --stufe plan
+```
+
+Er ruft pro Dokument eine frische Session mit `/techplan #N` gegen ein geprüftes `[Fachlich]`-Issue.
+
+**Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1), für die Diskussion des Plans (Schritt 4) und für das Vorhaben-Kürzel (Unterschritt der Vorhaben-Notiz in Schritt 5). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
+
+**Was unbeaufsichtigt gilt, steht an der Stelle, an der gehandelt wird** — und dort **vor** der interaktiven Variante. An jeder der vier Stellen stehen deshalb zwei Marker in dieser Reihenfolge: zuerst `**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`):`, danach `**Interaktiv:**`. Hier steht nur die Rahmenregel.
+
+Die Reihenfolge ist Teil der Sache, nicht Geschmack: Am 2026-08-31 endeten vier von vier Nacht-Sessions in `/issue-review` mit „Schärfung fehlt", weil die Ausnahme achtzig Zeilen unter der Regel stand — die Session handelte, bevor sie sie las (Issue #417).
+
+Unverändert nachts: kein Code, kein Commit, keine technischen Issues, keine Ready-Bewegung — der Stop-Punkt am Ende gilt auch unbeaufsichtigt. Das Plan-Dokument aus Schritt 5 entsteht unbeaufsichtigt **unmittelbar nach Schritt 3**; die Freigabe erfolgt dann am Board, nachdem der Runner das Dokument geprüft hat.
+
 ## Plan-Modell: wer den Plan geschrieben hat
 
 Der Plan nennt in seinem Kopf die Zeile:
@@ -40,7 +60,15 @@ Trägt #N kein `[Fachlich]`-Präfix, gilt der normale Ablauf unten — kein Sond
 
 ### 0. Bahn bestimmen
 
-Ist die Anforderung Bahn 1 (kleine Änderung nach der Definition in CLAUDE-workflow.md), sag das und biete an, sie **direkt** umzusetzen statt zu planen — kein Plan-Overhead. Nur bei Bahn 2 den vollen Plan erstellen.
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Es gilt **immer Bahn 2**. Ein Plan-Dokument entsteht auch dann, wenn die Anforderung nach CLAUDE-workflow.md Bahn 1 wäre. Das Bahn-1-Urteil wird dabei **nicht verworfen**, sondern steht als erste Zeile in `## Architektonische Entscheidungen`:
+
+```
+- Bahn 1 nach CLAUDE-workflow.md; nachts als Plan festgehalten, Entscheidung beim Menschen.
+```
+
+Ohne Dokument hätte der Nachtlauf kein Erfolgssignal (Issue #513, A4), und die Anforderung nachts direkt umzusetzen verletzte den Stop-Punkt unten. Das Urteil zu verschweigen wäre die dritte Variante und die schlechteste: Der Mensch sähe einen Plan, ohne zu erfahren, dass die Session ihn für unnötig hielt.
+
+**Interaktiv:** Ist die Anforderung Bahn 1 (kleine Änderung nach der Definition in CLAUDE-workflow.md), sag das und biete an, sie **direkt** umzusetzen statt zu planen — kein Plan-Overhead. Nur bei Bahn 2 den vollen Plan erstellen.
 
 ### 1. Anforderung verstehen
 
@@ -49,7 +77,14 @@ Kläre zuerst:
 - Welche Bereiche des Codes sind betroffen?
 - Gibt es Abhängigkeiten zu anderen Issues oder laufenden Arbeiten?
 
-Frage nach, wenn etwas unklar ist. Raten ist kein Ersatz für eine kurze Rückfrage.
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Es wird **nicht nachgefragt**. Jede offene Stelle wird stattdessen im Plan-Dokument festgehalten, und zwar getrennt nach ihrer Tragweite:
+
+- Was den **Zuschnitt des Plans ändern würde**, steht als Stopp-Frage in `## Offene Fragen` — **dort und nur dort liest der Runner es** (Issue #513, A5). Ein Plan mit mindestens einer offenen Stopp-Frage ist kein Eingang für `/issues`.
+- Was **nachträglich entscheidbar** ist, steht als Annahme in `## Geplante Änderungen` beim betroffenen Punkt, in der Form `Annahme: …`.
+
+Ein Protokoll außerhalb des Plan-Dokuments zählt nicht. Was nur im Session-Log oder in einem Board-Kommentar steht, sieht der nächste Schritt nicht — für ihn ist der Plan lückenlos.
+
+**Interaktiv:** Frage nach, wenn etwas unklar ist. Raten ist kein Ersatz für eine kurze Rückfrage.
 
 ### 2. Relevante Dateien lesen
 
@@ -141,14 +176,18 @@ So sieht der Unterabschnitt gefüllt aus:
 
 ### 4. Plan zur Diskussion stellen
 
-Präsentiere den Plan und warte auf Feedback. Implementiere **nicht**, bevor der Plan freigegeben wurde. Plan-Akzeptanz ist kein GO — das GO kommt separat (Schritt 4).
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Die Diskussion **entfällt**, Schritt 5 folgt unmittelbar. Ohne diese Ausnahme entsteht nachts überhaupt kein Artefakt: Der Skill wartete auf ein Feedback, das niemand gibt, und der Runner sähe einen Fehlschlag. Die Freigabe ist damit nicht übergangen, sondern verschoben — sie erfolgt am Board, nachdem der Runner das Dokument geprüft hat.
+
+**Interaktiv:** Präsentiere den Plan und warte auf Feedback. Implementiere **nicht**, bevor der Plan freigegeben wurde. Plan-Akzeptanz ist kein GO — das GO kommt separat (Schritt 4).
 
 Typischer Abschluss:
 > "Soll ich so vorgehen? Dann lege ich auf GO die GitHub-Issues an (Schritt 3)."
 
-### 5. Plan-Dokument anlegen (nur Bahn 2, nach der Freigabe)
+### 5. Plan-Dokument anlegen (nur Bahn 2 — interaktiv nach der Freigabe, unbeaufsichtigt unmittelbar nach Schritt 3)
 
-Ist der Plan freigegeben, hält der Skill ihn als eigenes Issue fest — das **Plan-Dokument**. Ohne es ist der Plan das einzige Artefakt der Kette ohne Ort: Er entsteht im Gespräch, wird einmal überflogen und verschwindet. Die technischen Issues verweisen später auf die fachliche Quelle, aber was **dazwischen** entschieden wurde — Architektur, Schnitt, Abwägungen — wäre nach der Sitzung nicht mehr rekonstruierbar.
+Interaktiv nach der Freigabe, unbeaufsichtigt unmittelbar nach Schritt 3 — die Freigabe erfolgt dann am Board, nachdem der Runner das Dokument geprüft hat.
+
+Steht der Plan — interaktiv also nach der Freigabe, unbeaufsichtigt nach Schritt 3 —, hält der Skill ihn als eigenes Issue fest: das **Plan-Dokument**. Ohne es ist der Plan das einzige Artefakt der Kette ohne Ort: Er entsteht im Gespräch, wird einmal überflogen und verschwindet. Die technischen Issues verweisen später auf die fachliche Quelle, aber was **dazwischen** entschieden wurde — Architektur, Schnitt, Abwägungen — wäre nach der Sitzung nicht mehr rekonstruierbar.
 
 **Bei Bahn 1 entsteht kein Plan-Dokument.** Dort gibt es keinen Plan; ein leeres `[Plan]`-Ticket je Kleinigkeit wäre Lärm.
 
@@ -202,7 +241,9 @@ node .claude/kit/board.mjs issue epics
 ```
 
 - **Genau ein Vorhaben in der Liste:** dessen `shortcode` gilt.
-- **Mehrere Vorhaben:** Der Skill **fragt den Menschen** und nennt die Kürzel zur Auswahl. Geraten wird nicht: Die Notiz landete unter einem fremden Vorhaben und wäre dort weder zu finden noch als falsch zu erkennen.
+- **Mehrere Vorhaben:**
+  - **Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Rückfall auf `plan-<M>` — derselbe Rückfall wie bei der leeren Liste unten. Geraten wird auch nachts nicht; die Notiz hängt dann am Plan-Dokument statt an einem fremden Vorhaben.
+  - **Interaktiv:** Der Skill **fragt den Menschen** und nennt die Kürzel zur Auswahl. Geraten wird nicht: Die Notiz landete unter einem fremden Vorhaben und wäre dort weder zu finden noch als falsch zu erkennen.
 - **Leere Liste _oder_ Exitcode ungleich 0:** Rückfall auf `plan-<M>`. **Beides löst ihn aus** — bei `github` und `gitlab` kennt der Adapter keine Vorhaben und endet mit `fail(...)`, also einem Fehler und nicht mit einer leeren Liste. Wer nur die leere Liste abfängt, bekommt bei genau diesen beiden Trackern gar keine Notiz.
 - **Leerer `shortcode`:** ebenfalls Rückfall auf `plan-<M>`.
 
@@ -218,4 +259,4 @@ node .claude/kit/spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund
 
 ## Stop-Punkt
 
-Dieser Skill endet mit einem Plan-Dokument zur menschlichen Freigabe. Kein Code, kein Commit, keine **technischen** Issues, keine Ready-Bewegung — erst nach explizitem GO. Das `[Plan]`-Dokument ist die einzige Ausnahme: Es entsteht bei Bahn 2 unmittelbar nach der Freigabe, weil es den freigegebenen Stand festhält und nicht dessen Umsetzung vorwegnimmt.
+Dieser Skill endet mit einem Plan-Dokument zur menschlichen Freigabe. Kein Code, kein Commit, keine **technischen** Issues, keine Ready-Bewegung — erst nach explizitem GO. Das `[Plan]`-Dokument ist die einzige Ausnahme: Es entsteht bei Bahn 2 interaktiv nach der Freigabe, unbeaufsichtigt unmittelbar nach Schritt 3 — die Freigabe erfolgt dann am Board, nachdem der Runner das Dokument geprüft hat —, weil es den erreichten Stand festhält und nicht dessen Umsetzung vorwegnimmt.

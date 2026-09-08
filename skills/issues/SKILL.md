@@ -12,7 +12,34 @@ Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrer
 
 ### 1. Plan prüfen
 
-Prüfe, ob ein in **dieser Session** freigegebener Plan existiert. Wenn nein: **STOPP — keine Issues anlegen.** Verweise darauf, dass erst `/techplan` laufen und freigegeben werden muss. Eine Ideen-/Use-Case-Liste im Chat ist **kein** freigegebener Plan.
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb" von `/issue-review`. Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt; **maßgeblich bleibt allein `KIT_AGENT_MODEL`, der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
+
+Diese Variante steht **vor** der interaktiven, weil eine Session von oben liest und nach dem ersten Fall handelt, den sie findet (Issue #513, A7).
+
+Der Eingang ist ein `[Plan]`-Dokument aus einer früheren Nacht, übergeben als `/issues #N`. Es erfüllt die interaktive Bedingung unten wörtlich nicht — freigegeben wurde es in einer anderen Session —, und daran hing bisher der ganze zweite Schritt der nächtlichen Kette. Die Bedingung wird deshalb erweitert, nicht aufgeweicht: Sie bleibt am **Prüfnachweis**. Schritt 1 liest das Dokument mit
+
+```bash
+node .claude/kit/board.mjs issue get <N>
+```
+
+und prüft daran **zwei Bedingungen** selbst:
+
+1. `title` trägt das Präfix `[Plan]`.
+2. `body` trägt eine nicht leere Zeile `Plan-Review:` **außerhalb von Codeblöcken** (Fence-Regel, Issue #308 — ein Plan über Review-Mechanik kann den Marker als Beispiel enthalten), und die erste nicht leere Zeile unter `## Offene Fragen` beginnt mit `- Keine.`; Text dahinter in derselben Zeile ist erlaubt und der Regelfall.
+
+**Ein gültiger `Pruefung: Verzicht` und das Label `review:fertig` ersetzen den Marker nicht.** Beide entstehen auch ohne jede Prüfung — ein Verzicht ergibt `review:fertig`, aber nie einen Marker. Wer den Zustand oder das Label als Ersatz nähme, ließe einen nie geprüften Plan in die Arbeitspakete durch.
+
+**Das Routing-Label prüft die Session nicht nach.** Es ist Sache des Runners (Kandidatenauswahl, Issue #519) — dieselbe Linie wie in `implement-next`: Der Auftraggeber hat bereits gefiltert. So bleibt der Skill auch von einem per `--erzeuge-label` umbenannten Label unabhängig.
+
+**Fehlerpfad:** Fehlt unbeaufsichtigt eine der beiden Bedingungen, wird **nicht gefragt** und nicht mit einer Ansprache an einen Menschen gestoppt — nachts antwortet niemand. Die Session schreibt einen Board-Kommentar an das Dokument, dessen erste Zeile lautet:
+
+```
+Kein Eingang für /issues: <fehlendes Praefix | Marker fehlt | offene Stopp-Frage>
+```
+
+Danach legt sie **kein** Issue an und endet.
+
+**Interaktiv:** Prüfe, ob ein in **dieser Session** freigegebener Plan existiert. Wenn nein: **STOPP — keine Issues anlegen.** Verweise darauf, dass erst `/techplan` laufen und freigegeben werden muss. Eine Ideen-/Use-Case-Liste im Chat ist **kein** freigegebener Plan.
 
 ### 2. Issues schneiden
 
@@ -162,7 +189,7 @@ Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schri
 
 Traegt `.claude/workflow.config.json` einen `spec`-Block, bekommt jedes Arbeitspaket einen fuenften Body-Abschnitt `## Spec-Wirkung`. Er sagt, was das Paket an der Beschreibung unter `specs/` aendert. **Ohne `spec`-Block gilt das Vier-Abschnitt-Format unveraendert.** Der Schalter ist das Vorhandensein des Blocks, kein Feld darin.
 
-Das ist keine Bitte im Text: `board.mjs issue create` legt bei gesetztem Block **kein Issue ohne diesen Abschnitt** an (Issue #443), und `node .claude/kit/spec.mjs check --paket <datei>` prueft die Form der Zeilen darin (Issue #442).
+Das ist keine Bitte im Text: `board.mjs issue create` und `board.mjs issue update` legen bei gesetztem Block **kein Issue ohne diesen Abschnitt** an und schreiben keins (Issue #443, #526) — geprueft wird dabei auch die **Form** der Zeilen darin, ueber dieselbe Grammatik, die `spec.mjs` fuehrt (Issue #442). Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen; der Adapter faengt den Fehler ohnehin ab, bevor eine Karte entsteht.
 
 **Der Ort:** zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten` — so, wie der Format-Codeblock oben ihn zeigt. `## Abhängigkeiten` bleibt der **letzte** Abschnitt, weil `parseDeps` in `kit/night.mjs` das voraussetzt.
 
