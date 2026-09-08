@@ -816,6 +816,21 @@ const NIGHT_REVIEW_STUFEN = ["fachlich", "plan", "issue"];
 // entsteht und nicht aus einer Nacht.
 const NIGHT_ERZEUGE_STUFEN = ["plan", "issue"];
 
+// Aus welcher Stufe der Erzeugungsmodus LIEST (Issue #519). Der Umkehrschluss aus dem
+// Kommentar darueber: Wenn --stufe das entstehende Dokument benennt, ist das gelesene
+// sein Vorgaenger — ein Plan entsteht aus einem Fachplan, Arbeitspakete aus einem Plan.
+const ERZEUGE_EINGANGSSTUFE = { plan: "fachlich", issue: "plan" };
+
+/**
+ * Die Eingangsstufe zu einer Erzeugungsstufe — `null` bei einem unbekannten Wert.
+ *
+ * `Object.hasOwn` statt direktem Zugriff, wie in `loeseModusDefaults`: 'constructor' als
+ * Stufe lieferte sonst eine Funktion statt eines Stufennamens.
+ */
+function erzeugungsEingangsstufe(stufe) {
+  return Object.hasOwn(ERZEUGE_EINGANGSSTUFE, stufe ?? "") ? ERZEUGE_EINGANGSSTUFE[stufe] : null;
+}
+
 // Welcher Marker die jeweilige Stufe nachweist (Issue #279).
 const STUFEN_MARKER = {
   fachlich: "Fachplan-Review:",
@@ -903,8 +918,16 @@ export function hatGueltigenVerzicht(body) {
  * kommt es dran? Die Reihenfolge der Gruende ist Teil der Antwort und bleibt
  * deshalb unveraendert; nur die Bauform wechselt von einer else-if-Kette zu
  * fruehen Rueckgaben.
+ *
+ * Der dritte Parameter ist seit Issue #519 das ERWARTETE TITEL-PRAEFIX, nicht mehr die
+ * Stufe: `"fachlich"` verlangt `[Fachlich]`, `"plan"` verlangt `[Plan]`, `null` verlangt
+ * ein Arbeitspaket (also keins von beiden). Der Review-Modus bildet seine Stufe darauf ab,
+ * der Erzeugungsmodus seine EINGANGSstufe — beide rufen dieselbe Kette, statt sie zu
+ * kopieren: Die Grund-Strings gehen in Log und Ergebnisstand und liefen in einer Kopie
+ * auseinander, und `sonar.cpd.exclusions` nimmt night.mjs aus der Duplikatsmessung — eine
+ * Kopie wuerde also von niemandem gemeldet.
  */
-function reviewAusschluss(issue, label, stufe) {
+function reviewAusschluss(issue, label, praefix) {
   // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
   // aus, sie umgeht die Freigabe nicht.
   if (label !== null && !(issue.labels || []).includes(label)) return `kein Label '${label}'`;
@@ -920,25 +943,100 @@ function reviewAusschluss(issue, label, stufe) {
   // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
   // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
   if (hatKlaerenLabel(issue)) return "kit:klaeren, offene Entscheidung";
-  if (stufe === "fachlich") return isFachlich(issue.title) ? null : "kein fachliches Issue ([Fachlich])";
-  if (stufe === "plan") return isPlan(issue.title) ? null : "kein Plan-Dokument ([Plan])";
+  if (praefix === "fachlich") return isFachlich(issue.title) ? null : "kein fachliches Issue ([Fachlich])";
+  if (praefix === "plan") return isPlan(issue.title) ? null : "kein Plan-Dokument ([Plan])";
   if (isFachlich(issue.title)) return "fachliches Issue ([Fachlich])";
   if (isPlan(issue.title)) return "Plan-Dokument ([Plan])";
   return null;
 }
 
-export function selectReviewCandidates(issues, opts = {}) {
-  const label = opts.label ?? null;
-  const stufe = opts.stufe ?? "issue";
+// Die billige Stufe, geteilt von Review- und Erzeugungsmodus (Issue #519): Sie
+// unterscheiden sich nur im erwarteten Titel-Praefix, das der Aufrufer bestimmt.
+function sammleKandidaten(issues, label, praefix) {
   const kandidaten = [];
   const uebersprungen = [];
 
   for (const issue of issues || []) {
-    const grund = reviewAusschluss(issue, label, stufe);
+    const grund = reviewAusschluss(issue, label, praefix);
     if (grund === null) kandidaten.push(issue);
     else uebersprungen.push({ id: issue.id, title: issue.title, grund });
   }
   return { kandidaten, uebersprungen };
+}
+
+export function selectReviewCandidates(issues, opts = {}) {
+  const stufe = opts.stufe ?? "issue";
+  // Im Review-Modus benennt die Stufe das zu pruefende Dokument selbst; `issue` erwartet
+  // ein Arbeitspaket und damit KEIN Praefix.
+  return sammleKandidaten(issues, opts.label ?? null, stufe === "issue" ? null : stufe);
+}
+
+/**
+ * Waehlt die Ausgangsdokumente eines Erzeugungslaufs (Issue #519).
+ *
+ * Wie `selectReviewCandidates` bewusst nur die billige erste Stufe ueber `issue list`:
+ * Label und Titel-Praefix stehen dort, der Stufenmarker steht im BODY und braucht ein
+ * `issue get` je Dokument — das prueft `erzeugungsEintritt`.
+ *
+ * `--stufe` benennt das ENTSTEHENDE Dokument, gefiltert wird auf das Praefix seines
+ * Vorgaengers: `plan` liest Fachplaene, `issue` liest Plandokumente.
+ */
+export function selectErzeugungsCandidates(issues, opts = {}) {
+  return sammleKandidaten(issues, opts.label ?? null, erzeugungsEingangsstufe(opts.stufe));
+}
+
+// Die vorgeschriebene Form eines Plandokuments ohne offene Punkte (Regel P6): erste
+// nichtleere Zeile des Abschnitts, ein Zusatz dahinter ist der Regelfall.
+const KEINE_STOPP_FRAGEN = "- Keine.";
+// Wie viel von einer offenen Frage in den Grund wandert. Kurz genug fuer eine Log-Zeile,
+// lang genug, um die Frage wiederzuerkennen.
+const STOPP_FRAGE_ZITAT = 120;
+
+/**
+ * Die Stopp-Fragen-Pruefung eines Plandokuments (Issue #519) — `null`, wenn keine offen ist.
+ *
+ * Sie ersetzt die am 28. August gestrichene Regel P8 (Begruendung: Plan #513, A5); P8
+ * selbst wird nicht wiederbelebt.
+ *
+ * Ein FEHLENDER Abschnitt ist ein Ausschluss, keine Erlaubnis: Das `parseDeps`-Muster
+ * liefert bei fehlender Ueberschrift eine leere Liste, und "keine Zeile, also keine offene
+ * Frage" liesse ausgerechnet einen Plan ohne den Pflichtabschnitt durch.
+ */
+function stoppFragenGrund(body) {
+  const abschnitt = abschnittLesen(body, OFFENE_FRAGEN_UEBERSCHRIFT);
+  if (abschnitt === null) return `kein Abschnitt ## ${OFFENE_FRAGEN_NAME}`;
+  // Nur Zeilen ausserhalb eines Fence: Ein Plan, der die Regelform als Beispiel zeigt,
+  // haette sich sonst mit seinem eigenen Codeblock freigegeben.
+  const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
+  if (erste === undefined) return `Abschnitt ## ${OFFENE_FRAGEN_NAME} ist leer`;
+  if (erste.trim().startsWith(KEINE_STOPP_FRAGEN)) return null;
+  return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+}
+
+/**
+ * Ob ein Ausgangsdokument in den Erzeugungslauf darf — `null` (kommt dran) oder ein Grund.
+ *
+ * Die teure zweite Stufe: Sie liest den BODY und setzt damit ein `issue get` voraus. Reine
+ * Funktion wie `parseDeps`, damit sie an Fixtures pruefbar ist — und weil die Schleife des
+ * Ernstfalls erst mit Issue #520 entsteht, haette sie sonst gar keinen Ort.
+ *
+ * Der Marker ist hier EINTRITTSbedingung, nicht Ausschluss wie im Review-Modus: Erzeugt
+ * wird aus dem, was geprueft IST (Plan #513, A5). Ein Dokument mit gueltigem Verzicht
+ * traegt keinen Marker und faellt schon in `selectErzeugungsCandidates` heraus — der
+ * Verzicht ist hier kein zweiter Freigabegrund wie im Implementierungs-Gate (#304).
+ */
+export function erzeugungsEintritt(body, stufe) {
+  const eingang = erzeugungsEingangsstufe(stufe);
+  if (eingang === null) return `unbekannte Erzeugungsstufe '${stufe}'`;
+  if (!hasStageMarker(body, eingang)) {
+    // Der Markername kommt aus STUFEN_MARKER und wird nicht zweitgeschrieben; der
+    // Doppelpunkt gehoert zur Zeilensyntax und nicht in den Fliesstext.
+    const marker = STUFEN_MARKER[eingang].replace(/:$/, "");
+    return `kein ${marker}-Nachweis — Eingangsdokument ist ungeprueft`;
+  }
+  // Nur die Stufe `issue` liest ein Plandokument; ein Fachplan fuehrt den Abschnitt nicht.
+  if (stufe !== "issue") return null;
+  return stoppFragenGrund(body);
 }
 
 // --- Abhaengigkeiten ---
@@ -946,6 +1044,42 @@ export function selectReviewCandidates(issues, opts = {}) {
 const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
 const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
 const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
+// Der Pflichtabschnitt eines Plandokuments (Regel P6), gelesen von der Stopp-Fragen-
+// Pruefung des Erzeugungsmodus. Name und Ausdruck gehoeren zusammen: Der Name steht in
+// den Gruenden, damit dort keine zweite Schreibweise entsteht.
+const OFFENE_FRAGEN_NAME = "Offene Fragen";
+const OFFENE_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s*$/i;
+
+/**
+ * Die Zeilen eines Markdown-Abschnitts — `null`, wenn die Ueberschrift fehlt.
+ *
+ * Herausgezogen aus `parseDeps` (Issue #519), weil die Stopp-Fragen-Pruefung des
+ * Erzeugungsmodus dieselbe Fence-Regel braucht. Zwei Ausdruecke fuer "Abschnitt lesen"
+ * liefen auseinander, und die Regel ist zu fein, um sie zweimal richtig zu treffen.
+ *
+ * `ausserhalb` liegt bei, weil die beiden Leser den Inhalt verschieden brauchen:
+ * `parseDeps` sucht Referenzen im GANZEN Abschnitt (auch in Codebloecken — eine dort
+ * zitierte Nummer ist trotzdem eine Abhaengigkeit), die Stopp-Fragen-Pruefung nur
+ * ausserhalb (eine dort gezeigte Regelform ist kein Nachweis).
+ */
+function abschnittLesen(body, ueberschrift) {
+  const zeilen = String(body || "").split(/\r\n|\r|\n/);
+  const imFence = fenceLauf();
+  const ausserhalb = [];
+  let start = -1;
+
+  for (let i = 0; i < zeilen.length; i++) {
+    ausserhalb[i] = !imFence(zeilen[i]);
+    if (ausserhalb[i] && ueberschrift.test(zeilen[i])) start = i;
+  }
+  if (start < 0) return null;
+
+  let ende = zeilen.length;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (ausserhalb[i] && ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
+  }
+  return { zeilen: zeilen.slice(start + 1, ende), ausserhalb: ausserhalb.slice(start + 1, ende) };
+}
 
 /**
  * Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
@@ -972,23 +1106,10 @@ const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
  * vorangestelltes Beispiel ausserhalb eines Fence bleibt damit wirkungslos.
  */
 export function parseDeps(body) {
-  const zeilen = String(body || "").split(/\r\n|\r|\n/);
-  const imFence = fenceLauf();
-  const ausserhalb = [];
-  let start = -1;
+  const gelesen = abschnittLesen(body, DEPS_UEBERSCHRIFT);
+  if (gelesen === null) return [];
 
-  for (let i = 0; i < zeilen.length; i++) {
-    ausserhalb[i] = !imFence(zeilen[i]);
-    if (ausserhalb[i] && DEPS_UEBERSCHRIFT.test(zeilen[i])) start = i;
-  }
-  if (start < 0) return [];
-
-  let ende = zeilen.length;
-  for (let i = start + 1; i < zeilen.length; i++) {
-    if (ausserhalb[i] && ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
-  }
-
-  const abschnitt = zeilen.slice(start + 1, ende).join("\n");
+  const abschnitt = gelesen.zeilen.join("\n");
   const refs = [...abschnitt.matchAll(LOKALE_REFERENZ)].map((x) => Number(x[1]));
   return [...new Set(refs)];
 }
@@ -2290,6 +2411,34 @@ function berichteReviewDryRun(kandidaten, args, stufe) {
 }
 
 /**
+ * Zeigt, welche Erzeugungs-Sessions starten wuerden, und beendet den Prozess (Issue #519).
+ *
+ * Dasselbe Muster wie `berichteReviewDryRun`, mit umgekehrtem Marker-Sinn: Dort schliesst
+ * ein vorhandener Marker aus, hier fehlt er dem, das ausgeschlossen wird.
+ *
+ * Alle qualifizierten Karten werden gelistet, die ueber `--max` markiert — sonst saehe ein
+ * begrenzter Lauf aus wie ein vollstaendiger, und wer die Liegengebliebenen sucht, muesste
+ * sie aus der Differenz erschliessen.
+ */
+function berichteErzeugungDryRun(kandidaten, args, stufe) {
+  let geplant = 0;
+  for (const k of kandidaten) {
+    const full = board("issue", "get", String(k.id));
+    const grund = erzeugungsEintritt(full.body, stufe);
+    if (grund !== null) {
+      log(`  #${k.id} ${k.title} -> uebersprungen (${grund})`);
+    } else if (geplant >= args.max) {
+      log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
+    } else {
+      geplant++;
+      log(`  #${k.id} ${k.title} -> Erzeugungs-Session ${geplant}`);
+    }
+  }
+  log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Erzeugungs-Session(s) wuerden starten.`);
+  process.exit(0);
+}
+
+/**
  * Faehrt den Vorflug und macht ihn zum Gate (Issue #233, Umgebung korrigiert in #269).
  *
  * Geteilt von Review- und Erzeugungsmodus (Issue #518): Beide starten spaeter dieselben
@@ -2424,12 +2573,30 @@ function erzeugungsTrackerPruefen() {
 export async function laufeErzeugungsModus(args) {
   erzeugungsTrackerPruefen();
 
-  await fuehreVorflug(args, [], "--erzeuge --dry-run");
+  const stufe = args.stufe;
+  const backlog = board("issue", "list", "--status", "backlog");
+  const { kandidaten, uebersprungen } = selectErzeugungsCandidates(backlog, { label: args.erzeugeLabel, stufe });
 
-  // Die Kandidatenauswahl folgt in Issue #519, die Schleife in Issue #520. Bis dahin ist
-  // die Liste leer, und der Lauf endet an genau der Stelle, an der er es auch danach tut,
-  // wenn nichts zu tun ist.
-  log(`Keine Erzeugungs-Kandidaten (Stufe ${args.stufe}) — nichts zu tun.`);
+  // Nur ins Log, nicht in den Ergebnisstand: Die Einheiten dafuer bestellt Issue #522.
+  // Ein Lauf ohne Arbeit waere sonst im Protokoll nicht von einem leeren Board zu
+  // unterscheiden (dieselbe Ueberlegung wie im Review-Modus).
+  for (const u of uebersprungen) {
+    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+  }
+
+  await fuehreVorflug(args, kandidaten, "--erzeuge --dry-run");
+
+  if (kandidaten.length === 0) {
+    log(`Keine Erzeugungs-Kandidaten (Stufe ${stufe}) — nichts zu tun.`);
+    laufAbschliessen("regulaer");
+    process.exit(0);
+  }
+
+  if (args.dryRun) berichteErzeugungDryRun(kandidaten, args, stufe);
+
+  // Die Schleife des Ernstfalls folgt in Issue #520; sie ruft `erzeugungsEintritt` an
+  // derselben Stelle, an der der Review-Modus seinen Marker prueft.
+  log(`${kandidaten.length} Erzeugungs-Kandidat(en) (Stufe ${stufe}) — die Schleife folgt in Issue #520.`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }
