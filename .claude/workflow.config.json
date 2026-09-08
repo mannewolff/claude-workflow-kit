@@ -49,11 +49,13 @@
       {
         "name": "gpt-astra",
         "kind": "command",
+        "model": "gpt-6-astra",
         "command": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\""
       },
       {
         "name": "gpt-sol",
         "kind": "command",
+        "model": "gpt-5.6-sol",
         "command": "codex exec --model gpt-5.6-sol -c model_reasoning_effort=\"high\""
       }
     ],
@@ -70,13 +72,13 @@
         "opus",
         "gpt-astra"
       ],
-      "haiku": [
-        "opus",
-        "sonnet"
+      "gpt-sol": [
+        "fable",
+        "gpt-astra"
       ],
-      "codex": [
-        "opus",
-        "fable"
+      "gpt-astra": [
+        "fable",
+        "opus"
       ]
     }
   },
