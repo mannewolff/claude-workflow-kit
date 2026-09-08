@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.48.1] - 2026-09-08
+- Drei ungedeckte Fehlerpfade testen (#515)
+- Fehler ist der Reviewzuordnung codex behoben
+- GPT Astra eingefügt
+- GPT Astra eingefügt
+
 ## [1.48.0] - 2026-09-07
 - chore: Spec fortgeschrieben (#497, #498, #499)
 - Spec von Nachtbahn 3 committet, weil umgesetzt
