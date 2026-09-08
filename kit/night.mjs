@@ -632,6 +632,28 @@ function laufAbschliessen(abschluss) {
 }
 
 /**
+ * Welche der drei Betriebsarten laeuft — der Wert des Feldes `art` (Issue #522).
+ *
+ * Die Frage wird an drei Stellen gestellt: `art` im Grundgeruest, das aktive Routing-Label
+ * und die Log-Zeile `modus`. Alle drei standen als Zwei-Ast-Ternaer da und haetten die
+ * dritte Art einzeln nachgezogen bekommen muessen — eine vergessene Stelle schriebe dann
+ * `implementierung` oder `kit:night` in eine Erzeugungsnacht.
+ */
+function laufArt(args) {
+  if (args.erzeuge) return "erzeugung";
+  return args.review ? "review" : "implementierung";
+}
+
+// Was je Art am Grundgeruest und in der Startzeile haengt. Der Labelname kommt aus dem
+// jeweiligen Flag: `--erzeuge-label` kann ihn ueberschreiben (Issue #517).
+const ART_MODUS = { erzeugung: "Erzeugung", review: "Review", implementierung: "Implementierung" };
+const ART_LABEL = {
+  erzeugung: (args) => args.erzeugeLabel,
+  review: (args) => args.reviewLabel,
+  implementierung: (args) => args.label,
+};
+
+/**
  * Legt Pfad und Grundgeruest des Ergebnisstands an (Issue #486).
  *
  * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab, und ohne
@@ -656,10 +678,14 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     schemaFassung: 1,
     erzeugtVon: KIT_VERSION,
     start: iso,
-    art: args.review ? "review" : "implementierung",
+    art: laufArt(args),
     modell: args.model,
     max: args.max,
     label: aktivesLabel === "none" ? null : aktivesLabel,
+    // Additiv fuer alle Arten (Issue #522). Im Erzeugungslauf entscheidet `--stufe`, ob
+    // ein Plan oder Arbeitspakete entstanden sind, und aus `label` ist das nicht
+    // ableitbar — `--erzeuge-label` kann den Namen ueberschreiben.
+    stufe: args.stufe ?? null,
     einheiten: [],
     abschluss: null,
   };
@@ -2395,8 +2421,9 @@ export function vorbereiten(args) {
     labelWarnungGezeigt: false,
   };
 
-  const modus = args.review ? "Review" : "Implementierung";
-  const aktivesLabel = args.review ? args.reviewLabel : args.label;
+  const art = laufArt(args);
+  const modus = ART_MODUS[art];
+  const aktivesLabel = ART_LABEL[art](args);
   const stufenAngabe = args.review ? `, Stufe ${args.stufe ?? "issue"}` : "";
   const dryRunAngabe = args.dryRun ? ", DRY-RUN" : "";
   const yoloAngabe = args.yolo ? ", YOLO" : "";
@@ -2651,8 +2678,20 @@ const OHNE_DOKUMENT_KOMMENTAR = "Nachtlauf: Die Erzeugungs-Session endete ohne D
   + "bitte morgens sichten oder /techplan bzw. /issues von Hand fahren.";
 
 /** Die gefundenen Dokumente als Protokoll-Liste: `#X, #Y`. */
-function dokumentListe(ids) {
-  return ids.map((id) => `#${id}`).join(", ");
+function dokumentListe(eintraege) {
+  return eintraege.map((d) => `#${d.id}`).join(", ");
+}
+
+/**
+ * Ein erzeugtes Dokument, wie es in `erzeugt` am Ergebnisstand steht (Issue #522).
+ *
+ * Dasselbe Objekt traegt Phase 1 und Phase 2: Phase 1 kennt die Kartennummer, Zustand und
+ * Rundenzahl entstehen erst in der Pruefschleife. Zwei getrennte Listen liefen auseinander,
+ * sobald ein Lauf zwischen den Phasen abbricht — und genau dann will man morgens wissen,
+ * welche Dokumente schon dastanden.
+ */
+function dokEintrag(id) {
+  return { id: String(id), zustand: null, runden: null, sessions: [] };
 }
 
 /**
@@ -2671,14 +2710,18 @@ function dokumentListe(ids) {
  * Die Differenz zaehlt Karten, deren `id` vorher fehlte, statt `slice` wie
  * `neueKommentare`: Die Backlog-Reihenfolge ist nicht stabil.
  */
-async function erzeugeAusQuelle(kandidat, args, stufe, nummer) {
+async function erzeugeAusQuelle(kandidat, args, stufe, nummer, einheit) {
   const quelle = String(kandidat.id);
   const vorhanden = board("issue", "list")
     .filter((i) => stammtAusErzeugung(i, quelle, stufe))
-    .map((i) => String(i.id));
+    .map((i) => dokEintrag(i.id));
   if (vorhanden.length > 0) {
     log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(vorhanden)} — schon vorhanden, die Erzeugungs-Session entfaellt.`);
-    return { ergebnis: { quelle, erzeugt: vorhanden, fortgesetzt: true }, hardStop: false };
+    // `kennzahlen: null` und `dauerMs: 0`, weil keine Erzeugungs-Session lief — die
+    // Pruefrunden addieren gleich darauf. Eine erfundene Null bei den Kennzahlen waere
+    // etwas anderes als "es gab nichts zu messen".
+    einheitErgaenzen(einheit, { erzeugt: vorhanden, fortgesetzt: true, dauerMs: 0, kennzahlen: null });
+    return { ergebnis: { quelle, erzeugt: vorhanden, fortgesetzt: true, einheit }, hardStop: false };
   }
 
   const vorher = new Set(board("issue", "list", "--status", "backlog").map((i) => String(i.id)));
@@ -2691,15 +2734,21 @@ async function erzeugeAusQuelle(kandidat, args, stufe, nummer) {
   const res = await runSession(kandidat.id, args, {
     prompt: `/${ERZEUGE_SKILL[stufe]} #${quelle}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
   });
-  const minutes = ((Date.now() - started) / 60000).toFixed(1);
+  // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
+  // Textzeile (wie im Review-Modus, Issue #489).
+  const dauerMs = Date.now() - started;
+  const minutes = (dauerMs / 60000).toFixed(1);
 
   if (reviewRundeGestoppt(kandidat, res, minutes, "Erzeugungs-Session")) {
+    // Die Einheit bleibt auf `unbekannt`: Der Guard greift VOR jeder Bewertung, und
+    // "unbekannt" sagt etwas anderes als ein Fehlschlag.
     return { ergebnis: null, hardStop: true };
   }
 
   const erzeugt = board("issue", "list", "--status", "backlog")
     .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, quelle, stufe))
-    .map((i) => String(i.id));
+    .map((i) => dokEintrag(i.id));
+  einheitErgaenzen(einheit, { erzeugt, fortgesetzt: false, dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
 
   if (erzeugt.length === 0) {
     // Ergebnislos fuer DIESE Quelle, kein Grund anzuhalten. Das Routing-Label bleibt
@@ -2707,11 +2756,13 @@ async function erzeugeAusQuelle(kandidat, args, stufe, nummer) {
     // haengt am Endzustand (Plan #513, A3).
     log(`  Fehlschlag nach ${minutes} min: Issue #${quelle} — die Erzeugungs-Session endete ohne Dokument, weiter mit dem naechsten.`);
     board("issue", "comment", quelle, "--text", OHNE_DOKUMENT_KOMMENTAR);
-    return { ergebnis: { quelle, erzeugt: [], fortgesetzt: false }, hardStop: false };
+    // Phase 2 sieht diese Quelle nie — der Ausgang steht deshalb schon hier.
+    einheitErgaenzen(einheit, { ausgang: "ohneErgebnis", labelEntfernt: false });
+    return { ergebnis: { quelle, erzeugt: [], fortgesetzt: false, einheit }, hardStop: false };
   }
 
   log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(erzeugt)}`);
-  return { ergebnis: { quelle, erzeugt, fortgesetzt: false }, hardStop: false };
+  return { ergebnis: { quelle, erzeugt, fortgesetzt: false, einheit }, hardStop: false };
 }
 
 // --- Erzeugungsschleife, Phase 2: Pruefrunden und Label-Verbrauch (Issue #521) ---
@@ -2798,24 +2849,30 @@ const ENDZUSTAENDE = new Set(["fertig", "grenze"]);
  * traegt und der Schritt sich gerade deshalb wiederholen soll.
  */
 function pruefEnde(stand, stufe, anker, vorAnker) {
-  const zustand = reviewZustand(stand.body, kommentareVon(stand), stufe);
-  const offen = (meldung) => ({ endzustand: false, meldung });
+  // Seit Issue #522 traegt jedes Ende auch den Zustand: Der Ergebnisstand nennt ihn
+  // woertlich, und ein zweites Mal berechnet waere er eine zweite Wahrheit. `klaeren`
+  // ist der einzige Wert, den `reviewZustand` nicht kennt — er steht am Label.
+  const klaeren = hatKlaerenLabel(stand);
+  const zustand = klaeren ? "klaeren" : reviewZustand(stand.body, kommentareVon(stand), stufe);
+  // `ohneAnker` unterscheidet die leer gelaufene Session vom offenen Dokument: Beide
+  // lassen das Routing-Label stehen, aber nur die eine heisst morgens `ohneErgebnis`.
+  const ende = (endzustand, meldung, ohneAnker = false) => ({ endzustand, zustand, ohneAnker, meldung });
 
-  if (hatKlaerenLabel(stand)) {
-    return { endzustand: true, meldung: `traegt ${KLAEREN_LABEL} — eine offene Entscheidung wartet auf einen Menschen.` };
+  if (klaeren) {
+    return ende(true, `traegt ${KLAEREN_LABEL} — eine offene Entscheidung wartet auf einen Menschen.`);
   }
   if (ENDZUSTAENDE.has(zustand)) {
-    return { endzustand: true, meldung: `Endzustand '${zustand}' nach ${anker} Runde(n) — keine weitere Pruef-Session.` };
+    return ende(true, `Endzustand '${zustand}' nach ${anker} Runde(n) — keine weitere Pruef-Session.`);
   }
   if (grenzeErreicht(anker)) {
-    return offen(`${anker} Runde(n) gelaufen, Rundengrenze erreicht — ohne Endzustand.`);
+    return ende(false, `${anker} Runde(n) gelaufen, Rundengrenze erreicht — ohne Endzustand.`);
   }
   if (vorAnker === null) return null;
   if (anker <= vorAnker) {
-    return offen("die Pruef-Session hinterliess keine neue Runde — ohne Ergebnis, bitte morgens sichten.");
+    return ende(false, "die Pruef-Session hinterliess keine neue Runde — ohne Ergebnis, bitte morgens sichten.", true);
   }
   if (zustand === "ausgefallen") {
-    return offen("ein Reviewer ist ausgefallen — die Pruefung endet hier, das Dokument bleibt offen.");
+    return ende(false, "ein Reviewer ist ausgefallen — die Pruefung endet hier, das Dokument bleibt offen.");
   }
   return null;
 }
@@ -2823,19 +2880,27 @@ function pruefEnde(stand, stufe, anker, vorAnker) {
 /**
  * Laesst EIN erzeugtes Dokument pruefen, bis `pruefEnde` ein Ende meldet.
  *
- * Rueckgabe `{ endzustand, hardStop }`. Der Zustand wird bei jedem Durchgang frisch vom
- * Board gelesen und nicht aus dem fortgeschrieben, was der Runner sich gemerkt hat —
- * geschrieben hat ihn eine fremde Session.
+ * Rueckgabe `{ endzustand, hardStop, zustand, runden, ohneAnker, sessions }`. Der Zustand
+ * wird bei jedem Durchgang frisch vom Board gelesen und nicht aus dem fortgeschrieben, was
+ * der Runner sich gemerkt hat — geschrieben hat ihn eine fremde Session.
+ *
+ * `sessions` traegt je gelaufener Runde einen Eintrag mit Dauer und Kennzahlen (Issue
+ * #522). Eine am Guard gestoppte Runde steht NICHT darin: Sie hat nichts geprueft, und
+ * ihre Kosten als Pruefrunde zu buchen hiesse, den Ausfall als Arbeit zu zaehlen.
  */
 async function pruefeDokument(dokId, args, stufe) {
   let vorAnker = null; // null heisst: in diesem Lauf ist noch keine Session gelaufen
+  const sessions = [];
   for (;;) {
     const stand = board("issue", "get", dokId);
     const anker = ankerZahl(kommentareVon(stand), stufe);
     const ende = pruefEnde(stand, stufe, anker, vorAnker);
     if (ende !== null) {
       log(`  Dokument #${dokId}: ${ende.meldung}`);
-      return { endzustand: ende.endzustand, hardStop: false };
+      return {
+        endzustand: ende.endzustand, hardStop: false,
+        zustand: ende.zustand, runden: anker, ohneAnker: ende.ohneAnker, sessions,
+      };
     }
 
     log(`Pruef-Session zu Dokument #${dokId}: Runde ${anker + 1} von hoechstens ${GRENZE_RUNDEN}.`);
@@ -2846,10 +2911,12 @@ async function pruefeDokument(dokId, args, stufe) {
       prompt: `/issue-review #${dokId}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
       timeoutMs: REVIEW_TIMEOUT_MS,
     });
-    const minutes = ((Date.now() - started) / 60000).toFixed(1);
+    const dauerMs = Date.now() - started;
+    const minutes = (dauerMs / 60000).toFixed(1);
     if (reviewRundeGestoppt({ id: dokId }, res, minutes, "Pruef-Session")) {
-      return { endzustand: false, hardStop: true };
+      return { endzustand: false, hardStop: true, zustand: null, runden: anker, ohneAnker: false, sessions };
     }
+    sessions.push({ dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
     vorAnker = anker;
   }
 }
@@ -2869,19 +2936,33 @@ async function pruefeDokument(dokId, args, stufe) {
  * sich selbst freigeben.
  */
 async function pruefeErzeugtes(ergebnis, args, stufe) {
+  const einheit = ergebnis.einheit;
   let alleFertig = true;
-  for (const dokId of ergebnis.erzeugt) {
-    const runde = await pruefeDokument(dokId, args, stufe);
+  let ohneAnker = false;
+
+  for (const dokument of ergebnis.erzeugt) {
+    const runde = await pruefeDokument(dokument.id, args, stufe);
+    // In dasselbe Objekt hinein, das schon im Ergebnisstand steht (Issue #522): Ein
+    // Abbruch mittendrin laesst die uebrigen Dokumente sichtbar ungeprueft zurueck.
+    Object.assign(dokument, { zustand: runde.zustand, runden: runde.runden, sessions: runde.sessions });
+    // `dauerMs` ist die Summe ueber ALLE Sessions der Einheit — die Erzeugungs-Session
+    // steht schon drin, die Pruefrunden kommen dazu.
+    einheitErgaenzen(einheit, {
+      dauerMs: (einheit.dauerMs ?? 0) + runde.sessions.reduce((n, s) => n + s.dauerMs, 0),
+    });
     if (runde.hardStop) return { verbraucht: false, hardStop: true };
     if (!runde.endzustand) alleFertig = false;
+    if (runde.ohneAnker) ohneAnker = true;
   }
 
   if (!alleFertig) {
     log(`  Issue #${ergebnis.quelle}: nicht jedes Dokument traegt einen Endzustand — '${args.erzeugeLabel}' bleibt stehen.`);
+    einheitErgaenzen(einheit, { ausgang: ohneAnker ? "ohneErgebnis" : "offen", labelEntfernt: false });
     return { verbraucht: false, hardStop: false };
   }
   board("issue", "label", "remove", ergebnis.quelle, args.erzeugeLabel);
   log(`  Issue #${ergebnis.quelle}: ${dokumentListe(ergebnis.erzeugt)} geprueft — '${args.erzeugeLabel}' entfernt.`);
+  einheitErgaenzen(einheit, { ausgang: "verbraucht", labelEntfernt: true });
   return { verbraucht: true, hardStop: false };
 }
 
@@ -2917,7 +2998,9 @@ async function laufePruefphase(mitDokument, args, stufe) {
  * sie keine Session lief. So zaehlt der Ernstfall dasselbe wie `berichteErzeugungDryRun`.
  *
  * Kein Board-Move in keinem Ausgang: Die Quellen liegen im Backlog und bleiben dort.
- * Kein Ergebnisstand: Die Einheiten dafuer bestellt Issue #522.
+ * Je Ausgangsdokument entsteht eine Einheit im Ergebnisstand (Issue #522) — auch fuer die
+ * uebersprungenen und die liegengebliebenen, sonst zaehlte der Stand weniger Quellen als
+ * das Textprotokoll daneben.
  */
 async function runErzeugungsLoop(kandidaten, args) {
   const stufe = args.stufe;
@@ -2929,6 +3012,7 @@ async function runErzeugungsLoop(kandidaten, args) {
   for (const kandidat of kandidaten) {
     if (verarbeitet >= args.max) {
       log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
+      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "liegengeblieben" });
       continue;
     }
     // Die teure zweite Stufe der Auswahl, an derselben Stelle, an der der Review-Modus
@@ -2937,11 +3021,15 @@ async function runErzeugungsLoop(kandidaten, args) {
     if (grund !== null) {
       log(`#${kandidat.id} uebersprungen: ${grund}.`);
       uebersprungen++;
+      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "uebersprungen", grund });
       continue;
     }
 
     verarbeitet++;
-    const runde = await erzeugeAusQuelle(kandidat, args, stufe, verarbeitet);
+    // Wie in der Review-Schleife VOR der Session (Issue #489): Bricht der Lauf mitten in
+    // der Runde ab, steht die Quelle trotzdem im Stand — mit "unbekannt".
+    const einheit = einheitAnlegen(kandidat.id, kandidat.title);
+    const runde = await erzeugeAusQuelle(kandidat, args, stufe, verarbeitet, einheit);
     if (runde.hardStop) {
       hardStop = true;
       break;
@@ -2983,11 +3071,12 @@ export async function laufeErzeugungsModus(args) {
   const backlog = board("issue", "list", "--status", "backlog");
   const { kandidaten, uebersprungen } = selectErzeugungsCandidates(backlog, { label: args.erzeugeLabel, stufe });
 
-  // Nur ins Log, nicht in den Ergebnisstand: Die Einheiten dafuer bestellt Issue #522.
   // Ein Lauf ohne Arbeit waere sonst im Protokoll nicht von einem leeren Board zu
-  // unterscheiden (dieselbe Ueberlegung wie im Review-Modus).
+  // unterscheiden (dieselbe Ueberlegung wie im Review-Modus). Seit Issue #522 auch im
+  // Ergebnisstand: Sonst zaehlte er weniger Quellen als das Textprotokoll daneben.
   for (const u of uebersprungen) {
     log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
   }
 
   await fuehreVorflug(args, kandidaten, "--erzeuge --dry-run");
