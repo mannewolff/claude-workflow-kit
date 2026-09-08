@@ -6,5 +6,5 @@
 | checks | specs/checks.md | 1 | 0 |
 | gate | specs/gate.md | 1 | 0 |
 | installer | specs/installer.md | 5 | 0 |
-| night | specs/night.md | 6 | 0 |
-| skills | specs/skills.md | 1 | 0 |
+| night | specs/night.md | 9 | 0 |
+| skills | specs/skills.md | 2 | 0 |
