@@ -142,15 +142,19 @@ test("--stufe fachlich gibt es im Erzeugungsmodus nicht", () => {
 });
 
 for (const stufe of ["plan", "issue"]) {
-  test(`--erzeuge --stufe ${stufe} wird angenommen und endet vor vorbereiten`, () => {
+  test(`--erzeuge --stufe ${stufe} wird angenommen und kommt bis vorbereiten`, () => {
+    // Seit Issue #518 traegt der Erzeugungsmodus seinen eigenen Zweig in main(); die
+    // Uebergangsmeldung aus #517 ist fort. Was hier bleibt, ist die Aussage der
+    // Argumentschicht: Diese Kombination gilt. Belegt durch die Vorbedingung, an der ein
+    // leeres Verzeichnis scheitert — sie liegt hinter jeder Argumentpruefung. Was der
+    // Zweig dann tut, prueft test/night-erzeuge-geruest.test.mjs gegen ein Fixture.
     inLeeremVerzeichnis((dir) => {
       const res = run(dir, ["--erzeuge", "--stufe", stufe, "--dry-run"]);
-      assert.equal(res.status, 1, "die Schleife folgt erst in Issue #518");
-      assert.match(res.stderr, /Argumente sind gueltig/, "die Argumente haetten gelten muessen");
-      assert.doesNotMatch(res.stderr, /board\.mjs nicht gefunden/,
-        "der Abbruch liegt hinter vorbereiten — der Aufruf darf dort nie ankommen");
+      assert.equal(res.status, 1, "ohne board.mjs muss der Lauf an der Vorbedingung scheitern");
+      assert.match(res.stderr, /board\.mjs nicht gefunden/,
+        "ein anderer Abbruchgrund hiesse, die Argumente haetten nicht gegolten");
       assert.doesNotMatch(res.stdout, /Nacht-Runner startet/,
-        "ein Erzeugungslauf darf nie in Dry-Run oder Implementierung fallen");
+        "vor der Vorbedingung darf noch kein Lauf beginnen");
     });
   });
 }

@@ -95,6 +95,14 @@
  * Vorflug-Session, nicht im Runner-Prozess (Issue #269). Die buildChecks-Pflicht
  * entfaellt (es wird nichts gebaut und nichts committet).
  *
+ * Erzeugungsmodus (--erzeuge, Issue #513, Geruest in #518): Laesst aus geprueften
+ * Dokumenten die naechste Stufe entstehen — aus einem Fachplan einen Plan, aus einem
+ * Plan die Arbeitspakete. Exklusiv zu beiden anderen Programmen. Vorflug und
+ * buildChecks-Ausnahme wie im Review-Modus, denn auch hier wird nichts gebaut und
+ * nichts committet. Zusaetzlich ein Tracker-Guard VOR dem Vorflug: Bei
+ * `issueTracker: toolbox` mit `toolbox.ideaStored: true` entstuenden Pool-Ideen ohne
+ * Kartennummer, und ein Lauf ohne Nummer traegt kein Erfolgssignal.
+ *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
  *                     (erhaelt NIGHT_ISSUE_ID als Umgebungsvariable).
@@ -2202,10 +2210,11 @@ export function vorbereiten(args) {
     fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`, "zustand");
   }
   if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.", "zustand");
-  // Die buildChecks-Pflicht gilt nur der Implementierung. Im Review-Modus wird nichts
-  // gebaut und nichts committet — dort waere die Pruefung gegenstandslos und wuerde
-  // Projekte ohne buildChecks zu --no-checks-ok zwingen fuer einen Lauf, der gar nichts baut.
-  if (!args.review && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
+  // Die buildChecks-Pflicht gilt nur der Implementierung. Im Review- und im
+  // Erzeugungsmodus (Issue #518) wird nichts gebaut und nichts committet — dort waere die
+  // Pruefung gegenstandslos und wuerde Projekte ohne buildChecks zu --no-checks-ok
+  // zwingen fuer einen Lauf, der gar nichts baut.
+  if (!args.review && !args.erzeuge && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
   }
 
@@ -2281,39 +2290,26 @@ function berichteReviewDryRun(kandidaten, args, stufe) {
 }
 
 /**
- * Programm 1 — der Review-Modus (Phase 7 aus Issue #398, eingefuehrt in #233).
+ * Faehrt den Vorflug und macht ihn zum Gate (Issue #233, Umgebung korrigiert in #269).
  *
- * Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
- * das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
+ * Geteilt von Review- und Erzeugungsmodus (Issue #518): Beide starten spaeter dieselben
+ * `/issue-review`-Sessions, also messen sie dieselbe Umgebung. Zwei Kopien wuerden
+ * auseinanderlaufen, und ein Erzeugungslauf pruefte dann etwas anderes als ein
+ * Review-Lauf, ohne dass es jemandem auffiele.
  *
- * Ohne Kontext-Parameter: Der Review-Modus filtert ueber --review-label und ruehrt
- * das Routing-Label der Implementierung nicht an.
+ * `issue-review check` ist fuer sich eine Auskunft, kein Gate — der interaktive Skill
+ * fragt den Menschen, wenn einer fehlt. Nachts fragt niemand, und ein unterbesetzter Lauf
+ * sieht am Board aus wie ein vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne
+ * Opt-out: Wer wissen will, ob alles steht, faehrt vorher --dry-run.
+ *
+ * Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet der
+ * Lauf nichts an, der das Problem aufklaeren soll. Die eine Vorflug-Session laeuft auch
+ * dort, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall.
+ *
+ * `dryRunHinweis` traegt den Aufruf, mit dem der Mensch den Befund selbst sieht — er
+ * unterscheidet sich je Modus und gehoert deshalb an den Aufrufer.
  */
-export async function laufeReviewModus(args) {
-  const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
-  const stufe = args.stufe ?? "issue";
-  const backlog = board("issue", "list", "--status", "backlog");
-  const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
-
-  // Die Ausschluesse liegen bereits in der Form des Ergebnisstands vor (Issue #489):
-  // {id, title, grund}. Sie wandern hier hinein, bevor der Vorflug abbrechen kann —
-  // ein Stand, der erst am regulaeren Ende entstuende, verschwiege sie im
-  // interessantesten Fall.
-  for (const u of uebersprungen) {
-    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
-  }
-
-  // Vorflug (Issue #233, Umgebung korrigiert in #269). `issue-review check` ist fuer
-  // sich eine Auskunft, kein Gate — der interaktive Skill fragt den Menschen, wenn
-  // einer fehlt. Nachts fragt niemand, und ein unterbesetzter Lauf sieht am Board aus
-  // wie ein vollstaendiger. Deshalb hier ein harter Stopp, bewusst ohne Opt-out: Wer
-  // wissen will, ob alles steht, faehrt vorher --dry-run.
-  //
-  // Im Dry-Run selbst wird nur berichtet, nicht abgebrochen — sonst zeigt ausgerechnet
-  // der Lauf nichts an, der das Problem aufklaeren soll. Die eine Vorflug-Session
-  // laeuft auch dort, sonst pruefte der Trockenlauf etwas anderes als der Ernstfall.
-  //
+async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
   // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
   // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
   // und die Verfuegbarkeit misst ohnehin nur noch die Session.
@@ -2339,8 +2335,35 @@ export async function laufeReviewModus(args) {
 
   const probleme = meldeVorflug(vorflug, reviewerListe);
   if (probleme.length > 0 && !args.dryRun) {
-    fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit --review --dry-run pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
+    fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit ${dryRunHinweis} pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
   }
+}
+
+/**
+ * Programm 1 — der Review-Modus (Phase 7 aus Issue #398, eingefuehrt in #233).
+ *
+ * Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
+ * das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
+ *
+ * Ohne Kontext-Parameter: Der Review-Modus filtert ueber --review-label und ruehrt
+ * das Routing-Label der Implementierung nicht an.
+ */
+export async function laufeReviewModus(args) {
+  const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
+  const stufe = args.stufe ?? "issue";
+  const backlog = board("issue", "list", "--status", "backlog");
+  const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
+
+  // Die Ausschluesse liegen bereits in der Form des Ergebnisstands vor (Issue #489):
+  // {id, title, grund}. Sie wandern hier hinein, bevor der Vorflug abbrechen kann —
+  // ein Stand, der erst am regulaeren Ende entstuende, verschwiege sie im
+  // interessantesten Fall.
+  for (const u of uebersprungen) {
+    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+  }
+
+  await fuehreVorflug(args, kandidaten, "--review --dry-run");
 
   if (kandidaten.length === 0) {
     log(`Keine Review-Kandidaten im Backlog (Stufe ${stufe}) — nichts zu tun.`);
@@ -2356,6 +2379,59 @@ export async function laufeReviewModus(args) {
   if (args.dryRun) berichteReviewDryRun(kandidaten, args, stufe);
 
   await runReviewLoop(kandidaten, args);
+}
+
+/**
+ * Weist den Erzeugungsmodus auf einem Tracker ab, der Ideen ohne Kartennummer ablegt
+ * (Issue #518, A9 in Plan #513).
+ *
+ * Bei `toolbox.ideaStored: true` liefert `issue create` ein `{ideaId, pending: true}`:
+ * Die Karte hat keine Nummer und steht in keinem Backlog. Das Erfolgssignal der Nacht
+ * faende nichts, das Routing-Label bliebe stehen, und die naechste Nacht legte eine
+ * zweite Pool-Idee an — der Fehler waere unsichtbar und wuechse mit jedem Lauf.
+ *
+ * Nur beim Tracker `toolbox`: `board.mjs` wertet das Feld allein im Toolbox-Adapter aus.
+ * Ein `local`-Projekt mit liegengebliebenem `toolbox`-Block wuerde sonst grundlos
+ * gestoppt.
+ *
+ * Der Guard liest die in `vorbereiten` gemischte `config` und nicht die Datei: Ein
+ * Neulesen waere eine zweite Quelle, und Overrides gaelten dann nur an einer der beiden
+ * Stellen.
+ */
+function erzeugungsTrackerPruefen() {
+  if (config.issueTracker !== "toolbox" || config.toolbox?.ideaStored !== true) return;
+  fail(
+    "Der Erzeugungsmodus laeuft nicht mit 'toolbox.ideaStored: true': 'issue create' legt dann eine "
+    + "Pool-Idee ohne Kartennummer an, und ohne Nummer traegt der Lauf kein Erfolgssignal — das "
+    + "Routing-Label bliebe stehen und die naechste Nacht legte eine zweite Idee an. Entweder "
+    + "'toolbox.ideaStored' in .claude/workflow.config.json auf false setzen (dann entstehen Karten "
+    + "mit Nummer) oder die Erzeugung interaktiv fahren.",
+    "zustand",
+  );
+}
+
+/**
+ * Programm 3 — der Erzeugungsmodus (Issue #513, A1; Geruest aus Issue #518).
+ *
+ * Laesst aus geprueften Dokumenten die naechste Stufe entstehen: aus einem Fachplan einen
+ * Plan, aus einem Plan die Arbeitspakete. Exklusiv zu den beiden anderen Programmen —
+ * `pruefeArgs` weist `--review --erzeuge` ab.
+ *
+ * Der Guard steht VOR dem Vorflug: Ein Lauf, der ohnehin abgewiesen wird, soll keine
+ * Vorflug-Session kosten. Der Vorflug selbst ist derselbe harte Stopp wie im Review-Modus,
+ * weil die spaetere Pruefschleife dieselben `/issue-review`-Sessions faehrt.
+ */
+export async function laufeErzeugungsModus(args) {
+  erzeugungsTrackerPruefen();
+
+  await fuehreVorflug(args, [], "--erzeuge --dry-run");
+
+  // Die Kandidatenauswahl folgt in Issue #519, die Schleife in Issue #520. Bis dahin ist
+  // die Liste leer, und der Lauf endet an genau der Stelle, an der er es auch danach tut,
+  // wenn nichts zu tun ist.
+  log(`Keine Erzeugungs-Kandidaten (Stufe ${args.stufe}) — nichts zu tun.`);
+  laufAbschliessen("regulaer");
+  process.exit(0);
 }
 
 /**
@@ -2797,21 +2873,19 @@ export async function laufeImplementierung(args, ctx) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  // Der Erzeugungsmodus endet vor vorbereiten, solange seine Schleife fehlt (Issue #518).
-  // Faellt er stattdessen durch, landet er in laufeDryRun oder laufeImplementierung und
-  // liefe gegen Ready — ein Erzeugungsauftrag saehe am Board wie eine Implementierung aus.
-  // Die Meldung ist zugleich der einzige Beobachtungskanal fuer "Argumente angenommen".
-  if (args.erzeuge) {
-    fail("Erzeugungsmodus: Schleife folgt in Issue #518 — Argumente sind gueltig.", "zustand");
-  }
-
   const ctx = vorbereiten(args);
 
-  // Drei einander ausschliessende Programme. Review und Dry-Run beenden den Prozess
-  // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code
+  // Vier einander ausschliessende Programme. Review, Erzeugung und Dry-Run beenden den
+  // Prozess selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code
   // bilden.
   if (args.review) {
     await laufeReviewModus(args);
+    return;
+  }
+  // Vor dem Dry-Run-Zweig: --erzeuge --dry-run ist ein Trockenlauf DES ERZEUGUNGSMODUS,
+  // kein Trockenlauf gegen Ready. Stuende er dahinter, liefe er gegen die falsche Spalte.
+  if (args.erzeuge) {
+    await laufeErzeugungsModus(args);
     return;
   }
   if (args.dryRun) {
