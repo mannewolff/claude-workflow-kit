@@ -8,10 +8,11 @@
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
  * Arbeitspakets gegen die Grammatik aus A12, `check --anker` haelt als Gate den
  * Push auf, wenn Paket und Beschreibung nicht zusammenpassen, `luecken` sagt,
- * wozu die Beschreibung schweigt, `vorhaben` haelt fest, ob fuer ein Vorhaben
- * Produktionscode gelesen wurde, `vorhaben-sichern` hebt die wartenden
- * Vorhaben-Notizen nach specs/vorhaben/ auf, und `apply` schreibt die
- * Beschreibung aus den Wirkungsangaben der Pakete fort.
+ * wozu die Beschreibung schweigt, `vorhaben` haelt als wartende Datei unter
+ * .claude/ fest, ob fuer ein Vorhaben Produktionscode gelesen wurde,
+ * `vorhaben-sichern` hebt die wartenden Vorhaben-Notizen nach specs/vorhaben/
+ * auf, und `apply` schreibt die Beschreibung aus den Wirkungsangaben der Pakete
+ * fort.
  *
  * Warum ein eigenes Werkzeug und keine Achse in board.mjs (Plan #437, A2):
  * board.mjs spricht mit Issue-Trackern, hier geht es um Dateien im Repo. Die
@@ -116,10 +117,12 @@ luecken Nennt je Bereich die Dateien, die keine gueltige Aussage beruehrt —
         als JSON auf stdout, immer, auch mit leerer Liste. Eine Luecke ist ein
         Befund und kein Fehler: Exit 0. Die Bereichsnamen kommen aus
         'spec.bereiche'; ohne den Block wird nichts gemeldet.
-vorhaben Schreibt ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md neu: Einheit, Kuerzel bzw.
-        Plannummer, ob Produktionscode gelesen wurde, der Grund und der Stand.
-        Das Kuerzel kommt vom Aufrufer, nicht aus dem Tracker. Ohne
-        'spec'-Block in ${CONFIG_DATEI} wird nichts geschrieben.
+vorhaben Schreibt ${WARTEND_DIR}/${WARTEND_PRAEFIX}<kuerzel>.md neu: Einheit, Kuerzel
+        bzw. Plannummer, ob Produktionscode gelesen wurde, der Grund und der
+        Stand. Die Notiz wartet dort; nach ${SPECS_DIR}/${VORHABEN_DIR}/ hebt sie erst
+        'vorhaben-sichern' beim naechsten 'push main' auf. Das Kuerzel kommt vom
+        Aufrufer, nicht aus dem Tracker. Ohne 'spec'-Block in ${CONFIG_DATEI}
+        wird nichts geschrieben.
 vorhaben-sichern
         Hebt die wartenden Notizen ${WARTEND_DIR}/${WARTEND_PRAEFIX}*.md nach
         ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md auf: Ziel atomar ersetzen, Quelle
@@ -1094,7 +1097,15 @@ function vorhabenText({ kuerzel, codeGelesen, grund }) {
 }
 
 /**
- * Schreibt die Notiz zum Code-Lesen.
+ * Schreibt die Notiz zum Code-Lesen — als **wartende** Datei unter
+ * ${WARTEND_DIR}/, nicht nach ${SPECS_DIR}/${VORHABEN_DIR}/ (Issue #548, Plan #545 A12).
+ *
+ * Der Ablageort ist der Kern der Sache: `/techplan` laeuft mitten in einer
+ * Session, oft nachts, und ein Schreibvorgang unter ${SPECS_DIR}/ hinterliesse
+ * dort eine ungetrackte Aenderung, die niemand angefordert hat — nachts genau
+ * der unsaubere Working Tree, an dem der Runner hart stoppt. Unter
+ * ${WARTEND_DIR}/ greift die vorhandene .gitignore-Zeile ohne Zutun, und
+ * `vorhaben-sichern` holt die Notiz beim naechsten Push ab.
  *
  * Die Datei wird vollstaendig neu geschrieben, kein Merge und kein Verlauf: Sie
  * sagt, was heute gilt. Ein zusammengefuehrter Stand behielte den Grund eines
@@ -1115,15 +1126,23 @@ function vorhaben(argv) {
     return 0;
   }
 
-  const verzeichnis = join(specsPfad(), VORHABEN_DIR);
+  const verzeichnis = join(process.cwd(), WARTEND_DIR);
   mkdirSync(verzeichnis, { recursive: true });
 
-  const pfad = join(verzeichnis, `${angaben.kuerzel}.md`);
+  const name = `${WARTEND_PRAEFIX}${angaben.kuerzel}.md`;
+  const pfad = join(verzeichnis, name);
   const vorhanden = existsSync(pfad);
   writeFileSync(pfad, vorhabenText(angaben), "utf-8");
 
+  // Der Satz ist zeichengleich vorgegeben (Issue #548): Er ist die einzige
+  // Stelle, an der ein Mensch erfaehrt, dass die Notiz noch nicht am Ziel liegt.
+  // Wer nur den Pfad sieht, haelt sie fuer abgelegt und sucht sie spaeter
+  // vergeblich unter ${SPECS_DIR}/${VORHABEN_DIR}/.
   const wort = vorhanden ? "aktualisiert" : "geschrieben";
-  process.stdout.write(`Vorhaben-Notiz ${wort}: ${SPECS_DIR}/${VORHABEN_DIR}/${angaben.kuerzel}.md\n`);
+  process.stdout.write(
+    `Vorhaben-Notiz ${wort}: ${WARTEND_DIR}/${name}`
+    + ` — wird beim naechsten 'push main' nach ${SPECS_DIR}/${VORHABEN_DIR}/ aufgehoben.\n`,
+  );
   return 0;
 }
 

@@ -169,6 +169,42 @@ test("`--grund` ist bei `--code-gelesen ja` als Pflicht ausgewiesen", () => {
     "es steht nicht, dass `--grund` bei `nein` entfaellt");
 });
 
+test("[skills-3] der Unterschritt nennt den wartenden Ablageort und das Aufheben beim Push", () => {
+  const abschnitt = vorhabenAbschnitt();
+  assert.match(abschnitt, /\.claude\/vorhaben-wartend-/,
+    "der wartende Ablageort fehlt — wer den alten Pfad liest, sucht die Notiz nach dem Planen"
+      + " unter `specs/vorhaben/` und haelt den Lauf fuer gescheitert");
+  assert.match(abschnitt, /push main/,
+    "die zweite Stufe fehlt: aufgehoben wird die Notiz erst beim naechsten `push main`");
+  assert.match(abschnitt, /specs\/vorhaben\//,
+    "das Ziel des Aufhebens ist nicht benannt");
+});
+
+test("[skills-3] eine misslungene Ablage laesst das Planen gelungen sein", () => {
+  const abschnitt = vorhabenAbschnitt();
+  const absatz = abschnitt.split(/\n\s*\n/).find(
+    (a) => /Exitcode ungleich 0/.test(a) && /Planen/.test(a),
+  );
+  assert.ok(absatz, "kein Absatz zum Fehlerpfad einer misslungenen Ablage");
+  assert.match(absatz, /trotzdem|dennoch|gilt.{0,40}gelungen/i,
+    "es steht nicht, dass das Planen trotzdem als gelungen gilt — sonst wirft eine Session"
+      + " das fertige Plandokument wegen einer Notiz weg");
+  assert.match(absatz, /keine automatische Wiederherstellung|nicht automatisch/i,
+    "es steht nicht, dass niemand die Ablage automatisch nachholt");
+});
+
+test("[skills-3] das Nachhol-Kommando steht vollstaendig da", () => {
+  const abschnitt = vorhabenAbschnitt();
+  const idx = abschnitt.indexOf("Exitcode ungleich 0");
+  assert.ok(idx >= 0, "der Fehlerpfad fehlt");
+  assert.match(
+    abschnitt.slice(idx),
+    /spec\.mjs vorhaben --kuerzel <k> --code-gelesen <ja\|nein> \[--grund <text>\]/,
+    "das vollstaendige Nachhol-Kommando fehlt hinter dem Fehlerpfad — ohne Vorgabe erfindet"
+      + " jede Session eine andere Anweisung",
+  );
+});
+
 // --- Der Fall ohne spec-Block ------------------------------------------------
 
 test("der Skill sagt ausdruecklich, dass ohne `spec`-Block nichts davon gilt", () => {

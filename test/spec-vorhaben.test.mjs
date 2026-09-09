@@ -13,6 +13,12 @@
 // Zweitens: **Ein Feld, das man leer lassen kann, ist kein Nachweis.** Fehlt
 // `--code-gelesen` oder traegt es einen anderen Wert als ja/nein, endet der Lauf rot
 // und ohne Datei. Eine halb geschriebene Notiz waere schlimmer als keine.
+//
+// Seit Issue #548 ist der Ablageort ein anderer: Die Notiz entsteht als **wartende**
+// Datei `.claude/vorhaben-wartend-<kuerzel>.md` und kommt erst beim naechsten
+// `push main` unter `specs/vorhaben/` an. Deshalb messen auch alle Negativ-Zusagen
+// dort — eine Zusage, die noch `specs/vorhaben/` prueft, waere eine leere Pruefung:
+// gruen, auch wenn ein abgebrochener Lauf eine wartende Datei hinterliesse.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -44,17 +50,53 @@ function vorhaben(dir, ...args) {
 }
 
 function notizPfad(dir, kuerzel) {
-  return join(dir, "specs", "vorhaben", `${kuerzel}.md`);
+  return join(dir, ".claude", `vorhaben-wartend-${kuerzel}.md`);
 }
 
 function notiz(dir, kuerzel) {
   return readFileSync(notizPfad(dir, kuerzel), "utf-8");
 }
 
+/**
+ * Die Namen der wartenden Notizen im Verzeichnis — leer, wenn keine wartet.
+ * Ohne `.claude/` wartet nichts: Der Fall gehoert zu den Tests ohne Config-Datei.
+ */
+function wartende(dir) {
+  if (!existsSync(join(dir, ".claude"))) return [];
+  return readdirSync(join(dir, ".claude"))
+    .filter((name) => name.startsWith("vorhaben-wartend-") && name.endsWith(".md"))
+    .sort();
+}
+
 /** Das lokale Tagesdatum in der genannten Zone, als JJJJ-MM-TT. */
 function tagIn(zone) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: zone }).format(new Date());
 }
+
+// --- Der Ablageort ------------------------------------------------------------
+
+test("[spec-2] die Notiz entsteht als wartende Datei, `specs/vorhaben/` bleibt unberuehrt", () => {
+  mitProjekt((dir) => {
+    vorhaben(dir, "--kuerzel", "VER", "--code-gelesen", "nein");
+
+    assert.equal(existsSync(notizPfad(dir, "VER")), true,
+      "die wartende Datei `.claude/vorhaben-wartend-VER.md` fehlt");
+    assert.equal(existsSync(join(dir, "specs", "vorhaben")), false,
+      "`vorhaben` hat unter `specs/vorhaben/` geschrieben — dorthin hebt erst `vorhaben-sichern` auf");
+  });
+});
+
+test("[spec-2] ein zweiter Lauf zum selben Kuerzel ueberschreibt die wartende Datei", () => {
+  mitProjekt((dir) => {
+    vorhaben(dir, "--kuerzel", "VER", "--code-gelesen", "ja", "--grund", "X");
+    vorhaben(dir, "--kuerzel", "VER", "--code-gelesen", "nein");
+
+    assert.deepEqual(wartende(dir), ["vorhaben-wartend-VER.md"],
+      "es darf genau eine wartende Notiz je Kuerzel geben, keine zweite daneben");
+    assert.match(notiz(dir, "VER"), /^- Code gelesen: nein$/m,
+      "der zweite Lauf hat die wartende Datei nicht ueberschrieben");
+  });
+});
 
 // --- Die Einheit steht in der Datei -----------------------------------------
 
@@ -138,7 +180,7 @@ test("zwei Aufrufe mit denselben Argumenten am selben Tag erzeugen byte-gleiche 
     vorhaben(dir, ...args);
 
     assert.equal(notiz(dir, "VER"), erster, "der zweite Lauf hat die Datei veraendert");
-    assert.deepEqual(readdirSync(join(dir, "specs", "vorhaben")), ["VER.md"],
+    assert.deepEqual(wartende(dir), ["vorhaben-wartend-VER.md"],
       "es darf genau eine Notiz je Kuerzel geben, keine Dopplung");
   });
 });
@@ -174,34 +216,39 @@ for (const [name, args] of [
   ["fehlendes --code-gelesen", ["--kuerzel", "VER"]],
   ["ein anderer Wert als ja/nein", ["--kuerzel", "VER", "--code-gelesen", "vielleicht"]],
 ]) {
-  test(`${name}: Exit ungleich 0 und keine Datei`, () => {
+  test(`[spec-2] ${name}: Exit ungleich 0 und keine wartende Datei`, () => {
     mitProjekt((dir) => {
       const res = spec(dir, "vorhaben", ...args);
 
       assert.notEqual(res.status, 0, `der Lauf haette rot enden muessen, stdout: ${res.stdout}`);
       assert.notEqual(res.stderr.trim(), "", "der Fehler muss auf stderr stehen");
-      assert.equal(existsSync(join(dir, "specs", "vorhaben")), false,
-        "ein abgebrochener Lauf darf keine Notiz hinterlassen");
+      assert.deepEqual(wartende(dir), [],
+        "ein abgebrochener Lauf darf keine wartende Notiz hinterlassen");
     });
   });
 }
 
-test("ein Kuerzel mit Pfadanteil schreibt auch nicht ausserhalb von specs/", () => {
+test("[spec-2] ein Kuerzel mit Pfadanteil schreibt auch nicht neben die wartenden Notizen", () => {
   mitProjekt((dir) => {
     spec(dir, "vorhaben", "--kuerzel", "../../x", "--code-gelesen", "ja");
 
-    assert.equal(existsSync(join(dir, "x.md")), false, "das Kuerzel wurde zum Pfad ausserhalb von specs/");
+    // '.claude/vorhaben-wartend-../../x.md' faellt auf '.claude/x.md' zusammen —
+    // das Praefix klebt am ersten '..' und macht es zu einem Verzeichnisnamen.
+    assert.equal(existsSync(join(dir, ".claude", "x.md")), false,
+      "das Kuerzel wurde zum Pfad und hat neben den wartenden Notizen geschrieben");
+    assert.deepEqual(wartende(dir), [], "ein abgewiesenes Kuerzel darf keine Notiz hinterlassen");
   });
 });
 
 // --- Ohne Schalter passiert nichts -------------------------------------------
 
-test("ohne 'spec'-Block: Hinweis auf stderr, Exit 0, kein specs/vorhaben/", () => {
+test("[spec-2] ohne 'spec'-Block: Hinweis auf stderr, Exit 0, keine wartende Notiz", () => {
   mitProjekt((dir) => {
     const res = spec(dir, "vorhaben", "--kuerzel", "VER", "--code-gelesen", "ja");
 
     assert.equal(res.status, 0, `ohne Block ist das kein Fehler: ${res.stderr}`);
     assert.match(res.stderr, /spec/, "der Hinweis nennt den fehlenden Block nicht");
+    assert.deepEqual(wartende(dir), [], "ohne Block darf keine wartende Notiz entstehen");
     assert.equal(existsSync(join(dir, "specs")), false,
       "ohne Block darf kein Verzeichnis entstehen");
   }, { specBlock: null });
@@ -212,6 +259,7 @@ test("ohne Config-Datei: dasselbe, Exit 0 und keine Datei", () => {
     const res = spec(dir, "vorhaben", "--kuerzel", "VER", "--code-gelesen", "ja");
 
     assert.equal(res.status, 0, `ohne Config ist das kein Fehler: ${res.stderr}`);
+    assert.deepEqual(wartende(dir), [], "ohne Config darf keine wartende Notiz entstehen");
     assert.equal(existsSync(join(dir, "specs")), false, "ohne Config darf kein Verzeichnis entstehen");
   }, { config: null });
 });
@@ -225,18 +273,24 @@ test("ungueltiges JSON in der Config ist ein Fehler", () => {
     const res = spec(dir, "vorhaben", "--kuerzel", "VER", "--code-gelesen", "ja");
 
     assert.equal(res.status, 1, "ungueltiges JSON haette rot enden muessen");
-    assert.equal(existsSync(join(dir, "specs")), false, "bei kaputter Config darf keine Notiz entstehen");
+    assert.deepEqual(wartende(dir), [], "bei kaputter Config darf keine Notiz entstehen");
   });
 });
 
 // --- Die Erfolgsmeldung -------------------------------------------------------
 
-test("stdout nennt den geschriebenen Pfad, der zweite Lauf meldet 'aktualisiert'", () => {
+test("[spec-2] stdout nennt den wartenden Pfad und das Aufheben, der zweite Lauf 'aktualisiert'", () => {
+  // Zeichengleich: Der Satz ist die einzige Stelle, an der ein Mensch erfaehrt, dass
+  // die Notiz noch nicht am Ziel liegt. Wer nur den Pfad sieht, haelt sie fuer abgelegt.
   mitProjekt((dir) => {
     const erst = vorhaben(dir, "--kuerzel", "VER", "--code-gelesen", "ja");
-    assert.equal(erst.stdout, "Vorhaben-Notiz geschrieben: specs/vorhaben/VER.md\n");
+    assert.equal(erst.stdout,
+      "Vorhaben-Notiz geschrieben: .claude/vorhaben-wartend-VER.md"
+      + " — wird beim naechsten 'push main' nach specs/vorhaben/ aufgehoben.\n");
 
     const zweit = vorhaben(dir, "--kuerzel", "VER", "--code-gelesen", "ja");
-    assert.equal(zweit.stdout, "Vorhaben-Notiz aktualisiert: specs/vorhaben/VER.md\n");
+    assert.equal(zweit.stdout,
+      "Vorhaben-Notiz aktualisiert: .claude/vorhaben-wartend-VER.md"
+      + " — wird beim naechsten 'push main' nach specs/vorhaben/ aufgehoben.\n");
   });
 });

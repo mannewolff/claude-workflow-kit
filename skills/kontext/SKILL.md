@@ -114,7 +114,7 @@ find specs -type f -name '*.md' -not -path 'specs/vorhaben/*' -not -name INDEX.m
 
 Nicht leere Ausgabe heißt veraltet. Ein still falscher Index ist schlechter als keiner — deshalb ist diese Meldung der wichtigere Teil des Schritts. Sie nennt nur ein Kommando; ausgeführt wird es hier nicht.
 
-**`specs/vorhaben/` zählt nicht mit.** Die Notizen dort schreibt `/techplan` bei jedem Vorhaben, und sie stehen nicht im Index — ohne die Ausnahme meldete `/kontext` nach jedem `/techplan` einen Index als veraltet, der stimmt. Ein Fehlalarm nach `git pull` bleibt möglich (alle Dateien bekommen den Checkout-Zeitpunkt) und ist hinnehmbar: Die Meldung schlägt ein Kommando vor und hält nichts auf.
+**`specs/vorhaben/` zählt nicht mit.** Die Notizen dort entstehen weiterhin beim Planen — `/techplan` legt sie als wartende Datei unter `.claude/` ab, und der nächste `push main` hebt sie nach `specs/vorhaben/` auf. Sie stehen nicht im Index; ohne die Ausnahme meldete `/kontext` nach jedem Push mit einer aufgehobenen Notiz einen Index als veraltet, der stimmt. Ein Fehlalarm nach `git pull` bleibt möglich (alle Dateien bekommen den Checkout-Zeitpunkt) und ist hinnehmbar: Die Meldung schlägt ein Kommando vor und hält nichts auf.
 
 **Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: Der Abschnitt besteht aus der einen Zeile mit dem Neubau-Kommando, ohne Bereiche.
 
