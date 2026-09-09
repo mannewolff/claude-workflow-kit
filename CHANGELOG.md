@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [1.50.1] - 2026-09-09
+## [1.51.0] - 2026-09-09
 - chore: Spec fortgeschrieben (#546, #547, #548)
 - Ablageort umstellen: vorhaben schreibt wartend, push-main hebt auf (#548)
 - spec.mjs vorhaben-sichern: Aufhebe-Kommando (#547)
