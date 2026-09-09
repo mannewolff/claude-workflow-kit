@@ -1230,6 +1230,7 @@ Geprüft wird zweierlei: dass jede Wirkungsangabe in der Beschreibung angekommen
 | `node .claude/kit/spec.mjs check` | Prüft die Spec-Wirkung — `--paket` die Form einer Paketdatei, `--anker` als Gate den ganzen Batch. |
 | `node .claude/kit/spec.mjs luecken` | Meldet je Bereich, wozu die Beschreibung schweigt — auch wenn die Liste leer ist. |
 | `node .claude/kit/spec.mjs vorhaben` | Legt die Notiz an, ob für ein Vorhaben Produktionscode gelesen wurde. |
+| `node .claude/kit/spec.mjs vorhaben-sichern` | Hebt die wartenden Vorhaben-Notizen nach `specs/vorhaben/` auf — immer mit einer JSON-Antwort, auch wenn keine wartet. |
 | `node .claude/kit/spec.mjs apply` | Schreibt die Beschreibung aus den Wirkungsangaben fort. |
 
 ## Team-Config und persönliche Abweichungen

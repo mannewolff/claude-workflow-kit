@@ -112,12 +112,17 @@ test("die ausgeschlossenen und die moeglichen Tracker stehen da", () => {
 test("die Kommandos der Uebersicht sind genau die von spec.mjs --help", () => {
   // In BEIDE Richtungen: kein Kommando fehlt, keines ist erfunden. Eine Teilmengen-
   // pruefung liesse ein vergessenes Kommando gruen durchgehen.
+  //
+  // `[\w-]` und nicht `\w` (Issue #547): `\w` kennt den Bindestrich nicht und
+  // verkuerzte `vorhaben-sichern` zu `vorhaben`, das ohnehin in der Menge steht —
+  // die Kopplung galt fuer Bindestrich-Kommandos also gar nicht, und der Test
+  // bliebe gruen, ob die Tabellenzeile da ist oder nicht.
   const inDoku = new Set(
-    [...kapitel().matchAll(/node \.claude\/kit\/spec\.mjs (\w+)/g)].map((m) => m[1]),
+    [...kapitel().matchAll(/node \.claude\/kit\/spec\.mjs ([\w-]+)/g)].map((m) => m[1]),
   );
   const hilfe = spawnSync(process.execPath, [join(repoRoot, "kit/spec.mjs"), "--help"], { encoding: "utf-8" });
   assert.equal(hilfe.status, 0, hilfe.stderr);
-  const inHelp = new Set([...hilfe.stdout.matchAll(/node spec\.mjs (\w+)/g)].map((m) => m[1]));
+  const inHelp = new Set([...hilfe.stdout.matchAll(/node spec\.mjs ([\w-]+)/g)].map((m) => m[1]));
 
   assert.deepEqual(
     [...inDoku].sort(),
