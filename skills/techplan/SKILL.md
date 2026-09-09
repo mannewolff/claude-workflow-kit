@@ -257,6 +257,28 @@ node .claude/kit/spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund
 
 `--code-gelesen` beantwortet die Frage aus Schritt 2: Musste die Session Produktionscode als Quelle für Bestandsverhalten heranziehen? **`--grund` ist Pflicht bei `--code-gelesen ja`** und nennt die Bereiche und Fragen, für die die Spec schwieg — dieselben Stellen, die als `gelesen:`-Zeilen in `### Beschreibungs-Luecken` stehen. Bei `nein` entfällt der Schalter.
 
+**Die Notiz entsteht zweistufig.** `vorhaben` legt sie hier als **wartende** Datei `.claude/vorhaben-wartend-<k>.md` ab; unter `specs/vorhaben/` kommt sie erst an, wenn der nächste `push main` sie aufhebt. Beim Planen entsteht dadurch weder ein Commit noch eine Änderung im Working Tree — und genau darum geht es: `/techplan` läuft mitten in einer Session, oft nachts, und eine ungefragte Änderung unter `specs/` wäre dort der unsaubere Working Tree, an dem der Nacht-Runner hart stoppt.
+
+**Fehlerpfad: eine misslungene Ablage ist kein misslungenes Planen.** Endet `spec.mjs vorhaben` mit einem Exitcode ungleich 0, gilt das Planen **trotzdem als gelungen** — das Plandokument steht bereits, und es ist das Artefakt dieses Schritts. Es gibt **keine automatische Wiederherstellung**; nachgeholt wird von Hand mit dem vollständigen Kommando, in dem `<k>` und `--code-gelesen` die Werte dieses Laufs tragen:
+
+```bash
+node .claude/kit/spec.mjs vorhaben --kuerzel <k> --code-gelesen <ja|nein> [--grund <text>]
+```
+
+Die Meldung nennt dieses Kommando ausgeschrieben — ohne die Vorgabe erfindet jede Session eine andere Anweisung — und sagt dazu, dass die Notiz auch dann erst beim nächsten `push main` unter `specs/vorhaben/` ankommt.
+
+Wer die Meldung bekommt, hängt an der Betriebsart:
+
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Grund und Nachhol-Kommando gehen als Kommentar an das Plandokument `<M>`:
+
+```bash
+node .claude/kit/board.mjs issue comment <M> --text "Vorhaben-Notiz nicht abgelegt: <Grund>. Nachholen: <Kommando>"
+```
+
+Ohne diesen Kommentar hätte die Meldung nachts keinen Adressaten: Sie landet in `.claude/night-run-*.log`, der Runner misst den Erfolg am Board — das Plandokument steht —, und niemand erführe, dass etwas fehlt.
+
+**Interaktiv:** Grund und Nachhol-Kommando stehen beide in der Rückmeldung an den Menschen.
+
 ## Stop-Punkt
 
 Dieser Skill endet mit einem Plan-Dokument zur menschlichen Freigabe. Kein Code, kein Commit, keine **technischen** Issues, keine Ready-Bewegung — erst nach explizitem GO. Das `[Plan]`-Dokument ist die einzige Ausnahme: Es entsteht bei Bahn 2 interaktiv nach der Freigabe, unbeaufsichtigt unmittelbar nach Schritt 3 — die Freigabe erfolgt dann am Board, nachdem der Runner das Dokument geprüft hat —, weil es den erreichten Stand festhält und nicht dessen Umsetzung vorwegnimmt.

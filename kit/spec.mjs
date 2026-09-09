@@ -3,14 +3,16 @@
  * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, #450, #451, Plan #437)
  *
  * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
- * specs/ — und beantwortet sieben Fragen: `index` schreibt die Uebersicht ueber
+ * specs/ — und beantwortet acht Fragen: `index` schreibt die Uebersicht ueber
  * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
  * Arbeitspakets gegen die Grammatik aus A12, `check --anker` haelt als Gate den
  * Push auf, wenn Paket und Beschreibung nicht zusammenpassen, `luecken` sagt,
- * wozu die Beschreibung schweigt, `vorhaben` haelt fest, ob fuer ein Vorhaben
- * Produktionscode gelesen wurde, und `apply` schreibt die Beschreibung aus den
- * Wirkungsangaben der Pakete fort.
+ * wozu die Beschreibung schweigt, `vorhaben` haelt als wartende Datei unter
+ * .claude/ fest, ob fuer ein Vorhaben Produktionscode gelesen wurde,
+ * `vorhaben-sichern` hebt die wartenden Vorhaben-Notizen nach specs/vorhaben/
+ * auf, und `apply` schreibt die Beschreibung aus den Wirkungsangaben der Pakete
+ * fort.
  *
  * Warum ein eigenes Werkzeug und keine Achse in board.mjs (Plan #437, A2):
  * board.mjs spricht mit Issue-Trackern, hier geht es um Dateien im Repo. Die
@@ -50,7 +52,7 @@
  * #437, A11). Die Kommandos bleiben lesend; geschrieben wird allein unter specs/.
  */
 
-import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, realpathSync, renameSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -58,10 +60,18 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.50.0";
+const KIT_VERSION = "1.51.0";
 
 const SPECS_DIR = "specs";
 const VORHABEN_DIR = "vorhaben";
+
+// Der Ablageort der wartenden Vorhaben-Notizen (Plan #545, A1): flach unter
+// .claude/, mit dem Kuerzel im Dateinamen — dieselbe Form wie das erprobte
+// .claude/night-run-*. Kein Unterverzeichnis, weil dann ein leerer Ordner
+// zurueckbliebe, den niemand aufraeumt, und weil die vorhandene .gitignore-Zeile
+// fuer .claude/ ohne Zutun greift.
+const WARTEND_DIR = ".claude";
+const WARTEND_PRAEFIX = "vorhaben-wartend-";
 const INDEX_DATEI = "INDEX.md";
 const CONFIG_DATEI = ".claude/workflow.config.json";
 const WIRKUNG_UEBERSCHRIFT = "## Spec-Wirkung";
@@ -80,6 +90,7 @@ const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes V
   node spec.mjs check --anker <sha>
   node spec.mjs luecken --bereich <name>…
   node spec.mjs vorhaben --kuerzel <k> --code-gelesen ja|nein [--grund <text>]
+  node spec.mjs vorhaben-sichern [--dry-run]
   node spec.mjs apply --anker <sha> [--dry-run]
 
 index   Schreibt ${SPECS_DIR}/${INDEX_DATEI} neu: eine Zeile je Bereich mit der Zahl der
@@ -106,10 +117,22 @@ luecken Nennt je Bereich die Dateien, die keine gueltige Aussage beruehrt —
         als JSON auf stdout, immer, auch mit leerer Liste. Eine Luecke ist ein
         Befund und kein Fehler: Exit 0. Die Bereichsnamen kommen aus
         'spec.bereiche'; ohne den Block wird nichts gemeldet.
-vorhaben Schreibt ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md neu: Einheit, Kuerzel bzw.
-        Plannummer, ob Produktionscode gelesen wurde, der Grund und der Stand.
-        Das Kuerzel kommt vom Aufrufer, nicht aus dem Tracker. Ohne
-        'spec'-Block in ${CONFIG_DATEI} wird nichts geschrieben.
+vorhaben Schreibt ${WARTEND_DIR}/${WARTEND_PRAEFIX}<kuerzel>.md neu: Einheit, Kuerzel
+        bzw. Plannummer, ob Produktionscode gelesen wurde, der Grund und der
+        Stand. Die Notiz wartet dort; nach ${SPECS_DIR}/${VORHABEN_DIR}/ hebt sie erst
+        'vorhaben-sichern' beim naechsten 'push main' auf. Das Kuerzel kommt vom
+        Aufrufer, nicht aus dem Tracker. Ohne 'spec'-Block in ${CONFIG_DATEI}
+        wird nichts geschrieben.
+vorhaben-sichern
+        Hebt die wartenden Notizen ${WARTEND_DIR}/${WARTEND_PRAEFIX}*.md nach
+        ${SPECS_DIR}/${VORHABEN_DIR}/<kuerzel>.md auf: Ziel atomar ersetzen, Quelle
+        loeschen. Immer JSON auf stdout, auch ohne 'spec'-Block und auch mit
+        leerer Liste — ohne den Block wird nichts aufgehoben. Exit 0 =
+        uebernommen oder nichts zu tun, 2 = mindestens eine Notiz blieb
+        liegen, 1 = Abbruch, bevor eine Datei angefasst wurde.
+
+  --dry-run       Zeigt nur, was aufgehoben wuerde; jeder Eintrag traegt
+                  'vorgesehen'. Nichts wird geschrieben und nichts angelegt.
 apply   Schreibt die Beschreibung aus den Wirkungsangaben der Pakete zwischen
         <sha> und HEAD fort und aktualisiert danach ${SPECS_DIR}/${INDEX_DATEI}. Die
         Paketnummern kommen aus den Commit-Betreffs, die Bodies ueber
@@ -1074,7 +1097,15 @@ function vorhabenText({ kuerzel, codeGelesen, grund }) {
 }
 
 /**
- * Schreibt die Notiz zum Code-Lesen.
+ * Schreibt die Notiz zum Code-Lesen — als **wartende** Datei unter
+ * ${WARTEND_DIR}/, nicht nach ${SPECS_DIR}/${VORHABEN_DIR}/ (Issue #548, Plan #545 A12).
+ *
+ * Der Ablageort ist der Kern der Sache: `/techplan` laeuft mitten in einer
+ * Session, oft nachts, und ein Schreibvorgang unter ${SPECS_DIR}/ hinterliesse
+ * dort eine ungetrackte Aenderung, die niemand angefordert hat — nachts genau
+ * der unsaubere Working Tree, an dem der Runner hart stoppt. Unter
+ * ${WARTEND_DIR}/ greift die vorhandene .gitignore-Zeile ohne Zutun, und
+ * `vorhaben-sichern` holt die Notiz beim naechsten Push ab.
  *
  * Die Datei wird vollstaendig neu geschrieben, kein Merge und kein Verlauf: Sie
  * sagt, was heute gilt. Ein zusammengefuehrter Stand behielte den Grund eines
@@ -1095,16 +1126,176 @@ function vorhaben(argv) {
     return 0;
   }
 
-  const verzeichnis = join(specsPfad(), VORHABEN_DIR);
+  const verzeichnis = join(process.cwd(), WARTEND_DIR);
   mkdirSync(verzeichnis, { recursive: true });
 
-  const pfad = join(verzeichnis, `${angaben.kuerzel}.md`);
+  const name = `${WARTEND_PRAEFIX}${angaben.kuerzel}.md`;
+  const pfad = join(verzeichnis, name);
   const vorhanden = existsSync(pfad);
   writeFileSync(pfad, vorhabenText(angaben), "utf-8");
 
+  // Der Satz ist zeichengleich vorgegeben (Issue #548): Er ist die einzige
+  // Stelle, an der ein Mensch erfaehrt, dass die Notiz noch nicht am Ziel liegt.
+  // Wer nur den Pfad sieht, haelt sie fuer abgelegt und sucht sie spaeter
+  // vergeblich unter ${SPECS_DIR}/${VORHABEN_DIR}/.
   const wort = vorhanden ? "aktualisiert" : "geschrieben";
-  process.stdout.write(`Vorhaben-Notiz ${wort}: ${SPECS_DIR}/${VORHABEN_DIR}/${angaben.kuerzel}.md\n`);
+  process.stdout.write(
+    `Vorhaben-Notiz ${wort}: ${WARTEND_DIR}/${name}`
+    + ` — wird beim naechsten 'push main' nach ${SPECS_DIR}/${VORHABEN_DIR}/ aufgehoben.\n`,
+  );
   return 0;
+}
+
+// --- vorhaben-sichern (Issue #547) ------------------------------------------
+
+/**
+ * Die vier Ausgaenge einer wartenden Notiz, als Konstanten statt als Literale.
+ *
+ * Die Zeichenketten sind verbindlich, weil `/push-main` sie parst (Issue #548):
+ * Ein Tippfehler an einer von zwei Fundstellen waere sonst ein Ausgang, den
+ * niemand kennt und den auch kein Test bemerkt.
+ */
+const AUSGANG_UEBERNOMMEN = "uebernommen";
+const AUSGANG_BEREINIGUNG = "uebernommen, Bereinigung ausstehend";
+const AUSGANG_LIEGENGEBLIEBEN = "liegengeblieben";
+const AUSGANG_VORGESEHEN = "vorgesehen";
+
+/**
+ * Der einzige Schalter des Kommandos.
+ *
+ * Ein unbekanntes Argument ist ein Fehler und keine stille Auslassung — dieselbe
+ * Haltung wie bei `vorhabenArgumente`: Ein vertipptes '--dryrun' saehe sonst aus
+ * wie ein Lauf ohne Schalter und verschoebe Dateien, die nur gezeigt werden
+ * sollten.
+ */
+function vorhabenSichernArgumente(argv) {
+  let dryRun = false;
+  for (const arg of argv) {
+    if (arg !== "--dry-run") fail(`Unerwartetes Argument: '${arg}'. Erwartet: --dry-run.`);
+    dryRun = true;
+  }
+  return dryRun;
+}
+
+/**
+ * Die wartenden Notizen, alphabetisch — sortiert mit `vergleicheText`, dort steht
+ * die Begruendung. Fehlt ${WARTEND_DIR}/, wartet nichts; das ist kein Fehler.
+ */
+function wartendeNotizen(root) {
+  const verzeichnis = join(root, WARTEND_DIR);
+  if (!existsSync(verzeichnis)) return [];
+  return readdirSync(verzeichnis, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.startsWith(WARTEND_PRAEFIX) && e.name.endsWith(".md"))
+    .map((e) => e.name)
+    .sort(vergleicheText);
+}
+
+/**
+ * Ersetzt eine Datei atomar: erst in eine temporaere Datei im ZIELVERZEICHNIS,
+ * dann umbenennen.
+ *
+ * Im Zielverzeichnis, nicht im Temp-Verzeichnis des Systems: `rename` ist nur
+ * innerhalb desselben Dateisystems atomar, ueber Grenzen hinweg faellt es auf
+ * Kopieren zurueck. Und atomar heisst hier genau das, was der Fehlervertrag
+ * zusagt — ein gescheiterter Schreibvorgang laesst den alten Stand stehen statt
+ * einer halben Datei. Scheitert das Umbenennen, geht die temporaere Datei mit:
+ * sonst bliebe sie als Muell im Repo liegen.
+ */
+function ersetzeAtomar(verzeichnis, ziel, kuerzel, inhalt) {
+  const temp = join(verzeichnis, `.${kuerzel}.md.${process.pid}.tmp`);
+  writeFileSync(temp, inhalt, "utf-8");
+  try {
+    renameSync(temp, ziel);
+  } catch (err) {
+    try {
+      unlinkSync(temp);
+    } catch { /* schon fort — der urspruengliche Fehler zaehlt */ }
+    throw err;
+  }
+}
+
+/**
+ * Hebt genau eine wartende Notiz auf und meldet ihren Ausgang.
+ *
+ * **Jede** Ausnahme wird hier gefangen und zu `liegengeblieben`. Der Vertrag sagt
+ * „Exit 1 = keine Datei angefasst"; ohne diesen Fang beendete der aeussere catch
+ * in main() eine unerwartete Ausnahme mit Exit 1, nachdem schon Dateien
+ * verschoben wurden — und der Vertrag waere gebrochen, ohne dass es jemand merkt.
+ *
+ * Ein Dateiname, dessen Kuerzel `KUERZEL_RE` nicht genuegt, bekommt KEIN Ziel:
+ * Das Kuerzel wird zum Zielpfad, und ein aus '..' gebildetes Ziel zu melden hiesse
+ * einen Pfad auszuweisen, den das Kommando gerade abgelehnt hat.
+ */
+function notizAufheben(root, dateiname, dryRun) {
+  const quelle = `${WARTEND_DIR}/${dateiname}`;
+  const kuerzel = dateiname.slice(WARTEND_PRAEFIX.length, -".md".length);
+
+  if (!KUERZEL_RE.test(kuerzel)) {
+    return {
+      quelle,
+      ziel: null,
+      kuerzel,
+      ausgang: AUSGANG_LIEGENGEBLIEBEN,
+      grund: `Das Kuerzel '${kuerzel}' enthaelt mehr als Buchstaben, Ziffern, '-' und '_' — es wird zum Dateinamen.`,
+    };
+  }
+
+  const eintrag = { quelle, ziel: `${SPECS_DIR}/${VORHABEN_DIR}/${kuerzel}.md`, kuerzel };
+  if (dryRun) return { ...eintrag, ausgang: AUSGANG_VORGESEHEN };
+
+  const quellPfad = join(root, WARTEND_DIR, dateiname);
+  const zielVerzeichnis = join(specsPfad(root), VORHABEN_DIR);
+
+  try {
+    const inhalt = readFileSync(quellPfad, "utf-8");
+    mkdirSync(zielVerzeichnis, { recursive: true });
+    ersetzeAtomar(zielVerzeichnis, join(zielVerzeichnis, `${kuerzel}.md`), kuerzel, inhalt);
+  } catch (err) {
+    return { ...eintrag, ausgang: AUSGANG_LIEGENGEBLIEBEN, grund: err.message };
+  }
+
+  // Ab hier steht das Ziel. Ein Fehlschlag beim Loeschen ist deshalb kein
+  // Fehlschlag des Aufhebens: Die Notiz ist angekommen, es liegt nur noch eine
+  // Kopie herum — und die faellt beim naechsten Lauf erneut auf.
+  try {
+    unlinkSync(quellPfad);
+  } catch (err) {
+    return { ...eintrag, ausgang: AUSGANG_BEREINIGUNG, grund: err.message };
+  }
+  return { ...eintrag, ausgang: AUSGANG_UEBERNOMMEN };
+}
+
+/**
+ * Hebt die wartenden Vorhaben-Notizen nach ${SPECS_DIR}/${VORHABEN_DIR}/ auf.
+ *
+ * **Immer JSON auf stdout** — auch ohne 'spec'-Block, auch mit leerer Liste. Das
+ * weicht von `luecken` ab, das ohne Block nur auf stderr meldet; die Abweichung
+ * ist gewollt: Die Zusage ist nur etwas wert, wenn ein Aufrufer sie
+ * bedingungslos parsen kann, und `/push-main` tut genau das (Issue #548). Ohne
+ * Block wird trotzdem nichts aufgehoben (A10) — eine wartende Datei kann dort
+ * liegen, etwa weil der Block nachtraeglich entfernt wurde; sie wird nur nicht
+ * abgeholt.
+ *
+ * Ein eigenes Kommando statt eines Zweiges von `apply` (A3 in Plan #545): Zwei
+ * Fehlerbedeutungen hinter einem Exitcode waeren nicht auseinanderzuhalten.
+ */
+function vorhabenSichern(argv) {
+  // Erst der Aufruf, dann der Schalter — wie bei `vorhaben`: Ein falscher Aufruf
+  // ist ein Irrtum, gleich ob das Projekt Specs fuehrt. Und alles bis hierher
+  // laeuft, bevor eine Datei angefasst wurde: Exit 1 bleibt folgenlos.
+  const dryRun = vorhabenSichernArgumente(argv);
+
+  const config = configLesen();
+  if (!config?.spec) {
+    process.stdout.write(`${JSON.stringify({ notizen: [] }, null, 2)}\n`);
+    return 0;
+  }
+
+  const root = process.cwd();
+  const notizen = wartendeNotizen(root).map((name) => notizAufheben(root, name, dryRun));
+
+  process.stdout.write(`${JSON.stringify({ notizen }, null, 2)}\n`);
+  return notizen.some((n) => n.ausgang === AUSGANG_LIEGENGEBLIEBEN) ? 2 : 0;
 }
 
 // --- apply --anker (Issue #450) ---------------------------------------------
@@ -1958,11 +2149,12 @@ function main() {
   if (command === "check") return check(rest);
   if (command === "luecken") return luecken(rest);
   if (command === "vorhaben") return vorhaben(rest);
+  if (command === "vorhaben-sichern") return vorhabenSichern(rest);
   if (command === "apply") return apply(rest);
 
   // Keine Hilfe auf stdout wie bei board.mjs: `show` haelt stdout fuer seine
   // Aussagen frei, und ein Vertipper darf dort nichts hinterlassen.
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check, luecken, vorhaben oder apply — 'node spec.mjs --help' zeigt die Uebersicht.`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: index, show, check, luecken, vorhaben, vorhaben-sichern oder apply — 'node spec.mjs --help' zeigt die Uebersicht.`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

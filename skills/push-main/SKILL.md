@@ -39,25 +39,44 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Spec-Fortschreibung (nur bei gesetztem `spec`-Block)
+### 3. Spec-Fortschreibung und wartende Vorhaben-Notizen (nur bei gesetztem `spec`-Block)
 
 Nur wenn `.claude/workflow.config.json` einen `spec`-Block führt. Der Schritt läuft
 **vor** den Pflicht-Checks: `apply` schreibt Dateien, die in denselben Push gehen — sie
 müssen von den Checks und vom Gate mitgemessen werden.
 
-**1. Vorschau zeigen.**
+Zwei Dinge kommen hier zusammen. Die Fortschreibung der Beschreibung ist das eine; das
+andere sind die **wartenden Vorhaben-Notizen**, die `/techplan` als
+`.claude/vorhaben-wartend-<k>.md` ablegt. Sie warten dort, bis dieser Schritt sie nach
+`specs/vorhaben/` aufhebt — das ist der einzige Ort, an dem sie ins Repository kommen.
+
+**1. Vorschau zeigen — vier Teile.**
 
 ```bash
 node .claude/kit/spec.mjs apply --anker "$(git merge-base HEAD origin/<mainBranch>)" --dry-run
+node .claude/kit/spec.mjs vorhaben-sichern --dry-run
+git status --porcelain -- specs/vorhaben/
+git diff --cached --name-only -- specs/
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`). Der Anker ist derselbe wie
 in `/local-check` (Issue #427): der letzte gepushte Stand, also genau der Batch, der
-gleich hinausgeht — nicht der Working-Tree-Diff. Zeige den Diff ungekürzt.
+gleich hinausgeht — nicht der Working-Tree-Diff. Zeige den Diff ungekürzt und nenne die
+Notizen, die aufgehoben würden.
 
-**2. Zustimmung einholen.** Frage den Menschen, ob die gezeigte Fortschreibung so
-geschrieben werden soll. **Ohne Zustimmung wird nicht gepusht** — der Ablauf hält an:
-kein `apply`, keine Pflicht-Checks, kein Push. Erst wenn der Mensch erneut `push main`
+**Teil 3 ist nötig**, weil `apply --dry-run` gegen den Stand auf der Platte rechnet: Hat
+ein früherer Lauf den Spec-Stand schon geschrieben und ist danach etwas dazwischen
+gekommen, meldet die Vorschau „keine Änderung", obwohl unter `specs/vorhaben/` etwas
+liegt, das noch nirgends committet ist. **Teil 4 ist nötig**, weil `git add` unten **vor**
+`checks.mjs run` läuft: Blieb ein Lauf davor rot stehen, sind die `apply`-Dateien noch
+gestaged, und ein Commit „nur bei tatsächlichem staged Diff" nähme sie beim nächsten
+`push main` mit, ohne dass ein Vorschau-Teil sie gezeigt hätte.
+
+**2. Zustimmung einholen.** Frage den Menschen **einmal**, ob das Gezeigte so geschrieben
+und committet werden soll. Die Zustimmung deckt **alles Gezeigte** ab — Fortschreibung,
+wartende Notizen und was unter `specs/` schon gestaged war; eine zweite Rückfrage gibt es
+nicht. **Ohne Zustimmung wird nicht gepusht** — der Ablauf hält an: kein `apply`, kein
+Aufheben, keine Pflicht-Checks, kein Push. Erst wenn der Mensch erneut `push main`
 tippt, startet er von vorn. Das ist keine Formalie: `apply` ändert Dateien, die das
 Projekt dauerhaft führt, und dies ist der einzige Punkt, an dem ein Mensch die
 Fortschreibung seiner Beschreibung sieht, bevor sie geschrieben wird.
@@ -66,10 +85,35 @@ Fortschreibung seiner Beschreibung sieht, bevor sie geschrieben wird.
 
 ```bash
 node .claude/kit/spec.mjs apply --anker "$(git merge-base HEAD origin/<mainBranch>)"
-git add specs/
+node .claude/kit/spec.mjs vorhaben-sichern
+git add specs/vorhaben/ <jede Datei, die `apply` in diesem Lauf als `geschrieben` gemeldet hat>
 node .claude/kit/checks.mjs run
 git commit -m "chore: Spec fortgeschrieben (<Paketnummern>)"
 ```
+
+Der Betreff im Block ist der Regelfall; wandern nur Notizen oder ein Rest aus einem roten
+Lauf, gilt die Betreff-Regel weiter unten.
+
+**Nur diese Mengen bilden den Commit:** `specs/vorhaben/`, die Dateien aus dem
+`apply`-Lauf **dieses** Durchgangs, und was unter `specs/` schon gestaged war — das
+bleibt gestaged und geht mit, es stand in Vorschau-Teil 4. Alles andere unter `specs/`
+wird benannt und **bleibt liegen**. Gestaged ist nur, was der Prozess selbst oder ein
+Mensch bewusst gestaged hat; eine handgeführte Änderung an einer Bereichsdatei darf
+keinen Commit auslösen, den niemand angefordert hat. Committet wird nur bei
+tatsächlichem staged Diff — sonst gibt es nichts festzuschreiben.
+
+**Commit-Betreff.** Wurde die Beschreibung fortgeschrieben:
+`chore: Spec fortgeschrieben (<Paketnummern>)`. Wandern nur Notizen:
+`chore: Vorhaben-Notizen gesichert`. Geht es allein um einen Rest aus einem roten Lauf:
+`chore: Spec-Rest aus rotem Lauf committet`. Bei mehreren Anlässen werden die Betreffe in
+dieser Reihenfolge mit `; ` verkettet, die Paketnummern stehen einmal am Ende — etwa
+`chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (<Paketnummern>)` oder
+`chore: Vorhaben-Notizen gesichert; Spec-Rest aus rotem Lauf committet`.
+
+**Nie ein Suffix `(Issue #N)` am Betreffende.** Daran und nur daran lesen `spec.mjs` und
+`tools/changelog.mjs` die Paketnummer, und dieser Commit ist kein Arbeitspaket. Er
+erscheint weiterhin im Changelog, dann ohne Paketreferenz; das ist gewollt. Aus demselben
+Grund stehen in der Botschaft **keine** `#N`-Referenzen auf Nicht-Pakete.
 
 **Warum hier geprüft wird, obwohl Schritt 4 gleich noch einmal prüft:** Der Nachweis
 gehört zum **Commit**, Schritt 4 gehört zum **Push**. `apply` hat gerade Dateien unter
@@ -82,17 +126,14 @@ vor dem Push.
 
 Ein **roter** Lauf hält hier an: kein Spec-Commit, kein Push.
 
-In den Commit gehören **nur** die Dateien unter `specs/` (inklusive `specs/INDEX.md`).
-In der Botschaft stehen **keine** `#N`-Referenzen auf Nicht-Pakete: `apply` und `check`
-lesen die Paketnummern aus den Commit-Betreffs, und eine erfundene Nummer im Betreff
-dieses Commits würde dort als Arbeitspaket gewertet.
-
-**Leere Vorschau.** Ist keine Änderung an `specs/` zu erwarten — alle Wirkungen `KEINE`,
-oder nur Pakete vor `seit` —, entfallen Zustimmung und Commit. Melde
-„Keine Spec-Fortschreibung in diesem Batch" und gehe direkt zu Schritt 4. Mit dem
-Commit entfällt auch sein Prüflauf — es gibt nichts, wofür ein Nachweis nötig wäre. Das Spec-Gate
-läuft dort trotzdem — es prüft den Batch, nicht die Fortschreibung. Das ist der
-Regelfall.
+**Leere Vorschau.** Schritt 3 entfällt nur, wenn **alle drei** zutreffen: die
+`apply`-Vorschau ist leer (alle Wirkungen `KEINE` oder nur Pakete vor `seit`),
+es **wartet keine Notiz** — `vorhaben-sichern --dry-run` meldet eine leere Liste —,
+und `git status --porcelain -- specs/vorhaben/` ist leer. Dann entfallen
+Zustimmung und Commit. Melde „Keine Spec-Fortschreibung in diesem Batch" und gehe direkt
+zu Schritt 4. Mit dem Commit entfällt auch sein Prüflauf — es gibt nichts, wofür ein
+Nachweis nötig wäre. Das Spec-Gate läuft dort trotzdem — es prüft den Batch, nicht die
+Fortschreibung. Das ist der Regelfall.
 
 **Fehlerpfade.** Endet `apply` (auch mit `--dry-run`) mit einem Exitcode ungleich 0,
 liefert die `merge-base`-Substitution einen **leeren** Anker, oder endet der
@@ -100,6 +141,13 @@ liefert die `merge-base`-Substitution einen **leeren** Anker, oder endet der
 Pflicht-Checks, kein Push. Meldung mit dem Grund. Ein roter
 `apply`-Lauf ist kein Randfall, den man übergeht — er heißt, dass Paket und Beschreibung
 nicht zusammenpassen.
+
+**Exitcode 1 oder 2 aus `vorhaben-sichern` hält den Ablauf dagegen nicht an.** Was liegen
+blieb, wird benannt; die Notiz bleibt an ihrem wartenden Ort, und der nächste `push main`
+holt das Aufheben nach. Eine Notiz ist ein Nachweis über einen Plan, kein Teil des Codes,
+der hinausgeht — den ganzen Push daran scheitern zu lassen hieße, eine Nebensache über
+den Batch zu stellen. Ein roter `checks.mjs run` hält weiterhin alles an, Commit wie
+Push.
 
 ### 4. Pflicht-Checks (Gate — vor Bump und Push)
 
@@ -165,8 +213,10 @@ Hinweis auf nächsten Schritt:
 
 Projekte **ohne** `spec`-Block in `.claude/workflow.config.json` sehen Schritt 3 und das
 Spec-Gate nicht: Es gibt keine Vorschau, keine Zustimmung, keinen `apply`-Commit und
-keinen `check`-Aufruf. `/push-main` läuft dort unverändert wie bisher — Stand prüfen,
-Pflicht-Checks, Release-Schritte, Push.
+keinen `check`-Aufruf. **Auch keine wartende Vorhaben-Notiz wird dort gelesen oder
+aufgehoben.** Eine kann trotzdem liegen — etwa weil der Block nachträglich entfernt
+wurde; sie wird nur nicht abgeholt. `/push-main` läuft dort unverändert wie bisher —
+Stand prüfen, Pflicht-Checks, Release-Schritte, Push.
 
 ## Was dieser Skill nicht tut
 

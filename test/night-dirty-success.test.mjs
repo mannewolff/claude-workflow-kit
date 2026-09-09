@@ -93,6 +93,49 @@ test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der n
   }
 });
 
+// Der Gegenpol zum Rest-Stopp (Issue #546, Plan #545): Eine wartende
+// Vorhaben-Notiz entsteht beim Planen im Arbeitsbaum und wird erst beim naechsten
+// `push main` aufgehoben. Sie ist Vorhaben-Zustand und kein Code-Zustand, also
+// kein Rest — sonst hielte die erste geplante Notiz den Lauf an, genau die Klemme,
+// die das Vorhaben abschafft.
+//
+// Geprueft wird ueber den Runner-E2E-Weg wie oben: `gitClean()` ist nicht
+// exportiert und hat kein CLI-Kommando. Die `.gitignore` des Fixtures fuehrt
+// `.claude/*` NICHT — die Notiz ist fuer git also sichtbar, und nur der Ausschluss
+// im Code kann sie entschaerfen.
+test("[night-10] Nachtlauf: eine wartende Vorhaben-Notiz ist kein unkommittierter Rest", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    // Session-Fake: Erfolg, laesst aber eine wartende Vorhaben-Notiz liegen.
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`
+      + ` && echo wartet > .claude/vorhaben-wartend-probe.md`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette weiterlaufen muessen: ${res.stderr}\n${res.stdout}`);
+    const inReview = new Set(board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id)));
+    assert.ok(inReview.has(String(erstes.id)) && inReview.has(String(zweites.id)),
+      "beide Issues haetten in In review landen muessen");
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
+
+    // Die Notiz liegt weiter da und ist fuer git sichtbar — ohne den Ausschluss
+    // haette der Rest-Guard nach der ersten Runde hart gestoppt.
+    const stand = spawnSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf-8" }).stdout;
+    assert.match(stand, /\.claude\/vorhaben-wartend-probe\.md/,
+      "git sieht die Notiz nicht — der Fall waere auch ohne den Ausschluss gruen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsverhalten)", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {

@@ -236,6 +236,25 @@ Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht
 
 ---
 
+## Spec-Fortschreibung beim Push (Schritt 8, nur mit `spec`-Block)
+
+Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt
+sein Verhalten unter `specs/` — eine Datei je Bereich. `/push-main` bekommt dann **vor**
+den Pflichtchecks einen zusaetzlichen Schritt, in dem zweierlei zusammenkommt:
+
+1. **Fortschreibung.** `spec.mjs apply` traegt nach, was die Arbeitspakete dieses Batches
+   im Abschnitt `## Spec-Wirkung` angekuendigt haben.
+2. **Wartende Vorhaben-Notizen.** `/techplan` legt seine Notiz zum Code-Lesen als
+   `.claude/vorhaben-wartend-<kuerzel>.md` ab; `spec.mjs vorhaben-sichern` hebt sie hier
+   nach `specs/vorhaben/` auf. Beim Planen entsteht dadurch keine Aenderung im Working
+   Tree — sonst waere jeder naechtliche Plan ein Rest, an dem der Nacht-Runner stoppt.
+
+Vorschau und **eine** Zustimmung des Menschen gehen dem voraus; ohne sie wird nicht
+gepusht. Ein Fehlschlag beim Aufheben haelt den Ablauf nicht auf: Die Notiz bleibt liegen,
+und der naechste Push holt es nach. Ohne den `spec`-Block gibt es diesen Schritt nicht.
+
+---
+
 ## Issue-Format (Vier Abschnitte)
 
 ```markdown

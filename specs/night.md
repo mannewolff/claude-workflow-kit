@@ -9,5 +9,6 @@
 - night-7 — Der Erzeugungsmodus des Nacht-Runners weist einen Lauf ab, wenn der Tracker `toolbox` ist und `toolbox.ideaStored` gesetzt ist, weil eine Pool-Idee ohne Kartennummer kein Erfolgssignal traegt; er verlangt keine buildChecks und stoppt hart, wenn der Reviewer-Vorflug eine Luecke meldet — im Dry-Run wird dieser Befund nur berichtet.
 - night-8 — Im Erzeugungsmodus prueft der Nacht-Runner jedes erzeugte Dokument in eigenen Sessions, bis es einen Endzustand traegt, die aus board.mjs importierte Rundengrenze erreicht ist, ein Reviewer ausfaellt oder eine Session keinen neuen Runden-Anker hinterlaesst; das Routing-Label der Quelle entfernt er erst, wenn jedes erzeugte Dokument einen Endzustand traegt, und er setzt die Routing-Labels nie selbst.
 - night-9 — Ein Erzeugungslauf mit `--verbose` hinterlaesst denselben Ergebnisstand wie ein Implementierungs- und ein Review-Lauf, unterschieden durch die Art `erzeugung`: je Ausgangsdokument eine Einheit mit den erzeugten Dokumenten samt Zustand und Rundenzahl, dem Verbrauch des Routing-Labels und dem Ausgang aus fester Liste; die Schemafassung bleibt unveraendert, und die Abschlussart setzt der Erzeugungslauf selbst.
+- night-10 — `gitClean()` wertet eine wartende Vorhaben-Notiz unter `.claude/vorhaben-wartend-` nicht als Rest im Arbeitsbaum.
 
 ## Entfallen

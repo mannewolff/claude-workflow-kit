@@ -99,6 +99,34 @@ test("[skills-2] die Vorhaben-Notiz faellt nachts auf `plan-<M>` zurueck", () =>
     "der Rueckfall fehlt — die Rueckfrage bei mehreren Vorhaben blieb nachts unbeantwortet");
 });
 
+test("[skills-3] jedes Absatzpaar der Vorhaben-Notiz nennt die unbeaufsichtigte Variante zuerst", () => {
+  // Der Unterschritt regelt seit Issue #548 ZWEI Stellen nach Betriebsart: das
+  // Kuerzel und den Fehlerpfad einer misslungenen Ablage. `reihenfolgePruefen`
+  // sieht nur das erste Paar — bliebe es dabei, koennte das zweite in der
+  // falschen Reihenfolge stehen, ohne dass ein Test es bemerkt.
+  const notiz = abschnitt("#### Vorhaben-Notiz", "## Stop-Punkt");
+  const folge = [...notiz.matchAll(/\*\*Unbeaufsichtigt\*\*|\*\*Interaktiv:\*\*/g)].map((m) => m[0]);
+
+  assert.ok(folge.length >= 4,
+    `im Unterschritt stehen nur ${folge.length} Marker — Kuerzel und Fehlerpfad brauchen je ein Paar`);
+  assert.equal(folge.length % 2, 0, "ein Marker steht ohne Gegenstueck da");
+  for (let i = 0; i < folge.length; i += 2) {
+    assert.equal(folge[i], UNBEAUFSICHTIGT,
+      `das ${i / 2 + 1}. Paar beginnt mit der interaktiven Variante — eine Nacht-Session handelt dann nach ihr`);
+    assert.equal(folge[i + 1], INTERAKTIV,
+      `dem ${i / 2 + 1}. Paar fehlt die interaktive Variante — der bisherige Ablauf ist dort nicht mehr benannt`);
+  }
+});
+
+test("[skills-3] der Nachhol-Adressat der Nacht ist ein Kommentar am Plandokument", () => {
+  const notiz = abschnitt("#### Vorhaben-Notiz", "## Stop-Punkt");
+  assert.match(notiz, /issue comment <M>/,
+    "das Kommentar-Kommando fehlt — nachts landete die Meldung nur im Lauf-Log, und der Runner"
+      + " misst den Erfolg am Board: niemand erfuehre, dass die Notiz fehlt");
+  assert.match(notiz, /Vorhaben-Notiz nicht abgelegt/,
+    "der Wortlaut des Kommentars steht nicht da — ohne ihn erfindet jede Session einen eigenen");
+});
+
 test("[skills-2] die Ueberschrift von Schritt 5 setzt nicht mehr allein die Freigabe voraus", () => {
   const zeile = SKILL.split("\n").find((z) => z.startsWith("### 5."));
   assert.ok(zeile, "Schritt 5 fehlt");
