@@ -74,8 +74,9 @@ test("Jedes Register grenzt ab, was ausdruecklich kein Gate ist", () => {
 // Eine neu vergebene Nummer macht jeden aelteren Befund zweideutig ("F4 verletzt" —
 // welches F4?). Gestrichene Gates behalten die Nummer und stehen hier.
 // Das prozessweite Register (Issue #380) steht in CLAUDE-workflow.md und ergaenzt die
-// beiden Stufen-Register. Es wird hier getrennt geprueft, weil die Datei anders
-// ausgeliefert wird als jene: Sie hat eine Kopie unter .claude/ und einen eigenen Blob.
+// beiden Stufen-Register. Es wird hier getrennt geprueft, weil die Datei ueber einen
+// eigenen Blob ausgeliefert wird. Eine versionierte Kopie unter .claude/ hat auch sie
+// nicht — die dort liegende Datei ist Installer-Ausgabe wie bei den Registern.
 test("CLAUDE-workflow.md fuehrt die prozessweiten Gates nummeriert und markiert", () => {
   const text = lies("templates", "CLAUDE-workflow.md");
   assert.match(text, /^## Gates \(prozessweit\)$/m, "Abschnitt 'Gates (prozessweit)' fehlt");

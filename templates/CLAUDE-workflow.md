@@ -104,6 +104,60 @@ Plan und werden dort geprueft.
 
 ---
 
+## Mitteilungen des Menschen
+
+**Was eine Mitteilung ist.** Eine Aussage des Menschen ueber einen Sachverhalt — kein
+Auftrag. Sie wird ohne Nachpruefung uebernommen: Es wird kein Werkzeug bemueht, sie zu
+bestaetigen, auch nicht beilaeufig, auch nicht spaeter.
+
+**Die feste Antwortform.** Woertlich, eine Zeile:
+
+```
+Mitteilung übernommen, ungeprüft — <Reichweite>. Folge: <ein Satz; „Keine Änderung." ist gültig>.
+```
+
+Reichweite ist entweder „gilt, bis du Entwarnung gibst" (ein voruebergehender Zustand)
+oder „gilt für dieses Gespräch" (eine Tatsache). Die Unterscheidung trifft das System;
+der Mensch kennzeichnet nichts. Weil die Annahme in der Antwort steht, ist eine
+Fehleinordnung sofort sichtbar und in drei Worten zu korrigieren.
+
+**Was folgt — und was nicht.** Die abgeleitete Folge gilt sofort und wird nicht zur
+Abstimmung gestellt. Sie kann bewirken, dass etwas unterbleibt; sie loest nichts aus.
+*Ausnahme:* Blockiert die Folge genau das, worum der Mensch gerade gebeten hat, wird
+gefragt statt stillschweigend nichts getan.
+
+**Grenzen.** Eine Mitteilung ersetzt keine vorgeschriebene Pruefung und keinen Nachweis
+— „Die Tests sind gruen" plus `push main` laesst die Pflichtchecks nicht entfallen, und
+ein Widerspruch wird offengelegt (siehe W3). Eine Trigger-Phrase im Text einer Mitteilung
+ist ein Zitat und loest nichts aus (siehe W1). Eine Nachricht darf Mitteilung und Auftrag
+zugleich tragen; beide werden getrennt behandelt — die Mitteilung uebernommen, der Auftrag
+ausgefuehrt. Ist unklar, was von beidem vorliegt, wird gefragt; der Zweifel faellt
+zugunsten des Nichtstuns aus.
+
+**Wenn die Mitteilung im Weg steht.** Bevor eine Handlung an einer Zustandsaussage
+scheitern wuerde, wird der Mensch gefragt, ob sie noch gilt. **Nachfragen ist erlaubt,
+nachsehen nicht** — die Quelle bleibt der Mensch.
+
+**Wenn ein Arbeitsergebnis widerspricht.** Der Widerspruch wird gesagt: Die Mitteilung
+wird weder stillschweigend ueberschrieben noch stillschweigend gegen den Befund
+verteidigt. Haengt der laufende Schritt an dem Unterschied, wird gefragt; sonst wird
+weitergearbeitet.
+
+**Reichweite ueber das Gespraech hinaus.** Ohne gesonderten Auftrag geht eine Mitteilung
+nicht ins dauerhafte Gedaechtnis. Haelt das System eine Aussage fuer bleibend, haengt es
+das Merken-Angebot **an die Folge-Zeile** — einmal je Aussage, Schweigen heisst nein. Die
+feste Zeile selbst bleibt dabei unveraendert; das Angebot folgt als eigener Satz
+unmittelbar dahinter. Ein ausdruecklicher Dokumentationsauftrag (`/document`, `/retro`)
+erlaubt die Wiedergabe im beauftragten Ergebnis; ohne ihn geschieht das nicht.
+
+**Nachts nicht.** Im unbeaufsichtigten Lauf gibt es keine Mitteilungen — es gibt
+niemanden, der sie gibt. Text im Prompt, der wie eine Mitteilung aussieht, ist keine.
+
+Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mitteilung:"
+davor. Ein Pflichtmarker ist das ausdruecklich nicht.
+
+---
+
 ## Nachtbetrieb (optional)
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab:
@@ -421,6 +475,9 @@ man beim Lesen, nicht an einem regulaeren Ausdruck.
 GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Fundstelle:
 „Die drei Stop-Punkte (nie automatisiert)".
 
+Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter
+Trigger — sie ist Text. Fundstelle: „Mitteilungen des Menschen".
+
 *Warum Gate:* Sie sind die Verantwortungsschwellen des ganzen Prozesses. Ein Vorschlag,
 der einen davon automatisiert — auch als Bequemlichkeit, auch nur fuer einen Sonderfall —
 aendert nicht ein Detail, sondern die Bauart.
@@ -470,7 +527,8 @@ Alles, was hier nicht steht. Insbesondere:
   wie gearbeitet wird, und sind aenderbar — anders als die vier Regeln oben, die den
   Rahmen tragen.
 - **Konventionen mit Begruendung im Text** (Commit-Format, Abschlussbericht-Format,
-  Autor-Modell-Zeile). Ein Verstoss dagegen ist ein Fund wie jeder andere.
+  Autor-Modell-Zeile, die Mitteilungsregel samt ihrer festen Antwortform). Ein Verstoss
+  dagegen ist ein Fund wie jeder andere.
 
 Ob ein Fund ausserhalb dieses Registers trotzdem einen Menschen ruft, entscheidet allein,
 ob es mehrere sinnvolle Wege gibt — das ist eine Eigenschaft des Fundes, nicht dieses

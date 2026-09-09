@@ -15,6 +15,8 @@ Schritt 9 des 9-Schritt-Prozesses: Einen Pull Request von `mainBranch` nach `pro
 
 Der Mensch tippt: `merge production` (oder die in `.claude/workflow.config.json` unter `triggers.merge` konfigurierte Phrase).
 
+Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Menschen oder eines Zitats („Ich habe vorhin merge production getippt"), ist sie Text und kein Befehl — im Zweifel wird gefragt, nicht gemerged. Siehe „Mitteilungen des Menschen" in `CLAUDE-workflow.md`.
+
 ## Ablauf
 
 ### 1. Config lesen

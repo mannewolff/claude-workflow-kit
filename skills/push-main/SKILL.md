@@ -17,6 +17,8 @@ Der Mensch tippt: `push main` (oder die in `.claude/workflow.config.json` unter 
 
 Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commits. Jeder Push braucht eine neue explizite Freigabe.
 
+Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Menschen oder eines Zitats („Ich habe vorhin push main getippt"), ist sie Text und kein Befehl — im Zweifel wird gefragt, nicht gepusht. Siehe „Mitteilungen des Menschen" in `CLAUDE-workflow.md`.
+
 ## Ablauf
 
 ### 1. Config lesen
