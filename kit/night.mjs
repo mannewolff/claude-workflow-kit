@@ -757,6 +757,13 @@ function gitClean() {
   // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
   // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
   pathspec.push(":(exclude).claude/night-run-*");
+  // Eine wartende Vorhaben-Notiz (Issue #546) entsteht beim Planen und wird erst
+  // beim naechsten `push main` nach specs/vorhaben/ aufgehoben: Vorhaben-Zustand ist
+  // kein Code-Zustand. Wie beim Protokoll darueber steht der Ausschluss ausdruecklich
+  // hier, obwohl `.gitignore` den Pfad meist deckt — der Installer laesst eine
+  // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
+  // Block, und dort hielte die erste geplante Notiz den Lauf an.
+  pathspec.push(":(exclude).claude/vorhaben-wartend-*");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8" });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.trim() === "";

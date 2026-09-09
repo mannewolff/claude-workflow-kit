@@ -60,6 +60,23 @@ const KIT_VERSION = "1.50.0";
 // (rot, Fix, erneut), daraus entsteht bewusst keine Historie.
 const SUMMARY_DATEI = ".claude/checks-summary.json";
 
+// Wartende Vorhaben-Notizen (Issue #546, Plan #545): `spec.mjs vorhaben` legt seine
+// Notiz hier ab, `push main` hebt sie nach `specs/vorhaben/` auf. Bis dahin liegt
+// sie im Arbeitsbaum — Vorhaben-Zustand, kein Code-Zustand, also keine geaenderte
+// Datei dieses Arbeitspakets.
+//
+// Der Ausschluss steht ausdruecklich im Code, obwohl `.gitignore` den Pfad meist
+// schon deckt (Plan #545, A2): Der Installer laesst eine vorhandene eigene
+// `.claude`-Regel unangetastet, also gibt es Projekte ohne den Block. Dort waere
+// die Notiz sonst sichtbar und wuerde eine Pruefung ausloesen, zu der sie nicht
+// gehoert.
+//
+// Praefix, kein Teilstring: Genau diese Menge nimmt `:(exclude).claude/vorhaben-wartend-*`
+// in `gitClean()` von night.mjs aus. Ein Teilstring-Match traefe zusaetzlich
+// `sub/.claude/vorhaben-wartend-x.md` in einem Unterprojekt — die Datei waere hier
+// unsichtbar und im Rest-Guard ein Rest.
+const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
+
 /**
  * Der Pfad der Zusammenfassung. Exportiert, damit night.mjs ihn importieren kann,
  * statt ihn ein zweites Mal auszurechnen (Issue #428) — derselbe Grund, aus dem
@@ -260,6 +277,13 @@ function* untracktePfade(roh) {
  * Anker (angelegt, geaendert, geloescht, umbenannt) plus Ungetracktes.
  * `--untracked-files=all` ist Pflicht — sonst meldet git ein neues Verzeichnis
  * als einen einzigen Eintrag, und die Datei darin faende nie ihr Muster.
+ *
+ * Wartende Vorhaben-Notizen fallen hier heraus und nicht erst in `blobHashes`
+ * (Issue #546): So beruehrt eine Notiz auch keine `checkAreas` und loest keinen
+ * Bereichs-Check aus, zu dem sie nicht gehoert. Der Filter greift damit zugleich
+ * fuer `hashes`, die Bereichszuordnung und die Zusammenfassung — alle leiten sich
+ * aus `geaendert` ab. Bleibt danach nichts uebrig, ist das Paket leer: Was nicht
+ * gestagt werden darf, muss auch nicht geprueft werden.
  */
 function geaenderteDateien(basis) {
   const dateien = new Set();
@@ -272,7 +296,12 @@ function geaenderteDateien(basis) {
   if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
-  return [...dateien].map((p) => p.replaceAll("\\", "/")).sort(vergleicheText);
+  // Nach dem Trenner-Normalisieren gefiltert: Unter Windows kaeme der Pfad sonst
+  // mit Backslash und der Praefix-Vergleich ginge daneben.
+  return [...dateien]
+    .map((p) => p.replaceAll("\\", "/"))
+    .filter((p) => !p.startsWith(WARTEND_PRAEFIX))
+    .sort(vergleicheText);
 }
 
 // --- Auswahl ---------------------------------------------------------------

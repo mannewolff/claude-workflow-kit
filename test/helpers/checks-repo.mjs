@@ -17,6 +17,8 @@ import assert from "node:assert/strict";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const CHECKS = join(repoRoot, "kit", "checks.mjs");
+export const GATE = join(repoRoot, ".githooks", "gate.mjs");
+export const HOOK = join(repoRoot, ".githooks", "pre-commit");
 
 export function git(dir, ...args) {
   const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
@@ -140,6 +142,28 @@ export function mitRepo(optionen, fn) {
     fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Ruft das Commit-Gate im Wegwerf-Repo auf (Issue #470). `checks.mjs` liegt dort
+ * unter `.claude/kit/`, wohin `gateEinbauen` es legt.
+ */
+export function gate(dir, ...cliArgs) {
+  return spawnSync(process.execPath, [join(dir, ".githooks", "gate.mjs"), ...cliArgs], {
+    cwd: dir,
+    encoding: "utf-8",
+  });
+}
+
+/** Legt Hook und Gate im Wegwerf-Repo an — das macht sonst der Installer (#473). */
+export function gateEinbauen(dir, { checksOrt = ".claude/kit" } = {}) {
+  mkdirSync(join(dir, ".githooks"), { recursive: true });
+  writeFileSync(join(dir, ".githooks", "gate.mjs"), readFileSync(GATE, "utf-8"), "utf-8");
+  writeFileSync(join(dir, ".githooks", "pre-commit"), readFileSync(HOOK, "utf-8"), { mode: 0o755 });
+  if (checksOrt) {
+    mkdirSync(join(dir, checksOrt), { recursive: true });
+    writeFileSync(join(dir, checksOrt, "checks.mjs"), readFileSync(CHECKS, "utf-8"), "utf-8");
   }
 }
 

@@ -14,34 +14,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, readFileSync, mkdirSync, rmSync, chmodSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-import { mitRepo, git, run, datei } from "./helpers/checks-repo.mjs";
+import { mitRepo, git, run, datei, gate, gateEinbauen, GATE, HOOK } from "./helpers/checks-repo.mjs";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const GATE = join(repoRoot, ".githooks", "gate.mjs");
-const HOOK = join(repoRoot, ".githooks", "pre-commit");
 const LEISE = { buildChecks: ["node -e \"process.exit(0)\""] };
-
-/** Ruft das Gate im Wegwerf-Repo auf. `checks.mjs` liegt dort unter `.claude/kit/`. */
-function gate(dir, ...args) {
-  return spawnSync(process.execPath, [join(dir, ".githooks", "gate.mjs"), ...args], {
-    cwd: dir,
-    encoding: "utf-8",
-  });
-}
-
-/** Legt Hook und Gate im Wegwerf-Repo an — das macht sonst der Installer (#473). */
-function gateEinbauen(dir, { checksOrt = ".claude/kit" } = {}) {
-  mkdirSync(join(dir, ".githooks"), { recursive: true });
-  writeFileSync(join(dir, ".githooks", "gate.mjs"), readFileSync(GATE, "utf-8"), "utf-8");
-  writeFileSync(join(dir, ".githooks", "pre-commit"), readFileSync(HOOK, "utf-8"), { mode: 0o755 });
-  if (checksOrt) {
-    mkdirSync(join(dir, checksOrt), { recursive: true });
-    writeFileSync(join(dir, checksOrt, "checks.mjs"), readFileSync(join(repoRoot, "kit", "checks.mjs"), "utf-8"), "utf-8");
-  }
-}
 
 function zusammenfassungSchreiben(dir, daten) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
