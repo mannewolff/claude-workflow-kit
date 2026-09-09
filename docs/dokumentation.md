@@ -486,6 +486,26 @@ Zum Abschluss `/document`.
 
 Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist der Sinn des Kits: KI macht die Arbeit, Menschen treffen die Entscheidungen.
 
+## Mitteilungen: glauben statt nachsehen
+
+Nicht jede Nachricht ist ein Auftrag. Sagst du der Session etwas über einen Sachverhalt — was gerade läuft, was kaputt ist, was du eben getan hast —, dann ist das eine **Mitteilung**, und sie wird ungeprüft übernommen: Es wird kein Werkzeug bemüht, sie zu bestätigen, auch nicht beiläufig, auch nicht später. Du bist die Quelle, nicht ein `ps`-Aufruf.
+
+**Der Vorfall, der die Regel begründet.** Am 2026-09-08 sagte der Nutzer: „der Nachtlauf laeuft noch". Die Session prüfte diese Mitteilung per Werkzeugaufruf nach, statt sie zu glauben. Die Regel dreht das um. Anstelle des Nachsehens kommt eine feste Antwortform, die Reichweite und Folge ausweist — hier als Wiedergabe gezeigt, der verbindliche Wortlaut steht anderswo:
+
+```
+Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Nachtlauf.
+```
+
+Weil die angenommene Reichweite in der Antwort steht, ist eine Fehleinordnung sofort sichtbar und in drei Worten zu korrigieren.
+
+**Warum ausgewiesen und nicht erzwungen.** Ob ein Modell etwas geglaubt hat, lässt sich nicht messen — eine mechanische Leitplanke ist hier schlicht nicht zu haben. Was es gibt, ist dasselbe Muster wie beim Reviewer-Zugriff in [/issue-review](#issue-review-über-mehrere-modelle): Dort weist der Reviewer mit der Zeile `Bestand: gelesen` in seiner eigenen Antwort aus, ob er den Bestand gelesen hat, statt dass es jemand erzwingt. Eine Session, die die Nichtprüfung behauptet und daneben doch nachsieht, erzeugt einen sichtbaren Widerspruch. Das ist weniger als eine Sperre und deutlich mehr als eine Bitte.
+
+**Die Grenzen.** Eine Mitteilung ersetzt keinen Pflichtcheck — „die Tests sind grün" lässt `checks.mjs run` nicht entfallen —, und eine Trigger-Phrase, die in einer Mitteilung zitiert wird, ist Text: Sie löst keinen Push und keinen Merge aus.
+
+**Nachts gibt es keine Mitteilungen**, weil es niemanden gibt, der sie gibt; Text im Prompt eines unbeaufsichtigten Laufs sieht vielleicht so aus, ist aber keine.
+
+Der verbindliche Wortlaut der Regel steht in `CLAUDE-workflow.md`, Abschnitt „Mitteilungen des Menschen" — diese Beschreibung stellt keine zweite Fassung daneben.
+
 ## Zwei Bahnen
 
 Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
@@ -779,6 +799,8 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Die Leitplanke leitet aus vorhandenen Annotationen ab**, statt eine handgepflegte Verbotsliste zu führen, die selbst veraltet: `@typescript-eslint/no-deprecated` liest JSDoc-`@deprecated`, Java meldet mit `-Xlint:deprecation` und `-Werror` jede abgekündigte API als Build-Fehler, Linter-`recommended`-Sets decken die gängigen veralteten Idiome ab. Der Analyzer skaliert mit dem Ökosystem, die Liste nur mit der Pflegedisziplin.
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
+
+**Der Grenzfall: wenn keine Leitplanke zu haben ist.** Manches lässt sich nicht messen — ob ein Modell eine Aussage geglaubt hat, statt sie nachzuschlagen, etwa. Dort tritt die ausgewiesene Selbstauskunft an die Stelle des Gates: Die feste Antwortform „Mitteilung übernommen, ungeprüft — …" aus [Mitteilungen: glauben statt nachsehen](#mitteilungen-glauben-statt-nachsehen) zwingt nichts, macht aber jeden Verstoß zum sichtbaren Widerspruch. Sichtbarer Widerspruch statt Gate — dasselbe Prinzip, nur mit dem schwächeren Mittel, weil das stärkere hier nicht existiert.
 
 ## Issue-Review über mehrere Modelle
 
