@@ -552,7 +552,7 @@ let LOG_FILE = null;
 // Der maschinenlesbare Ergebnisstand (Issue #486): Pfad und Objekt liegen im
 // Modul-Zustand wie LOG_FILE darueber, nicht im Kontext — nur so erreicht auch
 // fail() sie, das von ueberall her abbricht. Beide bleiben null, solange der Lauf
-// nicht --verbose ohne --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
+// --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
 let ERGEBNIS_FILE = null;
 let LAUF = null;
 
@@ -608,8 +608,8 @@ function merkeFehlerklasse(klasse) {
 
 /** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
 function einheitAnlegen(id, titel) {
-  // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Ohne
-  // --verbose haengt es an nichts und wird nie geschrieben.
+  // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
+  // Dry-Run haengt es an nichts und wird nie geschrieben.
   const einheit = { id: String(id), titel, ausgang: "unbekannt" };
   if (LAUF) {
     LAUF.einheiten.push(einheit);
@@ -656,9 +656,17 @@ const ART_LABEL = {
 /**
  * Legt Pfad und Grundgeruest des Ergebnisstands an (Issue #486).
  *
- * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab, und ohne
- * --verbose faehrt der Runner sein altes, knappes Protokoll. Bleiben beide Variablen
- * null, schreibt schreibeErgebnisstand() nichts.
+ * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab und ist damit der
+ * einzige Ausschluss. Bleiben beide Variablen null, schreibt schreibeErgebnisstand()
+ * nichts.
+ *
+ * An --verbose haengt die Entstehung ausdruecklich NICHT mehr (Issue #557): Es fehlte
+ * sonst genau in der Nacht die Auswertung, in der jemand das Flag vergessen hat — und
+ * das ist die Nacht, in der man sie braucht. Der Grund eines Abbruchs wiegt mehr als die
+ * Kennzahlen eines glatten Laufs. Ohne das Flag fordert der Runner die Stream-Ausgabe
+ * nicht an, leseKennzahlen liefert null; damit das nicht als "diese Session hatte nichts
+ * zu messen" gelesen wird, sagt kennzahlenHinweis den Grund einmal am Lauf-Kopf, nicht
+ * je Einheit.
  *
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
@@ -667,7 +675,7 @@ const ART_LABEL = {
  * hingenommen.
  */
 function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
-  if (!args.verbose || args.dryRun) return;
+  if (args.dryRun) return;
   const iso = jetzt.toISOString();
   const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
   ERGEBNIS_FILE = join(process.cwd(), ".claude", `night-run-${stempel}.json`);
@@ -686,6 +694,12 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // ein Plan oder Arbeitspakete entstanden sind, und aus `label` ist das nicht
     // ableitbar — `--erzeuge-label` kann den Namen ueberschreiben.
     stufe: args.stufe ?? null,
+    // Bedingt, und darum an fester Stelle: Die Feldreihenfolge ist der Vertrag, ein
+    // wanderndes Feld waere Interpretationsspielraum. Bei --verbose fehlt es ganz —
+    // es ist nicht null, denn es gibt dann nichts zu erklaeren.
+    ...(args.verbose
+      ? {}
+      : { kennzahlenHinweis: "Ohne --verbose fordert der Runner die Stream-Ausgabe der Session nicht an; die Session-Kennzahlen fehlen darum in allen Einheiten." }),
     einheiten: [],
     abschluss: null,
   };

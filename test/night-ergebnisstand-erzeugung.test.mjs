@@ -17,6 +17,10 @@
 // Der Lauf faehrt als echter Runner gegen den lokalen Tracker mit einer Fake-Session, die
 // wirklich Karten anlegt und wirklich kommentiert — dieselbe Bauart wie
 // test/night-erzeugung-pruefschleife.test.mjs.
+//
+// Issue #557: Die Entstehung haengt nur noch an `--dry-run`, nicht mehr an `--verbose`.
+// Ohne das Flag entsteht der Stand ebenfalls, nur ohne Session-Kennzahlen — den Grund
+// nennt `kennzahlenHinweis` am Lauf-Kopf.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -359,12 +363,26 @@ test("[night-9] ein Erzeugungslauf ohne Kandidaten endet regulaer", NUR_POSIX, (
   });
 });
 
-test("[night-9] ohne --verbose entsteht auch im Erzeugungsmodus keine Datei", NUR_POSIX, () => {
+test("[night-9] ohne --verbose entsteht auch im Erzeugungsmodus der Stand, mit kennzahlenHinweis", NUR_POSIX, () => {
   mitProjekt((dir) => {
     quelle(dir);
     const res = run(dir, process.execPath, [NIGHT, "--erzeuge", "--stufe", "issue"],
       { NIGHT_CLAUDE_CMD: fake(BEFUND) });
     assert.equal(res.status, 0, res.stderr + res.stdout);
-    assert.deepEqual(staende(dir), [], "ohne --verbose darf nichts geschrieben werden");
+    const s = stand(dir);
+    assert.equal(s.art, "erzeugung", "die Betriebsart steht auch ohne das Flag in der Datei");
+    assert.ok(
+      typeof s.kennzahlenHinweis === "string" && s.kennzahlenHinweis.length > 0,
+      `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(s.kennzahlenHinweis)}`,
+    );
+  });
+});
+
+test("[night-9] mit --dry-run entsteht im Erzeugungsmodus weiterhin keine Datei", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    quelle(dir);
+    const res = erzeuge(dir, fake(BEFUND), ["--dry-run"]);
+    assert.equal(res.status, 0, res.stderr + res.stdout);
+    assert.deepEqual(staende(dir), [], "ein Dry-Run arbeitet nichts ab und hat nichts zu berichten");
   });
 });

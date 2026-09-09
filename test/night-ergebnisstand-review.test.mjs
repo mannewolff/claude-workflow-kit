@@ -8,6 +8,10 @@
 // kaeme an einem Abschluss in main() nie an. Ein Review-Lauf ohne `abschluss` saehe
 // aus wie ein Absturz — deshalb setzt ihn hier jeder Ausgang selbst.
 //
+// Issue #557: Die Entstehung haengt nur noch an `--dry-run`, nicht mehr an `--verbose`.
+// Ein Review-Lauf ohne das Flag hinterlaesst denselben Stand, nur ohne Session-Kennzahlen
+// — den Grund nennt `kennzahlenHinweis` am Lauf-Kopf.
+//
 // Muster wie test/night-review-loop.test.mjs: Subprozess ueber spawnSync, kein Import,
 // Session-Fake ueber NIGHT_CLAUDE_CMD, Vorflug-Fake ueber NIGHT_VORFLUG_CMD.
 
@@ -137,7 +141,7 @@ const RESULT_ZEILE =
   '"type":"result","duration_ms":382540,"uuid":"d967193f"}';
 const RESULT_AUSGEBEN = `echo '${RESULT_ZEILE}'`;
 
-test("[night-5] ein Review-Lauf mit --verbose hinterlaesst art review, abschluss regulaer und den Kandidaten mit Ausgang, Dauer und Kennzahlen", NUR_POSIX, () => {
+test("[night-5] ein Review-Lauf hinterlaesst art review, abschluss regulaer und den Kandidaten mit Ausgang, Dauer und Kennzahlen", NUR_POSIX, () => {
   mitProjekt("night-review-stand-", (dir) => {
     const id = backlogIssue(dir, "Ein Issue", OHNE_MARKER);
     const fake = [RESULT_AUSGEBEN, FAKE_MARKER].join("\n");
@@ -258,11 +262,25 @@ test("ein Review-Lauf ohne Kandidaten endet regulaer", NUR_POSIX, () => {
   });
 });
 
-test("ohne --verbose entsteht auch im Review-Modus keine Datei", NUR_POSIX, () => {
+test("[night-5] ohne --verbose entsteht auch im Review-Modus der Stand, mit kennzahlenHinweis", NUR_POSIX, () => {
   mitProjekt("night-review-stand-still-", (dir) => {
     backlogIssue(dir, "Ein Issue", OHNE_MARKER);
     const res = run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: FAKE_MARKER });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.deepEqual(staende(dir), [], "ohne --verbose darf nichts geschrieben werden");
+    const s = stand(dir);
+    assert.equal(s.art, "review", "die Betriebsart steht auch ohne das Flag in der Datei");
+    assert.ok(
+      typeof s.kennzahlenHinweis === "string" && s.kennzahlenHinweis.length > 0,
+      `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(s.kennzahlenHinweis)}`,
+    );
+  });
+});
+
+test("[night-5] mit --dry-run entsteht im Review-Modus weiterhin keine Datei", NUR_POSIX, () => {
+  mitProjekt("night-review-stand-dry-", (dir) => {
+    backlogIssue(dir, "Ein Issue", OHNE_MARKER);
+    const res = run(dir, process.execPath, [NIGHT, "--review", "--dry-run", "--verbose"], { NIGHT_CLAUDE_CMD: FAKE_MARKER });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.deepEqual(staende(dir), [], "ein Dry-Run arbeitet nichts ab und hat nichts zu berichten");
   });
 });
