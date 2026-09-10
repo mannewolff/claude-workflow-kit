@@ -41,6 +41,8 @@
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
                                     [--issue <N>]
   node board.mjs issue-review label-sync <id>
+  node board.mjs issue-review synthese-check <id>
+  node board.mjs issue-review synthese-check --synthese-file <pfad> --vorschlag-file <pfad>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
@@ -113,6 +115,14 @@ Nutzung:
   node board.mjs issue-review label-sync <id>
       Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
       Braucht issueReview.statusLabels; ohne den Schalter passiert nichts.
+  node board.mjs issue-review synthese-check <id>
+  node board.mjs issue-review synthese-check --synthese-file <pfad> --vorschlag-file <pfad>
+      Haelt die als uebernommen bezeichneten Funde einer Synthese gegen den
+      Body-Vorschlag (Issue #592). Mit <id> die juengste Synthese am Board gegen
+      den letzten Vorschlag davor mit gleicher Rundennummer; mit den beiden
+      Schaltern zwei Dateien — genau ein Weg je Aufruf. Immer JSON auf stdout
+      ({ ok, gepruefte, ohneBeleg }); ein abgewiesener Aufruf traegt zusaetzlich
+      'fehler' und endet mit Exitcode 1.
 
   node board.mjs --version
 
@@ -2682,6 +2692,17 @@ export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
 export const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
 
 /**
+ * Die Kopfzeile einer Synthese, Gegenstueck zu `VORSCHLAG_KOPF` (Issue #592).
+ *
+ * Der Bezeichner ist ausgeschrieben und nicht `^##\s*Synthese\b`: Der kuerzere
+ * Anker traefe auch `## Synthese-Abgleich, Runde n` aus Issue #593, denn der
+ * Bindestrich ist eine Wortgrenze. Der Board-Weg pruefte dann den Abgleich statt
+ * der Synthese, faende dort keine `uebernommen`-Zeile und meldete gruen — die
+ * Pruefung waere nachts wirkungslos, ohne dass es auffiele.
+ */
+export const SYNTHESE_KOPF = /^##\s*Synthese,\s*Runde\s*(\d+)\s*$/;
+
+/**
  * Der Kopf eines gewerteten Listenpunkts: `<reviewer>, "<Kurzbezeichnung>"`.
  *
  * Der Reviewer traegt kein Komma — im Bestand steht dort `fable`, `gpt-astra`,
@@ -2689,7 +2710,7 @@ export const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
  * Dissens-Punkte und Prosa draussen: Sie beginnen zwar oft mit einem Komma,
  * aber nie mit einem Anfuehrungszeichen dahinter.
  */
-const SYNTHESE_KOPF = /^([^",\n]+),\s*"([^"\n]*)"/;
+const PUNKT_KOPF = /^([^",\n]+),\s*"([^"\n]*)"/;
 
 /**
  * Das Ausgangswort, gesucht ERST hinter der Kurzbezeichnung.
@@ -2795,7 +2816,7 @@ function parseBeleg(punkt, ab) {
 export function parseSyntheseZeilen(text) {
   const eintraege = [];
   for (const punkt of syntheseListenpunkte(text)) {
-    const kopf = SYNTHESE_KOPF.exec(punkt);
+    const kopf = PUNKT_KOPF.exec(punkt);
     if (!kopf) continue;
 
     const nachFund = kopf[0].length;
@@ -2868,6 +2889,110 @@ export function syntheseBelegt(synthese, vorschlag) {
     }
   }
   return { gepruefte: punkte.length, ohneBeleg };
+}
+
+/**
+ * Die erste Zeile eines Textes ohne ihre Zeilenenden-Eigenheiten.
+ *
+ * Eigene Funktion, weil `VORSCHLAG_KOPF` und `SYNTHESE_KOPF` bewusst OHNE `m`-Flag
+ * an den Anfang und das Ende ihrer Zeile binden: Auf den ganzen Kommentar
+ * angewendet trifft keiner von beiden.
+ */
+function ersteZeile(text) {
+  return normalisiereZeilenenden(String(text ?? "")).split("\n")[0] ?? "";
+}
+
+/** Die Rundennummer aus der Kopfzeile, oder null wenn der Kopf nicht passt. */
+function kopfRunde(text, muster) {
+  const treffer = muster.exec(ersteZeile(text));
+  return treffer === null ? null : Number(treffer[1]);
+}
+
+/**
+ * Der Text ohne eine fuehrende Kommentar-Ueberschrift (Plan #589, A6).
+ *
+ * Der Kopf ist erlaubt, aber nicht gefordert: Der Board-Weg liefert ihn immer
+ * mit, interaktiv liegt ein Entwurf vor, der ihn noch nicht traegt. Beide Wege
+ * muenden in denselben Pruefkern, und der soll denselben Text sehen.
+ */
+function ohneKopf(text, muster) {
+  const zeilen = normalisiereZeilenenden(String(text ?? "")).split("\n");
+  return (muster.test(zeilen[0] ?? "") ? zeilen.slice(1) : zeilen).join("\n");
+}
+
+/**
+ * Ob ein Vorschlag ueberhaupt einen Vorschlag enthaelt.
+ *
+ * Ein Text, der nach dem Kopf keine nicht leere Zeile hat, ist keiner — dieselbe
+ * Wertung wie `bodyVorschlagVorhanden` in `kit/night.mjs`. Sonst waere die leere
+ * Datei der billigste Weg an `vorschlag-fehlt` vorbei: `syntheseBelegt` meldete
+ * dann `zitat-nicht-gefunden` und verschwiege, dass gar nichts vorlag.
+ */
+function hatVorschlagText(text) {
+  return normalisiereZeilenenden(String(text ?? "")).split("\n").some((z) => z.trim() !== "");
+}
+
+/**
+ * Der Pruefkern des Kommandos: Synthese gegen Vorschlag, ein Ergebnis (Issue #592).
+ *
+ * `vorschlag === null` heisst „kein Vorschlag vorhanden" und ist etwas anderes als
+ * ein leerer — daraus entsteht `vorschlag-fehlt`, den `syntheseBelegt` nicht kennt
+ * (dort gibt es nur Text, Plan #589 A7).
+ *
+ * Die Rangfolge ist verbindlich: Der Leerfall gewinnt vor `vorschlag-fehlt`. Ohne
+ * Synthese oder ohne `uebernommen`-Punkt ist nichts behauptet, also nichts zu
+ * belegen — auch dann, wenn kein Vorschlag vorliegt.
+ */
+function syntheseCheckErgebnis(synthese, vorschlag) {
+  const gruen = { ok: true, gepruefte: 0, ohneBeleg: [] };
+  if (synthese === null) return gruen;
+
+  const punkte = parseSyntheseZeilen(synthese).filter((p) => p.ausgang === "uebernommen");
+  if (punkte.length === 0) return gruen;
+
+  if (vorschlag === null) {
+    return {
+      ok: false,
+      gepruefte: punkte.length,
+      ohneBeleg: punkte.map((p) => ({ reviewer: p.reviewer, fund: p.fund, grund: "vorschlag-fehlt" })),
+    };
+  }
+
+  const { gepruefte, ohneBeleg } = syntheseBelegt(synthese, vorschlag);
+  return { ok: ohneBeleg.length === 0, gepruefte, ohneBeleg };
+}
+
+/**
+ * Paart die juengste Synthese eines Kommentarverlaufs mit ihrem Vorschlag (A7).
+ *
+ * „Juengste" heisst: die in `comments` zuletzt stehende — dieselbe Lesart wie in
+ * `reviewZustand`, und `normalizeComments` sortiert nicht um. Der Vorschlag muss
+ * DAVOR stehen und dieselbe Rundennummer tragen: `/issue-review` nummeriert je
+ * Session ab 1, drei Naechte hinterlassen dreimal „Runde 1". Ein Vorschlag nach
+ * der Synthese kann nicht deren Grundlage sein.
+ *
+ * Rueckgabe: `{ synthese, vorschlag }`, beide Texte ohne Kopfzeile, `null` wo
+ * nichts vorliegt.
+ */
+function synthesePaar(comments) {
+  const liste = Array.isArray(comments) ? comments : [];
+
+  let syntheseIndex = -1;
+  for (let i = liste.length - 1; i >= 0; i--) {
+    if (kopfRunde(liste[i]?.body, SYNTHESE_KOPF) !== null) { syntheseIndex = i; break; }
+  }
+  if (syntheseIndex === -1) return { synthese: null, vorschlag: null };
+
+  const runde = kopfRunde(liste[syntheseIndex].body, SYNTHESE_KOPF);
+  let vorschlag = null;
+  for (let i = syntheseIndex - 1; i >= 0; i--) {
+    if (kopfRunde(liste[i]?.body, VORSCHLAG_KOPF) !== runde) continue;
+    const text = ohneKopf(liste[i].body, VORSCHLAG_KOPF);
+    vorschlag = hatVorschlagText(text) ? text : null;
+    break;
+  }
+
+  return { synthese: ohneKopf(liste[syntheseIndex].body, SYNTHESE_KOPF), vorschlag };
 }
 
 /**
@@ -3787,6 +3912,87 @@ async function issueReviewLabelSync(args) {
   out({ ok: true, id: String(id), zustand, label: ziel });
 }
 
+// Die beiden Eingabewege in einem Satz — jede Abweisung nennt sie, damit die
+// Meldung fuer sich stehen kann. Der Nacht-Runner parst stdout (Plan #589, A8);
+// eine Meldung wie "ungueltiger Aufruf" laesse ihn ohne den naechsten Schritt.
+const SYNTHESE_CHECK_WEGE =
+  "synthese-check nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER beide "
+  + "Schalter --synthese-file <pfad> und --vorschlag-file <pfad>";
+
+/**
+ * Weist einen Aufruf ab — mit JSON auf stdout (Issue #592).
+ *
+ * Der Bestand meldet Fehler ueber `fail`, also nur auf stderr. Hier waere das zu
+ * wenig: `night.mjs` liest die Ausgabe dieses Kommandos, und ohne JSON im
+ * Fehlerfall muesste es einen leeren stdout vom Befund unterscheiden. Die Meldung
+ * geht zusaetzlich auf stderr, damit ein Mensch am Terminal sie wie jede andere
+ * sieht. Exitcode 1 wie bei `fail`.
+ */
+function syntheseCheckAbweisen(meldung) {
+  out({ ok: false, gepruefte: 0, ohneBeleg: [], fehler: meldung });
+  process.stderr.write(`Fehler: ${meldung}\n`);
+  process.exit(1);
+}
+
+/** Liest eine Eingabedatei; ein nicht lesbarer Pfad weist den Aufruf ab. */
+function syntheseCheckDatei(pfad, flag) {
+  if (pfad === true || pfad === "") syntheseCheckAbweisen(`--${flag} braucht einen Pfad. ${SYNTHESE_CHECK_WEGE}.`);
+  try {
+    return readFileSync(pfad, "utf-8");
+  } catch (e) {
+    return syntheseCheckAbweisen(`--${flag}: ${pfad} ist nicht lesbar (${e.code || e.message}). ${SYNTHESE_CHECK_WEGE}.`);
+  }
+}
+
+/**
+ * Haelt die Uebernahmen einer Synthese gegen den Body-Vorschlag (Issue #592).
+ *
+ * Zwei Eingaenge, ein Pruefkern. Der Datei-Weg fasst bewusst weder Config noch
+ * Tracker an: Interaktiv laeuft er, bevor irgendetwas am Board steht, und ein
+ * Board-Zugriff waere dort nur eine zusaetzliche Fehlerquelle.
+ */
+async function issueReviewSyntheseCheck(args) {
+  const id = args._[0];
+  const syntheseFlag = args["synthese-file"];
+  const vorschlagFlag = args["vorschlag-file"];
+  const hatDateien = syntheseFlag !== undefined || vorschlagFlag !== undefined;
+
+  if (id !== undefined && hatDateien) {
+    syntheseCheckAbweisen(`Kartennummer und Dateien zugleich uebergeben. ${SYNTHESE_CHECK_WEGE}.`);
+  }
+  if (hatDateien && (syntheseFlag === undefined || vorschlagFlag === undefined)) {
+    syntheseCheckAbweisen(`Es fehlt der zweite Schalter. ${SYNTHESE_CHECK_WEGE}.`);
+  }
+  if (id === undefined && !hatDateien) {
+    syntheseCheckAbweisen(`Keine Eingabe uebergeben. ${SYNTHESE_CHECK_WEGE}.`);
+  }
+
+  if (hatDateien) {
+    const synthese = ohneKopf(syntheseCheckDatei(syntheseFlag, "synthese-file"), SYNTHESE_KOPF);
+    const vorschlagText = ohneKopf(syntheseCheckDatei(vorschlagFlag, "vorschlag-file"), VORSCHLAG_KOPF);
+    out(syntheseCheckErgebnis(synthese, hatVorschlagText(vorschlagText) ? vorschlagText : null));
+    return;
+  }
+
+  const tracker = resolveTracker(loadConfig());
+  let issue;
+  try {
+    issue = await tracker.getIssue(String(id));
+  } catch (e) {
+    // Nur die unbekannte Kartennummer ist ein abgewiesener Aufruf. Ein
+    // unerreichbarer Tracker laeuft wie im Bestand ueber den CLI-Layer — sonst
+    // laese der Nacht-Runner einen Netzausfall als Eingabefehler und suchte an
+    // der falschen Stelle. Muster wie bei labelIssue (HTTP 404 / nicht gefunden).
+    if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) {
+      return syntheseCheckAbweisen(e.message);
+    }
+    throw e;
+  }
+
+  const { synthese, vorschlag } = synthesePaar(issue.comments);
+  out(syntheseCheckErgebnis(synthese, vorschlag));
+}
+
 async function dispatchIssueReview(command, args) {
   switch (command) {
     case "reviewers": return issueReviewReviewers(args);
@@ -3794,6 +4000,7 @@ async function dispatchIssueReview(command, args) {
     case "matrix": return issueReviewMatrix();
     case "roles": return issueReviewRoles(args);
     case "label-sync": return issueReviewLabelSync(args);
+    case "synthese-check": return issueReviewSyntheseCheck(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

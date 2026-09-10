@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   VORSCHLAG_KOPF,
+  SYNTHESE_KOPF,
   parseSyntheseZeilen,
   syntheseBelegt,
 } from "../kit/board.mjs";
@@ -276,4 +277,26 @@ test("VORSCHLAG_KOPF trifft die erste Zeile eines echten Vorschlags-Kommentars",
   const kopf = "## Body-Vorschlag, Runde 1";
   assert.equal(VORSCHLAG_KOPF.test(kopf), true);
   assert.equal(VORSCHLAG_KOPF.test(`${kopf}\n\n## Kontext`), false);
+});
+
+// --- SYNTHESE_KOPF ---
+
+// `## Synthese-Abgleich, Runde n` ist der Kommentar aus Issue #593. Ein Regex
+// `^##\s*Synthese\b` traefe ihn mit (Bindestrich ist Wortgrenze) — der Board-Weg
+// pruefte dann den Abgleich statt der Synthese, faende keine uebernommen-Zeile und
+// meldete gruen. Die Pruefung waere nachts wirkungslos, ohne dass es auffiele.
+test("[board-3] SYNTHESE_KOPF trifft die Kopfzeile, nicht den Synthese-Abgleich und nicht dieselbe Zeile mit fuehrendem Text", () => {
+  assert.equal(SYNTHESE_KOPF.test("## Synthese, Runde 1"), true);
+  assert.equal(SYNTHESE_KOPF.exec("## Synthese, Runde 12")[1], "12");
+  assert.equal(SYNTHESE_KOPF.test("## Synthese-Abgleich, Runde 1"), false);
+  assert.equal(SYNTHESE_KOPF.test("Text ## Synthese, Runde 1"), false);
+  assert.equal(SYNTHESE_KOPF.test("## Body-Vorschlag, Runde 1"), false);
+  assert.equal(SYNTHESE_KOPF.test("## Synthese, Runde 1\n\nStufe `issue`"), false);
+});
+
+test("[board-3] SYNTHESE_KOPF trifft die erste Zeile jedes Synthese-Fixtures", () => {
+  for (const id of KARTEN) {
+    const erste = lies(id, "synthese.md").split("\n")[0];
+    assert.equal(SYNTHESE_KOPF.test(erste), true, `${id}: '${erste}'`);
+  }
 });
