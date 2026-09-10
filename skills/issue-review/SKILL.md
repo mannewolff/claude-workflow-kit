@@ -579,7 +579,10 @@ cat  > <tmpdir>/<id>-synthese.md <<'TEIL1'
 ## Synthese, Runde 1
 
 ### Entscheidungen
-- opus, "Akzeptanzkriterium nicht maschinell prüfbar" (BLOCKER) — übernommen
+- opus, "Akzeptanzkriterium nicht maschinell prüfbar" (BLOCKER) — übernommen →
+  Akzeptanzkriterium: "der Aufruf endet mit Exitcode 0"
+- opus, "Der Absatz zur Migration ist Kandidat für RAUS" (WICHTIG) — übernommen →
+  Kontext: gestrichen "Die Migration der Altdaten läuft nebenher."
 - codex, "Abhängigkeit fehlt" (WICHTIG) — verworfen: Issue #7 steht bereits im
   Abhängigkeiten-Abschnitt, der Reviewer sah ihn nicht (Kontextlosigkeit).
 - codex, "Cookie-Schreiben ist Kandidat für RAUS" (WICHTIG) — verworfen:
@@ -590,7 +593,7 @@ cat  > <tmpdir>/<id>-synthese.md <<'TEIL1'
   Test-Zweig streichen (das Projekt hat keine Testbasis). Entschieden für opus.
   Folgeänderung: Issue #7 als Abhängigkeit ergänzt.
 
-Übernommen: 1 · Verworfen: 2
+Übernommen: 2 · Verworfen: 2
 TEIL1
 ```
 
@@ -605,6 +608,19 @@ node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-synthese
 ```
 
 Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
+
+**Jeder `übernommen`-Punkt trägt einen Beleg**, unmittelbar nach dem Ausgangswort; Prosa steht danach. Zwei Formen, je nachdem ob der Fund Text hinzufügt oder Text entfernt:
+
+```
+- <reviewer>, "<Fund>" (<Grad>, `<Klasse>`) — übernommen → <Abschnitt>: "<Zitat>"
+- <reviewer>, "<Fund>" (<Grad>, `<Klasse>`) — übernommen → <Abschnitt>: gestrichen "<Zitat aus dem alten Body>"
+```
+
+Das Zitat wird **wörtlich aus dem Body-Vorschlag kopiert**, bei `gestrichen` wörtlich aus dem alten Body. Ohne Beleg nennt die Zeile den Fund und nicht die Textänderung — der Abgleich aus Schritt 6 hätte keinen Suchbegriff und meldete sie zwangsläufig als unbelegt.
+
+**Die zweite Form ist keine Verzierung.** Jede Reviewer-Rolle stellt die Frage „Was kann RAUS?". Wird eine Streichung übernommen, steht im neuen Text nichts, was zu zitieren wäre; mit der einfachen Form riefe genau der Fund einen Menschen, der das Dokument kürzt. Belegt wird sie umgekehrt: Das Zitat aus dem alten Body darf im Vorschlag **nicht mehr** vorkommen.
+
+`verworfen` und `zur Entscheidung` behaupten keine Textänderung und tragen deshalb keinen Beleg.
 
 **Was hineingehört:**
 
@@ -638,6 +654,33 @@ Was hier geschieht, hängt an der Betriebsart — **und an nichts sonst**. Für 
 **Interaktiv:** Vorschlag zeigen, einmal fragen.
 
 Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb". Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
+
+**Der Abgleich vor der ersten Schreibung.** Bevor irgendetwas geschrieben wird, werden die als `übernommen` bezeichneten Funde der Synthese gegen den Body-Vorschlag gehalten — die Belegform dazu steht in Schritt 5b:
+
+```bash
+node .claude/kit/board.mjs issue-review synthese-check --synthese-file <tmpdir>/<id>-synthese.md --vorschlag-file <tmpdir>/<id>-vorschlag.md
+```
+
+**Unbeaufsichtigt** läuft der Abgleich vor Schreibbefehl 1; beide Entwürfe liegen dann bereits als Dateien vor, aus denen die Kommentare gleich entstehen. **Interaktiv** läuft er **vor der Zustimmungsfrage**: Synthese und Body-Vorschlag werden dafür vorher als `<tmpdir>/<id>-synthese.md` und `<tmpdir>/<id>-vorschlag.md` abgelegt — dieselben Dateien, die anschließend als Kommentare ans Board gehen; der Vorschlag im Chat ist ihre Wiedergabe, nicht ihr Ersatz. Die Regeln aus „Lange Texte ans Board" gelten dabei unverändert.
+
+Der Datei-Weg ist keine Bequemlichkeit: Nach der Zustimmung ist der Body geschrieben, und eine Prüfung hinter der Schreibung kommt zu spät. Zu diesem Zeitpunkt steht am Board noch nichts, was `synthese-check <id>` lesen könnte — die Variante mit der Kartennummer ist hier nicht gemeint.
+
+**`ok: false` wirkt wie ein `gate`-Fund:** Die Schreibbefehle 1 bis 5 laufen (Body-Vorschlag, Body ohne Marker, `kit:klaeren`, Synthese, Abgleich-Kommentar), die zweite Body-Schreibung entfällt, `label-sync` läuft. Der **Marker bleibt aus** — was eine Synthese als übernommen ausweist, ohne dass es im Text steht, ist keine geprüfte Schärfung.
+
+**Scheitert der Aufruf selbst** — Exit ungleich 0, keine gültige JSON-Ausgabe, eine der Dateien nicht lesbar —, gilt dasselbe: kein Marker, `kit:klaeren`, und der Abgleich-Kommentar trägt in Zeile 2 `Abgleich ausgefallen: <erste Zeile der Fehlermeldung>`. **Kein zweiter Versuch.** Ein ausgefallener Abgleich ist nie befundfrei.
+
+**Der Abgleich-Kommentar** entsteht **nur bei `ok: false`**; im grünen Fall ist der Marker die Spur, und ein Kommentar ohne Inhalt wäre Rauschen. Seine erste Zeile lautet wörtlich `## Synthese-Abgleich, Runde <n>`, mit der Runde des geprüften Synthese-Kommentars — nie einer eigenen Zählung. Darunter steht je Zeile ein Eintrag aus `ohneBeleg` mit Reviewer, Fund und Grund, in dieser Form:
+
+```
+- opus, "Akzeptanzkriterium nicht maschinell prüfbar" — beleg-fehlt
+- codex, "Der Absatz zur Migration ist Kandidat für RAUS" — zitat-nicht-gefunden
+```
+
+Geschrieben wird er über `issue comment --text-file` nach der Transportregel, wie der Synthese-Kommentar aus Schritt 5b.
+
+Interaktiv entsteht er unmittelbar nach dem Abgleich, **vor der Zustimmungsfrage und unabhängig von der Antwort** — auch bei Ablehnung. Der Grund gehört ans Dokument, nicht in den Verlauf, und gerade dann, wenn der Mensch nicht übernimmt.
+
+**Interaktiv** wird `kit:klaeren` dabei **ohne Rückfrage** gesetzt — ein Label ist weder Body noch Marker. Antwortet der Mensch trotz Befund mit „ja", wird der Body geschrieben und der Marker bleibt trotzdem aus; ein Neu-Abgleich wird nicht angeboten.
 
 **Unbeaufsichtigt gilt im Einzelnen:**
 
@@ -679,8 +722,9 @@ Ein bereits vorhandenes Label ist kein Fehler.
 2. `issue update` — der geschärfte Body OHNE Marker (ein vorhandener Marker derselben Stufe wird dabei entfernt; endet der Lauf mit `kit:klaeren`, bleibt er entfernt)
 3. gegebenenfalls `issue label add kit:klaeren`
 4. Synthese-Kommentar
-5. gegebenenfalls ein ZWEITES `issue update` — derselbe Body, ergänzt um die Marker-Zeile; `Pruefung:` und `Pruefung-Stand:` werden wie bei jeder Body-Schreibung aus dem aktuellen Stand übernommen
-6. `issue-review label-sync <id>` — wie weiter unten beschrieben, unbeaufsichtigt identisch
+5. gegebenenfalls der `## Synthese-Abgleich`-Kommentar — nur bei `ok: false` oder ausgefallenem Abgleich
+6. gegebenenfalls ein ZWEITES `issue update` — derselbe Body, ergänzt um die Marker-Zeile; `Pruefung:` und `Pruefung-Stand:` werden wie bei jeder Body-Schreibung aus dem aktuellen Stand übernommen
+7. `issue-review label-sync <id>` — wie weiter unten beschrieben, unbeaufsichtigt identisch
 
 Der Marker ist keine eigene Operation, sondern eine **Zeile im Body**. Er kann deshalb nur mit einer Body-Schreibung entstehen — und weil er nie ohne Synthese dastehen darf, wird der Body zweimal geschrieben: erst geschärft ohne Marker, nach erfolgreicher Synthese ein zweites Mal mit.
 
@@ -888,6 +932,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Nachts kein Ersatz-Reviewer** — die Besetzung folgt `pairs`, eine Lücke wird vermerkt, nicht gefüllt
 - **Kein Anwenden eines Funds auf einen menschlich gesetzten Inhalt** — berührt er eine dokumentierte PO-Antwort unter `## Offene Fragen an den PO` oder eine architektonische Begründung unter `## Architektonische Entscheidungen`, ist er kein `korrektur`-Fund: Er wird nicht angewendet, zeichnet das Ticket mit `kit:klaeren` und hält den Marker zurück (Schritt 6, Issue #418)
 - **Nie ein Marker ohne erfolgreich geschriebenen Body und Synthese-Kommentar** — schlägt ein Schreibbefehl fehl, endet der Skill und führt keine weitere Mutation aus
+- **Kein Marker, wenn der Abgleich nicht gelaufen ist oder `ok: false` gemeldet hat** — ein ausgefallener Abgleich ist nie befundfrei (Schritt 6, Issue #593)
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne dass alle Funde `korrektur` tragen und die übernommenen angewendet sind (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet

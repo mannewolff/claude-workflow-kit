@@ -47,10 +47,13 @@ test("der Marker steht nicht mehr als eigener Schreibbefehl in der Liste", () =>
     "der Marker ist eine Body-Zeile, kein Befehl — als eigener Schritt ist er nicht ausfuehrbar");
 });
 
-test("die Liste nennt sechs Schreibschritte", () => {
+// Seit Issue #593 steht der Abgleich-Kommentar an Position 5 — die drei
+// Zusicherungen darunter sind deshalb umgebaut und nicht ergaenzt: Ein
+// angehaengter Test haette daneben drei rote Bestandstests stehen lassen.
+test("[skills-11] die Liste nennt sieben Schreibschritte", () => {
   const schritte = liste.match(/^\d+\. /gm) ?? [];
-  assert.equal(schritte.length, 6,
-    `erwartet sind sechs Schreibschritte, gefunden ${schritte.length}`);
+  assert.equal(schritte.length, 7,
+    `erwartet sind sieben Schreibschritte, gefunden ${schritte.length}`);
 });
 
 test("Schritt 2 schreibt den geschaerften Body ohne Marker", () => {
@@ -61,18 +64,24 @@ test("Schritt 2 schreibt den geschaerften Body ohne Marker", () => {
     "ohne diesen Zusatz stuende der Marker wieder vor der Synthese");
 });
 
-test("Schritt 5 ist ein zweites issue update, nicht 'der Marker'", () => {
+test("[skills-11] Schritt 5 ist der Abgleich-Kommentar", () => {
   const schritt5 = liste.match(/^5\. .*(\n {2,}.*)*/m)?.[0] ?? "";
-  assert.match(schritt5, /issue update/,
-    "Schritt 5 muss als Body-Schreibung benannt sein — der Marker allein ist kein Befehl");
-  assert.match(schritt5, /zweites/i,
+  assert.match(schritt5, /Synthese-Abgleich/,
+    "Schritt 5 muss den Abgleich-Kommentar nennen — er steht zwischen Synthese und zweiter Body-Schreibung");
+});
+
+test("[skills-11] Schritt 6 ist ein zweites issue update, nicht 'der Marker'", () => {
+  const schritt6Zeile = liste.match(/^6\. .*(\n {2,}.*)*/m)?.[0] ?? "";
+  assert.match(schritt6Zeile, /issue update/,
+    "Schritt 6 muss als Body-Schreibung benannt sein — der Marker allein ist kein Befehl");
+  assert.match(schritt6Zeile, /zweites/i,
     "dass es die zweite Body-Schreibung ist, muss dastehen");
-  assert.match(schritt5, /Marker/,
+  assert.match(schritt6Zeile, /Marker/,
     "was die zweite Schreibung ergaenzt, fehlt");
 });
 
-test("Schritt 6 ist label-sync", () => {
-  assert.match(liste, /^6\. .*label-sync/m,
+test("[skills-11] Schritt 7 ist label-sync", () => {
+  assert.match(liste, /^7\. .*label-sync/m,
     "der Label-Abgleich schliesst die Reihenfolge ab");
 });
 
