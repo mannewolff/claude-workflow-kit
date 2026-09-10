@@ -18,12 +18,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { trackerProbeId, parseVorflugBefund, normalisiereVorflug } from "../kit/night.mjs";
+import { trackerProbeId, parseVorflugBefund, normalisiereVorflug, ERSATZ_GRUND } from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -128,6 +128,14 @@ function mitProjekt(fn, reviewers) {
 function zeilen(dir, datei) {
   const p = join(dir, datei);
   return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean) : [];
+}
+
+/** Der eine Ergebnisstand des Laufs — mehr als einer waere hier ein Fehler. */
+function stand(dir) {
+  const dateien = readdirSync(join(dir, ".claude"))
+    .filter((n) => /^night-run-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(n));
+  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+  return JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
 }
 
 // --- Die falsche Umgebung ---
@@ -250,9 +258,14 @@ test("Vorflug-Session ohne Befund-Block: der Dry-Run berichtet und endet mit 0",
   });
 });
 
-test("eine Vorflug-Session, die den Working Tree verschmutzt, stoppt den Lauf hart", NUR_POSIX, () => {
+test("[night-11] eine Vorflug-Session, die den Working Tree verschmutzt, stoppt den Lauf hart und begruendet ihn am Lauf", NUR_POSIX, () => {
   // Dieselbe Leitplanke wie nach einer regulaeren Review-Session (Issue #152): Eine
   // Session, die nichts anfassen darf und es doch tut, hinterlaesst eine unklare Lage.
+  //
+  // Der einzige der sieben Abbruchwege OHNE Karte (Issue #558): Der Vorflug laeuft, bevor
+  // ein Kandidat gezogen ist. Sein Grund gehoert deshalb an den Lauf, und `fehlerEinheit`
+  // bleibt leer — ein Verweis auf eine Einheit, die es nicht gibt, waere schlimmer als
+  // keiner.
   mitProjekt((dir) => {
     backlogIssue(dir, "Ein Issue");
     const res = run(dir, process.execPath, [NIGHT, "--review"], {
@@ -263,6 +276,18 @@ test("eine Vorflug-Session, die den Working Tree verschmutzt, stoppt den Lauf ha
     assert.equal(res.status, 1);
     assert.match(res.stdout, /HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert/);
     assert.equal(existsSync(join(dir, "session-lief")), false);
+
+    const s = stand(dir);
+    assert.equal(s.abschluss, "harterStopp");
+    assert.equal(s.fehlerklasse, "harterStopp");
+    assert.equal(s.fehlerEinheit ?? null, null, "der Vorflug kennt keine Karte, auf die er verweisen koennte");
+    assert.match(s.fehlerText, /die Vorflug-Session hat den Working Tree veraendert/,
+      `der Protokolltext fehlt: ${s.fehlerText}`);
+    assert.match(s.fehlerText, /dreck\.txt/, `die liegengebliebene Datei fehlt: ${s.fehlerText}`);
+    // Weder der reine Ersatztext noch der Vermerk des Sicherheitsnetzes: Dieser Weg
+    // hinterlegt seinen Grund selbst.
+    assert.notEqual(s.fehlerText, ERSATZ_GRUND, "hier hat das Sicherheitsnetz gerettet statt der Abbruchweg");
+    assert.doesNotMatch(s.fehlerText, /Uebergabe-Anker/, "der Grund kam ueber das Netz statt direkt");
   });
 });
 

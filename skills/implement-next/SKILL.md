@@ -151,16 +151,32 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 node .claude/kit/board.mjs issue move <id> in_review
 ```
 
-Abschlussbericht **direkt** als Issue-Kommentar posten — kein Zwischenschritt über eine Wrapper- oder Temp-Datei:
+Den Abschlussbericht nach der Transportregel ausserhalb des Projektverzeichnisses vorbereiten und als Issue-Kommentar uebertragen:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text - <<'BERICHT'
-## Abschlussbericht Issue #N
-...
-BERICHT
+printenv TMPDIR
 ```
 
-**Working Tree sauber hinterlassen (Nachtbetrieb-Leitplanke).** Am Ende der Session enthält der Working Tree ausschließlich committete Änderungen. Lege für den Abschlussbericht keine Hilfsdateien an (kein `.tmp-report.md`, kein Node-Wrapper zum Posten) — der `issue comment --text -`-Aufruf oben genügt, auch für lange Berichte (Issue #270). Waren ausnahmsweise Hilfsdateien nötig, lösche sie vor Session-Ende. Der Nacht-Runner stoppt hart, wenn eine erfolgreiche Runde unkommittete Reste hinterlässt (siehe `kit/night.mjs`, Issue #152).
+```bash
+cat  > <tmpdir>/id-bericht.md <<'TEIL1'
+## Abschlussbericht Issue #N
+...
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/id-bericht.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/id-bericht.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
+
+**Working Tree sauber hinterlassen (Nachtbetrieb-Leitplanke).** Am Ende der Session enthält der Working Tree ausschließlich committete Änderungen. Lege für den Abschlussbericht keine Hilfsdateien **im Projektverzeichnis** an (kein `.tmp-report.md`, kein Node-Wrapper zum Posten). Die Berichtsdatei aus der Transportregel liegt ausserhalb und macht den Working Tree nicht unsauber (Issue #270, #584). Waren ausnahmsweise Hilfsdateien nötig, lösche sie vor Session-Ende. Der Nacht-Runner stoppt hart, wenn eine erfolgreiche Runde unkommittete Reste hinterlässt (siehe `kit/night.mjs`, Issue #152).
 
 Format des Abschlussberichts:
 

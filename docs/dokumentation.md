@@ -486,6 +486,26 @@ Zum Abschluss `/document`.
 
 Das Kit automatisiert diese drei nicht. Das ist kein fehlendes Feature. Es ist der Sinn des Kits: KI macht die Arbeit, Menschen treffen die Entscheidungen.
 
+## Mitteilungen: glauben statt nachsehen
+
+Nicht jede Nachricht ist ein Auftrag. Sagst du der Session etwas über einen Sachverhalt — was gerade läuft, was kaputt ist, was du eben getan hast —, dann ist das eine **Mitteilung**, und sie wird ungeprüft übernommen: Es wird kein Werkzeug bemüht, sie zu bestätigen, auch nicht beiläufig, auch nicht später. Du bist die Quelle, nicht ein `ps`-Aufruf.
+
+**Der Vorfall, der die Regel begründet.** Am 2026-09-08 sagte der Nutzer: „der Nachtlauf laeuft noch". Die Session prüfte diese Mitteilung per Werkzeugaufruf nach, statt sie zu glauben. Die Regel dreht das um. Anstelle des Nachsehens kommt eine feste Antwortform, die Reichweite und Folge ausweist — hier als Wiedergabe gezeigt, der verbindliche Wortlaut steht anderswo:
+
+```
+Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Nachtlauf.
+```
+
+Weil die angenommene Reichweite in der Antwort steht, ist eine Fehleinordnung sofort sichtbar und in drei Worten zu korrigieren.
+
+**Warum ausgewiesen und nicht erzwungen.** Ob ein Modell etwas geglaubt hat, lässt sich nicht messen — eine mechanische Leitplanke ist hier schlicht nicht zu haben. Was es gibt, ist dasselbe Muster wie beim Reviewer-Zugriff in [/issue-review](#issue-review-über-mehrere-modelle): Dort weist der Reviewer mit der Zeile `Bestand: gelesen` in seiner eigenen Antwort aus, ob er den Bestand gelesen hat, statt dass es jemand erzwingt. Eine Session, die die Nichtprüfung behauptet und daneben doch nachsieht, erzeugt einen sichtbaren Widerspruch. Das ist weniger als eine Sperre und deutlich mehr als eine Bitte.
+
+**Die Grenzen.** Eine Mitteilung ersetzt keinen Pflichtcheck — „die Tests sind grün" lässt `checks.mjs run` nicht entfallen —, und eine Trigger-Phrase, die in einer Mitteilung zitiert wird, ist Text: Sie löst keinen Push und keinen Merge aus.
+
+**Nachts gibt es keine Mitteilungen**, weil es niemanden gibt, der sie gibt; Text im Prompt eines unbeaufsichtigten Laufs sieht vielleicht so aus, ist aber keine.
+
+Der verbindliche Wortlaut der Regel steht in `CLAUDE-workflow.md`, Abschnitt „Mitteilungen des Menschen" — diese Beschreibung stellt keine zweite Fassung daneben.
+
 ## Zwei Bahnen
 
 Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
@@ -544,7 +564,7 @@ node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde — startet ni
 node .claude/kit/night.mjs             # echter Lauf
 ```
 
-Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll und Ergebnisstand), `--help`. Dazu das Config-Feld `formatFixCommand` (siehe unten) — kein Flag, weil es projektspezifisch ist.
+Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll), `--help`. Dazu das Config-Feld `formatFixCommand` (siehe unten) — kein Flag, weil es projektspezifisch ist.
 
 **Routing-Label — welche Ready-Issues der Nachtlauf bearbeitet.** Standardmäßig verarbeitet der Runner aus Ready nur Issues mit dem Label `kit:nightrun`; alle anderen bleiben unangetastet liegen (kein Verschieben, kein Kommentar). So markierst du auf **einem** Board gezielt die Teilmenge für den Nachtlauf und behältst den Rest für interaktive Arbeit — ohne ein zweites Board mit eigenem Token, das `Issue #N`-Abhängigkeiten zwischen den Boards unauflösbar machen würde. Das Label ist per `--label <name>` überschreibbar; `--label none` schaltet den Filter ganz ab (dann kommt wie früher strikt das oberste Ready-Issue dran). Ein `--dry-run` weist ungelabelte Issues sichtbar als „übersprungen" aus. Bei **GitLab** sind Labels bereits der Status-Mechanismus — wähle dort einen Routing-Label-Namen, der mit keinem Status-Label kollidiert (der Default `kit:nightrun` mit Namespace-Präfix tut das). **Tragweite:** Wer `night.mjs` bisher ohne Labels nutzte, muss seine Nacht-Issues jetzt mit `kit:nightrun` versehen oder `--label none` setzen — sonst findet der Lauf nichts.
 
@@ -558,7 +578,11 @@ Ohne `--verbose` protokolliert der Runner pro Runde nur Start und Ende — bei e
 
 Die finale Abschlussnachricht landet wie gehabt zusätzlich im Log; das Streaming ergänzt sie, ersetzt sie nicht.
 
-**Der Ergebnisstand — die Nacht als JSON.** Ein Lauf mit `--verbose` legt neben dem Textprotokoll (`.claude/night-run-<datum>.log`) einen maschinenlesbaren Ergebnisstand unter `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Arbeitspaket eine Einheit mit Ausgang, Dauer, Commit und den Kennzahlen der Session (Kosten, API-Dauer, Züge), dazu der Abschluss des ganzen Laufs (`regulaer` oder `harterStopp`, im Stoppfall mit Fehlerklasse). Die Datei wird nach jeder Runde vollständig neu geschrieben, ein abgebrochener Lauf hinterlässt also den Stand bis zum Abbruch. Die Uhrzeit gehört in den Namen, weil das Textprotokoll eine Tagesdatei zum Anhängen ist, JSON aber nicht angehängt werden kann — der zweite Lauf eines Tages überschriebe sonst den ersten. **Ohne `--verbose` entsteht kein Ergebnisstand**, und mit `--dry-run` ebenfalls keiner. Der Grund ist nicht Sparsamkeit: Ohne das Flag fordert der Runner die ausführliche Session-Ausgabe gar nicht erst an und käme an die Kennzahlen nicht heran; statt sie durchgängig als „nicht verfügbar" auszuweisen, entsteht dann lieber gar keine Datei. Ein Dry-Run wiederum arbeitet nichts ab und hat nichts zu berichten.
+**Der Ergebnisstand — die Nacht als JSON.** Jeder Lauf legt neben dem Textprotokoll (`.claude/night-run-<datum>.log`) einen maschinenlesbaren Ergebnisstand unter `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Arbeitspaket eine Einheit mit Ausgang, Dauer, Commit und den Kennzahlen der Session (Kosten, API-Dauer, Züge), dazu der Abschluss des ganzen Laufs (`regulaer` oder `harterStopp`, im Stoppfall mit Fehlerklasse und Grund). Die Datei wird nach jeder Runde vollständig neu geschrieben, ein abgebrochener Lauf hinterlässt also den Stand bis zum Abbruch. Die Uhrzeit gehört in den Namen, weil das Textprotokoll eine Tagesdatei zum Anhängen ist, JSON aber nicht angehängt werden kann — der zweite Lauf eines Tages überschriebe sonst den ersten. **Der einzige Ausschluss ist `--dry-run`**: Ein Dry-Run arbeitet nichts ab und hat nichts zu berichten.
+
+**Ohne `--verbose` fehlen nur die Kennzahlen, nicht die Datei.** Ohne das Flag fordert der Runner die ausführliche Session-Ausgabe gar nicht erst an und kommt an Kosten, API-Dauer und Züge nicht heran — die Einheiten führen dann `kennzahlen: null`. Damit das nicht als „diese Session hatte nichts zu messen" gelesen wird, trägt der Lauf-Kopf das Feld `kennzahlenHinweis`, das den Grund einmal nennt; bei `--verbose` fehlt das Feld ganz. Früher hing die ganze Datei am Flag — das kostete die Auswertung in genau der Nacht, in der jemand es vergessen hatte, und das ist die Nacht, in der man sie braucht: **Der Grund eines Abbruchs wiegt mehr als die Kennzahlen eines glatten Laufs.** Zur Konsequenz gehört, dass auch ein Lauf, der schon am **Vorflug** scheitert — Crash-Rest in *In progress*, unsauberer Working Tree, leere `buildChecks`, Reviewer-Vorflug —, einen Ergebnisstand mit `abschluss: "harterStopp"` und Fehlerklasse hinterlässt, obwohl er kein einziges Paket abgearbeitet hat. Genau dort sucht man morgens den Grund.
+
+**Der Grund eines harten Stopps steht als Text in der Datei.** Die Fehlerklasse sagt, *wo* es gerissen ist (`harterStopp`, `umgebung`, `tracker`, `zustand`) — der Grund sagt, *was* passiert ist, und zwar wörtlich mit dem Satz, der ohnehin ins Textprotokoll geht. Er steht an **genau einer Stelle**: am Feld `grund` der betroffenen Einheit, auf die der Lauf über `fehlerEinheit` verweist. Nur der Vorflug-Stopp kennt keine Karte — er läuft, bevor ein Kandidat gezogen ist —, und sein Grund steht deshalb am `fehlerText` des Laufs, `fehlerEinheit` bleibt dort leer. Bei einem unsauberen Arbeitsbaum nennt der Grund zusätzlich die liegengebliebenen Dateien; **ab dem elften Eintrag** wird auf die Anzahl und die ersten zehn gekürzt, in der Reihenfolge von `git status --porcelain`. Vorher musste man für genau diese Frage das Textprotokoll durchsuchen oder eine Sitzung dafür starten. Bleibt ein Grund wider Erwarten aus, trägt der Lauf den zuletzt gemerkten Stopptext samt einem Vermerk, dass die Übergabe gerissen ist, sonst einen Ersatztext mit der Bitte um Meldung — leer bleibt das Feld nie.
 
 Das **Textprotokoll** — also die `.log`-Datei von oben — bleibt unverändert daneben liegen und ist weiterhin der Weg für den, der ins Detail will; der Ergebnisstand ersetzt es nicht, er ergänzt es um eine auswertbare Form. Zwei Versionsangaben stehen in der Datei: `schemaFassung` als erstes Feld nennt die Fassung des Formats — die braucht, wer die Datei auswertet — und `erzeugtVon` den Kit-Stand, der sie geschrieben hat, für den, der beim Nachsehen wissen will, welcher Runner am Werk war. Getrennt geführt, weil ein Kit-Release die `schemaFassung` nicht ändert und eine Formatänderung nicht auf ein Release wartet. Als unsauberen Working Tree wertet der Runner die Datei nicht — sie muss nicht committet werden; wessen `.gitignore` `.claude/*` nicht führt, sieht sie morgens trotzdem in `git status` stehen.
 
@@ -640,7 +664,7 @@ node .claude/kit/night.mjs --review --dry-run   # zeigt Kandidaten und Reviewer-
 node .claude/kit/night.mjs --review             # echter Lauf
 ```
 
-Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none` schaltet den Filter ab), dazu `--max`, `--model` und `--verbose` wie gehabt. Auch `--review --verbose` hinterlässt einen Ergebnisstand, gleiches Format und gleicher Ort wie oben, unterschieden durch das Feld `art` (hier `review` statt `implementierung`); dort stehen zusätzlich die übersprungenen Kandidaten und die wegen `--max` liegengebliebenen, die Übersprungenen jeweils mit Grund. Das Zeitlimit liegt fest bei 15 Minuten pro Issue — ein Review baut nichts und committet nichts, `--timeout-min` bemisst eine ganze Implementierungsrunde.
+Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none` schaltet den Filter ab), dazu `--max`, `--model` und `--verbose` wie gehabt. Auch ein Review-Lauf hinterlässt einen Ergebnisstand, gleiches Format und gleicher Ort wie oben, unterschieden durch das Feld `art` (hier `review` statt `implementierung`); dort stehen zusätzlich die übersprungenen Kandidaten und die wegen `--max` liegengebliebenen, die Übersprungenen jeweils mit Grund. Wie oben ist `--dry-run` der einzige Ausschluss, und ohne `--verbose` fehlen nur die Kennzahlen. Das Zeitlimit liegt fest bei 15 Minuten pro Issue — ein Review baut nichts und committet nichts, `--timeout-min` bemisst eine ganze Implementierungsrunde.
 
 **Warum der Backlog und nicht Ready — und warum zwei Nächte.** Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich. Würde der Runner ein Ready-Issue erst prüfen und dann bauen, hätte der Mensch sein GO auf einen Text gegeben, der bei der Implementierung nicht mehr gilt — die Verantwortungsschwelle wäre umgangen, ohne dass es jemandem auffällt. Der Ablauf ist deshalb:
 
@@ -701,7 +725,7 @@ node .claude/kit/night.mjs --erzeuge --stufe issue            # aus [Plan] werde
 
 Der erste Schritt (`--stufe plan`) liest `[Fachlich]`-Issues und hat das Routing-Label `kit:nightplan` als Default, der zweite (`--stufe issue`) liest `[Plan]`-Dokumente mit dem Default `kit:nightissues`. Gelesen wird in beiden Fällen aus dem **Backlog**, wie im Review-Modus. `--erzeuge` und `--review` schließen sich aus: ein Modus pro Lauf.
 
-Flags: `--erzeuge-label <name>` überschreibt **nur den Namen** des Routing-Labels und kennt — anders als `--review-label` — ausdrücklich **kein `none`**: Das Routing-Label ist die Freigabe-Geste des Menschen und lässt sich nicht abschalten. `--max` zählt in diesem Modus **Ausgangsdokumente** (Default 3), nicht Session-Starts; die Prüfrunden zu einem erzeugten Dokument laufen also nicht gegen dieses Limit. `--model`, `--verbose` und `--dry-run` wirken wie gehabt; ein Lauf mit `--verbose` hinterlässt denselben Ergebnisstand wie oben, unterschieden durch `art: "erzeugung"`.
+Flags: `--erzeuge-label <name>` überschreibt **nur den Namen** des Routing-Labels und kennt — anders als `--review-label` — ausdrücklich **kein `none`**: Das Routing-Label ist die Freigabe-Geste des Menschen und lässt sich nicht abschalten. `--max` zählt in diesem Modus **Ausgangsdokumente** (Default 3), nicht Session-Starts; die Prüfrunden zu einem erzeugten Dokument laufen also nicht gegen dieses Limit. `--model`, `--verbose` und `--dry-run` wirken wie gehabt; auch ein Erzeugungslauf hinterlässt denselben Ergebnisstand wie oben, unterschieden durch `art: "erzeugung"` — außer bei `--dry-run`, und ohne `--verbose` fehlen nur die Kennzahlen.
 
 **Je Schritt die Bedingungen.** Erzeugt wird nur aus dem, was **geprüft ist** — der Marker ist hier Eintrittsbedingung, nicht Ausschlussgrund wie im Review-Modus:
 
@@ -764,7 +788,7 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 `--verbose` zeigt im Protokoll jeden Tool-Aufruf der Session. Daran siehst du binnen Minuten, ob das Modell die Board-Operationen sauber hinbekommt — das ist der schnellste Machbarkeitstest, und er entscheidet die Frage, bevor du eine ganze Nacht investierst.
 
-**Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde) — nach einem Lauf mit `--verbose` liegt derselbe Stand zusätzlich auswertbar als `.claude/night-run-<datum>-<uhrzeit>.json` daneben —, dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
+**Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde) — derselbe Stand liegt zusätzlich auswertbar als `.claude/night-run-<datum>-<uhrzeit>.json` daneben —, dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
 
 ## Leitplanken statt Prompts
 
@@ -775,6 +799,8 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Die Leitplanke leitet aus vorhandenen Annotationen ab**, statt eine handgepflegte Verbotsliste zu führen, die selbst veraltet: `@typescript-eslint/no-deprecated` liest JSDoc-`@deprecated`, Java meldet mit `-Xlint:deprecation` und `-Werror` jede abgekündigte API als Build-Fehler, Linter-`recommended`-Sets decken die gängigen veralteten Idiome ab. Der Analyzer skaliert mit dem Ökosystem, die Liste nur mit der Pflegedisziplin.
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
+
+**Der Grenzfall: wenn keine Leitplanke zu haben ist.** Manches lässt sich nicht messen — ob ein Modell eine Aussage geglaubt hat, statt sie nachzuschlagen, etwa. Dort tritt die ausgewiesene Selbstauskunft an die Stelle des Gates: Die feste Antwortform „Mitteilung übernommen, ungeprüft — …" aus [Mitteilungen: glauben statt nachsehen](#mitteilungen-glauben-statt-nachsehen) zwingt nichts, macht aber jeden Verstoß zum sichtbaren Widerspruch. Sichtbarer Widerspruch statt Gate — dasselbe Prinzip, nur mit dem schwächeren Mittel, weil das stärkere hier nicht existiert.
 
 ## Issue-Review über mehrere Modelle
 

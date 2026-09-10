@@ -92,12 +92,28 @@ Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext.
 Schreibe die Befunde als Kommentar ans aktuelle Issue:
 
 ```bash
-node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text - <<'REVIEW'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/id-review.md <<'TEIL1'
 ## Code-Review (Schritt 7)
 
 <BEFUNDE>
-REVIEW
+TEIL1
 ```
+
+```bash
+cat >> <tmpdir>/id-review.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text-file <tmpdir>/id-review.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
 
 Falls kein Issue ermittelbar: Gib die Befunde direkt aus.
 

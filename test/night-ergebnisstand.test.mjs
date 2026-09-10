@@ -2,9 +2,13 @@
 //
 // Der Runner gibt sein Ergebnis bisher nur als Fliesstext aus; jede Umformulierung
 // bricht eine Auswertung still. Dieses Paket legt Schema, Pfad und Schreiber an:
-// Bei --verbose (und ohne --dry-run) entsteht nach den Vorflug-Pruefungen eine Datei
+// Ohne --dry-run entsteht nach den Vorflug-Pruefungen eine Datei
 // .claude/night-run-<YYYY-MM-DD>-<HHMMSS>.json, deren erstes Feld die Schemafassung
 // traegt. Ein Schreibfehler geht ins Textprotokoll und bricht den Lauf nie ab.
+//
+// Issue #557 loest die Entstehung vom Flag: Ohne --verbose entsteht der Stand ebenfalls,
+// nur ohne Session-Kennzahlen — der Lauf-Kopf traegt dann `kennzahlenHinweis` mit dem
+// Grund. Der Grund eines Abbruchs wiegt mehr als die Kennzahlen eines glatten Laufs.
 //
 // Zweiter Teil und Voraussetzung: gitClean() nimmt .claude/night-run-* aus, sonst
 // stoppte der Rest-Guard (#152) nach jeder erfolgreichen Runde hart.
@@ -146,17 +150,38 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
     assert.equal(Object.keys(stand)[0], "schemaFassung", "schemaFassung muss das erste Feld sein");
     assert.equal(stand.schemaFassung, 1, "schemaFassung traegt die Zahl 1");
     assert.ok(typeof stand.erzeugtVon === "string" && stand.erzeugtVon.length > 0, "erzeugtVon nennt den Kit-Stand");
+    // Ein bedingungslos gesetzter Hinweis zerstoerte die Unterscheidung, die er tragen
+    // soll: Mit --verbose sind die Kennzahlen erreichbar, es fehlt nichts zu erklaeren.
+    assert.ok(!("kennzahlenHinweis" in stand), "mit --verbose fehlt das Feld ganz, es ist nicht null");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("ohne --verbose entsteht keine Ergebnisstand-Datei", NUR_POSIX, () => {
+test("[night-2] ohne --verbose entsteht der Ergebnisstand ebenfalls, mit kennzahlenHinweis am Lauf-Kopf", NUR_POSIX, () => {
   const dir = setupProjekt("night-stand-still-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.deepEqual(staende(dir), [], "ohne --verbose darf nichts geschrieben werden");
+
+    const dateien = staende(dir);
+    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+    assert.equal(stand.schemaFassung, 1, "die Schemafassung bleibt dieselbe");
+    assert.ok(
+      typeof stand.kennzahlenHinweis === "string" && stand.kennzahlenHinweis.length > 0,
+      `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(stand.kennzahlenHinweis)}`,
+    );
+    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen — ein bedingtes Feld an
+    // wechselnder Stelle waere Interpretationsspielraum genau dort, wo keiner geduldet ist.
+    const schluessel = Object.keys(stand);
+    assert.equal(
+      schluessel[schluessel.indexOf("stufe") + 1],
+      "kennzahlenHinweis",
+      `kennzahlenHinweis steht nach stufe und vor einheiten, gefunden: ${schluessel.join(", ")}`,
+    );
+    assert.equal(schluessel[schluessel.indexOf("kennzahlenHinweis") + 1], "einheiten");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

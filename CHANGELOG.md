@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.52.0] - 2026-09-10
+- chore: Spec fortgeschrieben (561)
+- Installer-Probe: abgelegte Vorlagen bytegleich zur Repo-Vorlage (#561)
+
+## [1.51.1] - 2026-09-10
+- chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (557, 558, 560, 583, 584, 585)
+- Transport-Test auf alle zwoelf Stellen, Nachweis am Board gefuehrt (#585)
+- Die uebrigen sieben Skills und die Adapter-Hinweise auf den Datei-Weg (#584)
+- Transportregel im Register, /issue-review auf den Datei-Weg (#583)
+- Doku: Abschnitt "Mitteilungen: glauben statt nachsehen" (#563)
+- Mitteilungen des Menschen gelten ungeprueft (#560)
+- Jeder harte Stopp hinterlegt seinen Grund als Text (#558)
+- Ergebnisstand entsteht bei jedem Lauf, nicht nur mit --verbose (#557)
+
 ## [1.51.0] - 2026-09-09
 - chore: Spec fortgeschrieben (#546, #547, #548)
 - Ablageort umstellen: vorhaben schreibt wartend, push-main hebt auf (#548)

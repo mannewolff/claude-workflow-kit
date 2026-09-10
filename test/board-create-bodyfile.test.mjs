@@ -106,10 +106,15 @@ test("--author-model setzt die Zeile in den Kontext-Abschnitt des Dateiinhalts",
   assert.ok(body.indexOf("Autor-Modell:") < body.indexOf("## Aufgabe"), "die Zeile steht nicht im Kontext-Abschnitt");
 });
 
-test("der /issues-Skill zeigt den stdin-Weg beim Anlegen", () => {
+test("der /issues-Skill zeigt den Dateiweg beim Anlegen", () => {
+  // Bis Issue #584 war das der stdin-Weg (`--body -`). Der Parser weist aber einen
+  // Aufruf ab, der den ganzen Body traegt — auch im Heredoc; seither geht der Text
+  // ueber eine stueckweise erzeugte Datei.
   const skill = readFileSync(join(repoRoot, "skills", "issues", "SKILL.md"), "utf-8");
   assert.doesNotMatch(skill, /issue create --title "Titel" --body "/,
     "der Skill zeigt noch den Argument-Weg");
-  assert.match(skill, /--body -/);
+  assert.match(skill, /--body-file/, "der Dateiweg fehlt");
+  assert.doesNotMatch(skill, /board\.mjs issue create .*--body - <</,
+    "am Board-Aufruf steht noch ein Heredoc");
   assert.match(skill, /ausserhalb des Projektverzeichnisses|außerhalb des Projektverzeichnisses/);
 });

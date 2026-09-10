@@ -136,7 +136,7 @@ Der Satz bleibt trotz des Feldes `--derived-from` (siehe unten) korrekt: `derive
 **Dasselbe zusätzlich als Feld ans Board: `--derived-from`.** Neben den Body-Zeilen bekommt `issue create` die Kartennummer des **nächsten Vorfahren** mit (Issue #356) — das `[Plan]`-Issue `#M`, sonst das fachliche Issue `#N`, sonst gar nichts:
 
 ```bash
-node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --body - <<'BODY'
+node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --body-file <tmpdir>/neues-issue.md
 ```
 
 - Liegt ein `[Plan]`-Issue vor: `--derived-from <M>`.
@@ -156,18 +156,36 @@ node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --bod
 Issue anlegen ueber den Board-Adapter:
 
 ```bash
-node .claude/kit/board.mjs issue create --title "Titel" --body - <<'BODY'
-## Kontext
-...
-BODY
+printenv TMPDIR
 ```
 
-**Der Body geht ueber stdin, nicht als Argument** (Issue #271). Ein Vier-Abschnitt-Body
+```bash
+cat  > <tmpdir>/neues-issue.md <<'TEIL1'
+## Kontext
+...
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/neues-issue.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue create --title "Titel" --body-file <tmpdir>/neues-issue.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
+
+**Der Body geht nie als Kommandozeilen-Argument** (Issue #271). Ein Vier-Abschnitt-Body
 mit Codebloecken, Backticks und Tabellen ist der Normalfall, und genau daran scheitert
 das Quoting einer Kommandozeile. Wer stattdessen ein Hilfsskript baut, verliert den Weg
 im Nachtbetrieb: Ein selbstgebautes Script steht in keiner Allowlist. Alternativ
 `--body-file <pfad>` — dann gehoert die Datei **ausserhalb des Projektverzeichnisses**,
 sonst ist der Working Tree unsauber und der Nacht-Runner stoppt hart.
+
+**Die Schlussfolgerung war bis zum 2026-09-10 „auch der Heredoc“; sie lautet jetzt „stueckweise in eine Datei“.** Der Heredoc loeste das Quoting-Problem, lief aber in eine andere Wand: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt. Das Quoting-Argument bleibt gueltig — es spricht nur fuer den Dateiweg aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, statt fuer den Heredoc am Board-Aufruf (Issue #584).
 
 Der Adapter legt das Issue an, haengt es ans Board und setzt den Status auf Backlog — provider-unabhaengig.
 

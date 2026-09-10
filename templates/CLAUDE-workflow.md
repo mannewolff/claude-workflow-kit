@@ -104,6 +104,60 @@ Plan und werden dort geprueft.
 
 ---
 
+## Mitteilungen des Menschen
+
+**Was eine Mitteilung ist.** Eine Aussage des Menschen ueber einen Sachverhalt — kein
+Auftrag. Sie wird ohne Nachpruefung uebernommen: Es wird kein Werkzeug bemueht, sie zu
+bestaetigen, auch nicht beilaeufig, auch nicht spaeter.
+
+**Die feste Antwortform.** Woertlich, eine Zeile:
+
+```
+Mitteilung übernommen, ungeprüft — <Reichweite>. Folge: <ein Satz; „Keine Änderung." ist gültig>.
+```
+
+Reichweite ist entweder „gilt, bis du Entwarnung gibst" (ein voruebergehender Zustand)
+oder „gilt für dieses Gespräch" (eine Tatsache). Die Unterscheidung trifft das System;
+der Mensch kennzeichnet nichts. Weil die Annahme in der Antwort steht, ist eine
+Fehleinordnung sofort sichtbar und in drei Worten zu korrigieren.
+
+**Was folgt — und was nicht.** Die abgeleitete Folge gilt sofort und wird nicht zur
+Abstimmung gestellt. Sie kann bewirken, dass etwas unterbleibt; sie loest nichts aus.
+*Ausnahme:* Blockiert die Folge genau das, worum der Mensch gerade gebeten hat, wird
+gefragt statt stillschweigend nichts getan.
+
+**Grenzen.** Eine Mitteilung ersetzt keine vorgeschriebene Pruefung und keinen Nachweis
+— „Die Tests sind gruen" plus `push main` laesst die Pflichtchecks nicht entfallen, und
+ein Widerspruch wird offengelegt (siehe W3). Eine Trigger-Phrase im Text einer Mitteilung
+ist ein Zitat und loest nichts aus (siehe W1). Eine Nachricht darf Mitteilung und Auftrag
+zugleich tragen; beide werden getrennt behandelt — die Mitteilung uebernommen, der Auftrag
+ausgefuehrt. Ist unklar, was von beidem vorliegt, wird gefragt; der Zweifel faellt
+zugunsten des Nichtstuns aus.
+
+**Wenn die Mitteilung im Weg steht.** Bevor eine Handlung an einer Zustandsaussage
+scheitern wuerde, wird der Mensch gefragt, ob sie noch gilt. **Nachfragen ist erlaubt,
+nachsehen nicht** — die Quelle bleibt der Mensch.
+
+**Wenn ein Arbeitsergebnis widerspricht.** Der Widerspruch wird gesagt: Die Mitteilung
+wird weder stillschweigend ueberschrieben noch stillschweigend gegen den Befund
+verteidigt. Haengt der laufende Schritt an dem Unterschied, wird gefragt; sonst wird
+weitergearbeitet.
+
+**Reichweite ueber das Gespraech hinaus.** Ohne gesonderten Auftrag geht eine Mitteilung
+nicht ins dauerhafte Gedaechtnis. Haelt das System eine Aussage fuer bleibend, haengt es
+das Merken-Angebot **an die Folge-Zeile** — einmal je Aussage, Schweigen heisst nein. Die
+feste Zeile selbst bleibt dabei unveraendert; das Angebot folgt als eigener Satz
+unmittelbar dahinter. Ein ausdruecklicher Dokumentationsauftrag (`/document`, `/retro`)
+erlaubt die Wiedergabe im beauftragten Ergebnis; ohne ihn geschieht das nicht.
+
+**Nachts nicht.** Im unbeaufsichtigten Lauf gibt es keine Mitteilungen — es gibt
+niemanden, der sie gibt. Text im Prompt, der wie eine Mitteilung aussieht, ist keine.
+
+Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mitteilung:"
+davor. Ein Pflichtmarker ist das ausdruecklich nicht.
+
+---
+
 ## Nachtbetrieb (optional)
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab:
@@ -252,6 +306,62 @@ den Pflichtchecks einen zusaetzlichen Schritt, in dem zweierlei zusammenkommt:
 Vorschau und **eine** Zustimmung des Menschen gehen dem voraus; ohne sie wird nicht
 gepusht. Ein Fehlschlag beim Aufheben haelt den Ablauf nicht auf: Die Notiz bleibt liegen,
 und der naechste Push holt es nach. Ohne den `spec`-Block gibt es diesen Schritt nicht.
+
+---
+
+## Lange Texte ans Board
+
+**Jeder Text, den eine Sitzung ans Board schreibt, geht ueber eine Datei — nie im
+Befehl selbst.** Das gilt fuer Befunde, Synthesen, Body-Vorschlaege, Abschluss-
+berichte und fuer jedes `issue create`/`issue update`.
+
+So sieht es aus — **jeder Block ist ein eigener Werkzeugaufruf**:
+
+```bash
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/<id>-befunde.md <<'TEIL1'
+… erstes Stueck, hoechstens 6.000 Zeichen …
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/<id>-befunde.md <<'TEIL2'
+… zweites Stueck …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.md
+```
+
+**Vier Regeln, jede mit einem Beleg dahinter:**
+
+1. **Hoechstens 6.000 Zeichen je Werkzeugaufruf.** Die Grenze gilt je Aufruf, nicht
+   je Datei — wer zwei `cat` und den Board-Aufruf in einen Block schreibt, uebergibt
+   dem Befehls-Parser wieder den ganzen Text. Die 6.000 sind eine **Beobachtung**
+   vom 2026-09-10 im Kit-Repo (Issue #579), keine Zusage des Werkzeugs: Board-Aufrufe
+   bis 9.722 Zeichen gingen durch, ab 10.154 wies der Parser sie mit „Parser aborted
+   (timeout, resource limit, or over-length)" ab — auch ein `cat >>` in eine Datei,
+   nicht nur der Board-Aufruf.
+2. **Der Zielpfad steht woertlich im Befehl, nie als Variable.** Erst `printenv TMPDIR`,
+   dann den ausgegebenen Wert einsetzen. Ein `cat > "$TMPDIR/…"` wird unbeaufsichtigt
+   mit „Redirect target contains $(cmd) output — path is runtime-determined" abgewiesen.
+3. **Nur die Shell, kein Dateischreib-Werkzeug.** Unbeaufsichtigt sind Schreibzugriffe
+   ausserhalb des Projektverzeichnisses abgewiesen und innerhalb von `.claude/`
+   zustimmungspflichtig — eine Zustimmung, die nachts niemand gibt.
+4. **Kein Pipe, keine Gruppierung um den Board-Aufruf.** `{ cat …; } | board.mjs` wurde
+   als „Contains brace with quote character (expansion obfuscation)" abgewiesen.
+
+**Die Datei liegt ausserhalb des Projektverzeichnisses.** Eine Datei im Repo macht den
+Working Tree unsauber, und darauf stoppt der Nacht-Runner hart.
+
+**Der Anlass:** Am 2026-09-10 verloren zwei Pruef-Sitzungen ihr vollstaendiges Ergebnis —
+zusammen vierzehn Funde, darunter drei BLOCKER —, weil der Board-Aufruf den Befundtext im
+Befehl trug und abgewiesen wurde. Am selben Tag traf es das Anlegen dreier Dokumente.
+Wer knapp schreibt, merkt nichts davon; wer gruendlich prueft, verliert alles.
 
 ---
 
@@ -421,6 +531,9 @@ man beim Lesen, nicht an einem regulaeren Ausdruck.
 GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Fundstelle:
 „Die drei Stop-Punkte (nie automatisiert)".
 
+Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter
+Trigger — sie ist Text. Fundstelle: „Mitteilungen des Menschen".
+
 *Warum Gate:* Sie sind die Verantwortungsschwellen des ganzen Prozesses. Ein Vorschlag,
 der einen davon automatisiert — auch als Bequemlichkeit, auch nur fuer einen Sonderfall —
 aendert nicht ein Detail, sondern die Bauart.
@@ -470,7 +583,8 @@ Alles, was hier nicht steht. Insbesondere:
   wie gearbeitet wird, und sind aenderbar — anders als die vier Regeln oben, die den
   Rahmen tragen.
 - **Konventionen mit Begruendung im Text** (Commit-Format, Abschlussbericht-Format,
-  Autor-Modell-Zeile). Ein Verstoss dagegen ist ein Fund wie jeder andere.
+  Autor-Modell-Zeile, die Mitteilungsregel samt ihrer festen Antwortform). Ein Verstoss
+  dagegen ist ein Fund wie jeder andere.
 
 Ob ein Fund ausserhalb dieses Registers trotzdem einen Menschen ruft, entscheidet allein,
 ob es mehrere sinnvolle Wege gibt — das ist eine Eigenschaft des Fundes, nicht dieses

@@ -290,7 +290,7 @@ export const nachbarn = {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.51.0";
+const KIT_VERSION = "1.52.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 // Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
@@ -552,15 +552,22 @@ let LOG_FILE = null;
 // Der maschinenlesbare Ergebnisstand (Issue #486): Pfad und Objekt liegen im
 // Modul-Zustand wie LOG_FILE darueber, nicht im Kontext — nur so erreicht auch
 // fail() sie, das von ueberall her abbricht. Beide bleiben null, solange der Lauf
-// nicht --verbose ohne --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
+// --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
 let ERGEBNIS_FILE = null;
 let LAUF = null;
 
+// Der Grund des zuletzt gemerkten harten Stopps (Issue #558). Er nimmt denselben Weg
+// wie die Fehlerklasse — Modul-Zustand statt neuem Rueckgabewert —, damit die
+// Rueckgabewerte der hardStop-Pfade unveraendert bleiben (Issue #488). Gebraucht wird
+// er zweimal: beim Anheften an die betroffene Einheit und, falls das ausbleibt, vom
+// Sicherheitsnetz in laufAbschliessen().
+let STOPP_GRUND = "";
+
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
-// Muster wie LOG_FILE darueber, und aus demselben Grund: gitClean() braucht sie, wird
+// Muster wie LOG_FILE darueber, und aus demselben Grund: gitReste() braucht sie, wird
 // aber aus der Hauptschleife heraus aufgerufen. Seit das Hauptprogramm in main()
 // steckt (damit reine Funktionen importierbar sind), waere eine dort deklarierte
-// Konstante fuer gitClean() unsichtbar.
+// Konstante fuer gitReste() unsichtbar.
 let config = null;
 
 function log(msg) {
@@ -595,21 +602,119 @@ function fail(msg, klasse = "unbekannt") {
 }
 
 /**
- * Vermerkt die Fehlerklasse eines harten Stopps, der NICHT ueber fail() laeuft
- * (Issue #488).
+ * Vermerkt Fehlerklasse UND Grund eines harten Stopps, der NICHT ueber fail() laeuft
+ * (Issue #488, um den Grund erweitert in #558).
  *
- * Die hardStop-Pfade in werteRunde und behandleDirtyRunde geben einen String zurueck
- * und beenden den Prozess nicht selbst — sie hinterlegen die Klasse hier, bevor sie
+ * Die hardStop-Pfade in werteRunde, behandleDirtyRunde, versucheSalvage,
+ * reviewRundeGestoppt und fuehreVorflug geben einen String oder ein Ja/Nein zurueck und
+ * beenden den Prozess nicht selbst — sie hinterlegen beides hier, bevor sie
  * zurueckkehren. Ihre Rueckgabewerte bleiben dadurch unveraendert.
+ *
+ * Der Grund ist Pflichtparameter und keine Option: Eine Fehlerklasse ohne Grund ist
+ * genau der Zustand, den Issue #558 abgeschafft hat. Er ist woertlich der Text, der
+ * ohnehin ins Protokoll geht — dieser Weg reicht ihn weiter, er ermittelt ihn nicht neu.
  */
-function merkeFehlerklasse(klasse) {
-  if (LAUF) LAUF.fehlerklasse = klasse;
+function merkeHartenStopp(klasse, grund) {
+  STOPP_GRUND = grund;
+  if (LAUF) {
+    LAUF.fehlerklasse = klasse;
+    schreibeErgebnisstand();
+  }
+}
+
+/**
+ * Heftet den gemerkten Stoppgrund an die betroffene Einheit (Issue #558).
+ *
+ * Getrennt vom Merken, weil beides an verschiedenen Stellen faellig ist: Die Klasse
+ * kennt der Guard, die Einheit kennt erst sein Aufrufer. `fehlerEinheit` am Lauf ist
+ * der Verweis darauf — ohne ihn muesste eine Auswertung raten, welche der Einheiten
+ * die gestoppte war.
+ */
+function hefteStoppGrund(einheit) {
+  einheit.grund = STOPP_GRUND;
+  if (LAUF) {
+    LAUF.fehlerEinheit = einheit.id;
+    schreibeErgebnisstand();
+  }
+}
+
+/**
+ * Heftet den gemerkten Stoppgrund an den LAUF — fuer den einen Weg ohne Karte.
+ *
+ * Der Vorflug-Guard laeuft, bevor ein Kandidat gezogen ist. Ein `fehlerEinheit`, der
+ * auf nichts zeigt, waere schlimmer als keiner; der Grund gehoert deshalb an
+ * `fehlerText`, dieselbe Stelle, an der ihn auch fail() ablegt.
+ */
+function hefteStoppGrundAnLauf() {
+  if (!LAUF) return;
+  LAUF.fehlerText = STOPP_GRUND;
+  schreibeErgebnisstand();
+}
+
+/**
+ * Die liegengebliebenen Dateien als ein Satz — ab dem elften Eintrag gekuerzt.
+ *
+ * Bis zehn Eintraege vollstaendig, darueber die Anzahl und die ersten zehn, in genau
+ * der Reihenfolge von `git status --porcelain`. Die Grenze ist Absicht: Ein Grund, der
+ * hundert Zeilen fuehrt, ist morgens nicht mehr das, was man zuerst liest — und die
+ * Anzahl sagt bereits alles, was die Liste dann noch sagen wuerde.
+ *
+ * Die leere Liste hat ihren eigenen Text statt eines Sonderfalls beim Aufrufer: Ein
+ * gescheiterter Salvage kann einen sauberen Baum hinterlassen, und "keine" ist dort
+ * eine Auskunft und kein Mangel.
+ */
+function resteText(reste) {
+  if (reste.length === 0) return "keine unkommittierten Reste";
+  const gezeigt = reste.slice(0, 10).join(" | ");
+  return reste.length > 10
+    ? `${reste.length} unkommittierte Reste, die ersten zehn: ${gezeigt}`
+    : `unkommittierte Reste: ${gezeigt}`;
+}
+
+/**
+ * Der Ersatztext, wenn kein Abbruchweg einen Grund hinterlegt hat (Issue #558).
+ *
+ * Er sagt ausdruecklich, dass hier etwas fehlt, und bittet um Meldung: Ein leeres Feld
+ * liesse offen, ob der Lauf nichts zu sagen hatte oder ob die Uebergabe gerissen ist.
+ */
+export const ERSATZ_GRUND = "Kein Grund ermittelbar — der Lauf ist hart gestoppt, ohne dass ein Abbruchweg "
+  + "seinen Grund hinterlegt hat. Der Weg steht im Textprotokoll daneben; bitte melden.";
+
+/** Der Zusatz, wenn der Grund nur ueber den Modul-Zustand kam und nicht ueber die Uebergabe. */
+export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus dem zuletzt gemerkten harten "
+  + "Stopp, nicht von der betroffenen Einheit und nicht vom Lauf. Bitte melden.)";
+
+/**
+ * Das Sicherheitsnetz fuer einen harten Stopp ohne Grund — der Text, oder `null`
+ * (Issue #558).
+ *
+ * An EINER Stelle statt an sieben: Ein Netz je Abbruchweg waere sieben Stellen, an
+ * denen dieselbe Entscheidung getroffen wird, und die achte vergaesse man.
+ *
+ * Als vorhandener Grund zaehlt ausschliesslich ein nicht leerer `fehlerText` des Laufs
+ * oder ein nicht leerer `grund` der ueber `fehlerEinheit` referenzierten Einheit.
+ * Gruende ANDERER Einheiten zaehlen ausdruecklich nicht: Eine begruendet
+ * zurueckgestellte oder uebersprungene Einheit hat mit dem spaeteren Stopp nichts zu
+ * tun, und wuerde sie das Netz unterdruecken, saehe der Stand vollstaendig aus,
+ * waehrend der eigentliche Grund fehlt.
+ *
+ * Rein und mit explizitem Laufzustand, damit die Fallunterscheidung ohne einen
+ * kompletten Nachtlauf pruefbar ist — `laufAbschliessen` selbst ist nicht exportiert.
+ */
+export function sicherheitsnetzGrund(lauf, stoppGrund) {
+  const gefuellt = (text) => typeof text === "string" && text.trim() !== "";
+  if (gefuellt(lauf.fehlerText)) return null;
+  const betroffen = lauf.fehlerEinheit == null
+    ? null
+    : (lauf.einheiten || []).find((e) => String(e.id) === String(lauf.fehlerEinheit));
+  if (betroffen && gefuellt(betroffen.grund)) return null;
+  return gefuellt(stoppGrund) ? `${stoppGrund} ${ANKER_FEHLT}` : ERSATZ_GRUND;
 }
 
 /** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
 function einheitAnlegen(id, titel) {
-  // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Ohne
-  // --verbose haengt es an nichts und wird nie geschrieben.
+  // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
+  // Dry-Run haengt es an nichts und wird nie geschrieben.
   const einheit = { id: String(id), titel, ausgang: "unbekannt" };
   if (LAUF) {
     LAUF.einheiten.push(einheit);
@@ -624,10 +729,20 @@ function einheitErgaenzen(einheit, felder) {
   schreibeErgebnisstand();
 }
 
-/** Schliesst den Lauf ab — `regulaer` oder `harterStopp`, aber nie mehr `null`. */
+/**
+ * Schliesst den Lauf ab — `regulaer` oder `harterStopp`, aber nie mehr `null`.
+ *
+ * Bei `harterStopp` greift hier das Sicherheitsnetz aus Issue #558: Kam kein Grund an,
+ * traegt der Lauf den zuletzt gemerkten samt Ankervermerk, sonst den Ersatztext. Ein
+ * Stand ohne Grund entsteht damit nicht mehr.
+ */
 function laufAbschliessen(abschluss) {
   if (!LAUF) return;
   LAUF.abschluss = abschluss;
+  if (abschluss === "harterStopp") {
+    const netz = sicherheitsnetzGrund(LAUF, STOPP_GRUND);
+    if (netz !== null) LAUF.fehlerText = netz;
+  }
   schreibeErgebnisstand();
 }
 
@@ -656,9 +771,17 @@ const ART_LABEL = {
 /**
  * Legt Pfad und Grundgeruest des Ergebnisstands an (Issue #486).
  *
- * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab, und ohne
- * --verbose faehrt der Runner sein altes, knappes Protokoll. Bleiben beide Variablen
- * null, schreibt schreibeErgebnisstand() nichts.
+ * Nur, wo es etwas zu berichten gibt: Der Dry-Run arbeitet nichts ab und ist damit der
+ * einzige Ausschluss. Bleiben beide Variablen null, schreibt schreibeErgebnisstand()
+ * nichts.
+ *
+ * An --verbose haengt die Entstehung ausdruecklich NICHT mehr (Issue #557): Es fehlte
+ * sonst genau in der Nacht die Auswertung, in der jemand das Flag vergessen hat — und
+ * das ist die Nacht, in der man sie braucht. Der Grund eines Abbruchs wiegt mehr als die
+ * Kennzahlen eines glatten Laufs. Ohne das Flag fordert der Runner die Stream-Ausgabe
+ * nicht an, leseKennzahlen liefert null; damit das nicht als "diese Session hatte nichts
+ * zu messen" gelesen wird, sagt kennzahlenHinweis den Grund einmal am Lauf-Kopf, nicht
+ * je Einheit.
  *
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
@@ -667,7 +790,7 @@ const ART_LABEL = {
  * hingenommen.
  */
 function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
-  if (!args.verbose || args.dryRun) return;
+  if (args.dryRun) return;
   const iso = jetzt.toISOString();
   const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
   ERGEBNIS_FILE = join(process.cwd(), ".claude", `night-run-${stempel}.json`);
@@ -686,6 +809,12 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // ein Plan oder Arbeitspakete entstanden sind, und aus `label` ist das nicht
     // ableitbar — `--erzeuge-label` kann den Namen ueberschreiben.
     stufe: args.stufe ?? null,
+    // Bedingt, und darum an fester Stelle: Die Feldreihenfolge ist der Vertrag, ein
+    // wanderndes Feld waere Interpretationsspielraum. Bei --verbose fehlt es ganz —
+    // es ist nicht null, denn es gibt dann nichts zu erklaeren.
+    ...(args.verbose
+      ? {}
+      : { kennzahlenHinweis: "Ohne --verbose fordert der Runner die Stream-Ausgabe der Session nicht an; die Session-Kennzahlen fehlen darum in allen Einheiten." }),
     einheiten: [],
     abschluss: null,
   };
@@ -744,7 +873,7 @@ function board(...cliArgs) {
 // eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
 // Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
 // soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
-function gitClean() {
+function gitReste() {
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
   const pathspec = ["--", "."];
@@ -766,11 +895,22 @@ function gitClean() {
   pathspec.push(":(exclude).claude/vorhaben-wartend-*");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8" });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
-  return res.stdout.trim() === "";
+  return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
+}
+
+/**
+ * Ist der Arbeitsbaum sauber? Die Leerheit von gitReste() — eine Quelle, nicht zwei.
+ *
+ * Seit Issue #558 braucht jeder Guard, der hier anschlaegt, auch die Namen der
+ * liegengebliebenen Dateien fuer seinen Grund. Zwei getrennte git-Aufrufe mit
+ * getrennten Ausschluessen waeren zwei Wahrheiten darueber, was als Rest zaehlt.
+ */
+function gitClean() {
+  return gitReste().length === 0;
 }
 
 function lastCommitHash() {
-  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitClean() (S4036, Issue #183).
+  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
   return res.status === 0 ? res.stdout.trim() : "?";
 }
@@ -2234,8 +2374,9 @@ function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
  *
  * Getrennt von der Schleife, weil beide Guards VOR jeder Bewertung greifen und keinen
  * der vier Ausgaenge liefern: Sie sagen nicht, was der Review ergeben hat, sondern
- * dass die Lage unklar ist. Die Fehlerklasse fuer den Ergebnisstand (#489) hinterlegen
- * sie hier, damit der Rueckgabewert ein blosses Ja/Nein bleibt.
+ * dass die Lage unklar ist. Fehlerklasse und Grund fuer den Ergebnisstand (#489, #558)
+ * hinterlegen sie hier, damit der Rueckgabewert ein blosses Ja/Nein bleibt; das
+ * Anheften an die Einheit macht der Aufrufer, der sie kennt.
  *
  * `sessionart` seit Issue #520: Die Erzeugungsschleife fuehrt dieselben beiden Guards —
  * auch eine Erzeugungs-Session committet nichts, und `/techplan` liest Code mit
@@ -2250,17 +2391,24 @@ function reviewRundeGestoppt(kandidat, res, minutes, sessionart) {
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
   if (!timedOut && (res.error || res.status !== 0)) {
     const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`);
-    merkeFehlerklasse("umgebung");
+    // Ohne die CLI-Meldung, anders als der Infrastruktur-Guard in werteRunde (Issue
+    // #558): Diese Stelle schreibt sie heute nicht ins Protokoll, und der Grund reicht
+    // weiter, was das Protokoll sagt. Dass sie dort fehlt, ist ein Mangel des
+    // Protokolls und gehoert in einen eigenen Vorgang, nicht in eine Sonderregel hier.
+    const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`;
+    log(`  ${kopf}`);
+    merkeHartenStopp("umgebung", kopf);
     return true;
   }
 
   // Eine Review- wie eine Erzeugungs-Session arbeitet ausschliesslich am Board.
   // Hinterlaesst sie Aenderungen im Working Tree, hat sie etwas getan, was sie nicht
   // sollte — und die naechste Runde wuerde darauf aufbauen.
-  if (!gitClean()) {
-    log(`  HARTER STOPP: die ${sessionart} zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine ${sessionart} darf keinen Code anfassen — bitte morgens sichten.`);
-    merkeFehlerklasse("harterStopp");
+  const reste = gitReste();
+  if (reste.length > 0) {
+    const satz = `HARTER STOPP: die ${sessionart} zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine ${sessionart} darf keinen Code anfassen — bitte morgens sichten.`;
+    log(`  ${satz}`);
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
     return true;
   }
   return false;
@@ -2313,6 +2461,10 @@ async function runReviewLoop(kandidaten, args) {
 
     if (reviewRundeGestoppt(kandidat, res, minutes, "Review-Session")) {
       hardStop = true;
+      // Der Ausgang bleibt "unbekannt" — der Guard griff vor jeder Bewertung. Der GRUND
+      // gehoert trotzdem an die Einheit (Issue #558): Warum abgebrochen wurde, ist
+      // etwas anderes als wie die Runde ausging.
+      hefteStoppGrund(einheit);
       break;
     }
 
@@ -2593,9 +2745,14 @@ async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
   // Tut sie es doch, ist die Lage unklar und der Lauf endet hier — dieselbe Leitplanke
   // wie nach einer Review-Session (Issue #152), und sie gilt auch im Dry-Run: Ein
   // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
-  if (!gitClean()) {
-    log("  HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.");
-    merkeFehlerklasse("harterStopp");
+  const reste = gitReste();
+  if (reste.length > 0) {
+    const satz = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.";
+    log(`  ${satz}`);
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
+    // Der einzige der sieben Wege ohne Karte (Issue #558): Der Vorflug laeuft, bevor
+    // ein Kandidat gezogen ist, und `fehlerEinheit` bleibt darum leer.
+    hefteStoppGrundAnLauf();
     laufAbschliessen("harterStopp");
     process.exit(1);
   }
@@ -2747,8 +2904,10 @@ async function erzeugeAusQuelle(kandidat, args, stufe, nummer, einheit) {
   const minutes = (dauerMs / 60000).toFixed(1);
 
   if (reviewRundeGestoppt(kandidat, res, minutes, "Erzeugungs-Session")) {
-    // Die Einheit bleibt auf `unbekannt`: Der Guard greift VOR jeder Bewertung, und
-    // "unbekannt" sagt etwas anderes als ein Fehlschlag.
+    // Der Ausgang bleibt `unbekannt`: Der Guard greift VOR jeder Bewertung, und
+    // "unbekannt" sagt etwas anderes als ein Fehlschlag. Nur der Grund kommt dazu
+    // (Issue #558) — die Einheit liegt hier als Parameter vor.
+    hefteStoppGrund(einheit);
     return { ergebnis: null, hardStop: true };
   }
 
@@ -2957,7 +3116,13 @@ async function pruefeErzeugtes(ergebnis, args, stufe) {
     einheitErgaenzen(einheit, {
       dauerMs: (einheit.dauerMs ?? 0) + runde.sessions.reduce((n, s) => n + s.dauerMs, 0),
     });
-    if (runde.hardStop) return { verbraucht: false, hardStop: true };
+    if (runde.hardStop) {
+      // An der Einheit der QUELLE, denn die ist die Einheit — das gepruefte Dokument
+      // steht im Grundtext (Issue #558). Ein `fehlerEinheit` auf die Dokumentnummer
+      // zeigte auf etwas, das im Stand gar keine Einheit ist.
+      hefteStoppGrund(einheit);
+      return { verbraucht: false, hardStop: true };
+    }
     if (!runde.endzustand) alleFertig = false;
     if (runde.ohneAnker) ohneAnker = true;
   }
@@ -3279,9 +3444,14 @@ async function versucheSalvage(top, args) {
       "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
     return "erfolg";
   }
-  log(`  SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`);
+  const satz = `SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`;
+  log(`  ${satz}`);
   board("issue", "comment", String(top.id), "--text",
     "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+  // Der Stopp wird HIER gemerkt und nicht beim Aufrufer (Issue #558): Der Text steht an
+  // dieser Stelle, und eine Kopie in behandleDirtyRunde waere eine zweite, die
+  // auseinanderlaeuft. Der Rueckgabewert bleibt derselbe String wie bisher.
+  merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "gescheitert";
 }
 
@@ -3302,15 +3472,14 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args);
     if (salvage === "erfolg") return "erfolg";
-    if (salvage === "gescheitert") {
-      merkeFehlerklasse("harterStopp");
-      return "hardStop";
-    }
+    // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
+    if (salvage === "gescheitert") return "hardStop";
   }
-  log(`  FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`);
+  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`;
+  log(`  ${satz}`);
   board("issue", "comment", String(top.id), "--text",
     "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
-  merkeFehlerklasse("harterStopp");
+  merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }
 
@@ -3372,9 +3541,11 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
     // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
     // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
     // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
-    if (!gitClean()) {
-      log(`  HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`);
-      merkeFehlerklasse("harterStopp");
+    const reste = gitReste();
+    if (reste.length > 0) {
+      const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
+      log(`  ${satz}`);
+      merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
       return "hardStop";
     }
     // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
@@ -3401,9 +3572,12 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
   if (!timedOut && (res.error || res.status !== 0)) {
     const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
     const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
-    log(`  INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`);
+    const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`;
+    log(`  ${kopf}`);
     if (detail) log(`  CLI-Meldung: ${detail}`);
-    merkeFehlerklasse("umgebung");
+    // Beide Protokollzeilen, in derselben Reihenfolge (Issue #558): Die CLI-Meldung ist
+    // hier das Einzige, was den Ausfall benennt — exitInfo allein sagt nur, dass es ihn gab.
+    merkeHartenStopp("umgebung", detail ? `${kopf}\nCLI-Meldung: ${detail}` : kopf);
     return "hardStop";
   }
 
@@ -3459,6 +3633,9 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const minutes = (dauerMs / 60000).toFixed(1);
 
   const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
+  // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
+  // nicht die Einheit — hier liegt beides vor.
+  if (ausgang === "hardStop") hefteStoppGrund(einheit);
   const commitNachher = lastCommitHash();
   einheitErgaenzen(einheit, {
     ...ausgangsFelder(ausgang),

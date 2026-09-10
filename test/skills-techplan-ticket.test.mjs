@@ -63,10 +63,15 @@ test("Plan-Modell steht immer im Kopf, Fachliche Quelle nur bei /techplan #N", (
     "der Gegenfall fehlt — sonst schreibt der Skill die Zeile auch ohne Quelle");
 });
 
-test("das Anlege-Kommando nutzt --body - und --author-model", () => {
+test("das Anlege-Kommando nutzt --body-file und --author-model", () => {
+  // Bis Issue #584 stand hier `--body -`. Das Quoting-Argument aus #271 gilt weiter,
+  // nur scheitert auch der Heredoc: Der Parser weist einen Aufruf ab, der den ganzen
+  // Plan traegt. Seither geht der Body ueber eine stueckweise erzeugte Datei.
   const kommando = anlegeKommando(SKILL);
-  assert.match(kommando, /--body -(?:\s|$)/,
-    "der Body geht nicht ueber stdin — lange Plaene laufen in die Quoting-Grenze (Issue #271)");
+  assert.match(kommando, /--body-file/,
+    "der Body geht nicht ueber eine Datei — lange Plaene sprengen den Befehls-Parser (Issue #584)");
+  assert.doesNotMatch(kommando, /--body -(?:\s|$)/,
+    "der stdin-Weg steht noch im Anlege-Kommando (Issue #584)");
   assert.match(kommando, /--author-model /,
     "ohne --author-model lehnt der Adapter den Body ab: ein Plan-Body traegt `Plan-Modell:`, nicht `Autor-Modell:`");
 });

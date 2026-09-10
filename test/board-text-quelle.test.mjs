@@ -133,26 +133,43 @@ test("--text ohne Wert bleibt ein Fehler", () => {
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skill = (name) => liesDatei(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
 
-test("die Skills zeigen den stdin-Weg, nicht mehr --text als Argument", () => {
+test("die Skills zeigen einen Weg ohne Kommandozeilen-Argument", () => {
+  // Seit Issue #583/#584 ist das der Dateiweg (--text-file) statt stdin: Der Parser
+  // weist einen Aufruf ab, der den ganzen Text traegt — auch im Heredoc.
   for (const name of ["issue-review", "review", "implement-ready", "implement-next"]) {
     const text = skill(name);
     assert.doesNotMatch(text, /issue comment <[^>]*> --text "/,
       `${name}: zeigt noch den Argument-Weg`);
-    assert.match(text, /--text -/, `${name}: zeigt den stdin-Weg nicht`);
+    assert.match(text, /--text-file/, `${name}: zeigt den Dateiweg nicht`);
+    assert.doesNotMatch(text, /board\.mjs issue comment <[^>]*> --text - <</,
+      `${name}: am Board-Aufruf steht noch ein Heredoc`);
   }
+});
+
+test("issue-review zeigt den Dateiweg und keinen Heredoc am Board-Aufruf", () => {
+  const text = skill("issue-review");
+  assert.match(text, /--text-file/, "der Dateiweg fehlt");
+  assert.doesNotMatch(text, /board\.mjs issue (?:comment|update) <id> --(?:text|body) - <</,
+    "am Board-Aufruf steht noch ein Heredoc");
 });
 
 test("issue-review nennt den Grund und die Datei-Regel", () => {
   const text = skill("issue-review");
-  assert.match(text, /ueber stdin, nicht als Argument|über stdin, nicht als Argument/);
+  assert.match(text, /nie als Kommandozeilen-Argument/,
+    "das Quoting-Argument aus Issue #270 fehlt");
+  assert.match(text, /st(?:ue|ü)ckweise in eine Datei/,
+    "die Schlussfolgerung wurde nicht auf den Dateiweg umgestellt (Issue #583)");
   assert.match(text, /ausserhalb des Projektverzeichnisses|außerhalb des Projektverzeichnisses/,
     "der Hinweis auf den unsauberen Working Tree fehlt");
 });
 
-test("im Heredoc-Beispiel stehen keine Backslash-Escapes mehr", () => {
+test("im Synthese-Beispiel stehen keine Backslash-Escapes mehr", () => {
   // Im Argument-Weg brauchte das Beispiel \" — im Heredoc landet der Backslash
-  // woertlich im Board-Kommentar.
+  // woertlich im Board-Kommentar. Seit Issue #583 heisst der Heredoc-Marker TEIL1
+  // statt SYNTHESE; der Schnitt folgt jetzt dem Dateinamen, nicht dem alten Marker.
   const text = skill("issue-review");
-  const block = text.slice(text.indexOf("## Synthese, Runde 1"), text.indexOf("SYNTHESE", text.indexOf("## Synthese, Runde 1")));
-  assert.doesNotMatch(block, /\\"/, "Escape aus der Argument-Zeit im Heredoc-Beispiel");
+  const start = text.indexOf("## Synthese, Runde 1");
+  assert.ok(start > 0, "das Synthese-Beispiel fehlt");
+  const block = text.slice(start, text.indexOf("TEIL1", start));
+  assert.doesNotMatch(block, /\\"/, "Escape aus der Argument-Zeit im Beispiel");
 });
