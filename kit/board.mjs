@@ -2669,6 +2669,207 @@ export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
   return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
 }
 
+// --- Synthese-Parser und Beleg-Abgleich (Plan #589, A2/A9) ---
+
+/**
+ * Die Kopfzeile eines Body-Vorschlags (Plan #589, A7).
+ *
+ * Steht hier und nicht in `kit/night.mjs`, weil die Paarung von Synthese und
+ * Vorschlag beide Seiten braucht und die Importrichtung night -> board ist.
+ * Ohne `m`-Flag: Geprueft wird eine einzelne Zeile, nicht ein Text — sonst
+ * traefe der Anker auch mitten in einem Kommentar.
+ */
+export const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
+
+/**
+ * Der Kopf eines gewerteten Listenpunkts: `<reviewer>, "<Kurzbezeichnung>"`.
+ *
+ * Der Reviewer traegt kein Komma — im Bestand steht dort `fable`, `gpt-astra`,
+ * `fable + gpt-astra` oder `fable + gpt-astra (unabhaengig)`. Genau das haelt
+ * Dissens-Punkte und Prosa draussen: Sie beginnen zwar oft mit einem Komma,
+ * aber nie mit einem Anfuehrungszeichen dahinter.
+ */
+const SYNTHESE_KOPF = /^([^",\n]+),\s*"([^"\n]*)"/;
+
+/**
+ * Das Ausgangswort, gesucht ERST hinter der Kurzbezeichnung.
+ *
+ * Der Grund steht im Bestand: Die Synthese an #587 fuehrt einen **verworfenen**
+ * Fund mit dem Titel „Weg (a): Kriterium 8 um übernommene Funde erweitern".
+ * Wer das erste Vorkommen im ganzen Listenpunkt naehme, liest dort das Gegenteil.
+ */
+const SYNTHESE_AUSGANG = /übernommen|uebernommen|verworfen|zur Entscheidung/i;
+
+const AUSGANG_NAME = [
+  [/^(?:übernommen|uebernommen)$/i, "uebernommen"],
+  [/^verworfen$/i, "verworfen"],
+  [/^zur Entscheidung$/i, "zurEntscheidung"],
+];
+
+// Die Anfuehrungszeichen-Paare, die ein Zitat umschliessen duerfen. Das gerade
+// Paar schliesst gerade, die typografischen schliessen typografisch — sonst
+// koennte ein Zitat, das selbst gerade Zeichen traegt, nie in eine Zeile.
+const ZITAT_PAARE = [
+  ['"', /"/],
+  ["„", /[“”]/],
+  ["“", /[”“]/],
+];
+
+/**
+ * Zerlegt einen Text in Listenpunkte: `- ` bis zum naechsten `- ` oder zur
+ * Leerzeile, Folgezeilen mit einem Leerzeichen angefuegt.
+ *
+ * Noetig, weil der Ausgang im Bestand regelmaessig auf der Folgezeile steht:
+ * Die Synthesen an #587 und #589 brechen mitten im Fundtitel um.
+ */
+function syntheseListenpunkte(text) {
+  const punkte = [];
+  let aktuell = null;
+  for (const zeile of normalisiereZeilenenden(String(text || "")).split("\n")) {
+    if (zeile.startsWith("- ")) {
+      if (aktuell !== null) punkte.push(aktuell);
+      aktuell = zeile.slice(2).trim();
+    } else if (zeile.trim() === "") {
+      if (aktuell !== null) punkte.push(aktuell);
+      aktuell = null;
+    } else if (aktuell !== null) {
+      aktuell += " " + zeile.trim();
+    }
+  }
+  if (aktuell !== null) punkte.push(aktuell);
+  return punkte;
+}
+
+/** Der Inhalt des ersten Anfuehrungszeichen-Paars ab `ab`, sonst null. */
+function erstesZitat(text, ab) {
+  let bestes = null;
+  for (const [auf, zu] of ZITAT_PAARE) {
+    const start = text.indexOf(auf, ab);
+    if (start === -1) continue;
+    const rest = text.slice(start + auf.length);
+    const ende = zu.exec(rest);
+    if (!ende) continue;
+    if (bestes === null || start < bestes.start) {
+      bestes = { start, inhalt: rest.slice(0, ende.index) };
+    }
+  }
+  return bestes === null ? null : bestes.inhalt;
+}
+
+/**
+ * Liest die Beleg-Angabe eines Listenpunkts ab dem Ausgang (Plan #589, A2).
+ *
+ * Massgeblich ist das erste `→` NACH dem Ausgang; Prosa davor ist erlaubt, weil
+ * der Bestand sie fuehrt („übernommen, aber auf einem dritten Weg. → Ziel: …").
+ * Ohne Doppelpunkt oder ohne Anfuehrungszeichen-Paar bleibt beides null — ein
+ * Pfeil ohne Zitat waere sonst der billigste Weg am Abgleich vorbei.
+ */
+function parseBeleg(punkt, ab) {
+  const leer = { abschnitt: null, zitat: null, gestrichen: false };
+
+  const pfeil = punkt.indexOf("→", ab);
+  if (pfeil === -1) return leer;
+
+  const doppelpunkt = punkt.indexOf(":", pfeil + 1);
+  if (doppelpunkt === -1) return leer;
+
+  const abschnitt = punkt.slice(pfeil + 1, doppelpunkt).trim();
+  const rest = punkt.slice(doppelpunkt + 1);
+  const streichung = /^\s*gestrichen\s+(?=["„“])/.exec(rest);
+  const zitat = erstesZitat(rest, streichung ? streichung[0].length : 0);
+  if (zitat === null) return leer;
+
+  return { abschnitt, zitat, gestrichen: streichung !== null };
+}
+
+/**
+ * Die Entscheidungen einer Synthese, je Listenpunkt einer (Plan #589, A2).
+ *
+ * Rueckgabe je Punkt: `{ reviewer, fund, ausgang, abschnitt, zitat, gestrichen }`.
+ * `ausgang` ist `uebernommen` | `verworfen` | `zurEntscheidung` | null.
+ *
+ * Rein: liest Text, kennt kein Board. Gewertet wird nur, was mit
+ * `<reviewer>, "<Kurzbezeichnung>"` beginnt — Dissens-Punkte, die Schlusszeile
+ * `Übernommen: n · Verworfen: m` und Prosa fallen damit von allein heraus.
+ */
+export function parseSyntheseZeilen(text) {
+  const eintraege = [];
+  for (const punkt of syntheseListenpunkte(text)) {
+    const kopf = SYNTHESE_KOPF.exec(punkt);
+    if (!kopf) continue;
+
+    const nachFund = kopf[0].length;
+    const treffer = SYNTHESE_AUSGANG.exec(punkt.slice(nachFund));
+    const wort = treffer ? treffer[0] : null;
+    const ausgang = wort === null
+      ? null
+      : (AUSGANG_NAME.find(([form]) => form.test(wort)) || [null, null])[1];
+
+    eintraege.push({
+      reviewer: kopf[1].trim(),
+      fund: kopf[2],
+      ausgang,
+      ...(treffer
+        ? parseBeleg(punkt, nachFund + treffer.index + treffer[0].length)
+        : { abschnitt: null, zitat: null, gestrichen: false }),
+    });
+  }
+  return eintraege;
+}
+
+/**
+ * Normalisiert einen Text fuer den Beleg-Vergleich (Plan #589, A9).
+ *
+ * BEIDSEITIG anzuwenden, sonst findet ein Zitat mit Backticks den Vorschlag ohne
+ * nicht. Weg muessen: Zeilenumbrueche samt Einrueckung (Vorschlagstexte sind bei
+ * rund 80 Zeichen umbrochen — der teuerste Fehlalarm), Markdown-Auszeichnung und
+ * die typografischen Anfuehrungszeichen.
+ */
+function normalisiereBeleg(text) {
+  return String(text ?? "")
+    .replaceAll(/[„“”]/g, '"')
+    .replaceAll(/[‚‘’]/g, "'")
+    .replaceAll(/[*_`]/g, "")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Prueft, ob jede Uebernahme einer Synthese im Body-Vorschlag belegt ist.
+ *
+ * Rueckgabe: `{ gepruefte, ohneBeleg: [{ reviewer, fund, grund }] }`.
+ * `gepruefte` zaehlt die `uebernommen`-Punkte; `verworfen` und `zurEntscheidung`
+ * behaupten keine Textaenderung und werden nicht geprueft.
+ *
+ * Gruende: `beleg-fehlt` (kein `→`, oder `→` ohne verwertbares Zitat) und
+ * `zitat-nicht-gefunden`.
+ *
+ * **Eine Streichung ist umgekehrt belegt:** Ihr Zitat darf gerade NICHT mehr im
+ * Vorschlag stehen. Steht es doch da, ist die Behauptung „gestrichen" falsch —
+ * derselbe Befund, nur andersherum gemessen.
+ *
+ * Rein: kein Board-Zugriff. `vorschlag-fehlt` entsteht erst im Kommando aus der
+ * Paarung (Plan #589, A7); hier gibt es nur Text, und ein leerer Vorschlag ist
+ * ein Vorschlag, in dem nichts steht.
+ */
+export function syntheseBelegt(synthese, vorschlag) {
+  const heuhaufen = normalisiereBeleg(vorschlag);
+  const punkte = parseSyntheseZeilen(synthese).filter((p) => p.ausgang === "uebernommen");
+
+  const ohneBeleg = [];
+  for (const p of punkte) {
+    const nadel = p.zitat === null ? "" : normalisiereBeleg(p.zitat);
+    if (nadel === "") {
+      ohneBeleg.push({ reviewer: p.reviewer, fund: p.fund, grund: "beleg-fehlt" });
+      continue;
+    }
+    if (heuhaufen.includes(nadel) === p.gestrichen) {
+      ohneBeleg.push({ reviewer: p.reviewer, fund: p.fund, grund: "zitat-nicht-gefunden" });
+    }
+  }
+  return { gepruefte: punkte.length, ohneBeleg };
+}
+
 /**
  * Liest `--derived-from` und prueft die FORM, nicht den Inhalt (Issue #356).
  *
