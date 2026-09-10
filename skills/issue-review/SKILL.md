@@ -463,7 +463,11 @@ Mehr als eine Runde findet erfahrungsgemäß vor allem Geschmacksfragen. Wenn di
 Die Reviewer-Ausgaben gehen **unverändert** als Board-Kommentar ans Issue. Sie sind Verlauf, nicht verhandelter Stand (Regel aus Issue #155):
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text - <<'BEFUNDE'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/<id>-befunde.md <<'TEIL1'
 ## Issue-Review, Runde 1
 
 Reviewer: codex (pruefbarkeit)
@@ -471,21 +475,43 @@ codex — Bestand: nein
 
 ### codex — Vollständigkeit und Prüfbarkeit
 <Befunde>
-BEFUNDE
+TEIL1
 ```
+
+```bash
+cat >> <tmpdir>/<id>-befunde.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
 Je gelaufener Reviewer eine Überschrift, in der Reihenfolge aus `gewaehlt`. Auf den Stufen `fachlich` und `plan` sind es zwei Blöcke, auf der Stufe `issue` einer.
 
-**Der Text geht über stdin, nicht als Argument** (Issue #270). Reviewer-Befunde
-liegen regelmäßig bei über zehntausend Zeichen; als Kommandozeilen-Argument
-scheitert daran das Quoting, und eine Session, die sich daraufhin ein Hilfsskript
-baut, wird headless abgelehnt — sie endet ohne Board-Spur, und der Runner bucht sie
-als Fehlschlag. Der Heredoc mit **quotiertem** Marker (`<<'BEFUNDE'`) verhindert
-zusätzlich, dass die Shell Backticks und `$` im Befundtext auswertet.
+**Der Text geht nie als Kommandozeilen-Argument** (Issue #270). Reviewer-Befunde
+liegen regelmäßig bei über zehntausend Zeichen; als Argument scheitert daran das
+Quoting, und eine Session, die sich daraufhin ein Hilfsskript baut, wird headless
+abgelehnt — sie endet ohne Board-Spur, und der Runner bucht sie als Fehlschlag.
 
-Braucht ein Werkzeug doch eine Datei, gehört sie **außerhalb des Projektverzeichnisses**
-— eine Datei im Repo macht den Working Tree unsauber, und darauf stoppt der
-Nacht-Runner hart (Issue #152).
+**Die Schlussfolgerung war bis zum 2026-09-10 „also Heredoc"; sie lautet jetzt „also
+stueckweise in eine Datei".** Der Heredoc löste das Quoting-Problem, lief aber in eine
+andere Wand: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text trägt. An
+diesem Tag verloren zwei Prüf-Sitzungen ihr vollständiges Ergebnis daran. Das Quoting-
+Argument bleibt gültig — es spricht nur nicht mehr für den Heredoc am Board-Aufruf,
+sondern für den Dateiweg aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
+Die `cat`-Blöcke tragen den quotierten Marker weiterhin, damit die Shell Backticks und
+`$` im Befundtext nicht auswertet.
+
+**Eine Ausnahme:** Die Ausfall-Form weiter unten ist zwei Zeilen lang und geht als
+`--text "…"`-Argument. Sie soll gerade dann noch gelingen, wenn der Dateiweg gescheitert
+ist — und bei zwei Zeilen trägt das Quoting.
+
+Die Datei gehört **außerhalb des Projektverzeichnisses** — eine Datei im Repo macht den
+Working Tree unsauber, und darauf stoppt der Nacht-Runner hart (Issue #152).
 
 Lief der Review unterbesetzt oder ist ein Reviewer ausgefallen, steht das in der **zweiten Zeile** des Kommentars — die erste trägt den Anker.
 
@@ -496,6 +522,41 @@ node .claude/kit/board.mjs issue-review label-sync <id>
 ```
 
 Der Zustand hat sich gerade geändert (von `offen` auf `befunde`, oder auf `ausgefallen`), und das Label soll ihn zeigen. Das Kommando leitet selbst ab — es bekommt keinen Zustand übergeben, und es gibt hier nichts zu entscheiden.
+
+**Wenn der Transport scheitert.** Der Text geht über eine Datei (Schritt 5). Zwei Stellen können dabei scheitern, und sie
+werden verschieden behandelt.
+
+**Scheitert ein Dateischritt**, wird die unvollständige Datei **nicht übertragen**. Ein
+halber Befundtext am Board ist schlechter als keiner: Er sieht aus wie ein vollständiger.
+
+**Scheitert der Board-Aufruf, hängt alles daran, ob schon ein Kommentar mit dem
+Runden-Anker steht.**
+
+- **Noch keiner** — es ist der Befunde-Kommentar selbst, der nicht ankommt. Dann folgt
+  genau **ein** Versuch mit der Ausfall-Form: Anker in Zeile 1, in Zeile 2
+  `Ausfall: Ergebnis nicht ans Board gebracht (<erste Zeile der Fehlermeldung>), von Hand nachsehen`.
+  Sie geht als `--text "…"`-Argument — zwei Zeilen tragen das Quoting, und sie soll
+  gerade dann gelingen, wenn der Dateiweg gescheitert ist. Danach endet der Skill mit
+  Fehler, ohne Marker. **Das ist die einzige Ausnahme vom Mutationsstopp oben.**
+- **Schon einer** — der Befunde-Kommentar steht bereits am Board, und es scheitert die
+  Synthese, der Body-Vorschlag oder die Body-Schreibung. Dann bleibt es beim
+  Mutationsstopp: kein weiterer Schreibversuch. Die Befunde sind die Board-Spur, und
+  `night.mjs --review` meldet für diese Lage „Schärfung fehlt". **Eine Ausfall-Form
+  dahinter wäre schädlich:** `reviewZustand` liest den jüngsten Kommentar mit Anker und
+  setzte das Dokument auf `ausgefallen` zurück — die vorhandenen Befunde wären damit
+  entwertet, und die nächste Nacht prüfte von vorn.
+
+**Nach der Ausfall-Form folgt kein `label-sync`.** Zu diesem Zeitpunkt trägt die Karte
+ohnehin `review:offen`, und der Zustand `ausgefallen` bildet genau darauf ab
+(`kit/board.mjs`, `ZUSTAND_ZU_LABEL`) — **ein Label `review:ausgefallen` existiert
+nicht.** Was die Ausfall-Form trotzdem leistet: Ein Kommentar mit Anker **und**
+Ausfallvermerk zählt nach Regel 4 nicht für `GRENZE_RUNDEN`. Drei gescheiterte
+Übertragungen machen ein Dokument also nicht zu „auserzählt", während drei ankerlose
+Notizen für die Maschine gar nicht existieren.
+
+**Der Grund für die Fehlermeldung gehört in die Klammer, nicht eine Vermutung.** Mit
+`--text-file` scheitert der Aufruf nicht mehr an der Größe, sondern an Netz, Auth oder
+Drosselung. „(Größe)" wäre dann eine falsche Diagnose für den, der morgens nachsieht.
 
 ### 5b. Synthese protokollieren — ein zweiter, getrennter Kommentar
 
@@ -510,7 +571,11 @@ Der Kommentar ist **getrennt** vom Befunde-Kommentar aus Schritt 5. Der bleibt u
 Beispiel einer Stufe mit zwei Prüfern (`fachlich` oder `plan`) — auf der Stufe `issue` entfällt der Abschnitt „Dissens", weil es nur eine Befundliste gibt:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text - <<'SYNTHESE'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/<id>-synthese.md <<'TEIL1'
 ## Synthese, Runde 1
 
 ### Entscheidungen
@@ -526,8 +591,20 @@ node .claude/kit/board.mjs issue comment <id> --text - <<'SYNTHESE'
   Folgeänderung: Issue #7 als Abhängigkeit ergänzt.
 
 Übernommen: 1 · Verworfen: 2
-SYNTHESE
+TEIL1
 ```
+
+```bash
+cat >> <tmpdir>/<id>-synthese.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-synthese.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
 **Was hineingehört:**
 
@@ -611,6 +688,7 @@ Bei befundfreiem Lauf entfallen die Schritte 1 bis 3; das `issue update` mit der
 
 **Schlägt einer der Befehle fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus.** Scheitert die **zweite** Body-Schreibung, bleibt der Body geschärft und ohne Marker zurück — das Ticket sieht dann aus wie eines mit Befunden, was es zu diesem Zeitpunkt auch ist. Ein Marker ohne Synthese kann nicht mehr entstehen. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
 
+
 Wie der `## Body-Vorschlag`-Kommentar (Schreibbefehl 1) aufgebaut ist und welche Kopfzeile er wörtlich trägt, steht im Abschnitt „Im Nachtbetrieb".
 
 **Interaktiv wird nichts ohne Zustimmung geschrieben.** Zeige einen Vorschlag mit den eingearbeiteten Funden und frage einmal:
@@ -663,10 +741,26 @@ Die Namen stammen aus `gewaehlt` (Schritt 1b), in Auswahlreihenfolge, und nennen
 Geschrieben wird über den Adapter, nicht am Tracker vorbei:
 
 ```bash
-node .claude/kit/board.mjs issue update <id> --body - <<'BODY'
-...
-BODY
+printenv TMPDIR
 ```
+
+```bash
+cat  > <tmpdir>/<id>-body.md <<'TEIL1'
+...
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/<id>-body.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue update <id> --body-file <tmpdir>/<id>-body.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
 Die Formulierung des Markers ist der Anker, an dem der Nacht-Runner erkennt, ob ein Issue geprüft ist. Nicht umformulieren.
 
@@ -689,7 +783,7 @@ Drei Abweichungen, sonst gilt alles unverändert:
 Konkret bei einem ausgefallenen Reviewer, gleich zu welchem Zeitpunkt und aus welchem Grund:
 
 1. Der Review **läuft mit den verbleibenden Reviewern zu Ende**. Ihre Befunde sind wertvoll und dürfen nicht verfallen. Bleibt keiner übrig — auf der Stufe `issue` ist das nach einem Ausfall immer der Fall —, greift deren Ausfall-Regel: Die Session protokolliert nur noch, ohne Befunde, Synthese und Body-Vorschlag.
-2. Die **erste Zeile** des Board-Kommentars nennt den Ausfall mit Grund.
+2. Die **zweite Zeile** des Board-Kommentars nennt den Ausfall mit Grund — die erste trägt den Anker, und `reviewZustand` liest den Vermerk in Zeile 2.
 3. Der **Marker bleibt aus** — ein unterbesetzter Lauf ist nie befundfrei im Sinne der Marker-Regel unten.
 4. **Kein Ersatz-Reviewer aus eigenem Antrieb.** Wer die Besetzung ändert, ändert das Verfahren; dafür gibt es `pairs`. Nachts wird die Lücke protokolliert, nicht gefüllt.
 
@@ -706,13 +800,29 @@ Der Grund ist derselbe wie beim Reviewer-Ausfall oben: Stand die Ausnahme achtzi
 Die **erste Zeile** dieses Kommentars lautet wörtlich `## Body-Vorschlag, Runde <n>`, mit der Nummer der Runde:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text - <<'VORSCHLAG'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/<id>-vorschlag.md <<'TEIL1'
 ## Body-Vorschlag, Runde 1
 
 ## Kontext
 … der vollständige neue Body, Abschnitt für Abschnitt …
-VORSCHLAG
+TEIL1
 ```
+
+```bash
+cat >> <tmpdir>/<id>-vorschlag.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-vorschlag.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
 Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine Liste der vorzunehmenden Änderungen. Wer ihn übernimmt, kopiert ihn unverändert in `issue update`.
 

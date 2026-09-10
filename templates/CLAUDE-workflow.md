@@ -309,6 +309,62 @@ und der naechste Push holt es nach. Ohne den `spec`-Block gibt es diesen Schritt
 
 ---
 
+## Lange Texte ans Board
+
+**Jeder Text, den eine Sitzung ans Board schreibt, geht ueber eine Datei — nie im
+Befehl selbst.** Das gilt fuer Befunde, Synthesen, Body-Vorschlaege, Abschluss-
+berichte und fuer jedes `issue create`/`issue update`.
+
+So sieht es aus — **jeder Block ist ein eigener Werkzeugaufruf**:
+
+```bash
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/<id>-befunde.md <<'TEIL1'
+… erstes Stueck, hoechstens 6.000 Zeichen …
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/<id>-befunde.md <<'TEIL2'
+… zweites Stueck …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.md
+```
+
+**Vier Regeln, jede mit einem Beleg dahinter:**
+
+1. **Hoechstens 6.000 Zeichen je Werkzeugaufruf.** Die Grenze gilt je Aufruf, nicht
+   je Datei — wer zwei `cat` und den Board-Aufruf in einen Block schreibt, uebergibt
+   dem Befehls-Parser wieder den ganzen Text. Die 6.000 sind eine **Beobachtung**
+   vom 2026-09-10 im Kit-Repo (Issue #579), keine Zusage des Werkzeugs: Board-Aufrufe
+   bis 9.722 Zeichen gingen durch, ab 10.154 wies der Parser sie mit „Parser aborted
+   (timeout, resource limit, or over-length)" ab — auch ein `cat >>` in eine Datei,
+   nicht nur der Board-Aufruf.
+2. **Der Zielpfad steht woertlich im Befehl, nie als Variable.** Erst `printenv TMPDIR`,
+   dann den ausgegebenen Wert einsetzen. Ein `cat > "$TMPDIR/…"` wird unbeaufsichtigt
+   mit „Redirect target contains $(cmd) output — path is runtime-determined" abgewiesen.
+3. **Nur die Shell, kein Dateischreib-Werkzeug.** Unbeaufsichtigt sind Schreibzugriffe
+   ausserhalb des Projektverzeichnisses abgewiesen und innerhalb von `.claude/`
+   zustimmungspflichtig — eine Zustimmung, die nachts niemand gibt.
+4. **Kein Pipe, keine Gruppierung um den Board-Aufruf.** `{ cat …; } | board.mjs` wurde
+   als „Contains brace with quote character (expansion obfuscation)" abgewiesen.
+
+**Die Datei liegt ausserhalb des Projektverzeichnisses.** Eine Datei im Repo macht den
+Working Tree unsauber, und darauf stoppt der Nacht-Runner hart.
+
+**Der Anlass:** Am 2026-09-10 verloren zwei Pruef-Sitzungen ihr vollstaendiges Ergebnis —
+zusammen vierzehn Funde, darunter drei BLOCKER —, weil der Board-Aufruf den Befundtext im
+Befehl trug und abgewiesen wurde. Am selben Tag traf es das Anlegen dreier Dokumente.
+Wer knapp schreibt, merkt nichts davon; wer gruendlich prueft, verliert alles.
+
+---
+
 ## Issue-Format (Vier Abschnitte)
 
 ```markdown
