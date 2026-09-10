@@ -40,6 +40,7 @@
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
                                     [--issue <N>]
+                                    [--rolle synthese] [--ausschluss <name,...>]
   node board.mjs issue-review label-sync <id>
   node board.mjs issue-review synthese-check <id>
   node board.mjs issue-review synthese-check --synthese-file <pfad> --vorschlag-file <pfad>
@@ -110,8 +111,13 @@ Nutzung:
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
                                     [--issue <N>]
+                                    [--rolle synthese] [--ausschluss <name,...>]
       --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
       runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
+      --rolle synthese besetzt die Synthese-Pruefung (Issue #597): fest ein
+      Reviewer mit dieser Rolle, dazu entfall und ausschlussUnbekannt. Nur damit
+      gilt --ausschluss: Kurznamen oder Modell-IDs, die zusaetzlich zum Autor
+      wegfallen; unbekannte Namen werden uebergangen statt abzubrechen.
   node board.mjs issue-review label-sync <id>
       Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
       Braucht issueReview.statusLabels; ohne den Schalter passiert nichts.
@@ -3450,25 +3456,44 @@ function aufloesenAutor(alle, autor) {
  * `autorAufgeloest` sagt, ob der uebergebene Autor einem Reviewer zugeordnet werden
  * konnte. Bei `false` ist die Auswahl unveraendert gueltig, beruht aber nicht auf einem
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
+ *
+ * `ausschluss` nennt weitere Namen, die wegfallen — die Synthese-Pruefung (Issue #597)
+ * braucht ein Modell, das weder geschrieben noch eine Befundliste erstellt hat, und das
+ * sind auf der Stufe `plan` drei Namen. Erwartet werden bereits aufgeloeste Kurznamen:
+ * Die Funktion bleibt rein und ruft kein `fail` — das riefe `process.exit(1)`, und weil
+ * beide Testdateien sie direkt importieren, beendete ein Unit-Test mit unbekanntem
+ * Namen den ganzen Testprozess.
  */
-export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
+export function pickReviewers(alle, autor, anzahl = 2, pairs = {}, ausschluss = []) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
+  const gesperrt = new Set([schluessel, ...ausschluss]);
 
   // Explizite Zuordnung schlaegt die Regel (Issue #225). Ohne sie waehlt die Regel
   // immer die vordersten Eintraege — bei vier Reviewern kam der vierte nie zum Zug,
   // ausgerechnet das Modell aus dem fremden Haus. Und wer wissen will, wer sein Issue
   // prueft, soll es ablesen koennen statt es auszurechnen.
-  const genannt = pairs?.[schluessel];
-  if (Array.isArray(genannt) && genannt.length > 0) {
+  // Der Ausschluss wirkt auf die genannten NAMEN, und die gefilterte Namensliste
+  // entscheidet ueber den Zweig — genau wie `genannt.length > 0` beim von vornherein
+  // leeren Eintrag. Nicht das aufgeloeste Ergebnis: Nennt die Tabelle Namen, die
+  // `reviewers` nicht fuehrt, bleibt die Tabelle die Quelle und geht sichtbar leer aus
+  // (Bestandsverhalten). Nur wenn sie nach dem Ausschluss niemanden mehr nennt, ist sie
+  // stumm, und dann greift die Regel.
+  const eintrag = pairs?.[schluessel];
+  const genannt = Array.isArray(eintrag) ? eintrag.filter((n) => !gesperrt.has(n)) : [];
+  if (genannt.length > 0) {
     // Auch hier auf `anzahl` kuerzen, nicht nur im Regel-Zweig unten (Issue #278):
     // Sonst liefert eine Stufe mit einem Reviewer trotzdem beide Namen aus der
     // Paar-Tabelle — der eine Reviewer waere stillschweigend zwei geblieben.
     // Gekuerzt wird in konfigurierter Reihenfolge, sie ist die Steuerung.
+    //
+    // Eine durch den Ausschluss GEKUERZTE Liste wird nicht aufgefuellt: Die Paartabelle
+    // bleibt die abschliessende Auswahl, wer sie setzt, bekommt keine ungefragten
+    // Zusaetze aus dem Regel-Zweig, sondern ein sichtbares `unterbesetzt`.
     const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean).slice(0, anzahl);
     return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
   }
-  const passend = (alle || []).filter((r) => r.name !== schluessel);
+  const passend = (alle || []).filter((r) => !gesperrt.has(r.name));
   const gewaehlt = passend.slice(0, anzahl);
   return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel", autorAufgeloest: aufgeloest !== null };
 }
@@ -3734,6 +3759,49 @@ async function pruefvorgabeFuerRoles(args) {
 }
 
 /**
+ * Liest `--rolle` und `--ausschluss` (Issue #597).
+ *
+ * Ein fehlender Wert kommt als `true` aus dem Parser und ist derselbe Fehler wie ein
+ * fremder Wert: In beiden Faellen steht nicht da, was hier stehen muss. Und die
+ * Erlaubnisfrage geht dem Wert voran — ein `--ausschluss` ohne `--rolle synthese` ist
+ * an dieser Stelle gar nicht vorgesehen, egal was dahinter steht.
+ */
+function syntheseOptionen(args) {
+  const synthese = args.rolle !== undefined;
+  const rolleWert = args.rolle === true ? "" : args.rolle;
+  if (synthese && rolleWert !== "synthese") fail(`--rolle: erwartet 'synthese', ist '${rolleWert}'`);
+  if (args.ausschluss !== undefined && !synthese) fail("--ausschluss gilt nur mit --rolle synthese");
+  const roh = args.ausschluss === true ? fail("--ausschluss braucht einen Wert") : args.ausschluss;
+  // Doppelnennungen sind zulaessig — `pickReviewers` arbeitet mit einem Set, und wer
+  // Autor-Modell und Session-Modell zusammenwirft, nennt oft denselben Namen zweimal.
+  return { synthese, namen: String(roh ?? "").split(",").map((s) => s.trim()).filter(Boolean) };
+}
+
+/**
+ * Uebersetzt die Ausschlussnamen in Kurznamen (Issue #597).
+ *
+ * Die Aufloesung liegt hier und nicht in `pickReviewers`: Dort waere sie ein `fail` in
+ * einer reinen Funktion, die beide Testdateien direkt importieren — `process.exit(1)`
+ * beendete den ganzen Testprozess.
+ *
+ * Ein nicht aufloesbarer Name wird uebergangen und ausgewiesen, statt abzubrechen: Das
+ * Session-Modell kommt aus `night.mjs --model <id>` und ist frei waehlbar; ein nicht
+ * konfiguriertes Modell kann ohnehin nie Reviewer werden, und ein Abbruch dafuer liesse
+ * die Synthese-Pruefung in jedem Dokument ausfallen. Still verschwinden darf er aber
+ * auch nicht — sonst liest sich eine ungewollte Besetzung wie eine gewollte.
+ */
+function aufloesenAusschluss(reviewers, namen) {
+  const ausschluss = [];
+  const ausschlussUnbekannt = [];
+  for (const name of namen) {
+    const kurz = aufloesenAutor(reviewers, name);
+    if (kurz) ausschluss.push(kurz);
+    else ausschlussUnbekannt.push(name);
+  }
+  return { ausschluss, ausschlussUnbekannt };
+}
+
+/**
  * Besetzung, Blickwinkel und Pruefvorgabe einer Pruefstufe (Issue #278, #302).
  *
  * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
@@ -3747,6 +3815,12 @@ async function pruefvorgabeFuerRoles(args) {
  * `runden`, `verzicht` und `vorgabeQuelle` kommen additiv dazu und sind immer da:
  * Ein Kommando soll die vollstaendige Pruefvorgabe liefern, damit der Skill sie nicht
  * aus einer zweiten Quelle (der Config) zusammensuchen muss.
+ *
+ * `--rolle synthese` besetzt die Synthese-Pruefung (Issue #597): fest ein Reviewer mit
+ * dieser einen Rolle. Sie steht NICHT in `reviewStufen`, weil `validateReviewStufen`
+ * dort `rollen.length === reviewer` erzwingt — die Synthese-Pruefung ist ein zweiter
+ * Durchgang neben der Stufenbesetzung, nicht ein Teil von ihr. `--stufe` bleibt
+ * trotzdem Pflicht: Der Rollen-Prompt fragt auf der Stufe `issue` eine Frage weniger.
  */
 async function issueReviewRoles(args) {
   const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
@@ -3757,16 +3831,27 @@ async function issueReviewRoles(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
   if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
 
+  const { synthese, namen } = syntheseOptionen(args);
+
   const vorgabe = await pruefvorgabeFuerRoles(args);
   const { reviewers, pairs, reviewStufen } = issueReviewConfig();
-  const { reviewer, rollen } = reviewStufen.stufen[stufe];
+  // Auch bei `--rolle synthese` gelesen und damit geprueft: Ein kaputter Block soll
+  // nicht dadurch durchrutschen, dass gerade die Synthese-Pruefung besetzt wird.
+  const stufenBesetzung = reviewStufen.stufen[stufe];
+  const { reviewer, rollen } = synthese ? { reviewer: 1, rollen: ["synthese"] } : stufenBesetzung;
+
+  const { ausschluss, ausschlussUnbekannt } = aufloesenAusschluss(reviewers, namen);
+  const auswahl = pickReviewers(reviewers, autor, reviewer, pairs, ausschluss);
   out({
     stufe,
     reviewer,
     rollen,
     stufenQuelle: reviewStufen.stufenQuelle,
     autor,
-    ...pickReviewers(reviewers, autor, reviewer, pairs),
+    ...auswahl,
+    // Beide Felder haengen an der Rolle. Ohne sie gaebe es keinen Entfall, den man
+    // melden koennte — `unterbesetzt` allein sagt dort schon alles.
+    ...(synthese ? { entfall: auswahl.gewaehlt.length === 0, ausschlussUnbekannt } : {}),
     ...vorgabe,
   });
 }

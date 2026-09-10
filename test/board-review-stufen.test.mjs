@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync, readFileSync } from "node:fs";
+import { rmSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, repoRoot } from "./helpers/board-fixture.mjs";
@@ -250,4 +250,214 @@ test("Der Kopfkommentar von board.mjs nennt dieselbe Syntax", () => {
   // Kommando, das es nicht gibt, oder verschweigt eines, das es gibt.
   const kopf = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8").split("*/")[0];
   assert.ok(kopf.includes(SYNTAX), "Syntax fehlt im Kopfkommentar von kit/board.mjs");
+});
+
+// --- Ausschlussliste und die Rolle synthese (Issue #597) ---
+//
+// Kriterium 7 aus Issue #587 verlangt fuer die Synthese-Pruefung ein Modell, das weder
+// das Dokument geschrieben noch eine der Befundlisten erstellt hat — auf der Stufe
+// `plan` sind das drei Namen. `pickReviewers` konnte bisher genau einen ausschliessen,
+// den Autor. Und der pairs-Zweig konnte es gar nicht: Er begrenzt die Kandidatenmenge
+// auf die genannten Namen, und in diesem Projekt sind das fuer `opus` ausgerechnet die
+// beiden, die auf der Stufe `plan` gerade geprueft haben.
+//
+// Deshalb eine eigene Fixture mit den fuenf Reviewern und den Paaren dieses Projekts:
+// Die Bestandsfixture oben kennt weder `gpt-astra` noch `gpt-sol`, und an ihr liesse
+// sich der Fall, um den es geht, nicht nachstellen.
+
+const P_OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
+const P_SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
+const P_FABLE = { name: "fable", kind: "claude", model: "claude-fable-5.1" };
+const P_ASTRA = { name: "gpt-astra", kind: "command", model: "gpt-6-astra", command: "codex exec --model gpt-6-astra" };
+const P_SOL = { name: "gpt-sol", kind: "command", model: "gpt-5.6-sol", command: "codex exec --model gpt-5.6-sol" };
+
+const PROJEKT_ALLE = [P_OPUS, P_SONNET, P_FABLE, P_ASTRA, P_SOL];
+const PROJEKT_PAARE = {
+  opus: ["fable", "gpt-astra"],
+  sonnet: ["opus", "gpt-sol"],
+  fable: ["opus", "gpt-astra"],
+  "gpt-sol": ["fable", "gpt-astra"],
+  "gpt-astra": ["fable", "opus"],
+};
+const PROJEKT_REVIEW = { reviewers: PROJEKT_ALLE, pairs: PROJEKT_PAARE };
+
+/** Die Besetzung, in der es kein unbeteiligtes Modell mehr gibt. */
+const ZWEI_REVIEW = { reviewers: [P_FABLE, P_ASTRA], pairs: {} };
+
+const rollenCli = (dir, ...extra) =>
+  runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5", ...extra]);
+
+/** Wie mitStufen, legt zusaetzlich ein Ticket 0001 fuer den `--issue`-Pfad an. */
+function mitTicket(reviewStufen, fn, issueReview = PROJEKT_REVIEW) {
+  mitStufen(reviewStufen, (dir) => {
+    mkdirSync(join(dir, "issues"), { recursive: true });
+    const kopf = `---\nid: "0001"\ntype: task\nstatus: ready\ntitle: Ticket\ncreated: 2026-08-12\n---\n`;
+    writeFileSync(join(dir, "issues", "0001.md"), `${kopf}\n## Kontext\n\nA\n\n## Aufgabe\n\nB\n`, "utf-8");
+    fn(dir);
+  }, issueReview);
+}
+
+test("[board-4] pickReviewers: der pairs-Zweig wird um die Ausschlussliste gekuerzt", () => {
+  const { gewaehlt, quelle, unterbesetzt } = pickReviewers(PROJEKT_ALLE, "opus", 1, PROJEKT_PAARE, ["fable"]);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["gpt-astra"]);
+  assert.equal(quelle, "pairs");
+  assert.equal(unterbesetzt, false);
+});
+
+test("[board-4] pickReviewers: ein leergefilterter pairs-Eintrag faellt auf die Regel zurueck", () => {
+  // Praezedenzfall ist der von vornherein leere Eintrag: Auch dort greift die Regel.
+  const { gewaehlt, quelle } = pickReviewers(PROJEKT_ALLE, "opus", 1, PROJEKT_PAARE, ["fable", "gpt-astra"]);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["sonnet"]);
+  assert.equal(quelle, "regel");
+  for (const raus of ["opus", "fable", "gpt-astra"]) {
+    assert.ok(!gewaehlt.some((r) => r.name === raus), `${raus} haette nicht gewaehlt werden duerfen`);
+  }
+});
+
+test("[board-4] pickReviewers: ein gekuerzter pairs-Eintrag wird nicht aufgefuellt", () => {
+  // Die Paartabelle bleibt die abschliessende Auswahl — wer sie setzt, bekommt keine
+  // ungefragten Zusaetze aus dem Regel-Zweig, sondern eine sichtbare Unterbesetzung.
+  const { gewaehlt, quelle, unterbesetzt } = pickReviewers(PROJEKT_ALLE, "opus", 2, PROJEKT_PAARE, ["fable"]);
+  assert.deepEqual(gewaehlt.map((r) => r.name), ["gpt-astra"]);
+  assert.equal(quelle, "pairs");
+  assert.equal(unterbesetzt, true);
+});
+
+test("[board-4] issue-review roles --rolle synthese: der Ausschluss wirkt an der Projekt-Fixture", () => {
+  mitStufen(STUFEN, (dir) => {
+    const res = rollenCli(dir, "--rolle", "synthese", "--ausschluss", "fable,gpt-astra");
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewer, 1);
+    assert.deepEqual(out.rollen, ["synthese"]);
+    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["sonnet"]);
+    assert.equal(out.quelle, "regel");
+    assert.equal(out.entfall, false);
+    assert.deepEqual(out.ausschlussUnbekannt, []);
+    assert.ok(!out.gewaehlt.some((r) => r.name === "opus"), "der Autor kommt nicht vor");
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] issue-review roles --rolle synthese: ohne unbeteiligtes Modell entfaellt die Pruefung", () => {
+  mitStufen(STUFEN, (dir) => {
+    const res = rollenCli(dir, "--rolle", "synthese", "--ausschluss", "fable,gpt-astra");
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.deepEqual(out.gewaehlt, []);
+    assert.equal(out.unterbesetzt, true);
+    assert.equal(out.entfall, true);
+    assert.equal(out.autorAufgeloest, false, "claude-opus-5 steht in dieser Besetzung nicht");
+  }, ZWEI_REVIEW);
+});
+
+test("[board-4] --ausschluss nimmt die Modell-ID genauso wie den Kurznamen", () => {
+  mitStufen(STUFEN, (dir) => {
+    const out = JSON.parse(rollenCli(dir, "--rolle", "synthese", "--ausschluss", "claude-fable-5.1,gpt-astra").stdout);
+    assert.ok(!out.gewaehlt.some((r) => r.name === "fable"));
+    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["sonnet"]);
+    assert.deepEqual(out.ausschlussUnbekannt, []);
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] ein unbekannter Ausschlussname wird uebergangen, nicht abgebrochen", () => {
+  // Das Session-Modell kommt aus `night.mjs --model <id>` und ist frei waehlbar. Ein
+  // Abbruch dafuer liesse die Synthese-Pruefung in jedem Dokument ausfallen; still
+  // verschwinden darf der Name aber auch nicht.
+  mitStufen(STUFEN, (dir) => {
+    const res = rollenCli(dir, "--rolle", "synthese", "--ausschluss", "fable,fable, ,claude-nightly-9");
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.deepEqual(out.ausschlussUnbekannt, ["claude-nightly-9"]);
+    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["gpt-astra"]);
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] --rolle synthese liefert fest einen Reviewer — mit und ohne reviewStufen-Block", () => {
+  for (const block of [STUFEN, null]) {
+    mitStufen(block, (dir) => {
+      const res = rollenCli(dir, "--rolle", "synthese");
+      assert.equal(res.status, 0, res.stderr);
+      const out = JSON.parse(res.stdout);
+      assert.equal(out.reviewer, 1, "die Stufe plan besetzt sonst zwei");
+      assert.deepEqual(out.rollen, ["synthese"]);
+      assert.equal(out.stufe, "plan");
+      assert.equal(out.stufenQuelle, block ? "stufen" : "default", "stufenQuelle bleibt erhalten");
+      assert.equal(out.gewaehlt.length, 1);
+    }, PROJEKT_REVIEW);
+  }
+});
+
+test("[board-4] --rolle synthese mit --issue liefert die Pruefvorgabe weiterhin mit", () => {
+  mitTicket(STUFEN, (dir) => {
+    const res = rollenCli(dir, "--rolle", "synthese", "--issue", "1");
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.reviewer, 1);
+    assert.deepEqual(out.rollen, ["synthese"]);
+    assert.equal(out.vorgabeQuelle, "config");
+    assert.equal(out.verzicht, false);
+  });
+});
+
+test("[board-4] --rolle synthese hebt die Validierung des reviewStufen-Blocks nicht auf", () => {
+  const kaputt = { ...STUFEN, issue: { reviewer: 1, rollen: ["pruefbarkeit", "zuviel"] } };
+  mitStufen(kaputt, (dir) => {
+    const res = rollenCli(dir, "--rolle", "synthese");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /reviewStufen\.issue/);
+    assert.equal(res.stdout, "");
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] ohne --rolle bleibt die Feldmenge der Antwort unveraendert", () => {
+  // Die neuen Felder sind an die Rolle gebunden: Wer sie nicht anfordert, bekommt
+  // exakt die Antwort von vorher — sonst muesste jeder Leser raten, was `entfall`
+  // ausserhalb der Synthese-Pruefung bedeuten soll.
+  mitStufen(STUFEN, (dir) => {
+    const out = JSON.parse(rollenCli(dir).stdout);
+    assert.deepEqual(Object.keys(out).sort(), [
+      "autor", "autorAufgeloest", "gewaehlt", "quelle", "reviewer", "rollen",
+      "runden", "stufe", "stufenQuelle", "unterbesetzt", "verzicht", "vorgabeQuelle",
+    ]);
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] --rolle ohne Wert und --rolle mit fremdem Wert brechen ab", () => {
+  mitStufen(STUFEN, (dir) => {
+    const ohneWert = rollenCli(dir, "--rolle");
+    assert.notEqual(ohneWert.status, 0);
+    assert.match(ohneWert.stderr, /--rolle: erwartet 'synthese'/);
+    const fremd = rollenCli(dir, "--rolle", "abgrenzung");
+    assert.notEqual(fremd.status, 0);
+    assert.match(fremd.stderr, /--rolle: erwartet 'synthese', ist 'abgrenzung'/);
+  }, PROJEKT_REVIEW);
+});
+
+test("[board-4] --ausschluss ohne --rolle synthese und ohne Wert brechen ab", () => {
+  mitStufen(STUFEN, (dir) => {
+    const ohneRolle = rollenCli(dir, "--ausschluss", "fable");
+    assert.notEqual(ohneRolle.status, 0);
+    assert.match(ohneRolle.stderr, /--ausschluss gilt nur mit --rolle synthese/);
+    const ohneWert = rollenCli(dir, "--rolle", "synthese", "--ausschluss");
+    assert.notEqual(ohneWert.status, 0);
+    assert.match(ohneWert.stderr, /--ausschluss/);
+  }, PROJEKT_REVIEW);
+});
+
+const SYNTAX_ROLLE = "[--rolle synthese] [--ausschluss <name,...>]";
+
+test("[board-4] Die Hilfe nennt --rolle und --ausschluss als Folgezeile hinter [--issue <N>]", () => {
+  mitStufen(STUFEN, (dir) => {
+    const res = runBoard(dir, ["--help"]);
+    const zeilen = res.stdout.split("\n");
+    const i = zeilen.findIndex((z) => z.includes("[--issue <N>]"));
+    assert.ok(i >= 0, `[--issue <N>] fehlt in der Hilfe:\n${res.stdout}`);
+    assert.ok(zeilen[i + 1].includes(SYNTAX_ROLLE), `Folgezeile fehlt, gefunden: ${zeilen[i + 1]}`);
+    assert.ok(res.stdout.includes(SYNTAX), "die Bestands-Syntaxzeile bleibt woertlich unveraendert");
+  });
+});
+
+test("[board-4] Der Kopfkommentar nennt dieselbe Folgezeile", () => {
+  const kopf = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8").split("*/")[0];
+  assert.ok(kopf.includes(SYNTAX_ROLLE), "Folgezeile fehlt im Kopfkommentar von kit/board.mjs");
 });
