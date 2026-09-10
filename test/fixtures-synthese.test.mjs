@@ -1,4 +1,5 @@
-// Invarianten der Synthese-Fixtures (Issue #590).
+// Invarianten der Synthese-Fixtures (Issue #590, erweitert um die Befundlisten
+// aus Issue #596).
 //
 // test/fixtures/synthese/ haelt echte Synthese/Vorschlag-Paare vom Board fest.
 // Board-Karten sind veraenderlich; ein spaeterer Review an einer dieser Karten
@@ -22,6 +23,15 @@
 //   #580 traegt bereits zwei in einem `zur Entscheidung`-Punkt.
 // - Ein Zitat stammt aus einer Zeile der vorschlag.md, hat mindestens 30 Zeichen,
 //   traegt kein `"` und kommt dort genau einmal vor.
+//
+// Seit Issue #596 traegt jedes Verzeichnis zusaetzlich die `befunde.md` — die
+// Kopie des einen Review-Kommentars, aus dem die Synthese entstanden ist. Der
+// Synthese-Pruefer beantwortet zwei Fragen, die ohne die Befundliste nicht zu
+// beantworten sind: Bleibt ein Widerspruch zwischen den Listen unbenannt, und
+// traegt die Begruendung, mit der ein Fund verworfen wurde.
+//
+// Die Byteprobe gegen den Board-Body steht nicht hier: Sie gehoert an den Abruf
+// und lief beim Ablegen der Fixtures. Ein Test in `node --test` hat kein Board.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -44,6 +54,9 @@ const BASIS = [
   "syntheseCreatedAt",
   "vorschlagIndex",
   "vorschlagCreatedAt",
+  "befundeIndex",
+  "befundeCreatedAt",
+  "stufe",
   "uebernommenErwartet",
   "schlusszeileNennt",
 ];
@@ -51,6 +64,20 @@ const OHNE_VORSCHLAG = [...BASIS, "vermerk"];
 const AUFBEREITET = [...BASIS, "aufbereitet", "aufbereitung"];
 
 const VERMERK = "kein Body-Vorschlag-Kommentar am Board";
+
+const DATEIEN = ["synthese.md", "vorschlag.md", "befunde.md", "herkunft.json"];
+
+// Die Kopfzeile des Befunde-Kommentars nennt die Stufe in der Schreibweise des
+// Skills; `stufe` in der herkunft.json ist die Schreibweise von `roles --stufe`.
+const KOPF_JE_STUFE = {
+  fachlich: "Fachplan-Review",
+  plan: "Plan-Review",
+  issue: "Issue-Review",
+};
+
+// Der Abrufstand aus Issue #590 — der spaeteste der damals gesetzten Zeitpunkte.
+// Issue #596 ruft die Karten neu ab; jeder neue Stand liegt danach.
+const ABRUF_590 = "2026-09-10T15:00:18.603Z";
 
 // Das Ausgangswort nach dem ersten " — " eines Listenpunkts, samt seiner
 // Auszeichnung: Die Karten schreiben es als `uebernommen`, `übernommen` und
@@ -143,9 +170,9 @@ function trefferzahl(heuhaufen, nadel) {
 
 const mitVorschlag = KARTEN.filter((id) => herkunft(id).vorschlagIndex !== null);
 
-test("test/fixtures/synthese traegt fuer jede der sieben Karten ein Verzeichnis mit den drei Dateien", () => {
+test("test/fixtures/synthese traegt fuer jede der sieben Karten ein Verzeichnis mit den vier Dateien", () => {
   for (const id of KARTEN) {
-    for (const datei of ["synthese.md", "vorschlag.md", "herkunft.json"]) {
+    for (const datei of DATEIEN) {
       assert.doesNotThrow(() => lies(id, datei), `${id}/${datei} fehlt`);
     }
   }
@@ -161,7 +188,7 @@ test("ein aufbereitetes Verzeichnis gibt es genau fuer die Karten mit vorschlagI
     mitVorschlag.map((id) => `${id}-aufbereitet`).sort()
   );
   for (const id of mitVorschlag) {
-    for (const datei of ["synthese.md", "vorschlag.md", "herkunft.json"]) {
+    for (const datei of DATEIEN) {
       assert.doesNotThrow(
         () => lies(`${id}-aufbereitet`, datei),
         `${id}-aufbereitet/${datei} fehlt`
@@ -180,6 +207,11 @@ test("jede herkunft.json traegt genau die fuer ihre Variante vorgesehenen Schlue
     assert.match(h.abgerufen, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(typeof h.syntheseIndex, "number");
     assert.match(h.syntheseCreatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(h.befundeCreatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(KOPF_JE_STUFE, h.stufe),
+      `${id}: unbekannte Stufe "${h.stufe}"`
+    );
   }
   for (const id of mitVorschlag) {
     const h = herkunft(`${id}-aufbereitet`);
@@ -278,6 +310,77 @@ test("die Schlusszeile weicht dort ab, wo herkunft.json es festhaelt — #579 al
   assert.equal(h579.uebernommenErwartet, 9);
   assert.equal(h579.schlusszeileNennt, 13);
   assert.notEqual(h579.uebernommenErwartet, h579.schlusszeileNennt);
+});
+
+// Ein Fixture ohne Befunde waere kein vorgesehener Fall: Am Board traegt jede der
+// sieben Karten genau einen Review-Kommentar, und die Synthese ist ohne ihn nicht
+// zu pruefen. Eine leere befunde.md hiesse, dass der Abruf etwas anderes
+// eingesammelt hat als den Kommentar.
+test("jedes Verzeichnis traegt eine befunde.md, und keine ist leer", () => {
+  for (const id of [...KARTEN, ...mitVorschlag.map((k) => `${k}-aufbereitet`)]) {
+    const befunde = lies(id, "befunde.md");
+    assert.ok(befunde.length > 0, `${id}/befunde.md ist leer`);
+  }
+});
+
+// Der Befunde-Kommentar ist der letzte vor der Synthese: Die Synthese antwortet
+// auf ihn. Ein Index dahinter waere ein anderer Kommentar.
+test("befundeIndex ist eine Zahl und liegt vor syntheseIndex", () => {
+  for (const id of KARTEN) {
+    const h = herkunft(id);
+    assert.equal(typeof h.befundeIndex, "number", `${id}: befundeIndex ist keine Zahl`);
+    assert.ok(
+      h.befundeIndex < h.syntheseIndex,
+      `${id}: befundeIndex ${h.befundeIndex} liegt nicht vor syntheseIndex ${h.syntheseIndex}`
+    );
+  }
+});
+
+test("die erste Zeile jeder befunde.md nennt Stufe und Runde und passt zum Schluessel stufe", () => {
+  for (const id of KARTEN) {
+    const h = herkunft(id);
+    for (const verzeichnis of [id, ...(h.vorschlagIndex === null ? [] : [`${id}-aufbereitet`])]) {
+      const erste = lies(verzeichnis, "befunde.md").split("\n")[0];
+      assert.ok(erste.startsWith("## "), `${verzeichnis}: erste Zeile ohne "## " — "${erste}"`);
+      assert.ok(
+        erste.includes("-Review, Runde "),
+        `${verzeichnis}: erste Zeile ohne "-Review, Runde " — "${erste}"`
+      );
+      assert.ok(
+        erste.startsWith(`## ${KOPF_JE_STUFE[h.stufe]}, Runde `),
+        `${verzeichnis}: Kopfzeile "${erste}" passt nicht zur Stufe "${h.stufe}"`
+      );
+    }
+  }
+});
+
+// Die Befunde sind Verlauf und werden nicht aufbereitet: Aufbereitet wird die
+// Synthese, damit sie ihre Uebernahmen belegt.
+test("die befunde.md der aufbereiteten Kopie ist die unveraenderte Kopie der unaufbereiteten", () => {
+  for (const id of mitVorschlag) {
+    assert.equal(lies(`${id}-aufbereitet`, "befunde.md"), lies(id, "befunde.md"));
+  }
+});
+
+// Der Abruf aus Issue #596 ist zugleich die Probe auf den Bestand: Er hat belegt,
+// dass synthese.md und vorschlag.md noch byteidentisch zum Board sind. `abgerufen`
+// haelt fest, wann das zuletzt der Fall war — ein alter Stand hiesse, dass die
+// Probe seit Issue #590 nicht mehr gelaufen ist.
+test("abgerufen ist in beiden Varianten gleich und juenger als der Stand aus Issue #590", () => {
+  for (const id of KARTEN) {
+    const h = herkunft(id);
+    assert.ok(
+      h.abgerufen > ABRUF_590,
+      `${id}: abgerufen ${h.abgerufen} liegt nicht nach dem Stand aus Issue #590`
+    );
+    if (h.vorschlagIndex !== null) {
+      assert.equal(
+        herkunft(`${id}-aufbereitet`).abgerufen,
+        h.abgerufen,
+        `${id}: aufbereitete Kopie traegt einen anderen Abrufstand`
+      );
+    }
+  }
 });
 
 test("die Karten ohne Body-Vorschlag tragen null, eine leere vorschlag.md und den Vermerk", () => {

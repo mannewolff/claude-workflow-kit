@@ -1,11 +1,14 @@
 {
   "board": "https://kanban.mwolff.org",
   "quelle": "580",
-  "abgerufen": "2026-09-10T15:00:06.158Z",
+  "abgerufen": "2026-09-10T20:51:16.000Z",
   "syntheseIndex": 1,
   "syntheseCreatedAt": "2026-09-10T11:25:20.504542Z",
   "vorschlagIndex": null,
   "vorschlagCreatedAt": null,
+  "befundeIndex": 0,
+  "befundeCreatedAt": "2026-09-10T11:20:17.345751Z",
+  "stufe": "plan",
   "vermerk": "kein Body-Vorschlag-Kommentar am Board",
   "uebernommenErwartet": 14,
   "schlusszeileNennt": 19
