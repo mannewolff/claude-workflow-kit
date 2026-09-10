@@ -149,7 +149,7 @@ Jeder Reviewer bekommt denselben unveränderten Body, aber **seine eigene Rolle*
 
 Welcher Unterabschnitt gilt, entscheidet die Stufe aus Schritt 1b.
 
-**Die Streich-Frage ist Pflicht in jeder Rolle.** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ein Dokument, das nach dem Review doppelt so lang ist, ist nicht automatisch besser implementierbar — ohne diese Frage kippt der Roundtrip in Aufblähung.
+**Die Streich-Frage ist Pflicht in jeder Rolle, die ein Dokument prüft** — also in allen Rollen dieses Abschnitts außer `synthese`. Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ein Dokument, das nach dem Review doppelt so lang ist, ist nicht automatisch besser implementierbar — ohne diese Frage kippt der Roundtrip in Aufblähung. Die Rolle `synthese` liest kein Dokument, sondern eine Abwägung; die Frage würde sie zur Dokumentkritik einladen, und genau die ist dort ausgeschlossen.
 
 #### Darf ein Reviewer den Bestand lesen? Ja.
 
@@ -412,7 +412,54 @@ Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
 {{ISSUE_BODY}}
 ```
 
-**Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `pruefbarkeit` für das Arbeitspaket, `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, `architektur-bestand` und `schnitt-abhaengigkeiten` für den Plan, `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand` im Legacy-Fallback. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}`. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
+#### Rolle `synthese`: das fremde Auge auf die Synthese
+
+Diese Rolle gehört zu keiner Stufe. Sie läuft in Schritt 6, nachdem die Synthese geschrieben ist, und prüft **die Abwägung, nicht das Dokument** — wer besetzt wird und wann sie überhaupt läuft, steht dort.
+
+Sie ist der einzige Blick von außen auf einen Schritt, den sonst dieselbe Session tut, die auch die Befunde verwaltet: Aus einer Befundliste wird ein Text, und dabei fällt jede Entscheidung über Übernahme und Verwerfung. Der Beleg-Abgleich aus Issue #593 prüft davon nur die mechanische Hälfte — ob ein als übernommen bezeichneter Fund im Vorschlag auch steht. Ob die Begründung eines **verworfenen** Funds trägt, kann kein Kommando sehen.
+
+**Rolle `synthese`:**
+
+```
+Du liest die Synthese eines Reviews, nicht das geprüfte Dokument. Ein anderes
+Modell hat aus den Befundlisten der Reviewer einen Textvorschlag gemacht und
+dabei entschieden, welcher Fund einfließt und welcher verworfen wird. Du prüfst
+diese Entscheidungen.
+
+1. Bleibt ein Widerspruch zwischen den Befundlisten unbenannt, obwohl die
+   Synthese ihn hätte benennen müssen?
+2. Trägt die Begründung, mit der ein Fund verworfen wurde — adressiert sie den
+   Fund, argumentiert sie nachvollziehbar, widerspricht sie den vorliegenden
+   Unterlagen nicht? Du prüfst NICHT, ob sie sachlich zutrifft; dafür brauchst du
+   den Bestand, und darum geht es hier nicht.
+
+Du prüfst das Dokument NICHT erneut. Ein Fund, den keine Befundliste nennt,
+gehört nicht in deine Antwort — auch dann nicht, wenn er dir richtig erscheint.
+
+Je Befund:
+- die Synthese-Zeile, auf die er sich bezieht (Zitat)
+- Reviewer und Fund, um den es geht
+- der Grund: was an der Begründung nicht trägt, oder welcher Widerspruch fehlt
+
+Wenn du nichts findest: schreibe das ausdrücklich hin, nicht "alles gut".
+
+--- BEFUNDLISTEN ---
+{{BEFUNDE}}
+
+--- SYNTHESE ---
+{{SYNTHESE}}
+
+--- BODY-VORSCHLAG ---
+{{VORSCHLAG}}
+```
+
+Auf der Stufe `issue` entfällt Frage 1 — dort gibt es nur eine Befundliste und damit keinen Widerspruch, den die Synthese benennen könnte. Der Prompt geht dann ohne diesen Punkt hinaus; Frage 2 bleibt unverändert.
+
+**Die Platzhalter kommen aus Dateien, die schon da sind.** `{{BEFUNDE}}` ist der Inhalt von `<tmpdir>/<id>-befunde.md` (Schritt 5), `{{SYNTHESE}}` und `{{VORSCHLAG}}` sind die beiden Dateien des Beleg-Abgleichs (Schritt 6). **Kein `{{ISSUE_BODY}}`:** Mit dem Dokument im Prompt fällt der Prüfer zuverlässig in die Dokumentkritik zurück, und genau die ist hier ausgeschlossen — geprüft wurde das Dokument schon.
+
+Wie jede Rolle weist der Prüfer den Bestandszugriff aus, mit derselben Zeile im Board-Kommentar: `Bestand: gelesen`, sonst `Bestand: nein`. Er braucht den Bestand für seine beiden Fragen nicht; ablesbar bleiben soll es trotzdem.
+
+**Zuordnung und Fehlerpfad:** Die Rollennamen aus `issue-review roles` sind eindeutig einem Promptblock zugeordnet — `pruefbarkeit` für das Arbeitspaket, `form-beobachtbarkeit` und `abgrenzung` für die fachliche Stufe, `architektur-bestand` und `schnitt-abhaengigkeiten` für den Plan, `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand` im Legacy-Fallback, `synthese` für die Synthese-Prüfung aus Schritt 6. Jeder Prompt erhält den unveränderten Issue-Body über `{{ISSUE_BODY}}` — **ausgenommen `synthese`**, die kein Dokument prüft und ihn deshalb nicht bekommt. **Liefert die Config einen Rollennamen, zu dem es keinen Prompt gibt, bricht der Review vor dem Reviewer-Start mit sichtbarer Fehlermeldung ab.** Ohne diesen Pfad wäre ein Vertipper in der Config ein stiller Ausfall: Die Session liefe an, verbrauchte ihre Zeit und lieferte einen Befund, der auf keiner Rolle beruht.
 
 **Ausführung je nach `kind`:**
 
@@ -669,7 +716,7 @@ Der Datei-Weg ist keine Bequemlichkeit: Nach der Zustimmung ist der Body geschri
 
 **Scheitert der Aufruf selbst** — Exit ungleich 0, keine gültige JSON-Ausgabe, eine der Dateien nicht lesbar —, gilt dasselbe: kein Marker, `kit:klaeren`, und der Abgleich-Kommentar trägt in Zeile 2 `Abgleich ausgefallen: <erste Zeile der Fehlermeldung>`. **Kein zweiter Versuch.** Ein ausgefallener Abgleich ist nie befundfrei.
 
-**Der Abgleich-Kommentar** entsteht **nur bei `ok: false`**; im grünen Fall ist der Marker die Spur, und ein Kommentar ohne Inhalt wäre Rauschen. Seine erste Zeile lautet wörtlich `## Synthese-Abgleich, Runde <n>`, mit der Runde des geprüften Synthese-Kommentars — nie einer eigenen Zählung. Darunter steht je Zeile ein Eintrag aus `ohneBeleg` mit Reviewer, Fund und Grund, in dieser Form:
+**Der Abgleich-Kommentar** entsteht bei jedem Lauf mit Befunden — er trägt neben den Beleg-Befunden auch das Ergebnis der Synthese-Prüfung weiter unten, und die läuft gerade dann, wenn der Beleg-Abgleich grün war. Seine erste Zeile lautet wörtlich `## Synthese-Abgleich, Runde <n>`, mit der Runde des geprüften Synthese-Kommentars — nie einer eigenen Zählung. **Nur bei `ok: false`** steht darunter je Zeile ein Eintrag aus `ohneBeleg` mit Reviewer, Fund und Grund, in dieser Form:
 
 ```
 - opus, "Akzeptanzkriterium nicht maschinell prüfbar" — beleg-fehlt
@@ -681,6 +728,33 @@ Geschrieben wird er über `issue comment --text-file` nach der Transportregel, w
 Interaktiv entsteht er unmittelbar nach dem Abgleich, **vor der Zustimmungsfrage und unabhängig von der Antwort** — auch bei Ablehnung. Der Grund gehört ans Dokument, nicht in den Verlauf, und gerade dann, wenn der Mensch nicht übernimmt.
 
 **Interaktiv** wird `kit:klaeren` dabei **ohne Rückfrage** gesetzt — ein Label ist weder Body noch Marker. Antwortet der Mensch trotz Befund mit „ja", wird der Body geschrieben und der Marker bleibt trotzdem aus; ein Neu-Abgleich wird nicht angeboten.
+
+**Die Synthese-Pruefung — unmittelbar hinter dem Beleg-Abgleich.** Ist der Abgleich grün (`ok: true`), liest ein Modell die Synthese, das sie nicht geschrieben und auch keine Befundliste beigesteuert hat. Der Prompt dazu ist die Rolle `synthese` aus Schritt 3. **Unbeaufsichtigt** läuft sie vor Schreibbefehl 1, **interaktiv** vor der Zustimmungsfrage — dieselbe Stelle wie der Abgleich, aus demselben Grund: Danach ist der Body geschrieben.
+
+**Wann sie läuft.** Nach einem grünen Abgleich, und nur wenn es etwas zu prüfen gibt: mindestens ein verworfener Fund **oder** zwei Befundlisten, die beide mindestens einen Fund tragen. Ein befundfreier Lauf ist ein Entfall — dort überspringt Schritt 6 die Schreibbefehle 1 bis 3, es gibt also weder Synthese noch Vorschlag.
+
+**Ist der Beleg-Abgleich rot**, läuft der Prüfer nicht, und es entsteht **keine zusätzliche Zeile**: Der Kommentar trägt ohnehin die Beleg-Befunde, und der Marker bleibt aus. Eine zweite Begründung für dieselbe Folge sagt niemandem etwas.
+
+**Die Besetzung** kommt aus demselben Kommando wie die Reviewer, mit der festen Rolle:
+
+```bash
+node .claude/kit/board.mjs issue-review roles \
+  --stufe <fachlich|plan|issue> \
+  --rolle synthese \
+  --author <modell> \
+  --ausschluss <name,...> \
+  --issue <N>
+```
+
+`--author` trägt das `Autor-Modell:` des Dokuments. Die Ausschlussliste trägt die Namen aus `gewaehlt` (Schritt 1b) **und das Modell dieser Session** — nachts `KIT_AGENT_MODEL`, interaktiv die Selbstauskunft der Session, wie bei `Autor-Modell:` in `/issues`. `KIT_AGENT_MODEL` setzt nur der Nacht-Runner; ohne die interaktive Ergänzung dürfte die Session ihre eigene Synthese prüfen, sobald ihr Modell vom `Autor-Modell:` abweicht — und damit fiele der ganze Sinn dieses Schritts weg.
+
+**Drei Ausgänge.** Befund und Ausfall wirken in **beiden** Betriebsarten wie `ok: false` aus dem Beleg-Abgleich: Unbeaufsichtigt laufen die Schreibbefehle 1 bis 5 und `label-sync`, die zweite Body-Schreibung entfällt. Interaktiv wird `kit:klaeren` **ohne Rückfrage** gesetzt, der Befund steht vor der Zustimmungsfrage, und ein „ja" schreibt den Body ohne Marker.
+
+- **Befund** — die Befunde stehen im Kommentar `## Synthese-Abgleich, Runde <n>`, unter den Beleg-Einträgen bzw. an deren Stelle.
+- **Entfall** — es gibt kein unbeteiligtes Modell (`entfall: true` in der `roles`-Antwort) oder nichts zu prüfen (kein verworfener Fund, keine zwei gefüllten Befundlisten). Im selben Kommentar steht die Zeile `Synthese-Pruefung entfallen: <Grund>`. Der Marker **wird** gesetzt, sofern die Marker-Regel im Übrigen erfüllt ist, und trägt den Zusatz in der Klammer: `(JJJJ-MM-TT[, Nachtlauf][, ohne Synthese-Pruefung])`.
+- **Ausfall** — Exit ungleich 0, keine Antwort, oder eine Antwort, die weder einen Befund noch den ausdrücklichen Satz enthält, dass nichts gefunden wurde: kein Marker, `kit:klaeren`, die Zeile `Synthese-Pruefung ausgefallen: <Grund>`, **kein zweiter Versuch, kein Ersatz-Pruefer**. Dieselbe Regel wie beim ausgefallenen Abgleich — eine ausgefallene Prüfung ist nie befundfrei.
+
+Der Unterschied zwischen Entfall und Ausfall ist die ganze Sache: Beim Entfall gab es nichts zu prüfen oder niemanden, der prüfen durfte, und beides ist eine Eigenschaft der Lage, nicht ein Loch im Lauf. Beim Ausfall sollte geprüft werden und wurde nicht.
 
 **Unbeaufsichtigt gilt im Einzelnen:**
 
@@ -722,13 +796,13 @@ Ein bereits vorhandenes Label ist kein Fehler.
 2. `issue update` — der geschärfte Body OHNE Marker (ein vorhandener Marker derselben Stufe wird dabei entfernt; endet der Lauf mit `kit:klaeren`, bleibt er entfernt)
 3. gegebenenfalls `issue label add kit:klaeren`
 4. Synthese-Kommentar
-5. gegebenenfalls der `## Synthese-Abgleich`-Kommentar — nur bei `ok: false` oder ausgefallenem Abgleich
+5. der `## Synthese-Abgleich`-Kommentar — bei jedem Lauf mit Befunden; er trägt die Beleg-Einträge, den Ausfall des Abgleichs oder das Ergebnis der Synthese-Pruefung
 6. gegebenenfalls ein ZWEITES `issue update` — derselbe Body, ergänzt um die Marker-Zeile; `Pruefung:` und `Pruefung-Stand:` werden wie bei jeder Body-Schreibung aus dem aktuellen Stand übernommen
 7. `issue-review label-sync <id>` — wie weiter unten beschrieben, unbeaufsichtigt identisch
 
 Der Marker ist keine eigene Operation, sondern eine **Zeile im Body**. Er kann deshalb nur mit einer Body-Schreibung entstehen — und weil er nie ohne Synthese dastehen darf, wird der Body zweimal geschrieben: erst geschärft ohne Marker, nach erfolgreicher Synthese ein zweites Mal mit.
 
-Bei befundfreiem Lauf entfallen die Schritte 1 bis 3; das `issue update` mit der Marker-Zeile ist dann die einzige Body-Schreibung und schreibt den unveränderten Body plus Marker.
+Bei befundfreiem Lauf entfallen die Schritte 1 bis 3 **und 5**; das `issue update` mit der Marker-Zeile ist dann die einzige Body-Schreibung und schreibt den unveränderten Body plus Marker. Ohne Synthese gibt es weder etwas abzugleichen noch etwas zu prüfen — und damit auch nichts zu kommentieren.
 
 **Schlägt einer der Befehle fehl, endet der Skill mit Fehler und führt keine weitere Mutation am Issue aus.** Scheitert die **zweite** Body-Schreibung, bleibt der Body geschärft und ohne Marker zurück — das Ticket sieht dann aus wie eines mit Befunden, was es zu diesem Zeitpunkt auch ist. Ein Marker ohne Synthese kann nicht mehr entstehen. Zwei Fehlerpfade sind im Bestand angelegt und ausdrücklich gemeint: `issue update` weist bei gesetztem `KIT_AGENT_MODEL` einen Body ab, der die `Pruefung:`-Zeile verringert (Issue #303), und `issue label add` scheitert, solange die Label-Definition am Board fehlt.
 
@@ -750,9 +824,15 @@ Kein Konsens-Automatismus: Modelle können sich einig und trotzdem falsch sein. 
 **Wird der Body geschrieben** — interaktiv nach der Zustimmung, unbeaufsichtigt nach der Fallunterscheidung oben —, wird die Marker-Zeile **der geprüften Stufe** aufgenommen, wörtlich in einer dieser drei Formen:
 
 ```
-Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
-Plan-Review:     <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
-Issue-Review:    <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf])
+Fachplan-Review: <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf][, ohne Synthese-Pruefung])
+Plan-Review:     <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf][, ohne Synthese-Pruefung])
+Issue-Review:    <reviewer[, reviewer…]> (JJJJ-MM-TT[, Nachtlauf][, ohne Synthese-Pruefung])
+```
+
+Der Zusatz `, ohne Synthese-Pruefung` steht nur bei einem Entfall der Synthese-Pruefung (Schritt 6) und immer als letztes Glied in der Klammer. Ein Arbeitspaket, dessen Synthese-Pruefung mangels unbeteiligtem Modell entfallen ist, trägt danach:
+
+```
+Issue-Review: codex (2026-08-06, ohne Synthese-Pruefung)
 ```
 
 Beispiel für ein Arbeitspaket, das mit seinem einen Reviewer gelaufen ist:
@@ -880,6 +960,9 @@ Darunter steht der **vollständige Ersatz** für den Issue-Body, nicht eine List
 
 1. **Alle Funde tragen die Klasse `korrektur`**, und die übernommenen wurden angewendet. Ein einziger `gate`- oder `alternativen`-Fund reicht, und der Marker bleibt aus — stattdessen wird `kit:klaeren` gesetzt. **Ein Fund ohne Klassenangabe trägt `korrektur` nicht** und hält den Marker damit ebenso zurück.
 2. Kein Reviewer ist ausgefallen, und der Lauf war nicht unterbesetzt.
+3. Die Synthese-Pruefung (Schritt 6) hat weder einen Befund geliefert noch ist sie ausgefallen.
+
+**Ein Entfall der Synthese-Pruefung ist weder ein Ausfall noch ein unterbesetzter Lauf** und hält den Marker deshalb nicht zurück — er steht als Zusatz `, ohne Synthese-Pruefung` in der Klammer. Ohne diesen Satz zöge Bedingung 2 den Entfall zu sich, und jedes Projekt mit zu wenigen Reviewern verlöre den Marker dauerhaft: Wo die Prüfung mangels unbeteiligtem Modell nie stattfinden kann, wäre ihr Ausbleiben ein Dauerfehler statt einer Lage.
 
 Bis Issue #387 stand an Stelle 1 der Schweregrad: kein Fund mit `BLOCKER` oder `WICHTIG`. Das kollidierte mit der Klassifikation, sobald es sie gab — ein `korrektur`-Fund kann `WICHTIG` sein, und ein solches Ticket bliebe nach dem Anwenden weder markiert noch gezeichnet liegen.
 
@@ -933,6 +1016,7 @@ Dann der Hinweis auf den nächsten Schritt:
 - **Kein Anwenden eines Funds auf einen menschlich gesetzten Inhalt** — berührt er eine dokumentierte PO-Antwort unter `## Offene Fragen an den PO` oder eine architektonische Begründung unter `## Architektonische Entscheidungen`, ist er kein `korrektur`-Fund: Er wird nicht angewendet, zeichnet das Ticket mit `kit:klaeren` und hält den Marker zurück (Schritt 6, Issue #418)
 - **Nie ein Marker ohne erfolgreich geschriebenen Body und Synthese-Kommentar** — schlägt ein Schreibbefehl fehl, endet der Skill und führt keine weitere Mutation aus
 - **Kein Marker, wenn der Abgleich nicht gelaufen ist oder `ok: false` gemeldet hat** — ein ausgefallener Abgleich ist nie befundfrei (Schritt 6, Issue #593)
+- **Kein Marker nach einem Befund oder einem Ausfall der Synthese-Pruefung** — ein Entfall hält ihn dagegen nicht zurück und steht als Zusatz `, ohne Synthese-Pruefung` im Marker (Schritt 6, Issue #598)
 - Kein Marker ohne übernommenen Body (interaktiv) bzw. ohne dass alle Funde `korrektur` tragen und die übernommenen angewendet sind (nachts)
 - **Kein Marker ohne Synthese-Kommentar, wenn Funde verworfen wurden** — sonst behauptet er eine Befundfreiheit, die es nicht gab
 - **Kein Befund, keine Synthese, kein Body-Vorschlag und nie ein Marker, wenn auf der Stufe `issue` der eine Reviewer ausfällt** — dort ist ein Ausfall kein unterbesetzter Lauf, sondern gar keine Prüfung. Die Session protokolliert und endet

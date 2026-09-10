@@ -85,6 +85,36 @@ test("[skills-11] Schritt 7 ist label-sync", () => {
     "der Label-Abgleich schliesst die Reihenfolge ab");
 });
 
+// Issue #598: Der Synthese-Pruefer haengt unmittelbar hinter dem Beleg-Abgleich.
+// Steht er hinter der Zustimmungsfrage, ist der Body geschrieben, bevor jemand
+// die Synthese gelesen hat — die Pruefung kaeme zu spaet.
+test("[skills-12] der Synthese-Pruefer steht nach dem Abgleich und vor der Zustimmungsfrage", () => {
+  const abgleich = schritt6.indexOf("synthese-check");
+  const pruefer = schritt6.indexOf("--rolle synthese");
+  const frage = schritt6.indexOf("Übernehmen? (ja / nein");
+
+  assert.notEqual(abgleich, -1, "Schritt 6 ruft `synthese-check` nicht auf");
+  assert.notEqual(pruefer, -1, "Schritt 6 besetzt die Synthese-Pruefung nicht");
+  assert.notEqual(frage, -1, "die Zustimmungsfrage fehlt");
+
+  assert.ok(abgleich < pruefer,
+    "der Pruefer laeuft erst nach einem gruenen Beleg-Abgleich — ist der rot, laeuft er gar nicht");
+  assert.ok(pruefer < frage,
+    "der Befund muss vor der Zustimmungsfrage stehen — danach ist der Body geschrieben");
+});
+
+// Bis Issue #598 entstand der Abgleich-Kommentar nur bei `ok: false`. Der
+// Synthese-Pruefer laeuft aber genau bei `ok: true` — sein Befund haette dort
+// keinen Ort. Aus dem Bedarfsfall wird der Regelfall.
+test("[skills-12] der Abgleich-Kommentar ist auch fuer einen gruenen Abgleich vorgesehen", () => {
+  const schritt5 = liste.match(/^5\. .*(\n {2,}.*)*/m)?.[0] ?? "";
+  assert.match(schritt5, /Synthese-Abgleich/, "Schritt 5 nennt den Abgleich-Kommentar nicht");
+  assert.doesNotMatch(schritt5, /nur bei `ok: false`/,
+    "Schritt 5 bindet den Kommentar noch an `ok: false` — dann hat der Synthese-Befund keinen Ort");
+  assert.match(schritt6, /`ok: true`/,
+    "der gruene Fall wird nirgends als Anlass fuer den Kommentar benannt");
+});
+
 test("der befundfreie Lauf ist geregelt", () => {
   const nachDerListe = schritt6.slice(listeStart, fehlerpfadStart + 2000);
   assert.match(nachDerListe, /befundfrei/i,

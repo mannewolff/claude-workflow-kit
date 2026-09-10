@@ -108,13 +108,22 @@ test("[skills-11] der Ausfall des Abgleichs selbst ist geregelt", () => {
     "dass nicht automatisch wiederholt wird, muss dastehen");
 });
 
+// Seit Issue #598 traegt derselbe Kommentar auch die Befunde der Synthese-
+// Pruefung, und die laeuft gerade bei `ok: true`. Die Zusicherung "nur bei
+// `ok: false`" ist deshalb umgebaut und nicht ergaenzt: Angehaengt haette sie
+// einen roten Bestandstest neben dem neuen stehen lassen.
 test("[skills-11] der Abgleich-Kommentar traegt die Kopfzeile woertlich", () => {
   assert.ok(SKILL.includes("## Synthese-Abgleich, Runde"),
     "die Kopfzeile ist der Anker, an dem der Kommentar erkannt wird");
-  assert.match(abgleich, /nur bei `ok: false`/,
-    "im gruenen Fall ist der Marker die Spur — ein Kommentar ohne Inhalt waere Rauschen");
   assert.match(abgleich, /Runde des geprüften Synthese-Kommentars/i,
     "ohne diesen Satz zaehlt eine Session den Abgleich eigenstaendig");
+});
+
+test("[skills-11] die Beleg-Befunde stehen nur bei `ok: false` im Kommentar", () => {
+  assert.match(abgleich, /`ok: false`/,
+    "der Befund-Fall des Kommandos ist nicht benannt");
+  assert.match(abgleich, /ohneBeleg/,
+    "welche Eintraege den Kommentar fuellen, muss dastehen — ein gruener Abgleich liefert keine");
 });
 
 test("[skills-11] der Abgleich-Kommentar entsteht interaktiv unabhaengig von der Antwort", () => {

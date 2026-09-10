@@ -972,12 +972,31 @@ Jeder Prüfer bekommt denselben Body, aber seinen eigenen Auftrag. Auf der Stufe
 | `plan` | `architektur-bestand` | Stimmt jede Behauptung über den Bestand? Trägt jede Entscheidung eine Begründung? Was bricht, das der Plan nicht nennt? |
 | `plan` | `schnitt-abhaengigkeiten` | Lässt sich der Plan überhaupt zerlegen? Welche Reihenfolge erzwingt er? Sind die offenen Fragen wirklich Stopp-Fragen? |
 | `issue` | `pruefbarkeit` | Ist jedes Akzeptanzkriterium maschinell prüfbar? Steht Manuelles im dafür vorgesehenen Block? Fehlen Randfälle? |
+| — | `synthese` | Bleibt ein Widerspruch zwischen den Befundlisten unbenannt? Trägt die Begründung, mit der ein Fund verworfen wurde? |
 
 Mehrere Modelle mit identischem Prompt sind kein zweiter Blick, sondern derselbe Blick zweimal. Der Gewinn liegt im Blickwinkel, nicht in der Anzahl — deshalb Rollen und nicht bloß Wiederholung.
 
 Ohne konfigurierten `reviewStufen`-Block gilt für alle Stufen der Legacy-Fallback: zwei Reviewer mit den Rollen `vollstaendigkeit-pruefbarkeit` und `scope-risiko-bestand`, inhaltlich die bisherigen beiden.
 
-**Jede Rolle trägt die Streich-Frage: „Was kann raus?"** Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Dokument nach dem Review doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+**Jede Rolle trägt die Streich-Frage: „Was kann raus?"** — jede außer `synthese`, die kein Dokument prüft. Reviewer schlagen von sich aus Ergänzungen vor, weil Ergänzen leichter ist als Streichen. Ohne diese Frage ist das Dokument nach dem Review doppelt so lang und nicht besser implementierbar. Die Frage ist kein Feinschliff, sondern die Gegenkraft, ohne die das Verfahren kippt.
+
+### Wer die Synthese liest
+
+`synthese` ist die einzige Rolle ohne Stufe. Sie läuft nicht am Anfang, sondern am Ende: Steht die Synthese, liest sie ein Modell, das weder das Dokument geschrieben noch eine Befundliste beigesteuert hat.
+
+Der Grund ist eine Lücke, die die übrigen Rollen offenlassen. Aus den Befundlisten wird ein Textvorschlag, und dabei entscheidet dieselbe Session, welcher Fund einfließt und welcher verworfen wird — geprüft hat das bisher niemand. Der Beleg-Abgleich (`issue-review synthese-check`) deckt davon nur die mechanische Hälfte ab: ob ein als übernommen bezeichneter Fund im Vorschlag auch wirklich steht. Ob die Begründung eines **verworfenen** Funds trägt, sieht kein Kommando.
+
+Sie läuft nur nach einem grünen Beleg-Abgleich und nur, wenn es etwas zu prüfen gibt: mindestens ein verworfener Fund oder zwei Befundlisten, die beide etwas gefunden haben. Sie prüft die Abwägung, **nicht das Dokument** — und ausdrücklich nicht, ob eine Begründung sachlich zutrifft; dafür müsste sie den Bestand nachschlagen und wäre damit ein weiterer Reviewer.
+
+Drei Ausgänge, ablesbar am Ticket:
+
+| Ausgang | Wann | Folge |
+|---|---|---|
+| **Befund** | die Prüfung nennt eine unbelegte Verwerfung oder einen unbenannten Widerspruch | kein Marker, `kit:klaeren`, Befunde im Kommentar `## Synthese-Abgleich` |
+| **Entfall** | kein unbeteiligtes Modell verfügbar, oder nichts zu prüfen | Marker **wird** gesetzt, mit dem Zusatz `, ohne Synthese-Prüfung` in der Klammer; Zeile `Synthese-Pruefung entfallen:` im Kommentar |
+| **Ausfall** | Exit ungleich 0, keine Antwort, oder eine Antwort ohne Befund und ohne den ausdrücklichen Satz, dass nichts gefunden wurde | kein Marker, `kit:klaeren`, Zeile `Synthese-Pruefung ausgefallen:`; kein zweiter Versuch, kein Ersatz-Prüfer |
+
+Der Unterschied zwischen Entfall und Ausfall ist der Kern: Beim Entfall gab es nichts zu prüfen oder niemanden, der prüfen durfte — beides ist eine Eigenschaft der Lage, kein Loch im Lauf. Ein Projekt mit zwei Reviewern erreicht die Besetzung nie und verlöre sonst dauerhaft jeden Marker. Beim Ausfall dagegen sollte geprüft werden und wurde nicht.
 
 ### Die Gate-Register: woran ein Fund gemessen wird
 
