@@ -106,6 +106,39 @@ test("Projektlokaler Install legt Config, Skills und CLAUDE-workflow.md an", () 
   }
 });
 
+// --- Bytegleichheit der abgelegten Vorlagen (Issue #561) ---
+//
+// `sync-blobs --check` prueft die eine Haelfte des Wegs: Vorlage gegen Blob. Dieser Test
+// prueft die andere: Blob gegen die Datei, die der Installer im Zielprojekt ablegt. Bis
+// hierher deckte nur `existsSync` ab, DASS die Datei entsteht — nicht, WAS drinsteht.
+// Ein Blob, der beim Ablegen beschnitten oder umkodiert wird, faellt sonst niemandem auf.
+//
+// Verglichen werden Rohbytes. Ein Stringvergleich mit Trim verschluckte genau die
+// Fehlerklasse, um die es geht.
+
+const VORLAGEN = ["CLAUDE-workflow.md", "CLAUDE-Fachplan.md", "CLAUDE-Plan.md"];
+
+test("[installer-7] der Installer legt die Vorlagen bytegleich zur Repo-Vorlage ab", () => {
+  const dir = fixture("install-bytegleich-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    for (const name of VORLAGEN) {
+      const vorlagePfad = join(repoRoot, "templates", name);
+      const abgelegtPfad = join(dir, ".claude", name);
+      const vorlage = readFileSync(vorlagePfad);
+      const abgelegt = readFileSync(abgelegtPfad);
+      assert.ok(
+        vorlage.equals(abgelegt),
+        `${name} weicht ab:\n  Vorlage:  ${vorlagePfad} (${vorlage.length} Bytes)\n  Abgelegt: ${abgelegtPfad} (${abgelegt.length} Bytes)`
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- .gitignore (Issue #208) ---
 //
 // workflow.config.json gehoert ins Repository: buildChecks, columns und Branch-Namen
