@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { neueKommentare, bodyVorschlagVorhanden } from "../kit/night.mjs";
+import { VORSCHLAG_KOPF } from "../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -111,6 +112,29 @@ test("bodyVorschlagVorhanden: ohne Rundenangabe genuegt irgendein gueltiger Vors
 
 test("bodyVorschlagVorhanden: Runde 0 ist keine positive Rundenzahl", () => {
   assert.equal(bodyVorschlagVorhanden(["## Body-Vorschlag, Runde 0\n\nText"]), false);
+});
+
+// Seit Issue #594 kommt das Muster aus board.mjs, statt hier ein zweites Mal zu stehen.
+// Der Identitaetsnachweis liegt in night-nachbarn-identitaet.test.mjs; hier steht das
+// Verhaltens-Gegenstueck: Was board.mjs als Kopfzeile liest, liest die Wertung des
+// Runners genauso — auch die Randformen, an denen zwei getrennt gepflegte Muster
+// zuerst auseinanderliefen.
+test("[night-12] bodyVorschlagVorhanden wertet jede Kopfzeile so wie das Muster aus board.mjs", () => {
+  const koepfe = [
+    "## Body-Vorschlag, Runde 1",
+    "##Body-Vorschlag,Runde 2",
+    "##   Body-Vorschlag,   Runde 12   ",
+    "## Body-Vorschlag, Runde eins",
+    "## Body-Vorschlag Runde 1",
+    "### Body-Vorschlag, Runde 1",
+  ];
+  for (const kopf of koepfe) {
+    assert.equal(
+      bodyVorschlagVorhanden([`${kopf}\n\nGeschaerfter Text.`]),
+      VORSCHLAG_KOPF.test(kopf),
+      `abweichende Wertung fuer ${JSON.stringify(kopf)}`,
+    );
+  }
 });
 
 // --- Die Schleife ---

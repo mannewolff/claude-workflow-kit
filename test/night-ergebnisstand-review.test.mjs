@@ -57,7 +57,7 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-function setupProjekt(praefix) {
+function setupProjekt(praefix, vorGitCommit = () => {}) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
@@ -68,6 +68,9 @@ function setupProjekt(praefix) {
   // Bewusst OHNE `.claude/*`: Der Ergebnisstand muss untracked sichtbar bleiben, sonst
   // pruefte der Dirty-Test die falsche Datei. Das Textprotokoll bleibt ignoriert.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\naufrufe.log\n");
+  // Alles, was der Lauf vorfindet, aber nicht selbst anlegt, gehoert VOR den Commit —
+  // sonst schlaegt der Rest-Guard an, bevor eine Runde bewertet wird.
+  vorGitCommit(dir);
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(run(dir, "git", a).status, 0);
@@ -87,8 +90,8 @@ function backlogIssue(dir, titel, body) {
   return String(issue.id);
 }
 
-function mitProjekt(praefix, fn) {
-  const dir = setupProjekt(praefix);
+function mitProjekt(praefix, fn, vorGitCommit) {
+  const dir = setupProjekt(praefix, vorGitCommit);
   try {
     fn(dir);
   } finally {
@@ -274,6 +277,76 @@ test("[night-5] ohne --verbose entsteht auch im Review-Modus der Stand, mit kenn
       `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(s.kennzahlenHinweis)}`,
     );
   });
+});
+
+// --- Der fuenfte Ausgang (Issue #594) ---
+//
+// Der Ausgang traegt als einziger einen Grund an der Einheit: Am Board steht nur das
+// Label, den Abgleich-Kommentar schreibt der Skill. Ohne den Text im Stand muesste ein
+// Leitstand morgens raten, WELCHE Behauptung unbelegt blieb.
+
+const SYNTHESE_DATEI = "synthese-fixture.md";
+const VORSCHLAG_DATEI = "vorschlag-fixture.md";
+
+// Zwei Uebernahmen, zwei verschiedene Gruende: eine ohne jede Beleg-Angabe, eine mit
+// einem Zitat, das im Vorschlag nicht vorkommt.
+const ZWEI_OHNE_BELEG = '## Synthese, Runde 1\n\n'
+  + '- fable, "Kontext fehlt" — uebernommen\n'
+  + '- gpt-astra, "Kriterium unscharf" — uebernommen → Akzeptanzkriterium: "steht so nirgends"\n';
+const VORSCHLAG_TEXT = "## Body-Vorschlag, Runde 1\n\n## Kontext\n\nDer neue Satz.\n";
+
+const KONTEXT_BODY = "## Kontext\n\nAutor-Modell: claude-opus-5\n";
+const SYNTHESE_KOMMENTAR = `node ${BOARD} issue comment "$NIGHT_ISSUE_ID" --text '## Synthese, Runde 1
+
+- fable, "Kontext fehlt" — uebernommen'`;
+
+/**
+ * Wie in test/night-review-loop.test.mjs: board.mjs wird zum Wrapper, der
+ * `issue-review synthese-check <id>` auf den Datei-Weg desselben Kommandos umlegt. Der
+ * lokale Tracker haengt Kommentare an den Body und liefert kein comments-Array — ueber
+ * die Kartennummer faende die echte Pruefung dort nie eine Synthese.
+ */
+function boardMitSyntheseAkte(dir) {
+  const kit = join(dir, ".claude", "kit");
+  copyFileSync(join(kit, "board.mjs"), join(kit, "board-echt.mjs"));
+  writeFileSync(join(dir, SYNTHESE_DATEI), ZWEI_OHNE_BELEG, "utf-8");
+  writeFileSync(join(dir, VORSCHLAG_DATEI), VORSCHLAG_TEXT, "utf-8");
+  writeFileSync(join(kit, "board.mjs"), `import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const hier = dirname(fileURLToPath(import.meta.url));
+const wurzel = join(hier, "..", "..");
+const roh = process.argv.slice(2);
+const synthese = join(wurzel, ${JSON.stringify(SYNTHESE_DATEI)});
+const vorschlag = join(wurzel, ${JSON.stringify(VORSCHLAG_DATEI)});
+const umleiten = roh[0] === "issue-review" && roh[1] === "synthese-check" && existsSync(synthese);
+const cliArgs = umleiten
+  ? ["issue-review", "synthese-check", "--synthese-file", synthese, "--vorschlag-file", vorschlag]
+  : roh;
+const res = spawnSync(process.execPath, [join(hier, "board-echt.mjs"), ...cliArgs], { stdio: "inherit" });
+process.exit(res.status ?? 1);
+`, "utf-8");
+}
+
+test("[night-12] der Ausgang syntheseOhneBeleg traegt je unbelegtem Fund eine Grundzeile", NUR_POSIX, () => {
+  mitProjekt("night-review-stand-synthese-", (dir) => {
+    const id = backlogIssue(dir, "Ein Issue", KONTEXT_BODY);
+    const res = run(dir, process.execPath, [NIGHT, "--review", "--verbose"], { NIGHT_CLAUDE_CMD: SYNTHESE_KOMMENTAR });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const s = stand(dir);
+    // Die Schemafassung bleibt unveraendert: Der Ausgang nutzt das vorhandene Feld
+    // `grund`, statt der Einheit ein neues anzuhaengen.
+    assert.equal(s.schemaFassung, 1);
+    const e = einheit(s, id);
+    assert.equal(e.ausgang, "syntheseOhneBeleg");
+    assert.deepEqual(e.grund.split("\n"), [
+      'fable: „Kontext fehlt" — beleg-fehlt',
+      'gpt-astra: „Kriterium unscharf" — zitat-nicht-gefunden',
+    ]);
+  }, boardMitSyntheseAkte);
 });
 
 test("[night-5] mit --dry-run entsteht im Review-Modus weiterhin keine Datei", NUR_POSIX, () => {

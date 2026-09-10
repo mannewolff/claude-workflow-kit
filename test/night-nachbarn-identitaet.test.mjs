@@ -37,6 +37,16 @@ test("[night-6] ohne Hook stammen die Board-Bindungen aus board.mjs, nicht aus d
   assert.equal(night.nachbarn.GRENZE_RUNDEN, board.GRENZE_RUNDEN);
 });
 
+// Seit Issue #594 auch die beiden Kopfzeilen-Muster. Sie standen als zweite Wahrheit im
+// Runner: `VORSCHLAG_KOPF` woertlich noch einmal, und die Synthese-Erkennung waere als
+// dritte dazugekommen. Ein Muster, das in board.mjs geschaerft wird und hier alt bleibt,
+// laesst den Runner etwas anderes sehen als das Kommando, das er aufruft — an keinem
+// Ergebnis erkennbar, weil beide Seiten fuer sich gruen bleiben.
+test("[night-12] ohne Hook stammen die Kopfzeilen-Muster aus board.mjs", () => {
+  assert.equal(night.nachbarn.VORSCHLAG_KOPF, board.VORSCHLAG_KOPF);
+  assert.equal(night.nachbarn.SYNTHESE_KOPF, board.SYNTHESE_KOPF);
+});
+
 test("[night-6] ohne Hook stammt zusammenfassungPfad aus checks.mjs", () => {
   assert.equal(night.nachbarn.zusammenfassungPfad, checks.zusammenfassungPfad);
 });

@@ -230,6 +230,20 @@ const praefixFallback = (was) => (title) => {
 const reviewZustandFallback = (body, comments, stufe) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — der Pruefzustand ist nicht ableitbar.`);
 };
+// Die beiden Kopfzeilen-Muster kommen seit Issue #594 ebenfalls von dort. `VORSCHLAG_KOPF`
+// stand hier woertlich ein zweites Mal, die Synthese-Erkennung waere als dritte Wahrheit
+// dazugekommen — und ein Muster, das in board.mjs geschaerft wird und hier alt bleibt,
+// laesst den Runner etwas anderes sehen als das Kommando, das er aufruft.
+//
+// Der Ersatz ist ein OBJEKT mit `exec`, keine Funktion und kein `undefined`: Die
+// Aufrufstellen rufen `exec` am Muster auf, und `undefined` ergaebe dort „Cannot read
+// properties of undefined (reading 'exec')" statt der Meldung, die den fehlenden
+// Nachbarn benennt.
+const kopfFallback = (was) => ({
+  exec: () => {
+    throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Kopfzeile ${was} ist nicht erkennbar.`);
+  },
+});
 const {
   parsePruefvorgabe,
   istFachlich: isFachlich,
@@ -237,6 +251,8 @@ const {
   istIdee: isIdee,
   reviewZustand,
   GRENZE_RUNDEN,
+  VORSCHLAG_KOPF,
+  SYNTHESE_KOPF,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
@@ -245,6 +261,8 @@ const {
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
       reviewZustand: reviewZustandFallback,
+      VORSCHLAG_KOPF: kopfFallback("## Body-Vorschlag, Runde <n>"),
+      SYNTHESE_KOPF: kopfFallback("## Synthese, Runde <n>"),
       // Bewusst keine Zahl: Eine Drei hier waere genau die zweite Wahrheit, die der
       // Export in board.mjs vermeidet. `undefined` laesst `grenzeErreicht` unten in die
       // sichere Richtung fallen — ohne Nachbarn laeuft keine Pruef-Session. Dorthin
@@ -284,6 +302,8 @@ export const nachbarn = {
   istIdee: isIdee,
   reviewZustand,
   GRENZE_RUNDEN,
+  VORSCHLAG_KOPF,
+  SYNTHESE_KOPF,
   zusammenfassungPfad,
 };
 
@@ -2267,7 +2287,6 @@ export function neueKommentare(vorher, nachher) {
     .filter(Boolean);
 }
 
-const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
 export const RUNDEN_KOPF = /^##[^\n]*?,[^\S\n]*Runde[^\S\n]*(\d+)[^\S\n]*$/;
 
 /** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
@@ -2311,9 +2330,35 @@ export function bodyVorschlagVorhanden(kommentare) {
 }
 
 /**
+ * Traegt diese Session eine NEUE Synthese bei (Issue #594)?
+ *
+ * Gueltig ist ein seit dem Vorher-Stand hinzugekommener Kommentar, dessen erste Zeile
+ * `## Synthese, Runde <n>` lautet — dieselbe Bindung an die erste Zeile wie bei
+ * `bodyVorschlagVorhanden` und dasselbe Muster, das `synthese-check` am Board sucht.
+ *
+ * Die Bedingung entscheidet, OB der Runner nachprueft. Ohne sie pruefte er die Synthese
+ * einer frueheren Session mit und meldete einen Befund, den diese Nacht nicht
+ * verursacht hat — waehrend `ohneErgebnis`, der eigentliche Befund, verschwaende.
+ */
+function neueSyntheseVorhanden(kommentare) {
+  return (kommentare || []).some((text) => SYNTHESE_KOPF.exec(kopfUndRest(text).kopf) !== null);
+}
+
+/**
+ * Der Grund-Text des Ausgangs `syntheseOhneBeleg` — je unbelegtem Fund eine Zeile.
+ *
+ * Bewusst ein Text und kein weiteres Feld an der Einheit: Die Schemafassung des
+ * Ergebnisstands bleibt damit unveraendert, und `grund` fuehrt dort ohnehin schon die
+ * Begruendung eines Ausgangs.
+ */
+function syntheseGrundText(ohneBeleg) {
+  return (ohneBeleg || []).map((e) => `${e.reviewer}: „${e.fund}" — ${e.grund}`).join("\n");
+}
+
+/**
  * Laesst jeden Kandidaten von einer frischen /issue-review-Session pruefen.
  *
- * Erfolg ist dreistufig, weil der Skill den Marker nur bei befundfreiem Review setzt:
+ * Erfolg ist mehrstufig, weil der Skill den Marker nur bei befundfreiem Review setzt:
  *   1. Marker im Body              -> geprueft, ohne gewichtigen Befund
  *   2. kein Marker, aber neue Spur -> geprueft, MIT Befund; wartet planmaessig auf
  *                                     den Menschen. Ebenfalls ein Erfolg.
@@ -2329,36 +2374,62 @@ export function bodyVorschlagVorhanden(kommentare) {
 /**
  * Wertet aus, was eine Review-Session am Board hinterlassen hat (Issue #404).
  *
- * Vier Ausgaenge, und der Aufrufer soll sie nur zaehlen muessen: `ohneBefund`
- * (Marker gesetzt), `mitBefund` (Befunde samt uebernehmbarem Body-Vorschlag),
- * `schaerfungFehlt` (Befunde ohne Vorschlag) und `ohneErgebnis` (die Session hat
- * nichts hinterlassen). Die beiden letzten hinterlassen ausserdem einen Kommentar
- * am Ticket — sie verlangen morgens je einen anderen Handgriff.
+ * Fuenf Ausgaenge, und der Aufrufer soll sie nur zaehlen muessen: `syntheseOhneBeleg`
+ * (die neue Synthese behauptet Uebernahmen, die im Body-Vorschlag nicht stehen),
+ * `ohneBefund` (Marker gesetzt), `mitBefund` (Befunde samt uebernehmbarem
+ * Body-Vorschlag), `schaerfungFehlt` (Befunde ohne Vorschlag) und `ohneErgebnis` (die
+ * Session hat nichts hinterlassen). Rueckgabe ist `{ ausgang, grund }`; einen Grund
+ * traegt nur der erste. Drei der Ausgaenge schreiben ausserdem ans Ticket — zwei einen
+ * Kommentar, der erste ein Label — denn sie verlangen morgens je einen anderen
+ * Handgriff.
+ *
+ * Der Abgleich steht VOR der Marker-Pruefung (Plan #589, A8). Setzte eine Session den
+ * Marker entgegen der Regel trotz `ok: false`, bliebe der Befund sonst unsichtbar, und
+ * das Ticket ginge als geprueft durchs Ready-Gate. Dass der Skill denselben Abgleich
+ * seit Issue #593 selbst fuehrt, traegt hier nicht: Die Warnung gegen genau diesen
+ * Fehler stand am 2026-08-12 schon im Skill und wurde neunmal in einem Lauf uebergangen.
  *
  * Getrennt von der Schleife, weil die Schleife eine andere Aufgabe hat: Sie
  * entscheidet, WELCHE Dokumente drankommen und wann der Lauf hart stoppt. Was
  * dabei herauskam, ist die Frage dieser Funktion.
  */
 function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
+  const neue = neueKommentare(vorher, nachher);
+
+  if (neueSyntheseVorhanden(neue)) {
+    // Ueber den bestehenden board()-Helfer: Ein Fehlschlag ist wie jeder andere
+    // Board-Zugriff ein Infrastruktur-Fehler und kein sechster Ausgang.
+    const abgleich = board("issue-review", "synthese-check", String(kandidat.id));
+    if (abgleich.ok === false) {
+      const grund = syntheseGrundText(abgleich.ohneBeleg);
+      log(`  Nach ${minutes} min: Issue #${kandidat.id} — Synthese ohne Beleg: ${(abgleich.ohneBeleg || []).length} als uebernommen bezeichnete Funde stehen nicht im Body-Vorschlag.`);
+      // Die EINZIGE Board-Schreibung dieses Ausgangs. Den Abgleich-Kommentar schreibt
+      // der Skill (Issue #593); das Label haelt Ready-Gate und Folgenacht von selbst
+      // zurueck, statt sich auf eine Protokollzeile zu verlassen.
+      board("issue", "label", "add", String(kandidat.id), KLAEREN_LABEL);
+      return { ausgang: "syntheseOhneBeleg", grund };
+    }
+  }
+
   if (hasStageMarker(nachher.body, stufe)) {
     log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
-    return "ohneBefund";
+    return { ausgang: "ohneBefund" };
   }
 
   if (issueSpur(nachher) === issueSpur(vorher)) {
     log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
     board("issue", "comment", String(kandidat.id),
       "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
-    return "ohneErgebnis";
+    return { ausgang: "ohneErgebnis" };
   }
 
   // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
   // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
   // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
   // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
-  if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
+  if (bodyVorschlagVorhanden(neue)) {
     log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
-    return "mitBefund";
+    return { ausgang: "mitBefund" };
   }
 
   log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
@@ -2366,7 +2437,7 @@ function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
     "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
     + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
     + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
-  return "schaerfungFehlt";
+  return { ausgang: "schaerfungFehlt" };
 }
 
 /**
@@ -2419,7 +2490,7 @@ async function runReviewLoop(kandidaten, args) {
   let sessions = 0;
   let uebersprungen = 0;
   let hardStop = false;
-  const zaehler = { ohneBefund: 0, mitBefund: 0, schaerfungFehlt: 0, ohneErgebnis: 0 };
+  const zaehler = { ohneBefund: 0, mitBefund: 0, schaerfungFehlt: 0, syntheseOhneBeleg: 0, ohneErgebnis: 0 };
 
   for (const kandidat of kandidaten) {
     if (sessions >= args.max) {
@@ -2469,19 +2540,26 @@ async function runReviewLoop(kandidaten, args) {
     }
 
     const nachher = board("issue", "get", String(kandidat.id));
-    const ausgang = werteReviewSession(kandidat, vorher, nachher, stufe, minutes);
+    const { ausgang, grund } = werteReviewSession(kandidat, vorher, nachher, stufe, minutes);
     zaehler[ausgang]++;
     // Der Ausgang woertlich, wie ihn werteReviewSession liefert (Issue #489): Ein
-    // eigenes Vokabular hier waere eine zweite Stelle, an der die vier Faelle stehen.
-    // Kein Pruefstand — ein Review-Lauf faehrt keine Pflicht-Checks.
-    einheitErgaenzen(einheit, { ausgang, dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
+    // eigenes Vokabular hier waere eine zweite Stelle, an der die fuenf Faelle stehen.
+    // Kein Pruefstand — ein Review-Lauf faehrt keine Pflicht-Checks. Der Grund kommt
+    // nur mit, wo es einen gibt: ein leeres Feld an jeder anderen Einheit saehe aus
+    // wie ein verlorener Text (Issue #594).
+    einheitErgaenzen(einheit, {
+      ausgang,
+      ...(grund ? { grund } : {}),
+      dauerMs,
+      kennzahlen: leseKennzahlen(res.stdout),
+    });
   }
 
   // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
   // morgens verlangt er einen anderen Handgriff als beide (Issue #310). Der
   // Gesamt-Exit bleibt trotzdem 0 — die Befunde stehen am Board, ein harter Stopp
   // waere unverhaeltnismaessig.
-  log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
+  log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${zaehler.syntheseOhneBeleg} Synthese ohne Beleg, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
   log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   // Der Abschluss gehoert hierher und nicht in main(): Der Review-Modus beendet den
   // Prozess selbst und kaeme an einer Stelle in main() nie an (Issue #489). Ein

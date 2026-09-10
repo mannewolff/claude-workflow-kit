@@ -66,6 +66,25 @@ test("[night-6] ohne board.mjs wirft der Ersatz fuer istIdee", () => {
   assert.throws(() => night.nachbarn.istIdee("[Idee] Etwas"), /das Praefix \[Idee\] ist nicht erkennbar/);
 });
 
+// Die Kopfzeilen-Muster sind keine Funktionen, sondern Objekte mit `exec` — und der
+// Ersatz muss dieselbe Form tragen (Issue #594). `undefined` an ihrer Stelle liefe in
+// „Cannot read properties of undefined (reading 'exec')" und naehme dem Runner genau die
+// Auskunft, dass board.mjs fehlt.
+test("[night-12] ohne board.mjs wirft der Ersatz fuer VORSCHLAG_KOPF beim exec-Aufruf", () => {
+  assert.equal(typeof night.nachbarn.VORSCHLAG_KOPF.exec, "function");
+  assert.throws(
+    () => night.nachbarn.VORSCHLAG_KOPF.exec("## Body-Vorschlag, Runde 1"),
+    /board\.mjs liegt nicht neben night\.mjs/,
+  );
+});
+
+test("[night-12] ohne board.mjs wirft der Ersatz fuer SYNTHESE_KOPF beim exec-Aufruf", () => {
+  assert.throws(
+    () => night.nachbarn.SYNTHESE_KOPF.exec("## Synthese, Runde 1"),
+    /board\.mjs liegt nicht neben night\.mjs/,
+  );
+});
+
 // Das Verhaltens-Gegenstueck zu den Wuerfen oben (Issue #394): Beide Aufrufstellen
 // fangen den Wurf. Faellt dieses Fangen weg, crasht der Nacht-Runner, statt
 // auszusortieren.

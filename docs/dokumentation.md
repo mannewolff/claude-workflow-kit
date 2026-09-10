@@ -680,13 +680,17 @@ Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalt
 
 `night.mjs --review` startet deshalb **genau eine Vorflug-Session** — gleiche Bauart, gleicher Startpfad, gleiche Rechte wie eine spätere Review-Session, aber mit festem günstigem Modell und kurzem eigenem Zeitlimit, damit `--dry-run` billig und schnell bleibt. Sie startet jedes `kind: "command"`-Kommando einmal direkt mit dem Prompt über stdin (ausdrücklich **nicht** über `board.mjs issue-review check` — dieser Pfad steht in `sandbox.excludedCommands` und misst damit wieder die falsche Umgebung) und prüft die Erreichbarkeit des Trackers. Jeder Befund nennt die Umgebung: `review-session` aus dem Vorflug, `runner` aus `board.mjs issue-review check`. Die Tracker-Erreichbarkeit ist ein **eigener** Befund — bei Issue #248 scheiterte nicht der Reviewer, sondern das `issue get`, und wer das als Reviewer-Ausfall meldet, schickt den Menschen morgens in die falsche Ecke. Lässt sich die Vorflug-Session gar nicht starten oder liefert sie keinen auswertbaren Befund, ist auch das ein eigener Grund zum Stopp. Verschmutzt sie den Working Tree, gilt derselbe harte Stopp wie nach einer regulären Review-Session. Der interaktive Pfad (`/issue-review`, Schritt 0) bleibt unverändert — dort läuft der Befehl ohnehin schon in einer echten Session.
 
-**Drei Ausgänge pro Issue**, und der mittlere ist der wichtigste:
+**Fünf Ausgänge pro Issue**, und der mittlere ist der wichtigste:
 
 | Was die Session hinterlässt | Bewertung |
 |---|---|
+| eine neue Synthese, deren übernommene Funde im Body-Vorschlag nicht belegt sind | Synthese ohne Beleg; das Issue bekommt `kit:klaeren`, kein Marker |
 | Marker im Body | geprüft, ohne gewichtigen Befund |
-| kein Marker, aber Befunde als Kommentar | **geprüft, mit Befund** — wartet planmäßig auf dich |
+| kein Marker, aber Befunde als Kommentar **samt** Body-Vorschlag | **geprüft, mit Befund** — wartet planmäßig auf dich |
+| Befunde **ohne** Body-Vorschlag | Schärfung fehlt; das Issue wird kommentiert, der Lauf geht weiter |
 | nichts | ohne Ergebnis; das Issue wird kommentiert, der Lauf geht weiter |
+
+Der erste Ausgang greift **vor** der Marker-Prüfung: Der Runner hält die als übernommen bezeichneten Funde selbst gegen den Body-Vorschlag (`issue-review synthese-check`), sobald diese Session eine Synthese hinterlassen hat. Setzte eine Session den Marker entgegen der Regel trotzdem, bliebe der Befund sonst unsichtbar — und das Issue ginge als geprüft durchs Ready-Gate. Einen Kommentar schreibt der Runner dabei nicht; den Abgleich schreibt `/issue-review` selbst, der Runner zeichnet nur mit `kit:klaeren`. Welche Behauptung unbelegt blieb, steht im Ergebnisstand.
 
 Der mittlere Fall ist ausdrücklich ein **Erfolg**, kein Fehlschlag: Es sind genau die Issues, bei denen sich der Review gelohnt hat. Kein Issue wird in diesem Modus am Board bewegt — die Kandidaten liegen bereits im Backlog. Hinterlässt eine Review-Session Änderungen im Working Tree, stoppt der Lauf hart; sie hat dort nichts zu suchen.
 
