@@ -24,21 +24,45 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Paket #583 stellt `/issue-review` um; #584 die uebrigen sieben Skills, #585
-// weitet diese Tabelle auf alle zwoelf Stellen aus.
+// Alle zwoelf Befehlsstellen in acht Skill-Dateien, EINZELN benannt statt gezaehlt:
+// Eine Gesamtzahl bliebe bei einer dreizehnten Stelle gruen, eine Aufzaehlung wird rot.
+// #583 stellte /issue-review um, #584 die uebrigen sieben Skills, #585 weitet die
+// Pruefung hierauf aus.
 export const STELLEN = [
   { datei: "skills/issue-review/SKILL.md", befehl: "Befunde", zweck: "befunde" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Synthese", zweck: "synthese" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Body-Schreibung", zweck: "body" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Body-Vorschlag", zweck: "vorschlag" },
+  { datei: "skills/issues/SKILL.md", befehl: "issue create mit --derived-from" },
+  { datei: "skills/issues/SKILL.md", befehl: "issue create" },
+  { datei: "skills/fachplan/SKILL.md", befehl: "issue create" },
+  { datei: "skills/techplan/SKILL.md", befehl: "issue create (mehrzeilig)" },
+  { datei: "skills/implement-ready/SKILL.md", befehl: "Abschlussbericht" },
+  { datei: "skills/implement-next/SKILL.md", befehl: "Abschlussbericht" },
+  { datei: "skills/implement-done/SKILL.md", befehl: "Abschlussbericht" },
+  { datei: "skills/review/SKILL.md", befehl: "Review-Ergebnis" },
 ];
 
-// Eine Board-Schreibzeile: `board.mjs issue create|update|comment` mit --text/--body.
-const BOARD_SCHREIBZEILE = /^.*board\.mjs issue (?:create|update|comment).*--(?:text|body)\b.*$/gm;
+// Die acht Dateien, in denen die zwoelf Stellen liegen.
+const DATEIEN = [...new Set(STELLEN.map((stelle) => stelle.datei))];
 
-/** Alle Board-Schreibzeilen einer Datei, ohne die Zeilen im Register-Beispiel. */
+// Nur Zeilen INNERHALB von ```bash-Bloecken zaehlen. Fliesstext, der den Befehl
+// erwaehnt ("`board.mjs issue create` legt kein Issue an, wenn …"), ist kein Aufruf —
+// ein Test, der ihn mitliest, ist rot, ohne dass etwas kaputt waere.
+const BASH_BLOCK = /```bash\n([\s\S]*?)```/g;
+const BOARD_SCHREIBZEILE = /board\.mjs issue (?:create|update|comment)\b/;
+
+/** Alle Board-Schreibzeilen aus den bash-Bloecken einer Datei. */
 function boardSchreibzeilen(text) {
-  return text.match(BOARD_SCHREIBZEILE) ?? [];
+  const zeilen = [];
+  for (const [, block] of text.matchAll(BASH_BLOCK)) {
+    // Mehrzeilige Aufrufe (Backslash-Fortsetzung) zu einer Zeile zusammenziehen.
+    const entfaltet = block.replaceAll(/\\\n\s*/g, " ");
+    for (const zeile of entfaltet.split("\n")) {
+      if (BOARD_SCHREIBZEILE.test(zeile)) zeilen.push(zeile);
+    }
+  }
+  return zeilen;
 }
 
 for (const { datei, befehl } of STELLEN) {
@@ -46,11 +70,11 @@ for (const { datei, befehl } of STELLEN) {
     const text = lies(datei);
     const zeilen = boardSchreibzeilen(text);
     assert.ok(zeilen.length > 0, `keine Board-Schreibzeile in ${datei} gefunden`);
+    // Ein kurzer Text als Argument (`--text "Plan erstellt von …"`) bleibt erlaubt —
+    // die Regel gilt fuer LANGE Texte, und die Ausfall-Form ist ausdruecklich eine
+    // zweizeilige Ausnahme. Verboten ist nur, was den ganzen Text durch den
+    // Befehls-Parser zwingt.
     for (const zeile of zeilen) {
-      assert.ok(
-        /--(?:text|body)-file\b/.test(zeile),
-        `Board-Aufruf ohne --text-file/--body-file in ${datei}: ${zeile.trim()}`
-      );
       assert.ok(!/<</.test(zeile), `Heredoc am Board-Aufruf in ${datei}: ${zeile.trim()}`);
       assert.ok(!/\|/.test(zeile), `Pipe am Board-Aufruf in ${datei}: ${zeile.trim()}`);
       assert.ok(
@@ -58,6 +82,11 @@ for (const { datei, befehl } of STELLEN) {
         `stdin-Weg am Board-Aufruf in ${datei}: ${zeile.trim()}`
       );
     }
+    // Und die Datei muss den Dateiweg mindestens einmal zeigen.
+    assert.ok(
+      zeilen.some((zeile) => /--(?:text|body)-file\b/.test(zeile)),
+      `${datei} zeigt nirgends --text-file/--body-file`
+    );
   });
 }
 
@@ -67,9 +96,10 @@ test("[skills-9] issue-review: der Zielpfad steht als Platzhalter, nie als Varia
     !/\$TMPDIR|\$\{TMPDIR\}/.test(text),
     "der Skill nennt $TMPDIR — nachts wird ein Variablen-Redirect als 'path is runtime-determined' abgewiesen"
   );
-  for (const { zweck } of STELLEN) {
-    assert.ok(
-      text.includes(`<tmpdir>/<id>-${zweck}.md`),
+  for (const { zweck } of STELLEN.filter((stelle) => stelle.zweck)) {
+    assert.match(
+      text,
+      new RegExp(`<tmpdir>/<id>-${zweck}\\.md`),
       `Platzhalter <tmpdir>/<id>-${zweck}.md fehlt`
     );
   }
@@ -77,10 +107,11 @@ test("[skills-9] issue-review: der Zielpfad steht als Platzhalter, nie als Varia
 
 test("[skills-9] issue-review: jede Stelle sagt, dass jeder Block ein eigener Werkzeugaufruf ist", () => {
   const text = lies("skills/issue-review/SKILL.md");
-  const treffer = text.match(/eigener\*{0,2} Werkzeugaufruf/g) ?? [];
+  const erwartet = STELLEN.filter((stelle) => stelle.datei.includes("issue-review")).length;
+  const treffer = text.match(/\*{0,2}eigene[rnm]\*{0,2} Werkzeugaufruf/g) ?? [];
   assert.ok(
-    treffer.length >= STELLEN.length,
-    `Satz zum eigenen Werkzeugaufruf steht ${treffer.length}-mal, erwartet mindestens ${STELLEN.length}`
+    treffer.length >= erwartet,
+    `Satz zum eigenen Werkzeugaufruf steht ${treffer.length}-mal, erwartet mindestens ${erwartet}`
   );
 });
 
@@ -130,4 +161,24 @@ test("[skills-9] Register: der Abschnitt 'Lange Texte ans Board' traegt Regel un
     /night-run/,
     "der Abschnitt verweist auf eine Logdatei — das Register wird in Projekte installiert, wo sie nicht existiert"
   );
+});
+
+test("[skills-9] [skills-10] in keiner der acht Dateien steht eine Variable im Redirect-Ziel", () => {
+  for (const datei of DATEIEN) {
+    assert.doesNotMatch(
+      lies(datei),
+      /\$TMPDIR|\$\{TMPDIR\}/,
+      `${datei}: nennt $TMPDIR — ein Variablen-Redirect wird unbeaufsichtigt als 'path is runtime-determined' abgewiesen`
+    );
+  }
+});
+
+test("[skills-10] jede der acht Dateien nennt den eigenen Werkzeugaufruf und den Fehlerpfad", () => {
+  for (const datei of DATEIEN) {
+    const text = lies(datei);
+    assert.match(text, /\*{0,2}eigene[rnm]\*{0,2} Werkzeugaufruf/, `${datei}: Satz zum eigenen Werkzeugaufruf fehlt`);
+    // Umlaute und Fettung variieren zwischen den Dateien; gesucht ist die Aussage.
+    assert.match(text, /unvollst(?:ae|ä)ndige Datei[^.]{0,40}(?:ue|ü)bertragen/,
+      `${datei}: Fehlerpfad fehlt`);
+  }
 });
