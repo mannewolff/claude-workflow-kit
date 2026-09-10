@@ -1,0 +1,13 @@
+{
+  "board": "https://kanban.mwolff.org",
+  "quelle": "587",
+  "abgerufen": "2026-09-10T15:00:16.299Z",
+  "syntheseIndex": 2,
+  "syntheseCreatedAt": "2026-09-10T13:57:58.276295Z",
+  "vorschlagIndex": 1,
+  "vorschlagCreatedAt": "2026-09-10T13:57:27.339033Z",
+  "aufbereitet": true,
+  "aufbereitung": "Jede uebernommen-Stelle traegt einen Beleg aus dem Body-Vorschlag; zwei Streichungen zitieren den alten Body aus der Fundstelle des Fachplan-Reviews.",
+  "uebernommenErwartet": 15,
+  "schlusszeileNennt": 14
+}
