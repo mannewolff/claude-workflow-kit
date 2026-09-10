@@ -51,7 +51,11 @@ Die Zeile wird nie weggelassen, und ihr Wert ist nie leer. Seit Issue #266 legt 
 Der Grund ist nicht die Leitplanke, sondern das, wofür es sie gibt: Ohne die Autor-Modell-Angabe ist nicht bestimmbar, welches Modell das fachliche Issue prüfen darf, ohne sein eigenes Dokument zu prüfen. Ein Prüfer, der seinen eigenen Text liest, ist keiner.
 
 ```bash
-node .claude/kit/board.mjs issue create --title "[Fachlich] Titel" --body - <<'BODY'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/neues-issue.md <<'TEIL1'
 ## Ziel
 ...
 
@@ -59,10 +63,24 @@ Autor-Modell: <wert>
 
 ## Fachliche Akzeptanzkriterien
 ...
-BODY
+TEIL1
 ```
 
-Der Body geht über **stdin** (Issue #271). Ein Story-Body mit Aufzählungen und Anführungszeichen läuft als Kommandozeilen-Argument in dieselbe Quoting-Grenze wie ein technischer. Der Heredoc-Marker ist **quotiert** (`<<'BODY'`), damit die Shell Backticks und `$` im Text nicht auswertet.
+```bash
+cat >> <tmpdir>/neues-issue.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue create --title "[Fachlich] Titel" --body-file <tmpdir>/neues-issue.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
+
+Der Body geht nie als Kommandozeilen-Argument (Issue #271). Ein Story-Body mit Aufzählungen und Anführungszeichen läuft als Kommandozeilen-Argument in dieselbe Quoting-Grenze wie ein technischer. Der Heredoc-Marker ist **quotiert** (`<<'BODY'`), damit die Shell Backticks und `$` im Text nicht auswertet.
+
+**Die Schlussfolgerung war bis zum 2026-09-10 „auch der Heredoc“; sie lautet jetzt „stueckweise in eine Datei“.** Der Heredoc loeste das Quoting-Problem, lief aber in eine andere Wand: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt. Das Quoting-Argument bleibt gueltig — es spricht nur fuer den Dateiweg aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, statt fuer den Heredoc am Board-Aufruf (Issue #584).
 
 **Kein `--derived-from` — nie.** Die Option trägt die Kartennummer des nächsten Vorfahren ans Board (Issue #356). Das fachliche Issue **ist** die Wurzel der Kette: Es hat keinen Vorfahren, und ein Verweis von hier aus zeigte entweder ins Leere oder auf eine fremde Karte. `/techplan` setzt die Option auf dieses Issue hier, `/issues` auf das Plandokument — die Wurzel selbst bleibt ohne.
 

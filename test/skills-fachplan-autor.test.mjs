@@ -62,15 +62,15 @@ test("die Begruendung steht als zusammenhaengende Aussage, nicht als Stichwort",
   assert.match(satz, /eigenes Dokument|eigene Dokument/, "der Selbstpruefungs-Fall muss benannt sein");
 });
 
-test("das Anlege-Kommando nutzt stdin mit quotiertem Heredoc, nie --body mit Wert", () => {
+test("das Anlege-Kommando nutzt --body-file, nie --body mit Wert oder Heredoc", () => {
   const t = text();
   const bashBloecke = [...t.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
   const anlegen = bashBloecke.filter((b) => /issue create/.test(b));
   assert.ok(anlegen.length >= 1, "kein Anlege-Kommando gefunden");
 
   for (const block of anlegen) {
-    assert.match(block, /--body\s+-/, "das Anlege-Kommando muss --body - verwenden (Issue #271)");
-    assert.match(block, /<<'[A-Z]+'/, "quotierter Heredoc erwartet, damit die Shell Backticks nicht auswertet");
+    assert.match(block, /--body-file/, "das Anlege-Kommando muss --body-file verwenden (Issue #584)");
+    assert.doesNotMatch(block, /--body\s+-\s*<</, "am Board-Aufruf darf kein Heredoc stehen (Issue #584)");
     // Jedes --body, dessen Wert nicht genau "-" ist, faellt durch. Erfasst auch
     // einfache Anfuehrungszeichen und mehrzeilige Varianten, an denen eine
     // Pruefung auf die exakte alte Schreibweise vorbeigelaufen waere.

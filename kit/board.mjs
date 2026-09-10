@@ -24,8 +24,9 @@
  *   node board.mjs issue move <id> <status>
  *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
  *   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
- *       '-' liest von stdin. Fuer lange Texte (Review-Befunde) der bevorzugte Weg:
- *       keine Datei, die jemand aufraeumen muss (Issue #270).
+ *       '-' liest von stdin, gut fuer kurze Texte. Fuer lange (Review-Befunde) ist
+ *       '--text-file' der Weg: eine stueckweise per Shell erzeugte Datei ausserhalb
+ *       des Projektverzeichnisses (Issue #584).
  *   node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
@@ -94,7 +95,7 @@ Nutzung:
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
-      '-' liest von stdin; fuer lange Texte der bevorzugte Weg (Issue #270).
+      '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -2836,7 +2837,9 @@ async function issueLabel(tracker, config, args) {
  * (kein Shell-String-Bau) und wie beim stdin-Weg fuer command-Reviewer in
  * /issue-review — hier fuer die Eingabeseite.
  *
- * stdin ist der bevorzugte Weg: Es entsteht keine Datei, die jemand aufraeumen muss.
+ * Fuer kurze Texte ist stdin der einfachste Weg. Fuer lange fuehrt er nicht mehr ans
+ * Ziel: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt — auch im
+ * Heredoc (Issue #584). Dann '--text-file' mit einer stueckweise erzeugten Datei.
  */
 export function leseTextQuelle(direkt, dateiPfad, flagName) {
   const dateiFlag = `--${flagName}-file`;

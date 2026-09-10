@@ -93,11 +93,27 @@ node .claude/kit/board.mjs issue move <id> in_review
 Abschlussbericht als Issue-Kommentar, gleiches Format wie `implement-ready` Schritt 6:
 
 ```bash
-node .claude/kit/board.mjs issue comment <id> --text - <<'BERICHT'
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/id-bericht.md <<'TEIL1'
 ## Abschlussbericht Issue #N
 ...
-BERICHT
+TEIL1
 ```
+
+```bash
+cat >> <tmpdir>/id-bericht.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+```bash
+node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/id-bericht.md
+```
+
+Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
 
 ```
 ## Abschlussbericht Issue #N

@@ -134,15 +134,15 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const skill = (name) => liesDatei(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
 
 test("die Skills zeigen einen Weg ohne Kommandozeilen-Argument", () => {
-  // Seit Issue #583 ist das der Dateiweg (--text-file) statt stdin: Der Parser weist
-  // einen Aufruf ab, der den ganzen Text traegt — auch im Heredoc. `issue-review` ist
-  // dort umgestellt, die uebrigen drei folgen in Issue #584; bis dahin gilt fuer sie
-  // weiterhin der stdin-Weg. Was fuer ALLE gilt: nie als Argument.
+  // Seit Issue #583/#584 ist das der Dateiweg (--text-file) statt stdin: Der Parser
+  // weist einen Aufruf ab, der den ganzen Text traegt — auch im Heredoc.
   for (const name of ["issue-review", "review", "implement-ready", "implement-next"]) {
     const text = skill(name);
     assert.doesNotMatch(text, /issue comment <[^>]*> --text "/,
       `${name}: zeigt noch den Argument-Weg`);
-    assert.match(text, /--text-file|--text -/, `${name}: zeigt weder Datei- noch stdin-Weg`);
+    assert.match(text, /--text-file/, `${name}: zeigt den Dateiweg nicht`);
+    assert.doesNotMatch(text, /board\.mjs issue comment <[^>]*> --text - <</,
+      `${name}: am Board-Aufruf steht noch ein Heredoc`);
   }
 });
 

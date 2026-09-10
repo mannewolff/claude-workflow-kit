@@ -205,10 +205,34 @@ node .claude/kit/board.mjs issue create \
   --title "[Plan] <Titel>" \
   --author-model "<Wert aus Plan-Modell>" \
   --derived-from <N> \
-  --body -
+  --body-file <tmpdir>/plandokument.md
 ```
 
-Der Body geht über **stdin** (`--body -`, Issue #271) — ein Plan mit Codeblöcken und Tabellen läuft als Kommandozeilen-Argument in die Quoting-Grenze.
+Der Plantext entsteht davor stueckweise, jedes Stueck in einem **eigenen** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation — der bestehende Fehlerfall („weder eine Nummer noch einen erfolgreichen Abschluss“) bleibt unveraendert:
+
+```bash
+printenv TMPDIR
+```
+
+```bash
+cat  > <tmpdir>/plandokument.md <<'TEIL1'
+Plan-Modell: <wert>
+Fachliche Quelle: Issue #N
+
+## Ziel
+…
+TEIL1
+```
+
+```bash
+cat >> <tmpdir>/plandokument.md <<'TEIL2'
+… weitere Stuecke, je hoechstens 6.000 Zeichen …
+TEIL2
+```
+
+Der Body geht nie als Kommandozeilen-Argument (Issue #271) — ein Plan mit Codeblöcken und Tabellen läuft als Kommandozeilen-Argument in die Quoting-Grenze.
+
+**Die Schlussfolgerung war bis zum 2026-09-10 „auch der Heredoc“; sie lautet jetzt „stueckweise in eine Datei“.** Der Heredoc loeste das Quoting-Problem, lief aber in eine andere Wand: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt. Das Quoting-Argument bleibt gueltig — es spricht nur fuer den Dateiweg aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, statt fuer den Heredoc am Board-Aufruf (Issue #584).
 
 **`--derived-from <N>` genau dann, wenn der Plan aus `/techplan #N` gegen ein `[Fachlich]`-Issue entstand** (Issue #356). Die Option trägt die Kartennummer des nächsten Vorfahren als Feld ans Board, damit es die Kette Fachplan → Plan → Arbeitspaket als Daten kennt und nicht nur als Zeichen im Beschreibungstext. Bei einem Plan aus dem Chat **entfällt sie** — genauso, wie dort die `Fachliche Quelle`-Zeile entfällt; eine Nummer zu erfinden behauptete eine Quelle, die es nicht gibt.
 
