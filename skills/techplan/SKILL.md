@@ -60,15 +60,25 @@ Trägt #N kein `[Fachlich]`-Präfix, gilt der normale Ablauf unten — kein Sond
 
 ### 0. Bahn bestimmen
 
-**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Es gilt **immer Bahn 2**. Ein Plan-Dokument entsteht auch dann, wenn die Anforderung nach CLAUDE-workflow.md Bahn 1 wäre. Das Bahn-1-Urteil wird dabei **nicht verworfen**, sondern steht als erste Zeile in `## Architektonische Entscheidungen`:
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Es gilt **immer Bahn 2**. Ein Plan-Dokument entsteht auch dann, wenn die Anforderung nach CLAUDE-workflow.md Bahn 1 oder Bahn 3 wäre. Das Urteil wird dabei **nicht verworfen**, sondern steht als erste Zeile in `## Architektonische Entscheidungen` — je nach Bahn eine der beiden Zeilen, wörtlich:
 
 ```
 - Bahn 1 nach CLAUDE-workflow.md; nachts als Plan festgehalten, Entscheidung beim Menschen.
+- Bahn 3 nach CLAUDE-workflow.md; nachts als Plan festgehalten, Entscheidung beim Menschen.
 ```
 
 Ohne Dokument hätte der Nachtlauf kein Erfolgssignal (Issue #513, A4), und die Anforderung nachts direkt umzusetzen verletzte den Stop-Punkt unten. Das Urteil zu verschweigen wäre die dritte Variante und die schlechteste: Der Mensch sähe einen Plan, ohne zu erfahren, dass die Session ihn für unnötig hielt.
 
-**Interaktiv:** Ist die Anforderung Bahn 1 (kleine Änderung nach der Definition in CLAUDE-workflow.md), sag das und biete an, sie **direkt** umzusetzen statt zu planen — kein Plan-Overhead. Nur bei Bahn 2 den vollen Plan erstellen.
+Für Bahn 3 kommt ein eigener Grund dazu: Ein `[Task]` entsteht nur nach ausdrücklicher menschlicher Bestätigung des Wegs (siehe `/task`). Nachts kann keine Bestätigung eingeholt werden, also **kann nachts kein `[Task]` entstehen** — der Plan ist dann die einzige Form, in der das Urteil den Morgen erreicht.
+
+**Interaktiv:** Nicht jede Anforderung braucht einen Plan. Zwei Bahnen führen an ihm vorbei, und der Skill benennt sie, statt zu planen:
+
+- **Bahn 1** (kleine Änderung nach der Definition in CLAUDE-workflow.md): sag das und biete an, sie **direkt** umzusetzen — kein Plan-Overhead.
+- **Bahn 3**: Gibt es **nichts abzuwägen** — stehen also nicht mehrere vertretbare Wege offen —, sag das, biete `/task` an und **plane nicht**. Der Vorgang wird dann ein einzelnes Arbeitspaket mit dem Titel-Präfix `[Task]`, ohne Fachkonzept und ohne Plan.
+
+**Das Bahn-3-Angebot gilt nur, solange kein `[Fachlich]`- und kein `[Plan]`-Dokument als Quelle vorliegt.** Bei `/techplan #N` gegen ein `[Fachlich]`-Issue bleibt der begonnene volle Weg erhalten: `/task` lehnt diese Quelle ausdrücklich ab, und auf einen Skill zu verweisen, der die Nummer zurückweist, wäre eine Sackgasse. Eine **`[Idee]`** als Quelle steht dem Angebot dagegen **nicht** entgegen — sie ist eine rohe Anforderung, kein begonnener Weg, und `/task #N` nimmt sie an.
+
+Nur bei Bahn 2 den vollen Plan erstellen.
 
 ### 1. Anforderung verstehen
 

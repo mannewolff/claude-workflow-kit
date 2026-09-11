@@ -168,6 +168,10 @@ const STUFEN = [
   { titel: "[Fachlich] Eine Anforderung", marker: "Fachplan-Review: fable (2026-08-31)" },
   { titel: "[Plan] Ein Plandokument", marker: "Plan-Review: fable (2026-08-31)" },
   { titel: "Ein Arbeitspaket", marker: "Issue-Review: fable (2026-08-31)" },
+  // `[Task]` ist KEIN Dokument-Praefix (Issue #574): `stufeAusTitel` faellt fuer jedes
+  // unbekannte Praefix auf `issue` zurueck, und genau das belegt dieser Fall — der
+  // Marker der Stufe `issue` wird anerkannt, ohne dass der Adapter das Praefix kennt.
+  { titel: "[Task] Ein Arbeitspaket", marker: "Issue-Review: fable (2026-08-31)" },
 ];
 
 for (const fall of STUFEN) {
@@ -190,18 +194,28 @@ for (const fall of STUFEN) {
   });
 }
 
-test("ein Marker der falschen Stufe belegt nichts", () => {
-  mitProjekt((dir) => {
-    // `Plan-Review:` an einem Arbeitspaket: Die Stufe ist `issue`, und dort zaehlt
-    // allein `Issue-Review:`. Wer das verwechselt, zieht ein ungepruefte Paket nach
-    // Ready.
-    const body = "## Kontext\n\nPlan-Review: fable (2026-08-31)\n\n## Abhaengigkeiten\n\nKeine.\n";
-    const issue = board(dir, "issue", "create", "--title", "Ein Arbeitspaket", "--body", body);
+// Beide Titel fallen auf die Stufe `issue`: der ohne Praefix, weil er keines hat, und
+// der `[Task]`, weil `stufeAusTitel` fuer jedes unbekannte Praefix dorthin zurueckfaellt.
+// Der zweite Fall ist die Probe aufs Exempel (Issue #574): Wuerde `[Task]` je zu einem
+// eigenen Zweig, zaehlte hier ploetzlich ein `Plan-Review:` — und ein ungepruefter Task
+// ginge durchs Ready-Gate.
+for (const titel of ["Ein Arbeitspaket", "[Task] Ein Arbeitspaket"]) {
+  test(`ein Marker der falschen Stufe belegt nichts: ${titel}`, () => {
+    mitProjekt((dir) => {
+      // `Plan-Review:` an einem Arbeitspaket: Die Stufe ist `issue`, und dort zaehlt
+      // allein `Issue-Review:`. Wer das verwechselt, zieht ein ungepruefte Paket nach
+      // Ready.
+      const body = "## Kontext\n\nPlan-Review: fable (2026-08-31)\n\n## Abhaengigkeiten\n\nKeine.\n";
+      const issue = board(dir, "issue", "create", "--title", titel, "--body", body);
 
-    const res = runBoard(dir, ["issue-review", "label-sync", String(issue.id)]);
+      const res = runBoard(dir, ["issue-review", "label-sync", String(issue.id)]);
 
-    assert.equal(res.status, 0, `label-sync schlug fehl: ${res.stderr}`);
-    assert.notEqual(JSON.parse(res.stdout).zustand, "fertig",
-      "ein Marker der falschen Stufe wurde als Nachweis gewertet");
-  }, { ...LOKAL, issueReview: { statusLabels: true } }, "board-local-falsche-stufe-");
-});
+      assert.equal(res.status, 0, `label-sync schlug fehl: ${res.stderr}`);
+      const daten = JSON.parse(res.stdout);
+      assert.notEqual(daten.zustand, "fertig",
+        "ein Marker der falschen Stufe wurde als Nachweis gewertet");
+      assert.equal(daten.zustand, "offen",
+        "ohne gueltigen Marker ist der Zustand `offen` — ein anderer Wert waere ein dritter Zweig");
+    }, { ...LOKAL, issueReview: { statusLabels: true } }, "board-local-falsche-stufe-");
+  });
+}

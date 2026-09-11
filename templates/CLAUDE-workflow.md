@@ -37,6 +37,12 @@ Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwo
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz schreiben |
 
+**Ersetzt Schritt 2 und 3**
+
+| Skill | Wofuer |
+|-------|--------|
+| `/task` | Anforderung ohne Abwaegungsbedarf als einzelnes Arbeitspaket `[Task]` |
+
 **Ersetzen Schritt 5 durch eine feinere Gangart**
 
 | Skill | Wofuer |
@@ -71,6 +77,12 @@ das Titel-Praefix; jede Stufe hinterlaesst ihren eigenen Nachweis:
 | `fachlich` | ein `[Fachlich]`-Issue (fachliche Anforderung aus `/fachplan`) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue (Plandokument aus `/techplan`) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus `/issues` | `Issue-Review: …` |
+| `issue` | ein `[Task]`-Arbeitspaket aus `/task` — `[Task]` ist **kein Dokument-Praefix** | `Issue-Review: …` |
+
+Die letzte Zeile ist keine vierte Stufe, sondern die ausdrueckliche Feststellung, dass es
+keine gibt: `stufeAusTitel` faellt fuer jedes unbekannte Praefix auf `issue` zurueck, und
+`[Task]` ist genau so ein Fall. Ohne die Zeile liest die naechste Sitzung die Tabelle als
+abschliessend und erfindet fuer `[Task]` eine eigene Stufe.
 
 **Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das
 Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format fuehren ihre
@@ -190,19 +202,31 @@ Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 ---
 
-## Zwei Bahnen
+## Drei Bahnen
 
 **Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger. **Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus** — das Commit-Gate ist mechanisch und kennt keine Bahn. Dasselbe gilt für jeden Commit von Hand. Was das Gate nicht leistet — `--no-verify` und der frische Klon ohne Installer-Lauf — steht unter „Git-Workflow (strikt bindend)“.
 
-**Bahn 2 — Feature** (voller 9-Schritt): berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder > 1 Modul; oder Aufwand > ~1 Commit → `/techplan` → `/issues` → GO → `/implement-ready`.
+**Bahn 2 — Feature** (voller 9-Schritt): ausserhalb von Bahn 1, sobald es etwas abzuwaegen gibt — oder unklar ist, ob es etwas abzuwaegen gibt → `/techplan` → `/issues` → GO → `/implement-ready`. Typisch: ein Datenmodell mit mehreren vertretbaren Schnitten, ein Endpoint, dessen Vertrag noch offen ist, eine Migration mit Rueckweg-Frage.
 
-**Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2, ich …"); im Zweifel Bahn 2.
+**Bahn 3 — `[Task]`** (ersetzt Schritt 2 und 3): oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Kein `[Fachlich]`, kein `[Plan]`, keine Zerlegung — ein Arbeitspaket mit dem Titel-Praefix `[Task]`, angelegt mit `/task` nach menschlicher Bestaetigung des Wegs, danach geprueft und freigegeben wie jedes Arbeitspaket. Typisch: eine Umbenennung ueber mehrere Dateien, ein abgelehnter Werkzeug-Befund, eine mechanische Nachzieharbeit.
+
+**Die Auswahlregel, in dieser Reihenfolge:**
+
+1. Trifft die zaehlende Bahn-1-Regel zu **und gibt es nichts abzuwaegen**, gilt Bahn 1.
+2. Sonst entscheidet der Abwaegungsbedarf: Abzuwaegen gibt es etwas, wenn **mehrere vertretbare Wege** offenstehen. Eine Feststellung mit genau einem richtigen Ausgang ist keine Abwaegung. Mit Abwaegungsbedarf gilt Bahn 2, ohne ihn Bahn 3.
+3. Ist **unklar**, ob es etwas abzuwaegen gibt, gilt Bahn 2.
+
+Der Umfang allein entscheidet also nicht mehr: Eine Aenderung an zwoelf Dateien ohne Abwaegung ist Bahn 3, eine Architekturaenderung an einer einzigen Datei mit mehreren vertretbaren Schnitten ist Bahn 2.
+
+**Meta-Regel:** Vor Beginn jeder neuen Aufgabe die Bahn laut benennen ("Das ist Bahn 1/2/3, ich …"); im Zweifel Bahn 2 — das deckt auch den unklaren Abwaegungsbedarf.
 
 | Beispiel | Bahn |
 |----------|------|
 | Icon-/Favicon-Tausch | 1 |
 | Textkorrektur | 1 |
 | Config-Default | 1 |
+| Umbenennung ueber mehrere Dateien ohne Abwaegung | 3 |
+| Architekturaenderung an einer einzigen Datei (mehrere vertretbare Schnitte) | 2 |
 | Neue Tabelle | 2 |
 | Neuer Endpoint | 2 |
 | Neues UI-Feature | 2 |
@@ -388,8 +412,8 @@ gemeint ist — der Nacht-Runner (`kit/night.mjs`) wertet nur `#N`-Referenzen au
 Fremde Repos als `owner/repo#N` referenzieren (zaehlt nicht als lokales Issue).
 
 Herkunfts-Konvention: `issue create --derived-from <nummer>` traegt die Kartennummer des
-naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/techplan` auf
-das fachliche Issue, `/issues` auf das Plandokument. Die Body-Zeilen `Plan:` und
+naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/task` nie (kein Vorfahr),
+`/techplan` auf das fachliche Issue, `/issues` auf das Plandokument. Die Body-Zeilen `Plan:` und
 `Fachliche Quelle:` bleiben daneben stehen: Ein Projektwechsel loescht das Feld, der Text
 ueberlebt ihn. Nur beim Anlegen wirksam, Nachtragen gibt es nicht.
 
@@ -465,6 +489,11 @@ direkt nach Done gehen. Beides ist zulaessig, kein Skill bewegt es von selbst.
 das Gate wuerde eine Session sie zwar korrekt ablehnen, aber der Runner kann
 diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist
 verbrannt und der Kommentar am Board irrefuehrend.
+
+**`[Task]` ist das einzige Praefix, das ein Arbeitspaket kennzeichnet**; es wird
+implementiert und nach Ready gezogen wie ein Paket ohne Praefix. Die drei Praefixe der
+Tabelle oben bezeichnen Dokumente, die nie implementiert werden — `[Task]` gehoert
+ausdruecklich nicht dazu, und es in dieselbe Liste aufzunehmen kehrte seinen Zweck um.
 
 ---
 
@@ -579,7 +608,7 @@ Alles, was hier nicht steht. Insbesondere:
 
 - **Die Form eines Dokuments.** Dafuer sind `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md`
   zustaendig; ein Formverstoss ist dort ein Gate, nicht hier.
-- **Die neun Schritte, die Board-Spalten, die Zwei-Bahnen-Aufteilung.** Sie beschreiben,
+- **Die neun Schritte, die Board-Spalten, die Drei-Bahnen-Aufteilung.** Sie beschreiben,
   wie gearbeitet wird, und sind aenderbar — anders als die vier Regeln oben, die den
   Rahmen tragen.
 - **Konventionen mit Begruendung im Text** (Commit-Format, Abschlussbericht-Format,

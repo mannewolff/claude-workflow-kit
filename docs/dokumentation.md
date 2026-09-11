@@ -4,11 +4,11 @@ Eine dünne Werkzeugschicht, die einen 9-Schritt-Kernprozess für KI-gestützte 
 
 ## Konzept
 
-Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus dreizehn Skills, eine projektlokale Config und ein Installer.
+Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus sechzehn Skills, eine projektlokale Config und ein Installer.
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Sechs weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /implement-test und /implement-done, /implement-next, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Neun weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /fachplan, /issue-review, /task, /implement-test und /implement-done, /implement-next, /retro und /document.
 
 ## Voraussetzungen
 
@@ -71,7 +71,7 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
-Der Installer kopiert die fünfzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die sechzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
@@ -253,9 +253,9 @@ Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuord
 
 Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
-## Die fünfzehn Skills und der 9-Schritt-Kernprozess
+## Die sechzehn Skills und der 9-Schritt-Kernprozess
 
-Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen acht Skills sind Werkzeuge daneben: hilfreich, oft benutzt — aber ohne sie läuft der Prozess auch.
+Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen neun Skills sind Werkzeuge daneben: hilfreich, oft benutzt — aber ohne sie läuft der Prozess auch.
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -285,6 +285,14 @@ Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht beha
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz |
 
+**Ersetzt Schritt 2 und 3**
+
+| Skill | Wofür |
+|-------|-------|
+| `/task` | Anforderung ohne Abwägungsbedarf als einzelnes Arbeitspaket `[Task]` |
+
+`/task` steht bewusst **nicht** in der Tabelle darüber: Der Skill ergänzt den Prozess nicht, er ersetzt zwei seiner Schritte — Fachkonzept und Plan entfallen auf diesem Weg.
+
 **Ersetzen Schritt 5 durch eine feinere Gangart**
 
 | Skill | Wofür |
@@ -312,6 +320,22 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
 Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/techplan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/techplan`.
+
+### /task
+
+**Ersetzt die Schritte 2 und 3 — der Einstieg in [Bahn 3](#drei-bahnen).**
+
+Zwischen Kleinigkeit und vollem Vorhaben fehlte ein Weg. Bahn 1 verlangt genau eine Datei, Bahn 2 verlangt Fachkonzept, Plan und Zerlegung. Eine Umbenennung über zwölf Dateien ist für die eine zu groß und für die andere zu eindeutig — es gibt dort nichts abzuwägen, also gibt es auch nichts zu planen.
+
+`/task` legt dafür **genau ein Arbeitspaket** an: Titel mit dem Präfix `[Task]`, Body im Vier-Abschnitt-Format wie jedes Paket aus `/issues`, Status Backlog. Danach läuft der normale Weg weiter — `/issue-review`, GO, Implementierung, Review, Push.
+
+Drei Eigenschaften unterscheiden ihn von `/techplan`:
+
+- **Er fragt, bevor er anlegt.** Der Skill sagt, welche Bahn-1-Regel der Vorgang verfehlt und was es nicht abzuwägen gibt, und wartet auf deine Bestätigung. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
+- **Er nimmt nur zwei Quellen.** Den Chat oder eine `[Idee]` (`/task #N`). Ein `[Fachlich]`- oder `[Plan]`-Dokument lehnt er ab, ohne etwas anzulegen: Dort ist der volle Weg bereits begonnen, und ein `[Task]` daneben wäre eine zweite Wahrheit darüber, was gebaut wird. Entstand der Task aus einer Idee, bleibt an ihr ein Kommentar `Fortsetzung: Issue #T` zurück.
+- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#beschriebenes-verhalten): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
+
+**Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue` und braucht bei gesetztem `spec`-Block seinen `## Spec-Wirkung`-Abschnitt. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
 
 ### /techplan
 
@@ -506,15 +530,27 @@ Weil die angenommene Reichweite in der Antwort steht, ist eine Fehleinordnung so
 
 Der verbindliche Wortlaut der Regel steht in `CLAUDE-workflow.md`, Abschnitt „Mitteilungen des Menschen" — diese Beschreibung stellt keine zweite Fassung daneben.
 
-## Zwei Bahnen
+## Drei Bahnen
 
-Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet zwei Bahnen:
+Nicht jede Aufgabe braucht den vollen 9-Schritt-Prozess. Das Kit unterscheidet drei Bahnen:
 
 **Bahn 1 — Kleine Änderung.** Genau eine Datei, ein Asset oder ein Config-Wert; keine Datenbank-Migration; kein neuer oder geänderter Endpoint; kein Datenmodell; höchstens ein Modul betroffen; keine sicherheitsrelevante Logik. Direkt umsetzen, ein Commit, kein Push ohne Trigger-Phrase — kein Plan, kein Issue, kein GO. Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus: Das Commit-Gate ist mechanisch und kennt keine Bahn.
 
-**Bahn 2 — Feature.** Berührt Datenmodell, API/Endpoint, Migration, Sicherheit oder mehr als ein Modul, oder der Aufwand übersteigt etwa einen Commit. Voller Prozess: `/techplan` → `/issues` → GO → `/implement-ready`.
+**Bahn 2 — Feature.** Außerhalb von Bahn 1, sobald es etwas abzuwägen gibt — oder unklar ist, ob es etwas abzuwägen gibt. Voller Prozess: `/techplan` → `/issues` → GO → `/implement-ready`. Typisch: ein Datenmodell mit mehreren vertretbaren Schnitten, ein Endpoint, dessen Vertrag noch offen ist, eine Migration mit Rückweg-Frage.
 
-Im Zweifel gilt Bahn 2. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
+**Bahn 3 — `[Task]`.** Oberhalb der Kleinigkeit, aber ohne Abwägungsbedarf. Kein Fachkonzept, kein Plan, keine Zerlegung: ein einzelnes Arbeitspaket mit dem Titel-Präfix `[Task]`, angelegt mit [/task](#task) nach deiner Bestätigung des Wegs — danach geprüft und freigegeben wie jedes andere Paket. Typisch: eine Umbenennung über mehrere Dateien, ein abgelehnter Werkzeug-Befund, eine mechanische Nachzieharbeit.
+
+**Die Auswahlregel, in dieser Reihenfolge:**
+
+1. Trifft die zählende Bahn-1-Regel zu **und gibt es nichts abzuwägen**, gilt Bahn 1.
+2. Sonst entscheidet der Abwägungsbedarf: Abzuwägen gibt es etwas, wenn **mehrere vertretbare Wege** offenstehen. Eine Feststellung mit genau einem richtigen Ausgang ist keine Abwägung. Mit Abwägungsbedarf gilt Bahn 2, ohne ihn Bahn 3.
+3. Ist **unklar**, ob es etwas abzuwägen gibt, gilt Bahn 2.
+
+Der Umfang allein entscheidet damit nicht mehr, und das ist die eigentliche Änderung gegenüber früher: Eine Änderung an zwölf Dateien ohne Abwägung ist Bahn 3; eine Architekturänderung an einer einzigen Datei, bei der mehrere Schnitte vertretbar sind, ist Bahn 2. Die alte Fassung von Bahn 2 zählte dagegen Merkmale — Datenmodell, Endpoint, Migration, Sicherheit, mehr als ein Modul — und schickte damit auch das Eindeutige durch den vollen Prozess.
+
+Im Zweifel gilt Bahn 2; das deckt auch den unklaren Abwägungsbedarf. Vor jeder neuen Aufgabe benennt die KI die Bahn laut ("Das ist Bahn 1/2/3, ich …") — Beispiele: ein Icon- oder Favicon-Tausch, eine Textkorrektur oder ein Config-Default sind Bahn 1; eine Umbenennung über mehrere Dateien ohne Abwägung ist Bahn 3; eine neue Tabelle, ein neuer Endpoint oder ein neues UI-Feature sind Bahn 2.
+
+**Ein Sonderfall, der es wert ist, genannt zu werden: die Ablehnung als gültiges Ergebnis.** Ein Werkzeug meldet einen Befund, der Befund ist vertretbar abgelehnt — auch das ist Arbeit, und es ist typische Bahn-3-Arbeit. Damit die Ablehnung hält, ist das Akzeptanzkriterium eines solchen `[Task]` die **versionierte Unterdrückungsregel**, die das Werkzeug selbst auswertet, mit der Begründung unmittelbar daneben: Das Werkzeug liest die Regel, die Begründung richtet sich an Menschen und spätere Sitzungen. Im Kit steht das Muster in `sonar-project.properties` — der Ausschluss der Regel `javascript:S4036` als versionierte Zeile, darüber ausgeschrieben, warum er vertretbar ist. Eine im Web-UI von Hand als „accepted" markierte Ablehnung hält dagegen nicht: Der nächste gleichartige Fund entsteht außerhalb. Verifiziert wird ein solcher Task durch einen erneuten Lauf desselben Werkzeugs — der abgelehnte Befund bleibt aus, **und ein unabhängiger Kontrollbefund wird weiterhin gemeldet**; ohne ihn ist ein stummes Werkzeug von einem wirksamen Ausschluss nicht zu unterscheiden. Fehlt einem Werkzeug ein versionierbarer Weg, gehört dessen Entwicklung in ein eigenes Vorhaben, und ein werkzeugübergreifendes Register entsteht nicht — es wäre eine zweite Liste neben den Regeldateien, die keines der Werkzeuge liest.
 
 ## PO-Schleife: fachliche und technische Issues
 
@@ -578,7 +614,7 @@ Ohne `--verbose` protokolliert der Runner pro Runde nur Start und Ende — bei e
 
 Die finale Abschlussnachricht landet wie gehabt zusätzlich im Log; das Streaming ergänzt sie, ersetzt sie nicht.
 
-**Der Ergebnisstand — die Nacht als JSON.** Jeder Lauf legt neben dem Textprotokoll (`.claude/night-run-<datum>.log`) einen maschinenlesbaren Ergebnisstand unter `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Arbeitspaket eine Einheit mit Ausgang, Dauer, Commit und den Kennzahlen der Session (Kosten, API-Dauer, Züge), dazu der Abschluss des ganzen Laufs (`regulaer` oder `harterStopp`, im Stoppfall mit Fehlerklasse und Grund). Die Datei wird nach jeder Runde vollständig neu geschrieben, ein abgebrochener Lauf hinterlässt also den Stand bis zum Abbruch. Die Uhrzeit gehört in den Namen, weil das Textprotokoll eine Tagesdatei zum Anhängen ist, JSON aber nicht angehängt werden kann — der zweite Lauf eines Tages überschriebe sonst den ersten. **Der einzige Ausschluss ist `--dry-run`**: Ein Dry-Run arbeitet nichts ab und hat nichts zu berichten.
+**Der Ergebnisstand — die Nacht als JSON.** Jeder Lauf legt neben dem Textprotokoll (`.claude/night-run-<datum>.log`) einen maschinenlesbaren Ergebnisstand unter `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Arbeitspaket eine Einheit mit Ausgang, Dauer, Commit und den Kennzahlen der Session (Kosten, API-Dauer, Züge), dazu der Abschluss des ganzen Laufs (`regulaer` oder `harterStopp`, im Stoppfall mit Fehlerklasse und Grund). Als Ausgang einer Einheit kommen vor: `erfolg`, `zurueckgestellt`, `angehalten` (siehe unten), `uebersprungen`, `liegengeblieben` und `harterStopp`. Die Datei wird nach jeder Runde vollständig neu geschrieben, ein abgebrochener Lauf hinterlässt also den Stand bis zum Abbruch. Die Uhrzeit gehört in den Namen, weil das Textprotokoll eine Tagesdatei zum Anhängen ist, JSON aber nicht angehängt werden kann — der zweite Lauf eines Tages überschriebe sonst den ersten. **Der einzige Ausschluss ist `--dry-run`**: Ein Dry-Run arbeitet nichts ab und hat nichts zu berichten.
 
 **Ohne `--verbose` fehlen nur die Kennzahlen, nicht die Datei.** Ohne das Flag fordert der Runner die ausführliche Session-Ausgabe gar nicht erst an und kommt an Kosten, API-Dauer und Züge nicht heran — die Einheiten führen dann `kennzahlen: null`. Damit das nicht als „diese Session hatte nichts zu messen" gelesen wird, trägt der Lauf-Kopf das Feld `kennzahlenHinweis`, das den Grund einmal nennt; bei `--verbose` fehlt das Feld ganz. Früher hing die ganze Datei am Flag — das kostete die Auswertung in genau der Nacht, in der jemand es vergessen hatte, und das ist die Nacht, in der man sie braucht: **Der Grund eines Abbruchs wiegt mehr als die Kennzahlen eines glatten Laufs.** Zur Konsequenz gehört, dass auch ein Lauf, der schon am **Vorflug** scheitert — Crash-Rest in *In progress*, unsauberer Working Tree, leere `buildChecks`, Reviewer-Vorflug —, einen Ergebnisstand mit `abschluss: "harterStopp"` und Fehlerklasse hinterlässt, obwohl er kein einziges Paket abgearbeitet hat. Genau dort sucht man morgens den Grund.
 
@@ -646,6 +682,18 @@ Fehlt dem Check darüber hinaus eine **Umgebungsvariable** (z. B. `DOCKER_HOST`,
 Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen müssen: die **Allowlist** erlaubt das Kommando, `sandbox.excludedCommands` befreit es von der Isolation, der `env`-Block versorgt es mit Variablen. (Für Testcontainers speziell tut es alternativ eine `~/.testcontainers.properties` mit `docker.host` — die liegt außerhalb des Projekts, ist dafür aber unabhängig von Claude Code.)
 
 **Wenn etwas schiefgeht:** Der Runner unterscheidet drei Fälle. **Infrastruktur-Fehlstart** — die Session selbst endet mit Exit ≠ 0 (Auth abgelaufen, CLI kaputt): harter Stopp, das Issue bleibt unangetastet in Ready, denn mit ihm ist nichts falsch; die CLI-Fehlermeldung steht direkt im Konsolen-Log. So räumt eine kaputte Umgebung nicht die ganze Ready-Spalte leer. **Fachlicher Fehlschlag** — die Session endet sauber (Exit 0), aber das Issue steht nicht in In review: der Runner kommentiert es und stellt es zurück ins Backlog, der Lauf geht mit dem nächsten Issue weiter. Ein **Timeout** (`--timeout-min`) zählt als issue-spezifisch (Aufgabe zu groß) und wird wie ein fachlicher Fehlschlag behandelt. Hinterlässt eine Runde einen unsauberen Working Tree, stoppt der Lauf in jedem Fall hart (Exit ≠ 0): Auf halben Änderungen wird nicht weitergebaut. Vor dem Start prüft der Runner außerdem: kein Issue in In progress (Crash-Rest), sauberer Working Tree, `buildChecks` vorhanden.
+
+**Der vierte Ausgang: `angehalten`.** Ein [`[Task]`](#task) trägt keine vorgelagerte Abwägung — er ist ja gerade der Weg für Vorgänge, bei denen es nichts abzuwägen gibt. Taucht beim Umsetzen doch eine Entscheidung auf, wählt die Session nicht, sondern **hält an**: Sie nimmt ihren eigenen Anteil an den Änderungen zurück, zeichnet das Issue mit `kit:klaeren`, benennt die Entscheidung und die vertretbaren Wege als Board-Kommentar und schiebt es nach Backlog. Der Runner erkennt das am Kommentar, schreibt eine eigene Log-Zeile und **läuft weiter**.
+
+Dieser Ausgang ist von den beiden benachbarten zu unterscheiden, und genau dafür hat er einen eigenen Namen:
+
+| Ausgang | Was passiert ist | Wer kommentiert und bewegt | Folge für den Lauf |
+|---|---|---|---|
+| `zurueckgestellt` | die Session hat die Aufgabe nicht fertigbekommen | der Runner | weiter mit dem nächsten Issue |
+| `angehalten` | die Aufgabe ist lösbar, aber eine Entscheidung fehlt | die Session selbst — der Runner tut hier nichts | weiter mit dem nächsten Issue |
+| `harterStopp` | die Umgebung oder der Arbeitsbaum ist kaputt | keiner, das Issue bleibt unangetastet | der Lauf endet |
+
+Ein Halt ist **kein Fehlschlag**: Die Session hat richtig gehandelt, indem sie nicht geraten hat. Deshalb steht er im Ergebnisstand als eigener Zähler neben `erfolg`, `zurueckgestellt` und `fehlschlag` — wer die wartenden Entscheidungen morgens in der Rückstellungszahl suchen müsste, fände sie nicht. Der Weg nach vorn führt über `/fachplan #T`: Der Skill nimmt den angehaltenen Task samt Entscheidungskommentar als Eingang und macht eine fachliche Anforderung daraus. Das `kit:klaeren` nimmt dabei ausschließlich der Mensch ab.
 
 **Eine wartende Vorhaben-Notiz ist kein Rest.** Legt eine Nacht-Session mit `/techplan` eine Notiz ab, entsteht sie als `.claude/vorhaben-wartend-<k>.md` — im ignorierten `.claude/`, also außerhalb dessen, was der Rest-Guard misst. Sie liegt am Morgen noch da und gehört dorthin: Abgeholt wird sie erst beim nächsten `push main`, und der ist ein menschlicher Stop-Punkt. Läge die Notiz stattdessen unter `specs/`, wäre jeder nächtliche Plan ein unsauberer Working Tree und damit ein harter Stopp.
 
@@ -821,6 +869,9 @@ Der Skill prüft nicht eine Sorte Dokument, sondern drei. Welche Stufe greift, e
 | `fachlich` | ein `[Fachlich]`-Issue — die fachliche Anforderung aus [/fachplan](#fachplan) | `Fachplan-Review: …` |
 | `plan` | ein `[Plan]`-Issue — das Plandokument aus [/techplan](#plan) | `Plan-Review: …` |
 | `issue` | ein technisches Arbeitspaket aus [/issues](#issues) | `Issue-Review: …` |
+| `issue` | ein `[Task]`-Arbeitspaket aus [/task](#task) — `[Task]` ist **kein Dokument-Präfix** | `Issue-Review: …` |
+
+Die letzte Zeile ist keine vierte Stufe, sondern die ausdrückliche Feststellung, dass es keine gibt: Die Stufenerkennung fällt für jedes unbekannte Präfix auf `issue` zurück, und `[Task]` ist genau so ein Fall. Sie steht trotzdem da, weil die Tabelle sich sonst als abschließend liest.
 
 **Wo der Nachweis steht**, richtet sich nach dem Format des Dokuments. Nur das Arbeitspaket hat einen `## Kontext`; Story- und Plan-Format führen ihre Kennzeichnungszeilen anderswo, und der Marker stellt sich dazu:
 
@@ -1093,7 +1144,7 @@ Ein Marker einer **fremden** Stufe zählt nie: `Plan-Review:` an einem Arbeitspa
 Die beiden Labelsorten sehen ähnlich aus und leisten Verschiedenes:
 
 - **`review:*` beschreibt.** Es ist eine Projektion des abgeleiteten Zustands, jederzeit neu berechenbar. Kein Gate liest es: `requiredBeforeReady` hängt am Marker, die Kandidatenauswahl des Nacht-Runners an Marker und Routing-Label. Ein von Hand verstelltes `review:*` repariert der nächste `label-sync` von selbst.
-- **`kit:klaeren` entscheidet.** Es sagt, dass eine Frage offen ist, die ein Mensch beantworten muss. Der Nacht-Runner **setzt** es, aber **nimmt es nie ab** — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben. Solange es steht, wird das Ticket weder implementiert noch erneut geprüft.
+- **`kit:klaeren` entscheidet.** Es sagt, dass eine Frage offen ist, die ein Mensch beantworten muss. Drei Stellen **setzen** es: `/issue-review`, wenn eine übernommene Behauptung unbelegt bleibt; der Nacht-Runner, wenn er denselben Abgleich selbst führt; und seit dem `[Task]`-Weg die **Implementierungs-Session**, wenn beim Umsetzen eines `[Task]` doch ein Abwägungsbedarf auftaucht und sie [anhält](#nachtbetrieb). **Abnehmen darf es keine von ihnen** — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben. Solange es steht, wird das Ticket weder implementiert noch erneut geprüft.
 
 Kurz: Ein `review:*` von Hand zu entfernen ist folgenlos, ein `kit:klaeren` von Hand zu entfernen ist die Antwort.
 
@@ -1431,6 +1482,7 @@ Gesetzt wird immer nur **ein** Verweis, der auf die nächsthöhere Stufe — der
 | Skill | Verweis |
 |---|---|
 | `/fachplan` | **nie** — die fachliche Anforderung ist die Wurzel und hat keinen Vorfahren |
+| `/task` | **nie** — ein `[Task]` hat keinen Vorfahren; er steht in gar keiner Kette, auch nicht als Wurzel |
 | `/techplan` | auf das `[Fachlich]`-Issue, wenn der Plan aus `/techplan #N` entstand; beim Plan aus dem Chat gar keiner |
 | `/issues` | auf das `[Plan]`-Issue, ersatzweise auf das fachliche Issue, sonst gar keiner |
 

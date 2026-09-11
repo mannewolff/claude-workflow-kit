@@ -24,10 +24,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Alle zwoelf Befehlsstellen in acht Skill-Dateien, EINZELN benannt statt gezaehlt:
-// Eine Gesamtzahl bliebe bei einer dreizehnten Stelle gruen, eine Aufzaehlung wird rot.
+// Alle dreizehn Befehlsstellen in neun Skill-Dateien, EINZELN benannt statt gezaehlt:
+// Eine Gesamtzahl bliebe bei einer vierzehnten Stelle gruen, eine Aufzaehlung wird rot.
 // #583 stellte /issue-review um, #584 die uebrigen sieben Skills, #585 weitet die
-// Pruefung hierauf aus.
+// Pruefung hierauf aus; #574 bringt mit `/task` die dreizehnte Stelle — genau der Fall,
+// fuer den die Aufzaehlung gewaehlt wurde.
 export const STELLEN = [
   { datei: "skills/issue-review/SKILL.md", befehl: "Befunde", zweck: "befunde" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Synthese", zweck: "synthese" },
@@ -36,6 +37,7 @@ export const STELLEN = [
   { datei: "skills/issues/SKILL.md", befehl: "issue create mit --derived-from" },
   { datei: "skills/issues/SKILL.md", befehl: "issue create" },
   { datei: "skills/fachplan/SKILL.md", befehl: "issue create" },
+  { datei: "skills/task/SKILL.md", befehl: "issue create" },
   { datei: "skills/techplan/SKILL.md", befehl: "issue create (mehrzeilig)" },
   { datei: "skills/implement-ready/SKILL.md", befehl: "Abschlussbericht" },
   { datei: "skills/implement-next/SKILL.md", befehl: "Abschlussbericht" },
@@ -43,7 +45,7 @@ export const STELLEN = [
   { datei: "skills/review/SKILL.md", befehl: "Review-Ergebnis" },
 ];
 
-// Die acht Dateien, in denen die zwoelf Stellen liegen.
+// Die neun Dateien, in denen die dreizehn Stellen liegen.
 const DATEIEN = [...new Set(STELLEN.map((stelle) => stelle.datei))];
 
 // Nur Zeilen INNERHALB von ```bash-Bloecken zaehlen. Fliesstext, der den Befehl
@@ -163,7 +165,7 @@ test("[skills-9] Register: der Abschnitt 'Lange Texte ans Board' traegt Regel un
   );
 });
 
-test("[skills-9] [skills-10] in keiner der acht Dateien steht eine Variable im Redirect-Ziel", () => {
+test("[skills-9] [skills-10] in keiner der neun Dateien steht eine Variable im Redirect-Ziel", () => {
   for (const datei of DATEIEN) {
     assert.doesNotMatch(
       lies(datei),
@@ -173,7 +175,7 @@ test("[skills-9] [skills-10] in keiner der acht Dateien steht eine Variable im R
   }
 });
 
-test("[skills-10] jede der acht Dateien nennt den eigenen Werkzeugaufruf und den Fehlerpfad", () => {
+test("[skills-10] jede der neun Dateien nennt den eigenen Werkzeugaufruf und den Fehlerpfad", () => {
   for (const datei of DATEIEN) {
     const text = lies(datei);
     assert.match(text, /\*{0,2}eigene[rnm]\*{0,2} Werkzeugaufruf/, `${datei}: Satz zum eigenen Werkzeugaufruf fehlt`);

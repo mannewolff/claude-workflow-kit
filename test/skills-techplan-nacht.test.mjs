@@ -76,6 +76,49 @@ test("[skills-2] Schritt 0 nennt die unbeaufsichtigte Bahn vor der interaktiven"
     "wohin das Bahn-1-Urteil wandert, steht nicht da — verworfen waere es eine unterschlagene Einschaetzung");
 });
 
+// --- Bahn 3 in Schritt 0 (Issue #574) ----------------------------------------
+//
+// Ohne diese drei Tests waeren die Bedingungen "bestehende Tests bleiben gruen" und
+// "ein Test traegt [skills-2]" schon vor jeder Aenderung erfuellt — und die Aenderung
+// an Schritt 0 bliebe maschinell ungeprueft.
+
+test("[skills-2] Schritt 0 bietet interaktiv Bahn 3 mit /task an und plant dann nicht", () => {
+  const schritt0 = abschnitt("### 0. Bahn bestimmen", "### 1. Anforderung verstehen");
+  const interaktiv = schritt0.slice(schritt0.indexOf(INTERAKTIV));
+  assert.match(interaktiv, /Bahn 3/,
+    "die dritte Bahn wird interaktiv nicht benannt — der Mensch hat weiter nur die Wahl zwischen zu viel und zu wenig");
+  assert.match(interaktiv, /`\/task`/,
+    "der Skill, auf den Bahn 3 zeigt, ist nicht genannt");
+  assert.match(interaktiv, /nichts abzuw(?:ae|ä)gen/,
+    "die Bedingung fuer Bahn 3 (nichts abzuwaegen) fehlt");
+  assert.match(interaktiv, /plant nicht|kein Plan/,
+    "dass der Skill dann nicht plant, steht nicht da");
+});
+
+test("[skills-2] das Bahn-3-Angebot nimmt [Fachlich] und [Plan] als Quelle aus", () => {
+  const schritt0 = abschnitt("### 0. Bahn bestimmen", "### 1. Anforderung verstehen");
+  assert.match(schritt0, /\[Fachlich\]/, "die Ausnahme fuer [Fachlich] als Quelle fehlt");
+  assert.match(schritt0, /\[Plan\]/, "die Ausnahme fuer [Plan] als Quelle fehlt");
+  // Die Idee ist ausdruecklich KEINE Ausnahme — `/task #N` nimmt sie an. Ohne diesen
+  // Satz liest eine Sitzung die Ausnahme als "jede Nummer" und verweist nie auf /task.
+  assert.match(schritt0, /\[Idee\]/,
+    "dass eine [Idee] dem Angebot nicht entgegensteht, ist nicht benannt");
+  assert.match(schritt0, /lehnt diese Quelle|lehnt .{0,40}ab/,
+    "dass /task die Quelle [Fachlich] ausdruecklich ablehnt, fehlt");
+});
+
+test("[skills-2] unbeaufsichtigt wird ein Bahn-3-Urteil woertlich festgehalten", () => {
+  const schritt0 = abschnitt("### 0. Bahn bestimmen", "### 1. Anforderung verstehen");
+  const unbeaufsichtigt = schritt0.slice(0, schritt0.indexOf(INTERAKTIV));
+  const ZEILE = "- Bahn 3 nach CLAUDE-workflow.md; nachts als Plan festgehalten, Entscheidung beim Menschen.";
+  assert.ok(unbeaufsichtigt.includes(ZEILE),
+    "die Bahn-3-Zeile fehlt woertlich in der unbeaufsichtigten Variante — jede Sitzung formulierte sie sonst anders");
+  assert.match(unbeaufsichtigt, /erste Zeile in `## Architektonische Entscheidungen`/,
+    "der Ort der Zeile (erste Zeile des Abschnitts) ist nicht festgelegt");
+  assert.match(unbeaufsichtigt, /kann nachts kein `\[Task\]` entstehen/,
+    "der Grund fehlt: nachts kann keine Bestaetigung eingeholt werden");
+});
+
 test("[skills-2] Schritt 1 fragt unbeaufsichtigt nicht nach", () => {
   const schritt1 = abschnitt("### 1. Anforderung verstehen", "### 2. Relevante Dateien lesen");
   reihenfolgePruefen(schritt1, "Schritt 1");

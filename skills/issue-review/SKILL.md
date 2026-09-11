@@ -90,7 +90,12 @@ Die Stufe folgt dem Titel-Präfix:
 | `[Fachlich]` | `fachlich` | fachliche Anforderung aus `/fachplan` |
 | `[Plan]` | `plan` | Plandokument aus `/techplan` |
 | kein Präfix | `issue` | Arbeitspaket aus `/issues` |
+| `[Task]` | `issue` | Arbeitspaket aus `/task` (Bahn 3) |
 | `[Idee]` | — | ausgeschlossen, siehe oben |
+
+Die `[Task]`-Zeile ist eine reine Klarstellung: `stufeAusTitel` fällt für jedes unbekannte
+Präfix ohnehin auf `issue` zurück. Sie steht trotzdem da, weil die Tabelle sich sonst als
+abschließend liest — und die nächste Sitzung für `[Task]` eine vierte Stufe erfände.
 
 Die Präfix-Erkennung ist **rückwärtskompatibel** zum bisherigen Verhalten: unabhängig von Groß- und Kleinschreibung, nach optional führendem Leerraum, auch ohne Leerzeichen nach `]`. Ein Präfix mitten im Titel zählt nicht — `Text über [Plan]` ist ein Arbeitspaket.
 
