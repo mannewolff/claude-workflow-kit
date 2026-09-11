@@ -1086,6 +1086,22 @@ export function hatKlaerenLabel(issue) {
   return (issue?.labels || []).includes(KLAEREN_LABEL);
 }
 
+/**
+ * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
+ *
+ * Eine Implementierungs-Session, bei der doch eine Abwaegung auftaucht, zeichnet die
+ * Karte, benennt die Entscheidung in einem Kommentar und schiebt sie nach Backlog.
+ * Dieser Satz schliesst den Kommentar ab — und nur an ihm ist er von jedem anderen
+ * Kommentar zu unterscheiden. Dass irgendein Kommentar hinzukam, genuegt nicht: Das
+ * ist im Regelbetrieb fast immer wahr, und der Abbruch VOR dem Kommentar bliebe
+ * unerkannt.
+ *
+ * Exportiert, damit der Skill-Text (Issue #573) in einem Test gegen diese Konstante
+ * geprueft werden kann statt gegen eine Abschrift — zwei Literale liefen auseinander,
+ * und der Halt waere danach still wirkungslos.
+ */
+export const HALT_FOLGESATZ = "Daraus soll per /fachplan eine fachliche Anforderung entstehen.";
+
 
 // --- Review-Kandidaten (Issue #232) ---
 
@@ -3544,8 +3560,23 @@ async function versucheSalvage(top, args) {
  *
  * Das Issue bleibt liegen, wo es ist: Ein Backlog-Move saehe morgens aus wie ein
  * regulaer zurueckgestelltes Ticket, nicht wie ein Lauf, der stehengeblieben ist.
+ *
+ * Vor allem anderen steht seit Issue #572 der Ausschluss der angehaltenen Karte. Der
+ * Auftrag des Salvage lautet, einen passenden Stand zu committen und die Karte nach
+ * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
+ * Stand, den der Halt gerade verworfen hat.
  */
 async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
+  // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
+  // Label nicht, das die Session selbst gesetzt hat.
+  if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
+    const satz = `HALT MIT UNSAUBEREM BAUM nach ${minutes} min: Issue #${top.id} traegt ${KLAEREN_LABEL}, aber der Working Tree ist dirty — kein Salvage, harter Stopp.`;
+    log(`  ${satz}`);
+    board("issue", "comment", String(top.id), "--text",
+      "Nachtlauf: Halt mit unsauberem Working Tree — die Session hat kit:klaeren gesetzt, aber Aenderungen liegen gelassen; kein Salvage, Lauf hart gestoppt. Bitte morgens manuell sichten.");
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
+    return "hardStop";
+  }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args);
@@ -3564,9 +3595,9 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
 /**
  * Wertet aus, was eine Implementierungs-Runde hinterlassen hat (Issue #404).
  *
- * Rueckgabe: `"erfolg"`, `"hardStop"` oder `"deferred"`. Die drei Worte sind die
- * Zaehler des Laufs; der Unterschied zwischen ihnen ist das Signal, das der Morgen
- * liest.
+ * Rueckgabe: `"erfolg"`, `"fehlschlag"`, `"hardStop"`, `"angehalten"` (Issue #572)
+ * oder `"deferred"`. Die Worte sind die Zaehler des Laufs; der Unterschied zwischen
+ * ihnen ist das Signal, das der Morgen liest.
  */
 /**
  * Der Mangel am Nachweis, oder `null` — Grund fuer Log und Board in einem.
@@ -3608,10 +3639,33 @@ const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zuruec
 function ausgangsFelder(ausgang) {
   if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
+  // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
+  // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
+  // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
+  // zweite Wahrheit ueber denselben Vorgang.
   return { ausgang };
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
+/**
+ * Hat die Session einen VOLLSTAENDIG nachgewiesenen Halt hinterlassen (Issue #572)?
+ *
+ * Drei Spuren muessen zusammenkommen — die vierte, der saubere Arbeitsbaum, hat der
+ * Dirty-Guard beim Aufrufer bereits geprueft. Das Label allein genuegt ausdruecklich
+ * nicht: Eine Session kann nach dem Label und vor Kommentar oder Move abbrechen, und
+ * der Infrastruktur-Guard laesst ein Timeout absichtlich passieren. Fehlt eine Spur,
+ * faellt die Runde auf den bisherigen Rueckstellungsweg zurueck.
+ *
+ * Gewertet wird nur, was WAEHREND der Session hinzukam — ueber `neueKommentare`,
+ * dieselbe Funktion, die auch der Review-Modus benutzt. Ein Zeitstempel wird nicht
+ * herangezogen: Ein Zeitfenster belegt keine Urheberschaft (Issue #568).
+ */
+function istHalt(vorher, nachher) {
+  if (!hatKlaerenLabel(nachher)) return false;
+  if (nachher?.status !== "backlog") return false;
+  return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
+}
+
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -3661,6 +3715,15 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
 
   if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
 
+  // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
+  // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
+  // kein Halt, wenn das Label steht. Hier ist der Halt kein Fehler: eigene Log-Zeile,
+  // kein Board-Kommentar und kein Move — beides hat die Session bereits getan.
+  if (istHalt(vorher, board("issue", "get", String(top.id)))) {
+    log(`  angehalten: eine offene Entscheidung wartet auf einen Menschen — Issue #${top.id} nach ${minutes} min von der Session ins Backlog gezeichnet, kein Kommentar und kein Move durch den Runner, weiter.`);
+    return "angehalten";
+  }
+
   log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
   board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
@@ -3699,6 +3762,11 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
   // weiter unten in werteRunde laufen kann, ist aussen vor.
   verwerfeZusammenfassung();
+  // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
+  // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
+  // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
+  // traegt den Body nicht in jeder Adapter-Fassung.
+  const vorher = board("issue", "get", String(top.id));
   const res = await runSession(top.id, args);
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
@@ -3710,7 +3778,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher);
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);
@@ -3742,10 +3810,12 @@ export async function laufeImplementierung(args, ctx) {
   let sessions = 0;
   let iterations = 0;
   let hardStop = false;
-  // Die drei Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
+  // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
   // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
-  // die Woerter des Laufs stehen.
-  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0 };
+  // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
+  // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
+  // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
+  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 };
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
   const salvageAttempted = new Set();
   // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
@@ -3788,6 +3858,7 @@ export async function laufeImplementierung(args, ctx) {
     succeeded: zaehler.erfolg,
     deferred: zaehler.deferred,
     ohneNachweis: zaehler.fehlschlag,
+    angehalten: zaehler.angehalten,
   };
 }
 
@@ -3815,7 +3886,10 @@ async function main() {
   }
 
   const ergebnis = await laufeImplementierung(args, ctx);
-  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  // `angehalten` steht NACH `Session(s) gestartet` (Issue #572): Die bestehenden
+  // Label-Tests matchen die Zeile bis dorthin, und ein Einschub davor haette sie
+  // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
   for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);
