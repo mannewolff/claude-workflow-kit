@@ -10,6 +10,15 @@ Werkzeug neben dem Prozess, vor Schritt 2 (`/techplan`): Eine rohe Anforderung (
 
 Die PO-Schleife ist **opt-in**: Wer keinen PO hat, überspringt diesen Skill und ruft direkt `/techplan` auf — am übrigen Prozess ändert sich nichts.
 
+## Eingang `/fachplan #T`: ein angehaltener `[Task]` als Quelle
+
+Ein `[Task]`, bei dem `/implement-next` oder `/implement-ready` wegen Abwaegungsbedarf angehalten haben, traegt die Entscheidung als Kommentar am Board und wartet im Backlog. Die Nummer kommt als Argument — nach demselben Muster wie `/techplan #N`: `/fachplan #T` nimmt **den Task samt Entscheidungskommentar als Eingang der Anforderung**, nicht den Chat.
+
+1. Den Task vollstaendig lesen, Body **und** Kommentare — die aufgetauchte Entscheidung und die vertretbaren Wege stehen im Halt-Kommentar, nicht im Body.
+2. Daraus die fachliche Anforderung entwickeln: Was die Entscheidung fachlich offenlaesst, wird zu Ziel, Akzeptanzkriterien und offenen Fragen an den PO. Die technischen Wege aus dem Kommentar gehen **nicht** mit — sie sind das Wie.
+
+**Jede andere Karte wird abgelehnt.** Traegt `#T` nicht das Praefix `[Task]` oder keinen Kommentar mit dem woertlichen Folgesatz `Daraus soll per /fachplan eine fachliche Anforderung entstehen.`, endet der Skill mit der Meldung, dass `/fachplan #T` nur fuer einen angehaltenen `[Task]` gilt, und legt nichts an. Eine `[Idee]` und ein `[Fachlich]` sind keine Vorgaenger: Die eine wird per `/task` zum Arbeitspaket, das andere ist selbst die Wurzel.
+
 ## Ablauf
 
 ### 1. Anforderung fachlich verdichten
@@ -93,6 +102,16 @@ node .claude/kit/board.mjs issue-review label-sync <neue-id>
 Ein frisches Dokument ist ungeprüft; das Kommando setzt `review:offen`. Ohne den Aufruf trägt es gar kein Zustandslabel und fällt in der Board-Ansicht aus der Reihe. Bei einer Pool-Idee ohne Nummer entfällt er ersatzlos.
 
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` eine `ideaId` mit `pending: true`, liegt das fachliche Issue als board-lose Idee im Projekt-Ideen-Pool. Adressierbar (#N) und groombar wird es erst, wenn der Mensch es einplant — Pool = ungesichtete Rohanforderung, Backlog = fachlich in Arbeit.
+
+**Nach dem Anlegen aus einem angehaltenen `[Task]`: die Spur zurueck.** Ist die fachliche Anforderung `#N` ueber den Eingang `/fachplan #T` entstanden, haengt der Skill genau einen Kommentar an **#T**:
+
+```bash
+node .claude/kit/board.mjs issue comment <T> --text "Fortsetzung: Issue #N"
+```
+
+Am neuen `[Fachlich]`-Issue entsteht dabei **keine** Herkunftszeile und kein `--derived-from`; `CLAUDE-Fachplan.md` (F9) verbietet sie an der fachlichen Wurzel. Die Spur laeuft deshalb in die andere Richtung: Zum Zeitpunkt des Halts gab es die neue Anforderung noch nicht, ihre Nummer kann erst dort entstehen, wo sie angelegt wird.
+
+Ohne Argument `#T` entfaellt der Aufruf **ersatzlos**. Liefert `issue create` nur eine `ideaId` mit `pending: true`, entfaellt der Kommentar ebenfalls ersatzlos — wie `label-sync` in demselben Fall — und die Meldung nennt die `ideaId`, damit der Mensch die Spur beim Einplanen selbst legt.
 
 ### 3. Abschluss
 

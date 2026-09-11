@@ -96,6 +96,22 @@ Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wir
 - Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
 - Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten und den geschriebenen Exit-Code einlesen — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
 
+**Ein [Task], bei dem Abwaegungsbedarf auftaucht.** Traegt das Issue das Titel-Praefix `[Task]` und taucht beim Umsetzen eine Entscheidung auf, fuer die mehrere vertretbare Wege offenstehen, wird angehalten statt gewaehlt. **Der Umfang allein ist kein Grund** — ein `[Task]` waechst nicht in den vollen Weg hinein. Fuer ein Arbeitspaket ohne `[Task]`-Praefix aendert sich nichts: Dort hat der Plan die Abwaegung bereits entschieden.
+
+Was dann geschieht, in dieser Reihenfolge:
+
+1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Interaktiv koennen fremde Aenderungen darin liegen, und die gehoeren dem Menschen.
+2. `node .claude/kit/board.mjs issue label add <id> kit:klaeren`
+3. Kommentar ans Issue nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-halt.md` stueckweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-halt.md` — nie als Argument. Der Kommentar benennt die aufgetauchte Entscheidung, die vertretbaren Wege und den Folgeschritt, diesen **woertlich**: `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` An genau diesem Satz erkennt der Nacht-Runner den Halt-Kommentar; er steht dort als Konstante `HALT_FOLGESATZ` in `kit/night.mjs` und wird nicht umformuliert.
+4. `node .claude/kit/board.mjs issue move <id> backlog`
+5. Melden, dass daraus eine fachliche Anforderung entstehen soll (`/fachplan #<id>`) — **kein Commit**. In `/implement-next` endet die Session damit; in `/implement-ready` geht der Lauf ohne weiteren Versuch an diesem Vorgang mit dem naechsten Ready-Issue weiter.
+
+**Gemessen wird der eigene Anteil** — die Dateien, die die Session nachweislich selbst angelegt oder geaendert hat, belegt ueber ihre eigenen Werkzeugaufrufe —, nicht der ganze Arbeitsbaum. Ein Vergleich gegen den Stand bei Session-Start ist kein Nachweis: Fremde Aenderungen koennen im selben Zeitraum entstehen.
+
+**Ob sich jeder eigene Anteil namentlich zuruecknehmen laesst, wird vor Schritt 2 entschieden.** Nicht namentlich zuruecknehmbar ist etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug und die die Session weiter geaendert hat — `git restore` naehme dem Menschen seinen Anteil weg. Bleibt so eine eigene Aenderung zurueck, wird **nicht** angehalten: keiner der Schritte 2 bis 5, also kein Label, kein Kommentar, kein Move, kein Commit. Die Session meldet, welche Datei zurueckbleibt und warum, und endet; das Issue bleibt in In progress. Interaktiv entscheidet der Mensch, nachts greift der Dirty-Guard des Runners wie bei jeder Runde ohne In-review-Ergebnis.
+
+Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
+
 **Aussage-ID in den Testnamen (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Die ID-Form ist `<bereich>-<N>`; vergeben hat sie `/issues`, und sie steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
 
 - **„Im Testnamen" heisst:** im Titel-String des Tests — `test("[<ID>] …")`, `it("[<ID>] …")`. Wo der Testname ein Bezeichner ist und keine eckigen Klammern erlaubt (JUnit, pytest), steht der Verweis in `@DisplayName` bzw. im Docstring. Massgeblich ist, dass `spec.testPattern` ihn im **Dateitext** findet.
