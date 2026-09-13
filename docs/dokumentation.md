@@ -319,7 +319,7 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 
 Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
-Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/techplan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/techplan`.
+Vor dem Anlegen prüft `issue check-form` die Form des fachlichen Issues. Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/techplan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/techplan`.
 
 ### /task
 
