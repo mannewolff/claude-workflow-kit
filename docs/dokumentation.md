@@ -358,7 +358,7 @@ Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), komm
 
 Aus dem freigegebenen Plan werden ein oder mehrere Issues. Jedes Issue ist kleinteilig genug, um eigenständig getestet zu werden, und enthält vier Abschnitte: Kontext (warum), Aufgabe (was genau), Akzeptanzkriterium (wie prüfbar) und Abhängigkeiten (was muss vorher fertig sein).
 
-Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dein Gedächtnis, nicht der Plan-Text). Die Issues landen im Backlog.
+Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dein Gedächtnis, nicht der Plan-Text). Die Issues landen im Backlog. Unklarheiten außerhalb der Stopp-Klasse entscheidet der Skill und hält sie als `Entscheidung:`-Zeile im Kontext des Pakets fest; vor dem Anlegen prüft `issue check-form` jedes Paket. Ein Paket-Review ist kein Regelfall mehr — wer ihn will, ruft `/issue-review #N`.
 
 Zum Abschluss listet der Skill die angelegten Issues und gibt pro Issue eine Modell-Empfehlung (schnelleres Standard-Modell für mechanische Aufgaben, stärkstes verfügbares Modell für Architektur- oder Sicherheitslogik, jeweils mit einem Satz Begründung). So entscheidest du vor dem GO, mit welchem Modell du jedes Issue umsetzt, ohne den Plan-Kontext noch einmal zu lesen.
 
