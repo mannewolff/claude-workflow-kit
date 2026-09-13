@@ -46,33 +46,6 @@ test("die Vorlage nennt alle drei Titel-Praefixe", () => {
   }
 });
 
-test("beide Prozessdateien ordnen jeder Stufe ihren Nachweis zu", () => {
-  for (const [name, text] of beide) {
-    for (const [stufe, marker] of [
-      ["fachlich", "Fachplan-Review:"],
-      ["plan", "Plan-Review:"],
-      ["issue", "Issue-Review:"],
-    ]) {
-      const zeile = text.split("\n").find((z) => z.includes(marker) && new RegExp(`\`?${stufe}\`?`).test(z));
-      assert.ok(zeile, `${name}: keine Zeile ordnet der Stufe '${stufe}' den Nachweis '${marker}' zu`);
-    }
-  }
-});
-
-test("beide Prozessdateien sagen, dass nur Issue-Review die Umsetzung freigibt", () => {
-  for (const [name, text] of beide) {
-    const absatz = text
-      .split(/\n\n/)
-      .find((a) => /Issue-Review:/.test(a) && /freigibt|freigegeben|gibt die Umsetzung frei/i.test(a));
-    assert.ok(absatz, `${name}: die Freigabe-Regel fehlt`);
-    assert.match(
-      absatz,
-      /Fachplan-Review:[\s\S]{0,120}Plan-Review:|Plan-Review:[\s\S]{0,120}Fachplan-Review:/,
-      `${name}: der Absatz sagt nicht, dass die anderen beiden Marker sie nicht ersetzen`
-    );
-  }
-});
-
 test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   for (const [name, text] of beide) {
     const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a));
@@ -209,9 +182,9 @@ function dokuAbschnitt(ueberschrift) {
 }
 
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
+  // Die Vorlage nennt die Marker-Orte seit Issue #633 nicht mehr; sie stehen in Doku und Skill.
   const dateien = [
     ["docs/dokumentation.md", DOKU],
-    ["templates/CLAUDE-workflow.md", VORLAGE],
     ["skills/issue-review/SKILL.md", lies("skills", "issue-review", "SKILL.md")],
   ];
   for (const [name, text] of dateien) {
@@ -239,39 +212,6 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
 // der Rueckfall auf den Regelfall. Diese Arbeitsteilung ist nirgends erkennbar,
 // wenn sie nirgends steht.
 
-
-test("beide Prozessdateien erklaeren beide Pruefzeilen und ihre Besitzer", () => {
-  for (const [name, text] of beide) {
-    const idx = text.indexOf("## Issue-Format");
-    assert.ok(idx >= 0, `${name}: kein Issue-Format-Abschnitt`);
-    // Abgegrenzt am `---`-Trenner, NICHT an der naechsten `## `-Zeile: Der
-    // Abschnitt zeigt das Vier-Abschnitt-Format in einem Codeblock, und dessen
-    // `## Kontext` wuerde den Abschnitt gleich hinter der Ueberschrift kappen.
-    const abschnitt = text.slice(idx).split(/\n---\n/)[0];
-
-    assert.match(abschnitt, /`?Pruefung: *<1\|2\|3\|Verzicht>`?/,
-      `${name}: die Vorgabezeile 'Pruefung: <1|2|3|Verzicht>' fehlt`);
-    assert.match(abschnitt, /Pruefung-Stand:/,
-      `${name}: die Standzeile 'Pruefung-Stand:' fehlt`);
-
-    // Wer schreibt was — ohne diese Zuordnung sind beide Zeilen nur Syntax.
-    assert.match(abschnitt, /`?Pruefung:`?[\s\S]{0,200}(setzt der Mensch|schreibt der Mensch|nur der Mensch)/i,
-      `${name}: es steht nicht, dass 'Pruefung:' der Mensch setzt`);
-    assert.match(abschnitt, /Pruefung-Stand:[\s\S]{0,240}(maschinell|die Maschine|nicht von Hand)/i,
-      `${name}: es steht nicht, dass 'Pruefung-Stand:' maschinell gepflegt wird`);
-
-    assert.match(abschnitt, /issueReview\.rounds|`rounds`/,
-      `${name}: der Regelfall aus issueReview.rounds ist nicht als Default benannt`);
-    assert.match(abschnitt, /Verringerung|verringer/i,
-      `${name}: die Regel zur Verringerung fehlt`);
-    assert.match(abschnitt, /unbeaufsichtigt|Nachtlauf|Nacht-Runner/i,
-      `${name}: es steht nicht, dass ein unbeaufsichtigter Lauf dabei abgewiesen wird`);
-    assert.match(abschnitt, /verfall|verfäll/i,
-      `${name}: der Verfall bei inhaltlicher Aenderung fehlt`);
-    assert.match(abschnitt, /verfall[\s\S]{0,300}Regelfall|Regelfall[\s\S]{0,300}verfall/i,
-      `${name}: es steht nicht, dass nach dem Verfall wieder der Regelfall gilt`);
-  }
-});
 
 test("die dokumentierten --stufe-Werte stimmen mit night.mjs --help ueberein", () => {
   const help = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], {

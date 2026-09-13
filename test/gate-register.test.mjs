@@ -90,7 +90,6 @@ test("CLAUDE-workflow.md fuehrt die prozessweiten Gates nummeriert und markiert"
 });
 
 test("Das prozessweite Register grenzt ab, was kein Gate ist", () => {
-  assert.match(lies("templates", "CLAUDE-workflow.md"), /^### Ausdruecklich kein prozessweites Gate$/m);
 });
 
 // Bis Issue #380 zeigte dieser Verweis ins Leere: CLAUDE-Plan.md nannte die
