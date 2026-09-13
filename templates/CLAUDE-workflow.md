@@ -61,11 +61,13 @@ Diese Grenze ist der Grund, warum die Tabelle oben neun Zeilen hat und nicht zwo
 
 Diese drei Schritte sind die Verantwortungsschwellen. Sie bleiben menschlich und tippbar.
 
-Vor dem GO gehoert ein Dokument geprueft: `/issue-review` laesst es von Modellen
-lesen, die es nicht geschrieben haben. Wie viele das sind, entscheidet die
-Pruefstufe (siehe unten): fachliche Anforderung und Plandokument je zwei, das
-Arbeitspaket eines. Bei gesetztem `issueReview.requiredBeforeReady` stellt der
-Nacht-Runner ungepruefte Ready-Issues zurueck.
+Geprueft werden die fachliche Anforderung und das Plandokument: `/issue-review`
+laesst sie von Modellen lesen, die sie nicht geschrieben haben; wie viele das sind,
+sagt `reviewStufen`. Ein Arbeitspaket wird nicht standardmaessig geprueft — wer es
+will, ruft `/issue-review #N`. Der Schalter `issueReview.requiredBeforeReady` bleibt
+fuer Projekte, die das Gate wollen; ausgeschaltet ist der Regelfall. Bei gesetztem
+`issueReview.requiredBeforeReady` stellt der Nacht-Runner ungepruefte Ready-Issues
+zurueck.
 
 ### Die drei Pruefstufen
 
@@ -113,6 +115,45 @@ Anforderung pflanzt sich in den Plan, in jedes Arbeitspaket und in allen Code
 fort. Deshalb tragen die oberen Stufen je zwei Pruefer, das einzelne
 Arbeitspaket nur noch einen — Zuschnitt und Abhaengigkeiten entscheiden sich im
 Plan und werden dort geprueft.
+
+---
+
+## Entscheiden statt fragen
+
+Eine Session, die ein Dokument schreibt oder unbeaufsichtigt laeuft, entscheidet jede
+Unklarheit ausserhalb der Stopp-Klasse selbst und protokolliert die Entscheidung.
+Interaktiv darf gefragt werden; was der Mensch entscheidet, wird im selben Format
+festgehalten.
+
+**Das Entscheidungsformat**, je Eintrag, die Nummern laufen je Dokument fortlaufend:
+
+```
+- E1: <Frage in einem Satz>
+  Gewählt: <Weg>. Verworfen: <Alternative>. Grund: <ein Satz, Bezug auf Fachplan, Bestand oder Prioritätenordnung>. Rückbau: <trivial | eine Datei | Migration>.
+```
+
+| Wo | Ort der Eintraege |
+|----|-------------------|
+| Plandokument | `## Architektonische Entscheidungen` |
+| Arbeitspaket | `## Kontext`, je Eintrag eine Zeile beginnend mit `Entscheidung:` |
+| Implementierung | Abschlussbericht, Unterabschnitt `### Entscheidungen` |
+
+**Die Stopp-Klasse.** Nur diese Fragen halten an:
+
+1. Datenverlust oder eine Migration ohne Rueckweg.
+2. Sicherheit: Rechte, Authentifizierung, Geheimnisse, Netzzugriff.
+3. Verträge nach außen: eine Schnittstelle, die jemand anderes nutzt.
+4. Ein Widerspruch im Fachplan selbst, etwa zwei Akzeptanzkriterien, die sich ausschliessen.
+5. Eine Aenderung an Gates, Stop-Punkten oder am Prozess (W1 bis W4).
+
+Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frage. Alles
+andere — ausdruecklich auch Randfaelle, Namensfragen, Fehlerpfade, Reihenfolgen und die
+Frage, welcher Test gemeint ist — wird entschieden. Schiedsrichter ist die Ordnung aus
+„Prioritaeten bei Zielkonflikten"; im Zweifel gewinnt der kleinste rueckbaubare Eingriff.
+
+**Reviews sind Zuarbeit.** Ein Modell-Review eines Fachplans, Plans oder Arbeitspakets
+liefert Befunde an den Autor der Stufe; der arbeitet sie ein oder lehnt sie mit einem
+Satz ab. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
 
 ---
 
@@ -208,7 +249,7 @@ Details: Abschnitt "Nachtbetrieb" in der Kit-Dokumentation.
 
 **Bahn 2 — Feature** (voller 9-Schritt): ausserhalb von Bahn 1, sobald es etwas abzuwaegen gibt — oder unklar ist, ob es etwas abzuwaegen gibt → `/techplan` → `/issues` → GO → `/implement-ready`. Typisch: ein Datenmodell mit mehreren vertretbaren Schnitten, ein Endpoint, dessen Vertrag noch offen ist, eine Migration mit Rueckweg-Frage.
 
-**Bahn 3 — `[Task]`** (ersetzt Schritt 2 und 3): oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Kein `[Fachlich]`, kein `[Plan]`, keine Zerlegung — ein Arbeitspaket mit dem Titel-Praefix `[Task]`, angelegt mit `/task` nach menschlicher Bestaetigung des Wegs, danach geprueft und freigegeben wie jedes Arbeitspaket. Typisch: eine Umbenennung ueber mehrere Dateien, ein abgelehnter Werkzeug-Befund, eine mechanische Nachzieharbeit.
+**Bahn 3 — `[Task]`** (ersetzt Schritt 2 und 3): oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Kein `[Fachlich]`, kein `[Plan]`, keine Zerlegung — ein Arbeitspaket mit dem Titel-Praefix `[Task]`, angelegt mit `/task` nach menschlicher Bestaetigung des Wegs, danach freigegeben wie jedes Arbeitspaket. Typisch: eine Umbenennung ueber mehrere Dateien, ein abgelehnter Werkzeug-Befund, eine mechanische Nachzieharbeit.
 
 **Die Auswahlregel, in dieser Reihenfolge:**
 
@@ -508,7 +549,13 @@ ausdruecklich nicht dazu, und es in dieselbe Liste aufzunehmen kehrte seinen Zwe
 
 ### Hinweise
 - <Restrisiken, offene Punkte, manuelle Folgeschritte>
+
+### Entscheidungen
+- E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
+
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block
+die Eintraege im Format aus „Entscheiden statt fragen".
 
 ---
 
