@@ -29,7 +29,6 @@ import { VORSCHLAG_KOPF } from "../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
-const SKILL = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
 
 const NUR_POSIX = process.platform === "win32"
   ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
@@ -312,22 +311,3 @@ test("--stufe plan: mit Vorschlag Erfolg, ohne ihn Schaerfung fehlt", NUR_POSIX,
 });
 
 // --- Der Skill ---
-
-test("der Skill gibt die Kopfzeile woertlich vor", () => {
-  assert.match(SKILL, /## Body-Vorschlag, Runde <n>/,
-    "ohne festen Anker kann der Runner nichts pruefen");
-});
-
-test("der Skill nennt die Reihenfolge: erst der Vorschlag, dann die Synthese", () => {
-  // Wer die Synthese zuerst schreibt, hat die Abwaegung protokolliert und den Text
-  // noch nicht — und genau dann faellt das Aufschreiben aus.
-  assert.match(SKILL, /erst der Body-Vorschlag, dann die Synthese/i);
-});
-
-test("Schritt 5b sagt, dass die Synthese ueber den Vorschlag entscheidet", () => {
-  const idx = SKILL.indexOf("### 5b.");
-  assert.ok(idx >= 0, "Schritt 5b fehlt");
-  const schritt = SKILL.slice(idx).split(/\n### /)[0];
-  assert.match(schritt, /ueber den Vorschlag|über den Vorschlag/,
-    "die Perfekt-Formulierung ist der Ort, an dem die Verwechslung entsteht");
-});

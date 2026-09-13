@@ -1,6 +1,9 @@
 /**
  * skills-label-sync.test.mjs — die Aufrufstellen von `label-sync` (Issue #385).
  *
+ * Seit Issue #629 ruft `/issue-review` kein label-sync mehr; die Pakete #630 bis #632
+ * nehmen die drei uebrigen Skills aus der Liste, dann entfaellt diese Datei.
+ *
  * Geprueft wird Text, nicht Verhalten: Wann das Kommando laeuft, steht in den
  * Skills, und ein Skill wird von einer Session gelesen, nicht ausgefuehrt.
  *
@@ -18,27 +21,6 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const skill = (name) => readFileSync(join(root, "skills", name, "SKILL.md"), "utf-8");
 
-test("issue-review ruft label-sync an drei Stellen auf", () => {
-  const text = skill("issue-review");
-  const treffer = text.match(/label-sync/g) || [];
-  assert.ok(treffer.length >= 3, `nur ${treffer.length} Nennungen von label-sync`);
-  // Die drei Kontexte, in denen der Zustand sich aendert.
-  assert.match(text, /nach dem Befunde-Kommentar/i);
-  assert.match(text, /nach dem Schreiben von Body und Marker|nach Body und Marker/i);
-  assert.match(text, /nach der Verzicht-Meldung/i);
-});
-
-// Ein Label ist weder Body noch Marker — es zu zeigen ist keine
-// Produktentscheidung, sondern ein abgeleiteter Zustand. Bis Issue #418 stand hier
-// als Begruendung das naechtliche Schreibverbot fuer `fachlich` und `plan`; seit
-// die Stufen unbeaufsichtigt schreiben duerfen, verwiese sie auf ein Verbot, das
-// es nicht mehr gibt.
-test("Der Nachtbetrieb nimmt label-sync ausdruecklich NICHT aus", () => {
-  const text = skill("issue-review");
-  assert.match(text, /nachts identisch|auch nachts|nachts genauso/i);
-  assert.match(text, /weder Body noch Marker/i);
-});
-
 test("issues, techplan und fachplan rufen label-sync nach issue create auf", () => {
   for (const name of ["issues", "techplan", "fachplan"]) {
     assert.match(skill(name), /label-sync/, `${name} ruft label-sync nicht auf`);
@@ -48,10 +30,3 @@ test("issues, techplan und fachplan rufen label-sync nach issue create auf", () 
 // Ohne diese Festlegung kollidieren zwei Vorgaben: Der Anker gehoert in Zeile 1,
 // der Ausfall stand bisher ebenfalls dort — beides zugleich geht nicht, und
 // `reviewZustand` (Issue #381) erkennt den Ausfall dann nie.
-test("Das Ausfall-Kommentarformat ist festgelegt: Anker Zeile 1, Ausfall Zeile 2", () => {
-  const text = skill("issue-review");
-  assert.match(text, /zweite[nr]? Zeile/i, "die zweite Zeile wird nicht genannt");
-  assert.match(text, /Runde/, "der Anker wird nicht genannt");
-  assert.doesNotMatch(text, /dessen erste Zeile den Ausfall und den Grund nennt/,
-    "die alte, kollidierende Vorgabe steht noch da");
-});

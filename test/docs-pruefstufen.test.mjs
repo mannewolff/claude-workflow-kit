@@ -208,51 +208,6 @@ function dokuAbschnitt(ueberschrift) {
   return DOKU.slice(idx).split(/\n### /)[0];
 }
 
-test("die Marker-Beispiele der Doku nennen die Stufe, zu der sie gehoeren", () => {
-  for (const ueberschrift of ["Wer entscheidet", "Im Nachtbetrieb"]) {
-    const abschnitt = dokuAbschnitt(ueberschrift);
-    const beispiel = abschnitt.indexOf("Issue-Review: codex");
-    assert.ok(beispiel >= 0, `'${ueberschrift}': kein Issue-Review-Beispiel gefunden`);
-    // Der einleitende Text steht VOR dem Beispiel — nur er wird geprueft, damit
-    // eine spaetere Erwaehnung weiter unten den Test nicht faelschlich rettet.
-    const davor = abschnitt.slice(0, beispiel);
-    assert.match(
-      davor,
-      /Stufe\s+`?issue`?|Arbeitspaket/,
-      `'${ueberschrift}': der Text vor dem Issue-Review-Beispiel bindet es nicht an die Stufe issue`
-    );
-  }
-});
-
-// Seit Issue #418 schreibt der unbeaufsichtigte Lauf auf allen drei Stufen. Der
-// Test prueft deshalb die neue Fallunterscheidung — und die Schutzregel, die an
-// die Stelle des Stufenverbots getreten ist. Die Begruendung bleibt dieselbe:
-// PO-Antworten und Architekturentscheidungen hat ein Mensch getroffen. Nur der
-// Schutz haengt jetzt am Inhalt statt an der Stufe.
-test("der Nachtbetrieb-Abschnitt der Doku erklaert die Fallunterscheidung und die Schutzregel", () => {
-  const abschnitt = dokuAbschnitt("Im Nachtbetrieb");
-  for (const [was, muster] of [
-    ["die Stufe fachlich", /`fachlich`/],
-    ["die Stufe plan", /`plan`/],
-    ["die Geltung fuer alle drei Stufen", /alle drei Stufen|jede[rn]? Stufe/i],
-    ["das Schreiben bei lauter korrektur-Funden", /alle Funde `korrektur`/],
-    ["das Ausbleiben des Markers im Klaerungsfall", /kein Marker|Marker bleibt aus|Marker.{0,30}nicht gesetzt/i],
-    ["das Zeichnen mit kit:klaeren", /kit:klaeren/],
-    ["die PO-Antworten als Begruendung", /Product Owner|PO-Antworten|PO-Antwort/],
-    ["die Architekturentscheidungen als Begruendung", /architektonische[nr]? Entscheidungen|Architekturentscheidungen/i],
-    ["den Menschen als Entscheider", /ein Mensch|Mensch getroffen/i],
-  ]) {
-    assert.match(abschnitt, muster, `der Nachtbetrieb-Abschnitt nennt ${was} nicht`);
-  }
-  // Die eigentliche Aussage von #418: geschuetzt ist der Inhalt, nicht der Ort.
-  assert.match(abschnitt, /nicht die Stufen, sondern die Inhalte|nicht die Stufe, sondern/i,
-    "die Verlagerung vom Ort auf den Inhalt ist nicht ausgesprochen");
-});
-
-// Story- und Plan-Format haben keinen `## Kontext`. Die pauschale Ansage "im
-// Kontext-Abschnitt" war deshalb fuer zwei von drei Stufen nicht befolgbar.
-// Massgeblich fuer die fachliche Anforderung ist skills/fachplan/SKILL.md: dort
-// gehoert `Autor-Modell:` in den Abschnitt `## Ziel`.
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   const dateien = [
     ["docs/dokumentation.md", DOKU],
@@ -274,7 +229,8 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   }
 });
 
-// --- Issue #307: Pruefvorgabe, Verzicht und Verfall in der Doku ---
+// --- Issue #307: Pruefvorgabe, Verzicht und Verfall in der Vorlage (die Doku-Passage
+// entfiel mit Issue #629) ---
 //
 // Am Ticket stehen zwei Zeilen, die sich zum Verwechseln aehnlich sehen und
 // trotzdem verschiedene Besitzer haben: `Pruefung:` schreibt der Mensch,
@@ -283,14 +239,6 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
 // der Rueckfall auf den Regelfall. Diese Arbeitsteilung ist nirgends erkennbar,
 // wenn sie nirgends steht.
 
-/** Der Doku-Abschnitt zur Pruefvorgabe — ueber seine Ueberschrift gefunden. */
-function pruefvorgabeAbschnitt() {
-  const treffer = DOKU.split(/\n(?=### )/).find((a) =>
-    /^### .*(Verzicht|Prüfvorgabe|Pruefvorgabe|Prüfumfang)/.test(a)
-  );
-  assert.ok(treffer, "kein ###-Abschnitt zur Pruefvorgabe in docs/dokumentation.md");
-  return treffer;
-}
 
 test("beide Prozessdateien erklaeren beide Pruefzeilen und ihre Besitzer", () => {
   for (const [name, text] of beide) {
@@ -323,64 +271,6 @@ test("beide Prozessdateien erklaeren beide Pruefzeilen und ihre Besitzer", () =>
     assert.match(abschnitt, /verfall[\s\S]{0,300}Regelfall|Regelfall[\s\S]{0,300}verfall/i,
       `${name}: es steht nicht, dass nach dem Verfall wieder der Regelfall gilt`);
   }
-});
-
-test("die Doku nennt die drei Zustaende eines Arbeitspakets", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  for (const [was, muster] of [
-    ["geprueft", /geprüft/],
-    ["bewusst ohne Pruefung freigegeben", /bewusst ohne Prüfung freigegeben/i],
-    ["noch nicht geprueft", /noch nicht geprüft/i],
-  ]) {
-    assert.match(abschnitt, muster, `der Zustand '${was}' fehlt in der Doku`);
-  }
-});
-
-test("die Doku erklaert die Arbeitsteilung an den beiden Zeilen", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  assert.match(abschnitt, /`Pruefung: *<1\|2\|3\|Verzicht>`|`Pruefung:`/,
-    "die Vorgabezeile ist nicht benannt");
-  assert.match(abschnitt, /`Pruefung-Stand:`|`Pruefung-Stand: *<hex>`/,
-    "die Standzeile ist nicht benannt");
-  assert.match(abschnitt, /(setzt|schreibt) der Mensch|nur der Mensch/i,
-    "es steht nicht, welche Zeile der Mensch setzt");
-  assert.match(abschnitt, /maschinell|die Maschine|`issue update`/,
-    "es steht nicht, dass der Stand maschinell gepflegt wird");
-});
-
-test("die Doku bindet den Verfall an Aufgabe, Kriterien und Abhaengigkeiten", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  for (const [was, muster] of [
-    ["die Aufgabe", /Aufgabe/],
-    ["das Akzeptanzkriterium", /Akzeptanzkriteri|Kriterien/],
-    ["die Abhaengigkeiten", /Abhängigkeiten|Abhaengigkeiten/],
-  ]) {
-    assert.match(abschnitt, muster, `der Umfang des Bezugsstands nennt ${was} nicht`);
-  }
-  // Die Grenze ist die eigentliche Aussage: Der Kontext zaehlt NICHT mit, weil
-  // dort die Kennzeichnungszeilen stehen — sonst waere jede Markierung Verfall.
-  assert.match(abschnitt, /nicht[\s\S]{0,80}(der )?Kontext-Abschnitt|Kontext-Abschnitt[\s\S]{0,80}(zählt nicht|bleibt außen vor|nicht mit)/i,
-    "es steht nicht, dass der Kontext-Abschnitt nicht zum Bezugsstand gehoert");
-  assert.match(abschnitt, /Regelfall/,
-    "es steht nicht, was nach dem Verfall gilt");
-});
-
-test("die Doku nennt den Randfall des fehlenden Bezugsstands", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  const absatz = abschnitt.split(/\n\n/).find((a) => /Fehlt `Pruefung-Stand:`|ohne (Bezugs)?[Ss]tand|fehlt der Stand/i.test(a));
-  assert.ok(absatz, "kein Absatz zum fehlenden Pruefung-Stand");
-  assert.match(absatz, /gilt die Vorgabe|Vorgabe gilt|kein Verfall/i,
-    "es steht nicht, dass ohne Stand die Vorgabe gilt");
-});
-
-test("die Doku benennt die Grenze der Human-only-Regel", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  assert.match(abschnitt, /KIT_AGENT_MODEL/,
-    "die Regel haengt an KIT_AGENT_MODEL — das steht nicht da");
-  assert.match(abschnitt, /interaktiv/i,
-    "die interaktive Session ist als Gegenstueck nicht benannt");
-  assert.match(abschnitt, /verlängerter Arm|verlaengerter Arm|auf Ansage/i,
-    "es steht nicht, dass eine interaktive Session als verlaengerter Arm des Menschen gilt");
 });
 
 test("die dokumentierten --stufe-Werte stimmen mit night.mjs --help ueberein", () => {
