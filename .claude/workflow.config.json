@@ -28,8 +28,8 @@
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "issueReview": {
     "rounds": 1,
-    "requiredBeforeReady": true,
-    "statusLabels": true,
+    "requiredBeforeReady": false,
+    "statusLabels": false,
     "reviewers": [
       {
         "name": "opus",
@@ -91,7 +91,7 @@
       ]
     },
     "plan": {
-      "reviewer": 2,
+      "reviewer": 1,
       "rollen": [
         "architektur-bestand",
         "schnitt-abhaengigkeiten"
