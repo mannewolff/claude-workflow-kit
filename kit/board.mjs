@@ -102,6 +102,12 @@ Nutzung:
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
+  node board.mjs issue check-form <id>
+  node board.mjs issue check-form --body-file <pfad> --title "<titel>"
+      Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I4. Die Stufe
+      kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
+      bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -3246,6 +3252,253 @@ async function issueUpdate(tracker, config, args) {
   out({ ok: true, id });
 }
 
+// ============================================================
+// Formpruefung: issue check-form (Issue #628)
+// ============================================================
+
+const CHECK_FORM_WEGE =
+  "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
+  + "--body-file <pfad> zusammen mit --title \"<titel>\"";
+
+/** Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert). */
+const CHECK_FORM_ABSCHNITTE = {
+  fachlich: ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele", "offene fragen an den po"],
+  plan: ["ziel", "betroffene bereiche", "architektonische entscheidungen", "geplante aenderungen", "offene fragen", "verifizierung"],
+  issue: ["kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"],
+};
+
+/** Ueberschriften vergleichbar machen: Umlaute zaehlen in beiden Schreibweisen. */
+function normUeberschrift(text) {
+  return String(text).trim().toLowerCase()
+    .replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss")
+    .replaceAll(/\s+/g, " ");
+}
+
+/**
+ * Zerlegt den Body ohne Codebloecke in Kopf und `##`-Abschnitte.
+ *
+ * Dieselbe Fence-Auslegung wie ueberall im Adapter (`fenceLauf`): Eine
+ * Ueberschrift im Codeblock existiert fuer die Pruefung nicht — weder als
+ * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze.
+ */
+function zerlegeAbschnitte(body) {
+  const imFence = fenceLauf();
+  const kopf = [];
+  const abschnitte = [];
+  let aktuell = null;
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (imFence(zeile)) continue;
+    const m = zeile.match(/^##[ \t]+(.+?)[ \t]*$/);
+    if (m) {
+      aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
+      abschnitte.push(aktuell);
+      continue;
+    }
+    (aktuell ? aktuell.zeilen : kopf).push(zeile);
+  }
+  return { kopf, abschnitte };
+}
+
+function ersteNichtLeere(zeilen) {
+  return zeilen.map((z) => z.trim()).find((z) => z !== "") ?? null;
+}
+
+function istLeer(zeilen) {
+  return ersteNichtLeere(zeilen) === null;
+}
+
+/** `Autor-Modell: <wert>` (bzw. eine andere Kennzeichnungszeile) mit nicht leerem Wert. */
+function hatKennzeichnung(zeilen, name) {
+  const muster = new RegExp(`^${name}:[ \\t]*(\\S.*)?$`);
+  return zeilen.some((z) => {
+    const m = z.trim().match(muster);
+    return Boolean(m && m[1] && m[1].trim() !== "");
+  });
+}
+
+/**
+ * Pflichtabschnitte je genau einmal und in dieser Reihenfolge. Liefert die
+ * Meldungen; leer heisst erfuellt. Andere Abschnitte werden hier nicht bewertet.
+ */
+function pruefeReihenfolge(abschnitte, erwartet) {
+  const meldungen = [];
+  let letzte = -1;
+  for (const name of erwartet) {
+    const stellen = abschnitte.map((a, i) => (a.titel === name ? i : -1)).filter((i) => i >= 0);
+    if (stellen.length === 0) { meldungen.push(`Abschnitt '## ${name}' fehlt`); continue; }
+    if (stellen.length > 1) meldungen.push(`Abschnitt '## ${name}' steht ${stellen.length}-mal`);
+    if (stellen[0] < letzte) meldungen.push(`Abschnitt '## ${name}' steht nicht in der vorgeschriebenen Reihenfolge`);
+    letzte = Math.max(letzte, stellen[0]);
+  }
+  return meldungen;
+}
+
+/** Zeilen ausserhalb von Codebloecken, die mit einem der Praefixe beginnen. */
+function zeilenMitPraefix(zeilen, muster) {
+  return zeilen.filter((z) => muster.test(z.trim()));
+}
+
+/** Meldungen fuer die Marker-Zeile, die auf dieser Stufe nicht stehen darf (F11, P12). */
+function markerVerstoesse(zeilen, gate, richtigerMarker) {
+  return zeilenMitPraefix(zeilen, /^Issue-Review:/i)
+    .map((z) => ({ gate, meldung: `'${z.trim()}' — der Marker dieser Stufe heisst '${richtigerMarker}'` }));
+}
+
+function pruefeFachlich(abschnitte, alleZeilen) {
+  const erwartet = CHECK_FORM_ABSCHNITTE.fachlich;
+  const finde = (name) => abschnitte.find((a) => a.titel === name);
+  const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "F1", meldung }));
+  const ziel = finde("ziel");
+  if (!ziel || !hatKennzeichnung(ziel.zeilen, "Autor-Modell")) {
+    verstoesse.push({ gate: "F2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Ziel'" });
+  }
+  for (const name of ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele"]) {
+    const a = finde(name);
+    if (a && istLeer(a.zeilen)) verstoesse.push({ gate: "F6", meldung: `Abschnitt '## ${name}' ist leer` });
+  }
+  if (!finde("offene fragen an den po")) {
+    verstoesse.push({ gate: "F7", meldung: "Abschnitt '## Offene Fragen an den PO' fehlt" });
+  }
+  for (const z of zeilenMitPraefix(alleZeilen, /^(Fachliche Quelle|Plan):/)) {
+    verstoesse.push({ gate: "F9", meldung: `Herkunftszeile an der Wurzel: '${z.trim()}'` });
+  }
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "Fachplan-Review:")];
+}
+
+/** P6 fuer einen Abschnitt: nicht leer; `- Keine.` nur wo erlaubt und nur als erste Zeile. */
+function pruefeP6(name, zeilen) {
+  const inhalt = zeilen.map((z) => z.trim()).filter((z) => z !== "");
+  if (inhalt.length === 0) return `Abschnitt '## ${name}' ist leer`;
+  const keineErlaubt = name === "architektonische entscheidungen" || name === "offene fragen";
+  const hatKeine = inhalt.some((z) => z.startsWith("- Keine."));
+  if (!hatKeine) return null;
+  if (!keineErlaubt) return `'- Keine.' ist in '## ${name}' nicht erlaubt`;
+  const nurKeine = inhalt.every((z, i) => (i === 0 ? z.startsWith("- Keine.") : !z.startsWith("- Keine.")));
+  return nurKeine ? null : `'- Keine.' in '## ${name}' muss die erste Zeile sein und darf keine weiteren Eintraege haben`;
+}
+
+function pruefePlan(kopf, abschnitte, alleZeilen) {
+  const erwartet = CHECK_FORM_ABSCHNITTE.plan;
+  const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "P1", meldung }));
+  for (const a of abschnitte) {
+    if (!erwartet.includes(a.titel)) {
+      verstoesse.push({ gate: "P2", meldung: `zusaetzliche Ueberschrift '## ${a.titel}' — nur ### ist zwischen den sechs Abschnitten erlaubt` });
+    }
+  }
+  if (!hatKennzeichnung(kopf, "Plan-Modell")) {
+    verstoesse.push({ gate: "P3", meldung: "'Plan-Modell:' steht nicht mit Wert im Kopf vor '## Ziel'" });
+  }
+  for (const a of abschnitte.filter((x) => erwartet.includes(x.titel))) {
+    const meldung = pruefeP6(a.titel, a.zeilen);
+    if (meldung) verstoesse.push({ gate: "P6", meldung });
+  }
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "Plan-Review:")];
+}
+
+/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt, Spec-Wirkung nur davor. */
+function pruefeI1Lage(abschnitte) {
+  const meldungen = [];
+  const index = (name) => abschnitte.findIndex((a) => a.titel === name);
+  const abh = index("abhaengigkeiten");
+  if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push("'## Abhaengigkeiten' ist nicht der letzte Abschnitt");
+  const spec = index("spec-wirkung");
+  const akz = index("akzeptanzkriterium");
+  if (spec >= 0 && !(akz >= 0 && abh >= 0 && akz < spec && spec < abh)) {
+    meldungen.push("'## Spec-Wirkung' gehoert zwischen '## Akzeptanzkriterium' und '## Abhaengigkeiten'");
+  }
+  return meldungen;
+}
+
+/** I3 und I4 am Abhaengigkeiten-Abschnitt. */
+function pruefeAbhaengigkeiten(zeilen) {
+  const verstoesse = [];
+  const erste = ersteNichtLeere(zeilen);
+  if (erste === null) {
+    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' ist leer — 'Keine.' oder 'Issue #N'" });
+  } else if (!erste.startsWith("Keine.") && !zeilen.some((z) => /#\d+/.test(z))) {
+    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' nennt weder 'Keine.' noch eine #N-Referenz — der Nacht-Runner liest nur #N" });
+  }
+  for (const z of zeilenMitPraefix(zeilen, /^(Fachliche Quelle|Plan):/)) {
+    verstoesse.push({ gate: "I4", meldung: `'${z.trim()}' gehoert in '## Kontext', nicht in die Abhaengigkeiten — der Runner laese sie als Abhaengigkeit` });
+  }
+  return verstoesse;
+}
+
+function pruefeIssue(abschnitte) {
+  const finde = (name) => abschnitte.find((a) => a.titel === name);
+  const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
+    .map((meldung) => ({ gate: "I1", meldung }));
+  const kontext = finde("kontext");
+  if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
+    verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
+  }
+  const abh = finde("abhaengigkeiten");
+  return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
+}
+
+/**
+ * Prueft ein Dokument gegen die maschinellen Formgates seiner Stufe (Issue #628).
+ *
+ * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
+ * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
+ * Arbeitspaket: I1 bis I4 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt. Die
+ * `[Urteil]`-Gates bleiben beim Reviewer.
+ */
+export function pruefeForm(body, title) {
+  const stufe = stufeAusTitel(title);
+  const { kopf, abschnitte } = zerlegeAbschnitte(body);
+  const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
+  let verstoesse;
+  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
+  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
+  else verstoesse = pruefeIssue(abschnitte);
+  return { ok: verstoesse.length === 0, stufe, verstoesse };
+}
+
+/** Weist einen Aufruf ab — mit JSON auf stdout, wie synthese-check. */
+function checkFormAbweisen(meldung) {
+  out({ ok: false, stufe: null, verstoesse: [], fehler: meldung });
+  process.stderr.write(`Fehler: ${meldung}\n`);
+  process.exit(1);
+}
+
+/** Der Datei-Weg: Body aus --body-file, Titel aus --title. */
+function checkFormAusDatei(datei, titel) {
+  if (datei === true || datei === "") checkFormAbweisen(`--body-file braucht einen Pfad. ${CHECK_FORM_WEGE}.`);
+  if (typeof titel !== "string" || titel.trim() === "") {
+    checkFormAbweisen(`--body-file braucht --title, damit die Stufe feststeht. ${CHECK_FORM_WEGE}.`);
+  }
+  try {
+    return { body: readFileSync(datei, "utf-8"), title: titel };
+  } catch (e) {
+    return checkFormAbweisen(`--body-file: ${datei} ist nicht lesbar (${e.code || e.message}). ${CHECK_FORM_WEGE}.`);
+  }
+}
+
+/** Der Board-Weg: Body und Titel der Karte; eine unbekannte Nummer weist den Aufruf ab. */
+async function checkFormVomBoard(tracker, id) {
+  try {
+    const issue = await tracker.getIssue(String(id));
+    return { body: issue.body || "", title: issue.title || "" };
+  } catch (e) {
+    if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) return checkFormAbweisen(e.message);
+    throw e;
+  }
+}
+
+async function issueCheckForm(tracker, args) {
+  const id = args._[0];
+  const hatDatei = args["body-file"] !== undefined;
+  if (id !== undefined && hatDatei) checkFormAbweisen(`Kartennummer und --body-file zugleich uebergeben. ${CHECK_FORM_WEGE}.`);
+  if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
+
+  const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
+  const ergebnis = pruefeForm(body, title);
+  out(ergebnis);
+  if (!ergebnis.ok) process.exit(1);
+}
+
 async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
@@ -3259,6 +3512,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, config, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
+    case "check-form": return issueCheckForm(tracker, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
