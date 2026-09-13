@@ -463,7 +463,7 @@ Beim `push main`-Trigger entsteht bewusst kein Tag — dort entstehen interne Pa
 
 **Werkzeug neben dem Prozess, alle ein bis zwei Wochen.**
 
-Die KI-Retrospektive ist kein Entwicklungszyklus-Schritt, sondern ein Wartungsschritt für den Prozess selbst. Drei Fragen: Wo hat die Mensch-KI-Zusammenarbeit gehakt? Welche Memory-Einträge sind veraltet oder falsch? Welche Workflow-Regel braucht eine Schärfung?
+Die KI-Retrospektive ist kein Entwicklungszyklus-Schritt, sondern ein Wartungsschritt für den Prozess selbst. Vier Fragen: Wo hat die Mensch-KI-Zusammenarbeit gehakt? Welche Memory-Einträge sind veraltet oder falsch? Welche Workflow-Regel braucht eine Schärfung? Was sagen die Zahlen — wie viele Entscheidungen der Nacht wurden gekippt, wie viele Stopp-Fragen gab es, wie viele Kalendertage lagen zwischen Anforderung und GO und zwischen GO und Push?
 
 Der Output sind keine Erkenntnisse, sondern konkrete Änderungen an den Konventionsdateien und am Memory. Wenn eine Retrospektive keine Datei verändert, war sie zu abstrakt.
 

@@ -328,9 +328,10 @@ Sicherheit, Korrektheit, Datenintegritaet, Accessibility, Wartbarkeit, Performan
 
 ## KI-Retro (alle 1-2 Wochen)
 
-`/retro` startet die KI-Retrospektive. Drei Fragen:
+`/retro` startet die KI-Retrospektive. Vier Fragen:
 - Wo hat die Mensch-KI-Zusammenarbeit gehakt?
 - Welche Memory-Eintraege sind veraltet?
 - Welche Workflow-Regel braucht eine Schaerfung?
+- Was sagen die Zahlen? (gekippte Nachtentscheidungen, Stopp-Fragen, Anforderung bis GO, GO bis Push)
 
-Output: konkrete Aenderungen an Memory-Dateien und CLAUDE*.md-Dateien.
+Output: konkrete Aenderungen an Memory-Dateien und CLAUDE*.md-Dateien, dazu die Kennzahlen als Tabelle.
