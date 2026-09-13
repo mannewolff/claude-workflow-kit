@@ -124,8 +124,13 @@ test("[skills-2] Schritt 1 fragt unbeaufsichtigt nicht nach", () => {
   reihenfolgePruefen(schritt1, "Schritt 1");
   assert.match(schritt1, /## Offene Fragen/,
     "wohin eine Stopp-Frage wandert, steht nicht da — dort und nur dort liest der Runner sie");
-  assert.match(schritt1, /Annahme/,
-    "die nachtraeglich entscheidbare Frage hat keinen Ort");
+  assert.match(schritt1, /Entscheiden statt fragen/,
+    "die Regel, nach der entschieden wird, ist nicht verwiesen");
+  assert.match(schritt1, /E-Eintrag unter `## Architektonische Entscheidungen`/,
+    "die entschiedene Frage hat keinen Ort");
+  assert.match(schritt1, /Stopp-Klasse/,
+    "nur die Stopp-Klasse darf anhalten — das steht nicht da");
+  assert.doesNotMatch(schritt1, /Annahme:/, "die alte Annahme-Form steht noch da");
 });
 
 test("[skills-2] Schritt 4 laesst die Diskussion unbeaufsichtigt entfallen", () => {

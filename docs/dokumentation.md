@@ -344,7 +344,7 @@ Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), lies
 
 **Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
-Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Anschließend stellt er den Plan zur Diskussion.
+Du gibst die Anforderung, der Skill erzeugt einen Plan. Der Plan benennt Ziel und Nutzerwirkung, betroffene Bereiche und Dateien, architektonische Entscheidungen mit Begründung, offene Fragen und die geplante Verifizierung. Unter „Offene Fragen" stehen nur Fragen der Stopp-Klasse aus `CLAUDE-workflow.md`; alles andere entscheidet der Skill und protokolliert es als E-Eintrag unter den architektonischen Entscheidungen. Vor dem Anlegen prüft `issue check-form` die Form des Plandokuments. Anschließend stellt er den Plan zur Diskussion.
 
 Der Skill implementiert nichts. **Technische Issues stellt er nicht an** — die entstehen erst in `/issues`, nach deinem GO. Er wartet auf dein Feedback. Der Plan ist Diskussionsgrundlage, kein Auftrag und noch keine Freigabe.
 

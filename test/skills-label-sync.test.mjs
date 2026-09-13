@@ -21,8 +21,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const skill = (name) => readFileSync(join(root, "skills", name, "SKILL.md"), "utf-8");
 
-test("issues, techplan und fachplan rufen label-sync nach issue create auf", () => {
-  for (const name of ["issues", "techplan", "fachplan"]) {
+test("issues und fachplan rufen label-sync nach issue create auf", () => {
+  for (const name of ["issues", "fachplan"]) {
     assert.match(skill(name), /label-sync/, `${name} ruft label-sync nicht auf`);
   }
 });
