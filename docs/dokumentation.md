@@ -327,13 +327,14 @@ Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kom
 
 Zwischen Kleinigkeit und vollem Vorhaben fehlte ein Weg. Bahn 1 verlangt genau eine Datei, Bahn 2 verlangt Fachkonzept, Plan und Zerlegung. Eine Umbenennung über zwölf Dateien ist für die eine zu groß und für die andere zu eindeutig — es gibt dort nichts abzuwägen, also gibt es auch nichts zu planen.
 
-`/task` legt dafür **genau ein Arbeitspaket** an: Titel mit dem Präfix `[Task]`, Body im Vier-Abschnitt-Format wie jedes Paket aus `/issues`, Status Backlog. Danach läuft der normale Weg weiter — `/issue-review`, GO, Implementierung, Review, Push.
+`/task` legt dafür **genau ein Arbeitspaket** an: Titel mit dem Präfix `[Task]`, Body im Vier-Abschnitt-Format wie jedes Paket aus `/issues`, Status Backlog. Danach läuft der normale Weg weiter — GO, Implementierung, Review, Push. Wer den Task vorher prüfen lassen will, ruft `/issue-review #N` selbst.
 
-Drei Eigenschaften unterscheiden ihn von `/techplan`:
+Vier Eigenschaften unterscheiden ihn von `/techplan`:
 
-- **Er fragt, bevor er anlegt.** Der Skill sagt, welche Bahn-1-Regel der Vorgang verfehlt und was es nicht abzuwägen gibt, und wartet auf deine Bestätigung. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
+- **Er fragt, bevor er anlegt.** Der Skill benennt die Bahn in einem Satz und wartet auf ein Wort von dir. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
 - **Er nimmt nur zwei Quellen.** Den Chat oder eine `[Idee]` (`/task #N`). Ein `[Fachlich]`- oder `[Plan]`-Dokument lehnt er ab, ohne etwas anzulegen: Dort ist der volle Weg bereits begonnen, und ein `[Task]` daneben wäre eine zweite Wahrheit darüber, was gebaut wird. Entstand der Task aus einer Idee, bleibt an ihr ein Kommentar `Fortsetzung: Issue #T` zurück.
 - **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#beschriebenes-verhalten): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
+- **Er entscheidet, statt zu fragen.** Was beim Schreiben des Pakets unklar ist und nicht in der Stopp-Klasse aus `CLAUDE-workflow.md` steht, entscheidet der Skill selbst und hält es als `Entscheidung:`-Zeile im Kontext fest. Nur eine Frage aus der Stopp-Klasse geht an dich.
 
 **Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue` und braucht bei gesetztem `spec`-Block seinen `## Spec-Wirkung`-Abschnitt. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
 

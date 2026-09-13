@@ -60,22 +60,17 @@ test("[skills-7] der Skill traegt keine Prozessnummer", () => {
 
 // --- Schritt 0: die Bestaetigung ---------------------------------------------
 
-test("[skills-7] der Weg wird benannt und bestaetigt, bevor etwas entsteht", () => {
+test("[skills-7] der Weg wird in einem Satz benannt und bestaetigt, bevor etwas entsteht", () => {
+  assert.match(SKILL, /Das ist Bahn 3/, "der eine Satz zur Bahn fehlt");
   assert.match(
     SKILL,
-    /Bahn-1-Regel/,
-    "es steht nicht da, welche Bahn-1-Regel der Vorgang verfehlt",
+    /wartet .{0,40}Best(?:ae|ä)tigung/,
+    "dass der Skill auf die Bestaetigung wartet, steht nicht da",
   );
-  assert.match(
-    SKILL,
-    /nichts abzuw(?:ae|ä)gen/,
-    "das zweite Merkmal (nichts abzuwaegen) fehlt",
-  );
-  assert.match(
-    SKILL,
-    /Erst danach entsteht etwas|wartet auf die Best(?:ae|ä)tigung/,
-    "dass vor der Bestaetigung nichts entsteht, steht nicht da",
-  );
+  assert.match(SKILL, /Erst danach entsteht etwas/, "dass vor der Bestaetigung nichts entsteht, steht nicht da");
+  // Die zwei Pflichtangaben (verfehlte Bahn-1-Regel, fehlende Abwaegung) sind auf den
+  // Halbsatz geschrumpft — sie duerfen nicht als eigene Anforderung wiederkommen.
+  assert.doesNotMatch(SKILL, /[Zz]wei Angaben/, "die zwei Pflichtangaben stehen wieder da");
 });
 
 test("[skills-7] unbeaufsichtigt endet der Skill und legt nichts an", () => {
@@ -186,20 +181,38 @@ test("[skills-7] die ID-Vergabe wird auf /issues verwiesen, nicht wiederholt", (
   );
 });
 
-test("[skills-7] nach dem Anlegen laeuft label-sync, der Status bleibt Backlog", () => {
-  assert.match(
-    SKILL,
-    /issue-review label-sync <id>/,
-    "der label-sync-Aufruf fehlt",
-  );
+test("[skills-7] nach dem Anlegen laeuft kein label-sync, der Status bleibt Backlog", () => {
+  assert.doesNotMatch(SKILL, /label-sync/, "der label-sync-Aufruf steht noch da");
   assert.match(SKILL, /Backlog/, "es steht nicht da, dass die Karte in Backlog bleibt");
-  assert.match(SKILL, /\/issue-review #N/, "der Hinweis auf die Pruefung fehlt");
   assert.match(SKILL, /`ideaId`/, "der Sonderfall Ideen-Pool fehlt");
   assert.match(
     SKILL,
     /weder eine Nummer noch|keine Nummer, keine Erfolgsmeldung/,
     "der Fehlerfall beim Anlegen fehlt",
   );
+});
+
+test("[skills-7] /issue-review kommt genau einmal vor, als Angebot im Abschluss", () => {
+  const treffer = SKILL.match(/issue-review/g) || [];
+  assert.equal(treffer.length, 1, `issue-review steht ${treffer.length}-mal im Skill, erlaubt ist einmal`);
+  const abschluss = SKILL.indexOf("### 5. Abschluss");
+  assert.ok(abschluss > 0, "der Abschluss fehlt");
+  assert.ok(SKILL.indexOf("/issue-review #N") > abschluss, "das Angebot steht nicht im Abschluss");
+});
+
+// --- Entscheiden statt fragen --------------------------------------------------
+
+test("[skills-7] der Skill verweist auf 'Entscheiden statt fragen' und nennt die Zeilenform", () => {
+  assert.match(SKILL, /Entscheiden statt fragen/, "der Verweis auf den Abschnitt in CLAUDE-workflow.md fehlt");
+  assert.match(SKILL, /^Entscheidung: /m, "die Zeilenform `Entscheidung:` fehlt");
+  assert.match(SKILL, /Stopp-Klasse/, "die Stopp-Klasse ist nicht genannt");
+  assert.match(SKILL, /genau eine je Halt/, "dass ein Halt genau eine Frage traegt, steht nicht da");
+});
+
+test("[skills-7] der Skill bleibt kurz und begruendet keine Regel mit einem Issue", () => {
+  const zeilen = SKILL.split("\n").length;
+  assert.ok(zeilen < 120, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 120`);
+  assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
 });
 
 // --- Die Verneinung von --derived-from ----------------------------------------
