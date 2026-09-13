@@ -1,9 +1,11 @@
-// Der Halt bei Abwaegungsbedarf in einem `[Task]` (Issue #573, Plan #562).
+// Entscheiden statt fragen in `/implement-next` und `/implement-ready` (Issue #627,
+// urspruenglich der Halt bei Abwaegungsbedarf aus Issue #573).
 //
-// Ein `[Task]` traegt keine vorgelagerte Abwaegung. Taucht beim Umsetzen doch eine
-// auf, halten `/implement-next` und `/implement-ready` an, statt zu waehlen. Die
-// Sitzung nimmt ihren eigenen Anteil zurueck, zeichnet das Issue mit `kit:klaeren`,
-// benennt die Entscheidung als Board-Kommentar und schiebt nach Backlog.
+// Taucht beim Umsetzen eine Entscheidung auf, wird sie entschieden und im
+// Abschlussbericht protokolliert. Nur eine Frage der Stopp-Klasse aus
+// CLAUDE-workflow.md haelt an: Die Sitzung nimmt ihren eigenen Anteil zurueck,
+// zeichnet das Issue mit `kit:klaeren`, benennt die Frage als Board-Kommentar und
+// schiebt nach Backlog.
 //
 // Geprueft wird der Skill-TEXT, nicht die Laufzeit — was ein Skill tut, entscheidet
 // das Modell, das ihn liest. Und ausschliesslich die Quelle unter `skills/`, nicht
@@ -35,7 +37,7 @@ function quelle(name) {
 const MIT_HALT = ["implement-next", "implement-ready"];
 const OHNE_HALT = ["implement-test", "implement-done"];
 
-const FETTMARKE = "**Ein [Task], bei dem Abwaegungsbedarf auftaucht.**";
+const FETTMARKE = "**Entscheiden statt fragen.**";
 const ENDMARKE = "**Aussage-ID in den Testnamen";
 
 /** Der Halt-Abschnitt von der Fettmarke bis zur Marke des Aussage-ID-Blocks. */
@@ -83,21 +85,41 @@ test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor dem Aussage-ID-Block
 
 // --- Wann angehalten wird ----------------------------------------------------
 
-test("[skills-6] der Halt gilt nur fuer `[Task]`, und der Umfang allein ist kein Grund", () => {
+test("[skills-6] der Halt gilt fuer jedes Arbeitspaket und nur fuer die Stopp-Klasse", () => {
   for (const name of MIT_HALT) {
     const abschnitt = haltAbschnitt(name);
-    assert.match(abschnitt, /`\[Task\]`-Praefix/, `${name}: das Praefix ist nicht als Bedingung benannt`);
-    assert.match(
+    assert.match(abschnitt, /jede[ms] Arbeitspaket/, `${name}: der Halt ist nicht auf jedes Paket ausgedehnt`);
+    assert.match(abschnitt, /Stopp-Klasse/, `${name}: die Stopp-Klasse ist nicht als einziger Anlass benannt`);
+    assert.match(abschnitt, /Entscheiden statt fragen/, `${name}: der Verweis auf CLAUDE-workflow.md fehlt`);
+    assert.match(abschnitt, /### Entscheidungen/, `${name}: der Ort im Abschlussbericht fehlt`);
+    assert.match(abschnitt, /genau eine je Halt/, `${name}: dass ein Halt genau eine Frage traegt, fehlt`);
+    assert.doesNotMatch(
       abschnitt,
-      /mehrere vertretbare Wege/,
-      `${name}: der Anlass (mehrere vertretbare Wege) fehlt`,
-    );
-    assert.match(
-      abschnitt,
-      /\*\*Der Umfang allein ist kein Grund\*\*/,
-      `${name}: der Umfang ist nicht ausdruecklich ausgenommen`,
+      /mehrere vertretbare Wege|Der Umfang allein/,
+      `${name}: der alte Anlass (Abwaegungsbedarf) steht noch da`,
     );
   }
+});
+
+test("[skills-6] ob ein Ready-Issue geprueft wurde, fragen beide Skills nicht mehr", () => {
+  for (const name of MIT_HALT) {
+    const text = quelle(name);
+    assert.ok(!text.includes("Ungepruefte Issues"), `${name}: die Fallunterscheidung steht noch da`);
+    assert.ok(!text.includes("Pruefung: Verzicht"), `${name}: der Verzicht wird noch geprueft`);
+    assert.match(text, /Ready ist das GO/, `${name}: der Ersatzsatz fehlt`);
+  }
+});
+
+test("[skills-6] das Berichtformat traegt ### Entscheidungen in next, ready und done", () => {
+  for (const name of [...MIT_HALT, "implement-done"]) {
+    const text = quelle(name);
+    const bloecke = [...text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const format = bloecke.find((b) => b.includes("### Hinweise"));
+    assert.ok(format, `${name}: der Format-Codeblock fehlt`);
+    assert.ok(format.includes("### Entscheidungen"), `${name}: '### Entscheidungen' fehlt im Format`);
+    assert.match(text, /entfaellt, wenn es nichts zu entscheiden gab/, `${name}: die Entfall-Regel fehlt`);
+  }
+  assert.ok(!quelle("implement-test").includes("### Entscheidungen"), "implement-test schreibt keinen Bericht");
 });
 
 // --- Die fuenf Schritte ------------------------------------------------------
