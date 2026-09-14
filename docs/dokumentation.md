@@ -434,6 +434,10 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
+**Vor dem PR steht ein CI-Gate.** Der Skill holt sich per `node .claude/kit/board.mjs code ci-status --commit <sha>` den Zustand der CI für den Stand auf `origin/main` — vor Versionsbump, Commit und PR. Bei **rot** entsteht **kein PR**: Der Skill nennt die roten Jobs mit Namen und endet; ein Exit-Code 1 der Achse zählt genauso. Läuft die CI noch, fragt er genau einmal nach, und nur ein `ja` fährt fort. Hat ein Projekt keine CI (`codeHost: local`), meldet die Achse `keine` und der Lauf geht unverändert weiter.
+
+Der Grund für ein zweites Gate neben den Pflicht-Checks: Die lokalen `buildChecks` messen nur, was deine Maschine messen kann — sie messen nicht, was die CI misst. Dieses Repo fährt einen zweiten Job auf `windows-latest`; zwei Releases gingen nach production, während genau dieser Job fehlschlug. Die Information lag jedes Mal vor, sie wurde nur nie abgerufen.
+
 ### Eigene Release-Schritte per RELEASING.md
 
 `/push-main` und `/merge-production` prüfen bei jedem Lauf, ob eine `RELEASING.md` im Projekt-Root liegt. Falls ja, lesen sie diese Datei und führen den dort beschriebenen Ablauf aus, bevor gepusht bzw. der PR erstellt wird — zum Beispiel ein Versions-Bump-Kommando mit anschließendem Commit. Falls keine `RELEASING.md` existiert, wird dieser Schritt ersatzlos übersprungen.

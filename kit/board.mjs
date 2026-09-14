@@ -33,6 +33,9 @@
  *       aendert `issue move` (Issue #249).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
+ *   node board.mjs code ci-status --commit <sha>
+ *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
+ *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -104,6 +107,11 @@ Nutzung:
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
+  node board.mjs code ci-status --commit <sha>
+      Zustand der CI fuer genau diesen Commit (Issue #316):
+      { status: gruen|rot|laeuft|keine, jobs: [{ name, ergebnis }] }. Vorrang rot vor
+      laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch unsichtbarer
+      Lauf ist 'laeuft'.
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -833,6 +841,63 @@ function githubStatusName(status, config) {
   return columnLabels(config)[status] || status;
 }
 
+// ============================================================
+// CI-Status (Achse `code ci-status`, Issue #316)
+// ============================================================
+
+// Ein lokal gruener Lauf sagt nichts ueber die CI: Dieses Repo faehrt seit Issue #196
+// einen zweiten Job auf windows-latest, und genau der war rot, als v1.37.0 und v1.38.0
+// nach production gingen. Die Auskunft gehoert in den Adapter und nicht als `gh`-Aufruf
+// in einen Skill-Text — die Skills sind provider-unabhaengig, und `gh run list` gibt es
+// bei GitLab und im lokalen Modus nicht.
+
+const GITHUB_CI_GRUEN = new Set(["success", "neutral", "skipped"]);
+const GITHUB_CI_ROT = new Set(["failure", "timed_out", "cancelled", "startup_failure", "action_required"]);
+const GITLAB_CI_GRUEN = new Set(["success", "skipped"]);
+const GITLAB_CI_ROT = new Set(["failed", "canceled"]);
+
+// Ein unbekannter oder fehlender Zustand ist `laeuft`: Die Zustandslisten der beiden
+// Hosts wachsen, und ein neuer Wert stillschweigend als `gruen` zu werten hiesse, ein
+// Release auf eine Auskunft zu stuetzen, die es nicht gibt.
+function ciErgebnis(wert, gruen, rot) {
+  if (gruen.has(wert)) return "gruen";
+  if (rot.has(wert)) return "rot";
+  return "laeuft";
+}
+
+/**
+ * Das Gesamturteil aus den Einzeljobs: rot vor laeuft vor gruen.
+ *
+ * Eine LEERE Jobliste ist `laeuft`, nicht `gruen`: Unmittelbar nach einem Push ist der
+ * Lauf fuer einige Sekunden unsichtbar, und ein `gruen` an dieser Stelle risse genau die
+ * Luecke wieder auf, die diese Achse schliesst. `keine` gibt es nur bei codeHost `local`
+ * — dort ist die Abwesenheit von CI der Dauerzustand und kein Zwischenschritt.
+ */
+function ciGesamturteil(jobs) {
+  if (jobs.some((j) => j.ergebnis === "rot")) return "rot";
+  if (jobs.length === 0 || jobs.some((j) => j.ergebnis === "laeuft")) return "laeuft";
+  return "gruen";
+}
+
+/**
+ * Wie execJSON, aber jeder Fehlweg endet als abfangbarer BoardError mit Klartext:
+ * fehlendes CLI, fehlende Authentifizierung, Netzfehler und ungueltiges JSON. Ohne das
+ * traegt die Meldung „Unerwarteter Fehler" und sieht aus wie ein Defekt des Adapters.
+ */
+function ciJSON(datei, args) {
+  let roh;
+  try {
+    roh = exec(datei, args);
+  } catch (e) {
+    throw new BoardError(`${datei} ${args.join(" ")}: ${e.message}`);
+  }
+  try {
+    return JSON.parse(roh);
+  } catch {
+    throw new BoardError(`${datei} ${args.join(" ")} lieferte kein gueltiges JSON: ${roh.slice(0, 200)}`);
+  }
+}
+
 class GitHubCodeHost {
   constructor(config) { this._cfg = config; }
 
@@ -857,6 +922,23 @@ class GitHubCodeHost {
     const t = title || `${from} → ${to}`;
     const url = exec("gh", ["pr", "create", "--base", to, "--head", from, "--title", t, "--body", ""]);
     return { url };
+  }
+
+  // Das Urteil entsteht ausschliesslich aus jobs[]: `gh run list --json name` liefert den
+  // WORKFLOW-Namen, nicht den Job — damit waere der rote Job nicht zu benennen, und genau
+  // sein Name ist es, den das Gate in `/merge-production` ausgibt.
+  async getCiStatus(commit) {
+    const laeufe = ciJSON("gh", [
+      "run", "list", "--commit", commit, "--json", "databaseId,workflowName,conclusion,status",
+    ]);
+    const jobs = [];
+    for (const lauf of Array.isArray(laeufe) ? laeufe : []) {
+      const detail = ciJSON("gh", ["run", "view", String(lauf.databaseId), "--json", "jobs"]);
+      for (const job of Array.isArray(detail.jobs) ? detail.jobs : []) {
+        jobs.push({ name: job.name, ergebnis: ciErgebnis(job.conclusion, GITHUB_CI_GRUEN, GITHUB_CI_ROT) });
+      }
+    }
+    return { status: ciGesamturteil(jobs), jobs };
   }
 }
 
@@ -1030,6 +1112,24 @@ class GitLabCodeHost {
     // glab gibt die MR-URL aus
     const match = url.match(/https?:\/\/\S+/);
     return { url: match ? match[0] : url.trim() };
+  }
+
+  // `glab ci status` scheidet aus: Es filtert nach Branch, nicht nach SHA. `ci list`
+  // liefert absteigend nach id (glab-Default), das erste Element ist also die neueste
+  // Pipeline des Commits; ihre Jobs holt `ci get --with-job-details`.
+  async getCiStatus(commit) {
+    const pipelines = ciJSON("glab", ["ci", "list", "--sha", commit, "--output", "json"]);
+    const liste = Array.isArray(pipelines) ? pipelines : [];
+    if (liste.length === 0) return { status: "laeuft", jobs: [] };
+
+    const detail = ciJSON("glab", [
+      "ci", "get", "--pipeline-id", String(liste[0].id), "--with-job-details", "--output", "json",
+    ]);
+    const jobs = (Array.isArray(detail.jobs) ? detail.jobs : []).map((job) => ({
+      name: job.name,
+      ergebnis: ciErgebnis(job.status, GITLAB_CI_GRUEN, GITLAB_CI_ROT),
+    }));
+    return { status: ciGesamturteil(jobs), jobs };
   }
 }
 
@@ -1279,6 +1379,12 @@ class LocalCodeHost {
   // den Hinweis auf den lokalen git-Merge aus. Eine Methode hier waere unerreichbar
   // (entfernt in Issue #188) — und ein zweiter, abweichender Wortlaut fuer denselben Fall.
   supportsPullRequests() { return false; }
+
+  // `keine` liefert ausschliesslich dieser Host: Ein Projekt ohne CI darf nicht
+  // releaseunfaehig werden, deshalb Exit 0 und kein Fehler.
+  async getCiStatus() {
+    return { status: "keine", jobs: [] };
+  }
 }
 
 // ============================================================
@@ -2918,11 +3024,18 @@ async function codePr(host, args) {
   out(await host.createPullRequest({ from: args.from, to: args.to, title: args.title }));
 }
 
+async function codeCiStatus(host, args) {
+  if (args.commit === undefined) fail("--commit ist erforderlich");
+  if (args.commit === true) fail("--commit braucht einen Wert");
+  out(await host.getCiStatus(String(args.commit)));
+}
+
 async function dispatchCode(command, args) {
   const host = resolveCodeHost(loadConfig());
   switch (command) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
+    case "ci-status": return codeCiStatus(host, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter code-Befehl: '${command}'`);
