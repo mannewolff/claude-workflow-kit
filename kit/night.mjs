@@ -261,9 +261,10 @@ Aufruf (im Projekt-Root):
 Flags:
   --kette            Nacht-Kette statt Implementierung: je [Fachlich]-Issue mit dem
                      Label aus night.kette.label (Default kit:night) eine Kette aus
-                     /techplan, Formpruefung und /issue-review im eigenen Worktree.
-                     --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
-                     Label kommt aus der Config. Budgets in night.kette.
+                     /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
+                     eigenen Worktree, mit Nachtbericht am Fachplan. --max zaehlt
+                     Ketten (Default 3); --label gilt hier nicht, das Label kommt
+                     aus der Config. Budgets in night.kette.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
   --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)

@@ -55,20 +55,17 @@ test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   }
 });
 
-test("beide Nachtbetrieb-Abschnitte erklaeren eine Stufe pro Aufruf samt Default", () => {
+// Seit Stufe 2 des Prozess-Umbaus (Plan #638) gibt es keine Stufe je Aufruf mehr:
+// Die Nacht-Kette faehrt Plan, Pruefung und Pakete in einem Lauf. Der Abschnitt
+// nennt die Kette und keinen der entfallenen Schalter.
+test("der Nachtbetrieb-Abschnitt der Vorlage beschreibt die Nacht-Kette statt einer Stufe je Aufruf", () => {
   for (const [name, text] of beide) {
     const idx = text.indexOf("## Nachtbetrieb");
     assert.ok(idx >= 0, `${name}: kein Nachtbetrieb-Abschnitt`);
     const abschnitt = text.slice(idx).split(/\n## /)[0];
-    assert.match(abschnitt, /--stufe/, `${name}: --stufe fehlt im Nachtbetrieb-Abschnitt`);
-    assert.match(
-      abschnitt,
-      /genau eine (Pruef)?[Ss]tufe|eine Stufe pro Aufruf|ein Aufruf, eine Stufe/i,
-      `${name}: die Regel 'ein Aufruf, eine Stufe' fehlt`
-    );
-    // Zeilenumbrueche sind in diesen Dateien hart gesetzt — \s+ statt " ".
-    assert.match(abschnitt, /Default\s+`?issue`?|ohne Angabe gilt\s+`?issue`?/i,
-      `${name}: der Default 'issue' fehlt`);
+    assert.match(abschnitt, /--kette/, `${name}: --kette fehlt im Nachtbetrieb-Abschnitt`);
+    assert.match(abschnitt, /night\.kette/, `${name}: der Config-Block night.kette fehlt`);
+    assert.doesNotMatch(abschnitt, /--stufe|--review|--erzeuge/, `${name}: ein entfallener Schalter steht noch da`);
   }
 });
 
@@ -140,11 +137,12 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
   assert.doesNotMatch(stopPunkte, /von zwei Modellen/,
     "der Stop-Punkte-Abschnitt behauptet weiterhin zwei Modelle je Issue");
 
-  const idx = DOKU.indexOf("### Zweiter Modus: der Nacht-Review");
-  assert.ok(idx >= 0, "der Nacht-Review-Abschnitt fehlt");
-  const nachtReview = DOKU.slice(idx).split(/\n### /)[0];
-  assert.doesNotMatch(nachtReview, /durch zwei fremde Modelle/,
-    "der Nacht-Review-Abschnitt behauptet weiterhin zwei fremde Modelle");
+  const idx = DOKU.indexOf("### Zweiter Modus: die Nacht-Kette");
+  assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
+  const kette = DOKU.slice(idx).split(/\n### /)[0];
+  assert.doesNotMatch(kette, /durch zwei fremde Modelle/,
+    "der Abschnitt zur Nacht-Kette behauptet weiterhin zwei fremde Modelle");
+  assert.match(kette, /der Prüfer der Stufe/, "ein Prüfer am Plan steht nicht da");
 });
 
 test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {

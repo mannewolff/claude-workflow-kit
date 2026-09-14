@@ -580,7 +580,7 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 - **Fachliche Issues gehen nie nach Ready.** Ready heißt implementierbar. Landet doch eines dort, greift die mechanische Leitplanke: `/implement-ready`, `/implement-next` und der Nacht-Runner stellen es kommentiert zurück ins Backlog, ohne eine Session zu starten. Dasselbe Gate greift für **Ideen** (Titel-Präfix `[Idee]`) — eine rohe Idee braucht erst `/techplan` und `/issues`, bevor sie implementierbar ist — und für **Plandokumente** (Titel-Präfix `[Plan]`): Ein Plan beschreibt einen Weg, er ist keine Aufgabe und muss erst per `/issues` in Arbeitspakete zerlegt werden.
 - **Lebenszyklus:** Fachliche Issues und Plandokumente bewegt **ausschließlich der Mensch** aus dem Backlog heraus — kein Skill zieht sie je selbst weiter, die Leitplanken schieben sie nur aus Ready zurück. Zwei Wege stehen offen, und sie sind **gleichwertig**: entweder **direkt nach Done**, sobald das Dokument seinen Zweck erfüllt hat, oder zunächst nach **In review** als Klammer, die den fachlichen Kontext während der Umsetzung sichtbar hält — Done dann, wenn die technischen Arbeitspakete durch sind. Welcher Weg passt, entscheidet der Mensch.
 
-  **Eine Falle gehört dazu:** `night.mjs --review` liest ausschließlich die Backlog-Spalte. Wer ein Dokument **vor** seiner Prüfung als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — es ist dann kein Kandidat mehr, und zwar ohne dass irgendetwas fehlschlägt. Der Ausweg ist der interaktive Aufruf `/issue-review #N` mit expliziter Nummer: Er arbeitet **unabhängig von Spalte und vorhandenem Marker**. Genau das macht ihn zum Ausweg.
+  **Eine Falle gehört dazu:** Die Nacht-Kette (`night.mjs --kette`) liest ausschließlich die Backlog-Spalte und legt auch den Plan und die Pakete dort ab. Wer ein fachliches Issue **vor** seiner Kette als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — es ist dann kein Kandidat mehr, und zwar ohne dass irgendetwas fehlschlägt. Der Ausweg ist der interaktive Weg mit expliziter Nummer — `/techplan #N`, `/issue-review #N`, `/issues #M` —: Er arbeitet **unabhängig von Spalte und vorhandenem Marker**. Genau das macht ihn zum Ausweg.
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
 - **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/techplan #N` = fachlich freigegeben.
 
@@ -588,7 +588,7 @@ Ohne PO ist die Schleife unsichtbar: `/techplan` direkt aufzurufen bleibt der No
 
 ## Nachtbetrieb
 
-Der Nachtbetrieb arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
+Der Nachtbetrieb kennt **zwei Betriebsarten**: die **Umsetzungsnacht**, die dieser Abschnitt beschreibt, und die **Nacht-Kette** (siehe [Zweiter Modus](#zweiter-modus-die-nacht-kette)), die aus einem Fachplan den geprüften Plan und die Arbeitspakete macht, ohne zu bauen. Die Umsetzungsnacht arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
 **Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Drei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idee]`-Titel) und **Plandokumente** (`[Plan]`-Titel). Eine rohe Idee ohne `/techplan`-Zyklus ist kein implementierbares Issue; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus.
 
@@ -702,48 +702,66 @@ Ein Halt ist **kein Fehlschlag**: Die Session hat richtig gehandelt, indem sie n
 
 **`formatFixCommand` — ein Formatverstoß darf keinen Lauf kippen.** Setzt du in der `workflow.config.json` ein Kommando, das Formatierung mechanisch repariert (`"formatFixCommand": "mvn spotless:apply"`, für Frontends etwa `"npx prettier --write ."`), dann läuft es bei roten Checks in der Salvage-Vorprüfung **genau einmal**, und die Checks werden **genau einmal** wiederholt. Werden sie dadurch grün, geht der Lauf weiter und das Protokoll weist den Eingriff mit `FORMAT-FIX angewendet` aus — kein stiller Eingriff. Bleiben sie rot, war das Format nicht die Ursache und es bleibt beim harten Stopp. Hintergrund: Ein einzelner falsch umbrochener Javadoc-Kommentar hat einmal einen kompletten Nachtlauf beendet, obwohl die Arbeit korrekt war. Ein Formatverstoß ist deterministisch behebbar und sagt nichts über die fachliche Qualität — ein fehlgeschlagener Test dagegen schon, und der bleibt unverändert ein harter Stopp. Ohne das Feld ändert sich nichts.
 
-**Seit dem Prozess-Umbau (September 2026) wird nur noch der Implementierungsmodus gefahren.** Der Review- und der Erzeugungsmodus unten existieren im Runner weiter, werden aber nicht mehr gestartet: Die Prüfkette dahinter — Marker als Gate, Fundklassen, Synthese, Routing-Label je Stufe — ist mit Stufe 1 des Umbaus entfallen, und Stufe 2 ersetzt beide Modi durch eine Nacht-Kette (`--kette`), die einen Fachplan abends hineinnimmt und morgens Plan, Pakete, Commits und einen Bericht liefert. Der Umsetzungsplan steht in `docs/prozess-umbau-stufe-1.md`.
+### Zweiter Modus: die Nacht-Kette
 
-### Zweiter Modus: der Nacht-Review
+**Seit dem Prozess-Umbau (September 2026) gibt es zwei Betriebsarten: die Umsetzungsnacht oben und die Nacht-Kette.** Die früheren Modi Review und Erzeugung sind mit Stufe 2 des Umbaus aus dem Runner entfallen; die Prüfkette dahinter — Marker als Gate, Fundklassen, Synthese, Routing-Label je Stufe — ging schon mit Stufe 1 (Umsetzungsplan in `docs/prozess-umbau-stufe-1.md`). Die Kette ersetzt beide: Ein Fachplan geht abends hinein, morgens liegen ein geprüfter Plan, die Arbeitspakete und ein Bericht am Fachplan vor. Implementiert wird in der Kette **nichts** — die Pakete bleiben im Backlog, das GO nach Ready ist weiterhin deins, und die Umsetzung ist die Nacht danach. Eine Kette, die auch baut, ist als Idee notiert, nicht gebaut: Zwischen Schneiden und Bauen steht dein GO.
 
-Der Runner kann statt zu implementieren auch **prüfen lassen**: `--review` lässt Dokumente aus dem **Backlog** von [`/issue-review`](#issue-review-über-mehrere-modelle) durch fremde Modelle lesen — wie viele, entscheidet die [Prüfstufe](#drei-prüfstufen-die-prüfung-wandert-nach-oben). Morgens liegen die Befunde am Board, geschärfte Vorschläge als Kommentar, und die unauffälligen Dokumente tragen bereits den Prüf-Marker ihrer Stufe.
+**Die Geste:** das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog. Der Runner **verbraucht es beim Start** der Kette — jedes Setzen autorisiert genau eine Kette; ein Abbruch führt zu einem Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung. Der Labelname kommt aus `night.kette.label` und muss am Board einmal angelegt sein (GitHub `gh label create`, kanban-kit `POST /api/boards/{boardId}/labels`).
+
+**Start:**
 
 ```bash
-node .claude/kit/night.mjs --review --dry-run   # zeigt Kandidaten und Reviewer-Stand
-node .claude/kit/night.mjs --review             # echter Lauf
+node .claude/kit/night.mjs --kette --dry-run   # Kandidaten, Reviewer-Stand, Budgets — startet nichts
+node .claude/kit/night.mjs --kette             # echter Lauf
 ```
 
-Flags: `--review-label <name>` (Routing-Label, Default `kit:nightreview`; `none` schaltet den Filter ab), dazu `--max`, `--model` und `--verbose` wie gehabt. Auch ein Review-Lauf hinterlässt einen Ergebnisstand, gleiches Format und gleicher Ort wie oben, unterschieden durch das Feld `art` (hier `review` statt `implementierung`); dort stehen zusätzlich die übersprungenen Kandidaten und die wegen `--max` liegengebliebenen, die Übersprungenen jeweils mit Grund. Wie oben ist `--dry-run` der einzige Ausschluss, und ohne `--verbose` fehlen nur die Kennzahlen. Das Zeitlimit liegt fest bei 15 Minuten pro Issue — ein Review baut nichts und committet nichts, `--timeout-min` bemisst eine ganze Implementierungsrunde.
+Flags: `--max <N>` zählt hier **Ketten** (Default 3); `--model <id>` und `--verbose` wie oben. `--label` gilt hier nicht — die Kette liest ihr Label aus der Config, und `--kette --label` wird abgewiesen. Die Schalter der entfallenen Modi weist der Runner mit einem Hinweis auf `--kette` ab; ein noch gesetztes altes Routing-Label bekommt eine Protokollzeile, keine Wirkung. Die `buildChecks`-Pflicht entfällt für die Kette: Sie baut nichts und committet nichts.
 
-**Warum der Backlog und nicht Ready — und warum zwei Nächte.** Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich. Würde der Runner ein Ready-Issue erst prüfen und dann bauen, hätte der Mensch sein GO auf einen Text gegeben, der bei der Implementierung nicht mehr gilt — die Verantwortungsschwelle wäre umgangen, ohne dass es jemandem auffällt. Der Ablauf ist deshalb:
+**Bedingungen:** Ein Kandidat trägt das Label, hat den Titel `[Fachlich]`, steht im **Backlog** und trägt kein `kit:klaeren` — dort wartet eine Antwort, die vorher im Fachplan stehen muss. Was das Label trägt, aber nicht laufen darf, steht mit Grund als `uebersprungen` im Ergebnisstand, und das Label bleibt. Vor der ersten Kette läuft der **Reviewer-Vorflug** wie früher: eine eigene Vorflug-Session prüft die Reviewer und den Tracker in der Umgebung der Sessions, nicht im Runner (siehe Allowlist unten). Scheitert er, bekommt jeder Kandidat den Kommentar `Kette nicht gestartet: <Grund>`, behält sein Label, und der Lauf endet hart — die Geste ist nicht verbraucht, denn es lief nichts. Anders als die Umsetzungsnacht verlangt die Kette **keinen sauberen Arbeitsbaum und keine leere In-progress-Spalte**: Sie arbeitet in einem eigenen Worktree und läuft neben einer Umsetzungsnacht.
 
-> Review-Nacht → morgens sichten und nach Ready ziehen → Implementierungs-Nacht
+**Der Worktree.** Jede Kette bekommt einen `git worktree` unter dem Temp-Verzeichnis (`kette-<repo>-<F>-<stempel>`), in den der Runner `.claude/` der Hauptkopie spiegelt — Kit-Kopie, Skills, Settings, Token —, ohne die Protokolle. Beim lokalen Tracker zeigt die Config im Worktree auf das `issues`-Verzeichnis der Hauptkopie, damit die Karten dort entstehen. Nach der Kette wird der Worktree entfernt; wartende Vorhaben-Notizen holt der Runner vorher in die Hauptkopie, und liegengebliebene Worktrees räumt der nächste Start.
 
-Zwei Läufe an zwei Abenden statt zweier Phasen in einer Nacht. Deshalb ist `--review` auch **exklusiv**: Die Implementierungsschleife läuft dann nicht.
+**Der Ablauf je Stufe**, jede mit eigener Session im Worktree und gesetztem `KIT_AGENT_MODEL`:
 
-Ein eigenes Routing-Label statt `kit:nightrun`, weil die Modi verschiedene Spalten meinen — `kit:nightreview` markiert Backlog-Issues zur Prüfung, `kit:nightrun` Ready-Issues zur Umsetzung. Welche Dokumente er nimmt, steuert `--stufe <fachlich|plan|issue>` (Default `issue`): `fachlich` nimmt genau die `[Fachlich]`-Issues, `plan` genau die `[Plan]`-Issues, `issue` weder das eine noch das andere. `[Idee]` bleibt in jeder Stufe ausgeschlossen. Ein Aufruf fährt genau eine Stufe — zwischen den Stufen steht die menschliche Freigabe. Übersprungen werden damit.
+| Stufe | Session | Ergebnis | wann die Kette hier endet |
+|---|---|---|---|
+| plan | `/techplan #F` | ein `[Plan]`-Dokument mit `Fachliche Quelle: Issue #F` — bei mehreren das jüngste | kein Plan: `abgebrochen`; Stopp-Frage in `## Offene Fragen`: `angehalten` |
+| Formprüfung | `issue check-form`, bei Rot eine Korrektursession mit genau den Verstößen | grüne Form, bis zu `korrekturrunden` Runden je Dokument | weiterhin rot: `abgebrochen` |
+| review | `/issue-review #M` — der Prüfer der Stufe `plan` | Marker `Plan-Review:`, Befunde und Einarbeitung als Kommentare am Plan | `kit:klaeren` am Plan: `angehalten` mit der Frage aus dem letzten Kommentar |
+| pakete | `/issues #M` | nur Karten mit `Plan: Issue #M` zählen; jede geht durch die Formprüfung | kein Paket und der Kommentar `Kein Eingang für /issues` am Plan: `angehalten`; kein Paket ohne ihn: `abgebrochen` |
+| abdeckung | eine lesende Session hält die Pakete gegen den Fachplan | ihr Text — Zuordnung, Ohne Paket, Zuwachs — im Ergebnisstand und im Bericht | nie: Die Abdeckung ist eine Auskunft, kein Tor; fehlt sie, steht der Grund im Bericht |
 
-**Der Vorflug ist hier ein Gate.** `board.mjs issue-review check` ist für sich nur eine Auskunft — interaktiv fragt der Skill den Menschen, wenn ein Reviewer fehlt. Nachts fragt niemand, und ein Ein-Reviewer-Lauf sieht am Board aus wie ein vollständiger. Fehlt ein Reviewer oder ist der Tracker nicht erreichbar, stoppt der Lauf deshalb hart, **bevor** die erste Review-Session startet. Ein Opt-out gibt es bewusst nicht: Wer wissen will, ob alles steht, fährt vorher `--dry-run` — der meldet den Befund und bricht gerade nicht ab. Die `buildChecks`-Pflicht entfällt in diesem Modus, weil nichts gebaut und nichts committet wird.
+Andere neue Karten ohne die Herkunftszeile stehen als „nicht zuordenbar" im Bericht; schreibt die Abdeckungs-Session entgegen ihrem Auftrag am Board, vermerkt der Bericht auch das.
 
-**Der Vorflug läuft in einer eigenen Session, nicht im Runner.** Der Reviewer wird nicht dort gebraucht, wo der Runner steht, sondern in den Review-Sessions — eigene Kindprozesse mit eigener Sandbox, eigener Netzwerk-Allowlist und eigenen Freigaben. Ein Probelauf im Runner beweist nur, dass *der Runner* das Werkzeug starten darf. In der Nacht vom 08.08.2026 lief er sauber durch, während `codex exec` in der Session an „Run outside of the sandbox" scheiterte und `board.mjs issue get` an der leeren Netzwerk-Allowlist: ein Lauf, der vollbesetzt startete und mit einem Reviewer arbeitete.
+**Drei Ausgänge**, je Kette genau einer: `fertig` (Plan geprüft, Pakete liegen im Backlog), `angehalten` (eine Frage der Stopp-Klasse wartet auf dich) und `abgebrochen` (technisch oder am Budget gescheitert, mit Grund). Abbruchgründe sind: kein Plan oder kein Paket entstanden; Form nach den Korrekturrunden weiterhin verletzt; Zeitbudget einer Stufe erschöpft; Kostenbudget überschritten — geprüft **nach** der Session, nie mittendrin, denn ein halb geschriebenes Dokument wäre der teurere Fehler; Fehlstart einer Session. Ein Abbruch beendet nur diese Kette, der nächste Kandidat kommt dran.
 
-`night.mjs --review` startet deshalb **genau eine Vorflug-Session** — gleiche Bauart, gleicher Startpfad, gleiche Rechte wie eine spätere Review-Session, aber mit festem günstigem Modell und kurzem eigenem Zeitlimit, damit `--dry-run` billig und schnell bleibt. Sie startet jedes `kind: "command"`-Kommando einmal direkt mit dem Prompt über stdin (ausdrücklich **nicht** über `board.mjs issue-review check` — dieser Pfad steht in `sandbox.excludedCommands` und misst damit wieder die falsche Umgebung) und prüft die Erreichbarkeit des Trackers. Jeder Befund nennt die Umgebung: `review-session` aus dem Vorflug, `runner` aus `board.mjs issue-review check`. Die Tracker-Erreichbarkeit ist ein **eigener** Befund — bei Issue #248 scheiterte nicht der Reviewer, sondern das `issue get`, und wer das als Reviewer-Ausfall meldet, schickt den Menschen morgens in die falsche Ecke. Lässt sich die Vorflug-Session gar nicht starten oder liefert sie keinen auswertbaren Befund, ist auch das ein eigener Grund zum Stopp. Verschmutzt sie den Working Tree, gilt derselbe harte Stopp wie nach einer regulären Review-Session. Der interaktive Pfad (`/issue-review`, Schritt 0) bleibt unverändert — dort läuft der Befehl ohnehin schon in einer echten Session.
+**Budgets** stehen in `night.kette` der `workflow.config.json`, alle optional, mit diesen Startwerten:
 
-**Fünf Ausgänge pro Issue**, und der mittlere ist der wichtigste:
+```json
+{
+  "night": {
+    "kette": {
+      "label": "kit:night",
+      "planMin": 20,
+      "reviewMin": 15,
+      "paketeMin": 15,
+      "abdeckungMin": 10,
+      "kostenUsd": 50,
+      "korrekturrunden": 2
+    }
+  }
+}
+```
 
-| Was die Session hinterlässt | Bewertung |
-|---|---|
-| eine neue Synthese, deren übernommene Funde im Body-Vorschlag nicht belegt sind | Synthese ohne Beleg; das Issue bekommt `kit:klaeren`, kein Marker |
-| Marker im Body | geprüft, ohne gewichtigen Befund |
-| kein Marker, aber Befunde als Kommentar **samt** Body-Vorschlag | **geprüft, mit Befund** — wartet planmäßig auf dich |
-| Befunde **ohne** Body-Vorschlag | Schärfung fehlt; das Issue wird kommentiert, der Lauf geht weiter |
-| nichts | ohne Ergebnis; das Issue wird kommentiert, der Lauf geht weiter |
+Die Minuten gelten je Stufe (Korrekturrunden zählen gegen ihre Stufe), `kostenUsd` je Kette über alle Sessions, `korrekturrunden` je Dokument. Die Kette fordert den Session-Strom immer an: Kosten und Kennzahlen stehen je Stufe im Ergebnisstand (`art: "kette"`, die Budgets im Lauf-Kopf); eine Session ohne Kennzahl zählt 0 und erhöht `kostenUnbekannt`.
 
-Der erste Ausgang greift **vor** der Marker-Prüfung: Der Runner hält die als übernommen bezeichneten Funde selbst gegen den Body-Vorschlag (`issue-review synthese-check`), sobald diese Session eine Synthese hinterlassen hat. Setzte eine Session den Marker entgegen der Regel trotzdem, bliebe der Befund sonst unsichtbar — und das Issue ginge als geprüft durchs Ready-Gate. Einen Kommentar schreibt der Runner dabei nicht; den Abgleich schreibt `/issue-review` selbst, der Runner zeichnet nur mit `kit:klaeren`. Welche Behauptung unbelegt blieb, steht im Ergebnisstand.
+**Der Bericht am Fachplan.** Bei jedem Ausgang hinterlässt die Kette einen Kommentar mit dem Anker `## Nachtbericht, Kette <stempel>`: der Ausgang mit Grund; die Stufen (Plan mit Dauer, Kosten, Korrekturrunden, Prüfer und Marker; Pakete mit Titeln; nicht zuordenbare Karten); **alle Entscheidungen der Nacht**, fortlaufend nummeriert — die Aufzählungspunkte aus `## Architektonische Entscheidungen` des Plans wörtlich und die `Entscheidung:`-Zeilen aus dem Kontext der Pakete; die abgelehnten Befunde aus dem Kommentar `## Einarbeitung, Runde 1`; die Abdeckung; Kennzahlen (Pakete erreicht, Dauer ab Kettenstart, Zahl der Entscheidungen und der Stopp-Fragen, Kosten von Budget, `kostenUnbekannt`); bei `angehalten` die offene Stopp-Frage; überholte Pläne. Er endet mit dem Satz `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` — und genau das ist das Morgen-Ritual: Bericht lesen, Plan und Pakete sichten, was gelten soll als Satz in den Fachplan schreiben, Pakete nach Ready ziehen.
 
-Der mittlere Fall ist ausdrücklich ein **Erfolg**, kein Fehlschlag: Es sind genau die Issues, bei denen sich der Review gelohnt hat. Kein Issue wird in diesem Modus am Board bewegt — die Kandidaten liegen bereits im Backlog. Hinterlässt eine Review-Session Änderungen im Working Tree, stoppt der Lauf hart; sie hat dort nichts zu suchen.
+**Wartende Berichte.** Nimmt der Tracker den Kommentar nicht an, liegt der Bericht als `.claude/night-bericht-<F>-<stempel>.md` in der Hauptkopie — kein Rest im Arbeitsbaum, wie `night-run-*` —, und das Feld `bericht` der Einheit nennt den Pfad. Beim nächsten Start jeder Betriebsart (nicht im Dry-Run) trägt der Runner wartende Berichte nach und löscht die Datei; bleibt der Tracker tot, bleibt sie liegen und der Lauf geht weiter.
 
-**Was die Nacht darf und was nicht:** Sie schreibt **nie** den Issue-Body. Der geschärfte Vorschlag geht als Kommentar ans Issue, und der Marker wird nur gesetzt, wenn kein Fund `BLOCKER` oder `WICHTIG` trägt und kein Reviewer ausgefallen ist. Die Begründung steht unter [Wer entscheidet](#wer-entscheidet).
+**Der Rückweg nach `angehalten`.** Die Kette schreibt die eine Frage als Kommentar `## Kette angehalten` an den Fachplan und setzt dort `kit:klaeren`; Plan und bis dahin geschnittene Pakete bleiben als Entwurf stehen. Du antwortest **im Fachplan** — als Satz im Body, nicht als Kommentar —, nimmst `kit:klaeren` ab und setzt `kit:night` neu. Die nächste Kette beginnt **von vorn**: Der neue Plan ist der gültige; ältere Pläne zum selben Fachplan bekommen den Kommentar `Ueberholt durch Plan #M2` (kein Label, kein Move) und stehen im Bericht unter „Ueberholt". `kit:klaeren` nimmt ausschließlich der Mensch ab — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben.
+
+**Kette und Umsetzung nebeneinander.** Die beiden Betriebsarten meinen verschiedene Karten und Spalten: `kit:night` am Fachplan im Backlog, `kit:nightrun` am Arbeitspaket in Ready. Ein Lauf ist immer genau eine Betriebsart (`--kette` oder nicht), aber zwei Läufe dürfen zur selben Zeit fahren — die Kette im Worktree, die Umsetzung in der Hauptkopie.
 
 #### Allowlist für fremde Reviewer
 
@@ -761,41 +779,6 @@ Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permissio
 ```
 
 Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht davon nichts.
-
-### Dritter Modus: die Erzeugungsnacht
-
-Der dritte Modus implementiert nicht und prüft nicht als Selbstzweck: `--erzeuge` lässt aus einem **bereits geprüften** Dokument im Backlog die nächste Stufe entstehen — und lässt das Entstandene gleich in derselben Nacht prüfen. Zwei Schritte gibt es, und zwischen ihnen steht der Mensch:
-
-> geprüftes `[Fachlich]`-Issue → (`kit:nightplan`) → `[Plan]`-Dokument → **Freigabe durch dich** → (`kit:nightissues`) → Arbeitspakete
-
-**Der Aufruf je Schritt.** `--stufe` benennt hier das **entstehende** Dokument, nicht das gelesene, und ist zusammen mit `--erzeuge` Pflicht:
-
-```bash
-node .claude/kit/night.mjs --erzeuge --stufe plan --dry-run   # zeigt Ausgangsdokumente, startet nichts
-node .claude/kit/night.mjs --erzeuge --stufe plan             # aus [Fachlich] wird ein [Plan]-Dokument
-node .claude/kit/night.mjs --erzeuge --stufe issue            # aus [Plan] werden Arbeitspakete
-```
-
-Der erste Schritt (`--stufe plan`) liest `[Fachlich]`-Issues und hat das Routing-Label `kit:nightplan` als Default, der zweite (`--stufe issue`) liest `[Plan]`-Dokumente mit dem Default `kit:nightissues`. Gelesen wird in beiden Fällen aus dem **Backlog**, wie im Review-Modus. `--erzeuge` und `--review` schließen sich aus: ein Modus pro Lauf.
-
-Flags: `--erzeuge-label <name>` überschreibt **nur den Namen** des Routing-Labels und kennt — anders als `--review-label` — ausdrücklich **kein `none`**: Das Routing-Label ist die Freigabe-Geste des Menschen und lässt sich nicht abschalten. `--max` zählt in diesem Modus **Ausgangsdokumente** (Default 3), nicht Session-Starts; die Prüfrunden zu einem erzeugten Dokument laufen also nicht gegen dieses Limit. `--model`, `--verbose` und `--dry-run` wirken wie gehabt; auch ein Erzeugungslauf hinterlässt denselben Ergebnisstand wie oben, unterschieden durch `art: "erzeugung"` — außer bei `--dry-run`, und ohne `--verbose` fehlen nur die Kennzahlen.
-
-**Je Schritt die Bedingungen.** Erzeugt wird nur aus dem, was **geprüft ist** — der Marker ist hier Eintrittsbedingung, nicht Ausschlussgrund wie im Review-Modus:
-
-| Schritt | Eingang | verlangt |
-|---|---|---|
-| `--stufe plan` | `[Fachlich]`-Issue | Marker `Fachplan-Review:` im Body, Label `kit:nightplan` |
-| `--stufe issue` | `[Plan]`-Dokument | Marker `Plan-Review:` im Body, ein `## Offene Fragen`, dessen erste nicht leere Zeile mit `- Keine.` beginnt, Label `kit:nightissues` |
-
-Ein **fehlender** Abschnitt `## Offene Fragen` ist dabei ein Ausschluss, keine Erlaubnis: „keine Zeile, also keine offene Frage" ließe ausgerechnet einen Plan ohne den Pflichtabschnitt durch. Ausgeschlossen sind außerdem in jedem Schritt: `[Idee]`-Titel, ein Dokument mit `kit:klaeren` (dort wartet eine menschliche Entscheidung) und eines mit gültigem `Pruefung: Verzicht` — der Verzicht ist hier **kein** zweiter Freigabegrund, denn ohne Prüfung gibt es nichts, woraus erzeugt werden könnte.
-
-**Die Endzustände und der Label-Verbrauch.** Jedes erzeugte Dokument wird anschließend in derselben Nacht geprüft, Runde für Runde, bis es einen der drei Endzustände trägt: `review:fertig` (geprüft, kein gewichtiger Befund), `kit:klaeren` (eine offene Entscheidung wartet auf dich) oder `review:grenze` (dreimal geprüft, immer noch Befunde offen). Erst wenn **alle** aus einer Quelle erzeugten Dokumente einen Endzustand tragen, entfernt der Runner das Routing-Label an der Quelle — die Freigabe ist damit verbraucht. Ein Label, das schon nach dem ersten fertigen Paket fiele, ließe die übrigen ungeprüft liegen, und die nächste Nacht fände keine Freigabe mehr, das nachzuholen.
-
-Bricht die Nacht vorher ab, findet sie nichts oder bleibt ein Dokument ohne Endzustand, dann **bleibt stehen**, was der Mensch gesetzt hat: Das Routing-Label an der Quelle wird nicht entfernt, und der Schritt wiederholt sich in der nächsten Nacht ohne neue menschliche Geste. Der Umkehrschluss — die Freigabe schon beim Start zu verbrauchen — zwänge nach jedem technischen Ausfall zu einer neuen Geste, ohne dass etwas geschehen wäre. Findet ein Lauf ein Dokument, das aus derselben Quelle schon entstanden ist, erzeugt er es nicht ein zweites Mal, sondern nimmt es auf und prüft weiter.
-
-**Wenn ein Schritt angehalten hat.** Ein Plandokument mit `kit:klaeren` oder `review:grenze` trägt **keinen** Marker `Plan-Review:` — es ist damit kein Eingang für den zweiten Schritt und bleibt liegen, auch wenn du ihm das Label `kit:nightissues` gäbest. Beantworte die offene Frage bzw. arbeite die Befunde ein, und lass es danach erneut prüfen: interaktiv mit `/issue-review #N` oder in einer Review-Nacht mit `night.mjs --review --stufe plan`. Erst der neue Marker macht es wieder zum Eingang. `kit:klaeren` nimmt dabei ausschließlich der Mensch ab — ein Lauf, der sein eigenes `kit:klaeren` abräumen dürfte, könnte sich selbst freigeben.
-
-**Die beiden Routing-Labels musst du am Board anlegen.** `kit:nightplan` und `kit:nightissues` kommen zu `kit:nightrun` und `kit:nightreview` hinzu; bei kanban-kit wirft die Toolbox einen 404, solange eine Definition fehlt (`POST /api/boards/{boardId}/labels`, bei GitHub `gh label create`). Sie sind **keine** Zustandslabels: Zustandslabels beschreiben, was die Prüfung ergeben hat, und entstehen maschinell — ein Routing-Label ist deine Geste und sagt, was die Nacht anfassen darf.
 
 ### Mit einem lokalen Modell fahren
 
