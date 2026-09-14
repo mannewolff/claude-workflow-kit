@@ -20,7 +20,7 @@ Daraus ergibt sich einer von zwei Modi:
 
 **Modus A (Vollmodus):** Nach dem Merge ist `vault` gesetzt. Normaler Ablauf mit Vault, Projektnotizen, always-Dateien.
 
-**Modus B (Degraded Mode):** Nach dem Merge kein `vault` (kein Feld gesetzt oder gar keine Config gefunden). Vault-Schritte überspringen. Nur offene Issues und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
+**Modus B (Degraded Mode):** Nach dem Merge kein `vault` (kein Feld gesetzt oder gar keine Config gefunden). Vault-Schritte überspringen. Nur Vorhaben und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
 
 Kein harter Abbruch. Beide Modi liefern sinnvollen Output.
 
@@ -71,19 +71,22 @@ find . -maxdepth 1 -name "CLAUDE-*" -type f
 
 Fehlende Dateien und Muster ohne Treffer leise überspringen (kein Fehler).
 
-### 5. Offene Issues holen (beide Modi)
+### 5. Vorhaben holen (beide Modi)
 
-Offene Issues, Vorhaben und Repo-Name ueber den Board-Adapter:
+Vorhaben und Repo-Name ueber den Board-Adapter:
 
 ```bash
-node .claude/kit/board.mjs issue list
 node .claude/kit/board.mjs issue epics
 node .claude/kit/board.mjs code repo-name
 ```
 
-`issue list` liefert **nur Arbeitspakete** — Vorhaben sind dort seit Issue #377
-ausgeschlossen, unabhaengig vom Status-Filter. Sie kommen ueber `issue epics`, und
-zwar mit Kuerzel und Fortschritt.
+**Welche Vorhaben erscheinen.** Ein Vorhaben erscheint, wenn es keine
+Arbeitspakete hat (`total` ist 0) oder mindestens eines noch nicht erledigt ist
+(`done` kleiner als `total`). Ausgeblendet wird ausschliesslich, was mindestens
+ein Arbeitspaket hat und dessen Arbeitspakete alle erledigt sind. Ein Vorhaben
+ohne Fortschritt (`0/0`) bleibt stehen — dass es leer ist, ist beim Einstieg
+eine Information. Erfuellt kein Vorhaben die Regel, entfaellt der Abschnitt
+`### Vorhaben` ganz.
 
 **Ein Fehlschlag von `issue epics` wird still uebersprungen**, nicht gemeldet:
 GitHub und GitLab kennen keine Vorhaben, der Adapter weist das Kommando dort ab.
@@ -134,10 +137,6 @@ Kompakter Session-Start-Stand.
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
-### Aktive Issues
-- #N Titel [Status]
-- ...
-
 ### Beschriebenes Verhalten
 - <Bereich> — <n> gueltig, <m> entfallen
 - ...
@@ -147,7 +146,7 @@ Kompakter Session-Start-Stand.
 (aus der Projektnotiz — nur Modus A)
 
 ### Was als nächstes kommt
-(aus der Projektnotiz oder Board-Ready-Spalte)
+(aus der Projektnotiz)
 ```
 
 **Mit `parentProject`** (Multi-Repo-Setup): Der Kopf benennt beide Ebenen, damit sofort sichtbar ist, in welchem Service man sitzt und zu welchem System er gehört. Wurden beide Notizen gelesen, bleiben systemweiter Stand und Stand dieses Service getrennt — eine zusammengerührte Liste wäre beim Einstieg wertlos, weil nicht mehr erkennbar ist, was für alle Services gilt:
@@ -159,10 +158,6 @@ Kompakter Session-Start-Stand.
 - #N [KUERZEL] Titel — done/total
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
-
-### Aktive Issues
-- #N Titel [Status]
-- ...
 
 ### Beschriebenes Verhalten
 - <Bereich> — <n> gueltig, <m> entfallen
@@ -176,13 +171,14 @@ Kompakter Session-Start-Stand.
 (aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert)
 
 ### Was als nächstes kommt
-(aus der Projektnotiz oder Board-Ready-Spalte)
+(aus der Projektnotiz)
 ```
 
-**Die Vorhaben stehen vor den Issues**, weil sie die Gliederung sind, unter der die
-Arbeit haengt: Wer zuerst die Klammern sieht, liest die Nummernliste darunter als
-Inhalt und nicht als Haufen. Ein Vorhaben ohne Fortschritt (`0/0`) bleibt stehen —
-dass es leer ist, ist beim Einstieg eine Information.
+**Die Vorhaben stehen oben**, weil sie die Gliederung sind, unter der die Arbeit
+haengt: Wer sie zuerst sieht, hat den Rahmen, in den alles Weitere gehoert. Die
+einzelnen Arbeitspakete stehen auf dem Board und werden hier nicht wiederholt —
+was der Session-Start ausgibt, steht danach im Kontextfenster der ganzen Sitzung
+und fehlt dort fuer die eigentliche Arbeit.
 
 Im Degraded Mode am Ende anfuegen:
 > "Kein Vault konfiguriert, arbeite ohne persistentes Memory. Fuer Vollmodus: `~/.claude/kontext.config.json` anlegen mit vault-Pfad."

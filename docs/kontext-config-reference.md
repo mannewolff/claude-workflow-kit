@@ -11,7 +11,7 @@ Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Ses
 | `~/.claude/kontext.config.json` | Global — gilt für alle Projekte |
 | `.claude/kontext.config.json` | Projektlokal — überschreibt einzelne Felder der globalen Config |
 
-Die lokale Config wird mit der globalen **feldweise gemergt, lokale Felder gewinnen**. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode weiter (Issues per CLI, Log ins Projektverzeichnis).
+Die lokale Config wird mit der globalen **feldweise gemergt, lokale Felder gewinnen**. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode weiter (Vorhaben über den Board-Adapter, Log ins Projektverzeichnis).
 
 Der Merge ist kein Detail, sondern die Voraussetzung für das Multi-Repo-Setup weiter unten: Die lokale Config setzt dort nur `parentProject` und `project` und erbt den Vault-Pfad von global. Bei „erstes gefundenes gewinnt" wäre der Vault verloren.
 

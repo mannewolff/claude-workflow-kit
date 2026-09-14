@@ -311,7 +311,7 @@ Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), läd
 
 Der Skill lädt den Kontext, den du brauchst, um sofort arbeitsfähig zu sein, ohne den Chat der letzten Session im Kopf haben zu müssen. Er liest `kontext.config.json` (zuerst global aus `~/.claude/`, dann lokal aus `.claude/`, wobei lokale Werte die globalen überschreiben).
 
-Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, Arbeitsregeln), erkennt die Projektnotiz automatisch anhand des Repo-Namens und liest zusätzliche `projectDocs`. Ohne Vault holt er die offenen Issues per CLI und liest `projectDocs` aus dem Repo. Die Ausgabe ist ein kurzer Lageüberblick: offene Issues, letzte Entscheidungen, was als nächstes ansteht.
+Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, Arbeitsregeln), erkennt die Projektnotiz automatisch anhand des Repo-Namens und liest zusätzliche `projectDocs`. Ohne Vault holt er die Vorhaben über den Board-Adapter und liest `projectDocs` aus dem Repo. Die Ausgabe ist ein kurzer Lageüberblick: laufende Vorhaben, letzte Entscheidungen, was als nächstes ansteht. Die einzelnen Arbeitspakete stehen auf dem Board, der Session-Start wiederholt sie nicht.
 
 ### /fachplan
 
@@ -1386,7 +1386,7 @@ Das vollständige Setup mit Vault-Struktur und Beispiel-Config steht in der [`ko
 
 Wenn `vault` nicht gesetzt ist oder keine Config-Datei gefunden wird, laufen beide Skills im Degraded Mode weiter:
 
-`/kontext` lädt offene Issues per CLI und liest `projectDocs` aus dem Repo. Am Ende erscheint ein Hinweis: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
+`/kontext` lädt die Vorhaben über den Board-Adapter und liest `projectDocs` aus dem Repo. Am Ende erscheint ein Hinweis: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
 
 `/document` schreibt den Tageslog in `docs/session-log/YYYY-MM-DD.md` im Projektverzeichnis. Am Ende: "Kein Vault konfiguriert. Log ins Projektverzeichnis geschrieben."
 
