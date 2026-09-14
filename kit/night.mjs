@@ -2688,6 +2688,44 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   }
 }
 
+/** Der Anker des Vermerks, den ein Abbruch der Review-Stufe am Plandokument hinterlaesst. */
+export const REVIEW_REST_ANKER = "## Review unvollstaendig";
+
+/**
+ * Der Vermerk am Plan, wenn die Review-Stufe zwischen Befunden und Einarbeitung abbricht
+ * (Issue #654).
+ *
+ * Die Einarbeitung steht am Ende der Stufe, hinter Reviewer-Laeufen und Befunde-Kommentar
+ * — ein Abbruch trifft deshalb fast immer genau diese Luecke. Zurueck bleibt der teuerste
+ * aller Zustaende: Die Pruefung ist bezahlt, ihre Befunde stehen am Board, der Body ist
+ * unveraendert und traegt keinen Marker. Wer das Dokument spaeter sichtet, sieht ein
+ * ungeprueftes und prueft erneut; genau so blieb Issue #316 einen Monat lang liegen.
+ *
+ * Ein groesseres Zeitbudget verschiebt die Grenze, es beseitigt sie nicht — eine Spur am
+ * Dokument schon. Sie aendert den Ausgang nicht: Der Abbruch bleibt ein Abbruch mit
+ * seinem Grund, die Spur ist Hinweis, kein Zustand.
+ */
+function reviewRestVermerken(kette, planId, grund) {
+  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [
+    REVIEW_REST_ANKER,
+    "",
+    `Kette ${LAUF_STEMPEL ?? "ohne Stempel"}, Stufe review: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an diesem Dokument.`,
+    "",
+    `Die Einarbeitung fehlt — der Lauf endete davor (${grund}) —, und der Body ist deshalb unveraendert: Er traegt keinen Plan-Review-Marker, obwohl geprueft wurde.`,
+    "",
+    `Weg nach vorn: /issue-review #${planId} von Hand fahren.`,
+    "",
+  ].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    board("issue", "comment", planId, "--text-file", pfad);
+    log(`  Review #${planId} abgebrochen, Befunde ohne Einarbeitung — Vermerk '${REVIEW_REST_ANKER}' an Plan #${planId} geschrieben.`);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
 /**
  * Stufe Review: /issue-review am Plan, Halt an kit:klaeren (Plan #638, A8, A16).
  */
@@ -2700,7 +2738,13 @@ async function stufeReview(kette, planId) {
   const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
-  if (s.ausgang !== "fertig") return s;
+  if (s.ausgang !== "fertig") {
+    // Auch beim Abbruch wird nachgesehen, was in der bezahlten Zeit entstanden ist.
+    const rest = board("issue", "get", planId);
+    stand.marker = /^\s*Plan-Review:\s*\S/m.test(rest.body || "");
+    if (!stand.marker && neueKommentare(vorher, rest).length > 0) reviewRestVermerken(kette, planId, s.grund);
+    return s;
+  }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   const nachher = board("issue", "get", planId);
   stand.marker = /^\s*Plan-Review:\s*\S/m.test(nachher.body || "");

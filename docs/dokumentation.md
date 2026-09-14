@@ -737,6 +737,8 @@ Flags: `--max <N>` zählt hier **Ketten** (Default 3); `--model <id>` und `--ver
 
 Andere neue Karten ohne die Herkunftszeile stehen als „nicht zuordenbar" im Bericht; schreibt die Abdeckungs-Session entgegen ihrem Auftrag am Board, vermerkt der Bericht auch das.
 
+**Bricht die Review-Stufe ab, nachdem die Befunde schon am Plan stehen**, hinterlässt die Kette dort den Kommentar `## Review unvollstaendig` mit dem Grund des Abbruchs und dem Weg nach vorn (`/issue-review #M` von Hand). Genau diese Lücke trifft ein Abbruch am häufigsten — die Einarbeitung steht am Ende der Stufe —, und ohne Vermerk sieht das Dokument später aus wie ein ungeprüftes: Die Prüfung ist bezahlt, die Befunde stehen am Board, der Body trägt keinen `Plan-Review:`-Marker. Den Ausgang ändert der Vermerk nicht, er bleibt `abgebrochen` mit seinem Grund.
+
 **Drei Ausgänge**, je Kette genau einer: `fertig` (Plan geprüft, Pakete liegen im Backlog), `angehalten` (eine Frage der Stopp-Klasse wartet auf dich) und `abgebrochen` (technisch oder am Budget gescheitert, mit Grund). Abbruchgründe sind: kein Plan oder kein Paket entstanden; Form nach den Korrekturrunden weiterhin verletzt; Zeitbudget einer Stufe erschöpft; Kostenbudget überschritten — geprüft **nach** der Session, nie mittendrin, denn ein halb geschriebenes Dokument wäre der teurere Fehler; Fehlstart einer Session. Ein Abbruch beendet nur diese Kette, der nächste Kandidat kommt dran.
 
 **Budgets** stehen in `night.kette` der `workflow.config.json`, alle optional, mit diesen Startwerten:
