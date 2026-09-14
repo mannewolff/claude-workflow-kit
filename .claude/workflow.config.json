@@ -26,6 +26,17 @@
     "done": "Done"
   },
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
+  "night": {
+    "kette": {
+      "label": "kit:night",
+      "planMin": 20,
+      "paketeMin": 15,
+      "reviewMin": 15,
+      "abdeckungMin": 10,
+      "kostenUsd": 50,
+      "korrekturrunden": 2
+    }
+  },
   "issueReview": {
     "requiredBeforeReady": false,
     "reviewers": [

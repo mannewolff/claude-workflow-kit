@@ -99,9 +99,10 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
+import { join, dirname, resolve, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -659,8 +660,13 @@ function schreibeErgebnisstand() {
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
 
+// Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
+// Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
+// Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
+  const letztes = cliArgs.at(-1);
+  const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd() });
   if (res.status !== 0) {
     fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`, "tracker");
   }
@@ -692,7 +698,7 @@ function board(...cliArgs) {
 // eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
 // Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
 // soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
-function gitReste() {
+function gitReste(cwd = process.cwd()) {
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
   const pathspec = ["--", "."];
@@ -712,7 +718,7 @@ function gitReste() {
   // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
   // Block, und dort hielte die erste geplante Notiz den Lauf an.
   pathspec.push(":(exclude).claude/vorhaben-wartend-*");
-  const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8" });
+  const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
 }
@@ -724,14 +730,108 @@ function gitReste() {
  * liegengebliebenen Dateien fuer seinen Grund. Zwei getrennte git-Aufrufe mit
  * getrennten Ausschluessen waeren zwei Wahrheiten darueber, was als Rest zaehlt.
  */
-function gitClean() {
-  return gitReste().length === 0;
+function gitClean(cwd = process.cwd()) {
+  return gitReste(cwd).length === 0;
 }
 
-function lastCommitHash() {
+function lastCommitHash(cwd = process.cwd()) {
   // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
-  const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
+  const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8", cwd });
   return res.status === 0 ? res.stdout.trim() : "?";
+}
+
+// --- Worktree je Kette (Plan #638, A3) ---
+//
+// Die Nacht-Kette arbeitet in einem eigenen Worktree ausserhalb des Repos: Im Repo laege
+// er als untracked Verzeichnis im `git status` der Umsetzungsnacht. `.claude/` ist bis
+// auf `workflow.config.json` und `launch.json` nicht versioniert; ein frischer Worktree
+// traegt damit die Config, aber weder Kit-Kopie noch Skills, Settings oder Token. Der
+// Runner spiegelt deshalb `.claude/` der Hauptkopie hinein — ohne `night-run-*`, denn
+// Log und Ergebnisstand bleiben in der Hauptkopie.
+
+/** Der Ordnername eines Kette-Worktrees; der Praefix dient dem Aufraeumen beim Start. */
+function worktreePraefix(repoRoot) {
+  return `kette-${basename(resolve(repoRoot))}-`;
+}
+
+function gitIm(repoRoot, gitArgs) {
+  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
+  return spawnSync("git", gitArgs, { encoding: "utf-8", cwd: repoRoot });
+}
+
+/**
+ * Spiegelt `.claude/` der Hauptkopie in den Worktree, ohne Protokolle und Ergebnisstaende.
+ *
+ * `force`, weil der Worktree `workflow.config.json` schon traegt — dieselbe Datei, sie
+ * wird ueberschrieben, nicht gedoppelt.
+ */
+function claudeSpiegeln(repoRoot, pfad) {
+  const quelle = join(repoRoot, ".claude");
+  if (!existsSync(quelle)) return;
+  cpSync(quelle, join(pfad, ".claude"), {
+    recursive: true,
+    force: true,
+    filter: (src) => !basename(src).startsWith("night-run-"),
+  });
+}
+
+/**
+ * Legt den Worktree einer Kette an und liefert seinen Pfad.
+ *
+ * Scheitert `git worktree add`, wirft die Funktion mit der git-Meldung; ob daraus ein
+ * `abgebrochen` wird, entscheidet der Aufrufer — ein stiller Rueckfall auf die Hauptkopie
+ * hiesse, dass die Kette manchmal neben der Umsetzung im selben Baum liefe.
+ */
+export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
+  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot)}${issueId}-${stempel}`);
+  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, "HEAD"]);
+  if (res.status !== 0) {
+    throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
+  }
+  claudeSpiegeln(repoRoot, pfad);
+  return pfad;
+}
+
+/**
+ * Kopiert wartende Vorhaben-Notizen aus dem Worktree in die Hauptkopie.
+ *
+ * `/techplan` legt sie unter `.claude/vorhaben-wartend-*.md` ab, und der naechste
+ * `push main` hebt sie aus der Hauptkopie auf — im Worktree gingen sie mit ihm verloren.
+ * Liefert die Namen der kopierten Dateien.
+ */
+export function notizenZurueck(pfad, repoRoot) {
+  const quelle = join(pfad, ".claude");
+  if (!existsSync(quelle)) return [];
+  const notizen = readdirSync(quelle).filter((name) => /^vorhaben-wartend-.*\.md$/.test(name));
+  if (notizen.length > 0) mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+  for (const name of notizen) cpSync(join(quelle, name), join(repoRoot, ".claude", name), { force: true });
+  return notizen;
+}
+
+/** Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt. */
+export function worktreeEntfernen(pfad, repoRoot) {
+  gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
+  rmSync(pfad, { recursive: true, force: true });
+}
+
+/**
+ * Raeumt liegengebliebene Worktrees dieses Repos auf — beim Start jeder Kette.
+ *
+ * Ein harter Absturz laesst den Ordner unter dem Temp-Verzeichnis und den Eintrag in
+ * `git worktree list` zurueck; beide muessen weg, sonst legt der naechste Lauf einen
+ * zweiten Worktree neben einen toten. Liefert die entfernten Pfade.
+ */
+export function worktreesAufraeumen(repoRoot) {
+  gitIm(repoRoot, ["worktree", "prune"]);
+  const praefix = worktreePraefix(repoRoot);
+  const entfernt = [];
+  for (const name of readdirSync(tmpdir())) {
+    if (!name.startsWith(praefix)) continue;
+    const pfad = join(tmpdir(), name);
+    worktreeEntfernen(pfad, repoRoot);
+    entfernt.push(pfad);
+  }
+  return entfernt;
 }
 
 // Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
@@ -1101,6 +1201,24 @@ export function leseKennzahlen(stdout) {
   };
 }
 
+/**
+ * Addiert die Kosten einer Session auf den Lauf (Plan #638, A5; E1).
+ *
+ * `kostenUsd: null` — kein `result`-Ereignis, kein Wert — zaehlt 0 und erhoeht
+ * `kostenUnbekannt`: Eine fehlende Kennzahl ist kein Verstoss gegen das Budget, aber
+ * der Bericht soll sagen, dass eine Session nicht gemessen wurde. Reine Funktion ueber
+ * dem uebergebenen Lauf-Objekt, damit sie an Fixtures pruefbar ist; die Pruefung gegen
+ * das Budget sitzt dort, wo der Ausgang entschieden wird.
+ */
+export function kostenAddieren(lauf, kennzahlen) {
+  lauf.kostenSumme = (lauf.kostenSumme ?? 0);
+  lauf.kostenUnbekannt = (lauf.kostenUnbekannt ?? 0);
+  const kosten = kennzahlen?.kostenUsd;
+  if (typeof kosten === "number" && Number.isFinite(kosten)) lauf.kostenSumme += kosten;
+  else lauf.kostenUnbekannt += 1;
+  return lauf;
+}
+
 // --- Nacht-Session ---
 
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
@@ -1109,7 +1227,7 @@ export function leseKennzahlen(stdout) {
 // die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
 // damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
 // unveraendert weiterarbeiten.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -1121,6 +1239,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
     const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
       detached: process.platform !== "win32",
+      // Plan #638, A4: Die Kette laesst ihre Sessions im Worktree laufen. Ohne Angabe
+      // erbt das Kind das cwd des Runners, wie bisher.
+      cwd: cwd ?? process.cwd(),
     });
     let stdout = "";
     let stderr = "";
@@ -1204,7 +1325,14 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
 // opts (Issue #167): { prompt, timeoutMs, extraEnv } — die Salvage-Session nutzt
 // denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
 // eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
-async function runSession(issueId, args, opts = {}) {
+//
+// Seit Plan #638 dazu: `cwd` (der Worktree der Kette, A4), `stream` (fordert den
+// stream-json-Strom unabhaengig von --verbose an, A5 — das Kostenbudget darf nicht am
+// Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
+// (geht als NIGHT_KETTE_STUFE in die Kind-Umgebung, A14 — fuer die Test-Fakes und das
+// Protokoll; KIT_AGENT_MODEL bleibt daneben das alleinige Erkennungsmerkmal der Skills).
+// Exportiert fuer die Kette und ihre Tests.
+export async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
     : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
@@ -1226,18 +1354,23 @@ async function runSession(issueId, args, opts = {}) {
     const permArgs = args.yolo
       ? ["--dangerously-skip-permissions"]
       : ["--permission-mode", "acceptEdits"];
-    const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
+    const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
     cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
-    issueId, timeoutMs, useStream: args.verbose,
+    issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
     // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
     // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
     // welchem Modell der Nachtlauf gearbeitet hat. Nur hier gesetzt: interaktive
     // Sessions machen bewusst keine Angabe.
-    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: args.model, ...opts.extraEnv },
+    extraEnv: {
+      NIGHT_PROMPT: prompt,
+      KIT_AGENT_MODEL: args.model,
+      ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
+      ...opts.extraEnv,
+    },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
@@ -1601,6 +1734,48 @@ function mischeBlattfelder(bisher, wert, blaetter, feld) {
     else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
   }
   return zusammen;
+}
+
+// --- Budgets der Nacht-Kette (Plan #638, A6; night.kette) ---
+
+// Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
+export const KETTE_BUDGET_DEFAULTS = Object.freeze({
+  label: "kit:night",
+  planMin: 20,
+  paketeMin: 15,
+  reviewMin: 15,
+  abdeckungMin: 10,
+  kostenUsd: 50,
+  korrekturrunden: 2,
+});
+
+/**
+ * Liest `night.kette` aus der Config und prueft jede Zahl.
+ *
+ * Wirft einen Error mit dem Feldnamen statt `fail` zu rufen: Die Funktion ist rein und
+ * an Fixtures pruefbar; die Kette macht aus dem Wurf den Abbruch vor der ersten Session.
+ * Eine Zahl muss endlich und groesser 0 sein, `korrekturrunden` dazu ganzzahlig — ein
+ * Budget von 0 waere eine Kette, die nie startet, und niemand saehe morgens, warum.
+ */
+export function ladeKetteBudget(config) {
+  const block = config?.night?.kette ?? {};
+  const budget = { ...KETTE_BUDGET_DEFAULTS };
+  if (block.label !== undefined) {
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
+    budget.label = block.label.trim();
+  }
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]) {
+    if (block[feld] === undefined) continue;
+    const wert = block[feld];
+    if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
+      throw new Error(`night.kette.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+    }
+    if (feld === "korrekturrunden" && !Number.isInteger(wert)) {
+      throw new Error(`night.kette.korrekturrunden muss ganzzahlig sein, ist ${wert}`);
+    }
+    budget[feld] = wert;
+  }
+  return budget;
 }
 
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---

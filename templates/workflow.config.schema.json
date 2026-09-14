@@ -454,6 +454,61 @@
         "issue"
       ],
       "additionalProperties": false
+    },
+    "night": {
+      "type": "object",
+      "description": "Der Nachtbetrieb (Plan #638). Heute nur die Nacht-Kette unter kette; die Umsetzungsnacht braucht keinen Block. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "kette": {
+          "type": "object",
+          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
+          "properties": {
+            "label": {
+              "type": "string",
+              "default": "kit:night",
+              "description": "Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
+            },
+            "planMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 20,
+              "description": "Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden."
+            },
+            "paketeMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 15,
+              "description": "Zeitbudget der Stufe Pakete in Minuten, einschliesslich Korrekturrunden."
+            },
+            "reviewMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 15,
+              "description": "Zeitbudget der Pruefer-Session am Plan in Minuten."
+            },
+            "abdeckungMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 10,
+              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan haelt."
+            },
+            "kostenUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 50,
+              "description": "Kostenbudget je Kette in US-Dollar, summiert ueber alle Sessions der Kette; geprueft nach jeder Session."
+            },
+            "korrekturrunden": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2,
+              "description": "Hoechstzahl der Korrektursessions je Dokument nach einer roten Formpruefung."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [],

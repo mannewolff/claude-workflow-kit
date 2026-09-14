@@ -39,6 +39,17 @@
   "github": {
     "projectNumber": 1
   },
+  "night": {
+    "kette": {
+      "label": "kit:night",
+      "planMin": 20,
+      "paketeMin": 15,
+      "reviewMin": 15,
+      "abdeckungMin": 10,
+      "kostenUsd": 50,
+      "korrekturrunden": 2
+    }
+  },
   "issueReview": {
     "requiredBeforeReady": false,
     "reviewers": [
