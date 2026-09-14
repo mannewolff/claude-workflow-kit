@@ -71,17 +71,6 @@ test("ein Absatz erklaert, dass das Label beim Abbruch stehen bleibt", () => {
   assert.ok(absatz, "kein Absatz nennt 'bleibt stehen' zusammen mit 'Label'");
 });
 
-// Ohne Kommandozeile kann niemand eine Nacht starten — und ein Flag, das die
-// Doku nennt und das Programm nicht kennt, ist schlimmer als keins.
-test("night.mjs kennt das dokumentierte Flag --erzeuge", () => {
-  const help = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], {
-    encoding: "utf-8",
-  });
-  assert.match(help, /--erzeuge/, "--help weist den Erzeugungsmodus nicht aus");
-});
-
-// Die Vorlage ist der Blob, den jede Neuinstallation bekommt. Fehlen die beiden
-// Labels dort, ist die Freigabe-Geste im Projekt-Register unsichtbar.
 test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels", () => {
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");

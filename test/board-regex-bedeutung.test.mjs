@@ -26,7 +26,7 @@ import {
   autorModellSicherstellen,
   nurAutorZeileTrifft,
 } from "../kit/board.mjs";
-import { REVIEW_MARKER_ZEILE, RUNDEN_KOPF, hasReviewMarker } from "../kit/night.mjs";
+import { REVIEW_MARKER_ZEILE, hasReviewMarker } from "../kit/night.mjs";
 
 // --- 1. board.mjs: AUTOR_MODELL_ZEILE ---
 
@@ -252,20 +252,6 @@ test("REVIEW_MARKER_ZEILE: der Marker wird auch bei CRLF erkannt", () => {
   assert.equal(hasReviewMarker("Issue-Review:  \r"), false);
 });
 
-// --- 9. night.mjs: RUNDEN_KOPF ---
-
-test("RUNDEN_KOPF: Treffer, Rundennummer und Nicht-Treffer", () => {
-  assert.equal(RUNDEN_KOPF.exec("## Issue-Review, Runde 1")[1], "1");
-  assert.equal(RUNDEN_KOPF.exec("## Synthese, Runde 12")[1], "12");
-  assert.equal(RUNDEN_KOPF.exec("## Plan-Review, Runde 2   ")[1], "2");
-  assert.equal(RUNDEN_KOPF.exec("## Issue-Review, Runde"), null, "ohne Nummer kein Treffer");
-  // Nebenbefund, hier festgehalten statt geaendert: Drei Rauten treffen ebenfalls.
-  // `^##` passt auf den Anfang von `###`, und `[^\\n]*?` frisst die dritte Raute.
-  // Das ist heutiges Verhalten; das Umschreiben darf es nicht nebenbei kippen.
-  assert.equal(RUNDEN_KOPF.exec("### Issue-Review, Runde 1")[1], "1");
-  assert.equal(RUNDEN_KOPF.exec("Issue-Review, Runde 1"), null, "ohne Rauten kein Treffer");
-});
-
 // --- Laufzeitprobe: der Fall, der vor dem Umschreiben explodierte ---
 //
 // Gemessen in Issue #396: Mit einem Zeilenumbruch im Eingabetext brauchte
@@ -296,7 +282,6 @@ const WORST_CASE = [
   // kennt der Ausdruck keinen fuehrenden Leerraum, eine Zeile mit Einrueckung
   // scheiterte sofort und maesse nichts.
   ["REVIEW_MARKER_ZEILE", REVIEW_MARKER_ZEILE, (n) => `Issue-Review:${" ".repeat(n)}`],
-  ["RUNDEN_KOPF", RUNDEN_KOPF, (n) => `## ${"x".repeat(n)}, Runde `],
 ];
 
 for (const [name, re, bau] of WORST_CASE) {

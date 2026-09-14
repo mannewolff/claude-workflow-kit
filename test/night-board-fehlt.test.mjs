@@ -1,6 +1,6 @@
 // Was passiert, wenn board.mjs nicht neben night.mjs liegt (Issue #394, #498).
 //
-// night.mjs holt sich `fenceLauf`, `parsePruefvorgabe` und die drei Praefix-Pruefer
+// night.mjs holt sich `fenceLauf` und die drei Praefix-Pruefer
 // vom Nachbarn und haelt fuer den Fall, dass dort nichts liegt, Ersatzfunktionen
 // bereit, die WERFEN. Der Grund steht in Issue #170: Ein statischer Import scheitert
 // vor der ersten Zeile Code und nimmt dem Runner genau die Auskunft, dass board.mjs
@@ -41,19 +41,6 @@ test("[night-6] ohne Nachbarn gelingt das Laden von night.mjs — erst der Aufru
   assert.throws(() => night.nachbarn.fenceLauf(), /board\.mjs fehlt neben night\.mjs/);
 });
 
-test("[night-6] ohne board.mjs wirft der Ersatz fuer parsePruefvorgabe", () => {
-  assert.throws(
-    () => night.nachbarn.parsePruefvorgabe("## Kontext\nPruefung: 3\n"),
-    /board\.mjs liegt nicht neben night\.mjs/,
-  );
-  assert.throws(
-    () => night.nachbarn.parsePruefvorgabe("## Kontext\nPruefung: 3\n"),
-    /die Pruefvorgabe ist nicht lesbar/,
-  );
-});
-
-// Je Praefix eine eigene Zusicherung: Belegt wird, dass die Ersatzfunktion WIRFT —
-// nicht, dass sie `false` liefert. Genau die Fehlform liesse ein Plandokument durch.
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istFachlich", () => {
   assert.throws(() => night.nachbarn.istFachlich("[Fachlich] Etwas"), /das Praefix \[Fachlich\] ist nicht erkennbar/);
 });
@@ -66,38 +53,11 @@ test("[night-6] ohne board.mjs wirft der Ersatz fuer istIdee", () => {
   assert.throws(() => night.nachbarn.istIdee("[Idee] Etwas"), /das Praefix \[Idee\] ist nicht erkennbar/);
 });
 
-// Die Kopfzeilen-Muster sind keine Funktionen, sondern Objekte mit `exec` — und der
-// Ersatz muss dieselbe Form tragen (Issue #594). `undefined` an ihrer Stelle liefe in
-// „Cannot read properties of undefined (reading 'exec')" und naehme dem Runner genau die
-// Auskunft, dass board.mjs fehlt.
-test("[night-12] ohne board.mjs wirft der Ersatz fuer VORSCHLAG_KOPF beim exec-Aufruf", () => {
-  assert.equal(typeof night.nachbarn.VORSCHLAG_KOPF.exec, "function");
-  assert.throws(
-    () => night.nachbarn.VORSCHLAG_KOPF.exec("## Body-Vorschlag, Runde 1"),
-    /board\.mjs liegt nicht neben night\.mjs/,
-  );
-});
-
-test("[night-12] ohne board.mjs wirft der Ersatz fuer SYNTHESE_KOPF beim exec-Aufruf", () => {
-  assert.throws(
-    () => night.nachbarn.SYNTHESE_KOPF.exec("## Synthese, Runde 1"),
-    /board\.mjs liegt nicht neben night\.mjs/,
-  );
-});
-
-// Das Verhaltens-Gegenstueck zu den Wuerfen oben (Issue #394): Beide Aufrufstellen
-// fangen den Wurf. Faellt dieses Fangen weg, crasht der Nacht-Runner, statt
-// auszusortieren.
-test("ohne board.mjs meldet reviewFreigabe ungueltig mit der Meldung als Detail", () => {
+test("[night-16] ohne board.mjs braucht reviewFreigabe den Nachbarn nicht: ohne Marker ungeprueft", () => {
+  // Seit Plan #638 (A17) liest das Gate nur den Marker; eine Pruefvorgabe-Zeile wird
+  // nicht mehr geparst und kann darum auch ohne Nachbarn nichts werfen.
   const freigabe = night.reviewFreigabe("## Kontext\nPruefung: 3\n");
-  assert.equal(freigabe.frei, false);
-  assert.equal(freigabe.art, "ungueltig");
-  assert.match(freigabe.detail, /die Pruefvorgabe ist nicht lesbar/);
-  assert.match(freigabe.detail, /board\.mjs liegt nicht neben night\.mjs/);
+  assert.deepEqual(freigabe, { frei: false, art: "ungeprueft" });
+  assert.deepEqual(night.reviewFreigabe("## Kontext\nIssue-Review: x\n"), { frei: true, art: "marker" });
 });
 
-test("ohne board.mjs liefert hatGueltigenVerzicht false statt zu werfen", () => {
-  // Ein Body, der mit lesbarem Nachbarn einen gueltigen Verzicht ergaebe: Ohne ihn
-  // darf daraus kein Verzicht werden — sonst liefe ein ungepruefte Issue durch.
-  assert.equal(night.hatGueltigenVerzicht("## Kontext\nPruefung: Verzicht\n"), false);
-});

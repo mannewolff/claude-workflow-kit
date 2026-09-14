@@ -17,7 +17,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { selectReviewCandidates } from "../kit/night.mjs";
 
 const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
 
@@ -131,29 +130,6 @@ test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", NUR_POSIX, (
     assert.deepEqual(kommentare(issueText(dir, gezeichnet.id)), [], "dry-run hat kommentiert — darf er nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// --- Review-Kandidaten ---
-
-test("selectReviewCandidates sortiert gezeichnete Issues aus", () => {
-  const issues = [
-    { id: 1, title: "Gezeichnet", body: "## Kontext\n", labels: ["kit:klaeren"] },
-    { id: 2, title: "Normal", body: "## Kontext\n", labels: [] },
-  ];
-  const { kandidaten, uebersprungen } = selectReviewCandidates(issues, { stufe: "issue" });
-  assert.deepEqual(kandidaten.map((i) => i.id), [2]);
-  assert.deepEqual(uebersprungen, [{ id: 1, title: "Gezeichnet", grund: "kit:klaeren, offene Entscheidung" }]);
-});
-
-test("selectReviewCandidates: kit:klaeren gilt in jeder Stufe", () => {
-  const issues = [
-    { id: 1, title: "[Fachlich] Gezeichnet", body: "## Ziel\n", labels: ["kit:klaeren"] },
-    { id: 2, title: "[Plan] Gezeichnet", body: "## Ziel\n", labels: ["kit:klaeren"] },
-  ];
-  for (const stufe of ["fachlich", "plan"]) {
-    assert.deepEqual(selectReviewCandidates(issues, { stufe }).kandidaten, [],
-      `Stufe ${stufe}: gezeichnetes Dokument kam als Kandidat durch`);
   }
 });
 

@@ -202,33 +202,3 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   }
 });
 
-// --- Issue #307: Pruefvorgabe, Verzicht und Verfall in der Vorlage (die Doku-Passage
-// entfiel mit Issue #629) ---
-//
-// Am Ticket stehen zwei Zeilen, die sich zum Verwechseln aehnlich sehen und
-// trotzdem verschiedene Besitzer haben: `Pruefung:` schreibt der Mensch,
-// `Pruefung-Stand:` die Maschine. Wer die zweite von Hand anfasst, laesst seine
-// eigene Vorgabe verfallen — lautlos, denn der Verfall ist kein Fehler, sondern
-// der Rueckfall auf den Regelfall. Diese Arbeitsteilung ist nirgends erkennbar,
-// wenn sie nirgends steht.
-
-
-test("die dokumentierten --stufe-Werte stimmen mit night.mjs --help ueberein", () => {
-  const help = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], {
-    encoding: "utf-8",
-  });
-
-  const ausHelp = /Pruefstufe des Review-Modus:\s*([a-z |]+)/.exec(help);
-  assert.ok(ausHelp, "--help weist keine Pruefstufen aus — ist Issue #283 umgesetzt?");
-  const erwartet = ausHelp[1].split("|").map((s) => s.trim()).filter(Boolean).sort();
-  assert.ok(erwartet.length > 0, "keine Stufenwerte in --help");
-  assert.match(help, /Default issue/, "--help nennt den Default 'issue' nicht");
-
-  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/dokumentation.md", DOKU]]) {
-    const treffer = /--stufe\s*<([a-z|]+)>/.exec(text);
-    assert.ok(treffer, `${name}: keine --stufe-Werte dokumentiert`);
-    const dokumentiert = treffer[1].split("|").map((s) => s.trim()).filter(Boolean).sort();
-    assert.deepEqual(dokumentiert, erwartet,
-      `${name}: dokumentierte Stufen weichen von --help ab`);
-  }
-});

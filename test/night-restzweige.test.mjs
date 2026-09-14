@@ -17,7 +17,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { bodyVorschlagVorhanden } from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -199,94 +198,6 @@ const VORFLUG_OK_ECHO = [
   "echo 'VORFLUG>>>'",
 ].join("\n");
 
-test("Review-Modus: ohne Kandidaten nennt der Lauf die im Backlog vorhandenen Labels", NUR_POSIX, () => {
-  // Ein Tippfehler im --review-label-Wert sieht am Board aus wie ein leerer Backlog.
-  // Die Liste der tatsaechlich vorhandenen Labels ist der einzige Hinweis, der den
-  // Unterschied zeigt.
-  mitProjekt((dir) => {
-    const issue = board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-    board(dir, "issue", "label", "add", String(issue.id), "kit:tippfehler");
-
-    const res = run(dir, ["--review", "--review-label", "kit:review"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-    });
-
-    assert.equal(res.status, 0, `der Lauf haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-    assert.match(res.stdout, /Keine Review-Kandidaten im Backlog/, "die Kandidatenmeldung fehlt");
-    assert.match(res.stdout, /Im Backlog vorhandene Labels: kit:tippfehler/,
-      "das tatsaechlich vergebene Label muss genannt werden");
-    assert.match(res.stdout, /Tippfehler im --review-label-Wert\?/, "der Hinweis auf den Ausweg fehlt");
-  }, EIN_REVIEWER, "night-rest-review-leer-");
-});
-
-test("Review-Modus: ein Backlog ganz ohne Labels meldet 'keine' statt einer leeren Liste", NUR_POSIX, () => {
-  // Der Gegenfall zum Test darueber: Traegt kein Backlog-Issue ein Label, waere eine
-  // leere Aufzaehlung nicht von einer abgeschnittenen Zeile zu unterscheiden.
-  mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    const res = run(dir, ["--review", "--review-label", "kit:review"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-    });
-
-    assert.equal(res.status, 0, `der Lauf haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-    assert.match(res.stdout, /Im Backlog vorhandene Labels: keine/,
-      "ohne Labels muss dort 'keine' stehen");
-  }, EIN_REVIEWER, "night-rest-review-ohne-label-");
-});
-
-// ============================================================
-// Der Vorflug mit uebersprungener Tracker-Probe
-// ============================================================
-
-test("Vorflug: eine uebersprungene issue-get-Probe steht als Vermerk am Tracker-Befund", NUR_POSIX, () => {
-  // `erreichbar` allein verschwiege, dass nur die halbe Probe lief. Der Vermerk sagt,
-  // WAS ungeprueft blieb — sonst gilt ein halber Nachweis als voller.
-  mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-    const vorflug = 'cat <<\'EOF\'\n<<<VORFLUG\n'
-      + '{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list","uebersprungen":"kein Kandidat vorhanden"}}\n'
-      + 'VORFLUG>>>\nEOF';
-
-    const res = run(dir, ["--review", "--dry-run", "--review-label", "none"], {
-      NIGHT_VORFLUG_CMD: vorflug,
-    });
-
-    assert.equal(res.status, 0, `der Dry-Run haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-    assert.match(res.stdout, /Tracker \(review-session\): erreichbar — issue get uebersprungen: kein Kandidat vorhanden/,
-      "der Vermerk zur uebersprungenen Probe fehlt");
-  }, EIN_REVIEWER, "night-rest-vorflug-uebersprungen-");
-});
-
-test("Review-Modus: eine per Signal gestorbene Session nennt das Signal", NUR_POSIX, () => {
-  // Derselbe Infrastruktur-Guard wie in der Implementierungsschleife, eigener Pfad:
-  // Ohne Exit-Code muss auch hier das Signal in der Meldung stehen, sonst faende
-  // morgens niemand den Grund.
-  mitProjekt((dir) => {
-    const issue = board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    const res = run(dir, ["--review", "--review-label", "none"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-      NIGHT_CLAUDE_CMD: "kill -9 $$",
-    });
-
-    assert.equal(res.status, 1, "ein Fehlstart haette hart stoppen muessen");
-    assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(Exit SIGKILL\)/,
-      "das Signal fehlt in der Meldung");
-    assert.doesNotMatch(res.stdout, /Exit null|Exit undefined/,
-      "ohne Exit-Code darf dort kein leerer Wert stehen");
-
-    // Ohne Kommentar am Ticket: Eine kaputte Umgebung darf den Backlog nicht zutexten.
-    const full = board(dir, "issue", "get", String(issue.id));
-    assert.ok(!full.body.includes("Nachtlauf:"),
-      "ein Infrastruktur-Fehlschlag darf das Ticket nicht kommentieren");
-  }, EIN_REVIEWER, "night-rest-review-signal-");
-});
-
 // ============================================================
 // Eine Session, die gar nicht erst startet
 // ============================================================
@@ -325,52 +236,6 @@ test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines 
         "ein Infrastruktur-Fehlschlag darf das Ticket nicht verschieben");
     });
   }, {}, "night-rest-eacces-");
-});
-
-test("Review-Modus: eine nicht startbare Session meldet den Systemfehler", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-    mitFakeBin((bin) => {
-      // Der Vorflug laeuft ueber den Test-Hook, damit erst die Review-Session selbst
-      // auf das nicht ausfuehrbare claude trifft. Er kommt mit `echo` aus (ein
-      // sh-Builtin) — im Fake-PATH steht kein `cat`.
-      const res = run(dir, ["--review", "--review-label", "none"], {
-        NIGHT_VORFLUG_CMD: VORFLUG_OK_ECHO, PATH: bin,
-      });
-
-      assert.equal(res.status, 1, "ein nicht startbares CLI haette hart stoppen muessen");
-      assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(EACCES\)/,
-        "der Systemfehler fehlt — ohne ihn ist die Ursache unklar");
-      assert.doesNotMatch(res.stdout, /Exit /,
-        "ohne gestarteten Prozess gibt es keinen Exit-Code, der dort stehen duerfte");
-    });
-  }, EIN_REVIEWER, "night-rest-review-eacces-");
-});
-
-test("Review-Modus: eine Session am Zeitlimit gilt nicht als Infrastruktur-Fehlschlag", NUR_POSIX, () => {
-  // Ein Timeout ist etwas anderes als ein Fehlstart: Die Session lief, sie war nur zu
-  // langsam. Sie darf den Lauf deshalb nicht hart stoppen, sondern zaehlt als Runde
-  // ohne Ergebnis — sonst beendete jede lahme Session die ganze Nacht.
-  mitProjekt((dir) => {
-    const issue = board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    const res = run(dir, ["--review", "--review-label", "none"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-      NIGHT_CLAUDE_CMD: "sleep 30",
-      NIGHT_TIMEOUT_MS: "300",
-      NIGHT_KILL_GRACE_MS: "300",
-    });
-
-    assert.equal(res.status, 0, `ein Timeout darf nicht hart stoppen: ${res.stderr}${res.stdout}`);
-    assert.doesNotMatch(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/,
-      "ein Zeitlimit ist kein Fehlstart des CLI");
-    assert.match(res.stdout, new RegExp(`Fehlschlag nach [\\d.]+ min: Issue #${issue.id} — die Session hat nichts hinterlassen`),
-      "die abgebrochene Runde muss als Runde ohne Ergebnis gemeldet werden");
-    assert.match(res.stdout, /1 ohne Ergebnis, 1 Session\(s\) gestartet\.$/m,
-      "die Bilanz muss die Runde als 'ohne Ergebnis' fuehren, nicht als harten Stopp");
-  }, EIN_REVIEWER, "night-rest-review-timeout-");
 });
 
 // ============================================================
@@ -429,62 +294,3 @@ test("Dry-Run: ein Ready-Issue ohne labels-Feld gilt als Issue ohne das gesuchte
   }, "ready");
 });
 
-test("Review-Modus: ein Backlog-Issue ohne labels-Feld bricht die Label-Aufzaehlung nicht", NUR_POSIX, () => {
-  // Derselbe Rueckfall im Review-Modus. Er steht in der Meldung, die einen Tippfehler
-  // im --review-label-Wert aufklaeren soll — sie darf gerade dann nicht scheitern.
-  mitAttrappe((dir) => {
-    const res = run(dir, ["--review", "--review-label", "kit:review"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-    });
-
-    assert.equal(res.status, 0, `der Lauf haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-    assert.match(res.stdout, /Keine Review-Kandidaten im Backlog/, "die Kandidatenmeldung fehlt");
-    assert.match(res.stdout, /Im Backlog vorhandene Labels: keine/,
-      "ein Issue ohne labels-Feld steuert keine Labels zur Aufzaehlung bei");
-    assert.doesNotMatch(res.stderr, /Cannot read propert/,
-      "das fehlende Feld darf keinen Absturz ausloesen");
-  }, "backlog", EIN_REVIEWER, "night-rest-attrappe-review-");
-});
-
-test("Review-Modus: ein Kandidat ohne Beschreibung kippt die Spurmessung nicht", NUR_POSIX, () => {
-  // Die Spur, an der die Schleife den Erfolg einer Review-Session misst, besteht aus
-  // Body-Laenge und Kommentarzahl. GitHub liefert fuer ein Issue ohne Beschreibung
-  // `body: null`, und reviewAusschluss kennt kein Body-Gate — so ein Issue ist also
-  // ein zulaessiger Kandidat. Traegt die Messung den fehlenden Body nicht, faellt sie
-  // aus, bevor die Session ueberhaupt gewertet ist.
-  mitAttrappe((dir) => {
-    const res = run(dir, ["--review", "--review-label", "none"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-      // Eine Session, die nichts tut: Vorher- und Nachher-Spur sind gleich, der
-      // Ausgang ist "ohne Ergebnis" — und genau das muss die Schleife melden koennen.
-      NIGHT_CLAUDE_CMD: "true",
-    });
-
-    assert.equal(res.status, 0, `der Lauf haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-    assert.match(res.stdout, /Fehlschlag nach [\d.]+ min: Issue #0001 — die Session hat nichts hinterlassen/,
-      "die Runde muss als Runde ohne Ergebnis gemeldet werden");
-    assert.doesNotMatch(res.stderr, /Cannot read propert/,
-      "ein fehlender Body darf die Spurmessung nicht zum Absturz bringen");
-  }, "backlog", EIN_REVIEWER, "night-rest-attrappe-leer-", null);
-});
-
-// ============================================================
-// Body-Vorschlag: Kommentare ohne Text
-// ============================================================
-
-test("bodyVorschlagVorhanden uebergeht einen leeren Kommentar und findet den Vorschlag daneben", () => {
-  // GitHub und Toolbox liefern Kommentare mit leerem oder fehlendem Body (geloescht,
-  // reine Reaktion). Sie duerfen den gueltigen Vorschlag daneben nicht verdecken.
-  assert.equal(
-    bodyVorschlagVorhanden([null, undefined, "", "## Body-Vorschlag, Runde 1\n\nNeuer Text"]),
-    true,
-    "ein leerer Kommentar darf den Vorschlag daneben nicht entwerten",
-  );
-});
-
-test("bodyVorschlagVorhanden findet in einer Liste aus lauter leeren Kommentaren keinen Vorschlag", () => {
-  // Der Gegenfall: Ohne Kopfzeile gibt es keinen Vorschlag — auch nicht als
-  // Nebenwirkung der Leerbehandlung.
-  assert.equal(bodyVorschlagVorhanden([null, undefined, ""]), false,
-    "leere Kommentare duerfen keinen Vorschlag ergeben");
-});

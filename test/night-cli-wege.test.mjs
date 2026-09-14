@@ -157,7 +157,7 @@ test("Board-Moves des lokalen Trackers zaehlen nicht als schmutzig", () => {
   }, {}, "night-cli-board-move-");
 });
 
-test("ohne buildChecks bricht die Implementierung ab, der Review-Modus nicht", () => {
+test("ohne buildChecks bricht die Implementierung ab, mit --no-checks-ok nicht", () => {
   mitProjekt((dir) => {
     const ohneChecks = run(dir, ["--dry-run", "--label", "none"]);
     assert.equal(ohneChecks.status, 1, "ohne Gate darf nachts nicht implementiert werden");
