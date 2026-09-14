@@ -279,6 +279,72 @@ test("changelog.mjs braucht install.mjs nicht mehr", () => {
   }
 });
 
+// --- --marke: die kommende Versionsmarke vorwegnehmen (Issue #657) ---
+
+test("changelog.mjs --marke nimmt die kommende Marke vorweg", () => {
+  for (const wert of ["v1.18.0", "1.18.0"]) {
+    const dir = changelogFixture(`changelog-marke-${wert}-`, { commits: ["Ein Feature (Issue #8)"] });
+    try {
+      const res = laufe(dir, CHANGELOG_TOOL, ["--marke", wert]);
+      assert.equal(res.status, 0, res.stderr);
+      const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
+      assert.match(inhalt, /## \[1\.18\.0\] - \d{4}-\d{2}-\d{2}/, `'${wert}' erzeugte keinen Block fuer 1.18.0`);
+      assert.match(inhalt, /Ein Feature \(#8\)/, "der Commit gehoert unter die vorweggenommene Marke");
+      assert.doesNotMatch(inhalt, /## \[Unreleased\]/, "mit Marke ist nichts mehr unveroeffentlicht");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("changelog.mjs weist --marke zusammen mit --check ab", () => {
+  // Die beiden Fragen schliessen sich aus: "erzeuge den Stand nach dem kommenden
+  // Commit" und "ist der Stand aktuell" koennen nicht gleichzeitig gelten.
+  const dir = changelogFixture("changelog-marke-check-", { commits: ["Ein Feature (Issue #9)"] });
+  try {
+    const res = laufe(dir, CHANGELOG_TOOL, ["--marke", "v1.18.0", "--check"]);
+    assert.equal(res.status, 1, "--marke mit --check haette abbrechen muessen");
+    assert.match(res.stderr, /--marke .* --check/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("changelog.mjs weist eine Marke ohne x.y.z-Form ab", () => {
+  const dir = changelogFixture("changelog-marke-form-", { commits: ["Ein Feature (Issue #10)"] });
+  try {
+    for (const args of [["--marke", "1.2"], ["--marke", "abc"], ["--marke", "v1.2.3.4"], ["--marke"]]) {
+      const res = laufe(dir, CHANGELOG_TOOL, args);
+      assert.equal(res.status, 1, `'${args.join(" ")}' haette abbrechen muessen`);
+      assert.match(res.stderr, /--marke/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("changelog.mjs datiert die vorweggenommene Marke wie git selbst", () => {
+  // Die Falle: `git log --date=short` datiert in LOKALER Zeit, ein
+  // `new Date().toISOString()` in UTC. Zwischen den beiden Tageswechseln lieferte
+  // die Marke ein anderes Datum als der Commit danach — und --check waere rot.
+  // Gemessen wird deshalb gegen die git-Ausgabe, nicht gegen ein im Test
+  // gebildetes Datum; sonst haengt der Test an der Uhrzeit des Laufs.
+  const dir = changelogFixture("changelog-marke-datum-", { commits: ["Ein Feature (Issue #11)"] });
+  try {
+    const gitDatum = spawnSync("git", ["log", "-1", "--date=short", "--format=%cd"],
+      { cwd: dir, encoding: "utf-8" }).stdout.trim();
+    assert.match(gitDatum, /^\d{4}-\d{2}-\d{2}$/, "das Fixture liefert kein git-Datum");
+
+    const res = laufe(dir, CHANGELOG_TOOL, ["--marke", "v1.18.0"]);
+    assert.equal(res.status, 0, res.stderr);
+    const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
+    assert.match(inhalt, new RegExp(String.raw`^## \[1\.18\.0\] - ${gitDatum}$`, "m"),
+      `der Block traegt nicht das Datum, das git dem Commit gibt (${gitDatum})`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("changelog.mjs meldet einen gescheiterten git-Aufruf als solchen", () => {
   // Kein git-Repo: der erste git-Aufruf scheitert, und das muss als git-Fehler
   // erkennbar sein statt als leere Historie durchzurutschen.
