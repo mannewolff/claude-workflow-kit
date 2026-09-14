@@ -106,6 +106,87 @@ test("version.mjs bricht bei fehlender oder unlesbarer VERSION-Konstante ab", ()
   }
 });
 
+// Wegwerf-Repo mit install.mjs — wahlweise committet oder nur in der Arbeitskopie.
+// Der Bump rechnet ab dem committeten Stand (Issue #656), also braucht er HEAD.
+function mitGitInstall(praefix, { version = "1.26.0", committen = true, vorlauf = false } = {}) {
+  const dir = tempDir(praefix);
+  const git = (...args) => {
+    const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${args.join(" ")}: ${res.stderr}`);
+  };
+  git("init", "-q");
+  git("config", "user.email", "test@example.invalid");
+  git("config", "user.name", "Version Test");
+  if (vorlauf) {
+    writeFileSync(join(dir, "LIESMICH.md"), "irgendwas ohne Version\n", "utf-8");
+    git("add", "-A");
+    git("commit", "-q", "-m", "Vorlauf ohne install.mjs");
+  }
+  writeFileSync(join(dir, "install.mjs"), `const VERSION = "${version}";\n`, "utf-8");
+  if (committen) {
+    git("add", "-A");
+    git("commit", "-q", "-m", `chore: v${version}`);
+  }
+  return { dir, git };
+}
+
+test("version.mjs bumpt idempotent, solange nichts committet wurde", () => {
+  const { dir } = mitGitInstall("version-idempotent-");
+  try {
+    const erst = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(erst.status, 0, erst.stderr);
+    assert.equal(erst.stdout.trim(), "1.26.1");
+
+    const zweit = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(zweit.status, 0, zweit.stderr);
+    assert.equal(zweit.stdout.trim(), "1.26.1",
+      "ohne Commit dazwischen darf der Bump nicht ein zweites Mal weiterspringen");
+    assert.equal(installVersionVon(dir), "1.26.1");
+
+    const get = laufe(dir, VERSION_TOOL, ["--get"]);
+    assert.equal(get.status, 0, get.stderr);
+    assert.equal(get.stdout.trim(), "1.26.1", "--get liest weiterhin die Arbeitskopie, nicht HEAD");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("version.mjs rechnet nach einem Commit ab dem neuen Stand weiter", () => {
+  const { dir, git } = mitGitInstall("version-nachcommit-");
+  try {
+    assert.equal(laufe(dir, VERSION_TOOL, ["--patch"]).stdout.trim(), "1.26.1");
+    git("add", "-A");
+    git("commit", "-q", "-m", "chore: v1.26.1");
+
+    const res = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.26.2", "nach dem Commit ist die neue Version die Basis");
+    assert.equal(installVersionVon(dir), "1.26.2");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("version.mjs faellt auf die Arbeitskopie zurueck, wenn HEAD keine install.mjs fuehrt", () => {
+  const ohneCommit = mitGitInstall("version-ohnecommit-", { committen: false }).dir;
+  try {
+    const res = laufe(ohneCommit, VERSION_TOOL, ["--patch"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.26.1", "im frischen Repo ohne Commit gilt die Arbeitskopie");
+  } finally {
+    rmSync(ohneCommit, { recursive: true, force: true });
+  }
+
+  const nurUncommittet = mitGitInstall("version-uncommittet-", { committen: false, vorlauf: true }).dir;
+  try {
+    const res = laufe(nurUncommittet, VERSION_TOOL, ["--minor"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.27.0", "fehlt die Datei in HEAD, gilt die Arbeitskopie");
+  } finally {
+    rmSync(nurUncommittet, { recursive: true, force: true });
+  }
+});
+
 // ============================================================
 // tools/sync-blobs.mjs — Fehlerpfade und der Fall "nichts zu tun"
 // ============================================================
