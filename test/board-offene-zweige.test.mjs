@@ -19,7 +19,6 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen, BOARD } from "./helpers/board-fixture.mjs";
-import { pruefvorgabeDurchsetzen } from "../kit/board.mjs";
 
 const NUR_POSIX = process.platform === "win32"
   ? { skip: "Windows: Die Fakes sind endungslose Dateien mit sh-Wrapper; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197." }
@@ -114,40 +113,6 @@ test("move ueberlebt einen Cache, den ein fremder Prozess mittendrin loescht", N
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-// ============================================================
-// mitPruefstand: ein Code-Fence im Kontext-Abschnitt
-// ============================================================
-
-// Ein Issue, das das Format an einem Beispiel zeigt, traegt `Pruefung:` im Fence.
-// Der Stand gehoert hinter die ECHTE Vorgabezeile — hinter die im Beispiel gesetzt
-// veraenderte er den Beispieltext des Dokuments.
-test("der Pruefstand wird hinter der echten Vorgabe gesetzt, nicht im Code-Fence", () => {
-  const alt = "## Kontext\n\nPruefung: 2\n\n## Aufgabe\n\nAlt.\n";
-  const neu = [
-    "## Kontext",
-    "",
-    "Pruefung: 2",
-    "",
-    "```",
-    "Pruefung: 3",
-    "```",
-    "",
-    "## Aufgabe",
-    "",
-    "Neu.",
-    "",
-  ].join("\n");
-
-  const ergebnis = pruefvorgabeDurchsetzen(alt, neu, {});
-
-  assert.match(ergebnis, /^Pruefung: 2\nPruefung-Stand: [0-9a-f]{64}$/m,
-    "hinter der echten Vorgabezeile steht kein Stand");
-  assert.match(ergebnis, /```\nPruefung: 3\n```/,
-    "die Beispielzeile im Fence hat einen Stand bekommen oder wurde veraendert");
-  assert.equal((ergebnis.match(/^Pruefung-Stand:/gm) || []).length, 1,
-    "es steht mehr als ein Pruefstand im Body");
 });
 
 // ============================================================

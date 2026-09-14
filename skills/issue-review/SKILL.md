@@ -43,7 +43,7 @@ Verstöße — Reihenfolge der Abschnitte, fehlende Kennzeichnungszeile, Herkunf
 ### 3. Reviewer wählen
 Lies `Autor-Modell:` (Arbeitspaket: `## Kontext`; fachliche Anforderung: `## Ziel`) bzw. `Plan-Modell:` im Kopf des Plandokuments. Fehlt der Wert oder lautet er `unbekannt`, frage einmal nach und schlage einen Reviewer vor; unbeaufsichtigt gilt der Regelvorschlag, und der Befunde-Kommentar vermerkt das.
 ```bash
-node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell> --issue <N>
+node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
 ```
 
 `gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.

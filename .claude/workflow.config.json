@@ -27,9 +27,7 @@
   },
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "issueReview": {
-    "rounds": 1,
     "requiredBeforeReady": false,
-    "statusLabels": false,
     "reviewers": [
       {
         "name": "opus",

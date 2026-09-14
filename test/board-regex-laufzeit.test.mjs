@@ -19,11 +19,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  parsePruefvorgabe,
   fenceLauf,
   nurAutorZeileTrifft,
   autorModellSicherstellen,
-  pruefvorgabeStand,
   AUTOR_MODELL_ZEILE,
   SPEC_WIRKUNG_UEBERSCHRIFT,
 } from "../kit/board.mjs";
@@ -37,22 +35,6 @@ function dauer(fn) {
   fn();
   return Number(process.hrtime.bigint() - t0) / 1e6;
 }
-
-test("parsePruefvorgabe bleibt bei einer sehr langen Pruefung-Zeile schnell", () => {
-  const body = `## Kontext\nPruefung: 3${" ".repeat(GROSS)}\n`;
-  const ms = dauer(() => parsePruefvorgabe(body));
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 16 KiB — erwartet unter ${GRENZE_MS} ms`);
-});
-
-test("parsePruefvorgabe bleibt bei einer sehr langen Pruefung-Stand-Zeile schnell", () => {
-  // Der Stand muss 64 Hex-Zeichen tragen, sonst weist parsePruefvorgabe ihn ab, bevor
-  // die Laufzeit ueberhaupt zaehlt. Die Fuellzeichen stehen dahinter — genau dort, wo
-  // sich ` *` und `(.*?)` ueberlappen.
-  const stand = "a".repeat(64);
-  const body = `## Kontext\nPruefung: 3\nPruefung-Stand: ${stand}${" ".repeat(GROSS)}\n`;
-  const ms = dauer(() => parsePruefvorgabe(body));
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 16 KiB — erwartet unter ${GRENZE_MS} ms`);
-});
 
 test("fenceLauf bleibt bei einer sehr langen Fence-Zeile schnell", () => {
   const imFence = fenceLauf();
@@ -96,15 +78,6 @@ test("autorModellSicherstellen bleibt bei 256 KiB Leerzeilen im Kontext schnell"
   // jede Startposition durch.
   const body = `## Kontext\n${"\n".repeat(SEHR_GROSS)}x`;
   const ms = dauer(() => autorModellSicherstellen(body, "opus"));
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 256 KiB — erwartet unter ${GRENZE_MS} ms`);
-});
-
-test("pruefvorgabeStand bleibt bei 256 KiB Leerzeilen schnell", () => {
-  // Ohne Kontext-Abschnitt geht der ganze Text in den Trim-Replace
-  // `^\n+|\n+$`. Er endet auf `x` — kein Treffer, jede Startposition wurde
-  // durchprobiert.
-  const body = `## Aufgabe\n${"\n".repeat(SEHR_GROSS)}x`;
-  const ms = dauer(() => pruefvorgabeStand(body));
   assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 256 KiB — erwartet unter ${GRENZE_MS} ms`);
 });
 
@@ -211,15 +184,3 @@ test("SPEC_WIRKUNG_UEBERSCHRIFT bleibt bei 256 KiB in beiden Formen schnell", (t
   }
 });
 
-test("die Pruefung-Zeile ohne Wert wird weiterhin erkannt und abgelehnt", () => {
-  // Der leere Treffer ist kein Zufall, und er ist teurer als er aussieht: `(.*?)` trifft
-  // auch den leeren Wert, und genau daran haengt die Fehlermeldung unten. Ein
-  // Umschreiben nach `([^\s].*?)` haette den Treffer genommen — eine `Pruefung:`-Zeile
-  // ohne Wert waere dann stillschweigend durchgelaufen, statt abgelehnt zu werden.
-  assert.throws(
-    () => parsePruefvorgabe("## Kontext\nPruefung:\n"),
-    /Erlaubt: 1, 2, 3 oder Verzicht/,
-    "die leere Vorgabe muss erkannt und abgelehnt werden"
-  );
-  assert.equal(parsePruefvorgabe("## Kontext\nPruefung: 3\n").wert, 3);
-});

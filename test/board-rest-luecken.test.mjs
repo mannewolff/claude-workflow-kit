@@ -227,39 +227,3 @@ test("probelauf: ein durch Signal gestorbenes Kommando gilt nicht als verfuegbar
   });
 });
 
-// ============================================================
-// Zustandslabels: entfernen, dann setzen
-// ============================================================
-
-test("label-sync entfernt fremde Zustandslabels, bevor es das Ziel setzt", async () => {
-  const gesetzt = [];
-  await mitToolbox(async (dir) => {
-    const res = await runBoardAsync(dir, ["issue-review", "label-sync", "7"], { TBX_TOKEN: "t" });
-
-    assert.equal(res.status, 0, `label-sync schlug fehl: ${res.stderr}`);
-    // Reihenfolge verbindlich: erst remove, dann add. Umgekehrt traegt die Karte
-    // einen Moment lang zwei Zustandslabels (belegt an Issue #375).
-    const nurZustand = gesetzt.filter((e) => e.label.startsWith("review:"));
-    assert.deepEqual(nurZustand, [
-      { aktion: "remove", label: "review:fertig" },
-      { aktion: "add", label: "review:offen" },
-    ], `Reihenfolge oder Auswahl stimmen nicht: ${JSON.stringify(gesetzt)}`);
-  }, {
-    // Die Karte traegt bereits ein FALSCHES Zustandslabel — genau der Fall, fuer den
-    // das Kommando zugleich die Reparatur ist.
-    karten: [karte(7, { labels: ["review:fertig"] })],
-    config: { issueReview: { statusLabels: true } },
-    antwort: (req, koerper) => {
-      const treffer = /^\/api\/kanban\/items\/\d+\/labels(\?name=(.+))?$/.exec(req.url);
-      if (!treffer) return null;
-      // Beim Entfernen steht der Name im QUERY, beim Setzen im Rumpf — der Adapter
-      // spricht zwei verschiedene Routen an, und beide muessen mitgeschrieben werden.
-      if (req.method === "DELETE") {
-        gesetzt.push({ aktion: "remove", label: decodeURIComponent(treffer[2] || "") });
-      } else {
-        gesetzt.push({ aktion: "add", label: JSON.parse(koerper || "{}").name });
-      }
-      return { status: 204, text: "" };
-    },
-  });
-});

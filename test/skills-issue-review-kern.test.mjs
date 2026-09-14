@@ -56,9 +56,10 @@ test("[skills-13] die Stufe steht unter 1b und kennt [Task]", () => {
   assert.match(zeile, /\/task/);
 });
 
-test("[skills-13] die Reviewer kommen aus roles mit Stufe, Autor und Nummer", () => {
+test("[skills-13] die Reviewer kommen aus roles mit Stufe und Autor", () => {
   const bash = codebloecke("bash").join("\n");
-  assert.match(bash, /issue-review roles --stufe <fachlich\|plan\|issue> --author <modell> --issue <N>/);
+  assert.match(bash, /issue-review roles --stufe <fachlich\|plan\|issue> --author <modell>$/m);
+  assert.doesNotMatch(bash, /--issue <N>/, "roles kennt --issue seit Stufe 2 nicht mehr");
   assert.match(SKILL, /gestartet wird ausschließlich, was in `gewaehlt` steht/);
 });
 

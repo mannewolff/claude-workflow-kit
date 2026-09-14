@@ -40,9 +40,7 @@
     "projectNumber": 1
   },
   "issueReview": {
-    "rounds": 1,
     "requiredBeforeReady": false,
-    "statusLabels": false,
     "reviewers": [
       {
         "name": "opus",

@@ -128,14 +128,7 @@ test("issue-review reviewers gibt zwei Reviewer ohne den Autor", () => {
     assert.equal(out.autor, "opus");
     assert.deepEqual(out.gewaehlt.map((r) => r.name), ["sonnet", "fable"]);
     assert.equal(out.unterbesetzt, false);
-    assert.equal(out.rounds, 1, "Default ist eine Runde");
-  });
-});
-
-test("issue-review reviewers: konfigurierte rounds gewinnen", () => {
-  mitReview({ rounds: 2, reviewers: ALLE }, (dir) => {
-    const out = JSON.parse(runBoard(dir, ["issue-review", "reviewers", "--author", "opus"]).stdout);
-    assert.equal(out.rounds, 2);
+    assert.equal("rounds" in out, false, "rounds ist mit Stufe 2 entfallen");
   });
 });
 

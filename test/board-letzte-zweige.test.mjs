@@ -86,27 +86,6 @@ test("--text ohne Wert nennt auch den stdin-Weg", () => {
 });
 
 // ============================================================
-// update gegen ein Ticket ohne Body
-// ============================================================
-
-test("issue update uebertraegt die Pruefvorgabe auch aus einem leeren Altbody", () => {
-  mitProjekt((dir) => {
-    // Ein Ticket, dessen Body leer ist: Die Uebernahme der Pruefvorgabe bekommt den
-    // leeren Text statt `undefined` und laesst den neuen Body unveraendert stehen.
-    mkdirSync(join(dir, "issues"), { recursive: true });
-    writeFileSync(join(dir, "issues", "0007.md"), "---\nid: 7\ntitle: Leer\nstatus: backlog\n---\n", "utf-8");
-
-    const neu = "## Kontext\n\nNeuer Text.\n\n## Abhaengigkeiten\n\nKeine.\n";
-    const res = runBoard(dir, ["issue", "update", "7", "--body", neu]);
-
-    assert.equal(res.status, 0, `update haette durchlaufen muessen: ${res.stderr}`);
-    const text = readFileSync(join(dir, "issues", "0007.md"), "utf-8");
-    assert.ok(text.includes("Neuer Text."), "der neue Body wurde nicht geschrieben");
-    assert.ok(!text.includes("undefined"), "'undefined' steht in der Datei");
-  });
-});
-
-// ============================================================
 // Ein Reviewer-Kommando, das es nicht gibt
 // ============================================================
 
@@ -131,23 +110,3 @@ test("check: ein Kommando ausserhalb des PATH wird VOR dem Probelauf abgefangen"
   }, "board-letzte-probe-enoent-");
 });
 
-// ============================================================
-// label-sync gegen eine karge Karte
-// ============================================================
-
-test("label-sync kommt mit einer Karte ohne Titel und ohne Labels zurecht", () => {
-  mitProjekt((dir) => {
-    // Weder title noch labels im Frontmatter: Die Stufe faellt auf `issue` zurueck,
-    // und die Liste der vorhandenen Labels ist leer — es gibt nichts zu entfernen.
-    mkdirSync(join(dir, "issues"), { recursive: true });
-    writeFileSync(join(dir, "issues", "0007.md"),
-      "---\nid: 7\nstatus: backlog\n---\n\n## Kontext\n\nOhne alles.\n", "utf-8");
-
-    const res = runBoard(dir, ["issue-review", "label-sync", "7"]);
-
-    assert.equal(res.status, 0, `label-sync haette durchlaufen muessen: ${res.stderr}`);
-    const daten = JSON.parse(res.stdout);
-    assert.equal(daten.zustand, "offen", "ohne Marker und Kommentare ist der Zustand offen");
-    assert.equal(daten.label, "review:offen");
-  }, { ...LOKAL, issueReview: { statusLabels: true } }, "board-letzte-karge-karte-");
-});
