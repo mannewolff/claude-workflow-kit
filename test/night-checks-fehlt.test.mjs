@@ -42,6 +42,6 @@ test("[night-6] der Hook laedt board.mjs aus dem angegebenen Verzeichnis, nicht 
   // Der Symlink zeigt auf die echte Datei; Node loest ihn beim Import auf. Waere
   // hier der Ersatz gebunden, waere die Gleichheit verletzt — und der Test wuerde
   // nicht merken, dass beide Ternaere zusammen gefallen sind.
-  assert.equal(night.nachbarn.parsePruefvorgabe, board.parsePruefvorgabe);
+  assert.equal(night.nachbarn.istPlan, board.istPlan);
   assert.equal(night.nachbarn.fenceLauf, board.fenceLauf);
 });

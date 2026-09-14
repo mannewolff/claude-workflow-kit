@@ -116,7 +116,13 @@ test("[board-2] ein Beinahe-Praefix wird weiter abgewiesen, mit unveraenderter M
   // Das Praefix muss am Titelanfang stehen und wortgleich sein. `[Fachplan]` und
   // `[Konzept]` sind andere Woerter, `Foo [Plan]` steht mitten im Titel — keiner
   // dieser Titel ist ein Dokument-Praefix, alle drei sind Arbeitspakete.
-  for (const titel of ["Ohne jedes Praefix", "[Fachplan] Beinahe", "[Konzept] Auch nicht", "Text ueber [Plan] mittendrin", "Fachlich: ohne Klammern"]) {
+  //
+  // `[Task]` steht mit in der Liste (Issue #574) und ist der interessanteste Fall: Es
+  // ist ein echtes, absichtlich eingefuehrtes Praefix — aber eines, das ein
+  // ARBEITSPAKET kennzeichnet. Es in `istDokumentPraefix` aufzunehmen waere schaedlich:
+  // Die Konstante bezeichnet die Praefixe, die nie implementiert werden, und ein Task
+  // wird implementiert. Also greift der Spec-Wirkung-Zwang, wie bei jedem Paket.
+  for (const titel of ["Ohne jedes Praefix", "[Fachplan] Beinahe", "[Konzept] Auch nicht", "Text ueber [Plan] mittendrin", "Fachlich: ohne Klammern", "[Task] Ein Arbeitspaket", "[task] klein geschrieben"]) {
     const res = runBoard(dir, ["issue", "create", "--title", titel, "--body", KOPF]);
     assert.notEqual(res.status, 0, `'${titel}' haette abgewiesen werden muessen`);
     assert.match(res.stderr, /## Spec-Wirkung/, `'${titel}': die Meldung muss den fehlenden Abschnitt nennen`);

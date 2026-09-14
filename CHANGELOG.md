@@ -2,6 +2,55 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.0] - 2026-09-14
+- chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#639 #640 #641 #642 #643 #644 #645 #646 #620 #618)
+- Nacht-Runner stoppt vor der ersten Session bei ungueltiger settings.json (#618)
+- Nacht-Runner startet Sessions mit geschlossenem stdin (#620)
+- Doku und Prozessdatei: zwei Betriebsarten, Abschnitt Nacht-Kette, Skill-Hinweis auf --kette (#646)
+- Nacht-Runner: Nachtbericht am Fachplan, wartende Berichte, Kette nicht gestartet (#645)
+- Nacht-Runner: Kette bis zu den Paketen, Abdeckung gegen den Fachplan, ueberholte Plaene (#644)
+- Nacht-Runner: Modus --kette bis zum geprueften Plan mit Budgets, Halt und Ergebnisstand (#643)
+- Nacht-Runner: cwd-Durchreichung, Worktree-Funktionen, Strom je Session und Config-Block night.kette (#642)
+- Board-Adapter: Synthese, label-sync, reviewZustand und Pruefvorgabe entfernen, rounds und statusLabels aus der Config (#641)
+- Nacht-Runner: Review- und Erzeugungsmodus entfernen, alte Flags abweisen, Gate auf Marker kuerzen (#640)
+- issue-review setzt review:fertig als sichtbare Spur am Board (#639)
+- Änderungen der Prüfer
+- Kurzanleitung und Startseite auf sechzehn Skills (#606)
+
+## [1.52.3] - 2026-09-14
+- chore: Spec fortgeschrieben (#625–#634)
+- retro fragt nach den Zahlen: gekippte Nachtentscheidungen, Stopp-Fragen, Anforderung bis GO, GO bis Push (#634)
+- CLAUDE-workflow.md halbiert: Pruefstufen, Pruefvorgabe, Zustandslabels und Config-Beispiel raus (#633)
+- fachplan auf den Kern: Eingang aus dem Stopp-Klasse-Halt, check-form vor dem Anlegen, kein label-sync (#632)
+- issues: Eingang ohne Marker, Entscheidungen im Kontext, check-form je Paket, kein Paket-Review (#631)
+- techplan: Entscheidungen statt offener Fragen, Stopp-Klasse, check-form vor dem Anlegen (#630)
+- issue-review auf den Kern: eine Runde, Befunde als Zuarbeit, Marker als Spur (#629)
+- board.mjs: issue check-form prueft die maschinellen Formgates je Stufe (#628)
+- implement-next/-ready: Halt nur fuer die Stopp-Klasse, sonst entscheiden und protokollieren (#627)
+- Skill /task auf den Kern: ein Satz zur Bahn, entscheiden statt fragen, kein Review-Schritt (#626)
+- Regelwerk: Abschnitt Entscheiden statt fragen mit Stopp-Klasse und Entscheidungsformat (#625)
+- Doku: Umsetzungsplan Prozess-Umbau Stufe 1
+- Config: Paket-Review kein Gate mehr, Zustandslabels aus, Plan-Review mit einem Reviewer
+- Neuer Prozess
+
+## [1.52.2] - 2026-09-11
+- chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#572, #573, #574)
+- Einstieg Bahn 3: Skill /task, Bahn-Auswahl in techplan, Doku (#574)
+- Halt bei Abwaegungsbedarf im [Task], Spur nach /fachplan (#573)
+- Nacht-Runner: eigener Rundenausgang angehalten (#572)
+
+## [1.52.1] - 2026-09-11
+- chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#592, #593, #594, #597, #598)
+- issue-review: Rolle synthese, drei Ausgaenge, Einhaengung in Schritt 6 (#598)
+- board.mjs: Ausschlussliste in pickReviewers, roles --rolle synthese (#597)
+- Fixtures: Befundlisten je Karte ergaenzen (#596)
+- night.mjs: fuenfter Ausgang syntheseOhneBeleg vor der Marker-Pruefung (#594)
+- issue-review: Beleg-Form, Abgleich vor der Zustimmung, Abgleich-Kommentar (#593)
+- board.mjs: Kommando issue-review synthese-check (#592)
+- board.mjs: Synthese-Parser und Beleg-Abgleich (#591)
+- Fixtures: echte Synthese/Vorschlag-Paare aus dem Board sichern (#590)
+- Review des Prozesses
+
 ## [1.52.0] - 2026-09-10
 - chore: Spec fortgeschrieben (561)
 - Installer-Probe: abgelegte Vorlagen bytegleich zur Repo-Vorlage (#561)

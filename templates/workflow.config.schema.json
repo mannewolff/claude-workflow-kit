@@ -310,23 +310,12 @@
     },
     "issueReview": {
       "type": "object",
-      "description": "Issue-Review ueber mehrere Modelle (Issue #220). Zwei Reviewer, die das Issue nicht geschrieben haben, pruefen es vor dem GO. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Issue-Review ueber mehrere Modelle (Issue #220). Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStufen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die frueheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.",
       "properties": {
-        "rounds": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 1,
-          "description": "Wie oft der Review-Zyklus je Issue laeuft. Default 1 — weitere Runden finden erfahrungsgemaess vor allem Geschmacksfragen."
-        },
         "requiredBeforeReady": {
           "type": "boolean",
           "default": false,
           "description": "Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurueck. Default false, damit ein Kit-Update keinem Bestandsprojekt ueber Nacht den Runner anhaelt."
-        },
-        "statusLabels": {
-          "type": "boolean",
-          "default": false,
-          "description": "Ist es true, schreibt 'issue-review label-sync' den abgeleiteten Pruefzustand als Label ans Ticket (review:offen | review:befunde | review:fertig). Default false, damit ein Kit-Update Bestandsprojekten nicht ungefragt Labels in die Boards schreibt. Die vier Label-Definitionen muessen vorher je Board angelegt sein, sonst scheitert der erste Lauf. Die Namen sind fest und nicht konfigurierbar."
         },
         "reviewers": {
           "type": "array",
@@ -464,6 +453,61 @@
         "plan",
         "issue"
       ],
+      "additionalProperties": false
+    },
+    "night": {
+      "type": "object",
+      "description": "Der Nachtbetrieb (Plan #638). Heute nur die Nacht-Kette unter kette; die Umsetzungsnacht braucht keinen Block. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "kette": {
+          "type": "object",
+          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
+          "properties": {
+            "label": {
+              "type": "string",
+              "default": "kit:night",
+              "description": "Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
+            },
+            "planMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 20,
+              "description": "Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden."
+            },
+            "paketeMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 15,
+              "description": "Zeitbudget der Stufe Pakete in Minuten, einschliesslich Korrekturrunden."
+            },
+            "reviewMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 15,
+              "description": "Zeitbudget der Pruefer-Session am Plan in Minuten."
+            },
+            "abdeckungMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 10,
+              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan haelt."
+            },
+            "kostenUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 50,
+              "description": "Kostenbudget je Kette in US-Dollar, summiert ueber alle Sessions der Kette; geprueft nach jeder Session."
+            },
+            "korrekturrunden": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2,
+              "description": "Hoechstzahl der Korrektursessions je Dokument nach einer roten Formpruefung."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "additionalProperties": false
     }
   },

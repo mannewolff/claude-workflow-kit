@@ -46,33 +46,6 @@ test("die Vorlage nennt alle drei Titel-Praefixe", () => {
   }
 });
 
-test("beide Prozessdateien ordnen jeder Stufe ihren Nachweis zu", () => {
-  for (const [name, text] of beide) {
-    for (const [stufe, marker] of [
-      ["fachlich", "Fachplan-Review:"],
-      ["plan", "Plan-Review:"],
-      ["issue", "Issue-Review:"],
-    ]) {
-      const zeile = text.split("\n").find((z) => z.includes(marker) && new RegExp(`\`?${stufe}\`?`).test(z));
-      assert.ok(zeile, `${name}: keine Zeile ordnet der Stufe '${stufe}' den Nachweis '${marker}' zu`);
-    }
-  }
-});
-
-test("beide Prozessdateien sagen, dass nur Issue-Review die Umsetzung freigibt", () => {
-  for (const [name, text] of beide) {
-    const absatz = text
-      .split(/\n\n/)
-      .find((a) => /Issue-Review:/.test(a) && /freigibt|freigegeben|gibt die Umsetzung frei/i.test(a));
-    assert.ok(absatz, `${name}: die Freigabe-Regel fehlt`);
-    assert.match(
-      absatz,
-      /Fachplan-Review:[\s\S]{0,120}Plan-Review:|Plan-Review:[\s\S]{0,120}Fachplan-Review:/,
-      `${name}: der Absatz sagt nicht, dass die anderen beiden Marker sie nicht ersetzen`
-    );
-  }
-});
-
 test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   for (const [name, text] of beide) {
     const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a));
@@ -82,20 +55,17 @@ test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   }
 });
 
-test("beide Nachtbetrieb-Abschnitte erklaeren eine Stufe pro Aufruf samt Default", () => {
+// Seit Stufe 2 des Prozess-Umbaus (Plan #638) gibt es keine Stufe je Aufruf mehr:
+// Die Nacht-Kette faehrt Plan, Pruefung und Pakete in einem Lauf. Der Abschnitt
+// nennt die Kette und keinen der entfallenen Schalter.
+test("der Nachtbetrieb-Abschnitt der Vorlage beschreibt die Nacht-Kette statt einer Stufe je Aufruf", () => {
   for (const [name, text] of beide) {
     const idx = text.indexOf("## Nachtbetrieb");
     assert.ok(idx >= 0, `${name}: kein Nachtbetrieb-Abschnitt`);
     const abschnitt = text.slice(idx).split(/\n## /)[0];
-    assert.match(abschnitt, /--stufe/, `${name}: --stufe fehlt im Nachtbetrieb-Abschnitt`);
-    assert.match(
-      abschnitt,
-      /genau eine (Pruef)?[Ss]tufe|eine Stufe pro Aufruf|ein Aufruf, eine Stufe/i,
-      `${name}: die Regel 'ein Aufruf, eine Stufe' fehlt`
-    );
-    // Zeilenumbrueche sind in diesen Dateien hart gesetzt — \s+ statt " ".
-    assert.match(abschnitt, /Default\s+`?issue`?|ohne Angabe gilt\s+`?issue`?/i,
-      `${name}: der Default 'issue' fehlt`);
+    assert.match(abschnitt, /--kette/, `${name}: --kette fehlt im Nachtbetrieb-Abschnitt`);
+    assert.match(abschnitt, /night\.kette/, `${name}: der Config-Block night.kette fehlt`);
+    assert.doesNotMatch(abschnitt, /--stufe|--review|--erzeuge/, `${name}: ein entfallener Schalter steht noch da`);
   }
 });
 
@@ -167,11 +137,12 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
   assert.doesNotMatch(stopPunkte, /von zwei Modellen/,
     "der Stop-Punkte-Abschnitt behauptet weiterhin zwei Modelle je Issue");
 
-  const idx = DOKU.indexOf("### Zweiter Modus: der Nacht-Review");
-  assert.ok(idx >= 0, "der Nacht-Review-Abschnitt fehlt");
-  const nachtReview = DOKU.slice(idx).split(/\n### /)[0];
-  assert.doesNotMatch(nachtReview, /durch zwei fremde Modelle/,
-    "der Nacht-Review-Abschnitt behauptet weiterhin zwei fremde Modelle");
+  const idx = DOKU.indexOf("### Zweiter Modus: die Nacht-Kette");
+  assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
+  const kette = DOKU.slice(idx).split(/\n### /)[0];
+  assert.doesNotMatch(kette, /durch zwei fremde Modelle/,
+    "der Abschnitt zur Nacht-Kette behauptet weiterhin zwei fremde Modelle");
+  assert.match(kette, /der Prüfer der Stufe/, "ein Prüfer am Plan steht nicht da");
 });
 
 test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
@@ -208,55 +179,10 @@ function dokuAbschnitt(ueberschrift) {
   return DOKU.slice(idx).split(/\n### /)[0];
 }
 
-test("die Marker-Beispiele der Doku nennen die Stufe, zu der sie gehoeren", () => {
-  for (const ueberschrift of ["Wer entscheidet", "Im Nachtbetrieb"]) {
-    const abschnitt = dokuAbschnitt(ueberschrift);
-    const beispiel = abschnitt.indexOf("Issue-Review: codex");
-    assert.ok(beispiel >= 0, `'${ueberschrift}': kein Issue-Review-Beispiel gefunden`);
-    // Der einleitende Text steht VOR dem Beispiel — nur er wird geprueft, damit
-    // eine spaetere Erwaehnung weiter unten den Test nicht faelschlich rettet.
-    const davor = abschnitt.slice(0, beispiel);
-    assert.match(
-      davor,
-      /Stufe\s+`?issue`?|Arbeitspaket/,
-      `'${ueberschrift}': der Text vor dem Issue-Review-Beispiel bindet es nicht an die Stufe issue`
-    );
-  }
-});
-
-// Seit Issue #418 schreibt der unbeaufsichtigte Lauf auf allen drei Stufen. Der
-// Test prueft deshalb die neue Fallunterscheidung — und die Schutzregel, die an
-// die Stelle des Stufenverbots getreten ist. Die Begruendung bleibt dieselbe:
-// PO-Antworten und Architekturentscheidungen hat ein Mensch getroffen. Nur der
-// Schutz haengt jetzt am Inhalt statt an der Stufe.
-test("der Nachtbetrieb-Abschnitt der Doku erklaert die Fallunterscheidung und die Schutzregel", () => {
-  const abschnitt = dokuAbschnitt("Im Nachtbetrieb");
-  for (const [was, muster] of [
-    ["die Stufe fachlich", /`fachlich`/],
-    ["die Stufe plan", /`plan`/],
-    ["die Geltung fuer alle drei Stufen", /alle drei Stufen|jede[rn]? Stufe/i],
-    ["das Schreiben bei lauter korrektur-Funden", /alle Funde `korrektur`/],
-    ["das Ausbleiben des Markers im Klaerungsfall", /kein Marker|Marker bleibt aus|Marker.{0,30}nicht gesetzt/i],
-    ["das Zeichnen mit kit:klaeren", /kit:klaeren/],
-    ["die PO-Antworten als Begruendung", /Product Owner|PO-Antworten|PO-Antwort/],
-    ["die Architekturentscheidungen als Begruendung", /architektonische[nr]? Entscheidungen|Architekturentscheidungen/i],
-    ["den Menschen als Entscheider", /ein Mensch|Mensch getroffen/i],
-  ]) {
-    assert.match(abschnitt, muster, `der Nachtbetrieb-Abschnitt nennt ${was} nicht`);
-  }
-  // Die eigentliche Aussage von #418: geschuetzt ist der Inhalt, nicht der Ort.
-  assert.match(abschnitt, /nicht die Stufen, sondern die Inhalte|nicht die Stufe, sondern/i,
-    "die Verlagerung vom Ort auf den Inhalt ist nicht ausgesprochen");
-});
-
-// Story- und Plan-Format haben keinen `## Kontext`. Die pauschale Ansage "im
-// Kontext-Abschnitt" war deshalb fuer zwei von drei Stufen nicht befolgbar.
-// Massgeblich fuer die fachliche Anforderung ist skills/fachplan/SKILL.md: dort
-// gehoert `Autor-Modell:` in den Abschnitt `## Ziel`.
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
+  // Die Vorlage nennt die Marker-Orte seit Issue #633 nicht mehr; sie stehen in Doku und Skill.
   const dateien = [
     ["docs/dokumentation.md", DOKU],
-    ["templates/CLAUDE-workflow.md", VORLAGE],
     ["skills/issue-review/SKILL.md", lies("skills", "issue-review", "SKILL.md")],
   ];
   for (const [name, text] of dateien) {
@@ -274,131 +200,3 @@ test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   }
 });
 
-// --- Issue #307: Pruefvorgabe, Verzicht und Verfall in der Doku ---
-//
-// Am Ticket stehen zwei Zeilen, die sich zum Verwechseln aehnlich sehen und
-// trotzdem verschiedene Besitzer haben: `Pruefung:` schreibt der Mensch,
-// `Pruefung-Stand:` die Maschine. Wer die zweite von Hand anfasst, laesst seine
-// eigene Vorgabe verfallen — lautlos, denn der Verfall ist kein Fehler, sondern
-// der Rueckfall auf den Regelfall. Diese Arbeitsteilung ist nirgends erkennbar,
-// wenn sie nirgends steht.
-
-/** Der Doku-Abschnitt zur Pruefvorgabe — ueber seine Ueberschrift gefunden. */
-function pruefvorgabeAbschnitt() {
-  const treffer = DOKU.split(/\n(?=### )/).find((a) =>
-    /^### .*(Verzicht|Prüfvorgabe|Pruefvorgabe|Prüfumfang)/.test(a)
-  );
-  assert.ok(treffer, "kein ###-Abschnitt zur Pruefvorgabe in docs/dokumentation.md");
-  return treffer;
-}
-
-test("beide Prozessdateien erklaeren beide Pruefzeilen und ihre Besitzer", () => {
-  for (const [name, text] of beide) {
-    const idx = text.indexOf("## Issue-Format");
-    assert.ok(idx >= 0, `${name}: kein Issue-Format-Abschnitt`);
-    // Abgegrenzt am `---`-Trenner, NICHT an der naechsten `## `-Zeile: Der
-    // Abschnitt zeigt das Vier-Abschnitt-Format in einem Codeblock, und dessen
-    // `## Kontext` wuerde den Abschnitt gleich hinter der Ueberschrift kappen.
-    const abschnitt = text.slice(idx).split(/\n---\n/)[0];
-
-    assert.match(abschnitt, /`?Pruefung: *<1\|2\|3\|Verzicht>`?/,
-      `${name}: die Vorgabezeile 'Pruefung: <1|2|3|Verzicht>' fehlt`);
-    assert.match(abschnitt, /Pruefung-Stand:/,
-      `${name}: die Standzeile 'Pruefung-Stand:' fehlt`);
-
-    // Wer schreibt was — ohne diese Zuordnung sind beide Zeilen nur Syntax.
-    assert.match(abschnitt, /`?Pruefung:`?[\s\S]{0,200}(setzt der Mensch|schreibt der Mensch|nur der Mensch)/i,
-      `${name}: es steht nicht, dass 'Pruefung:' der Mensch setzt`);
-    assert.match(abschnitt, /Pruefung-Stand:[\s\S]{0,240}(maschinell|die Maschine|nicht von Hand)/i,
-      `${name}: es steht nicht, dass 'Pruefung-Stand:' maschinell gepflegt wird`);
-
-    assert.match(abschnitt, /issueReview\.rounds|`rounds`/,
-      `${name}: der Regelfall aus issueReview.rounds ist nicht als Default benannt`);
-    assert.match(abschnitt, /Verringerung|verringer/i,
-      `${name}: die Regel zur Verringerung fehlt`);
-    assert.match(abschnitt, /unbeaufsichtigt|Nachtlauf|Nacht-Runner/i,
-      `${name}: es steht nicht, dass ein unbeaufsichtigter Lauf dabei abgewiesen wird`);
-    assert.match(abschnitt, /verfall|verfäll/i,
-      `${name}: der Verfall bei inhaltlicher Aenderung fehlt`);
-    assert.match(abschnitt, /verfall[\s\S]{0,300}Regelfall|Regelfall[\s\S]{0,300}verfall/i,
-      `${name}: es steht nicht, dass nach dem Verfall wieder der Regelfall gilt`);
-  }
-});
-
-test("die Doku nennt die drei Zustaende eines Arbeitspakets", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  for (const [was, muster] of [
-    ["geprueft", /geprüft/],
-    ["bewusst ohne Pruefung freigegeben", /bewusst ohne Prüfung freigegeben/i],
-    ["noch nicht geprueft", /noch nicht geprüft/i],
-  ]) {
-    assert.match(abschnitt, muster, `der Zustand '${was}' fehlt in der Doku`);
-  }
-});
-
-test("die Doku erklaert die Arbeitsteilung an den beiden Zeilen", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  assert.match(abschnitt, /`Pruefung: *<1\|2\|3\|Verzicht>`|`Pruefung:`/,
-    "die Vorgabezeile ist nicht benannt");
-  assert.match(abschnitt, /`Pruefung-Stand:`|`Pruefung-Stand: *<hex>`/,
-    "die Standzeile ist nicht benannt");
-  assert.match(abschnitt, /(setzt|schreibt) der Mensch|nur der Mensch/i,
-    "es steht nicht, welche Zeile der Mensch setzt");
-  assert.match(abschnitt, /maschinell|die Maschine|`issue update`/,
-    "es steht nicht, dass der Stand maschinell gepflegt wird");
-});
-
-test("die Doku bindet den Verfall an Aufgabe, Kriterien und Abhaengigkeiten", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  for (const [was, muster] of [
-    ["die Aufgabe", /Aufgabe/],
-    ["das Akzeptanzkriterium", /Akzeptanzkriteri|Kriterien/],
-    ["die Abhaengigkeiten", /Abhängigkeiten|Abhaengigkeiten/],
-  ]) {
-    assert.match(abschnitt, muster, `der Umfang des Bezugsstands nennt ${was} nicht`);
-  }
-  // Die Grenze ist die eigentliche Aussage: Der Kontext zaehlt NICHT mit, weil
-  // dort die Kennzeichnungszeilen stehen — sonst waere jede Markierung Verfall.
-  assert.match(abschnitt, /nicht[\s\S]{0,80}(der )?Kontext-Abschnitt|Kontext-Abschnitt[\s\S]{0,80}(zählt nicht|bleibt außen vor|nicht mit)/i,
-    "es steht nicht, dass der Kontext-Abschnitt nicht zum Bezugsstand gehoert");
-  assert.match(abschnitt, /Regelfall/,
-    "es steht nicht, was nach dem Verfall gilt");
-});
-
-test("die Doku nennt den Randfall des fehlenden Bezugsstands", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  const absatz = abschnitt.split(/\n\n/).find((a) => /Fehlt `Pruefung-Stand:`|ohne (Bezugs)?[Ss]tand|fehlt der Stand/i.test(a));
-  assert.ok(absatz, "kein Absatz zum fehlenden Pruefung-Stand");
-  assert.match(absatz, /gilt die Vorgabe|Vorgabe gilt|kein Verfall/i,
-    "es steht nicht, dass ohne Stand die Vorgabe gilt");
-});
-
-test("die Doku benennt die Grenze der Human-only-Regel", () => {
-  const abschnitt = pruefvorgabeAbschnitt();
-  assert.match(abschnitt, /KIT_AGENT_MODEL/,
-    "die Regel haengt an KIT_AGENT_MODEL — das steht nicht da");
-  assert.match(abschnitt, /interaktiv/i,
-    "die interaktive Session ist als Gegenstueck nicht benannt");
-  assert.match(abschnitt, /verlängerter Arm|verlaengerter Arm|auf Ansage/i,
-    "es steht nicht, dass eine interaktive Session als verlaengerter Arm des Menschen gilt");
-});
-
-test("die dokumentierten --stufe-Werte stimmen mit night.mjs --help ueberein", () => {
-  const help = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], {
-    encoding: "utf-8",
-  });
-
-  const ausHelp = /Pruefstufe des Review-Modus:\s*([a-z |]+)/.exec(help);
-  assert.ok(ausHelp, "--help weist keine Pruefstufen aus — ist Issue #283 umgesetzt?");
-  const erwartet = ausHelp[1].split("|").map((s) => s.trim()).filter(Boolean).sort();
-  assert.ok(erwartet.length > 0, "keine Stufenwerte in --help");
-  assert.match(help, /Default issue/, "--help nennt den Default 'issue' nicht");
-
-  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/dokumentation.md", DOKU]]) {
-    const treffer = /--stufe\s*<([a-z|]+)>/.exec(text);
-    assert.ok(treffer, `${name}: keine --stufe-Werte dokumentiert`);
-    const dokumentiert = treffer[1].split("|").map((s) => s.trim()).filter(Boolean).sort();
-    assert.deepEqual(dokumentiert, erwartet,
-      `${name}: dokumentierte Stufen weichen von --help ab`);
-  }
-});

@@ -218,8 +218,9 @@ test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX
     // NICHTS aus (`true`). Der Salvage-Prompt schneidet die letzten Zeilen dieser
     // Ausgabe mit — bei leerer Ausgabe muss er trotzdem zustande kommen.
     //
-    // Der Fake darf stdin nicht lesen: Der Runner uebergibt den Prompt als Argument
-    // und schliesst stdin nicht; ein `cat` warte bis zum Salvage-Zeitlimit.
+    // Der Fake braucht stdin nicht: Der Runner uebergibt den Prompt als Argument und
+    // startet die Session seit Issue #620 mit geschlossenem stdin — ein `cat` bekaeme
+    // sofort das Dateiende (test/night-stdin.test.mjs).
     const fake = [
       'if [ -n "$NIGHT_SALVAGE" ]; then',
       "  exit 0",
@@ -241,46 +242,6 @@ test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX
 // ============================================================
 
 const VORFLUG_OK = 'cat <<\'EOF\'\n<<<VORFLUG\n{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}\nVORFLUG>>>\nEOF';
-
-test("ohne Kandidaten nennt der Review-Lauf die Labels des Backlogs", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    // Ein Backlog-Issue mit fremdem Label: Der Review-Filter greift nicht, und die
-    // Meldung muss zeigen, welche Labels es stattdessen gibt.
-    const issue = board(dir, "issue", "create", "--title", "Fremdes Label", "--body", "## Kontext\n\nAutor-Modell: m\n");
-    const pfad = join(dir, "issues", `${issue.id}.md`);
-    writeFileSync(pfad, readFileSync(pfad, "utf-8").replace(/^status:/m, "labels: anderes\nstatus:"), "utf-8");
-
-    const res = run(dir, ["--review", "--dry-run"], { NIGHT_VORFLUG_CMD: VORFLUG_OK });
-
-    assert.equal(res.status, 0, `der Review-Dry-Run haette mit 0 enden muessen: ${res.stderr}`);
-    assert.match(res.stdout, /Keine Review-Kandidaten im Backlog/, "die Lage wird nicht benannt");
-    assert.match(res.stdout, /Im Backlog vorhandene Labels: anderes/,
-      "ohne die Aufzaehlung ist ein Vertipper im --review-label nicht zu erkennen");
-  }, {}, "night-fehler-review-labels-");
-});
-
-test("die Tracker-Probe nennt das Issue, an dem sie haengen wuerde", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const issue = board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    const res = run(dir, ["--review", "--dry-run", "--review-label", "none"], { NIGHT_VORFLUG_CMD: VORFLUG_OK });
-
-    assert.equal(res.status, 0, `der Review-Dry-Run haette mit 0 enden muessen: ${res.stderr}`);
-    assert.match(res.stdout, new RegExp(`Tracker-Probe Issue #${issue.id}`),
-      "ohne die Nummer ist nicht erkennbar, woran die Probe haengt");
-  }, {}, "night-fehler-probe-");
-});
-
-test("ohne jedes Issue beschraenkt sich die Probe auf issue list", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const res = run(dir, ["--review", "--dry-run", "--review-label", "none"], { NIGHT_VORFLUG_CMD: VORFLUG_OK });
-
-    assert.equal(res.status, 0, `der Review-Dry-Run haette mit 0 enden muessen: ${res.stderr}`);
-    assert.match(res.stdout, /Tracker-Probe nur issue list/,
-      "ohne Issue gibt es nichts zu holen — das muss so dastehen");
-  }, {}, "night-fehler-probe-leer-");
-});
 
 test("scheitert board.mjs wortlos, nennt die Meldung wenigstens das Kommando", () => {
   // Weder stdout noch stderr: Der dritte Rueckfall greift, und die Meldung besteht

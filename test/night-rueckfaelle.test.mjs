@@ -14,16 +14,12 @@ import assert from "node:assert/strict";
 import {
   hasReviewMarker,
   reviewFreigabe,
-  hasStageMarker,
   hatKlaerenLabel,
-  hatGueltigenVerzicht,
-  selectReviewCandidates,
   parseDeps,
   trackerProbeId,
   parseVorflugBefund,
   normalisiereVorflug,
   neueKommentare,
-  bodyVorschlagVorhanden,
 } from "../kit/night.mjs";
 
 const KONTEXT = (...zeilen) => ["## Kontext", "", ...zeilen, "", "## Aufgabe", "", "Text."].join("\n");
@@ -35,8 +31,6 @@ const KONTEXT = (...zeilen) => ["## Kontext", "", ...zeilen, "", "## Aufgabe", "
 test("die Marker-Pruefungen halten einen fehlenden Body aus", () => {
   for (const body of [null, undefined, ""]) {
     assert.equal(hasReviewMarker(body), false, `hasReviewMarker('${body}') haette false ergeben muessen`);
-    assert.equal(hasStageMarker(body, "issue"), false);
-    assert.equal(hatGueltigenVerzicht(body), false);
     assert.deepEqual(parseDeps(body), []);
   }
 });
@@ -51,11 +45,10 @@ test("ohne Body ist ein Issue ungeprueft, nicht frei", () => {
   }
 });
 
-test("eine kaputte Pruefzeile macht das Issue ungueltig, nicht frei", () => {
-  const f = reviewFreigabe(KONTEXT("Pruefung: 7"));
-  assert.equal(f.frei, false);
-  assert.equal(f.art, "ungueltig");
-  assert.match(f.detail, /Erlaubt: 1, 2, 3 oder Verzicht/, "die Ursache steht nicht im Detail");
+test("[night-16] eine Pruefzeile — kaputt oder nicht — aendert am Gate nichts mehr", () => {
+  for (const zeile of ["Pruefung: 7", "Pruefung: Verzicht", "Pruefung: 2"]) {
+    assert.deepEqual(reviewFreigabe(KONTEXT(zeile)), { frei: false, art: "ungeprueft" }, zeile);
+  }
 });
 
 test("der Review-Marker schlaegt eine kaputte Pruefzeile", () => {
@@ -70,22 +63,6 @@ test("hatKlaerenLabel haelt eine Karte ohne Label-Feld aus", () => {
   assert.equal(hatKlaerenLabel({ id: "1" }), false);
   assert.equal(hatKlaerenLabel({ id: "1", labels: null }), false);
   assert.equal(hatKlaerenLabel({ id: "1", labels: ["kit:klaeren"] }), true);
-});
-
-// ============================================================
-// selectReviewCandidates ohne Eingabe
-// ============================================================
-
-test("selectReviewCandidates haelt eine fehlende Kartenliste aus", () => {
-  for (const issues of [null, undefined, []]) {
-    assert.deepEqual(selectReviewCandidates(issues), { kandidaten: [], uebersprungen: [] });
-  }
-});
-
-test("selectReviewCandidates: eine Karte ohne Label faellt beim Label-Filter heraus", () => {
-  const r = selectReviewCandidates([{ id: "1", title: "Paket", body: "" }], { label: "kit:nightreview" });
-  assert.deepEqual(r.kandidaten, []);
-  assert.equal(r.uebersprungen[0].grund, "kein Label 'kit:nightreview'");
 });
 
 // ============================================================
@@ -189,45 +166,3 @@ test("neueKommentare wertet einen GEAENDERTEN Body nicht als Kommentar", () => {
   assert.deepEqual(neueKommentare({ body: "alt" }, { body: "alt" }), [], "ohne Zuwachs kam nichts dazu");
 });
 
-// ============================================================
-// bodyVorschlagVorhanden: leere Eingaben und die Rundenlogik
-// ============================================================
-
-test("bodyVorschlagVorhanden ohne Kommentare ist false", () => {
-  for (const k of [null, undefined, []]) {
-    assert.equal(bodyVorschlagVorhanden(k), false);
-  }
-});
-
-test("bodyVorschlagVorhanden verlangt Text unter der Ueberschrift", () => {
-  assert.equal(bodyVorschlagVorhanden(["## Body-Vorschlag, Runde 1"]), false,
-    "eine Ueberschrift ohne Text ist kein uebernehmbarer Vorschlag");
-  assert.equal(bodyVorschlagVorhanden(["## Body-Vorschlag, Runde 1\n\nDer neue Body."]), true);
-});
-
-test("bodyVorschlagVorhanden verlangt den Vorschlag zur HOECHSTEN Runde", () => {
-  const kommentare = [
-    "## Issue-Review, Runde 1\n\nBefunde.",
-    "## Body-Vorschlag, Runde 1\n\nAlter Vorschlag.",
-    "## Issue-Review, Runde 2\n\nNeue Befunde.",
-  ];
-  assert.equal(bodyVorschlagVorhanden(kommentare), false,
-    "der Vorschlag zur letzten Runde fehlt — Runde 1 traegt sie nicht");
-
-  assert.equal(bodyVorschlagVorhanden([...kommentare, "## Body-Vorschlag, Runde 2\n\nNeuer Vorschlag."]), true);
-});
-
-test("die Praefix-Pruefungen halten eine Karte ohne Titel aus", () => {
-  // Ein Titel kann fehlen: Der lokale Tracker liest ihn aus dem Frontmatter, und eine
-  // von Hand angelegte Datei hat ihn nicht zwingend. Ohne Titel ist die Karte ein
-  // gewoehnliches Arbeitspaket — kein [Fachlich], keine [Idee], kein [Plan].
-  const r = selectReviewCandidates([{ id: "1", body: KONTEXT("Autor-Modell: m") }]);
-  assert.deepEqual(r.uebersprungen, [], "eine Karte ohne Titel wurde faelschlich aussortiert");
-  assert.equal(r.kandidaten.length, 1);
-
-  // Und in den oberen Stufen faellt sie heraus, weil das Praefix fehlt — mit Grund.
-  const fachlich = selectReviewCandidates([{ id: "1", body: "" }], { stufe: "fachlich" });
-  assert.equal(fachlich.uebersprungen[0].grund, "kein fachliches Issue ([Fachlich])");
-  const plan = selectReviewCandidates([{ id: "1", body: "" }], { stufe: "plan" });
-  assert.equal(plan.uebersprungen[0].grund, "kein Plan-Dokument ([Plan])");
-});

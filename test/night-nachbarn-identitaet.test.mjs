@@ -26,15 +26,13 @@ const checks = await import(pathToFileURL(join(repoRoot, "kit", "checks.mjs")).h
 
 test("[night-6] ohne Hook stammen die Board-Bindungen aus board.mjs, nicht aus dem Ersatz", () => {
   assert.equal(night.nachbarn.fenceLauf, board.fenceLauf);
-  assert.equal(night.nachbarn.parsePruefvorgabe, board.parsePruefvorgabe);
   assert.equal(night.nachbarn.istFachlich, board.istFachlich);
   assert.equal(night.nachbarn.istPlan, board.istPlan);
   assert.equal(night.nachbarn.istIdee, board.istIdee);
-  // Seit Issue #521 auch der Pruefzustand und die Rundengrenze: Eine eigene Ableitung im
-  // Runner waere die zweite Wahrheit ueber den Pruefstand, eine eigene Drei die zweite
-  // ueber die Grenze — und beide saehe man an keinem Ergebnis.
-  assert.equal(night.nachbarn.reviewZustand, board.reviewZustand);
-  assert.equal(night.nachbarn.GRENZE_RUNDEN, board.GRENZE_RUNDEN);
+  // Seit Plan #638 sind das die einzigen Bindungen an board.mjs: Pruefvorgabe,
+  // Pruefzustand, Rundengrenze und Kopfzeilen-Muster sind mit den Nachtmodi entfallen.
+  assert.deepEqual(Object.keys(night.nachbarn).sort(),
+    ["fenceLauf", "istFachlich", "istIdee", "istPlan", "zusammenfassungPfad"]);
 });
 
 test("[night-6] ohne Hook stammt zusammenfassungPfad aus checks.mjs", () => {

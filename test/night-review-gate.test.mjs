@@ -38,20 +38,6 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-/**
- * Ein Board-Aufruf ohne KIT_AGENT_MODEL — also der Mensch am Board.
- *
- * Nur so darf eine Verringerung der Pruefung geschrieben werden (Issue #303). Der
- * Bezugsstand entsteht dabei im echten Ablauf, statt im Test von Hand gerechnet zu
- * werden: Ein selbst gebauter Stand wuerde die Rechnung des Adapters nachbilden und
- * bliebe gruen, wenn beide auseinanderlaufen.
- */
-function boardAlsMensch(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs], { KIT_AGENT_MODEL: "" });
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
-}
-
 function setupProjekt(config = {}) {
   const dir = mkdtempSync(join(tmpdir(), "night-reviewgate-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
@@ -94,7 +80,7 @@ const MIT_MARKER = "## Kontext\nAutor-Modell: claude-opus-5\nIssue-Review: sonne
 
 const GATE_AN = { issueReview: { requiredBeforeReady: true, reviewers: [] } };
 
-test("Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlog", NUR_POSIX, () => {
+test("[night-16] Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlog", NUR_POSIX, () => {
   const dir = setupProjekt(GATE_AN);
   try {
     const id = readyIssue(dir, "Ein Issue ohne Marker", OHNE_MARKER);
@@ -110,7 +96,7 @@ test("Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlog", NUR_POS
   }
 });
 
-test("Gate an: geprueftes Issue wird normal verarbeitet", NUR_POSIX, () => {
+test("[night-16] Gate an: geprueftes Issue wird normal verarbeitet", NUR_POSIX, () => {
   const dir = setupProjekt(GATE_AN);
   try {
     readyIssue(dir, "Ein Issue mit Marker", MIT_MARKER);
@@ -184,143 +170,34 @@ for (const [name, body] of [["Fachplan-Review", MIT_FACHPLAN_MARKER], ["Plan-Rev
   });
 }
 
-// --- Verzicht als zweiter Freigabegrund (Issue #304) -----------------------
-//
-// Ein Ticket mit bewusstem Verzicht traegt keinen Marker — und wurde bis hier vom
-// Gate wie ein ungeprueftes zurueckgestellt. Genau das war die Beschwerde (#285):
-// Der Mensch entscheidet ausdruecklich "ohne Pruefung", und nachts passiert trotzdem
-// nichts. Der Marker bleibt unangetastet (Issue #279); der Verzicht ist ein eigener,
-// zweiter Grund.
-//
-// Die drei Ablehnungsgruende bleiben unterscheidbar, weil sie morgens verschiedene
-// Dinge bedeuten: "nie geprueft", "entschieden, aber ueberholt" und "die Zeile ist
-// kaputt" verlangen verschiedene Handgriffe.
-
-const KOPF = "## Kontext\nAutor-Modell: claude-opus-5\n";
-const MIT_VERZICHT = `${KOPF}Pruefung: Verzicht\n\n## Abhaengigkeiten\nKeine.`;
-const VERZICHT_VERFALLEN = `${KOPF}Pruefung: Verzicht\nPruefung-Stand: ${"b".repeat(64)}\n\n## Abhaengigkeiten\nKeine.`;
-const VORGABE_KAPUTT = `${KOPF}Pruefung: vielleicht\n\n## Abhaengigkeiten\nKeine.`;
-
-/** Legt das Ticket an und laesst den Bezugsstand vom Adapter setzen (wie von Hand). */
-function readyMitVorgabe(dir, titel, body) {
-  const id = readyIssue(dir, titel, body);
-  boardAlsMensch(dir, "issue", "update", id, "--body", body);
-  const full = board(dir, "issue", "get", id);
-  assert.match(full.body, /Pruefung-Stand: [0-9a-f]{64}/,
-    "ohne gesetzten Stand pruefte der Test den Fall 'Vorgabe ohne Bezugsstand'");
-  return id;
-}
-
-test("Gate an: gueltiger Verzicht wird implementiert, obwohl kein Marker da ist", NUR_POSIX, () => {
+// Seit Plan #638 (A17) kennt das Gate nur noch zwei Arten: `marker` und
+// `ungeprueft`. Eine `Pruefung:`-Zeile im Body hat keine Wirkung mehr.
+test("[night-16] Gate an: eine Pruefung-Verzicht-Zeile hat keine Wirkung, das Issue bleibt ungeprueft", NUR_POSIX, () => {
   const dir = setupProjekt(GATE_AN);
   try {
-    readyMitVorgabe(dir, "Ein Issue mit bewusster Freigabe", MIT_VERZICHT);
+    const id = readyIssue(dir, "Ein Issue mit Verzichtzeile", `${OHNE_MARKER.replace("\n\n## Abh", "\nPruefung: Verzicht\n\n## Abh")}`);
     const res = nightRun(dir);
 
-    assert.doesNotMatch(res.stdout, /kein Issue-Review-Marker/i,
-      "ein bewusst freigegebenes Issue darf nicht am Gate haengenbleiben");
-    assert.match(res.stdout, /bewusst ohne Pruefung freigegeben/i,
-      "der Grund der Freigabe muss im Protokoll stehen");
-    assert.match(res.stdout, /Session 1\/1/, "die Session muss ueberhaupt gestartet sein");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Gate an: ohne Marker und ohne Verzicht bleibt es beim Zurueckstellen", NUR_POSIX, () => {
-  const dir = setupProjekt(GATE_AN);
-  try {
-    const id = readyIssue(dir, "Ein Issue ohne alles", OHNE_MARKER);
-    const res = nightRun(dir);
-
-    assert.ok(board(dir, "issue", "list", "--status", "backlog").some((i) => String(i.id) === id));
+    assert.ok(board(dir, "issue", "list", "--status", "backlog").some((i) => String(i.id) === id),
+      "eine Verzichtzeile darf das Gate nicht mehr oeffnen");
     assert.match(res.stdout, /kein Issue-Review-Marker/i);
-    assert.doesNotMatch(res.stdout, /bewusst ohne Pruefung freigegeben/i);
+    assert.doesNotMatch(res.stdout, /bewusst ohne Pruefung freigegeben|verfallen|ungueltig/i);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("Gate an: eine verfallene Vorgabe wird als verfallen zurueckgestellt", NUR_POSIX, () => {
-  // Der Unterschied zu "ungeprueft" ist die ganze Aussage: Hier hatte jemand etwas
-  // entschieden, und die Entscheidung ist durch eine inhaltliche Aenderung ueberholt.
+test("[night-16] Dry-Run: das Gate laeuft mit — mit Marker wird Session, ohne geht ins Backlog", NUR_POSIX, () => {
   const dir = setupProjekt(GATE_AN);
   try {
-    const id = readyIssue(dir, "Ein Issue mit ueberholter Vorgabe", VERZICHT_VERFALLEN);
-    const res = nightRun(dir);
-
-    assert.ok(board(dir, "issue", "list", "--status", "backlog").some((i) => String(i.id) === id),
-      "eine verfallene Vorgabe darf nicht durchlassen");
-    assert.match(res.stdout, /verfallen/i, "der Verfall muss ausdruecklich benannt sein");
-    assert.doesNotMatch(res.stdout, /kein Issue-Review-Marker/i,
-      "ein Verfall ist etwas anderes als ein fehlender Marker");
-    assert.match(JSON.stringify(board(dir, "issue", "get", id)), /verfallen/i,
-      "auch der Board-Kommentar muss den Verfall nennen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Gate an: eine ungueltige Vorgabe wird mit ihrem Grund zurueckgestellt", NUR_POSIX, () => {
-  const dir = setupProjekt(GATE_AN);
-  try {
-    const id = readyIssue(dir, "Ein Issue mit Tippfehler in der Zeile", VORGABE_KAPUTT);
-    const res = nightRun(dir);
-
-    assert.ok(board(dir, "issue", "list", "--status", "backlog").some((i) => String(i.id) === id),
-      "eine kaputte Vorgabe darf nicht wie ein Verzicht wirken");
-    assert.match(res.stdout, /ungueltige Pruefvorgabe/i);
-    assert.match(JSON.stringify(board(dir, "issue", "get", id)), /ungueltige Pruefvorgabe/i);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// Der Dry-Run prueft das Gate bis Issue #304 gar nicht — er bildet nur Praefixe,
-// Abhaengigkeiten und --max ab. Ein Verzicht-Test ueber den Dry-Run waere deshalb
-// auch bei vollstaendig kaputter Erkennung gruen gewesen. Das Paar unten misst
-// beide Seiten in EINEM Lauf: Nur wenn das Gate dort mitlaeuft, gehen die zwei
-// sonst identischen Tickets auseinander.
-test("Dry-Run: das Gate laeuft mit — Verzicht wird Session, ungeprueft geht ins Backlog", NUR_POSIX, () => {
-  const dir = setupProjekt(GATE_AN);
-  try {
-    const frei = readyMitVorgabe(dir, "Erstes Ticket mit bewusster Freigabe", MIT_VERZICHT);
+    const frei = readyIssue(dir, "Erstes Ticket mit Marker", MIT_MARKER);
     const offen = readyIssue(dir, "Zweites Ticket ohne alles", OHNE_MARKER);
     const res = nightDryRun(dir);
 
-    assert.match(res.stdout, new RegExp(`#${frei}[^\\n]*-> Session`),
-      "das bewusst freigegebene Ticket muss als Session ausgewiesen werden");
-    assert.match(res.stdout, new RegExp(`#${offen}[^\\n]*wuerde ins Backlog`),
-      "das ungeprufte Ticket darf im Dry-Run nicht als Session erscheinen");
-    // Der Dry-Run bewegt nichts: beide bleiben in Ready.
+    assert.match(res.stdout, new RegExp(`#${frei}[^\\n]*-> Session`));
+    assert.match(res.stdout, new RegExp(`#${offen}[^\\n]*wuerde ins Backlog \\(ungeprueft, kein Issue-Review-Marker\\)`));
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
     assert.deepEqual(ready.sort(), [frei, offen].sort());
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// Die beiden uebrigen Ablehnungsarten im Dry-Run — wie beim Paar darueber in EINEM
-// Lauf, damit sichtbar wird, dass sie auseinandergehen. Dass hier je die eigene
-// Kurzform steht und nicht die pauschale "ungeprueft", ist genau die Unterscheidung,
-// die dem Menschen morgens den Handgriff nennt: Eine kaputte `Pruefung:`-Zeile
-// korrigiert man, eine verfallene Vorgabe entscheidet man neu.
-test("Dry-Run: verfallene und ungueltige Vorgabe erscheinen je mit ihrer eigenen Kurzform", NUR_POSIX, () => {
-  const dir = setupProjekt(GATE_AN);
-  try {
-    const verfallen = readyIssue(dir, "Erstes Ticket mit ueberholter Vorgabe", VERZICHT_VERFALLEN);
-    const kaputt = readyIssue(dir, "Zweites Ticket mit Tippfehler in der Zeile", VORGABE_KAPUTT);
-    const res = nightDryRun(dir);
-
-    assert.match(res.stdout, new RegExp(`#${verfallen}[^\\n]*wuerde ins Backlog \\(Pruefvorgabe verfallen\\)`),
-      "die ueberholte Vorgabe muss im Dry-Run als Verfall erscheinen");
-    assert.match(res.stdout, new RegExp(`#${kaputt}[^\\n]*wuerde ins Backlog \\(ungueltige Pruefvorgabe\\)`),
-      "die kaputte Zeile muss im Dry-Run mit ihrem eigenen Grund erscheinen");
-    assert.deepEqual(
-      board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id)).sort(),
-      [verfallen, kaputt].sort(),
-      "der Dry-Run bewegt nichts",
-    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -18,6 +18,11 @@
  * Aufruf im Projekt-Root:  node .claude/kit/night.mjs [Flags]
  *
  * Flags:
+ *   --kette            Nacht-Kette (Plan #638): je [Fachlich]-Issue mit dem Label aus
+ *                      night.kette.label eine Kette aus /techplan, Formpruefung,
+ *                      /issue-review — im eigenen Worktree, mit Zeit- und Kostenbudget.
+ *                      --max zaehlt hier Ketten (Default 3). Laeuft neben einer
+ *                      Umsetzungsnacht; ein Issue in In progress haelt sie nicht auf.
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
  *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -29,20 +34,6 @@
  *                      Verhalten: striktes ready[0])
  *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
  *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
- *   --review           Review-Modus (Issue #233): laesst BACKLOG-Issues von
- *                      /issue-review pruefen, statt Ready-Issues zu
- *                      implementieren. Exklusiv zur Implementierungsschleife.
- *   --review-label <n> Routing-Label des Review-Modus (Default kit:nightreview)
- *   --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
- *                      (Default issue), nur mit --review. Genau eine Stufe pro
- *                      Aufruf (Issue #283). Im Erzeugungsmodus benennt --stufe
- *                      das ENTSTEHENDE Dokument: plan | issue, dort Pflicht.
- *   --erzeuge          Erzeugungsmodus (Issue #517): laesst aus geprueften
- *                      Dokumenten die naechste Stufe entstehen. Exklusiv zu
- *                      --review. --max zaehlt hier Ausgangsdokumente (Default 3).
- *   --erzeuge-label <n> Routing-Label des Erzeugungsmodus; Default folgt der
- *                      Stufe (kit:nightplan | kit:nightissues). Kennt kein
- *                      'none' — das Label IST die menschliche Freigabe.
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -83,25 +74,25 @@
  * `[Idee]` (rohe Idee ohne /techplan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
  * per /issues in Arbeitspakete zerlegt werden, #276).
  *
- * Review-Modus (--review, Issue #233): Statt Ready zu implementieren, laesst der
- * Runner BACKLOG-Issues von /issue-review pruefen. Warum der Backlog und nicht
- * Ready: Zwischen Review und Implementierung liegt das GO. Wuerde der Runner ein
- * Ready-Issue erst reviewen und dann implementieren, haette der Mensch sein GO auf
- * einen Text gegeben, der bei der Implementierung nicht mehr gilt — die
- * Verantwortungsschwelle waere umgangen, ohne dass es jemandem auffaellt. Deshalb
- * auch exklusiv: zwei Laeufe an zwei Abenden, mit dem Menschen dazwischen.
- * Der Vorflug prueft hier zusaetzlich die Reviewer-Verfuegbarkeit und die
- * Erreichbarkeit des Trackers (harter Stopp) — und zwar in einer eigenen
- * Vorflug-Session, nicht im Runner-Prozess (Issue #269). Die buildChecks-Pflicht
- * entfaellt (es wird nichts gebaut und nichts committet).
+ * Seit Stufe 2 des Prozess-Umbaus (Plan #638) kennt diese Datei zwei Betriebsarten: die
+ * Implementierung (ohne Flag) und die Nacht-Kette (--kette). Die Flags --review,
+ * --erzeuge, --stufe, --review-label und --erzeuge-label bleiben dem Parser bekannt und
+ * enden mit einer Meldung, die das sagt — ein "unbekanntes Argument" liesse den
+ * Menschen raten, ob er sich vertippt hat.
  *
- * Erzeugungsmodus (--erzeuge, Issue #513, Geruest in #518): Laesst aus geprueften
- * Dokumenten die naechste Stufe entstehen — aus einem Fachplan einen Plan, aus einem
- * Plan die Arbeitspakete. Exklusiv zu beiden anderen Programmen. Vorflug und
- * buildChecks-Ausnahme wie im Review-Modus, denn auch hier wird nichts gebaut und
- * nichts committet. Zusaetzlich ein Tracker-Guard VOR dem Vorflug: Bei
- * `issueTracker: toolbox` mit `toolbox.ideaStored: true` entstuenden Pool-Ideen ohne
- * Kartennummer, und ein Lauf ohne Nummer traegt kein Erfolgssignal.
+ * Nacht-Kette (--kette, Plan #638, Issue #643): Ein [Fachlich]-Issue mit dem Label aus
+ * night.kette.label ist der Auftrag; der Start entfernt das Label (jedes Setzen
+ * autorisiert genau eine Kette). Je Kette ein eigener Worktree unter dem
+ * Temp-Verzeichnis, darin nacheinander /techplan #F (Stufe plan), issue check-form mit
+ * hoechstens night.kette.korrekturrunden Korrektursessions, /issue-review #M (Stufe
+ * review), /issues #M (Stufe pakete, Formpruefung je Paket) und eine lesende
+ * Abdeckungs-Session, die die Pakete gegen den Fachplan haelt (Stufe abdeckung, ihr Text
+ * steht im Ergebnisstand). Aeltere Plandokumente zum selben Fachplan bekommen den
+ * Kommentar "Ueberholt durch Plan #M". Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
+ * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
+ * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
+ * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
+ * Der Ergebnisstand traegt die Art "kette".
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
@@ -127,9 +118,10 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
+import { join, dirname, resolve, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { tmpdir, homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -188,33 +180,6 @@ const BOARD_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
   : join(__dirname, "board.mjs");
 
-// Der Parser der Pruefvorgabe kommt aus board.mjs und wird NICHT nachgebaut (Issue #304).
-// Eine zweite Regex fuer `Pruefung:` liefe frueher oder spaeter auseinander — und ein
-// Runner, der die Zeile anders liest als das Board, waere genau die zweite Wahrheit, die
-// dieses Kit ueberall vermeidet. board.mjs laeuft beim Import nicht los; sein Haupt-
-// programm liegt seit Issue #135 hinter einem CLI-Guard.
-//
-// Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
-// dann Auskunft geben, wenn NICHTS neben der Datei liegt (Issue #170) — ein statischer
-// Import scheitert vor jeder Zeile Code und nimmt genau diese Auskunft. Fehlt der Nachbar,
-// bleibt der Stub stehen; arbeitsfaehig ist der Runner ohne board.mjs ohnehin nicht, main()
-// bricht dafuer mit eigener Meldung ab.
-//
-// NACHBAR_BOARD steht oben, vor dem fenceLauf-Import; dort steht auch, warum es
-// nicht BOARD_PATH ist.
-
-// Der Fallback traegt dieselbe Signatur wie die echte Funktion — ein Parameter, und
-// er wirft, statt etwas zu liefern. Das ist nicht Kosmetik (Issue #394): Die frueher
-// hier stehende `let`-Bindung mit spaeterem Reassignment liess die statische Analyse
-// nur den Stub sehen — keine Parameter, kein Rueckgabewert — und meldete jeden
-// korrekten Aufruf als Fehler. Vier gemeldete Bugs, null echte, und ein rotes Quality
-// Gate, das deshalb niemand mehr gelesen hat.
-//
-// Die Bindung ist jetzt `const` mit einem Ternaer: Liegt der Nachbar da, kommt die
-// echte Signatur aus dem Modul; liegt er nicht da, wirft der Stub.
-const parsePruefvorgabeFallback = (body) => {
-  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Pruefvorgabe ist nicht lesbar.`);
-};
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
 // bewusst kein `false`: Ein stilles `false` liesse ein Plandokument als
@@ -223,34 +188,21 @@ const parsePruefvorgabeFallback = (body) => {
 const praefixFallback = (was) => (title) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
 };
-// Der Pruefzustand und die Rundengrenze kommen seit Issue #521 aus demselben Modul
-// (Issue #516 exportiert beide). Eine eigene Ableitung im Runner waere die zweite
-// Wahrheit ueber den Pruefstand, eine eigene Drei die zweite ueber die Grenze — genau
-// davor warnt der Kommentar an GRENZE_RUNDEN in board.mjs.
-const reviewZustandFallback = (body, comments, stufe) => {
-  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — der Pruefzustand ist nicht ableitbar.`);
-};
+// Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
+// dann Auskunft geben, wenn NICHTS neben der Datei liegt (Issue #170) — ein statischer
+// Import scheitert vor jeder Zeile Code und nimmt genau diese Auskunft. Fehlt der Nachbar,
+// bleibt der Stub stehen; arbeitsfaehig ist der Runner ohne board.mjs ohnehin nicht, main()
+// bricht dafuer mit eigener Meldung ab.
 const {
-  parsePruefvorgabe,
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
-  reviewZustand,
-  GRENZE_RUNDEN,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
-      parsePruefvorgabe: parsePruefvorgabeFallback,
       istFachlich: praefixFallback("[Fachlich]"),
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
-      reviewZustand: reviewZustandFallback,
-      // Bewusst keine Zahl: Eine Drei hier waere genau die zweite Wahrheit, die der
-      // Export in board.mjs vermeidet. `undefined` laesst `grenzeErreicht` unten in die
-      // sichere Richtung fallen — ohne Nachbarn laeuft keine Pruef-Session. Dorthin
-      // kommt der Runner ohnehin nicht: Jeder Board-Zugriff startet board.mjs als
-      // Subprozess und bricht vorher ab.
-      GRENZE_RUNDEN: undefined,
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -278,42 +230,22 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
 // Ergebnis, und zusammenfassungPfad bliebe ganz unerreichbar (Issue #498).
 export const nachbarn = {
   fenceLauf,
-  parsePruefvorgabe,
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
-  reviewZustand,
-  GRENZE_RUNDEN,
   zusammenfassungPfad,
 };
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.52.0";
+const KIT_VERSION = "1.53.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
-// Bewusst ein eigenes Label und nicht kit:nightrun (Issue #233): Die beiden Modi
-// laufen in verschiedenen Naechten und meinen verschiedene Spalten — Review den
-// Backlog, Implementierung die Ready-Spalte.
-const DEFAULT_REVIEW_LABEL = "kit:nightreview";
-// Der Erzeugungsmodus routet je Stufe ueber ein eigenes Label (Issue #517): Was zum
-// Plan werden darf, ist eine andere Freigabe als was zu Arbeitspaketen werden darf.
-// Ein gemeinsames Label zoege beide Sorten in denselben Lauf.
-const ERZEUGE_LABEL_JE_STUFE = { plan: "kit:nightplan", issue: "kit:nightissues" };
-// --max heisst in beiden Modi Verschiedenes und hat deshalb zwei Defaults: Sessions
-// in der Implementierung, Ausgangsdokumente in der Erzeugung (Issue #408: "hoechstens
-// drei Ausgangsdokumente je Nacht").
 const DEFAULT_MAX_SESSIONS = 10;
-const DEFAULT_MAX_ERZEUGUNG = 3;
-// Ein Review ist keine Implementierungsrunde: kein Build, kein Commit. Deshalb ein
-// eigenes, knapperes Limit statt --timeout-min (analog SALVAGE_TIMEOUT_MS).
-const REVIEW_TIMEOUT_MS = 15 * 60 * 1000;
-// Der Zusatz, der einer Session die Betriebsart nennt (Issue #419). Er steht als
-// Konstante, weil Review- und Erzeugungs-Session (Issue #520) denselben Satz tragen: Zwei
-// Kopien liefen auseinander, und die Wirkung — die Session weiss, dass niemand zusieht —
-// haengt an der Formulierung, nicht am Ort.
-const UNBEAUFSICHTIGT_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.";
+// --max der Kette zaehlt Ketten (Plan #638, A13): dieselben drei wie fruehere
+// Ausgangsdokumente je Nacht.
+const DEFAULT_MAX_KETTEN = 3;
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
 // --- Argumente ---
@@ -327,6 +259,12 @@ Aufruf (im Projekt-Root):
   node .claude/kit/night.mjs [Flags]
 
 Flags:
+  --kette            Nacht-Kette statt Implementierung: je [Fachlich]-Issue mit dem
+                     Label aus night.kette.label (Default kit:night) eine Kette aus
+                     /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
+                     eigenen Worktree, mit Nachtbericht am Fachplan. --max zaehlt
+                     Ketten (Default 3); --label gilt hier nicht, das Label kommt
+                     aus der Config. Budgets in night.kette.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
   --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -340,39 +278,6 @@ Flags:
                      der laufenden Session mitloggen (via stream-json)
   --version          Kit-Stand dieser Datei
   --help, -h         diese Uebersicht
-
-Review-Modus (prueft statt zu implementieren):
-  --review           laesst Backlog-Issues von /issue-review pruefen, statt
-                     Ready-Issues zu implementieren. Exklusiv: die
-                     Implementierungsschleife laeuft dann nicht.
-  --review-label <n> nur Backlog-Issues mit diesem Label pruefen
-                     (Default ${DEFAULT_REVIEW_LABEL}); 'none' schaltet den Filter ab
-  --stufe <s>        Pruefstufe des Review-Modus: fachlich | plan | issue
-                     (Default issue). Nur zusammen mit --review oder --erzeuge.
-                     Genau eine Stufe pro Aufruf — zwischen den Stufen steht die
-                     menschliche Freigabe.
-                     Im Erzeugungsmodus: plan | issue — das entstehende Dokument.
-
-  Zwischen Review und Implementierung liegt das GO, und das GO ist menschlich —
-  deshalb sind es zwei Laeufe an zwei Abenden, nicht zwei Phasen in einer Nacht.
-
-  Voraussetzung: ein 'issueReview'-Block mit mindestens einem Reviewer in
-  .claude/workflow.config.json. Vorlage zum Uebernehmen liegt nach der
-  Installation in .claude/workflow.config.example.json. Fehlt der Block,
-  bricht der Vorflug ab, statt Sessions ergebnislos zu verbrennen.
-
-Erzeugungsmodus (erzeugt statt zu implementieren):
-  --erzeuge          laesst aus geprueften Dokumenten die naechste Stufe
-                     entstehen. Exklusiv zu --review: ein Modus pro Lauf.
-                     --stufe ist hier Pflicht und benennt das ENTSTEHENDE
-                     Dokument; --max zaehlt Ausgangsdokumente (Default
-                     ${DEFAULT_MAX_ERZEUGUNG} statt ${DEFAULT_MAX_SESSIONS}).
-  --erzeuge-label <n> nur Dokumente mit diesem Label verarbeiten (Default
-                     ${ERZEUGE_LABEL_JE_STUFE.plan} bei --stufe plan,
-                     ${ERZEUGE_LABEL_JE_STUFE.issue} bei --stufe issue). Anders als
-                     --review-label kennt es kein 'none': Das Routing-Label ist
-                     die Freigabe-Geste des Menschen und laesst sich nicht
-                     abschalten.
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
 Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
@@ -417,30 +322,38 @@ const SOFORT_FLAGS = {
 const WERT_FLAGS = {
   "--max": (args, wert) => { args.max = Number(wert); },
   "--model": (args, wert) => { args.model = wert; },
-  "--label": (args, wert) => { args.label = wert; },
-  "--review-label": (args, wert) => { args.reviewLabel = wert; },
-  "--erzeuge-label": (args, wert) => { args.erzeugeLabel = wert; },
-  "--stufe": (args, wert) => { args.stufe = wert; },
+  "--label": (args, wert) => { args.label = wert; args.labelGesetzt = true; },
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
 
 // Schalter ohne Wert: Flag -> Feldname, immer auf true.
 const SCHALTER_FLAGS = {
-  "--review": "review",
-  "--erzeuge": "erzeuge",
+  "--kette": "kette",
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",
   "--verbose": "verbose",
 };
 
+// Die Flags der beiden entfallenen Betriebsarten (Plan #638, A1). Sie bleiben dem Parser
+// bekannt, damit die Meldung sagt, WAS es nicht mehr gibt: Ein "unbekanntes Argument"
+// liesse den Menschen raten, ob er sich vertippt hat. Die Meldung faellt vor jedem
+// Board-Zugriff und vor dem Ergebnisstand — es gibt keinen Lauf, der zu berichten haette.
+const ENTFALLENE_FLAGS = new Set(["--review", "--erzeuge", "--stufe", "--review-label", "--erzeuge-label"]);
+
+function entfallenesFlag(a) {
+  const zusatz = a === "--stufe" ? ", und die Kette hat keine Stufen" : "";
+  fail(`${a} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --kette${zusatz}.`);
+}
+
 function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
-  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, review: false, reviewLabel: DEFAULT_REVIEW_LABEL, erzeuge: false, erzeugeLabel: null, stufe: null };
+  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
     if (Object.hasOwn(SOFORT_FLAGS, a)) {
       SOFORT_FLAGS[a]();
       continue;
@@ -460,56 +373,20 @@ function parseArgs(argv) {
 }
 
 /**
- * Loest die modusabhaengigen Defaults auf (Issue #517).
+ * Loest den Default von `max` auf (Issue #517, seit Plan #638 nur noch ein Feld).
  *
- * Zwei Felder haengen am Modus statt am Flag allein: `max` zaehlt im Erzeugungsmodus
- * Ausgangsdokumente (Default 3) und sonst Session-Starts (Default 10), und der Name des
- * Routing-Labels folgt der Stufe. Ein gesetzter Wert gewinnt in beiden Faellen — auch
- * ein unbrauchbarer: `--max abc` faellt hier NICHT auf einen Default zurueck, sondern
- * geht als NaN in die Zahlenpruefung und wird dort abgewiesen.
- *
- * Eigene Funktion und exportiert, weil das Ergebnis von aussen sonst unsichtbar bleibt:
- * `parseArgs`/`pruefeArgs` sind nicht exportiert, und ein angenommener Erzeugungslauf
- * endet vor jeder Log-Zeile.
+ * `max` ist beim Einlesen null, damit ein gesetzter Wert von einem Default unterscheidbar
+ * bleibt. Ein gesetzter Wert gewinnt — auch ein unbrauchbarer: `--max abc` faellt hier NICHT
+ * auf den Default zurueck, sondern geht als NaN in die Zahlenpruefung und wird dort
+ * abgewiesen. Exportiert, weil `parseArgs`/`pruefeArgs` es nicht sind.
  */
 export function loeseModusDefaults(args) {
-  const max = args.max ?? (args.erzeuge ? DEFAULT_MAX_ERZEUGUNG : DEFAULT_MAX_SESSIONS);
-  // Object.hasOwn statt direktem Zugriff: 'constructor' als Stufe lieferte sonst eine
-  // Funktion als Labelnamen, statt am Stufen-Default vorbeizulaufen.
-  const ausStufe = Object.hasOwn(ERZEUGE_LABEL_JE_STUFE, args.stufe ?? "") ? ERZEUGE_LABEL_JE_STUFE[args.stufe] : null;
-  const erzeugeLabel = args.erzeugeLabel ?? ausStufe;
-  return { max, erzeugeLabel };
-}
-
-/**
- * Prueft --stufe gegen den gewaehlten Modus (Issue #283, erweitert in Issue #517).
- *
- * Eigene Funktion, weil dasselbe Flag zwei Bedeutungen traegt: im Review-Modus das
- * GEPRUEFTE Dokument (drei Stufen, Default issue), im Erzeugungsmodus das ENTSTEHENDE
- * (zwei Stufen, Pflichtangabe). Beides in pruefeArgs zu falten machte die Funktion
- * unlesbar und verwischte genau die Unterscheidung, um die es geht.
- */
-function pruefeStufe(args) {
-  if (args.stufe === null) {
-    // Pflicht statt stillem Default: Der Default entschiede, ob eine Nacht einen Plan
-    // oder Arbeitspakete erzeugt — das ist keine Voreinstellung, das ist der Auftrag.
-    if (args.erzeuge) fail(`--erzeuge braucht --stufe ${NIGHT_ERZEUGE_STUFEN.join(" | ")}`);
-    return;
+  if (args.kette) {
+    // Die Kette baut nichts und committet nichts: Die buildChecks-Pflicht gilt ihr
+    // nicht, und --max zaehlt Ketten, nicht Sessions (Plan #638, A13).
+    return { max: args.max ?? DEFAULT_MAX_KETTEN, noChecksOk: true };
   }
-  if (!args.review && !args.erzeuge) {
-    fail("--stufe gilt nur im Review-Modus oder Erzeugungsmodus — zusammen mit --review oder --erzeuge verwenden.");
-  }
-  const erlaubt = args.erzeuge ? NIGHT_ERZEUGE_STUFEN : NIGHT_REVIEW_STUFEN;
-  if (typeof args.stufe !== "string" || args.stufe.startsWith("--") || args.stufe.trim() === "") {
-    fail(`--stufe braucht einen Wert: ${erlaubt.join(" | ")}`);
-  }
-  if (erlaubt.includes(args.stufe)) return;
-  // Im Erzeugungsmodus ist 'fachlich' kein unbekannter Wert, sondern ein bekannter an
-  // der falschen Stelle: Eine Nacht erzeugt keinen Fachplan, sie erzeugt aus einem.
-  if (args.erzeuge) {
-    fail(`--stufe ${args.stufe} gibt es im Erzeugungsmodus nicht — erlaubt: ${erlaubt.join(" | ")}`);
-  }
-  fail(`Unbekannte Stufe '${args.stufe}'. Erlaubt: ${erlaubt.join(" | ")}`);
+  return { max: args.max ?? DEFAULT_MAX_SESSIONS };
 }
 
 /**
@@ -518,31 +395,19 @@ function pruefeStufe(args) {
  * Getrennt vom Einlesen, weil es eine andere Frage ist: parseArgs uebersetzt argv in
  * ein Objekt, diese Funktion entscheidet, ob damit gearbeitet werden darf.
  *
- * Die Stufenpruefung sitzt hier und nicht spaeter: Sie muss VOR jedem Board-Zugriff
- * und Session-Start greifen. Ein stiller Rueckfall auf `issue` waere der schlimmere
- * Ausgang — der Lauf saehe erfolgreich aus und pruefte die falsche Sorte Dokument.
  */
 function pruefeArgs(args) {
-  // Zuerst der Modus: Mit beiden Schaltern haette --stufe zwei Bedeutungen, --max zwei
-  // Defaults und das Label zwei Quellen — jede folgende Meldung waere zweideutig.
-  if (args.review && args.erzeuge) {
-    fail("--review und --erzeuge schliessen sich aus — ein Modus pro Lauf.");
+  // Der Abend hat genau eine Geste: Das Kettenlabel kommt aus night.kette.label, ein
+  // zweiter Weg zum selben Wert waere eine zweite Wahrheit (Plan #638, E6).
+  if (args.kette && args.labelGesetzt) {
+    fail("--kette kennt kein --label — das Kettenlabel steht in night.kette.label der workflow.config.json.");
   }
-
   // Die Aufloesung steht VOR der Zahlenpruefung: Die Vorbelegung ist null, und die
   // Pruefung wiese sonst jeden Aufruf ohne --max ab.
   Object.assign(args, loeseModusDefaults(args));
 
   if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
-
-  pruefeStufe(args);
-
-  // Nur im Erzeugungsmodus geprueft: Ohne --erzeuge ist --erzeuge-label wirkungslos,
-  // genau wie --review-label ohne --review.
-  if (args.erzeuge && args.erzeugeLabel === "none") {
-    fail("--erzeuge-label kennt kein 'none' — das Routing-Label ist die Freigabe-Geste des Menschen und laesst sich nicht abschalten.");
-  }
 }
 
 // --- Logging ---
@@ -555,6 +420,12 @@ let LOG_FILE = null;
 // --dry-run faehrt; dann schreibt schreibeErgebnisstand() nichts.
 let ERGEBNIS_FILE = null;
 let LAUF = null;
+// Der Zeitstempel des Laufs, wie er im Dateinamen des Ergebnisstands steht: Die Kette
+// nennt ihn im Worktree-Namen und im Bericht.
+let LAUF_STEMPEL = null;
+// Die Budgets der Kette, geladen in vorbereiten() — Modul-Zustand wie `config`, weil
+// ART_LABEL und die Stufen sie brauchen, ohne dass jede Funktion sie durchreicht.
+let KETTE_BUDGET = null;
 
 // Der Grund des zuletzt gemerkten harten Stopps (Issue #558). Er nimmt denselben Weg
 // wie die Fehlerklasse — Modul-Zustand statt neuem Rueckgabewert —, damit die
@@ -747,25 +618,22 @@ function laufAbschliessen(abschluss) {
 }
 
 /**
- * Welche der drei Betriebsarten laeuft — der Wert des Feldes `art` (Issue #522).
+ * Die Art des Laufs — der Wert des Feldes `art` (Issue #522).
  *
- * Die Frage wird an drei Stellen gestellt: `art` im Grundgeruest, das aktive Routing-Label
- * und die Log-Zeile `modus`. Alle drei standen als Zwei-Ast-Ternaer da und haetten die
- * dritte Art einzeln nachgezogen bekommen muessen — eine vergessene Stelle schriebe dann
- * `implementierung` oder `kit:night` in eine Erzeugungsnacht.
+ * Seit Plan #638 gibt es hier nur die Implementierung; die Nacht-Kette bringt ihre
+ * eigene Art mit den Folgepaketen. Die Funktion bleibt, weil `art`, Routing-Label und
+ * die Startzeile weiterhin an einer Stelle entschieden werden sollen.
  */
 function laufArt(args) {
-  if (args.erzeuge) return "erzeugung";
-  return args.review ? "review" : "implementierung";
+  return args?.kette ? "kette" : "implementierung";
 }
 
-// Was je Art am Grundgeruest und in der Startzeile haengt. Der Labelname kommt aus dem
-// jeweiligen Flag: `--erzeuge-label` kann ihn ueberschreiben (Issue #517).
-const ART_MODUS = { erzeugung: "Erzeugung", review: "Review", implementierung: "Implementierung" };
+// Was je Art am Grundgeruest und in der Startzeile haengt. Das Kettenlabel kommt aus
+// der Config, die in vorbereiten() vor dieser Abfrage geladen ist.
+const ART_MODUS = { implementierung: "Implementierung", kette: "Kette" };
 const ART_LABEL = {
-  erzeugung: (args) => args.erzeugeLabel,
-  review: (args) => args.reviewLabel,
   implementierung: (args) => args.label,
+  kette: () => KETTE_BUDGET?.label ?? KETTE_BUDGET_DEFAULTS.label,
 };
 
 /**
@@ -793,6 +661,7 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
   if (args.dryRun) return;
   const iso = jetzt.toISOString();
   const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
+  LAUF_STEMPEL = stempel;
   ERGEBNIS_FILE = join(process.cwd(), ".claude", `night-run-${stempel}.json`);
   // Feldreihenfolge und Schluessel sind der Vertrag mit allen Auswertungen —
   // schemaFassung steht zuerst, damit ein Leser die Fassung kennt, bevor er den
@@ -805,16 +674,18 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     modell: args.model,
     max: args.max,
     label: aktivesLabel === "none" ? null : aktivesLabel,
-    // Additiv fuer alle Arten (Issue #522). Im Erzeugungslauf entscheidet `--stufe`, ob
-    // ein Plan oder Arbeitspakete entstanden sind, und aus `label` ist das nicht
-    // ableitbar — `--erzeuge-label` kann den Namen ueberschreiben.
-    stufe: args.stufe ?? null,
+    // Bleibt als Feld erhalten, weil die Feldreihenfolge der Vertrag der Schemafassung 1
+    // ist (Issue #522); seit Plan #638 gibt es keine Stufe mehr, der Wert ist immer null.
+    stufe: null,
     // Bedingt, und darum an fester Stelle: Die Feldreihenfolge ist der Vertrag, ein
     // wanderndes Feld waere Interpretationsspielraum. Bei --verbose fehlt es ganz —
     // es ist nicht null, denn es gibt dann nichts zu erklaeren.
-    ...(args.verbose
+    ...(args.verbose || args.kette
       ? {}
       : { kennzahlenHinweis: "Ohne --verbose fordert der Runner die Stream-Ausgabe der Session nicht an; die Session-Kennzahlen fehlen darum in allen Einheiten." }),
+    // Die Kette fordert den Strom immer an (Plan #638, A5) und traegt ihre Budgets
+    // am Lauf-Kopf, damit eine Auswertung den Abbruchgrund gegen die Zahl halten kann.
+    ...(args.kette ? { budget: { ...KETTE_BUDGET } } : {}),
     einheiten: [],
     abschluss: null,
   };
@@ -840,8 +711,13 @@ function schreibeErgebnisstand() {
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
 
+// Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
+// Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
+// Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
+  const letztes = cliArgs.at(-1);
+  const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd() });
   if (res.status !== 0) {
     fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`, "tracker");
   }
@@ -850,6 +726,22 @@ function board(...cliArgs) {
   } catch {
     fail(`board.mjs ${cliArgs.join(" ")} lieferte kein JSON: ${res.stdout.slice(0, 200)}`, "tracker");
   }
+}
+
+/**
+ * Ein Board-Aufruf, der NICHT abbricht (Plan #638, A7): `issue check-form` endet bei
+ * Verstoessen mit Exit 1 und JSON — fuer die Kette ist das ein Befund, kein Ausfall.
+ * Rueckgabe `{ status, json, text }`; `json` ist null, wenn stdout kein JSON traegt.
+ */
+function boardRoh(...cliArgs) {
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
+  let json = null;
+  try {
+    json = JSON.parse(res.stdout);
+  } catch {
+    json = null;
+  }
+  return { status: res.status, json, text: (res.stderr || res.stdout || "").trim() };
 }
 
 // --- Git-Helfer ---
@@ -873,7 +765,7 @@ function board(...cliArgs) {
 // eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
 // Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
 // soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
-function gitReste() {
+function gitReste(cwd = process.cwd()) {
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
   const pathspec = ["--", "."];
@@ -893,7 +785,10 @@ function gitReste() {
   // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
   // Block, und dort hielte die erste geplante Notiz den Lauf an.
   pathspec.push(":(exclude).claude/vorhaben-wartend-*");
-  const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8" });
+  // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
+  // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
+  pathspec.push(":(exclude).claude/night-bericht-*");
+  const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
 }
@@ -905,14 +800,108 @@ function gitReste() {
  * liegengebliebenen Dateien fuer seinen Grund. Zwei getrennte git-Aufrufe mit
  * getrennten Ausschluessen waeren zwei Wahrheiten darueber, was als Rest zaehlt.
  */
-function gitClean() {
-  return gitReste().length === 0;
+function gitClean(cwd = process.cwd()) {
+  return gitReste(cwd).length === 0;
 }
 
-function lastCommitHash() {
+function lastCommitHash(cwd = process.cwd()) {
   // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
-  const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8" });
+  const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8", cwd });
   return res.status === 0 ? res.stdout.trim() : "?";
+}
+
+// --- Worktree je Kette (Plan #638, A3) ---
+//
+// Die Nacht-Kette arbeitet in einem eigenen Worktree ausserhalb des Repos: Im Repo laege
+// er als untracked Verzeichnis im `git status` der Umsetzungsnacht. `.claude/` ist bis
+// auf `workflow.config.json` und `launch.json` nicht versioniert; ein frischer Worktree
+// traegt damit die Config, aber weder Kit-Kopie noch Skills, Settings oder Token. Der
+// Runner spiegelt deshalb `.claude/` der Hauptkopie hinein — ohne `night-run-*`, denn
+// Log und Ergebnisstand bleiben in der Hauptkopie.
+
+/** Der Ordnername eines Kette-Worktrees; der Praefix dient dem Aufraeumen beim Start. */
+function worktreePraefix(repoRoot) {
+  return `kette-${basename(resolve(repoRoot))}-`;
+}
+
+function gitIm(repoRoot, gitArgs) {
+  // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
+  return spawnSync("git", gitArgs, { encoding: "utf-8", cwd: repoRoot });
+}
+
+/**
+ * Spiegelt `.claude/` der Hauptkopie in den Worktree, ohne Protokolle und Ergebnisstaende.
+ *
+ * `force`, weil der Worktree `workflow.config.json` schon traegt — dieselbe Datei, sie
+ * wird ueberschrieben, nicht gedoppelt.
+ */
+function claudeSpiegeln(repoRoot, pfad) {
+  const quelle = join(repoRoot, ".claude");
+  if (!existsSync(quelle)) return;
+  cpSync(quelle, join(pfad, ".claude"), {
+    recursive: true,
+    force: true,
+    filter: (src) => !basename(src).startsWith("night-run-"),
+  });
+}
+
+/**
+ * Legt den Worktree einer Kette an und liefert seinen Pfad.
+ *
+ * Scheitert `git worktree add`, wirft die Funktion mit der git-Meldung; ob daraus ein
+ * `abgebrochen` wird, entscheidet der Aufrufer — ein stiller Rueckfall auf die Hauptkopie
+ * hiesse, dass die Kette manchmal neben der Umsetzung im selben Baum liefe.
+ */
+export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
+  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot)}${issueId}-${stempel}`);
+  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, "HEAD"]);
+  if (res.status !== 0) {
+    throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
+  }
+  claudeSpiegeln(repoRoot, pfad);
+  return pfad;
+}
+
+/**
+ * Kopiert wartende Vorhaben-Notizen aus dem Worktree in die Hauptkopie.
+ *
+ * `/techplan` legt sie unter `.claude/vorhaben-wartend-*.md` ab, und der naechste
+ * `push main` hebt sie aus der Hauptkopie auf — im Worktree gingen sie mit ihm verloren.
+ * Liefert die Namen der kopierten Dateien.
+ */
+export function notizenZurueck(pfad, repoRoot) {
+  const quelle = join(pfad, ".claude");
+  if (!existsSync(quelle)) return [];
+  const notizen = readdirSync(quelle).filter((name) => /^vorhaben-wartend-.*\.md$/.test(name));
+  if (notizen.length > 0) mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+  for (const name of notizen) cpSync(join(quelle, name), join(repoRoot, ".claude", name), { force: true });
+  return notizen;
+}
+
+/** Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt. */
+export function worktreeEntfernen(pfad, repoRoot) {
+  gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
+  rmSync(pfad, { recursive: true, force: true });
+}
+
+/**
+ * Raeumt liegengebliebene Worktrees dieses Repos auf — beim Start jeder Kette.
+ *
+ * Ein harter Absturz laesst den Ordner unter dem Temp-Verzeichnis und den Eintrag in
+ * `git worktree list` zurueck; beide muessen weg, sonst legt der naechste Lauf einen
+ * zweiten Worktree neben einen toten. Liefert die entfernten Pfade.
+ */
+export function worktreesAufraeumen(repoRoot) {
+  gitIm(repoRoot, ["worktree", "prune"]);
+  const praefix = worktreePraefix(repoRoot);
+  const entfernt = [];
+  for (const name of readdirSync(tmpdir())) {
+    if (!name.startsWith(praefix)) continue;
+    const pfad = join(tmpdir(), name);
+    worktreeEntfernen(pfad, repoRoot);
+    entfernt.push(pfad);
+  }
+  return entfernt;
 }
 
 // Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
@@ -946,36 +935,19 @@ export function hasReviewMarker(body) {
 }
 
 /**
- * Der Freigabe-Befund eines Ready-Issues fuer das Gate `requiredBeforeReady` (#304).
+ * Der Freigabe-Befund eines Ready-Issues fuer das Gate `requiredBeforeReady` (#304,
+ * gekuerzt in Plan #638, A17).
  *
- * Zwei Gruende lassen ein Issue durch, und sie sind verschiedene Dinge:
- *   `marker`  — es ist geprueft worden (Issue-Review-Marker im Body)
- *   `verzicht`— der Mensch hat ausdruecklich ohne Pruefung freigegeben
+ * Zwei Arten, und sie bleiben unterscheidbar, weil sie morgens Verschiedenes bedeuten:
+ *   `marker`     — es ist geprueft worden (Issue-Review-Marker im Body), frei
+ *   `ungeprueft` — kein Marker, zurueckgestellt
  *
- * Drei Gruende halten es zurueck, und auch die duerfen nicht zu einem verschmelzen:
- *   `ungeprueft` — nie entschieden
- *   `verfallen`  — entschieden, aber durch eine inhaltliche Aenderung ueberholt
- *   `ungueltig`  — die Zeile selbst ist kaputt
- * Morgens verlangt jeder dieser drei einen anderen Handgriff; eine pauschale
- * Meldung "ungeprueft" naehme dem Menschen genau diese Unterscheidung.
- *
- * Der Marker wird ZUERST geprueft, noch vor dem Parser. Ein geprueftes Issue soll an
- * einem Formfehler in der `Pruefung:`-Zeile nicht haengenbleiben — das waere strenger
- * als das Bestandsverhalten und stuende in keinem Verhaeltnis zum Anlass.
+ * Die Arten `verzicht`, `verfallen` und `ungueltig` hingen an der Pruefvorgabe
+ * (`Pruefung:`-Zeile), die mit Stufe 2 des Umbaus entfaellt. Eine solche Zeile im Body
+ * hat keine Wirkung mehr.
  */
 export function reviewFreigabe(body) {
   if (hasReviewMarker(body)) return { frei: true, art: "marker" };
-  let vorgabe;
-  try {
-    vorgabe = parsePruefvorgabe(body || "");
-  } catch (e) {
-    return { frei: false, art: "ungueltig", detail: e.message };
-  }
-  // Der gefaehrlichste Fall zuerst: Ein Ticket, das nach der Freigabe inhaltlich
-  // veraendert wurde, darf nicht weiter ungeprueft durchlaufen.
-  if (vorgabe.verfallen) return { frei: false, art: "verfallen" };
-  if (vorgabe.wert === "verzicht") return { frei: true, art: "verzicht" };
-  // `Pruefung: 2` sagt "pruefe mit zwei Runden" — das ist keine Freigabe.
   return { frei: false, art: "ungeprueft" };
 }
 
@@ -986,67 +958,7 @@ const GATE_ABLEHNUNG = {
     log: () => "uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).",
     kommentar: (id) => `Ungeprueft — bitte erst /issue-review #${id} laufen lassen, dann wieder nach Ready.`,
   },
-  verfallen: {
-    kurz: () => "Pruefvorgabe verfallen",
-    log: () => "zurueckgestellt: die Pruefvorgabe ist verfallen — der Inhalt hat sich seit der Entscheidung geaendert.",
-    kommentar: (id) =>
-      "Pruefvorgabe verfallen — der Inhalt hat sich seit der Entscheidung geaendert, damit gilt wieder der Regelfall. " +
-      `Bitte /issue-review #${id} laufen lassen oder die Zeile 'Pruefung:' neu setzen, dann wieder nach Ready.`,
-  },
-  ungueltig: {
-    kurz: () => "ungueltige Pruefvorgabe",
-    log: (detail) => `zurueckgestellt: ungueltige Pruefvorgabe (${detail}).`,
-    kommentar: (id, detail) =>
-      `Ungueltige Pruefvorgabe — ${detail} Bitte die Zeile 'Pruefung:' im Kontext-Abschnitt korrigieren, dann wieder nach Ready.`,
-  },
 };
-
-// SYNC: dieselben Werte wie REVIEW_STUFEN in kit/board.mjs (Issue #278). Bekommt
-// board.mjs eine vierte Stufe, muss sie hier mit — sonst nimmt der Runner sie als
-// unbekannten Wert an und bricht ab, waehrend der Skill sie kennt.
-const NIGHT_REVIEW_STUFEN = ["fachlich", "plan", "issue"];
-
-// Was der Erzeugungsmodus herstellen kann (Issue #517) — dasselbe Vokabular, aber ein
-// Dokument weiter: --stufe benennt hier das ENTSTEHENDE Dokument, die Eingangsstufe ist
-// implizit sein Vorgaenger. 'fachlich' fehlt, weil ein Fachplan aus einem Menschen
-// entsteht und nicht aus einer Nacht.
-const NIGHT_ERZEUGE_STUFEN = ["plan", "issue"];
-
-// Aus welcher Stufe der Erzeugungsmodus LIEST (Issue #519). Der Umkehrschluss aus dem
-// Kommentar darueber: Wenn --stufe das entstehende Dokument benennt, ist das gelesene
-// sein Vorgaenger — ein Plan entsteht aus einem Fachplan, Arbeitspakete aus einem Plan.
-const ERZEUGE_EINGANGSSTUFE = { plan: "fachlich", issue: "plan" };
-
-/**
- * Die Eingangsstufe zu einer Erzeugungsstufe — `null` bei einem unbekannten Wert.
- *
- * `Object.hasOwn` statt direktem Zugriff, wie in `loeseModusDefaults`: 'constructor' als
- * Stufe lieferte sonst eine Funktion statt eines Stufennamens.
- */
-function erzeugungsEingangsstufe(stufe) {
-  return Object.hasOwn(ERZEUGE_EINGANGSSTUFE, stufe ?? "") ? ERZEUGE_EINGANGSSTUFE[stufe] : null;
-}
-
-// Welcher Marker die jeweilige Stufe nachweist (Issue #279).
-const STUFEN_MARKER = {
-  fachlich: "Fachplan-Review:",
-  plan: "Plan-Review:",
-  issue: "Issue-Review:",
-};
-
-/**
- * Der Marker-Vergleich des Review-Modus, stufenabhaengig.
- *
- * Bewusst NICHT als Parameter an hasReviewMarker: Die Funktion dient dem
- * Implementierungs-Gate `requiredBeforeReady`, und dort darf ausschliesslich
- * `Issue-Review:` zaehlen (Issue #279). Ein Stufenparameter dort haette das
- * Ready-Gate mitveraendert — der naheliegende, aber falsche Weg.
- */
-export function hasStageMarker(body, stufe) {
-  const marker = STUFEN_MARKER[stufe];
-  if (!marker) return false;
-  return new RegExp(String.raw`^\s*${marker}\s*\S`, "im").test(body || "");
-}
 
 /**
  * Das Zeichen fuer eine offene menschliche Entscheidung (Plan #368, A4).
@@ -1066,120 +978,24 @@ export function hatKlaerenLabel(issue) {
   return (issue?.labels || []).includes(KLAEREN_LABEL);
 }
 
-
-// --- Review-Kandidaten (Issue #232) ---
-
 /**
- * Waehlt aus einer Backlog-Liste die Issues, die der Nacht-Review pruefen soll.
+ * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
  *
- * Reine Funktion: Board, Dateisystem und Sessions bleiben draussen, damit die
- * Auswahlregel fuer sich pruefbar ist (Linie von `pickReviewers` in board.mjs).
+ * Eine Implementierungs-Session, bei der doch eine Abwaegung auftaucht, zeichnet die
+ * Karte, benennt die Entscheidung in einem Kommentar und schiebt sie nach Backlog.
+ * Dieser Satz schliesst den Kommentar ab — und nur an ihm ist er von jedem anderen
+ * Kommentar zu unterscheiden. Dass irgendein Kommentar hinzukam, genuegt nicht: Das
+ * ist im Regelbetrieb fast immer wahr, und der Abbruch VOR dem Kommentar bliebe
+ * unerkannt.
  *
- * Bewusst nur die billige erste Stufe. Label und Titel-Praefix stehen im Ergebnis von
- * `issue list`; der Review-Marker steht im BODY und braucht ein `issue get` pro Issue —
- * den prueft die Schleife dort, wo der Body ohnehin vorliegt.
- *
- * Der Backlog ist eine Halde: Ohne Label-Filter geriete jedes liegengebliebene Issue in
- * den Lauf. `label: null` schaltet den Filter trotzdem ab, analog zum Implementierungs-
- * Modus (`--label none`).
- *
- * Uebersprungene Issues gehen nicht still verloren, sondern mit Grund in eine zweite
- * Liste — ein Lauf ohne Arbeit ist sonst im Protokoll nicht von einem abgearbeiteten
- * Board zu unterscheiden (dieselbe Ueberlegung wie bei der Label-Warnung, #179).
+ * Exportiert, damit der Skill-Text (Issue #573) in einem Test gegen diese Konstante
+ * geprueft werden kann statt gegen eine Abschrift — zwei Literale liefen auseinander,
+ * und der Halt waere danach still wirkungslos.
  */
-/**
- * Gueltiger, nicht verfallener Verzicht am Dokument (Issue #304).
- *
- * Anders als im Gate wirft eine kaputte `Pruefung:`-Zeile hier nicht: Die Auswahl ist
- * eine reine Funktion, und ein Tippfehler darf den ganzen Review-Lauf nicht anhalten.
- * Das Dokument bleibt dann Kandidat — im Review laesst sich die Zeile reparieren, es
- * davor auszuschliessen waere das Gegenteil des Gewollten.
- *
- * Eine VERFALLENE Vorgabe schliesst nicht aus: Sie ist ueberholt, es gilt wieder der
- * Regelfall — und der heisst pruefen.
- */
-export function hatGueltigenVerzicht(body) {
-  try {
-    const { wert, verfallen } = parsePruefvorgabe(body || "");
-    return wert === "verzicht" && !verfallen;
-  } catch {
-    return false;
-  }
-}
+export const HALT_FOLGESATZ = "Daraus soll per /fachplan eine fachliche Anforderung entstehen.";
 
-/**
- * Der Ausschlussgrund eines Dokuments — `null`, wenn es Kandidat ist (Issue #404).
- *
- * Getrennt vom Einsammeln, weil hier je Dokument EINE Frage beantwortet wird:
- * kommt es dran? Die Reihenfolge der Gruende ist Teil der Antwort und bleibt
- * deshalb unveraendert; nur die Bauform wechselt von einer else-if-Kette zu
- * fruehen Rueckgaben.
- *
- * Der dritte Parameter ist seit Issue #519 das ERWARTETE TITEL-PRAEFIX, nicht mehr die
- * Stufe: `"fachlich"` verlangt `[Fachlich]`, `"plan"` verlangt `[Plan]`, `null` verlangt
- * ein Arbeitspaket (also keins von beiden). Der Review-Modus bildet seine Stufe darauf ab,
- * der Erzeugungsmodus seine EINGANGSstufe — beide rufen dieselbe Kette, statt sie zu
- * kopieren: Die Grund-Strings gehen in Log und Ergebnisstand und liefen in einer Kopie
- * auseinander, und `sonar.cpd.exclusions` nimmt night.mjs aus der Duplikatsmessung — eine
- * Kopie wuerde also von niemandem gemeldet.
- */
-function reviewAusschluss(issue, label, praefix) {
-  // Der Label-Filter zuerst: Die Stufe waehlt innerhalb der freigegebenen Menge
-  // aus, sie umgeht die Freigabe nicht.
-  if (label !== null && !(issue.labels || []).includes(label)) return `kein Label '${label}'`;
-  // [Idee] ist in JEDER Stufe ausgeschlossen: eine rohe Idee ohne /techplan-Zyklus
-  // ist kein pruefbares Dokument (Issue #192).
-  if (isIdee(issue.title)) return "Idee ([Idee])";
-  // Ebenfalls in jeder Stufe (Issue #304): Ein Dokument mit bewusstem Verzicht
-  // traegt nie einen Marker und kaeme sonst in JEDEM Review-Lauf erneut dran.
-  // Die Session wuerde den Verzicht kommentieren statt zu pruefen — und der
-  // Runner verbuchte diesen Kommentar als "Review mit Befund".
-  if (hatGueltigenVerzicht(issue.body)) return "bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)";
-  // In JEDER Stufe (Plan #368, A4): An einem gezeichneten Dokument wartet eine
-  // menschliche Entscheidung. Ein erneuter Review wuerde denselben offenen Punkt
-  // ein zweites Mal finden und das Ticket ein zweites Mal zeichnen.
-  if (hatKlaerenLabel(issue)) return "kit:klaeren, offene Entscheidung";
-  if (praefix === "fachlich") return isFachlich(issue.title) ? null : "kein fachliches Issue ([Fachlich])";
-  if (praefix === "plan") return isPlan(issue.title) ? null : "kein Plan-Dokument ([Plan])";
-  if (isFachlich(issue.title)) return "fachliches Issue ([Fachlich])";
-  if (isPlan(issue.title)) return "Plan-Dokument ([Plan])";
-  return null;
-}
 
-// Die billige Stufe, geteilt von Review- und Erzeugungsmodus (Issue #519): Sie
-// unterscheiden sich nur im erwarteten Titel-Praefix, das der Aufrufer bestimmt.
-function sammleKandidaten(issues, label, praefix) {
-  const kandidaten = [];
-  const uebersprungen = [];
-
-  for (const issue of issues || []) {
-    const grund = reviewAusschluss(issue, label, praefix);
-    if (grund === null) kandidaten.push(issue);
-    else uebersprungen.push({ id: issue.id, title: issue.title, grund });
-  }
-  return { kandidaten, uebersprungen };
-}
-
-export function selectReviewCandidates(issues, opts = {}) {
-  const stufe = opts.stufe ?? "issue";
-  // Im Review-Modus benennt die Stufe das zu pruefende Dokument selbst; `issue` erwartet
-  // ein Arbeitspaket und damit KEIN Praefix.
-  return sammleKandidaten(issues, opts.label ?? null, stufe === "issue" ? null : stufe);
-}
-
-/**
- * Waehlt die Ausgangsdokumente eines Erzeugungslaufs (Issue #519).
- *
- * Wie `selectReviewCandidates` bewusst nur die billige erste Stufe ueber `issue list`:
- * Label und Titel-Praefix stehen dort, der Stufenmarker steht im BODY und braucht ein
- * `issue get` je Dokument — das prueft `erzeugungsEintritt`.
- *
- * `--stufe` benennt das ENTSTEHENDE Dokument, gefiltert wird auf das Praefix seines
- * Vorgaengers: `plan` liest Fachplaene, `issue` liest Plandokumente.
- */
-export function selectErzeugungsCandidates(issues, opts = {}) {
-  return sammleKandidaten(issues, opts.label ?? null, erzeugungsEingangsstufe(opts.stufe));
-}
+// --- Stopp-Fragen und Herkunft erzeugter Dokumente ---
 
 // Die vorgeschriebene Form eines Plandokuments ohne offene Punkte (Regel P6): erste
 // nichtleere Zeile des Abschnitts, ein Zusatz dahinter ist der Regelfall.
@@ -1198,7 +1014,7 @@ const STOPP_FRAGE_ZITAT = 120;
  * liefert bei fehlender Ueberschrift eine leere Liste, und "keine Zeile, also keine offene
  * Frage" liesse ausgerechnet einen Plan ohne den Pflichtabschnitt durch.
  */
-function stoppFragenGrund(body) {
+export function stoppFragenGrund(body) {
   const abschnitt = abschnittLesen(body, OFFENE_FRAGEN_UEBERSCHRIFT);
   if (abschnitt === null) return `kein Abschnitt ## ${OFFENE_FRAGEN_NAME}`;
   // Nur Zeilen ausserhalb eines Fence: Ein Plan, der die Regelform als Beispiel zeigt,
@@ -1209,39 +1025,13 @@ function stoppFragenGrund(body) {
   return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
 }
 
-/**
- * Ob ein Ausgangsdokument in den Erzeugungslauf darf — `null` (kommt dran) oder ein Grund.
- *
- * Die teure zweite Stufe: Sie liest den BODY und setzt damit ein `issue get` voraus. Reine
- * Funktion wie `parseDeps`, damit sie an Fixtures pruefbar ist — und weil die Schleife des
- * Ernstfalls erst mit Issue #520 entsteht, haette sie sonst gar keinen Ort.
- *
- * Der Marker ist hier EINTRITTSbedingung, nicht Ausschluss wie im Review-Modus: Erzeugt
- * wird aus dem, was geprueft IST (Plan #513, A5). Ein Dokument mit gueltigem Verzicht
- * traegt keinen Marker und faellt schon in `selectErzeugungsCandidates` heraus — der
- * Verzicht ist hier kein zweiter Freigabegrund wie im Implementierungs-Gate (#304).
- */
-export function erzeugungsEintritt(body, stufe) {
-  const eingang = erzeugungsEingangsstufe(stufe);
-  if (eingang === null) return `unbekannte Erzeugungsstufe '${stufe}'`;
-  if (!hasStageMarker(body, eingang)) {
-    // Der Markername kommt aus STUFEN_MARKER und wird nicht zweitgeschrieben; der
-    // Doppelpunkt gehoert zur Zeilensyntax und nicht in den Fliesstext.
-    const marker = STUFEN_MARKER[eingang].replace(/:$/, "");
-    return `kein ${marker}-Nachweis — Eingangsdokument ist ungeprueft`;
-  }
-  // Nur die Stufe `issue` liest ein Plandokument; ein Fachplan fuehrt den Abschnitt nicht.
-  if (stufe !== "issue") return null;
-  return stoppFragenGrund(body);
-}
-
 // --- Das Erfolgssignal der Erzeugung (Issue #520) ---
 
 // Welche Herkunftszeile ein erzeugtes Dokument seiner Quelle traegt: Ein Plandokument
 // nennt die `Fachliche Quelle`, ein Arbeitspaket den `Plan`. Nicht `derivedFrom` — das
 // Feld wertet allein der toolbox-Adapter aus, die uebrigen Tracker nehmen es folgenlos
 // an; die Zeilen stehen im Body und tragen ueberall.
-const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
+export const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
 
 /**
  * Traegt dieses Dokument die Zielstufe des Laufs (Issue #520)?
@@ -1267,7 +1057,7 @@ function zielstufePasst(title, stufe) {
  *      Laufs die Plan-Session, weil sie dieselbe `Fachliche Quelle` tragen — und das
  *      "vorhandene Dokument" waere dann ein Arbeitspaket statt eines Plans.
  *
- * Reine Funktion wie `erzeugungsEintritt`: Sie beantwortet dieselbe Frage fuer den
+ * Reine Funktion: Sie beantwortet dieselbe Frage fuer den
  * Fortsetzen-Check VOR der Session und fuer die Backlog-Differenz DANACH — zwei
  * Rechenwege liefen auseinander, und der Lauf legte Dokumente doppelt an.
  */
@@ -1439,7 +1229,7 @@ function endlicheZahl(wert) {
  *
  * Reine Funktion ueber dem stdout aus `runSession`: Board, Dateisystem und Subprozesse
  * bleiben draussen, damit das Fehlerverhalten an Fixtures pruefbar ist (Linie von
- * `parseDeps` und `selectReviewCandidates`). Exportiert genau deshalb.
+ * `parseDeps`). Exportiert genau deshalb.
  *
  * `interpretStreamEvent` bleibt unberuehrt — es wertet ausschliesslich `assistant`-
  * Ereignisse fuer das Live-Protokoll aus. Diese Funktion tritt daneben, nicht an seine
@@ -1481,6 +1271,46 @@ export function leseKennzahlen(stdout) {
   };
 }
 
+/**
+ * Addiert die Kosten einer Session auf den Lauf (Plan #638, A5; E1).
+ *
+ * `kostenUsd: null` — kein `result`-Ereignis, kein Wert — zaehlt 0 und erhoeht
+ * `kostenUnbekannt`: Eine fehlende Kennzahl ist kein Verstoss gegen das Budget, aber
+ * der Bericht soll sagen, dass eine Session nicht gemessen wurde. Reine Funktion ueber
+ * dem uebergebenen Lauf-Objekt, damit sie an Fixtures pruefbar ist; die Pruefung gegen
+ * das Budget sitzt dort, wo der Ausgang entschieden wird.
+ */
+export function kostenAddieren(lauf, kennzahlen) {
+  lauf.kostenSumme = (lauf.kostenSumme ?? 0);
+  lauf.kostenUnbekannt = (lauf.kostenUnbekannt ?? 0);
+  const kosten = kennzahlen?.kostenUsd;
+  if (typeof kosten === "number" && Number.isFinite(kosten)) lauf.kostenSumme += kosten;
+  else lauf.kostenUnbekannt += 1;
+  return lauf;
+}
+
+/**
+ * Der Text der letzten Nachricht einer Session — das Feld `result` des letzten
+ * `result`-Ereignisses (Plan #638, A9). Dieselbe Zeile, aus der `leseKennzahlen` die
+ * Kosten liest; `null`, wenn keine da ist oder der Text leer ist.
+ */
+export function leseErgebnisText(stdout) {
+  let letzte = null;
+  for (const zeile of String(stdout ?? "").split(/\r\n|\r|\n/)) {
+    const trimmed = zeile.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
+  }
+  const text = typeof letzte?.result === "string" ? letzte.result.trim() : "";
+  return text === "" ? null : text;
+}
+
 // --- Nacht-Session ---
 
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
@@ -1489,7 +1319,7 @@ export function leseKennzahlen(stdout) {
 // die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
 // damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
 // unveraendert weiterarbeiten.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -1501,6 +1331,15 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
     const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
       detached: process.platform !== "win32",
+      // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
+      // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
+      // schrieb "no stdin data received" ins Protokoll. Niemand schreibt in stdin, der
+      // Prompt geht als Argument; eine Session, die stdin liest, bekommt so sofort das
+      // Dateiende. stdout und stderr bleiben Pipes fuer das Sammeln und Streamen.
+      stdio: ["ignore", "pipe", "pipe"],
+      // Plan #638, A4: Die Kette laesst ihre Sessions im Worktree laufen. Ohne Angabe
+      // erbt das Kind das cwd des Runners, wie bisher.
+      cwd: cwd ?? process.cwd(),
     });
     let stdout = "";
     let stderr = "";
@@ -1584,7 +1423,14 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv }) {
 // opts (Issue #167): { prompt, timeoutMs, extraEnv } — die Salvage-Session nutzt
 // denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
 // eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
-async function runSession(issueId, args, opts = {}) {
+//
+// Seit Plan #638 dazu: `cwd` (der Worktree der Kette, A4), `stream` (fordert den
+// stream-json-Strom unabhaengig von --verbose an, A5 — das Kostenbudget darf nicht am
+// Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
+// (geht als NIGHT_KETTE_STUFE in die Kind-Umgebung, A14 — fuer die Test-Fakes und das
+// Protokoll; KIT_AGENT_MODEL bleibt daneben das alleinige Erkennungsmerkmal der Skills).
+// Exportiert fuer die Kette und ihre Tests.
+export async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
     ? Number(process.env.NIGHT_TIMEOUT_MS)
     : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
@@ -1606,18 +1452,23 @@ async function runSession(issueId, args, opts = {}) {
     const permArgs = args.yolo
       ? ["--dangerously-skip-permissions"]
       : ["--permission-mode", "acceptEdits"];
-    const streamArgs = args.verbose ? ["--output-format", "stream-json", "--verbose"] : [];
+    const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
     cmd = "claude";
     cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
-    issueId, timeoutMs, useStream: args.verbose,
+    issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
     // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
     // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
     // welchem Modell der Nachtlauf gearbeitet hat. Nur hier gesetzt: interaktive
     // Sessions machen bewusst keine Angabe.
-    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: args.model, ...opts.extraEnv },
+    extraEnv: {
+      NIGHT_PROMPT: prompt,
+      KIT_AGENT_MODEL: args.model,
+      ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
+      ...opts.extraEnv,
+    },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
     fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
@@ -1983,6 +1834,48 @@ function mischeBlattfelder(bisher, wert, blaetter, feld) {
   return zusammen;
 }
 
+// --- Budgets der Nacht-Kette (Plan #638, A6; night.kette) ---
+
+// Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
+export const KETTE_BUDGET_DEFAULTS = Object.freeze({
+  label: "kit:night",
+  planMin: 20,
+  paketeMin: 15,
+  reviewMin: 15,
+  abdeckungMin: 10,
+  kostenUsd: 50,
+  korrekturrunden: 2,
+});
+
+/**
+ * Liest `night.kette` aus der Config und prueft jede Zahl.
+ *
+ * Wirft einen Error mit dem Feldnamen statt `fail` zu rufen: Die Funktion ist rein und
+ * an Fixtures pruefbar; die Kette macht aus dem Wurf den Abbruch vor der ersten Session.
+ * Eine Zahl muss endlich und groesser 0 sein, `korrekturrunden` dazu ganzzahlig — ein
+ * Budget von 0 waere eine Kette, die nie startet, und niemand saehe morgens, warum.
+ */
+export function ladeKetteBudget(config) {
+  const block = config?.night?.kette ?? {};
+  const budget = { ...KETTE_BUDGET_DEFAULTS };
+  if (block.label !== undefined) {
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
+    budget.label = block.label.trim();
+  }
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]) {
+    if (block[feld] === undefined) continue;
+    const wert = block[feld];
+    if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
+      throw new Error(`night.kette.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+    }
+    if (feld === "korrekturrunden" && !Number.isInteger(wert)) {
+      throw new Error(`night.kette.korrekturrunden muss ganzzahlig sein, ist ${wert}`);
+    }
+    budget[feld] = wert;
+  }
+  return budget;
+}
+
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
 //
 // Warum nicht `board.mjs issue-review check`: Dieser Probelauf laeuft im Runner-Prozess
@@ -2218,19 +2111,7 @@ async function reviewerVorflug(args, reviewers, trackerId) {
   return { sessionStartbar: true, grund: null, ...normalisiereVorflug(roh, reviewers) };
 }
 
-// --- Review-Schleife (Issue #235) ---
-
-/**
- * Spur, die eine Review-Session am Issue hinterlaesst — ausser dem Marker.
- *
- * Bewusst nicht nur `comments.length`: Der lokale Tracker liefert bei `issue get`
- * **kein** comments-Feld, er haengt Kommentare an den Body an. GitHub, GitLab und
- * Toolbox liefern eines. Body-Laenge und Kommentarzahl zusammen tragen bei allen
- * vier — und beide zu vergleichen kostet nichts.
- */
-function issueSpur(full) {
-  return `${(full?.body || "").length}:${(full?.comments || []).length}`;
-}
+// --- Kommentare einer Session (Issue #310) ---
 
 // Wie der lokale Tracker einen Kommentar an den Body anhaengt (board.mjs,
 // commentIssue). Die Kopplung ist bewusst und eng begrenzt: Nur mit ihr laesst sich
@@ -2267,234 +2148,11 @@ export function neueKommentare(vorher, nachher) {
     .filter(Boolean);
 }
 
-const VORSCHLAG_KOPF = /^##\s*Body-Vorschlag,\s*Runde\s*(\d+)\s*$/;
-export const RUNDEN_KOPF = /^##[^\n]*?,[^\S\n]*Runde[^\S\n]*(\d+)[^\S\n]*$/;
-
-/** Die erste Zeile eines Kommentars und der Rest — getrennt, weil nur die erste zaehlt. */
-function kopfUndRest(text) {
-  const zeilen = String(text || "").split(/\r\n|\r|\n/);
-  return { kopf: zeilen[0] ?? "", hatText: zeilen.slice(1).some((z) => z.trim() !== "") };
-}
-
-/**
- * Traegt diese Session einen uebernehmbaren Body-Vorschlag bei (Issue #310)?
- *
- * Gueltig ist ein Kommentar, dessen ERSTE Zeile exakt `## Body-Vorschlag, Runde <n>`
- * lautet (n positiv) und unter der mindestens eine nicht leere Textzeile steht. Die
- * Bindung an die erste Zeile schliesst zitierte oder in Befunden erwaehnte Treffer
- * aus; die Textzeile schliesst die blosse Ueberschrift aus, mit der das Gate sonst
- * mit einem Handgriff zu umgehen waere.
- *
- * Bei mehreren Runden zaehlt die HOECHSTE in dieser Session geschriebene Runde:
- * Nur der letzte Vorschlag ist der uebernehmbare Text, fruehere sind Verlauf. Eine
- * Paarungspflicht je Runde bestrafte einen Lauf, der korrekt nur den Endstand
- * vorschlaegt. Kommt gar keine Rundenangabe vor, genuegt irgendein gueltiger
- * Vorschlag.
- */
-export function bodyVorschlagVorhanden(kommentare) {
-  const vorschlaege = [];
-  let hoechsteRunde = null;
-
-  for (const text of kommentare || []) {
-    const { kopf, hatText } = kopfUndRest(text);
-    const runde = RUNDEN_KOPF.exec(kopf);
-    if (runde) {
-      const n = Number(runde[1]);
-      if (n > 0 && (hoechsteRunde === null || n > hoechsteRunde)) hoechsteRunde = n;
-    }
-    const m = VORSCHLAG_KOPF.exec(kopf);
-    if (m && hatText && Number(m[1]) > 0) vorschlaege.push(Number(m[1]));
-  }
-
-  if (vorschlaege.length === 0) return false;
-  return hoechsteRunde === null || vorschlaege.includes(hoechsteRunde);
-}
-
-/**
- * Laesst jeden Kandidaten von einer frischen /issue-review-Session pruefen.
- *
- * Erfolg ist dreistufig, weil der Skill den Marker nur bei befundfreiem Review setzt:
- *   1. Marker im Body              -> geprueft, ohne gewichtigen Befund
- *   2. kein Marker, aber neue Spur -> geprueft, MIT Befund; wartet planmaessig auf
- *                                     den Menschen. Ebenfalls ein Erfolg.
- *   3. weder noch                  -> die Session hat nichts hinterlassen
- *
- * Stufe 2 als Fehlschlag zu werten waere der teuerste Denkfehler hier: Genau die
- * Issues, bei denen sich der Review gelohnt hat, wuerden als gescheitert gemeldet.
- *
- * Kein Salvage-Pfad: Der prueft buildChecks und committet — fuer eine Session, die
- * keinen Code schreibt, gegenstandslos. Und kein Board-Move in keinem Ausgang; die
- * Kandidaten liegen bereits im Backlog.
- */
-/**
- * Wertet aus, was eine Review-Session am Board hinterlassen hat (Issue #404).
- *
- * Vier Ausgaenge, und der Aufrufer soll sie nur zaehlen muessen: `ohneBefund`
- * (Marker gesetzt), `mitBefund` (Befunde samt uebernehmbarem Body-Vorschlag),
- * `schaerfungFehlt` (Befunde ohne Vorschlag) und `ohneErgebnis` (die Session hat
- * nichts hinterlassen). Die beiden letzten hinterlassen ausserdem einen Kommentar
- * am Ticket — sie verlangen morgens je einen anderen Handgriff.
- *
- * Getrennt von der Schleife, weil die Schleife eine andere Aufgabe hat: Sie
- * entscheidet, WELCHE Dokumente drankommen und wann der Lauf hart stoppt. Was
- * dabei herauskam, ist die Frage dieser Funktion.
- */
-function werteReviewSession(kandidat, vorher, nachher, stufe, minutes) {
-  if (hasStageMarker(nachher.body, stufe)) {
-    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft ohne Befund, Marker gesetzt.`);
-    return "ohneBefund";
-  }
-
-  if (issueSpur(nachher) === issueSpur(vorher)) {
-    log(`  Fehlschlag nach ${minutes} min: Issue #${kandidat.id} — die Session hat nichts hinterlassen, weiter mit dem naechsten.`);
-    board("issue", "comment", String(kandidat.id),
-      "--text", "Nachtlauf: Die Review-Session endete ohne Ergebnis — weder Marker noch Befunde. Bitte morgens sichten oder /issue-review von Hand fahren.");
-    return "ohneErgebnis";
-  }
-
-  // Befunde allein sind die halbe Arbeit. Der Skill verlangt den fertig
-  // formulierten Body als uebernehmbaren Text; entstanden ist neunmal in Folge
-  // nur die Beschreibung dessen, was zu aendern waere (Issue #310). Wer danach
-  // implementiert, arbeitet gegen den alten Body und traegt die BLOCKER weiter.
-  if (bodyVorschlagVorhanden(neueKommentare(vorher, nachher))) {
-    log(`  Erfolg nach ${minutes} min: Issue #${kandidat.id} geprueft mit Befund — kein Marker, wartet auf dich.`);
-    return "mitBefund";
-  }
-
-  log(`  Nach ${minutes} min: Issue #${kandidat.id} — Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt.`);
-  board("issue", "comment", String(kandidat.id),
-    "--text", "Nachtlauf: Befunde vorhanden, aber kein Body-Vorschlag — Schaerfung fehlt. "
-    + "Der uebernehmbare Body-Text (`## Body-Vorschlag, Runde <n>`) wurde nicht geschrieben; "
-    + "bitte morgens aus den Befunden nachziehen oder /issue-review von Hand fahren.");
-  return "schaerfungFehlt";
-}
-
-/**
- * Die beiden harten Stopps einer Review-Runde — true heisst: der Lauf endet hier.
- *
- * Getrennt von der Schleife, weil beide Guards VOR jeder Bewertung greifen und keinen
- * der vier Ausgaenge liefern: Sie sagen nicht, was der Review ergeben hat, sondern
- * dass die Lage unklar ist. Fehlerklasse und Grund fuer den Ergebnisstand (#489, #558)
- * hinterlegen sie hier, damit der Rueckgabewert ein blosses Ja/Nein bleibt; das
- * Anheften an die Einheit macht der Aufrufer, der sie kennt.
- *
- * `sessionart` seit Issue #520: Die Erzeugungsschleife fuehrt dieselben beiden Guards —
- * auch eine Erzeugungs-Session committet nichts, und `/techplan` liest Code mit
- * `--permission-mode acceptEdits`. Die Meldung nannte fest die Review-Session; morgens
- * stuende sonst die falsche Sessionart im Protokoll.
- */
-function reviewRundeGestoppt(kandidat, res, minutes, sessionart) {
-  // Infrastruktur-Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
-  // Timeout heisst, das CLI selbst ist gescheitert — mit dem Issue ist nichts falsch.
-  // Harter Stopp ohne Kommentar, sonst kommentiert eine kaputte Umgebung den ganzen
-  // Backlog voll.
-  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
-  if (!timedOut && (res.error || res.status !== 0)) {
-    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-    // Ohne die CLI-Meldung, anders als der Infrastruktur-Guard in werteRunde (Issue
-    // #558): Diese Stelle schreibt sie heute nicht ins Protokoll, und der Grund reicht
-    // weiter, was das Protokoll sagt. Dass sie dort fehlt, ist ein Mangel des
-    // Protokolls und gehoert in einen eigenen Vorgang, nicht in eine Sonderregel hier.
-    const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${kandidat.id} bleibt unangetastet.`;
-    log(`  ${kopf}`);
-    merkeHartenStopp("umgebung", kopf);
-    return true;
-  }
-
-  // Eine Review- wie eine Erzeugungs-Session arbeitet ausschliesslich am Board.
-  // Hinterlaesst sie Aenderungen im Working Tree, hat sie etwas getan, was sie nicht
-  // sollte — und die naechste Runde wuerde darauf aufbauen.
-  const reste = gitReste();
-  if (reste.length > 0) {
-    const satz = `HARTER STOPP: die ${sessionart} zu Issue #${kandidat.id} hat den Working Tree veraendert. Eine ${sessionart} darf keinen Code anfassen — bitte morgens sichten.`;
-    log(`  ${satz}`);
-    merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
-    return true;
-  }
-  return false;
-}
-
-async function runReviewLoop(kandidaten, args) {
-  const stufe = args.stufe ?? "issue";
-  let sessions = 0;
-  let uebersprungen = 0;
-  let hardStop = false;
-  const zaehler = { ohneBefund: 0, mitBefund: 0, schaerfungFehlt: 0, ohneErgebnis: 0 };
-
-  for (const kandidat of kandidaten) {
-    if (sessions >= args.max) {
-      log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
-      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "liegengeblieben" });
-      continue;
-    }
-    const vorher = board("issue", "get", String(kandidat.id));
-    if (hasStageMarker(vorher.body, stufe)) {
-      log(`#${kandidat.id} uebersprungen: traegt bereits einen Issue-Review-Marker.`);
-      uebersprungen++;
-      // Die dritte Kategorie neben den Ausschluessen aus selectReviewCandidates und
-      // den liegengebliebenen (Issue #489): Ohne sie zaehlte der Ergebnisstand
-      // weniger Kandidaten als das Textprotokoll daneben.
-      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), {
-        ausgang: "uebersprungen", grund: "traegt bereits einen Issue-Review-Marker",
-      });
-      continue;
-    }
-
-    sessions++;
-    log(`Review-Session ${sessions}/${args.max}: Issue #${kandidat.id} — ${kandidat.title}`);
-    // Wie in der Implementierungsschleife VOR der Session (Issue #488): Bricht der Lauf
-    // mitten in der Runde ab, steht der Kandidat trotzdem im Stand — mit "unbekannt",
-    // was etwas anderes sagt als ein Fehlschlag.
-    const einheit = einheitAnlegen(kandidat.id, kandidat.title);
-    const started = Date.now();
-    // Der Modus-Hinweis (Issue #419) greift als einziger Hebel, BEVOR die Session
-    // das Dokument liest. Massgeblich bleibt allein KIT_AGENT_MODEL — der Hinweis
-    // wiederholt es nur an der Stelle, an der es ankommt.
-    const res = await runSession(kandidat.id, args, {
-      prompt: `/issue-review #${kandidat.id}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
-      timeoutMs: REVIEW_TIMEOUT_MS,
-    });
-    // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
-    // Textzeile (Issue #489): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.
-    const dauerMs = Date.now() - started;
-    const minutes = (dauerMs / 60000).toFixed(1);
-
-    if (reviewRundeGestoppt(kandidat, res, minutes, "Review-Session")) {
-      hardStop = true;
-      // Der Ausgang bleibt "unbekannt" — der Guard griff vor jeder Bewertung. Der GRUND
-      // gehoert trotzdem an die Einheit (Issue #558): Warum abgebrochen wurde, ist
-      // etwas anderes als wie die Runde ausging.
-      hefteStoppGrund(einheit);
-      break;
-    }
-
-    const nachher = board("issue", "get", String(kandidat.id));
-    const ausgang = werteReviewSession(kandidat, vorher, nachher, stufe, minutes);
-    zaehler[ausgang]++;
-    // Der Ausgang woertlich, wie ihn werteReviewSession liefert (Issue #489): Ein
-    // eigenes Vokabular hier waere eine zweite Stelle, an der die vier Faelle stehen.
-    // Kein Pruefstand — ein Review-Lauf faehrt keine Pflicht-Checks.
-    einheitErgaenzen(einheit, { ausgang, dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
-  }
-
-  // schaerfungFehlt steht getrennt: Der Fall ist weder Erfolg noch leerer Lauf, und
-  // morgens verlangt er einen anderen Handgriff als beide (Issue #310). Der
-  // Gesamt-Exit bleibt trotzdem 0 — die Befunde stehen am Board, ein harter Stopp
-  // waere unverhaeltnismaessig.
-  log(`Nacht-Review beendet (Stufe ${stufe}): ${zaehler.ohneBefund} ohne Befund, ${zaehler.mitBefund} mit Befund, ${zaehler.schaerfungFehlt} Schaerfung fehlt, ${uebersprungen} uebersprungen, ${zaehler.ohneErgebnis} ohne Ergebnis, ${sessions} Session(s) gestartet${hardStop ? ", HARTER STOPP" : ""}.`);
-  log(`Morgen-Ritual: Befunde sichten, Issues schaerfen, dann nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
-  // Der Abschluss gehoert hierher und nicht in main(): Der Review-Modus beendet den
-  // Prozess selbst und kaeme an einer Stelle in main() nie an (Issue #489). Ein
-  // Ergebnisstand ohne Abschluss saehe aus wie ein Absturz.
-  laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
-  process.exit(hardStop ? 1 : 0);
-}
-
 // --- Hauptprogramm ---
 //
 // In eine Funktion gefasst, damit die reinen Funktionen dieser Datei importierbar
 // sind, ohne dass der Runner losläuft (Issue #232). Vorher lag das Hauptprogramm auf
-// Top-Level: Ein `import { selectReviewCandidates }` haette einen kompletten Nachtlauf
+// Top-Level: Ein `import { parseDeps }` haette einen kompletten Nachtlauf
 // gestartet. Dieselbe Loesung wie in board.mjs seit Issue #135.
 //
 // Seit Issue #404 ist es kein einzelner Block mehr. Die Vermessung in #398 hatte den
@@ -2552,6 +2210,66 @@ function warnWennLabelNirgendsVorkommt(ctx, ready) {
   log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
 }
 
+/** Laedt die Budgets der Kette; eine kaputte Zahl ist ein Config-Fehler, kein Lauf. */
+function ketteBudgetLaden() {
+  try {
+    KETTE_BUDGET = ladeKetteBudget(config);
+  } catch (e) {
+    fail(e.message, "zustand");
+  }
+}
+
+/**
+ * Prueft settings-Dateien auf gueltiges JSON (Issue #618, Idee #555). Nur die Syntax,
+ * kein Schema: Eine ungueltige Datei setzt ALLE ihre Einstellungen ausser Kraft — env,
+ * sandbox, permissions —, und nachts sieht man davon nur eine Genehmigungsabfrage, die
+ * niemand beantwortet. Eine fehlende Datei ist kein Befund. Liefert je ungueltiger Datei
+ * den absoluten Pfad mit der Meldung des Parsers.
+ */
+export function pruefeSettingsSyntax(pfade) {
+  const befunde = [];
+  for (const pfad of pfade) {
+    if (!existsSync(pfad)) continue;
+    try {
+      JSON.parse(readFileSync(pfad, "utf-8"));
+    } catch (e) {
+      befunde.push(`${pfad}: ${e.message}`);
+    }
+  }
+  return befunde;
+}
+
+/**
+ * Der Vorflug ueber die drei Dateien, die jede Nacht-Session liest — in jeder
+ * Betriebsart: harter Stopp ohne Dry-Run, im Dry-Run nur berichtet (wie der Reviewer-
+ * Vorflug). Home ueber homedir() wie in board.mjs (unter Windows USERPROFILE, #187).
+ * settingsEnv() bleibt daneben tolerant: fuer eine Datei, die erst waehrend des Laufs
+ * unbrauchbar wird.
+ */
+function settingsVorflug(args) {
+  const befunde = pruefeSettingsSyntax([
+    join(process.cwd(), ".claude", "settings.json"),
+    join(process.cwd(), ".claude", "settings.local.json"),
+    join(homedir(), ".claude", "settings.json"),
+  ]);
+  if (befunde.length === 0) return;
+  const meldung = `settings-Datei ungueltig — keine ihrer Einstellungen (env, sandbox, permissions) waere in den Nacht-Sessions wirksam: ${befunde.join(" | ")}`;
+  if (args.dryRun) {
+    log(`  WARNUNG: ${meldung}`);
+    return;
+  }
+  fail(meldung, "zustand");
+}
+
+/** Die beiden Zustands-Vorfluege der Implementierung: kein Absturzrest, sauberer Baum. */
+function zustandsVorflug() {
+  const inProgress = board("issue", "list", "--status", "in_progress");
+  if (inProgress.length > 0) {
+    fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`, "zustand");
+  }
+  if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.", "zustand");
+}
+
 /**
  * Der gemeinsame Vorspann aller drei Programme: Phasen 2 bis 6 aus Issue #398.
  *
@@ -2565,6 +2283,7 @@ export function vorbereiten(args) {
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
+  if (args.kette) ketteBudgetLaden();
 
   const jetzt = new Date();
   mkdirSync(join(process.cwd(), ".claude"), { recursive: true });
@@ -2583,29 +2302,29 @@ export function vorbereiten(args) {
   const art = laufArt(args);
   const modus = ART_MODUS[art];
   const aktivesLabel = ART_LABEL[art](args);
-  const stufenAngabe = args.review ? `, Stufe ${args.stufe ?? "issue"}` : "";
   const dryRunAngabe = args.dryRun ? ", DRY-RUN" : "";
   const yoloAngabe = args.yolo ? ", YOLO" : "";
 
   ergebnisstandAnlegen(args, aktivesLabel, jetzt);
 
-  log(`Nacht-Runner startet (Modus ${modus}${stufenAngabe}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
+  log(`Nacht-Runner startet (Modus ${modus}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
 
   // Vorflug-Checks
   warnBeiVersionsDrift();
-  const inProgress = board("issue", "list", "--status", "in_progress");
-  if (inProgress.length > 0) {
-    fail(`Issue(s) in In progress (${inProgress.map((i) => "#" + i.id).join(", ")}) — Crash-Rest? Bitte manuell aufraeumen, dann neu starten.`, "zustand");
-  }
-  if (!gitClean()) fail("Working Tree ist nicht sauber. Bitte committen oder aufraeumen, dann neu starten.", "zustand");
-  // Die buildChecks-Pflicht gilt nur der Implementierung. Im Review- und im
-  // Erzeugungsmodus (Issue #518) wird nichts gebaut und nichts committet — dort waere die
-  // Pruefung gegenstandslos und wuerde Projekte ohne buildChecks zu --no-checks-ok
-  // zwingen fuer einen Lauf, der gar nichts baut.
-  if (!args.review && !args.erzeuge && (!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
+  // Die beiden Zustands-Vorfluege gelten der Implementierung: Sie arbeitet in der
+  // Hauptkopie und darf nicht auf einem Absturzrest aufsetzen. Die Kette arbeitet in
+  // einem eigenen Worktree und laeuft neben einer Umsetzungsnacht (Plan #638, A3): Ein
+  // Paket in In progress ist fuer sie kein Absturzrest, ein unsauberer Baum kein Hindernis.
+  if (!args.kette) zustandsVorflug();
+  // In jeder Betriebsart, nach dem Baum (Issue #618): Eine ungueltige settings-Datei
+  // traefe jede Session, ob sie baut oder plant.
+  settingsVorflug(args);
+  // Nachts ohne Gate zu implementieren ist riskant; ein Lauf, der nichts baut, hebt die
+  // Pflicht ueber `noChecksOk` auf (so machen es die Folgepakete fuer die Kette).
+  if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
   }
 
@@ -2661,54 +2380,6 @@ function meldeVorflug(vorflug, reviewerListe) {
 }
 
 /**
- * Zeigt, welche Review-Sessions starten wuerden, und beendet den Prozess (Issue #404).
- */
-function berichteReviewDryRun(kandidaten, args, stufe) {
-  let geplant = 0;
-  for (const k of kandidaten) {
-    const full = board("issue", "get", String(k.id));
-    if (hasStageMarker(full.body, stufe)) {
-      log(`  #${k.id} ${k.title} -> wuerde uebersprungen (Review-Marker schon im Body)`);
-    } else if (geplant >= args.max) {
-      log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
-    } else {
-      geplant++;
-      log(`  #${k.id} ${k.title} -> Review-Session ${geplant}`);
-    }
-  }
-  log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Review-Session(s) wuerden starten.`);
-  process.exit(0);
-}
-
-/**
- * Zeigt, welche Erzeugungs-Sessions starten wuerden, und beendet den Prozess (Issue #519).
- *
- * Dasselbe Muster wie `berichteReviewDryRun`, mit umgekehrtem Marker-Sinn: Dort schliesst
- * ein vorhandener Marker aus, hier fehlt er dem, das ausgeschlossen wird.
- *
- * Alle qualifizierten Karten werden gelistet, die ueber `--max` markiert — sonst saehe ein
- * begrenzter Lauf aus wie ein vollstaendiger, und wer die Liegengebliebenen sucht, muesste
- * sie aus der Differenz erschliessen.
- */
-function berichteErzeugungDryRun(kandidaten, args, stufe) {
-  let geplant = 0;
-  for (const k of kandidaten) {
-    const full = board("issue", "get", String(k.id));
-    const grund = erzeugungsEintritt(full.body, stufe);
-    if (grund !== null) {
-      log(`  #${k.id} ${k.title} -> uebersprungen (${grund})`);
-    } else if (geplant >= args.max) {
-      log(`  #${k.id} ${k.title} -> ueber --max ${args.max}, bliebe liegen`);
-    } else {
-      geplant++;
-      log(`  #${k.id} ${k.title} -> Erzeugungs-Session ${geplant}`);
-    }
-  }
-  log(`Dry-Run beendet (Stufe ${stufe}): ${geplant} Erzeugungs-Session(s) wuerden starten.`);
-  process.exit(0);
-}
-
-/**
  * Faehrt den Vorflug und macht ihn zum Gate (Issue #233, Umgebung korrigiert in #269).
  *
  * Geteilt von Review- und Erzeugungsmodus (Issue #518): Beide starten spaeter dieselben
@@ -2728,7 +2399,7 @@ function berichteErzeugungDryRun(kandidaten, args, stufe) {
  * `dryRunHinweis` traegt den Aufruf, mit dem der Mensch den Befund selbst sieht — er
  * unterscheidet sich je Modus und gehoert deshalb an den Aufrufer.
  */
-async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
+export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = null) {
   // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
   // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
   // und die Verfuegbarkeit misst ohnehin nur noch die Session.
@@ -2749,6 +2420,7 @@ async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
   if (reste.length > 0) {
     const satz = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.";
     log(`  ${satz}`);
+    if (beiStopp) beiStopp(satz);
     merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
     // Der einzige der sieben Wege ohne Karte (Issue #558): Der Vorflug laeuft, bevor
     // ein Kandidat gezogen ist, und `fehlerEinheit` bleibt darum leer.
@@ -2759,510 +2431,771 @@ async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
 
   const probleme = meldeVorflug(vorflug, reviewerListe);
   if (probleme.length > 0 && !args.dryRun) {
+    // Erst die Kandidaten benachrichtigen (Issue #645): Ohne diesen Kommentar bliebe ein
+    // Kennzeichen, dessen Kette nie begann, am Morgen ohne Spur am Board.
+    if (beiStopp) beiStopp(probleme.join(" | "));
     fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit ${dryRunHinweis} pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
   }
 }
 
+// --- Die Nacht-Kette (Plan #638; Issue #643) ---
+//
+// Ein Fachplan geht abends hinein, morgens liegen Plan, Pakete und der Nachtbericht am
+// Fachplan vor (#643 bis zum geprueften Plan, #644 Pakete und Abdeckung, #645 Bericht).
+
+// Der Zusatz, der einer Kette-Session die Betriebsart nennt. Massgeblich bleibt allein
+// KIT_AGENT_MODEL — der Satz wiederholt es nur an der Stelle, an der es ankommt.
+const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.";
+// Der Anker des Halt-Kommentars am Fachplan.
+export const KETTE_HALT_ANKER = "## Kette angehalten";
+// Die Routing-Labels der beiden entfallenen Betriebsarten: Wer sie noch setzt, bekommt
+// eine Zeile im Protokoll statt einer stillen Nacht (Fachplan #635, Kriterium 12).
+const ALTE_ROUTING_LABELS = ["kit:nightreview", "kit:nightplan", "kit:nightissues"];
+// Unter dieser Restzeit startet keine Session mehr: Eine Minute reicht fuer keinen Plan.
+const KETTE_MINDEST_REST_MS = 60 * 1000;
+// Die drei Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2).
+const KETTE_AUSGAENGE = ["fertig", "angehalten", "abgebrochen"];
+// Woran der Runner den Halt von /issues erkennt: der Kommentar, den der Skill
+// unbeaufsichtigt an den Plan schreibt, wenn er kein Paket anlegt (skills-14).
+export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
+
 /**
- * Programm 1 — der Review-Modus (Phase 7 aus Issue #398, eingefuehrt in #233).
- *
- * Exklusiv zur Implementierungsschleife: Zwischen Review und Implementierung liegt
- * das GO. Beides in einer Nacht hiesse, es zu ueberspringen.
- *
- * Ohne Kontext-Parameter: Der Review-Modus filtert ueber --review-label und ruehrt
- * das Routing-Label der Implementierung nicht an.
+ * Der Prompt der Abdeckungs-Session (Plan #638, A9): Sie liest Fachplan, Plan und Pakete,
+ * aendert nichts und gibt als letzte Nachricht die Zuordnung zurueck. Ihr Text landet im
+ * Ergebnisstand und im Bericht — kein eigener Kommentar, kein Tor (Kriterium 5).
  */
-export async function laufeReviewModus(args) {
-  const reviewLabel = args.reviewLabel === "none" ? null : args.reviewLabel;
-  const stufe = args.stufe ?? "issue";
-  const backlog = board("issue", "list", "--status", "backlog");
-  const { kandidaten, uebersprungen } = selectReviewCandidates(backlog, { label: reviewLabel, stufe });
+export const ABDECKUNG_PROMPT = [
+  "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
+  "",
+  "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
+    "",
+    "### Zuordnung",
+    "Je fachlichem Akzeptanzkriterium des Fachplans eine Zeile: das Kriterium (Nummer und Anfang des Wortlauts) und das Paket oder die Pakete, in denen es abgebildet ist, oder \"kein Paket\".",
+    "",
+    "### Ohne Paket",
+    "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut. Sonst der Satz: Alle Kriterien sind abgebildet.",
+    "",
+  "### Zuwachs",
+  "Was in den Paketen steht, ohne im Fachplan zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.",
+  "",
+  KETTE_ZUSATZ,
+].join("\n");
 
-  // Die Ausschluesse liegen bereits in der Form des Ergebnisstands vor (Issue #489):
-  // {id, title, grund}. Sie wandern hier hinein, bevor der Vorflug abbrechen kann —
-  // ein Stand, der erst am regulaeren Ende entstuende, verschwiege sie im
-  // interessantesten Fall.
-  for (const u of uebersprungen) {
-    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
-  }
-
-  await fuehreVorflug(args, kandidaten, "--review --dry-run");
-
-  if (kandidaten.length === 0) {
-    log(`Keine Review-Kandidaten im Backlog (Stufe ${stufe}) — nichts zu tun.`);
-    if (reviewLabel !== null && backlog.length > 0) {
-      const vorhanden = [...new Set(backlog.flatMap((i) => i.labels || []))];
-      log(`  Im Backlog vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
-      log(`  Tippfehler im --review-label-Wert? Mit --review-label none laeuft der Lauf ohne Label-Filter.`);
-    }
-    laufAbschliessen("regulaer");
-    process.exit(0);
-  }
-
-  if (args.dryRun) berichteReviewDryRun(kandidaten, args, stufe);
-
-  await runReviewLoop(kandidaten, args);
+export function abdeckungPrompt(fachplanId, planId, paketIds) {
+  const pakete = paketIds.map((id) => `#${id}`).join(", ");
+  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${pakete}.\n${ABDECKUNG_PROMPT}`;
 }
 
 /**
- * Weist den Erzeugungsmodus auf einem Tracker ab, der Ideen ohne Kartennummer ablegt
- * (Issue #518, A9 in Plan #513).
+ * Der Grund, aus dem eine gekennzeichnete Karte nicht laeuft — `null`, wenn sie laeuft.
  *
- * Bei `toolbox.ideaStored: true` liefert `issue create` ein `{ideaId, pending: true}`:
- * Die Karte hat keine Nummer und steht in keinem Backlog. Das Erfolgssignal der Nacht
- * faende nichts, das Routing-Label bliebe stehen, und die naechste Nacht legte eine
- * zweite Pool-Idee an — der Fehler waere unsichtbar und wuechse mit jedem Lauf.
- *
- * Nur beim Tracker `toolbox`: `board.mjs` wertet das Feld allein im Toolbox-Adapter aus.
- * Ein `local`-Projekt mit liegengebliebenem `toolbox`-Block wuerde sonst grundlos
- * gestoppt.
- *
- * Der Guard liest die in `vorbereiten` gemischte `config` und nicht die Datei: Ein
- * Neulesen waere eine zweite Quelle, und Overrides gaelten dann nur an einer der beiden
- * Stellen.
+ * Die Reihenfolge ist die Antwort: Erst das Praefix (das Kennzeichen gilt nur am
+ * Fachplan), dann die Spalte (E4: ausserhalb von Backlog ist ein Versehen), dann
+ * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen).
  */
-function erzeugungsTrackerPruefen() {
-  if (config.issueTracker !== "toolbox" || config.toolbox?.ideaStored !== true) return;
-  fail(
-    "Der Erzeugungsmodus laeuft nicht mit 'toolbox.ideaStored: true': 'issue create' legt dann eine "
-    + "Pool-Idee ohne Kartennummer an, und ohne Nummer traegt der Lauf kein Erfolgssignal — das "
-    + "Routing-Label bliebe stehen und die naechste Nacht legte eine zweite Idee an. Entweder "
-    + "'toolbox.ideaStored' in .claude/workflow.config.json auf false setzen (dann entstehen Karten "
-    + "mit Nummer) oder die Erzeugung interaktiv fahren.",
-    "zustand",
-  );
-}
-
-// Welchen Skill der Erzeugungsmodus je Stufe beauftragt (Issue #520). `/plan` steht hier
-// bewusst nicht: Es ist seit Issue #514 ein Wegweiser und erzeugt kein Dokument.
-const ERZEUGE_SKILL = { plan: "techplan", issue: "issues" };
-
-const OHNE_DOKUMENT_KOMMENTAR = "Nachtlauf: Die Erzeugungs-Session endete ohne Dokument — "
-  + "bitte morgens sichten oder /techplan bzw. /issues von Hand fahren.";
-
-/** Die gefundenen Dokumente als Protokoll-Liste: `#X, #Y`. */
-function dokumentListe(eintraege) {
-  return eintraege.map((d) => `#${d.id}`).join(", ");
-}
-
-/**
- * Ein erzeugtes Dokument, wie es in `erzeugt` am Ergebnisstand steht (Issue #522).
- *
- * Dasselbe Objekt traegt Phase 1 und Phase 2: Phase 1 kennt die Kartennummer, Zustand und
- * Rundenzahl entstehen erst in der Pruefschleife. Zwei getrennte Listen liefen auseinander,
- * sobald ein Lauf zwischen den Phasen abbricht — und genau dann will man morgens wissen,
- * welche Dokumente schon dastanden.
- */
-function dokEintrag(id) {
-  return { id: String(id), zustand: null, runden: null, sessions: [] };
-}
-
-/**
- * Phase 1 zu EINER Quelle: Fortsetzen-Check, Session, Erfolgssignal (Issue #520).
- *
- * Rueckgabe `{ ergebnis, hardStop }`. `ergebnis` traegt die Form, die Phase 2 (Issue #521)
- * erwartet: `{ quelle, erzeugt: [ids], fortgesetzt }` — gefundene wie vorgefundene
- * Dokumente in derselben Form, damit die Pruefschleife die beiden Faelle nicht
- * unterscheiden muss.
- *
- * Der Fortsetzen-Check liest OHNE Status-Filter: Bei `--stufe issue` koennen Pakete des
- * Plans schon in Ready oder In review liegen, und `/issues` kennt kein Teil-Fortsetzen —
- * ein Check nur im Backlog liesse den Skill alle erneut anlegen. Die Differenz danach
- * bleibt auf dem Backlog, denn dorthin legt eine Session an.
- *
- * Die Differenz zaehlt Karten, deren `id` vorher fehlte, statt `slice` wie
- * `neueKommentare`: Die Backlog-Reihenfolge ist nicht stabil.
- */
-async function erzeugeAusQuelle(kandidat, args, stufe, nummer, einheit) {
-  const quelle = String(kandidat.id);
-  const vorhanden = board("issue", "list")
-    .filter((i) => stammtAusErzeugung(i, quelle, stufe))
-    .map((i) => dokEintrag(i.id));
-  if (vorhanden.length > 0) {
-    log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(vorhanden)} — schon vorhanden, die Erzeugungs-Session entfaellt.`);
-    // `kennzahlen: null` und `dauerMs: 0`, weil keine Erzeugungs-Session lief — die
-    // Pruefrunden addieren gleich darauf. Eine erfundene Null bei den Kennzahlen waere
-    // etwas anderes als "es gab nichts zu messen".
-    einheitErgaenzen(einheit, { erzeugt: vorhanden, fortgesetzt: true, dauerMs: 0, kennzahlen: null });
-    return { ergebnis: { quelle, erzeugt: vorhanden, fortgesetzt: true, einheit }, hardStop: false };
-  }
-
-  const vorher = new Set(board("issue", "list", "--status", "backlog").map((i) => String(i.id)));
-  log(`Erzeugungs-Session ${nummer}/${args.max}: Issue #${quelle} — ${kandidat.title}`);
-  const started = Date.now();
-  // Ohne `timeoutMs`, also mit `args.timeoutMin` wie die Implementierungsrunde und nicht
-  // mit REVIEW_TIMEOUT_MS: `/techplan` liest Code und schreibt ein ganzes Plandokument,
-  // `/issues` legt mehrere Karten einzeln an, und die Toolbox drosselt dichte Aufrufe.
-  // Eine korrekte Session als Timeout zu verlieren ist der teurere Fehler.
-  const res = await runSession(kandidat.id, args, {
-    prompt: `/${ERZEUGE_SKILL[stufe]} #${quelle}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
-  });
-  // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
-  // Textzeile (wie im Review-Modus, Issue #489).
-  const dauerMs = Date.now() - started;
-  const minutes = (dauerMs / 60000).toFixed(1);
-
-  if (reviewRundeGestoppt(kandidat, res, minutes, "Erzeugungs-Session")) {
-    // Der Ausgang bleibt `unbekannt`: Der Guard greift VOR jeder Bewertung, und
-    // "unbekannt" sagt etwas anderes als ein Fehlschlag. Nur der Grund kommt dazu
-    // (Issue #558) — die Einheit liegt hier als Parameter vor.
-    hefteStoppGrund(einheit);
-    return { ergebnis: null, hardStop: true };
-  }
-
-  const erzeugt = board("issue", "list", "--status", "backlog")
-    .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, quelle, stufe))
-    .map((i) => dokEintrag(i.id));
-  einheitErgaenzen(einheit, { erzeugt, fortgesetzt: false, dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
-
-  if (erzeugt.length === 0) {
-    // Ergebnislos fuer DIESE Quelle, kein Grund anzuhalten. Das Routing-Label bleibt
-    // stehen: Ohne Pruefung gibt es keinen Endzustand, und der Verbrauch der Freigabe
-    // haengt am Endzustand (Plan #513, A3).
-    log(`  Fehlschlag nach ${minutes} min: Issue #${quelle} — die Erzeugungs-Session endete ohne Dokument, weiter mit dem naechsten.`);
-    board("issue", "comment", quelle, "--text", OHNE_DOKUMENT_KOMMENTAR);
-    // Phase 2 sieht diese Quelle nie — der Ausgang steht deshalb schon hier.
-    einheitErgaenzen(einheit, { ausgang: "ohneErgebnis", labelEntfernt: false });
-    return { ergebnis: { quelle, erzeugt: [], fortgesetzt: false, einheit }, hardStop: false };
-  }
-
-  log(`  Erzeugt aus Issue #${quelle}: ${dokumentListe(erzeugt)}`);
-  return { ergebnis: { quelle, erzeugt, fortgesetzt: false, einheit }, hardStop: false };
-}
-
-// --- Erzeugungsschleife, Phase 2: Pruefrunden und Label-Verbrauch (Issue #521) ---
-
-/**
- * Die Kommentare eines Dokuments als Array — bei jedem Tracker.
- *
- * GitHub, GitLab und Toolbox liefern ein `comments`-Feld, der lokale Tracker haengt
- * Kommentare an den Body (`commentIssue`). `reviewZustand` liest die Runden-Anker
- * ausschliesslich aus dem Array: Ohne diese Trennung ergaebe die Ableitung beim lokalen
- * Tracker nie `befunde` oder `grenze`, und das Routing-Label fiele dort nach der ersten
- * Runde statt nach der dritten.
- *
- * Dieselbe Zweiteilung und dieselbe eng begrenzte Kopplung an LOKALER_KOMMENTARKOPF wie
- * in `neueKommentare` — nur ohne Vorher-Stand: Hier zaehlen alle Runden des Dokuments,
- * nicht die dieser Session.
- */
-function kommentareVon(full) {
-  if (Array.isArray(full?.comments)) return full.comments;
-  return String(full?.body || "")
-    .split(LOKALER_KOMMENTARKOPF)
-    .slice(1)
-    .map((t) => ({ body: t.trim() }))
-    .filter((k) => k.body !== "");
-}
-
-/**
- * Wie viele Pruefrunden der Zielstufe am Dokument stehen.
- *
- * Gezaehlt wird die ANZAHL der Anker, nicht die Nummer darin: `/issue-review` nummeriert
- * je Session ab 1, drei Naechte hinterlassen dreimal `Runde 1`. Wer die hoechste Nummer
- * naehme, erreichte die Grenze nie.
- *
- * board.mjs bleibt die einzige Wahrheit ueber den ZUSTAND; gezaehlt wird hier nur fuer die
- * beiden Schleifengrenzen, und dafuer liefert `reviewZustand` keine Zahl. Der Markername
- * kommt aus STUFEN_MARKER und wird nicht zweitgeschrieben.
- */
-function ankerZahl(kommentare, stufe) {
-  const marker = STUFEN_MARKER[stufe];
-  if (!marker) return 0;
-  const anker = new RegExp(String.raw`^\s*##\s*${marker.replace(/:$/, "")},\s*Runde\b`, "i");
-  return kommentare.filter((k) => anker.test(String(k?.body || "").split("\n")[0] || "")).length;
-}
-
-/**
- * Ist die Rundengrenze aus board.mjs erreicht?
- *
- * Bewusst als Verneinung von `<`: Fehlt der Nachbar, ist `GRENZE_RUNDEN` undefined, jeder
- * Vergleich false — und die Antwort faellt auf "ja, Grenze erreicht", also auf "keine
- * Session". Das ist die sichere Richtung; ein `>=` haette dort endlos weitergeprueft.
- */
-const grenzeErreicht = (anker) => !(anker < GRENZE_RUNDEN);
-
-// Wann ein Dokument fertig ist. `ausgefallen` steht bewusst NICHT dabei: Das ist ein
-// technisches Scheitern, kein Ergebnis — die Freigabe darf sich daran nicht verbrauchen.
-const ENDZUSTAENDE = new Set(["fertig", "grenze"]);
-
-/**
- * Welches der vier Enden am aktuellen Board-Zustand greift — oder `null` fuer eine
- * weitere Runde (Plan #513, A3).
- *
- * Rueckgabe `{ endzustand, meldung }`. Getrennt von der Schleife gehalten, weil beide
- * Verschiedenes leisten: Die Schleife startet Sessions, diese Funktion liest, was der
- * Board-Zustand bedeutet — und die Reihenfolge der vier Faelle steht so auf einem Blick.
- *
- *   1. Endzustand: `reviewZustand` liefert `fertig` oder `grenze`, oder das Dokument
- *      traegt `kit:klaeren`. Die Labels `review:fertig`/`review:grenze` sind Projektion
- *      davon und werden nicht gelesen — sie entstehen nur mit `statusLabels: true`, und
- *      ohne Opt-in fiele das Routing-Label sonst nie.
- *   2. Rundengrenze erreicht — ohne Endzustand, das Label bleibt.
- *   3. Die letzte Session hat keine neue Runde hinterlassen. Ohne diese Bedingung kann
- *      die Schleife endlos laufen: Eine Session, die per Timeout stirbt (ausdruecklich
- *      KEIN harter Stopp) oder nichts schreibt, erhoeht den Rundenstand nicht, und
- *      `--max` zaehlt hier Ausgangsdokumente, nicht Sessions.
- *   4. Ein Reviewer ist ausgefallen.
- *
- * Die Reihenfolge ist nicht beliebig: Der Endzustand steht vor 3, sonst gaelte eine
- * Session, die den Marker setzt ohne zu kommentieren, als ergebnislos.
- *
- * `vorAnker` ist `null`, solange in diesem Lauf keine Session gelaufen ist. Die Faelle 3
- * und 4 beurteilen, was die letzte Session hinterlassen hat, und ohne Session gibt es
- * nichts zu beurteilen: Als Vorpruefung bekaeme ein Dokument, das eine fruehere Nacht als
- * `ausgefallen` zuruecklaesst, nie wieder eine Session — obwohl es keinen Endzustand
- * traegt und der Schritt sich gerade deshalb wiederholen soll.
- */
-function pruefEnde(stand, stufe, anker, vorAnker) {
-  // Seit Issue #522 traegt jedes Ende auch den Zustand: Der Ergebnisstand nennt ihn
-  // woertlich, und ein zweites Mal berechnet waere er eine zweite Wahrheit. `klaeren`
-  // ist der einzige Wert, den `reviewZustand` nicht kennt — er steht am Label.
-  const klaeren = hatKlaerenLabel(stand);
-  const zustand = klaeren ? "klaeren" : reviewZustand(stand.body, kommentareVon(stand), stufe);
-  // `ohneAnker` unterscheidet die leer gelaufene Session vom offenen Dokument: Beide
-  // lassen das Routing-Label stehen, aber nur die eine heisst morgens `ohneErgebnis`.
-  const ende = (endzustand, meldung, ohneAnker = false) => ({ endzustand, zustand, ohneAnker, meldung });
-
-  if (klaeren) {
-    return ende(true, `traegt ${KLAEREN_LABEL} — eine offene Entscheidung wartet auf einen Menschen.`);
-  }
-  if (ENDZUSTAENDE.has(zustand)) {
-    return ende(true, `Endzustand '${zustand}' nach ${anker} Runde(n) — keine weitere Pruef-Session.`);
-  }
-  if (grenzeErreicht(anker)) {
-    return ende(false, `${anker} Runde(n) gelaufen, Rundengrenze erreicht — ohne Endzustand.`);
-  }
-  if (vorAnker === null) return null;
-  if (anker <= vorAnker) {
-    return ende(false, "die Pruef-Session hinterliess keine neue Runde — ohne Ergebnis, bitte morgens sichten.", true);
-  }
-  if (zustand === "ausgefallen") {
-    return ende(false, "ein Reviewer ist ausgefallen — die Pruefung endet hier, das Dokument bleibt offen.");
-  }
+function kettenAusschluss(issue) {
+  if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
+  if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
+  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
   return null;
 }
 
 /**
- * Laesst EIN erzeugtes Dokument pruefen, bis `pruefEnde` ein Ende meldet.
+ * Waehlt die Ketten einer Nacht aus allen Karten (Plan #638, A2, A13, E4, W5).
  *
- * Rueckgabe `{ endzustand, hardStop, zustand, runden, ohneAnker, sessions }`. Der Zustand
- * wird bei jedem Durchgang frisch vom Board gelesen und nicht aus dem fortgeschrieben, was
- * der Runner sich gemerkt hat — geschrieben hat ihn eine fremde Session.
- *
- * `sessions` traegt je gelaufener Runde einen Eintrag mit Dauer und Kennzahlen (Issue
- * #522). Eine am Guard gestoppte Runde steht NICHT darin: Sie hat nichts geprueft, und
- * ihre Kosten als Pruefrunde zu buchen hiesse, den Ausfall als Arbeit zu zaehlen.
+ * Reine Funktion ueber `issue list` OHNE Status-Filter: Was das Label traegt, aber nicht
+ * laufen darf, geht mit Grund in `uebersprungen` — im Ergebnisstand sichtbar, das Label
+ * bleibt stehen. Kandidaten laufen in Listenreihenfolge; ab `max` bleiben sie liegen.
  */
-async function pruefeDokument(dokId, args, stufe) {
-  let vorAnker = null; // null heisst: in diesem Lauf ist noch keine Session gelaufen
-  const sessions = [];
-  for (;;) {
-    const stand = board("issue", "get", dokId);
-    const anker = ankerZahl(kommentareVon(stand), stufe);
-    const ende = pruefEnde(stand, stufe, anker, vorAnker);
-    if (ende !== null) {
-      log(`  Dokument #${dokId}: ${ende.meldung}`);
-      return {
-        endzustand: ende.endzustand, hardStop: false,
-        zustand: ende.zustand, runden: anker, ohneAnker: ende.ohneAnker, sessions,
-      };
-    }
-
-    log(`Pruef-Session zu Dokument #${dokId}: Runde ${anker + 1} von hoechstens ${GRENZE_RUNDEN}.`);
-    const started = Date.now();
-    // Wie im Review-Modus mit REVIEW_TIMEOUT_MS und nicht mit --timeout-min: Es ist
-    // dieselbe /issue-review-Session, und die baut nichts und committet nichts.
-    const res = await runSession(dokId, args, {
-      prompt: `/issue-review #${dokId}\n\n${UNBEAUFSICHTIGT_ZUSATZ}`,
-      timeoutMs: REVIEW_TIMEOUT_MS,
-    });
-    const dauerMs = Date.now() - started;
-    const minutes = (dauerMs / 60000).toFixed(1);
-    if (reviewRundeGestoppt({ id: dokId }, res, minutes, "Pruef-Session")) {
-      return { endzustand: false, hardStop: true, zustand: null, runden: anker, ohneAnker: false, sessions };
-    }
-    sessions.push({ dauerMs, kennzahlen: leseKennzahlen(res.stdout) });
-    vorAnker = anker;
-  }
-}
-
-/**
- * Phase 2 zu EINER Quelle: alle ihre Dokumente pruefen, dann die Freigabe verbrauchen.
- *
- * Das Routing-Label faellt erst, wenn JEDES erzeugte Dokument einen Endzustand traegt.
- * Ein Label, das nach dem ersten fertigen Paket faellt, liesse die uebrigen ungeprueft
- * liegen — und die naechste Nacht faende keine Freigabe mehr, sie nachzuholen.
- *
- * Bricht die Nacht vorher ab, bleibt das Label stehen und der Schritt wiederholt sich ohne
- * neue menschliche Geste. Die Alternative — Verbrauch beim Start — zwaenge nach jedem
- * technischen Ausfall zu einer neuen Freigabe, ohne dass etwas geschehen waere.
- *
- * `issue label remove` und nie `add`: Ein Lauf, der Routing-Labels setzen koennte, koennte
- * sich selbst freigeben.
- */
-async function pruefeErzeugtes(ergebnis, args, stufe) {
-  const einheit = ergebnis.einheit;
-  let alleFertig = true;
-  let ohneAnker = false;
-
-  for (const dokument of ergebnis.erzeugt) {
-    const runde = await pruefeDokument(dokument.id, args, stufe);
-    // In dasselbe Objekt hinein, das schon im Ergebnisstand steht (Issue #522): Ein
-    // Abbruch mittendrin laesst die uebrigen Dokumente sichtbar ungeprueft zurueck.
-    Object.assign(dokument, { zustand: runde.zustand, runden: runde.runden, sessions: runde.sessions });
-    // `dauerMs` ist die Summe ueber ALLE Sessions der Einheit — die Erzeugungs-Session
-    // steht schon drin, die Pruefrunden kommen dazu.
-    einheitErgaenzen(einheit, {
-      dauerMs: (einheit.dauerMs ?? 0) + runde.sessions.reduce((n, s) => n + s.dauerMs, 0),
-    });
-    if (runde.hardStop) {
-      // An der Einheit der QUELLE, denn die ist die Einheit — das gepruefte Dokument
-      // steht im Grundtext (Issue #558). Ein `fehlerEinheit` auf die Dokumentnummer
-      // zeigte auf etwas, das im Stand gar keine Einheit ist.
-      hefteStoppGrund(einheit);
-      return { verbraucht: false, hardStop: true };
-    }
-    if (!runde.endzustand) alleFertig = false;
-    if (runde.ohneAnker) ohneAnker = true;
-  }
-
-  if (!alleFertig) {
-    log(`  Issue #${ergebnis.quelle}: nicht jedes Dokument traegt einen Endzustand — '${args.erzeugeLabel}' bleibt stehen.`);
-    einheitErgaenzen(einheit, { ausgang: ohneAnker ? "ohneErgebnis" : "offen", labelEntfernt: false });
-    return { verbraucht: false, hardStop: false };
-  }
-  board("issue", "label", "remove", ergebnis.quelle, args.erzeugeLabel);
-  log(`  Issue #${ergebnis.quelle}: ${dokumentListe(ergebnis.erzeugt)} geprueft — '${args.erzeugeLabel}' entfernt.`);
-  einheitErgaenzen(einheit, { ausgang: "verbraucht", labelEntfernt: true });
-  return { verbraucht: true, hardStop: false };
-}
-
-/**
- * Phase 2 ueber alle Quellen, die ein Dokument hervorgebracht haben — `true` bei hartem Stopp.
- *
- * Quellen ohne Dokument bleiben draussen: Bei ihnen waere "alle Dokumente tragen einen
- * Endzustand" leer erfuellt, und das Routing-Label fiele, obwohl nichts entstanden ist.
- */
-async function laufePruefphase(mitDokument, args, stufe) {
-  let verbraucht = 0;
-  let hardStop = false;
-
-  for (const ergebnis of mitDokument) {
-    const runde = await pruefeErzeugtes(ergebnis, args, stufe);
-    if (runde.verbraucht) verbraucht++;
-    if (runde.hardStop) {
-      hardStop = true;
-      break;
-    }
-  }
-
-  log(`Nacht-Pruefung beendet (Stufe ${stufe}): ${verbraucht} von ${mitDokument.length} Quelle(n) `
-    + `freigegeben, ${mitDokument.length - verbraucht} behalten ihr Label${hardStop ? ", HARTER STOPP" : ""}.`);
-  return hardStop;
-}
-
-/**
- * Phase 1 der Erzeugungsschleife ueber alle Kandidaten (Issue #520).
- *
- * `--max` zaehlt hier Ausgangsdokumente, nicht Sessions (Issue #408: "hoechstens drei
- * Ausgangsdokumente je Nacht") — eine fortgesetzte Quelle ist verbraucht, auch wenn fuer
- * sie keine Session lief. So zaehlt der Ernstfall dasselbe wie `berichteErzeugungDryRun`.
- *
- * Kein Board-Move in keinem Ausgang: Die Quellen liegen im Backlog und bleiben dort.
- * Je Ausgangsdokument entsteht eine Einheit im Ergebnisstand (Issue #522) — auch fuer die
- * uebersprungenen und die liegengebliebenen, sonst zaehlte der Stand weniger Quellen als
- * das Textprotokoll daneben.
- */
-async function runErzeugungsLoop(kandidaten, args) {
-  const stufe = args.stufe;
-  const ergebnisse = [];
-  let verarbeitet = 0;
-  let uebersprungen = 0;
-  let hardStop = false;
-
-  for (const kandidat of kandidaten) {
-    if (verarbeitet >= args.max) {
-      log(`  #${kandidat.id} ${kandidat.title} -> ueber --max ${args.max}, bleibt liegen.`);
-      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "liegengeblieben" });
-      continue;
-    }
-    // Die teure zweite Stufe der Auswahl, an derselben Stelle, an der der Review-Modus
-    // seinen Marker prueft: Sie braucht den Body und damit ein `issue get` je Dokument.
-    const grund = erzeugungsEintritt(board("issue", "get", String(kandidat.id)).body, stufe);
+export function waehleKettenKandidaten(issues, label, max) {
+  const kandidaten = [];
+  const uebersprungen = [];
+  const liegengeblieben = [];
+  for (const issue of issues || []) {
+    if (!(issue?.labels || []).includes(label)) continue;
+    const grund = kettenAusschluss(issue);
     if (grund !== null) {
-      log(`#${kandidat.id} uebersprungen: ${grund}.`);
-      uebersprungen++;
-      einheitErgaenzen(einheitAnlegen(kandidat.id, kandidat.title), { ausgang: "uebersprungen", grund });
+      uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
       continue;
     }
-
-    verarbeitet++;
-    // Wie in der Review-Schleife VOR der Session (Issue #489): Bricht der Lauf mitten in
-    // der Runde ab, steht die Quelle trotzdem im Stand — mit "unbekannt".
-    const einheit = einheitAnlegen(kandidat.id, kandidat.title);
-    const runde = await erzeugeAusQuelle(kandidat, args, stufe, verarbeitet, einheit);
-    if (runde.hardStop) {
-      hardStop = true;
-      break;
+    if (kandidaten.length >= max) {
+      liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
+      continue;
     }
-    ergebnisse.push(runde.ergebnis);
+    kandidaten.push(issue);
   }
-
-  const mitDokument = ergebnisse.filter((e) => e.erzeugt.length > 0);
-  const fortgesetzt = mitDokument.filter((e) => e.fortgesetzt).length;
-  log(`Nacht-Erzeugung beendet (Stufe ${stufe}): ${mitDokument.length - fortgesetzt} erzeugt, `
-    + `${fortgesetzt} fortgesetzt, ${ergebnisse.length - mitDokument.length} ohne Dokument, `
-    + `${uebersprungen} uebersprungen${hardStop ? ", HARTER STOPP" : ""}.`);
-
-  // Phase 2 (Issue #521): Ein erzeugtes Dokument ist nichts wert, solange es ungeprueft im
-  // Backlog liegt. Nach einem harten Stopp in Phase 1 gar nicht mehr — dann ist die Lage
-  // unklar, und Sessions auf unklarer Lage sind genau das, was der Stopp verhindert.
-  if (!hardStop) hardStop = await laufePruefphase(mitDokument, args, stufe);
-
-  log(`Morgen-Ritual: die Befunde an den entstandenen Dokumenten sichten und nach Backlog ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
-  laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
-  process.exit(hardStop ? 1 : 0);
+  return { kandidaten, uebersprungen, liegengeblieben };
 }
 
 /**
- * Programm 3 — der Erzeugungsmodus (Issue #513, A1; Geruest aus Issue #518).
- *
- * Laesst aus geprueften Dokumenten die naechste Stufe entstehen: aus einem Fachplan einen
- * Plan, aus einem Plan die Arbeitspakete. Exklusiv zu den beiden anderen Programmen —
- * `pruefeArgs` weist `--review --erzeuge` ab.
- *
- * Der Guard steht VOR dem Vorflug: Ein Lauf, der ohnehin abgewiesen wird, soll keine
- * Vorflug-Session kosten. Der Vorflug selbst ist derselbe harte Stopp wie im Review-Modus,
- * weil die spaetere Pruefschleife dieselben `/issue-review`-Sessions faehrt.
+ * Der Prompt einer Korrektursession (Plan #638, A7): genau die Verstoesse, nichts sonst.
  */
-export async function laufeErzeugungsModus(args) {
-  erzeugungsTrackerPruefen();
+export function korrekturPrompt(dokId, verstoesse) {
+  const liste = (verstoesse || []).map((v) => {
+    const gate = v.gate ? `${v.gate}: ` : "";
+    return `- ${gate}${v.meldung ?? JSON.stringify(v)}`;
+  }).join("\n");
+  return [
+    `Das Dokument #${dokId} hat die Formpruefung nicht bestanden (\`node .claude/kit/board.mjs issue check-form ${dokId}\`):`,
+    liste,
+    "",
+    `Behebe genau diese Verstoesse im Body von #${dokId}. Lies den Body mit \`node .claude/kit/board.mjs issue get ${dokId}\`,`,
+    "schreibe den vollstaendigen korrigierten Body stueckweise in eine Datei ausserhalb des Projektverzeichnisses",
+    `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
+    "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
+    "",
+    KETTE_ZUSATZ,
+  ].join("\n");
+}
 
-  const stufe = args.stufe;
-  const backlog = board("issue", "list", "--status", "backlog");
-  const { kandidaten, uebersprungen } = selectErzeugungsCandidates(backlog, { label: args.erzeugeLabel, stufe });
+/** Der Text eines Abschnitts ohne Ueberschrift, fuer den Halt-Kommentar. */
+function abschnittText(body, ueberschrift) {
+  const abschnitt = abschnittLesen(body, ueberschrift);
+  return abschnitt ? abschnitt.zeilen.join("\n").trim() : "";
+}
 
-  // Ein Lauf ohne Arbeit waere sonst im Protokoll nicht von einem leeren Board zu
-  // unterscheiden (dieselbe Ueberlegung wie im Review-Modus). Seit Issue #522 auch im
-  // Ergebnisstand: Sonst zaehlte er weniger Quellen als das Textprotokoll daneben.
+/**
+ * Beim lokalen Tracker liegt das Board als Dateien im Repo — im Worktree also als Kopie.
+ * Eine Session dort schriebe Karten in den Worktree, und die Hauptkopie saehe nichts.
+ * Deshalb zeigt die Config im Worktree auf das issues-Verzeichnis der Hauptkopie
+ * (`board.mjs` loest den Pfad mit `resolve` auf, ein absoluter traegt). GitHub, GitLab
+ * und Toolbox sind nicht betroffen: Ihr Board liegt nicht im Repo.
+ */
+function trackerImWorktreeUmleiten(wt, repoRoot) {
+  if (config.issueTracker !== "local") return;
+  const pfad = join(wt, ".claude", "workflow.config.json");
+  if (!existsSync(pfad)) return;
+  const wtConfig = JSON.parse(readFileSync(pfad, "utf-8"));
+  wtConfig.local = { ...wtConfig.local, issuesDir: resolve(repoRoot, config.local?.issuesDir || "issues") };
+  writeFileSync(pfad, JSON.stringify(wtConfig, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Eine Session der Kette mit Zeit- und Kostenbudget (Plan #638, A5, A6).
+ *
+ * `stufeStart` und `budgetMs` beschreiben die Stufe: Jede Session bekommt als Timeout,
+ * was von der Stufe noch uebrig ist — Korrekturrunden zaehlen gegen dieselbe Stufe.
+ * Nach der Session werden die Kosten addiert und gegen das Kettenbudget gehalten; ein
+ * Ueberschreiten endet NACH der Session, nicht mittendrin (ein halb geschriebenes
+ * Dokument waere der teurere Fehler). Rueckgabe: `{ ausgang, grund, dauerMs, kennzahlen, res }`.
+ */
+async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs) {
+  const rest = budgetMs - (Date.now() - stufeStart);
+  if (rest < KETTE_MINDEST_REST_MS) {
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null };
+  }
+  const t = Date.now();
+  const res = await runSession(kette.F, kette.args, {
+    prompt: `${prompt}\n\n${KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+  });
+  const dauerMs = Date.now() - t;
+  const minuten = (dauerMs / 60000).toFixed(1);
+  const kennzahlen = leseKennzahlen(res.stdout);
+  kostenAddieren(kette.kosten, kennzahlen);
+  if (LAUF) kostenAddieren(LAUF, kennzahlen);
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (timedOut) {
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen };
+  }
+  if (res.error || res.status !== 0) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen };
+  }
+  // Das Kostenbudget wird hier nur gemerkt: Die Stufe verbucht erst, was die Session
+  // hinterlassen hat (den Plan, die Korrektur), und bricht dann ab — sonst stuende ein
+  // angelegter Plan nicht im Ergebnisstand.
+  if (kette.kosten.kostenSumme > kette.budget.kostenUsd && !kette.kostenGrund) {
+    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${kette.budget.kostenUsd} $ nach der Stufe ${stufe}`;
+  }
+  return { ausgang: "fertig", dauerMs, kennzahlen, res };
+}
+
+/** Der Abbruch wegen Kosten — `null`, solange das Budget reicht. */
+function kostenErschoepft(kette) {
+  return kette.kostenGrund ? { ausgang: "abgebrochen", grund: kette.kostenGrund } : null;
+}
+
+/**
+ * Stufe Plan: /techplan, Formpruefung mit Korrekturrunden, Stopp-Frage (Plan #638, A7, A8, E2).
+ */
+async function stufePlan(kette) {
+  const { F, budget } = kette;
+  const stufeStart = Date.now();
+  const budgetMs = budget.planMin * 60 * 1000;
+  const stand = { id: null, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
+  kette.stufen.plan = stand;
+  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = s.kennzahlen ?? stand.kennzahlen; };
+
+  const vorher = new Set(board("issue", "list").map((i) => String(i.id)));
+  log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
+  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs);
+  summe(s);
+  const notizen = notizenZurueck(kette.wt, kette.repoRoot);
+  for (const n of notizen) log(`  Vorhaben-Notiz aus dem Worktree in die Hauptkopie geholt: .claude/${n}`);
+  if (s.ausgang !== "fertig") return s;
+
+  // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
+  // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
+  const neue = board("issue", "list")
+    .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
+    .sort((a, b) => Number(b.id) - Number(a.id));
+  if (neue.length === 0) return { ausgang: "abgebrochen", grund: "kein Plan entstanden — die Session hat kein [Plan]-Dokument mit der Herkunftszeile angelegt" };
+  stand.id = String(neue[0].id);
+  stand.weitere = neue.slice(1).map((i) => String(i.id));
+  const weitere = stand.weitere.length ? ` (weitere: ${stand.weitere.map((i) => "#" + i).join(", ")})` : "";
+  log(`  Plan #${stand.id} entstanden aus Issue #${F}${weitere}.`);
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+
+  const form = await formSicherstellen(kette, stand, stufeStart, budgetMs, summe);
+  if (form !== null) return form;
+
+  // Die Stopp-Frage steht im Plan (A8): `## Offene Fragen` ohne `- Keine.`.
+  const body = board("issue", "get", stand.id).body;
+  const grund = stoppFragenGrund(body);
+  if (grund !== null) {
+    return { ausgang: "angehalten", grund: `Stopp-Frage im Plan #${stand.id}`, dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+  }
+  return { ausgang: "fertig", id: stand.id };
+}
+
+/**
+ * Formpruefung mit Korrekturrunden (Plan #638, A7) — `null`, wenn die Form gruen ist,
+ * sonst der Ausgang der Stufe.
+ *
+ * Das Kommando sagt "fertig", nicht die Selbstauskunft der Session, obwohl der Skill
+ * selbst prueft. Jede Korrekturrunde ist eine frische Session mit genau den Verstoessen;
+ * ihre Zeit zaehlt gegen dieselbe Stufe.
+ */
+async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
+  const { budget } = kette;
+  for (;;) {
+    const form = boardRoh("issue", "check-form", stand.id);
+    if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
+    if (form.json.ok) {
+      log(`  Formpruefung #${stand.id} gruen.`);
+      return null;
+    }
+    const verstoesse = (form.json.verstoesse || []).map((v) => `${v.gate}: ${v.meldung}`).join("; ");
+    if (stand.korrekturrunden >= budget.korrekturrunden) {
+      return { ausgang: "abgebrochen", grund: `Form nach ${stand.korrekturrunden} Korrekturrunde(n) weiterhin verletzt (#${stand.id}): ${verstoesse}` };
+    }
+    stand.korrekturrunden++;
+    log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
+    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, form.json.verstoesse), stufeStart, budgetMs);
+    summe(k);
+    if (k.ausgang !== "fertig") return k;
+    if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+  }
+}
+
+/**
+ * Stufe Review: /issue-review am Plan, Halt an kit:klaeren (Plan #638, A8, A16).
+ */
+async function stufeReview(kette, planId) {
+  const { budget } = kette;
+  const stand = { dauerMs: 0, kennzahlen: null, marker: false };
+  kette.stufen.review = stand;
+  const vorher = board("issue", "get", planId);
+  log(`  Stufe review: /issue-review #${planId} (Budget ${budget.reviewMin} min).`);
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000);
+  stand.dauerMs = s.dauerMs;
+  stand.kennzahlen = s.kennzahlen;
+  if (s.ausgang !== "fertig") return s;
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+  const nachher = board("issue", "get", planId);
+  stand.marker = /^\s*Plan-Review:\s*\S/m.test(nachher.body || "");
+  if (hatKlaerenLabel(nachher)) {
+    const neue = neueKommentare(vorher, nachher);
+    return { ausgang: "angehalten", grund: `Stopp-Frage aus dem Review von #${planId}`, dokId: planId, frage: neue.at(-1) ?? `siehe den letzten Kommentar an #${planId}` };
+  }
+  log(`  Review #${planId} durch${stand.marker ? ", Marker gesetzt" : ""}.`);
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Stufe Pakete: /issues am Plan, Formpruefung je Paket, Halt am Kommentar (Plan #638, A7, E2).
+ *
+ * Ergebnis sind nur Karten mit `Plan: Issue #M` (E2); andere neue Karten stehen als
+ * `nichtZuordenbar` in der Einheit. Kein Paket und ein Kommentar `Kein Eingang für
+ * /issues` am Plan heisst angehalten; kein Paket ohne den Kommentar heisst abgebrochen.
+ */
+async function stufePakete(kette, planId) {
+  const { budget } = kette;
+  const stufeStart = Date.now();
+  const budgetMs = budget.paketeMin * 60 * 1000;
+  const stand = { ids: [], nichtZuordenbar: [], dauerMs: 0, kennzahlen: null, korrekturrunden: 0 };
+  kette.stufen.pakete = stand;
+  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = s.kennzahlen ?? stand.kennzahlen; };
+
+  const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
+  const vorherPlan = board("issue", "get", planId);
+  log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs);
+  summe(s);
+  if (s.ausgang !== "fertig") return s;
+
+  const neue = board("issue", "list").filter((i) => !vorherIds.has(String(i.id)));
+  const pakete = neue.filter((i) => stammtAusErzeugung(i, planId, "issue"));
+  stand.ids = pakete.map((i) => String(i.id));
+  stand.nichtZuordenbar = neue.filter((i) => !stammtAusErzeugung(i, planId, "issue")).map((i) => String(i.id));
+  if (stand.nichtZuordenbar.length > 0) {
+    log(`  Neue Karten ohne Herkunftszeile 'Plan: Issue #${planId}', nicht zuordenbar: ${stand.nichtZuordenbar.map((i) => "#" + i).join(", ")}.`);
+  }
+  if (pakete.length === 0) {
+    const nachherPlan = board("issue", "get", planId);
+    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => String(k).startsWith(ISSUES_HALT_KOPF));
+    if (halt) {
+      return { ausgang: "angehalten", grund: `Stopp-Frage beim Schneiden von #${planId}`, dokId: planId, frage: halt };
+    }
+    return { ausgang: "abgebrochen", grund: `kein Paket entstanden — die Session hat keine Karte mit 'Plan: Issue #${planId}' angelegt` };
+  }
+  log(`  Pakete aus Plan #${planId}: ${stand.ids.map((i) => "#" + i).join(", ")}.`);
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+
+  // Formpruefung je Paket, mit demselben Korrekturbudget je Dokument wie beim Plan.
+  for (const id of stand.ids) {
+    const paketStand = { id, korrekturrunden: 0 };
+    const form = await formSicherstellen(kette, paketStand, stufeStart, budgetMs, summe);
+    stand.korrekturrunden += paketStand.korrekturrunden;
+    if (form !== null) return form;
+  }
+  return { ausgang: "fertig", ids: stand.ids };
+}
+
+/**
+ * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9).
+ *
+ * Ihr Text kommt aus dem `result`-Ereignis. Zeitbudget, Fehlstart oder fehlender Text
+ * lassen die Kette trotzdem `fertig` enden — die Abdeckung ist eine Auskunft, kein Tor
+ * (Kriterium 5); der Grund steht an der Stufe. Nur das Kostenbudget bricht ab.
+ */
+async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
+  const { budget } = kette;
+  const stand = { dauerMs: 0, kennzahlen: null, text: null };
+  kette.stufen.abdeckung = stand;
+  const vorherKarten = board("issue", "list").length;
+  const vorherFachplan = board("issue", "get", fachplanId);
+  log(`  Stufe abdeckung: Pakete gegen Fachplan #${fachplanId} (Budget ${budget.abdeckungMin} min).`);
+  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), Date.now(), budget.abdeckungMin * 60 * 1000);
+  stand.dauerMs = s.dauerMs;
+  stand.kennzahlen = s.kennzahlen;
+  if (s.ausgang !== "fertig") {
+    stand.grund = s.grund;
+    log(`  Abdeckung ohne Text: ${s.grund}.`);
+    return { ausgang: "fertig" };
+  }
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+  stand.text = leseErgebnisText(s.res.stdout);
+  if (stand.text === null) {
+    stand.grund = "die Abdeckungs-Session lieferte keinen Text";
+    log(`  Abdeckung ohne Text: ${stand.grund}.`);
+  }
+  // Der Prompt verbietet Schreiben; ein Verstoss ist ein Befund fuer den Morgen, kein
+  // Grund, die Pakete zu verwerfen.
+  const nachherKarten = board("issue", "list").length;
+  const nachherFachplan = board("issue", "get", fachplanId);
+  if (nachherKarten !== vorherKarten || neueKommentare(vorherFachplan, nachherFachplan).length > 0) {
+    kette.abdeckungSchrieb = true;
+    log("  Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen soll — steht im Ergebnisstand.");
+  }
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
+ * #638, A8): ein Kommentar je Karte, kein Label, kein Move.
+ */
+function aeltereUeberholen(kette, aeltere, neuerPlan) {
+  for (const id of aeltere) {
+    board("issue", "comment", id, "--text", `Ueberholt durch Plan #${neuerPlan} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
+    log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+  }
+}
+
+/**
+ * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar am Fachplan und
+ * kit:klaeren dort. Der Plan bleibt als Entwurf stehen; die naechste Kette beginnt von
+ * vorn. Das Label abnehmen darf nur der Mensch — dieselbe Regel wie im Implementierungslauf.
+ */
+function haltAmFachplan(kette, ergebnis) {
+  const pfad = join(tmpdir(), `night-halt-${process.pid}-${kette.F}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [
+    KETTE_HALT_ANKER,
+    "",
+    `Kette ${LAUF_STEMPEL ?? "ohne Stempel"}, Stufe ${ergebnis.stufe}, Dokument #${ergebnis.dokId}: ${ergebnis.grund}.`,
+    "",
+    ergebnis.frage,
+    "",
+    `Plan und bis dahin geschnittene Pakete bleiben als Entwurf stehen. Antwort bitte in den Fachplan schreiben, ${KLAEREN_LABEL} abnehmen und das Label ${kette.budget.label} neu setzen — die naechste Kette beginnt von vorn.`,
+    "",
+  ].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    board("issue", "comment", kette.F, "--text-file", pfad);
+    board("issue", "label", "add", kette.F, KLAEREN_LABEL);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
+// --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
+//
+// Der Mensch liest morgens am Fachplan, was die Nacht entschieden hat — bei jedem
+// Ausgang. Der Bericht ist Verlauf, kein Vertrag: Verbindlich wird eine Entscheidung
+// erst als Satz im Fachplan. Kann der Tracker ihn nicht annehmen, wartet er als Datei in
+// der Hauptkopie und geht beim naechsten Start jeder Betriebsart nach.
+
+export const BERICHT_ANKER = "## Nachtbericht, Kette";
+export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.";
+const BERICHT_DATEI_PRAEFIX = "night-bericht-";
+const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
+const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
+const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
+
+function minutenText(ms) {
+  return ((ms ?? 0) / 60000).toFixed(1);
+}
+
+/**
+ * Alle Kommentare einer Karte, aelteste zuerst — dieselbe Zweiteilung wie in
+ * `neueKommentare`: GitHub, GitLab und Toolbox liefern ein Array, der lokale Tracker
+ * haengt sie an den Body.
+ */
+export function kommentareVon(issue) {
+  if (Array.isArray(issue?.comments)) return issue.comments.map((k) => String(k?.body ?? ""));
+  return String(issue?.body || "").split(LOKALER_KOMMENTARKOPF).slice(1).map((k) => k.trim()).filter(Boolean);
+}
+
+/** Der Kommentar `## Einarbeitung, Runde N` am Plan — bei mehreren der letzte; null ohne. */
+export function einarbeitungVon(plan) {
+  const treffer = kommentareVon(plan).filter((k) => EINARBEITUNG_KOPF.test(k));
+  return treffer.length > 0 ? treffer.at(-1) : null;
+}
+
+/** Die Aufzaehlungspunkte erster Ebene eines Abschnitts, ausserhalb von Codebloecken, ohne `- Keine.`. */
+function punkteErsterEbene(body, ueberschrift) {
+  const abschnitt = abschnittLesen(body, ueberschrift);
+  if (!abschnitt) return [];
+  return abschnitt.zeilen
+    .filter((z, i) => abschnitt.ausserhalb[i] && /^[-*+]\s+\S/.test(z))
+    .map((z) => z.replace(/^[-*+]\s+/, "").trim())
+    .filter((z) => !/^keine\.?$/i.test(z));
+}
+
+/** Die `Entscheidung:`-Zeilen aus `## Kontext` eines Pakets. */
+function entscheidungsZeilen(body) {
+  const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
+  if (!abschnitt) return [];
+  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
+}
+
+function berichtStufen(einheit, plan, pakete) {
+  const stufen = einheit.stufen ?? {};
+  const p = stufen.plan;
+  const zeilen = [];
+  if (p?.id) {
+    const pruefer = String(plan?.body || "").match(/^\s*Plan-Review:\s*(.+?)\s*$/m)?.[1] ?? "keiner";
+    const kosten = p.kennzahlen?.kostenUsd;
+    const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
+    const titel = plan?.title ? ` (${plan.title})` : "";
+    zeilen.push(`- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`);
+  } else {
+    zeilen.push("- Plan: keiner entstanden.");
+  }
+  const ids = stufen.pakete?.ids ?? [];
+  const paketText = (id) => {
+    const titel = pakete.find((k) => String(k.id) === String(id))?.title;
+    return titel ? `#${id} ${titel}` : `#${id}`;
+  };
+  zeilen.push(ids.length > 0
+    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map(paketText).join(", ")}.`
+    : "- Pakete: keine.");
+  const fremd = stufen.pakete?.nichtZuordenbar ?? [];
+  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  return zeilen;
+}
+
+function berichtAbgelehnt(einarbeitung) {
+  if (einarbeitung === null) return ["- keine Einarbeitung gefunden"];
+  const abgelehnt = einarbeitung.split(/\r\n|\r|\n/).map((z) => z.trim()).filter((z) => /abgelehnt/i.test(z));
+  if (abgelehnt.length === 0) return ["- keine abgelehnten Befunde"];
+  return abgelehnt.map((z) => (/^[-*+]\s/.test(z) ? z : `- ${z}`));
+}
+
+/**
+ * Der Nachtbericht als Markdown (Plan #638, A10). Reine Funktion ueber der Einheit und
+ * den gelesenen Karten, damit sie an Fixtures pruefbar ist; `jetzt` nur fuer Tests.
+ *
+ * Die Entscheidungen der Nacht sind die Aufzaehlungspunkte erster Ebene aus den
+ * Architektonischen Entscheidungen des Plans, woertlich, und die `Entscheidung:`-Zeilen
+ * aus dem Kontext jedes Pakets — fortlaufend nummeriert, mit dem Ort in Klammern.
+ */
+export function berichtBauen(einheit, {
+  plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
+} = {}) {
+  const stufen = einheit.stufen ?? {};
+  const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
+  z.push("### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "");
+  z.push("### Stufen", "", ...berichtStufen(einheit, plan, pakete), "");
+
+  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
+  for (const k of pakete) for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  z.push("### Entscheidungen der Nacht", "");
+  if (entscheidungen.length === 0) z.push("- Keine.");
+  entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
+  z.push("");
+
+  z.push("### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "");
+
+  z.push("### Abdeckung gegen den Fachplan", "");
+  if (abdeckung?.text) z.push(abdeckung.text);
+  else z.push(`Keine Abdeckung: ${abdeckung?.grund ?? "die Kette hat die Stufe abdeckung nicht erreicht"}.`);
+  if (einheit.abdeckungSchrieb) z.push("", "Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen sollte.");
+  z.push("");
+
+  const startZeit = start instanceof Date ? start : new Date(start ?? jetzt);
+  const paketeErreicht = (stufen.pakete?.ids ?? []).length > 0;
+  z.push("### Kennzahlen", "",
+    `- Pakete erreicht: ${paketeErreicht ? "ja" : "nein"}`,
+    `- Dauer der Kette: ${minutenText(jetzt - startZeit.getTime())} min ab ${startZeit.toISOString()}`,
+    `- Entscheidungen: ${entscheidungen.length}`,
+    `- Stopp-Fragen: ${einheit.ausgang === "angehalten" ? 1 : 0}`,
+    `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
+    `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
+    "");
+  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
+  if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
+  z.push(BERICHT_SCHLUSS, "");
+  return z.join("\n");
+}
+
+/**
+ * Schreibt den Bericht als Kommentar an den Fachplan (A11) — ueber eine Datei ausserhalb
+ * des Projekts, nie als Argument. Nimmt der Tracker ihn nicht an, wartet er als
+ * `.claude/night-bericht-<F>-<stempel>.md` in der Hauptkopie. Rueckgabe ist der Wert
+ * fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad. Kein `fail`: Ein
+ * toter Tracker beim letzten Schritt darf die Kette nicht als Absturz enden lassen.
+ */
+export function berichtSchreiben(F, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
+  const name = `${BERICHT_DATEI_PRAEFIX}${F}-${stempel ?? Date.now()}.md`;
+  // Mit der Prozess-Id: Zwei Runner in derselben Sekunde teilten sich sonst die Zwischendatei.
+  const pfad = join(tmpdir(), `${process.pid}-${name}`);
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    const res = boardRoh("issue", "comment", String(F), "--text-file", pfad);
+    if (res.status === 0) {
+      log(`  Nachtbericht als Kommentar an #${F} veroeffentlicht.`);
+      return "veroeffentlicht";
+    }
+    const wartend = join(".claude", name);
+    mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+    writeFileSync(join(repoRoot, wartend), text, "utf-8");
+    log(`  Nachtbericht konnte nicht an #${F} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
+    return wartend;
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
+/**
+ * Traegt wartende Berichte nach — beim Start jeder Betriebsart, nach `vorbereiten`.
+ * Aufsteigend nach Dateiname, jeder genau einmal; gelingt das Schreiben, ist die Datei
+ * weg, sonst bleibt sie liegen und der Lauf geht weiter. Liefert die nachgetragenen Namen.
+ */
+export function berichteNachtragen(repoRoot = process.cwd()) {
+  const ordner = join(repoRoot, ".claude");
+  if (!existsSync(ordner)) return [];
+  const dateien = readdirSync(ordner).filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort();
+  const nachgetragen = [];
+  for (const name of dateien) {
+    const F = name.slice(BERICHT_DATEI_PRAEFIX.length).split("-")[0];
+    const pfad = join(ordner, name);
+    const res = boardRoh("issue", "comment", F, "--text-file", pfad);
+    if (res.status === 0) {
+      rmSync(pfad, { force: true });
+      nachgetragen.push(name);
+      log(`Wartenden Nachtbericht nachgetragen: .claude/${name} -> Kommentar an #${F}.`);
+    } else {
+      log(`Wartender Nachtbericht bleibt liegen: .claude/${name} — ${res.text.slice(0, 200)}`);
+    }
+  }
+  return nachgetragen;
+}
+
+/**
+ * Der Vorflug ist vor der ersten Kette gescheitert: jeder Kandidat bekommt den Kommentar
+ * `Kette nicht gestartet` mit Grund, das Label bleibt — die Geste ist nicht verbraucht,
+ * denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
+ */
+function ketteNichtGestartet(kandidaten, grund) {
+  for (const k of kandidaten) {
+    const res = boardRoh("issue", "comment", String(k.id), "--text", `Kette nicht gestartet: ${grund}`);
+    log(res.status === 0
+      ? `  #${k.id}: Kommentar 'Kette nicht gestartet' geschrieben, Label bleibt.`
+      : `  #${k.id}: Kommentar 'Kette nicht gestartet' nicht geschrieben (${res.text.slice(0, 120)}).`);
+  }
+}
+
+/** Eine Karte ohne harten Stopp — null, wenn der Tracker sie nicht liefert. */
+function leseKarte(id) {
+  const res = boardRoh("issue", "get", String(id));
+  return res.status === 0 && res.json ? res.json : null;
+}
+
+/** Sammelt Plan, Pakete, Einarbeitung und Abdeckung der Kette und baut den Bericht. */
+function berichtFuerKette(kette, einheit, ergebnis) {
+  const planId = kette.stufen.plan?.id;
+  const plan = planId ? leseKarte(planId) : null;
+  const pakete = (kette.stufen.pakete?.ids ?? []).map(leseKarte).filter(Boolean);
+  const a = kette.stufen.abdeckung;
+  return berichtBauen(einheit, {
+    plan, pakete, einarbeitung: plan ? einarbeitungVon(plan) : null,
+    abdeckung: a ? { text: a.text, grund: a.grund } : null,
+    budget: kette.budget, start: kette.start, stempel: LAUF_STEMPEL, frage: ergebnis.frage ?? null,
+  });
+}
+
+/**
+ * Die vier Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
+ * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar).
+ */
+async function stufenDerKette(kette) {
+  const plan = await stufePlan(kette);
+  if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
+  const review = await stufeReview(kette, plan.id);
+  if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
+  const pakete = await stufePakete(kette, plan.id);
+  if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
+  const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
+  if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Eine Kette zu einem Fachplan: Label verbrauchen, Worktree, Stufen, Einheit.
+ *
+ * Rueckgabe ist der Ausgang der Kette. Der Worktree wird in jedem Fall entfernt — auch
+ * nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt der naechste Start.
+ */
+async function laufeEineKette(kandidat, nummer, args) {
+  const F = String(kandidat.id);
+  const einheit = einheitAnlegen(F, kandidat.title);
+  const kette = {
+    F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
+    kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
+  };
+  log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
+  // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
+  // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
+  board("issue", "label", "remove", F, kette.budget.label);
+  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+
+  // Aeltere Plaene zum selben Fachplan, VOR der Plan-Stufe gesammelt: Nach einem neuen
+  // Plan bekommen sie den Ueberholt-Kommentar (A8).
+  const aeltere = board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, F, "plan"))
+    .map((i) => String(i.id));
+
+  let ergebnis;
+  try {
+    kette.wt = worktreeAnlegen({ repoRoot: kette.repoRoot, issueId: F, stempel: LAUF_STEMPEL ?? String(Date.now()) });
+    trackerImWorktreeUmleiten(kette.wt, kette.repoRoot);
+    log(`  Worktree: ${kette.wt}`);
+  } catch (e) {
+    ergebnis = { ausgang: "abgebrochen", grund: `technischer Fehler: ${e.message}` };
+  }
+  try {
+    if (!ergebnis) ergebnis = await stufenDerKette(kette);
+    if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
+    const neuerPlan = kette.stufen.plan?.id;
+    if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
+    einheitErgaenzen(einheit, {
+      ausgang: ergebnis.ausgang,
+      ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      stufen: kette.stufen,
+      ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
+      ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
+      kostenUsd: kette.kosten.kostenSumme,
+      kostenUnbekannt: kette.kosten.kostenUnbekannt,
+    });
+    // Der Bericht ist der letzte Schritt jeder Kette, bei jedem Ausgang (A10) — nach dem
+    // Halt-Kommentar, damit er am Fachplan hinter der Frage steht, und vor dem Abbau des
+    // Worktrees.
+    einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
+  } finally {
+    if (kette.wt) worktreeEntfernen(kette.wt, kette.repoRoot);
+  }
+  const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
+  log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
+  return ergebnis.ausgang;
+}
+
+/** Die Hinweise zu Labels, die es nicht mehr gibt (Fachplan #635, Kriterium 12). */
+function warneVorAltenLabels(issues) {
+  for (const issue of issues) {
+    for (const alt of ALTE_ROUTING_LABELS) {
+      if ((issue.labels || []).includes(alt)) {
+        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' am Fachplan.`);
+      }
+    }
+  }
+}
+
+/**
+ * Programm Kette (Plan #638): Kandidaten, Vorflug, Dry-Run, dann Kette fuer Kette.
+ * Beendet den Prozess selbst, wie der Dry-Run der Implementierung.
+ */
+export async function laufeKette(args) {
+  const budget = KETTE_BUDGET;
+  const repoRoot = process.cwd();
+  if (!args.dryRun) {
+    for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
+  }
+  const alle = board("issue", "list");
+  warneVorAltenLabels(alle);
+  const { kandidaten, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
   for (const u of uebersprungen) {
     log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
     einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
   }
+  for (const l of liegengeblieben) {
+    log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
+    einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
+  }
+  if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => (i.labels || []).includes(budget.label))) {
+    const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
+    log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts verarbeitet.`);
+    log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+  }
 
-  await fuehreVorflug(args, kandidaten, "--erzeuge --dry-run");
+  // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
+  // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
+  await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
-    log(`Keine Erzeugungs-Kandidaten (Stufe ${stufe}) — nichts zu tun.`);
+    log("Keine Kette zu fahren — nichts zu tun.");
     laufAbschliessen("regulaer");
     process.exit(0);
   }
 
-  if (args.dryRun) berichteErzeugungDryRun(kandidaten, args, stufe);
+  if (args.dryRun) {
+    log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
+    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1}`));
+    log(`Dry-Run beendet: ${kandidaten.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
+    process.exit(0);
+  }
 
-  log(`${kandidaten.length} Erzeugungs-Kandidat(en) (Stufe ${stufe}).`);
-  await runErzeugungsLoop(kandidaten, args);
+  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
+  let nummer = 0;
+  for (const kandidat of kandidaten) {
+    nummer++;
+    const ausgang = await laufeEineKette(kandidat, nummer, args);
+    zaehler[ausgang]++;
+  }
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
+  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
+  laufAbschliessen("regulaer");
+  process.exit(0);
 }
 
 /**
@@ -3289,18 +3222,15 @@ function dryRunBefund(issue, ctx, assumedDone) {
   // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
   // wies Tickets als Session aus, die der echte Lauf zurueckstellt. Wer damit
   // prueft, ob die Nacht laeuft, bekaeme eine Antwort ueber einen anderen Lauf.
-  let freigabe = { frei: true, art: "marker" };
   if (config.issueReview?.requiredBeforeReady) {
-    freigabe = reviewFreigabe(full.body);
+    const freigabe = reviewFreigabe(full.body);
     if (!freigabe.frei) return aus(`wuerde ins Backlog (${GATE_ABLEHNUNG[freigabe.art].kurz()})`);
   }
   const unmet = parseDeps(full.body).filter((d) => !assumedDone.has(d));
   if (unmet.length > 0) {
     return aus(`wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
   }
-  // Der Verzicht wird an der Session-Zeile mitgenannt, nicht in einer eigenen:
-  // Wer den Dry-Run liest, soll die Freigabe dort sehen, wo das Ticket steht.
-  return { grund: null, vermerk: freigabe.art === "verzicht" ? " (bewusst ohne Pruefung freigegeben)" : "" };
+  return { grund: null, vermerk: "" };
 }
 
 /**
@@ -3382,22 +3312,14 @@ export function pruefeIssueGates(top) {
   // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
   // ungepruftes Issue nicht ablehnen — er wuerde es implementieren, und die Maengel
   // fielen erst im Code auf.
-  //
-  // Seit Issue #304 hat das Gate einen zweiten Freigabegrund: den bewussten Verzicht
-  // (fachliche Quelle #285). Ein Ticket, das der Mensch ausdruecklich ohne Pruefung
-  // freigegeben hat, traegt nie einen Marker — es hier zurueckzustellen hiesse, seine
-  // Entscheidung jede Nacht aufs Neue zu ueberstimmen.
   if (config.issueReview?.requiredBeforeReady) {
     const freigabe = reviewFreigabe(full.body);
     if (!freigabe.frei) {
       const texte = GATE_ABLEHNUNG[freigabe.art];
       return {
-        log: `#${top.id} ${texte.log(freigabe.detail)}`,
-        kommentar: `Nachtlauf: ${texte.kommentar(top.id, freigabe.detail)}`,
+        log: `#${top.id} ${texte.log()}`,
+        kommentar: `Nachtlauf: ${texte.kommentar(top.id)}`,
       };
-    }
-    if (freigabe.art === "verzicht") {
-      log(`#${top.id} bewusst ohne Pruefung freigegeben (Pruefung: Verzicht), wird implementiert.`);
     }
   }
 
@@ -3466,8 +3388,23 @@ async function versucheSalvage(top, args) {
  *
  * Das Issue bleibt liegen, wo es ist: Ein Backlog-Move saehe morgens aus wie ein
  * regulaer zurueckgestelltes Ticket, nicht wie ein Lauf, der stehengeblieben ist.
+ *
+ * Vor allem anderen steht seit Issue #572 der Ausschluss der angehaltenen Karte. Der
+ * Auftrag des Salvage lautet, einen passenden Stand zu committen und die Karte nach
+ * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
+ * Stand, den der Halt gerade verworfen hat.
  */
 async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
+  // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
+  // Label nicht, das die Session selbst gesetzt hat.
+  if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
+    const satz = `HALT MIT UNSAUBEREM BAUM nach ${minutes} min: Issue #${top.id} traegt ${KLAEREN_LABEL}, aber der Working Tree ist dirty — kein Salvage, harter Stopp.`;
+    log(`  ${satz}`);
+    board("issue", "comment", String(top.id), "--text",
+      "Nachtlauf: Halt mit unsauberem Working Tree — die Session hat kit:klaeren gesetzt, aber Aenderungen liegen gelassen; kein Salvage, Lauf hart gestoppt. Bitte morgens manuell sichten.");
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
+    return "hardStop";
+  }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args);
@@ -3486,9 +3423,9 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
 /**
  * Wertet aus, was eine Implementierungs-Runde hinterlassen hat (Issue #404).
  *
- * Rueckgabe: `"erfolg"`, `"hardStop"` oder `"deferred"`. Die drei Worte sind die
- * Zaehler des Laufs; der Unterschied zwischen ihnen ist das Signal, das der Morgen
- * liest.
+ * Rueckgabe: `"erfolg"`, `"fehlschlag"`, `"hardStop"`, `"angehalten"` (Issue #572)
+ * oder `"deferred"`. Die Worte sind die Zaehler des Laufs; der Unterschied zwischen
+ * ihnen ist das Signal, das der Morgen liest.
  */
 /**
  * Der Mangel am Nachweis, oder `null` — Grund fuer Log und Board in einem.
@@ -3530,10 +3467,33 @@ const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zuruec
 function ausgangsFelder(ausgang) {
   if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
+  // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
+  // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
+  // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
+  // zweite Wahrheit ueber denselben Vorgang.
   return { ausgang };
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
+/**
+ * Hat die Session einen VOLLSTAENDIG nachgewiesenen Halt hinterlassen (Issue #572)?
+ *
+ * Drei Spuren muessen zusammenkommen — die vierte, der saubere Arbeitsbaum, hat der
+ * Dirty-Guard beim Aufrufer bereits geprueft. Das Label allein genuegt ausdruecklich
+ * nicht: Eine Session kann nach dem Label und vor Kommentar oder Move abbrechen, und
+ * der Infrastruktur-Guard laesst ein Timeout absichtlich passieren. Fehlt eine Spur,
+ * faellt die Runde auf den bisherigen Rueckstellungsweg zurueck.
+ *
+ * Gewertet wird nur, was WAEHREND der Session hinzukam — ueber `neueKommentare`,
+ * dieselbe Funktion, die auch der Review-Modus benutzt. Ein Zeitstempel wird nicht
+ * herangezogen: Ein Zeitfenster belegt keine Urheberschaft (Issue #568).
+ */
+export function istHalt(vorher, nachher) {
+  if (!hatKlaerenLabel(nachher)) return false;
+  if (nachher?.status !== "backlog") return false;
+  return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
+}
+
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -3583,6 +3543,15 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung) {
 
   if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
 
+  // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
+  // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
+  // kein Halt, wenn das Label steht. Hier ist der Halt kein Fehler: eigene Log-Zeile,
+  // kein Board-Kommentar und kein Move — beides hat die Session bereits getan.
+  if (istHalt(vorher, board("issue", "get", String(top.id)))) {
+    log(`  angehalten: eine offene Entscheidung wartet auf einen Menschen — Issue #${top.id} nach ${minutes} min von der Session ins Backlog gezeichnet, kein Kommentar und kein Move durch den Runner, weiter.`);
+    return "angehalten";
+  }
+
   log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
   board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
@@ -3621,6 +3590,11 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
   // weiter unten in werteRunde laufen kann, ist aussen vor.
   verwerfeZusammenfassung();
+  // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
+  // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
+  // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
+  // traegt den Body nicht in jeder Adapter-Fassung.
+  const vorher = board("issue", "get", String(top.id));
   const res = await runSession(top.id, args);
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
@@ -3632,7 +3606,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung);
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher);
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);
@@ -3651,7 +3625,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
 }
 
 /**
- * Programm 3 — die Implementierungsschleife (Phase 9 aus Issue #398).
+ * Die Implementierungsschleife (Phase 9 aus Issue #398).
  *
  * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
  * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
@@ -3664,10 +3638,12 @@ export async function laufeImplementierung(args, ctx) {
   let sessions = 0;
   let iterations = 0;
   let hardStop = false;
-  // Die drei Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
+  // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
   // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
-  // die Woerter des Laufs stehen.
-  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0 };
+  // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
+  // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
+  // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
+  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 };
   // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
   const salvageAttempted = new Set();
   // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
@@ -3702,14 +3678,15 @@ export async function laufeImplementierung(args, ctx) {
     zaehler[ausgang]++;
   }
 
-  // Der Abschluss gehoert hierher und nicht in main(): Review-Modus und Dry-Run
-  // beenden den Prozess selbst und kaemen an einer Stelle in main() nie an.
+  // Der Abschluss gehoert hierher und nicht in main(): Der Dry-Run beendet den Prozess
+  // selbst und kaeme an einer Stelle in main() nie an.
   laufAbschliessen(hardStop ? "harterStopp" : "regulaer");
   return {
     sessions, hardStop, pruefungen,
     succeeded: zaehler.erfolg,
     deferred: zaehler.deferred,
     ohneNachweis: zaehler.fehlschlag,
+    angehalten: zaehler.angehalten,
   };
 }
 
@@ -3717,18 +3694,15 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   const ctx = vorbereiten(args);
+  // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im
+  // Dry-Run, der nichts am Board veraendert.
+  if (!args.dryRun) berichteNachtragen();
 
-  // Vier einander ausschliessende Programme. Review, Erzeugung und Dry-Run beenden den
-  // Prozess selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code
-  // bilden.
-  if (args.review) {
-    await laufeReviewModus(args);
-    return;
-  }
-  // Vor dem Dry-Run-Zweig: --erzeuge --dry-run ist ein Trockenlauf DES ERZEUGUNGSMODUS,
-  // kein Trockenlauf gegen Ready. Stuende er dahinter, liefe er gegen die falsche Spalte.
-  if (args.erzeuge) {
-    await laufeErzeugungsModus(args);
+  // Drei einander ausschliessende Programme. Kette und Dry-Run beenden den Prozess
+  // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code bilden.
+  // Die Kette steht vor dem Dry-Run: --kette --dry-run ist ein Trockenlauf DER KETTE.
+  if (args.kette) {
+    await laufeKette(args);
     return;
   }
   if (args.dryRun) {
@@ -3737,7 +3711,10 @@ async function main() {
   }
 
   const ergebnis = await laufeImplementierung(args, ctx);
-  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  // `angehalten` steht NACH `Session(s) gestartet` (Issue #572): Die bestehenden
+  // Label-Tests matchen die Zeile bis dorthin, und ein Einschub davor haette sie
+  // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
   for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);

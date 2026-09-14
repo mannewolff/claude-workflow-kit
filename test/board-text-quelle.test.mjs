@@ -162,14 +162,3 @@ test("issue-review nennt den Grund und die Datei-Regel", () => {
   assert.match(text, /ausserhalb des Projektverzeichnisses|außerhalb des Projektverzeichnisses/,
     "der Hinweis auf den unsauberen Working Tree fehlt");
 });
-
-test("im Synthese-Beispiel stehen keine Backslash-Escapes mehr", () => {
-  // Im Argument-Weg brauchte das Beispiel \" — im Heredoc landet der Backslash
-  // woertlich im Board-Kommentar. Seit Issue #583 heisst der Heredoc-Marker TEIL1
-  // statt SYNTHESE; der Schnitt folgt jetzt dem Dateinamen, nicht dem alten Marker.
-  const text = skill("issue-review");
-  const start = text.indexOf("## Synthese, Runde 1");
-  assert.ok(start > 0, "das Synthese-Beispiel fehlt");
-  const block = text.slice(start, text.indexOf("TEIL1", start));
-  assert.doesNotMatch(block, /\\"/, "Escape aus der Argument-Zeit im Beispiel");
-});

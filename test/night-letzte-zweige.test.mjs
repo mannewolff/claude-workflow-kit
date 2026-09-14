@@ -125,70 +125,8 @@ test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", NU
 });
 
 // ============================================================
-// Ein Vorflug-Kommando, das nicht startbar ist
-// ============================================================
-
-test("Vorflug: ein nicht ausfuehrbares claude meldet den Systemfehler", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    // Ein `claude` ohne Ausfuehrungsrecht: spawn liefert EACCES — weder ETIMEDOUT
-    // noch ENOENT, also der dritte Zweig. Ohne ihn stuende dort kein Grund.
-    // Der PATH enthaelt nur git (fuer die Vorbedingung) und dieses claude; er liegt
-    // AUSSERHALB des Fixtures, damit der Working Tree sauber bleibt.
-    const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
-    const bin = mkdtempSync(join(tmpdir(), "night-letzte-bin-"));
-    writeFileSync(join(bin, "git"), `#!/bin/sh\nexec ${echtesGit} "$@"\n`, { mode: 0o755 });
-    writeFileSync(join(bin, "claude"), "#!/bin/sh\necho hi\n", { mode: 0o644 });
-
-    try {
-      const res = run(dir, ["--review", "--dry-run", "--review-label", "none"], {
-        NIGHT_VORFLUG_CMD: "", PATH: bin,
-      });
-
-      assert.equal(res.status, 0, `der Dry-Run haette mit 0 enden muessen: ${res.stderr}${res.stdout}`);
-      assert.match(res.stdout, /EACCES|permission denied/i,
-        "der Systemfehler fehlt — ohne ihn ist die Ursache unklar");
-      assert.doesNotMatch(res.stdout, /nicht gefunden\. Ist Claude Code installiert/,
-        "ein Rechteproblem darf nicht als 'nicht installiert' gemeldet werden");
-    } finally {
-      rmSync(bin, { recursive: true, force: true });
-    }
-  }, {}, "night-letzte-vorflug-eacces-");
-});
-
-// ============================================================
 // Eine Review-Session, deren CLI scheitert
 // ============================================================
 
 const VORFLUG_OK = 'cat <<\'EOF\'\n<<<VORFLUG\n{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}\nVORFLUG>>>\nEOF';
 
-test("Review-Modus: ein Fehlstart der Session stoppt hart und nennt den Exit-Code", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const issue = board(dir, "issue", "create", "--title", "Ein Kandidat",
-      "--body", "## Kontext\n\nAutor-Modell: m\n\n## Abhaengigkeiten\n\nKeine.\n");
-
-    // Derselbe Guard wie in der Implementierungsschleife (#149): Exit != 0 ohne
-    // Timeout heisst, das CLI selbst ist gescheitert. Harter Stopp OHNE Kommentar —
-    // sonst kommentiert eine kaputte Umgebung den ganzen Backlog voll.
-    const res = run(dir, ["--review", "--review-label", "none"], {
-      NIGHT_VORFLUG_CMD: VORFLUG_OK,
-      NIGHT_CLAUDE_CMD: 'echo "Auth abgelaufen" >&2; exit 5',
-    });
-
-    assert.equal(res.status, 1, "ein Fehlstart haette hart stoppen muessen");
-    assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(Exit 5\)/,
-      "der Exit-Code fehlt in der Meldung");
-    assert.match(res.stdout, new RegExp(`Issue #${issue.id} bleibt unangetastet`),
-      "das Ticket muss ausdruecklich als unangetastet gemeldet werden");
-
-    // Kein Kommentar am Ticket: Das ist der Unterschied zum fachlichen Fehlschlag.
-    const full = board(dir, "issue", "get", String(issue.id));
-    assert.ok(!full.body.includes("Nachtlauf:"),
-      "ein Infrastruktur-Fehlschlag darf das Ticket nicht kommentieren");
-    // Ein claude-Reviewer muss konfiguriert sein: Sonst haelt der Vorflug den Lauf
-    // schon vorher an ("Kein Reviewer konfiguriert"), und die Schleife startet nie.
-  }, { issueReview: { rounds: 1, reviewers: [{ name: "fable", kind: "claude", model: "claude-fable-5" }] } },
-  "night-letzte-review-infra-");
-});

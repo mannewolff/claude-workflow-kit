@@ -129,7 +129,12 @@ Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich —
 
 ### Hinweise
 - <verbleibende Risiken, offene Punkte, manuelle Folgeschritte>
+
+### Entscheidungen
+- E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
+
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen".
 
 ## Stop-Punkte
 

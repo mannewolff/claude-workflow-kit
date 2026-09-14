@@ -89,8 +89,9 @@ weitere Eintraege sind es nicht. Ein reiner Gleichheits-Test waere am Bestand ro
 
 ## P7 — Unter `## Offene Fragen` stehen nur Stopp-Fragen `[Urteil]`
 
-Stopp-Frage heisst: **Die Antwort aendert den Zuschnitt des Plans.** Nachtraeglich
-entscheidbare Fragen gehoeren nicht dorthin.
+Stopp-Frage heisst: **eine Frage aus der Stopp-Klasse** in `CLAUDE-workflow.md`, Abschnitt
+„Entscheiden statt fragen". Alles andere wird entschieden und steht als E-Eintrag unter
+`## Architektonische Entscheidungen`; nachtraeglich entscheidbare Fragen gehoeren nicht dorthin.
 
 *Warum Gate:* Der Abschnitt sperrt den Weg nach `/issues`. Wer ihn mit Details fuellt,
 blockiert den Plan an etwas, das keine Blockade ist.

@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir vierzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir sechzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -36,9 +36,9 @@ Der Installer fragt sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die sechzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die vierzehn Skills
+## Die sechzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
@@ -46,6 +46,8 @@ Danach liegen die vierzehn Skills in `.claude/skills/` (oder global in `~/.claud
 | `/fachplan` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
 | `/techplan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
+| `/task` | Anforderung ohne Abwägungsbedarf als einzelnes Arbeitspaket `[Task]`, erst nach deiner Bestätigung |
+| `/issue-review` | Dokument vor dem GO von fremden Modellen prüfen lassen |
 | `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
 | `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
 | `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
@@ -88,6 +90,18 @@ Auf dem Test-Server kontrollierst du das Ergebnis. Stimmt es:
 ```
 /merge-production
 ```
+
+## Der kleinere Weg
+
+Nicht jede Anforderung braucht einen Plan. Ist sie mehr als eine Kleinigkeit, gibt es aber nichts abzuwägen, entsteht daraus ein einzelnes Arbeitspaket statt Fachkonzept, Plan und Zerlegung:
+
+```
+/task benenne die Konfigurationsschlüssel in allen Skill-Dateien einheitlich um
+```
+
+Der Skill benennt die Bahn in einem Satz und wartet auf dein Wort. Ohne deine Antwort legt er nichts an. Danach läuft der gewohnte Weg weiter: Du kannst das `[Task]` wie jedes andere Arbeitspaket mit `/issue-review` prüfen lassen, und nach Ready ziehst du es selbst.
+
+Wann welcher Weg gilt, steht in der [Auswahlregel der drei Bahnen](./dokumentation.md#drei-bahnen).
 
 ## Die drei Stellen, die du selbst machst
 

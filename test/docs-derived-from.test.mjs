@@ -50,7 +50,7 @@ test("die Doku beschreibt, was --derived-from sendet", () => {
 
 test("die Doku nennt, wer die Option setzt und was die uebrigen Tracker tun", () => {
   const a = HERKUNFT();
-  for (const skill of ["/fachplan", "/techplan", "/issues"]) {
+  for (const skill of ["/fachplan", "/task", "/techplan", "/issues"]) {
     assert.ok(a.includes(skill), `der Skill ${skill} ist nicht als Setzer benannt`);
   }
   assert.match(a, /GitHub, GitLab und local|github.*gitlab.*local/i,
@@ -60,6 +60,25 @@ test("die Doku nennt, wer die Option setzt und was die uebrigen Tracker tun", ()
   assert.match(a, /nehmen .{0,40}\ban\b|angenommen/i, "das Annehmen fehlt");
   assert.match(a, /nicht übertragen|nicht uebertragen|übertragen sie nicht/i,
     "dass sie den Wert nicht uebertragen, fehlt");
+});
+
+// `/task` ist der zweite Nie-Setzer neben `/fachplan` — aber aus einem anderen Grund:
+// Die fachliche Anforderung ist die WURZEL einer Kette, ein `[Task]` steht ueberhaupt in
+// keiner (Issue #574). Geprueft wird deshalb nicht bloss die Anwesenheit des Namens,
+// sondern die Begruendung daneben. Ohne sie liest die naechste Sitzung das `nie` als
+// Versehen und setzt das Flag aus Gewohnheit.
+test("[skills-7] die Doku fuehrt /task als Nie-Setzer, mit dem fehlenden Vorfahren als Grund", () => {
+  const a = HERKUNFT();
+  const zeile = a.split("\n").find((z) => z.includes("`/task`"));
+  assert.ok(zeile, "`/task` steht in keiner Zeile des Abschnitts");
+  assert.match(zeile, /\bnie\b/, "die Zeile zu `/task` sagt nicht, dass die Option nie gesetzt wird");
+  assert.match(zeile, /kein(?:en)? Vorfahr/, "der Grund (kein Vorfahr) fehlt in der Zeile zu `/task`");
+});
+
+test("[skills-7] die Prozessdatei-Vorlage fuehrt /task ebenfalls als Nie-Setzer", () => {
+  const a = abschnitt(VORLAGE, "\nHerkunfts-Konvention:");
+  assert.match(a, /`\/task` nie \(kein Vorfahr\)/,
+    "die Vorlage nennt `/task` nicht als Nie-Setzer mit Begruendung");
 });
 
 // Der eigentliche Zweck dieses Issues.

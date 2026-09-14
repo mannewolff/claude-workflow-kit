@@ -26,10 +26,19 @@
     "done": "Done"
   },
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
+  "night": {
+    "kette": {
+      "label": "kit:night",
+      "planMin": 20,
+      "paketeMin": 15,
+      "reviewMin": 15,
+      "abdeckungMin": 10,
+      "kostenUsd": 50,
+      "korrekturrunden": 2
+    }
+  },
   "issueReview": {
-    "rounds": 1,
-    "requiredBeforeReady": true,
-    "statusLabels": true,
+    "requiredBeforeReady": false,
     "reviewers": [
       {
         "name": "opus",
@@ -91,10 +100,9 @@
       ]
     },
     "plan": {
-      "reviewer": 2,
+      "reviewer": 1,
       "rollen": [
-        "architektur-bestand",
-        "schnitt-abhaengigkeiten"
+        "architektur-bestand"
       ]
     },
     "issue": {

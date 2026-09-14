@@ -117,20 +117,6 @@ function readyIssue(dir, titel) {
   return id;
 }
 
-const OHNE_MARKER = "## Kontext\n\nAutor-Modell: claude-opus-5\n\n## Abhaengigkeiten\n\nKeine.\n";
-const PLAN_GEPRUEFT = "## Kontext\n\nAutor-Modell: claude-opus-5\nPlan-Review: fable (2026-09-08)\n\n"
-  + "## Offene Fragen\n\n- Keine.\n\n## Verifizierung\n\n- night.mjs laeuft.\n";
-
-/** Ein Backlog-Issue mit dem Review-Routing-Label. */
-function reviewIssue(dir, titel) {
-  return karte(dir, titel, OHNE_MARKER, "kit:nightreview");
-}
-
-/** Die Quelle eines `--stufe issue`-Laufs: ein geprueftes Plandokument mit Routing-Label. */
-function erzeugeQuelle(dir, titel = "Ein Weg") {
-  return karte(dir, `[Plan] ${titel}`, PLAN_GEPRUEFT, "kit:nightissues");
-}
-
 /** Die Ergebnisstand-Dateien im Fixture, nach Namen sortiert. */
 function staende(dir) {
   return readdirSync(join(dir, ".claude"))
@@ -298,97 +284,6 @@ test("[night-11] ohne moeglichen Salvage traegt der Dirty-Fehlschlag seine Fehls
     assert.doesNotMatch(grund, /SALVAGE/, "ohne moeglichen Salvage darf sein Text nicht auftauchen");
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
   }, ["false"]);
-});
-
-// --- Die Testmatrix: Wege 5 und 6 in allen drei Sessionarten ---
-
-test("[night-11] Review-Session, Infrastruktur-Stopp: der Grund nennt die Kopfzeile, nicht die CLI-Meldung", NUR_POSIX, () => {
-  mitProjekt("night-grund-review-infra-", (dir) => {
-    const id = reviewIssue(dir, "Ein Issue");
-    const res = run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: "echo laut >&2; exit 1" });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const s = stand(dir);
-    assert.equal(s.fehlerklasse, "umgebung");
-    const grund = grundDerKarte(s, id);
-    assert.match(grund, /INFRASTRUKTUR-FEHLSCHLAG/, `die Kopfzeile fehlt: ${grund}`);
-    assert.match(grund, /Exit 1/, `exitInfo fehlt: ${grund}`);
-    // Anders als Weg 2: `reviewRundeGestoppt` schreibt die CLI-Meldung heute nicht ins
-    // Protokoll, und dieses Paket reicht weiter, was das Protokoll sagt.
-    assert.doesNotMatch(grund, /CLI-Meldung/, `hier steht mehr als im Protokoll: ${grund}`);
-  });
-});
-
-test("[night-11] Review-Session, veraenderter Working Tree: der Grund nennt Sessionart und Rest", NUR_POSIX, () => {
-  mitProjekt("night-grund-review-dirty-", (dir) => {
-    const id = reviewIssue(dir, "Ein Issue");
-    const res = run(dir, process.execPath, [NIGHT, "--review"], { NIGHT_CLAUDE_CMD: "echo dreck > uebrig.txt" });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const grund = grundDerKarte(stand(dir), id);
-    assert.match(grund, /die Review-Session zu Issue #/, `die Sessionart fehlt: ${grund}`);
-    assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
-  });
-});
-
-test("[night-11] Erzeugungs-Session, Infrastruktur-Stopp: der Grund haengt an der Quelle", NUR_POSIX, () => {
-  mitProjekt("night-grund-erzeuge-infra-", (dir) => {
-    const src = erzeugeQuelle(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--erzeuge", "--stufe", "issue"],
-      { NIGHT_CLAUDE_CMD: erzeugeFake("exit 1", "true") });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const s = stand(dir);
-    assert.equal(s.fehlerklasse, "umgebung");
-    const grund = grundDerKarte(s, src);
-    assert.match(grund, /INFRASTRUKTUR-FEHLSCHLAG/, `die Kopfzeile fehlt: ${grund}`);
-    assert.match(grund, new RegExp(`Issue #${src}`), `die Quelle fehlt im Grund: ${grund}`);
-  });
-});
-
-test("[night-11] Erzeugungs-Session, veraenderter Working Tree: der Grund haengt an der Quelle", NUR_POSIX, () => {
-  mitProjekt("night-grund-erzeuge-dirty-", (dir) => {
-    const src = erzeugeQuelle(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--erzeuge", "--stufe", "issue"],
-      { NIGHT_CLAUDE_CMD: erzeugeFake("echo dreck > uebrig.txt", "true") });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const grund = grundDerKarte(stand(dir), src);
-    assert.match(grund, /die Erzeugungs-Session zu Issue #/, `die Sessionart fehlt: ${grund}`);
-    assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
-  });
-});
-
-test("[night-11] Pruef-Session, Infrastruktur-Stopp: fehlerEinheit zeigt auf die Quelle, der Grund nennt das Dokument", NUR_POSIX, () => {
-  // Der eine Fall, in dem betroffene Karte und benanntes Dokument auseinanderfallen:
-  // Die Einheit ist die Quelle, geprueft wurde ein Dokument mit eigener Nummer.
-  mitProjekt("night-grund-pruef-infra-", (dir) => {
-    const src = erzeugeQuelle(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--erzeuge", "--stufe", "issue"],
-      { NIGHT_CLAUDE_CMD: erzeugeFake(PAKET_ANLEGEN, "exit 1") });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const dok = dokumentId(dir);
-    assert.notEqual(dok, src, "Dokument und Quelle muessen sich unterscheiden, sonst misst der Test nichts");
-    const grund = grundDerKarte(stand(dir), src);
-    assert.match(grund, /INFRASTRUKTUR-FEHLSCHLAG/, `die Kopfzeile fehlt: ${grund}`);
-    assert.match(grund, new RegExp(`Issue #${dok}`), `das gepruefte Dokument fehlt im Grund: ${grund}`);
-  });
-});
-
-test("[night-11] Pruef-Session, veraenderter Working Tree: fehlerEinheit zeigt auf die Quelle, der Grund nennt das Dokument", NUR_POSIX, () => {
-  mitProjekt("night-grund-pruef-dirty-", (dir) => {
-    const src = erzeugeQuelle(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--erzeuge", "--stufe", "issue"],
-      { NIGHT_CLAUDE_CMD: erzeugeFake(PAKET_ANLEGEN, "echo dreck > uebrig.txt") });
-    assert.notEqual(res.status, 0, `der Guard haette anschlagen muessen:\n${res.stdout}`);
-
-    const dok = dokumentId(dir);
-    assert.notEqual(dok, src, "Dokument und Quelle muessen sich unterscheiden, sonst misst der Test nichts");
-    const grund = grundDerKarte(stand(dir), src);
-    assert.match(grund, new RegExp(`die Pruef-Session zu Issue #${dok}`), `das gepruefte Dokument fehlt im Grund: ${grund}`);
-    assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
-  });
 });
 
 // --- Das Sicherheitsnetz in seinen drei Lagen ---

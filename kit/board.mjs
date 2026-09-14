@@ -39,15 +39,12 @@
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
-                                    [--issue <N>]
-  node board.mjs issue-review label-sync <id>
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +52,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.52.0";
+const KIT_VERSION = "1.53.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -99,6 +96,12 @@ Nutzung:
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
+  node board.mjs issue check-form <id>
+  node board.mjs issue check-form --body-file <pfad> --title "<titel>"
+      Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I4. Die Stufe
+      kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
+      bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
@@ -107,12 +110,7 @@ Nutzung:
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
-                                    [--issue <N>]
-      --issue liest die Pruefvorgabe (\`Pruefung:\`) am Ticket und liefert sie in
-      runden / verzicht / vorgabeQuelle. Ohne --issue gilt issueReview.rounds.
-  node board.mjs issue-review label-sync <id>
-      Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
-      Braucht issueReview.statusLabels; ohne den Schalter passiert nichts.
+      Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
 
   node board.mjs --version
 
@@ -2327,21 +2325,11 @@ function specWirkungSicherstellen(config, body, title) {
 
 /** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
 const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
-// Kein Trimmen im Ausdruck, sondern per `.trim()` am Aufrufer (Issue #403): Jede
-// Variante, die fuehrenden und folgenden Leerraum im Muster abraeumt, laesst zwei
-// Wiederholungen dieselben Zeichen akzeptieren — und genau daran hing die
-// super-lineare Laufzeit. `[^\n]*` ist eindeutig und kann nicht backtracken.
-// Der Capture traegt deshalb den ROHEN Wert; `parsePruefvorgabe` trimmt ihn.
-export const PRUEFUNG_ZEILE = /^Pruefung:([^\n]*)$/;
-export const PRUEFUNG_STAND_ZEILE = /^Pruefung-Stand:([^\n]*)$/;
 // Der negative Lookahead ist der Kern (Issue #403): Ohne ihn akzeptieren `{3,} und
 // [^\n]* dieselben Zeichen, und eine Zeile aus lauter Backticks ohne Zeilenende
 // laesst die Engine jede Aufteilung durchprobieren — 78 ms bei 16 KiB, quadratisch
 // wachsend. Mit ihm ist die Fence-Laenge eindeutig: 0,04 ms, linear.
 export const FENCE_ZEILE = /^ {0,3}(`{3,}(?!`)|~{3,}(?!~))([^\n]*)$/;
-const GUELTIGE_VORGABEN = new Map([
-  ["1", 1], ["2", 2], ["3", 3], ["verzicht", "verzicht"],
-]);
 
 /** \r\n und einzelne \r zu \n — sonst haengt der Stand am Zeilenende des Editors. */
 function normalisiereZeilenenden(body) {
@@ -2352,10 +2340,9 @@ function normalisiereZeilenenden(body) {
  * Zustandsautomat fuer Code-Fences, zeilenweise gefuettert.
  *
  * Liefert true, solange die Zeile zu einem Fence gehoert (die oeffnende und die
- * schliessende Zeile eingeschlossen). Drei Stellen brauchen dieselbe Auslegung —
- * Abschnittsgrenzen, Parser und das Setzen des Bezugsstands. Eine dritte Kopie der
- * Bedingung waere die Stelle, an der die drei auseinanderlaufen, ohne dass es
- * jemandem auffiele.
+ * schliessende Zeile eingeschlossen). Mehrere Stellen brauchen dieselbe Auslegung —
+ * Abschnittsgrenzen, Formpruefung, Herkunftsleser. Eine weitere Kopie der Bedingung
+ * waere die Stelle, an der sie auseinanderlaufen, ohne dass es jemandem auffiele.
  *
  * Seit Issue #308 ist es eine vierte: `parseDeps` in `kit/night.mjs` importiert die
  * Funktion von hier. night.mjs ruft board.mjs sonst als Subprozess auf — fuer eine
@@ -2405,268 +2392,6 @@ export function kontextGrenzen(text) {
     offset += zeile.length + 1;
   }
   return start === -1 ? null : { start, ende: text.length };
-}
-
-/**
- * Bezugsstand des Bodys: SHA-256 ueber alles ausser dem Kontext-Abschnitt.
- *
- * Der Kontext bleibt ganz aussen vor, weil dort ALLE Kennzeichnungszeilen
- * stehen. Eine Ausnahmeliste einzelner Zeilen waere dauerhafter Pflegeaufwand:
- * Wer kuenftig eine Kennzeichnungszeile einfuehrt und sie dort vergisst,
- * erzeugte stillen Verfall.
- */
-export function pruefvorgabeStand(body) {
-  const text = normalisiereZeilenenden(body);
-  const grenzen = kontextGrenzen(text);
-  const rest = grenzen ? text.slice(0, grenzen.start) + text.slice(grenzen.ende) : text;
-  // Der zweite Zweig traegt denselben Lookbehind wie in autorModellSicherstellen
-  // (Issue #406): nur der Anfang des abschliessenden Umbruch-Laufs zaehlt als
-  // Startpunkt. 18,9 s bei 256 KiB Leerzeilen vorher, 3 ms danach. Der erste
-  // Zweig `^\n+` ist bereits linear — ohne `m`-Flag gibt es nur eine
-  // Startposition.
-  const gestutzt = rest.replaceAll(/^\n+|(?<!\n)\n+$/g, "");
-  return createHash("sha256").update(gestutzt, "utf8").digest("hex");
-}
-
-/**
- * Liest die Pruefvorgabe aus dem Kontext-Abschnitt.
- *
- * Rueckgabe: `{ wert: 1|2|3|"verzicht"|null, stand: string|null, verfallen: boolean }`
- *
- * Fehlt der Stand, ist `verfallen` immer false: Ohne Bezugsstand laesst sich
- * kein Verfall feststellen, und im Zweifel gilt die menschliche Entscheidung —
- * die Zeile kann im Board-UI gesetzt worden sein, ohne dass je ein
- * `issue update` lief.
- */
-/**
- * Sammelt die beiden Kennzeichnungszeilen aus dem Kontext-Abschnitt (Issue #404).
- *
- * Reines Einsammeln, ohne Urteil: Mehrfachvorkommen und ungueltige Werte werden hier
- * nicht beanstandet, sondern weitergereicht. Das Trennen macht beide Haelften lesbar
- * — die Schleife kennt nur Zeilen, die Pruefung nur Werte.
- */
-function sammlePruefzeilen(abschnitt) {
-  const vorgaben = [];
-  const staende = [];
-  const imFence = fenceLauf();
-  for (const zeile of abschnitt.split("\n")) {
-    if (imFence(zeile)) continue;
-    const vorgabe = PRUEFUNG_ZEILE.exec(zeile);
-    if (vorgabe) vorgaben.push(vorgabe[1].trim());
-    const stand = PRUEFUNG_STAND_ZEILE.exec(zeile);
-    if (stand) staende.push(stand[1].trim());
-  }
-  return { vorgaben, staende };
-}
-
-export function parsePruefvorgabe(body) {
-  const text = normalisiereZeilenenden(body);
-  const grenzen = kontextGrenzen(text);
-  if (!grenzen) return { wert: null, stand: null, verfallen: false };
-
-  const { vorgaben, staende } = sammlePruefzeilen(text.slice(grenzen.start, grenzen.ende));
-
-  if (vorgaben.length > 1) {
-    throw new BoardError(`Mehrere 'Pruefung:'-Zeilen im Kontext-Abschnitt (${vorgaben.length}). Genau eine ist erlaubt.`);
-  }
-  if (staende.length > 1) {
-    throw new BoardError(`Mehrere 'Pruefung-Stand:'-Zeilen im Kontext-Abschnitt (${staende.length}). Hoechstens eine ist erlaubt.`);
-  }
-
-  let wert = null;
-  if (vorgaben.length === 1) {
-    const roh = vorgaben[0].toLowerCase();
-    if (!GUELTIGE_VORGABEN.has(roh)) {
-      throw new BoardError(`Ungueltiger Wert in 'Pruefung: ${vorgaben[0]}'. Erlaubt: 1, 2, 3 oder Verzicht.`);
-    }
-    wert = GUELTIGE_VORGABEN.get(roh);
-  }
-
-  let stand = null;
-  if (staende.length === 1) {
-    const roh = staende[0].toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(roh)) {
-      throw new BoardError(`Ungueltiger Wert in 'Pruefung-Stand: ${staende[0]}'. Erwartet: 64 Hex-Zeichen.`);
-    }
-    stand = roh;
-  }
-
-  return { wert, stand, verfallen: stand !== null && stand !== pruefvorgabeStand(text) };
-}
-
-// Welcher Marker und welcher Kommentar-Anker die jeweilige Stufe nachweisen.
-// Dieselbe Zuordnung fuehrt `kit/night.mjs` fuer den Review-Modus; sie steht hier
-// eigenstaendig, weil die Importrichtung umgekehrt ist — night.mjs importiert aus
-// board.mjs, nicht andersherum.
-const REVIEW_STUFEN_MARKER = {
-  fachlich: "Fachplan-Review",
-  plan: "Plan-Review",
-  issue: "Issue-Review",
-};
-
-/**
- * Ab wie vielen geprueften Runden ein Dokument als „Pruefgrenze erreicht" gilt
- * (Issue #516, fachlich #408). Exportiert, damit `kit/night.mjs` sie importieren
- * kann statt sie zu wiederholen — dieselbe Linie wie bei `parsePruefvorgabe`.
- * Eine zweite Drei dort waere eine zweite Wahrheit ueber die Grenze.
- *
- * Die Schwelle ist fest und unabhaengig von `Pruefung:`: Sie sagt nicht, wie oft
- * geprueft werden SOLL, sondern ab wann weitere Runden nichts mehr bringen.
- */
-export const GRENZE_RUNDEN = 3;
-
-/**
- * Der Pruefzustand eines Dokuments, abgeleitet aus Body und Kommentaren (Issue #381).
- *
- * Rueckgabe: `offen` | `befunde` | `fertig` | `ausgefallen` | `grenze`. Die Funktion ist rein:
- * Sie schreibt nichts, ruft nichts und kennt kein Label. Das Zustandslabel aus
- * Issue #384 ist ihr erster Leser, nicht ihre Definition — haenge ein Gate am
- * Label statt an dieser Ableitung, gaebe es zwei Wahrheiten ueber den Pruefstand.
- *
- * Regeln, in dieser Reihenfolge:
- *
- *  1. Marker der EIGENEN Stufe nicht leer -> `fertig`. Ein Marker einer fremden
- *     Stufe zaehlt nie: `Plan-Review:` an einem Arbeitspaket ist kein Nachweis.
- *  2. Gueltiger, nicht verfallener `Pruefung: Verzicht` -> `fertig`. Der Mensch hat
- *     entschieden, dass hier nicht geprueft wird; das ist ein Ergebnis, kein Loch.
- *  3. Juengster Review-Kommentar der Stufe mit Ausfall-Vermerk -> `ausgefallen`.
- *  4. Mindestens `GRENZE_RUNDEN` Review-Kommentare der Stufe OHNE Ausfall-Vermerk
- *     -> `grenze` (Issue #516). Gezaehlt wird die ANZAHL der Anker, nicht die Zahl
- *     `n` darin: `/issue-review` nummeriert je Session ab 1, drei Naechte
- *     hinterlassen dreimal `Runde 1`. Wer die hoechste Nummer naehme, erreichte die
- *     Grenze nie. Verglichen wird mit `>=`, sonst fiele ein Dokument mit vier
- *     Ankern auf `befunde` zurueck.
- *  5. Juengster Review-Kommentar der Stufe -> `befunde`.
- *  6. sonst -> `offen`.
- *
- * **Ein Ausfall ist keine Pruefung.** Ausfall-Kommentare tragen denselben Anker,
- * zaehlen fuer die Grenze aber nicht mit, und Regel 3 steht bewusst vor Regel 4:
- * Sonst stuende ein Dokument nach drei technisch gescheiterten Naechten auf
- * `grenze`, obwohl nie jemand geprueft hat.
- *
- * **Woran ein Ausfall erkannt wird**, muss festgelegt sein, sonst ist Regel 3 nicht
- * anwendbar: Der Skill verlangt heute den Anker `## <Stufe>-Review, Runde n` in der
- * ersten Zeile UND den Ausfall in der ersten Zeile — beides zugleich geht nicht.
- * Diese Funktion liest den Anker in Zeile 1 und den Ausfallvermerk in Zeile 2
- * (Festlegung aus Issue #381); Issue #385 zieht das Kommentarformat im Skill nach.
- *
- * Bis dahin ist die Funktion gegenueber Alt-Bestand tolerant: Ein Kommentar ohne
- * Anker gilt nicht als Review-Kommentar der Stufe und aendert nichts. Das ist die
- * sichere Richtung — ein fremder Kommentar, der zufaellig "ausgefallen" enthaelt,
- * darf den Zustand nicht kippen.
- *
- * Marker in Codebloecken zaehlen nicht (Fence-Regel, Issue #308): Ein Dokument, das
- * das Marker-Format als Beispiel zeigt, weist damit nichts nach.
- */
-export function reviewZustand(body, comments, stufe) {
-  const marker = REVIEW_STUFEN_MARKER[stufe];
-  if (!marker) return "offen";
-
-  const text = normalisiereZeilenenden(body || "");
-
-  const imFence = fenceLauf();
-  const markerZeile = new RegExp(String.raw`^\s*${marker}:\s*\S`);
-  for (const zeile of text.split("\n")) {
-    if (imFence(zeile)) continue;
-    if (markerZeile.test(zeile)) return "fertig";
-  }
-
-  // Wirft bei mehreren oder unbekannten Vorgaben — bewusst nicht abgefangen: Eine
-  // kaputte `Pruefung:`-Zeile still zum Regelfall zu machen waere die gefaehrlichere
-  // Variante, dieselbe Linie wie in `pruefvorgabeFuerRoles`.
-  const { wert, verfallen } = parsePruefvorgabe(text);
-  if (wert === "verzicht" && !verfallen) return "fertig";
-
-  const anker = new RegExp(String.raw`^\s*##\s*${marker},\s*Runde\b`, "i");
-  const eigene = (Array.isArray(comments) ? comments : []).filter((k) =>
-    anker.test(String(k?.body || "").split("\n")[0] || "")
-  );
-  if (eigene.length > 0) {
-    const ausfall = (k) =>
-      /ausgefallen|ausfall/i.test(normalisiereZeilenenden(String(k?.body || "")).split("\n")[1] || "");
-    if (ausfall(eigene.at(-1))) return "ausgefallen";
-    if (eigene.filter((k) => !ausfall(k)).length >= GRENZE_RUNDEN) return "grenze";
-    return "befunde";
-  }
-
-  return "offen";
-}
-
-/**
- * Setzt `Pruefung-Stand:` unmittelbar unter die Vorgabezeile (Issue #303).
- *
- * Eine vorhandene Standzeile faellt weg, egal wo im Kontext sie lag — sonst haette
- * der Body danach zwei, und `parsePruefvorgabe` wiese ihn ab. Zeilen in Fences
- * bleiben unangetastet: Dort steht ein Beispiel, keine Vorgabe.
- *
- * Der Stand selbst haengt nur am Body AUSSERHALB des Kontexts. Die eingefuegte
- * Zeile veraendert ihn also nicht — es braucht keine zweite Runde.
- */
-function mitPruefstand(body, stand) {
-  const text = normalisiereZeilenenden(body);
-  const grenzen = kontextGrenzen(text);
-  if (!grenzen) return body;
-
-  const imFence = fenceLauf();
-  const zeilen = [];
-  for (const zeile of text.slice(grenzen.start, grenzen.ende).split("\n")) {
-    if (imFence(zeile)) { zeilen.push(zeile); continue; }
-    if (PRUEFUNG_STAND_ZEILE.test(zeile)) continue;
-    zeilen.push(zeile);
-    if (PRUEFUNG_ZEILE.test(zeile)) zeilen.push(`Pruefung-Stand: ${stand}`);
-  }
-  return text.slice(0, grenzen.start) + zeilen.join("\n") + text.slice(grenzen.ende);
-}
-
-/**
- * Der Umfang, der nach dem Schreiben dieses Bodys tatsaechlich gilt.
- *
- * `verfallenZaehlt` trennt die beiden Seiten des Vergleichs: Fuer den ALTEN Body
- * macht eine verfallene Vorgabe den Regelfall gueltig — sie ist ueberholt. Fuer den
- * NEUEN zaehlt der mitgelieferte Stand nicht, weil er ohnehin gleich ueberschrieben
- * wird. Wuerde er zaehlen, waere die Leitplanke mit einem Handgriff zu umgehen:
- * `Pruefung: Verzicht` plus irgendein Stand saehe als "verfallen" nach einer
- * ERHOEHUNG auf den Regelfall aus — und der frisch gesetzte Stand machte den
- * Verzicht unmittelbar danach gueltig.
- */
-function effektiverUmfang(body, regel, verfallenZaehlt) {
-  const { wert, verfallen } = parsePruefvorgabe(body);
-  if (wert === null || (verfallen && verfallenZaehlt)) return regel;
-  return wert === "verzicht" ? 0 : wert;
-}
-
-/**
- * Human-only-Leitplanke fuer die Pruefvorgabe (Issue #303, fachliche Quelle #285).
- *
- * Eine Verringerung darf nur ein Mensch setzen. Diese Forderung ist nicht von
- * allein erfuellt: Der Nacht-Review schreibt bei Stufe `issue` den geschaerften
- * Body selbst — per `issue update` mit gesetztem `KIT_AGENT_MODEL`. Deshalb liegt
- * die Regel im Adapter und nicht in einem Prompt (Prinzip aus Issue #122).
- *
- * Verglichen werden EFFEKTIVWERTE, nicht Zeilen. Eine fehlende Zeile im neuen Body
- * ist keine Loeschung, sondern der Regelfall: Stand vorher `Pruefung: 3` bei
- * Regelfall 1, ist das eine Verringerung; stand vorher nichts, aendert sich nichts.
- * Erhoehungen bleiben immer erlaubt — sie verringern nichts.
- *
- * Liefert den zu schreibenden Body; wirft, wenn nicht geschrieben werden darf.
- */
-export function pruefvorgabeDurchsetzen(altBody, neuBody, env = process.env) {
-  const regel = regelRunden();
-  const alt = effektiverUmfang(altBody, regel, true);
-  const neu = effektiverUmfang(neuBody, regel, false);
-
-  if (neu < alt && (env.KIT_AGENT_MODEL || "").trim() !== "") {
-    throw new BoardError(
-      `Verringerung der Pruefung (${alt} -> ${neu}) setzt nur ein Mensch. ` +
-      "Ein unbeaufsichtigter Lauf (KIT_AGENT_MODEL gesetzt) vergibt sie nie sich selbst — " +
-      "die Zeile 'Pruefung:' unveraendert aus dem alten Stand uebernehmen.",
-    );
-  }
-
-  // Ohne Vorgabezeile bleibt der Body unangetastet: Ein Stand ohne Vorgabe traegt
-  // keine Aussage, und der Regelfall braucht keinen Bezugspunkt.
-  if (parsePruefvorgabe(neuBody).wert === null) return neuBody;
-  return mitPruefstand(neuBody, pruefvorgabeStand(neuBody));
 }
 
 /**
@@ -2893,11 +2618,11 @@ async function issueUpdate(tracker, config, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
   const neu = leseTextQuelle(args.body, args["body-file"], "body");
-  // Read before write (Issue #303): Ohne den alten Body laesst sich nicht sagen, ob
-  // der neue die Pruefung verringert. Scheitert das Lesen, endet der Aufruf hier —
-  // ein Schreibzugriff auf halbem Wissen waere genau der Bypass, den die Leitplanke
-  // schliessen soll.
-  const { body: alt, title } = await tracker.getIssue(id);
+  // Read before write (Issue #303, seit Plan #638 nur noch fuer den Titel): Ohne den
+  // Titel laesst sich die Praefix-Ausnahme der Spec-Wirkung nicht anwenden. Scheitert
+  // das Lesen, endet der Aufruf hier — ein Schreibzugriff auf halbem Wissen waere genau
+  // der Bypass, den die Leitplanke schliessen soll.
+  const { title } = await tracker.getIssue(id);
   // Die Spec-Wirkung wird auch beim Schreiben geprueft (Issue #526): Genau ueber
   // `update` schreibt `/issue-review` den geschaerften Body zurueck — auch nachts —,
   // und eine Leitplanke, die nur beim Anlegen greift, hat dort ihre offene Tuer.
@@ -2906,12 +2631,258 @@ async function issueUpdate(tracker, config, args) {
   // Schreibzugriff nicht. `update` traegt bewusst keinen Titel, und erst getIssue
   // liefert ihn fuer die Praefix-Ausnahme — ohne diese Reihenfolge wiese der
   // Adapter jedes `[Plan]`-Dokument ab, das der Nacht-Review zurueckschreibt.
-  //
-  // VOR pruefvorgabeDurchsetzen: Ein Body mit beiden Fehlern bekommt zuerst die
-  // Wirkungsangabe gemeldet.
   specWirkungSicherstellen(config, neu, title);
-  await tracker.updateIssue(id, { body: pruefvorgabeDurchsetzen(alt || "", neu) });
+  // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
+  // er kommt. Das `getIssue` davor bleibt fuer den Titel.
+  await tracker.updateIssue(id, { body: neu });
   out({ ok: true, id });
+}
+
+// ============================================================
+// Formpruefung: issue check-form (Issue #628)
+// ============================================================
+
+const CHECK_FORM_WEGE =
+  "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
+  + "--body-file <pfad> zusammen mit --title \"<titel>\"";
+
+/** Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert). */
+const CHECK_FORM_ABSCHNITTE = {
+  fachlich: ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele", "offene fragen an den po"],
+  plan: ["ziel", "betroffene bereiche", "architektonische entscheidungen", "geplante aenderungen", "offene fragen", "verifizierung"],
+  issue: ["kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"],
+};
+
+/** Ueberschriften vergleichbar machen: Umlaute zaehlen in beiden Schreibweisen. */
+function normUeberschrift(text) {
+  return String(text).trim().toLowerCase()
+    .replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss")
+    .replaceAll(/\s+/g, " ");
+}
+
+/**
+ * Zerlegt den Body ohne Codebloecke in Kopf und `##`-Abschnitte.
+ *
+ * Dieselbe Fence-Auslegung wie ueberall im Adapter (`fenceLauf`): Eine
+ * Ueberschrift im Codeblock existiert fuer die Pruefung nicht — weder als
+ * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze.
+ */
+function zerlegeAbschnitte(body) {
+  const imFence = fenceLauf();
+  const kopf = [];
+  const abschnitte = [];
+  let aktuell = null;
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (imFence(zeile)) continue;
+    const m = zeile.match(/^##[ \t]+(.+?)[ \t]*$/);
+    if (m) {
+      aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
+      abschnitte.push(aktuell);
+      continue;
+    }
+    (aktuell ? aktuell.zeilen : kopf).push(zeile);
+  }
+  return { kopf, abschnitte };
+}
+
+function ersteNichtLeere(zeilen) {
+  return zeilen.map((z) => z.trim()).find((z) => z !== "") ?? null;
+}
+
+function istLeer(zeilen) {
+  return ersteNichtLeere(zeilen) === null;
+}
+
+/** `Autor-Modell: <wert>` (bzw. eine andere Kennzeichnungszeile) mit nicht leerem Wert. */
+function hatKennzeichnung(zeilen, name) {
+  const muster = new RegExp(`^${name}:[ \\t]*(\\S.*)?$`);
+  return zeilen.some((z) => {
+    const m = z.trim().match(muster);
+    return Boolean(m && m[1] && m[1].trim() !== "");
+  });
+}
+
+/**
+ * Pflichtabschnitte je genau einmal und in dieser Reihenfolge. Liefert die
+ * Meldungen; leer heisst erfuellt. Andere Abschnitte werden hier nicht bewertet.
+ */
+function pruefeReihenfolge(abschnitte, erwartet) {
+  const meldungen = [];
+  let letzte = -1;
+  for (const name of erwartet) {
+    const stellen = abschnitte.map((a, i) => (a.titel === name ? i : -1)).filter((i) => i >= 0);
+    if (stellen.length === 0) { meldungen.push(`Abschnitt '## ${name}' fehlt`); continue; }
+    if (stellen.length > 1) meldungen.push(`Abschnitt '## ${name}' steht ${stellen.length}-mal`);
+    if (stellen[0] < letzte) meldungen.push(`Abschnitt '## ${name}' steht nicht in der vorgeschriebenen Reihenfolge`);
+    letzte = Math.max(letzte, stellen[0]);
+  }
+  return meldungen;
+}
+
+/** Zeilen ausserhalb von Codebloecken, die mit einem der Praefixe beginnen. */
+function zeilenMitPraefix(zeilen, muster) {
+  return zeilen.filter((z) => muster.test(z.trim()));
+}
+
+/** Meldungen fuer die Marker-Zeile, die auf dieser Stufe nicht stehen darf (F11, P12). */
+function markerVerstoesse(zeilen, gate, richtigerMarker) {
+  return zeilenMitPraefix(zeilen, /^Issue-Review:/i)
+    .map((z) => ({ gate, meldung: `'${z.trim()}' — der Marker dieser Stufe heisst '${richtigerMarker}'` }));
+}
+
+function pruefeFachlich(abschnitte, alleZeilen) {
+  const erwartet = CHECK_FORM_ABSCHNITTE.fachlich;
+  const finde = (name) => abschnitte.find((a) => a.titel === name);
+  const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "F1", meldung }));
+  const ziel = finde("ziel");
+  if (!ziel || !hatKennzeichnung(ziel.zeilen, "Autor-Modell")) {
+    verstoesse.push({ gate: "F2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Ziel'" });
+  }
+  for (const name of ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele"]) {
+    const a = finde(name);
+    if (a && istLeer(a.zeilen)) verstoesse.push({ gate: "F6", meldung: `Abschnitt '## ${name}' ist leer` });
+  }
+  if (!finde("offene fragen an den po")) {
+    verstoesse.push({ gate: "F7", meldung: "Abschnitt '## Offene Fragen an den PO' fehlt" });
+  }
+  for (const z of zeilenMitPraefix(alleZeilen, /^(Fachliche Quelle|Plan):/)) {
+    verstoesse.push({ gate: "F9", meldung: `Herkunftszeile an der Wurzel: '${z.trim()}'` });
+  }
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "Fachplan-Review:")];
+}
+
+/** P6 fuer einen Abschnitt: nicht leer; `- Keine.` nur wo erlaubt und nur als erste Zeile. */
+function pruefeP6(name, zeilen) {
+  const inhalt = zeilen.map((z) => z.trim()).filter((z) => z !== "");
+  if (inhalt.length === 0) return `Abschnitt '## ${name}' ist leer`;
+  const keineErlaubt = name === "architektonische entscheidungen" || name === "offene fragen";
+  const hatKeine = inhalt.some((z) => z.startsWith("- Keine."));
+  if (!hatKeine) return null;
+  if (!keineErlaubt) return `'- Keine.' ist in '## ${name}' nicht erlaubt`;
+  const nurKeine = inhalt.every((z, i) => (i === 0 ? z.startsWith("- Keine.") : !z.startsWith("- Keine.")));
+  return nurKeine ? null : `'- Keine.' in '## ${name}' muss die erste Zeile sein und darf keine weiteren Eintraege haben`;
+}
+
+function pruefePlan(kopf, abschnitte, alleZeilen) {
+  const erwartet = CHECK_FORM_ABSCHNITTE.plan;
+  const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "P1", meldung }));
+  for (const a of abschnitte) {
+    if (!erwartet.includes(a.titel)) {
+      verstoesse.push({ gate: "P2", meldung: `zusaetzliche Ueberschrift '## ${a.titel}' — nur ### ist zwischen den sechs Abschnitten erlaubt` });
+    }
+  }
+  if (!hatKennzeichnung(kopf, "Plan-Modell")) {
+    verstoesse.push({ gate: "P3", meldung: "'Plan-Modell:' steht nicht mit Wert im Kopf vor '## Ziel'" });
+  }
+  for (const a of abschnitte.filter((x) => erwartet.includes(x.titel))) {
+    const meldung = pruefeP6(a.titel, a.zeilen);
+    if (meldung) verstoesse.push({ gate: "P6", meldung });
+  }
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "Plan-Review:")];
+}
+
+/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt, Spec-Wirkung nur davor. */
+function pruefeI1Lage(abschnitte) {
+  const meldungen = [];
+  const index = (name) => abschnitte.findIndex((a) => a.titel === name);
+  const abh = index("abhaengigkeiten");
+  if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push("'## Abhaengigkeiten' ist nicht der letzte Abschnitt");
+  const spec = index("spec-wirkung");
+  const akz = index("akzeptanzkriterium");
+  if (spec >= 0 && !(akz >= 0 && abh >= 0 && akz < spec && spec < abh)) {
+    meldungen.push("'## Spec-Wirkung' gehoert zwischen '## Akzeptanzkriterium' und '## Abhaengigkeiten'");
+  }
+  return meldungen;
+}
+
+/** I3 und I4 am Abhaengigkeiten-Abschnitt. */
+function pruefeAbhaengigkeiten(zeilen) {
+  const verstoesse = [];
+  const erste = ersteNichtLeere(zeilen);
+  if (erste === null) {
+    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' ist leer — 'Keine.' oder 'Issue #N'" });
+  } else if (!erste.startsWith("Keine.") && !zeilen.some((z) => /#\d+/.test(z))) {
+    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' nennt weder 'Keine.' noch eine #N-Referenz — der Nacht-Runner liest nur #N" });
+  }
+  for (const z of zeilenMitPraefix(zeilen, /^(Fachliche Quelle|Plan):/)) {
+    verstoesse.push({ gate: "I4", meldung: `'${z.trim()}' gehoert in '## Kontext', nicht in die Abhaengigkeiten — der Runner laese sie als Abhaengigkeit` });
+  }
+  return verstoesse;
+}
+
+function pruefeIssue(abschnitte) {
+  const finde = (name) => abschnitte.find((a) => a.titel === name);
+  const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
+    .map((meldung) => ({ gate: "I1", meldung }));
+  const kontext = finde("kontext");
+  if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
+    verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
+  }
+  const abh = finde("abhaengigkeiten");
+  return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
+}
+
+/**
+ * Prueft ein Dokument gegen die maschinellen Formgates seiner Stufe (Issue #628).
+ *
+ * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
+ * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
+ * Arbeitspaket: I1 bis I4 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt. Die
+ * `[Urteil]`-Gates bleiben beim Reviewer.
+ */
+export function pruefeForm(body, title) {
+  const stufe = stufeAusTitel(title);
+  const { kopf, abschnitte } = zerlegeAbschnitte(body);
+  const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
+  let verstoesse;
+  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
+  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
+  else verstoesse = pruefeIssue(abschnitte);
+  return { ok: verstoesse.length === 0, stufe, verstoesse };
+}
+
+/** Weist einen Aufruf ab — mit JSON auf stdout, damit ein Aufrufer die Abweisung lesen kann. */
+function checkFormAbweisen(meldung) {
+  out({ ok: false, stufe: null, verstoesse: [], fehler: meldung });
+  process.stderr.write(`Fehler: ${meldung}\n`);
+  process.exit(1);
+}
+
+/** Der Datei-Weg: Body aus --body-file, Titel aus --title. */
+function checkFormAusDatei(datei, titel) {
+  if (datei === true || datei === "") checkFormAbweisen(`--body-file braucht einen Pfad. ${CHECK_FORM_WEGE}.`);
+  if (typeof titel !== "string" || titel.trim() === "") {
+    checkFormAbweisen(`--body-file braucht --title, damit die Stufe feststeht. ${CHECK_FORM_WEGE}.`);
+  }
+  try {
+    return { body: readFileSync(datei, "utf-8"), title: titel };
+  } catch (e) {
+    return checkFormAbweisen(`--body-file: ${datei} ist nicht lesbar (${e.code || e.message}). ${CHECK_FORM_WEGE}.`);
+  }
+}
+
+/** Der Board-Weg: Body und Titel der Karte; eine unbekannte Nummer weist den Aufruf ab. */
+async function checkFormVomBoard(tracker, id) {
+  try {
+    const issue = await tracker.getIssue(String(id));
+    return { body: issue.body || "", title: issue.title || "" };
+  } catch (e) {
+    if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) return checkFormAbweisen(e.message);
+    throw e;
+  }
+}
+
+async function issueCheckForm(tracker, args) {
+  const id = args._[0];
+  const hatDatei = args["body-file"] !== undefined;
+  if (id !== undefined && hatDatei) checkFormAbweisen(`Kartennummer und --body-file zugleich uebergeben. ${CHECK_FORM_WEGE}.`);
+  if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
+
+  const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
+  const ergebnis = pruefeForm(body, title);
+  out(ergebnis);
+  if (!ergebnis.ok) process.exit(1);
 }
 
 async function dispatchIssue(command, args) {
@@ -2927,6 +2898,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, config, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
+    case "check-form": return issueCheckForm(tracker, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
@@ -3062,19 +3034,7 @@ async function kontextLastLog(args) {
 // Modelle aus anderen Haeusern teil — die teilen die blinden Flecken einer Familie
 // nicht. Das Kit kennt das fremde Werkzeug nicht und muss es nicht kennen.
 
-const ISSUE_REVIEW_DEFAULT_ROUNDS = 1;
 const REVIEWER_KINDS = ["claude", "command"];
-
-/**
- * Der Regelfall: wie oft geprueft wird, wenn das Ticket nichts anderes vorgibt.
- *
- * Bewusst ohne die Validierung aus `issueReviewConfig`: Die Pruefvorgabe-Leitplanke
- * in `issue update` braucht nur diese Zahl. Eine kaputte Reviewer-Liste duerfte
- * nicht dazu fuehren, dass sich kein Issue-Body mehr schreiben laesst.
- */
-function regelRunden(config = loadConfig()) {
-  return config.issueReview?.rounds || ISSUE_REVIEW_DEFAULT_ROUNDS;
-}
 
 // Die drei Stufen der Pruefung (Issue #278): das fachliche Anliegen, der Plan dorthin,
 // das einzelne Arbeitspaket. Jede schaut anders hin und ist anders besetzt — fachlich
@@ -3124,17 +3084,20 @@ function aufloesenAutor(alle, autor) {
  * `autorAufgeloest` sagt, ob der uebergebene Autor einem Reviewer zugeordnet werden
  * konnte. Bei `false` ist die Auswahl unveraendert gueltig, beruht aber nicht auf einem
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
+
  */
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
+  const gesperrt = new Set([schluessel]);
 
   // Explizite Zuordnung schlaegt die Regel (Issue #225). Ohne sie waehlt die Regel
   // immer die vordersten Eintraege — bei vier Reviewern kam der vierte nie zum Zug,
   // ausgerechnet das Modell aus dem fremden Haus. Und wer wissen will, wer sein Issue
   // prueft, soll es ablesen koennen statt es auszurechnen.
-  const genannt = pairs?.[schluessel];
-  if (Array.isArray(genannt) && genannt.length > 0) {
+  const eintrag = pairs?.[schluessel];
+  const genannt = Array.isArray(eintrag) ? eintrag.filter((n) => !gesperrt.has(n)) : [];
+  if (genannt.length > 0) {
     // Auch hier auf `anzahl` kuerzen, nicht nur im Regel-Zweig unten (Issue #278):
     // Sonst liefert eine Stufe mit einem Reviewer trotzdem beide Namen aus der
     // Paar-Tabelle — der eine Reviewer waere stillschweigend zwei geblieben.
@@ -3142,7 +3105,7 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
     const gewaehlt = genannt.map((n) => (alle || []).find((r) => r.name === n)).filter(Boolean).slice(0, anzahl);
     return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
   }
-  const passend = (alle || []).filter((r) => r.name !== schluessel);
+  const passend = (alle || []).filter((r) => !gesperrt.has(r.name));
   const gewaehlt = passend.slice(0, anzahl);
   return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel", autorAufgeloest: aufgeloest !== null };
 }
@@ -3227,7 +3190,6 @@ function issueReviewConfig() {
   const block = config.issueReview || {};
   const reviewers = validateReviewers(Array.isArray(block.reviewers) ? block.reviewers : []);
   return {
-    rounds: regelRunden(config),
     reviewers,
     pairs: validatePairs(block.pairs, reviewers),
     // `reviewStufen` steht auf oberster Ebene, nicht in `issueReview`: Die Besetzung
@@ -3368,47 +3330,12 @@ function probelauf(kommandozeile, pfad) {
 
 function issueReviewReviewers(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
-  const { rounds, reviewers, pairs } = issueReviewConfig();
-  out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs), rounds });
+  const { reviewers, pairs } = issueReviewConfig();
+  out({ autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs) });
 }
 
 /**
- * Die effektive Pruefvorgabe eines Tickets (Issue #302).
- *
- * Ohne `--issue` gilt der Regelfall aus der Config — das ist das Bestandsverhalten
- * und bleibt es. Mit `--issue` entscheidet die Zeile am Ticket, sofern sie gueltig
- * und nicht verfallen ist.
- *
- * `verfallen` bekommt einen EIGENEN Quellenwert, obwohl die Rundenzahl dieselbe ist
- * wie bei "config": Nur er sagt, dass dort einmal etwas stand. Wer morgens den
- * Nachtbericht liest, soll "nie entschieden" von "entschieden, aber ueberholt"
- * unterscheiden koennen.
- */
-async function pruefvorgabeFuerRoles(args) {
-  const konfig = { runden: issueReviewConfig().rounds, verzicht: false, vorgabeQuelle: "config" };
-  if (args.issue === undefined) return konfig;
-  const id = args.issue === true ? fail("--issue braucht einen Wert") : String(args.issue);
-
-  const tracker = resolveTracker(loadConfig());
-  const { body } = await tracker.getIssue(id);
-  // Wirft bei mehreren Zeilen oder unbekanntem Wert — der Aufruf endet dann mit der
-  // Meldung des Parsers. Eine kaputte Vorgabe still zum Regelfall zu machen waere die
-  // gefaehrlichere Variante: Ein Tippfehler in `Pruefung:` bliebe unsichtbar.
-  const { wert, verfallen } = parsePruefvorgabe(body || "");
-
-  if (wert === null) return konfig;
-  if (verfallen) return { ...konfig, vorgabeQuelle: "verfallen" };
-  return {
-    // Bei Verzicht laeuft keine Runde; die Aussage traegt `verzicht`, die 0 ist die
-    // dazu passende Rundenzahl (derselbe Effektivwert wie in der Leitplanke aus #303).
-    runden: wert === "verzicht" ? 0 : wert,
-    verzicht: wert === "verzicht",
-    vorgabeQuelle: "issue",
-  };
-}
-
-/**
- * Besetzung, Blickwinkel und Pruefvorgabe einer Pruefstufe (Issue #278, #302).
+ * Besetzung und Blickwinkel einer Pruefstufe (Issue #278; gekuerzt in Plan #638, A15).
  *
  * `--author` ist verpflichtend, nicht bequem: `pickReviewers` braucht den Autor fuer
  * `pairs` und fuer den Selbstausschluss. Ohne ihn koennte der Befehl genau das nicht
@@ -3418,11 +3345,18 @@ async function pruefvorgabeFuerRoles(args) {
  * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
  * STUFENBESETZUNG ("stufen" | "default").
  *
- * `runden`, `verzicht` und `vorgabeQuelle` kommen additiv dazu und sind immer da:
- * Ein Kommando soll die vollstaendige Pruefvorgabe liefern, damit der Skill sie nicht
- * aus einer zweiten Quelle (der Config) zusammensuchen muss.
+ * `--issue`, `--rolle` und `--ausschluss` sind mit der Pruefvorgabe und der
+ * Synthese-Pruefung entfallen. Sie werden abgewiesen statt still uebergangen: Ein
+ * stilles Flag waere eine zweite Wahrheit ueber das, was das Kommando tut.
  */
+const ROLES_ENTFALLEN = ["issue", "rolle", "ausschluss"];
+
 async function issueReviewRoles(args) {
+  for (const option of ROLES_ENTFALLEN) {
+    if (args[option] !== undefined) {
+      fail(`--${option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stufe und --author.`);
+    }
+  }
   const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
   if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
   if (!REVIEW_STUFEN.includes(stufe)) {
@@ -3431,7 +3365,6 @@ async function issueReviewRoles(args) {
   const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
   if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
 
-  const vorgabe = await pruefvorgabeFuerRoles(args);
   const { reviewers, pairs, reviewStufen } = issueReviewConfig();
   const { reviewer, rollen } = reviewStufen.stufen[stufe];
   out({
@@ -3441,7 +3374,6 @@ async function issueReviewRoles(args) {
     stufenQuelle: reviewStufen.stufenQuelle,
     autor,
     ...pickReviewers(reviewers, autor, reviewer, pairs),
-    ...vorgabe,
   });
 }
 
@@ -3501,89 +3433,16 @@ function issueReviewCheck(args = {}) {
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) });
 }
 
-// Die vier Zustandslabels. Feste Namen, kein Config-Mapping (Plan #347, A5):
-// Konfigurierbare Namen waeren eine zweite Wahrheit und zerstoerten die
-// Wiedererkennbarkeit ueber Projekte hinweg.
-const ZUSTANDS_LABELS = ["review:offen", "review:befunde", "review:fertig", "review:grenze"];
-
-// `ausgefallen` bildet auf `review:offen` ab (Plan #368, A3): Ein ausgefallener
-// Reviewer ist kein Pruefergebnis — das Ticket ist so ungeprueft wie zuvor.
-const ZUSTAND_ZU_LABEL = {
-  offen: "review:offen",
-  befunde: "review:befunde",
-  fertig: "review:fertig",
-  ausgefallen: "review:offen",
-  grenze: "review:grenze",
-};
-
 /**
  * Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt.
  *
  * Nutzt die Praedikate von oben. Bis Issue #464 stand die Praefix-Form hier ein
  * drittes Mal — in derselben Datei, in der sie seither definiert ist.
  */
-function stufeAusTitel(title) {
+export function stufeAusTitel(title) {
   if (istFachlich(title)) return "fachlich";
   if (istPlan(title)) return "plan";
   return "issue";
-}
-
-/**
- * Schreibt den abgeleiteten Pruefzustand als Label ans Ticket (Issue #384).
- *
- * Das Label ist **Projektion, nie Wahrheit** (Plan #368, A1): Kein Gate liest es.
- * `requiredBeforeReady` haengt am Marker, die Kandidatenauswahl des Nacht-Runners
- * an Marker und Routing-Label. Weil das Kommando aus dem Ist-Zustand ableitet statt
- * Uebergaenge zu buchen, ist es zugleich die Reparatur fuer von Hand verstellte
- * Labels — zweimal ausfuehren aendert nichts.
- */
-async function issueReviewLabelSync(args) {
-  const id = args._[0];
-  if (id === undefined) fail("label-sync braucht eine Issue-Nummer");
-
-  const config = loadConfig();
-
-  // Opt-in (Plan #347, A4): Ein Kit-Update darf Bestandsprojekten nicht ungefragt
-  // Labels in die Boards schreiben. Die Meldung geht auf stderr — stdout traegt bei
-  // den uebrigen Kommandos JSON, und ein Prosa-Satz dort braeche Skript-Konsumenten.
-  if (!config.issueReview?.statusLabels) {
-    process.stderr.write("label-sync uebersprungen: issueReview.statusLabels ist nicht gesetzt.\n");
-    return;
-  }
-
-  // Kollisions-Guard (Plan #347, A5): Bei GitLab SIND Spalten Labels, und
-  // `labelToStatus` laese ein kollidierendes Zustandslabel als Spaltenbewegung.
-  const spalten = Object.values(columnLabels(config));
-  const kollision = ZUSTANDS_LABELS.find((l) => spalten.includes(l));
-  if (kollision) {
-    fail(`Zustandslabel '${kollision}' kollidiert mit einem Spalten-Label aus der Config. label-sync bricht ab, sonst laese der Tracker es als Spaltenbewegung.`);
-  }
-
-  const tracker = resolveTracker(config);
-  const issue = await tracker.getIssue(String(id));
-
-  // Vorhaben tragen keine Labels: `requireLabelableCard` lehnt serverseitig alles ab,
-  // was nicht CARD ist (Plan #368, A12). Ein harter Abbruch waere falsch — das
-  // Vorhaben ist kein Fehler, es ist nur kein Ziel fuer ein Label.
-  if (issue.type === "epic") {
-    process.stderr.write(`label-sync uebersprungen: #${id} ist ein Vorhaben, Vorhaben tragen keine Labels.\n`);
-    return;
-  }
-
-  const zustand = reviewZustand(issue.body, issue.comments, stufeAusTitel(issue.title));
-  const ziel = ZUSTAND_ZU_LABEL[zustand];
-
-  // Reihenfolge verbindlich: erst die anderen entfernen, dann das Ziel setzen. Umgekehrt
-  // traegt die Karte einen Moment lang zwei Zustandslabels — sichtbar am Live-Beleg zu
-  // Issue #375. Ein halb getauschter Zustand (entfernt, aber nicht gesetzt) ist zulaessig:
-  // Das Label ist Projektion, der naechste Lauf stellt es her.
-  const ist = issue.labels || [];
-  for (const l of ZUSTANDS_LABELS) {
-    if (l !== ziel && ist.includes(l)) await tracker.labelIssue(String(id), l, "remove");
-  }
-  await tracker.labelIssue(String(id), ziel, "add");
-
-  out({ ok: true, id: String(id), zustand, label: ziel });
 }
 
 async function dispatchIssueReview(command, args) {
@@ -3592,7 +3451,6 @@ async function dispatchIssueReview(command, args) {
     case "check": return issueReviewCheck(args);
     case "matrix": return issueReviewMatrix();
     case "roles": return issueReviewRoles(args);
-    case "label-sync": return issueReviewLabelSync(args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

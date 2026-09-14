@@ -51,16 +51,17 @@ test("dokumentation: das Gate kennt drei Sorten, [Plan] eingeschlossen", () => {
   assert.match(doku, /\[Plan\]/, "das Praefix wird nicht genannt");
 });
 
-// Seit Issue #283 haengt es von --stufe ab, was der Nacht-Review nimmt: [Plan] ist
-// nur in der Default-Stufe uebersprungen, in der Stufe `plan` ist es genau das
-// Ziel. Der frueher hier gepruefte Pauschalsatz waere jetzt falsch. Was bleibt:
-// [Idee] ist in JEDER Stufe ausgeschlossen, und die Doku muss die Stufen nennen.
-test("dokumentation: der --review-Abschnitt nennt die drei Stufen und den [Idee]-Ausschluss", () => {
+// Seit Stufe 2 des Prozess-Umbaus (Plan #638, Issue #646) gibt es keine Stufenwahl
+// mehr: Die Nacht-Kette nimmt genau [Fachlich]-Issues als Eingang; [Idee] und [Plan]
+// sind damit keine Kandidaten, ohne dass ein eigener Ausschluss noetig waere. Die Doku
+// muss den Eingang nennen und keinen der entfallenen Stufen-Schalter mehr.
+test("dokumentation: der Abschnitt zur Nacht-Kette nennt [Fachlich] als einzigen Eingang", () => {
   const doku = lies("docs", "dokumentation.md");
-  assert.match(doku, /--stufe <fachlich\|plan\|issue>/, "das Flag fehlt in der Doku");
-  assert.match(doku, /Default `issue`/, "der Default fehlt");
-  assert.match(doku, /`\[Idee\]` bleibt in jeder Stufe ausgeschlossen/,
-    "der stufenuebergreifende [Idee]-Ausschluss fehlt");
+  const idx = doku.indexOf("### Zweiter Modus: die Nacht-Kette");
+  assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
+  const kette = doku.slice(idx).split(/\n### /)[0];
+  assert.match(kette, /hat den Titel `\[Fachlich\]`/, "der Eingang [Fachlich] fehlt");
+  assert.doesNotMatch(doku, /--stufe <fachlich\|plan\|issue>/, "der entfallene Stufen-Schalter steht noch in der Doku");
 });
 
 // Seit Issue #279 schliesst /issue-review [Fachlich] und [Plan] NICHT mehr aus --

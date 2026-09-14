@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync, readFileSync } from "node:fs";
+import { rmSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, repoRoot } from "./helpers/board-fixture.mjs";

@@ -31,7 +31,6 @@ function schrittEins(text) {
 const ANKER = [
   ["KIT_AGENT_MODEL", "das Erkennungsmerkmal der unbeaufsichtigten Variante fehlt"],
   ["/issues #N", "der Eingang als Issue-Nummer fehlt — ohne ihn ist unklar, was gelesen wird"],
-  ["Plan-Review:", "der Pruefnachweis am Plan-Dokument fehlt"],
   ["- Keine.", "die Bedingung an `## Offene Fragen` fehlt"],
   ["Kein Eingang für /issues:", "der Fehlerpfad ohne Ansprache an einen Menschen fehlt"],
 ];
@@ -61,13 +60,12 @@ test("das Ready-Ziehen bleibt menschlich", () => {
     "der Satz `Status bleibt **Backlog**` in Schritt 3 fehlt");
 });
 
-test("Zustand und Label ersetzen den Marker nicht", () => {
-  // Ein gueltiger `Pruefung: Verzicht` ergibt ebenfalls `review:fertig`, aber nie
-  // einen Marker. Wer das Label als Ersatz naehme, liesse einen nie geprueften
-  // Plan durch.
+test("[skills-14] der Eingang ist ein [Plan] ohne offene Stopp-Frage, kein Marker", () => {
+  // Seit Issue #631 ist der Marker eine Spur, kein Gate: Ob der Plan geprueft wurde,
+  // entscheidet der Mensch mit dem Routing-Label.
   const block = schrittEins(SKILL);
-  assert.match(block, /review:fertig/,
-    "der Zustand wird nicht erwaehnt — dann ist unklar, dass er den Marker nicht ersetzt");
-  assert.match(block, /Verzicht/,
-    "der Verzicht wird nicht ausgeschlossen — er ergibt `review:fertig` ohne Marker");
+  assert.doesNotMatch(block, /Plan-Review:/, "der Marker steht noch als Bedingung da");
+  assert.match(block, /- Keine\./, "die Bedingung an `## Offene Fragen` fehlt");
+  assert.match(block, /Routing-Label/, "wer ueber die Freigabe entscheidet, steht nicht da");
+  assert.match(block, /offene Stopp-Frage/, "der Fehlerpfad nennt die Stopp-Frage nicht");
 });

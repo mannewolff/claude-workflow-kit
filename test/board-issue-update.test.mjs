@@ -10,11 +10,11 @@
 // Command-Substitution und Zeilenumbruechen **byte-identisch** ankommt. Das ist die
 // Stelle, an der ein Shell-Aufruf falsch waere (Issue #196).
 //
-// Seit Issue #303 liest `issue update` den alten Body, BEVOR es schreibt — die
-// Pruefvorgabe-Leitplanke braucht den Vergleich. Alle vier Adapterfaelle mocken
-// deshalb auch den Lesebefehl; ein Mock, der nur den Schreibbefehl kennt, faellt
-// hier durch. Der Lesefehler-Test haelt fest, was daran die Hauptsache ist: kein
-// Schreibzugriff auf halbem Wissen.
+// Seit Issue #303 liest `issue update` den alten Stand, BEVOR es schreibt — heute
+// fuer den Titel, an dem die Spec-Wirkung haengt (die Pruefvorgabe-Leitplanke ist mit
+// Plan #638 entfallen). Alle vier Adapterfaelle mocken deshalb auch den Lesebefehl;
+// ein Mock, der nur den Schreibbefehl kennt, faellt hier durch. Der Lesefehler-Test
+// haelt fest, was daran die Hauptsache ist: kein Schreibzugriff auf halbem Wissen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -148,9 +148,9 @@ test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", NUR_PO
 });
 
 test("issue update: ein Lesefehler loest keinen Schreibzugriff aus", NUR_POSIX, () => {
-  // Die gefaehrlichste Variante eines halben Wissens: Der alte Body ist unbekannt,
-  // also ist auch unbekannt, ob der neue die Pruefung verringert. Dann lieber nicht
-  // schreiben — ein durchgewinktes Update waere genau der Bypass, den #303 schliesst.
+  // Die gefaehrlichste Variante eines halben Wissens: Der alte Stand ist unbekannt,
+  // also auch der Titel, an dem die Spec-Wirkung haengt. Dann lieber nicht schreiben —
+  // ein durchgewinktes Update waere genau der Bypass, den #303 geschlossen hat.
   const dir = setupProjekt(GITHUB, "board-update-gh-lesefehler-");
   try {
     fakeCli(dir, "gh", [

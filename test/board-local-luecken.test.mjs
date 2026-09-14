@@ -118,19 +118,6 @@ test("issue update auf ein nicht vorhandenes Issue nennt den erwarteten Pfad", (
   });
 });
 
-// ============================================================
-// Die CLI-Achse: fehlende und ueberzaehlige Argumente
-// ============================================================
-
-test("label-sync ohne Issue-Nummer bricht mit einem Hinweis ab", () => {
-  mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "label-sync"]);
-
-    assert.notEqual(res.status, 0, "ohne Nummer haette der Aufruf scheitern muessen");
-    assert.match(res.stderr, /label-sync braucht eine Issue-Nummer/);
-  });
-});
-
 test("issue-review reviewers ohne --author meldet autor null statt undefined", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue-review", "reviewers"]);
@@ -141,67 +128,4 @@ test("issue-review reviewers ohne --author meldet autor null statt undefined", (
     assert.ok(!res.stdout.includes("undefined"), "'undefined' steht in der JSON-Ausgabe");
   }, { ...LOKAL, issueReview: { rounds: 1, reviewers: [{ name: "fable", kind: "claude", model: "claude-fable-5" }] } },
   "board-local-roles-");
-});
-
-test("issue-review roles --issue liest die Vorgabe eines Issues ohne Body", () => {
-  mitProjekt((dir) => {
-    // Ein Issue, dessen Body leer ist: Der Parser bekommt den leeren Text statt
-    // `undefined` und meldet den Regelfall — nicht einen Fehler.
-    mkdirSync(join(dir, "issues"), { recursive: true });
-    writeFileSync(join(dir, "issues", "0007.md"), "---\nid: 7\ntitle: Leer\nstatus: backlog\n---\n", "utf-8");
-
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5", "--issue", "7"]);
-
-    assert.equal(res.status, 0, `roles --issue haette durchlaufen muessen: ${res.stderr}`);
-    const daten = JSON.parse(res.stdout);
-    assert.equal(daten.vorgabeQuelle, "config", "ohne Zeile am Ticket gilt der Regelfall aus der Config");
-    assert.equal(daten.verzicht, false);
-  }, { ...LOKAL, issueReview: { rounds: 1, reviewers: [{ name: "fable", kind: "claude", model: "claude-fable-5" }] } },
-  "board-local-roles-issue-");
-});
-
-// ============================================================
-// stufeAusTitel: die drei Praefixe ueber label-sync
-// ============================================================
-
-const STUFEN = [
-  { titel: "[Fachlich] Eine Anforderung", marker: "Fachplan-Review: fable (2026-08-31)" },
-  { titel: "[Plan] Ein Plandokument", marker: "Plan-Review: fable (2026-08-31)" },
-  { titel: "Ein Arbeitspaket", marker: "Issue-Review: fable (2026-08-31)" },
-];
-
-for (const fall of STUFEN) {
-  test(`label-sync liest die Stufe aus dem Titel: ${fall.titel}`, () => {
-    mitProjekt((dir) => {
-      // Der jeweils passende Marker macht den Zustand `fertig`. Nur wenn die Stufe
-      // richtig aus dem Titel gelesen wird, zaehlt er — ein `Plan-Review:` an einem
-      // Arbeitspaket belegt nichts.
-      const body = `## Kontext\n\n${fall.marker}\n\n## Abhaengigkeiten\n\nKeine.\n`;
-      const issue = board(dir, "issue", "create", "--title", fall.titel, "--body", body);
-
-      const res = runBoard(dir, ["issue-review", "label-sync", String(issue.id)]);
-
-      assert.equal(res.status, 0, `label-sync schlug fehl: ${res.stderr}`);
-      const daten = JSON.parse(res.stdout);
-      assert.equal(daten.zustand, "fertig",
-        `der Marker '${fall.marker}' wurde fuer '${fall.titel}' nicht anerkannt`);
-      assert.equal(daten.label, "review:fertig");
-    }, { ...LOKAL, issueReview: { statusLabels: true } }, "board-local-stufe-");
-  });
-}
-
-test("ein Marker der falschen Stufe belegt nichts", () => {
-  mitProjekt((dir) => {
-    // `Plan-Review:` an einem Arbeitspaket: Die Stufe ist `issue`, und dort zaehlt
-    // allein `Issue-Review:`. Wer das verwechselt, zieht ein ungepruefte Paket nach
-    // Ready.
-    const body = "## Kontext\n\nPlan-Review: fable (2026-08-31)\n\n## Abhaengigkeiten\n\nKeine.\n";
-    const issue = board(dir, "issue", "create", "--title", "Ein Arbeitspaket", "--body", body);
-
-    const res = runBoard(dir, ["issue-review", "label-sync", String(issue.id)]);
-
-    assert.equal(res.status, 0, `label-sync schlug fehl: ${res.stderr}`);
-    assert.notEqual(JSON.parse(res.stdout).zustand, "fertig",
-      "ein Marker der falschen Stufe wurde als Nachweis gewertet");
-  }, { ...LOKAL, issueReview: { statusLabels: true } }, "board-local-falsche-stufe-");
 });

@@ -67,13 +67,7 @@ Wenn Ready leer ist:
 
 Ohne Fehler enden.
 
-**Ungepruefte Issues: Hinweis, kein Stopp.** Ein Ready-Issue steht in einem von **drei Zustaenden** — und nur der dritte ist eine Luecke:
-
-1. **Marker vorhanden.** Der Kontext-Abschnitt traegt die Zeile `Issue-Review:`, das Issue ist durch `/issue-review` gelaufen. **Kein Hinweis**, es geht wie bisher weiter.
-2. **Bewusst ohne Pruefung freigegeben.** Der Kontext-Abschnitt traegt `Pruefung: Verzicht`, und diese Vorgabe ist gueltig, also nicht verfallen. Melde sie als "bewusst ohne Pruefung freigegeben (Pruefung: Verzicht)" und fahre fort — **keine Rueckfrage**. Das ist keine Luecke, sondern die Entscheidung des Menschen; sie zur Rueckfrage zu machen hiesse, ihr zu widersprechen.
-3. **Weder Marker noch gueltiger Verzicht.** Das Issue ist nicht durch `/issue-review` gelaufen. Weise darauf hin und frage, ob trotzdem implementiert werden soll — **halte aber nicht von dir aus an**. Der Nacht-Runner stellt solche Issues bei gesetztem `issueReview.requiredBeforeReady` zurueck; interaktiv steht ein Mensch daneben, der entscheiden kann. Diese Asymmetrie ist Absicht: Nachts antwortet niemand, und eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #223).
-
-**Eine verfallene Vorgabe ist nicht Fall 3.** Wurde das Issue nach der Entscheidung inhaltlich geaendert — Aufgabe, Akzeptanzkriterium oder Abhaengigkeiten —, ist die Vorgabe verfallen. Benenne dann genau das: "die Pruefvorgabe ist mit einer inhaltlichen Aenderung verfallen". Das sagt dem Menschen etwas anderes als "wurde nie geprueft"; nur er kann entscheiden, ob die alte Freigabe noch traegt. Fuer den Lauf gilt danach der Regelfall, also der Hinweis aus Fall 3. Ob eine Vorgabe gueltig, verfallen oder gar nicht vorhanden ist, sagt `node .claude/kit/board.mjs issue-review roles --stufe issue --author <Autor-Modell aus dem Kontext> --issue <id>` in den Feldern `verzicht` und `vorgabeQuelle` (`issue` | `verfallen` | `config`).
+Ob ein Ready-Issue geprueft wurde, ist keine Frage dieses Skills — Ready ist das GO.
 
 ### 1. Issue nach In progress verschieben
 
@@ -95,6 +89,22 @@ Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wir
 - Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
 - Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
 - Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten und den geschriebenen Exit-Code einlesen — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
+
+**Entscheiden statt fragen.** Taucht beim Umsetzen — bei jedem Arbeitspaket, mit oder ohne `[Task]`-Praefix — eine Entscheidung auf, gilt `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen": Alles ausserhalb der Stopp-Klasse wird entschieden, im Format von dort, und steht im Abschlussbericht unter `### Entscheidungen`. Kein Halt, kein Label, kein Kommentar. Stopp-Klasse und Format stehen nur dort und werden hier nicht wiederholt.
+
+Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann geschieht, in dieser Reihenfolge:
+
+1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Interaktiv koennen fremde Aenderungen darin liegen, und die gehoeren dem Menschen.
+2. `node .claude/kit/board.mjs issue label add <id> kit:klaeren`
+3. Kommentar ans Issue nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-halt.md` stueckweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-halt.md` — nie als Argument. Der Kommentar benennt den Punkt der Stopp-Klasse, die eine Frage und den Folgeschritt, diesen **woertlich**: `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` An genau diesem Satz erkennt der Nacht-Runner den Halt-Kommentar; er steht dort als Konstante `HALT_FOLGESATZ` in `kit/night.mjs` und wird nicht umformuliert.
+4. `node .claude/kit/board.mjs issue move <id> backlog`
+5. Melden, dass die Frage am Board wartet und der Weg nach vorn `/fachplan #<id>` ist — **kein Commit**. In `/implement-next` endet die Session damit; in `/implement-ready` geht der Lauf ohne weiteren Versuch an diesem Vorgang mit dem naechsten Ready-Issue weiter.
+
+**Gemessen wird der eigene Anteil** — die Dateien, die die Session nachweislich selbst angelegt oder geaendert hat, belegt ueber ihre eigenen Werkzeugaufrufe —, nicht der ganze Arbeitsbaum. Ein Vergleich gegen den Stand bei Session-Start ist kein Nachweis: Fremde Aenderungen koennen im selben Zeitraum entstehen.
+
+**Ob sich jeder eigene Anteil namentlich zuruecknehmen laesst, wird vor Schritt 2 entschieden.** Nicht namentlich zuruecknehmbar ist etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug und die die Session weiter geaendert hat — `git restore` naehme dem Menschen seinen Anteil weg. Bleibt so eine eigene Aenderung zurueck, wird **nicht** angehalten: keiner der Schritte 2 bis 5, also kein Label, kein Kommentar, kein Move, kein Commit. Die Session meldet, welche Datei zurueckbleibt und warum, und endet; das Issue bleibt in In progress. Interaktiv entscheidet der Mensch, nachts greift der Dirty-Guard des Runners wie bei jeder Runde ohne In-review-Ergebnis.
+
+Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
 
 **Aussage-ID in den Testnamen (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Die ID-Form ist `<bereich>-<N>`; vergeben hat sie `/issues`, und sie steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
 
@@ -194,7 +204,12 @@ Format des Abschlussberichts:
 
 ### Hinweise
 - <verbleibende Risiken, offene Punkte, manuelle Folgeschritte>
+
+### Entscheidungen
+- E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
+
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen".
 
 ### 7. Ende
 
