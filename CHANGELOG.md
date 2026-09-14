@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.52.4] - 2026-09-14
+- chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#639 #640 #641 #642 #643 #644 #645 #646 #620 #618)
+- Nacht-Runner stoppt vor der ersten Session bei ungueltiger settings.json (#618)
+- Nacht-Runner startet Sessions mit geschlossenem stdin (#620)
+- Doku und Prozessdatei: zwei Betriebsarten, Abschnitt Nacht-Kette, Skill-Hinweis auf --kette (#646)
+- Nacht-Runner: Nachtbericht am Fachplan, wartende Berichte, Kette nicht gestartet (#645)
+- Nacht-Runner: Kette bis zu den Paketen, Abdeckung gegen den Fachplan, ueberholte Plaene (#644)
+- Nacht-Runner: Modus --kette bis zum geprueften Plan mit Budgets, Halt und Ergebnisstand (#643)
+- Nacht-Runner: cwd-Durchreichung, Worktree-Funktionen, Strom je Session und Config-Block night.kette (#642)
+- Board-Adapter: Synthese, label-sync, reviewZustand und Pruefvorgabe entfernen, rounds und statusLabels aus der Config (#641)
+- Nacht-Runner: Review- und Erzeugungsmodus entfernen, alte Flags abweisen, Gate auf Marker kuerzen (#640)
+- issue-review setzt review:fertig als sichtbare Spur am Board (#639)
+- Änderungen der Prüfer
+- Kurzanleitung und Startseite auf sechzehn Skills (#606)
+
 ## [1.52.3] - 2026-09-14
 - chore: Spec fortgeschrieben (#625–#634)
 - retro fragt nach den Zahlen: gekippte Nachtentscheidungen, Stopp-Fragen, Anforderung bis GO, GO bis Push (#634)
