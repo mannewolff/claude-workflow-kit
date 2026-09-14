@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -123,7 +123,11 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   for (const anker of ["`kit:night`", "`kit:nightrun`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander"]) {
     assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
   }
-  assert.equal(VORLAGE, lies(".claude", "CLAUDE-workflow.md"), "die Kopie unter .claude/ ist nicht bytegleich");
+  // Die Kopie unter .claude/ ist Installer-Ausgabe und nicht versioniert — in CI existiert
+  // sie nicht (wie in docs-pruefstufen.test.mjs). Lokal muss sie bytegleich sein.
+  if (existsSync(join(repoRoot, ".claude", "CLAUDE-workflow.md"))) {
+    assert.equal(VORLAGE, lies(".claude", "CLAUDE-workflow.md"), "die Kopie unter .claude/ ist nicht bytegleich");
+  }
 });
 
 test("der /techplan-Skill nennt den Runner-Aufruf --kette", () => {

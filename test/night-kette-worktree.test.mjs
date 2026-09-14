@@ -58,7 +58,9 @@ test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an
     angelegt.push(pfad);
     assert.ok(pfad.startsWith(join(tmpdir(), `kette-${basename(dir)}-635-`)), `unerwarteter Pfad: ${pfad}`);
     assert.ok(!pfad.startsWith(dir), "der Worktree darf nicht im Repo liegen");
-    assert.equal(readFileSync(join(pfad, "README.md"), "utf-8"), "hallo\n", "der Worktree traegt den Stand von HEAD");
+    // Zeilenenden normalisiert: Git auf Windows-Runnern checkt mit CRLF aus; geprueft wird
+    // der Stand von HEAD, nicht die Zeilenenden.
+    assert.equal(readFileSync(join(pfad, "README.md"), "utf-8").replaceAll("\r\n", "\n"), "hallo\n", "der Worktree traegt den Stand von HEAD");
     for (const datei of ["kit/board.mjs", "settings.local.json", "tbx.token", "workflow.config.json"]) {
       assert.ok(existsSync(join(pfad, ".claude", datei)), `.claude/${datei} fehlt im Worktree`);
     }
