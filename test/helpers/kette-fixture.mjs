@@ -134,8 +134,12 @@ export const FORM_REPARIEREN = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed
 /** Die Fake-Zeile der Stufe review: zeichnet das Dokument aus dem Prompt mit kit:klaeren und einem Kommentar. */
 export const REVIEW_HALT = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issue-review #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue comment "$id" --text "Einarbeitung: Frage der Stopp-Klasse — ist das eine Schnittstelle nach aussen?" >/dev/null; node .claude/kit/board.mjs issue label add "$id" kit:klaeren >/dev/null`;
 
-/** Die Fake-Zeile der Stufe review: setzt den Marker im Kopf des Plans. */
-export const REVIEW_MARKER = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issue-review #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.replace("Plan-Modell: fixture-modell","Plan-Modell: fixture-modell\nPlan-Review: opus (2026-09-14, Nachtlauf)"))' > "$KETTE_LOG.review.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.review.md" >/dev/null`;
+/** Der Einarbeitungs-Kommentar, den der Review-Fake an den Plan haengt — ein Fund uebernommen, einer abgelehnt (#645). */
+export const EINARBEITUNG_ZEILE_ABGELEHNT = "- Fund 2 (opus, WICHTIG): abgelehnt — der Bestand deckt den Fall schon.";
+const EINARBEITUNG_KOMMENTAR = `## Einarbeitung, Runde 1\n\n- Fund 1 (opus, HINWEIS): übernommen.\n${EINARBEITUNG_ZEILE_ABGELEHNT}\n`;
+
+/** Die Fake-Zeile der Stufe review: setzt den Marker im Kopf des Plans und haengt den Einarbeitungs-Kommentar an. */
+export const REVIEW_MARKER = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issue-review #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.replace("Plan-Modell: fixture-modell","Plan-Modell: fixture-modell\nPlan-Review: opus (2026-09-14, Nachtlauf)"))' > "$KETTE_LOG.review.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.review.md" >/dev/null; printf "%s" "$KETTE_EINARBEITUNG" > "$KETTE_LOG.einarbeitung.md"; node .claude/kit/board.mjs issue comment "$id" --text-file "$KETTE_LOG.einarbeitung.md" >/dev/null`;
 
 /** Der Ergebnisstand des juengsten Laufs im Fixture. */
 export function stand(dir) {
@@ -170,6 +174,8 @@ export function umgebung(dir, { stufen = {}, plan = planBody(), fix = planBody()
     KETTE_LOG: log,
     KETTE_PLAN_BODY: join(helfer, "plan-body.md"),
     KETTE_PLAN_FIX: join(helfer, "plan-fix.md"),
+    KETTE_EINARBEITUNG: EINARBEITUNG_KOMMENTAR,
+    KETTE_PAKET_ENTSCHEIDUNG: PAKET_ENTSCHEIDUNG,
     ...(kosten !== undefined ? { KETTE_KOSTEN: String(kosten) } : {}),
     ...(ohneResult ? { KETTE_OHNE_RESULT: "1" } : {}),
     logPfad: log,
@@ -177,7 +183,8 @@ export function umgebung(dir, { stufen = {}, plan = planBody(), fix = planBody()
 }
 
 /** Die Fake-Zeile der Stufe pakete: zwei Pakete mit `Plan: Issue #M` und eine Karte ohne Herkunftszeile. */
-export const PAKETE_ANLEGEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); for n in 1 2; do printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" "$n" > "$KETTE_LOG.paket$n.md"; node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.paket$n.md" >/dev/null; done; printf "## Kontext\n\nOhne Herkunft.\n\n## Aufgabe\n\nx\n\n## Akzeptanzkriterium\n\n- y\n\n## Abhängigkeiten\n\nKeine.\n" > "$KETTE_LOG.fremd.md"; node .claude/kit/board.mjs issue create --title "Fremde Karte" --body-file "$KETTE_LOG.fremd.md" >/dev/null`;
+export const PAKET_ENTSCHEIDUNG = "Entscheidung: Wie heisst die Datei? Gewählt: kurz. Verworfen: lang. Grund: Bestand. Rückbau: trivial.";
+export const PAKETE_ANLEGEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); for n in 1 2; do printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" "$([ "$n" = 1 ] && printf "%s" "$KETTE_PAKET_ENTSCHEIDUNG" || printf "Keine Entscheidung.")" "$n" > "$KETTE_LOG.paket$n.md"; node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.paket$n.md" >/dev/null; done; printf "## Kontext\n\nOhne Herkunft.\n\n## Aufgabe\n\nx\n\n## Akzeptanzkriterium\n\n- y\n\n## Abhängigkeiten\n\nKeine.\n" > "$KETTE_LOG.fremd.md"; node .claude/kit/board.mjs issue create --title "Fremde Karte" --body-file "$KETTE_LOG.fremd.md" >/dev/null`;
 
 /** Die Fake-Zeile der Stufe pakete: ein Paket ohne den Abschnitt Abhaengigkeiten (rote Form). */
 export const PAKET_OHNE_ABHAENGIGKEITEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); printf "## Kontext\n\nPlan: Issue #%s\n\n## Aufgabe\n\nPaket.\n\n## Akzeptanzkriterium\n\n- node --test\n" "$m" > "$KETTE_LOG.paket.md"; node .claude/kit/board.mjs issue create --title "Paket ohne Abhaengigkeiten" --body-file "$KETTE_LOG.paket.md" >/dev/null`;
@@ -190,3 +197,32 @@ export const PAKETE_HALT = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "
 
 /** Die Fake-Zeile der Stufe abdeckung, die verbotenerweise am Fachplan schreibt. */
 export const ABDECKUNG_SCHREIBT = String.raw`node .claude/kit/board.mjs issue comment "$NIGHT_ISSUE_ID" --text "Abdeckung als Kommentar — verboten" >/dev/null`;
+
+/** Ein Vorflug ohne Befund-Block: die Vorflug-Session gilt als nicht auswertbar, der Lauf stoppt hart. */
+export const VORFLUG_KAPUTT = "echo 'kein Befund'";
+
+/**
+ * Ersetzt die Kit-Kopie von board.mjs im Fixture durch einen Umweg ueber das echte
+ * board.mjs, der `issue comment <id>` abweist, wenn `BOARD_FAKE_ABLEHNEN` die Nummer
+ * nennt — der Tracker ist dann fuer genau diesen Kommentar "nicht erreichbar". Der
+ * Umweg wird committet, damit der Vorflug den Arbeitsbaum weiter als sauber sieht; er
+ * spiegelt sich mit `.claude/` in den Worktree jeder Kette.
+ */
+export function boardFakeInstallieren(dir) {
+  const echt = join(repoRoot, "kit", "board.mjs");
+  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [
+    'import { spawnSync } from "node:child_process";',
+    "const args = process.argv.slice(2);",
+    'if (process.env.BOARD_FAKE_ABLEHNEN && args[0] === "issue" && args[1] === "comment" && String(args[2]) === process.env.BOARD_FAKE_ABLEHNEN) {',
+    String.raw`  process.stderr.write("Fehler: Tracker nicht erreichbar (Board-Fake)\n");`,
+    "  process.exit(1);",
+    "}",
+    `const res = spawnSync(process.execPath, [${JSON.stringify(echt)}, ...args], { stdio: "inherit" });`,
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"));
+  for (const a of [["add", "-A"], ["commit", "-q", "-m", "board-fake"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
+}

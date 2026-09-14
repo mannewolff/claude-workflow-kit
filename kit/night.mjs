@@ -784,6 +784,9 @@ function gitReste(cwd = process.cwd()) {
   // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
   // Block, und dort hielte die erste geplante Notiz den Lauf an.
   pathspec.push(":(exclude).claude/vorhaben-wartend-*");
+  // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
+  // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
+  pathspec.push(":(exclude).claude/night-bericht-*");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
@@ -2344,7 +2347,7 @@ function meldeVorflug(vorflug, reviewerListe) {
  * `dryRunHinweis` traegt den Aufruf, mit dem der Mensch den Befund selbst sieht — er
  * unterscheidet sich je Modus und gehoert deshalb an den Aufrufer.
  */
-export async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
+export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = null) {
   // Die Reviewer-Liste kommt direkt aus der Config statt aus `issue-review check`: Der
   // Runner braucht hier nur die Kommandozeilen fuer den Auftrag der Vorflug-Session,
   // und die Verfuegbarkeit misst ohnehin nur noch die Session.
@@ -2365,6 +2368,7 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
   if (reste.length > 0) {
     const satz = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.";
     log(`  ${satz}`);
+    if (beiStopp) beiStopp(satz);
     merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
     // Der einzige der sieben Wege ohne Karte (Issue #558): Der Vorflug laeuft, bevor
     // ein Kandidat gezogen ist, und `fehlerEinheit` bleibt darum leer.
@@ -2375,14 +2379,17 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis) {
 
   const probleme = meldeVorflug(vorflug, reviewerListe);
   if (probleme.length > 0 && !args.dryRun) {
+    // Erst die Kandidaten benachrichtigen (Issue #645): Ohne diesen Kommentar bliebe ein
+    // Kennzeichen, dessen Kette nie begann, am Morgen ohne Spur am Board.
+    if (beiStopp) beiStopp(probleme.join(" | "));
     fail(`${probleme.join(" | ")} — ein unterbesetzter Lauf sieht am Board aus wie ein vollstaendiger. Mit ${dryRunHinweis} pruefen, dann das fehlende Werkzeug installieren, die Freigaben der Sessions weiten oder den Reviewer aus issueReview.reviewers nehmen.`);
   }
 }
 
 // --- Die Nacht-Kette (Plan #638; Issue #643) ---
 //
-// Ein Fachplan geht abends hinein, morgens liegen Plan und Pakete vor. Dieses Paket
-// baut die Kette bis zum geprueften Plan; Pakete, Abdeckung und Bericht folgen.
+// Ein Fachplan geht abends hinein, morgens liegen Plan, Pakete und der Nachtbericht am
+// Fachplan vor (#643 bis zum geprueften Plan, #644 Pakete und Abdeckung, #645 Bericht).
 
 // Der Zusatz, der einer Kette-Session die Betriebsart nennt. Massgeblich bleibt allein
 // KIT_AGENT_MODEL — der Satz wiederholt es nur an der Stelle, an der es ankommt.
@@ -2759,7 +2766,7 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
  * vorn. Das Label abnehmen darf nur der Mensch — dieselbe Regel wie im Implementierungslauf.
  */
 function haltAmFachplan(kette, ergebnis) {
-  const pfad = join(tmpdir(), `night-halt-${kette.F}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const pfad = join(tmpdir(), `night-halt-${process.pid}-${kette.F}-${LAUF_STEMPEL ?? Date.now()}.md`);
   const text = [
     KETTE_HALT_ANKER,
     "",
@@ -2777,6 +2784,223 @@ function haltAmFachplan(kette, ergebnis) {
   } finally {
     rmSync(pfad, { force: true });
   }
+}
+
+// --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
+//
+// Der Mensch liest morgens am Fachplan, was die Nacht entschieden hat — bei jedem
+// Ausgang. Der Bericht ist Verlauf, kein Vertrag: Verbindlich wird eine Entscheidung
+// erst als Satz im Fachplan. Kann der Tracker ihn nicht annehmen, wartet er als Datei in
+// der Hauptkopie und geht beim naechsten Start jeder Betriebsart nach.
+
+export const BERICHT_ANKER = "## Nachtbericht, Kette";
+export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.";
+const BERICHT_DATEI_PRAEFIX = "night-bericht-";
+const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
+const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
+const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
+
+function minutenText(ms) {
+  return ((ms ?? 0) / 60000).toFixed(1);
+}
+
+/**
+ * Alle Kommentare einer Karte, aelteste zuerst — dieselbe Zweiteilung wie in
+ * `neueKommentare`: GitHub, GitLab und Toolbox liefern ein Array, der lokale Tracker
+ * haengt sie an den Body.
+ */
+export function kommentareVon(issue) {
+  if (Array.isArray(issue?.comments)) return issue.comments.map((k) => String(k?.body ?? ""));
+  return String(issue?.body || "").split(LOKALER_KOMMENTARKOPF).slice(1).map((k) => k.trim()).filter(Boolean);
+}
+
+/** Der Kommentar `## Einarbeitung, Runde N` am Plan — bei mehreren der letzte; null ohne. */
+export function einarbeitungVon(plan) {
+  const treffer = kommentareVon(plan).filter((k) => EINARBEITUNG_KOPF.test(k));
+  return treffer.length > 0 ? treffer.at(-1) : null;
+}
+
+/** Die Aufzaehlungspunkte erster Ebene eines Abschnitts, ausserhalb von Codebloecken, ohne `- Keine.`. */
+function punkteErsterEbene(body, ueberschrift) {
+  const abschnitt = abschnittLesen(body, ueberschrift);
+  if (!abschnitt) return [];
+  return abschnitt.zeilen
+    .filter((z, i) => abschnitt.ausserhalb[i] && /^[-*+]\s+\S/.test(z))
+    .map((z) => z.replace(/^[-*+]\s+/, "").trim())
+    .filter((z) => !/^keine\.?$/i.test(z));
+}
+
+/** Die `Entscheidung:`-Zeilen aus `## Kontext` eines Pakets. */
+function entscheidungsZeilen(body) {
+  const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
+  if (!abschnitt) return [];
+  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
+}
+
+function berichtStufen(einheit, plan, pakete) {
+  const stufen = einheit.stufen ?? {};
+  const p = stufen.plan;
+  const zeilen = [];
+  if (p?.id) {
+    const pruefer = String(plan?.body || "").match(/^\s*Plan-Review:\s*(.+?)\s*$/m)?.[1] ?? "keiner";
+    const kosten = p.kennzahlen?.kostenUsd;
+    const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
+    const titel = plan?.title ? ` (${plan.title})` : "";
+    zeilen.push(`- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`);
+  } else {
+    zeilen.push("- Plan: keiner entstanden.");
+  }
+  const ids = stufen.pakete?.ids ?? [];
+  const paketText = (id) => {
+    const titel = pakete.find((k) => String(k.id) === String(id))?.title;
+    return titel ? `#${id} ${titel}` : `#${id}`;
+  };
+  zeilen.push(ids.length > 0
+    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map(paketText).join(", ")}.`
+    : "- Pakete: keine.");
+  const fremd = stufen.pakete?.nichtZuordenbar ?? [];
+  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  return zeilen;
+}
+
+function berichtAbgelehnt(einarbeitung) {
+  if (einarbeitung === null) return ["- keine Einarbeitung gefunden"];
+  const abgelehnt = einarbeitung.split(/\r\n|\r|\n/).map((z) => z.trim()).filter((z) => /abgelehnt/i.test(z));
+  if (abgelehnt.length === 0) return ["- keine abgelehnten Befunde"];
+  return abgelehnt.map((z) => (/^[-*+]\s/.test(z) ? z : `- ${z}`));
+}
+
+/**
+ * Der Nachtbericht als Markdown (Plan #638, A10). Reine Funktion ueber der Einheit und
+ * den gelesenen Karten, damit sie an Fixtures pruefbar ist; `jetzt` nur fuer Tests.
+ *
+ * Die Entscheidungen der Nacht sind die Aufzaehlungspunkte erster Ebene aus den
+ * Architektonischen Entscheidungen des Plans, woertlich, und die `Entscheidung:`-Zeilen
+ * aus dem Kontext jedes Pakets — fortlaufend nummeriert, mit dem Ort in Klammern.
+ */
+export function berichtBauen(einheit, {
+  plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
+} = {}) {
+  const stufen = einheit.stufen ?? {};
+  const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
+  z.push("### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "");
+  z.push("### Stufen", "", ...berichtStufen(einheit, plan, pakete), "");
+
+  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
+  for (const k of pakete) for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  z.push("### Entscheidungen der Nacht", "");
+  if (entscheidungen.length === 0) z.push("- Keine.");
+  entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
+  z.push("");
+
+  z.push("### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "");
+
+  z.push("### Abdeckung gegen den Fachplan", "");
+  if (abdeckung?.text) z.push(abdeckung.text);
+  else z.push(`Keine Abdeckung: ${abdeckung?.grund ?? "die Kette hat die Stufe abdeckung nicht erreicht"}.`);
+  if (einheit.abdeckungSchrieb) z.push("", "Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen sollte.");
+  z.push("");
+
+  const startZeit = start instanceof Date ? start : new Date(start ?? jetzt);
+  const paketeErreicht = (stufen.pakete?.ids ?? []).length > 0;
+  z.push("### Kennzahlen", "",
+    `- Pakete erreicht: ${paketeErreicht ? "ja" : "nein"}`,
+    `- Dauer der Kette: ${minutenText(jetzt - startZeit.getTime())} min ab ${startZeit.toISOString()}`,
+    `- Entscheidungen: ${entscheidungen.length}`,
+    `- Stopp-Fragen: ${einheit.ausgang === "angehalten" ? 1 : 0}`,
+    `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
+    `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
+    "");
+  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
+  if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
+  z.push(BERICHT_SCHLUSS, "");
+  return z.join("\n");
+}
+
+/**
+ * Schreibt den Bericht als Kommentar an den Fachplan (A11) — ueber eine Datei ausserhalb
+ * des Projekts, nie als Argument. Nimmt der Tracker ihn nicht an, wartet er als
+ * `.claude/night-bericht-<F>-<stempel>.md` in der Hauptkopie. Rueckgabe ist der Wert
+ * fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad. Kein `fail`: Ein
+ * toter Tracker beim letzten Schritt darf die Kette nicht als Absturz enden lassen.
+ */
+export function berichtSchreiben(F, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
+  const name = `${BERICHT_DATEI_PRAEFIX}${F}-${stempel ?? Date.now()}.md`;
+  // Mit der Prozess-Id: Zwei Runner in derselben Sekunde teilten sich sonst die Zwischendatei.
+  const pfad = join(tmpdir(), `${process.pid}-${name}`);
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    const res = boardRoh("issue", "comment", String(F), "--text-file", pfad);
+    if (res.status === 0) {
+      log(`  Nachtbericht als Kommentar an #${F} veroeffentlicht.`);
+      return "veroeffentlicht";
+    }
+    const wartend = join(".claude", name);
+    mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+    writeFileSync(join(repoRoot, wartend), text, "utf-8");
+    log(`  Nachtbericht konnte nicht an #${F} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
+    return wartend;
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
+/**
+ * Traegt wartende Berichte nach — beim Start jeder Betriebsart, nach `vorbereiten`.
+ * Aufsteigend nach Dateiname, jeder genau einmal; gelingt das Schreiben, ist die Datei
+ * weg, sonst bleibt sie liegen und der Lauf geht weiter. Liefert die nachgetragenen Namen.
+ */
+export function berichteNachtragen(repoRoot = process.cwd()) {
+  const ordner = join(repoRoot, ".claude");
+  if (!existsSync(ordner)) return [];
+  const dateien = readdirSync(ordner).filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort();
+  const nachgetragen = [];
+  for (const name of dateien) {
+    const F = name.slice(BERICHT_DATEI_PRAEFIX.length).split("-")[0];
+    const pfad = join(ordner, name);
+    const res = boardRoh("issue", "comment", F, "--text-file", pfad);
+    if (res.status === 0) {
+      rmSync(pfad, { force: true });
+      nachgetragen.push(name);
+      log(`Wartenden Nachtbericht nachgetragen: .claude/${name} -> Kommentar an #${F}.`);
+    } else {
+      log(`Wartender Nachtbericht bleibt liegen: .claude/${name} — ${res.text.slice(0, 200)}`);
+    }
+  }
+  return nachgetragen;
+}
+
+/**
+ * Der Vorflug ist vor der ersten Kette gescheitert: jeder Kandidat bekommt den Kommentar
+ * `Kette nicht gestartet` mit Grund, das Label bleibt — die Geste ist nicht verbraucht,
+ * denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
+ */
+function ketteNichtGestartet(kandidaten, grund) {
+  for (const k of kandidaten) {
+    const res = boardRoh("issue", "comment", String(k.id), "--text", `Kette nicht gestartet: ${grund}`);
+    log(res.status === 0
+      ? `  #${k.id}: Kommentar 'Kette nicht gestartet' geschrieben, Label bleibt.`
+      : `  #${k.id}: Kommentar 'Kette nicht gestartet' nicht geschrieben (${res.text.slice(0, 120)}).`);
+  }
+}
+
+/** Eine Karte ohne harten Stopp — null, wenn der Tracker sie nicht liefert. */
+function leseKarte(id) {
+  const res = boardRoh("issue", "get", String(id));
+  return res.status === 0 && res.json ? res.json : null;
+}
+
+/** Sammelt Plan, Pakete, Einarbeitung und Abdeckung der Kette und baut den Bericht. */
+function berichtFuerKette(kette, einheit, ergebnis) {
+  const planId = kette.stufen.plan?.id;
+  const plan = planId ? leseKarte(planId) : null;
+  const pakete = (kette.stufen.pakete?.ids ?? []).map(leseKarte).filter(Boolean);
+  const a = kette.stufen.abdeckung;
+  return berichtBauen(einheit, {
+    plan, pakete, einarbeitung: plan ? einarbeitungVon(plan) : null,
+    abdeckung: a ? { text: a.text, grund: a.grund } : null,
+    budget: kette.budget, start: kette.start, stempel: LAUF_STEMPEL, frage: ergebnis.frage ?? null,
+  });
 }
 
 /**
@@ -2805,7 +3029,7 @@ async function laufeEineKette(kandidat, nummer, args) {
   const F = String(kandidat.id);
   const einheit = einheitAnlegen(F, kandidat.title);
   const kette = {
-    F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null,
+    F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
   };
   log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
@@ -2828,27 +3052,27 @@ async function laufeEineKette(kandidat, nummer, args) {
   } catch (e) {
     ergebnis = { ausgang: "abgebrochen", grund: `technischer Fehler: ${e.message}` };
   }
-  if (!ergebnis) {
-    try {
-      ergebnis = await stufenDerKette(kette);
-    } finally {
-      worktreeEntfernen(kette.wt, kette.repoRoot);
-    }
+  try {
+    if (!ergebnis) ergebnis = await stufenDerKette(kette);
+    if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
+    const neuerPlan = kette.stufen.plan?.id;
+    if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
+    einheitErgaenzen(einheit, {
+      ausgang: ergebnis.ausgang,
+      ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      stufen: kette.stufen,
+      ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
+      ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
+      kostenUsd: kette.kosten.kostenSumme,
+      kostenUnbekannt: kette.kosten.kostenUnbekannt,
+    });
+    // Der Bericht ist der letzte Schritt jeder Kette, bei jedem Ausgang (A10) — nach dem
+    // Halt-Kommentar, damit er am Fachplan hinter der Frage steht, und vor dem Abbau des
+    // Worktrees.
+    einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
+  } finally {
+    if (kette.wt) worktreeEntfernen(kette.wt, kette.repoRoot);
   }
-  if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
-  const neuerPlan = kette.stufen.plan?.id;
-  if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
-
-  const felder = {
-    ausgang: ergebnis.ausgang,
-    ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
-    stufen: kette.stufen,
-    ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
-    ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
-    kostenUsd: kette.kosten.kostenSumme,
-    kostenUnbekannt: kette.kosten.kostenUnbekannt,
-  };
-  einheitErgaenzen(einheit, felder);
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
   return ergebnis.ausgang;
@@ -2894,7 +3118,7 @@ export async function laufeKette(args) {
 
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
   // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
-  await fuehreVorflug(args, kandidaten, "--kette --dry-run");
+  await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
     log("Keine Kette zu fahren — nichts zu tun.");
@@ -3418,6 +3642,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   const ctx = vorbereiten(args);
+  // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im
+  // Dry-Run, der nichts am Board veraendert.
+  if (!args.dryRun) berichteNachtragen();
 
   // Drei einander ausschliessende Programme. Kette und Dry-Run beenden den Prozess
   // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code bilden.
