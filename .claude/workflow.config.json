@@ -29,9 +29,9 @@
   "night": {
     "kette": {
       "label": "kit:night",
-      "planMin": 20,
-      "paketeMin": 15,
-      "reviewMin": 15,
+      "planMin": 30,
+      "paketeMin": 25,
+      "reviewMin": 30,
       "abdeckungMin": 10,
       "kostenUsd": 50,
       "korrekturrunden": 2
