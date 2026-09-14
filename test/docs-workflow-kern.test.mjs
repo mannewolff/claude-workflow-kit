@@ -21,9 +21,17 @@ test("die gestrichenen Abschnitte sind weg", () => {
   for (const ueberschrift of ["## Zustandslabels", "### Die drei Pruefstufen", "### Wie viel geprueft wird", "### Ausdruecklich kein prozessweites Gate"]) {
     assert.ok(!VORLAGE.includes(ueberschrift), `'${ueberschrift}' steht noch in der Vorlage`);
   }
-  for (const wort of ["Pruefung-Stand:", "review:offen", "review:fertig", "Opus-Reviewer"]) {
+  for (const wort of ["Pruefung-Stand:", "review:offen", "review:befunde", "Opus-Reviewer"]) {
     assert.ok(!VORLAGE.includes(wort), `'${wort}' steht noch in der Vorlage`);
   }
+});
+
+test("review:fertig steht genau einmal, als Spur im Absatz zu /issue-review", () => {
+  assert.equal(VORLAGE.split("review:fertig").length, 2, "review:fertig steht nicht genau einmal");
+  const absatz = VORLAGE.split("\n").find((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
+  assert.ok(absatz, "der Absatz zu /issue-review fehlt");
+  assert.match(absatz, /`review:fertig` als sichtbare Spur am Board/);
+  assert.match(absatz, /je Board einmal angelegt/);
 });
 
 test("die bleibenden Abschnitte stehen je einmal", () => {

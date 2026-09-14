@@ -51,6 +51,8 @@ node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --au
 ### 4. Reviewer starten
 Jeder Reviewer bekommt denselben unveränderten Body und seine Rolle: `kind: claude` als Subagent mit dem konfigurierten Modell, `kind: command` als CLI mit dem Prompt über stdin. Jede Rolle trägt die Streich-Frage — Ergänzen ist leichter als Streichen, und ein Dokument, das nach dem Review doppelt so lang ist, ist nicht besser.
 
+Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:fertig`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
+
 **Rolle `pruefbarkeit`** (Stufe `issue`):
 ```
 Du prüfst ein Arbeitspaket, das gleich implementiert werden soll. Du kennst die Entstehungsgeschichte nicht — das ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen.
@@ -134,8 +136,10 @@ Kein Fund ist auch ein Ergebnis: Marker schreiben, Kommentar mit „keine Funde"
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md
 ```
 
+Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label.
+
 ### 7. Abschluss
-Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Marker gesetzt oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
+Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
 
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.
@@ -143,6 +147,6 @@ Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-wor
 ## Stop-Punkte
 - Kein Ziehen nach Ready — das ist das GO des Menschen.
 - Interaktiv kein Schreiben in den Body ohne ein Wort der Zustimmung.
-- Kein Marker gibt einen Schritt frei; er ist eine Spur.
+- Kein Marker gibt einen Schritt frei; er ist eine Spur. Auch `review:fertig` ist Spur, keine Freigabe.
 - Kein Ersatz-Reviewer aus eigenem Antrieb — die Besetzung kommt aus `roles`.
 - Kein Review von `[Idee]`.

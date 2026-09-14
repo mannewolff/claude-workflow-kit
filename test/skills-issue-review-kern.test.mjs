@@ -23,9 +23,9 @@ function codebloecke(sprache = null) {
     .map((m) => m[2]);
 }
 
-test("[skills-13] der Skill bleibt unter 150 Zeilen", () => {
+test("[skills-13] der Skill bleibt unter 160 Zeilen", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 150, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 150`);
+  assert.ok(zeilen < 160, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 160`);
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {
@@ -116,4 +116,21 @@ test("[skills-13] unbeaufsichtigt wird an keiner Stelle gefragt", () => {
   assert.match(SKILL, /Unbeaufsichtigt\*\* \(gesetztes `KIT_AGENT_MODEL`\) wird nicht gefragt/);
   assert.match(SKILL, /unbeaufsichtigt gilt der Regelvorschlag/);
   assert.match(SKILL, /unbeaufsichtigt schreibt sie direkt/);
+});
+
+test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor dem Start, gesetzt nach der Einarbeitung", () => {
+  const remove = SKILL.indexOf("issue label remove <id> review:fertig");
+  const add = SKILL.indexOf("issue label add <id> review:fertig");
+  assert.ok(remove > 0, "das Abnehmen fehlt");
+  assert.ok(add > 0, "das Setzen fehlt");
+  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("**Rolle `pruefbarkeit`**"),
+    "das Abnehmen steht nicht unmittelbar vor dem Reviewer-Start");
+  assert.ok(add > SKILL.indexOf("issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md"),
+    "das Setzen steht nicht nach dem Einarbeitungs-Kommentar");
+  assert.equal(SKILL.split("issue label add <id> review:fertig").length, 2, "das Setzen steht nicht genau einmal");
+  assert.equal(SKILL.split("issue label remove <id> review:fertig").length, 2, "das Abnehmen steht nicht genau einmal");
+  assert.match(SKILL, /Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`\./);
+  assert.match(SKILL, /Endet der Lauf danach vorzeitig, bleibt das Label ab/);
+  assert.match(SKILL, /am Board nicht definiert/);
+  assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:fertig` ist Spur, keine Freigabe\./);
 });
