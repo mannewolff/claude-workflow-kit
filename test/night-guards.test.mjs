@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -353,30 +353,33 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
 
 // Die Vorpruefung mergt den env-Block aus .claude/settings.json und settings.local.json
 // in ihre Kindprozess-Umgebung — ohne ihn liefert sie ein falsches Rot (kanban-kit#445).
-// Hier ist die erste Datei kaputtes JSON: Sie darf die Vorpruefung nicht blockieren,
-// nur selbst ausfallen. Der buildCheck prueft die Variable aus der zweiten Datei.
+// Die erste Datei wird erst WAEHREND des Laufs zu kaputtem JSON (seit Issue #618 stoppt
+// der Vorflug bei einer von Anfang an ungueltigen Datei hart): Sie darf die Vorpruefung
+// nicht blockieren, nur selbst ausfallen. Der buildCheck prueft die Variable aus der
+// zweiten Datei.
 test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.json gilt", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-settingsenv-", {
     buildChecks: ['test "$NIGHT_TEST_VAR" = "aus-settings-local"'],
   });
   try {
     const id = readyIssue(dir, "Verliert sein Ergebnis");
-    writeFileSync(join(dir, ".claude", "settings.json"), "{kaputt", "utf-8");
+    writeFileSync(join(dir, ".claude", "settings.json"), "{}", "utf-8");
     writeFileSync(join(dir, ".claude", "settings.local.json"),
       JSON.stringify({ env: { NIGHT_TEST_VAR: "aus-settings-local" } }), "utf-8");
     // Der Vorflug verlangt einen sauberen Tree — die beiden Dateien gehoeren dazu.
     run(dir, "git", ["add", "-A"]);
     run(dir, "git", ["commit", "-q", "-m", "settings"]);
 
-    // Regulaere Runde: laesst Arbeit liegen, bewegt das Board nicht. Die Salvage-Session
-    // committet den Stand und verschiebt das Issue.
+    // Regulaere Runde: macht settings.json unbrauchbar, laesst Arbeit liegen, bewegt das
+    // Board nicht. Die Salvage-Session committet den Stand und verschiebt das Issue.
     const fake = `if [ -n "$NIGHT_SALVAGE" ]; then\n`
       + `  git add -A && git commit -q -m "Salvage (Issue $NIGHT_ISSUE_ID)"\n`
       + `  node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null\n`
       + `else\n`
+      + `  printf '{kaputt' > .claude/settings.json\n`
       + `  echo arbeit > "work-$NIGHT_ISSUE_ID.txt"\n`
       + `fi\n`;
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake, HOME: dir, USERPROFILE: dir });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
@@ -450,5 +453,144 @@ test("Verbose: Tool-Aufrufe ohne bekannte Argumente werden trotzdem lesbar gelog
       "ohne jedes Argument bleibt der blosse Tool-Name");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Vorflug: gueltiges JSON in den settings-Dateien (#618, Idee #555) ---
+//
+// Eine ungueltige settings.json setzt ALLE ihre Einstellungen ausser Kraft — env,
+// sandbox, permissions —, und nachts sieht man davon nur eine Genehmigungsabfrage, die
+// niemand beantwortet. Der Runner prueft deshalb vor der ersten Session die drei Dateien,
+// die die Sessions lesen, auf gueltiges JSON und stoppt hart; im Dry-Run berichtet er nur.
+// HOME und USERPROFILE zeigen auf ein Fixture-Verzeichnis, damit die echte
+// ~/.claude/settings.json des Rechners nicht mitspielt (Muster: test/board-kontext-paths).
+
+/** Der Ergebnisstand des juengsten Laufs im Fixture. */
+function ergebnisstand(dir) {
+  const dateien = readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)).sort();
+  assert.ok(dateien.length > 0, "kein Ergebnisstand geschrieben");
+  return JSON.parse(readFileSync(join(dir, ".claude", dateien.at(-1)), "utf-8"));
+}
+
+function commitAlles(dir) {
+  run(dir, "git", ["add", "-A"]);
+  run(dir, "git", ["commit", "-q", "-m", "settings"]);
+}
+
+/** Ein Fixture-Home mit optionaler ~/.claude/settings.json. */
+function fixtureHome(inhalt = null) {
+  const home = mkdtempSync(join(tmpdir(), "night-guard-home-"));
+  if (inhalt !== null) {
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    writeFileSync(join(home, ".claude", "settings.json"), inhalt, "utf-8");
+  }
+  return home;
+}
+
+/** Der Session-Fake hinterlaesst eine Spur, an der ein Start erkennbar ist. */
+const SPUR_FAKE = 'echo gestartet > session-spur.txt';
+
+/** Ein Pfad als Regex-Quelle: Punkte, Klammern und Backslashes entschaerft. */
+function pfadRegex(pfad) {
+  // `(?:/private)?` wegen macOS: process.cwd() liefert den aufgeloesten Pfad, HOME nicht.
+  return new RegExp(String.raw`(?:/private)?` + pfad.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`));
+}
+
+function pruefeHartenStopp(res, dir, pfad) {
+  assert.equal(res.status, 1, `erwartet harter Stopp:\n${res.stdout}\n${res.stderr}`);
+  assert.match(res.stderr, pfadRegex(pfad), "die Meldung nennt den Pfad nicht");
+  assert.match(res.stderr, /Unexpected|JSON/, "die Meldung nennt die Parser-Meldung nicht");
+  assert.ok(!existsSync(join(dir, "session-spur.txt")), "es darf keine Session gestartet worden sein");
+  const lauf = ergebnisstand(dir);
+  assert.equal(lauf.abschluss, "harterStopp");
+  assert.equal(lauf.fehlerklasse, "zustand");
+}
+
+test("[night-23] eine ungueltige .claude/settings.json stoppt vor der ersten Session hart", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-json-");
+  const home = fixtureHome();
+  try {
+    readyIssue(dir, "Bleibt liegen");
+    writeFileSync(join(dir, ".claude", "settings.json"), '{"permissions": {"allow": ["Bash(git add:*)" "Bash(git commit:*)"]}}', "utf-8");
+    commitAlles(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
+    pruefeHartenStopp(res, dir, join(dir, ".claude", "settings.json"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("[night-23] eine ungueltige .claude/settings.local.json stoppt ebenso hart", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-local-");
+  const home = fixtureHome();
+  try {
+    readyIssue(dir, "Bleibt liegen");
+    writeFileSync(join(dir, ".claude", "settings.local.json"), "{kaputt", "utf-8");
+    commitAlles(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
+    pruefeHartenStopp(res, dir, join(dir, ".claude", "settings.local.json"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("[night-23] eine ungueltige ~/.claude/settings.json stoppt ebenso hart", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-home-");
+  const home = fixtureHome("{kaputt");
+  try {
+    readyIssue(dir, "Bleibt liegen");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
+    pruefeHartenStopp(res, dir, join(home, ".claude", "settings.json"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("[night-23] auch die Nacht-Kette stoppt bei ungueltiger settings.json hart, ohne Session", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-kette-");
+  const home = fixtureHome();
+  try {
+    writeFileSync(join(dir, ".claude", "settings.json"), "{kaputt", "utf-8");
+    commitAlles(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--kette"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, NIGHT_VORFLUG_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
+    pruefeHartenStopp(res, dir, join(dir, ".claude", "settings.json"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("[night-23] im Dry-Run wird die ungueltige Datei nur berichtet, der Lauf geht weiter", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-dryrun-");
+  const home = fixtureHome();
+  try {
+    writeFileSync(join(dir, ".claude", "settings.json"), "{kaputt", "utf-8");
+    commitAlles(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none"], { HOME: home, USERPROFILE: home });
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const zeile = res.stdout.split("\n").find((z) => /ungueltig/.test(z));
+    assert.ok(zeile, "keine Log-Zeile zur ungueltigen Datei");
+    assert.match(zeile, pfadRegex(join(dir, ".claude", "settings.json")), "die Log-Zeile nennt den Pfad nicht");
+    assert.match(res.stdout, /Ready ist leer — nichts zu tun/, "der Dry-Run muss nach der Warnung weiterlaufen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("[night-23] ohne eine der drei Dateien gibt es keinen Befund", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-settings-keine-");
+  const home = fixtureHome();
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { HOME: home, USERPROFILE: home });
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.doesNotMatch(res.stdout + res.stderr, /ungueltig/);
+    assert.equal(ergebnisstand(dir).abschluss, "regulaer");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });

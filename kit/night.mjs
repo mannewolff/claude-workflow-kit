@@ -121,7 +121,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
 import { join, dirname, resolve, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -2219,6 +2219,48 @@ function ketteBudgetLaden() {
   }
 }
 
+/**
+ * Prueft settings-Dateien auf gueltiges JSON (Issue #618, Idee #555). Nur die Syntax,
+ * kein Schema: Eine ungueltige Datei setzt ALLE ihre Einstellungen ausser Kraft — env,
+ * sandbox, permissions —, und nachts sieht man davon nur eine Genehmigungsabfrage, die
+ * niemand beantwortet. Eine fehlende Datei ist kein Befund. Liefert je ungueltiger Datei
+ * den absoluten Pfad mit der Meldung des Parsers.
+ */
+export function pruefeSettingsSyntax(pfade) {
+  const befunde = [];
+  for (const pfad of pfade) {
+    if (!existsSync(pfad)) continue;
+    try {
+      JSON.parse(readFileSync(pfad, "utf-8"));
+    } catch (e) {
+      befunde.push(`${pfad}: ${e.message}`);
+    }
+  }
+  return befunde;
+}
+
+/**
+ * Der Vorflug ueber die drei Dateien, die jede Nacht-Session liest — in jeder
+ * Betriebsart: harter Stopp ohne Dry-Run, im Dry-Run nur berichtet (wie der Reviewer-
+ * Vorflug). Home ueber homedir() wie in board.mjs (unter Windows USERPROFILE, #187).
+ * settingsEnv() bleibt daneben tolerant: fuer eine Datei, die erst waehrend des Laufs
+ * unbrauchbar wird.
+ */
+function settingsVorflug(args) {
+  const befunde = pruefeSettingsSyntax([
+    join(process.cwd(), ".claude", "settings.json"),
+    join(process.cwd(), ".claude", "settings.local.json"),
+    join(homedir(), ".claude", "settings.json"),
+  ]);
+  if (befunde.length === 0) return;
+  const meldung = `settings-Datei ungueltig — keine ihrer Einstellungen (env, sandbox, permissions) waere in den Nacht-Sessions wirksam: ${befunde.join(" | ")}`;
+  if (args.dryRun) {
+    log(`  WARNUNG: ${meldung}`);
+    return;
+  }
+  fail(meldung, "zustand");
+}
+
 /** Die beiden Zustands-Vorfluege der Implementierung: kein Absturzrest, sauberer Baum. */
 function zustandsVorflug() {
   const inProgress = board("issue", "list", "--status", "in_progress");
@@ -2277,6 +2319,9 @@ export function vorbereiten(args) {
   // einem eigenen Worktree und laeuft neben einer Umsetzungsnacht (Plan #638, A3): Ein
   // Paket in In progress ist fuer sie kein Absturzrest, ein unsauberer Baum kein Hindernis.
   if (!args.kette) zustandsVorflug();
+  // In jeder Betriebsart, nach dem Baum (Issue #618): Eine ungueltige settings-Datei
+  // traefe jede Session, ob sie baut oder plant.
+  settingsVorflug(args);
   // Nachts ohne Gate zu implementieren ist riskant; ein Lauf, der nichts baut, hebt die
   // Pflicht ueber `noChecksOk` auf (so machen es die Folgepakete fuer die Kette).
   if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
