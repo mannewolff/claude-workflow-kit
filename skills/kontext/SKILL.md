@@ -135,7 +135,7 @@ Kompakter Session-Start-Stand.
 (nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Letzte Entscheidungen / Zuletzt aktualisiert
-(aus der Projektnotiz — nur Modus A)
+(aus der Projektnotiz — nur Modus A; nur der jüngste dokumentierte Tag)
 
 ### Was als nächstes kommt
 (aus der Projektnotiz)
@@ -158,11 +158,19 @@ Kompakter Session-Start-Stand.
 (aus der Dach-Notiz — Abschnitt weglassen wenn sie fehlt)
 
 ### Stand {project}
-(aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert)
+(aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert; nur der jüngste dokumentierte Tag)
 
 ### Was als nächstes kommt
 (aus der Projektnotiz)
 ```
+
+**Nur der jüngste dokumentierte Tag.** Unter den letzten Entscheidungen steht, was am jüngsten in der Notiz dokumentierten Tag festgehalten wurde — auch dann, wenn dieser Tag keine Entscheidung enthält.
+- Maßgeblich sind ausschließlich Datumsangaben der Form `JJJJ-MM-TT`, die einen Eintrag einleiten, gesucht in der ganzen Notiz und nicht nur im ersten `## Zuletzt aktualisiert`-Abschnitt. Eine Notiz kann mehrere solcher Abschnitte tragen.
+- Ein Datum leitet einen Eintrag ein, wenn es am Zeilenanfang steht, allenfalls nach einem Listenpunkt, und ihm ein `:` oder ein Klammerzusatz folgt — die Form, in der `/document` schreibt: `- JJJJ-MM-TT: …` oder `- JJJJ-MM-TT (Abend): …`.
+- Datumsnennungen im Fließtext eines Eintrags zählen nicht, ebenso wenig ein Datum in anderer Form wie `**Stand JJJJ-MM-TT**`.
+- Gehören mehrere Einträge zum jüngsten Tag, gehören sie alle dazu; ein Zusatz wie „(Abend)" ist eine Tageszeit, kein anderer Tag.
+- Trägt die Notiz keine Datumsangabe, die einen Eintrag einleitet, erscheint ihr zuletzt geschriebener Abschnitt so, wie er dasteht — die Verdichtungsregel gilt für diesen Rückfall nicht.
+- Werden zwei Notizen gelesen, wird der Tag je Notiz getrennt bestimmt.
 
 **Die Vorhaben stehen oben**, weil sie die Gliederung sind, unter der die Arbeit
 haengt: Wer sie zuerst sieht, hat den Rahmen, in den alles Weitere gehoert. Die

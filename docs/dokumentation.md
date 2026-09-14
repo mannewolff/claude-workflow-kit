@@ -311,7 +311,7 @@ Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), lies
 
 Der Skill lädt den Kontext, den du brauchst, um sofort arbeitsfähig zu sein, ohne den Chat der letzten Session im Kopf haben zu müssen. Er liest `kontext.config.json` (zuerst global aus `~/.claude/`, dann lokal aus `.claude/`, wobei lokale Werte die globalen überschreiben).
 
-Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, Arbeitsregeln), erkennt die Projektnotiz automatisch anhand des Repo-Namens und liest zusätzliche `projectDocs`. Ohne Vault holt er die Vorhaben über den Board-Adapter und liest `projectDocs` aus dem Repo. Die Ausgabe ist ein kurzer Lageüberblick: laufende Vorhaben, letzte Entscheidungen, was als nächstes ansteht. Die einzelnen Arbeitspakete stehen auf dem Board, der Session-Start wiederholt sie nicht.
+Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, Arbeitsregeln), erkennt die Projektnotiz automatisch anhand des Repo-Namens und liest zusätzliche `projectDocs`. Ohne Vault holt er die Vorhaben über den Board-Adapter und liest `projectDocs` aus dem Repo. Die Ausgabe ist ein kurzer Lageüberblick: laufende Vorhaben, letzte Entscheidungen — davon nur der jüngste in der Projektnotiz dokumentierte Tag — und was als nächstes ansteht. Die einzelnen Arbeitspakete stehen auf dem Board, der Session-Start wiederholt sie nicht.
 
 ### /fachplan
 

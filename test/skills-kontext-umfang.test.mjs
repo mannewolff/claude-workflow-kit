@@ -117,7 +117,25 @@ test("[skills-17] die Hinweiszeile zum Index steht in beiden Vorlagen, ohne Uebe
   }
 });
 
-// --- 6. Der Ausblick kommt aus der Projektnotiz -----------------------------
+// --- 6. Die Tagesgrenze der letzten Entscheidungen --------------------------
+
+test("[skills-18] die Tagesregel steht im Skill", () => {
+  const treffer = absaetze().filter(
+    (a) =>
+      a.includes("JJJJ-MM-TT") &&
+      /je Notiz getrennt/.test(a) &&
+      /Flie(ß|ss)text/.test(a) &&
+      /keine Datumsangabe/.test(a),
+  );
+  assert.ok(
+    treffer.length >= 1,
+    "kein Absatz nennt `JJJJ-MM-TT`, 'je Notiz getrennt', den Ausschluss der " +
+      "Datumsnennung im Fliesstext und den Fall ohne Datumsangabe zusammen — ohne " +
+      "diese vier Stellen waechst der Abschnitt mit jeder Sitzung weiter",
+  );
+});
+
+// --- 7. Der Ausblick kommt aus der Projektnotiz -----------------------------
 
 test("[skills-16] 'Was als naechstes kommt' nennt die Projektnotiz, nicht die Ready-Spalte", () => {
   for (const [i, vorlage] of vorlagen().entries()) {
