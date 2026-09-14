@@ -305,7 +305,7 @@ Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge sp
 
 ### /kontext
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), lädt der Skill zusätzlich `specs/INDEX.md` und meldet einen veralteten Index.
+Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), liest der Skill `specs/INDEX.md` nicht, sondern meldet nur, wenn der Index fehlt oder veraltet ist.
 
 **Werkzeug neben dem Prozess, Session-Start.**
 

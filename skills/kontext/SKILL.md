@@ -97,19 +97,13 @@ ueber eine Faehigkeit, die es dort nie geben wird.
 Wenn der Adapter bei den uebrigen Aufrufen einen Fehler zurueckgibt: Schritt
 ueberspringen, kein harter Abbruch.
 
-### 6. Beschriebenes Verhalten laden (beide Modi)
+### 6. Zustand des Spec-Index prüfen (beide Modi)
 
-Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, lies zusätzlich `specs/INDEX.md` — die Tabelle dort nennt je Bereich die Zahl der gültigen und der entfallenen Aussagen und füllt den Abschnitt `### Beschriebenes Verhalten` in Schritt 7.
+Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, wird geprüft, ob `specs/INDEX.md` fehlt oder veraltet ist; trifft eines zu, erscheint in Schritt 7 die Hinweiszeile, sonst nichts. Der Inhalt des Index wird nicht gelesen.
 
 **Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für das beschriebene Verhalten wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
 
-**Veralteten Index melden.** Ist eine Bereichsdatei jünger als `specs/INDEX.md`, folgt als letzte Zeile des Abschnitts:
-
-```
-> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
-```
-
-Gemessen wird mit:
+**Veralteten Index erkennen.** Veraltet ist der Index, wenn eine Bereichsdatei jünger ist als `specs/INDEX.md`. Gemessen wird mit:
 
 ```bash
 find specs -type f -name '*.md' -not -path 'specs/vorhaben/*' -not -name INDEX.md -newer specs/INDEX.md
@@ -119,9 +113,9 @@ Nicht leere Ausgabe heißt veraltet. Ein still falscher Index ist schlechter als
 
 **`specs/vorhaben/` zählt nicht mit.** Die Notizen dort entstehen weiterhin beim Planen — `/techplan` legt sie als wartende Datei unter `.claude/` ab, und der nächste `push main` hebt sie nach `specs/vorhaben/` auf. Sie stehen nicht im Index; ohne die Ausnahme meldete `/kontext` nach jedem Push mit einer aufgehobenen Notiz einen Index als veraltet, der stimmt. Ein Fehlalarm nach `git pull` bleibt möglich (alle Dateien bekommen den Checkout-Zeitpunkt) und ist hinnehmbar: Die Meldung schlägt ein Kommando vor und hält nichts auf.
 
-**Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: Der Abschnitt besteht aus der einen Zeile mit dem Neubau-Kommando, ohne Bereiche.
+**Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: In Schritt 7 erscheint die Hinweiszeile.
 
-Fehlt dagegen die Config, der `spec`-Block oder der Ordner `specs/`, entfällt der Schritt **leise**, wie die übrigen optionalen Schritte — nichts wird gemeldet, und in Schritt 7 entfällt der Abschnitt ganz.
+Fehlt dagegen die Config, der `spec`-Block oder der Ordner `specs/`, entfällt der Schritt **leise**, wie die übrigen optionalen Schritte — nichts wird gemeldet, und in Schritt 7 steht dazu keine Zeile.
 
 ### 7. Zusammenfassung ausgeben
 
@@ -137,10 +131,8 @@ Kompakter Session-Start-Stand.
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
-### Beschriebenes Verhalten
-- <Bereich> — <n> gueltig, <m> entfallen
-- ...
-(aus `specs/INDEX.md`; Abschnitt weglassen ohne `spec`-Block oder ohne `specs/`)
+> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
+(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Letzte Entscheidungen / Zuletzt aktualisiert
 (aus der Projektnotiz — nur Modus A)
@@ -159,10 +151,8 @@ Kompakter Session-Start-Stand.
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
-### Beschriebenes Verhalten
-- <Bereich> — <n> gueltig, <m> entfallen
-- ...
-(aus `specs/INDEX.md`; Abschnitt weglassen ohne `spec`-Block oder ohne `specs/`)
+> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
+(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Systemweiter Stand ({parentProject})
 (aus der Dach-Notiz — Abschnitt weglassen wenn sie fehlt)
