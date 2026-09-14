@@ -2801,15 +2801,39 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   return { ausgang: "fertig" };
 }
 
+/** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
+export const UEBERHOLT_UNBESTAETIGT_GRUND = "der Kommentar wurde geschrieben, war danach aber an der Karte nicht auffindbar";
+
 /**
  * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
  * #638, A8): ein Kommentar je Karte, kein Label, kein Move.
+ *
+ * Jeder Kommentar wird danach einmal zurueckgelesen (Issue #653). Ein erfolgreicher
+ * POST ist kein Beweis, dass der Kommentar am Board steht — am 2026-09-14 fehlte er an
+ * Plan #577, obwohl der Bericht ihn auswies. Ein Bericht, der eine Handlung behauptet,
+ * die niemand sieht, ist schlimmer als keiner: Wer ihn liest, sieht nicht nach.
+ *
+ * Nicht bestaetigt heisst getrennt ausweisen, nicht abbrechen: Der Kommentar ist
+ * Hinweis, kein Gate. Rueckgabe sind beide Listen — die Funktion setzt nichts an
+ * `kette`, sie wird an genau einer Stelle gerufen.
  */
 function aeltereUeberholen(kette, aeltere, neuerPlan) {
+  const ueberholt = [];
+  const ueberholtUnbestaetigt = [];
   for (const id of aeltere) {
-    board("issue", "comment", id, "--text", `Ueberholt durch Plan #${neuerPlan} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
-    log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+    // Der Anker steht am Zeilenanfang des geschriebenen Textes und traegt den
+    // Kettenstempel nicht — er bleibt ueber Laeufe hinweg wiedererkennbar.
+    const anker = `Ueberholt durch Plan #${neuerPlan}`;
+    board("issue", "comment", id, "--text", `${anker} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
+    if (kommentareVon(board("issue", "get", id)).some((k) => k.includes(anker))) {
+      ueberholt.push(id);
+      log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+    } else {
+      ueberholtUnbestaetigt.push({ id, grund: UEBERHOLT_UNBESTAETIGT_GRUND });
+      log(`  Plan #${id}: der Ueberholt-Kommentar ist am Board nicht auffindbar — im Bericht als nicht bestaetigt gefuehrt.`);
+    }
   }
+  return { ueberholt, ueberholtUnbestaetigt };
 }
 
 /**
@@ -2965,6 +2989,9 @@ export function berichtBauen(einheit, {
     "");
   if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
   if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
+  if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
+    z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
+  }
   z.push(BERICHT_SCHLUSS, "");
   return z.join("\n");
 }
@@ -3108,12 +3135,15 @@ async function laufeEineKette(kandidat, nummer, args) {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
     if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
     const neuerPlan = kette.stufen.plan?.id;
-    if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
+    const ueberholung = neuerPlan && aeltere.length > 0
+      ? aeltereUeberholen(kette, aeltere, neuerPlan)
+      : { ueberholt: [], ueberholtUnbestaetigt: [] };
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
       ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
       stufen: kette.stufen,
-      ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
+      ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
+      ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
       ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
       kostenUsd: kette.kosten.kostenSumme,
       kostenUnbekannt: kette.kosten.kostenUnbekannt,

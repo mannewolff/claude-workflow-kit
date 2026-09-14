@@ -204,18 +204,26 @@ export const VORFLUG_KAPUTT = "echo 'kein Befund'";
 /**
  * Ersetzt die Kit-Kopie von board.mjs im Fixture durch einen Umweg ueber das echte
  * board.mjs, der `issue comment <id>` abweist, wenn `BOARD_FAKE_ABLEHNEN` die Nummer
- * nennt — der Tracker ist dann fuer genau diesen Kommentar "nicht erreichbar". Der
- * Umweg wird committet, damit der Vorflug den Arbeitsbaum weiter als sauber sieht; er
- * spiegelt sich mit `.claude/` in den Worktree jeder Kette.
+ * nennt — der Tracker ist dann fuer genau diesen Kommentar "nicht erreichbar". Nennt
+ * `BOARD_FAKE_SCHLUCKEN` die Nummer, nimmt der Fake den Kommentar an (Exit 0, JSON auf
+ * stdout) und speichert ihn nicht — die Karte liegt danach ohne ihn vor, wie am
+ * 2026-09-14 an Plan #577 (Issue #653). Der Umweg wird committet, damit der Vorflug den
+ * Arbeitsbaum weiter als sauber sieht; er spiegelt sich mit `.claude/` in den Worktree
+ * jeder Kette.
  */
 export function boardFakeInstallieren(dir) {
   const echt = join(repoRoot, "kit", "board.mjs");
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [
     'import { spawnSync } from "node:child_process";',
     "const args = process.argv.slice(2);",
-    'if (process.env.BOARD_FAKE_ABLEHNEN && args[0] === "issue" && args[1] === "comment" && String(args[2]) === process.env.BOARD_FAKE_ABLEHNEN) {',
+    'const kommentarAn = (nummer) => nummer && args[0] === "issue" && args[1] === "comment" && String(args[2]) === nummer;',
+    "if (kommentarAn(process.env.BOARD_FAKE_ABLEHNEN)) {",
     String.raw`  process.stderr.write("Fehler: Tracker nicht erreichbar (Board-Fake)\n");`,
     "  process.exit(1);",
+    "}",
+    "if (kommentarAn(process.env.BOARD_FAKE_SCHLUCKEN)) {",
+    String.raw`  process.stdout.write(JSON.stringify({ ok: true, id: args[2] }) + "\n");`,
+    "  process.exit(0);",
     "}",
     `const res = spawnSync(process.execPath, [${JSON.stringify(echt)}, ...args], { stdio: "inherit" });`,
     "process.exit(res.status ?? 1);",
