@@ -510,6 +510,13 @@ function ausfuehren(args) {
   // gesehen hat, sobald ein Kommando eine Datei anfasst — ein Formatter mit
   // `--fix` genuegt. Veraendert ein Check die Datei, passt der Hash beim Commit
   // nicht mehr und das Gate weist ab: die sichere Richtung.
+  //
+  // Der Zeitstempel steht unmittelbar daneben und aus demselben Grund (Issue #655):
+  // Er bezeugt denselben Moment wie die Hashes — den Stand, der in die Pruefung
+  // ging, nicht den Zeitpunkt, zu dem sie endete. Die Nachweiszeile der
+  // Release-Skills nennt Hash und Zeitpunkt gemeinsam; stammte der eine aus dem
+  // Lauf und der andere aus der Sitzung, bezeugten sie Verschiedenes.
+  const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
 
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
@@ -531,7 +538,7 @@ function ausfuehren(args) {
 
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, hashes });
+  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
