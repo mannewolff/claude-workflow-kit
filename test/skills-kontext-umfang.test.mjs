@@ -76,6 +76,14 @@ test("[skills-16] die Filterregel fuer Vorhaben steht im Skill", () => {
     "kein Absatz nennt `total`, `done` und den Fall `0/0` zusammen — die Regel, " +
       "welche Vorhaben erscheinen, stuende nirgends und wuerde nur angewendet",
   );
+  for (const absatz of treffer) {
+    assert.doesNotMatch(
+      absatz,
+      /bleibt stehen/,
+      "die Filterregel laesst ein Vorhaben noch stehen — ein Vorhaben ohne " +
+        "Arbeitspakete (`0/0`) ist nicht begonnen worden und traegt den Einstieg nicht",
+    );
+  }
 });
 
 // --- 3. `issue list` wird nicht mehr geladen --------------------------------

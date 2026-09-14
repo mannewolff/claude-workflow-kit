@@ -80,13 +80,12 @@ node .claude/kit/board.mjs issue epics
 node .claude/kit/board.mjs code repo-name
 ```
 
-**Welche Vorhaben erscheinen.** Ein Vorhaben erscheint, wenn es keine
-Arbeitspakete hat (`total` ist 0) oder mindestens eines noch nicht erledigt ist
-(`done` kleiner als `total`). Ausgeblendet wird ausschliesslich, was mindestens
-ein Arbeitspaket hat und dessen Arbeitspakete alle erledigt sind. Ein Vorhaben
-ohne Fortschritt (`0/0`) bleibt stehen — dass es leer ist, ist beim Einstieg
-eine Information. Erfuellt kein Vorhaben die Regel, entfaellt der Abschnitt
-`### Vorhaben` ganz.
+**Welche Vorhaben erscheinen.** Ein Vorhaben erscheint, wenn mindestens eines
+seiner Arbeitspakete noch nicht erledigt ist (`done` kleiner als `total`).
+Ausgeblendet wird damit beides: was alle seine Arbeitspakete erledigt hat und
+was gar keine hat (`0/0`) — ein Vorhaben ohne Arbeitspakete ist nicht begonnen
+worden und traegt den Einstieg nicht. Erfuellt kein Vorhaben die Regel,
+entfaellt der Abschnitt `### Vorhaben` ganz.
 
 **Ein Fehlschlag von `issue epics` wird still uebersprungen**, nicht gemeldet:
 GitHub und GitLab kennen keine Vorhaben, der Adapter weist das Kommando dort ab.
