@@ -101,7 +101,7 @@ ueberspringen, kein harter Abbruch.
 
 Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, wird geprüft, ob `specs/INDEX.md` fehlt oder veraltet ist; trifft eines zu, erscheint in Schritt 7 die Hinweiszeile, sonst nichts. Der Inhalt des Index wird nicht gelesen.
 
-**Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für das beschriebene Verhalten wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
+**Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für Spec-Driven Development wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
 
 **Veralteten Index erkennen.** Veraltet ist der Index, wenn eine Bereichsdatei jünger ist als `specs/INDEX.md`. Gemessen wird mit:
 

@@ -67,7 +67,7 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **7. Review-Modell** und **8. Review-Kommando.** Wer den Code-Review in Schritt 7 fährt — **genau eines von beiden**. Ein Modell (Standard `claude-opus-4-8`) läuft als Subagent; ein Kommando startet ein fremdes Werkzeug und bekommt den Prompt über stdin. Beides zu setzen wird abgewiesen, keines von beidem auch: Sonst liefe Schritt 7 ins Leere. Das gilt für die **Antworten**. Stehen dagegen beide Felder schon **in der Datei**, weist der Installer nicht ab, sondern löst den Widerspruch auf: Er schlägt das vorhandene Kommando vor und sagt vorher, dass das Modell dabei entfällt. Umgekehrt geht es, indem du das Kommando mit `-` leerst und ein Modell einträgst.
 
-**9. Beschriebenes Verhalten (nur projektlokal; der Installer nennt die Frage „Spec-Driven Development").** Ob das Projekt unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens führt — siehe [Beschriebenes Verhalten](#beschriebenes-verhalten). Die Frage erscheint nur bei `issueTracker: toolbox` oder `local` und nur, wenn noch kein `spec`-Block in der Config steht. **Die Entscheidung ist nicht zurückzunehmen**; der Installer sagt das vor der Antwort.
+**9. Spec-Driven Development (nur projektlokal).** Ob das Projekt unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führt — siehe [Spec-Driven Development](#spec-driven-development). Die Frage erscheint nur bei `issueTracker: toolbox` oder `local` und nur, wenn noch kein `spec`-Block in der Config steht. **Die Entscheidung ist nicht zurückzunehmen**; der Installer sagt das vor der Antwort.
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
@@ -164,7 +164,7 @@ Die Dateinamen der always-Dateien (Index.md, Profil.md) konfigurierst du selbst 
 
 ## Die Config-Datei
 
-Der Block `spec` ist hier nicht aufgeführt — er steht bei [Beschriebenes Verhalten](#beschriebenes-verhalten).
+Der Block `spec` ist hier nicht aufgeführt — er steht bei [Spec-Driven Development](#spec-driven-development).
 
 Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Skills lesen ausschließlich aus dieser Datei (nirgendwo sonst werden Projektparameter hart kodiert).
 
@@ -305,7 +305,7 @@ Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge sp
 
 ### /kontext
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), liest der Skill `specs/INDEX.md` nicht, sondern meldet nur, wenn der Index fehlt oder veraltet ist.
+Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill `specs/INDEX.md` nicht, sondern meldet nur, wenn der Index fehlt oder veraltet ist.
 
 **Werkzeug neben dem Prozess, Session-Start.**
 
@@ -333,14 +333,14 @@ Vier Eigenschaften unterscheiden ihn von `/techplan`:
 
 - **Er fragt, bevor er anlegt.** Der Skill benennt die Bahn in einem Satz und wartet auf ein Wort von dir. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
 - **Er nimmt nur zwei Quellen.** Den Chat oder eine `[Idee]` (`/task #N`). Ein `[Fachlich]`- oder `[Plan]`-Dokument lehnt er ab, ohne etwas anzulegen: Dort ist der volle Weg bereits begonnen, und ein `[Task]` daneben wäre eine zweite Wahrheit darüber, was gebaut wird. Entstand der Task aus einer Idee, bleibt an ihr ein Kommentar `Fortsetzung: Issue #T` zurück.
-- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#beschriebenes-verhalten): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
+- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#spec-driven-development): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
 - **Er entscheidet, statt zu fragen.** Was beim Schreiben des Pakets unklar ist und nicht in der Stopp-Klasse aus `CLAUDE-workflow.md` steht, entscheidet der Skill selbst und hält es als `Entscheidung:`-Zeile im Kontext fest. Nur eine Frage aus der Stopp-Klasse geht an dich.
 
 **Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue` und braucht bei gesetztem `spec`-Block seinen `## Spec-Wirkung`-Abschnitt. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
 
 ### /techplan
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), liest der Skill zuerst die Beschreibung und weist aus, wo sie schweigt.
+Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill zuerst die Spezifikation und weist aus, wo sie schweigt.
 
 **Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
@@ -352,7 +352,7 @@ Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 d
 
 ### /issues
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Beschreibung nichts ändern (Issue #464).
+Fährt das Projekt [Spec-Driven Development](#spec-driven-development), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Spezifikation nichts ändern (Issue #464).
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -416,7 +416,7 @@ Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (i
 
 ### /push-main
 
-Führt das Projekt ein [beschriebenes Verhalten](#beschriebenes-verhalten), läuft vor den Pflicht-Checks zusätzlich die Fortschreibung der Beschreibung, und das Spec-Gate kann den Push aufhalten.
+Fährt das Projekt [Spec-Driven Development](#spec-driven-development), läuft vor den Pflicht-Checks zusätzlich die Fortschreibung der Spezifikation, und das Spec-Gate kann den Push aufhalten.
 
 **Schritt 8, nach dem Review, auf dein explizites Kommando.**
 
@@ -894,9 +894,9 @@ Der Installer legt `.claude/workflow.config.example.json` neben die echte Config
 
 Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetzung mit zwei Reviewern je Stufe; erst ein ausdrücklich geschriebener Block aktiviert die Stufen-Besetzung. Ein Kit-Update ändert das Prüfverfahren also nicht im Vorbeigehen.
 
-## Beschriebenes Verhalten
+## Spec-Driven Development
 
-Ein Projekt kann unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens führen. Wer plant, liest sie statt Produktionscode — und bekommt ausdrücklich gesagt, wo sie schweigt. Wer ein Arbeitspaket schneidet, sagt, was es an ihr ändert. Wer pusht, sieht vorher den Diff und wird aufgehalten, wenn Paket und Beschreibung nicht zusammenpassen.
+Ein Projekt kann unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führen. Wer plant, liest sie statt Produktionscode — und bekommt ausdrücklich gesagt, wo sie schweigt. Wer ein Arbeitspaket schneidet, sagt, was es an ihr ändert. Wer pusht, sieht vorher den Diff und wird aufgehalten, wenn Paket und Beschreibung nicht zusammenpassen.
 
 **Ein Projekt ohne diesen Block merkt davon nichts.** Keine zusätzliche Frage im Ablauf, keine Warnung, kein verändertes Verhalten in irgendeinem Skill — ohne den `spec`-Block bleibt alles unverändert.
 
@@ -930,7 +930,7 @@ Die Entscheidung ist nicht zurückzunehmen, und der Installer sagt das vor der A
 
 ### Nicht auf jedem Tracker
 
-Das beschriebene Verhalten setzt auf einem Board mit Aktivitätsverlauf auf: Das Anlagedatum eines Pakets, an dem `seit` hängt, kommt von dort. **Bei `issueTracker: github` und `gitlab` weist `spec.mjs` deshalb jeden Lauf ab** — dort gibt es weder Verlauf noch Suche über Aussagen. Möglich sind `toolbox` und `local`. Die Einschränkung fällt sofort auf und nicht erst beim ersten Push: Der Installer stellt die Frage bei diesen Trackern gar nicht.
+Spec-Driven Development setzt auf einem Board mit Aktivitätsverlauf auf: Das Anlagedatum eines Pakets, an dem `seit` hängt, kommt von dort. **Bei `issueTracker: github` und `gitlab` weist `spec.mjs` deshalb jeden Lauf ab** — dort gibt es weder Verlauf noch Suche über Aussagen. Möglich sind `toolbox` und `local`. Die Einschränkung fällt sofort auf und nicht erst beim ersten Push: Der Installer stellt die Frage bei diesen Trackern gar nicht.
 
 ### Wie die Beschreibung aussieht
 

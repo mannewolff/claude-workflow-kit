@@ -28,7 +28,7 @@ Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt f
 Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
 - `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
-- `spec`: optionaler Block für das beschriebene Verhalten unter `specs/`. Allein sein
+- `spec`: optionaler Block für Spec-Driven Development mit der Spezifikation unter `specs/`. Allein sein
   **Vorhandensein** schaltet Schritt 3 (Spec-Fortschreibung) und das Gate in Schritt 4
   frei. Fehlt er, gibt es beides nicht.
 

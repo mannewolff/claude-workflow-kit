@@ -87,13 +87,13 @@ test("das Neubau-Kommando steht woertlich im Skill", () => {
 
 // --- 3. Kein Abschnitt in den Vorlagen --------------------------------------
 
-test("`### Beschriebenes Verhalten` steht in keiner Vorlage", () => {
+test("`### Spec-Driven Development` steht in keiner Vorlage", () => {
   for (const [i, vorlage] of vorlagen().entries()) {
     assert.doesNotMatch(
       vorlage,
-      /### Beschriebenes Verhalten/,
+      /### Spec-Driven Development/,
       `Vorlage ${i + 1} gibt die Aufstellung je Bereich aus — der Einstieg braucht ` +
-        "nicht die Statistik des beschriebenen Verhaltens, nur den Hinweis auf einen " +
+        "nicht die Statistik der Spezifikation, nur den Hinweis auf einen " +
         "Index, der nicht mehr stimmt",
     );
   }

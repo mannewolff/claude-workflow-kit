@@ -70,9 +70,9 @@ Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zusta
 
 Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der jeden Commit abweist, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging — geprueft wird Datei fuer Datei gegen den Index. Hook und Logik liegen versioniert unter `.githooks/` und wandern mit dem Klon; die Aktivierung ist lokale git-Config und wandert nicht. Zwei Grenzen gehoeren dazu: `--no-verify` umgeht das Gate, und ein frischer Klon hat es erst nach einem Installer-Lauf. Prueflogik, Geltungsbereich und die uebrigen Grenzen stehen im Kapitel „Das Commit-Gate" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text.
 
-## Beschriebenes Verhalten
+## Spec-Driven Development
 
-Ein Projekt kann unter `specs/` eine Beschreibung seines fachlichen Soll-Verhaltens fuehren. Wer plant, liest sie statt Produktionscode und bekommt gesagt, wo sie schweigt; wer ein Arbeitspaket schneidet, sagt, was es an ihr aendert; wer pusht, wird aufgehalten, wenn beides nicht zusammenpasst. Der Schalter ist ein Block in der Config, die Entscheidung ist nicht zurueckzunehmen, und sie setzt `issueTracker: toolbox` oder `local` voraus — GitHub und GitLab fuehren keinen Aktivitaetsverlauf, an dem der Stichtag haengt. Ein Projekt ohne diesen Block merkt von alldem nichts. Das Kapitel „Beschriebenes Verhalten" in [`docs/dokumentation.md`](docs/dokumentation.md) hat die Einzelheiten — hier bewusst kein zweiter vollstaendiger Text.
+Ein Projekt kann unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens fuehren. Wer plant, liest sie statt Produktionscode und bekommt gesagt, wo sie schweigt; wer ein Arbeitspaket schneidet, sagt, was es an ihr aendert; wer pusht, wird aufgehalten, wenn beides nicht zusammenpasst. Der Schalter ist ein Block in der Config, die Entscheidung ist nicht zurueckzunehmen, und sie setzt `issueTracker: toolbox` oder `local` voraus — GitHub und GitLab fuehren keinen Aktivitaetsverlauf, an dem der Stichtag haengt. Ein Projekt ohne diesen Block merkt von alldem nichts. Das Kapitel „Spec-Driven Development" in [`docs/dokumentation.md`](docs/dokumentation.md) hat die Einzelheiten — hier bewusst kein zweiter vollstaendiger Text.
 
 ## Dokumentation
 

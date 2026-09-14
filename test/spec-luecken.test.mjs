@@ -203,7 +203,7 @@ test(".git und node_modules liefern keine Punkte", () => {
     ["--bereich", "alpha"],
     (res) => {
       assert.deepEqual(ausgabe(res).bereiche.alpha.luecken, ["kit/eins.mjs"],
-        "fremder Code und die Buchhaltung des Repos sind kein beschriebenes Verhalten");
+        "fremder Code und die Buchhaltung des Repos gehoeren nicht in die Spezifikation");
     },
   );
 });

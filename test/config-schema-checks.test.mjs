@@ -150,7 +150,7 @@ test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig"
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
 });
 
-// --- spec: der Schalter fuer das beschriebene Verhalten (Issue #438) ---
+// --- spec: der Schalter fuer Spec-Driven Development (Issue #438) ---
 
 // Der Block selbst ist der Schalter, sein Feld 'seit' der Zeitpunkt. Gebaut aus der
 // ausgelieferten Vorlage, damit die Faelle eine echte Config treffen und sich nur im
