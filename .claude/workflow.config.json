@@ -93,8 +93,7 @@
     "plan": {
       "reviewer": 1,
       "rollen": [
-        "architektur-bestand",
-        "schnitt-abhaengigkeiten"
+        "architektur-bestand"
       ]
     },
     "issue": {
