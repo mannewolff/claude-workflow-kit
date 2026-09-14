@@ -2,6 +2,22 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.52.3] - 2026-09-14
+- chore: Spec fortgeschrieben (#625–#634)
+- retro fragt nach den Zahlen: gekippte Nachtentscheidungen, Stopp-Fragen, Anforderung bis GO, GO bis Push (#634)
+- CLAUDE-workflow.md halbiert: Pruefstufen, Pruefvorgabe, Zustandslabels und Config-Beispiel raus (#633)
+- fachplan auf den Kern: Eingang aus dem Stopp-Klasse-Halt, check-form vor dem Anlegen, kein label-sync (#632)
+- issues: Eingang ohne Marker, Entscheidungen im Kontext, check-form je Paket, kein Paket-Review (#631)
+- techplan: Entscheidungen statt offener Fragen, Stopp-Klasse, check-form vor dem Anlegen (#630)
+- issue-review auf den Kern: eine Runde, Befunde als Zuarbeit, Marker als Spur (#629)
+- board.mjs: issue check-form prueft die maschinellen Formgates je Stufe (#628)
+- implement-next/-ready: Halt nur fuer die Stopp-Klasse, sonst entscheiden und protokollieren (#627)
+- Skill /task auf den Kern: ein Satz zur Bahn, entscheiden statt fragen, kein Review-Schritt (#626)
+- Regelwerk: Abschnitt Entscheiden statt fragen mit Stopp-Klasse und Entscheidungsformat (#625)
+- Doku: Umsetzungsplan Prozess-Umbau Stufe 1
+- Config: Paket-Review kein Gate mehr, Zustandslabels aus, Plan-Review mit einem Reviewer
+- Neuer Prozess
+
 ## [1.52.2] - 2026-09-11
 - chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#572, #573, #574)
 - Einstieg Bahn 3: Skill /task, Bahn-Auswahl in techplan, Doku (#574)
