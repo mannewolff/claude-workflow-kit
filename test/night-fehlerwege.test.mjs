@@ -218,8 +218,9 @@ test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX
     // NICHTS aus (`true`). Der Salvage-Prompt schneidet die letzten Zeilen dieser
     // Ausgabe mit — bei leerer Ausgabe muss er trotzdem zustande kommen.
     //
-    // Der Fake darf stdin nicht lesen: Der Runner uebergibt den Prompt als Argument
-    // und schliesst stdin nicht; ein `cat` warte bis zum Salvage-Zeitlimit.
+    // Der Fake braucht stdin nicht: Der Runner uebergibt den Prompt als Argument und
+    // startet die Session seit Issue #620 mit geschlossenem stdin — ein `cat` bekaeme
+    // sofort das Dateiende (test/night-stdin.test.mjs).
     const fake = [
       'if [ -n "$NIGHT_SALVAGE" ]; then',
       "  exit 0",

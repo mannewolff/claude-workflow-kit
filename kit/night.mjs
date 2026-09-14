@@ -1331,6 +1331,12 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     const child = spawn(cmd, cmdArgs, {
       env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
       detached: process.platform !== "win32",
+      // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
+      // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
+      // schrieb "no stdin data received" ins Protokoll. Niemand schreibt in stdin, der
+      // Prompt geht als Argument; eine Session, die stdin liest, bekommt so sofort das
+      // Dateiende. stdout und stderr bleiben Pipes fuer das Sammeln und Streamen.
+      stdio: ["ignore", "pipe", "pipe"],
       // Plan #638, A4: Die Kette laesst ihre Sessions im Worktree laufen. Ohne Angabe
       // erbt das Kind das cwd des Runners, wie bisher.
       cwd: cwd ?? process.cwd(),
