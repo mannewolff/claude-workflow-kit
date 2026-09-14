@@ -8,7 +8,7 @@ import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { waehleKettenKandidaten, korrekturPrompt } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER,
+  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
 test("[night-19] --kette mit --label wird abgewiesen: das Kettenlabel steht in der Config", () => {
@@ -70,7 +70,7 @@ test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --
     const a = fachplan(dir, "[Fachlich] Erstes");
     const b = fachplan(dir, "[Fachlich] Zweites");
     const c = fachplan(dir, "[Fachlich] Drittes");
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER } });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
     const res = run(dir, ["--kette", "--max", "2"], env);
     assert.equal(res.status, 0, res.stderr);
     const lauf = stand(dir);
@@ -82,7 +82,7 @@ test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --
     const reihenfolge = sessions(env.logPfad).filter((s) => s.stufe === "plan")
       .map((s) => /-(\d+)-\d{4}-\d{2}-\d{2}-\d{6}$/.exec(basename(s.cwd))?.[1]);
     assert.deepEqual(reihenfolge, [a, b], "die Ketten liefen nicht in Listenreihenfolge");
-    assert.equal(lauf.einheiten.find((e) => e.id === b).kostenUsd, 2, "jede Kette hat ihr eigenes Budget");
+    assert.equal(lauf.einheiten.find((e) => e.id === b).kostenUsd, 4, "jede Kette hat ihr eigenes Budget");
     assert.match(res.stdout, /Kette 1\/2: Issue #0001/);
     assert.match(res.stdout, /Kette 2\/2: Issue #0002/);
   });

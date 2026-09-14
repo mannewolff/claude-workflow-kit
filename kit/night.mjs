@@ -85,7 +85,10 @@
  * autorisiert genau eine Kette). Je Kette ein eigener Worktree unter dem
  * Temp-Verzeichnis, darin nacheinander /techplan #F (Stufe plan), issue check-form mit
  * hoechstens night.kette.korrekturrunden Korrektursessions, /issue-review #M (Stufe
- * review). Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
+ * review), /issues #M (Stufe pakete, Formpruefung je Paket) und eine lesende
+ * Abdeckungs-Session, die die Pakete gegen den Fachplan haelt (Stufe abdeckung, ihr Text
+ * steht im Ergebnisstand). Aeltere Plandokumente zum selben Fachplan bekommen den
+ * Kommentar "Ueberholt durch Plan #M". Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
  * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
  * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
  * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
@@ -1282,6 +1285,28 @@ export function kostenAddieren(lauf, kennzahlen) {
   return lauf;
 }
 
+/**
+ * Der Text der letzten Nachricht einer Session — das Feld `result` des letzten
+ * `result`-Ereignisses (Plan #638, A9). Dieselbe Zeile, aus der `leseKennzahlen` die
+ * Kosten liest; `null`, wenn keine da ist oder der Text leer ist.
+ */
+export function leseErgebnisText(stdout) {
+  let letzte = null;
+  for (const zeile of String(stdout ?? "").split(/\r\n|\r|\n/)) {
+    const trimmed = zeile.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
+  }
+  const text = typeof letzte?.result === "string" ? letzte.result.trim() : "";
+  return text === "" ? null : text;
+}
+
 // --- Nacht-Session ---
 
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
@@ -2371,6 +2396,36 @@ const ALTE_ROUTING_LABELS = ["kit:nightreview", "kit:nightplan", "kit:nightissue
 const KETTE_MINDEST_REST_MS = 60 * 1000;
 // Die drei Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2).
 const KETTE_AUSGAENGE = ["fertig", "angehalten", "abgebrochen"];
+// Woran der Runner den Halt von /issues erkennt: der Kommentar, den der Skill
+// unbeaufsichtigt an den Plan schreibt, wenn er kein Paket anlegt (skills-14).
+export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
+
+/**
+ * Der Prompt der Abdeckungs-Session (Plan #638, A9): Sie liest Fachplan, Plan und Pakete,
+ * aendert nichts und gibt als letzte Nachricht die Zuordnung zurueck. Ihr Text landet im
+ * Ergebnisstand und im Bericht — kein eigener Kommentar, kein Tor (Kriterium 5).
+ */
+export const ABDECKUNG_PROMPT = [
+  "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
+  "",
+  "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
+    "",
+    "### Zuordnung",
+    "Je fachlichem Akzeptanzkriterium des Fachplans eine Zeile: das Kriterium (Nummer und Anfang des Wortlauts) und das Paket oder die Pakete, in denen es abgebildet ist, oder \"kein Paket\".",
+    "",
+    "### Ohne Paket",
+    "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut. Sonst der Satz: Alle Kriterien sind abgebildet.",
+    "",
+  "### Zuwachs",
+  "Was in den Paketen steht, ohne im Fachplan zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.",
+  "",
+  KETTE_ZUSATZ,
+].join("\n");
+
+export function abdeckungPrompt(fachplanId, planId, paketIds) {
+  const pakete = paketIds.map((id) => `#${id}`).join(", ");
+  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${pakete}.\n${ABDECKUNG_PROMPT}`;
+}
 
 /**
  * Der Grund, aus dem eine gekennzeichnete Karte nicht laeuft — `null`, wenn sie laeuft.
@@ -2599,6 +2654,106 @@ async function stufeReview(kette, planId) {
 }
 
 /**
+ * Stufe Pakete: /issues am Plan, Formpruefung je Paket, Halt am Kommentar (Plan #638, A7, E2).
+ *
+ * Ergebnis sind nur Karten mit `Plan: Issue #M` (E2); andere neue Karten stehen als
+ * `nichtZuordenbar` in der Einheit. Kein Paket und ein Kommentar `Kein Eingang für
+ * /issues` am Plan heisst angehalten; kein Paket ohne den Kommentar heisst abgebrochen.
+ */
+async function stufePakete(kette, planId) {
+  const { budget } = kette;
+  const stufeStart = Date.now();
+  const budgetMs = budget.paketeMin * 60 * 1000;
+  const stand = { ids: [], nichtZuordenbar: [], dauerMs: 0, kennzahlen: null, korrekturrunden: 0 };
+  kette.stufen.pakete = stand;
+  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = s.kennzahlen ?? stand.kennzahlen; };
+
+  const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
+  const vorherPlan = board("issue", "get", planId);
+  log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs);
+  summe(s);
+  if (s.ausgang !== "fertig") return s;
+
+  const neue = board("issue", "list").filter((i) => !vorherIds.has(String(i.id)));
+  const pakete = neue.filter((i) => stammtAusErzeugung(i, planId, "issue"));
+  stand.ids = pakete.map((i) => String(i.id));
+  stand.nichtZuordenbar = neue.filter((i) => !stammtAusErzeugung(i, planId, "issue")).map((i) => String(i.id));
+  if (stand.nichtZuordenbar.length > 0) {
+    log(`  Neue Karten ohne Herkunftszeile 'Plan: Issue #${planId}', nicht zuordenbar: ${stand.nichtZuordenbar.map((i) => "#" + i).join(", ")}.`);
+  }
+  if (pakete.length === 0) {
+    const nachherPlan = board("issue", "get", planId);
+    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => String(k).startsWith(ISSUES_HALT_KOPF));
+    if (halt) {
+      return { ausgang: "angehalten", grund: `Stopp-Frage beim Schneiden von #${planId}`, dokId: planId, frage: halt };
+    }
+    return { ausgang: "abgebrochen", grund: `kein Paket entstanden — die Session hat keine Karte mit 'Plan: Issue #${planId}' angelegt` };
+  }
+  log(`  Pakete aus Plan #${planId}: ${stand.ids.map((i) => "#" + i).join(", ")}.`);
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+
+  // Formpruefung je Paket, mit demselben Korrekturbudget je Dokument wie beim Plan.
+  for (const id of stand.ids) {
+    const paketStand = { id, korrekturrunden: 0 };
+    const form = await formSicherstellen(kette, paketStand, stufeStart, budgetMs, summe);
+    stand.korrekturrunden += paketStand.korrekturrunden;
+    if (form !== null) return form;
+  }
+  return { ausgang: "fertig", ids: stand.ids };
+}
+
+/**
+ * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9).
+ *
+ * Ihr Text kommt aus dem `result`-Ereignis. Zeitbudget, Fehlstart oder fehlender Text
+ * lassen die Kette trotzdem `fertig` enden — die Abdeckung ist eine Auskunft, kein Tor
+ * (Kriterium 5); der Grund steht an der Stufe. Nur das Kostenbudget bricht ab.
+ */
+async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
+  const { budget } = kette;
+  const stand = { dauerMs: 0, kennzahlen: null, text: null };
+  kette.stufen.abdeckung = stand;
+  const vorherKarten = board("issue", "list").length;
+  const vorherFachplan = board("issue", "get", fachplanId);
+  log(`  Stufe abdeckung: Pakete gegen Fachplan #${fachplanId} (Budget ${budget.abdeckungMin} min).`);
+  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), Date.now(), budget.abdeckungMin * 60 * 1000);
+  stand.dauerMs = s.dauerMs;
+  stand.kennzahlen = s.kennzahlen;
+  if (s.ausgang !== "fertig") {
+    stand.grund = s.grund;
+    log(`  Abdeckung ohne Text: ${s.grund}.`);
+    return { ausgang: "fertig" };
+  }
+  if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+  stand.text = leseErgebnisText(s.res.stdout);
+  if (stand.text === null) {
+    stand.grund = "die Abdeckungs-Session lieferte keinen Text";
+    log(`  Abdeckung ohne Text: ${stand.grund}.`);
+  }
+  // Der Prompt verbietet Schreiben; ein Verstoss ist ein Befund fuer den Morgen, kein
+  // Grund, die Pakete zu verwerfen.
+  const nachherKarten = board("issue", "list").length;
+  const nachherFachplan = board("issue", "get", fachplanId);
+  if (nachherKarten !== vorherKarten || neueKommentare(vorherFachplan, nachherFachplan).length > 0) {
+    kette.abdeckungSchrieb = true;
+    log("  Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen soll — steht im Ergebnisstand.");
+  }
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
+ * #638, A8): ein Kommentar je Karte, kein Label, kein Move.
+ */
+function aeltereUeberholen(kette, aeltere, neuerPlan) {
+  for (const id of aeltere) {
+    board("issue", "comment", id, "--text", `Ueberholt durch Plan #${neuerPlan} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
+    log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+  }
+}
+
+/**
  * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar am Fachplan und
  * kit:klaeren dort. Der Plan bleibt als Entwurf stehen; die naechste Kette beginnt von
  * vorn. Das Label abnehmen darf nur der Mensch — dieselbe Regel wie im Implementierungslauf.
@@ -2612,7 +2767,7 @@ function haltAmFachplan(kette, ergebnis) {
     "",
     ergebnis.frage,
     "",
-    `Der Plan bleibt als Entwurf stehen. Antwort bitte in den Fachplan schreiben, ${KLAEREN_LABEL} abnehmen und das Label ${kette.budget.label} neu setzen — die naechste Kette beginnt von vorn.`,
+    `Plan und bis dahin geschnittene Pakete bleiben als Entwurf stehen. Antwort bitte in den Fachplan schreiben, ${KLAEREN_LABEL} abnehmen und das Label ${kette.budget.label} neu setzen — die naechste Kette beginnt von vorn.`,
     "",
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
@@ -2622,6 +2777,22 @@ function haltAmFachplan(kette, ergebnis) {
   } finally {
     rmSync(pfad, { force: true });
   }
+}
+
+/**
+ * Die vier Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
+ * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar).
+ */
+async function stufenDerKette(kette) {
+  const plan = await stufePlan(kette);
+  if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
+  const review = await stufeReview(kette, plan.id);
+  if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
+  const pakete = await stufePakete(kette, plan.id);
+  if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
+  const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
+  if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
+  return { ausgang: "fertig" };
 }
 
 /**
@@ -2643,6 +2814,12 @@ async function laufeEineKette(kandidat, nummer, args) {
   board("issue", "label", "remove", F, kette.budget.label);
   log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
 
+  // Aeltere Plaene zum selben Fachplan, VOR der Plan-Stufe gesammelt: Nach einem neuen
+  // Plan bekommen sie den Ueberholt-Kommentar (A8).
+  const aeltere = board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, F, "plan"))
+    .map((i) => String(i.id));
+
   let ergebnis;
   try {
     kette.wt = worktreeAnlegen({ repoRoot: kette.repoRoot, issueId: F, stempel: LAUF_STEMPEL ?? String(Date.now()) });
@@ -2653,23 +2830,21 @@ async function laufeEineKette(kandidat, nummer, args) {
   }
   if (!ergebnis) {
     try {
-      const plan = await stufePlan(kette);
-      if (plan.ausgang !== "fertig") {
-        ergebnis = { ...plan, stufe: "plan" };
-      } else {
-        const review = await stufeReview(kette, plan.id);
-        ergebnis = review.ausgang === "fertig" ? { ausgang: "fertig" } : { ...review, stufe: "review" };
-      }
+      ergebnis = await stufenDerKette(kette);
     } finally {
       worktreeEntfernen(kette.wt, kette.repoRoot);
     }
   }
   if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
+  const neuerPlan = kette.stufen.plan?.id;
+  if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
 
   const felder = {
     ausgang: ergebnis.ausgang,
     ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
     stufen: kette.stufen,
+    ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
+    ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
     kostenUsd: kette.kosten.kostenSumme,
     kostenUnbekannt: kette.kosten.kostenUnbekannt,
   };
@@ -2742,7 +2917,7 @@ export async function laufeKette(args) {
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
-  log(`Morgen-Ritual: die Plaene sichten; Pakete und Bericht kommen mit den naechsten Stufen. Protokoll: ${LOG_FILE}`);
+  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }

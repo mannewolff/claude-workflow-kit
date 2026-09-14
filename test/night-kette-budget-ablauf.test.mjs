@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER,
+  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
 test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", NUR_POSIX, () => {
@@ -28,7 +28,7 @@ test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach is
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
-      stufen: { plan: PLAN_ANLEGEN, form: FORM_REPARIEREN, review: REVIEW_MARKER },
+      stufen: { plan: PLAN_ANLEGEN, form: FORM_REPARIEREN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN },
       plan: planBody({ ohneVerifizierung: true }),
       fix: planBody(),
     });
@@ -37,7 +37,7 @@ test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach is
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
     assert.equal(einheit.stufen.plan.korrekturrunden, 1);
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "form", "review"]);
+    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "form", "review", "pakete", "abdeckung"]);
     assert.match(res.stdout, /Formpruefung #0002 rot .*Korrekturrunde 1 von 2/);
     assert.match(res.stdout, /Formpruefung #0002 gruen/);
   });
@@ -78,13 +78,13 @@ test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der 
 test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUnbekannt", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER }, ohneResult: true });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN }, ohneResult: true });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig");
     assert.equal(einheit.kostenUsd, 0);
-    assert.equal(einheit.kostenUnbekannt, 2);
+    assert.equal(einheit.kostenUnbekannt, 4);
     assert.equal(einheit.stufen.plan.kennzahlen, null);
   });
 });

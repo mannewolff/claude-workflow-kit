@@ -120,7 +120,7 @@ export function fake(stufen = {}) {
     "  *) : ;;",
     "esac",
     'if [ -z "$KETTE_OHNE_RESULT" ]; then',
-    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1}'`,
+    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
     "fi",
   ].join("\n");
 }
@@ -175,3 +175,18 @@ export function umgebung(dir, { stufen = {}, plan = planBody(), fix = planBody()
     logPfad: log,
   };
 }
+
+/** Die Fake-Zeile der Stufe pakete: zwei Pakete mit `Plan: Issue #M` und eine Karte ohne Herkunftszeile. */
+export const PAKETE_ANLEGEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); for n in 1 2; do printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" "$n" > "$KETTE_LOG.paket$n.md"; node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.paket$n.md" >/dev/null; done; printf "## Kontext\n\nOhne Herkunft.\n\n## Aufgabe\n\nx\n\n## Akzeptanzkriterium\n\n- y\n\n## Abhängigkeiten\n\nKeine.\n" > "$KETTE_LOG.fremd.md"; node .claude/kit/board.mjs issue create --title "Fremde Karte" --body-file "$KETTE_LOG.fremd.md" >/dev/null`;
+
+/** Die Fake-Zeile der Stufe pakete: ein Paket ohne den Abschnitt Abhaengigkeiten (rote Form). */
+export const PAKET_OHNE_ABHAENGIGKEITEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); printf "## Kontext\n\nPlan: Issue #%s\n\n## Aufgabe\n\nPaket.\n\n## Akzeptanzkriterium\n\n- node --test\n" "$m" > "$KETTE_LOG.paket.md"; node .claude/kit/board.mjs issue create --title "Paket ohne Abhaengigkeiten" --body-file "$KETTE_LOG.paket.md" >/dev/null`;
+
+/** Die Fake-Zeile der Stufe form fuer ein Paket: haengt den Abschnitt Abhaengigkeiten an. */
+export const PAKET_REPARIEREN = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s/^Das Dokument #\([0-9]*\).*/\1/p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.trimEnd()+"\n\n## Abhängigkeiten\n\nKeine.\n")' > "$KETTE_LOG.paketfix.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.paketfix.md" >/dev/null`;
+
+/** Die Fake-Zeile der Stufe pakete: kein Paket, dafuer der Halt-Kommentar von /issues am Plan. */
+export const PAKETE_HALT = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue comment "$m" --text "Kein Eingang für /issues: offene Stopp-Frage — Ist der Endpunkt ein Vertrag nach aussen?" >/dev/null`;
+
+/** Die Fake-Zeile der Stufe abdeckung, die verbotenerweise am Fachplan schreibt. */
+export const ABDECKUNG_SCHREIBT = String.raw`node .claude/kit/board.mjs issue comment "$NIGHT_ISSUE_ID" --text "Abdeckung als Kommentar — verboten" >/dev/null`;
