@@ -46,6 +46,12 @@
         "model": "claude-opus-5"
       },
       {
+        "name": "qwen",
+        "kind": "command",
+        "model": "qwen-kit",
+        "command": "/Users/manfredwolff/.local/bin/claude-qwen -p --output-format text --system-prompt \"Bearbeite den Review-Auftrag aus stdin. Prüfe Aussagen am Bestand. Melde konkrete Befunde und ändere keine Dateien.\" --tools Read,Glob,Grep --allowedTools Read,Glob,Grep"
+      },
+      {
         "name": "sonnet",
         "kind": "claude",
         "model": "claude-sonnet-5"
@@ -75,7 +81,7 @@
       ],
       "sonnet": [
         "opus",
-        "gpt-sol"
+        "qwen"
       ],
       "fable": [
         "opus",
@@ -83,6 +89,10 @@
       ],
       "gpt-sol": [
         "fable",
+        "gpt-astra"
+      ],
+      "qwen": [
+        "opus",
         "gpt-astra"
       ],
       "gpt-astra": [
