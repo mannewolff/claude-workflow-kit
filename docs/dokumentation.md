@@ -253,6 +253,152 @@ Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuord
 
 Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
+## Alle Einstellungen
+
+<!-- einstellungen:start -->
+_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._
+
+### `codeHost`
+
+Wo der Code liegt (Push, Pull Requests). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `github`, `gitlab`, `local`)
+
+### `issueTracker`
+
+Wo die Issues verwaltet werden. Darf vom codeHost abweichen. 'toolbox' ist ein privates Setup (eigenes Kanban-Tool des Autors), nicht Teil des Installer-Dialogs und nur per manueller Config-Bearbeitung nutzbar. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `github`, `gitlab`, `local`, `toolbox`)
+
+### `provider`
+
+Veraltet (v1). Wird beim Laden auf codeHost/issueTracker migriert. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `github`, `gitlab`, `local`)
+
+### `buildChecks`
+
+Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `buildChecks[]` — Ein Eintrag hat eine von drei Formen. (1) Der bloße Kommandostring "npx eslint .": nicht zugeordnet, läuft immer. (2) { "cmd": "...", "areas": ["backend"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { "cmd": "...", "always": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit "cmd" bedeutet dasselbe wie die String-Form. "areas" und "always" schließen sich aus (eine Vorrangregel würde niemand lesen), und "areas" braucht mindestens einen Eintrag (ein leeres Array liefe nie).
+- `buildChecks[].cmd` — Die Kommandozeile, wie sie in der String-Form stünde.
+- `buildChecks[].areas` — Bereichsnamen aus checkAreas. Die Prüfung läuft, wenn mindestens einer der Bereiche berührt ist. Nicht zusammen mit "always".
+- `buildChecks[].always` — true = entschieden immer laufend, unabhängig von den berührten Bereichen. Nicht zusammen mit "areas".
+
+### `checkAreas`
+
+Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt "areas" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein bloßer Kommandostring läuft immer (nicht zugeordnet), { "cmd", "areas" } läuft nur, wenn eines der hier hinterlegten Muster berührt ist, { "cmd", "always": true } läuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `spec`
+
+Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `spec.seit` — Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt.
+- `spec.bereiche` — Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.
+- `spec.testPattern` — Regulärer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.
+- `spec.testGlobs` — Pfadmuster, unter denen nach den Tests gesucht wird.
+
+### `mutationCommand`
+
+Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `formatFixCommand`
+
+Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `mainBranch`
+
+Branch für lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `productionBranch`
+
+Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `reviewScope`
+
+Umfang des Review-Materials: 'diff' = git diff seit letztem Push; 'full' = gesamter Quelltext. Darf in workflow.config.local.json persönlich überschrieben werden. (gültig: `diff`, `full`)
+
+### `reviewModel`
+
+Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID für den Reviewer-Subagent (Opus-Pin). Muss ein gültiger Claude-Modell-Identifier sein. Genau eines der beiden Felder ist gesetzt — eine fremde CLI gehört nach reviewCommand. Darf in workflow.config.local.json persönlich überschrieben werden.
+
+### `reviewCommand`
+
+Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden.
+
+### `triggers`
+
+Trigger-Phrasen für die drei menschlichen Stop-Punkte. Darf in workflow.config.local.json persönlich überschrieben werden.
+
+- `triggers.go` — Phrase für das GO zur Implementierung.
+- `triggers.push` — Phrase für Push auf mainBranch (Schritt 8).
+- `triggers.merge` — Phrase für PR nach productionBranch (Schritt 9).
+
+### `local`
+
+Einstellungen für den lokalen Issue-Tracker (issueTracker: 'local'). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `local.issuesDir` — Verzeichnis der Issue-Markdown-Dateien, relativ zum Projekt-Root.
+
+### `columns`
+
+Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur für den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhängig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt "Open" eingetragen ist — sonst ein normales Label. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `columns.backlog` — GitLab-Sonderwert "Open": backlog wird als nativer Open-Zustand behandelt statt als Label.
+- `columns.ready` — Name der Spalte bzw. des Labels für Ready — freigegeben, das GO des Menschen.
+- `columns.in_progress` — Name der Spalte bzw. des Labels für In progress — das Arbeitspaket, an dem gerade gearbeitet wird.
+- `columns.in_review` — Name der Spalte bzw. des Labels für In review — lokal fertig, noch nicht gepusht.
+- `columns.done` — Nur Anzeigename für GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand.
+
+### `github`
+
+GitHub-spezifische Einstellungen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `github.projectNumber` — Nummer des GitHub Project Boards (gh project list). Erforderlich für Board-Status-Operationen.
+
+### `toolbox`
+
+Einstellungen für den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `toolbox.host` — Basis-URL der Toolbox-Instanz.
+- `toolbox.tokenFile` — Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab. Darf in workflow.config.local.json persönlich überschrieben werden.
+- `toolbox.ideaStored` — Lenkt neue Issues in den Ideen-Speicher des Boards statt direkt ins Backlog. true sendet kein 'direct' und legt als board-lose Idee im Pool an; false oder ein fehlender Wert sendet 'direct: true' und legt sofort mit Board-Nummer an — das ist die Vorgabe. Das früher gesendete Wire-Feld 'ideaStored' geht in keinem Modus mehr mit — der Server ignoriert es. Backends ohne 'direct' behalten ihr bisheriges Verhalten.
+
+### `issueReview`
+
+Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStufen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die früheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.
+
+- `issueReview.requiredBeforeReady` — Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurück. Default false, damit ein Kit-Update keinem Bestandsprojekt über Nacht den Runner anhält.
+- `issueReview.reviewers` — Reihenfolge ist die Steuerung: Genommen werden die vordersten Einträge, die nicht der Autor sind; wie viele, sagt reviewStufen.
+- `issueReview.reviewers[].name` — Kurzname, wird mit dem Autor-Modell des Issues verglichen.
+- `issueReview.reviewers[].kind` — 'claude' läuft als Subagent über das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt über stdin). (gültig: `claude`, `command`)
+- `issueReview.reviewers[].model` — Nur bei kind 'claude': Modell-Identifier.
+- `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'.
+- `issueReview.pairs` — Explizite Zuordnung Autor -> Reviewer. Steht der Autor hier, gewinnt sein Eintrag über die Reihenfolge-Regel. Ohne pairs wählt die Regel immer die vordersten Einträge — ein hinten stehendes fremdes Modell käme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.
+
+### `reviewStufen`
+
+Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `reviewStufen.fachlich` — Prüfung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.
+- `reviewStufen.fachlich.reviewer` — Wie viele Reviewer diese Stufe prüfen.
+- `reviewStufen.fachlich.rollen` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung.
+- `reviewStufen.plan` — Prüfung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfällt.
+- `reviewStufen.plan.reviewer` — Wie viele Reviewer diese Stufe prüfen.
+- `reviewStufen.plan.rollen` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung.
+- `reviewStufen.issue` — Prüfung des einzelnen Arbeitspakets vor dem GO. Nur noch ein Reviewer: Was Form und Schnitt betrifft, ist auf den beiden Stufen davor bereits geprüft.
+- `reviewStufen.issue.reviewer` — Wie viele Reviewer diese Stufe prüfen.
+- `reviewStufen.issue.rollen` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung.
+
+### `night`
+
+Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `night.kette` — Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.
+- `night.kette.label` — Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es.
+- `night.kette.planMin` — Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden.
+- `night.kette.paketeMin` — Zeitbudget der Stufe Pakete in Minuten, einschliesslich Korrekturrunden.
+- `night.kette.reviewMin` — Zeitbudget der Prüfer-Session am Plan in Minuten.
+- `night.kette.abdeckungMin` — Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält.
+- `night.kette.kostenUsd` — Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session.
+- `night.kette.korrekturrunden` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung.
+- `night.modelle` — Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Stärke: der erste Eintrag ist das stärkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' wäre ein Angriff über eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs.
+<!-- einstellungen:ende -->
+
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess
 
 Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen neun Skills sind Werkzeuge daneben: hilfreich, oft benutzt — aber ohne sie läuft der Prozess auch.

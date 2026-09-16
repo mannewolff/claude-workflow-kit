@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration fuer die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persoenliche Abweichungen gehoeren in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet (Issue #207). Setzt die persoenliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge (Issue #435).",
+  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge.",
   "type": "object",
   "properties": {
     "version": {
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Versionskennung x.y.z. push main erhoeht z, merge production erhoeht y, x nur explizit. Wird auf dem Board angezeigt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Versionskennung x.y.z. push main erhöht z, merge production erhöht y, x nur explizit. Wird auf dem Board angezeigt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "1.4.0"
     },
     "codeHost": {
@@ -43,7 +43,7 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "description": "Ein Eintrag hat eine von drei Formen. (1) Der blosse Kommandostring \"npx eslint .\": nicht zugeordnet, laeuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: laeuft, wenn einer der genannten Bereiche beruehrt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schliessen sich aus (eine Vorrangregel wuerde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). ACHTUNG: Die Objektform ist schemaseitig gueltig, wird von der Laufzeit (kit/night.mjs, /local-check) aber noch nicht verstanden — dort wird jeder Eintrag als Kommandostring ausgefuehrt. Wer sie vor dem Folgepaket in eine Config schreibt, bricht die Check-Ausfuehrung.",
+        "description": "Ein Eintrag hat eine von drei Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie).",
         "oneOf": [
           {
             "type": "string"
@@ -54,7 +54,7 @@
               "cmd": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Die Kommandozeile, wie sie in der String-Form stuende."
+                "description": "Die Kommandozeile, wie sie in der String-Form stünde."
               },
               "areas": {
                 "type": "array",
@@ -63,11 +63,11 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "Bereichsnamen aus checkAreas. Die Pruefung laeuft, wenn mindestens einer der Bereiche beruehrt ist. Nicht zusammen mit \"always\"."
+                "description": "Bereichsnamen aus checkAreas. Die Prüfung läuft, wenn mindestens einer der Bereiche berührt ist. Nicht zusammen mit \"always\"."
               },
               "always": {
                 "type": "boolean",
-                "description": "true = entschieden immer laufend, unabhaengig von den beruehrten Bereichen. Nicht zusammen mit \"areas\"."
+                "description": "true = entschieden immer laufend, unabhängig von den berührten Bereichen. Nicht zusammen mit \"areas\"."
               }
             },
             "required": [
@@ -83,12 +83,12 @@
           }
         ]
       },
-      "description": "Kommandos, die /local-check sequenziell ausfuehrt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {
       "type": "object",
-      "description": "Benannte Bereiche des Projekts: Schluessel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt \"areas\" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein blosser Kommandostring laeuft immer (nicht zugeordnet), { \"cmd\", \"areas\" } laeuft nur, wenn eines der hier hinterlegten Muster beruehrt ist, { \"cmd\", \"always\": true } laeuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. ACHTUNG: Ausgewertet wird dieser Block erst mit dem Folgepaket; bis dahin aendert er nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt \"areas\" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein bloßer Kommandostring läuft immer (nicht zugeordnet), { \"cmd\", \"areas\" } läuft nur, wenn eines der hier hinterlegten Muster berührt ist, { \"cmd\", \"always\": true } läuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "additionalProperties": {
         "type": "array",
         "items": {
@@ -99,17 +99,17 @@
     },
     "spec": {
       "type": "object",
-      "description": "Schalter fuer Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/ (Plan #437, fachlich #431). Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool haette einen Aus-Zustand, und die Entscheidung ist nicht zurueckzunehmen: Es gibt keinen Weg zurueck. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spaetere Gate. ACHTUNG: Bis zur Umsetzung von Ausbaustufe 4 hat der Block keine Wirkung — kein Werkzeug liest ihn, kein Skill fragt danach. Wer ihn vorher setzt, bekommt weder Leitplanke noch Gate. ACHTUNG: Der Block traegt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab (A19 in Plan #437) — dort gibt es weder Aktivitaetsverlauf noch Suche ueber Aussagen, auf denen Spec-Driven Development aufsetzt. Moeglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "seit": {
           "type": "string",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-          "description": "Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spaetere Gate; aeltere bleiben unberuehrt."
+          "description": "Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt."
         },
         "bereiche": {
           "type": "object",
           "minProperties": 1,
-          "description": "Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und laeuft nie, hier waere er ein Bereich, den das Gate nie zuordnen kann.",
+          "description": "Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.",
           "additionalProperties": {
             "type": "array",
             "minItems": 1,
@@ -121,7 +121,7 @@
         },
         "testPattern": {
           "type": "string",
-          "description": "Regulaerer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.",
+          "description": "Regulärer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.",
           "default": "\\[<ID>\\]"
         },
         "testGlobs": {
@@ -141,24 +141,24 @@
     },
     "mutationCommand": {
       "type": "string",
-      "description": "Kommando fuer Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "formatFixCommand": {
       "type": "string",
-      "description": "Kommando, das Formatierungsverstoesse mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorpruefung rot, laeuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "mainBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Branch fuer lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Branch für lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "main"
     },
     "productionBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Ziel-Branch fuer den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "production"
     },
     "reviewScope": {
@@ -167,41 +167,41 @@
         "diff",
         "full"
       ],
-      "description": "Umfang des Review-Materials: 'diff' = git diff seit letztem Push; 'full' = gesamter Quelltext. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
+      "description": "Umfang des Review-Materials: 'diff' = git diff seit letztem Push; 'full' = gesamter Quelltext. Darf in workflow.config.local.json persönlich überschrieben werden.",
       "default": "diff"
     },
     "reviewModel": {
       "type": "string",
       "minLength": 1,
       "pattern": "^claude-",
-      "description": "Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID fuer den Reviewer-Subagent (Opus-Pin). Muss ein gueltiger Claude-Modell-Identifier sein. Genau eines der beiden Felder ist gesetzt — eine fremde CLI gehoert nach reviewCommand. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
+      "description": "Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID für den Reviewer-Subagent (Opus-Pin). Muss ein gültiger Claude-Modell-Identifier sein. Genau eines der beiden Felder ist gesetzt — eine fremde CLI gehört nach reviewCommand. Darf in workflow.config.local.json persönlich überschrieben werden.",
       "default": "claude-opus-4-8"
     },
     "reviewCommand": {
       "type": "string",
       "minLength": 1,
-      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt ueber stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heisst, dass der Schluessel vorhanden ist — ein Leer-String ist ungueltig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persoenlich ueberschrieben werden."
+      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden."
     },
     "triggers": {
       "type": "object",
-      "description": "Trigger-Phrasen fuer die drei menschlichen Stop-Punkte. Darf in workflow.config.local.json persoenlich ueberschrieben werden.",
+      "description": "Trigger-Phrasen für die drei menschlichen Stop-Punkte. Darf in workflow.config.local.json persönlich überschrieben werden.",
       "properties": {
         "go": {
           "type": "string",
           "minLength": 1,
-          "description": "Phrase fuer das GO zur Implementierung.",
+          "description": "Phrase für das GO zur Implementierung.",
           "default": "GO"
         },
         "push": {
           "type": "string",
           "minLength": 1,
-          "description": "Phrase fuer Push auf mainBranch (Schritt 8).",
+          "description": "Phrase für Push auf mainBranch (Schritt 8).",
           "default": "push main"
         },
         "merge": {
           "type": "string",
           "minLength": 1,
-          "description": "Phrase fuer PR nach productionBranch (Schritt 9).",
+          "description": "Phrase für PR nach productionBranch (Schritt 9).",
           "default": "merge production"
         }
       },
@@ -215,7 +215,7 @@
     },
     "local": {
       "type": "object",
-      "description": "Einstellungen fuer den lokalen Issue-Tracker (issueTracker: 'local'). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Einstellungen für den lokalen Issue-Tracker (issueTracker: 'local'). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "issuesDir": {
           "type": "string",
@@ -232,7 +232,7 @@
     },
     "columns": {
       "type": "object",
-      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur fuer den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhaengig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt \"Open\" eingetragen ist — sonst ein normales Label. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Nur für den GitLab-Adapter relevant: 'done' ist dort immer der native Zustand Closed (unabhängig vom hier eingetragenen Namen). 'backlog' ist der native Zustand Open, wenn hier exakt \"Open\" eingetragen ist — sonst ein normales Label. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "backlog": {
           "type": "string",
@@ -243,23 +243,26 @@
         "ready": {
           "type": "string",
           "minLength": 1,
-          "default": "Ready"
+          "default": "Ready",
+          "description": "Name der Spalte bzw. des Labels für Ready — freigegeben, das GO des Menschen."
         },
         "in_progress": {
           "type": "string",
           "minLength": 1,
-          "default": "In progress"
+          "default": "In progress",
+          "description": "Name der Spalte bzw. des Labels für In progress — das Arbeitspaket, an dem gerade gearbeitet wird."
         },
         "in_review": {
           "type": "string",
           "minLength": 1,
-          "default": "In review"
+          "default": "In review",
+          "description": "Name der Spalte bzw. des Labels für In review — lokal fertig, noch nicht gepusht."
         },
         "done": {
           "type": "string",
           "minLength": 1,
           "default": "Done",
-          "description": "Nur Anzeigename fuer GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand."
+          "description": "Nur Anzeigename für GitHub/lokal. GitLab behandelt done immer als nativen Closed-Zustand."
         }
       },
       "required": [],
@@ -279,7 +282,7 @@
         "projectNumber": {
           "type": "integer",
           "minimum": 1,
-          "description": "Nummer des GitHub Project Boards (gh project list). Erforderlich fuer Board-Status-Operationen."
+          "description": "Nummer des GitHub Project Boards (gh project list). Erforderlich für Board-Status-Operationen."
         }
       },
       "required": [],
@@ -287,7 +290,7 @@
     },
     "toolbox": {
       "type": "object",
-      "description": "Einstellungen fuer den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Einstellungen für den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Privates Setup des Autors (eigenes Kanban-Tool), nicht Teil des Installer-Dialogs. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "host": {
           "type": "string",
@@ -297,12 +300,12 @@
         "tokenFile": {
           "type": "string",
           "minLength": 1,
-          "description": "Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab. Darf in workflow.config.local.json persoenlich ueberschrieben werden."
+          "description": "Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Precedence: TBX_TOKEN-Umgebungsvariable > tokenFile > globaler tbx-Login (~/.config/toolbox-cli/tokens.json). Kein Klartext-Token in dieser Config — board.mjs bricht dann ab. Darf in workflow.config.local.json persönlich überschrieben werden."
         },
         "ideaStored": {
           "type": "boolean",
           "default": false,
-          "description": "Lenkt neue Issues in den Ideen-Speicher des Boards statt direkt ins Backlog (kanban-kit #245). true sendet kein 'direct' und legt als board-lose Idee im Pool an; false oder ein fehlender Wert sendet 'direct: true' und legt sofort mit Board-Nummer an — das ist die Vorgabe (Issue #313). Das frueher gesendete Wire-Feld 'ideaStored' geht seit Issue #295 in keinem Modus mehr mit — der Server ignoriert es. Backends ohne 'direct' behalten ihr bisheriges Verhalten."
+          "description": "Lenkt neue Issues in den Ideen-Speicher des Boards statt direkt ins Backlog. true sendet kein 'direct' und legt als board-lose Idee im Pool an; false oder ein fehlender Wert sendet 'direct: true' und legt sofort mit Board-Nummer an — das ist die Vorgabe. Das früher gesendete Wire-Feld 'ideaStored' geht in keinem Modus mehr mit — der Server ignoriert es. Backends ohne 'direct' behalten ihr bisheriges Verhalten."
         }
       },
       "required": [],
@@ -310,16 +313,16 @@
     },
     "issueReview": {
       "type": "object",
-      "description": "Issue-Review ueber mehrere Modelle (Issue #220). Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStufen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die frueheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.",
+      "description": "Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStufen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die früheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.",
       "properties": {
         "requiredBeforeReady": {
           "type": "boolean",
           "default": false,
-          "description": "Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurueck. Default false, damit ein Kit-Update keinem Bestandsprojekt ueber Nacht den Runner anhaelt."
+          "description": "Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurück. Default false, damit ein Kit-Update keinem Bestandsprojekt über Nacht den Runner anhält."
         },
         "reviewers": {
           "type": "array",
-          "description": "Reihenfolge ist die Steuerung: Genommen werden die ersten zwei Eintraege, die nicht der Autor sind.",
+          "description": "Reihenfolge ist die Steuerung: Genommen werden die vordersten Einträge, die nicht der Autor sind; wie viele, sagt reviewStufen.",
           "items": {
             "type": "object",
             "properties": {
@@ -333,7 +336,7 @@
                   "claude",
                   "command"
                 ],
-                "description": "'claude' laeuft als Subagent ueber das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt ueber stdin)."
+                "description": "'claude' läuft als Subagent über das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt über stdin)."
               },
               "model": {
                 "type": "string",
@@ -352,7 +355,7 @@
         },
         "pairs": {
           "type": "object",
-          "description": "Explizite Zuordnung Autor -> Reviewer (Issue #225). Steht der Autor hier, gewinnt sein Eintrag ueber die Reihenfolge-Regel. Ohne pairs waehlt die Regel immer die vordersten Eintraege — ein hinten stehendes fremdes Modell kaeme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.",
+          "description": "Explizite Zuordnung Autor -> Reviewer. Steht der Autor hier, gewinnt sein Eintrag über die Reihenfolge-Regel. Ohne pairs wählt die Regel immer die vordersten Einträge — ein hinten stehendes fremdes Modell käme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.",
           "additionalProperties": {
             "type": "array",
             "items": {
@@ -364,17 +367,17 @@
     },
     "reviewStufen": {
       "type": "object",
-      "description": "Besetzung und Blickwinkel der drei Pruefstufen (Issue #278): das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Waehrend issueReview beschreibt, WER ueberhaupt prueft, steht hier, wie viele und mit welchen Rollen je Stufe geprueft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt fuer jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "fachlich": {
           "type": "object",
-          "description": "Pruefung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.",
+          "description": "Prüfung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.",
           "properties": {
             "reviewer": {
               "type": "integer",
               "minimum": 1,
               "default": 2,
-              "description": "Wie viele Reviewer diese Stufe pruefen."
+              "description": "Wie viele Reviewer diese Stufe prüfen."
             },
             "rollen": {
               "type": "array",
@@ -395,13 +398,13 @@
         },
         "plan": {
           "type": "object",
-          "description": "Pruefung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfaellt.",
+          "description": "Prüfung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfällt.",
           "properties": {
             "reviewer": {
               "type": "integer",
               "minimum": 1,
               "default": 2,
-              "description": "Wie viele Reviewer diese Stufe pruefen."
+              "description": "Wie viele Reviewer diese Stufe prüfen."
             },
             "rollen": {
               "type": "array",
@@ -422,13 +425,13 @@
         },
         "issue": {
           "type": "object",
-          "description": "Pruefung des einzelnen Arbeitspakets vor dem GO. Nur noch ein Reviewer: Was Form und Schnitt betrifft, ist auf den beiden Stufen davor bereits geprueft.",
+          "description": "Prüfung des einzelnen Arbeitspakets vor dem GO. Nur noch ein Reviewer: Was Form und Schnitt betrifft, ist auf den beiden Stufen davor bereits geprüft.",
           "properties": {
             "reviewer": {
               "type": "integer",
               "minimum": 1,
               "default": 1,
-              "description": "Wie viele Reviewer diese Stufe pruefen."
+              "description": "Wie viele Reviewer diese Stufe prüfen."
             },
             "rollen": {
               "type": "array",
@@ -457,7 +460,7 @@
     },
     "night": {
       "type": "object",
-      "description": "Der Nachtbetrieb (Plan #638). Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "kette": {
           "type": "object",
@@ -484,25 +487,25 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 15,
-              "description": "Zeitbudget der Pruefer-Session am Plan in Minuten."
+              "description": "Zeitbudget der Prüfer-Session am Plan in Minuten."
             },
             "abdeckungMin": {
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 10,
-              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan haelt."
+              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält."
             },
             "kostenUsd": {
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 50,
-              "description": "Kostenbudget je Kette in US-Dollar, summiert ueber alle Sessions der Kette; geprueft nach jeder Session."
+              "description": "Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session."
             },
             "korrekturrunden": {
               "type": "integer",
               "minimum": 1,
               "default": 2,
-              "description": "Hoechstzahl der Korrektursessions je Dokument nach einer roten Formpruefung."
+              "description": "Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung."
             }
           },
           "additionalProperties": false
@@ -514,7 +517,7 @@
             "minLength": 1,
             "pattern": "^claude-"
           },
-          "description": "Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Staerke: der erste Eintrag ist das staerkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' waere ein Angriff ueber eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs."
+          "description": "Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Stärke: der erste Eintrag ist das stärkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' wäre ein Angriff über eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs."
         }
       },
       "additionalProperties": false
@@ -586,9 +589,10 @@
       "allowed": [
         "github",
         "gitlab",
-        "local"
+        "local",
+        "toolbox"
       ],
-      "error": "issueTracker muss 'github', 'gitlab' oder 'local' sein."
+      "error": "issueTracker muss 'github', 'gitlab', 'local' oder 'toolbox' sein."
     },
     {
       "field": "reviewScope",
@@ -611,7 +615,7 @@
         "reviewCommand"
       ],
       "rule": "exactlyOne",
-      "error": "Genau eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt ueber stdin) muss gesetzt sein."
+      "error": "Genau eines von reviewModel (Claude-Subagent) und reviewCommand (fremde CLI, Prompt über stdin) muss gesetzt sein."
     }
   ]
 }
