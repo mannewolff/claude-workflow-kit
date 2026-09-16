@@ -360,7 +360,7 @@ Aus dem freigegebenen Plan werden ein oder mehrere Issues. Jedes Issue ist klein
 
 Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dein Gedächtnis, nicht der Plan-Text). Die Issues landen im Backlog. Unklarheiten außerhalb der Stopp-Klasse entscheidet der Skill und hält sie als `Entscheidung:`-Zeile im Kontext des Pakets fest; vor dem Anlegen prüft `issue check-form` jedes Paket. Ein Paket-Review ist kein Regelfall mehr — wer ihn will, ruft `/issue-review #N`.
 
-Zum Abschluss listet der Skill die angelegten Issues und gibt pro Issue eine Modell-Empfehlung (schnelleres Standard-Modell für mechanische Aufgaben, stärkstes verfügbares Modell für Architektur- oder Sicherheitslogik, jeweils mit einem Satz Begründung). So entscheidest du vor dem GO, mit welchem Modell du jedes Issue umsetzt, ohne den Plan-Kontext noch einmal zu lesen.
+Jedes angelegte Issue trägt im Kontext-Abschnitt die Zeile `Empfohlenes Modell: <name>`, mit dem Namen aus `night.modelle` — erster Eintrag der Liste für Architektur- und Sicherheitslogik, letzter für mechanische Aufgaben. **Im Nachtbetrieb wirkt sie von selbst:** Der Runner startet die Session dieser Karte mit diesem Modell. Fehlt die Liste, entfällt die Zeile ersatzlos. Zum Abschluss listet der Skill die Issues zusätzlich mit derselben Empfehlung und je einem Satz Begründung in einer Tabelle — so siehst du vor dem GO, was womit laufen würde, ohne den Plan-Kontext noch einmal zu lesen, und kannst die Zeile in einem Paket ändern, bevor du es nach Ready ziehst.
 
 ### Schritt 4: GO (menschlich)
 

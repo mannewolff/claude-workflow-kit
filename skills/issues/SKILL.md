@@ -182,14 +182,15 @@ Gelesen wird `specs/<bereich>.md`, und zwar **beide** Abschnitte: die gueltigen 
 **Pakete ohne Wirkung schreiben `KEINE — <Begruendung>`.** Die Begruendung ist **Pflicht**: „keine Wirkung" ist eine Aussage, kein Weglassen. Neben `KEINE` steht keine weitere Wirkungszeile.
 
 ### 4. Abschluss
-Liste alle angelegten Issues mit Nummern und Titeln und ergänze eine Tabelle mit einer Modell-Empfehlung pro Issue. Sie hilft dem Menschen, vor dem GO zu entscheiden, mit welchem Modell jedes Issue umgesetzt wird — ohne den Plan-Kontext noch einmal zu lesen. Heuristik für die Empfehlung:
+**Die Empfehlung steht im Paket, nicht nur im Bericht.** Jedes angelegte Issue trägt im Abschnitt `## Kontext` — neben `Autor-Modell:` — die Zeile `Empfohlenes Modell: <name>`. Der Nacht-Runner liest genau sie und startet die Session der Karte damit; eine Empfehlung, die nur in der Tabelle unten steht, findet er nicht.
+
+Der Name kommt aus `night.modelle` in `.claude/workflow.config.json`. Die Liste ist absteigend nach Stärke geordnet: **erster Eintrag** für Aufgaben mit Architektur-, Sicherheits- oder komplexer Interaktionslogik (OAuth-Flows, neue Komponenten mit viel Zustand, Nebenläufigkeit, Datenmigrationen), **letzter Eintrag** für mechanische, klar spezifizierte Aufgaben (ein Enum erweitern, Typen nachziehen, Restyling nach Vorlage, eine Änderung nach bestehendem Muster). Fehlt die Liste oder ist sie leer, **entfällt die Zeile ersatzlos** — eine erfundene Angabe wäre schlechter als keine, und der Runner fällt ohne Zeile auf das Modell des Laufs zurück.
+
+Liste danach alle angelegten Issues mit Nummern und Titeln und ergänze die Tabelle mit derselben Empfehlung samt Begründung. Sie hilft dem Menschen, vor dem GO zu entscheiden — die Zeile trägt den Wert für die Maschine, die Tabelle die Begründung für den Leser:
 
 | Issue | Empfehlung | Begründung |
 |-------|------------|------------|
 | #N | <Modell> | <ein Satz> |
-
-- **Schnelleres Standard-Modell** für mechanische, klar spezifizierte Aufgaben: ein Enum erweitern, Typen nachziehen, Restyling nach Vorlage, eine Änderung nach bestehendem Muster.
-- **Stärkstes verfügbares Modell** für Aufgaben mit Architektur-, Sicherheits- oder komplexer Interaktionslogik: OAuth-Flows, neue Komponenten mit viel Zustand, Nebenläufigkeit, Datenmigrationen.
 
 Schreibe darunter: "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO." Wer ein Paket prüfen lassen will, ruft `/issue-review #N`; der Regelfall ist Ready ohne Paket-Review.
 
