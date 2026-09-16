@@ -1,0 +1,127 @@
+// Prüfung einer Konfiguration in kit/einstellungen.mjs (Issue #676, Plan #674 E4, E5, E18).
+//
+// Der Validator kennt genau die Schlüsselwörter, die das Schema benutzt. Ein neues
+// Schlüsselwort im Schema, das er nicht kennt, soll hier auffallen — nicht erst, wenn
+// die Oberfläche einen ungültigen Wert still speichert.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { pruefeSchema, pruefe, zusatzregeln, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
+const BESCHREIBEND = new Set(["description", "default", "title", "$schema", "defaults", "validationRules"]);
+
+const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
+
+// Je Schlüsselwort ein Schema, ein gültiger und ein ungültiger Wert.
+const FAELLE = [
+  ["type", { type: "string" }, "a", 5],
+  ["enum", { enum: ["x", "y"] }, "x", "z"],
+  ["pattern", { type: "string", pattern: "^claude-" }, "claude-opus-5", "--gefahr"],
+  ["oneOf", { oneOf: [{ type: "string" }, { type: "number" }] }, 3, true],
+  ["not", { not: { required: ["a"] } }, { b: 1 }, { a: 1 }],
+  ["required", { type: "object", required: ["a"] }, { a: 1 }, {}],
+  ["minItems", { type: "array", minItems: 1 }, [1], []],
+  ["minProperties", { type: "object", minProperties: 1 }, { a: 1 }, {}],
+  ["additionalProperties", { type: "object", additionalProperties: { type: "number" } }, { a: 1 }, { a: "x" }],
+  ["properties", { type: "object", properties: { a: { type: "number" } } }, { a: 1 }, { a: "x" }],
+  ["items", { type: "array", items: { type: "number" } }, [1, 2], [1, "x"]],
+  ["minLength", { type: "string", minLength: 1 }, "a", ""],
+  ["minimum", { type: "number", minimum: 1 }, 1, 0],
+  ["exclusiveMinimum", { type: "number", exclusiveMinimum: 0 }, 0.5, 0],
+  ["uniqueItems", { type: "array", uniqueItems: true }, ["a", "b"], ["a", "a"]],
+];
+
+for (const [wort, schema, gut, schlecht] of FAELLE) {
+  test(`[einstellungen-1] ${wort}: gültig und ungültig werden unterschieden`, () => {
+    assert.deepEqual(fehler(pruefeSchema(gut, schema)), [], `${wort}: gültiger Wert abgewiesen`);
+    const befunde = fehler(pruefeSchema(schlecht, schema));
+    assert.ok(befunde.length > 0, `${wort}: ungültiger Wert durchgelassen`);
+    assert.ok(befunde.every((b) => typeof b.grund === "string" && b.grund.length > 0), "jeder Befund trägt einen Grund");
+  });
+}
+
+test("[einstellungen-1] der Validator kennt jedes Schlüsselwort, das das Schema benutzt", () => {
+  const benutzt = new Set();
+  const sammle = (knoten) => {
+    if (Array.isArray(knoten)) return knoten.forEach(sammle);
+    if (!knoten || typeof knoten !== "object") return;
+    for (const [schluessel, wert] of Object.entries(knoten)) {
+      if (["properties", "defaults", "validationRules"].includes(schluessel)) {
+        if (schluessel === "properties") Object.values(wert).forEach(sammle);
+        benutzt.add(schluessel);
+        continue;
+      }
+      benutzt.add(schluessel);
+      if (["items", "additionalProperties", "not"].includes(schluessel) || schluessel === "oneOf") sammle(wert);
+    }
+  };
+  sammle(VORLAGE);
+  const unbekannt = [...benutzt].filter((w) => !SCHLUESSELWOERTER.includes(w) && !BESCHREIBEND.has(w));
+  assert.deepEqual(unbekannt, [], `unbekannte Schlüsselwörter: ${unbekannt.join(", ")}`);
+  assert.equal(SCHLUESSELWOERTER.length, 15);
+});
+
+test("[einstellungen-1] das eingebettete Schema gleicht der Vorlage", () => {
+  assert.deepEqual(SCHEMA, VORLAGE);
+});
+
+test("[einstellungen-1] ein unbekanntes Feld ist eine Warnung mit Pfad, kein Fehler", () => {
+  const befunde = pruefeSchema({ codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5", erfunden: 1, night: { neuesFeld: true } });
+  const unbekannt = befunde.filter((b) => b.art === "unbekannt").map((b) => b.pfad).sort();
+  assert.deepEqual(unbekannt, ["erfunden", "night.neuesFeld"]);
+  assert.deepEqual(fehler(befunde), []);
+});
+
+const REVIEW = {
+  reviewers: [{ name: "opus", kind: "claude", model: "claude-opus-5" }, { name: "fable", kind: "claude", model: "claude-fable-5.1" }],
+  pairs: { opus: ["fable"] },
+};
+
+test("[einstellungen-1] Zusatzregel: Zahl der Rollen ungleich reviewer", () => {
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 2, rollen: ["a"] } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "reviewStufen.plan.rollen");
+});
+
+test("[einstellungen-1] Zusatzregel: Name in pairs, der nicht in reviewers steht", () => {
+  const b = zusatzregeln({ issueReview: { ...REVIEW, pairs: { opus: ["gpt-sol"] } } });
+  assert.equal(b.length, 1);
+  assert.match(b[0].grund, /gpt-sol/);
+});
+
+test("[einstellungen-1] Zusatzregel: Autor in seiner eigenen Paarliste", () => {
+  const b = zusatzregeln({ issueReview: { ...REVIEW, pairs: { opus: ["opus"] } } });
+  assert.ok(b.some((x) => /sich selbst/.test(x.grund)));
+});
+
+test("[einstellungen-1] Zusatzregel: areas, das nicht in checkAreas steht", () => {
+  const b = zusatzregeln({ buildChecks: [{ cmd: "x", areas: ["backend"] }], checkAreas: { frontend: ["web/**"] } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "buildChecks[0].areas");
+  assert.deepEqual(zusatzregeln({ buildChecks: [{ cmd: "x", areas: ["frontend"] }], checkAreas: { frontend: ["web/**"] } }), []);
+});
+
+test("[einstellungen-1] geprüft wird am gemischten Wert aus Team- und persönlicher Datei", () => {
+  const team = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" };
+  assert.ok(fehler(pruefe(team, { reviewModel: "gpt-5" })).some((b) => b.pfad === "reviewModel"));
+  assert.deepEqual(fehler(pruefe(team, { reviewModel: "claude-sonnet-5" })), []);
+});
+
+test("[einstellungen-1] ein gespeicherter ungültiger Wert trägt denselben Grund wie eine Änderung auf ihn", () => {
+  const geladen = pruefe({ codeHost: "svn", issueTracker: "local", reviewModel: "claude-opus-5" }, null);
+  const geaendert = pruefe({ codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" }, null, [{ pfad: "codeHost", wert: "svn" }]);
+  const grund = (liste) => liste.find((b) => b.pfad === "codeHost")?.grund;
+  assert.ok(grund(geladen));
+  assert.equal(grund(geaendert), grund(geladen));
+});
+
+test("[einstellungen-1] jedes Wurzelfeld des Schemas außer version hat genau ein Thema", () => {
+  const felder = Object.keys(VORLAGE.properties).filter((f) => f !== "version").sort();
+  assert.deepEqual(Object.keys(THEMEN).sort(), felder);
+});

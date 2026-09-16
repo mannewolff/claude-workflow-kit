@@ -167,6 +167,7 @@ function normalisiere(check) {
  * nicht zu pruefen: Das Schema schliesst beide aus (minItems 1, not). Was das
  * Schema verhindert, muss die Laufzeit nicht erklaeren (Issue #422).
  */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelBereiche) vor dem Speichern.
 function pruefeBereichsnamen(checks, checkAreas) {
   const bekannt = new Set(Object.keys(checkAreas));
   for (const check of checks) {

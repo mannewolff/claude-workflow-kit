@@ -174,6 +174,20 @@ test("die Allowlist steht in board.mjs und night.mjs identisch", () => {
   const board = listeAus("board.mjs");
   assert.ok(board.includes("reviewCommand"), "reviewCommand fehlt in der Allowlist von board.mjs");
   assert.deepEqual(listeAus("night.mjs"), board);
+  // Seit Issue #676 die dritte Kopie: die heruntergeladene Einstellungs-Oberflaeche hat
+  // keine Nachbardatei, aus der sie importieren koennte.
+  assert.deepEqual(listeAus("einstellungen.mjs"), board);
+});
+
+test("[einstellungen-3] REVIEWER_PAAR steht in board.mjs, night.mjs und einstellungen.mjs identisch", () => {
+  const paarAus = (datei) => {
+    const quelle = readFileSync(join(repoRoot, "kit", datei), "utf-8");
+    const treffer = quelle.match(/const REVIEWER_PAAR = (\{[^}]*\});/);
+    assert.ok(treffer, `REVIEWER_PAAR nicht in kit/${datei} gefunden`);
+    return treffer[1].replaceAll(/\s+/g, "");
+  };
+  assert.equal(paarAus("night.mjs"), paarAus("board.mjs"));
+  assert.equal(paarAus("einstellungen.mjs"), paarAus("board.mjs"));
 });
 
 // --- CLI ---

@@ -210,6 +210,9 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
+  // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
+  writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), installZeilen.join("\n") + "\n");
   return dir;
 }

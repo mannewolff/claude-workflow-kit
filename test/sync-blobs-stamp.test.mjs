@@ -49,6 +49,10 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
+  // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
+  writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"),
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconsole.log("einstellungen");\n`);
   for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
@@ -256,6 +260,38 @@ test("Lokale Kopie: ohne .claude/kit/ laeuft sync-blobs durch und legt nichts an
     assert.equal(existsSync(join(dir, ".claude")), false,
       "sync-blobs haette .claude/ nicht anlegen duerfen");
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette gruen sein muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Download-Datei: Stempel ohne Kopie, eingebettetes Schema (Issue #676) ---
+
+test("[installer-8] einstellungen.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    assert.equal(stempel(dir, "einstellungen.mjs"), "2.5.0");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "einstellungen.mjs")), false, "die Download-Datei gehoert in kein Projekt");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), true, "die uebrigen Kopien entstehen weiter");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweichung beider", () => {
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    const lies = () => readFileSync(join(dir, "kit", "einstellungen.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
+    const vorlage = readFileSync(join(dir, "templates", "workflow.config.schema.json"), "utf-8");
+    assert.equal(Buffer.from(lies(), "base64").toString("utf-8"), vorlage);
+    assert.equal(syncBlobs(dir, "--check").status, 0);
+
+    writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: {} }) + "\n");
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /einstellungen\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

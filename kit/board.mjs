@@ -246,13 +246,13 @@ function configRoot() {
 // Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
-// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
 // koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/night.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/night.mjs und kit/einstellungen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 /**
@@ -3232,6 +3232,7 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
 // Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
 // Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
 // gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelPaare) vor dem Speichern.
 function validatePairs(pairs, reviewers) {
   const bekannt = new Set(reviewers.map((r) => r.name));
   for (const [autor, genannt] of Object.entries(pairs || {})) {
@@ -3272,6 +3273,7 @@ function validateReviewers(reviewers) {
  * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
  * Rueckfallebene nicht unterscheiden.
  */
+// SYNC: die Regel rollen.length === reviewer prueft kit/einstellungen.mjs (regelRollenzahl) vor dem Speichern.
 function validateReviewStufen(block) {
   if (block === undefined || block === null) {
     return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT])), stufenQuelle: "default" };

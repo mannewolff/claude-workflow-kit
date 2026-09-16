@@ -2027,7 +2027,7 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 
 // --- Config mit persoenlichen Overrides (Issue #207) ---
 
-// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs
+// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs und kit/einstellungen.mjs
 // (LOCAL_OVERRIDE_ALLOWLIST, mergeWorkflowConfig) — Aenderungen dort nachziehen.
 // board.mjs und night.mjs sind bewusst eigenstaendige Single-File-Tools ohne
 // gemeinsames Modul; geteilte Logik wird dupliziert und hier markiert.
@@ -2040,7 +2040,7 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope",
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide sind persoenlich ueberschreibbar — sonst koennte jemand seinen Claude-Reviewer
 // lokal setzen, seinen Kommando-Reviewer aber nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/board.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/board.mjs und kit/einstellungen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
