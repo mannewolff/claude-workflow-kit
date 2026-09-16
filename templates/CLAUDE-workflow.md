@@ -204,7 +204,7 @@ Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bere
 
 ## Spec-Fortschreibung beim Push (Schritt 8, nur mit `spec`-Block)
 
-Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor den Pflichtchecks mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
+Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor seinem Prueflauf mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
 
 ---
 

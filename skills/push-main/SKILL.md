@@ -21,6 +21,12 @@ Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Mensc
 
 ## Ablauf
 
+**Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
+Das `n` ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `spec`-Block
+oder ohne `RELEASING.md` sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
+ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
+`buildChecks`-Katalog, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
+
 ### 1. Config lesen
 
 Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
@@ -29,8 +35,8 @@ Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
 - `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
 - `spec`: optionaler Block für Spec-Driven Development mit der Spezifikation unter `specs/`. Allein sein
-  **Vorhandensein** schaltet Schritt 3 (Spec-Fortschreibung) und das Gate in Schritt 4
-  frei. Fehlt er, gibt es beides nicht.
+  **Vorhandensein** schaltet Schritt 3 (Spec-Fortschreibung) und das Spec-Gate in
+  Schritt 7 frei. Fehlt er, gibt es beides nicht.
 
 ### 2. Stand prüfen
 
@@ -41,11 +47,14 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Spec-Fortschreibung und wartende Vorhaben-Notizen (nur bei gesetztem `spec`-Block)
+### 3. Spec-Fortschreibung und wartende Vorhaben-Notizen vorbereiten (nur bei gesetztem `spec`-Block)
 
-Nur wenn `.claude/workflow.config.json` einen `spec`-Block führt. Der Schritt läuft
-**vor** den Pflicht-Checks: `apply` schreibt Dateien, die in denselben Push gehen — sie
-müssen von den Checks und vom Gate mitgemessen werden.
+> `Schritt 3 von 9 — Spec-Fortschreibung und wartende Notizen vorbereiten (laeuft)`
+
+Nur wenn `.claude/workflow.config.json` einen `spec`-Block führt. Der Schritt **erzeugt
+und staged nur** — geprüft wird in Schritt 5, festgeschrieben in Schritt 6. `apply`
+schreibt Dateien, die in denselben Push gehen; sie müssen vom Lauf und vom Gate
+mitgemessen werden.
 
 Zwei Dinge kommen hier zusammen. Die Fortschreibung der Beschreibung ist das eine; das
 andere sind die **wartenden Vorhaben-Notizen**, die `/techplan` als
@@ -70,31 +79,31 @@ Notizen, die aufgehoben würden.
 ein früherer Lauf den Spec-Stand schon geschrieben und ist danach etwas dazwischen
 gekommen, meldet die Vorschau „keine Änderung", obwohl unter `specs/vorhaben/` etwas
 liegt, das noch nirgends committet ist. **Teil 4 ist nötig**, weil `git add` unten **vor**
-`checks.mjs run` läuft: Blieb ein Lauf davor rot stehen, sind die `apply`-Dateien noch
-gestaged, und ein Commit „nur bei tatsächlichem staged Diff" nähme sie beim nächsten
-`push main` mit, ohne dass ein Vorschau-Teil sie gezeigt hätte.
+dem Prüflauf aus Schritt 5 läuft: Blieb ein früherer Durchgang dort rot stehen, sind die
+`apply`-Dateien noch gestaged, und ein Commit „nur bei tatsächlichem staged Diff" nähme
+sie beim nächsten `push main` mit, ohne dass ein Vorschau-Teil sie gezeigt hätte.
 
 **2. Zustimmung einholen.** Frage den Menschen **einmal**, ob das Gezeigte so geschrieben
 und committet werden soll. Die Zustimmung deckt **alles Gezeigte** ab — Fortschreibung,
 wartende Notizen und was unter `specs/` schon gestaged war; eine zweite Rückfrage gibt es
 nicht. **Ohne Zustimmung wird nicht gepusht** — der Ablauf hält an: kein `apply`, kein
-Aufheben, keine Pflicht-Checks, kein Push. Erst wenn der Mensch erneut `push main`
+Aufheben, kein Prüflauf, kein Push. Erst wenn der Mensch erneut `push main`
 tippt, startet er von vorn. Das ist keine Formalie: `apply` ändert Dateien, die das
 Projekt dauerhaft führt, und dies ist der einzige Punkt, an dem ein Mensch die
 Fortschreibung seiner Beschreibung sieht, bevor sie geschrieben wird.
 
-**3. Schreiben und committen.**
+**3. Schreiben und stagen.**
 
 ```bash
 node .claude/kit/spec.mjs apply --anker "$(git merge-base HEAD origin/<mainBranch>)"
 node .claude/kit/spec.mjs vorhaben-sichern
 git add specs/vorhaben/ <jede Datei, die `apply` in diesem Lauf als `geschrieben` gemeldet hat>
-node .claude/kit/checks.mjs run
-git commit -m "chore: Spec fortgeschrieben (<Paketnummern>)"
 ```
 
-Der Betreff im Block ist der Regelfall; wandern nur Notizen oder ein Rest aus einem roten
-Lauf, gilt die Betreff-Regel weiter unten.
+**Hier wird nicht committet.** Was hier entsteht, geht zusammen mit den Release-Dateien
+aus Schritt 4 in den einen Commit aus Schritt 6 — gedeckt von dem einen Lauf aus
+Schritt 5. Die Betreff-Regel unten gilt für diesen Commit, wenn Schritt 4 nichts erzeugt
+hat.
 
 **Nur diese Mengen bilden den Commit:** `specs/vorhaben/`, die Dateien aus dem
 `apply`-Lauf **dieses** Durchgangs, und was unter `specs/` schon gestaged war — das
@@ -117,30 +126,22 @@ dieser Reihenfolge mit `; ` verkettet, die Paketnummern stehen einmal am Ende �
 erscheint weiterhin im Changelog, dann ohne Paketreferenz; das ist gewollt. Aus demselben
 Grund stehen in der Botschaft **keine** `#N`-Referenzen auf Nicht-Pakete.
 
-**Warum hier geprüft wird, obwohl Schritt 4 gleich noch einmal prüft:** Der Nachweis
-gehört zum **Commit**, Schritt 4 gehört zum **Push**. `apply` hat gerade Dateien unter
-`specs/` geschrieben, die der Lauf aus `/local-check` nicht gesehen haben kann — und
-ohne Nachweis für genau diesen Stand weist das Commit-Gate den Commit ab. Der Aufruf
-läuft **ohne `--since`**: Gemessen wird der uncommittete Stand, der gleich in den
-Commit geht, nicht der Batch seit `merge-base` wie zwei Zeilen darüber bei `apply`.
-Schritt 4 bleibt daneben unverändert bestehen — er ist kein Duplikat, sondern das Gate
-vor dem Push.
-
-Ein **roter** Lauf hält hier an: kein Spec-Commit, kein Push.
+**Warum hier kein eigener Lauf mehr steht:** Bis v1.53 prüfte dieser Schritt selbst, weil
+er selbst committete — und das Commit-Gate verlangt für jeden Commit einen Nachweis auf
+genau diesem Stand. Mit dem einen Commit fällt der Grund weg: Der Lauf aus Schritt 5 sieht
+die `apply`-Dateien und die Release-Dateien gemeinsam und deckt beide.
 
 **Leere Vorschau.** Schritt 3 entfällt nur, wenn **alle drei** zutreffen: die
 `apply`-Vorschau ist leer (alle Wirkungen `KEINE` oder nur Pakete vor `seit`),
 es **wartet keine Notiz** — `vorhaben-sichern --dry-run` meldet eine leere Liste —,
-und `git status --porcelain -- specs/vorhaben/` ist leer. Dann entfallen
-Zustimmung und Commit. Melde „Keine Spec-Fortschreibung in diesem Batch" und gehe direkt
-zu Schritt 4. Mit dem Commit entfällt auch sein Prüflauf — es gibt nichts, wofür ein
-Nachweis nötig wäre. Das Spec-Gate läuft dort trotzdem — es prüft den Batch, nicht die
+und `git status --porcelain -- specs/vorhaben/` ist leer. Dann entfallen Zustimmung und
+`apply`. Melde „Keine Spec-Fortschreibung in diesem Batch" und gehe direkt zu Schritt 4.
+Der eine Lauf und das Spec-Gate laufen trotzdem — sie prüfen den Batch, nicht die
 Fortschreibung. Das ist der Regelfall.
 
-**Fehlerpfade.** Endet `apply` (auch mit `--dry-run`) mit einem Exitcode ungleich 0,
-liefert die `merge-base`-Substitution einen **leeren** Anker, oder endet der
-`checks.mjs run` vor dem Commit **rot**, hält der Ablauf an: kein Commit, keine
-Pflicht-Checks, kein Push. Meldung mit dem Grund. Ein roter
+**Fehlerpfade.** Endet `apply` (auch mit `--dry-run`) mit einem Exitcode ungleich 0 oder
+liefert die `merge-base`-Substitution einen **leeren** Anker, hält der Ablauf an: kein
+Lauf, kein Commit, kein Push. Meldung mit dem Grund. Ein roter
 `apply`-Lauf ist kein Randfall, den man übergeht — er heißt, dass Paket und Beschreibung
 nicht zusammenpassen.
 
@@ -148,65 +149,118 @@ nicht zusammenpassen.
 blieb, wird benannt; die Notiz bleibt an ihrem wartenden Ort, und der nächste `push main`
 holt das Aufheben nach. Eine Notiz ist ein Nachweis über einen Plan, kein Teil des Codes,
 der hinausgeht — den ganzen Push daran scheitern zu lassen hieße, eine Nebensache über
-den Batch zu stellen. Ein roter `checks.mjs run` hält weiterhin alles an, Commit wie
+den Batch zu stellen. Ein roter Lauf in Schritt 5 hält weiterhin alles an, Commit wie
 Push.
 
-### 4. Pflicht-Checks (Gate — vor Bump und Push)
+### 4. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
 
-Führe **alle** Kommandos aus `buildChecks` sequenziell aus, bevor irgendetwas
-gebumpt oder gepusht wird. Das ist eine Leitplanke, die scheitert, kein Prompt,
-der bittet: Auch wenn `/implement-ready` oder `/local-check` die Checks pro
-Issue bereits liefen, sichert dieser Lauf gegen zwischenzeitliche Änderungen
-und maskierte Exit-Codes ab. Der Trade-off (langsamerer Push durch erneute
-Checks) ist bei einem seltenen main-Push akzeptabel und gewollt.
+> `Schritt 4 von 9 — Release-Dateien erzeugen (laeuft)`
 
-- **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals
-  den Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren
-  (siehe die Exit-Code-Guidance im `local-check`-Skill). Zusätzlich generisch
-  auf `[ERROR]` bzw. `BUILD FAILURE` im Output prüfen, nicht nur auf enge
-  tool-spezifische Stichworte.
-- **Ein roter Check bricht ab:** nicht pushen, nicht bumpen, keine
-  Release-Schritte. Klare Meldung, **welcher** Check mit welchem Fehler
-  fehlschlug. Erst wenn der Fehler behoben ist und der Mensch erneut
-  `push main` tippt, startet der Ablauf von vorn.
-- Ist `buildChecks` leer: Hinweis ausgeben "Keine buildChecks konfiguriert."
-  und weiter zum Spec-Gate (kein Abbruch).
+Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
+- **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen Schritte aus —
+  **bis zum ersten festschreibenden Schritt**, also typischerweise Bump, Stempel und
+  Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 5 und 6.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
-**Spec-Gate (nur bei gesetztem `spec`-Block).** Nach den `buildChecks`, auf dem Batch,
-wie er gepusht wird — also einschließlich des Commits aus Schritt 3:
+**Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
+veröffentlicht (`git commit`, `git push`, `git tag`, ein Release-Kommando). Alles davor
+fährt der Skill; ab dort übernimmt er mit Lauf, Commit und Push. Stehen **hinter** dem
+ersten festschreibenden Schritt noch weitere Schritte, führt der Skill sie nach seinem
+Commit aus und sagt das im Abschlussbericht.
+
+Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik; diese lebt
+ausschließlich in der `RELEASING.md` des jeweiligen Repos.
+
+### 5. Der eine Prüflauf (Gate — vor Commit und Push)
+
+> `Schritt 5 von 9 — Prueflauf (laeuft)`
+
+Jetzt liegen alle Dateien des Wegs auf der Platte: der Spec-Ertrag aus Schritt 3 und die
+Release-Dateien aus Schritt 4. Genau diesen Stand misst **ein** Lauf:
+
+```bash
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+**Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
+`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
+`leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md`
+und ohne Spec-Ertrag liefe damit vor dem Push durch eine leere Prüfung.
+
+- **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals den
+  Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren (siehe die
+  Exit-Code-Guidance im `local-check`-Skill). Zusätzlich generisch auf `[ERROR]` bzw.
+  `BUILD FAILURE` im Output prüfen.
+- **Ein roter Lauf hält alles an:** kein Commit, kein Push. Klare Meldung, **welcher**
+  Check mit welchem Fehler fehlschlug. Der Bump aus Schritt 4 bleibt dabei stehen; er ist
+  seit Issue #656 idempotent und steigt beim nächsten Anlauf nicht erneut.
+- Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
+  Schritt 6 (kein Abbruch).
+
+Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
+prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 3 und 4 hat kein
+früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
+Commit ab.
+
+### 6. Der eine Commit
+
+> `Schritt 6 von 9 — Commit (laeuft)`
+
+```bash
+git add <die Dateien aus Schritt 4>
+git commit -m "<Betreff nach der Regel unten>"
+```
+
+**Betreff.** Hat Schritt 4 Release-Dateien erzeugt: `chore: vX.Y.Z` mit der Kennung aus
+dem Bump. Sonst gilt die Betreff-Regel aus Schritt 3 (`chore: Spec fortgeschrieben (…)`,
+`chore: Vorhaben-Notizen gesichert`, `chore: Spec-Rest aus rotem Lauf committet`, bei
+mehreren Anlässen mit `; ` verkettet). **Nie ein Suffix `(Issue #N)`** — die Begründung
+steht in Schritt 3.
+
+Committet wird nur bei tatsächlichem staged Diff. Ist weder aus Schritt 3 noch aus
+Schritt 4 etwas entstanden, gibt es nichts festzuschreiben; der Ablauf geht ohne Commit
+weiter zu Schritt 7, und der Push fährt allein die Commits aus Schritt 2.
+
+### 7. Spec-Gate (nur bei gesetztem `spec`-Block)
+
+> `Schritt 7 von 9 — Spec-Gate (laeuft)`
+
+Auf dem Batch, wie er gepusht wird — also einschließlich des Commits aus Schritt 6:
 
 ```bash
 node .claude/kit/spec.mjs check --anker "$(git merge-base HEAD origin/<mainBranch>)"
 ```
 
-Exitcode 1 hält den Push auf, wie jeder rote Pflicht-Check. Das Gate ist ein **eigener
-Aufruf und kein `buildChecks`-Eintrag**: `buildChecks` ist teamweit konfiguriert, und ein
-Projekt ohne `spec`-Block dürfte den Eintrag nicht haben — das wäre eine zweite Stelle,
-an der dieselbe Entscheidung steht.
+Exitcode 1 hält den Push auf. **Der Commit aus Schritt 6 bleibt dann lokal stehen** — das
+gehört ausdrücklich in die Meldung, sonst sucht man ihn beim nächsten Anlauf.
 
-### 5. Release-Schritte (falls `RELEASING.md` existiert)
+Das Gate ist ein **eigener Aufruf und kein `buildChecks`-Eintrag**: `buildChecks` ist
+teamweit konfiguriert, und ein Projekt ohne `spec`-Block dürfte den Eintrag nicht haben —
+das wäre eine zweite Stelle, an der dieselbe Entscheidung steht.
 
-Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
-- **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen
-  Release-Schritte aus — typischerweise ein Version-Bump. Nimm alle dabei
-  geänderten Dateien in **denselben** Push-Batch auf (mit committen), bevor du
-  pushst.
-- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 6.
+### 8. Pushen
 
-Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik;
-diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos. Die
-Release-Schritte berühren `specs/` nicht — die Fortschreibung ist mit Schritt 3
-abgeschlossen und vom Gate gemessen.
-
-### 6. Pushen
+> `Schritt 8 von 9 — Push (laeuft)`
 
 ```bash
 git push origin <mainBranch>
 ```
 
-### 7. Bestätigung
+### 9. Bestätigung
 
 Melde den neuen Stand auf `origin/<mainBranch>` mit dem letzten Commit-Hash.
+
+**Die Nachweiszeile, je erzeugtem Commit.** Nenne den Hash, das Ergebnis des deckenden
+Laufs und dessen `zeitpunkt` aus der Prüf-Zusammenfassung (`.claude/checks-summary.json`,
+Issue #655):
+
+```
+<hash> — gedeckt von: node --test, node tools/sync-blobs.mjs --check (gruen, 2026-09-16 08:14)
+```
+
+Der Zeitpunkt ist der Punkt: Er sagt, ob der Nachweis zu diesem Stand gehört oder von
+einem früheren Lauf stammt. Hat Schritt 6 keinen Commit erzeugt, gehört auch **das** in
+den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 
 **CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
 
@@ -219,13 +273,16 @@ Projekte **ohne** `spec`-Block in `.claude/workflow.config.json` sehen Schritt 3
 Spec-Gate nicht: Es gibt keine Vorschau, keine Zustimmung, keinen `apply`-Commit und
 keinen `check`-Aufruf. **Auch keine wartende Vorhaben-Notiz wird dort gelesen oder
 aufgehoben.** Eine kann trotzdem liegen — etwa weil der Block nachträglich entfernt
-wurde; sie wird nur nicht abgeholt. `/push-main` läuft dort unverändert wie bisher —
-Stand prüfen, Pflicht-Checks, Release-Schritte, Push.
+wurde; sie wird nur nicht abgeholt. `/push-main` läuft dort verkürzt: Stand prüfen,
+Release-Dateien erzeugen, der eine Prüflauf, der eine Commit, Push, Bestätigung. Die
+Fortschrittszeile zählt dann entsprechend weniger Schritte — `Schritt k von 7`.
 
 ## Was dieser Skill nicht tut
 
-- Kein Push und kein Version-Bump bei einem roten Pflicht-Check (Schritt 4)
+- Kein Commit und kein Push bei einem roten Prüflauf (Schritt 5)
+- Kein Push bei rotem Spec-Gate (Schritt 7) — der Commit bleibt dann lokal stehen
 - Kein Push ohne Zustimmung zur Spec-Fortschreibung (bei gesetztem `spec`-Block)
+- Kein zweiter Commit und kein `--amend` auf diesem Weg
 - Keine Force-Pushes
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)

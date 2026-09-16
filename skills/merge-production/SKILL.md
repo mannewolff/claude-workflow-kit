@@ -19,6 +19,12 @@ Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Mensc
 
 ## Ablauf
 
+**Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
+Das `n` ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `spec`-Block
+oder ohne `RELEASING.md` sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
+ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
+`buildChecks`-Katalog, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
+
 ### 1. Config lesen
 
 Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
@@ -72,33 +78,83 @@ auf `origin/<mainBranch>` zurück, während das Bump-Kommando nicht idempotent i
 nächste Anlauf erneut bumpte. Der Stand von `push main` trägt zudem die eigentliche
 Änderung; der Release-Commit nur Stempel und Changelog.
 
-### 4. Release-Schritte (falls `RELEASING.md` existiert)
+### 4. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
 
-**Vor jedem Commit dieses Wegs steht ein `node .claude/kit/checks.mjs run`** — beide
-Stellen nennt `RELEASING.md` in seiner `merge production`-Liste. Der Nachweis gehört
-zum Commit: Bump und Changelog erzeugen Dateien, die kein früherer Lauf gesehen haben
-kann, und ohne Nachweis für genau diesen Stand weist das Commit-Gate sie ab. Der
-Aufruf läuft ohne `--since`. Ein roter Lauf hält an: kein Commit, kein Push, kein PR.
+> `Schritt 4 von 9 — Release-Dateien erzeugen (laeuft)`
 
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
-  Release-Schritte aus — typischerweise ein Version-Bump, optional ergänzt um eine
-  Changelog-Generierung. Committe die geänderten Dateien auf `mainBranch`, damit
-  sie im PR nach `production` enthalten sind.
-- **Nein:** Nichts weiter tun.
+  Schritte aus — **bis zum ersten festschreibenden Schritt**, also typischerweise Bump,
+  Stempel und Changelog. Nicht committen: Das kommt aus Schritt 6.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
-**Merke dir den Hash dieses Release-Commits.** Schritt 5 braucht ihn, und er ist
-danach nicht mehr sicher rekonstruierbar:
+**Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
+veröffentlicht (`git commit`, `git push`, `git tag`, ein Release-Kommando). Alles davor
+fährt der Skill; ab dort übernimmt er. Stehen **hinter** dem ersten festschreibenden
+Schritt noch weitere Schritte, führt der Skill sie nach seinem Commit aus und sagt das im
+Abschlussbericht.
+
+Der Skill selbst kennt keine projektspezifische Versions- oder Changelog-Logik; diese
+lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos. Ein Tag entsteht hier
+**nicht** — siehe Schritt 7.
+
+### 5. Der eine Prüflauf (Gate — vor Commit, Push und PR)
+
+> `Schritt 5 von 9 — Prueflauf (laeuft)`
+
+**Vor dem einen Commit dieses Wegs steht der eine Prüflauf.** Der Nachweis gehört zum
+Commit: Bump, Stempel und Changelog erzeugen Dateien, die kein früherer Lauf gesehen haben
+kann, und ohne Nachweis für genau diesen Stand weist das Commit-Gate sie ab. Bis v1.53
+stand vor **jedem** Commit dieses Wegs ein eigener Lauf — es gab zwei. Jetzt gibt es einen
+Commit und darum einen Lauf.
+
+```bash
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+**Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
+`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
+`leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus — ein Release liefe dann durch
+eine leere Prüfung.
+
+Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 4 bleibt
+stehen; er ist seit Issue #656 idempotent und steigt beim nächsten Anlauf nicht erneut.
+
+### 6. Der eine Commit
+
+> `Schritt 6 von 9 — Commit (laeuft)`
+
+```bash
+git add <die Dateien aus Schritt 4>
+git commit -m "chore: vX.Y.Z"
+```
+
+Committet wird auf `mainBranch`, damit die Dateien im PR nach `production` enthalten sind,
+und nur bei tatsächlichem staged Diff. Hat Schritt 4 nichts erzeugt, gibt es keinen
+Release-Commit — das gehört in den Abschlussbericht und bedeutet, dass Schritt 7 nichts zu
+taggen hat.
+
+**Merke dir den Hash dieses Commits.** Schritt 7 braucht ihn, und er ist danach nicht mehr
+sicher rekonstruierbar:
 
 ```bash
 git rev-parse --short HEAD
 ```
 
-Der Skill selbst kennt keine projektspezifische Versions- oder Changelog-Logik;
-diese lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos. Ein Tag
-entsteht hier **nicht** — siehe Schritt 5.
+**Die Nachweiszeile.** Nenne im Abschlussbericht zu diesem Commit den Hash, das Ergebnis
+des deckenden Laufs aus Schritt 5 und dessen `zeitpunkt` aus der Prüf-Zusammenfassung
+(`.claude/checks-summary.json`, Issue #655) — der Zeitpunkt sagt, ob der Nachweis zu
+diesem Stand gehört oder von einem früheren Lauf stammt.
 
-### 5. Tag-Kommando ausgeben — der Tag wird nicht gesetzt
+Danach pushen:
+
+```bash
+git push origin <mainBranch>
+```
+
+### 7. Tag-Kommando ausgeben — der Tag wird nicht gesetzt
+
+> `Schritt 7 von 9 — Tag-Kommando (laeuft)`
 
 **Der Skill setzt und pusht keinen Tag.** Ein Tag markiert ein Release, und
 Releases setzt der Mensch — dieselbe Linie wie bei den drei Stop-Punkten.
@@ -110,7 +166,7 @@ eigenen Code-Block am Ende des Laufs:
 git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
 ```
 
-`<hash>` ist der `chore: vX.Y.Z`-Commit aus Schritt 4 — der Skill kennt ihn, weil
+`<hash>` ist der `chore: vX.Y.Z`-Commit aus Schritt 6 — der Skill kennt ihn, weil
 er ihn selbst erzeugt hat. **Nicht `HEAD` einsetzen und nicht raten:** Nach dem
 Release-Commit können weitere Commits folgen, und der Tag zeigt dann auf den
 falschen Stand.
@@ -122,14 +178,16 @@ Der Grund für die Kommandozeile statt einer Bitte: Wer nach jedem Release Hash
 und Syntax selbst zusammensuchen muss, lässt es irgendwann bleiben. Genau das ist
 sechsmal in Folge passiert (Issue #244).
 
-Hat Schritt 4 keinen Release-Commit erzeugt — keine `RELEASING.md`, kein Bump —,
+Hat Schritt 6 keinen Release-Commit erzeugt — keine `RELEASING.md`, kein Bump —,
 gibt es nichts zu taggen. Das gehört **in den Abschlussbericht**, nicht in ein
 stilles Überspringen.
 
 **Beim `push main`-Trigger entsteht kein Tag.** Dort entstehen interne
 Patch-Stände, die niemand veröffentlicht; ein Tag je Patch wäre Lärm.
 
-### 6. PR bzw. MR erstellen
+### 8. PR bzw. MR erstellen
+
+> `Schritt 8 von 9 — PR erstellen (laeuft)`
 
 ```bash
 node .claude/kit/board.mjs code pr \
@@ -140,9 +198,9 @@ node .claude/kit/board.mjs code pr \
 
 Der Adapter erstellt den PR/MR provider-unabhaengig. Bei `codeHost: local` gibt er einen gefuehrten Merge-Dialog aus.
 
-### 7. GitHub-Release-Kommando ausgeben — erst nach dem Tag ausführbar
+### 9. GitHub-Release-Kommando ausgeben — erst nach dem Tag ausführbar
 
-Am Ende dieses Laufs existiert der Tag **noch nicht**: Schritt 5 hat nur die
+Am Ende dieses Laufs existiert der Tag **noch nicht**: Schritt 7 hat nur die
 Kommandozeile ausgegeben, gesetzt hat ihn niemand. Ein Release kann in diesem
 Lauf deshalb nicht entstehen — das ist keine Ausnahme, sondern der Normalfall.
 
@@ -162,10 +220,10 @@ Release-Kommando. Das gehört **in den Abschlussbericht** — dass ein Schritt n
 greift, muss man lesen können, sonst sieht ein Lauf ohne Release aus wie ein Lauf
 mit Release.
 
-### 8. PR/MR-URL und die beiden Kommandos zurückgeben
+### 10. PR/MR-URL und die beiden Kommandos zurückgeben
 
-Gib die URL aus dem Adapter-Output aus, gefolgt von den Kommandos aus Schritt 5
-und 7 in **einem** Code-Block. Der Merge ist Mannes Aufgabe — Claude merged nicht,
+Gib die URL aus dem Adapter-Output aus, gefolgt von den Kommandos aus Schritt 7
+und 9 in **einem** Code-Block. Der Merge ist Mannes Aufgabe — Claude merged nicht,
 und den Tag setzt er ebenfalls selbst.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir.
@@ -184,6 +242,8 @@ und den Tag setzt er ebenfalls selbst.
 - Kein Force-Merge oder Bypass von Branch-Protection-Regeln
 - **Kein PR bei roter CI** — und ein Exit-Code 1 der Achse `code ci-status` zählt
   wie `rot` (Schritt 3)
+- **Kein Commit, kein Push und kein PR bei rotem Prüflauf** (Schritt 5)
+- Kein zweiter Commit und kein `--amend` auf diesem Weg
 - **Kein Setzen und kein Pushen von Tags** — der Skill gibt nur die Kommandozeile
-  aus, den Tag setzt der Mensch (Schritt 5)
+  aus, den Tag setzt der Mensch (Schritt 7)
 - Kein Force-Push von Tags, kein Überschreiben bestehender Tags

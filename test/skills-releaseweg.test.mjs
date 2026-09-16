@@ -1,21 +1,21 @@
-// Prueflauf vor jedem Commit des Release-Wegs (Issue #472, Plan #467 A10).
+// Der Release-Weg: ein Lauf, ein Commit (Issue #658, Plan #652).
 //
-// Der Release-Weg erzeugt fuenf Commits, nicht drei: den Spec-Commit im
-// push-main-Skill, dazu Version-Commit und `--amend` in JEDER der beiden
-// Ablauflisten von RELEASING.md (`push main` und `merge production`). Ohne einen
-// eigenen Nachweis je Commit weist das Gate aus Issue #470 sie ab — und
-// `merge production` ist der Weg nach production.
+// Bis v1.53 wechselten sich Erzeugen und Festschreiben ab, und weil das Commit-Gate fuer
+// JEDEN Commit einen Nachweis auf genau diesem Stand verlangt, kostete jeder Zwischenstand
+// einen eigenen Prueflauf — bis zu vier bei `push main`, zwei bei `merge production`.
+// Jetzt gilt: erst alle Dateien des Wegs erzeugen, dann EIN Lauf ueber den fertigen Stand,
+// dann EIN Commit.
 //
-// Gemessen wird die REIHENFOLGE im Text, und zwar zwischen benachbarten Markern:
-// Ein einzelner Aufruf am Dateianfang wuerde eine Pruefung "vor jedem Commit" nur
-// vortaeuschen.
+// Die Arbeitsteilung verschiebt sich damit. `RELEASING.md` fuehrt nur noch die
+// ERZEUGUNGSSCHRITTE; Lauf, Commit und Push kommen aus dem Skill. Das ist der Grund, warum
+// hier auf die ABWESENHEIT von `checks.mjs run` in `RELEASING.md` geprueft wird: Stuende er
+// dort, gaebe es zwei Stellen, die denselben Lauf anordnen, und eine fremde `RELEASING.md`
+// brauchte plotzlich Wissen ueber das Gate.
 //
-// Geprueft wird ausschliesslich die QUELLE unter `skills/`, nicht die
-// Dogfooding-Kopie unter `.claude/skills/`: Die ist per `.gitignore` ausgeschlossen
-// und fehlt in jedem frischen Checkout — ein Test, der sie liest, ist lokal gruen
-// und in der CI rot. Dass Quelle und Kopie zusammenpassen, prueft
-// `node tools/sync-blobs.mjs --check` als eigener buildCheck; das hier ein zweites
-// Mal zu tun waere ohnehin eine zweite Wahrheit.
+// Gemessen wird ausschliesslich die QUELLE unter `skills/`, nicht die Dogfooding-Kopie
+// unter `.claude/skills/`: Die ist per `.gitignore` ausgeschlossen und fehlt in jedem
+// frischen Checkout — ein Test, der sie liest, ist lokal gruen und in der CI rot. Dass
+// Quelle und Kopie zusammenpassen, prueft `node tools/sync-blobs.mjs --check`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,79 +27,84 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
 const LAUF = /node \.claude\/kit\/checks\.mjs run/g;
-const LAUF_EINZELN = /node \.claude\/kit\/checks\.mjs run/;
+const PUSH_MAIN = ["skills", "push-main", "SKILL.md"];
+const MERGE_PRODUCTION = ["skills", "merge-production", "SKILL.md"];
 
-/** Alle Positionen eines Musters im Text. */
-function stellen(text, muster) {
-  return [...text.matchAll(muster)].map((m) => m.index);
+/** Der Abschnitt `## Ablauf` von RELEASING.md — nur dort stehen die beiden Listen. */
+function ablauflisten() {
+  const text = lies("RELEASING.md");
+  const start = text.indexOf("## Ablauf");
+  assert.notEqual(start, -1, "RELEASING.md fuehrt keinen Abschnitt '## Ablauf'");
+  const ende = text.indexOf("### Warum", start);
+  assert.notEqual(ende, -1, "nach den Ablauflisten fehlt der begruendende Abschnitt");
+  return text.slice(start, ende);
 }
 
-/**
- * Belegt, dass vor jedem Marker ein Prueflauf steht — gemessen ab dem
- * vorhergehenden Marker, nicht ab dem Dateianfang.
- */
-function prueflaufVorJedemMarker(text, marker, wo) {
-  const laeufe = stellen(text, LAUF);
-  let vorher = 0;
-  for (const { name, muster } of marker) {
-    const treffer = stellen(text, muster);
-    assert.equal(treffer.length > 0, true, `${wo}: Marker '${name}' nicht gefunden`);
-    const pos = treffer.find((p) => p > vorher);
-    assert.notEqual(pos, undefined, `${wo}: Marker '${name}' liegt nicht nach dem vorigen`);
-    const dazwischen = laeufe.filter((l) => l > vorher && l < pos);
-    assert.equal(dazwischen.length >= 1, true,
-      `${wo}: zwischen '${name}' und dem vorigen Commit fehlt ein checks.mjs run`);
-    vorher = pos;
-  }
-}
+// --- RELEASING.md fuehrt nur noch Erzeugungsschritte ---
 
-test("[skills-1] push-main faehrt einen Prueflauf vor dem Spec-Commit", () => {
-  for (const pfad of [["skills", "push-main", "SKILL.md"]]) {
+test("[skills-20] RELEASING.md ordnet keinen Prueflauf mehr an — der steht im Skill", () => {
+  const treffer = [...lies("RELEASING.md").matchAll(LAUF)];
+  assert.equal(treffer.length, 0,
+    `RELEASING.md nennt ${treffer.length}x 'checks.mjs run'; der Lauf gehoert in den Skill, damit es nur eine Stelle gibt`);
+});
+
+test("[skills-20] keine Ablaufliste kennt noch --amend", () => {
+  assert.doesNotMatch(ablauflisten(), /--amend/,
+    "der Changelog wandert nicht mehr nachtraeglich in den Commit — er entsteht davor");
+});
+
+test("[skills-20] keine Ablaufliste enthaelt einen Commit- oder Push-Schritt", () => {
+  const listen = ablauflisten();
+  assert.doesNotMatch(listen, /git commit/, "das Festschreiben kommt aus dem Skill");
+  assert.doesNotMatch(listen, /git push/, "das Pushen kommt aus dem Skill");
+});
+
+test("[skills-20] beide Ablauflisten fuehren Bump, Stempel und Changelog in dieser Reihenfolge", () => {
+  const listen = ablauflisten();
+  for (const [name, bump] of [["push main", "version.mjs --patch"], ["merge production", "version.mjs --minor"]]) {
+    const start = listen.indexOf(bump);
+    assert.notEqual(start, -1, `die Liste fuer '${name}' nennt '${bump}' nicht`);
+    const stempel = listen.indexOf("sync-blobs.mjs", start);
+    const changelog = listen.indexOf("changelog.mjs --marke", stempel);
+    assert.notEqual(stempel, -1, `'${name}': sync-blobs fehlt oder steht vor dem Bump`);
+    assert.notEqual(changelog, -1, `'${name}': 'changelog.mjs --marke' fehlt oder steht vor dem Stempel`);
+  }
+});
+
+// --- Die Skills: ein Lauf, ein Commit ---
+
+test("[skills-20] beide Release-Skills fahren genau einen Prueflauf, und zwar mit Batch-Anker", () => {
+  for (const pfad of [PUSH_MAIN, MERGE_PRODUCTION]) {
     const text = lies(...pfad);
-    prueflaufVorJedemMarker(text, [
-      { name: "Spec-Commit", muster: /git commit -m "chore: Spec fortgeschrieben/g },
-    ], pfad.join("/"));
+    const wo = pfad.join("/");
+    const laeufe = [...text.matchAll(LAUF)];
+    assert.equal(laeufe.length, 1, `${wo}: genau ein 'checks.mjs run' erwartet, gefunden ${laeufe.length}`);
+
+    // Der Anker ist der Batch, nicht HEAD. Ohne ihn naehme `planen` HEAD als Basis; ist
+    // seit HEAD nichts geaendert, meldete es `leeresPaket` und liesse JEDE Pruefung aus —
+    // ein Projekt ohne RELEASING.md liefe damit vor dem Push durch eine leere Pruefung.
+    const zeile = text.slice(laeufe[0].index).split("\n")[0];
+    assert.match(zeile, /--since/, `${wo}: der Lauf traegt keinen Anker: ${zeile}`);
+    assert.match(zeile, /git merge-base/, `${wo}: der Anker ist nicht der Batch-Anker: ${zeile}`);
   }
 });
 
-test("[skills-1] RELEASING.md faehrt in BEIDEN Ablauflisten einen Prueflauf vor Version-Commit und Amend", () => {
-  const text = lies("RELEASING.md");
-  const ablauf = text.slice(text.indexOf("## Ablauf"), text.indexOf("**Nicht umdrehen:**"));
-  // Vier Marker in Reihenfolge: push main (Commit, Amend), merge production (Commit, Amend).
-  prueflaufVorJedemMarker(ablauf, [
-    { name: "Version-Commit (push main)", muster: /chore: vX\.Y\.Z/g },
-    { name: "Amend (push main)", muster: /git commit --amend --no-edit/g },
-    { name: "Version-Commit (merge production)", muster: /chore: vX\.Y\.Z/g },
-    { name: "Amend (merge production)", muster: /git commit --amend --no-edit/g },
-  ], "RELEASING.md");
-});
-
-test("[skills-1] merge-production nennt den Prueflauf vor seinen Release-Schritten", () => {
-  for (const pfad of [["skills", "merge-production", "SKILL.md"]]) {
+test("[skills-20] beide Release-Skills schreiben genau einen Commit fest", () => {
+  for (const pfad of [PUSH_MAIN, MERGE_PRODUCTION]) {
     const text = lies(...pfad);
-    assert.match(text, LAUF_EINZELN, `${pfad.join("/")}: der Prueflauf fehlt`);
+    const wo = pfad.join("/");
+    // Gezaehlt werden ausfuehrbare Commit-Zeilen, nicht Erwaehnungen im Fliesstext.
+    const commits = [...text.matchAll(/^git commit /gm)];
+    assert.equal(commits.length, 1, `${wo}: genau ein 'git commit' erwartet, gefunden ${commits.length}`);
+    assert.doesNotMatch(text, /git commit --amend/, `${wo}: kein Amend mehr auf diesem Weg`);
   }
 });
 
-test("[skills-1] kein neuer Prueflauf traegt --since", () => {
-  // Der Anker ist HEAD: Gemessen wird der uncommittete Stand, der gleich in den
-  // Commit geht — nicht der Batch seit merge-base wie in /local-check.
-  for (const teile of [["RELEASING.md"], ["skills", "push-main", "SKILL.md"], ["skills", "merge-production", "SKILL.md"]]) {
-    const text = lies(...teile);
-    for (const m of text.matchAll(/node \.claude\/kit\/checks\.mjs run([^\n]*)/g)) {
-      assert.doesNotMatch(m[1], /--since/, `${teile.join("/")}: '${m[0]}' traegt einen Anker`);
-    }
-  }
-});
-
-test("[skills-1] die Reihenfolge der Release-Schritte ist unveraendert", () => {
-  const text = lies("RELEASING.md");
-  const ablauf = text.slice(text.indexOf("## Ablauf"), text.indexOf("**Nicht umdrehen:**"));
-  const folge = ["version.mjs --patch", "sync-blobs.mjs", "chore: vX.Y.Z", "changelog.mjs", "--amend"];
-  let vorher = -1;
-  for (const marke of folge) {
-    const pos = ablauf.indexOf(marke, vorher + 1);
-    assert.notEqual(pos, -1, `Marke '${marke}' fehlt oder steht in falscher Reihenfolge`);
-    vorher = pos;
+test("[skills-21] beide Release-Skills melden Fortschritt und weisen den Lauf je Commit nach", () => {
+  for (const pfad of [PUSH_MAIN, MERGE_PRODUCTION]) {
+    const text = lies(...pfad);
+    const wo = pfad.join("/");
+    assert.match(text, /Schritt k von n/, `${wo}: die Fortschrittszeile ist nicht beschrieben`);
+    assert.match(text, /zeitpunkt/, `${wo}: die Nachweiszeile nennt den Zeitpunkt des Laufs nicht`);
   }
 });

@@ -34,7 +34,10 @@ test("[skills-19] das Gate steht vor dem PR und vor den Release-Schritten", () =
 
   // Vor den Release-Schritten, nicht danach: Ein Stopp bei `rot` liesse sonst den
   // Versionsbump auf origin/main zurueck, und `version.mjs --minor` ist nicht idempotent.
-  const release = MERGE.search(/^#{2,4} .*Release-Schritte/m);
+  // Seit Issue #658 heisst der Schritt "Release-Dateien erzeugen" — er erzeugt nur noch,
+  // Lauf und Commit stehen dahinter. Die Aussage von skills-19 ist dieselbe geblieben:
+  // Das Gate steht davor, damit ein Stopp bei `rot` keinen Bump zuruecklaesst.
+  const release = MERGE.search(/^#{2,4} .*Release-(Schritte|Dateien)/m);
   assert.notEqual(release, -1, "die Ueberschrift der Release-Schritte fehlt");
   assert.ok(gate < release, "das Gate steht hinter den Release-Schritten");
 });
