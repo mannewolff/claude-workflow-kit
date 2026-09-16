@@ -583,10 +583,23 @@ export function sicherheitsnetzGrund(lauf, stoppGrund) {
 }
 
 /** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
-function einheitAnlegen(id, titel) {
+function einheitAnlegen(id, titel, modellStand = null) {
   // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
   // Dry-Run haengt es an nichts und wird nie geschrieben.
-  const einheit = { id: String(id), titel, ausgang: "unbekannt" };
+  //
+  // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665).
+  // Die Feldreihenfolge ist der Vertrag mit den Auswertungen; `schemaFassung` bleibt 1,
+  // weil nur Felder hinzukommen. Ohne uebergebenen Stand — die Kette, ein Gate-Rueckfall —
+  // tragen sie `null` statt zu fehlen: Ein fehlendes Feld liesse offen, ob niemand gemessen
+  // hat oder ob die Frage sich nicht stellte.
+  const einheit = {
+    id: String(id),
+    titel,
+    modell: modellStand?.modell ?? null,
+    modellHerkunft: modellStand?.herkunft ?? null,
+    modellGrund: modellStand?.grund ?? null,
+    ausgang: "unbekannt",
+  };
   if (LAUF) {
     LAUF.einheiten.push(einheit);
     schreibeErgebnisstand();
@@ -1331,6 +1344,56 @@ export function leseErgebnisText(stdout) {
   return text === "" ? null : text;
 }
 
+// --- Das Modell einer Karte (Issue #665) ---
+
+// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: Anker am Zeilenanfang, damit
+// eine Erwaehnung im Fliesstext nicht trifft, und `\S+` als Wert — kein Leerraum, kein
+// zweites Wort. Ein Wert wie `claude-opus-5 --yolo` faellt damit schon hier durch und
+// nicht erst am Vergleich mit der Liste.
+const EMPFOHLENES_MODELL_ZEILE = /^Empfohlenes Modell:[^\S\n]*(\S+)[^\S\n]*$/m;
+
+/**
+ * Das Modell, mit dem die Session dieser Karte starten soll (Issue #665).
+ *
+ * Reine Funktion ueber Body und Liste — kein Board, kein Dateisystem —, damit die
+ * Zuordnung an Fixtures pruefbar ist.
+ *
+ * **Die Liste ist die einzige Pruefung** (Plan #663, E3), und sie ist der
+ * Sicherheitskern dieses Wegs: Ohne sie wanderte ein Wert aus einem Issue-Body unbesehen
+ * in `argv`. Ein Paket mit `Empfohlenes Modell: --dangerously-skip-permissions` waere ein
+ * Angriff ueber eine Karte — deshalb gilt ein Wert mit fuehrendem Bindestrich nicht
+ * einmal als Kandidat, und deshalb wird gegen eine Liste verglichen statt gegen ein
+ * Muster. Ein Muster liesse sich erweitern, eine Liste nicht.
+ *
+ * Rueckgabe `{ modell, grund }`:
+ *   - Name auf der Liste  -> `{ modell: <name>, grund: null }`
+ *   - Name nicht auf der Liste -> `{ modell: null, grund: <ein Satz> }`
+ *   - keine Zeile, leere oder fehlende Liste -> `{ modell: null, grund: null }`
+ *
+ * Der Unterschied zwischen den letzten beiden Faellen ist der Punkt: Ein abgewiesener
+ * Name gehoert in die Einheit, eine fehlende Empfehlung ist der Normalfall und kein
+ * Befund.
+ */
+export function empfohlenesModell(body, erlaubte) {
+  const liste = Array.isArray(erlaubte) ? erlaubte : [];
+  if (liste.length === 0) return { modell: null, grund: null };
+
+  const treffer = String(body ?? "").match(EMPFOHLENES_MODELL_ZEILE);
+  if (!treffer) return { modell: null, grund: null };
+
+  const name = treffer[1];
+  // Fuehrender Bindestrich: nie ein Modellname, immer ein Flag. Der Vergleich mit der
+  // Liste wuerde ihn ohnehin abweisen — die eigene Zeile steht hier, weil diese Stelle
+  // die ist, an der jemand spaeter eine Abkuerzung einbauen koennte.
+  if (name.startsWith("-")) {
+    return { modell: null, grund: `Empfohlenes Modell "${name}" beginnt mit einem Bindestrich und ist kein Modellname — Modell des Laufs.` };
+  }
+  if (!liste.includes(name)) {
+    return { modell: null, grund: `Empfohlenes Modell "${name}" steht nicht in night.modelle — Modell des Laufs.` };
+  }
+  return { modell: name, grund: null };
+}
+
 // --- Nacht-Session ---
 
 /**
@@ -1523,6 +1586,10 @@ export async function runSession(issueId, args, opts = {}) {
   // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
   // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
   const prompt = opts.prompt || `/implement-next #${issueId}`;
+  // Das Modell dieser Session (Issue #665). `opts.model ?? args.model` statt eines
+  // Pflichtparameters: `runSession` ist exportiert und wird an mehreren Stellen mit
+  // `args` allein gerufen — die Kette behaelt so ohne Zutun das Modell des Laufs.
+  const modell = opts.model ?? args.model;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   let cmd, cmdArgs;
   if (testCmd) {
@@ -1550,7 +1617,7 @@ export async function runSession(issueId, args, opts = {}) {
     // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
     const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs, ...werkzeugArgs];
+    cmdArgs = ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
@@ -1561,7 +1628,9 @@ export async function runSession(issueId, args, opts = {}) {
     // Sessions machen bewusst keine Angabe.
     extraEnv: {
       NIGHT_PROMPT: prompt,
-      KIT_AGENT_MODEL: args.model,
+      // Derselbe Wert wie in --model (Issue #665): Der Aktivitaetsverlauf des Boards
+      // soll das Modell zeigen, mit dem wirklich gearbeitet wurde, nicht das des Laufs.
+      KIT_AGENT_MODEL: modell,
       ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
       // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
@@ -3412,7 +3481,13 @@ function dryRunBefund(issue, ctx, assumedDone) {
   if (unmet.length > 0) {
     return aus(`wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
   }
-  return { grund: null, vermerk: "" };
+  // Das Modell gehoert in den Dry-Run (Issue #665): Wer vor der Nacht prueft, was
+  // laufen wuerde, prueft auch, WOMIT. Herkunft dazu, sonst liesse sich ein Rueckfall
+  // auf das Lauf-Modell nicht von einer Karte unterscheiden, die es selbst empfiehlt.
+  const { modell, grund } = empfohlenesModell(full.body, config.night?.modelle);
+  if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)` };
+  const nachsatz = grund ? ` — ${grund}` : "";
+  return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}` };
 }
 
 /**
@@ -3423,6 +3498,9 @@ function dryRunBefund(issue, ctx, assumedDone) {
  * Subprozess-Tests beschraenkt.
  */
 export function laufeDryRun(args, ctx) {
+  // Das Modell des Laufs wandert in den ctx, damit `dryRunBefund` es fuer den Rueckfall
+  // nennen kann, ohne `args` zu kennen (Issue #665).
+  ctx = { ...ctx, laufModell: args.model };
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) {
     log("Ready ist leer — nichts zu tun.");
@@ -3529,7 +3607,7 @@ export function pruefeIssueGates(top) {
  * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
  * Fehlschlag-Zeile zu viel oder eine zu wenig.
  */
-async function versucheSalvage(top, args) {
+async function versucheSalvage(top, args, modell) {
   const checks = verifyChecksForSalvage(config);
   if (!checks.ok) {
     // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
@@ -3544,6 +3622,10 @@ async function versucheSalvage(top, args) {
   await runSession(top.id, args, {
     prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
     timeoutMs: SALVAGE_TIMEOUT_MS,
+    // Dasselbe Modell wie die regulaere Runde (Issue #665): Der Salvage prueft deren
+    // Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde Arbeit nach
+    // anderem Massstab, und die Empfehlung galt der Karte, nicht der Betriebsart.
+    model: modell,
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
   const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
@@ -3619,7 +3701,7 @@ export function rundenGrund(res, pruefung) {
  * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
  * Stand, den der Halt gerade verworfen hat.
  */
-async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung) {
+async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, modell) {
   // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
   // Label nicht, das die Session selbst gesetzt hat.
   if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
@@ -3632,7 +3714,7 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
-    const salvage = await versucheSalvage(top, args);
+    const salvage = await versucheSalvage(top, args, modell);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") return "hardStop";
@@ -3722,7 +3804,7 @@ export function istHalt(vorher, nachher) {
   return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher) {
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, modell) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -3770,7 +3852,7 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, v
     return "hardStop";
   }
 
-  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung);
+  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, modell);
 
   // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
   // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
@@ -3812,7 +3894,6 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Die Einheit entsteht VOR der Session und wird sofort geschrieben: Bricht der Lauf
   // mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand — mit ausgang
   // "unbekannt", was etwas anderes sagt als ein Fehlschlag.
-  const einheit = einheitAnlegen(top.id, top.title);
   const commitVorher = lastCommitHash();
   const started = Date.now();
   // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
@@ -3824,12 +3905,24 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
   // traegt den Body nicht in jeder Adapter-Fassung.
   const vorher = board("issue", "get", String(top.id));
+  // Das Modell dieser Karte (Issue #665) — aus dem Body, den `vorher` ohnehin traegt.
+  // Ein eigener `issue get` je Karte waere ein zweiter Aufruf gegen eine API, die
+  // drosselt, fuer einen Wert, der bereits vorliegt.
+  const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(vorher?.body, config.night?.modelle);
+  const modellStand = ausKarte
+    ? { modell: ausKarte, herkunft: "karte", grund: null }
+    : { modell: args.model, herkunft: "lauf", grund: modellGrund };
+  // Die Einheit entsteht erst hier, weil sie das Modell traegt — und das steht erst fest,
+  // wenn der Body gelesen ist. Sie wird weiterhin VOR der Session geschrieben: Bricht der
+  // Lauf mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand.
+  const einheit = einheitAnlegen(top.id, top.title, modellStand);
+  if (modellGrund) log(`  Hinweis zu #${top.id}: ${modellGrund}`);
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
   // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
   // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
   // Implementierungs-Runde.
-  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true });
+  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, model: modellStand.modell });
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
@@ -3840,7 +3933,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher);
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, modellStand.modell);
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);
