@@ -23,6 +23,10 @@ export default defineConfig({
         text: "Board-UI herunterladen",
         link: "https://docs.mwolff.org/board-ui.mjs",
       },
+      {
+        text: "Einstellungs-Oberfläche herunterladen",
+        link: "https://docs.mwolff.org/einstellungen.mjs",
+      },
     ],
 
     sidebar: [

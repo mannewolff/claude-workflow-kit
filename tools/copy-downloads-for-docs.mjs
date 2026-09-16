@@ -2,7 +2,10 @@
 /**
  * copy-downloads-for-docs.mjs — kopiert die zum Download angebotenen Dateien nach
  * docs/public/, damit VitePress sie unveraendert im Site-Root ausliefert
- * (docs.mwolff.org/install.mjs, docs.mwolff.org/board-ui.mjs).
+ * (docs.mwolff.org/install.mjs, docs.mwolff.org/board-ui.mjs, docs.mwolff.org/einstellungen.mjs).
+ *
+ * einstellungen.mjs (Issue #679) wird nicht installiert: Die Oberflaeche arbeitet ueber alle
+ * Projekte unter einem Ordner und gehoert in keines (Plan #674 E1).
  *
  * Die Kopien unter docs/public/ sind Generate und stehen in .gitignore: Jede Datei
  * ist im Repo genau einmal getrackt. Zwei getrackte Kopien derselben Datei driften
@@ -32,6 +35,7 @@ const targetDir = join(root, "docs", "public");
 const DOWNLOADS = [
   join(root, "install.mjs"),
   join(root, "kit", "board-ui.mjs"),
+  join(root, "kit", "einstellungen.mjs"),
 ];
 
 mkdirSync(targetDir, { recursive: true });

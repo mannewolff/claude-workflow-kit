@@ -99,12 +99,14 @@ lief. Der Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, a
 der Batch, der gleich hinausgeht.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
-`KIT_VERSION`-Konstante von `kit/board.mjs` und `kit/night.mjs`, bevor es die Blobs
-backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
+`KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`, `kit/spec.mjs`
+und `kit/einstellungen.mjs`, bevor es die Blobs backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
 sie stammt (`node .claude/kit/board.mjs --version`). Deshalb steht es als Schritt 2
 in den Listen oben — vor dem Version-Commit, damit die gestempelten Kit-Dateien mit
 hineingehen. `sync-blobs --check` ist ohnehin ein `buildCheck` dieses Repos und
-schlaegt an, wenn der Stempel fehlt.
+schlaegt an, wenn der Stempel fehlt. `kit/einstellungen.mjs` ist Download, nicht
+Installation: Sie wird gestempelt und bekommt das Schema eingebettet, aber nicht nach
+`.claude/kit/` gespiegelt.
 
 Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzlichen
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.

@@ -253,6 +253,26 @@ Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuord
 
 Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
+## Einstellungen über die Oberfläche
+
+Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.
+
+```bash
+node einstellungen.mjs ~/ki-projects
+```
+
+**Welche Projekte erscheinen.** Der angegebene Ordner selbst und jedes direkte Unterverzeichnis, sofern darin `.claude/workflow.config.json` liegt. Ohne Angabe gilt das Arbeitsverzeichnis. Tiefer gesucht wird nicht.
+
+**Die Adresse trägt das Zugangstoken.** Beim Start nennt die Oberfläche eine Adresse der Form `http://127.0.0.1:<port>/#token=…`. Sie ist nur von diesem Rechner erreichbar, und ohne das Token nimmt sie keine Anfrage an — auch nicht von einer anderen Seite im selben Browser. Das Token gilt bis zum Beenden mit Strg+C.
+
+**Team und persönlich.** Zu jeder Einstellung zeigt die Oberfläche den Wert aus `workflow.config.json` (Team), die Abweichung aus `workflow.config.local.json` (persönlich) und den Wert, der gilt. Persönlich speichern lässt sich nur, was das Kit persönlich abweichen lässt (siehe „Team-Config und persönliche Abweichungen"); eine Abweichung lässt sich wieder entfernen. Gespeichert wird nur der geänderte Wert — `git diff` zeigt keine neu formatierte Datei.
+
+**Prüfen vor dem Speichern.** Ungültige Werte, auch solche, die erst im Zusammenspiel mit einer anderen Einstellung ungültig werden, weist die Oberfläche mit Grund zurück. Eine Einstellung, die sie nicht kennt, zeigt sie als Warnung und lässt sie beim Speichern stehen. Wer die Pflichtprüfungen leert oder die Review-Pflicht vor Ready abschaltet, muss das ausdrücklich bestätigen. Hat sich die Datei seit dem Laden geändert, speichert die Oberfläche nicht und fragt, ob die eigene Änderung verworfen oder neu angewendet werden soll.
+
+**Kit-Stand.** Ein Projekt mit einem neueren Kit-Stand als die heruntergeladene Oberfläche — oder ohne erkennbaren Stand — ist nur lesbar; dann hilft eine aktuelle `einstellungen.mjs`.
+
+**Was sie nicht tut.** Sie zeigt keine Einstellungen von Claude Code (Freigaben, Sandbox, Umgebungswerte), legt in einem Projekt ohne Config keine an und prüft nicht, ob eingestellte Kommandos tatsächlich laufen oder Modelle erreichbar sind. Die Textdateien bleiben die Quelle; wer lieber dort arbeitet, kann das weiterhin.
+
 ## Alle Einstellungen
 
 <!-- einstellungen:start -->
