@@ -2,6 +2,31 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.1] - 2026-09-16
+- Board-Adapter liest den Aktivitaetsverlauf ueber die Kanban-Route (#670)
+- Fachartikel über Umbau workflow-kit
+- implement-next und implement-ready nennen das empfohlene Modell (#667)
+- /issues schreibt das empfohlene Modell in das Arbeitspaket (#666)
+- Nacht-Runner startet jede Session mit dem Modell ihrer Karte (#665)
+- night.modelle: Liste erlaubter Modellnamen (#664)
+- Release-Weg: ein Lauf, ein Commit (#658)
+- Wartende Session gilt dem Runner nicht mehr als gescheitert (#668)
+- Neues Konzept für workflow-kit 2.0
+- Qwen als zusätzlichen Reviewer einbinden
+- version.mjs rechnet den Bump ab dem committeten Stand (#656)
+- changelog.mjs bekommt die Option --marke mit lokalem Datum (#657)
+- checks.mjs run stempelt den Zeitpunkt in die Zusammenfassung (#655)
+- Abbruch der Review-Stufe hinterlaesst einen Vermerk am Plandokument (#654)
+- Der Ueberholt-Kommentar der Kette wird zurueckgelesen (#653)
+- /kontext blendet Vorhaben ohne Arbeitspakete aus (#651)
+- Umbenennung: beschriebenes Verhalten wird Spec-Driven Development (#465)
+- merge-production prueft den CI-Status vor dem Release-PR (#316)
+- Zeiten für Reviews erhöht
+- /kontext begrenzt die letzten Entscheidungen auf den juengsten Tag (#649)
+- /kontext gibt vom Spec-Index nur noch die Hinweiszeile aus (#648)
+- /kontext zeigt nur laufende Vorhaben und keine Arbeitspakete (#647)
+- CI gruen: Doku-Test ohne Installer-Kopie, Worktree-Test ohne CRLF-Annahme (#650)
+
 ## [1.53.0] - 2026-09-14
 - chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#639 #640 #641 #642 #643 #644 #645 #646 #620 #618)
 - Nacht-Runner stoppt vor der ersten Session bei ungueltiger settings.json (#618)
