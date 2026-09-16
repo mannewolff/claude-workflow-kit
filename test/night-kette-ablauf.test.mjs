@@ -78,3 +78,39 @@ test("[night-19] ein Issue in In progress haelt die Kette nicht auf — sie laeu
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
   });
 });
+
+// Die Herkunft der Budgets am Lauf (Issue #659): Defaults sind im Protokoll und im
+// Ergebnisstand sichtbar, ein vollstaendiger Block hinterlaesst keine Spur.
+const VOLLER_BLOCK = { label: "kit:night", planMin: 30, paketeMin: 25, reviewMin: 30, abdeckungMin: 10, kostenUsd: 50, korrekturrunden: 2 };
+
+test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const env = umgebung(dir);
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const lauf = stand(dir);
+    assert.deepEqual(lauf.budgetAusDefault, ["label", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]);
+    assert.deepEqual(Object.keys(lauf).slice(Object.keys(lauf).indexOf("budget"), Object.keys(lauf).indexOf("budget") + 2), ["budget", "budgetAusDefault"],
+      "budgetAusDefault steht unmittelbar hinter budget");
+    assert.match(res.stdout, /aus den Defaults: .*reviewMin=15.*night\.kette/);
+  });
+});
+
+test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinweiszeile", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const res = run(dir, ["--kette"], umgebung(dir));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.equal("budgetAusDefault" in stand(dir), false);
+    assert.doesNotMatch(res.stdout, /aus den Defaults/);
+  }, VOLLER_BLOCK);
+});
+
+test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const res = run(dir, ["--kette"], umgebung(dir));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.deepEqual(stand(dir).budgetAusDefault, ["reviewMin"]);
+    assert.match(res.stdout, /aus den Defaults: reviewMin=15/);
+    assert.doesNotMatch(res.stdout, /night\.kette in/);
+  }, { ...VOLLER_BLOCK, reviewMin: undefined });
+});

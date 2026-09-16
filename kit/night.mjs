@@ -426,6 +426,9 @@ let LAUF_STEMPEL = null;
 // Die Budgets der Kette, geladen in vorbereiten() — Modul-Zustand wie `config`, weil
 // ART_LABEL und die Stufen sie brauchen, ohne dass jede Funktion sie durchreicht.
 let KETTE_BUDGET = null;
+// Die Budget-Felder, die aus den Defaults stammen (Issue #659) — geladen zusammen mit
+// KETTE_BUDGET, gezeigt im Protokoll und am Lauf-Kopf.
+let KETTE_BUDGET_AUS_DEFAULT = [];
 
 // Der Grund des zuletzt gemerkten harten Stopps (Issue #558). Er nimmt denselben Weg
 // wie die Fehlerklasse — Modul-Zustand statt neuem Rueckgabewert —, damit die
@@ -698,6 +701,9 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // Die Kette fordert den Strom immer an (Plan #638, A5) und traegt ihre Budgets
     // am Lauf-Kopf, damit eine Auswertung den Abbruchgrund gegen die Zahl halten kann.
     ...(args.kette ? { budget: { ...KETTE_BUDGET } } : {}),
+    // Nur wenn Felder aus den Defaults stammen (Issue #659): Ein vollstaendiger Block
+    // hinterlaesst keine Spur, damit das Feld selbst schon der Befund ist.
+    ...(args.kette && KETTE_BUDGET_AUS_DEFAULT.length > 0 ? { budgetAusDefault: [...KETTE_BUDGET_AUS_DEFAULT] } : {}),
     einheiten: [],
     abschluss: null,
   };
@@ -2053,6 +2059,18 @@ export function ladeKetteBudget(config) {
   return budget;
 }
 
+/**
+ * Die Budget-Felder, die nicht in `night.kette` stehen und deshalb aus den Defaults
+ * kommen (Issue #659), in der Reihenfolge von `ladeKetteBudget`.
+ *
+ * Eigene Funktion statt einer zweiten Rueckgabe von `ladeKetteBudget`: Deren Ergebnis ist
+ * exportiert und an Fixtures getestet, die Herkunft ist eine andere Frage.
+ */
+export function ketteBudgetDefaults(config) {
+  const block = config?.night?.kette ?? {};
+  return Object.keys(KETTE_BUDGET_DEFAULTS).filter((feld) => block[feld] === undefined);
+}
+
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
 //
 // Warum nicht `board.mjs issue-review check`: Dieser Probelauf laeuft im Runner-Prozess
@@ -2394,6 +2412,21 @@ function ketteBudgetLaden() {
   } catch (e) {
     fail(e.message, "zustand");
   }
+  KETTE_BUDGET_AUS_DEFAULT = ketteBudgetDefaults(config);
+}
+
+/**
+ * Die Protokollzeile zu den Budgets aus den Defaults (Issue #659), `null` ohne solche.
+ * Setzt `night.kette` kein einziges Feld, sagt die Zeile das dazu: Ob der Block fehlt oder
+ * leer ist, macht fuer den Leser keinen Unterschied — beide Male gilt kein eigener Wert.
+ */
+function budgetDefaultsZeile(budget, ausDefault) {
+  if (ausDefault.length === 0) return null;
+  const werte = ausDefault.map((feld) => `${feld}=${budget[feld]}`).join(", ");
+  const ganz = ausDefault.length === Object.keys(KETTE_BUDGET_DEFAULTS).length
+    ? " — night.kette in .claude/workflow.config.json fehlt oder setzt kein Feld."
+    : "";
+  return `Budget der Kette aus den Defaults: ${werte}${ganz}`;
 }
 
 /**
@@ -3399,6 +3432,8 @@ function warneVorAltenLabels(issues) {
 export async function laufeKette(args) {
   const budget = KETTE_BUDGET;
   const repoRoot = process.cwd();
+  const defaultsZeile = budgetDefaultsZeile(budget, KETTE_BUDGET_AUS_DEFAULT);
+  if (defaultsZeile) log(defaultsZeile);
   if (!args.dryRun) {
     for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
   }

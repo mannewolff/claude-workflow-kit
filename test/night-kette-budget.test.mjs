@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ladeKetteBudget, kostenAddieren, KETTE_BUDGET_DEFAULTS } from "../kit/night.mjs";
+import { ladeKetteBudget, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS } from "../kit/night.mjs";
 
 test("[night-18] ohne Block gelten die Startwerte aus Fachplan #635", () => {
   assert.deepEqual(ladeKetteBudget({}), {
@@ -50,4 +50,27 @@ test("[night-18] kostenAddieren summiert Zahlen und zaehlt fehlende Werte als 0 
   kostenAddieren(lauf, { kostenUsd: 2 });
   assert.equal(lauf.kostenSumme, 3.25);
   assert.equal(lauf.kostenUnbekannt, 2, "null und fehlende Kennzahlen zaehlen als unbekannt");
+});
+
+// Die Herkunft der Budgets (Issue #659): welche Felder aus den Defaults stammen.
+test("[night-28] ketteBudgetDefaults ohne Block nennt alle sieben Felder", () => {
+  assert.deepEqual(ketteBudgetDefaults({}),
+    ["label", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]);
+  assert.deepEqual(ketteBudgetDefaults(undefined), ketteBudgetDefaults({ night: {} }));
+});
+
+test("[night-28] ketteBudgetDefaults mit vollstaendigem Block liefert eine leere Liste", () => {
+  const kette = { label: "kit:night", planMin: 30, paketeMin: 25, reviewMin: 30, abdeckungMin: 10, kostenUsd: 50, korrekturrunden: 2 };
+  assert.deepEqual(ketteBudgetDefaults({ night: { kette } }), []);
+});
+
+test("[night-28] ketteBudgetDefaults nennt genau das eine fehlende Feld", () => {
+  const kette = { label: "kit:night", planMin: 30, paketeMin: 25, abdeckungMin: 10, kostenUsd: 50, korrekturrunden: 2 };
+  assert.deepEqual(ketteBudgetDefaults({ night: { kette } }), ["reviewMin"]);
+});
+
+test("[night-28] ketteBudgetDefaults liefert die Felder in der Reihenfolge von ladeKetteBudget", () => {
+  const kette = { korrekturrunden: 2, planMin: 30, label: "kit:night" };
+  assert.deepEqual(ketteBudgetDefaults({ night: { kette } }), ["paketeMin", "reviewMin", "abdeckungMin", "kostenUsd"]);
+  assert.deepEqual(Object.keys(ladeKetteBudget({})).filter((f) => ketteBudgetDefaults({}).includes(f)), ketteBudgetDefaults({}));
 });
