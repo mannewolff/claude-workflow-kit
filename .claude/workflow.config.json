@@ -80,7 +80,7 @@
         "gpt-astra"
       ],
       "sonnet": [
-        "opus",
+        "gpt-astra",
         "qwen"
       ],
       "fable": [
@@ -88,7 +88,7 @@
         "gpt-astra"
       ],
       "gpt-sol": [
-        "fable",
+        "qwen",
         "gpt-astra"
       ],
       "qwen": [
