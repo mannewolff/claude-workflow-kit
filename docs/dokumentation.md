@@ -538,6 +538,8 @@ Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach R
 
 Der Skill liest die Ready-Spalte in Board-Reihenfolge (oben zuerst) und arbeitet sie sequenziell ab. Pro Issue: Board nach In progress bewegen, Issue vollständig lesen, Code und Tests gegen das Issue schreiben (testgetrieben: Tests zuerst, rot, dann implementieren bis grün), die betroffenen Prüfungen **vor dem Commit** laufen lassen (`node .claude/kit/checks.mjs run`, Anker `HEAD`, also genau dieses Arbeitspaket), lokal committen, Board nach In review bewegen. Dann das nächste Issue. Ist Ready leer, meldet der Skill Vollzug.
 
+**Das letzte Paket eines Vorhabens.** Bringt ein Lauf das letzte offene Paket eines Plans nach In review, beginnt die Schlussmeldung — bei `/implement-ready` wie bei `/implement-next` — mit `## Stand des Vorhabens`: zuerst, was ein Nutzer jetzt sieht, dann, was vom Anlass laut fachlicher Quelle und `Vorlage:`-Zeile nicht enthalten ist, erst danach Commits und Checks. Die Quelle holt der Skill vom Board. Grün heißt „erfüllt, was aufgeschrieben wurde“, nicht „erfüllt, was gemeint war“ — wer das Fehlende weiter unten liest, hält das Vorhaben für fertig. Nachts steht der Abschnitt am Anfang des Abschlussberichts des letzten Pakets.
+
 Zwei feste Grenzen: Der Skill pusht nie. Er zieht keine Backlog-Issues eigenmächtig nach Ready.
 
 ### /implement-test und /implement-done

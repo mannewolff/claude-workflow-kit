@@ -205,6 +205,16 @@ Format des Abschlussberichts:
 
 Sobald das Issue in In review liegt: naechstes Issue aus dem zuvor geladenen Ready-Array abarbeiten (in Array-Reihenfolge). Wenn Ready leer ist: Vollzug melden.
 
+### Stand des Vorhabens
+
+Hat dieser Lauf das letzte offene Paket eines Vorhabens nach In review gebracht — ein Paket mit `Plan: Issue #M`, und keine andere Karte mit derselben Zeile steht laut `node .claude/kit/board.mjs issue list` noch in Backlog, Ready oder In progress —, beginnt die Schlussmeldung mit dem Abschnitt `## Stand des Vorhabens`:
+
+1. **Was der Mensch jetzt sieht** — was sich für jemanden, der die Software benutzt, sichtbar geändert hat, in wenigen Sätzen.
+2. **Was vom Anlass nicht enthalten ist** — jedes Ziel und jedes fachliche Akzeptanzkriterium der fachlichen Quelle, das kein Paket hergestellt hat, und bei einer `Vorlage:`-Zeile jede Abweichung von der Vorlage. „Nichts" steht dort nur nach einem Abgleich Punkt für Punkt.
+3. Erst danach Commits, Checks und Hinweise.
+
+Die fachliche Quelle kommt aus der Zeile `Fachliche Quelle: Issue #N` des Plans `#M`, geholt mit `node .claude/kit/board.mjs issue get <N>` — nie aus dem Gespräch. Grün heißt „erfüllt, was aufgeschrieben wurde", nicht „erfüllt, was gemeint war"; wer das Fehlende weiter unten liest, hält das Vorhaben für fertig. Ein Paket ohne `Plan:`-Zeile gehört zu keinem Vorhaben, der Abschnitt entfällt. Unbeaufsichtigt steht derselbe Abschnitt am Anfang des Abschlussberichts des letzten Pakets.
+
 ## Verhalten bei leerem Ready
 
 > "Ready ist leer. Alle Issues in In review. Ich warte auf dein GO für den nächsten Batch."
