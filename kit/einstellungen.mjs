@@ -7,16 +7,22 @@
  * arbeitet über alle Kit-Projekte unter einem Ordner. Darum hat sie keine Nachbardateien,
  * aus denen sie importieren könnte, und trägt Schema und Regeln selbst.
  *
- * Dieser Stand (Issue #676) ist der Kern ohne Server: prüfen gegen das eingebettete Schema
- * und die Regeln über mehrere Felder, Team- und persönliche Ebene, und ein Schreiber, der
- * nur die geänderten Werte anfasst. Alles hier ist rein und exportiert.
+ * Der Kern (Issue #676) prüft gegen das eingebettete Schema und die Regeln über mehrere
+ * Felder, kennt Team- und persönliche Ebene und schreibt nur die geänderten Werte. Darüber
+ * liegt ein lokaler Server (Issue #677), der nur auf 127.0.0.1 lauscht und jede API-Anfrage
+ * an ein Zufallstoken, den eigenen Host und den eigenen Origin bindet.
  *
  * Nutzung:
+ *   node einstellungen.mjs [ordner] [--port <n>]
  *   node einstellungen.mjs --version
  *   node einstellungen.mjs --help
  */
 
-import { realpathSync } from "node:fs";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Wird von tools/sync-blobs.mjs gestempelt — nie von Hand setzen (Issue #171).
@@ -522,22 +528,335 @@ export function schreibeJson(alt, neu) {
 }
 
 // ============================================================
+// Projekte und Kit-Stand (Plan #674 E9, E10)
+// ============================================================
+
+const KONFIG = join(".claude", "workflow.config.json");
+const KONFIG_LOKAL = join(".claude", "workflow.config.local.json");
+const STAND_RE = /const KIT_VERSION = "(\d+\.\d+\.\d+)";/;
+
+/** Vergleicht zwei Versionen je Stelle numerisch; `1.9.0` ist älter als `1.53.1`. */
+export function vergleicheVersion(a, b) {
+  const x = a.split(".").map(Number);
+  const y = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (x[i] !== y[i]) return x[i] - y[i];
+  }
+  return 0;
+}
+
+function standAus(datei) {
+  try {
+    return readFileSync(datei, "utf-8").match(STAND_RE)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Der Startordner und seine direkten Unterverzeichnisse mit Config, je Name einmal. */
+export function findeProjekte(ordner) {
+  const kandidaten = [ordner];
+  for (const eintrag of readdirSync(ordner, { withFileTypes: true })) {
+    if (eintrag.isDirectory()) kandidaten.push(join(ordner, eintrag.name));
+  }
+  const gesehen = new Set();
+  const out = [];
+  for (const pfad of kandidaten) {
+    const name = basename(pfad);
+    if (gesehen.has(name) || !existsSync(join(pfad, KONFIG))) continue;
+    gesehen.add(name);
+    out.push({ name, pfad });
+  }
+  return out;
+}
+
+function kitStandVon(projektPfad, home) {
+  return standAus(join(projektPfad, ".claude", "kit", "board.mjs")) ?? standAus(join(home, ".claude", "kit", "board.mjs"));
+}
+
+function standUrteil(kitStand, eigenerStand) {
+  if (kitStand === null) return { bearbeitbar: false, hinweis: "Kit-Stand unbekannt — kein board.mjs im Projekt und keines unter ~/.claude/kit; nur lesbar." };
+  if (vergleicheVersion(kitStand, eigenerStand) > 0) {
+    return { bearbeitbar: false, hinweis: `Kit-Stand ${kitStand} ist neuer als diese Oberfläche (${eigenerStand}) — nur lesbar, bitte eine aktuelle einstellungen.mjs laden.` };
+  }
+  return { bearbeitbar: true, hinweis: null };
+}
+
+const hashVon = (text) => (text === null ? null : createHash("sha256").update(text).digest("hex"));
+
+function lesDatei(pfad) {
+  return existsSync(pfad) ? readFileSync(pfad, "utf-8") : null;
+}
+
+/** Ein Dateiinhalt als Objekt; `null` ohne Datei, `undefined` wenn nicht lesbar. */
+function alsObjekt(text, name, hinweise) {
+  if (text === null) return null;
+  try {
+    const wert = JSON.parse(text);
+    if (istObjekt(wert)) return wert;
+    hinweise.push(`${name} ist kein JSON-Objekt und nicht lesbar.`);
+  } catch (e) {
+    hinweise.push(`${name} ist nicht lesbar: ${e.message}`);
+  }
+  return undefined;
+}
+
+/** Liest beide Dateien eines Projekts samt Hash und Lesbarkeit. */
+function projektDateien(projekt) {
+  const teamText = lesDatei(join(projekt.pfad, KONFIG));
+  const lokalText = lesDatei(join(projekt.pfad, KONFIG_LOKAL));
+  const hinweise = [];
+  const team = alsObjekt(teamText, KONFIG, hinweise);
+  const lokal = alsObjekt(lokalText, KONFIG_LOKAL, hinweise);
+  return { teamText, lokalText, team, lokal, hinweise, hashes: { team: hashVon(teamText), lokal: hashVon(lokalText) } };
+}
+
+/** Das Teilschema eines Pfads aus dem eingebetteten Schema. */
+function schemaFuer(pfad) {
+  return pfad.split(".").reduce((k, teil) => k?.properties?.[teil], SCHEMA) ?? null;
+}
+
+const gehoertZu = (befundPfad, pfad) => befundPfad === pfad || befundPfad.startsWith(`${pfad}.`) || befundPfad.startsWith(`${pfad}[`);
+
+/** Der Zustand eines Projekts, wie die Oberfläche ihn zeigt. */
+export function projektZustand(projekt, { home, eigenerStand }) {
+  const kitStand = kitStandVon(projekt.pfad, home);
+  const urteil = standUrteil(kitStand, eigenerStand);
+  const d = projektDateien(projekt);
+  const lesbar = d.team !== undefined && d.lokal !== undefined;
+  const zustand = {
+    name: projekt.name,
+    kitStand,
+    bearbeitbar: urteil.bearbeitbar && lesbar,
+    hinweise: [...d.hinweise, ...(urteil.hinweis ? [urteil.hinweis] : [])],
+    hashes: d.hashes,
+    aelterAlsOberflaeche: kitStand !== null && vergleicheVersion(kitStand, eigenerStand) < 0,
+    themen: {},
+  };
+  if (!lesbar) return zustand;
+  const befunde = pruefe(d.team, d.lokal);
+  for (const [pfad, werte] of Object.entries(ebenen(d.team, d.lokal))) {
+    const thema = THEMEN[pfad.split(".")[0]] ?? "Unbekannt";
+    const schema = schemaFuer(pfad);
+    (zustand.themen[thema] ??= []).push({
+      pfad, beschreibung: schema?.description ?? null, schema, ...werte, befunde: befunde.filter((b) => gehoertZu(b.pfad, pfad)),
+    });
+  }
+  return zustand;
+}
+
+// ============================================================
+// Speichern (Plan #674 E8, E11)
+// ============================================================
+
+/** Die Schutzfunktionen, deren Abschalten eine Bestätigung verlangt (Fachplan #671, Frage 10). */
+function abgeschaltet(vorher, nachher) {
+  const out = [];
+  const checks = (c) => (Array.isArray(c?.buildChecks) ? c.buildChecks.length : 0);
+  if (checks(vorher) > 0 && checks(nachher) === 0) {
+    out.push({ pfad: "buildChecks", text: "Die Pflichtprüfungen werden geleert — Commit-Gate und Nacht-Runner prüfen danach nichts mehr." });
+  }
+  if (vorher?.issueReview?.requiredBeforeReady === true && nachher?.issueReview?.requiredBeforeReady !== true) {
+    out.push({ pfad: "issueReview.requiredBeforeReady", text: "Die Review-Pflicht vor Ready wird abgeschaltet — der Nacht-Runner stellt ungeprüfte Pakete dann nicht mehr zurück." });
+  }
+  return out;
+}
+
+const schluesselVon = (b) => `${b.pfad}|${b.grund}`;
+
+function schreibeProjekt(projekt, d, neu) {
+  if (JSON.stringify(neu.team) !== JSON.stringify(d.team)) {
+    writeFileSync(join(projekt.pfad, KONFIG), schreibeJson(d.teamText, neu.team), "utf-8");
+  }
+  if (JSON.stringify(neu.lokal) !== JSON.stringify(d.lokal ?? {})) {
+    const text = d.lokalText === null ? `${JSON.stringify(neu.lokal, null, 2)}\n` : schreibeJson(d.lokalText, neu.lokal);
+    writeFileSync(join(projekt.pfad, KONFIG_LOKAL), text, "utf-8");
+  }
+}
+
+/**
+ * Speichert eine Änderung. Liefert `{ status, body }`: 409 bei geänderter Datei, fehlender
+ * Bestätigung oder nicht bearbeitbarem Projekt, 422 bei ungültigem Wert, 200 mit dem neuen
+ * Zustand. Ein Wert, der schon vorher ungültig in der Datei stand, hält das Speichern
+ * anderer Felder nicht auf.
+ */
+export function speichere(projekt, auftrag, optionen) {
+  const zustand = projektZustand(projekt, optionen);
+  if (!zustand.bearbeitbar) return { status: 409, body: { art: "nichtBearbeitbar", hinweise: zustand.hinweise } };
+  const d = projektDateien(projekt);
+  if (auftrag.hashes?.team !== d.hashes.team || (auftrag.hashes?.lokal ?? null) !== d.hashes.lokal) {
+    return { status: 409, body: { art: "geaendert", grund: "Die Datei hat sich seit dem Laden geändert." } };
+  }
+  const neu = aenderungAnwenden(d.team, d.lokal, auftrag);
+  if (!neu.ok) return { status: 422, body: { art: "ungueltig", befunde: [befund(auftrag.aenderungen?.[0]?.pfad ?? "", neu.grund)] } };
+  const alteFehler = new Set(pruefe(d.team, d.lokal).filter((b) => b.art === "fehler").map(schluesselVon));
+  const neueFehler = pruefe(neu.team, neu.lokal).filter((b) => b.art === "fehler" && !alteFehler.has(schluesselVon(b)));
+  if (neueFehler.length > 0) return { status: 422, body: { art: "ungueltig", befunde: neueFehler } };
+  const aus = abgeschaltet(mergeWorkflowConfig(d.team, d.lokal).config, mergeWorkflowConfig(neu.team, neu.lokal).config);
+  const bestaetigt = new Set(auftrag.bestaetigt ?? []);
+  if (aus.some((a) => !bestaetigt.has(a.pfad))) return { status: 409, body: { art: "bestaetigung", abgeschaltet: aus } };
+  schreibeProjekt(projekt, d, neu);
+  return { status: 200, body: projektZustand(projekt, optionen) };
+}
+
+// ============================================================
+// HTTP-Server (Plan #674 E16)
+// ============================================================
+
+const TOKEN_HEADER = "x-einstellungen-token";
+const MAX_KOERPER = 1024 * 1024;
+
+/** Host und Origin müssen auf diesen Server zeigen — gegen DNS-Rebinding und fremde Seiten. */
+function herkunftErlaubt(req, port) {
+  const erlaubt = [`127.0.0.1:${port}`, `localhost:${port}`];
+  if (!erlaubt.includes(req.headers.host)) return false;
+  const origin = req.headers.origin;
+  return origin === undefined || erlaubt.some((h) => origin === `http://${h}`);
+}
+
+function tokenStimmt(req, token) {
+  const gesendet = Buffer.from(String(req.headers[TOKEN_HEADER] ?? ""));
+  const erwartet = Buffer.from(token);
+  return gesendet.length === erwartet.length && timingSafeEqual(gesendet, erwartet);
+}
+
+function antworte(res, status, body, kopf = {}) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...kopf });
+  res.end(typeof body === "string" ? body : JSON.stringify(body));
+}
+
+function leseKoerper(req) {
+  return new Promise((fertig, fehler) => {
+    const teile = [];
+    let laenge = 0;
+    req.on("data", (teil) => {
+      laenge += teil.length;
+      if (laenge > MAX_KOERPER) {
+        fehler(new Error("zu groß"));
+        req.destroy();
+      } else {
+        teile.push(teil);
+      }
+    });
+    req.on("end", () => fertig(Buffer.concat(teile).toString("utf-8")));
+    req.on("error", fehler);
+  });
+}
+
+function projektAusPfad(pfad, projekte) {
+  const treffer = pfad.match(/^\/api\/projekt\/([^/]+)$/);
+  if (!treffer) return null;
+  try {
+    const name = decodeURIComponent(treffer[1]);
+    return projekte.find((p) => p.name === name) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function beantworteApi(req, res, kontext) {
+  const pfad = new URL(req.url, "http://127.0.0.1").pathname;
+  const projekte = findeProjekte(kontext.ordner);
+  if (req.method === "GET" && pfad === "/api/projekte") {
+    const liste = projekte.map((p) => {
+      const stand = kitStandVon(p.pfad, kontext.home);
+      return { name: p.name, kitStand: stand, ...standUrteil(stand, kontext.eigenerStand) };
+    });
+    return antworte(res, 200, { projekte: liste, eigenerStand: kontext.eigenerStand });
+  }
+  const projekt = projektAusPfad(pfad, projekte);
+  if (!projekt) return antworte(res, 404, { grund: "Projekt unbekannt" });
+  if (req.method === "GET") return antworte(res, 200, projektZustand(projekt, kontext));
+  if (req.method !== "POST") return antworte(res, 405, { grund: "Methode nicht erlaubt" });
+  let auftrag;
+  try {
+    auftrag = JSON.parse(await leseKoerper(req));
+  } catch {
+    return antworte(res, 400, { grund: "Der Rumpf ist kein lesbares JSON oder zu groß." });
+  }
+  const ergebnis = speichere(projekt, auftrag, kontext);
+  return antworte(res, ergebnis.status, ergebnis.body);
+}
+
+/** Die Seite unter GET /. Bis Issue #678 ein Platzhalter. */
+function seite() {
+  return '<!doctype html><html lang="de"><meta charset="utf-8"><title>Einstellungen</title><p>Die Oberfläche folgt.</p></html>';
+}
+
+function beantworte(req, res, kontext, token, port) {
+  if (!herkunftErlaubt(req, port)) return antworte(res, 403, { grund: "Herkunft nicht erlaubt" });
+  const pfad = new URL(req.url, "http://127.0.0.1").pathname;
+  if (!pfad.startsWith("/api/")) {
+    if (req.method === "GET" && pfad === "/") return antworte(res, 200, seite(), { "Content-Type": "text/html; charset=utf-8" });
+    return antworte(res, 404, { grund: "nicht gefunden" });
+  }
+  if (!tokenStimmt(req, token)) return antworte(res, 403, { grund: "Token fehlt oder ist falsch" });
+  return beantworteApi(req, res, kontext).catch((e) => antworte(res, 500, { grund: e.message }));
+}
+
+/**
+ * Startet den Server auf 127.0.0.1. Liefert `{ server, port, token, url }`. `eigenerStand`
+ * und `home` sind für Tests überschreibbar; ohne sie gelten KIT_VERSION und das Home des Nutzers.
+ */
+export function starteServer({ ordner, port = 0, home = homedir(), eigenerStand = KIT_VERSION, token = randomBytes(24).toString("hex") }) {
+  const kontext = { ordner: resolve(ordner), home, eigenerStand };
+  const server = createServer((req, res) => beantworte(req, res, kontext, token, server.address().port));
+  return new Promise((fertig, fehler) => {
+    server.once("error", fehler);
+    server.listen(port, "127.0.0.1", () => {
+      const p = server.address().port;
+      fertig({ server, port: p, token, url: `http://127.0.0.1:${p}/#token=${token}` });
+    });
+  });
+}
+
+// ============================================================
 // Kommandozeile
 // ============================================================
 
 const HILFE = `einstellungen.mjs — Einstellungen des claude-workflow-kit pflegen
 
 Nutzung:
+  node einstellungen.mjs [ordner] [--port <n>]
+      Startet die Oberfläche für alle Kit-Projekte im Ordner (Default: Arbeitsverzeichnis)
+      und seine direkten Unterverzeichnisse. Erreichbar nur von diesem Rechner; die
+      ausgegebene Adresse trägt das Zugangstoken.
   node einstellungen.mjs --version
   node einstellungen.mjs --help
 `;
 
-function main(argv) {
-  if (argv.includes("--version")) {
+/** Liest Ordner und Port; ein fehlerhafter Port ist ein Abbruch mit Meldung. */
+export function leseArgumente(argv) {
+  const out = { ordner: process.cwd(), port: 0, version: false, hilfe: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--version") out.version = true;
+    else if (a === "--help" || a === "-h") out.hilfe = true;
+    else if (a === "--port") out.port = Number(argv[++i]);
+    else out.ordner = a;
+  }
+  if (!Number.isInteger(out.port) || out.port < 0 || out.port > 65535) out.fehler = "--port braucht eine Zahl zwischen 0 und 65535";
+  return out;
+}
+
+async function main(argv) {
+  const args = leseArgumente(argv);
+  if (args.version) {
     process.stdout.write(`einstellungen.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
     return;
   }
-  process.stdout.write(HILFE);
+  if (args.hilfe) {
+    process.stdout.write(HILFE);
+    return;
+  }
+  if (args.fehler || !existsSync(args.ordner)) {
+    const grund = args.fehler ?? `Ordner ${args.ordner} gibt es nicht`;
+    process.stderr.write(`Fehler: ${grund}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const { url } = await starteServer({ ordner: args.ordner, port: args.port });
+  process.stdout.write(`Einstellungen für ${resolve(args.ordner)}\nÖffnen: ${url}\nBeenden mit Strg+C.\n`);
 }
 
 // Nur als CLI ausführen, nicht beim Import (wie kit/board.mjs, Issue #146).
@@ -547,4 +866,4 @@ if (process.argv[1]) {
     alsCli = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
   } catch { /* argv[1] nicht auflösbar -> kein CLI-Start */ }
 }
-if (alsCli) main(process.argv.slice(2));
+if (alsCli) await main(process.argv.slice(2));
