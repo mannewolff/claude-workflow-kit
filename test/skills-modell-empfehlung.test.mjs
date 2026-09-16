@@ -51,3 +51,57 @@ test("[skills-22] der Skill bleibt unter 200 Zeilen", () => {
   const zeilen = SKILL.split("\n").length;
   assert.ok(zeilen < 200, `der Skill hat ${zeilen} Zeilen`);
 });
+
+// --- Die Empfehlung tagsueber (Issue #667) ---
+//
+// Tagsueber sitzt der Mensch daneben und waehlt sein Modell selbst. Verborgen bleiben soll
+// ihm die Empfehlung trotzdem nicht: Wer ein Paket interaktiv umsetzt, soll sehen, was die
+// Planung dafuer vorgesehen hat, ohne den Plan noch einmal zu oeffnen.
+//
+// Verbindlich ist sie dabei NICHT. Eine laufende Sitzung kann ihr eigenes Modell nicht
+// wechseln; sie verbindlich zu machen hiesse, den Menschen mitten im Lauf zum Neustart
+// aufzufordern. Deshalb prueft der letzte Fall hier auf die Abwesenheit eines Halts.
+
+const IMPLEMENT_SKILLS = [
+  ["implement-next", readFileSync(join(repoRoot, "skills", "implement-next", "SKILL.md"), "utf-8")],
+  ["implement-ready", readFileSync(join(repoRoot, "skills", "implement-ready", "SKILL.md"), "utf-8")],
+];
+
+/** Der Abschnitt zu Schritt 2 — von seiner Ueberschrift bis zur naechsten. */
+function schritt2(text) {
+  const start = text.search(/^#{2,4} .*2\..*Issue/m);
+  if (start < 0) return null;
+  const rest = text.slice(start);
+  // Ab dem Ende der Ueberschriftszeile suchen, nicht ab Zeichen 1: Sonst traefe das
+  // Muster die eigene Ueberschrift, von der nach slice(1) noch '## ' uebrig ist.
+  const nachKopf = rest.indexOf("\n") + 1;
+  const ende = rest.slice(nachKopf).search(/^#{2,4} /m);
+  return ende < 0 ? rest : rest.slice(0, nachKopf + ende);
+}
+
+test("[skills-23] beide implement-Skills nennen die Zeile im Abschnitt zu Schritt 2", () => {
+  for (const [name, text] of IMPLEMENT_SKILLS) {
+    assert.match(text, /Empfohlenes Modell:/, `${name}: die Zeile kommt nicht vor`);
+    const abschnitt = schritt2(text);
+    assert.ok(abschnitt, `${name}: der Abschnitt zu Schritt 2 ist nicht auffindbar`);
+    assert.match(abschnitt, /Empfohlenes Modell:/,
+      `${name}: die Zeile steht ausserhalb von Schritt 2 — vorher kennt die Session den Body gar nicht`);
+  }
+});
+
+test("[skills-23] beide Skills sagen, dass die laufende Sitzung ihr Modell nicht wechselt", () => {
+  for (const [name, text] of IMPLEMENT_SKILLS) {
+    const absatz = text.split(/\n\n/).find((a) => /Empfohlenes Modell:/.test(a));
+    assert.ok(absatz, `${name}: kein Absatz zur Zeile`);
+    assert.match(absatz, /wechselt|wechseln/i, `${name}: der Hinweis auf das nicht wechselbare Modell fehlt`);
+  }
+});
+
+test("[skills-23] die Angabe loest keinen Halt und keine Ruecksprache aus", () => {
+  for (const [name, text] of IMPLEMENT_SKILLS) {
+    const absatz = text.split(/\n\n/).find((a) => /Empfohlenes Modell:/.test(a));
+    assert.doesNotMatch(absatz, /kit:klaeren/, `${name}: die Zeile darf kein Label setzen`);
+    assert.match(absatz, /kein Halt|keine R(ü|ue)ckfrage|keine R(ü|ue)cksprache/i,
+      `${name}: es steht nicht ausdruecklich da, dass nichts anhaelt`);
+  }
+});
