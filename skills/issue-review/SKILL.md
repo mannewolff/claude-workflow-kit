@@ -99,10 +99,15 @@ Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du ke
 3. Widerspricht eine Entscheidung einer erkennbaren Konvention des Projekts?
 4. Was bricht, das der Plan nicht nennt — welches Verhalten, welcher Test, welche Kopie?
 5. Was fehlt im Zuschnitt, und was kann RAUS?
+6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen? Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.
 Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast. Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- PLAN ---
 {{ISSUE_BODY}}
+--- FACHLICHE QUELLE ---
+{{QUELLE_BODY}}
 ```
+
+**Die fachliche Quelle im Plan-Review.** Trägt der Plan `Fachliche Quelle: Issue #N`, holt die Session den Body dieser Karte mit `node .claude/kit/board.mjs issue get <N>` — wie den Plan selbst, nie aus dem Gesprächsverlauf — und setzt ihn für `{{QUELLE_BODY}}` ein; `{{VORLAGE_PFAD}}` ist der Pfad aus einer `Vorlage:`-Zeile im Plan oder in der Quelle. Fehlt die Quelle, entfallen der Abschnitt `--- FACHLICHE QUELLE ---` und Frage 6 ohne Vermerk; fehlt eine Vorlage, entfällt nur der Satz zur Vorlage. Ohne diesen Eingang prüft der Reviewer, ob der Plan zum Code passt, aber nicht, ob er das Ziel herstellt, für das er entstand.
 
 **Rolle `schnitt-abhaengigkeiten`** (Stufe `plan`, zweiter Reviewer — nur, wenn `reviewStufen.plan.reviewer` zwei vorsieht): derselbe Prompt wie `architektur-bestand`, aber mit den Fragen: Lässt sich der Plan in einzeln abschließbare Pakete zerlegen? Welche Reihenfolge erzwingt er, und steht sie im Plan? Ist ein Teil zu groß für einen Plan? Sagt „Verifizierung", WIE geprüft wird?
 
