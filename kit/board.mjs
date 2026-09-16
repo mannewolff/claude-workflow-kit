@@ -1681,21 +1681,23 @@ class ToolboxIssueTracker {
   /**
    * Aktivitaetsverlauf einer Karte (Issue #460).
    *
-   * Zwei Unterschiede zu `_comments`, beide beabsichtigt:
+   * Die Route ist `/api/kanban/items/{id}/activity` (Issue #670) und adressiert die
+   * **interne** ID — dieselbe Falle wie bei move, comments und labels (Befund vom
+   * 2026-08-29). Daher `_resolveByNumber`. Sie gibt es seit kanban-kit v1.43.0: Dort
+   * bleibt ein board-gebundenes Token auf `/api/kanban/**` beschraenkt (kanban-kit
+   * #877), und der Verlauf ist innerhalb dieser Grenze lesbar (#876). Die fruehere
+   * Karten-Route ausserhalb der Grenze beantwortet ein solches Token mit 403.
    *
-   * 1. Die Route liegt unter `/api/cards/{cardId}/...`, nicht unter
-   *    `/api/kanban/items/...`, und adressiert die **interne** ID — dieselbe Falle wie
-   *    bei move, comments und labels (Befund vom 2026-08-29). Daher `_resolveByNumber`.
-   * 2. **Ein Fehler wird nicht geschluckt.** `_comments` faengt 404/405 aelterer
-   *    Instanzen ab und liefert `[]`; hier waere das falsch. Der Verlauf ist die
-   *    Quelle des Anlagedatums — eine leere Liste hiesse „Karte ohne Geschichte" und
-   *    liesse das Gate ein altes Paket fuer neu halten. Der Aufrufer soll den Fehler
-   *    sehen, samt HTTP-Status.
+   * Ein Unterschied zu `_comments` bleibt, und er ist beabsichtigt: **Ein Fehler wird
+   * nicht geschluckt.** `_comments` faengt 404/405 aelterer Instanzen ab und liefert
+   * `[]`; hier waere das falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
+   * leere Liste hiesse „Karte ohne Geschichte" und liesse das Gate ein altes Paket fuer
+   * neu halten. Der Aufrufer soll den Fehler sehen, samt HTTP-Status.
    */
   async listActivity(number) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
-    const res = await this._fetch(`/api/cards/${item.id}/activity`);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
   }
 

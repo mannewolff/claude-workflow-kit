@@ -7,7 +7,10 @@
 // Zwei Dinge sind hier die Hauptsache:
 //   1. Der Endpunkt adressiert die INTERNE cardId, nicht die Kartennummer — dieselbe
 //      Falle wie bei move, comments und labels (Befund vom 2026-08-29). Die Fixture
-//      setzt id = number * 100, damit eine Verwechslung auffaellt.
+//      setzt id = number * 100, damit eine Verwechslung auffaellt. Seit Issue #670
+//      liegt er unter `/api/kanban/items/{id}/activity`: kanban-kit v1.43.0 laesst ein
+//      board-gebundenes Token nur noch unter `/api/kanban/**` zu (#877) und bietet den
+//      Verlauf dort an (#876). Die fruehere Karten-Route beantwortet es mit 403.
 //   2. Ein 404 wird NICHT zur leeren Liste abgeschwaecht. Bei den Kommentaren ist das
 //      richtig (aeltere Instanzen kennen die Route nicht), hier waere es falsch: Der
 //      Verlauf ist die Hauptsache, und ein fehlender Endpunkt saehe aus wie eine Karte
@@ -49,19 +52,25 @@ test("[board-1] activity adressiert die interne cardId, nicht die Kartennummer",
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(12)]) };
     // Nur die interne ID wird bedient. Kommt die Nummer, faellt der Test auf 404.
-    if (req.url === "/api/cards/1200/activity") return { status: 200, json: VERLAUF };
+    if (req.url === "/api/kanban/items/1200/activity") return { status: 200, json: VERLAUF };
     return null;
   }, async (dir, requests) => {
     const res = await runBoardAsync(dir, ["issue", "activity", "12"], MIT_TOKEN);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), VERLAUF);
     assert.ok(
-      requests.some((r) => r.url === "/api/cards/1200/activity"),
-      "der Request ging nicht an die interne cardId",
+      requests.some((r) => r.url === "/api/kanban/items/1200/activity"),
+      "der Request ging nicht an die interne cardId unter /api/kanban/items",
     );
     assert.ok(
-      !requests.some((r) => r.url === "/api/cards/12/activity"),
+      !requests.some((r) => r.url === "/api/kanban/items/12/activity"),
       "der Request ging an die Kartennummer statt an die cardId",
+    );
+    // Die Karten-Route beantwortet einem board-gebundenen Token seit kanban-kit #877 jede
+    // Anfrage mit 403 — schon ein einziger Aufruf dorthin haelt `spec.mjs apply` an.
+    assert.ok(
+      !requests.some((r) => r.url.startsWith("/api/cards/")),
+      "es ging noch eine Anfrage an die Karten-Route ausserhalb der Board-Grenze",
     );
   });
 });
@@ -73,7 +82,7 @@ test("[board-1] activity gibt den Verlauf unveraendert als JSON aus", async () =
   ];
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
-    if (req.url === "/api/cards/700/activity") return { status: 200, json: VERLAUF };
+    if (req.url === "/api/kanban/items/700/activity") return { status: 200, json: VERLAUF };
     return null;
   }, async (dir) => {
     const res = await runBoardAsync(dir, ["issue", "activity", "7"], MIT_TOKEN);
@@ -86,7 +95,7 @@ test("[board-1] activity gibt den Verlauf unveraendert als JSON aus", async () =
 test("[board-1] activity schwaecht einen 404 nicht zur leeren Liste ab", async () => {
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
-    if (req.url === "/api/cards/700/activity") return { status: 404, json: { message: "Not Found" } };
+    if (req.url === "/api/kanban/items/700/activity") return { status: 404, json: { message: "Not Found" } };
     return null;
   }, async (dir) => {
     const res = await runBoardAsync(dir, ["issue", "activity", "7"], MIT_TOKEN);
