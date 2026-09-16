@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.2] - 2026-09-16
+- /issues liest uebernommene Review-Funde gegen (#687)
+- Schlussmeldung eines Vorhabens nennt zuerst Sichtbares und Fehlendes (#686)
+- Stopp-Klasse: Abweichung vom fachlichen Anlass als Punkt 6 (#685)
+- Plan-Review liest fachliche Quelle und Vorlage mit (#684)
+- Vorlage als Spur durch Fachplan, Plan und Arbeitspakete (#683)
+- /retro weist Pakete der Nacht ohne Einwand als fuenfte Kennzahl aus (#680)
+- Einstellungs-Oberflaeche als Download ueber docs.mwolff.org (#679)
+- Oberflaeche der Einstellungen in den Farben der Kupferwarte (#678)
+- Lokaler Server der Einstellungs-Oberflaeche mit Absicherung (#677)
+- Kern der Einstellungs-Oberflaeche: Pruefung, Ebenen, minimaler Schreiber (#676)
+- Schema bereinigen, Einstellungs-Referenz der Doku daraus erzeugen (#675)
+- Runner erfasst den Verbrauch je Einheit und liefert ihn ein (#669)
+- Budgets der Kette aus den Defaults im Lauf sichtbar (#659)
+
 ## [1.53.1] - 2026-09-16
 - Board-Adapter liest den Aktivitaetsverlauf ueber die Kanban-Route (#670)
 - Fachartikel über Umbau workflow-kit
