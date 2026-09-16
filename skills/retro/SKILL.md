@@ -36,12 +36,13 @@ Identifiziere Anti-Patterns, die sich wiederholt haben:
 
 ### 4. Was sagen die Zahlen?
 
-Vier Kennzahlen für den Retro-Zeitraum, jede mit ihrer Quelle. Gezählt wird aus dem Board (`node .claude/kit/board.mjs issue list`, `issue get <N>` mit Kommentaren, `issue activity <N>` wo der Tracker es kann) und aus `git log`. Eine Zahl, die sich nicht ermitteln lässt, steht als „nicht ermittelbar: <Grund>" — nie geschätzt.
+Fünf Kennzahlen für den Retro-Zeitraum, jede mit ihrer Quelle. Gezählt wird aus dem Board (`node .claude/kit/board.mjs issue list`, `issue get <N>` mit Kommentaren, `issue activity <N>` wo der Tracker es kann) und aus `git log`. Eine Zahl, die sich nicht ermitteln lässt, steht als „nicht ermittelbar: <Grund>" — nie geschätzt.
 
 - **Gekippte Entscheidungen.** Zahl der Einträge unter `### Entscheidungen` in den Abschlussberichten und unter `## Architektonische Entscheidungen` in den Plänen des Zeitraums (E-Einträge nach `CLAUDE-workflow.md`, „Entscheiden statt fragen"), und davon die Zahl, die der Mensch danach gekippt hat — erkennbar an einem Kommentar oder Commit, der die Entscheidung umkehrt. Die Quote ist die Kennzahl: Bleibt sie nahe null, trägt „Entscheiden statt fragen"; steigt sie, nennt die Retro die betroffene Entscheidungsklasse als Kandidat für die Stopp-Klasse.
 - **Stopp-Fragen.** Zahl der Halte mit `kit:klaeren` im Zeitraum und je Halt der Punkt der Stopp-Klasse.
 - **Anforderung bis GO.** Je Vorhaben die Kalendertage vom Anlegen des ersten Dokuments (`[Fachlich]`, `[Plan]` oder `[Task]`) bis zum Ziehen nach Ready.
 - **GO bis Push.** Je Vorhaben die Kalendertage vom Ziehen nach Ready bis zum Push des letzten Commits.
+- **Pakete der Nacht ohne Einwand.** Je Kommentar mit dem Anker `## Nachtbericht, Kette` im Zeitraum die Pakete, die sein Abschnitt `### Stufen` nennt, in drei Zahlen: ohne Einwand (nach Ready gezogen, ohne vorherige Body-Änderung und ohne Kommentar des Menschen), nach Änderung (erst nach einer Body-Änderung oder einem Kommentar gezogen), zurückgehalten (bis zum Retro-Tag nicht gezogen oder geschlossen). Gezogen heißt: der erste Wechsel nach Ready laut `issue activity`; Änderungen und Kommentare davor aus `issue activity` und `issue get`. Die Zahl ist das Argument für oder gegen Variante B aus Idee #637 (das Kennzeichen am Fachplan als GO): Bleibt „ohne Einwand“ hoch, wiederholt das Ziehen nur das Urteil über den Plan. Liefert der Tracker keinen Verlauf: „nicht ermittelbar: <Grund>“.
 
 ## Output
 
@@ -72,6 +73,7 @@ Schreibe am Ende eine kurze Zusammenfassung:
 | Stopp-Fragen | <Zahl>, Punkte: <1–5> | Karten mit kit:klaeren |
 | Anforderung bis GO | <Tage je Vorhaben> | Board-Verlauf |
 | GO bis Push | <Tage je Vorhaben> oder nicht ermittelbar: <Grund> | Board-Verlauf, git log |
+| Pakete der Nacht ohne Einwand | <ohne Einwand> / <nach Änderung> / <zurückgehalten> | Nachtberichte, Board-Verlauf |
 
 ### Vorschlag für die Stopp-Klasse
 - <Entscheidungsklasse und Grund> oder: keiner
