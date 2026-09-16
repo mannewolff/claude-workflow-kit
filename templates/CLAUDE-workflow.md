@@ -86,6 +86,7 @@ Eine Session, die ein Dokument schreibt oder unbeaufsichtigt laeuft, entscheidet
 3. Verträge nach außen: eine Schnittstelle, die jemand anderes nutzt.
 4. Ein Widerspruch im Fachplan selbst, etwa zwei Akzeptanzkriterien, die sich ausschliessen.
 5. Eine Aenderung an Gates, Stop-Punkten oder am Prozess (W1 bis W4).
+6. Eine Abweichung vom fachlichen Anlass: Ein Plan oder eine Umsetzung weicht von einer vorgelegten Vorlage oder vom Ziel des Fachplans ab, oder beantwortet eine im Fachplan offen gelassene Frage zu Aussehen, Ort einer Ansicht oder einer fachlichen Grenze selbst.
 
 Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frage. Alles andere — ausdruecklich auch Randfaelle, Namensfragen, Fehlerpfade, Reihenfolgen und die Frage, welcher Test gemeint ist — wird entschieden. Schiedsrichter ist die Ordnung aus „Prioritaeten bei Zielkonflikten"; im Zweifel gewinnt der kleinste rueckbaubare Eingriff.
 

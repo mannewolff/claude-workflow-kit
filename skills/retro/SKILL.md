@@ -70,7 +70,7 @@ Schreibe am Ende eine kurze Zusammenfassung:
 | Kennzahl | Wert | Quelle |
 |----------|------|--------|
 | Gekippte Entscheidungen | <gekippt> von <gesamt> | Abschlussberichte, Pläne, Kommentare |
-| Stopp-Fragen | <Zahl>, Punkte: <1–5> | Karten mit kit:klaeren |
+| Stopp-Fragen | <Zahl>, Punkte: <1–6> | Karten mit kit:klaeren |
 | Anforderung bis GO | <Tage je Vorhaben> | Board-Verlauf |
 | GO bis Push | <Tage je Vorhaben> oder nicht ermittelbar: <Grund> | Board-Verlauf, git log |
 | Pakete der Nacht ohne Einwand | <ohne Einwand> / <nach Änderung> / <zurückgehalten> | Nachtberichte, Board-Verlauf |
