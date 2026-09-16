@@ -119,6 +119,9 @@ Nutzung:
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
+  node board.mjs nightrun melden --datei <ergebnisstand.json>
+      Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
+      (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
 
   node board.mjs --version
 
@@ -3572,6 +3575,169 @@ async function dispatchIssueReview(command, args) {
   }
 }
 
+// ============================================================
+// Nachtlauf einliefern (Issue #669)
+// ============================================================
+//
+// Der Vertrag ist `POST /api/kanban/night-runs` in kanban-kit (NightRunIngestController,
+// Plan #943): ein fertig gedeuteter Lauf mit Farbe je Arbeitspaket. Die Deutung folgt
+// kanban-kit `frontend/src/lib/nightRunErgebnisstand.ts`, beschraenkt auf die beiden
+// Lauf-Arten, die night.mjs heute schreibt. Anders als der Parser dort lehnt sie einen
+// unbekannten Ausgang nicht ab: Der Runner kann nachts niemanden fragen, und ein roter
+// UNEXPECTED_STATE ist ehrlicher als eine verlorene Nacht.
+
+// Laengengrenzen des Vertrags (NightRunController, NightRunLimits).
+const NACHTLAUF_TITEL_MAX = 300;
+const NACHTLAUF_AUSZUG_MAX = 4000;
+const NACHTLAUF_COMMIT_MAX = 40;
+const NACHTLAUF_EINHEITEN_MAX = 200;
+
+const NACHTLAUF_MODUS = { implementierung: "IMPLEMENTATION", kette: "CHAIN" };
+
+// Farbe nach Pruefzustand, getrennt fuer erfolg und fehlschlag (NACH_ZUSTAND dort).
+const NACHTLAUF_NACH_PRUEFUNG = {
+  geprueft: { erfolg: ["GREEN", null] },
+  leeresPaket: { erfolg: ["GREEN", null] },
+  ungeprueft: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },
+  unlesbar: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },
+  rot: { erfolg: ["YELLOW", "CHECKS_RED"], fehlschlag: ["RED", "CHECKS_RED"] },
+};
+
+// Ausgaenge mit fester Farbe, in beiden Lauf-Arten.
+const NACHTLAUF_FEST = {
+  uebersprungen: ["GREY", null],
+  liegengeblieben: ["GREY", null],
+  unbekannt: ["RED", "HARD_ABORT"],
+  harterStopp: ["RED", "HARD_ABORT"],
+  angehalten: ["RED", "AWAITING_DECISION"],
+  fertig: ["GREEN", null],
+};
+
+/** Die Farbe eines zurueckgestellten Pakets — erster Treffer gewinnt (ZURUECKGESTELLT dort). */
+function farbeZurueckgestellt(grund) {
+  if (grund.includes("Abhaengigkeit")) return ["GREY", "DEPENDENCY_UNMET"];
+  if (grund.includes("kit:klaeren")) return ["RED", "AWAITING_DECISION"];
+  if (grund.startsWith("Session ohne In-review-Ergebnis")) return ["RED", "UNEXPECTED_STATE"];
+  return ["GREY", null];
+}
+
+/** Die Farbe eines abgebrochenen Ketten-Vorgangs (deuteKettenAusgang dort). */
+function farbeAbgebrochen(einheit, grund) {
+  if (!grund.startsWith("Zeitbudget ")) return ["RED", "HARD_ABORT"];
+  const s = einheit.stufen;
+  const dokument = typeof s?.plan?.id === "string" || (Array.isArray(s?.pakete?.ids) && s.pakete.ids.length > 0);
+  return [dokument ? "YELLOW" : "RED", "TIME_BUDGET_EXCEEDED"];
+}
+
+function nachtlaufFarbe(einheit) {
+  const grund = typeof einheit.grund === "string" ? einheit.grund : "";
+  const ausgang = einheit.ausgang;
+  if (NACHTLAUF_FEST[ausgang]) return NACHTLAUF_FEST[ausgang];
+  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grund);
+  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grund);
+  if (ausgang === "erfolg" || ausgang === "fehlschlag") {
+    const zeile = NACHTLAUF_NACH_PRUEFUNG[einheit.pruefung?.zustand ?? "ungeprueft"];
+    return zeile?.[ausgang] ?? ["RED", "UNEXPECTED_STATE"];
+  }
+  return ["RED", "UNEXPECTED_STATE"];
+}
+
+/**
+ * Die Mengen im Vertragsformat, `null`, wenn nichts gemessen wurde. Eingabemenge ist alles
+ * Verarbeitete — eigene Eingabe plus beide Zwischenspeicher-Mengen —, der Zwischenspeicher-
+ * Anteil nur das daraus Gelesene. So ergibt das Beispiel aus Issue #669 die dort genannten
+ * 97,8 Prozent.
+ */
+function nachtlaufUsage(v) {
+  if (!v) return null;
+  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
+  const eingaben = [v.eingabeTokens, v.cacheErzeugtTokens, v.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
+  const usage = {
+    costUsd: zahl(v.kostenUsd),
+    inputTokens: eingaben.length ? eingaben.reduce((a, b) => a + b, 0) : null,
+    outputTokens: zahl(v.ausgabeTokens),
+    cachedInputTokens: zahl(v.cacheGelesenTokens),
+  };
+  return Object.values(usage).every((x) => x === null) ? null : usage;
+}
+
+function nachtlaufDauer(einheit) {
+  if (typeof einheit.dauerMs === "number") return einheit.dauerMs;
+  const stufen = Object.values(einheit.stufen ?? {}).map((s) => s?.dauerMs).filter((d) => typeof d === "number");
+  return stufen.length ? stufen.reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * Uebersetzt einen Ergebnisstand in die Meldung fuer `POST /api/kanban/night-runs`.
+ * Reine Funktion; `jetzt` bestimmt die Dauer seit dem Start, weil der Stand fortschreibend
+ * und damit vor seinem Ende gemeldet wird.
+ */
+export function nachtlaufMeldung(stand, jetzt = new Date()) {
+  const mode = NACHTLAUF_MODUS[stand?.art];
+  if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
+    .filter((e) => /^\d+$/.test(String(e?.id)))
+    .slice(0, NACHTLAUF_EINHEITEN_MAX)
+    .map((e) => {
+      const [state, errorClass] = nachtlaufFarbe(e);
+      const grund = typeof e.grund === "string" && e.grund !== "" ? e.grund : null;
+      return {
+        cardNumber: Number(e.id),
+        // @NotBlank im Vertrag: Ein leerer Titel faellt auf die Nummer zurueck.
+        title: String(e.titel || `#${e.id}`).slice(0, NACHTLAUF_TITEL_MAX),
+        state,
+        errorClass,
+        durationMs: nachtlaufDauer(e),
+        commitHash: typeof e.commit === "string" ? e.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
+        excerpt: grund === null ? null : grund.slice(0, NACHTLAUF_AUSZUG_MAX),
+        usage: nachtlaufUsage(e.verbrauch),
+      };
+    });
+  const grau = items.filter((i) => i.state === "GREY").length;
+  return {
+    startedAt: stand.start,
+    mode,
+    durationMs: Math.max(0, jetzt.getTime() - new Date(stand.start).getTime()),
+    processedCount: items.length - grau,
+    skippedCount: grau,
+    unparsedCount: 0,
+    complete: stand.complete === true,
+    usage: nachtlaufUsage(stand.verbrauch),
+    items,
+  };
+}
+
+async function nightrunMelden(args) {
+  const config = loadConfig();
+  if (config.issueTracker !== "toolbox") {
+    fail(`Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '${config.issueTracker}'.`);
+  }
+  if (!args.datei) fail("nightrun melden braucht --datei <ergebnisstand.json>");
+  let stand;
+  try {
+    stand = JSON.parse(readFileSync(args.datei, "utf-8"));
+  } catch (e) {
+    fail(`Ergebnisstand ${args.datei} nicht lesbar: ${e.message}`);
+  }
+  const res = await new ToolboxIssueTracker(config)._fetch("/api/kanban/night-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nachtlaufMeldung(stand)),
+  });
+  let antwort = null;
+  try { antwort = await res.json(); } catch { /* kein JSON-Rumpf */ }
+  process.stdout.write(JSON.stringify({ ok: true, outcome: antwort?.outcome ?? null }) + "\n");
+}
+
+async function dispatchNightrun(command, args) {
+  switch (command) {
+    case "melden": return nightrunMelden(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter nightrun-Befehl: '${command}'`);
+  }
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
@@ -3608,9 +3774,11 @@ async function main() {
     await dispatchIssueReview(command, args);
   } else if (axis === "kontext") {
     await dispatchKontext(command, args);
+  } else if (axis === "nightrun") {
+    await dispatchNightrun(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun`);
   }
 }
 

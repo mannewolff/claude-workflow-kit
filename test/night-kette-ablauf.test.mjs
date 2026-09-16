@@ -114,3 +114,40 @@ test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", NUR_POSIX, 
     assert.doesNotMatch(res.stdout, /night\.kette in/);
   }, { ...VOLLER_BLOCK, reviewMin: undefined });
 });
+
+// Verbrauch, Lauf-Art, complete und Einlieferung am Lauf (Issue #669).
+test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den Rest, die Art je Einheit und complete", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const lauf = stand(dir);
+    const e = lauf.einheiten.find((x) => x.id === F);
+    assert.equal(e.art, "kette");
+    assert.deepEqual(e.verbrauch, { kostenUsd: 4, eingabeTokens: 40, ausgabeTokens: 80, cacheErzeugtTokens: 120, cacheGelesenTokens: 160 }, "vier Sessions");
+    assert.deepEqual(lauf.verbrauch, e.verbrauch, "keine Session ohne Karte");
+    assert.deepEqual(lauf.verbrauchOhneEinheit, { kostenUsd: 0, eingabeTokens: 0, ausgabeTokens: 0, cacheErzeugtTokens: 0, cacheGelesenTokens: 0 });
+    assert.equal(lauf.complete, true, "[night-31] regulaer beendet");
+  });
+});
+
+test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokoll sagt es", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const res = run(dir, ["--kette"], umgebung(dir));
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /Einlieferung entfaellt: issueTracker 'local'/);
+  });
+});
+
+test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehlschlag, das Protokoll nennt den Grund", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    const env = { ...umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } }), NIGHT_MELDEN_ERZWINGEN: "1" };
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout, /Einlieferung fehlgeschlagen: .*nur mit issueTracker toolbox/);
+    assert.equal(stand(dir).einheiten.find((x) => x.id === F).ausgang, "fertig");
+    assert.equal(stand(dir).abschluss, "regulaer");
+  });
+});

@@ -120,7 +120,7 @@ export function fake(stufen = {}) {
     "  *) : ;;",
     "esac",
     'if [ -z "$KETTE_OHNE_RESULT" ]; then',
-    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
+    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
     "fi",
   ].join("\n");
 }

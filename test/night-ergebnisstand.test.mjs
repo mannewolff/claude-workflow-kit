@@ -404,6 +404,7 @@ test("ein Abbruch waehrend der Runde hinterlaesst harterStopp, Fehlerklasse trac
 
     const s = stand(dir);
     assert.equal(s.abschluss, "harterStopp", "ein erkannter Stopp darf nicht wie ein Absturz aussehen");
+    assert.equal(s.complete, false, "[night-31] ein harter Stopp laesst complete auf false");
     assert.equal(s.fehlerklasse, "tracker");
     assert.ok(typeof s.fehlerText === "string" && s.fehlerText.length > 0, "der Fehlertext fehlt");
     const e = einheit(dir, id);

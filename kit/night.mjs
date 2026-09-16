@@ -471,6 +471,7 @@ function fail(msg, klasse = "unbekannt") {
     LAUF.fehlerText = msg;
     LAUF.abschluss = "harterStopp";
     schreibeErgebnisstand();
+    laufMelden();
   }
   process.exit(1);
 }
@@ -601,6 +602,9 @@ function einheitAnlegen(id, titel, modellStand = null) {
     modell: modellStand?.modell ?? null,
     modellHerkunft: modellStand?.herkunft ?? null,
     modellGrund: modellStand?.grund ?? null,
+    // Die Lauf-Art je Einheit (Issue #669): Die auswertende Seite ordnet ihr den
+    // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
+    art: LAUF?.art ?? null,
     ausgang: "unbekannt",
   };
   if (LAUF) {
@@ -614,6 +618,42 @@ function einheitAnlegen(id, titel, modellStand = null) {
 function einheitErgaenzen(einheit, felder) {
   Object.assign(einheit, felder);
   schreibeErgebnisstand();
+  // Fortschreibend eingeliefert (Issue #669): Ein harter Stopp nimmt sonst die Daten der
+  // ganzen Nacht mit. Der Server ersetzt denselben Lauf bei jeder Meldung.
+  if (felder.ausgang !== undefined) laufMelden();
+}
+
+// Die zuletzt protokollierte Einliefer-Meldung — dieselbe Zeile steht nur einmal im
+// Protokoll, auch wenn fortschreibend nach jeder Einheit gemeldet wird.
+let LETZTE_MELDEZEILE = null;
+
+function meldezeile(zeile) {
+  if (zeile === LETZTE_MELDEZEILE) return;
+  LETZTE_MELDEZEILE = zeile;
+  log(zeile);
+}
+
+/**
+ * Liefert den Ergebnisstand ueber `board.mjs nightrun melden` an kanban-kit ein (Issue #669).
+ *
+ * Nie ein Abbruch: Faellt die Einlieferung aus, bleibt die Datei der Rueckfall, und das
+ * Protokoll nennt den Grund. Nur der toolbox-Tracker kennt die Schnittstelle; bei jedem
+ * anderen entfaellt der Aufruf mit einer Zeile. `NIGHT_MELDEN_ERZWINGEN` ist ein Test-Hook,
+ * der den Aufruf auch ohne toolbox erzwingt, damit der Fehlerpfad pruefbar ist.
+ */
+function laufMelden() {
+  if (!ERGEBNIS_FILE || !LAUF) return;
+  const tracker = config?.issueTracker;
+  if (tracker !== "toolbox" && !process.env.NIGHT_MELDEN_ERZWINGEN) {
+    meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
+    return;
+  }
+  const res = boardRoh("nightrun", "melden", "--datei", ERGEBNIS_FILE);
+  if (res.status !== 0) {
+    meldezeile(`Einlieferung fehlgeschlagen: ${res.text.trim().slice(0, 300)} — der Ergebnisstand bleibt als Datei.`);
+    return;
+  }
+  if (LAUF.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
 }
 
 /**
@@ -626,11 +666,13 @@ function einheitErgaenzen(einheit, felder) {
 function laufAbschliessen(abschluss) {
   if (!LAUF) return;
   LAUF.abschluss = abschluss;
+  LAUF.complete = abschluss === "regulaer";
   if (abschluss === "harterStopp") {
     const netz = sicherheitsnetzGrund(LAUF, STOPP_GRUND);
     if (netz !== null) LAUF.fehlerText = netz;
   }
   schreibeErgebnisstand();
+  laufMelden();
 }
 
 /**
@@ -706,6 +748,14 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     ...(args.kette && KETTE_BUDGET_AUS_DEFAULT.length > 0 ? { budgetAusDefault: [...KETTE_BUDGET_AUS_DEFAULT] } : {}),
     einheiten: [],
     abschluss: null,
+    // Ab hier Issue #669, hinter abschluss, weil die Folge stufe → einheiten Vertrag ist.
+    // `complete` ist `false`, solange der Lauf laeuft, und `true` nur am regulaeren Ende: Ein
+    // harter Stopp laesst es stehen, damit die Nacht am Board nicht als ganze erscheint.
+    complete: false,
+    // Der Verbrauch des ganzen Laufs, einschliesslich der Sessions ohne Karte, und der Teil
+    // davon, der zu keiner Einheit gehoert.
+    verbrauch: verbrauchLeer(),
+    verbrauchOhneEinheit: verbrauchLeer(),
   };
 }
 
@@ -1301,13 +1351,78 @@ export function leseKennzahlen(stdout) {
     if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
   }
   if (!letzte) return null;
+  // Die vier Mengen aus `usage` (Issue #669): Die CLI meldet sie ohnehin, und nur wer sie
+  // nicht verwirft, kann sie am Board zeigen. Kein Rechnen, nur Durchreichen.
+  const usage = letzte.usage && typeof letzte.usage === "object" ? letzte.usage : {};
   return {
     kostenUsd: endlicheZahl(letzte.total_cost_usd),
     apiDauerMs: endlicheZahl(letzte.duration_api_ms),
     zuege: endlicheZahl(letzte.num_turns),
     stopReason: nurString(letzte.stop_reason),
     isError: nurBoolean(letzte.is_error),
+    eingabeTokens: endlicheZahl(usage.input_tokens),
+    ausgabeTokens: endlicheZahl(usage.output_tokens),
+    cacheErzeugtTokens: endlicheZahl(usage.cache_creation_input_tokens),
+    cacheGelesenTokens: endlicheZahl(usage.cache_read_input_tokens),
   };
+}
+
+// --- Verbrauch je Einheit und Lauf (Issue #669) ---
+
+/** Die Felder des Verbrauchs, in dieser Reihenfolge im Ergebnisstand. */
+const VERBRAUCH_FELDER = ["kostenUsd", "eingabeTokens", "ausgabeTokens", "cacheErzeugtTokens", "cacheGelesenTokens"];
+
+/** Ein Verbrauch, in dem noch nichts gemessen wurde: jedes Feld `null`, nie 0. */
+export function verbrauchLeer() {
+  return Object.fromEntries(VERBRAUCH_FELDER.map((feld) => [feld, null]));
+}
+
+/**
+ * Addiert die Mengen einer Session feldweise auf `ziel`. Eine fehlende Menge traegt nichts
+ * bei; ein Feld, zu dem nie eine Menge kam, bleibt `null` — eine 0 behauptete, es sei
+ * nichts verbraucht worden. Reine Funktion ueber dem uebergebenen Objekt.
+ */
+export function verbrauchAddieren(ziel, kennzahlen) {
+  for (const feld of VERBRAUCH_FELDER) {
+    const wert = kennzahlen?.[feld];
+    if (typeof wert === "number" && Number.isFinite(wert)) ziel[feld] = (ziel[feld] ?? 0) + wert;
+  }
+  return ziel;
+}
+
+/**
+ * Der Verbrauch, der zu keiner Einheit gehoert: Lauf-Summe minus Summe ueber die Einheiten.
+ * Nur der Runner kennt beide Seiten — gerechnet aus den Einheiten allein waere der Rest per
+ * Konstruktion null. Ohne Lauf-Menge bleibt ein Feld `null`; eine Seite ohne Einheiten zaehlt
+ * 0, denn dann gehoert der ganze Verbrauch zu keiner Karte. Die Kosten werden auf sechs
+ * Stellen gerundet, damit kein Gleitkomma-Rauschen als Rest erscheint.
+ */
+export function verbrauchOhneEinheit(lauf) {
+  const einheiten = verbrauchLeer();
+  for (const e of lauf?.einheiten ?? []) verbrauchAddieren(einheiten, e.verbrauch);
+  const rest = verbrauchLeer();
+  for (const feld of VERBRAUCH_FELDER) {
+    const gesamt = lauf?.verbrauch?.[feld];
+    if (typeof gesamt !== "number") continue;
+    const differenz = gesamt - (einheiten[feld] ?? 0);
+    // `+ 0` macht aus einer gerundeten -0 eine 0.
+    rest[feld] = feld === "kostenUsd" ? Math.round(differenz * 1e6) / 1e6 + 0 : differenz;
+  }
+  return rest;
+}
+
+/**
+ * Verbucht die Mengen einer Session auf den Lauf und — gehoert sie zu einer Karte — auf
+ * deren juengste Einheit; danach steht der Rest neu im Stand. `issueId` ist `null` fuer
+ * Sessions ohne Karte, etwa den Vorflug.
+ */
+function verbrauchErfassen(issueId, kennzahlen) {
+  if (!LAUF || !kennzahlen) return;
+  verbrauchAddieren(LAUF.verbrauch, kennzahlen);
+  const einheit = issueId === null ? null : LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (einheit) verbrauchAddieren(einheit.verbrauch ??= verbrauchLeer(), kennzahlen);
+  LAUF.verbrauchOhneEinheit = verbrauchOhneEinheit(LAUF);
+  schreibeErgebnisstand();
 }
 
 /**
@@ -1656,6 +1771,9 @@ export async function runSession(issueId, args, opts = {}) {
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
+  // Jede Session einer Karte an genau einer Stelle verbucht (Issue #669): Implementierung,
+  // Salvage und alle Stufen der Kette laufen hier durch.
+  verbrauchErfassen(issueId, leseKennzahlen(res.stdout));
   return res;
 }
 
@@ -2259,7 +2377,10 @@ async function runVorflugSession(args, prompt) {
   } else {
     const permArgs = args.yolo ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"];
     cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, ...permArgs];
+    // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
+    // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
+    // Befund-Block steht dann im Text des result-Ereignisses (siehe reviewerVorflug).
+    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, "--output-format", "stream-json", "--verbose", ...permArgs];
   }
   const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
     ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
@@ -2271,6 +2392,7 @@ async function runVorflugSession(args, prompt) {
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
+  verbrauchErfassen(null, leseKennzahlen(res.stdout));
   return { res, timeoutMs };
 }
 
@@ -2297,7 +2419,9 @@ async function reviewerVorflug(args, reviewers, trackerId) {
   if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   if (res.error) return gescheitert(res.error.message);
 
-  const roh = parseVorflugBefund(res.stdout);
+  // Im Strom steht der Befund im Text des result-Ereignisses; ohne Strom (Test-Fakes, eine
+  // CLI, die das Format ignoriert) ist stdout selbst der Text.
+  const roh = parseVorflugBefund(leseErgebnisText(res.stdout) ?? res.stdout);
   if (!roh) {
     return gescheitert(res.status === 0
       ? "die Vorflug-Session endete ohne auswertbaren Befund-Block"
