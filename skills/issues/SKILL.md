@@ -181,6 +181,9 @@ Gelesen wird `specs/<bereich>.md`, und zwar **beide** Abschnitte: die gueltigen 
 
 **Pakete ohne Wirkung schreiben `KEINE — <Begruendung>`.** Die Begruendung ist **Pflicht**: „keine Wirkung" ist eine Aussage, kein Weglassen. Neben `KEINE` steht keine weitere Wirkungszeile.
 
+### 3b. Übernommene Review-Funde gegenlesen
+Liegt ein `[Plan]`-Issue `#M` vor, liest die Session **vor dem Schneiden** dessen Kommentare mit `node .claude/kit/board.mjs issue get <M>` — die Befunde der Plan-Prüfung und vor allem `## Einarbeitung, Runde 1` mit der Liste der übernommenen Funde. Nach dem Schneiden prüft sie je übernommenem Fund, ob er in mindestens einem Paket ankommt: als Aufgabe, als Akzeptanzkriterium oder als `Entscheidung:`-Zeile. Ein Fund, der im Plan-Body steht, aber in keinem Paket ankommt, geht beim Übertrag verloren. Der Abschluss nennt jeden solchen Fund unter **Nicht übertragene Review-Funde** mit seiner Kennung und einem Satz, sonst steht dort „keine“. Unbeaufsichtigt geht dieselbe Liste als Kommentar am Plan. Trägt der Plan keinen Einarbeitungs-Kommentar, entfällt der Schritt, und der Abschluss sagt das.
+
 ### 4. Abschluss
 **Die Empfehlung steht im Paket, nicht nur im Bericht.** Jedes angelegte Issue trägt im Abschnitt `## Kontext` — neben `Autor-Modell:` — die Zeile `Empfohlenes Modell: <name>`. Der Nacht-Runner liest genau sie und startet die Session der Karte damit; eine Empfehlung, die nur in der Tabelle unten steht, findet er nicht.
 

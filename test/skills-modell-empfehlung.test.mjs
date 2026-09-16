@@ -44,12 +44,12 @@ test("[skills-22] der Skill sagt, dass die Zeile ohne Liste ersatzlos entfaellt"
   assert.ok(absatz, "es steht nicht, dass die Zeile ohne Liste entfaellt");
 });
 
-test("[skills-22] der Skill bleibt unter 200 Zeilen", () => {
+test("[skills-22] der Skill bleibt unter 205 Zeilen", () => {
   // Die Grenze gehoert zu skills-14 und wird von test/skills-issues-kern.test.mjs
   // gemessen. Sie steht hier mit, weil dieses Paket den Absatz ERSETZT statt ihn zu
-  // ergaenzen — genau deshalb.
+  // ergaenzen — genau deshalb. Mit Issue #687 von 200 auf 205, gleich wie dort.
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 200, `der Skill hat ${zeilen} Zeilen`);
+  assert.ok(zeilen < 205, `der Skill hat ${zeilen} Zeilen`);
 });
 
 // --- Die Empfehlung tagsueber (Issue #667) ---

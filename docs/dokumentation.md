@@ -528,6 +528,8 @@ Ab diesem Punkt ist das Issue die Quelle der Wahrheit (nicht der Chat, nicht dei
 
 Jedes angelegte Issue trägt im Kontext-Abschnitt die Zeile `Empfohlenes Modell: <name>`, mit dem Namen aus `night.modelle` — erster Eintrag der Liste für Architektur- und Sicherheitslogik, letzter für mechanische Aufgaben. **Im Nachtbetrieb wirkt sie von selbst:** Der Runner startet die Session dieser Karte mit diesem Modell. Fehlt die Liste, entfällt die Zeile ersatzlos. Zum Abschluss listet der Skill die Issues zusätzlich mit derselben Empfehlung und je einem Satz Begründung in einer Tabelle — so siehst du vor dem GO, was womit laufen würde, ohne den Plan-Kontext noch einmal zu lesen, und kannst die Zeile in einem Paket ändern, bevor du es nach Ready ziehst.
 
+**Übernommene Review-Funde gegenlesen.** Vor dem Schneiden liest `/issues` die Kommentare des Plans, vor allem `## Einarbeitung, Runde 1`. Nach dem Schneiden prüft es je übernommenem Fund, ob er in mindestens einem Paket ankommt — als Aufgabe, Akzeptanzkriterium oder `Entscheidung:`-Zeile. Was verloren ginge, steht im Abschluss unter „Nicht übertragene Review-Funde“, nachts als Kommentar am Plan. Eine Präzisierung aus der Plan-Prüfung kommt sonst leicht nur bis zum Plan und nicht bis zur Umsetzung.
+
 ### Schritt 4: GO (menschlich)
 
 Du ziehst die Issues, die du im aktuellen Batch umsetzen willst, am Board nach Ready. Das ist deine Entscheidung: wie viel Arbeit du freigibst und was in diesen Durchlauf kommt. Die KI zieht nie eigenmächtig Issues nach Ready.
