@@ -457,7 +457,7 @@
     },
     "night": {
       "type": "object",
-      "description": "Der Nachtbetrieb (Plan #638). Heute nur die Nacht-Kette unter kette; die Umsetzungsnacht braucht keinen Block. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Der Nachtbetrieb (Plan #638). Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "kette": {
           "type": "object",
@@ -506,6 +506,15 @@
             }
           },
           "additionalProperties": false
+        },
+        "modelle": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^claude-"
+          },
+          "description": "Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Staerke: der erste Eintrag ist das staerkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' waere ein Angriff ueber eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs."
         }
       },
       "additionalProperties": false

@@ -297,3 +297,60 @@ test("die description-Felder nennen die drei Formen und den Unterschied String/a
     assert.match(text, /entschieden/, `${name} benennt den Unterschied vergessen/entschieden`);
   }
 });
+
+// --- night.modelle (Issue #664) ---
+//
+// Der Nacht-Runner soll das Modell einer Karte uebernehmen koennen. Ohne eine Liste
+// erlaubter Namen wanderte ein Wert aus einem Issue-Body unbesehen in `argv` — ein Paket
+// mit `Empfohlenes Modell: --dangerously-skip-permissions` waere ein Angriff ueber eine
+// Karte. Das `pattern` faengt das schon bei der Config-Pruefung ab, nicht erst zur
+// Laufzeit: Was das Schema verhindert, muss der Runner nicht erklaeren.
+//
+// Die Liste ist GEORDNET, absteigend nach Staerke. Das ist keine Kosmetik — `/issues`
+// leitet daraus ab, welcher Name das staerkste und welcher das schnellste Modell
+// benennt, und nachts fragt niemand nach.
+
+const configMitModellen = (modelle) => ({ ...beispielConfig, night: { modelle } });
+
+test("night.modelle: eine Liste von Modellnamen ist gueltig", () => {
+  assert.deepEqual(pruefe(schema, configMitModellen(["claude-opus-5", "claude-sonnet-5"])), []);
+});
+
+test("night.modelle: ein Eintrag mit fuehrendem Bindestrich faellt durch", () => {
+  // Der eigentliche Zweck des Feldes. Ein Wert, der als Flag gelesen wuerde, darf gar
+  // nicht erst in die Config kommen.
+  assert.notDeepEqual(pruefe(schema, configMitModellen(["--dangerously-skip-permissions"])), []);
+});
+
+test("night.modelle: ein Eintrag, der keine Zeichenkette ist, faellt durch", () => {
+  assert.notDeepEqual(pruefe(schema, configMitModellen([{ name: "claude-opus-5" }])), []);
+  assert.notDeepEqual(pruefe(schema, configMitModellen([5])), []);
+});
+
+test("night.modelle: die Feldbeschreibung nennt die Ordnung nach Staerke", () => {
+  const feld = schema.properties.night.properties.modelle;
+  assert.ok(feld, "das Feld night.modelle fehlt im Schema");
+  assert.match(feld.description, /St(ä|ae)rke/i, "die Ordnung nach Staerke steht nicht in der Beschreibung");
+  assert.match(feld.description, /schnellste/i, "dass der letzte Eintrag das schnellste Modell ist, steht nicht da");
+});
+
+test("night: die Blockbeschreibung nennt die Umsetzungsnacht nicht mehr als blocklos", () => {
+  // Sie tat es, solange nur die Kette einen Block brauchte. Mit night.modelle stimmt der
+  // Satz nicht mehr — und eine Beschreibung, die das Gegenteil behauptet, ist schlechter
+  // als keine.
+  assert.doesNotMatch(
+    schema.properties.night.description,
+    /Umsetzungsnacht braucht keinen Block/,
+    "die Beschreibung behauptet weiterhin, die Umsetzungsnacht brauche keinen Block",
+  );
+});
+
+test("night.modelle: die ausgelieferte Vorlage traegt die Liste", () => {
+  assert.deepEqual(pruefe(schema, beispielConfig), [], "die Vorlage bleibt gueltig");
+  assert.ok(Array.isArray(beispielConfig.night?.modelle), "templates/workflow.config.json fuehrt night.modelle nicht");
+  assert.equal(beispielConfig.night.modelle.length, 2, "zwei Eintraege erwartet");
+  assert.ok(
+    beispielConfig.night.modelle.every((m) => typeof m === "string" && m.startsWith("claude-")),
+    "die Vorlage traegt nur Claude-Namen",
+  );
+});

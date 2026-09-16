@@ -299,3 +299,19 @@ test("night.mjs: kaputte lokale Datei kippt den Lauf nicht", NUR_POSIX, () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Die Liste erlaubter Modellnamen ist teamweit (Issue #664).
+//
+// Sie gehoert bewusst NICHT in die Allowlist: Waere sie persoenlich ueberschreibbar,
+// koennte jemand lokal einen Namen ergaenzen, den das Team nie freigegeben hat — und
+// damit genau die Pruefung aushebeln, die verhindert, dass ein Wert aus einem Issue-Body
+// in `argv` wandert. Dasselbe Argument wie bei `buildChecks`, nur eine Stufe frueher.
+test("night.mjs: lokale night.modelle werden ignoriert und gemeldet", NUR_POSIX, () => {
+  const dir = nightFixture({ night: { modelle: ["claude-fremd-1"] } });
+  try {
+    const res = nightDryRun(dir);
+    assert.match(res.stderr, /'night'.*ignoriert/, `die Meldung fehlt: ${res.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

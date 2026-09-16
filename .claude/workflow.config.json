@@ -35,7 +35,11 @@
       "abdeckungMin": 10,
       "kostenUsd": 50,
       "korrekturrunden": 2
-    }
+    },
+    "modelle": [
+      "claude-opus-5",
+      "claude-sonnet-5"
+    ]
   },
   "issueReview": {
     "requiredBeforeReady": false,
