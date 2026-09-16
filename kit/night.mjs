@@ -646,10 +646,11 @@ const ART_LABEL = {
  * An --verbose haengt die Entstehung ausdruecklich NICHT mehr (Issue #557): Es fehlte
  * sonst genau in der Nacht die Auswertung, in der jemand das Flag vergessen hat — und
  * das ist die Nacht, in der man sie braucht. Der Grund eines Abbruchs wiegt mehr als die
- * Kennzahlen eines glatten Laufs. Ohne das Flag fordert der Runner die Stream-Ausgabe
- * nicht an, leseKennzahlen liefert null; damit das nicht als "diese Session hatte nichts
- * zu messen" gelesen wird, sagt kennzahlenHinweis den Grund einmal am Lauf-Kopf, nicht
- * je Einheit.
+ * Kennzahlen eines glatten Laufs.
+ *
+ * Seit Issue #668 haengen auch die KENNZAHLEN nicht mehr am Flag: Der Implementierungslauf
+ * fordert den Strom immer an, wie die Kette es seit Plan #638 tut. Der frueher hier
+ * gesetzte `kennzahlenHinweis` ist damit gegenstandslos und entfallen.
  *
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
@@ -677,12 +678,10 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // Bleibt als Feld erhalten, weil die Feldreihenfolge der Vertrag der Schemafassung 1
     // ist (Issue #522); seit Plan #638 gibt es keine Stufe mehr, der Wert ist immer null.
     stufe: null,
-    // Bedingt, und darum an fester Stelle: Die Feldreihenfolge ist der Vertrag, ein
-    // wanderndes Feld waere Interpretationsspielraum. Bei --verbose fehlt es ganz —
-    // es ist nicht null, denn es gibt dann nichts zu erklaeren.
-    ...(args.verbose || args.kette
-      ? {}
-      : { kennzahlenHinweis: "Ohne --verbose fordert der Runner die Stream-Ausgabe der Session nicht an; die Session-Kennzahlen fehlen darum in allen Einheiten." }),
+    // `kennzahlenHinweis` ist mit Issue #668 entfallen und kommt nicht zurueck: Seit
+    // der Implementierungslauf den Strom immer anfordert, gibt es keinen Lauf mehr ohne
+    // Kennzahlen, den er erklaeren koennte. Das Feld bedingt stehenzulassen waere
+    // schlechter als es zu streichen — es behauptete ein Fehlen, das es nicht gibt.
     // Die Kette fordert den Strom immer an (Plan #638, A5) und traegt ihre Budgets
     // am Lauf-Kopf, damit eine Auswertung den Abbruchgrund gegen die Zahl halten kann.
     ...(args.kette ? { budget: { ...KETTE_BUDGET } } : {}),
@@ -1223,6 +1222,19 @@ function endlicheZahl(wert) {
   return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
 }
 
+// Dieselbe Strenge fuer die beiden Felder, an denen der Ausgang einer Session haengt
+// (Issue #668): Ein `stop_reason`, das kein String ist, und ein `is_error`, das kein
+// Boolean ist, sind kein Messwert, sondern eine unbekannte Fassung des Ereignisses.
+// Sie als `null` zu fuehren sagt "nicht gemessen"; sie durchzureichen hiesse, einen
+// Grund-Praefix auf ein Objekt zu stuetzen.
+function nurString(wert) {
+  return typeof wert === "string" ? wert : null;
+}
+
+function nurBoolean(wert) {
+  return typeof wert === "boolean" ? wert : null;
+}
+
 /**
  * Liest Kosten, API-Dauer und Zahl der Zuege aus dem `result`-Ereignis eines
  * Session-Streams.
@@ -1240,13 +1252,19 @@ function endlicheZahl(wert) {
  * Zeitlimit, Fremdausgabe) werden uebersprungen statt geworfen: Eine Kennzahl darf einen
  * ausgewerteten Lauf nicht zu Fall bringen.
  *
- * Bei mehreren `result`-Zeilen zaehlt die letzte. `subtype` und `is_error` bleiben
- * unbeachtet — auch eine abgebrochene Session hat gekostet, und ihr Ausgang steht
- * ohnehin am Board.
+ * Bei mehreren `result`-Zeilen zaehlt die letzte. `subtype` bleibt unbeachtet — auch
+ * eine abgebrochene Session hat gekostet, und ihr Ausgang steht ohnehin am Board.
  *
- * Rueckgabe: `{ kostenUsd, apiDauerMs, zuege }` in US-Dollar, Millisekunden und Anzahl —
- * je eine Zahl oder `null` —, oder `null`, wenn keine `result`-Zeile im stdout steht.
- * Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand.
+ * Seit Issue #668 kommen `stop_reason` und `is_error` mit: An ihnen haengt, ob eine
+ * Runde ohne Ergebnis regulaer beendet wurde (`end_turn` — die Session hat auf etwas
+ * gewartet, das nie kam) oder abgebrochen ist. Sie stehen in derselben Zeile; ein
+ * zweiter Durchlauf ueber dasselbe stdout waere Aufwand ohne Gewinn, und zwei Stellen,
+ * die dieselbe Zeile deuten, laufen auseinander.
+ *
+ * Rueckgabe: `{ kostenUsd, apiDauerMs, zuege, stopReason, isError }` in US-Dollar,
+ * Millisekunden, Anzahl, Zeichenkette und Ja/Nein — je ein Wert oder `null` —, oder
+ * `null`, wenn keine `result`-Zeile im stdout steht. Die Schluessel sind verbindlich:
+ * Issue #488 uebernimmt sie in den Ergebnisstand.
  */
 export function leseKennzahlen(stdout) {
   let letzte = null;
@@ -1268,6 +1286,8 @@ export function leseKennzahlen(stdout) {
     kostenUsd: endlicheZahl(letzte.total_cost_usd),
     apiDauerMs: endlicheZahl(letzte.duration_api_ms),
     zuege: endlicheZahl(letzte.num_turns),
+    stopReason: nurString(letzte.stop_reason),
+    isError: nurBoolean(letzte.is_error),
   };
 }
 
@@ -1313,6 +1333,50 @@ export function leseErgebnisText(stdout) {
 
 // --- Nacht-Session ---
 
+/**
+ * Wartet, bis in der Prozessgruppe einer beendeten Session kein Prozess mehr laeuft
+ * (Issue #668).
+ *
+ * `runProcess` gibt jedem Kind eine eigene Prozessgruppe, toetet sie aber nur am
+ * Zeitlimit. Endet eine Session regulaer, waehrend sie noch einen Hintergrundlauf haelt
+ * — den Pflichtcheck, auf den sie zu warten glaubte —, laeuft dieser weiter. Zwei
+ * Schaeden entstehen daraus, und beide sind in der Nacht zu #900 zu besichtigen:
+ *
+ *   1. Die Vorpruefung des Salvage startet ihren eigenen `mvn verify` daneben. Zwei
+ *      gleichzeitige Testcontainers-Laeufe reissen einander die Ressourcen weg; die
+ *      Vorpruefung war nach 72 Sekunden rot, bei einem Lauf, der Minuten braucht.
+ *   2. Der ueberlebende `checks.mjs run` schreibt seine Zusammenfassung spaeter — im
+ *      schlimmsten Fall nach `verwerfeZusammenfassung()` der naechsten Runde, deren
+ *      Nachweis er damit faelscht.
+ *
+ * Gewartet wird hoechstens `restMs`; was laenger braucht, als die Runde hat, ist ohnehin
+ * verloren, und ein unbegrenztes Warten waere genau der Hang, den der Zeitlimit-Timer
+ * verhindern soll. Rueckgabe: `true`, wenn die Gruppe leer ist, `false` bei Ablauf der
+ * Frist — der Aufrufer protokolliert das, haelt den Lauf aber nicht an.
+ *
+ * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht);
+ * die Funktion meldet dort sofort `true`. Dieselbe bekannte Einschraenkung wie beim
+ * Kill am Zeitlimit.
+ */
+export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now } = {}) {
+  if (process.platform === "win32" || !pgid || restMs <= 0) return true;
+  const frist = jetzt() + restMs;
+  // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
+  // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
+  // Wartezeit ist eine Vorsichtsmassnahme und darf keine Runde aufhalten, weil ein
+  // Werkzeug fehlt.
+  const gruppeLaeuft = () => {
+    const res = spawnSync("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
+    if (res.error || res.status !== 0) return false;
+    return (res.stdout || "").trim() !== "";
+  };
+  while (gruppeLaeuft()) {
+    if (jetzt() >= frist) return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return true;
+}
+
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
 // parst stdout live zeilenweise. Eigener Timeout-Timer statt spawnSync-timeout,
 // weil wir waehrend des Laufs streamen muessen. Das Rueckgabe-Objekt spiegelt
@@ -1347,6 +1411,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     let timedOut = false;
     let settled = false;
     const timers = [];
+    // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
+    // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
+    const gestartet = Date.now();
 
     const done = (result) => {
       if (settled) return;
@@ -1410,11 +1477,21 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     });
 
     child.on("error", (err) => done({ status: null, signal: null, error: err, stdout, stderr }));
-    child.on("close", (code, signal) => {
+    child.on("close", async (code, signal) => {
       if (useStream && buf.trim()) emitVerbose(issueId, buf);
       const error = timedOut
         ? Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })
         : null;
+      // Erst messen, wenn niemand mehr arbeitet (Issue #668). Nach einem Zeitlimit
+      // entfaellt das: Dort hat killTree die Gruppe gerade erledigt, und ein weiteres
+      // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
+      if (!timedOut) {
+        const restMs = Math.max(0, timeoutMs - (Date.now() - gestartet));
+        const leer = await warteAufProzessgruppe(child.pid, restMs);
+        if (!leer) {
+          log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
+        }
+      }
       done({ status: code, signal, error, stdout, stderr });
     });
   });
@@ -1429,6 +1506,14 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
 // Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
 // (geht als NIGHT_KETTE_STUFE in die Kind-Umgebung, A14 — fuer die Test-Fakes und das
 // Protokoll; KIT_AGENT_MODEL bleibt daneben das alleinige Erkennungsmerkmal der Skills).
+//
+// Seit Issue #668 `vordergrundCheck`: sperrt der Session das `Monitor`-Werkzeug und gibt
+// ihr Bash-Zeitlimits in Hoehe des Rundenzeitlimits mit. Beides gehoert zusammen und
+// traegt darum EINEN Schalter — die Sperre allein liesse die Session im Vordergrund an
+// der Zehn-Minuten-Grenze des Bash-Werkzeugs sterben, die Zeitlimits allein aenderten
+// nichts daran, dass sie weiterhin wartend enden kann. Gesetzt wird er fuer die
+// Implementierungs-Runde; die Salvage-Session bekommt ihn nicht, ihr Prompt verbietet
+// lange Laeufe ohnehin.
 // Exportiert fuer die Kette und ihre Tests.
 export async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
@@ -1453,8 +1538,19 @@ export async function runSession(issueId, args, opts = {}) {
       ? ["--dangerously-skip-permissions"]
       : ["--permission-mode", "acceptEdits"];
     const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
+    // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
+    // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
+    // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
+    // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
+    //
+    // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
+    // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
+    // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
+    // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
+    // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
+    const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
     cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
+    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs, ...werkzeugArgs];
   }
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
@@ -1467,6 +1563,15 @@ export async function runSession(issueId, args, opts = {}) {
       NIGHT_PROMPT: prompt,
       KIT_AGENT_MODEL: args.model,
       ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
+      // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
+      // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
+      // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
+      // Testcontainers liegt darueber; die Session staerbe an der Uhr statt am Code.
+      // Das Rundenzeitlimit ist die richtige Obergrenze: Was laenger braucht, als die
+      // Runde hat, ist ohnehin verloren.
+      ...(opts.vordergrundCheck
+        ? { BASH_MAX_TIMEOUT_MS: String(timeoutMs), BASH_DEFAULT_TIMEOUT_MS: String(timeoutMs) }
+        : {}),
       ...opts.extraEnv,
     },
   });
@@ -1659,9 +1764,12 @@ function runBuildChecksSync(cfg) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
-    if (res.status !== 0) return { ok: false, output };
+    // Das rote Kommando namentlich (Issue #668): Ohne es nennt die Stopp-Meldung nur,
+    // DASS die Checks rot waren. Im Protokoll zu #900 fehlte deshalb jede Spur davon,
+    // welcher der vier Checks versagt hat — und die Ursache liess sich nicht pruefen.
+    if (res.status !== 0) return { ok: false, output, rotesKommando: cmd };
   }
-  return { ok: true, output };
+  return { ok: true, output, rotesKommando: null };
 }
 
 // Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
@@ -1675,10 +1783,10 @@ function runBuildChecksSync(cfg) {
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
 function verifyChecksForSalvage(cfg) {
   const first = runBuildChecksSync(cfg);
-  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null };
+  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
 
   const fixCmd = (cfg.formatFixCommand || "").trim();
-  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
+  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
   // Wie oben: fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
@@ -1686,9 +1794,9 @@ function verifyChecksForSalvage(cfg) {
   spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
 
   const second = runBuildChecksSync(cfg);
-  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null };
+  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
   log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
-  return { ok: true, output: second.output, formatFixCmd: fixCmd };
+  return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
 }
 
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
@@ -3424,7 +3532,12 @@ export function pruefeIssueGates(top) {
 async function versucheSalvage(top, args) {
   const checks = verifyChecksForSalvage(config);
   if (!checks.ok) {
-    log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
+    // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
+    // Urteil nannte. Wer morgens sichtet, braucht den Befund — die letzten Zeilen sind
+    // dieselbe Menge, die auch der Salvage-Prompt mitgibt.
+    const tail = (checks.output || "").trim().split("\n").slice(-15).join("\n");
+    log(`  Salvage nicht moeglich: ${grundCheckRot(checks.rotesKommando ?? "unbenanntes Kommando", "Vorpruefung des Runners")} — die Runde ist wirklich gescheitert.`);
+    if (tail) log(`  Ausgabe des roten Checks:\n${tail}`);
     return "nichtMoeglich";
   }
   log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
@@ -3451,6 +3564,44 @@ async function versucheSalvage(top, args) {
   return "gescheitert";
 }
 
+// Die Gruende einer Runde ohne Ergebnis (Issue #668).
+//
+// Woertliche Konstanten, weil Tests per Regex auf sie pruefen und weil sie in drei
+// Ausgaben zugleich erscheinen: Protokoll, Board-Kommentar und `grund` des
+// Ergebnisstands. Eine zweite Fassung an einer der drei Stellen waere eine zweite
+// Wahrheit ueber denselben Vorgang.
+//
+// Sie beantworten die Frage, die der bisherige Text offenliess: nicht WAS der Runner
+// vorgefunden hat — "nicht in In review UND Working Tree dirty" —, sondern WARUM. Die
+// naechsten Schritte sind je Fall verschieden: Ein `end_turn` ohne Commit ist eine
+// Session, die auf etwas gewartet hat; ein Zeitlimit ist ein zu grosses Paket; ein
+// `is_error` ist ein Abbruch; ein roter Pflichtcheck ist Arbeit am Code.
+const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
+const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
+const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
+const GRUND_UNBEKANNT = "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet";
+const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${kommando} (${quelle})`;
+
+/**
+ * Warum hat diese Runde nichts abgeschlossen (Issue #668)?
+ *
+ * Reine Funktion ueber dem Ergebnis von `runSession` und der Pruef-Zusammenfassung der
+ * Session, damit die Zuordnung an Fixtures pruefbar ist. Die Reihenfolge ist die
+ * Rangfolge: Das Zeitlimit schlaegt alles, weil ein gekillter Baum ueber seinen
+ * `stop_reason` nichts mehr sagt; danach der Abbruch; danach ein roter Pflichtcheck der
+ * Session, weil er konkreter ist als jedes Ende; zuletzt das regulaere Ende.
+ *
+ * Exportiert fuer die Tests.
+ */
+export function rundenGrund(res, pruefung) {
+  if (res?.error?.code === "ETIMEDOUT" || res?.signal === "SIGTERM") return GRUND_ZEITLIMIT;
+  const kennzahlen = leseKennzahlen(res?.stdout);
+  if (kennzahlen?.isError === true) return GRUND_IS_ERROR;
+  if (pruefung?.zustand === "rot") return grundCheckRot(pruefung.rotesKommando ?? "unbenanntes Kommando", "Session");
+  if (kennzahlen?.stopReason === "end_turn") return GRUND_END_TURN;
+  return GRUND_UNBEKANNT;
+}
+
 /**
  * Der vierte harte Stopp: die Runde hat nichts abgeschlossen und den Baum
  * veraendert (Issue #404).
@@ -3468,7 +3619,7 @@ async function versucheSalvage(top, args) {
  * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
  * Stand, den der Halt gerade verworfen hat.
  */
-async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
+async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung) {
   // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
   // Label nicht, das die Session selbst gesetzt hat.
   if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
@@ -3486,10 +3637,14 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") return "hardStop";
   }
-  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`;
+  // Der Grund steht VOR dem Zustand (Issue #668): Wer morgens sichtet, liest zuerst,
+  // warum die Runde nichts abgeschlossen hat, und danach, was der Runner vorgefunden hat.
+  // Der Zustandstext bleibt erhalten — er war nie falsch, nur unvollstaendig.
+  const grund = rundenGrund(res, pruefung);
+  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
   log(`  ${satz}`);
   board("issue", "comment", String(top.id), "--text",
-    "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+    `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`);
   merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }
@@ -3615,7 +3770,7 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, v
     return "hardStop";
   }
 
-  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
+  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung);
 
   // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
   // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
@@ -3669,7 +3824,12 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
   // traegt den Body nicht in jeder Adapter-Fassung.
   const vorher = board("issue", "get", String(top.id));
-  const res = await runSession(top.id, args);
+  // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
+  // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
+  // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
+  // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
+  // Implementierungs-Runde.
+  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true });
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.

@@ -158,7 +158,12 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
   }
 });
 
-test("[night-2] ohne --verbose entsteht der Ergebnisstand ebenfalls, mit kennzahlenHinweis am Lauf-Kopf", NUR_POSIX, () => {
+// Bis Issue #668 stand hier das Gegenteil: Ohne --verbose forderte der Runner den Strom
+// nicht an, die Kennzahlen fehlten, und kennzahlenHinweis sagte das am Lauf-Kopf. Seit
+// #668 fordert der Implementierungslauf den Strom immer an — der Hinweis hat damit
+// keinen Gegenstand mehr und entfaellt in JEDEM Lauf. Das Feld bedingt stehenzulassen
+// waere schlimmer als es zu streichen: Es behauptete fehlende Kennzahlen, die es gibt.
+test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis — der Strom wird immer angefordert", NUR_POSIX, () => {
   const dir = setupProjekt("night-stand-still-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -170,20 +175,51 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ebenfalls, mit kennzah
     const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
     assert.equal(stand.schemaFassung, 1, "die Schemafassung bleibt dieselbe");
     assert.ok(
-      typeof stand.kennzahlenHinweis === "string" && stand.kennzahlenHinweis.length > 0,
-      `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(stand.kennzahlenHinweis)}`,
+      !("kennzahlenHinweis" in stand),
+      `ohne --verbose darf kein kennzahlenHinweis mehr entstehen, gefunden: ${JSON.stringify(stand.kennzahlenHinweis)}`,
     );
-    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen — ein bedingtes Feld an
-    // wechselnder Stelle waere Interpretationsspielraum genau dort, wo keiner geduldet ist.
+    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen: Faellt das bedingte Feld
+    // weg, folgt einheiten unmittelbar auf stufe — und zwar in beiden Betriebsarten.
     const schluessel = Object.keys(stand);
     assert.equal(
       schluessel[schluessel.indexOf("stufe") + 1],
-      "kennzahlenHinweis",
-      `kennzahlenHinweis steht nach stufe und vor einheiten, gefunden: ${schluessel.join(", ")}`,
+      "einheiten",
+      `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
     );
-    assert.equal(schluessel[schluessel.indexOf("kennzahlenHinweis") + 1], "einheiten");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Der Beweis, dass der Strom wirklich angefordert wird, und nicht nur der Hinweis
+// verschwunden ist: Der Session-Fake schreibt seine Argumente mit. Ohne diesen Test
+// bestuende das Streichen des Feldes fuer sich — und die Kennzahlen fehlten weiter.
+test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream-json, auch ohne --verbose", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-strom-");
+  let binDir = null;
+  try {
+    readyIssue(dir, "Belegt die Stream-Anforderung");
+    // NIGHT_CLAUDE_CMD ist der Test-Hook-Zweig und baut die Argumente NICHT — deshalb
+    // faehrt dieser Test den Produktivzweig ueber eine Fake-CLI im PATH.
+    //
+    // Fake und Mitschrift liegen AUSSERHALB des Fixture-Repos: Im Repo machten sie den
+    // Working Tree dirty, und der Vorflug beendete den Lauf, bevor eine Session startet.
+    binDir = mkdtempSync(join(tmpdir(), "night-stand-fakebin-"));
+    const argLog = join(binDir, "cli-args.txt");
+    writeFileSync(join(binDir, "claude"), `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\nexit 0\n`);
+    chmodSync(join(binDir, "claude"), 0o755);
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      PATH: `${binDir}:${process.env.PATH}`,
+    });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const args = readFileSync(argLog, "utf-8").split("\n");
+    assert.ok(args.includes("--output-format"), `--output-format fehlt: ${args.join(" ")}`);
+    assert.ok(args.includes("stream-json"), `stream-json fehlt: ${args.join(" ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (binDir) rmSync(binDir, { recursive: true, force: true });
   }
 });
 
