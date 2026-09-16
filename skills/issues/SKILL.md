@@ -27,12 +27,12 @@ Eine Stopp-Frage wird interaktiv gestellt; unbeaufsichtigt endet der Skill mit d
 
 ### 2. Issues schneiden
 Ein Issue = ein logischer Schritt, der eigenständig getestet werden kann. Kriterien:
-- Ein Issue löst genau eine Sache
-- Es kann isoliert committed und reviewed werden
+- Ein Issue löst genau eine Sache und kann isoliert committed und reviewed werden
 - Es hat messbare Akzeptanzkriterien
 - Abhängigkeiten zu anderen Issues sind explizit
 - Was sich nicht in überschaubarem Aufwand erledigen lässt, wird in Sub-Issues geschnitten
 - Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig portabel gedacht ist (Installer, Single-File-Tool, kopierbares Script), muss das Akzeptanzkriterium explizit enthalten: "lauffaehig ohne weiteren Repo-Kontext". Ohne diesen Prueffall bleibt die Portabilitaet ungetestet.
+- Vorlage-Konvention: Bringt der Mensch eine Vorlage mit — einen Gestaltungsentwurf, ein Mockup, eine Skizze —, trägt jedes Dokument der Kette die Zeile `Vorlage: <Pfad> — verbindlich | Anregung`: `/fachplan` im Abschnitt `## Ziel`, `/techplan` im Kopf des Plans, `/issues` im `## Kontext` jedes Pakets, das Aussehen oder Aufbau einer Ansicht berührt. Bei „verbindlich“ entscheidet `/techplan` keine offene Gestaltungsfrage gegen die Vorlage — ein Widerspruch ist eine Stopp-Frage, nachts `kit:klaeren` —, und jedes solche Paket nennt die Stelle der Vorlage und trägt als Akzeptanzkriterium die Abnahme per Bildschirmfoto neben der Vorlage; `issue check-form` weist ein Paket mit verbindlicher Vorlage ohne Bildschirmfoto im Akzeptanzkriterium ab (I5).
 
 Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Autor-Modell: <wert>`. Der Wert entsteht in dieser Reihenfolge:
 

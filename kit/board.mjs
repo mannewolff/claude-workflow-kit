@@ -102,7 +102,7 @@ Nutzung:
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I4. Die Stufe
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I5. Die Stufe
       kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
@@ -2921,6 +2921,20 @@ function pruefeAbhaengigkeiten(zeilen) {
   return verstoesse;
 }
 
+// Die Vorlage-Zeile im Kontext (Issue #683): `Vorlage: <Pfad> — verbindlich | Anregung`.
+const VORLAGE_VERBINDLICH = /^Vorlage:[^\S\n]*\S.*[—–-][^\S\n]*verbindlich[^\S\n]*$/i;
+
+/**
+ * I5: Eine verbindliche Vorlage verlangt die Abnahme per Bildschirmfoto im Akzeptanzkriterium
+ * (Issue #683). Ohne Pruefung verdunstet die Vorlage zwischen Plan und Paket — alle Checks
+ * gruen, und die Ansicht sieht aus wie vorher. Der Block unter dem Kriterium zaehlt mit.
+ */
+function pruefeVorlage(kontext, akzeptanz) {
+  if (!kontext?.zeilen.some((z) => VORLAGE_VERBINDLICH.test(z.trim()))) return [];
+  if (akzeptanz?.zeilen.some((z) => /bildschirmfoto/i.test(z))) return [];
+  return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
+}
+
 function pruefeIssue(abschnitte) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
@@ -2929,6 +2943,7 @@ function pruefeIssue(abschnitte) {
   if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
+  verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }
@@ -2938,8 +2953,9 @@ function pruefeIssue(abschnitte) {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I4 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
- * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt. Die
+ * Arbeitspaket: I1 bis I5 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
+ * Vorlage ein Bildschirmfoto im Akzeptanzkriterium. Die
  * `[Urteil]`-Gates bleiben beim Reviewer.
  */
 export function pruefeForm(body, title) {

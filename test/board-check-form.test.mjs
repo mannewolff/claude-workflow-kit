@@ -3,7 +3,7 @@
 // Was bisher ein Modell im Review pruefte (vier Ueberschriften in der richtigen
 // Reihenfolge, `Autor-Modell:` im richtigen Abschnitt), entscheidet jetzt ein
 // Kommando in Millisekunden: fachlich F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12,
-// Arbeitspaket I1 bis I4. Zwei Eingaenge — Kartennummer oder Datei mit Titel —,
+// Arbeitspaket I1 bis I5. Zwei Eingaenge — Kartennummer oder Datei mit Titel —,
 // immer JSON, Exit 1 bei Verstoessen, ein abgewiesener Aufruf traegt `fehler`.
 //
 // Die Fence-Regel und die Umlaut-Gleichheit sind die heiklen Stellen: Ein Plan
@@ -234,7 +234,7 @@ test("[board-5] F9 und F11: Herkunftszeile und Issue-Review-Zeile an der Wurzel 
   });
 });
 
-// --- Arbeitspaket: I1 bis I4 --------------------------------------------------
+// --- Arbeitspaket: I1 bis I5 --------------------------------------------------
 
 test("[board-5] I1: die vier Abschnitte in Reihenfolge, Abhaengigkeiten zuletzt, Spec-Wirkung nur davor", () => {
   mitProjekt((dir) => {
@@ -273,6 +273,28 @@ test("[board-5] I4: Plan- und Fachliche-Quelle-Zeilen im Abhaengigkeiten-Abschni
     assert.ok(gates(r).includes("I4"), JSON.stringify(r.json));
     const imKontext = dateiWeg(dir, PAKET.replace("## Kontext\n", "## Kontext\nPlan: Issue #9\nFachliche Quelle: Issue #12\n"), "[Task] x");
     assert.equal(imKontext.json.ok, true, "im Kontext sind die Zeilen richtig");
+  });
+});
+
+test("[board-8] I5: eine verbindliche Vorlage verlangt ein Bildschirmfoto im Akzeptanzkriterium", () => {
+  mitProjekt((dir) => {
+    const mitVorlage = PAKET.replace("## Kontext\n", "## Kontext\nVorlage: docs/x.html — verbindlich\n");
+    const ohneFoto = dateiWeg(dir, mitVorlage, "[Task] x");
+    assert.ok(gates(ohneFoto).includes("I5"), JSON.stringify(ohneFoto.json));
+    const mitFoto = dateiWeg(dir, mitVorlage.replace("## Akzeptanzkriterium\n", "## Akzeptanzkriterium\n- Bildschirmfoto der Ansicht neben docs/x.html, Abschnitt Kopf.\n"), "[Task] x");
+    assert.equal(mitFoto.json.ok, true, JSON.stringify(mitFoto.json));
+    const imManuellenBlock = dateiWeg(dir, mitVorlage.replace("## Spec-Wirkung\n", "### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)\n- Abnahme per Bildschirmfoto neben der Vorlage.\n\n## Spec-Wirkung\n"), "[Task] x");
+    assert.equal(imManuellenBlock.json.ok, true, "der Block unter dem Akzeptanzkriterium zaehlt mit");
+  });
+});
+
+test("[board-8] I5 greift nicht ohne Vorlage-Zeile und nicht bei einer Anregung", () => {
+  mitProjekt((dir) => {
+    assert.equal(dateiWeg(dir, PAKET, "[Task] x").json.ok, true);
+    const anregung = dateiWeg(dir, PAKET.replace("## Kontext\n", "## Kontext\nVorlage: docs/x.html — Anregung\n"), "[Task] x");
+    assert.equal(anregung.json.ok, true, JSON.stringify(anregung.json));
+    const imCodeblock = dateiWeg(dir, PAKET.replace("## Kontext\n", "## Kontext\n```\nVorlage: docs/x.html — verbindlich\n```\n"), "[Task] x");
+    assert.equal(imCodeblock.json.ok, true, "eine Zeile im Codeblock zaehlt nicht");
   });
 });
 
