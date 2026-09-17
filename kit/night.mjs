@@ -23,6 +23,10 @@
  *                      /issue-review — im eigenen Worktree, mit Zeit- und Kostenbudget.
  *                      --max zaehlt hier Ketten (Default 3). Laeuft neben einer
  *                      Umsetzungsnacht; ein Issue in In progress haelt sie nicht auf.
+ *                      Ausnahme unter Variante B: Deren Umsetzungsstufe baut in der
+ *                      Hauptkopie und nimmt dafuer denselben Lock wie die
+ *                      Umsetzungsnacht (.claude/night-umsetzung.lock, Issue #696) —
+ *                      wer ihn gehalten vorfindet, laesst die Umsetzung aus.
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
  *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -888,6 +892,13 @@ function gitReste(cwd = process.cwd()) {
   // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
   // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
   pathspec.push(":(exclude).claude/night-bericht-*");
+  // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
+  // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
+  // die Vorhaben-Notiz darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
+  // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
+  // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
+  // ersten Paket als unsauber.
+  pathspec.push(`:(exclude)${UMSETZUNG_LOCK}`);
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
@@ -908,6 +919,97 @@ function lastCommitHash(cwd = process.cwd()) {
   // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8", cwd });
   return res.status === 0 ? res.stdout.trim() : "?";
+}
+
+// --- Der Umsetzungs-Lock (Plan #691, E10; Issue #696) ---
+//
+// Kette und Umsetzungsnacht liefen bisher ausdruecklich nebeneinander: Die Kette baute im
+// Worktree, die Umsetzungsnacht in der Hauptkopie. Unter Variante B stimmt das nicht mehr —
+// die Umsetzungsstufe baut selbst in der Hauptkopie (E4), und zwei Laeufe, die gleichzeitig
+// in denselben Working Tree committen, hinterlassen einen Zustand, den morgens niemand
+// entwirrt. E10 entscheidet deshalb den Lock und nicht einen Satz in der Dokumentation:
+// Ein Satz, den ein Cron-Eintrag nicht liest, verhindert nichts.
+//
+// Verwaist wird ueber die Prozess-Id erkannt, nicht ueber eine Verfallsfrist. Eine Frist
+// waere geraten — eine Umsetzungsnacht darf laenger dauern als jede Schaetzung, und ein zu
+// kurzer Verfall gaebe genau die Gleichzeitigkeit frei, die der Lock verhindern soll.
+//
+// Die Datei liegt unter `.claude/` und ist damit in jedem Projekt mit dem `.claude/*`-Block
+// des Installers per `.gitignore` gedeckt — in den uebrigen deckt sie der Ausschluss in
+// `gitReste()`, wie bei Protokoll, Vorhaben-Notiz und wartendem Bericht. Beendet ein harter
+// Stopp den Prozess an einem `finally` vorbei, bleibt sie liegen; der naechste Lauf erkennt
+// sie als verwaist.
+
+/** Der Pfad der Lock-Datei, relativ zur Hauptkopie. */
+export const UMSETZUNG_LOCK = ".claude/night-umsetzung.lock";
+
+/**
+ * Die Prozess-Id aus einer Lock-Datei — null, wenn es sie nicht gibt, sie nicht lesbar ist
+ * oder nicht als positive ganze Zahl dasteht. Alle drei zaehlen als verwaist: Ein Lock,
+ * dessen Halter nicht benennbar ist, kann niemanden abhalten.
+ *
+ * `0` ist ausdruecklich keine gueltige Id — `process.kill(0, 0)` zielte auf die eigene
+ * Prozessgruppe und meldete damit fuer jede kaputte Datei einen lebenden Halter.
+ */
+function lockPid(pfad) {
+  try {
+    const pid = Number(readFileSync(pfad, "utf-8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Laeuft der Prozess mit dieser Id noch? `ESRCH` heisst nein; `EPERM` heisst, es gibt ihn
+ * und er gehoert einem anderen Nutzer — das ist kein verwaister Lock.
+ */
+function prozessLaeuft(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== "ESRCH";
+  }
+}
+
+/**
+ * Nimmt den Umsetzungs-Lock in der Hauptkopie.
+ *
+ * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, grund }`. Ein
+ * Schreibfehler zaehlt wie ein vorgefundener Lock und laesst die Umsetzung aus: Ein Lock,
+ * der bei Schreibfehlern uebergangen wird, ist keiner — und die Kette faellt in diesem Fall
+ * auf Variante A zurueck, was ein vorgesehener Ausgang ist.
+ *
+ * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
+ */
+export function umsetzungLockNehmen(repoRoot) {
+  const pfad = join(repoRoot, UMSETZUNG_LOCK);
+  const pid = lockPid(pfad);
+  if (pid !== null && prozessLaeuft(pid)) {
+    return { ok: false, grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+  }
+  const verwaist = existsSync(pfad);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(pfad, `${process.pid}\n`, "utf-8");
+  } catch (e) {
+    return { ok: false, grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+  }
+  return {
+    ok: true,
+    hinweis: verwaist ? `verwaisten Lock ${UMSETZUNG_LOCK} aufgeraeumt und selbst genommen` : null,
+    freigeben: () => {
+      try {
+        rmSync(pfad, { force: true });
+      } catch (e) {
+        // Gerufen wird das aus einem `finally`; ein Wurf von hier risse den ganzen Lauf
+        // mit, nach getaner Arbeit. Liegenbleiben ist unschaedlich — der naechste Lauf
+        // findet die Id dieses Prozesses vor und erkennt sie als verwaist.
+        log(`${UMSETZUNG_LOCK} liess sich nicht entfernen (${e.message}) — der naechste Lauf raeumt ihn als verwaist auf.`);
+      }
+    },
+  };
 }
 
 // --- Worktree je Kette (Plan #638, A3) ---
@@ -3389,7 +3491,8 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
  *
  * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
- * Pakete stehen als nicht begonnen im Bericht), `angehalten` bei mindestens einem
+ * Pakete stehen als nicht begonnen im Bericht) und bei einem gehaltenen Umsetzungs-Lock
+ * (Issue #696, der Rueckfall auf Variante A), `angehalten` bei mindestens einem
  * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
  * Stopp und bei einer unsauberen Hauptkopie vor dem ersten Paket.
  */
@@ -3403,41 +3506,61 @@ async function stufeUmsetzung(kette, paketIds) {
     stufeStart, budgetMs: budget.umsetzungMin * 60 * 1000,
   };
 
-  if (kette.wt) {
-    worktreeEntfernen(kette.wt, kette.repoRoot);
-    kette.wt = null;
-    log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
-  }
-  log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
-
-  // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
-  // Rest-Guard und Dirty-Guard in `werteRunde`.
-  if (!gitClean(kette.repoRoot)) {
-    const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
-    paketeNichtBegonnen(stand, paketIds, grund);
+  // Der Lock steht vor allem anderen — auch vor dem Worktree-Abbau und vor dem
+  // Sauberkeits-Guard. Haelt ihn ein lebender Lauf, verhaelt sich die Kette wie eine unter
+  // Variante A und laesst den Worktree bis zu ihrem eigenen Ende stehen. Und eine
+  // Hauptkopie, in der gerade ein anderer Lauf baut, ist erwartbar unsauber: Der Lock ist
+  // dafuer die genauere Auskunft als "nicht sauber" und der freundlichere Ausgang.
+  const lock = umsetzungLockNehmen(kette.repoRoot);
+  if (!lock.ok) {
+    paketeNichtBegonnen(stand, paketIds, lock.grund);
     stand.dauerMs = Date.now() - stufeStart;
-    return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
+    log(`  Stufe umsetzung ausgelassen: ${lock.grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.`);
+    return { ausgang: "fertig" };
   }
+  if (lock.hinweis) log(`  ${lock.hinweis}`);
 
-  let ergebnis = { ausgang: "fertig" };
   try {
-    ergebnis = await umsetzungSchleife(kette, paketIds, lauf);
+    if (kette.wt) {
+      worktreeEntfernen(kette.wt, kette.repoRoot);
+      kette.wt = null;
+      log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
+    }
+    log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
+
+    // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
+    // Rest-Guard und Dirty-Guard in `werteRunde`.
+    if (!gitClean(kette.repoRoot)) {
+      const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
+      paketeNichtBegonnen(stand, paketIds, grund);
+      stand.dauerMs = Date.now() - stufeStart;
+      return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
+    }
+
+    let ergebnis = { ausgang: "fertig" };
+    try {
+      ergebnis = await umsetzungSchleife(kette, paketIds, lauf);
+    } finally {
+      // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
+      paketeAbschliessen(stand, lauf.gezogen);
+      stand.dauerMs = Date.now() - stufeStart;
+      for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+    }
+    if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
+      // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
+      // `waehleKettenKandidaten` aus und blockierte die naechste Kette (E17).
+      return {
+        ausgang: "angehalten",
+        grund: `Stufe umsetzung: ${stand.angehalten.map((id) => "#" + id).join(", ")} haelt an einer Stopp-Frage`,
+        ohneHaltAmFachplan: true,
+      };
+    }
+    return ergebnis;
   } finally {
-    // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
-    paketeAbschliessen(stand, lauf.gezogen);
-    stand.dauerMs = Date.now() - stufeStart;
-    for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+    // Auch nach einem Wurf aus der Stufe heraus: Ein liegengebliebener Lock haelt die
+    // naechste Nacht ab, bis sein Prozess als tot erkannt wird.
+    lock.freigeben();
   }
-  if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
-    // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
-    // `waehleKettenKandidaten` aus und blockierte die naechste Kette (E17).
-    return {
-      ausgang: "angehalten",
-      grund: `Stufe umsetzung: ${stand.angehalten.map((id) => "#" + id).join(", ")} haelt an einer Stopp-Frage`,
-      ohneHaltAmFachplan: true,
-    };
-  }
-  return ergebnis;
 }
 
 /** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
@@ -4382,32 +4505,27 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
 }
 
 /**
- * Die Implementierungsschleife (Phase 9 aus Issue #398).
+ * Nimmt den Umsetzungs-Lock und meldet, was daraus wurde (Issue #696).
  *
- * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
- * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
- * und brachen mit `break` ab, die uebrigen Enden liessen es ungesetzt, und der
- * Exit-Code entstand am Ende von main(). Wuerde die Schleife selbst exiten, ginge der
- * Unterschied zwischen "sauber beendet" und "hart gestoppt" verloren — und das ist
- * das Signal, das der Morgen liest.
+ * Steht getrennt, damit die Schleife nur zwei Zeilen dafuer braucht: Sie ruft die Funktion
+ * ueber `??=` genau einmal — vor der ersten Session — und liest danach nur noch `ok`.
  */
-export async function laufeImplementierung(args, ctx) {
-  let sessions = 0;
-  let iterations = 0;
-  let hardStop = false;
-  // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
-  // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
-  // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
-  // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
-  // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
-  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 };
-  // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
-  const salvageAttempted = new Set();
-  // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
-  // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
-  const pruefungen = [];
+function lockVorErsterSession() {
+  const lock = umsetzungLockNehmen(process.cwd());
+  if (!lock.ok) log(`Umsetzung ausgelassen: ${lock.grund}. Der Lauf endet ohne Paket.`);
+  else if (lock.hinweis) log(lock.hinweis);
+  return lock;
+}
 
-  while (sessions < args.max && iterations < MAX_ITERATIONS) {
+/**
+ * Die Runden der Umsetzungsnacht, eine nach der anderen.
+ *
+ * Fuehrt ihren Zustand in `lauf`, nicht ueber Rueckgaben: Bricht sie mit `break` ab — und
+ * das tun vier harte Stopps —, muss der Aufrufer trotzdem wissen, wie weit sie kam.
+ */
+async function implementierungsSchleife(args, ctx, lauf) {
+  let iterations = 0;
+  while (lauf.sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) break;
@@ -4421,19 +4539,62 @@ export async function laufeImplementierung(args, ctx) {
     const gate = pruefeIssueGates(top);
     if (gate) {
       stelleAmGateZurueck(top, gate);
-      zaehler.deferred++;
+      lauf.zaehler.deferred++;
       continue;
     }
 
-    sessions++;
-    log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
-    const ausgang = await laufeRunde(top, args, salvageAttempted, pruefungen);
+    // Erst hier, nicht beim Eintritt: Ein Lauf, der an leerem Ready, am Routing-Label oder
+    // an lauter Gates endet, setzt keine Umsetzung in Gang und darf keine Kette abhalten.
+    lauf.lock ??= lockVorErsterSession();
+    if (!lauf.lock.ok) break;
+
+    lauf.sessions++;
+    log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
+    const ausgang = await laufeRunde(top, args, lauf.salvageAttempted, lauf.pruefungen);
     if (ausgang === "hardStop") {
-      hardStop = true;
+      lauf.hardStop = true;
       break;
     }
-    zaehler[ausgang]++;
+    lauf.zaehler[ausgang]++;
   }
+}
+
+/**
+ * Die Implementierungsschleife (Phase 9 aus Issue #398).
+ *
+ * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
+ * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
+ * und brachen mit `break` ab, die uebrigen Enden liessen es ungesetzt, und der
+ * Exit-Code entstand am Ende von main(). Wuerde die Schleife selbst exiten, ginge der
+ * Unterschied zwischen "sauber beendet" und "hart gestoppt" verloren — und das ist
+ * das Signal, das der Morgen liest.
+ */
+export async function laufeImplementierung(args, ctx) {
+  const lauf = {
+    sessions: 0,
+    hardStop: false,
+    // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
+    // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
+    // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
+    // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
+    // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
+    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 },
+    // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
+    salvageAttempted: new Set(),
+    // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
+    // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
+    pruefungen: [],
+    lock: null,
+  };
+  const { zaehler, pruefungen } = lauf;
+
+  try {
+    await implementierungsSchleife(args, ctx, lauf);
+  } finally {
+    // Nur den eigenen: Wer ihn nicht genommen hat, gibt ihn nicht frei.
+    if (lauf.lock?.ok) lauf.lock.freigeben();
+  }
+  const { sessions, hardStop } = lauf;
 
   // Der Abschluss gehoert hierher und nicht in main(): Der Dry-Run beendet den Prozess
   // selbst und kaeme an einer Stelle in main() nie an.

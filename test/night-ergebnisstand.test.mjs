@@ -265,6 +265,11 @@ test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textpro
     // beschreibbaren Verzeichnis. Nur das Anlegen der JSON-Datei scheitert (EACCES).
     const logPfad = join(claudeDir, `night-run-${new Date().toISOString().slice(0, 10)}.log`);
     writeFileSync(logPfad, "", "utf-8");
+    // Der Umsetzungs-Lock (Issue #696) aus demselben Grund vorab: Er liegt ebenfalls unter
+    // `.claude/`, und ein nicht schreibbarer Lock laesst die Umsetzung aus — dann liefe die
+    // Runde gar nicht erst, und dieser Test prueefte nicht mehr, was er prueft. Leer heisst
+    // verwaist, der Lauf nimmt ihn also selbst.
+    writeFileSync(join(claudeDir, "night-umsetzung.lock"), "", "utf-8");
     chmodSync(claudeDir, 0o555);
 
     const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;

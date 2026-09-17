@@ -70,7 +70,11 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // gehoert nicht zum Arbeitsstand — im Betrieb liegt das Board ausserhalb des Repos und
   // die Zusammenfassung im ignorierten `.claude/`. Ohne die beiden Zeilen saehe die
   // Umsetzungsstufe die Hauptkopie schon vor dem ersten Paket als unsauber.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\nissues/\nhelfer/\n");
+  //
+  // Der Umsetzungs-Lock (Issue #696) steht aus demselben Grund hier: Im Betrieb deckt
+  // ihn der `.claude/*`-Block, den der Installer schreibt; das Fixture fuehrt die
+  // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss.
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
