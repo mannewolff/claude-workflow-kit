@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { worktreeAnlegen, notizenZurueck, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
@@ -68,7 +68,9 @@ test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an
       assert.ok(!existsSync(join(pfad, ".claude", datei)), `.claude/${datei} darf nicht mitkommen`);
     }
     assert.equal(git(dir, "status", "--porcelain").trim(), "", "die Hauptkopie bleibt sauber");
-    assert.match(git(dir, "worktree", "list"), new RegExp(pfad.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)));
+    const liste = git(dir, "worktree", "list").replaceAll("\\", "/");
+    const erwartet = realpathSync.native(pfad).replaceAll("\\", "/");
+    assert.ok(liste.includes(erwartet), `Pfad ${erwartet} nicht in Worktree-Liste: ${liste}`);
   });
 });
 

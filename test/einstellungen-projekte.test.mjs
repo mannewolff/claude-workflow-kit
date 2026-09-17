@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { vergleicheVersion } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
@@ -21,7 +21,7 @@ test("[einstellungen-5] gefunden werden der Startordner und direkte Unterverzeic
     const namen = liste.projekte.map((p) => p.name).sort();
     assert.equal(namen.length, 2, JSON.stringify(namen));
     assert.ok(namen.includes("alpha"));
-    assert.ok(namen.includes(wurzel.split("/").at(-1)), "der Startordner fehlt");
+    assert.ok(namen.includes(basename(wurzel)), "der Startordner fehlt");
   });
 });
 
