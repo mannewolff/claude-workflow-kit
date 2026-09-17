@@ -450,6 +450,12 @@ let STOPP_GRUND = "";
 // Konstante fuer gitReste() unsichtbar.
 let config = null;
 
+// Der Pfad, aus dem `config` stammt (Issue #711). Die Runde liest `night.stufen` und
+// `night.stufenRegel` unmittelbar vor jedem Paket von dort neu; ohne den gemerkten Pfad
+// muesste sie ihn ein zweites Mal zusammensetzen, und zwei Herleitungen desselben Pfades
+// liefen bei der ersten Aenderung auseinander.
+let CONFIG_PATH = null;
+
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
   process.stdout.write(line + "\n");
@@ -597,17 +603,24 @@ function einheitAnlegen(id, titel, modellStand = null) {
   // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
   // Dry-Run haengt es an nichts und wird nie geschrieben.
   //
-  // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665).
-  // Die Feldreihenfolge ist der Vertrag mit den Auswertungen; `schemaFassung` bleibt 1,
-  // weil nur Felder hinzukommen. Ohne uebergebenen Stand — die Kette, ein Gate-Rueckfall —
-  // tragen sie `null` statt zu fehlen: Ein fehlendes Feld liesse offen, ob niemand gemessen
-  // hat oder ob die Frage sich nicht stellte.
+  // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665),
+  // dahinter `stufe` und `stufeVerwendet` (Issue #711). Die Feldreihenfolge ist der Vertrag
+  // mit den Auswertungen: Die fuenf alten Namen behalten ihre Plaetze, die neuen kommen
+  // hinten an. `schemaFassung` bleibt 1, weil nur Felder hinzukommen. Ohne uebergebenen
+  // Stand — die Kette, ein Gate-Rueckfall — tragen sie `null` statt zu fehlen: Ein fehlendes
+  // Feld liesse offen, ob niemand gemessen hat oder ob die Frage sich nicht stellte.
+  //
+  // `stufe` ist die Stufe, die das Paket sich selbst gegeben hat; `stufeVerwendet` die, die
+  // das Modell wirklich gestellt hat. Beide getrennt, weil das Ausweichen nach oben genau
+  // der Unterschied zwischen ihnen ist — ein Feld liesse ihn verschwinden.
   const einheit = {
     id: String(id),
     titel,
     modell: modellStand?.modell ?? null,
     modellHerkunft: modellStand?.herkunft ?? null,
     modellGrund: modellStand?.grund ?? null,
+    stufe: modellStand?.stufe ?? null,
+    stufeVerwendet: modellStand?.stufeVerwendet ?? null,
     // Die Lauf-Art je Einheit (Issue #669): Die auswertende Seite ordnet ihr den
     // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
     art: LAUF?.art ?? null,
@@ -1801,6 +1814,97 @@ export function modellFuerStufe(einstellung, stufe, erlaubteModelle) {
   return { stufeVerwendet: null, eintrag: null, grund: uebersprungen.join("; ") };
 }
 
+/** Die Gruende eines Pakets in einem Satz — leere Teile fallen weg. */
+const gruendeFassen = (...teile) => {
+  const gefuellt = teile.filter((t) => typeof t === "string" && t.trim() !== "");
+  return gefuellt.length > 0 ? gefuellt.join(" ") : null;
+};
+
+/**
+ * Womit dieses Arbeitspaket laeuft (Issue #711, Plan #707, E5/E6).
+ *
+ * Die eine Stelle, an der Modellname und Aufgabenstufe aufeinandertreffen — reine Funktion
+ * ueber Body, Einstellung und Modell des Laufs, damit die Reihenfolge an Fixtures pruefbar
+ * ist. Sie ist der Kern des Pakets, und ihre Reihenfolge ist die Sache selbst:
+ *
+ *   1. Der Modellname der Karte nach den heutigen Regeln. Er gewinnt gegen die Stufe
+ *      (Kriterium 8); traegt das Paket beides, vermerkt der Grund die doppelte Angabe.
+ *   2. Ein ABGEWIESENER Name faellt auf das Modell des Laufs und **nicht** auf die Stufe
+ *      (E6). Ein Vertipper darf nicht still ein anderes Modell in Gang setzen — wer
+ *      `claude-opus-5` falsch schreibt, bekommt den Lauf und einen Grund, nicht das Modell
+ *      einer Stufe, an die er nicht gedacht hat.
+ *   3. Sonst, und nur bei aktiver Einstellung, die Stufe mit dem Ausweichen nach oben.
+ *   4. Sonst das Modell des Laufs.
+ *
+ * Rueckgabe: `{ modell, herkunft, grund, stufe, stufeVerwendet, kommando, stufenName,
+ * startbar }`. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
+ * Ebene startet — dann darf **keine** Session beginnen (Kriterium 10), und der Aufrufer
+ * verbucht das Paket als Fehlschlag. `herkunft` kennt `karte`, `stufe` und `lauf`.
+ *
+ * Bei einer Kommando-Stufe steht in `modell` die Selbstauskunft der Stufe (ihr Feld `name`,
+ * ersatzweise `stufe-<aufgabenstufe>`) — derselbe Wert, den `runSession` als
+ * KIT_AGENT_MODEL setzt. Einen Modellnamen gibt es dort nicht, und `null` im Ergebnisstand
+ * liesse offen, womit das Paket gelaufen ist.
+ */
+export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
+  const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(body, erlaubteModelle);
+  const { stufe, grund: stufenGrund } = aufgabenStufe(body);
+  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, startbar: true };
+
+  if (ausKarte) {
+    // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
+    // dass die Stufe der Karte an diesem Paket ohne Wirkung blieb.
+    const doppelt = stufe ? `Karte nennt Modell und Aufgabenstufe ${stufe} — der Modellname gewinnt.` : null;
+    return { ...rahmen, modell: ausKarte, herkunft: "karte", grund: gruendeFassen(doppelt, stufenGrund) };
+  }
+
+  const beimLauf = (grund) => ({ ...rahmen, modell: laufModell, herkunft: "lauf", grund: gruendeFassen(grund) });
+
+  if (modellGrund) return beimLauf(modellGrund);
+  if (!einstellung?.aktiv || !stufe) return beimLauf(stufenGrund);
+
+  const { stufeVerwendet, eintrag, grund } = modellFuerStufe(einstellung, stufe, erlaubteModelle);
+  if (!stufeVerwendet) {
+    // Kein Rueckfall auf das Modell des Laufs (Kriterium 10): Wer eine Stufe setzt, will
+    // dieses Paket auf dieser Ebene laufen lassen — ein stiller Ersatz waere eine Umsetzung,
+    // die niemand so beauftragt hat.
+    return { ...rahmen, modell: null, herkunft: "stufe", grund: gruendeFassen(grund), startbar: false };
+  }
+  const selbstauskunft = eintrag.name || `stufe-${stufe}`;
+  return {
+    ...rahmen,
+    stufeVerwendet,
+    kommando: eintrag.kommando,
+    stufenName: eintrag.name,
+    modell: eintrag.modell ?? selbstauskunft,
+    herkunft: "stufe",
+    grund: gruendeFassen(grund),
+  };
+}
+
+/**
+ * `night.stufen` und `night.stufenRegel`, frisch von Platte (Issue #711, Plan #707, E19).
+ *
+ * Nur diese beiden Felder: Alles andere bleibt beim Stand des Laufbeginns, weil ein Lauf,
+ * der mitten in der Nacht sein Label, seine Checks oder seinen Tracker wechselt, nicht mehr
+ * derselbe Lauf waere. Die Stufen dagegen sollen wirken, sobald sie jemand aendert — sonst
+ * saehe ein laufender Nachtlauf eine Aenderung erst am naechsten Abend.
+ *
+ * Ein unlesbarer Stand haelt den Lauf nie auf: Dann gilt, was beim Start gelesen wurde, und
+ * `grund` sagt es. Reine Funktion ueber Pfad und Startstand, damit dieser Fall ohne einen
+ * kaputten Nachtlauf pruefbar ist.
+ */
+export function frischeStufenFelder(configPfad, stand) {
+  const vomStart = (grund) => ({ stufen: stand?.night?.stufen, stufenRegel: stand?.night?.stufenRegel, grund });
+  if (!configPfad) return vomStart(null);
+  try {
+    const frisch = ladeConfigMitOverrides(configPfad);
+    return { stufen: frisch?.night?.stufen, stufenRegel: frisch?.night?.stufenRegel, grund: null };
+  } catch (fehler) {
+    return vomStart(`die Einstellung liess sich nicht frisch lesen (${fehler.message}) — es gilt der Stand des Laufbeginns.`);
+  }
+}
+
 // --- Nacht-Session ---
 
 /**
@@ -2973,6 +3077,7 @@ export function vorbereiten(args) {
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
+  CONFIG_PATH = configPath;
   if (args.kette) ketteBudgetLaden();
 
   const jetzt = new Date();
@@ -4417,7 +4522,7 @@ export function pruefeIssueGates(top) {
  * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
  * Fehlschlag-Zeile zu viel oder eine zu wenig.
  */
-async function versucheSalvage(top, args, modell) {
+async function versucheSalvage(top, args, sessionWahl) {
   const checks = verifyChecksForSalvage(config);
   if (!checks.ok) {
     // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
@@ -4432,10 +4537,11 @@ async function versucheSalvage(top, args, modell) {
   await runSession(top.id, args, {
     prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
     timeoutMs: SALVAGE_TIMEOUT_MS,
-    // Dasselbe Modell wie die regulaere Runde (Issue #665): Der Salvage prueft deren
-    // Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde Arbeit nach
-    // anderem Massstab, und die Empfehlung galt der Karte, nicht der Betriebsart.
-    model: modell,
+    // Derselbe Weg wie die regulaere Runde (Issue #665, erweitert um #711): Der Salvage
+    // prueft deren Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde
+    // Arbeit nach anderem Massstab, und die Wahl galt der Karte, nicht der Betriebsart —
+    // darum geht bei einer Kommando-Stufe auch die Kommandozeile mit.
+    ...sessionWahl,
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
   const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
@@ -4511,7 +4617,7 @@ export function rundenGrund(res, pruefung) {
  * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
  * Stand, den der Halt gerade verworfen hat.
  */
-async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, modell) {
+async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl) {
   // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
   // Label nicht, das die Session selbst gesetzt hat.
   if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
@@ -4524,7 +4630,7 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
-    const salvage = await versucheSalvage(top, args, modell);
+    const salvage = await versucheSalvage(top, args, sessionWahl);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") return "hardStop";
@@ -4614,7 +4720,7 @@ export function istHalt(vorher, nachher) {
   return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, modell) {
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -4662,7 +4768,7 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, v
     return "hardStop";
   }
 
-  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, modell);
+  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl);
 
   // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
   // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
@@ -4694,6 +4800,69 @@ function stelleAmGateZurueck(top, gate) {
 }
 
 /**
+ * Uebernimmt `night.stufen` und `night.stufenRegel` frisch von Platte in die Lauf-Config
+ * (Issue #711, Plan #707, E19).
+ *
+ * Geschrieben wird in dieselbe `config`, mit der der Lauf ohnehin arbeitet: Eine zweite,
+ * daneben gefuehrte Fassung der Einstellung waere eine zweite Wahrheit darueber, was
+ * gerade gilt. Ein Feld, das auf Platte verschwunden ist, verschwindet auch hier — sonst
+ * bliebe eine geloeschte Stufe bis zum Laufende aktiv.
+ */
+function stufenFelderAuffrischen() {
+  const { stufen, stufenRegel, grund } = frischeStufenFelder(CONFIG_PATH, config);
+  if (grund) log(`  ${grund}`);
+  config.night ??= {};
+  for (const [feld, wert] of [["stufen", stufen], ["stufenRegel", stufenRegel]]) {
+    if (wert === undefined) delete config.night[feld];
+    else config.night[feld] = wert;
+  }
+}
+
+/**
+ * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711).
+ *
+ * Sie erscheint nur, wenn es etwas zu sagen gibt — eine Stufe im Spiel oder ein Grund.
+ * Ein Paket ohne beides protokolliert wie bisher nichts: Eine Zeile je Paket, die nur
+ * "Modell des Laufs" wiederholt, machte die interessanten Zeilen unsichtbar.
+ */
+function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet }) {
+  if (!stufe && !grund) return null;
+  const teile = [];
+  if (stufe) teile.push(`Aufgabenstufe ${stufe}`);
+  teile.push(modell ? `Modell ${modell} (${herkunft})` : `kein Modell (${herkunft})`);
+  if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(`ueber Stufe ${stufeVerwendet}`);
+  return grund ? `${teile.join(", ")} — ${grund}` : teile.join(", ");
+}
+
+/**
+ * Ein Paket, dessen Stufe auf keiner Ebene startet (Issue #711, Kriterium 10).
+ *
+ * Fehlschlag und nicht Rueckstellung: Zurueckgestellt ist ein Paket, das an einem Gate
+ * haengt oder dessen Session nichts abgeschlossen hat — hier ist die Einstellung des
+ * Projekts unvollstaendig, und das soll morgens als Fehlschlag sichtbar sein. Das Issue
+ * wandert nach Backlog wie bei jeder Runde ohne Ergebnis; bliebe es in Ready, zoege die
+ * naechste Iteration dasselbe Paket erneut, bis MAX_ITERATIONS erschoepft ist.
+ */
+function ohneSessionGescheitert(top, einheit, modellStand, started) {
+  const grund = `Keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund}`;
+  log(`  Fehlschlag ohne Session: Issue #${top.id} — ${grund} — Issue ins Backlog, weiter.`);
+  board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${grund} Es wurde keine Session gestartet.`);
+  board("issue", "move", String(top.id), "backlog");
+  einheitErgaenzen(einheit, {
+    ausgang: "fehlschlag",
+    grund,
+    dauerMs: Date.now() - started,
+    commit: null,
+    endStatus: board("issue", "get", String(top.id)).status,
+    // Ohne Session gibt es weder Pruefstand noch Kennzahlen. Beide Felder stehen trotzdem
+    // da: Ein fehlendes Feld liesse offen, ob niemand gemessen hat oder ob nichts lief.
+    pruefung: null,
+    kennzahlen: null,
+  });
+  return "fehlschlag";
+}
+
+/**
  * Eine vollstaendige Runde: Session starten, auswerten, Einheit fuellen (Issue #488).
  *
  * Liefert den Ausgang aus `werteRunde` unveraendert zurueck — die Uebersetzung ins
@@ -4715,24 +4884,45 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
   // traegt den Body nicht in jeder Adapter-Fassung.
   const vorher = board("issue", "get", String(top.id));
-  // Das Modell dieser Karte (Issue #665) — aus dem Body, den `vorher` ohnehin traegt.
-  // Ein eigener `issue get` je Karte waere ein zweiter Aufruf gegen eine API, die
+  // Die Einstellung frisch von Platte, unmittelbar vor diesem Paket (Issue #711, E19):
+  // Eine Aenderung an den Stufen soll noch in derselben Nacht wirken. Alles andere bleibt
+  // beim Stand des Laufbeginns.
+  stufenFelderAuffrischen();
+  // Modell und Stufe dieser Karte (Issue #665, #711) — aus dem Body, den `vorher` ohnehin
+  // traegt. Ein eigener `issue get` je Karte waere ein zweiter Aufruf gegen eine API, die
   // drosselt, fuer einen Wert, der bereits vorliegt.
-  const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(vorher?.body, config.night?.modelle);
-  const modellStand = ausKarte
-    ? { modell: ausKarte, herkunft: "karte", grund: null }
-    : { modell: args.model, herkunft: "lauf", grund: modellGrund };
+  const modellStand = paketWahl({
+    body: vorher?.body,
+    einstellung: stufenEinstellung(config),
+    erlaubteModelle: config.night?.modelle,
+    laufModell: args.model,
+  });
   // Die Einheit entsteht erst hier, weil sie das Modell traegt — und das steht erst fest,
   // wenn der Body gelesen ist. Sie wird weiterhin VOR der Session geschrieben: Bricht der
   // Lauf mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand.
   const einheit = einheitAnlegen(top.id, top.title, modellStand);
-  if (modellGrund) log(`  Hinweis zu #${top.id}: ${modellGrund}`);
+  const hinweis = rundenHinweis(modellStand);
+  if (hinweis) log(`  Hinweis zu #${top.id}: ${hinweis}`);
+
+  // Kein startbarer Weg fuer die Stufe dieses Pakets (Issue #711, Kriterium 10): Das Paket
+  // wird OHNE Session als Fehlschlag verbucht und der Lauf zieht das naechste. Der Rueckfall
+  // auf das Modell des Laufs waere hier falsch — wer eine Stufe setzt, will dieses Paket auf
+  // dieser Ebene laufen lassen. Und weil die Entscheidung vor dem ersten Arbeitsschritt
+  // faellt, wird keine begonnene Umsetzung mit einem zweiten Modell wiederholt.
+  if (!modellStand.startbar) return ohneSessionGescheitert(top, einheit, modellStand, started);
+
+  // Womit die Session startet (Issue #711): Modellname oder die Kommandozeile der Stufe.
+  // Dasselbe Buendel geht spaeter an die Salvage-Session desselben Pakets — sie prueft den
+  // Zwischenstand der regulaeren Runde und muss dafuer auf demselben Weg laufen.
+  const sessionWahl = modellStand.kommando
+    ? { model: modellStand.modell, kommando: modellStand.kommando, stufenName: modellStand.stufenName, aufgabenstufe: modellStand.stufe }
+    : { model: modellStand.modell };
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
   // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
   // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
   // Implementierungs-Runde.
-  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, model: modellStand.modell });
+  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, ...sessionWahl });
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
@@ -4743,7 +4933,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, modellStand.modell);
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl);
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);

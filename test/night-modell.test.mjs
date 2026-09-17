@@ -21,7 +21,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { empfohlenesModell, aufgabenStufe, stufenEinstellung, stufeStartbar, modellFuerStufe } from "../kit/night.mjs";
+import { empfohlenesModell, aufgabenStufe, stufenEinstellung, stufeStartbar, modellFuerStufe, paketWahl, frischeStufenFelder } from "../kit/night.mjs";
 
 const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
 
@@ -86,18 +86,28 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-function setupProjekt(praefix, { modelle = ERLAUBT, buildChecks = ["true"] } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), praefix));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+/** Die Konfigurationsdatei des Fixtures — dieselbe Form wie die des Runners. */
+function schreibeConfig(dir, { modelle = ERLAUBT, buildChecks = ["true"], stufen = null } = {}) {
+  const night = { ...(modelle ? { modelle } : {}), ...(stufen ? { stufen } : {}) };
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
     buildChecks,
     local: { issuesDir: "issues" },
-    ...(modelle ? { night: { modelle } } : {}),
+    ...(Object.keys(night).length > 0 ? { night } : {}),
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n");
+}
+
+function setupProjekt(praefix, optionen = {}) {
+  const dir = mkdtempSync(join(tmpdir(), praefix));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  schreibeConfig(dir, optionen);
+  // Die Konfigurationsdatei bleibt untracked (Issue #711): Der E19-Test schreibt sie
+  // waehrend des Laufs um, und eine getrackte Datei machte damit den Baum dirty — der
+  // Dirty-Guard stoppte den Lauf hart, bevor das zweite Paket ueberhaupt zieht.
+  writeFileSync(join(dir, ".gitignore"),
+    ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/workflow.config.json\n");
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "t@example.invalid"]],
@@ -111,10 +121,11 @@ function setupProjekt(praefix, { modelle = ERLAUBT, buildChecks = ["true"] } = {
   return dir;
 }
 
-function readyIssue(dir, titel, empfehlung) {
+function readyIssue(dir, titel, empfehlung, stufe = null) {
   // `Autor-Modell:` ist Pflicht im Body — `issue create` weist ihn sonst ab.
   const zeile = empfehlung ? `Empfohlenes Modell: ${empfehlung}\n` : "";
-  const body = `## Kontext\n\nAutor-Modell: claude-opus-5\n${zeile}\n## Abhaengigkeiten\nKeine.\n`;
+  const stufenZeile = stufe ? `Aufgabenstufe: ${stufe}\n` : "";
+  const body = `## Kontext\n\nAutor-Modell: claude-opus-5\n${zeile}${stufenZeile}\n## Abhaengigkeiten\nKeine.\n`;
   const issue = board(dir, "issue", "create", "--title", titel, "--body", body);
   board(dir, "issue", "move", String(issue.id), "ready");
   return String(issue.id);
@@ -399,4 +410,257 @@ test("[night-33] ein nicht auffindbares Programm gilt als nicht startbar", NUR_P
 test("[night-33] ein Shell-Builtin gilt als startbar", NUR_POSIX, () => {
   // `command -v` findet Builtins; eine eigene PATH-Suche faende sie nicht (E8).
   assert.equal(stufeStartbar({ kommando: "cd /tmp" }, []).ok, true);
+});
+
+// --- Die Wahl je Paket (Issue #711, Plan #707, E5/E6) ---
+//
+// `paketWahl` ist die eine Stelle, an der Modellname und Stufe aufeinandertreffen. Die
+// Reihenfolge ist der Gegenstand: erst der Name der Karte, dann — nur bei aktiver
+// Einstellung — die Stufe, sonst das Modell des Laufs. Ein ABGEWIESENER Name faellt auf
+// das Modell des Laufs und nicht auf die Stufe (E6): Ein Vertipper darf nicht still ein
+// anderes Modell in Gang setzen.
+
+const wahl = (body, stufen, laufModell = "claude-opus-5", erlaubte = ERLAUBT) =>
+  paketWahl({ body, einstellung: stufenEinstellung({ night: { stufen } }), erlaubteModelle: erlaubte, laufModell });
+
+test("[night-26] der Modellname der Karte gewinnt gegen die Stufe, mit Vermerk der doppelten Angabe", () => {
+  const w = wahl("Empfohlenes Modell: claude-sonnet-5\nAufgabenstufe: leicht\n",
+    { leicht: { modell: "claude-opus-5" } });
+  assert.equal(w.modell, "claude-sonnet-5");
+  assert.equal(w.herkunft, "karte");
+  assert.equal(w.stufe, "leicht", "die Stufe der Karte steht trotzdem in der Einheit");
+  assert.equal(w.stufeVerwendet, null, "die Stufe hat das Modell nicht gestellt");
+  assert.ok(w.grund && w.grund.length > 0, "die doppelte Angabe braucht einen Vermerk");
+  assert.match(w.grund, /leicht/, "der Vermerk nennt die uebergangene Stufe");
+});
+
+test("[night-26] ein abgewiesener Modellname faellt auf das Modell des Laufs und nicht auf die Stufe", () => {
+  // E6: Der Rueckfall der Karte endet beim Lauf. Ginge er weiter zur Stufe, startete ein
+  // Vertipper im Modellnamen still ein anderes Modell als das des Laufs.
+  const w = wahl("Empfohlenes Modell: claude-gibt-es-nicht\nAufgabenstufe: leicht\n",
+    { leicht: { modell: "claude-sonnet-5" } });
+  assert.equal(w.modell, "claude-opus-5");
+  assert.equal(w.herkunft, "lauf");
+  assert.equal(w.stufeVerwendet, null, "die Stufe darf den abgewiesenen Namen nicht auffangen");
+  assert.match(w.grund, /claude-gibt-es-nicht/, "der Grund nennt den abgewiesenen Namen");
+});
+
+test("[night-26] eine fehlende Stufe bei aktiver Einstellung ergibt das Modell des Laufs", () => {
+  const w = wahl("## Kontext\n\nKein Hinweis hier.\n", { leicht: { modell: "claude-sonnet-5" } });
+  assert.equal(w.modell, "claude-opus-5");
+  assert.equal(w.herkunft, "lauf");
+  assert.equal(w.stufe, null);
+  assert.equal(w.stufeVerwendet, null);
+  assert.equal(w.grund, null, "eine fehlende Zeile ist kein Befund");
+});
+
+test("[night-26] eine Stufe ohne aktive Einstellung ergibt das Modell des Laufs", () => {
+  const w = wahl("Aufgabenstufe: leicht\n", {});
+  assert.equal(w.modell, "claude-opus-5");
+  assert.equal(w.herkunft, "lauf");
+  assert.equal(w.stufe, "leicht", "die Stufe der Karte bleibt sichtbar");
+  assert.equal(w.stufeVerwendet, null);
+});
+
+test("[night-26] die Stufe stellt das Modell und weicht nach oben aus", () => {
+  const w = wahl("Aufgabenstufe: leicht\n", { schwer: { modell: "claude-sonnet-5" } });
+  assert.equal(w.modell, "claude-sonnet-5");
+  assert.equal(w.herkunft, "stufe");
+  assert.equal(w.stufe, "leicht");
+  assert.equal(w.stufeVerwendet, "schwer");
+  assert.match(w.grund, /leicht/, "der Grund nennt die uebersprungene Stufe leicht");
+  assert.match(w.grund, /mittel/, "der Grund nennt die uebersprungene Stufe mittel");
+  assert.equal(w.startbar, true);
+});
+
+test("[night-26] eine Kommando-Stufe liefert Kommandozeile und Namen statt eines Modellnamens", NUR_POSIX, () => {
+  const w = wahl("Aufgabenstufe: leicht\n", { leicht: { kommando: "cd /tmp", name: "lokal" } });
+  assert.equal(w.kommando, "cd /tmp");
+  assert.equal(w.stufenName, "lokal");
+  assert.equal(w.herkunft, "stufe");
+  assert.equal(w.modell, "lokal", "die Selbstauskunft der Stufe steht dort, wo sonst der Modellname steht");
+  assert.equal(w.startbar, true);
+});
+
+test("[night-26] scheitert die Startpruefung auf allen Stufen, ist das Paket nicht startbar", () => {
+  const w = wahl("Aufgabenstufe: mittel\n", { mittel: { modell: "claude-fremd-5" } });
+  assert.equal(w.startbar, false, "ohne startbare Stufe darf keine Session beginnen");
+  assert.equal(w.stufeVerwendet, null);
+  assert.match(w.grund, /mittel/, "der Grund nennt die gescheiterte Stufe");
+  assert.match(w.grund, /schwer/, "der Grund nennt auch die unbelegte hoehere Stufe");
+});
+
+test("[night-26] ein abgewiesener Stufenwert ergibt das Modell des Laufs, mit Grund", () => {
+  const w = wahl("Aufgabenstufe: mittelschwer\n", { leicht: { modell: "claude-sonnet-5" } });
+  assert.equal(w.modell, "claude-opus-5");
+  assert.equal(w.herkunft, "lauf");
+  assert.equal(w.startbar, true, "ein unbrauchbarer Stufenwert haelt das Paket nicht auf");
+  assert.match(w.grund, /mittelschwer/, "der Grund nennt den abgewiesenen Wert");
+});
+
+// --- Die frisch gelesene Einstellung (Issue #711, Plan #707, E19) ---
+
+test("[night-26] frischeStufenFelder liest stufen und stufenRegel von Platte", () => {
+  const dir = mkdtempSync(join(tmpdir(), "night-frisch-"));
+  try {
+    const pfad = join(dir, "workflow.config.json");
+    writeFileSync(pfad, JSON.stringify({ night: { stufen: { leicht: { modell: "claude-sonnet-5" } }, stufenRegel: "eigene Regel" } }));
+    const felder = frischeStufenFelder(pfad, { night: { stufen: { schwer: { modell: "claude-opus-5" } } } });
+    assert.deepEqual(felder.stufen, { leicht: { modell: "claude-sonnet-5" } }, "der Stand des Laufbeginns wird ueberschrieben");
+    assert.equal(felder.stufenRegel, "eigene Regel");
+    assert.equal(felder.grund, null, "ein gelungener Lesevorgang braucht keinen Grund");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Der Stufenweg im Lauf: E2E gegen ein Temp-Repo (Issue #711) ---
+
+test("[night-26] die Session startet mit dem Modell der Stufe, wenn die Karte keinen Namen nennt", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stufe-lauf-", { stufen: { schwer: { modell: "claude-sonnet-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.match(log, /--model claude-sonnet-5/, `die Stufe setzt das Modell nicht durch:\n${log}`);
+    assert.match(log, /AGENT claude-sonnet-5/, "KIT_AGENT_MODEL traegt nicht denselben Wert");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.stufe, "leicht", "die Einheit nennt die Stufe des Pakets");
+    assert.equal(einheit.stufeVerwendet, "schwer", "die Einheit nennt die Stufe, die das Modell gestellt hat");
+    assert.equal(einheit.modellHerkunft, "stufe");
+    assert.match(einheit.modellGrund, /leicht/, "der Grund nennt die uebersprungene Stufe leicht");
+    assert.match(einheit.modellGrund, /mittel/, "der Grund nennt die uebersprungene Stufe mittel");
+    // Die Protokollzeile der Runde nennt Stufe, eingesetztes Modell und den Ausweichgrund.
+    assert.match(res.stdout, /Aufgabenstufe leicht/, `die Protokollzeile nennt die Stufe nicht:\n${res.stdout}`);
+    assert.match(res.stdout, /claude-sonnet-5/, "die Protokollzeile nennt das eingesetzte Modell nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das naechste laeuft weiter", NUR_POSIX, () => {
+  // Kriterium 10: Eine begonnene Umsetzung wird nie mit einem zweiten Modell wiederholt —
+  // darum faellt die Entscheidung VOR der Session, und das Paket kostet keine.
+  const dir = setupProjekt("night-stufe-unstartbar-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-711 --auftrag" } } });
+  let bin = null;
+  try {
+    const ohneStart = readyIssue(dir, "Leicht und nicht startbar", null, "leicht");
+    const danach = readyIssue(dir, "Ohne Stufe", null, null);
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const einheiten = leseStand(dir).einheiten;
+    const gescheitert = einheiten.find((e) => e.id === ohneStart);
+    assert.equal(gescheitert.ausgang, "fehlschlag", "ein Paket ohne startbare Stufe ist ein Fehlschlag");
+    assert.match(gescheitert.grund, /gibt-es-nicht-xyz-711/, "der Grund nennt das nicht auffindbare Programm");
+    assert.equal(gescheitert.stufe, "leicht");
+    assert.equal(gescheitert.stufeVerwendet, null, "keine Stufe hat das Modell gestellt");
+    assert.ok(!gescheitert.kennzahlen, `ohne Session gibt es keine Kennzahlen: ${JSON.stringify(gescheitert.kennzahlen)}`);
+
+    // Genau eine Session, und zwar die des zweiten Pakets.
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.equal((log.match(/^ARGS /gm) || []).length, 1, `genau eine Session erwartet:\n${log}`);
+    assert.match(log, new RegExp(`/implement-next #${danach}`), "das naechste Ready-Paket lief nicht");
+    assert.ok(einheiten.find((e) => e.id === danach), "das naechste Paket fehlt im Ergebnisstand");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] Modellname und Stufe zugleich: der Name laeuft, der Grund vermerkt beides", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stufe-doppelt-", { stufen: { leicht: { modell: "claude-opus-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Nennt beides", "claude-sonnet-5", "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-sonnet-5/, "der Name der Karte setzt sich nicht durch");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.modellHerkunft, "karte");
+    assert.equal(einheit.stufe, "leicht");
+    assert.equal(einheit.stufeVerwendet, null);
+    assert.ok(einheit.modellGrund && einheit.modellGrund.length > 0, "die doppelte Angabe ist nicht vermerkt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein abgewiesener Modellname laeuft auf dem Modell des Laufs, nicht auf dem der Stufe", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stufe-abgewiesen-", { stufen: { leicht: { modell: "claude-sonnet-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Nennt einen Unbekannten", "claude-gibt-es-nicht", "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.match(log, /--model claude-opus-5/, "der Rueckfall endet nicht beim Modell des Laufs");
+    assert.doesNotMatch(log, /--model claude-sonnet-5/, "der abgewiesene Name faellt faelschlich auf die Stufe");
+    assert.equal(leseStand(dir).einheiten[0].modellHerkunft, "lauf");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] eine Aenderung an night.stufen wirkt schon beim naechsten Paket desselben Laufs", NUR_POSIX, () => {
+  // E19: Die Einstellung wird unmittelbar vor jedem Paket frisch gelesen. Ohne das saehe
+  // ein laufender Nachtlauf eine Aenderung erst am naechsten Abend.
+  const dir = setupProjekt("night-stufe-frisch-", { stufen: { leicht: { modell: "claude-opus-5" } } });
+  // Hilfsdateien liegen AUSSERHALB des Fixtures: Im Projektverzeichnis machten sie den
+  // Baum dirty, und der Dirty-Guard stoppte den Lauf nach der ersten Runde hart.
+  const hilf = mkdtempSync(join(tmpdir(), "night-stufe-frisch-hilf-"));
+  let bin = null;
+  try {
+    readyIssue(dir, "Erstes leichtes Paket", null, "leicht");
+    readyIssue(dir, "Zweites leichtes Paket", null, "leicht");
+    const neueConfig = join(hilf, "neue-config.json");
+    writeFileSync(neueConfig, JSON.stringify({
+      codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
+      night: { modelle: ERLAUBT, stufen: { leicht: { modell: "claude-sonnet-5" } } },
+    }, null, 2));
+    // Der Fake schreibt die Einstellung nach der ERSTEN Session um — genau die Lage, die
+    // E19 beschreibt: Ein Mensch aendert die Datei, waehrend der Lauf laeuft.
+    const marker = join(hilf, "erste-session.marker");
+    bin = fakeCli(
+      `if [ ! -f ${JSON.stringify(marker)} ]; then : > ${JSON.stringify(marker)};`
+      + ` cp ${JSON.stringify(neueConfig)} ${JSON.stringify(join(dir, ".claude", "workflow.config.json"))}; fi\n`);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const modelle = (readFileSync(bin.argLog, "utf-8").match(/--model (\S+)/g) || []);
+    assert.deepEqual(modelle, ["--model claude-opus-5", "--model claude-sonnet-5"],
+      "das zweite Paket laeuft nicht mit der geaenderten Einstellung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(hilf, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein unlesbarer Stand liefert den Stand des Laufbeginns mit Grund", () => {
+  // E19: Der Lauf darf daran nicht enden — er arbeitet mit dem weiter, was er beim Start
+  // gelesen hat, und sagt im Protokoll, dass er es tut.
+  const stand = { night: { stufen: { schwer: { modell: "claude-opus-5" } }, stufenRegel: "Regel vom Start" } };
+  const felder = frischeStufenFelder(join(tmpdir(), "gibt-es-nicht-711", "workflow.config.json"), stand);
+  assert.deepEqual(felder.stufen, { schwer: { modell: "claude-opus-5" } });
+  assert.equal(felder.stufenRegel, "Regel vom Start");
+  assert.ok(felder.grund && felder.grund.length > 0, "der Rueckfall auf den Startstand braucht einen Grund");
 });

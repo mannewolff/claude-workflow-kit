@@ -49,13 +49,14 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-function setupProjekt(praefix) {
+function setupProjekt(praefix, night = null) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
+    ...(night ? { night } : {}),
   }, null, 2));
   // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der
@@ -79,8 +80,8 @@ function setupProjekt(praefix) {
 }
 
 /** Erzeugt ein Issue in Ready und liefert seine ID als String. */
-function readyIssue(dir, titel) {
-  const issue = board(dir, "issue", "create", "--title", titel, "--body", "## Abhaengigkeiten\nKeine.");
+function readyIssue(dir, titel, zusatz = "") {
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", `${zusatz}## Abhaengigkeiten\nKeine.`);
   board(dir, "issue", "move", String(issue.id), "ready");
   return String(issue.id);
 }
@@ -330,6 +331,55 @@ test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefs
     assert.equal(e.kennzahlen.zuege, 37);
     assert.equal(stand(dir).abschluss, "regulaer", "ein sauber beendeter Lauf traegt regulaer");
     assert.ok(textprotokollDa(dir), "das Textprotokoll liegt weiterhin daneben");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-4] die Einheit traegt stufe und stufeVerwendet hinter den drei Modellfeldern", NUR_POSIX, () => {
+  // Issue #711: Zwei Felder kommen hinzu, die bestehenden behalten Namen und Reihenfolge —
+  // sie sind der Vertrag mit den Auswertungen.
+  const dir = setupProjekt("night-stand-stufe-", {
+    modelle: ["claude-opus-5", "claude-sonnet-5"],
+    stufen: { schwer: { modell: "claude-sonnet-5" } },
+  });
+  try {
+    const id = readyIssue(dir, "Leichtes Paket", "Aufgabenstufe: leicht\n\n");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--model", "claude-opus-5"],
+      { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.stufe, "leicht", "die Stufe des Pakets fehlt");
+    assert.equal(e.stufeVerwendet, "schwer", "die Stufe, die das Modell gestellt hat, fehlt");
+    assert.equal(e.modell, "claude-sonnet-5");
+    assert.equal(e.modellHerkunft, "stufe");
+    assert.ok(e.modellGrund && e.modellGrund.length > 0, "der Grund des Ausweichens fehlt");
+    assert.deepEqual(
+      Object.keys(e).slice(0, 7),
+      ["id", "titel", "modell", "modellHerkunft", "modellGrund", "stufe", "stufeVerwendet"],
+      `die Feldreihenfolge der Einheit hat sich verschoben: ${Object.keys(e).join(", ")}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-4] ohne Stufe stehen beide Felder als null in der Einheit", NUR_POSIX, () => {
+  // Ein fehlendes Feld liesse offen, ob niemand gemessen hat oder ob die Frage sich nicht
+  // stellte — dieselbe Begruendung wie bei den drei Modellfeldern.
+  const dir = setupProjekt("night-stand-ohne-stufe-");
+  try {
+    const id = readyIssue(dir, "Paket ohne Stufe");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.stufe, null);
+    assert.equal(e.stufeVerwendet, null);
+    assert.ok("stufe" in e && "stufeVerwendet" in e, "die Felder fehlen ganz, statt null zu tragen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
