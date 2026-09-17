@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 // Die Konstanten aus dem Runner selbst, nicht abgeschrieben: Der Fake der
 // Umsetzungs-Session soll genau das Label setzen und genau den Satz schreiben, an
 // denen der Runner den Halt erkennt (wie in night-angehalten.test.mjs).
-import { HALT_FOLGESATZ, KLAEREN_LABEL } from "../../kit/night.mjs";
+import { HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL } from "../../kit/night.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -95,10 +95,17 @@ export function mitProjekt(fn, kette = {}, praefix, configZusatz) {
 
 const FACHPLAN_BODY = "## Ziel\n\nEin Anliegen.\n\nAutor-Modell: claude-opus-5\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n";
 
-/** Ein [Fachlich]-Issue im Backlog, wahlweise mit Label. Liefert die Nummer (lokal: 0001 …). */
-export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night") {
+/**
+ * Ein [Fachlich]-Issue im Backlog, wahlweise mit Label. Liefert die Nummer (lokal: 0001 …).
+ *
+ * `review:fertig` haengt per Default mit dran: Die Kette nimmt seit Issue #718 nur
+ * gepruefte Anforderungen auf, und ohne das Label liefe in keinem Ablauf-Test mehr eine
+ * Kette an. `geprueft: false` ist der Weg fuer die Ablehnungsfaelle.
+ */
+export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night", geprueft = true) {
   const issue = board(dir, "issue", "create", "--title", titel, "--body", FACHPLAN_BODY);
   if (label) board(dir, "issue", "label", "add", String(issue.id), label);
+  if (geprueft) board(dir, "issue", "label", "add", String(issue.id), REVIEW_FERTIG_LABEL);
   return String(issue.id);
 }
 

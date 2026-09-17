@@ -1194,6 +1194,42 @@ export function hatKlaerenLabel(issue) {
 }
 
 /**
+ * Die Spur einer gelaufenen Pruefung, die die Nacht-Kette voraussetzt (Fachplan #702,
+ * Plan #716, E2).
+ *
+ * Der Name ist eine feste Konstante und kommt bewusst NICHT aus der Config: Die Regel
+ * soll in jedem Projekt ohne Einstellung gelten, und ein Config-Feld waere ueber einen
+ * leeren Wert genau die Abschaltung, die es nicht geben soll. `/issue-review` setzt das
+ * Label; die Kette liest es nur.
+ */
+export const REVIEW_FERTIG_LABEL = "review:fertig";
+
+export function hatReviewFertigLabel(issue) {
+  return (issue?.labels || []).includes(REVIEW_FERTIG_LABEL);
+}
+
+/**
+ * Das feste Praefix jedes Grundes „Pruefung fehlt" (Plan #716).
+ *
+ * Fest, weil der ganze Grundtext je Karte verschieden ist — er nennt ihre Nummer. Wer
+ * die Faelle wiedererkennen will (der Kommentar an der abgelehnten Anforderung), prueft
+ * auf dieses Praefix und nicht auf den ganzen Text.
+ */
+export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fehlt`;
+
+/**
+ * Grund und naechster Schritt fuer eine Karte ohne `review:fertig` — getrennt geliefert.
+ *
+ * Das Kettenlabel kommt als Argument aus `night.kette.label` und wird nicht fest
+ * geschrieben: Der Bestand nennt es ueberall dynamisch, und in einem Projekt mit anderem
+ * Label waere `kit:night` im Text schlicht falsch (Plan #716, E8).
+ */
+export function pruefungFehltGrund(id, kettenLabel) {
+  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${REVIEW_FERTIG_LABEL}; das Label ${kettenLabel} bleibt dran`;
+  return { praefix: UNGEPRUEFT_PRAEFIX, schritt, text: `${UNGEPRUEFT_PRAEFIX} — ${schritt}` };
+}
+
+/**
  * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
  *
  * Eine Implementierungs-Session, bei der doch eine Abwaegung auftaucht, zeichnet die
@@ -3310,12 +3346,16 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  *
  * Die Reihenfolge ist die Antwort: Erst das Praefix (das Kennzeichen gilt nur am
  * Fachplan), dann die Spalte (E4: ausserhalb von Backlog ist ein Versehen), dann
- * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen).
+ * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen),
+ * zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht hinter
+ * `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund behaelt:
+ * Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
  */
-function kettenAusschluss(issue) {
+function kettenAusschluss(issue, kettenLabel) {
   if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+  if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
 }
 
@@ -3332,7 +3372,7 @@ export function waehleKettenKandidaten(issues, label, max) {
   const liegengeblieben = [];
   for (const issue of issues || []) {
     if (!(issue?.labels || []).includes(label)) continue;
-    const grund = kettenAusschluss(issue);
+    const grund = kettenAusschluss(issue, label);
     if (grund !== null) {
       uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
       continue;
