@@ -262,9 +262,11 @@ Flags:
   --kette            Nacht-Kette statt Implementierung: je [Fachlich]-Issue mit dem
                      Label aus night.kette.label (Default kit:night) eine Kette aus
                      /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
-                     eigenen Worktree, mit Nachtbericht am Fachplan. --max zaehlt
-                     Ketten (Default 3); --label gilt hier nicht, das Label kommt
-                     aus der Config. Budgets in night.kette.
+                     eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
+                     aus night.kette.varianteBLabel (Default kit:durchziehen) waehlt
+                     Variante B statt Variante A; ohne dieses Label laeuft Variante A.
+                     --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
+                     Label kommt aus der Config. Budgets in night.kette.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
   --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -2226,6 +2228,18 @@ export function ketteBudgetDefaults(config) {
   return Object.keys(KETTE_BUDGET_DEFAULTS).filter((feld) => block[feld] === undefined);
 }
 
+/**
+ * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3): "B", wenn die Karte
+ * das Label aus `budget.varianteBLabel` traegt, sonst "A". Reine Funktion, nie ein
+ * Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
+ * ein leeres Label-Array und ein fehlendes `budget` ergeben alle "A".
+ */
+export function varianteVon(issue, budget) {
+  const label = budget?.varianteBLabel;
+  if (!label) return "A";
+  return (issue?.labels || []).includes(label) ? "B" : "A";
+}
+
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
 //
 // Warum nicht `board.mjs issue-review check`: Dieser Probelauf laeuft im Runner-Prozess
@@ -3510,6 +3524,9 @@ async function stufenDerKette(kette) {
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
   const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
+  if (kette.variante !== "B") return { ausgang: "fertig" };
+  // Die Stufe `umsetzung` entsteht im naechsten Paket (Issue #695) — bis dahin
+  // verhaelt sich Variante B wie Variante A (Entscheidung in Issue #694).
   return { ausgang: "fertig" };
 }
 
@@ -3525,6 +3542,7 @@ async function laufeEineKette(kandidat, nummer, args) {
   const kette = {
     F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
+    variante: varianteVon(kandidat, KETTE_BUDGET),
   };
   log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
@@ -3627,7 +3645,7 @@ export async function laufeKette(args) {
 
   if (args.dryRun) {
     log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
-    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1}`));
+    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1} (Variante ${varianteVon(k, budget)})`));
     log(`Dry-Run beendet: ${kandidaten.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
     process.exit(0);
   }
@@ -3640,7 +3658,7 @@ export async function laufeKette(args) {
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
-  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
+  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Variante B (Label '${budget.varianteBLabel}') verhaelt sich bis zur Stufe umsetzung wie Variante A. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }
