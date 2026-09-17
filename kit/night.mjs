@@ -1649,6 +1649,158 @@ export function empfohlenesModell(body, erlaubte) {
   return { modell: name, grund: null };
 }
 
+// --- Die Stufe einer Karte (Issue #709, Plan #707) ---
+
+// Derselbe enge Anker wie EMPFOHLENES_MODELL_ZEILE: Zeilenanfang, ein Wort ohne Leerraum.
+// Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft er nicht,
+// und ein Wert aus zwei Woertern faellt schon hier durch.
+const AUFGABENSTUFE_ZEILE = /^Aufgabenstufe:[^\S\n]*(\S+)[^\S\n]*$/m;
+
+// Die Ordnung der Stufen, von der leichtesten zur schwersten. Sie ist die Richtung, in die
+// ausgewichen wird: nach oben, nie nach unten. Eine Aufgabe, fuer die die vorgesehene Stufe
+// fehlt, laeuft lieber mit einem staerkeren Modell als mit einem schwaecheren.
+const STUFEN_ORDNUNG = ["leicht", "mittel", "schwer"];
+
+/**
+ * Die Stufe, die ein Arbeitspaket sich selbst gibt (Issue #709).
+ *
+ * Reine Funktion ueber den Body — kein Board, kein Dateisystem, keine Einstellung.
+ *
+ * Rueckgabe `{ stufe, grund }`:
+ *   - bekannter Wert -> `{ stufe: <schwer|mittel|leicht>, grund: null }`
+ *   - anderer Wert   -> `{ stufe: null, grund: <ein Satz> }`
+ *   - keine Zeile    -> `{ stufe: null, grund: null }`
+ *
+ * Der Unterschied zwischen den letzten beiden Faellen ist derselbe wie bei
+ * `empfohlenesModell`: Ein abgewiesener Wert gehoert in die Einheit, eine fehlende Zeile ist
+ * der Normalfall und kein Befund. Bestandspakete tragen die Zeile nicht (Plan #707, E12).
+ */
+export function aufgabenStufe(body) {
+  const treffer = String(body ?? "").match(AUFGABENSTUFE_ZEILE);
+  if (!treffer) return { stufe: null, grund: null };
+
+  const wert = treffer[1];
+  if (!STUFEN_ORDNUNG.includes(wert)) {
+    return { stufe: null, grund: `Aufgabenstufe "${wert}" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.` };
+  }
+  return { stufe: wert, grund: null };
+}
+
+const alsText = (wert) => (typeof wert === "string" && wert.trim() !== "" ? wert : null);
+
+/**
+ * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name }`
+ * (Issue #709).
+ *
+ * Leere Stufen werden weggeworfen: Was weder `modell` noch `kommando` traegt, ist keine
+ * Stufe, sondern eine Luecke — und eine Luecke soll zum Ausweichen nach oben fuehren und
+ * nicht zu einem Eintrag, den `modellFuerStufe` erst wieder pruefen muesste.
+ *
+ * `aktiv` ist wahr, sobald **eine** Stufe belegt ist (Plan #707, E4): Teilbelegung ist der
+ * beabsichtigte Normalfall — ein Projekt, das nur die leichten Pakete billiger fahren will,
+ * belegt genau eine Stufe. Ein fehlender Block, ein leerer Block und drei leere Stufen
+ * ergeben `aktiv: false`, und damit bleibt alles beim Modell des Laufs.
+ */
+export function stufenEinstellung(config) {
+  const roh = config?.night?.stufen;
+  const stufen = {};
+  if (roh && typeof roh === "object") {
+    for (const stufe of STUFEN_ORDNUNG) {
+      const eintrag = roh[stufe];
+      if (!eintrag || typeof eintrag !== "object") continue;
+      const modell = alsText(eintrag.modell);
+      const kommando = alsText(eintrag.kommando);
+      if (!modell && !kommando) continue;
+      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name) };
+    }
+  }
+  return { aktiv: Object.keys(stufen).length > 0, stufen };
+}
+
+// Fuehrende Zuweisungen einer Kommandozeile (`OLLAMA_HOST=… PORT=9 mein-runner …`) sind
+// Umgebung und nicht das Programm. Wer sie mitsucht, sucht nach einem Programm namens
+// `OLLAMA_HOST=…` und weicht still nach oben aus, obwohl das Programm daliegt (E8).
+const ZUWEISUNG = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * Laesst sich diese Stufe starten (Issue #709, Plan #707, E8)?
+ *
+ * Die Pruefung liegt nachweislich **vor** dem ersten Arbeitsschritt — das ist ihr Zweck:
+ * Nur was hier scheitert, darf nach oben ausweichen, ohne eine begonnene Umsetzung zu
+ * wiederholen. Jeder spaetere Fehlschlag faellt unter die bisherigen Fehlerregeln.
+ *
+ *   - `modell`: Der Name steht in `night.modelle` (E18). Dieselbe eine Liste wie bei
+ *     `empfohlenesModell`; zwei Listen nebeneinander liefen auseinander.
+ *   - `kommando`: Die Plattform ist nicht Windows (E17), und das erste Wort nach den
+ *     fuehrenden Zuweisungen ist ueber **dieselbe Shell** auffindbar, die spaeter startet.
+ *     `command -v` statt einer eigenen PATH-Suche, damit auch Builtins und Funktionen
+ *     gelten — eine halbe Nachbildung der Shell scheitert still am ersten Sonderfall.
+ *
+ * Rueckgabe `{ ok, grund }`; `grund` ist bei `ok: true` immer `null`.
+ */
+export function stufeStartbar(eintrag, erlaubteModelle) {
+  const modell = alsText(eintrag?.modell);
+  const kommando = alsText(eintrag?.kommando);
+
+  if (modell) {
+    const liste = Array.isArray(erlaubteModelle) ? erlaubteModelle : [];
+    if (!liste.includes(modell)) return { ok: false, grund: `Modell "${modell}" steht nicht in night.modelle` };
+    return { ok: true, grund: null };
+  }
+
+  if (!kommando) return { ok: false, grund: "weder modell noch kommando gesetzt" };
+
+  if (process.platform === "win32") {
+    return { ok: false, grund: "eine Kommando-Stufe braucht eine POSIX-Shell, die es unter Windows nicht gibt" };
+  }
+
+  const woerter = kommando.trim().split(/\s+/);
+  const programm = woerter.find((w) => !ZUWEISUNG.test(w));
+  if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
+
+  // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
+  // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
+  const res = spawnSync("sh", ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], { encoding: "utf-8" });
+  if (res.error) return { ok: false, grund: `die Shell fuer "${programm}" liess sich nicht starten: ${res.error.message}` };
+  if (res.status !== 0) return { ok: false, grund: `das Programm "${programm}" ist ueber die Shell nicht auffindbar` };
+  return { ok: true, grund: null };
+}
+
+/**
+ * Die Stufe, mit der ein Paket dieser Aufgabenstufe laeuft (Issue #709, Plan #707, E7).
+ *
+ * Geht von `stufe` aus nach oben — leicht, mittel, schwer — und liefert die erste belegte
+ * **und** startbare Stufe. Unbelegt und nicht startbar fuehren zur selben Bewegung: Beide
+ * Anlaesse stehen deshalb in einer Funktion, damit sie bei einer Aenderung nicht
+ * auseinanderlaufen. Der Unterschied liegt allein im Ende der Kette, und darueber
+ * entscheidet der Aufrufer — diese Funktion liefert nur den Befund.
+ *
+ * Rueckgabe `{ stufeVerwendet, eintrag, grund }`. `grund` nennt je uebersprungener Stufe
+ * einen Satz und ist `null`, wenn nichts uebersprungen wurde. Findet sich keine Stufe,
+ * steht `stufeVerwendet: null` mit Grund.
+ */
+export function modellFuerStufe(einstellung, stufe, erlaubteModelle) {
+  const stufen = einstellung?.stufen ?? {};
+  const start = STUFEN_ORDNUNG.indexOf(stufe);
+  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: `"${stufe}" ist keine Aufgabenstufe` };
+
+  const uebersprungen = [];
+  for (const kandidat of STUFEN_ORDNUNG.slice(start)) {
+    const eintrag = stufen[kandidat];
+    if (!eintrag) {
+      uebersprungen.push(`Stufe ${kandidat} nicht belegt`);
+      continue;
+    }
+    const { ok, grund } = stufeStartbar(eintrag, erlaubteModelle);
+    if (!ok) {
+      uebersprungen.push(`Stufe ${kandidat} nicht startbar: ${grund}`);
+      continue;
+    }
+    return { stufeVerwendet: kandidat, eintrag, grund: uebersprungen.length > 0 ? uebersprungen.join("; ") : null };
+  }
+  return { stufeVerwendet: null, eintrag: null, grund: uebersprungen.join("; ") };
+}
+
 // --- Nacht-Session ---
 
 /**
