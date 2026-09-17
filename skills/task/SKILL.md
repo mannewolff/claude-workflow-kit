@@ -57,7 +57,7 @@ Nur bei gesetztem spec-Block.
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
 
-`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Die ID-Vergabe fuer `## Spec-Wirkung` steht in `/issues` und wird hier nicht wiederholt.
+`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Die ID-Vergabe fuer `## Spec-Wirkung` steht in `/issues` und wird hier nicht wiederholt. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts.
 
 **Keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.** Ein `[Task]` hat keinen Vorfahren; die Idee ist der Anlass, nicht der Vorfahr.
 
