@@ -471,6 +471,11 @@
               "default": "kit:night",
               "description": "Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
             },
+            "varianteBLabel": {
+              "type": "string",
+              "default": "kit:durchziehen",
+              "description": "Das Kennzeichen, das einen Fachplan für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
+            },
             "planMin": {
               "type": "number",
               "exclusiveMinimum": 0,
@@ -495,11 +500,23 @@
               "default": 10,
               "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält."
             },
+            "umsetzungMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 120,
+              "description": "Zeitbudget der Umsetzungsstufe (Variante B) in Minuten, über alle Implementierungs-Sessions der Kette."
+            },
             "kostenUsd": {
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 50,
               "description": "Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session."
+            },
+            "kostenUsdB": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 150,
+              "description": "Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session."
             },
             "korrekturrunden": {
               "type": "integer",

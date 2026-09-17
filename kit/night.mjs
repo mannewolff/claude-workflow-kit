@@ -2170,11 +2170,14 @@ function mischeBlattfelder(bisher, wert, blaetter, feld) {
 // Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
 export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   label: "kit:night",
+  varianteBLabel: "kit:durchziehen",
   planMin: 20,
   paketeMin: 15,
   reviewMin: 15,
   abdeckungMin: 10,
+  umsetzungMin: 120,
   kostenUsd: 50,
+  kostenUsdB: 150,
   korrekturrunden: 2,
 });
 
@@ -2193,7 +2196,11 @@ export function ladeKetteBudget(config) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
     budget.label = block.label.trim();
   }
-  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]) {
+  if (block.varianteBLabel !== undefined) {
+    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
+    budget.varianteBLabel = block.varianteBLabel.trim();
+  }
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {

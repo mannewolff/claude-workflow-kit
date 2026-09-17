@@ -42,11 +42,14 @@
   "night": {
     "kette": {
       "label": "kit:night",
+      "varianteBLabel": "kit:durchziehen",
       "planMin": 20,
       "paketeMin": 15,
       "reviewMin": 15,
       "abdeckungMin": 10,
+      "umsetzungMin": 120,
       "kostenUsd": 50,
+      "kostenUsdB": 150,
       "korrekturrunden": 2
     },
     "modelle": [

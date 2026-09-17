@@ -410,11 +410,14 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 
 - `night.kette` — Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.
 - `night.kette.label` — Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es.
+- `night.kette.varianteBLabel` — Das Kennzeichen, das einen Fachplan für die Umsetzungsstufe der Kette (Variante B) kennzeichnet.
 - `night.kette.planMin` — Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden.
 - `night.kette.paketeMin` — Zeitbudget der Stufe Pakete in Minuten, einschliesslich Korrekturrunden.
 - `night.kette.reviewMin` — Zeitbudget der Prüfer-Session am Plan in Minuten.
 - `night.kette.abdeckungMin` — Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält.
+- `night.kette.umsetzungMin` — Zeitbudget der Umsetzungsstufe (Variante B) in Minuten, über alle Implementierungs-Sessions der Kette.
 - `night.kette.kostenUsd` — Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session.
+- `night.kette.kostenUsdB` — Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.korrekturrunden` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung.
 - `night.modelle` — Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Stärke: der erste Eintrag ist das stärkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' wäre ein Angriff über eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs.
 <!-- einstellungen:ende -->
@@ -951,16 +954,21 @@ Andere neue Karten ohne die Herkunftszeile stehen als „nicht zuordenbar" im Be
   "night": {
     "kette": {
       "label": "kit:night",
+      "varianteBLabel": "kit:durchziehen",
       "planMin": 20,
       "reviewMin": 15,
       "paketeMin": 15,
       "abdeckungMin": 10,
+      "umsetzungMin": 120,
       "kostenUsd": 50,
+      "kostenUsdB": 150,
       "korrekturrunden": 2
     }
   }
 }
 ```
+
+`varianteBLabel` kennzeichnet einen Fachplan für die Umsetzungsstufe (Variante B); `umsetzungMin` ist ihr Zeitbudget, `kostenUsdB` ihr eigener Kostendeckel.
 
 Die Minuten gelten je Stufe (Korrekturrunden zählen gegen ihre Stufe), `kostenUsd` je Kette über alle Sessions, `korrekturrunden` je Dokument. Die Kette fordert den Session-Strom immer an: Kosten und Kennzahlen stehen je Stufe im Ergebnisstand (`art: "kette"`, die Budgets im Lauf-Kopf); eine Session ohne Kennzahl zählt 0 und erhöht `kostenUnbekannt`. Fehlt der Block oder einzelne Felder darin, gelten die Startwerte — und das ist sichtbar: Vor der ersten Kette nennt eine Protokollzeile die betroffenen Felder mit ihrem Wert, und der Lauf-Kopf des Ergebnisstands trägt sie als `budgetAusDefault`.
 
