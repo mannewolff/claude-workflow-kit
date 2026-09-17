@@ -85,14 +85,14 @@
       ],
       "sonnet": [
         "gpt-astra",
-        "qwen"
+        "opus"
       ],
       "fable": [
         "opus",
         "gpt-astra"
       ],
       "gpt-sol": [
-        "qwen",
+        "opus",
         "gpt-astra"
       ],
       "qwen": [
