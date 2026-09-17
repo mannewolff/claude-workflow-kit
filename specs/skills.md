@@ -23,6 +23,7 @@
 - skills-25 — `/issue-review` gibt dem Plan-Reviewer neben dem Plan den Body der in `Fachliche Quelle:` genannten Karte aus dem Board und den Pfad einer `Vorlage:`-Zeile mit und fragt, ob der Plan jedes Ziel, jedes Akzeptanzkriterium und jede beantwortete Frage der Quelle herstellt; ohne Quelle entfällt der Eingang.
 - skills-26 — `/implement-ready` und `/implement-next` beginnen die Schlussmeldung eines Laufs, der das letzte Paket eines Vorhabens abschließt, mit dem, was der Mensch jetzt sieht, und dem, was vom Anlass laut fachlicher Quelle und Vorlage nicht enthalten ist; Commits und Checks folgen danach.
 - skills-27 — `/issues` liest vor dem Schneiden die Einarbeitungs-Kommentare des Plans und meldet im Abschluss jeden übernommenen Review-Fund, der in keinem Arbeitspaket ankommt; unbeaufsichtigt als Kommentar am Plan.
+- skills-28 — Die Skills `/implement-ready`, `/implement-next`, `/implement-done`, `/implement-test`, `/issues`, `/task`, `/techplan` und `/issue-review` nennen in ihrem Stop-Punkt-Abschnitt die Ausnahme, dass allein der Nacht-Runner in der Umsetzungsstufe der Nacht-Kette unter Variante B Arbeitspakete selbst nach Ready zieht, und halten fuer sich selbst an der Regel fest, dass keiner von ihnen eine Ready-Bewegung ausloest.
 
 ## Entfallen
 
