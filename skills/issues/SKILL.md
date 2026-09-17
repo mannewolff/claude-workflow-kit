@@ -198,4 +198,4 @@ Liste danach alle angelegten Issues mit Nummern und Titeln und ergänze die Tabe
 Schreibe darunter: "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO." Wer ein Paket prüfen lassen will, ruft `/issue-review #N`; der Regelfall ist Ready ohne Paket-Review.
 
 ## Stop-Punkt
-Dieser Skill endet nach dem Anlegen der Issues. Kein Code, kein Commit. Das GO (Ready-Bewegung) macht der Mensch.
+Dieser Skill endet nach dem Anlegen der Issues. Kein Code, kein Commit. Das GO (Ready-Bewegung) macht der Mensch. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.

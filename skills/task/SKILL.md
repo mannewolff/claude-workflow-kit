@@ -112,5 +112,5 @@ Fehlt einem Werkzeug ein versionierbarer Weg, gehoert dessen Entwicklung in ein 
 
 - **Kein Anlegen ohne Bestaetigung** — unbeaufsichtigt endet der Skill in Schritt 0 und legt nichts an.
 - **Kein Code, kein Commit.** Dieser Skill schreibt ein Arbeitspaket, er setzt es nicht um.
-- **Keine Ready-Bewegung.** Ready ist das GO des Menschen.
+- **Keine Ready-Bewegung.** Ready ist das GO des Menschen. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.
 - **Kein `[Fachlich]`- und kein `[Plan]`-Dokument als Quelle** — dort ist der volle Weg bereits begonnen.

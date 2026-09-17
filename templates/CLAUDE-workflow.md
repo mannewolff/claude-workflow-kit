@@ -52,7 +52,7 @@ Die neun Schritte oben sind der Prozess aus dem Whitepaper. Was hier steht, ist 
 
 ## Die drei Stop-Punkte (nie automatisiert)
 
-1. **GO (Schritt 4):** Issue nach Ready ziehen. Claude wartet.
+1. **GO (Schritt 4):** Issue nach Ready ziehen. Claude wartet. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief. Der Push am Morgen (Schritt 8) nimmt die Entscheidungen der Nacht mit an.
 2. **Push (Schritt 8):** Trigger-Phrase `push main`. Claude pusht nicht autonom.
 3. **Merge (Schritt 9):** Trigger-Phrase `merge production`. Claude merged nicht.
 
@@ -126,7 +126,7 @@ Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mit
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue mit dem Routing-Label `kit:nightrun` eine frische Headless-Session mit `/implement-next #N`. Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Nachts wird committet, nie gepusht — Review, Test und `push main` passieren morgens durch den Menschen.
 
-Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`). Die Geste ist das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog; der Runner verbraucht es beim Start, jedes Setzen autorisiert genau eine Kette. Je Fachplan entsteht in einem eigenen Worktree ein Plan (`/techplan`), der geprueft wird (`/issue-review`), daraus die Arbeitspakete (`/issues`) und eine Abdeckung gegen den Fachplan — gebaut wird nichts, die Pakete bleiben im Backlog, das GO nach Ready bleibt beim Menschen. Drei Ausgaenge: `fertig`, `angehalten` (eine Stopp-Frage wartet als Kommentar `## Kette angehalten` samt `kit:klaeren` am Fachplan: Antwort als Satz in den Fachplan, Label abnehmen, `kit:night` neu setzen — die naechste Kette beginnt von vorn) und `abgebrochen` (mit Grund). Bei jedem Ausgang steht ein Nachtbericht als Kommentar am Fachplan; er ist Verlauf, verbindlich wird eine Entscheidung erst als Satz im Fachplan. Budgets — Minuten je Stufe, Kosten je Kette, Korrekturrunden — stehen in `night.kette` der `workflow.config.json`. Kette und Umsetzungsnacht laufen nebeneinander. Details: Kapitel „Nachtbetrieb" in der Kit-Dokumentation.
+Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`). Die Geste ist das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog; der Runner verbraucht es beim Start, jedes Setzen autorisiert genau eine Kette. Je Fachplan entsteht in einem eigenen Worktree ein Plan (`/techplan`), der geprueft wird (`/issue-review`), daraus die Arbeitspakete (`/issues`) und eine Abdeckung gegen den Fachplan — gebaut wird nichts, die Pakete bleiben im Backlog, das GO nach Ready bleibt beim Menschen. Die Kette kennt zwei Varianten: Variante A (Standard) belaesst die Arbeitspakete im Backlog und wartet auf das GO des Menschen; Variante B setzt zusaetzlich das Label `kit:durchziehen` (Feld `night.kette.varianteBLabel`) am Fachplan — dann zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket, wie unter „Die drei Stop-Punkte (nie automatisiert)" beschrieben. Fehlt das Label oder wird es wieder entfernt, faellt die Kette auf Variante A zurueck. Drei Ausgaenge: `fertig`, `angehalten` (eine Stopp-Frage wartet als Kommentar `## Kette angehalten` samt `kit:klaeren` am Fachplan: Antwort als Satz in den Fachplan, Label abnehmen, `kit:night` neu setzen — die naechste Kette beginnt von vorn) und `abgebrochen` (mit Grund). Bei jedem Ausgang steht ein Nachtbericht als Kommentar am Fachplan; er ist Verlauf, verbindlich wird eine Entscheidung erst als Satz im Fachplan. Budgets — Minuten je Stufe, Kosten je Kette, Korrekturrunden — stehen in `night.kette` der `workflow.config.json`. Kette und Umsetzungsnacht laufen nebeneinander; unter Variante B verhindert der Lock `.claude/night-umsetzung.lock`, dass eine Umsetzungsnacht waehrend der laufenden Kette startet. Details: Kapitel „Nachtbetrieb" in der Kit-Dokumentation.
 
 ---
 
@@ -166,7 +166,7 @@ Der Umfang allein entscheidet also nicht mehr: Eine Aenderung an zwoelf Dateien 
 | Spalte | Bedeutung | Wer bewegt |
 |--------|-----------|-----------|
 | Backlog | Idee oder Issue mit offenen Fragen | Beide |
-| Ready | Freigegeben, gilt als GO | Nur Mensch |
+| Ready | Freigegeben, gilt als GO | Nur Mensch (Ausnahme: Umsetzungsstufe der Nacht-Kette unter Variante B) |
 | In progress | Aktuelle Arbeit, ein Issue zur Zeit | KI beim Start |
 | In review | Lokal fertig, nicht gepusht | KI beim Abschluss |
 | Done | Mensch hat getestet, Push erfolgt | Nur Mensch |
@@ -311,7 +311,7 @@ Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Pr
 
 ### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`
 
-GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter Trigger. Fundstellen: „Die drei Stop-Punkte (nie automatisiert)", „Mitteilungen des Menschen".
+GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter Trigger. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief. Fundstellen: „Die drei Stop-Punkte (nie automatisiert)", „Mitteilungen des Menschen", „Nachtbetrieb (optional)".
 
 ### W2 — Der Git-Workflow ist strikt bindend `[Urteil]`
 
