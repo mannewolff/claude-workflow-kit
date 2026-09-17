@@ -64,6 +64,9 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["die wartenden Berichte", ".claude/night-bericht-"],
     ["den Kommentar bei gescheitertem Vorflug", "Kette nicht gestartet"],
     ["den Satz zum Verlauf", "Dieser Bericht ist Verlauf"],
+    ["das Label der Umsetzungsstufe", "`kit:durchziehen`"],
+    ["die Umsetzungsstufe", "Variante B"],
+    ["den Umsetzungs-Lock", "night-umsetzung.lock"],
   ];
   for (const [was, anker] of erwartet) {
     assert.ok(abschnitt.includes(anker), `der Abschnitt nennt ${was} ('${anker}') nicht`);
@@ -89,10 +92,15 @@ test("ein Absatz erklaert, dass das Label beim Start verbraucht ist", () => {
   assert.ok(absatz, "kein Absatz nennt 'verbraucht' zusammen mit 'Label' und 'Start'");
 });
 
-test("der Abschnitt sagt, dass Kette und Umsetzung nebeneinander laufen, und behauptet keinen Ausschluss", () => {
+// Seit Variante B ist der Ausschluss kein Bug mehr, sondern die Aussage selbst: Die
+// Umsetzungsstufe der Kette und die Umsetzungsnacht bauen beide in der Hauptkopie und
+// teilen sich dafuer einen Lock. Geprueft wird deshalb nicht mehr die Abwesenheit eines
+// Ausschlusses, sondern dass er samt Variante und Lock beim Namen genannt ist.
+test("der Abschnitt sagt, dass Kette und Umsetzung nebeneinander laufen, und nennt die Einschraenkung unter Variante B", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   assert.match(abschnitt, /nebeneinander/);
-  assert.doesNotMatch(abschnitt, /exklusiv|schliess(en|t) sich aus/i);
+  assert.match(abschnitt, /Variante B/);
+  assert.match(abschnitt, /night-umsetzung\.lock/);
 });
 
 test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", () => {
@@ -120,7 +128,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander"]) {
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander"]) {
     assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
   }
   // Die Kopie unter .claude/ ist Installer-Ausgabe und nicht versioniert — in CI existiert
