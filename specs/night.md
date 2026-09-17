@@ -25,6 +25,7 @@
 - night-29 — Der Ergebnisstand eines Laufs traegt je Einheit die Ein- und Ausgabemenge sowie die im Zwischenspeicher erzeugten und aus ihm gelesenen Mengen, zusaetzlich zu Kosten, API-Dauer und Zuegen.
 - night-30 — Der Ergebnisstand weist den Verbrauch aus, der zu keiner Einheit gehoert, als eigene Zahl aus; sie ist die Differenz zwischen Lauf-Summe und der Summe ueber die Einheiten.
 - night-31 — Der Runner liefert seinen Ergebnisstand ueber die Kanban-Schnittstelle ein; faellt die Einlieferung aus, bleibt der Lauf erfolgreich und der Ergebnisstand als Datei ist der Rueckfall.
+- night-32 — Der Nacht-Runner nimmt Ausgaben von `board.mjs` bis 256 MB an; scheitert ein Board-Aufruf, nennt die Fehlermeldung Fehlercode oder Signal des Prozesses und zitiert dessen Ausgabe auf 500 Zeichen gekürzt.
 
 ## Entfallen
 

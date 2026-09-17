@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.3] - 2026-09-17
+- Nacht-Runner: Board-Ausgaben ueber 1 MB brechen die Kette nicht mehr ab (#699)
+- qwen aus Konfiguration entfernt
+
 ## [1.53.2] - 2026-09-16
 - /issues liest uebernommene Review-Funde gegen (#687)
 - Schlussmeldung eines Vorhabens nennt zuerst Sichtbares und Fehlendes (#686)
