@@ -3636,6 +3636,7 @@ export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die
 const BERICHT_DATEI_PRAEFIX = "night-bericht-";
 const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
 const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
+const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = /^ {0,3}###\s*Entscheidungen\s*$/i;
 const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
 
 function minutenText(ms) {
@@ -3675,10 +3676,55 @@ function entscheidungsZeilen(body) {
   return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
 }
 
+/**
+ * Die Aufzaehlungspunkte aus `### Entscheidungen` in den Kommentaren eines Pakets —
+ * Format des Abschlussberichts (`skills/implement-ready/SKILL.md`, Issue #697). Ein
+ * Paket ohne diesen Block und eines ganz ohne Kommentare liefern beide `[]`, kein Wurf.
+ */
+function entscheidungenAusKommentaren(paket) {
+  const eintraege = [];
+  for (const kommentar of kommentareVon(paket)) eintraege.push(...punkteErsterEbene(kommentar, ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT));
+  return eintraege;
+}
+
+/** `#<id> <Titel>` fuer den Bericht — nur `#<id>`, wenn die Karte ihren Titel nicht mitbringt. */
+function paketBezeichnung(pakete, id) {
+  const titel = pakete.find((k) => String(k.id) === String(id))?.title;
+  return titel ? `#${id} ${titel}` : `#${id}`;
+}
+
+/**
+ * Der Abschnitt `### Umsetzung`, ausschliesslich unter Variante B (Issue #697): die drei
+ * Listen umgesetzt / angehalten / nicht begonnen, jede mit `keine` statt Weglassen. Die
+ * Rueckstellungen (`zurueckgestellt` — gezogen, aber ohne In-review-Ergebnis) zaehlen im
+ * Bericht zu "nicht begonnen": Kriterium 4 des Fachplans #681 nennt genau drei Zustaende,
+ * und fuer den Menschen zaehlt an dieser Stelle nur, ob ein Paket in Review liegt.
+ */
+function berichtUmsetzungMitGrund(pakete, id, grund) {
+  const bezeichnung = paketBezeichnung(pakete, id);
+  return `${bezeichnung} (${grund})`;
+}
+
+function berichtUmsetzung(einheit, pakete) {
+  const stand = einheit.stufen?.umsetzung ?? {};
+  const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
+  const nichtBegonnen = [...(stand.nichtBegonnen ?? []), ...(stand.zurueckgestellt ?? [])];
+  const nichtBegonnenText = nichtBegonnen.length > 0
+    ? `${nichtBegonnen.map((e) => berichtUmsetzungMitGrund(pakete, e.id, e.grund)).join(", ")}.`
+    : "keine";
+  return [
+    "### Umsetzung", "",
+    `- umgesetzt: ${liste(stand.umgesetzt ?? [])}`,
+    `- angehalten: ${liste(stand.angehalten ?? [])}`,
+    `- nicht begonnen: ${nichtBegonnenText}`,
+    "",
+  ];
+}
+
 function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const p = stufen.plan;
-  const zeilen = [];
+  const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
   if (p?.id) {
     const pruefer = String(plan?.body || "").match(/^\s*Plan-Review:\s*(.+?)\s*$/m)?.[1] ?? "keiner";
     const kosten = p.kennzahlen?.kostenUsd;
@@ -3689,12 +3735,8 @@ function berichtStufen(einheit, plan, pakete) {
     zeilen.push("- Plan: keiner entstanden.");
   }
   const ids = stufen.pakete?.ids ?? [];
-  const paketText = (id) => {
-    const titel = pakete.find((k) => String(k.id) === String(id))?.title;
-    return titel ? `#${id} ${titel}` : `#${id}`;
-  };
   zeilen.push(ids.length > 0
-    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map(paketText).join(", ")}.`
+    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.`
     : "- Pakete: keine.");
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
   if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
@@ -3713,9 +3755,20 @@ function berichtAbgelehnt(einarbeitung) {
  * den gelesenen Karten, damit sie an Fixtures pruefbar ist; `jetzt` nur fuer Tests.
  *
  * Die Entscheidungen der Nacht sind die Aufzaehlungspunkte erster Ebene aus den
- * Architektonischen Entscheidungen des Plans, woertlich, und die `Entscheidung:`-Zeilen
- * aus dem Kontext jedes Pakets — fortlaufend nummeriert, mit dem Ort in Klammern.
+ * Architektonischen Entscheidungen des Plans, woertlich, die `Entscheidung:`-Zeilen aus
+ * dem Kontext jedes Pakets und die `### Entscheidungen`-Bloecke aus dessen Kommentaren
+ * (Abschlussbericht, Issue #697) — fortlaufend nummeriert, mit dem Ort in Klammern.
  */
+/** Alle Entscheidungen der Nacht, woertlich, mit dem Ort in Klammern — siehe `berichtBauen`. */
+function berichtEntscheidungen(stufen, plan, pakete) {
+  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
+  for (const k of pakete) {
+    for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+    for (const e of entscheidungenAusKommentaren(k)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  }
+  return entscheidungen;
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
 } = {}) {
@@ -3723,9 +3776,9 @@ export function berichtBauen(einheit, {
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
   z.push("### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "");
   z.push("### Stufen", "", ...berichtStufen(einheit, plan, pakete), "");
+  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete));
 
-  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
-  for (const k of pakete) for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
   z.push("### Entscheidungen der Nacht", "");
   if (entscheidungen.length === 0) z.push("- Keine.");
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
@@ -3913,6 +3966,7 @@ async function laufeEineKette(kandidat, nummer, args) {
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
       ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      variante: kette.variante,
       stufen: kette.stufen,
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
       ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
