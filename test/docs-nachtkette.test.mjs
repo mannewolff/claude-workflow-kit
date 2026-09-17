@@ -18,7 +18,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { KETTE_BUDGET_DEFAULTS, BERICHT_ANKER, KETTE_HALT_ANKER } from "../kit/night.mjs";
+import {
+  KETTE_BUDGET_DEFAULTS,
+  BERICHT_ANKER,
+  KETTE_HALT_ANKER,
+  REVIEW_FERTIG_LABEL,
+  KETTE_UNGEPRUEFT_ANKER,
+} from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -63,6 +69,8 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["die ueberholten Plaene", "Ueberholt durch Plan"],
     ["die wartenden Berichte", ".claude/night-bericht-"],
     ["den Kommentar bei gescheitertem Vorflug", "Kette nicht gestartet"],
+    ["die Pruefung als Voraussetzung", `\`${REVIEW_FERTIG_LABEL}\``],
+    ["den Anker der uebersprungenen Pruefung", `\`${KETTE_UNGEPRUEFT_ANKER}\``],
     ["den Satz zum Verlauf", "Dieser Bericht ist Verlauf"],
     ["das Label der Umsetzungsstufe", "`kit:durchziehen`"],
     ["die Umsetzungsstufe", "Variante B"],
