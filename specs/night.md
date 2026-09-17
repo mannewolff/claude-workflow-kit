@@ -26,6 +26,7 @@
 - night-30 — Der Ergebnisstand weist den Verbrauch aus, der zu keiner Einheit gehoert, als eigene Zahl aus; sie ist die Differenz zwischen Lauf-Summe und der Summe ueber die Einheiten.
 - night-31 — Der Runner liefert seinen Ergebnisstand ueber die Kanban-Schnittstelle ein; faellt die Einlieferung aus, bleibt der Lauf erfolgreich und der Ergebnisstand als Datei ist der Rueckfall.
 - night-32 — Der Nacht-Runner nimmt Ausgaben von `board.mjs` bis 256 MB an; scheitert ein Board-Aufruf, nennt die Fehlermeldung Fehlercode oder Signal des Prozesses und zitiert dessen Ausgabe auf 500 Zeichen gekürzt.
+- night-33 — Lehnt die Kette einen Fachplan ab, weil `review:fertig` fehlt, bekommt die Karte ausserhalb des Dry-Runs und vor dem Reviewer-Vorflug einmal einen Kommentar mit dem Anker `## Kette nicht gestartet: Pruefung fehlt`, der Grund und naechsten Schritt im Wortlaut des Protokolls nennt; ein vorhandener Kommentar mit diesem Anker verhindert einen zweiten, ein fehlgeschlagener Board-Aufruf wird protokolliert und haelt den Lauf nicht auf, und traegt zugleich keine Karte der geholten Liste das Label, meldet der Runner in Vorschau und Lauf zusaetzlich den Hinweis, dass das Kennzeichen am Board noch anzulegen oder noch keine Anforderung geprueft ist.
 
 ## Entfallen
 

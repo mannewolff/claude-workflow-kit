@@ -1230,6 +1230,21 @@ export function pruefungFehltGrund(id, kettenLabel) {
 }
 
 /**
+ * Der Anker des Kommentars an der wegen fehlender Pruefung abgelehnten Anforderung
+ * (Fachplan #702, Kriterium 4; Plan #716, E3).
+ *
+ * Er steht als erste Zeile des Kommentars und traegt keinen Laufstempel: Genau daran
+ * erkennt der naechste Lauf, dass der Hinweis schon dasteht, und schreibt keinen
+ * zweiten. Ein Label als Merker verlangte ein weiteres Kennzeichen am Board, eine
+ * lokale Datei ueberlebte den Worktree nicht.
+ *
+ * Aehnlich, aber nicht dasselbe wie der Kommentar `Kette nicht gestartet` bei
+ * gescheitertem Reviewer-Vorflug: Der eine sagt, die Pruefung der Anforderung fehlt,
+ * der andere, die Reviewer waren nicht erreichbar.
+ */
+export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt";
+
+/**
  * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
  *
  * Eine Implementierungs-Session, bei der doch eine Abwaegung auftaucht, zeichnet die
@@ -4285,6 +4300,78 @@ function ketteNichtGestartet(kandidaten, grund) {
   }
 }
 
+/**
+ * Der einmalige Hinweis an einer Anforderung, die die Kette wegen fehlender Pruefung
+ * abgelehnt hat (Fachplan #702, Kriterium 4; Issue #719).
+ *
+ * Grund und naechster Schritt stehen im Wortlaut des Protokolls: Wer morgens die Karte
+ * liest, soll nicht erst im Protokoll nachsehen muessen. Einmalig wird der Kommentar
+ * ueber den Anker — die Karte wird vorher zurueckgelesen, wie die Kette es mit ihren
+ * Ueberholt-Kommentaren haelt (Plan #716, E3).
+ *
+ * Nicht lesbar heisst nicht schreiben: Ohne die vorhandenen Kommentare ist nicht zu
+ * entscheiden, ob der Hinweis schon dasteht, und ein Lauf, der das jede Nacht neu
+ * versucht, haengte der Karte den Hinweis mehrfach an. Ein gescheiterter Board-Aufruf
+ * wird protokolliert und haelt den Lauf nicht auf — der Kommentar ist Hinweis, kein Gate.
+ */
+function pruefungFehltKommentieren(u) {
+  const karte = leseKarte(u.id);
+  if (!karte) {
+    log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
+    return;
+  }
+  if (kommentareVon(karte).some((k) => k.includes(KETTE_UNGEPRUEFT_ANKER))) {
+    log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
+    return;
+  }
+  const res = boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
+  log(res.status === 0
+    ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
+    : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
+}
+
+/**
+ * Der Hinweis, dass das Board `review:fertig` offenbar gar nicht kennt (Fachplan #702,
+ * Kriterium 8; Plan #716, E4).
+ *
+ * Ob das Kennzeichen am Board definiert ist, kann der Runner nicht fragen — kein
+ * Kommando liest die dort angelegten Labels. Der Hinweis entsteht deshalb als Heuristik
+ * ueber die ohnehin geholte Liste: Traegt keine einzige Karte das Label, ist er in
+ * beiden Lesarten wahr, und sein Text nennt beide Wege.
+ *
+ * Er erscheint nur, wenn mindestens eine Anforderung deshalb abgelehnt wurde — ohne
+ * Adressaten waere er Rauschen in jedem Protokoll. In Vorschau und Lauf gleichermassen:
+ * Er schreibt nichts, er sagt nur etwas.
+ */
+function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
+  if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
+  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jede fachliche Anforderung abgelehnt.`);
+  log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
+}
+
+/**
+ * Die uebersprungenen Karten einer Nacht: Protokollzeile und Einheit im Ergebnisstand
+ * wie bisher, dazu der Hinweis an den wegen fehlender Pruefung abgelehnten Anforderungen
+ * (Issue #719).
+ *
+ * Beides steht VOR dem Reviewer-Vorflug (Plan #716, E7): Der Vorflug betrifft nur die
+ * laufenden Ketten; scheitert er, sollen die abgelehnten Fachplaene ihren Kommentar
+ * trotzdem schon haben.
+ */
+function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
+  // Erkannt am festen Praefix, nicht am ganzen Grundtext: Der traegt je Karte ihre
+  // Nummer und ist deshalb kein Vergleichswert.
+  const abgelehnt = uebersprungen.filter((u) => String(u.grund).startsWith(UNGEPRUEFT_PRAEFIX));
+  for (const u of uebersprungen) {
+    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+    // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
+    // auch dort, er ist nur eine Protokollzeile.
+    if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
+  }
+  hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
+}
+
 /** Eine Karte ohne harten Stopp — null, wenn der Tracker sie nicht liefert. */
 function leseKarte(id) {
   const res = boardRoh("issue", "get", String(id));
@@ -4419,10 +4506,7 @@ export async function laufeKette(args) {
   const alle = board("issue", "list");
   warneVorAltenLabels(alle);
   const { kandidaten, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
-  for (const u of uebersprungen) {
-    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
-  }
+  uebersprungeneVerbuchen(uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
     einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
