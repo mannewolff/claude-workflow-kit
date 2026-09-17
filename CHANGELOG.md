@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.5] - 2026-09-17
+- Test zu skills-28: Ausnahme fuer Variante B in acht Skills (#700)
+
 ## [1.53.4] - 2026-09-17
 - CLAUDE.md: Quelle unter kit/, installierte Kopie unter .claude/ wird nie bearbeitet
 - Config-Felder fuer Variante B: varianteBLabel, umsetzungMin, kostenUsdB (#693)
