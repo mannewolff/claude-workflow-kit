@@ -3711,12 +3711,20 @@ function rundeVerbuchen(kette, id) {
  * ueber denselben Vorgang. Pakete, die der Runner nicht gezogen hat, sind hier nie
  * dabei. `boardRoh` statt `board`: Ein toter Tracker darf diesen Aufraeumschritt nicht
  * in einen Prozessabbruch verwandeln, der den eigentlichen Fehler verschluckt.
+ *
+ * Ein umgesetztes Paket traegt zusaetzlich `stufe`, `stufeVerwendet` und `modell` —
+ * dieselben Werte, die `laufeRunde` in der Paket-Einheit ablegt (Issue #713). Die
+ * Paket-Einheit steht in `LAUF.einheiten`; ohne sie (Dry-Run, toter Ergebnisstand)
+ * tragen alle drei `null`.
  */
 function paketeAbschliessen(stand, gezogen) {
   for (const id of gezogen) {
     const status = leseKarte(id)?.status ?? null;
     if (status === "in_review") {
-      stand.umgesetzt.push(id);
+      const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
+      stand.umgesetzt.push({
+        id, stufe: einheit?.stufe ?? null, stufeVerwendet: einheit?.stufeVerwendet ?? null, modell: einheit?.modell ?? null,
+      });
       continue;
     }
     if (stand.angehalten.includes(id)) continue;
@@ -4037,16 +4045,43 @@ function berichtUmsetzungMitGrund(pakete, id, grund) {
   return `${bezeichnung} (${grund})`;
 }
 
+/**
+ * Stufe und Modell hinter einem umgesetzten Paket, als Klammerzusatz (Issue #713).
+ *
+ * Ein Eintrag ohne `stufe` — auch ein reiner Id-String aus einem Ergebnisstand vor
+ * dieser Aenderung, dem die neuen Felder ganz fehlen — erscheint als "ohne Stufe"; die
+ * Funktion wirft dafuer nie. Wich der Lauf auf eine hoehere Stufe aus, stehen beide
+ * Stufen da, wie in `rundenHinweis`.
+ */
+function berichtUmsetzungStufe(eintrag) {
+  const stufe = eintrag && typeof eintrag === "object" ? eintrag.stufe : null;
+  if (!stufe) return "ohne Stufe";
+  const { stufeVerwendet, modell } = eintrag;
+  const stufeText = stufeVerwendet && stufeVerwendet !== stufe
+    ? `Aufgabenstufe ${stufe}, ueber Stufe ${stufeVerwendet}`
+    : `Aufgabenstufe ${stufe}`;
+  return modell ? `${stufeText}, Modell ${modell}` : stufeText;
+}
+
+function berichtUmsetzungEintrag(pakete, eintrag) {
+  const id = eintrag && typeof eintrag === "object" ? eintrag.id : eintrag;
+  return `${paketBezeichnung(pakete, id)} (${berichtUmsetzungStufe(eintrag)})`;
+}
+
 function berichtUmsetzung(einheit, pakete) {
   const stand = einheit.stufen?.umsetzung ?? {};
   const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
+  const umgesetzt = stand.umgesetzt ?? [];
+  const umgesetztText = umgesetzt.length > 0
+    ? `${umgesetzt.map((e) => berichtUmsetzungEintrag(pakete, e)).join(", ")}.`
+    : "keine";
   const nichtBegonnen = [...(stand.nichtBegonnen ?? []), ...(stand.zurueckgestellt ?? [])];
   const nichtBegonnenText = nichtBegonnen.length > 0
     ? `${nichtBegonnen.map((e) => berichtUmsetzungMitGrund(pakete, e.id, e.grund)).join(", ")}.`
     : "keine";
   return [
     "### Umsetzung", "",
-    `- umgesetzt: ${liste(stand.umgesetzt ?? [])}`,
+    `- umgesetzt: ${umgesetztText}`,
     `- angehalten: ${liste(stand.angehalten ?? [])}`,
     `- nicht begonnen: ${nichtBegonnenText}`,
     "",

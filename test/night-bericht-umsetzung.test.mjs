@@ -28,7 +28,7 @@ test("[night-35] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern
     id: "1", ausgang: "fertig", variante: "B",
     stufen: {
       umsetzung: {
-        umgesetzt: ["10"],
+        umgesetzt: [{ id: "10", stufe: "leicht", stufeVerwendet: "leicht", modell: "fixture-modell" }],
         angehalten: ["11"],
         nichtBegonnen: [{ id: "12", grund: "Abhaengigkeit #9 nicht erfuellt" }],
         zurueckgestellt: [{ id: "13", grund: "die Runde endete in backlog statt in In review" }],
@@ -38,8 +38,65 @@ test("[night-35] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern
   const text = berichtBauen(einheit, { pakete, stempel: "s" });
   assert.match(
     text,
-    /### Umsetzung\n\n- umgesetzt: #10 P1\.\n- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\), #13 P4 \(die Runde endete in backlog statt in In review\)\.\n/,
+    /### Umsetzung\n\n- umgesetzt: #10 P1 \(Aufgabenstufe leicht, Modell fixture-modell\)\.\n- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\), #13 P4 \(die Runde endete in backlog statt in In review\)\.\n/,
   );
+});
+
+test("[night-37] ein umgesetztes Paket mit Stufe und ohne Ausweichen erscheint mit Stufe und Modell", () => {
+  const pakete = [{ id: "10", title: "P1" }];
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10", stufe: "leicht", stufeVerwendet: "leicht", modell: "claude-sonnet-5" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const text = berichtBauen(einheit, { pakete, stempel: "s" });
+  assert.match(text, /- umgesetzt: #10 P1 \(Aufgabenstufe leicht, Modell claude-sonnet-5\)\.\n/);
+});
+
+test("[night-37] ein umgesetztes Paket, dessen Modell von einer hoeheren Stufe kam, nennt beide Stufen", () => {
+  const pakete = [{ id: "10", title: "P1" }];
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10", stufe: "leicht", stufeVerwendet: "mittel", modell: "claude-opus-5" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const text = berichtBauen(einheit, { pakete, stempel: "s" });
+  assert.match(text, /- umgesetzt: #10 P1 \(Aufgabenstufe leicht, ueber Stufe mittel, Modell claude-opus-5\)\.\n/);
+});
+
+test("[night-37] ein umgesetztes Paket ohne Stufe erscheint als 'ohne Stufe'", () => {
+  const pakete = [{ id: "10", title: "P1" }];
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10", stufe: null, stufeVerwendet: null, modell: "claude-sonnet-5" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const text = berichtBauen(einheit, { pakete, stempel: "s" });
+  assert.match(text, /- umgesetzt: #10 P1 \(ohne Stufe\)\.\n/);
+});
+
+test("[night-37] ein angehaltenes und ein nicht begonnenes Paket erscheinen im heutigen Format, zeichengleich zum Bestand", () => {
+  const pakete = [{ id: "10", title: "P1" }, { id: "11", title: "P2" }, { id: "12", title: "P3" }];
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: {
+      umsetzung: {
+        umgesetzt: [{ id: "10", stufe: "leicht", stufeVerwendet: "leicht", modell: "claude-sonnet-5" }],
+        angehalten: ["11"],
+        nichtBegonnen: [{ id: "12", grund: "Abhaengigkeit #9 nicht erfuellt" }],
+      },
+    },
+  };
+  const text = berichtBauen(einheit, { pakete, stempel: "s" });
+  assert.match(text, /- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\)\.\n/);
+});
+
+test("[night-37] fehlen die neuen Felder in der Einheit, erscheint das Paket als 'ohne Stufe' und die Funktion wirft nicht", () => {
+  const pakete = [{ id: "10", title: "P1" }];
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: ["10"], angehalten: [], nichtBegonnen: [] } },
+  };
+  let text;
+  assert.doesNotThrow(() => { text = berichtBauen(einheit, { pakete, stempel: "s" }); });
+  assert.match(text, /- umgesetzt: #10 P1 \(ohne Stufe\)\.\n/);
 });
 
 test("[night-35] leere Listen im Abschnitt Umsetzung stehen als 'keine', nicht weggelassen", () => {
@@ -95,7 +152,7 @@ test("[night-35] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
 });
 
-test("[night-35] die Kette-Einheit des Ergebnisstands traegt variante und die drei Listen", NUR_POSIX, () => {
+test("[night-35] [night-37] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet und modell", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Ein Anliegen");
     board(dir, "issue", "label", "add", F, "kit:durchziehen");
@@ -108,6 +165,11 @@ test("[night-35] die Kette-Einheit des Ergebnisstands traegt variante und die dr
     assert.ok(Array.isArray(einheit.stufen.umsetzung.umgesetzt));
     assert.ok(Array.isArray(einheit.stufen.umsetzung.angehalten));
     assert.ok(Array.isArray(einheit.stufen.umsetzung.nichtBegonnen));
-    assert.deepEqual(einheit.stufen.umsetzung.umgesetzt, einheit.stufen.pakete.ids);
+    assert.deepEqual(einheit.stufen.umsetzung.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids);
+    for (const eintrag of einheit.stufen.umsetzung.umgesetzt) {
+      assert.ok("stufe" in eintrag, "traegt stufe");
+      assert.ok("stufeVerwendet" in eintrag, "traegt stufeVerwendet");
+      assert.ok("modell" in eintrag, "traegt modell");
+    }
   });
 });

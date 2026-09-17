@@ -190,7 +190,7 @@ test("[night-34] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_PO
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.deepEqual(einheit.stufen.umsetzung.umgesetzt, einheit.stufen.pakete.ids, "die Pakete wurden nicht umgesetzt");
+    assert.deepEqual(einheit.stufen.umsetzung.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids, "die Pakete wurden nicht umgesetzt");
     assert.equal(existsSync(lockPfad(dir)), false, "der Lock blieb nach der Kette liegen");
   });
 });

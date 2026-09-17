@@ -68,7 +68,7 @@ test("[night-33] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
 
     const { einheit, stufe } = umsetzung(dir, F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.deepEqual(stufe.umgesetzt, einheit.stufen.pakete.ids, "beide Pakete gelten als umgesetzt");
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids, "beide Pakete gelten als umgesetzt");
     assert.deepEqual(stufe.angehalten, []);
     assert.deepEqual(stufe.nichtBegonnen, []);
     assert.deepEqual(stufe.zurueckgestellt, []);
@@ -223,7 +223,7 @@ test("[night-33] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und
     // Die Nummer steht so im Grund, wie `parseDeps` sie liest — als Zahl, ohne die
     // fuehrenden Nullen des lokalen Trackers.
     assert.match(stufe.nichtBegonnen[0].grund, /Abhaengigkeit #3 nicht erfuellt/);
-    assert.deepEqual(stufe.umgesetzt, ["0005"], "das unabhaengige Paket lief nach dem Halt weiter");
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0005"], "das unabhaengige Paket lief nach dem Halt weiter");
 
     // Das ausgelassene Paket wurde nie bewegt: kein Zug nach Ready, kein Kommentar.
     const ausgelassen = board(dir, "issue", "get", "0004");
@@ -243,7 +243,7 @@ test("[night-33] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
     const { einheit, stufe } = umsetzung(dir, F);
     assert.equal(einheit.ausgang, "angehalten", einheit.grund);
     assert.deepEqual(stufe.angehalten, ["0003"]);
-    assert.deepEqual(stufe.umgesetzt, ["0004"], "das zweite Paket lief nach dem Halt weiter");
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0004"], "das zweite Paket lief nach dem Halt weiter");
 
     // Das kit:klaeren traegt das Paket; ein zweites am Fachplan schloesse ihn aus der
     // naechsten Kette aus (E17).
@@ -285,7 +285,7 @@ test("[night-33] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von k
     const { einheit, stufe } = umsetzung(dir, F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
     const [erstes, zweites] = einheit.stufen.pakete.ids;
-    assert.deepEqual(stufe.umgesetzt, [erstes]);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), [erstes]);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), [zweites]);
     assert.match(stufe.nichtBegonnen[0].grund, /Kostenbudget/);
     assert.equal(board(dir, "issue", "get", zweites).status, "backlog");
