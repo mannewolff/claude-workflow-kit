@@ -779,15 +779,45 @@ function schreibeErgebnisstand() {
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
 
+// Ohne `maxBuffer` puffert Node hoechstens 1 MB stdout/stderr, beendet den Kindprozess
+// mit SIGTERM (ENOBUFS) und die Fehlermeldung traegt die halb gelesene Ausgabe statt
+// eines Befunds (Issue #699): `issue list` ohne Statusfilter lag im kanban-kit bei
+// 1.110 KB, die Done-Spalte allein bei 801 KB. 256 MB ist grosszuegig bemessen und gilt
+// fuer beide Board-Helfer.
+const BOARD_MAX_BUFFER = 256 * 1024 * 1024;
+
+// Eine zitierte Board-Ausgabe traegt hoechstens so viele Zeichen (Issue #699) — eine
+// echte Fehlermeldung von board.mjs steht fast immer in den ersten Zeilen.
+const BOARD_ZITAT_MAX = 500;
+
+function boardZitat(text) {
+  if (text.length <= BOARD_ZITAT_MAX) return text;
+  return `${text.slice(0, BOARD_ZITAT_MAX)}… (${text.length - BOARD_ZITAT_MAX} Zeichen gekürzt)`;
+}
+
+/**
+ * Reine Funktion (Issue #699): baut die Fehlermeldung eines gescheiterten board()-Aufrufs.
+ * Nennt Fehlercode bzw. Signal des Kindprozesses, sofern gesetzt, und zitiert
+ * `stderr || stdout` gekuerzt auf `BOARD_ZITAT_MAX` Zeichen.
+ */
+export function boardFehlertext(cliArgs, res) {
+  const hinweise = [];
+  if (res.error?.code) hinweise.push(res.error.code);
+  if (res.signal) hinweise.push(`Signal ${res.signal}`);
+  const praefix = hinweise.length ? ` (${hinweise.join(", ")})` : "";
+  const zitat = boardZitat((res.stderr || res.stdout || "").trim());
+  return `board.mjs ${cliArgs.join(" ")} schlug fehl${praefix}: ${zitat}`;
+}
+
 // Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
 // Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
 // Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd() });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER });
   if (res.status !== 0) {
-    fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`, "tracker");
+    fail(boardFehlertext(cliArgs, res), "tracker");
   }
   try {
     return JSON.parse(res.stdout);
@@ -802,14 +832,14 @@ function board(...cliArgs) {
  * Rueckgabe `{ status, json, text }`; `json` ist null, wenn stdout kein JSON traegt.
  */
 function boardRoh(...cliArgs) {
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", maxBuffer: BOARD_MAX_BUFFER });
   let json = null;
   try {
     json = JSON.parse(res.stdout);
   } catch {
     json = null;
   }
-  return { status: res.status, json, text: (res.stderr || res.stdout || "").trim() };
+  return { status: res.status, json, text: boardZitat((res.stderr || res.stdout || "").trim()) };
 }
 
 // --- Git-Helfer ---
