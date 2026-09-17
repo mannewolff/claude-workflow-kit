@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { varianteVon } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions,
+  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 
 test("[night-33] varianteVon: Karte mit dem Label ergibt B, ohne A", () => {
@@ -44,14 +45,17 @@ test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert"
   });
 });
 
-test("[night-33] eine Karte mit dem Variante-B-Label laeuft heute wie Variante A, das Label bleibt stehen", NUR_POSIX, () => {
+test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung, das Label bleibt stehen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     board(dir, "issue", "label", "add", F, "kit:durchziehen");
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
+    // Was die Stufe umsetzung im Einzelnen tut, prueft night-kette-umsetzung.test.mjs;
+    // hier steht nur die Weiche: Unter B kommt sie hinter abdeckung dazu.
+    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
+      ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"]);
     const fach = board(dir, "issue", "get", F);
     assert.equal(fach.labels.includes("kit:night"), false, "das Kettenlabel ist beim Start verbraucht");
     assert.ok(fach.labels.includes("kit:durchziehen"), "das Variante-B-Label wird nicht verbraucht");

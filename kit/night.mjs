@@ -2989,10 +2989,23 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs) {
   // Das Kostenbudget wird hier nur gemerkt: Die Stufe verbucht erst, was die Session
   // hinterlassen hat (den Plan, die Korrektur), und bricht dann ab — sonst stuende ein
   // angelegter Plan nicht im Ergebnisstand.
-  if (kette.kosten.kostenSumme > kette.budget.kostenUsd && !kette.kostenGrund) {
-    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${kette.budget.kostenUsd} $ nach der Stufe ${stufe}`;
+  const deckel = kettenKostendeckel(kette);
+  if (kette.kosten.kostenSumme > deckel && !kette.kostenGrund) {
+    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ nach der Stufe ${stufe}`;
   }
   return { ausgang: "fertig", dauerMs, kennzahlen, res };
+}
+
+/**
+ * Der Kostendeckel DIESER Kette (Plan #691): unter Variante B `kostenUsdB` an der Stelle
+ * von `kostenUsd`.
+ *
+ * Der Deckel gilt der ganzen Kette und nicht nur der Umsetzungsstufe: Eine B-Kette, die
+ * in der Plan-Stufe am Deckel einer A-Nacht abbraeche, erreichte die Umsetzung nie — und
+ * der groessere Betrag stuende in der Config fuer eine Stufe, die dann nicht laeuft.
+ */
+function kettenKostendeckel(kette) {
+  return kette.variante === "B" ? kette.budget.kostenUsdB : kette.budget.kostenUsd;
 }
 
 /** Der Abbruch wegen Kosten — `null`, solange das Budget reicht. */
@@ -3228,6 +3241,203 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
     log("  Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen soll — steht im Ergebnisstand.");
   }
   return { ausgang: "fertig" };
+}
+
+// --- Stufe Umsetzung, nur unter Variante B (Plan #691, E4-E8, E11, E14, E16-E18) ---
+
+/** Der Kommentar an einem selbst gezogenen Paket, das nicht in In review endet (E7). */
+const UMSETZUNG_RUECKSTELLUNG = "Nacht-Kette, Variante B: Der Runner hatte dieses Paket fuer die Umsetzungsstufe "
+  + "selbst nach Ready gezogen; die Runde endete nicht in In review. Es geht zurueck nach Backlog — ein Paket in "
+  + "Ready waere fuer die naechste Nacht und fuer /implement-ready ein GO, das niemand gegeben hat.";
+
+/** Der Grund, mit dem ein bereits von der Session zurueckgelegtes Paket im Bericht steht. */
+const UMSETZUNG_SCHON_ZURUECK = "die Runde endete ohne In-review-Ergebnis; die Session hatte das Paket selbst zurueckgelegt";
+
+/**
+ * Bucht die Kosten der eben gelaufenen Runde auf die Kette.
+ *
+ * Die Kennzahlen stehen in der Einheit, die `laufeRunde` ohnehin anlegt — der
+ * Session-Strom wird kein zweites Mal gelesen, und `laufeRunde` bleibt unveraendert (E8).
+ * Ohne Ergebnisstand zaehlt die Runde als nicht gemessen, wie jede Session ohne Kennzahl.
+ */
+function rundeVerbuchen(kette, id) {
+  const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
+  kostenAddieren(kette.kosten, einheit?.kennzahlen);
+}
+
+/**
+ * Der Endstand jedes selbst gezogenen Pakets — die Rueckstellpflicht aus E7.
+ *
+ * Genau eine Stelle entscheidet, in welche Liste ein gezogenes Paket faellt, und sie
+ * fragt dafuer das Board, nicht den Rueckgabewert der Runde: Sie laeuft auch nach einem
+ * Wurf und nach einem harten Stopp, wo es keinen Rueckgabewert gibt.
+ *
+ * Was in Backlog liegt, bleibt liegen — ein angehaltenes Paket hat die Session selbst
+ * dorthin geschoben und kommentiert, ein zweiter Kommentar waere die zweite Wahrheit
+ * ueber denselben Vorgang. Pakete, die der Runner nicht gezogen hat, sind hier nie
+ * dabei. `boardRoh` statt `board`: Ein toter Tracker darf diesen Aufraeumschritt nicht
+ * in einen Prozessabbruch verwandeln, der den eigentlichen Fehler verschluckt.
+ */
+function paketeAbschliessen(stand, gezogen) {
+  for (const id of gezogen) {
+    const status = leseKarte(id)?.status ?? null;
+    if (status === "in_review") {
+      stand.umgesetzt.push(id);
+      continue;
+    }
+    if (stand.angehalten.includes(id)) continue;
+    if (status === "backlog") {
+      stand.zurueckgestellt.push({ id, grund: UMSETZUNG_SCHON_ZURUECK });
+      continue;
+    }
+    stand.zurueckgestellt.push({ id, grund: `die Runde endete in ${status ?? "unbekanntem Zustand"} statt in In review` });
+    boardRoh("issue", "comment", id, "--text", UMSETZUNG_RUECKSTELLUNG);
+    const move = boardRoh("issue", "move", id, "backlog");
+    log(move.status === 0
+      ? `  Paket #${id} nach Backlog zurueckgestellt — es steht nicht in In review.`
+      : `  Paket #${id} liess sich nicht zurueckstellen (${move.text.slice(0, 200)}) — bitte morgens sichten.`);
+  }
+}
+
+/** Fuehrt Pakete als nicht begonnen mit ihrem Grund — im Bericht und im Protokoll. */
+function paketeNichtBegonnen(stand, ids, grund) {
+  for (const id of ids) {
+    stand.nichtBegonnen.push({ id: String(id), grund });
+    log(`  Paket #${id} nicht begonnen: ${grund}.`);
+  }
+}
+
+/**
+ * Der Grund, aus dem vor dem naechsten Paket keine Session mehr startet — `null`,
+ * solange beide Budgets reichen.
+ *
+ * Die Mindestrestzeit ist dieselbe wie bei den erzeugenden Stufen: Was darunter liegt,
+ * reicht fuer kein Arbeitspaket, und eine Session, die sofort ins Limit laeuft, kostet
+ * nur. Der Kostendeckel ist unter Variante B `kostenUsdB`.
+ */
+function umsetzungBudgetGrund(kette, lauf) {
+  const restMs = lauf.budgetMs - (Date.now() - lauf.stufeStart);
+  if (restMs < KETTE_MINDEST_REST_MS) {
+    return `Zeitbudget umsetzung (${kette.budget.umsetzungMin} min) erschoepft, bevor eine weitere Session starten konnte`;
+  }
+  const deckel = kettenKostendeckel(kette);
+  if (kette.kosten.kostenSumme > deckel) {
+    return `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ erschoepft`;
+  }
+  return null;
+}
+
+/**
+ * Ein Paket der Stufe umsetzung: pruefen, ziehen, Runde fahren, verbuchen.
+ *
+ * Rueckgabe ist `null`, solange die Stufe weiterlaufen kann — sonst der Grund ihres
+ * Abbruchs. Das Paket wird erst UNMITTELBAR vor seiner Session gezogen (E5), und die
+ * Gates laufen VOR dem Zug (E6): Ein angehaltenes oder gescheitertes Paket steht in
+ * Backlog, damit ist jede `Issue #N`-Referenz auf es unerfuellt und die abhaengigen
+ * fallen hier von selbst heraus. Bei `issueReview.requiredBeforeReady` faellt so jedes
+ * Paket heraus und die Kette auf Variante A zurueck (E18).
+ */
+async function umsetzePaket(kette, id, lauf, zaehler) {
+  const karte = leseKarte(id);
+  if (!karte) {
+    paketeNichtBegonnen(lauf.stand, [id], "die Karte war am Board nicht lesbar");
+    return null;
+  }
+  const gate = pruefeIssueGates(karte);
+  if (gate) {
+    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
+    return null;
+  }
+
+  board("issue", "move", id, "ready");
+  lauf.gezogen.add(id);
+  log(`  Paket #${id} nach Ready gezogen — Session ${zaehler} der Stufe umsetzung.`);
+  // Test-Hook wie NIGHT_MELDEN_ERZWINGEN: Von aussen laesst sich hier sonst keine
+  // Ausnahme ausloesen, und der Wurf-Pfad der Rueckstellpflicht bliebe ungeprueft —
+  // genau der Pfad, der ein Paket in Ready zuruecklassen wuerde.
+  if (process.env.NIGHT_KETTE_WURF === id) throw new Error(`Test-Hook NIGHT_KETTE_WURF bei Paket #${id}`);
+
+  const ausgang = await laufeRunde({ id, title: karte.title, labels: karte.labels }, kette.args, lauf.salvageAttempted, lauf.pruefungen);
+  rundeVerbuchen(kette, id);
+  if (ausgang === "angehalten") lauf.stand.angehalten.push(id);
+  return ausgang === "hardStop" ? `Stufe umsetzung: harter Stopp in der Runde zu Paket #${id}` : null;
+}
+
+/** Die Pakete der Reihe nach (E16), bis eines hart stoppt oder ein Budget endet. */
+async function umsetzungSchleife(kette, paketIds, lauf) {
+  for (let i = 0; i < paketIds.length; i++) {
+    const budgetGrund = umsetzungBudgetGrund(kette, lauf);
+    if (budgetGrund) {
+      paketeNichtBegonnen(lauf.stand, paketIds.slice(i), budgetGrund);
+      break;
+    }
+    const stopp = await umsetzePaket(kette, String(paketIds[i]), lauf, `${i + 1}/${paketIds.length}`);
+    if (stopp) {
+      paketeNichtBegonnen(lauf.stand, paketIds.slice(i + 1), "der Lauf ist an einem frueheren Paket hart gestoppt");
+      return { ausgang: "abgebrochen", grund: stopp };
+    }
+  }
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Stufe Umsetzung: die Pakete des gekennzeichneten Fachplans in derselben Nacht bauen.
+ *
+ * Sie baut zuerst den Worktree ab und arbeitet in der Hauptkopie (E4) — seine Commits
+ * traegen kein Ref und waeren am Morgen verloren. Die Pakete kommen aus
+ * `kette.stufen.pakete.ids` (E16); gewertet wird mit `laufeRunde` unveraendert (E8), und
+ * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
+ *
+ * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
+ * Pakete stehen als nicht begonnen im Bericht), `angehalten` bei mindestens einem
+ * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
+ * Stopp und bei einer unsauberen Hauptkopie vor dem ersten Paket.
+ */
+async function stufeUmsetzung(kette, paketIds) {
+  const { budget } = kette;
+  const stufeStart = Date.now();
+  const stand = { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
+  kette.stufen.umsetzung = stand;
+  const lauf = {
+    stand, gezogen: new Set(), salvageAttempted: new Set(), pruefungen: [],
+    stufeStart, budgetMs: budget.umsetzungMin * 60 * 1000,
+  };
+
+  if (kette.wt) {
+    worktreeEntfernen(kette.wt, kette.repoRoot);
+    kette.wt = null;
+    log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
+  }
+  log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
+
+  // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
+  // Rest-Guard und Dirty-Guard in `werteRunde`.
+  if (!gitClean(kette.repoRoot)) {
+    const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
+    paketeNichtBegonnen(stand, paketIds, grund);
+    stand.dauerMs = Date.now() - stufeStart;
+    return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
+  }
+
+  let ergebnis = { ausgang: "fertig" };
+  try {
+    ergebnis = await umsetzungSchleife(kette, paketIds, lauf);
+  } finally {
+    // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
+    paketeAbschliessen(stand, lauf.gezogen);
+    stand.dauerMs = Date.now() - stufeStart;
+    for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+  }
+  if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
+    // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
+    // `waehleKettenKandidaten` aus und blockierte die naechste Kette (E17).
+    return {
+      ausgang: "angehalten",
+      grund: `Stufe umsetzung: ${stand.angehalten.map((id) => "#" + id).join(", ")} haelt an einer Stopp-Frage`,
+      ohneHaltAmFachplan: true,
+    };
+  }
+  return ergebnis;
 }
 
 /** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
@@ -3512,8 +3722,9 @@ function berichtFuerKette(kette, einheit, ergebnis) {
 }
 
 /**
- * Die vier Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
- * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar).
+ * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
+ * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
+ * hinter `abdeckung` die fuenfte Stufe `umsetzung` dazu (Plan #691, E12).
  */
 async function stufenDerKette(kette) {
   const plan = await stufePlan(kette);
@@ -3525,8 +3736,10 @@ async function stufenDerKette(kette) {
   const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
   if (kette.variante !== "B") return { ausgang: "fertig" };
-  // Die Stufe `umsetzung` entsteht im naechsten Paket (Issue #695) — bis dahin
-  // verhaelt sich Variante B wie Variante A (Entscheidung in Issue #694).
+  // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
+  // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft.
+  const umsetzung = await stufeUmsetzung(kette, kette.stufen.pakete?.ids ?? []);
+  if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
   return { ausgang: "fertig" };
 }
 
@@ -3566,7 +3779,10 @@ async function laufeEineKette(kandidat, nummer, args) {
   }
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
-    if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
+    // `ohneHaltAmFachplan` setzt allein die Stufe umsetzung (E17): Dort traegt das
+    // angehaltene PAKET bereits kit:klaeren, und ein zweites am Fachplan schloesse ihn
+    // aus der naechsten Kette aus.
+    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmFachplan(kette, ergebnis);
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
       ? aeltereUeberholen(kette, aeltere, neuerPlan)
@@ -3658,7 +3874,7 @@ export async function laufeKette(args) {
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
-  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Variante B (Label '${budget.varianteBLabel}') verhaelt sich bis zur Stufe umsetzung wie Variante A. Protokoll: ${LOG_FILE}`);
+  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }
