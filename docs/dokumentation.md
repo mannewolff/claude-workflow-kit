@@ -420,6 +420,20 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.kette.kostenUsdB` — Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.korrekturrunden` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung.
 - `night.modelle` — Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Stärke: der erste Eintrag ist das stärkste, der letzte das schnellste Modell. Die Ordnung ist nicht Kosmetik: /issues leitet daraus ab, welches Modell es einem Arbeitspaket empfiehlt, und nachts fragt niemand nach. Das pattern ^claude- ist zugleich die Absicherung — ohne die Liste wanderte ein Wert aus einem Issue-Body unbesehen in argv, und ein Paket mit '--dangerously-skip-permissions' wäre ein Angriff über eine Karte. Fehlt das Feld oder ist die Liste leer, startet jede Session mit dem Modell des Laufs.
+- `night.stufen` — Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Fehlt eine Stufe, weicht der Nachtlauf zur nächststärkeren aus, bis notfalls zum Modell des Laufs selbst. Wirkt nur im nächtlichen Lauf — tagsüber wählt der Mensch sein Modell selbst. Ein modell muss auch in night.modelle stehen (sonst Fehler bei der Konfigurationsprüfung).
+- `night.stufen.schwer` — Modell oder Kommando für eine schwere Aufgabe. Genau eines der beiden Felder ist gesetzt.
+- `night.stufen.schwer.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.schwer.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
+- `night.stufen.schwer.name` — Selbstauskunft des Programms neben kommando.
+- `night.stufen.mittel` — Modell oder Kommando für eine mittelschwere Aufgabe. Genau eines der beiden Felder ist gesetzt.
+- `night.stufen.mittel.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.mittel.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
+- `night.stufen.mittel.name` — Selbstauskunft des Programms neben kommando.
+- `night.stufen.leicht` — Modell oder Kommando für eine leichte Aufgabe. Genau eines der beiden Felder ist gesetzt.
+- `night.stufen.leicht.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
+- `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
+- `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
 <!-- einstellungen:ende -->
 
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess

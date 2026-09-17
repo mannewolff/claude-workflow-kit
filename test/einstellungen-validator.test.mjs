@@ -107,6 +107,49 @@ test("[einstellungen-1] Zusatzregel: areas, das nicht in checkAreas steht", () =
   assert.deepEqual(zusatzregeln({ buildChecks: [{ cmd: "x", areas: ["frontend"] }], checkAreas: { frontend: ["web/**"] } }), []);
 });
 
+test("[einstellungen-8] Zusatzregel: Stufe mit modell und kommando wird mit Pfad night.stufen.<stufe> abgewiesen", () => {
+  const b = zusatzregeln({ night: { modelle: ["claude-opus-5"], stufen: { mittel: { modell: "claude-opus-5", kommando: "mein-runner" } } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "night.stufen.mittel");
+  assert.match(b[0].grund, /modell/);
+  assert.match(b[0].grund, /kommando/);
+});
+
+test("[einstellungen-8] Zusatzregel: Stufe ohne modell und ohne kommando wird mit Pfad night.stufen.<stufe> abgewiesen", () => {
+  const b = zusatzregeln({ night: { stufen: { mittel: {} } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "night.stufen.mittel");
+  assert.match(b[0].grund, /modell/);
+  assert.match(b[0].grund, /kommando/);
+});
+
+test("[einstellungen-8] Zusatzregel: ein Stufen-modell, das nicht in night.modelle steht, wird mit Pfad night.stufen.<stufe>.modell abgewiesen", () => {
+  const config = { night: { modelle: ["claude-opus-5", "claude-sonnet-5"], stufen: { leicht: { modell: "claude-haiku-4" } } } };
+  const b = zusatzregeln(config);
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "night.stufen.leicht.modell");
+});
+
+test("[einstellungen-8] eine Config mit night.modelle und night.stufen.leicht.modell wird ohne Fehler angenommen, ein fremdes Modell meldet genau einen Fehler", () => {
+  const basis = { reviewModel: "claude-opus-5" };
+  const gueltig = { ...basis, night: { modelle: ["claude-opus-5", "claude-sonnet-5"], stufen: { leicht: { modell: "claude-sonnet-5" } } } };
+  assert.deepEqual(fehler(pruefe(gueltig, null)), []);
+  const ungueltig = { ...basis, night: { modelle: ["claude-opus-5", "claude-sonnet-5"], stufen: { leicht: { modell: "claude-haiku-4" } } } };
+  const b = fehler(pruefe(ungueltig, null));
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "night.stufen.leicht.modell");
+});
+
+test("[einstellungen-8] eine Stufe mit kommando und name geht ohne Fehler durch, auch wenn kommando nicht mit claude- beginnt", () => {
+  const config = { reviewModel: "claude-opus-5", night: { stufen: { mittel: { kommando: "mein-runner", name: "Mein Runner" } } } };
+  assert.deepEqual(fehler(pruefe(config, null)), []);
+});
+
+test("[einstellungen-8] night.stufenRegel als Text geht ohne Fehler durch, ein fehlendes Feld ist kein Befund", () => {
+  assert.deepEqual(fehler(pruefe({ reviewModel: "claude-opus-5", night: { stufenRegel: "eigene Regel" } }, null)), []);
+  assert.deepEqual(fehler(pruefe({ reviewModel: "claude-opus-5", night: {} }, null)), []);
+});
+
 test("[einstellungen-1] geprüft wird am gemischten Wert aus Team- und persönlicher Datei", () => {
   const team = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" };
   assert.ok(fehler(pruefe(team, { reviewModel: "gpt-5" })).some((b) => b.pfad === "reviewModel"));
