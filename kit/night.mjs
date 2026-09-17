@@ -1984,6 +1984,61 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
 // nichts daran, dass sie weiterhin wartend enden kann. Gesetzt wird er fuer die
 // Implementierungs-Runde; die Salvage-Session bekommt ihn nicht, ihr Prompt verbietet
 // lange Laeufe ohnehin.
+//
+// Seit Issue #710 der Kommando-Zweig (Plan #707, E9/E10): `kommando` (die Kommandozeile
+// der Stufe), `stufenName` (ihr Feld `name`) und `aufgabenstufe` (schwer, mittel, leicht)
+// — gesetzt, wenn dieses Paket ueber ein Programm des Projekts statt ueber `claude` laufen
+// soll. `aufgabenstufe` heisst bewusst nicht `stufe`: Das ist hier die Stufe der Nacht-Kette
+// und bleibt es (E20). Ohne `kommando` aendert sich nichts.
+
+/**
+ * Womit eine Session startet: `{ cmd, cmdArgs }` fuer `runProcess()` (Issue #710).
+ *
+ * Drei Wege, und ihre Reihenfolge ist Teil der Sache:
+ *
+ *   1. `NIGHT_CLAUDE_CMD` — der Test-Hook. Er behaelt seinen Vorrang vor beiden anderen
+ *      Zweigen; die Testsuite ersetzt damit die ganze Session. Bleibt bewusst bei `sh`
+ *      (Issue #199): Die Fake-Skripte sind POSIX-Shell, und die night-Tests sind unter
+ *      Windows ohnehin ausgenommen (Issue #197).
+ *   2. `kommando` — das Programm der Stufe (Plan #707, E9). Der Auftrag steht als Argument
+ *      daneben und erreicht das Programm ueber `"$@"`; er wird **nie** in den Shell-String
+ *      eingesetzt. Eine Einsetzung waere die Einsetzungsluecke im eigenen Haus: Ein Auftrag
+ *      mit Anfuehrungszeichen oder Backtick liefe dann als Shell-Kommando.
+ *      `sh -c` statt einer eigenen Zerlegung der Kommandozeile (E17) — sie darf
+ *      Anfuehrungszeichen und fuehrende NAME=WERT-Zuweisungen tragen, und eine halbe
+ *      Nachbildung der Shell scheitert still am ersten Sonderfall. Unter Windows steht der
+ *      Zweig damit nicht zur Verfuegung; das faengt `stufeStartbar` vor dem Start ab.
+ *      `--model` entfaellt hier: Das Programm ist nicht `claude` und kennt das Flag nicht.
+ *   3. sonst `claude --model <name>` wie bisher.
+ *
+ * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
+ * darum in jedem der drei Wege.
+ */
+function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
+  if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
+  if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
+
+  const permArgs = args.yolo
+    ? ["--dangerously-skip-permissions"]
+    : ["--permission-mode", "acceptEdits"];
+  const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
+  // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
+  // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
+  // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
+  // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
+  //
+  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
+  // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
+  // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
+  // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
+  // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
+  const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
+  return {
+    cmd: "claude",
+    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs],
+  };
+}
+
 // Exportiert fuer die Kette und ihre Tests.
 export async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
@@ -1997,35 +2052,19 @@ export async function runSession(issueId, args, opts = {}) {
   // Pflichtparameters: `runSession` ist exportiert und wird an mehreren Stellen mit
   // `args` allein gerufen — die Kette behaelt so ohne Zutun das Modell des Laufs.
   const modell = opts.model ?? args.model;
+  // Die Kommandozeile der Stufe (Issue #710). Leerer Text zaehlt wie nicht gesetzt: Eine
+  // Stufe ohne Programm ist keine Kommando-Stufe, und `sh -c ' "$@"'` startete gar nichts.
+  const kommando = alsText(opts.kommando);
+  // Die Selbstauskunft dieser Session (Plan #707, E10). Im Kommando-Zweig gibt es keinen
+  // Modellnamen, den man melden koennte — dort steht das Feld `name` der Stufe, ersatzweise
+  // `stufe-<schwer|mittel|leicht>`. Leer darf der Wert unter keinen Umstaenden sein:
+  // KIT_AGENT_MODEL ist das alleinige Erkennungsmerkmal des unbeaufsichtigten Laufs, und
+  // ohne Wert hielte sich jeder Skill dieser Session fuer beaufsichtigt.
+  const selbstauskunft = kommando
+    ? (alsText(opts.stufenName) || `stufe-${alsText(opts.aufgabenstufe) || "unbekannt"}`)
+    : modell;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
-  let cmd, cmdArgs;
-  if (testCmd) {
-    // Bleibt bewusst bei sh (Issue #199): Dieser Zweig ist ausschliesslich der
-    // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell. Ihn auf die
-    // Plattform-Shell umzustellen wuerde unter Windows nichts gewinnen — die Fakes
-    // selbst liefen dort trotzdem nicht. Die night-Tests sind deshalb unter Windows
-    // ausgenommen (Issue #197); der Produktivpfad unten ist davon nicht betroffen.
-    cmd = "sh";
-    cmdArgs = ["-c", testCmd];
-  } else {
-    const permArgs = args.yolo
-      ? ["--dangerously-skip-permissions"]
-      : ["--permission-mode", "acceptEdits"];
-    const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
-    // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
-    // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
-    // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
-    // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
-    //
-    // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
-    // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
-    // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
-    // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
-    // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
-    const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
-    cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs];
-  }
+  const { cmd, cmdArgs } = sessionStart({ testCmd, kommando, prompt, modell, args, opts });
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
@@ -2037,7 +2076,8 @@ export async function runSession(issueId, args, opts = {}) {
       NIGHT_PROMPT: prompt,
       // Derselbe Wert wie in --model (Issue #665): Der Aktivitaetsverlauf des Boards
       // soll das Modell zeigen, mit dem wirklich gearbeitet wurde, nicht das des Laufs.
-      KIT_AGENT_MODEL: modell,
+      // Im Kommando-Zweig steht hier der Name der Stufe (Issue #710, E10) — nie leer.
+      KIT_AGENT_MODEL: selbstauskunft,
       ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
       // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
@@ -2052,7 +2092,18 @@ export async function runSession(issueId, args, opts = {}) {
     },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
-    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    if (kommando) {
+      // Im Kommando-Zweig bedeutet ein ENOENT des Spawns allein, dass `sh` selbst fehlt —
+      // der Windows-Fall aus E17. Ein von der Shell nicht gefundenes Programm endet mit
+      // Exit 127 und ist bereits von `stufeStartbar` vor dem Start gefangen (E8).
+      //
+      // Darum kein `fail()` wie beim fehlenden claude-CLI: Der Aufrufer soll nach oben
+      // ausweichen koennen, statt den ganzen Lauf an einer Stufe zu verlieren, die nur
+      // dieses eine Paket betrifft.
+      res.startfehler = `die Shell "sh" fuer die Kommando-Stufe wurde nicht gefunden`;
+    } else {
+      fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    }
   }
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
