@@ -664,3 +664,87 @@ test("[night-26] ein unlesbarer Stand liefert den Stand des Laufbeginns mit Grun
   assert.equal(felder.stufenRegel, "Regel vom Start");
   assert.ok(felder.grund && felder.grund.length > 0, "der Rueckfall auf den Startstand braucht einen Grund");
 });
+
+// --- Vorschau und Vorflug (Issue #712, Plan #707) ---
+//
+// Der Stufenweg wirkt (#711), aber vor dem Lauf sah der Mensch nichts davon. `--dry-run`
+// nennt jetzt bei aktiver Einstellung je Ready-Paket die Stufe und das Modell, das
+// eingesetzt wuerde; ein eigener Vorflug meldet je belegter Stufe ohne Netz, ob sie
+// startbar ist — ohne den Lauf aufzuhalten (Kriterium 11).
+
+test("[night-35] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", NUR_POSIX, () => {
+  const dir = setupProjekt("night-dryrun-stufen-", {
+    stufen: { leicht: { modell: "claude-sonnet-5" }, schwer: { modell: "claude-opus-5" } },
+  });
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    readyIssue(dir, "Mittleres Paket", null, "mittel");
+    readyIssue(dir, "Paket ohne Stufe", null, null);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none", "--max", "3", "--model", "claude-opus-5"]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    assert.match(res.stdout, /Leichtes Paket -> Session \d+, Stufe leicht, Modell claude-sonnet-5 \(Stufe leicht\)$/m,
+      `die belegte Stufe fehlt im Dry-Run:\n${res.stdout}`);
+    assert.match(res.stdout, /Mittleres Paket -> Session \d+, Stufe mittel nicht belegt, Modell claude-opus-5 \(Stufe schwer\)$/m,
+      `das Ausweichen nach oben fehlt im Dry-Run:\n${res.stdout}`);
+    assert.match(res.stdout, /Paket ohne Stufe -> Session \d+, Modell claude-opus-5 \(Lauf\)$/m,
+      `das Modell des Laufs fehlt im Dry-Run:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-35] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", NUR_POSIX, () => {
+  const dir = setupProjekt("night-dryrun-gegenprobe-");
+  try {
+    readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
+    readyIssue(dir, "Empfiehlt nichts", null);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none", "--max", "2", "--model", "claude-opus-5"]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    // Fester, woertlicher Text von vor der Aenderung — kein Vergleich gegen den eigenen Code.
+    assert.match(res.stdout, /Empfiehlt sonnet -> Session 1, Modell claude-sonnet-5 \(Karte\)$/m);
+    assert.match(res.stdout, /Empfiehlt nichts -> Session 2, Modell claude-opus-5 \(Lauf\)$/m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-36] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", NUR_POSIX, () => {
+  const dir = setupProjekt("night-vorflug-stufen-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-712 --auftrag" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const warnungen = res.stdout.match(/WARNUNG: Stufe leicht nicht startbar: .*gibt-es-nicht-xyz-712.*/g) || [];
+    assert.equal(warnungen.length, 1, `genau eine Warnzeile erwartet:\n${res.stdout}`);
+
+    // Der Lauf beginnt trotzdem: Exit-Code und Ergebnisstand sind dieselben wie ohne
+    // Vorflug — das Paket selbst scheitert weiterhin ohne Session an derselben Stufe.
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.ausgang, "fehlschlag");
+    assert.equal(einheit.stufe, "leicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-36] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", NUR_POSIX, () => {
+  const dir = setupProjekt("night-vorflug-gegenprobe-");
+  let bin = null;
+  try {
+    readyIssue(dir, "Normales Paket", null);
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}:${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /Stufe/, `keine Stufen-Zeile erwartet, aber:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});

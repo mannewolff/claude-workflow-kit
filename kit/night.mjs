@@ -3055,6 +3055,27 @@ function settingsVorflug(args) {
   fail(meldung, "zustand");
 }
 
+/**
+ * Je belegter Stufe eine Pruefung ohne Netz, ob sie startbar ist (Issue #712, Plan #707).
+ *
+ * Dieselbe `stufeStartbar` wie vor jedem Paket, hier nur einmal vor der ersten Kette —
+ * eine Probe-Session je Stufe kostete Zeit und Geld fuer eine Aussage, die `laufeRunde`
+ * ohnehin vor jedem Paket neu erhebt. Kein `fail`, auch nicht ausserhalb des Dry-Runs: Eine
+ * nicht erreichbare Stufe weicht bei den betroffenen Paketen nach oben aus (oder scheitert
+ * ohne Session), das ist kein Grund, die Nacht abzusagen (Kriterium 11). Bei nicht aktiver
+ * Einstellung schreibt sie keine Zeile (Kriterium 12).
+ */
+function stufenVorflug() {
+  const einstellung = stufenEinstellung(config);
+  if (!einstellung.aktiv) return;
+  for (const stufe of STUFEN_ORDNUNG) {
+    const eintrag = einstellung.stufen[stufe];
+    if (!eintrag) continue;
+    const { ok, grund } = stufeStartbar(eintrag, config.night?.modelle);
+    if (!ok) log(`  WARNUNG: Stufe ${stufe} nicht startbar: ${grund}`);
+  }
+}
+
 /** Die beiden Zustands-Vorfluege der Implementierung: kein Absturzrest, sauberer Baum. */
 function zustandsVorflug() {
   const inProgress = board("issue", "list", "--status", "in_progress");
@@ -3122,6 +3143,9 @@ export function vorbereiten(args) {
   if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
   }
+  // Nach den bestehenden Vorfluegen (Issue #712): eine Warnzeile je nicht erreichbarer
+  // Stufe, ohne den Lauf aufzuhalten.
+  stufenVorflug();
 
   // Erst hinter dem Vorflug (Issue #486): Ein Baum, der schon vor dem Lauf unsauber
   // war, soll weiterhin die alte Meldung bekommen und nicht eine, die die eben
@@ -4375,6 +4399,25 @@ export async function laufeKette(args) {
  * Getrennt gehalten statt geteilt, weil die Texte verschieden sein muessen — "wuerde
  * ins Backlog" ist eine andere Aussage als "ins Backlog verschoben".
  */
+/**
+ * Der Zusatz an die Session-Zeile des Dry-Runs, wenn `night.stufen` aktiv ist (Issue #712).
+ *
+ * Dieselbe `paketWahl` wie im echten Lauf, nur im Konjunktiv: Stufe und Modell, die
+ * eingesetzt wuerden, samt Herkunft — inklusive einer nicht belegten eigenen Stufe, die
+ * nach oben ausweicht (Kriterium siehe Aufgabe: `, Stufe leicht, Modell <x> (Stufe leicht)`
+ * bzw. `, Stufe leicht nicht belegt, Modell <x> (Stufe mittel)`). Herkunft "karte" und
+ * "lauf" bleiben wortgleich mit der Zeile von vor der Stufen-Einstellung.
+ */
+function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund }) {
+  if (herkunft === "karte") return `, Modell ${modell} (Karte)`;
+  if (herkunft === "lauf") {
+    const nachsatz = grund ? ` — ${grund}` : "";
+    return `, Modell ${modell} (Lauf)${nachsatz}`;
+  }
+  const stufeText = stufeVerwendet === stufe ? `Stufe ${stufe}` : `Stufe ${stufe} nicht belegt`;
+  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})`;
+}
+
 function dryRunBefund(issue, ctx, assumedDone) {
   const aus = (grund) => ({ grund, vermerk: "" });
   if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
@@ -4396,13 +4439,32 @@ function dryRunBefund(issue, ctx, assumedDone) {
   if (unmet.length > 0) {
     return aus(`wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
   }
-  // Das Modell gehoert in den Dry-Run (Issue #665): Wer vor der Nacht prueft, was
-  // laufen wuerde, prueft auch, WOMIT. Herkunft dazu, sonst liesse sich ein Rueckfall
-  // auf das Lauf-Modell nicht von einer Karte unterscheiden, die es selbst empfiehlt.
-  const { modell, grund } = empfohlenesModell(full.body, config.night?.modelle);
-  if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)` };
-  const nachsatz = grund ? ` — ${grund}` : "";
-  return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}` };
+
+  // Ohne aktive Einstellung bleibt die Zeile zeichengleich mit der von vor #712 (Kriterium
+  // 1 des Issues) — dieselben zwei Zweige wie bisher, unveraendert.
+  const einstellung = stufenEinstellung(config);
+  if (!einstellung.aktiv) {
+    // Das Modell gehoert in den Dry-Run (Issue #665): Wer vor der Nacht prueft, was
+    // laufen wuerde, prueft auch, WOMIT. Herkunft dazu, sonst liesse sich ein Rueckfall
+    // auf das Lauf-Modell nicht von einer Karte unterscheiden, die es selbst empfiehlt.
+    const { modell, grund } = empfohlenesModell(full.body, config.night?.modelle);
+    if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)` };
+    const nachsatz = grund ? ` — ${grund}` : "";
+    return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}` };
+  }
+
+  // Bei aktiver Einstellung entscheidet dieselbe Funktion wie im echten Lauf, samt Stufe
+  // und Ausweichen nach oben (Issue #712).
+  const modellStand = paketWahl({
+    body: full.body,
+    einstellung,
+    erlaubteModelle: config.night?.modelle,
+    laufModell: ctx.laufModell,
+  });
+  if (!modellStand.startbar) {
+    return aus(`wuerde nicht starten (keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund})`);
+  }
+  return { grund: null, vermerk: dryRunStufenVermerk(modellStand) };
 }
 
 /**
