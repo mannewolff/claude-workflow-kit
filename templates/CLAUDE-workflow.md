@@ -59,6 +59,7 @@ Die neun Schritte oben sind der Prozess aus dem Whitepaper. Was hier steht, ist 
 Geprueft werden die fachliche Anforderung und das Plandokument: `/issue-review` laesst sie von Modellen lesen, die sie nicht geschrieben haben; wie viele das sind, sagt `reviewStufen`. Ein Arbeitspaket wird nicht standardmaessig geprueft — wer es will, ruft `/issue-review #N`. Der Schalter `issueReview.requiredBeforeReady` bleibt fuer Projekte, die das Gate wollen; ausgeschaltet ist der Regelfall. Bei gesetztem `issueReview.requiredBeforeReady` stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Welche Stufe greift — fachliche Anforderung, Plandokument oder Arbeitspaket —, liest der Skill am Titel-Praefix ab; es gibt bewusst kein eigenes Kommando je Stufe. Das gilt interaktiv genauso wie im Nachtbetrieb: Ein Plandokument laesst sich jederzeit tagsueber pruefen. Der Marker, den die Pruefung hinterlaesst, ist eine Spur und keine Freigabe. Daneben setzt die Pruefung das Label `review:fertig` als sichtbare Spur am Board; es muss je Board einmal angelegt sein (GitHub und GitLab als Repo-Label, kanban-kit ueber `POST /api/boards/{boardId}/labels`).
+Das Label bleibt eine Spur der Pruefung und gibt den Inhalt nicht frei; die Nacht-Kette verlangt diese Spur aber als Voraussetzung — ein Fachplan ohne `review:fertig` wird uebersprungen, auch wenn er das Kettenlabel traegt.
 
 ---
 

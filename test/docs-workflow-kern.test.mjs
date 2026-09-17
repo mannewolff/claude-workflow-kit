@@ -26,12 +26,19 @@ test("die gestrichenen Abschnitte sind weg", () => {
   }
 });
 
-test("review:fertig steht genau einmal, als Spur im Absatz zu /issue-review", () => {
-  assert.equal(VORLAGE.split("review:fertig").length, 2, "review:fertig steht nicht genau einmal");
-  const absatz = VORLAGE.split("\n").find((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
-  assert.ok(absatz, "der Absatz zu /issue-review fehlt");
+test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
+  assert.equal(VORLAGE.split("review:fertig").length, 3, "review:fertig steht nicht genau zweimal");
+  const zeilen = VORLAGE.split("\n");
+  const start = zeilen.findIndex((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
+  assert.ok(start >= 0, "der Absatz zu /issue-review fehlt");
+  let ende = start;
+  while (zeilen[ende + 1] !== undefined && zeilen[ende + 1].trim() !== "") ende++;
+  const absatz = zeilen.slice(start, ende + 1).join("\n");
+  assert.equal(absatz.split("review:fertig").length, 3, "beide Vorkommen stehen nicht im selben Absatz");
   assert.match(absatz, /`review:fertig` als sichtbare Spur am Board/);
   assert.match(absatz, /je Board einmal angelegt/);
+  assert.match(absatz, /Nacht-Kette verlangt diese Spur aber als Voraussetzung/);
+  assert.match(absatz, /wird uebersprungen, auch wenn er das Kettenlabel traegt/);
 });
 
 test("die bleibenden Abschnitte stehen je einmal", () => {

@@ -134,6 +134,8 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
   assert.match(SKILL, /Endet der Lauf danach vorzeitig, bleibt das Label ab/);
   assert.match(SKILL, /am Board nicht definiert/);
   assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:fertig` ist Spur, keine Freigabe\./);
+  assert.match(SKILL, /Nacht-Kette verlangt dieses Label als Voraussetzung/);
+  assert.match(SKILL, /Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen/);
 });
 
 // Die fachliche Quelle im Plan-Review (Issue #684): Der Reviewer prueft nicht nur, ob der
