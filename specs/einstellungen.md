@@ -7,5 +7,6 @@
 - einstellungen-5 — `einstellungen.mjs` findet als Projekte den Startordner und seine direkten Unterverzeichnisse mit `.claude/workflow.config.json`, liest den Kit-Stand aus dem Projekt oder aus `~/.claude/kit` und lässt ein Projekt nur bearbeiten, wenn dessen Stand nicht neuer ist als der eigene.
 - einstellungen-6 — `einstellungen.mjs` speichert nicht, wenn sich eine Datei seit dem Laden geändert hat, wenn der Wert ungültig ist oder wenn die Änderung die wirksamen Pflichtprüfungen leert oder die Review-Pflicht vor Ready abschaltet und keine Bestätigung mitkommt; eine nicht lesbare Datei macht das Projekt nicht bearbeitbar.
 - einstellungen-7 — Die Seite von `einstellungen.mjs` lädt nichts von fremden Servern: Schriften liegen eingebettet vor, die Antwort trägt eine Content-Security-Policy ohne fremde Hosts, und das Token kommt aus dem URL-Fragment.
+- einstellungen-8 — Die Konfigurationspruefung weist eine Stufe unter `night.stufen` ab, die beide oder keines der Felder `modell` und `kommando` traegt, mit Pfad `night.stufen.<stufe>` und beiden Feldnamen in der Meldung, und einen Stufen-Modellnamen, der nicht in `night.modelle` steht, mit Pfad `night.stufen.<stufe>.modell`; `night.stufen` und `night.stufenRegel` gelten teamweit, stehen nicht in `LOCAL_OVERRIDE_ALLOWLIST` und erscheinen in der Oberflaeche als Teil des JSON-Textfelds `night`.
 
 ## Entfallen

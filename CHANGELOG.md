@@ -2,6 +2,30 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [1.53.6] - 2026-09-18
+- Doppelte Spec-IDs des Batches auf night-33 bis night-42 aufgeloest (#736)
+- Hook-Block und Installer melden die Sitzung von selbst (#735)
+- Sitzungs-Melder fuer den interaktiven Verbrauch (#734)
+- Wegmarken beim Verschieben einer Karte (#733)
+- Nutzerdokumentation: review:fertig als Voraussetzung der Nacht-Kette (#720)
+- Nacht-Kette: Kommentar am ungeprueften Fachplan und Hinweis auf fehlendes Kennzeichen (#719)
+- Nacht-Kette: Fachplan ohne review:fertig wird uebersprungen (#718)
+- Regeltext: review:fertig als Voraussetzung der Nacht-Kette (#717)
+- Nutzerdokumentation zu Aufgabenstufen, lokalem Modell und Nacht-Kette (#715)
+- Skills schneiden mit Stufe: /issues, /task, /implement-ready und /implement-next (#714)
+- Nachtbericht unter Variante B: Stufe und Modell je umgesetztem Paket (#713)
+- Vorschau und Vorflug: Stufe und Modell vor dem Lauf sichtbar (#712)
+- Stufenweg in laufeRunde: Modellwahl je Paket, frische Einstellung, Felder im Ergebnisstand (#711)
+- Session-Start ueber ein Programm der Stufe: Kommando-Zweig in runSession (#710)
+- Stufenwahl im Nacht-Runner: Aufgabenstufe, Einstellung, Ausweichen nach oben (#709)
+- night.stufen und night.stufenRegel: Schema und Konfigurationsprüfung (#708)
+- Gui Entwürfe eingecheckt
+- Nutzerdokumentation zu Variante B: beide Koernungen des GO und die fuenfte Stufe (#698)
+- Nachtbericht und Ergebnisstand unter Variante B: Variante, Paketlisten, Entscheidungen (#697)
+- Der Umsetzungs-Lock: Kette und Umsetzungsnacht bauen nicht gleichzeitig (#696)
+- Die Stufe umsetzung: Pakete einzeln ziehen, umsetzen und zurueckstellen (#695)
+- Variantenerkennung der Nacht-Kette: varianteVon und die Weiche in der Stufenfolge (#694)
+
 ## [1.53.5] - 2026-09-17
 - Test zu skills-28: Ausnahme fuer Variante B in acht Skills (#700)
 
