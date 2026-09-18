@@ -253,7 +253,7 @@ test("[night-26] --dry-run nennt je Karte Modell und Herkunft", NUR_POSIX, () =>
 // abgewiesene Stufenwert und die Kommandozeile mit vorangestellter Umgebung sind genau die
 // Stellen, an denen ein Fehler still das falsche Modell startet.
 
-test("[night-33] die Zeile Aufgabenstufe wird am Zeilenanfang gelesen", () => {
+test("[night-37] die Zeile Aufgabenstufe wird am Zeilenanfang gelesen", () => {
   for (const wert of ["schwer", "mittel", "leicht"]) {
     const { stufe, grund } = aufgabenStufe(`## Kontext\n\nAufgabenstufe: ${wert}\n`);
     assert.equal(stufe, wert);
@@ -261,27 +261,27 @@ test("[night-33] die Zeile Aufgabenstufe wird am Zeilenanfang gelesen", () => {
   }
 });
 
-test("[night-33] eine eingerueckte Zeile und eine Erwaehnung im Fliesstext treffen nicht", () => {
+test("[night-37] eine eingerueckte Zeile und eine Erwaehnung im Fliesstext treffen nicht", () => {
   // Derselbe enge Anker wie bei EMPFOHLENES_MODELL_ZEILE.
   assert.equal(aufgabenStufe("  Aufgabenstufe: leicht\n").stufe, null, "eingerueckt ist kein Treffer");
   assert.equal(aufgabenStufe("siehe Aufgabenstufe: leicht\n").stufe, null, "Fliesstext ist kein Treffer");
   assert.equal(aufgabenStufe("Aufgabenstufe: leicht und schwer\n").stufe, null, "zwei Woerter sind kein Treffer");
 });
 
-test("[night-33] ein unbekannter Stufenwert liefert null mit Grund", () => {
+test("[night-37] ein unbekannter Stufenwert liefert null mit Grund", () => {
   const { stufe, grund } = aufgabenStufe("Aufgabenstufe: mittelschwer\n");
   assert.equal(stufe, null);
   assert.ok(grund && grund.length > 0, "ein abgewiesener Wert braucht einen Grund");
   assert.match(grund, /mittelschwer/, "der Grund nennt den abgewiesenen Wert");
 });
 
-test("[night-33] eine fehlende Zeile liefert null ohne Grund", () => {
+test("[night-37] eine fehlende Zeile liefert null ohne Grund", () => {
   const { stufe, grund } = aufgabenStufe("## Kontext\n\nKein Hinweis hier.\n");
   assert.equal(stufe, null);
   assert.equal(grund, null, "eine fehlende Stufe ist kein abgewiesener Wert");
 });
 
-test("[night-33] fehlender Block, leerer Block und leere Stufen ergeben aktiv false", () => {
+test("[night-37] fehlender Block, leerer Block und leere Stufen ergeben aktiv false", () => {
   for (const config of [
     undefined,
     {},
@@ -296,7 +296,7 @@ test("[night-33] fehlender Block, leerer Block und leere Stufen ergeben aktiv fa
   }
 });
 
-test("[night-33] eine belegte Stufe genuegt fuer aktiv true", () => {
+test("[night-37] eine belegte Stufe genuegt fuer aktiv true", () => {
   // Teilbelegung ist der Normalfall (Plan #707, E4).
   const { aktiv, stufen } = stufenEinstellung({ night: { stufen: { schwer: { modell: "claude-opus-5" }, mittel: {} } } });
   assert.equal(aktiv, true);
@@ -306,13 +306,13 @@ test("[night-33] eine belegte Stufe genuegt fuer aktiv true", () => {
   assert.equal(stufen.schwer.name, null);
 });
 
-test("[night-33] eine Kommando-Stufe behaelt ihren Namen", () => {
+test("[night-37] eine Kommando-Stufe behaelt ihren Namen", () => {
   const { aktiv, stufen } = stufenEinstellung({ night: { stufen: { leicht: { kommando: "mein-runner --auftrag", name: "lokal" } } } });
   assert.equal(aktiv, true);
   assert.deepEqual(stufen.leicht, { modell: null, kommando: "mein-runner --auftrag", name: "lokal" });
 });
 
-test("[night-33] das Ausweichen geht ueber zwei Stufen nach oben", () => {
+test("[night-37] das Ausweichen geht ueber zwei Stufen nach oben", () => {
   const einstellung = stufenEinstellung({ night: { stufen: { schwer: { modell: "claude-opus-5" } } } });
   const { stufeVerwendet, eintrag, grund } = modellFuerStufe(einstellung, "leicht", ERLAUBT);
   assert.equal(stufeVerwendet, "schwer");
@@ -321,7 +321,7 @@ test("[night-33] das Ausweichen geht ueber zwei Stufen nach oben", () => {
   assert.match(grund, /mittel/, "der Grund nennt die uebersprungene Stufe mittel");
 });
 
-test("[night-33] eine belegte und startbare Stufe wird ohne Grund geliefert", () => {
+test("[night-37] eine belegte und startbare Stufe wird ohne Grund geliefert", () => {
   const einstellung = stufenEinstellung({ night: { stufen: { leicht: { modell: "claude-sonnet-5" } } } });
   const { stufeVerwendet, eintrag, grund } = modellFuerStufe(einstellung, "leicht", ERLAUBT);
   assert.equal(stufeVerwendet, "leicht");
@@ -329,7 +329,7 @@ test("[night-33] eine belegte und startbare Stufe wird ohne Grund geliefert", ()
   assert.equal(grund, null, "ohne uebersprungene Stufe gibt es nichts zu begruenden");
 });
 
-test("[night-33] keine hoehere Stufe belegt liefert stufeVerwendet null mit Grund", () => {
+test("[night-37] keine hoehere Stufe belegt liefert stufeVerwendet null mit Grund", () => {
   const einstellung = stufenEinstellung({ night: { stufen: { leicht: { modell: "claude-sonnet-5" } } } });
   const { stufeVerwendet, eintrag, grund } = modellFuerStufe(einstellung, "mittel", ERLAUBT);
   assert.equal(stufeVerwendet, null);
@@ -338,7 +338,7 @@ test("[night-33] keine hoehere Stufe belegt liefert stufeVerwendet null mit Grun
   assert.match(grund, /schwer/, "der Grund nennt auch die hoehere unbelegte Stufe");
 });
 
-test("[night-33] eine belegte, aber nicht startbare Stufe wird uebersprungen", () => {
+test("[night-37] eine belegte, aber nicht startbare Stufe wird uebersprungen", () => {
   // `claude-fremd-5` steht nicht in night.modelle (E18) — die Stufe gilt als nicht startbar
   // und der Lauf weicht nach oben aus, mit dem Grund im Satz.
   const einstellung = stufenEinstellung({ night: { stufen: { mittel: { modell: "claude-fremd-5" }, schwer: { modell: "claude-opus-5" } } } });
@@ -349,7 +349,7 @@ test("[night-33] eine belegte, aber nicht startbare Stufe wird uebersprungen", (
   assert.match(grund, /claude-fremd-5/, "der Grund nennt den abgewiesenen Namen");
 });
 
-test("[night-33] ein Stufen-Modellname ausserhalb night.modelle gilt als nicht startbar", () => {
+test("[night-37] ein Stufen-Modellname ausserhalb night.modelle gilt als nicht startbar", () => {
   assert.equal(stufeStartbar({ modell: "claude-opus-5" }, ERLAUBT).ok, true);
   const { ok, grund } = stufeStartbar({ modell: "claude-fremd-5" }, ERLAUBT);
   assert.equal(ok, false);
@@ -374,7 +374,7 @@ function mitPfad(binDir, fn) {
   }
 }
 
-test("[night-33] ein auffindbares Programm im PATH gilt als startbar", NUR_POSIX, () => {
+test("[night-37] ein auffindbares Programm im PATH gilt als startbar", NUR_POSIX, () => {
   const binDir = programmImPfad("mein-runner-xyz");
   try {
     mitPfad(binDir, () => {
@@ -387,7 +387,7 @@ test("[night-33] ein auffindbares Programm im PATH gilt als startbar", NUR_POSIX
   }
 });
 
-test("[night-33] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname", NUR_POSIX, () => {
+test("[night-37] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname", NUR_POSIX, () => {
   // Sonst suchte die Startpruefung nach einem Programm namens `KEIN_ECHTER_HOST=1` und
   // wiche still nach oben aus, obwohl das Programm da ist (Plan #707, E8).
   const binDir = programmImPfad("mein-runner-xyz");
@@ -401,13 +401,13 @@ test("[night-33] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname"
   }
 });
 
-test("[night-33] ein nicht auffindbares Programm gilt als nicht startbar", NUR_POSIX, () => {
+test("[night-37] ein nicht auffindbares Programm gilt als nicht startbar", NUR_POSIX, () => {
   const { ok, grund } = stufeStartbar({ kommando: "KEIN_ECHTER_HOST=1 gibt-es-nicht-xyz --flag" }, []);
   assert.equal(ok, false);
   assert.match(grund, /gibt-es-nicht-xyz/, "der Grund nennt das gesuchte Programm");
 });
 
-test("[night-33] ein Shell-Builtin gilt als startbar", NUR_POSIX, () => {
+test("[night-37] ein Shell-Builtin gilt als startbar", NUR_POSIX, () => {
   // `command -v` findet Builtins; eine eigene PATH-Suche faende sie nicht (E8).
   assert.equal(stufeStartbar({ kommando: "cd /tmp" }, []).ok, true);
 });
@@ -672,7 +672,7 @@ test("[night-26] ein unlesbarer Stand liefert den Stand des Laufbeginns mit Grun
 // eingesetzt wuerde; ein eigener Vorflug meldet je belegter Stufe ohne Netz, ob sie
 // startbar ist — ohne den Lauf aufzuhalten (Kriterium 11).
 
-test("[night-35] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", NUR_POSIX, () => {
+test("[night-39] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", NUR_POSIX, () => {
   const dir = setupProjekt("night-dryrun-stufen-", {
     stufen: { leicht: { modell: "claude-sonnet-5" }, schwer: { modell: "claude-opus-5" } },
   });
@@ -694,7 +694,7 @@ test("[night-35] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach
   }
 });
 
-test("[night-35] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", NUR_POSIX, () => {
+test("[night-39] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", NUR_POSIX, () => {
   const dir = setupProjekt("night-dryrun-gegenprobe-");
   try {
     readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
@@ -709,7 +709,7 @@ test("[night-35] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich
   }
 });
 
-test("[night-36] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", NUR_POSIX, () => {
+test("[night-40] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", NUR_POSIX, () => {
   const dir = setupProjekt("night-vorflug-stufen-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-712 --auftrag" } } });
   let bin = null;
   try {
@@ -733,7 +733,7 @@ test("[night-36] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, d
   }
 });
 
-test("[night-36] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", NUR_POSIX, () => {
+test("[night-40] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", NUR_POSIX, () => {
   const dir = setupProjekt("night-vorflug-gegenprobe-");
   let bin = null;
   try {

@@ -93,7 +93,7 @@ test("[night-19] im Lauf behaelt die ungepruefte Karte ihr Kettenlabel und steht
 // --- Der Kommentar an der abgelehnten Anforderung und der Hinweis auf das
 //     unbekannte Kennzeichen (Fachplan #702, Kriterien 4 und 8; Issue #719) ---
 
-test("[night-33] die abgelehnte Anforderung bekommt einmal den Kommentar mit Anker, Grund und Schritt", NUR_POSIX, () => {
+test("[night-42] die abgelehnte Anforderung bekommt einmal den Kommentar mit Anker, Grund und Schritt", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     const res = run(dir, ["--kette"], umgebung(dir));
@@ -107,7 +107,7 @@ test("[night-33] die abgelehnte Anforderung bekommt einmal den Kommentar mit Ank
   });
 });
 
-test("[night-33] ein zweiter Lauf schreibt den Kommentar nicht noch einmal", NUR_POSIX, () => {
+test("[night-42] ein zweiter Lauf schreibt den Kommentar nicht noch einmal", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     assert.equal(run(dir, ["--kette"], umgebung(dir)).status, 0);
@@ -118,7 +118,7 @@ test("[night-33] ein zweiter Lauf schreibt den Kommentar nicht noch einmal", NUR
   });
 });
 
-test("[night-33] der Dry-Run zeigt die Ablehnung und schreibt keinen Kommentar", NUR_POSIX, () => {
+test("[night-42] der Dry-Run zeigt die Ablehnung und schreibt keinen Kommentar", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
@@ -128,7 +128,7 @@ test("[night-33] der Dry-Run zeigt die Ablehnung und schreibt keinen Kommentar",
   });
 });
 
-test("[night-33] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht den Lauf nicht ab", NUR_POSIX, () => {
+test("[night-42] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht den Lauf nicht ab", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     boardFakeInstallieren(dir);
@@ -140,7 +140,7 @@ test("[night-33] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht
   });
 });
 
-test("[night-33] traegt keine Karte review:fertig, meldet der Lauf das unbekannte Kennzeichen", NUR_POSIX, () => {
+test("[night-42] traegt keine Karte review:fertig, meldet der Lauf das unbekannte Kennzeichen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     const res = run(dir, ["--kette"], umgebung(dir));
@@ -151,7 +151,7 @@ test("[night-33] traegt keine Karte review:fertig, meldet der Lauf das unbekannt
   });
 });
 
-test("[night-33] der Hinweis erscheint auch in der Vorschau", NUR_POSIX, () => {
+test("[night-42] der Hinweis erscheint auch in der Vorschau", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
@@ -160,7 +160,7 @@ test("[night-33] der Hinweis erscheint auch in der Vorschau", NUR_POSIX, () => {
   });
 });
 
-test("[night-33] der Hinweis bleibt aus, sobald eine Karte der Liste das Label traegt", NUR_POSIX, () => {
+test("[night-42] der Hinweis bleibt aus, sobald eine Karte der Liste das Label traegt", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     fachplan(dir, "[Fachlich] Anderswo geprueft", null, true);
@@ -171,7 +171,7 @@ test("[night-33] der Hinweis bleibt aus, sobald eine Karte der Liste das Label t
   });
 });
 
-test("[night-33] ohne Ablehnung wegen fehlender Pruefung bleibt der Hinweis aus", NUR_POSIX, () => {
+test("[night-42] ohne Ablehnung wegen fehlender Pruefung bleibt der Hinweis aus", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const karte = fachplan(dir, "[Fachlich] Offene Frage", "kit:night", false);
     board(dir, "issue", "label", "add", karte, "kit:klaeren");

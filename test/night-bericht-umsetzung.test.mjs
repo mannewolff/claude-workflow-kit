@@ -14,7 +14,7 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 
-test("[night-35] die Variantenzeile steht unter Stufen, in beiden Lagen", () => {
+test("[night-36] die Variantenzeile steht unter Stufen, in beiden Lagen", () => {
   const textA = berichtBauen({ id: "1", ausgang: "fertig", stufen: {} }, { stempel: "s" });
   assert.match(textA, /### Stufen\n\n- Variante: A\n/);
 
@@ -22,7 +22,7 @@ test("[night-35] die Variantenzeile steht unter Stufen, in beiden Lagen", () => 
   assert.match(textB, /### Stufen\n\n- Variante: B\n/);
 });
 
-test("[night-35] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern und -titeln", () => {
+test("[night-36] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern und -titeln", () => {
   const pakete = [{ id: "10", title: "P1" }, { id: "11", title: "P2" }, { id: "12", title: "P3" }, { id: "13", title: "P4" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -42,7 +42,7 @@ test("[night-35] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern
   );
 });
 
-test("[night-37] ein umgesetztes Paket mit Stufe und ohne Ausweichen erscheint mit Stufe und Modell", () => {
+test("[night-41] ein umgesetztes Paket mit Stufe und ohne Ausweichen erscheint mit Stufe und Modell", () => {
   const pakete = [{ id: "10", title: "P1" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -52,7 +52,7 @@ test("[night-37] ein umgesetztes Paket mit Stufe und ohne Ausweichen erscheint m
   assert.match(text, /- umgesetzt: #10 P1 \(Aufgabenstufe leicht, Modell claude-sonnet-5\)\.\n/);
 });
 
-test("[night-37] ein umgesetztes Paket, dessen Modell von einer hoeheren Stufe kam, nennt beide Stufen", () => {
+test("[night-41] ein umgesetztes Paket, dessen Modell von einer hoeheren Stufe kam, nennt beide Stufen", () => {
   const pakete = [{ id: "10", title: "P1" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -62,7 +62,7 @@ test("[night-37] ein umgesetztes Paket, dessen Modell von einer hoeheren Stufe k
   assert.match(text, /- umgesetzt: #10 P1 \(Aufgabenstufe leicht, ueber Stufe mittel, Modell claude-opus-5\)\.\n/);
 });
 
-test("[night-37] ein umgesetztes Paket ohne Stufe erscheint als 'ohne Stufe'", () => {
+test("[night-41] ein umgesetztes Paket ohne Stufe erscheint als 'ohne Stufe'", () => {
   const pakete = [{ id: "10", title: "P1" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -72,7 +72,7 @@ test("[night-37] ein umgesetztes Paket ohne Stufe erscheint als 'ohne Stufe'", (
   assert.match(text, /- umgesetzt: #10 P1 \(ohne Stufe\)\.\n/);
 });
 
-test("[night-37] ein angehaltenes und ein nicht begonnenes Paket erscheinen im heutigen Format, zeichengleich zum Bestand", () => {
+test("[night-41] ein angehaltenes und ein nicht begonnenes Paket erscheinen im heutigen Format, zeichengleich zum Bestand", () => {
   const pakete = [{ id: "10", title: "P1" }, { id: "11", title: "P2" }, { id: "12", title: "P3" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -88,7 +88,7 @@ test("[night-37] ein angehaltenes und ein nicht begonnenes Paket erscheinen im h
   assert.match(text, /- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\)\.\n/);
 });
 
-test("[night-37] fehlen die neuen Felder in der Einheit, erscheint das Paket als 'ohne Stufe' und die Funktion wirft nicht", () => {
+test("[night-41] fehlen die neuen Felder in der Einheit, erscheint das Paket als 'ohne Stufe' und die Funktion wirft nicht", () => {
   const pakete = [{ id: "10", title: "P1" }];
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
@@ -99,7 +99,7 @@ test("[night-37] fehlen die neuen Felder in der Einheit, erscheint das Paket als
   assert.match(text, /- umgesetzt: #10 P1 \(ohne Stufe\)\.\n/);
 });
 
-test("[night-35] leere Listen im Abschnitt Umsetzung stehen als 'keine', nicht weggelassen", () => {
+test("[night-36] leere Listen im Abschnitt Umsetzung stehen als 'keine', nicht weggelassen", () => {
   const einheit = {
     id: "1", ausgang: "fertig", variante: "B",
     stufen: { umsetzung: { umgesetzt: [], angehalten: [], nichtBegonnen: [], zurueckgestellt: [] } },
@@ -108,12 +108,12 @@ test("[night-35] leere Listen im Abschnitt Umsetzung stehen als 'keine', nicht w
   assert.match(text, /### Umsetzung\n\n- umgesetzt: keine\n- angehalten: keine\n- nicht begonnen: keine\n/);
 });
 
-test("[night-35] unter Variante A gibt es keinen Abschnitt Umsetzung", () => {
+test("[night-36] unter Variante A gibt es keinen Abschnitt Umsetzung", () => {
   const text = berichtBauen({ id: "1", ausgang: "fertig", stufen: {} }, { stempel: "s" });
   assert.ok(!text.includes("### Umsetzung"), "Variante A zeigt keinen Umsetzung-Abschnitt");
 });
 
-test("[night-35] Entscheidungen aus Paket-Kommentaren reihen sich fortlaufend hinter Plan und Kontext ein", () => {
+test("[night-36] Entscheidungen aus Paket-Kommentaren reihen sich fortlaufend hinter Plan und Kontext ein", () => {
   const plan = { id: "5", title: "[Plan] X", body: "## Architektonische Entscheidungen\n\n- A1 — erstens.\n" };
   const pakete = [
     {
@@ -138,7 +138,7 @@ test("[night-35] Entscheidungen aus Paket-Kommentaren reihen sich fortlaufend hi
   ));
 });
 
-test("[night-35] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare liefern nichts, kein Wurf", () => {
+test("[night-36] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare liefern nichts, kein Wurf", () => {
   const pakete = [
     {
       id: "8", title: "P3", body: "## Kontext\n\nPlan: Issue #5\n",
@@ -152,7 +152,7 @@ test("[night-35] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
 });
 
-test("[night-35] [night-37] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet und modell", NUR_POSIX, () => {
+test("[night-36] [night-41] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet und modell", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Ein Anliegen");
     board(dir, "issue", "label", "add", F, "kit:durchziehen");

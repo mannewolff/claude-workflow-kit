@@ -85,7 +85,7 @@ function probeStand(dir) {
 
 // --- Die Einheit: umsetzungLockNehmen ---
 
-test("[night-34] ein Lock mit lebendem Prozess wird nicht genommen und nicht ueberschrieben", () => {
+test("[night-35] ein Lock mit lebendem Prozess wird nicht genommen und nicht ueberschrieben", () => {
   mitOrdner((dir) => {
     lockSchreiben(dir, `${process.pid}\n`);
     const res = umsetzungLockNehmen(dir);
@@ -96,7 +96,7 @@ test("[night-34] ein Lock mit lebendem Prozess wird nicht genommen und nicht ueb
   });
 });
 
-test("[night-34] ein verwaister Lock wird aufgeraeumt und selbst genommen", () => {
+test("[night-35] ein verwaister Lock wird aufgeraeumt und selbst genommen", () => {
   mitOrdner((dir) => {
     lockSchreiben(dir, `${totePid()}\n`);
     const res = umsetzungLockNehmen(dir);
@@ -108,7 +108,7 @@ test("[night-34] ein verwaister Lock wird aufgeraeumt und selbst genommen", () =
   });
 });
 
-test("[night-34] eine nicht als Zahl lesbare Lock-Datei zaehlt als verwaist", () => {
+test("[night-35] eine nicht als Zahl lesbare Lock-Datei zaehlt als verwaist", () => {
   // `0` steht ausdruecklich dabei: `process.kill(0, 0)` zielte auf die eigene
   // Prozessgruppe und meldete damit immer einen lebenden Halter.
   for (const inhalt of ["", "   ", "kaputt", "0", "-1", "1.5"]) {
@@ -121,7 +121,7 @@ test("[night-34] eine nicht als Zahl lesbare Lock-Datei zaehlt als verwaist", ()
   }
 });
 
-test("[night-34] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie ohne Lock laufen zu lassen", () => {
+test("[night-35] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie ohne Lock laufen zu lassen", () => {
   mitOrdner((dir) => {
     // Ein Verzeichnis an der Stelle der Lock-Datei: lesbar ist es nicht als Zahl, also
     // gilt es als verwaist — schreiben laesst es sich trotzdem nicht.
@@ -132,14 +132,14 @@ test("[night-34] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie o
   });
 });
 
-test("[night-34] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits deckt ihn", () => {
+test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits deckt ihn", () => {
   const res = spawnSync("git", ["check-ignore", "-q", UMSETZUNG_LOCK], { cwd: repoRoot, encoding: "utf-8" });
   assert.equal(res.status, 0, `${UMSETZUNG_LOCK} ist im Kit nicht ignoriert — gitClean() saehe ihn als Rest`);
 });
 
 // --- Die Kette unter Variante B ---
 
-test("[night-34] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleibt fertig, kein Paket wird gezogen", NUR_POSIX, () => {
+test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleibt fertig, kein Paket wird gezogen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${process.pid}\n`);
@@ -165,7 +165,7 @@ test("[night-34] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleib
   });
 });
 
-test("[night-34] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
+test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const stufen = { ...ERZEUGEN, umsetzung: `${probe(dir)}; ${UMSETZUNG_ERFOLG}` };
     const env = umgebung(dir, { stufen });
@@ -181,7 +181,7 @@ test("[night-34] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und 
   });
 });
 
-test("[night-34] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_POSIX, () => {
+test("[night-35] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${totePid()}\n`);
@@ -195,7 +195,7 @@ test("[night-34] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_PO
   });
 });
 
-test("[night-34] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liegen", NUR_POSIX, () => {
+test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liegen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -207,7 +207,7 @@ test("[night-34] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liege
   });
 });
 
-test("[night-34] --kette --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", NUR_POSIX, () => {
+test("[night-35] --kette --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });
@@ -232,7 +232,7 @@ function nachtProjekt(dir, zeilen) {
   return { id: String(issue.id), env: { ...env, NIGHT_CLAUDE_CMD: fake({ umsetzung: zeilen }) } };
 }
 
-test("[night-34] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der Grund steht im Protokoll", NUR_POSIX, () => {
+test("[night-35] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der Grund steht im Protokoll", NUR_POSIX, () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, UMSETZUNG_ERFOLG);
@@ -250,7 +250,7 @@ test("[night-34] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der
   }
 });
 
-test("[night-34] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
+test("[night-35] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, `${probe(dir)}; ${UMSETZUNG_ERFOLG}`);
@@ -267,7 +267,7 @@ test("[night-34] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und 
   }
 });
 
-test("[night-34] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", NUR_POSIX, () => {
+test("[night-35] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", NUR_POSIX, () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, UMSETZUNG_ERFOLG);
@@ -282,7 +282,7 @@ test("[night-34] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", NUR_PO
   }
 });
 
-test("[night-34] auch ohne .claude-Regel in der .gitignore ist der Lock kein Rest im Arbeitsbaum", NUR_POSIX, () => {
+test("[night-35] auch ohne .claude-Regel in der .gitignore ist der Lock kein Rest im Arbeitsbaum", NUR_POSIX, () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     // Die Fixture bildet den `.claude/*`-Block des Installers nach. Den laesst der Installer
@@ -307,7 +307,7 @@ test("[night-34] auch ohne .claude-Regel in der .gitignore ist der Lock kein Res
   }
 });
 
-test("[night-34] ein Lauf ohne Ready-Paket nimmt keinen Lock — er haelt keine Kette ab", NUR_POSIX, () => {
+test("[night-35] ein Lauf ohne Ready-Paket nimmt keinen Lock — er haelt keine Kette ab", NUR_POSIX, () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const env = umgebung(dir);

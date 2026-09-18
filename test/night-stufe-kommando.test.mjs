@@ -67,7 +67,7 @@ function befund(aus) {
   return Object.fromEntries(eintraege);
 }
 
-test("[night-34] der Auftrag kommt woertlich als $1 an und wird von der Shell nicht ausgewertet", NUR_POSIX, async () => {
+test("[night-38] der Auftrag kommt woertlich als $1 an und wird von der Shell nicht ausgewertet", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");
@@ -92,7 +92,7 @@ test("[night-34] der Auftrag kommt woertlich als $1 an und wird von der Shell ni
   });
 });
 
-test("[night-34] KIT_AGENT_MODEL traegt das Feld name der Stufe", NUR_POSIX, async () => {
+test("[night-38] KIT_AGENT_MODEL traegt das Feld name der Stufe", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");
@@ -107,7 +107,7 @@ test("[night-34] KIT_AGENT_MODEL traegt das Feld name der Stufe", NUR_POSIX, asy
   });
 });
 
-test("[night-34] ohne name traegt KIT_AGENT_MODEL stufe-<aufgabenstufe> und ist nie leer", NUR_POSIX, async () => {
+test("[night-38] ohne name traegt KIT_AGENT_MODEL stufe-<aufgabenstufe> und ist nie leer", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");
@@ -123,7 +123,7 @@ test("[night-34] ohne name traegt KIT_AGENT_MODEL stufe-<aufgabenstufe> und ist 
   });
 });
 
-test("[night-34] im Kommando-Zweig erscheint --model nicht in der Argumentliste", NUR_POSIX, async () => {
+test("[night-38] im Kommando-Zweig erscheint --model nicht in der Argumentliste", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");
@@ -140,7 +140,7 @@ test("[night-34] im Kommando-Zweig erscheint --model nicht in der Argumentliste"
   });
 });
 
-test("[night-34] eine fuehrende NAME=WERT-Zuweisung startet und kommt in der Umgebung des Programms an", NUR_POSIX, async () => {
+test("[night-38] eine fuehrende NAME=WERT-Zuweisung startet und kommt in der Umgebung des Programms an", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");
@@ -155,7 +155,7 @@ test("[night-34] eine fuehrende NAME=WERT-Zuweisung startet und kommt in der Umg
   });
 });
 
-test("[night-34] fehlt sh, meldet runSession einen Startfehler an den Aufrufer statt den Lauf zu beenden", NUR_POSIX, async () => {
+test("[night-38] fehlt sh, meldet runSession einen Startfehler an den Aufrufer statt den Lauf zu beenden", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const leer = join(dir, "leer");
     mkdirSync(leer);
@@ -175,7 +175,7 @@ test("[night-34] fehlt sh, meldet runSession einen Startfehler an den Aufrufer s
   });
 });
 
-test("[night-34] NIGHT_CLAUDE_CMD hat weiterhin Vorrang, auch wenn kommando gesetzt ist", NUR_POSIX, async () => {
+test("[night-38] NIGHT_CLAUDE_CMD hat weiterhin Vorrang, auch wenn kommando gesetzt ist", NUR_POSIX, async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const argsDatei = join(dir, "args.txt");

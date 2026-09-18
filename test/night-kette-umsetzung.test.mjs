@@ -55,7 +55,7 @@ function stehenInBacklog(dir, ids) {
   for (const id of ids) assert.ok(backlog.includes(id), `Paket #${id} liegt nicht in Backlog, sondern in ${board(dir, "issue", "get", id).status}`);
 }
 
-test("[night-33] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", NUR_POSIX, () => {
+test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -86,7 +86,7 @@ test("[night-33] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
   });
 });
 
-test("[night-33] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", NUR_POSIX, () => {
+test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -112,7 +112,7 @@ test("[night-33] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab u
   });
 });
 
-test("[night-33] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Kette bricht ab", NUR_POSIX, () => {
+test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Kette bricht ab", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Die Abdeckungs-Session laesst einen Rest in der Hauptkopie liegen — sie laeuft im
@@ -133,7 +133,7 @@ test("[night-33] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
   });
 });
 
-test("[night-33] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } });
@@ -148,7 +148,7 @@ test("[night-33] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am 
   });
 });
 
-test("[night-33] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
@@ -166,7 +166,7 @@ test("[night-33] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, 
   });
 });
 
-test("[night-33] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -183,7 +183,7 @@ test("[night-33] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gez
   });
 });
 
-test("[night-33] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", NUR_POSIX, () => {
+test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Eine Karte, die der Mensch selbst nach Ready gezogen hat — sie gehoert zu keinem
@@ -202,7 +202,7 @@ test("[night-33] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready",
   });
 });
 
-test("[night-33] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und gilt als nicht begonnen", NUR_POSIX, () => {
+test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und gilt als nicht begonnen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Das erste Paket haelt an einer Stopp-Frage an und bleibt damit in Backlog; das
@@ -233,7 +233,7 @@ test("[night-33] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und
   });
 });
 
-test("[night-33] ein angehaltenes Paket laesst die Kette angehalten enden, ohne den Fachplan zu zeichnen", NUR_POSIX, () => {
+test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne den Fachplan zu zeichnen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG) };
@@ -255,7 +255,7 @@ test("[night-33] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
   });
 });
 
-test("[night-33] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die Pakete sind nicht begonnen", NUR_POSIX, () => {
+test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die Pakete sind nicht begonnen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -272,7 +272,7 @@ test("[night-33] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die
   }, { umsetzungMin: 0.5 });
 });
 
-test("[night-33] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von kostenUsd, die Kette bleibt fertig", NUR_POSIX, () => {
+test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von kostenUsd, die Kette bleibt fertig", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Vier erzeugende Sessions zu je 0.25 $ = 1.00 $. Unter `kostenUsd` (0.5 $) waere die
@@ -293,7 +293,7 @@ test("[night-33] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von k
   }, { kostenUsd: 0.5, kostenUsdB: 1.1 });
 });
 
-test("[night-33] mit issueReview.requiredBeforeReady faellt die Kette auf Variante A zurueck und bleibt fertig", NUR_POSIX, () => {
+test("[night-34] mit issueReview.requiredBeforeReady faellt die Kette auf Variante A zurueck und bleibt fertig", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
