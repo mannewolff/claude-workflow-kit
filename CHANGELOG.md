@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.1] - 2026-09-18
+- Dokumentation der neuen Einstellungs-Oberflaeche und Abschluss der Spec-Wirkung (#732)
+- M7 Einfache Gruppen: ein Feld je Eintrag und persoenliche Abweichung je Zeile (#731)
+- M6 Nacht-Kette: Zahlenfelder mit Einheit, blasse Vorgabewerte und die Summe der Zeitbudgets (#730)
+- M5 Spezifikation: Einschalten ohne Ausschalter, Testorte als Muster und Beispiel am Verweis-Muster (#729)
+- M4 Pruefkommandos und Bereiche: drei Laufarten, Formtreue und Folgen einer Umbenennung (#728)
+- M3 Pruefstufen: Zaehler, Rollenauswahl aus dem Katalog und Beispielbesetzung (#727)
+- M1 Reviewer und M2 Paarungen samt Folgen als eine Aenderung (#726)
+- Oberflaechen-Rahmen: Bausteine, Arbeitskopie je Teil, Fuss und Bedienelemente (#725)
+- Stufen in workflow.config nachgezogen
+- Vorschau-Endpunkt: Befunde, Aenderungsliste und abgeleitete Anzeigen ohne Schreiben (#724)
+- Zuschnitt der Einstellungen in Teile samt Rueckfall auf die Dateischreibweise (#723)
+- Pruefteil der Oberflaeche: Warnung, Rollenkatalog, Reviewer-Wahl, Vorgaben (#722)
+
 ## [2.0.0] - 2026-09-18
 - Doppelte Spec-IDs des Batches auf night-33 bis night-42 aufgeloest (#736)
 - Hook-Block und Installer melden die Sitzung von selbst (#735)
