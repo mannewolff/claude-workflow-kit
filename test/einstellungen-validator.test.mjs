@@ -84,9 +84,31 @@ const REVIEW = {
 };
 
 test("[einstellungen-1] Zusatzregel: Zahl der Rollen ungleich reviewer", () => {
-  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 2, rollen: ["a"] } } });
+  // "architektur-bestand" steht im Rollenkatalog der Stufe plan — sonst traegt der Befund
+  // auch die neue Katalog-Regel und die Zaehlung dieses Tests waere von ihr abhaengig.
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 2, rollen: ["architektur-bestand"] } } });
   assert.equal(b.length, 1);
   assert.equal(b[0].pfad, "reviewStufen.plan.rollen");
+});
+
+test("Zusatzregel: ein Rollenname außerhalb des Katalogs ergibt einen Befund am Pfad seiner Zeile", () => {
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 1, rollen: ["erfunden"] } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "reviewStufen.plan.rollen[0]");
+  assert.match(b[0].grund, /erfunden/);
+  assert.equal(b[0].art, "fehler");
+});
+
+test("Zusatzregel: ein Rollenname aus dem Katalog der eigenen Stufe ergibt keinen Befund", () => {
+  const b = zusatzregeln({ reviewStufen: { fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] } } });
+  assert.deepEqual(b, []);
+});
+
+test("Zusatzregel: ein Rollenname einer anderen Stufe zaehlt am eigenen Katalog nicht", () => {
+  // "pruefbarkeit" gehoert zur Stufe issue, nicht zu plan — der Katalog ist je Stufe eigen.
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 1, rollen: ["pruefbarkeit"] } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "reviewStufen.plan.rollen[0]");
 });
 
 test("[einstellungen-1] Zusatzregel: Name in pairs, der nicht in reviewers steht", () => {

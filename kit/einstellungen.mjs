@@ -184,6 +184,24 @@ function regelRollenzahl(config) {
   return out;
 }
 
+// Rein eine Hilfe der Oberfläche (Plan #721, Kriterium 4a) — kit/board.mjs prüft
+// Rollennamen nicht gegen den Katalog, nur ihre Zahl, dass sie nicht leer und nicht doppelt
+// sind. Ein Name außerhalb des Katalogs bricht deshalb nichts im Nachtbetrieb; er hat nur
+// keinen Prompt in issue-review.
+function regelRollenKatalog(config) {
+  const out = [];
+  for (const [stufe, eintrag] of Object.entries(istObjekt(config.reviewStufen) ? config.reviewStufen : {})) {
+    if (!istObjekt(eintrag) || !Array.isArray(eintrag.rollen)) continue;
+    const katalog = ROLLEN_KATALOG[stufe] ?? [];
+    eintrag.rollen.forEach((rolle, i) => {
+      if (!katalog.includes(rolle)) {
+        out.push(befund(`reviewStufen.${stufe}.rollen[${i}]`, `'${rolle}' steht nicht im Rollenkatalog dieser Stufe — möglich sind ${katalog.join(", ") || "keine"}`));
+      }
+    });
+  }
+  return out;
+}
+
 // SYNC: Laufzeitregel in kit/board.mjs, validatePairs — Namen aus reviewers, kein Autor prüft sich selbst.
 function regelPaare(config) {
   const block = istObjekt(config.issueReview) ? config.issueReview : {};
@@ -253,7 +271,10 @@ function regelStufenModell(config) {
 /** Die Regeln über mehrere Felder, angewandt auf eine (gemischte) Konfiguration. */
 export function zusatzregeln(config) {
   if (!istObjekt(config)) return [];
-  return [...regelRollenzahl(config), ...regelPaare(config), ...regelBereiche(config), ...regelLeereBereiche(config), ...regelStufenFelder(config), ...regelStufenModell(config)];
+  return [
+    ...regelRollenzahl(config), ...regelRollenKatalog(config), ...regelPaare(config), ...regelBereiche(config),
+    ...regelLeereBereiche(config), ...regelStufenFelder(config), ...regelStufenModell(config),
+  ];
 }
 
 // ============================================================
@@ -899,9 +920,12 @@ export function projektZustand(projekt, { home, eigenerStand }) {
       instanzen.set(schluessel, instanz);
       (zustand.themen[thema] ??= []).push(instanz);
     }
+    // reviewStufen hat keinen Schema-`default` fuer den ganzen Block — der Vorgabewert kommt
+    // hier von REVIEW_STUFEN_VORGABE, der Bestandsvorgabe einer Config ohne diesen Block.
     instanz.eintraege.push({
       pfad, beschreibung: schema?.description ?? null, schema, ...werte,
-      vorgabe: vorgabeAus(pfad), befunde: befunde.filter((b) => gehoertZu(b.pfad, pfad)),
+      vorgabe: pfad === "reviewStufen" ? REVIEW_STUFEN_VORGABE : vorgabeAus(pfad),
+      befunde: befunde.filter((b) => gehoertZu(b.pfad, pfad)),
     });
   }
   for (const teile of Object.values(zustand.themen)) teile.sort((a, b) => a.reihenfolge - b.reihenfolge);
@@ -977,6 +1001,13 @@ export function speichere(projekt, auftrag, optionen) {
 // SYNC: REVIEW_STUFEN und REVIEW_STUFEN_DEFAULT in kit/board.mjs — Änderungen dort nachziehen.
 const STUFEN = ["fachlich", "plan", "issue"];
 const STUFEN_VORGABE = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+
+/**
+ * Die Vorgabe für `reviewStufen` als Ganzes, wenn der Block in der Datei fehlt — dieselbe
+ * Bestandsvorgabe für jede Stufe wie `REVIEW_STUFEN_DEFAULT` in `kit/board.mjs`. Sie steht
+ * als `vorgabe` am Eintrag des Pfads (Plan #721 E5), genau wie jeder andere Vorgabewert.
+ */
+const REVIEW_STUFEN_VORGABE = Object.fromEntries(STUFEN.map((s) => [s, STUFEN_VORGABE]));
 
 /** Der Beispieltext, an dem das Verweis-Muster der Spezifikation vorgeführt wird (Kriterium 22). */
 export const VERWEIS_BEISPIEL = { id: "board-7", text: 'test("[board-7] ein Beispiel", () => {});' };
@@ -2088,13 +2119,13 @@ function eingabe(schema, wert) {
   //
   // Nicht mehr das Schema eines Feldes entscheidet über seine Eingabe, sondern der Teil, zu
   // dem es gehört. Die Redaktoren der sieben Teile des Entwurfs entstehen je in einem eigenen
-  // Arbeitspaket; bis dahin zeigt `redaktorEntsteht` ihren geltenden Wert lesbar — und nicht
-  // mehr als Textblock in Dateischreibweise.
+  // Arbeitspaket; bis ein Teil an der Reihe war, zeigt `redaktorEntsteht` seinen geltenden
+  // Wert lesbar — und nicht mehr als Textblock in Dateischreibweise.
   platte: String.raw`
 const REDAKTOREN = {
   reviewer: redaktorReviewer,
   paarungen: redaktorPaarungen,
-  pruefstufen: redaktorEntsteht,
+  pruefstufen: redaktorPruefstufen,
   pruefkommandos: redaktorEntsteht,
   spezifikation: redaktorEntsteht,
   nachtkette: redaktorEntsteht,
@@ -2508,6 +2539,149 @@ function redaktorPaarungen(teil) {
   teil.aufVorschau = neuZeichnen;
   neuZeichnen();
   kasten.append(behaelter);
+  vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // M3 Prüfstufen (Kriterien 4a, 14, 15, 16, Plan E5, E6)
+  // ------------------------------------------------------------
+  //
+  // Drei Stufen nebeneinander (.stufen aus dem Rahmen). Die Zahl der Rollen folgt dem Zähler
+  // der Prüferzahl: Er wächst nicht über die Zahl der Katalogrollen hinaus (`zaehler` bremst
+  // das schon), ein vorhandener Bestand darüber bleibt stehen und geht nur abwärts. Fehlt
+  // reviewStufen ganz, gilt die Vorgabe aus dem Eintrag — dieselben zwei Rollennamen, die der
+  // Katalog bewusst nicht kennt (Plan E5); erst eine Änderung legt den Block mit den
+  // Katalogrollen jeder Stufe an. Der Rollenkatalog ist kein zweites Literal: Er kommt aus
+  // `ROLLEN_KATALOG` desselben Moduls, als JSON in die Seite gerechnet.
+  redaktorPruefstufen: `
+const ROLLEN_KATALOG_BROWSER = ${JSON.stringify(ROLLEN_KATALOG)};
+` + String.raw`
+/** Der reviewStufen-Block der Arbeitskopie, oder null ohne eigene Einstellung. */
+function reviewStufenVon(teil) {
+  const wert = wertVon(teil, "reviewStufen");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : null;
+}
+
+function katalogVon(stufe) {
+  return ROLLEN_KATALOG_BROWSER[stufe] || [];
+}
+
+/** Reviewerzahl und Rollen einer Stufe: aus der Arbeitskopie, sonst die Vorgabe des Eintrags. */
+function stufeWert(teil, stufe) {
+  const block = reviewStufenVon(teil);
+  if (block && block[stufe] && typeof block[stufe] === "object") return block[stufe];
+  const eintrag = eintragVon(teil, "reviewStufen");
+  return (eintrag && eintrag.vorgabe && eintrag.vorgabe[stufe]) || { reviewer: 1, rollen: [] };
+}
+
+/**
+ * Setzt eine Stufe. Fehlte der Block bisher, entstehen die anderen Stufen mit ihren
+ * Katalogrollen (Plan E5) — nie mit der Vorgabe der fehlenden Datei, die der Katalog nicht
+ * kennt.
+ */
+function stufeSetzen(teil, stufe, eintrag, neuZeichnen) {
+  const bisher = reviewStufenVon(teil);
+  const voll = {};
+  for (const k of Object.keys(ROLLEN_KATALOG_BROWSER)) {
+    if (k === stufe) { voll[k] = eintrag; continue; }
+    if (bisher && bisher[k] && typeof bisher[k] === "object") { voll[k] = bisher[k]; continue; }
+    const kat = katalogVon(k);
+    voll[k] = { reviewer: kat.length, rollen: kat.slice() };
+  }
+  setzeWert(teil, "reviewStufen", voll);
+  neuZeichnen();
+}
+
+/** Die Rollenliste folgt der neuen Zahl: dazu aus dem Katalog, weg vom Ende (Kriterium 15). */
+function stufeReviewerAendern(teil, stufe, anzahl, neuZeichnen) {
+  const kat = katalogVon(stufe);
+  const rollen = stufeWert(teil, stufe).rollen.slice();
+  while (rollen.length < anzahl) rollen.push(kat.find(function (r) { return rollen.indexOf(r) < 0; }) || kat[0] || "");
+  while (rollen.length > anzahl) rollen.pop();
+  stufeSetzen(teil, stufe, { reviewer: anzahl, rollen: rollen }, neuZeichnen);
+}
+
+function stufeRolleAendern(teil, stufe, index, name, neuZeichnen) {
+  const bisher = stufeWert(teil, stufe);
+  const rollen = bisher.rollen.slice();
+  rollen[index] = name;
+  stufeSetzen(teil, stufe, { reviewer: bisher.reviewer, rollen: rollen }, neuZeichnen);
+}
+
+/** Eine Stufe: Zähler, eine Zeile je Rolle und das Beispiel aus der Vorschau. */
+function stufePlatte(teil, stufe, titel, neuZeichnen) {
+  const eintrag = stufeWert(teil, stufe);
+  const kat = katalogVon(stufe);
+  const istVorgabe = reviewStufenVon(teil) === null;
+  const d = el("div", "stufe");
+  const kopf = el("div");
+  kopf.style.display = "flex";
+  kopf.style.alignItems = "center";
+  kopf.style.gap = "8px";
+  kopf.append(el("h4", "", titel), el("span", "feldpfad mono", stufe));
+  d.append(kopf);
+  if (istVorgabe) {
+    d.append(el("p", "erklaerung", "Noch keine eigene Einstellung — es gilt die Bestandsvorgabe. Eine Änderung hier legt reviewStufen mit den Katalogrollen jeder Stufe an."));
+  }
+  const zeile = el("div");
+  zeile.style.display = "flex";
+  zeile.style.alignItems = "center";
+  zeile.style.gap = "8px";
+  const stepper = zaehler({
+    wert: eintrag.reviewer,
+    min: 1,
+    max: kat.length,
+    aendern: function (n) { stufeReviewerAendern(teil, stufe, n, neuZeichnen); },
+  });
+  zeile.append(el("span", "etikett", "Prüfer"), stepper, el("span", "nutzung", "höchstens " + kat.length + ", so viele Rollen kennt die Stufe"));
+  d.append(zeile);
+  eintrag.rollen.forEach(function (rolle, i) {
+    if (kat.indexOf(rolle) < 0) {
+      // Kriterium 4a: ein Rollenname, den der Katalog nicht kennt — nur ersetzbar, nicht
+      // einzeln entfernbar, sonst liefe die Rollenzahl der Prüferzahl davon (Kriterium 15).
+      d.append(fehlerzeile({
+        wert: rolle,
+        grund: "'" + rolle + "' steht nicht im Rollenkatalog dieser Stufe" + (istVorgabe ? " — das ist die Bestandsvorgabe ohne eigene Einstellung." : "."),
+        wahl: kat.filter(function (r) { return eintrag.rollen.indexOf(r) < 0; }),
+        ersetzen: function (name) { stufeRolleAendern(teil, stufe, i, name, neuZeichnen); },
+      }));
+      return;
+    }
+    const rz = el("div", "rolle");
+    const sel = el("select");
+    kat.forEach(function (o) {
+      const opt = el("option", "", o);
+      if (o === rolle) opt.selected = true;
+      sel.append(opt);
+    });
+    sel.addEventListener("change", function () { stufeRolleAendern(teil, stufe, i, sel.value, neuZeichnen); });
+    rz.append(el("span", "rang", String(i + 1)), sel);
+    d.append(rz);
+  });
+  const beispiel = (abgeleitetVon(teil).beispiel || {})[stufe];
+  const bsp = el("div", "nutzung beispiel");
+  bsp.textContent = beispiel && beispiel.autor
+    ? "Beispiel Autor " + beispiel.autor + ": " + (beispiel.pruefer.map(function (p) { return p.name + " als " + p.rolle; }).join(", ") || "—") + (beispiel.unterbesetzt ? " · unterbesetzt" : "")
+    : "Beispiel folgt …";
+  d.append(bsp);
+  return d;
+}
+
+function redaktorPruefstufen(teil) {
+  const kasten = el("div", "stapel");
+  kasten.append(el("p", "erklaerung", "Wie viele Reviewer jede Stufe prüft und mit welchem Blick. Die Zahl der Rollen folgt der Zahl der Prüfer, deshalb kann beides nicht auseinanderlaufen."));
+  const box = el("div", "stufen");
+  const neuZeichnen = function () {
+    box.replaceChildren();
+    // PAAR_STUFEN traegt Kennung und Titel schon aus M2 — dieselben drei Stufen, keine
+    // zweite Liste.
+    for (const paar of PAAR_STUFEN) box.append(stufePlatte(teil, paar[0], paar[1], neuZeichnen));
+  };
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(box);
   vorschauAnfordern(teil);
   return kasten;
 }

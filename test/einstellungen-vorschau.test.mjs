@@ -19,7 +19,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { abgeleitet, aenderungsliste, projektZustand, VERWEIS_BEISPIEL, vorschau } from "../kit/einstellungen.mjs";
+import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, VERWEIS_BEISPIEL, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -273,6 +273,65 @@ test("[einstellungen-11] ohne reviewStufen-Block gilt die Bestandsvorgabe", () =
     { name: "fable", rolle: "vollstaendigkeit-pruefbarkeit" },
     { name: "gpt-astra", rolle: "scope-risiko-bestand" },
   ]);
+});
+
+test("[einstellungen-11] die Beispielbesetzung je Stufe stimmt mit waehleReviewer überein — mit pairs", () => {
+  const beispiel = abgeleitet(BEISPIEL, "m3").beispiel;
+  const { reviewers, pairs } = BEISPIEL.issueReview;
+  for (const [stufe, eintrag] of Object.entries(BEISPIEL.reviewStufen)) {
+    const erwartet = waehleReviewer(reviewers, "opus", eintrag.reviewer, pairs);
+    assert.deepEqual(beispiel[stufe].pruefer.map((p) => p.name), erwartet.gewaehlt.map((r) => r.name), stufe);
+    assert.equal(beispiel[stufe].unterbesetzt, erwartet.unterbesetzt, stufe);
+    assert.equal(beispiel[stufe].quelle, erwartet.quelle, stufe);
+  }
+});
+
+test("[einstellungen-11] die Beispielbesetzung je Stufe stimmt mit waehleReviewer überein — ohne pairs", () => {
+  const config = { ...BEISPIEL, issueReview: { ...BEISPIEL.issueReview, pairs: {} } };
+  const beispiel = abgeleitet(config, "m3").beispiel;
+  const { reviewers } = config.issueReview;
+  for (const [stufe, eintrag] of Object.entries(config.reviewStufen)) {
+    const erwartet = waehleReviewer(reviewers, "opus", eintrag.reviewer, {});
+    assert.deepEqual(beispiel[stufe].pruefer.map((p) => p.name), erwartet.gewaehlt.map((r) => r.name), stufe);
+    assert.equal(beispiel[stufe].quelle, "regel", stufe);
+  }
+});
+
+test("ein Rollenname außerhalb des Katalogs ergibt in der Vorschau einen Befund am Pfad seiner Zeile", async () => {
+  await mitProjekt({ team: BEISPIEL }, async (p) => {
+    const wert = { ...BEISPIEL.reviewStufen, plan: { reviewer: 1, rollen: ["erfunden"] } };
+    const res = antwortVon(p, { ebene: "team", teil: "m3", aenderungen: [{ pfad: "reviewStufen", wert }] });
+    assert.equal(res.status, 200);
+    const eigener = fehlerIn(res).find((b) => b.pfad === "reviewStufen.plan.rollen[0]");
+    assert.ok(eigener, JSON.stringify(res.body.befunde));
+    assert.match(eigener.grund, /erfunden/);
+  });
+});
+
+test("[einstellungen-9] ein Projekt ohne reviewStufen-Block liefert die Vorgabe als vorgabe, nicht als Team-Wert", async () => {
+  await mitProjekt({ team: ohne(ECHT, "reviewStufen") }, async (p) => {
+    const zustand = projektZustand(p.projekt, p.optionen);
+    const eintrag = Object.values(zustand.themen).flat().flatMap((t) => t.eintraege).find((e) => e.pfad === "reviewStufen");
+    assert.equal(eintrag.team, undefined, "reviewStufen steht als Team-Wert da, obwohl die Datei den Block nicht traegt");
+    assert.equal(eintrag.gilt, undefined);
+    for (const stufe of ["fachlich", "plan", "issue"]) {
+      assert.deepEqual(eintrag.vorgabe[stufe].rollen, ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"]);
+      for (const rolle of eintrag.vorgabe[stufe].rollen) {
+        assert.ok(!(ROLLEN_KATALOG[stufe] ?? []).includes(rolle), `'${rolle}' sollte kein Katalogeintrag von ${stufe} sein`);
+      }
+    }
+  });
+});
+
+test("[einstellungen-9] Speichern ohne Änderung an reviewStufen legt in einem Projekt ohne diesen Block keinen Block an", async () => {
+  const team = ohne(ECHT, "reviewStufen");
+  await mitProjekt({ team }, async (p) => {
+    const vorher = readFileSync(p.dateien.team);
+    const res = speichere(p.projekt, { hashes: p.hashes(), ebene: "team", teil: "wert", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }] }, p.optionen);
+    assert.equal(res.status, 200);
+    assert.deepEqual(JSON.parse(readFileSync(p.dateien.team, "utf-8")).reviewStufen, undefined);
+    assert.notDeepEqual(readFileSync(p.dateien.team), vorher, "mainBranch haette sich aendern muessen");
+  });
 });
 
 test("[einstellungen-11] je Bereich steht, wie viele Kommandos ihn nutzen", () => {

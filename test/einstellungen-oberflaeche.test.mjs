@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, paarungsFolgen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
+import { aenderungsliste, paarungsFolgen, ROLLEN_KATALOG, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -328,4 +328,42 @@ test("[einstellungen-12] ein Folgepfad kommt in die Aenderungsliste seines Teils
   assert.ok(pfade.has("issueReview.pairs.b[0]"), [...pfade].join(", "));
   // Der Paarungs-Teil bleibt bei seinem eigenen Pfad — er kennt keinen Folgepfad.
   assert.deepEqual(aenderungsliste(alt, neu, "m2").map((a) => a.pfad), ["issueReview.pairs.b[0]"]);
+});
+
+// ------------------------------------------------------------
+// M3 Pruefstufen (Issue #727)
+// ------------------------------------------------------------
+
+test("[einstellungen-9] die Registry fuehrt den Redaktor von M3 aus, keinen Platzhalter mehr", () => {
+  const registry = SEITEN_BAUSTEINE.platte;
+  assert.match(registry, /pruefstufen: redaktorPruefstufen/, "M3 haengt noch am Platzhalter redaktorEntsteht");
+  assert.match(SEITEN_BAUSTEINE.redaktorPruefstufen, /function redaktorPruefstufen\(teil\)/);
+});
+
+test("[einstellungen-9] M3 zeichnet drei Stufen mit Zaehler und Rollenauswahl aus dem Katalog", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefstufen;
+  assert.match(stueck, /"stufen"/, "das Gitter .stufen des Entwurfs fehlt");
+  assert.match(stueck, /zaehler\(/, "der Zaehler fuer die Reviewerzahl fehlt");
+  assert.match(stueck, /max: kat\.length/, "der Zaehler waechst ueber den Rollenkatalog der Stufe hinaus");
+  assert.match(stueck, /fehlerzeile\(/, "ein Rollenname ausserhalb des Katalogs steht nicht als markierte Fehlerzeile da");
+  assert.match(stueck, /abgeleitetVon\(teil\)\.beispiel/, "die Beispielbesetzung kommt nicht aus der Vorschau");
+  assert.match(stueck, /vorschauAnfordern\(teil\)/, "die Beispielbesetzung steht nicht erst nach der ersten Anfrage da");
+});
+
+test("[einstellungen-9] eine Stufe ohne eigene Einstellung zeigt die Bestandsvorgabe blass und legt nichts an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefstufen;
+  assert.match(stueck, /reviewStufenVon\(teil\)/, "die Unterscheidung Block vorhanden/fehlend fehlt");
+  assert.match(stueck, /istVorgabe/, "die Vorgabe-Anzeige fehlt");
+  assert.match(stueck, /eintrag\.vorgabe/, "die Vorgabe kommt nicht aus dem geladenen Eintrag");
+});
+
+test("[einstellungen-9] eine Aenderung an einer Stufe legt die anderen mit den Katalogrollen an, nicht mit der Bestandsvorgabe", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefstufen;
+  assert.match(stueck, /function stufeSetzen\(teil, stufe, eintrag, neuZeichnen\)/, "stufeSetzen fehlt");
+  assert.match(stueck, /reviewer: kat\.length, rollen: kat\.slice\(\)/, "eine fehlende Stufe entsteht nicht mit den Katalogrollen");
+});
+
+test("[einstellungen-9] der eingebettete Rollenkatalog des Browsers ist aus ROLLEN_KATALOG gerechnet, kein zweites Literal", () => {
+  const eingebettet = JSON.stringify(ROLLEN_KATALOG);
+  assert.ok(SEITEN_BAUSTEINE.redaktorPruefstufen.includes(`const ROLLEN_KATALOG_BROWSER = ${eingebettet};`), "der Katalog im Browser-Skript weicht von ROLLEN_KATALOG ab");
 });
