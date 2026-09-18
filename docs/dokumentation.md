@@ -1099,6 +1099,23 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 Der Nachtlauf meldet seinen Verbrauch selbst (siehe oben). Für die Sitzungen, in denen du selbst am Rechner sitzt, tut das der **Sitzungs-Melder**: `board.mjs sitzung melden` liest das Sitzungsprotokoll von Claude Code, summiert Eingabe-, Ausgabe- und Zwischenspeicher-Token und liefert sie über dieselbe Route ein wie der Runner — `POST /api/kanban/night-runs`, nur mit `kind`/`mode` **INTERACTIVE** und dem Startzeitpunkt der Sitzung als Schlüssel. Den Pfad des Protokolls nimmt er aus `--protokoll` oder als `transcript_path` aus dem Rumpf, den ein Claude-Code-Hook auf stdin hereinreicht.
 
+**Wer ihn ruft.** Niemand von Hand. Bei projektlokaler Installation trägt der Installer zwei Einträge in den `hooks`-Block von `.claude/settings.json` ein, und Claude Code ruft den Melder von selbst:
+
+| Ereignis | Aufruf | Wirkung |
+|---|---|---|
+| `Stop` | `node .claude/kit/board.mjs sitzung melden` | fortschreibend, `complete: false`, gedrosselt auf eine Meldung je fünf Minuten |
+| `SessionEnd` | `node .claude/kit/board.mjs sitzung melden --complete` | abschließend, `complete: true` — danach ist die Wegmarken-Datei leer |
+
+Die Einträge stehen in der **Projekt**-Datei und nicht in den Nutzer-Einstellungen unter `~/.claude`: Das Zielprojekt kommt aus der Bindung des Tokens im Arbeitsverzeichnis, und eine nutzerweite Einstellung meldete aus jedem Verzeichnis — auch aus jedem fremden.
+
+Der Installer **ergänzt** die Datei, er ersetzt sie nicht: `env`, `sandbox`, `permissions` und fremde Hook-Einträge bleiben stehen, und ein zweiter Lauf ändert nichts mehr. Ist `settings.json` kein lesbares JSON-Objekt, fasst er sie nicht an und nennt die beiden Einträge zum Nachtragen von Hand — was er nicht lesen kann, kann er auch nicht erhalten.
+
+**Bleibt der Melder stumm,** obwohl Token und Tracker stimmen, lohnt ein Blick auf die Sandbox: Läuft sie im Projekt, braucht der Aufruf eine Netz-Freigabe — `node .claude/kit/board.mjs*` in `sandbox.network.excludedCommands` derselben Datei. Ohne sie kommt der Melder bis zur Einlieferung und scheitert dort mit `nicht-eingeliefert`; die Sitzung stört das nicht, nur der Verbrauch fehlt.
+
+**Abschalten.** Den jeweiligen Eintrag aus dem `hooks`-Block in `.claude/settings.json` löschen: beide für ganz, nur den unter `Stop` für „nur am Sitzungsende". Die Datei ist nicht versioniert, die Entscheidung gilt also für deine Maschine. Ein späterer Installer-Lauf trägt den gelöschten Eintrag wieder ein — wer den Melder dauerhaft stillstellen will, nimmt ihm die Voraussetzung statt den Hook: Ohne projektgebundenes Token im Arbeitsverzeichnis und bei jedem `issueTracker` außer `toolbox` schweigt er von selbst und sagt das auch (`kein-token`, `kein-board`).
+
+**Die bekannte Lücke: Worktrees.** Eine interaktive Sitzung in einem `git worktree` meldet **nicht**. Ein frisch angelegter Worktree trägt nur die versionierten Dateien, und `.claude/*` ist per `.gitignore` ausgeschlossen: Dort fehlen `settings.json` — also der Hook — und `.claude/kit/` — also der Melder. Für die Worktrees der Nacht-Kette ist das folgenlos, denn dort ist `KIT_AGENT_MODEL` gesetzt und der Melder schwiege ohnehin; der Runner meldet diese Sitzungen selbst. Wer dagegen von Hand einen Worktree anlegt und darin arbeitet, findet diesen Verbrauch im Leitstand nicht wieder. Abhilfe von Hand: `.claude/settings.json` und `.claude/kit/` aus dem Hauptarbeitsbaum hinüberkopieren.
+
 **Zuordnung zu Karten.** `issue move` vermerkt jeden Zug nach *In progress* und *In review* mit Zeitstempel in `.claude/wegmarken.tsv`. Der Melder teilt die Sitzungssumme anhand dieser Zeitstempel auf die Karten auf. Was zwischen keinen zwei Wegmarken liegt, meldet er als Rest ohne Kartennummer — er steht in der Sitzungssumme, aber in keiner Karte. Dasselbe gilt für Zeiträume, in denen **zwei Karten gleichzeitig offen** waren: Laufen zwei Sitzungen im selben Verzeichnis, mischen sich ihre Wegmarken in einer Datei, und eine Zuordnung wäre geraten. Sie unterbleibt.
 
 **Wann gemeldet wird.** Am Sitzungsende mit `complete: true` — danach ist die Wegmarken-Datei leer. Dazwischen fortschreibend mit `complete: false`, gedrosselt auf höchstens eine Meldung je fünf Minuten: Nur am Ende zu melden verlöre jede abgestürzte Sitzung, ungedrosselt erzeugte jeder Zug einen HTTP-Aufruf.

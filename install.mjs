@@ -760,6 +760,107 @@ function ensureProjectGitignore() {
   console.log("✓ .gitignore: .claude-Block eingetragen");
 }
 
+// --- Der Sitzungs-Melder an den Hooks von Claude Code (Issue #735, Plan E22) ---
+//
+// Der Melder aus Issue #734 existiert, aber niemand ruft ihn. Gerufen wird er von
+// Claude Code selbst: `Stop` nach jedem Zug (fortschreibend, im Melder auf eine
+// Meldung je fuenf Minuten gedrosselt) und `SessionEnd` am Ende der Sitzung
+// (abschliessend, mit `--complete`).
+//
+// In der PROJEKT-settings.json und NICHT in den Nutzer-Einstellungen unter
+// `~/.claude`: Die Erfassung ist projektgebunden — das Zielprojekt kommt aus der
+// Bindung des Tokens im Arbeitsverzeichnis —, eine nutzerweite Einstellung meldete
+// aus jedem Verzeichnis, auch aus jedem fremden.
+//
+// Eingetragen wird ohne Bedingung auf den Tracker. Ob ueberhaupt gemeldet wird,
+// entscheidet der Melder selbst und sagt es auch ('kein-board', 'kein-token'). Die
+// Frage im Installer ein zweites Mal zu beantworten, erzeugte eine zweite Wahrheit:
+// Wer `issueTracker` spaeter von Hand auf 'toolbox' stellt, haette dann stumm keinen
+// Hook und suchte den Fehler am Melder.
+const SITZUNG_HOOKS = [
+  { event: "SessionEnd", command: "node .claude/kit/board.mjs sitzung melden --complete" },
+  { event: "Stop", command: "node .claude/kit/board.mjs sitzung melden" },
+];
+
+/**
+ * Die Kennung, an der ein Eintrag DIESES Melders erkennbar ist — unabhaengig davon,
+ * welcher Pfad davorsteht und welche Schalter dahinter. Ein Vergleich auf das ganze
+ * Kommando verdoppelte den Eintrag, sobald jemand den Aufruf von Hand angepasst hat.
+ */
+const SITZUNG_HOOK_KENNUNG = "board.mjs sitzung melden";
+
+/** Traegt eine der Matcher-Gruppen eines Ereignisses bereits unseren Melder? */
+function melderSchonEingetragen(gruppen) {
+  return gruppen.some((g) => Array.isArray(g?.hooks)
+    && g.hooks.some((h) => typeof h?.command === "string" && h.command.includes(SITZUNG_HOOK_KENNUNG)));
+}
+
+/** Sagt, was von Hand nachzutragen ist — der Rueckfall, wenn wir die Datei nicht anfassen. */
+function meldeHooksVonHand(pfad, grund) {
+  console.log(`! ${pfad} ${grund} — hooks nicht eingetragen.`);
+  console.log("  Von Hand ergaenzen, damit der Verbrauch dieser Sitzungen gemeldet wird:");
+  for (const { event, command } of SITZUNG_HOOKS) console.log(`    ${event}: ${command}`);
+}
+
+/**
+ * Liest die bestehende settings.json — oder sagt, warum sie unangetastet bleibt.
+ *
+ * Eigene Funktion, damit `ensureSitzungsHooks` unter der Komplexitaetsschwelle bleibt,
+ * die dieses Repo seit Issue #404 haelt.
+ */
+function liesSettings(pfad) {
+  if (!existsSync(pfad)) return {};
+  try {
+    const gelesen = JSON.parse(readFileSync(pfad, "utf-8"));
+    if (!gelesen || typeof gelesen !== "object" || Array.isArray(gelesen)) throw new Error("kein Objekt");
+    return gelesen;
+  } catch {
+    // Nicht ueberschreiben: Was dort steht, ist Handarbeit — und was wir nicht lesen
+    // koennen, koennen wir auch nicht erhalten.
+    return null;
+  }
+}
+
+/**
+ * Traegt den Melder in die `hooks` von `.claude/settings.json` ein (idempotent).
+ *
+ * ERGAENZT, ersetzt nicht: settings.json ist die geteilte Projektdatei von Claude Code
+ * und traegt `env`, `sandbox` und `permissions`. Sie zu ueberschreiben naehme dem
+ * Projekt seine Einstellungen — und fremde Hook-Eintraege gleich mit.
+ *
+ * Ist nichts nachzutragen, wird die Datei NICHT geschrieben: Ein zweiter Lauf soll sie
+ * byteweise so lassen, wie sie ist, und nicht bloss inhaltsgleich neu formatieren.
+ */
+function ensureSitzungsHooks(targetBase) {
+  const pfad = join(targetBase, "settings.json");
+  const settings = liesSettings(pfad);
+  if (settings === null) {
+    meldeHooksVonHand(pfad, "ist kein lesbares JSON-Objekt");
+    return;
+  }
+
+  const bestand = settings.hooks;
+  const hooks = (bestand && typeof bestand === "object" && !Array.isArray(bestand)) ? bestand : {};
+  const neu = [];
+  for (const { event, command } of SITZUNG_HOOKS) {
+    const gruppen = Array.isArray(hooks[event]) ? hooks[event] : [];
+    if (melderSchonEingetragen(gruppen)) continue;
+    // Angehaengt, nicht vorangestellt: Ein vorhandener Hook des Projekts behaelt seine
+    // Reihenfolge, und unserer ist der letzte — er meldet nur, er entscheidet nichts.
+    hooks[event] = [...gruppen, { hooks: [{ type: "command", command }] }];
+    neu.push(event);
+  }
+  if (neu.length === 0) {
+    console.log(`✓ ${pfad}: Sitzungs-Hooks bereits eingetragen`);
+    return;
+  }
+
+  settings.hooks = hooks;
+  mkdirSync(targetBase, { recursive: true });
+  writeFileSync(pfad, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+  console.log(`✓ ${pfad}: Sitzungs-Hooks eingetragen (${neu.join(", ")})`);
+}
+
 async function main() {
   if (process.argv.includes("--version")) {
     console.log(`claude-workflow-kit install.mjs v${VERSION}`);
@@ -959,8 +1060,11 @@ async function main() {
 
   schreibeCommitGate(scope, hooks);
 
-  // --- .gitignore ergänzen (nur projektlokal) ---
-  if (scope === "projekt") ensureProjectGitignore();
+  // --- .gitignore ergänzen und den Melder einhaengen (nur projektlokal) ---
+  if (scope === "projekt") {
+    ensureProjectGitignore();
+    ensureSitzungsHooks(targetBase);
+  }
 
   console.log("\n=== Fertig ===");
   console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
