@@ -501,6 +501,85 @@ export function bereichsFolgen(buildChecks, umbenannt, entfernt) {
 const CHECK_QUELLE = [checkForm, checkSetzen, bereichsFolgen].map((f) => f.toString()).join("\n\n");
 
 // ============================================================
+// Einfache Gruppen (Plan #721 E8, Kriterien 27 und 28)
+// ============================================================
+//
+// Ein flaches Objekt aus einzelnen Werten — `triggers`, `columns`, die Angaben zu Toolbox,
+// GitHub und lokalem Tracker. Ein Feld je Eintrag statt eines Textblocks, und dort, wo eine
+// persönliche Abweichung erlaubt ist, je Zeile Team-Wert, persönlicher Wert und geltender Wert.
+//
+// Wie `paarungsFolgen` und `checkSetzen` benutzen die beiden Funktionen nichts aus dieser
+// Datei: Ihr Quelltext ist zugleich der Baustein `gruppen` des Browser-Skripts. Der Redaktor
+// muss die Zeilen aus der Arbeitskopie rechnen, bevor etwas gespeichert wird — abgeschrieben
+// läge die Fassung, die der Mensch bedient, ungeprüft im Zeichenketten-Literal.
+
+/**
+ * Die Zeilen einer einfachen Gruppe: je Eigenschaft des Schemas eine, dazu jedes Feld, das
+ * eine der beiden Dateien trägt und das Schema nicht kennt (`fremd`). `ausgelassen` nennt die
+ * Unterfelder mit eigenem Teil — `toolbox.tokenFile` hat seine eigene Eingabe und stünde hier
+ * ein zweites Mal da, ohne persönliche Abweichung.
+ *
+ * `abweichend` trägt genau die Zeile, die vom Team-Wert abweicht. Weil die persönliche Datei
+ * nach Plan E8 das vollständige geltende Objekt trägt, ist das nicht dasselbe wie „steht in
+ * der persönlichen Datei": Ändert das Team später ein Feld, von dem niemand abweichen wollte,
+ * weicht dessen Zeile danach ab — der alte Wert steht dort eingefroren.
+ */
+export function gruppenZeilen(pfad, schema, werte, ausgelassen) {
+  const objekt = function (w) { return w !== null && typeof w === "object" && !Array.isArray(w) ? w : {}; };
+  const w = werte || {};
+  const eigen = objekt(schema && schema.properties);
+  const t = objekt(w.team);
+  const p = objekt(w.persoenlich);
+  const g = objekt(w.gilt);
+  const weg = ausgelassen || [];
+  const namen = [];
+  for (const feld of Object.keys(eigen).concat(Object.keys(t), Object.keys(p), Object.keys(g))) {
+    if (namen.indexOf(feld) < 0 && weg.indexOf(feld) < 0) namen.push(feld);
+  }
+  return namen.map(function (feld) {
+    return {
+      feld: feld,
+      pfad: pfad + "." + feld,
+      schema: eigen[feld] || null,
+      fremd: eigen[feld] === undefined,
+      team: t[feld],
+      persoenlich: w.persoenlich === undefined ? undefined : p[feld],
+      gilt: g[feld] === undefined ? t[feld] : g[feld],
+      abweichend: w.persoenlich !== undefined && JSON.stringify(p[feld]) !== JSON.stringify(t[feld]),
+    };
+  });
+}
+
+/**
+ * Eine persönliche Abweichung an einem Feld einer einfachen Gruppe (Plan #721 E8). Die
+ * Oberfläche legt das **vollständige geltende Objekt** ab, weil `mergeWorkflowConfig` ein
+ * Allowlist-Feld vollständig ersetzt: Ein persönliches `{push: …}` ließe `go` und `merge`
+ * ungesetzt. `basis` ist der Stand, auf den die Änderung trifft — der persönliche Wert, wenn
+ * es einen gibt, sonst der geltende.
+ *
+ * Ein leerer Wert heißt „wie Team" und nimmt die Abweichung dieser Zeile zurück. Weicht danach
+ * keine Zeile mehr ab, ist der Eintrag überflüssig: `{ entfernen: true }` — der Weg, auf dem
+ * das Zurücksetzen der letzten Abweichung den Eintrag ganz aus der persönlichen Datei nimmt.
+ */
+export function gruppeSetzen(team, basis, feld, wert) {
+  const objekt = function (w) { return w !== null && typeof w === "object" && !Array.isArray(w) ? w : {}; };
+  const t = objekt(team);
+  const neu = Object.assign({}, objekt(basis));
+  if (wert === undefined || wert === "") {
+    if (t[feld] === undefined) delete neu[feld];
+    else neu[feld] = t[feld];
+  } else {
+    neu[feld] = wert;
+  }
+  const felder = Object.keys(neu).concat(Object.keys(t));
+  const weichtAb = felder.some(function (f) { return JSON.stringify(neu[f]) !== JSON.stringify(t[f]); });
+  return weichtAb ? { wert: neu } : { entfernen: true };
+}
+
+/** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.gruppen`. */
+const GRUPPEN_QUELLE = [gruppenZeilen, gruppeSetzen].map((f) => f.toString()).join("\n\n");
+
+// ============================================================
 // Themen (Plan #674 E14)
 // ============================================================
 
@@ -562,6 +641,19 @@ export const TEILE = [
 ];
 
 const TEIL_TEXT = TEILE.find((t) => t.kennung === "text");
+
+/**
+ * Je einfacher Gruppe die Unterfelder, die ein Teil ausdrücklich selbst bearbeitet — die
+ * Gruppe führt sie nicht. Heute ist das `toolbox.tokenFile`: Es steht in der Allowlist und hat
+ * deshalb eine eigene Eingabe mit Team- und persönlicher Ebene. In der Gruppe `toolbox`, die
+ * teamweit gilt, stünde es ein zweites Mal da — und dort ohne persönliche Abweichung.
+ */
+export const GRUPPEN_AUSNAHMEN = Object.fromEntries(
+  TEILE.filter((t) => t.redaktor === "gruppe").flatMap((t) => t.pfade).map((pfad) => [
+    pfad,
+    TEILE.flatMap((t) => t.pfade).filter((p) => p.startsWith(`${pfad}.`)).map((p) => p.slice(pfad.length + 1)),
+  ]),
+);
 
 /** Der Teil, der einen Pfad bearbeitet. Was kein Teil nennt, fällt auf den Text-Teil zurück. */
 export function teilFuer(pfad) {
@@ -1634,6 +1726,8 @@ dialog::backdrop { background: rgba(18,24,33,.35); }
 
 /* Einfache Gruppen */
 .trig-grid { grid-template-columns: 130px minmax(0,1fr) 190px minmax(0,1fr); }
+/* Ohne erlaubte Abweichung faellt alles weg ausser Name und Eingabe (Kriterium 4b). */
+.gruppe-grid { grid-template-columns: 130px minmax(0,1fr); }
 .gilt { font-size: 12px; color: var(--text-matt); }
 .gilt b { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 500; color: var(--text); }
 .zeile input[type=text], .zeile input[type=number], .zeile input[type=date], .zeile select { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--platte-hoch); border: 1px solid var(--rand-stark); border-radius: var(--r-klein); padding: 5px 8px; min-width: 0; }
@@ -1801,13 +1895,28 @@ function geladenerWert(teil, pfad) {
   return ebeneVon(teil) === "persoenlich" ? e.persoenlich : e.team;
 }
 
+/**
+ * Der Merker für eine persönliche Abweichung, die weg soll. Ein Wert kann das nicht ausdrücken:
+ * undefined hiesse "nicht in der Arbeitskopie", und ein leeres Objekt schriebe einen leeren
+ * Eintrag in die Datei, statt ihn zu entfernen. Der Merker sammelt sich wie jede andere
+ * Änderung bis zum Speichern und wird in auftragVon zu entfernt.
+ */
+const WEG = { weg: true };
+
 function wertVon(teil, pfad) {
   const kopie = arbeitskopie(teil)[ebeneVon(teil)];
-  return Object.prototype.hasOwnProperty.call(kopie, pfad) ? kopie[pfad] : geladenerWert(teil, pfad);
+  if (!Object.prototype.hasOwnProperty.call(kopie, pfad)) return geladenerWert(teil, pfad);
+  return kopie[pfad] === WEG ? undefined : kopie[pfad];
 }
 
 function setzeWert(teil, pfad, wert) {
   arbeitskopie(teil)[ebeneVon(teil)][pfad] = wert;
+  vorschauAnfordern(teil);
+}
+
+/** Merkt vor, dass die persönliche Abweichung eines Pfads ganz wegfällt. */
+function setzeWeg(teil, pfad) {
+  arbeitskopie(teil).persoenlich[pfad] = WEG;
   vorschauAnfordern(teil);
 }
 
@@ -1820,13 +1929,23 @@ function verwirf(teil) {
 /** Die Pfade, deren Arbeitskopie vom geladenen Stand abweicht. */
 function offenePfade(teil) {
   const kopie = arbeitskopie(teil)[ebeneVon(teil)];
-  return Object.keys(kopie).filter(function (pfad) { return !gleichwertig(kopie[pfad], geladenerWert(teil, pfad)); });
+  return Object.keys(kopie).filter(function (pfad) {
+    if (kopie[pfad] === WEG) return geladenerWert(teil, pfad) !== undefined;
+    return !gleichwertig(kopie[pfad], geladenerWert(teil, pfad));
+  });
 }
 
 /** Der Auftrag dieses Teils: feinkörnige Pfade, damit Nachbarfelder ungespeichert bleiben. */
 function auftragVon(teil) {
-  const aenderungen = offenePfade(teil).map(function (pfad) { return { pfad: pfad, wert: wertVon(teil, pfad) }; });
-  return { ebene: ebeneVon(teil), teil: teil.kennung, aenderungen: aenderungen };
+  const kopie = arbeitskopie(teil)[ebeneVon(teil)];
+  const offen = offenePfade(teil);
+  const aenderungen = [];
+  const entfernt = [];
+  for (const pfad of offen) {
+    if (kopie[pfad] === WEG) entfernt.push(pfad);
+    else aenderungen.push({ pfad: pfad, wert: wertVon(teil, pfad) });
+  }
+  return { ebene: ebeneVon(teil), teil: teil.kennung, aenderungen: aenderungen, entfernt: entfernt };
 }
 `,
 
@@ -2218,9 +2337,9 @@ function eingabe(schema, wert) {
   // ------------------------------------------------------------
   //
   // Nicht mehr das Schema eines Feldes entscheidet über seine Eingabe, sondern der Teil, zu
-  // dem es gehört. Die Redaktoren der sieben Teile des Entwurfs entstehen je in einem eigenen
-  // Arbeitspaket; bis ein Teil an der Reihe war, zeigt `redaktorEntsteht` seinen geltenden
-  // Wert lesbar — und nicht mehr als Textblock in Dateischreibweise.
+  // dem es gehört. Die Redaktoren der sieben Teile des Entwurfs sind vollständig; was keinen
+  // eigenen nennt, fällt auf `redaktorEntsteht` zurück und steht dort lesbar da — kein Teil
+  // des Entwurfs benutzt ihn noch, ein künftiger Redaktor hätte damit aber seinen Platzhalter.
   platte: String.raw`
 const REDAKTOREN = {
   reviewer: redaktorReviewer,
@@ -2229,7 +2348,7 @@ const REDAKTOREN = {
   pruefkommandos: redaktorPruefkommandos,
   spezifikation: redaktorSpezifikation,
   nachtkette: redaktorNachtKette,
-  gruppe: redaktorEntsteht,
+  gruppe: redaktorGruppe,
   wert: redaktorWert,
   text: redaktorText,
 };
@@ -3408,6 +3527,167 @@ function redaktorNachtKette(teil) {
   neuZeichnen();
   kasten.append(behaelter);
   vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // Die Zeilen einer einfachen Gruppe — eine Fassung fuer beide Seiten
+  // ------------------------------------------------------------
+  //
+  // Wie `folgen` und `checkformen`: nicht abgeschrieben, sondern der Quelltext der
+  // Modulfunktionen. Der Redaktor muss die Zeilen aus der Arbeitskopie rechnen, bevor etwas
+  // gespeichert wird, und eine zweite Fassung im Zeichenketten-Literal pruefte kein Test.
+  gruppen: `const GRUPPEN_AUSNAHMEN_BROWSER = ${JSON.stringify(GRUPPEN_AUSNAHMEN)};
+
+${GRUPPEN_QUELLE}
+`,
+
+  // ------------------------------------------------------------
+  // M7 Einfache Gruppen (Kriterien 27, 28 und 4b, Issue #731)
+  // ------------------------------------------------------------
+  //
+  // Ein Feld je Eintrag statt eines Textblocks — die naheliegendste Eingabe des ganzen Plans
+  // und die einzige, an der eine persoenliche Abweichung erlaubt ist. Nur hier kommt die
+  // Dreier-Anzeige aus Kriterium 28 noch vor: Wo `persoenlichErlaubt` gilt, zeigt jede Zeile
+  // Team-Wert, persoenlichen Wert und geltenden Wert und laesst sich einzeln zuruecksetzen;
+  // ueberall sonst traegt die Eingabe den Team-Wert unmittelbar (Kriterium 4b).
+  //
+  // Ein Teil speichert immer nur eine Ebene. Deshalb folgt die Ebene dem Feld, in das der
+  // Mensch schreibt, und der Wechsel bleibt aus, solange auf der anderen Ebene etwas offen ist
+  // — eine Aenderung, die der Fuss nicht mehr zaehlt, ginge beim Speichern still verloren.
+  redaktorGruppe: String.raw`
+/** Der Stand der Gruppe je Ebene: Arbeitskopie vor geladenem Stand. */
+function gruppeStand(teil, eintrag) {
+  const kopie = arbeitskopie(teil);
+  const aus = function (ebene, rueckfall) {
+    if (!Object.prototype.hasOwnProperty.call(kopie[ebene], eintrag.pfad)) return rueckfall;
+    return kopie[ebene][eintrag.pfad] === WEG ? undefined : kopie[ebene][eintrag.pfad];
+  };
+  const team = aus("team", eintrag.team);
+  // Ohne erlaubte Abweichung gibt es nichts zu unterscheiden — und was in der persoenlichen
+  // Datei steht, wertet mergeWorkflowConfig ohnehin nicht aus.
+  const persoenlich = eintrag.persoenlichErlaubt ? aus("persoenlich", eintrag.persoenlich) : undefined;
+  // Ein Allowlist-Wurzelfeld wird vollstaendig ersetzt, nicht Feld fuer Feld gemischt. Genau
+  // das ist der Grund, aus dem eine Abweichung das ganze Objekt ablegt (Plan E8).
+  return { team: team, persoenlich: persoenlich, gilt: persoenlich === undefined ? team : persoenlich };
+}
+
+function gruppeZeilenVon(teil, eintrag) {
+  return gruppenZeilen(eintrag.pfad, eintrag.schema, gruppeStand(teil, eintrag), GRUPPEN_AUSNAHMEN_BROWSER[eintrag.pfad] || []);
+}
+
+/**
+ * Die Ebene, auf der die naechste Eingabe landet. Solange auf der anderen Ebene etwas offen
+ * ist, bleibt der Wechsel aus: Der Fuss zaehlt nur die Ebene, auf der der Teil steht, und das
+ * Speichern nimmt nur sie mit.
+ */
+function gruppeEbene(teil, ebene) {
+  if (ebeneVon(teil) === ebene) return true;
+  if (offenePfade(teil).length > 0) {
+    melde("Team und persönlich werden getrennt gespeichert — erst die offenen Änderungen speichern oder verwerfen.", "warn");
+    return false;
+  }
+  teil.ebene = ebene;
+  return true;
+}
+
+function gruppeTeamSetzen(teil, eintrag, feld, wert, neuZeichnen) {
+  if (!gruppeEbene(teil, "team")) { neuZeichnen(); return; }
+  const alt = gruppeStand(teil, eintrag).team;
+  const neu = Object.assign({}, alt !== null && typeof alt === "object" && !Array.isArray(alt) ? alt : {});
+  if (wert === undefined || wert === "") delete neu[feld];
+  else neu[feld] = wert;
+  setzeWert(teil, eintrag.pfad, neu);
+}
+
+/** Eine persoenliche Abweichung setzen oder zuruecknehmen — die Rechnung steht im Modul. */
+function gruppePersoenlichSetzen(teil, eintrag, feld, wert, neuZeichnen) {
+  if (!gruppeEbene(teil, "persoenlich")) { neuZeichnen(); return; }
+  const stand = gruppeStand(teil, eintrag);
+  const r = gruppeSetzen(stand.team, stand.gilt, feld, wert);
+  if (r.entfernen) setzeWeg(teil, eintrag.pfad);
+  else setzeWert(teil, eintrag.pfad, r.wert);
+}
+
+const gruppeText = function (wert) { return wert === undefined || wert === null ? "—" : String(wert); };
+
+/** Der geltende Wert einer Zeile, bei einer Abweichung samt dem Weg zurueck (Kriterium 28). */
+function gruppeGilt(teil, eintrag, feld, zelle, neuZeichnen) {
+  const zeilen = gruppeZeilenVon(teil, eintrag).filter(function (z) { return z.feld === feld; });
+  const zeile = zeilen[0] || { gilt: undefined, abweichend: false };
+  zelle.replaceChildren(el("b", "", gruppeText(zeile.gilt)));
+  if (!zeile.abweichend) return;
+  zelle.append(document.createTextNode(" · persönlich "));
+  const zurueck = el("button", "taste taste-leise taste-klein", "zurücksetzen");
+  zurueck.addEventListener("click", function () { gruppePersoenlichSetzen(teil, eintrag, feld, undefined, neuZeichnen); neuZeichnen(); });
+  zelle.append(zurueck);
+}
+
+/** Ein Feld passend zum Schema der Zeile; ein leeres Feld heisst „nicht gesetzt". */
+function gruppeFeld(zeile, wert, vorgabe, platzhalter, aendern) {
+  const s = zeile.schema || {};
+  if (s.type === "string" || s.type === "integer" || s.type === "number") {
+    const feld = feldMitVorgabe({ typ: s.type === "string" ? "text" : "number", wert: wert, vorgabe: vorgabe, aendern: aendern });
+    if (platzhalter) feld.placeholder = platzhalter;
+    return feld;
+  }
+  const e = eingabe(s, wert);
+  const uebernimm = function () { aendern(e.lies()); };
+  e.feld.addEventListener("input", uebernimm);
+  e.feld.addEventListener("change", uebernimm);
+  return e.feld;
+}
+
+function gruppeZeile(teil, eintrag, zeile, gitter, neuZeichnen) {
+  // Ein Feld, das das Schema nicht kennt, bekommt keine Eingabe: Es steht markiert da und
+  // laesst sich herausnehmen (Kriterium 4a). Auswerten wuerde es ohnehin niemand.
+  if (zeile.fremd) {
+    return fehlerzeile({
+      wert: zeile.feld,
+      grund: "Dieses Feld kennt das Kit nicht — es wird nicht ausgewertet.",
+      entfernen: zeile.team === undefined ? null : function () { gruppeTeamSetzen(teil, eintrag, zeile.feld, undefined, neuZeichnen); neuZeichnen(); },
+      gitter: gitter,
+    });
+  }
+  const g = zeilenGruppe(zeile.pfad, gitter);
+  const gilt = el("span", "gilt");
+  const zeigeGilt = function () { if (eintrag.persoenlichErlaubt) gruppeGilt(teil, eintrag, zeile.feld, gilt, neuZeichnen); };
+  const name = el("span", "", zeile.feld);
+  if (zeile.schema && zeile.schema.description) name.title = zeile.schema.description;
+  g.zeile.append(name);
+  g.zeile.append(gruppeFeld(zeile, zeile.team, zeile.schema && zeile.schema.default, null, function (wert) {
+    gruppeTeamSetzen(teil, eintrag, zeile.feld, wert, neuZeichnen);
+    zeigeGilt();
+  }));
+  if (eintrag.persoenlichErlaubt) {
+    g.zeile.append(gruppeFeld(zeile, zeile.abweichend ? zeile.persoenlich : undefined, undefined, "wie Team", function (wert) {
+      gruppePersoenlichSetzen(teil, eintrag, zeile.feld, wert, neuZeichnen);
+      zeigeGilt();
+    }));
+    zeigeGilt();
+    g.zeile.append(gilt);
+  }
+  return g.gruppe;
+}
+
+function redaktorGruppe(teil) {
+  const eintrag = teil.eintraege[0];
+  const kasten = el("div", "stapel");
+  const behaelter = el("div", "stapel");
+  const neuZeichnen = function () {
+    const gitter = eintrag.persoenlichErlaubt ? "trig-grid" : "gruppe-grid";
+    const t = el("div", "tabelle");
+    const kopf = el("div", "zeile zeile-kopf etikett " + gitter);
+    const titel = eintrag.persoenlichErlaubt ? ["Einstellung", "Team", "Persönlich", "Gilt"] : ["Einstellung", "Team"];
+    for (const text of titel) kopf.append(el("span", "", text));
+    t.append(kopf);
+    for (const zeile of gruppeZeilenVon(teil, eintrag)) t.append(gruppeZeile(teil, eintrag, zeile, gitter, neuZeichnen));
+    behaelter.replaceChildren(t);
+    befundeVerteilen(teil);
+  };
+  neuZeichnen();
+  kasten.append(behaelter);
   return kasten;
 }
 `,

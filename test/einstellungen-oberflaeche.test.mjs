@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, LAUFARTEN, paarungsFolgen, ROLLEN_KATALOG, SCHEMA, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -178,12 +178,15 @@ test("[einstellungen-3] die Dreier-Anzeige entsteht nur, wo eine persoenliche Ab
     /function dreierAnzeige\(eintrag\) \{\s*if \(!eintrag\.persoenlichErlaubt\) return null;/,
     "die Dreier-Anzeige haengt nicht an persoenlichErlaubt",
   );
-  // Nur dieses eine Bedienelement zeichnet die drei Ebenen — ein zweiter Ort waere ein
-  // zweiter Weg, der die Regel umgehen koennte.
+  // Die drei Ebenen stehen an zwei Orten: als Kasten ueber einem einzelnen Wert und, seit
+  // Issue #731, als die drei Spalten einer Gruppenzeile. Mehr duerfen es nicht werden, und
+  // jeder von ihnen haengt an `persoenlichErlaubt` — ein Ort, der das nicht taete, waere ein
+  // zweiter Weg, der die Regel umginge.
   const zeichner = Object.entries(SEITEN_BAUSTEINE)
     .filter(([, stueck]) => /Persönlich"/.test(stueck))
     .map(([name]) => name);
-  assert.deepEqual(zeichner, ["elemente"]);
+  assert.deepEqual(zeichner, ["elemente", "redaktorGruppe"]);
+  for (const name of zeichner) assert.match(SEITEN_BAUSTEINE[name], /persoenlichErlaubt/, `${name} haengt nicht an persoenlichErlaubt`);
 });
 
 test("[einstellungen-7] die Arbeitskopie eines Teils traegt die offenen Aenderungen und faellt beim Verwerfen zurueck", () => {
@@ -559,4 +562,69 @@ test("M6 bearbeitet nur night.kette und braucht keinen Folgepfad; night.modelle 
   assert.deepEqual(m6.pfade, ["night.kette"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
+});
+
+// ------------------------------------------------------------
+// M7 Einfache Gruppen (Issue #731)
+// ------------------------------------------------------------
+
+test("[einstellungen-9] die Registry fuehrt den Redaktor von M7 aus, keinen Platzhalter mehr", () => {
+  const registry = SEITEN_BAUSTEINE.platte;
+  assert.match(registry, /gruppe: redaktorGruppe/, "M7 haengt noch am Platzhalter redaktorEntsteht");
+  assert.match(SEITEN_BAUSTEINE.redaktorGruppe, /function redaktorGruppe\(teil\)/);
+});
+
+test("[einstellungen-9] fuer triggers und columns entsteht kein Textblock in Dateischreibweise mehr", () => {
+  for (const pfad of ["triggers", "columns", "github", "toolbox", "local"]) {
+    const teil = TEILE.find((t) => t.pfade.includes(pfad));
+    assert.equal(teil.redaktor, "gruppe", `${pfad} liegt nicht beim Gruppen-Redaktor`);
+  }
+  assert.doesNotMatch(SEITEN_BAUSTEINE.redaktorGruppe, /dateischreibweise\(/, "M7 faellt noch auf die Dateischreibweise zurueck");
+  // Der Rueckfall bleibt, wo er hingehoert: bei night.modelle und bei unbekannten Feldern.
+  const rufer = Object.entries(SEITEN_BAUSTEINE).filter(([, stueck]) => /dateischreibweise\(/.test(stueck)).map(([name]) => name).sort();
+  assert.deepEqual(rufer, ["elemente", "redaktorText"]);
+});
+
+test("[einstellungen-3] die Dreier-Anzeige entsteht bei triggers und nicht bei columns", () => {
+  assert.equal(persoenlichErlaubt("triggers"), true);
+  assert.equal(persoenlichErlaubt("columns"), false);
+  const stueck = SEITEN_BAUSTEINE.redaktorGruppe;
+  // Dort, wo eine Abweichung erlaubt ist, traegt jede Zeile die drei Ebenen und ein
+  // „zuruecksetzen" (Kriterium 28); sonst steht der Team-Wert unmittelbar in der Eingabe (4b).
+  assert.match(stueck, /eintrag\.persoenlichErlaubt/, "die Spalten haengen nicht an persoenlichErlaubt");
+  assert.match(stueck, /trig-grid/, "die Tabelle nutzt nicht das Gitter des Entwurfs");
+  assert.match(stueck, /"Team", "Persönlich", "Gilt"/, "der Tabellenkopf nennt die drei Ebenen nicht");
+  assert.match(stueck, /"zurücksetzen"/, "eine Abweichung laesst sich nicht je Zeile zuruecksetzen");
+  assert.match(stueck, /wie Team/, "die persoenliche Spalte nennt nicht, was ohne Eintrag gilt");
+});
+
+test("[einstellungen-9] die Zeilen- und Setzrechnung von M7 ist die Fassung des Moduls, keine zweite", () => {
+  for (const f of [gruppenZeilen, gruppeSetzen]) {
+    assert.ok(SEITEN_BAUSTEINE.gruppen.includes(f.toString()), `der Baustein traegt eine andere Fassung als ${f.name}`);
+  }
+  assert.ok(
+    SEITEN_BAUSTEINE.gruppen.includes(`const GRUPPEN_AUSNAHMEN_BROWSER = ${JSON.stringify(GRUPPEN_AUSNAHMEN)};`),
+    "die ausgelassenen Unterfelder im Browser-Skript weichen von GRUPPEN_AUSNAHMEN ab",
+  );
+  assert.match(SEITEN_BAUSTEINE.redaktorGruppe, /gruppenZeilen\(/, "der Redaktor rechnet die Zeilen selbst");
+  assert.match(SEITEN_BAUSTEINE.redaktorGruppe, /gruppeSetzen\(/, "der Redaktor setzt die Abweichung selbst");
+});
+
+test("[einstellungen-9] M7 merkt das Entfernen der letzten Abweichung in der Arbeitskopie vor", () => {
+  // Kriterium 2 gilt auch hier: Das Zuruecksetzen sammelt sich mit allem anderen bis zum
+  // Speichern, statt als eigener Auftrag am Fuss vorbeizulaufen.
+  assert.match(SEITEN_BAUSTEINE.entwurf, /function setzeWeg\(teil, pfad\)/, "die Arbeitskopie kennt kein Entfernen");
+  assert.match(SEITEN_BAUSTEINE.entwurf, /entfernt: entfernt/, "der Auftrag traegt die entfernten Pfade nicht");
+  assert.match(SEITEN_BAUSTEINE.redaktorGruppe, /setzeWeg\(teil, eintrag\.pfad\)/, "M7 merkt das Entfernen nicht vor");
+});
+
+test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfelder mit eigenem Teil aus", () => {
+  const m7 = TEILE.find((t) => t.kennung === "m7");
+  assert.deepEqual(m7.pfade, ["triggers", "columns", "github", "toolbox", "local"]);
+  assert.equal(m7.folgen, undefined);
+  // toolbox.tokenFile hat eine eigene Eingabe — in der Gruppe stuende es ohne persoenliche
+  // Abweichung ein zweites Mal da.
+  assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [] });
+  const felder = gruppenZeilen("toolbox", SCHEMA.properties.toolbox, { team: { host: "https://x", tokenFile: ".t" } }, GRUPPEN_AUSNAHMEN.toolbox);
+  assert.deepEqual(felder.map((z) => z.feld), ["host", "ideaStored"]);
 });
