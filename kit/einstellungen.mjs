@@ -866,6 +866,8 @@ function abgeschaltet(vorher, nachher) {
 
 const schluesselVon = (b) => `${b.pfad}|${b.grund}`;
 
+const GEAENDERT_GRUND = "Die Datei hat sich seit dem Laden geändert.";
+
 function schreibeProjekt(projekt, d, neu) {
   if (JSON.stringify(neu.team) !== JSON.stringify(d.team)) {
     writeFileSync(join(projekt.pfad, KONFIG), schreibeJson(d.teamText, neu.team), "utf-8");
@@ -887,7 +889,7 @@ export function speichere(projekt, auftrag, optionen) {
   if (!zustand.bearbeitbar) return { status: 409, body: { art: "nichtBearbeitbar", hinweise: zustand.hinweise } };
   const d = projektDateien(projekt);
   if (auftrag.hashes?.team !== d.hashes.team || (auftrag.hashes?.lokal ?? null) !== d.hashes.lokal) {
-    return { status: 409, body: { art: "geaendert", grund: "Die Datei hat sich seit dem Laden geändert." } };
+    return { status: 409, body: { art: "geaendert", grund: GEAENDERT_GRUND } };
   }
   const neu = aenderungAnwenden(d.team, d.lokal, auftrag);
   if (!neu.ok) return { status: 422, body: { art: "ungueltig", befunde: [befund(auftrag.aenderungen?.[0]?.pfad ?? "", neu.grund)] } };
@@ -899,6 +901,229 @@ export function speichere(projekt, auftrag, optionen) {
   if (aus.some((a) => !bestaetigt.has(a.pfad))) return { status: 409, body: { art: "bestaetigung", abgeschaltet: aus } };
   schreibeProjekt(projekt, d, neu);
   return { status: 200, body: projektZustand(projekt, optionen) };
+}
+
+// ============================================================
+// Abgeleitete Anzeigen (Plan #721 E1)
+// ============================================================
+//
+// Anzeigen, die kein Feld der Datei sind: die Wirkung einer Paarungszeile, die
+// Beispielbesetzung einer Prüfstufe, die Zahl der Kommandos je Bereich, die Spec-Datei eines
+// Bereichs, der Treffer des Verweis-Musters und die Summe der Zeitbudgets. Sie stehen hier
+// und nicht im Browser-Skript, weil `SEITEN_SKRIPT` ein Zeichenketten-Literal ist, das kein
+// Test ausführt — dort läge die einzige Fassung dieser Regeln, die niemand prüft.
+
+// SYNC: REVIEW_STUFEN und REVIEW_STUFEN_DEFAULT in kit/board.mjs — Änderungen dort nachziehen.
+const STUFEN = ["fachlich", "plan", "issue"];
+const STUFEN_VORGABE = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+
+/** Der Beispieltext, an dem das Verweis-Muster der Spezifikation vorgeführt wird (Kriterium 22). */
+export const VERWEIS_BEISPIEL = { id: "board-7", text: 'test("[board-7] ein Beispiel", () => {});' };
+
+// SYNC: ID_PLATZHALTER, TEST_PATTERN_DEFAULT und regexLiteral in kit/spec.mjs.
+const ID_PLATZHALTER = "<ID>";
+const TEST_PATTERN_VORGABE = String.raw`\[<ID>\]`;
+const regexLiteral = (text) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+/**
+ * Besetzung einer Prüfstufe. Fehlt der Block ganz, gilt die Bestandsvorgabe; fehlt nur diese
+ * Stufe im vorhandenen Block, gilt sie hier ebenfalls — für die Anzeige ist eine Lücke
+ * schlechter als ein Vorgabewert, und den Fehler nennt ohnehin die Prüfung.
+ */
+function besetzung(config, stufe) {
+  const eintrag = istObjekt(config.reviewStufen?.[stufe]) ? config.reviewStufen[stufe] : STUFEN_VORGABE;
+  return {
+    anzahl: Number.isInteger(eintrag.reviewer) ? eintrag.reviewer : STUFEN_VORGABE.reviewer,
+    rollen: Array.isArray(eintrag.rollen) ? eintrag.rollen : [],
+  };
+}
+
+/** Wer den Fachplan, den Plan und das Arbeitspaket dieses Autors prüft, mit welcher Rolle. */
+function wirkungFuer(config, autor) {
+  const block = istObjekt(config.issueReview) ? config.issueReview : {};
+  const reviewers = Array.isArray(block.reviewers) ? block.reviewers : [];
+  const pairs = istObjekt(block.pairs) ? block.pairs : {};
+  const stufen = {};
+  for (const stufe of STUFEN) {
+    const { anzahl, rollen } = besetzung(config, stufe);
+    const gewaehlt = waehleReviewer(reviewers, autor, anzahl, pairs);
+    stufen[stufe] = {
+      pruefer: gewaehlt.gewaehlt.map((r, i) => ({ name: r.name, rolle: rollen[i] ?? null })),
+      unterbesetzt: gewaehlt.unterbesetzt,
+      quelle: gewaehlt.quelle,
+    };
+  }
+  return stufen;
+}
+
+/** Je Autor mit eigener Paarung die Wirkung samt der Prüfer, die nirgends zum Zug kommen. */
+function paarungsWirkung(config) {
+  const pairs = istObjekt(config.issueReview?.pairs) ? config.issueReview.pairs : {};
+  const out = {};
+  for (const autor of Object.keys(pairs)) {
+    const stufen = wirkungFuer(config, autor);
+    const zumZug = new Set(Object.values(stufen).flatMap((s) => s.pruefer.map((p) => p.name)));
+    const genannt = Array.isArray(pairs[autor]) ? pairs[autor] : [];
+    out[autor] = { ...stufen, ungenutzt: genannt.filter((n, i) => genannt.indexOf(n) === i && !zumZug.has(n)) };
+  }
+  return out;
+}
+
+/**
+ * Die Beispielbesetzung je Stufe (Kriterium 16): am ersten Autor mit eigener Paarung, ohne
+ * Paarungen am ersten Reviewer. Ohne beides bleibt der Autor offen und die Regel greift.
+ */
+function beispielBesetzung(config) {
+  const block = istObjekt(config.issueReview) ? config.issueReview : {};
+  const pairs = istObjekt(block.pairs) ? block.pairs : {};
+  const reviewers = Array.isArray(block.reviewers) ? block.reviewers : [];
+  const autor = Object.keys(pairs)[0] ?? reviewers[0]?.name;
+  return Object.fromEntries(Object.entries(wirkungFuer(config, autor)).map(([stufe, wirkung]) => [stufe, { autor: autor ?? null, ...wirkung }]));
+}
+
+/** Wie viele Prüfkommandos jeden Bereich nennen (Kriterium 20). */
+function nutzungJeBereich(config) {
+  const out = {};
+  for (const name of Object.keys(istObjekt(config.checkAreas) ? config.checkAreas : {})) out[name] = 0;
+  for (const check of Array.isArray(config.buildChecks) ? config.buildChecks : []) {
+    for (const name of new Set(Array.isArray(check?.areas) ? check.areas : [])) {
+      if (name in out) out[name] += 1;
+    }
+  }
+  return out;
+}
+
+/** Ob das Verweis-Muster am Beispieltext einen Verweis findet — und warum nicht (Kriterium 22). */
+function verweisProbe(spec) {
+  const muster = typeof spec.testPattern === "string" && spec.testPattern !== "" ? spec.testPattern : TEST_PATTERN_VORGABE;
+  const probe = { id: VERWEIS_BEISPIEL.id, beispiel: VERWEIS_BEISPIEL.text, muster, trifft: false, fehler: null };
+  if (!muster.includes(ID_PLATZHALTER)) {
+    return { ...probe, fehler: `nennt den Platzhalter '${ID_PLATZHALTER}' nicht — ohne ihn fände die Suche jede ID oder keine` };
+  }
+  try {
+    return { ...probe, trifft: new RegExp(muster.replaceAll(ID_PLATZHALTER, regexLiteral(VERWEIS_BEISPIEL.id))).test(VERWEIS_BEISPIEL.text) };
+  } catch (e) {
+    return { ...probe, fehler: e.message };
+  }
+}
+
+/** Die Spezifikationsdatei je Bereich (Kriterium 23) und die Probe auf das Verweis-Muster. */
+function specAnzeigen(config) {
+  if (!istObjekt(config.spec)) return {};
+  const bereiche = istObjekt(config.spec.bereiche) ? config.spec.bereiche : {};
+  // SYNC: SPECS_DIR und die Regel „eine Datei je Bereich" in kit/spec.mjs.
+  return { datei: Object.fromEntries(Object.keys(bereiche).map((name) => [name, `specs/${name}.md`])), verweis: verweisProbe(config.spec) };
+}
+
+const KETTE_ZEIT = ["planMin", "paketeMin", "reviewMin", "abdeckungMin"];
+
+/** Die Summe der Zeitbudgets, getrennt nach Kette und Umsetzungsstufe (Kriterium 26). */
+function zeitbudget(config) {
+  const kette = istObjekt(config.night?.kette) ? config.night.kette : {};
+  const wert = (feld) => (typeof kette[feld] === "number" ? kette[feld] : vorgabeAus(`night.kette.${feld}`) ?? 0);
+  return { kette: KETTE_ZEIT.reduce((summe, feld) => summe + wert(feld), 0), umsetzung: wert("umsetzungMin") };
+}
+
+/**
+ * Die abgeleiteten Anzeigen — zu einem Teil die seinen, ohne Teil alle, je Teil-Kennung.
+ * Ein Teil ohne abgeleitete Anzeige liefert ein leeres Objekt.
+ */
+export function abgeleitet(config, teil = null) {
+  if (!istObjekt(config)) return {};
+  const alle = {
+    m2: () => ({ wirkung: paarungsWirkung(config) }),
+    m3: () => ({ beispiel: beispielBesetzung(config) }),
+    m4: () => ({ nutzung: nutzungJeBereich(config) }),
+    m5: () => specAnzeigen(config),
+    m6: () => ({ zeit: zeitbudget(config) }),
+  };
+  if (teil === null || teil === undefined) return Object.fromEntries(Object.entries(alle).map(([kennung, baue]) => [kennung, baue()]));
+  return alle[teil] ? alle[teil]() : {};
+}
+
+// ============================================================
+// Änderungsliste und Vorschau (Plan #721 E1)
+// ============================================================
+
+const KURZ = 60;
+
+/** Ein Wert als kurzer Text für den Fuß eines Teils. */
+function kurz(wert) {
+  const text = JSON.stringify(wert) ?? "nichts";
+  return text.length > KURZ ? `${text.slice(0, KURZ)}…` : text;
+}
+
+/**
+ * Trägt die Unterschiede zweier Werte in `out`. Objekte und gleich lange Listen werden
+ * durchlaufen, damit der Satz die geänderte Zeile nennt; bei verschieden langen Listen wäre
+ * jeder Index hinter der Stelle verschoben — dort steht ein Satz über die Liste als Ganzes.
+ */
+function unterschied(pfad, alt, neu, out) {
+  if (gleich(alt, neu)) return;
+  if (istObjekt(alt) && istObjekt(neu)) {
+    for (const feld of new Set([...Object.keys(alt), ...Object.keys(neu)])) unterschied(`${pfad}.${feld}`, alt[feld], neu[feld], out);
+    return;
+  }
+  if (Array.isArray(alt) && Array.isArray(neu)) {
+    if (alt.length === neu.length) {
+      alt.forEach((wert, i) => unterschied(`${pfad}[${i}]`, wert, neu[i], out));
+      return;
+    }
+    out.push({ pfad, art: "geaendert", satz: `${pfad} hat jetzt ${neu.length} Einträge statt ${alt.length}` });
+    return;
+  }
+  if (alt === undefined) out.push({ pfad, art: "neu", satz: `${pfad} kommt hinzu: ${kurz(neu)}` });
+  else if (neu === undefined) out.push({ pfad, art: "weg", satz: `${pfad} fällt weg` });
+  else out.push({ pfad, art: "geaendert", satz: `${pfad} wird ${kurz(neu)} statt ${kurz(alt)}` });
+}
+
+/**
+ * Je offener Änderung ein Satz für den Fuß des Teils (Kriterium 2). `teil` ist eine
+ * Teil-Kennung und grenzt auf die Pfade ein, die dieser Teil bearbeitet; ohne Teil werden
+ * die Wurzelfelder beider Konfigurationen verglichen.
+ */
+export function aenderungsliste(alt, neu, teil = null) {
+  const pfade = teil === null || teil === undefined
+    ? [...new Set([...Object.keys(alt ?? {}), ...Object.keys(neu ?? {})])]
+    : TEILE.find((t) => t.kennung === teil)?.pfade ?? [];
+  const out = [];
+  for (const pfad of pfade) unterschied(pfad, lies(alt ?? {}, pfad), lies(neu ?? {}, pfad), out);
+  return out;
+}
+
+/**
+ * Prüft einen Auftrag, ohne ihn zu speichern: derselbe Weg wie `speichere` bis unmittelbar
+ * vor das Schreiben. Liefert `{ befunde, aenderungen, abgeleitet, bestaetigung }` — die
+ * Befunde am Pfad der betroffenen Zeile, die offenen Änderungen des Teils, die abgeleiteten
+ * Anzeigen zum geänderten Stand und die noch fälligen Bestätigungen.
+ *
+ * Anders als `speichere` weist ein Befund nichts ab: Die Oberfläche soll ihn an der Zeile
+ * zeigen, während getippt wird. Ein Fehler, der schon vorher in der Datei stand, taucht
+ * nicht auf — nur ein neu entstehender; Warnungen stehen immer da (Kriterien 4 und 20).
+ */
+export function vorschau(projekt, auftrag, optionen) {
+  const zustand = projektZustand(projekt, optionen);
+  if (!zustand.bearbeitbar) return { status: 409, body: { art: "nichtBearbeitbar", hinweise: zustand.hinweise } };
+  const d = projektDateien(projekt);
+  if (auftrag.hashes?.team !== d.hashes.team || (auftrag.hashes?.lokal ?? null) !== d.hashes.lokal) {
+    return { status: 409, body: { art: "geaendert", grund: GEAENDERT_GRUND } };
+  }
+  const leer = { befunde: [], aenderungen: [], abgeleitet: {}, bestaetigung: [] };
+  const neu = aenderungAnwenden(d.team, d.lokal, auftrag);
+  if (!neu.ok) return { status: 200, body: { ...leer, befunde: [befund(auftrag.aenderungen?.[0]?.pfad ?? "", neu.grund)] } };
+  const alteFehler = new Set(pruefe(d.team, d.lokal).filter((b) => b.art === "fehler").map(schluesselVon));
+  const alt = mergeWorkflowConfig(d.team, d.lokal).config;
+  const jetzt = mergeWorkflowConfig(neu.team, neu.lokal).config;
+  const bestaetigt = new Set(auftrag.bestaetigt ?? []);
+  return {
+    status: 200,
+    body: {
+      befunde: pruefe(neu.team, neu.lokal).filter((b) => b.art !== "fehler" || !alteFehler.has(schluesselVon(b))),
+      aenderungen: aenderungsliste(alt, jetzt, auftrag.teil ?? null),
+      abgeleitet: abgeleitet(jetzt, auftrag.teil ?? null),
+      bestaetigung: abgeschaltet(alt, jetzt).filter((a) => !bestaetigt.has(a.pfad)),
+    },
+  };
 }
 
 // ============================================================
@@ -945,12 +1170,16 @@ function leseKoerper(req) {
   });
 }
 
+/**
+ * Das Projekt eines API-Pfads samt der Frage, ob die Vorschau gemeint ist — `null`, wenn der
+ * Pfad auf kein Projekt zeigt. Mehr als den einen zusätzlichen Abschnitt gibt es nicht.
+ */
 function projektAusPfad(pfad, projekte) {
-  const treffer = pfad.match(/^\/api\/projekt\/([^/]+)$/);
+  const treffer = pfad.match(/^\/api\/projekt\/([^/]+)(\/vorschau)?$/);
   if (!treffer) return null;
   try {
-    const name = decodeURIComponent(treffer[1]);
-    return projekte.find((p) => p.name === name) ?? null;
+    const projekt = projekte.find((p) => p.name === decodeURIComponent(treffer[1]));
+    return projekt ? { projekt, istVorschau: treffer[2] !== undefined } : null;
   } catch {
     return null;
   }
@@ -966,9 +1195,10 @@ async function beantworteApi(req, res, kontext) {
     });
     return antworte(res, 200, { projekte: liste, eigenerStand: kontext.eigenerStand });
   }
-  const projekt = projektAusPfad(pfad, projekte);
-  if (!projekt) return antworte(res, 404, { grund: "Projekt unbekannt" });
-  if (req.method === "GET") return antworte(res, 200, projektZustand(projekt, kontext));
+  const treffer = projektAusPfad(pfad, projekte);
+  if (!treffer) return antworte(res, 404, { grund: "Projekt unbekannt" });
+  const { projekt, istVorschau } = treffer;
+  if (req.method === "GET" && !istVorschau) return antworte(res, 200, projektZustand(projekt, kontext));
   if (req.method !== "POST") return antworte(res, 405, { grund: "Methode nicht erlaubt" });
   let auftrag;
   try {
@@ -976,7 +1206,7 @@ async function beantworteApi(req, res, kontext) {
   } catch {
     return antworte(res, 400, { grund: "Der Rumpf ist kein lesbares JSON oder zu groß." });
   }
-  const ergebnis = speichere(projekt, auftrag, kontext);
+  const ergebnis = istVorschau ? vorschau(projekt, auftrag, kontext) : speichere(projekt, auftrag, kontext);
   return antworte(res, ergebnis.status, ergebnis.body);
 }
 
