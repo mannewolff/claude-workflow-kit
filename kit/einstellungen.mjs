@@ -337,6 +337,56 @@ export const THEMEN = {
 };
 
 // ============================================================
+// Teile (Plan #721)
+// ============================================================
+//
+// Nicht mehr das Schema eines Feldes entscheidet über seine Eingabe, sondern der Teil, zu dem
+// es gehört. `m1` bis `m7` sind die sieben Teile des verbindlichen Entwurfs
+// docs/entwuerfe/einstellungen-ohne-json.html; dazu kommen die generischen Nachbarn `wert`
+// (ein Feld für einen einfachen Wert) und `text` (die Anzeige in Dateischreibweise). `m7` ist
+// zugleich der generische Teil „Gruppe" für ein flaches Objekt.
+//
+// `text` ist der Rückfall und trägt das erste Nicht-Ziel der Anforderung #705: Die Modellliste
+// der Nacht bleibt, wie sie ist (sie wird mit oder nach #701 umgebaut), und Einstellungen, die
+// das Kit nicht kennt, bekommen keine eigene Eingabe.
+
+/**
+ * Wurzelfelder, deren Unterfelder die Teile einzeln bearbeiten. Ein solches Feld erscheint
+ * nicht mehr als Ganzes: `projektZustand` zerlegt es in seine Unterfelder, und jedes von ihnen
+ * nennt seinen Teil selbst. Trägt die Datei dort etwas anderes als ein Objekt, bleibt das
+ * Wurzelfeld ungeteilt und fällt auf den Text-Teil zurück.
+ */
+const ZERSCHNITTEN = new Set(["issueReview", "night"]);
+
+/**
+ * Je Teil eine Kennung, ein Titel, das Thema, die Reihenfolge, die Pfade, die er bearbeitet,
+ * und der Name seines Redaktors. Ein Teil ohne eigenes Thema (`thema: null`) ist generisch:
+ * Er tritt je Pfad einmal auf und trägt dessen Thema und dessen Pfad als Überschrift. Ein Test
+ * verlangt, dass jedes Wurzelfeld des Schemas außer `version` hier einen Ort hat.
+ */
+export const TEILE = [
+  { kennung: "m1", titel: "Reviewer", thema: "Review", reihenfolge: 1, redaktor: "reviewer", pfade: ["issueReview.requiredBeforeReady", "issueReview.reviewers"] },
+  { kennung: "m2", titel: "Paarungen", thema: "Review", reihenfolge: 2, redaktor: "paarungen", pfade: ["issueReview.pairs"] },
+  { kennung: "m3", titel: "Prüfstufen", thema: "Review", reihenfolge: 3, redaktor: "pruefstufen", pfade: ["reviewStufen"] },
+  { kennung: "m4", titel: "Prüfkommandos und Bereiche", thema: "Prüfungen", reihenfolge: 1, redaktor: "pruefkommandos", pfade: ["buildChecks", "checkAreas"] },
+  { kennung: "m5", titel: "Spezifikation", thema: "Prüfungen", reihenfolge: 2, redaktor: "spezifikation", pfade: ["spec"] },
+  { kennung: "m6", titel: "Nacht-Kette", thema: "Nachtbetrieb", reihenfolge: 1, redaktor: "nachtkette", pfade: ["night.kette"] },
+  { kennung: "m7", titel: null, thema: null, reihenfolge: 5, redaktor: "gruppe", pfade: ["triggers", "columns", "github", "toolbox", "local"] },
+  {
+    kennung: "wert", titel: null, thema: null, reihenfolge: 6, redaktor: "wert",
+    pfade: ["codeHost", "issueTracker", "provider", "mutationCommand", "formatFixCommand", "mainBranch", "productionBranch", "reviewScope", "reviewModel", "reviewCommand", "toolbox.tokenFile"],
+  },
+  { kennung: "text", titel: null, thema: null, reihenfolge: 9, redaktor: "text", pfade: ["night.modelle", "night.stufen", "night.stufenRegel"] },
+];
+
+const TEIL_TEXT = TEILE.find((t) => t.kennung === "text");
+
+/** Der Teil, der einen Pfad bearbeitet. Was kein Teil nennt, fällt auf den Text-Teil zurück. */
+export function teilFuer(pfad) {
+  return TEILE.find((t) => t.pfade.includes(pfad)) ?? TEIL_TEXT;
+}
+
+// ============================================================
 // Team- und persönliche Ebene (Plan #674 E6)
 // ============================================================
 //
@@ -425,17 +475,31 @@ function entferne(objekt, pfad) {
 }
 
 /**
+ * Ein zerschnittenes Wurzelfeld zerfällt in seine Unterfelder — die des Schemas und die, die
+ * eine der Dateien trägt. Jedes andere Feld bleibt, wie es ist; ebenso ein zerschnittenes,
+ * das irgendwo kein Objekt ist, denn sein Wert soll unverändert lesbar bleiben.
+ */
+function zerschneide(pfad, werte) {
+  if (!ZERSCHNITTEN.has(pfad)) return [pfad];
+  if (werte.some((w) => w !== undefined && !istObjekt(w))) return [pfad];
+  const felder = new Set([...Object.keys(schemaFuer(pfad)?.properties ?? {}), ...werte.flatMap((w) => (istObjekt(w) ? Object.keys(w) : []))]);
+  return [...felder].map((f) => `${pfad}.${f}`);
+}
+
+/**
  * Je Einstellung Teamwert, persönliche Abweichung und geltender Wert. Schlüssel sind die
- * Wurzelfelder aus Schema, Team- und persönlicher Datei sowie die Blätter der Allowlist.
+ * Wurzelfelder aus Schema, Team- und persönlicher Datei sowie die Blätter der Allowlist —
+ * ein zerschnittenes Wurzelfeld steht dabei mit seinen Unterfeldern statt als Ganzes da.
  */
 export function ebenen(team, lokal) {
   const { config } = mergeWorkflowConfig(team ?? {}, lokal ?? null);
-  const pfade = new Set([
+  const wurzeln = new Set([
     ...Object.keys(SCHEMA.properties ?? {}).filter((f) => f !== "version"),
     ...Object.keys(team ?? {}),
     ...Object.keys(lokal ?? {}).filter((f) => !f.includes(".") && !LOCAL_OVERRIDE_ALLOWLIST.some((p) => p.startsWith(`${f}.`))),
     ...LOCAL_OVERRIDE_ALLOWLIST,
   ]);
+  const pfade = new Set([...wurzeln].flatMap((p) => zerschneide(p, [lies(team ?? {}, p), lies(lokal ?? {}, p), lies(config, p)])));
   const out = {};
   for (const pfad of pfade) {
     out[pfad] = { team: lies(team ?? {}, pfad), persoenlich: lies(lokal ?? {}, pfad), gilt: lies(config, pfad), persoenlichErlaubt: persoenlichErlaubt(pfad) };
@@ -760,13 +824,26 @@ export function projektZustand(projekt, { home, eigenerStand }) {
   };
   if (!lesbar) return zustand;
   const befunde = pruefe(d.team, d.lokal);
+  const instanzen = new Map();
   for (const [pfad, werte] of Object.entries(ebenen(d.team, d.lokal))) {
-    const thema = THEMEN[pfad.split(".")[0]] ?? "Unbekannt";
+    const teil = teilFuer(pfad);
+    const thema = teil.thema ?? THEMEN[pfad.split(".")[0]] ?? "Unbekannt";
     const schema = schemaFuer(pfad);
-    (zustand.themen[thema] ??= []).push({
-      pfad, beschreibung: schema?.description ?? null, schema, ...werte, befunde: befunde.filter((b) => gehoertZu(b.pfad, pfad)),
+    // Ein generischer Teil (ohne eigenes Thema) tritt je Pfad einmal auf, ein Teil des
+    // Entwurfs einmal je Thema und sammelt seine Pfade.
+    const schluessel = teil.thema === null ? `${thema}|${teil.kennung}|${pfad}` : `${thema}|${teil.kennung}`;
+    let instanz = instanzen.get(schluessel);
+    if (!instanz) {
+      instanz = { kennung: teil.kennung, titel: teil.titel, redaktor: teil.redaktor, reihenfolge: teil.reihenfolge, eintraege: [] };
+      instanzen.set(schluessel, instanz);
+      (zustand.themen[thema] ??= []).push(instanz);
+    }
+    instanz.eintraege.push({
+      pfad, beschreibung: schema?.description ?? null, schema, ...werte,
+      vorgabe: vorgabeAus(pfad), befunde: befunde.filter((b) => gehoertZu(b.pfad, pfad)),
     });
   }
+  for (const teile of Object.values(zustand.themen)) teile.sort((a, b) => a.reihenfolge - b.reihenfolge);
   return zustand;
 }
 
@@ -1135,7 +1212,11 @@ function zeichne() {
   if (zustand.aelterAlsOberflaeche) {
     buehne.append(el("div", "melder melder-warn", "Dieses Projekt nutzt einen älteren Kit-Stand (" + zustand.kitStand + "). Einstellungen, die erst mit einer neueren Fassung kamen, wertet es noch nicht aus."));
   }
-  for (const eintrag of zustand.themen[thema] || []) buehne.append(platte(eintrag));
+  // Die Teile werden hier noch in der vorhandenen Darstellung durchgezeichnet: je Eintrag
+  // eine Platte wie bisher. Die teilbezogenen Redaktoren folgen im Oberflächen-Rahmen.
+  for (const teil of zustand.themen[thema] || []) {
+    for (const eintrag of teil.eintraege) buehne.append(platte(eintrag));
+  }
 }
 
 function zeigeWert(titel, wert) {
