@@ -19,7 +19,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, VERWEIS_BEISPIEL, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
+import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, VERWEIS_BEISPIEL, vorgabeAus, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -445,6 +445,46 @@ test("ein Einschalten der Spezifikation ohne 'Gilt seit' oder ohne Bereich ergib
     const res = speichere(p.projekt, auftrag, p.optionen);
     assert.equal(res.status, 422);
     assert.equal(JSON.parse(readFileSync(p.dateien.team, "utf-8")).spec, undefined, "spec wurde trotz Fehler gespeichert");
+  });
+});
+
+// ------------------------------------------------------------
+// M6 Nacht-Kette (Issue #730)
+// ------------------------------------------------------------
+
+/** Eine Kopie von `config.night.kette` ohne die genannten Felder — echte Daten statt Fixtures. */
+function ohneKetteFelder(config, felder) {
+  const kette = { ...config.night.kette };
+  for (const f of felder) delete kette[f];
+  return { ...config, night: { ...config.night, kette } };
+}
+
+test("M6: an einer Kopie der echten Konfiguration fehlende Felder zeigen ihre Schema-Vorgabe und gehen in die Zeitsumme ein", () => {
+  const team = ohneKetteFelder(ECHT, ["umsetzungMin", "varianteBLabel", "kostenUsdB"]);
+  for (const feld of ["umsetzungMin", "varianteBLabel", "kostenUsdB"]) assert.equal(team.night.kette[feld], undefined, feld);
+  assert.equal(vorgabeAus("night.kette.umsetzungMin"), 120);
+  assert.equal(vorgabeAus("night.kette.varianteBLabel"), "kit:durchziehen");
+  assert.equal(vorgabeAus("night.kette.kostenUsdB"), 150);
+  const zeit = abgeleitet(team, "m6").zeit;
+  assert.equal(zeit.umsetzung, 120, "die fehlende umsetzungMin traegt ihren Vorgabewert nicht in die Summe");
+  assert.ok(zeit.kette > 0);
+});
+
+test("M6: ein geleertes Budget-Feld entfernt den Schluessel aus der Datei, statt ihn auf null zu setzen", async () => {
+  const kette = { label: "kit:night", planMin: 30, paketeMin: 25, reviewMin: 30, abdeckungMin: 10 };
+  const team = { ...ECHT, night: { ...ECHT.night, kette } };
+  await mitProjekt({ team }, async (p) => {
+    // Wie es im Browser ankaeme: ketteAendern setzt planMin auf undefined, und JSON.stringify
+    // beim Senden laesst den Schluessel ganz weg — hier direkt das Objekt ohne ihn nachgebaut.
+    const { planMin, ...ohnePlanMin } = kette;
+    const res = speichere(p.projekt, { hashes: p.hashes(), ebene: "team", teil: "m6", aenderungen: [{ pfad: "night.kette", wert: ohnePlanMin }] }, p.optionen);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const nachher = readFileSync(p.dateien.team, "utf-8");
+    assert.doesNotMatch(nachher, /"planMin"/, "planMin steht noch in der Datei, statt entfernt zu sein");
+    for (const [feld, wert] of Object.entries(ohnePlanMin)) {
+      if (typeof wert === "number") assert.match(nachher, new RegExp(`"${feld}": ${wert}`), `${feld} wurde mitveraendert`);
+    }
+    assert.equal(JSON.parse(nachher).night.kette.planMin, undefined);
   });
 });
 

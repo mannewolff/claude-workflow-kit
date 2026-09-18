@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, LAUFARTEN, paarungsFolgen, ROLLEN_KATALOG, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, LAUFARTEN, paarungsFolgen, ROLLEN_KATALOG, SCHEMA, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -496,4 +496,67 @@ test("M5 bearbeitet nur den Pfad spec und braucht keinen Folgepfad", () => {
   const m5 = TEILE.find((t) => t.kennung === "m5");
   assert.deepEqual(m5.pfade, ["spec"]);
   assert.equal(m5.folgen, undefined);
+});
+
+// ------------------------------------------------------------
+// M6 Nacht-Kette (Issue #730)
+// ------------------------------------------------------------
+
+test("die Registry fuehrt den Redaktor von M6 aus, keinen Platzhalter mehr", () => {
+  const registry = SEITEN_BAUSTEINE.platte;
+  assert.match(registry, /nachtkette: redaktorNachtKette/, "M6 haengt noch am Platzhalter redaktorEntsteht");
+  assert.match(SEITEN_BAUSTEINE.redaktorNachtKette, /function redaktorNachtKette\(teil\)/);
+});
+
+test("M6 zeigt die Kennzeichen als Textfelder und die Budgets als Zahlenfelder mit Einheit (Kriterium 24)", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.match(stueck, /typ: "text"/, "die Kennzeichen sind keine Textfelder");
+  assert.match(stueck, /typ: "number"/, "die Budgets sind keine Zahlenfelder");
+  assert.match(stueck, /"min"/, "die Zeitbudgets nennen keine Einheit");
+  assert.match(stueck, /"USD"/, "die Kostenbudgets nennen keine Einheit");
+  assert.match(stueck, /zaehler\(/, "Korrekturrunden ist kein Zaehler");
+  assert.match(stueck, /budget-grid/, "die Budgets nutzen nicht das Gitter des Entwurfs");
+  assert.match(stueck, /zwei-spalten/, "die Kennzeichen stehen nicht nebeneinander wie im Entwurf");
+});
+
+test("M6 zeigt bei einem leeren Feld den Vorgabewert blass, aus dem eingebetteten Schema-Wert (Kriterium 25)", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.match(stueck, /function ketteVorgabe\(feld\)/, "der Vorgabewert je Feld fehlt");
+  assert.match(stueck, /vorgabe: ketteVorgabe\(feld\)/, "feldMitVorgabe bekommt den Vorgabewert nicht mitgeteilt");
+  assert.match(stueck, /ketteFeldWert\(teil, "korrekturrunden"\)/, "Korrekturrunden bekommt keinen Vorgabewert");
+  const felder = new Set([...stueck.matchAll(/\["(\w+)", "/g)].map((m) => m[1]));
+  for (const feld of ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB"]) {
+    assert.ok(felder.has(feld), `${feld} steht in keiner Feldliste`);
+  }
+});
+
+test("M6: der eingebettete Vorgabewert je Feld ist aus dem Schema gerechnet, kein zweites Literal", () => {
+  const felder = Object.keys(SCHEMA.properties.night.properties.kette.properties);
+  const erwartet = Object.fromEntries(felder.map((f) => [f, vorgabeAus(`night.kette.${f}`)]));
+  assert.ok(
+    SEITEN_BAUSTEINE.redaktorNachtKette.includes(`const KETTE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`),
+    "die Vorgabewerte im Browser-Skript weichen vom Schema ab",
+  );
+});
+
+test("M6 zeigt die Summe der Zeitbudgets getrennt nach Kette und Umsetzung, aus der Vorschau (Kriterium 26)", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.match(stueck, /abgeleitetVon\(teil\)\.zeit/, "die Summen kommen nicht aus der Vorschau");
+  assert.match(stueck, /vorschauAnfordern\(teil\)/, "die Summen stehen erst nach der ersten Anfrage da");
+  assert.match(stueck, /zeit\.kette/, "die Summe ohne Umsetzung fehlt");
+  assert.match(stueck, /zeit\.umsetzung/, "die Summe der Umsetzung fehlt");
+});
+
+test("M6 aendert night.kette formtreu ueber ketteAendern, nicht als neues Objekt", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.match(stueck, /function ketteAendern\(teil, aenderung\)/, "ketteAendern fehlt");
+  assert.match(stueck, /Object\.assign\(\{\}, /, "die Aenderung wird neu gebaut statt ergaenzt");
+  assert.match(stueck, /setzeWert\(teil, "night\.kette"/, "die Aenderung landet nicht in der Arbeitskopie von M6");
+});
+
+test("M6 bearbeitet nur night.kette und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
+  const m6 = TEILE.find((t) => t.kennung === "m6");
+  assert.deepEqual(m6.pfade, ["night.kette"]);
+  assert.equal(m6.folgen, undefined);
+  assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
 });

@@ -143,6 +143,15 @@ test("[einstellungen-9] projektZustand liefert je Thema Teile mit Eintraegen sta
   }
 });
 
+test("[einstellungen-9] jedes Feld unter night.kette traegt eine vorgabe, die dem default des Schemas entspricht", () => {
+  const felder = Object.keys(SCHEMA.properties.night.properties.kette.properties);
+  assert.ok(felder.length > 0, "night.kette hat keine Felder");
+  for (const feld of felder) {
+    const knoten = SCHEMA.properties.night.properties.kette.properties[feld];
+    assert.equal(vorgabeAus(`night.kette.${feld}`), knoten.default, feld);
+  }
+});
+
 test("[einstellungen-9] ein Wurzelfeld ohne Teil faellt auf den Text-Teil zurueck und bleibt lesbar", () => {
   const { zustand, raeumAuf } = wegwerfProjekt();
   try {

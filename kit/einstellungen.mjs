@@ -2228,7 +2228,7 @@ const REDAKTOREN = {
   pruefstufen: redaktorPruefstufen,
   pruefkommandos: redaktorPruefkommandos,
   spezifikation: redaktorSpezifikation,
-  nachtkette: redaktorEntsteht,
+  nachtkette: redaktorNachtKette,
   gruppe: redaktorEntsteht,
   wert: redaktorWert,
   text: redaktorText,
@@ -3270,6 +3270,138 @@ function redaktorSpezifikation(teil) {
       el("p", "erklaerung", "Derselbe Baustein wie die Bereiche in M4, mit einer Regel mehr: Ein Bereich ohne Muster ist hier ein Fehler und lässt sich nicht speichern."),
       bereiche,
     );
+    befundeVerteilen(teil);
+  };
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(behaelter);
+  vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // M6 Nacht-Kette (Kriterien 24, 25, 26, Issue #730)
+  // ------------------------------------------------------------
+  //
+  // Ein Feld je Kennzeichen und je Budget statt eines Textblocks in Dateischreibweise. Leer
+  // gilt der Vorgabewert aus dem Schema, blass gezeigt über `feldMitVorgabe` — der Vorgabewert
+  // je Feld ist hier eingebettet, weil `vorgabeAus` das Schema des Moduls braucht und im
+  // Browser nicht zur Verfügung steht (derselbe Weg wie `ROLLEN_KATALOG_BROWSER` in M3). Die
+  // Summe der Zeitbudgets kommt aus der Vorschau (Kriterium 26), nicht aus einer zweiten
+  // Rechnung im Browser; die Leiste ist eine reine Illustration der aktuellen Arbeitskopie.
+  redaktorNachtKette: `
+const KETTE_VORGABEN_BROWSER = ${JSON.stringify(Object.fromEntries(
+    Object.keys(SCHEMA.properties.night.properties.kette.properties).map((feld) => [feld, vorgabeAus(`night.kette.${feld}`)]),
+  ))};
+` + String.raw`
+function ketteVorgabe(feld) { return KETTE_VORGABEN_BROWSER[feld]; }
+
+const KETTE_TEXTFELDER = [["label", "Kennzeichen: Kette starten"], ["varianteBLabel", "Kennzeichen: Variante B (mit Umsetzung)"]];
+const KETTE_BUDGETS = [["planMin", "Plan", "min"], ["reviewMin", "Plan-Review", "min"], ["paketeMin", "Pakete", "min"], ["abdeckungMin", "Abdeckung", "min"]];
+const KETTE_BUDGETS_B = [["umsetzungMin", "Umsetzung (B)", "min"], ["kostenUsd", "Kosten je Kette", "USD"], ["kostenUsdB", "Kosten je Kette (B)", "USD"]];
+const KETTE_FARBEN = ["var(--kupfer)", "var(--kupfer-hell)", "#c98d62", "var(--grau)"];
+
+/** Das night.kette-Objekt der Arbeitskopie, oder ein leeres ohne eigene Einstellung. */
+function ketteVon(teil) {
+  const wert = wertVon(teil, "night.kette");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : {};
+}
+
+/** Aendert night.kette formtreu: Felder, die die Aenderung nicht nennt, bleiben stehen. */
+function ketteAendern(teil, aenderung) {
+  setzeWert(teil, "night.kette", Object.assign({}, ketteVon(teil), aenderung));
+}
+
+/** Der geltende Wert eines Feldes: die Arbeitskopie, sonst der Vorgabewert aus dem Schema. */
+function ketteFeldWert(teil, feld) {
+  const wert = ketteVon(teil)[feld];
+  return typeof wert === "number" ? wert : (ketteVorgabe(feld) ?? 0);
+}
+
+function ketteFeldZeile(pfad, titel, inhalt) {
+  const g = zeilenGruppe(pfad, "");
+  g.zeile.classList.add("feld");
+  g.zeile.append(el("label", "", titel), ...[].concat(inhalt));
+  return g.gruppe;
+}
+
+/** Ein Budget-Feld: Zahl, Einheit und der Vorgabewert blass, wenn das Feld leer ist. */
+function ketteBudgetZeile(teil, feld, titel, einheitText) {
+  const eh = el("div", "einheit");
+  const eingang = feldMitVorgabe({
+    typ: "number",
+    wert: ketteVon(teil)[feld],
+    vorgabe: ketteVorgabe(feld),
+    aendern: function (wert) { ketteAendern(teil, { [feld]: wert }); },
+  });
+  eh.append(eingang, el("span", "", einheitText));
+  const g = zeilenGruppe("night.kette." + feld, "");
+  g.zeile.classList.add("budget");
+  g.zeile.append(el("label", "etikett", titel), eh);
+  return g.gruppe;
+}
+
+function ketteKorrekturrundenZeile(teil, neuZeichnen) {
+  const eh = el("div", "einheit");
+  eh.append(
+    zaehler({
+      wert: ketteFeldWert(teil, "korrekturrunden"),
+      min: 1,
+      max: Infinity,
+      aendern: function (n) { ketteAendern(teil, { korrekturrunden: n }); neuZeichnen(); },
+    }),
+    el("span", "", "je Dokument"),
+  );
+  const g = zeilenGruppe("night.kette.korrekturrunden", "");
+  g.zeile.classList.add("budget");
+  g.zeile.append(el("label", "etikett", "Korrekturrunden"), eh);
+  return g.gruppe;
+}
+
+function redaktorNachtKette(teil) {
+  const kasten = el("div", "stapel");
+  const behaelter = el("div", "stapel");
+  const neuZeichnen = function () {
+    const zwei = el("div", "zwei-spalten");
+    for (const [feld, titel] of KETTE_TEXTFELDER) {
+      zwei.append(ketteFeldZeile("night.kette." + feld, titel, feldMitVorgabe({
+        typ: "text",
+        wert: ketteVon(teil)[feld],
+        vorgabe: ketteVorgabe(feld),
+        aendern: function (wert) { ketteAendern(teil, { [feld]: wert }); },
+      })));
+    }
+
+    const oben = el("div", "budget-grid");
+    for (const [feld, titel, einheit] of KETTE_BUDGETS) oben.append(ketteBudgetZeile(teil, feld, titel, einheit));
+
+    const leiste = el("div", "leiste");
+    leiste.title = "Summe der Stufen";
+    KETTE_BUDGETS.forEach(function (eintrag, i) {
+      const wert = ketteFeldWert(teil, eintrag[0]);
+      const stab = el("div", "", eintrag[1] + " " + wert);
+      stab.style.flex = String(wert || 1);
+      stab.style.background = KETTE_FARBEN[i];
+      leiste.append(stab);
+    });
+
+    const zeit = abgeleitetVon(teil).zeit || { kette: 0, umsetzung: 0 };
+    const umsetzungVorgabe = typeof ketteVon(teil).umsetzungMin !== "number";
+    const gilt = el("div", "gilt");
+    gilt.append(
+      "Kette ohne Umsetzung: bis ",
+      el("b", "", zeit.kette + " min"),
+      ". Mit Umsetzung (Variante B) kommen ",
+      el("b", "", zeit.umsetzung + " min" + (umsetzungVorgabe ? " (Vorgabe)" : "")),
+      " dazu.",
+    );
+
+    const unten = el("div", "budget-grid");
+    for (const [feld, titel, einheit] of KETTE_BUDGETS_B) unten.append(ketteBudgetZeile(teil, feld, titel, einheit));
+    unten.append(ketteKorrekturrundenZeile(teil, neuZeichnen));
+
+    behaelter.replaceChildren(zwei, el("div", "etikett", "Zeitbudgets je Stufe"), oben, leiste, gilt, unten);
     befundeVerteilen(teil);
   };
   teil.aufVorschau = neuZeichnen;
