@@ -2227,7 +2227,7 @@ const REDAKTOREN = {
   paarungen: redaktorPaarungen,
   pruefstufen: redaktorPruefstufen,
   pruefkommandos: redaktorPruefkommandos,
-  spezifikation: redaktorEntsteht,
+  spezifikation: redaktorSpezifikation,
   nachtkette: redaktorEntsteht,
   gruppe: redaktorEntsteht,
   wert: redaktorWert,
@@ -3074,6 +3074,204 @@ function redaktorPruefkommandos(teil) {
   };
   // Die Zahl der Kommandos je Bereich kommt aus der Vorschau — einmal beim Zeichnen, danach
   // nach jeder Aenderung.
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(behaelter);
+  vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // M5 Spezifikation (Kriterien 21, 22, 23)
+  // ------------------------------------------------------------
+  //
+  // Das Schema sagt zu \`spec\` ausdruecklich, es gebe bewusst kein Feld \`enabled\` — die
+  // Entscheidung ist nicht zurueckzunehmen. Ist \`spec\` noch kein Objekt, bietet der Redaktor
+  // nur das Einschalten an; danach bleibt es dabei, es gibt keinen Ausschalter (Kriterium 21).
+  // Ein Spec-Bereich ohne Muster ist anders als in M4 kein Warnfall, sondern eine Schema-Sperre
+  // (\`minItems: 1\`) — der Redaktor traegt dafuer keine eigene Regel, nur die Zeile, an der der
+  // Befund erscheinen kann (Kriterium 23).
+  redaktorSpezifikation: String.raw`
+/** Der Spec-Block dieses Teils, immer frisch aus der Arbeitskopie — oder null, solange er aus ist. */
+function specVon(teil) {
+  const wert = wertVon(teil, "spec");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : null;
+}
+
+/** Aendert den Spec-Block formtreu: Felder, die die Aenderung nicht nennt, bleiben stehen. */
+function specAendern(teil, aenderung) {
+  setzeWert(teil, "spec", Object.assign({}, specVon(teil), aenderung));
+}
+
+/** Die Bereiche der Spezifikation, immer frisch aus der Arbeitskopie. */
+function specBereicheVon(teil) {
+  const bereiche = (specVon(teil) || {}).bereiche;
+  return bereiche !== null && typeof bereiche === "object" && !Array.isArray(bereiche) ? bereiche : {};
+}
+
+/** Eine Zeile mit Titel und Feld-Klasse, damit ein Befund an ihrem Pfad erscheinen kann. */
+function specFeldZeile(pfad, titel, inhalt) {
+  const g = zeilenGruppe(pfad, "");
+  g.zeile.classList.add("feld");
+  g.zeile.append(el("label", "", titel), ...[].concat(inhalt));
+  return g.gruppe;
+}
+
+/**
+ * Die Zwischenueberschrift der Bereichstabelle — trägt den Pfad "spec.bereiche" selbst, damit
+ * ein leeres \`bereiche\` (Kriterium 23, \`minProperties\`) hier als Befund erscheint und nicht
+ * spurlos bleibt, weil keine Bereichszeile für ihn zuständig ist.
+ */
+function specBereicheKopf(titel, pfad) {
+  const g = zeilenGruppe(pfad, "");
+  g.zeile.classList.add("platte-kopf");
+  g.zeile.append(el("h4", "platte-pfad", titel), el("span", "feldpfad mono", pfad));
+  return g.gruppe;
+}
+
+/** Die Zellen einer Spec-Bereichszeile: Name, Muster und die Spec-Datei aus der Vorschau. */
+function specBereichsZellen(teil, name, neuZeichnen) {
+  const muster = Array.isArray(specBereicheVon(teil)[name]) ? specBereicheVon(teil)[name] : [];
+  const feld = el("input");
+  feld.type = "text";
+  feld.value = name;
+  // Umbenannt wird erst beim Verlassen des Feldes — derselbe Grund wie in M4: Jeder
+  // Zwischenstand stuende sonst als eigener Bereich da.
+  feld.addEventListener("change", function () {
+    const neuerName = feld.value.trim();
+    if (neuerName === "" || neuerName === name) { feld.value = name; return; }
+    const bisher = specBereicheVon(teil);
+    const kopie = {};
+    for (const n of Object.keys(bisher)) kopie[n === name ? neuerName : n] = bisher[n];
+    specAendern(teil, { bereiche: kopie });
+    neuZeichnen();
+  });
+  const setze = function (liste) {
+    const kopie = Object.assign({}, specBereicheVon(teil));
+    kopie[name] = liste;
+    specAendern(teil, { bereiche: kopie });
+    neuZeichnen();
+  };
+  const liste = musterListe({
+    muster: muster,
+    entfernen: function (i) {
+      const neu = muster.slice();
+      neu.splice(i, 1);
+      setze(neu);
+    },
+    dazu: function (wert) { setze(muster.concat([wert])); },
+  });
+  const datei = (abgeleitetVon(teil).datei || {})[name];
+  return [feld, liste, el("span", "nutzung mono", datei || "…")];
+}
+
+/** Die gestrichelte Zeile: ein Name, und der Bereich entsteht — ohne Muster ist er ein Fehler. */
+function specBereichNeueZeile(teil, neuZeichnen) {
+  const zeile = el("div", "zeile zeile-neu bereich-grid");
+  const feld = el("input");
+  feld.type = "text";
+  feld.placeholder = "Bereich hinzufügen …";
+  const anlegen = function () {
+    const name = feld.value.trim();
+    if (name === "" || Object.keys(specBereicheVon(teil)).indexOf(name) >= 0) return;
+    const kopie = Object.assign({}, specBereicheVon(teil));
+    kopie[name] = [];
+    specAendern(teil, { bereiche: kopie });
+    neuZeichnen();
+  };
+  feld.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    anlegen();
+  });
+  const dazu = el("button", "dazu", "+ Bereich hinzufügen");
+  dazu.addEventListener("click", anlegen);
+  zeile.append(feld, dazu, el("span"), el("span"));
+  return zeile;
+}
+
+function redaktorSpezifikation(teil) {
+  const kasten = el("div", "stapel");
+  const behaelter = el("div", "stapel");
+  const neuZeichnen = function () {
+    const spec = specVon(teil);
+    if (!spec) {
+      const einschalten = el("button", "taste taste-kupfer", "Einschalten");
+      einschalten.addEventListener("click", function () {
+        setzeWert(teil, "spec", { bereiche: {} });
+        neuZeichnen();
+      });
+      behaelter.replaceChildren(
+        el("p", "erklaerung", "Spec-Driven Development: welche Teile des Codes zu welchem Bereich der Spezifikation gehören und wo die Tests liegen. Ist die Spezifikation noch aus, steht hier nur „Einschalten“. Es verlangt „Gilt seit“ und mindestens einen Bereich. Ausschalten bietet die Oberfläche nicht an, weil das Kit die Entscheidung nicht zurücknimmt."),
+        einschalten,
+      );
+      befundeVerteilen(teil);
+      return;
+    }
+
+    const seitFeld = el("input");
+    seitFeld.type = "date";
+    seitFeld.value = typeof spec.seit === "string" ? spec.seit : "";
+    seitFeld.addEventListener("change", function () { specAendern(teil, { seit: seitFeld.value === "" ? undefined : seitFeld.value }); });
+
+    const testGlobs = Array.isArray(spec.testGlobs) ? spec.testGlobs : [];
+    const testOrte = musterListe({
+      muster: testGlobs,
+      entfernen: function (i) {
+        const neu = testGlobs.slice();
+        neu.splice(i, 1);
+        specAendern(teil, { testGlobs: neu });
+        neuZeichnen();
+      },
+      dazu: function (wert) {
+        specAendern(teil, { testGlobs: testGlobs.concat([wert]) });
+        neuZeichnen();
+      },
+    });
+
+    const musterFeld = el("input");
+    musterFeld.type = "text";
+    musterFeld.value = typeof spec.testPattern === "string" ? spec.testPattern : "";
+    musterFeld.addEventListener("input", function () { specAendern(teil, { testPattern: musterFeld.value.trim() === "" ? undefined : musterFeld.value }); });
+    // Kriterium 22: Das Muster bleibt ein Mustertext, aber daneben steht sofort, ob der
+    // Beispiel-Verweis gefunden wird — die Probe kommt aus der Vorschau, nicht aus einer
+    // zweiten Rechnung im Browser.
+    const verweis = abgeleitetVon(teil).verweis;
+    const beispiel = el("span", "beispiel mono", verweis
+      ? "Beispiel: " + verweis.beispiel + " → " + (verweis.fehler ? verweis.fehler : (verweis.trifft ? "trifft" : "trifft nicht"))
+      : "wird geprüft …");
+
+    const namen = Object.keys(specBereicheVon(teil));
+    const bereiche = zeilentabelle({
+      kopf: ["Name", "Code-Muster", "Spec-Datei", ""],
+      gitter: "bereich-grid",
+      pfad: function (name) { return "spec.bereiche." + name; },
+      werte: namen,
+      bauen: function (name) { return specBereichsZellen(teil, name, neuZeichnen); },
+      entfernen: function (i) {
+        const kopie = Object.assign({}, specBereicheVon(teil));
+        delete kopie[namen[i]];
+        specAendern(teil, { bereiche: kopie });
+        neuZeichnen();
+      },
+      neu: function () { return specBereichNeueZeile(teil, neuZeichnen); },
+    });
+
+    // Die beiden Felder "Gilt seit" und "Testorte" stehen nebeneinander wie im Entwurf.
+    const zwei = el("div", "zwei-spalten");
+    zwei.append(specFeldZeile("spec.seit", "Gilt seit", seitFeld), specFeldZeile("spec.testGlobs", "Testorte", testOrte));
+
+    behaelter.replaceChildren(
+      el("p", "erklaerung", "Spec-Driven Development: welche Teile des Codes zu welchem Bereich der Spezifikation gehören und wo die Tests liegen."),
+      zwei,
+      specFeldZeile("spec.testPattern", "Verweis im Testnamen", [musterFeld, beispiel]),
+      specBereicheKopf("Bereiche der Spezifikation", "spec.bereiche"),
+      el("p", "erklaerung", "Derselbe Baustein wie die Bereiche in M4, mit einer Regel mehr: Ein Bereich ohne Muster ist hier ein Fehler und lässt sich nicht speichern."),
+      bereiche,
+    );
+    befundeVerteilen(teil);
+  };
   teil.aufVorschau = neuZeichnen;
   neuZeichnen();
   kasten.append(behaelter);

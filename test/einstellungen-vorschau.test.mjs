@@ -334,6 +334,15 @@ test("[einstellungen-9] Speichern ohne Änderung an reviewStufen legt in einem P
   });
 });
 
+test("ein Projekt ohne spec-Block zeigt am Eintrag keinen Team-Wert — die Ansicht bietet dann nur das Einschalten", async () => {
+  await mitProjekt({ team: ohne(ECHT, "spec") }, async (p) => {
+    const zustand = projektZustand(p.projekt, p.optionen);
+    const eintrag = Object.values(zustand.themen).flat().flatMap((t) => t.eintraege).find((e) => e.pfad === "spec");
+    assert.equal(eintrag.team, undefined, "spec steht als Team-Wert da, obwohl die Datei den Block nicht traegt");
+    assert.equal(eintrag.gilt, undefined);
+  });
+});
+
 test("[einstellungen-11] je Bereich steht, wie viele Kommandos ihn nutzen", () => {
   assert.deepEqual(abgeleitet(BEISPIEL, "m4").nutzung, { kit: 2, docs: 1, leer: 0 });
   assert.deepEqual(abgeleitet(ohne(BEISPIEL, "checkAreas"), "m4").nutzung, {});
@@ -417,4 +426,43 @@ test("[einstellungen-11] die abgeleiteten Anzeigen halten der echten Konfigurati
   assert.equal(alles.m5.verweis.trifft, true, "das Verweis-Muster dieses Projekts findet den Beispiel-Verweis nicht");
   assert.deepEqual(alles.m4.nutzung, Object.fromEntries(Object.keys(ECHT.checkAreas ?? {}).map((n) => [n, alles.m4.nutzung[n]])));
   assert.ok(alles.m6.zeit.kette > 0 && alles.m6.zeit.umsetzung > 0);
+});
+
+// ------------------------------------------------------------
+// M5 Spezifikation (Issue #729)
+// ------------------------------------------------------------
+
+test("ein Einschalten der Spezifikation ohne 'Gilt seit' oder ohne Bereich ergibt einen Fehler und wird nicht gespeichert", async () => {
+  const team = ohne(BEISPIEL, "spec");
+  await mitProjekt({ team }, async (p) => {
+    const auftrag = { hashes: p.hashes(), ebene: "team", teil: "m5", aenderungen: [{ pfad: "spec", wert: { bereiche: {} } }] };
+    const vor = antwortVon(p, auftrag);
+    assert.equal(vor.status, 200);
+    const pfade = fehlerIn(vor).map((b) => b.pfad);
+    assert.ok(pfade.includes("spec.seit"), pfade.join(", "));
+    assert.ok(pfade.includes("spec.bereiche"), pfade.join(", "));
+
+    const res = speichere(p.projekt, auftrag, p.optionen);
+    assert.equal(res.status, 422);
+    assert.equal(JSON.parse(readFileSync(p.dateien.team, "utf-8")).spec, undefined, "spec wurde trotz Fehler gespeichert");
+  });
+});
+
+test("ein Spec-Bereich ohne Muster ergibt einen Fehler, waehrend derselbe Fall in checkAreas eine Warnung bleibt", async () => {
+  await mitProjekt({ team: BEISPIEL }, async (p) => {
+    // BEISPIEL traegt schon checkAreas.leer ohne Muster (Kriterium 20) — hier zusaetzlich ein
+    // Spec-Bereich ohne Muster, der anders als checkAreas kein Warnfall, sondern eine
+    // Schema-Sperre ist (Kriterium 23).
+    const specWert = { ...BEISPIEL.spec, bereiche: { ...BEISPIEL.spec.bereiche, leer: [] } };
+    const res = antwortVon(p, { ebene: "team", teil: "m5", aenderungen: [{ pfad: "spec", wert: specWert }] });
+    assert.equal(res.status, 200);
+
+    const specFehler = res.body.befunde.find((b) => b.pfad === "spec.bereiche.leer");
+    assert.ok(specFehler, JSON.stringify(res.body.befunde));
+    assert.equal(specFehler.art, "fehler");
+
+    const checkWarnung = res.body.befunde.find((b) => b.pfad === "checkAreas.leer");
+    assert.ok(checkWarnung, JSON.stringify(res.body.befunde));
+    assert.equal(checkWarnung.art, "warnung");
+  });
 });
