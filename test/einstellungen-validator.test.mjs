@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefeSchema, pruefe, zusatzregeln, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
+import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
@@ -105,6 +105,36 @@ test("[einstellungen-1] Zusatzregel: areas, das nicht in checkAreas steht", () =
   assert.equal(b.length, 1);
   assert.equal(b[0].pfad, "buildChecks[0].areas");
   assert.deepEqual(zusatzregeln({ buildChecks: [{ cmd: "x", areas: ["frontend"] }], checkAreas: { frontend: ["web/**"] } }), []);
+});
+
+test("[einstellungen-13] Zusatzregel: ein Bereich in checkAreas ohne Muster ist eine Warnung am Pfad checkAreas.<name>", () => {
+  const b = zusatzregeln({ checkAreas: { frontend: ["web/**"], backend: [] } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "checkAreas.backend");
+  assert.equal(b[0].art, "warnung");
+  assert.ok(typeof b[0].grund === "string" && b[0].grund.length > 0);
+});
+
+test("[einstellungen-13] ein Bereich ohne Muster hält das Speichern nicht auf", () => {
+  const config = { reviewModel: "claude-opus-5", checkAreas: { backend: [] } };
+  const befunde = pruefe(config, null);
+  assert.deepEqual(fehler(befunde), []);
+  assert.ok(befunde.some((b) => b.art === "warnung" && b.pfad === "checkAreas.backend"));
+});
+
+test("[einstellungen-13] nurFehler lässt eine Warnung durch — oneOf und not zählen sie nicht", () => {
+  // `not` trifft nur, wenn das Teilschema fehlerfrei ist. Ein unbekanntes Feld ist eine
+  // Warnung; wenn `nurFehler` sie zählte, kippte das Ergebnis dieser Prüfung.
+  const schema = { not: { type: "object", properties: { a: { type: "number" } }, additionalProperties: false } };
+  assert.ok(fehler(pruefeSchema({ a: 1, fremd: 2 }, schema)).length > 0, "die ausgeschlossene Form wird erkannt");
+});
+
+test("[einstellungen-13] vorgabeAus liefert den default des Schemas und sonst undefined", () => {
+  assert.equal(vorgabeAus("codeHost"), SCHEMA.properties.codeHost.default);
+  assert.equal(vorgabeAus("night.kette.label"), SCHEMA.properties.night.properties.kette.properties.label.default);
+  assert.equal(vorgabeAus("checkAreas"), undefined);
+  assert.equal(vorgabeAus("gibtEsNicht"), undefined);
+  assert.equal(vorgabeAus("night.gibtEsNicht.tiefer"), undefined);
 });
 
 test("[einstellungen-8] Zusatzregel: Stufe mit modell und kommando wird mit Pfad night.stufen.<stufe> abgewiesen", () => {

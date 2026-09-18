@@ -74,6 +74,12 @@ function passtTyp(wert, erwartet) {
 
 const pfadVon = (basis, schluessel) => (basis ? `${basis}.${schluessel}` : String(schluessel));
 
+/**
+ * Ein Befund. `art` ist `fehler` (hält das Speichern auf), `unbekannt` (ein Feld, das diese
+ * Oberfläche nicht kennt) oder `warnung` (ein Mangel, der genannt gehört, das Speichern aber
+ * nicht aufhält — Plan #721 E7). Nur `fehler` wertet `speichere` aus; die beiden anderen
+ * Arten sind Anzeige.
+ */
 function befund(pfad, grund, art = "fehler") {
   return { pfad, art, grund };
 }
@@ -149,8 +155,9 @@ function pruefeKnoten(wert, schema, pfad, out) {
 
 /**
  * Prüft einen Wert gegen ein Schema. Liefert `[{ pfad, art, grund }]` mit `art` aus
- * `fehler` oder `unbekannt`; `unbekannt` nur für Felder, die `additionalProperties: false`
- * ausschließt (Plan #674 E5).
+ * `fehler`, `unbekannt` oder `warnung`; `unbekannt` nur für Felder, die
+ * `additionalProperties: false` ausschließt (Plan #674 E5). `warnung` vergeben die Regeln
+ * über mehrere Felder (Plan #721 E7) — aus dem Schema allein entsteht keine.
  */
 export function pruefeSchema(wert, schema = SCHEMA) {
   const out = [];
@@ -204,6 +211,19 @@ function regelBereiche(config) {
   return out;
 }
 
+// Ein Bereich ohne Muster erfasst nichts — jeder buildChecks-Eintrag, der auf ihn zeigt,
+// läuft dann nie. Das ist kein Fehler: Die Config ist gültig, und ein Bereich, dessen Muster
+// noch fehlen, soll sich speichern lassen. Deshalb eine Warnung (Plan #721, Kriterium 20).
+function regelLeereBereiche(config) {
+  const out = [];
+  for (const [name, muster] of Object.entries(istObjekt(config.checkAreas) ? config.checkAreas : {})) {
+    if (Array.isArray(muster) && muster.length === 0) {
+      out.push(befund(`checkAreas.${name}`, "nennt kein Muster und erfasst damit nichts — Prüfungen, die auf diesen Bereich zeigen, laufen nie", "warnung"));
+    }
+  }
+  return out;
+}
+
 // Das Schema-oneOf fängt eine Stufe mit beiden oder keinem der Felder bereits ab, meldet aber
 // nur "passt auf keine der erlaubten Formen" — diese Regel benennt, welches Feld zu viel oder
 // zu wenig ist (Issue #708, E21).
@@ -233,7 +253,74 @@ function regelStufenModell(config) {
 /** Die Regeln über mehrere Felder, angewandt auf eine (gemischte) Konfiguration. */
 export function zusatzregeln(config) {
   if (!istObjekt(config)) return [];
-  return [...regelRollenzahl(config), ...regelPaare(config), ...regelBereiche(config), ...regelStufenFelder(config), ...regelStufenModell(config)];
+  return [...regelRollenzahl(config), ...regelPaare(config), ...regelBereiche(config), ...regelLeereBereiche(config), ...regelStufenFelder(config), ...regelStufenModell(config)];
+}
+
+// ============================================================
+// Rollenkatalog und Reviewer-Wahl (Plan #721 E3, E4, E5)
+// ============================================================
+
+/**
+ * Die Rollennamen, die eine Prüfstufe kennt — die Oberfläche bietet sie zur Wahl an.
+ *
+ * Nachbau statt Import: Diese Datei wird einzeln ausgeliefert und hat keine Nachbardatei.
+ * Die beiden Vorgaberollen aus `REVIEW_STUFEN_DEFAULT` in `kit/board.mjs` stehen bewusst
+ * nicht hier — sie sind die Bestandsvorgabe einer Config ohne `reviewStufen`-Block, keine
+ * Rolle, zu der es einen Prompt gäbe (E5).
+ */
+// SYNC: die Rollen samt Prompt stehen in skills/issue-review/SKILL.md — Änderungen dort nachziehen.
+export const ROLLEN_KATALOG = {
+  fachlich: ["form-beobachtbarkeit", "abgrenzung"],
+  plan: ["architektur-bestand", "schnitt-abhaengigkeiten"],
+  issue: ["pruefbarkeit"],
+};
+
+/**
+ * Löst einen Autor auf einen Reviewer-Namen auf: `/issues` schreibt die volle Modell-ID in
+ * den Kontext (`claude-opus-5`), `pairs` und `reviewers[].name` benutzen Kurznamen (`opus`).
+ */
+function autorNachName(alle, autor) {
+  if (!autor) return null;
+  const liste = alle || [];
+  if (liste.some((r) => r.name === autor)) return autor;
+  const perModell = liste.find((r) => r.model && r.model === autor);
+  return perModell ? perModell.name : null;
+}
+
+/**
+ * Wer bei dieser Besetzung wirklich prüft — der Nachbau von `pickReviewers` als reine
+ * Funktion, damit die Oberfläche die Wirkung einer Änderung zeigen kann, ohne etwas
+ * auszuführen (einstellungen-4).
+ *
+ * Nachbau statt Aufruf aus derselben Lage wie `mergeWorkflowConfig`: Die Datei wird einzeln
+ * ausgeliefert, arbeitet über fremde Projekte mit fremdem Kit-Stand und hat keine
+ * Nachbardatei zum Importieren. Gleich gehalten über den `SYNC:`-Kommentar auf beiden Seiten
+ * und test/einstellungen-wirkung.test.mjs, das beide Fassungen gegeneinander hält.
+ */
+// SYNC: das Original ist pickReviewers in kit/board.mjs — Änderungen dort nachziehen.
+export function waehleReviewer(reviewers, autor, anzahl = 2, pairs = {}) {
+  const alle = reviewers || [];
+  const aufgeloest = autorNachName(alle, autor);
+  const schluessel = aufgeloest ?? autor;
+  const gesperrt = new Set([schluessel]);
+
+  const eintrag = pairs?.[schluessel];
+  const genannt = Array.isArray(eintrag) ? eintrag.filter((n) => !gesperrt.has(n)) : [];
+  if (genannt.length > 0) {
+    const gewaehlt = genannt.map((n) => alle.find((r) => r.name === n)).filter(Boolean).slice(0, anzahl);
+    return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "pairs", autorAufgeloest: aufgeloest !== null };
+  }
+  const gewaehlt = alle.filter((r) => !gesperrt.has(r.name)).slice(0, anzahl);
+  return { gewaehlt, unterbesetzt: gewaehlt.length < anzahl, quelle: "regel", autorAufgeloest: aufgeloest !== null };
+}
+
+/**
+ * Der Vorgabewert eines Pfads aus dem eingebetteten Schema, sonst `undefined` — die Quelle
+ * der blassen Werte unter einem leeren Feld (Plan #721 E12). Das Schema ist die Quelle, nicht
+ * eine zweite Tabelle in der Oberfläche.
+ */
+export function vorgabeAus(pfad) {
+  return schemaFuer(pfad)?.default;
 }
 
 // ============================================================

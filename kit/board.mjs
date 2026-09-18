@@ -3263,6 +3263,7 @@ function aufloesenAutor(alle, autor) {
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
 
  */
+// SYNC: dieselbe Wahl bildet kit/einstellungen.mjs (waehleReviewer) fuer die Oberflaeche nach.
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
