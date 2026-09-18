@@ -1350,9 +1350,107 @@ dialog { border: 1px solid var(--rand); border-radius: var(--r-gross); box-shado
 dialog::backdrop { background: rgba(18,24,33,.35); }
 .leer { color: var(--text-schwach); }
 .stapel { display: flex; flex-direction: column; gap: 14px; }
+
+/* Die Klassen des verbindlichen Entwurfs docs/entwuerfe/einstellungen-ohne-json.html
+   (Issue #725). Farben, Schriften und das helle Schema bleiben, wie sie waren — neu sind
+   nur die Formen, die die Redaktoren brauchen. */
+.taste-klein { font-size: 11.5px; padding: 3px 9px; border-radius: 7px; }
+.taste-leise { background: transparent; box-shadow: none; border-color: transparent; color: var(--text-matt); }
+.taste-leise:hover { background: var(--platte-fuss); box-shadow: none; border-color: var(--rand); }
+.wahl-klein button { font-size: 10.5px; padding: 3px 9px; }
+.feldpfad { font-size: 11.5px; color: var(--text-schwach); }
+.nute { background: var(--nute); border: 1px solid var(--rand); border-radius: var(--r-mittel); box-shadow: var(--schatten-nute); padding: 6px; }
+.fuss { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--rand); font-size: 12.5px; color: var(--text-matt); flex-wrap: wrap; }
+.fuss .rechts { margin-left: auto; display: flex; gap: 8px; }
+.punkt { width: 8px; height: 8px; border-radius: 50%; background: var(--kupfer); display: inline-block; flex: none; }
+.befund-warn { border-left-color: var(--bernst); }
+.zeige-nicht { display: none !important; }
+
+/* Tabellenzeilen */
+.tabelle { display: flex; flex-direction: column; gap: 5px; }
+.zeile { display: grid; align-items: center; gap: 8px; background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-klein); padding: 6px 8px; box-shadow: 0 1px 0 var(--kante) inset; }
+.zeile-kopf { background: transparent; border-color: transparent; box-shadow: none; padding-block: 0; }
+.zeile-warn { border-color: color-mix(in srgb, var(--bernst) 60%, var(--rand)); background: #fffbf2; }
+.zeile-neu { border-style: dashed; background: transparent; }
+.griff { display: flex; flex-direction: column; gap: 0; }
+.griff button { font-size: 9px; line-height: 1; padding: 2px 4px; border: 1px solid transparent; background: transparent; color: var(--text-schwach); cursor: pointer; border-radius: 4px; }
+.griff button:hover { background: var(--nute); color: var(--text); }
+.rang { font-family: Archivo, sans-serif; font-stretch: 110%; font-weight: 700; font-size: 12px; color: var(--text-matt); text-align: center; background: var(--nute); border-radius: 5px; box-shadow: var(--schatten-nute); padding: 2px 0; }
+.rev-grid { grid-template-columns: 22px 28px minmax(90px,1fr) 150px minmax(120px,1.1fr) minmax(200px,2.6fr) 30px; }
+.rev-grid input { width: 100%; }
+.kommando { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x { border: none; background: transparent; color: var(--text-schwach); font-size: 15px; cursor: pointer; border-radius: 5px; padding: 0 5px; }
+.x:hover { color: var(--zinnob); background: #fbeaea; }
+
+/* Chips */
+.chip { display: inline-flex; align-items: center; gap: 5px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; background: linear-gradient(180deg, var(--platte-hoch), var(--platte-fuss)); border: 1px solid var(--rand-stark); border-radius: 999px; padding: 2px 4px 2px 6px; box-shadow: var(--schatten-taste); white-space: nowrap; }
+.chip .nr { font-family: Archivo, sans-serif; font-weight: 700; font-size: 10px; color: #fff; background: var(--kupfer); border-radius: 999px; width: 16px; height: 16px; display: inline-grid; place-items: center; }
+.chip .nr.aus { background: var(--grau); }
+.chip .x { font-size: 13px; padding: 0 3px; }
+.chip-geist { border-style: dashed; box-shadow: none; background: transparent; color: var(--text-schwach); }
+.chip-muster { border-radius: 6px; padding-left: 7px; }
+.chip-bereich { border-radius: 6px; border-color: color-mix(in srgb, var(--stahl) 45%, var(--rand)); background: #eef4fc; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.dazu { font-family: "IBM Plex Sans", sans-serif; font-size: 11.5px; color: var(--kupfer); border: 1px dashed color-mix(in srgb, var(--kupfer) 50%, var(--rand)); background: transparent; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+
+/* Paarungen */
+.paar-grid { grid-template-columns: 130px 24px minmax(0,1fr) minmax(210px, .9fr); }
+.pfeil { color: var(--text-schwach); text-align: center; }
+.wirkung { font-size: 11.5px; color: var(--text-matt); display: flex; flex-direction: column; gap: 1px; }
+.wirkung span b { color: var(--text); font-weight: 600; }
+
+/* Prüfstufen */
+.stufen { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.stufe { background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-mittel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.stufe h4 { margin: 0; font-family: Archivo, sans-serif; font-stretch: 110%; font-size: 13.5px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--rand-stark); border-radius: 8px; overflow: hidden; background: var(--platte-hoch); }
+.stepper button { border: none; background: var(--platte-fuss); width: 26px; height: 26px; font-size: 15px; cursor: pointer; color: var(--text-matt); }
+.stepper button:hover { color: var(--text); background: var(--nute); }
+.stepper span { min-width: 30px; text-align: center; font-family: Archivo, sans-serif; font-weight: 700; }
+.rolle { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 6px; align-items: center; }
+.rolle select { width: 100%; }
+
+/* Prüfkommandos und Bereiche */
+.check-grid { grid-template-columns: 22px minmax(220px,1.4fr) auto minmax(160px,1fr) 30px; }
+.bereich-grid { grid-template-columns: 130px minmax(0,1fr) 150px 30px; }
+.nutzung { font-size: 11.5px; color: var(--text-schwach); }
+.zwei-spalten { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.feld { display: flex; flex-direction: column; gap: 3px; }
+.feld label { font-size: 12px; font-weight: 600; color: var(--text-matt); }
+.feld .hilfe { font-size: 11.5px; color: var(--text-schwach); }
+.beispiel { font-size: 11.5px; background: var(--nute); border-radius: 6px; padding: 4px 8px; box-shadow: var(--schatten-nute); }
+.beispiel mark { background: #f6e3d3; color: var(--kupfer); border-radius: 3px; padding: 0 2px; }
+
+/* Nacht-Kette */
+.budget-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+.budget { background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-mittel); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.einheit { display: flex; align-items: center; gap: 6px; }
+.einheit input { width: 80px; }
+.einheit span { font-size: 12px; color: var(--text-schwach); }
+.leiste { display: flex; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: var(--schatten-nute); font-size: 10.5px; font-family: Archivo, sans-serif; font-weight: 600; color: #fff; }
+.leiste div { display: grid; place-items: center; white-space: nowrap; overflow: hidden; }
+
+/* Einfache Gruppen */
+.trig-grid { grid-template-columns: 130px minmax(0,1fr) 190px minmax(0,1fr); }
+.gilt { font-size: 12px; color: var(--text-matt); }
+.gilt b { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 500; color: var(--text); }
+.zeile input[type=text], .zeile input[type=number], .zeile input[type=date], .zeile select { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--platte-hoch); border: 1px solid var(--rand-stark); border-radius: var(--r-klein); padding: 5px 8px; min-width: 0; }
+@media (max-width: 900px) { .warte { grid-template-columns: 1fr; } .schiene { display: none; } .stufen, .budget-grid, .zwei-spalten { grid-template-columns: 1fr; } }
 `;
 
-const SEITEN_SKRIPT = String.raw`
+/**
+ * Das Browser-Skript als Folge benannter Bausteine (Plan #721 E10). `SEITEN_SKRIPT` wuchs mit
+ * jedem Redaktor, und ein einziges Literal von tausend Zeilen liest niemand mehr. Die
+ * Bausteine sind zugleich der Schnitt der Arbeitspakete: Das Grundgeruest, die Arbeitskopie,
+ * die Vorschau, die gemeinsamen Bedienelemente und die Platte stehen hier; jeder Redaktor
+ * bekommt seinen eigenen.
+ *
+ * Reihenfolge und Abhaengigkeit: Verkettet ergeben die Bausteine ein Skript. Alles, was ein
+ * anderer Baustein ruft, ist eine Funktionsdeklaration und damit unabhaengig von der
+ * Reihenfolge; `start` steht zuletzt und ist der einzige Baustein, der etwas ausfuehrt.
+ */
+export const SEITEN_BAUSTEINE = {
+  grundgeruest: String.raw`
 "use strict";
 const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
 const THEMEN_FOLGE = ["Prüfungen", "Board", "Review", "Nachtbetrieb", "Release", "Unbekannt"];
@@ -1416,6 +1514,7 @@ async function oeffne(name) {
   const r = await api("/api/projekt/" + encodeURIComponent(name));
   if (r.status !== 200) { melde("Projekt nicht ladbar (" + r.status + ").", "fehler"); return; }
   zustand = r.daten;
+  entwuerfe = {};
   melde("");
   zeichne();
 }
@@ -1442,18 +1541,390 @@ function zeichne() {
   if (zustand.aelterAlsOberflaeche) {
     buehne.append(el("div", "melder melder-warn", "Dieses Projekt nutzt einen älteren Kit-Stand (" + zustand.kitStand + "). Einstellungen, die erst mit einer neueren Fassung kamen, wertet es noch nicht aus."));
   }
-  // Die Teile werden hier noch in der vorhandenen Darstellung durchgezeichnet: je Eintrag
-  // eine Platte wie bisher. Die teilbezogenen Redaktoren folgen im Oberflächen-Rahmen.
-  for (const teil of zustand.themen[thema] || []) {
-    for (const eintrag of teil.eintraege) buehne.append(platte(eintrag));
+  for (const teil of zustand.themen[thema] || []) buehne.append(platte(teil));
+}
+
+`,
+
+  // ------------------------------------------------------------
+  // Die Arbeitskopie eines Teils (Kriterium 2)
+  // ------------------------------------------------------------
+  //
+  // Gezeichnet wird aus der Arbeitskopie, nicht aus dem geladenen Zustand: Ein Teil sammelt
+  // seine Änderungen, bis der Mensch speichert oder verwirft. Ohne sie wäre jede offene
+  // Änderung nach dem nächsten Neuzeichnen weg, und der Fuß hätte nichts zu zählen.
+  entwurf: String.raw`
+let entwuerfe = {};
+
+const gleichwertig = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+
+/** Der Schlüssel einer Teil-Instanz: Ein generischer Teil tritt je Pfad einmal auf. */
+function teilSchluessel(teil) {
+  return teil.kennung + "|" + teil.eintraege.map(function (e) { return e.pfad; }).join(",");
+}
+
+function arbeitskopie(teil) {
+  const s = teilSchluessel(teil);
+  if (!entwuerfe[s]) entwuerfe[s] = { team: {}, persoenlich: {} };
+  return entwuerfe[s];
+}
+
+/** Die Ebene, auf der der Teil gerade arbeitet — für alles ohne persönliche Abweichung Team. */
+function ebeneVon(teil) { return teil.ebene || "team"; }
+
+function eintragVon(teil, pfad) {
+  return teil.eintraege.filter(function (e) { return e.pfad === pfad; })[0] || null;
+}
+
+/** Der geladene Wert eines Pfads auf der Ebene des Teils — der Stand, auf den Verwerfen zeigt. */
+function geladenerWert(teil, pfad) {
+  const e = eintragVon(teil, pfad);
+  if (!e) return undefined;
+  return ebeneVon(teil) === "persoenlich" ? e.persoenlich : e.team;
+}
+
+function wertVon(teil, pfad) {
+  const kopie = arbeitskopie(teil)[ebeneVon(teil)];
+  return Object.prototype.hasOwnProperty.call(kopie, pfad) ? kopie[pfad] : geladenerWert(teil, pfad);
+}
+
+function setzeWert(teil, pfad, wert) {
+  arbeitskopie(teil)[ebeneVon(teil)][pfad] = wert;
+  vorschauAnfordern(teil);
+}
+
+/** Setzt die Arbeitskopie auf den geladenen Stand zurück; der Aufrufer zeichnet neu. */
+function verwirf(teil) {
+  delete entwuerfe[teilSchluessel(teil)];
+  teil.vorschau = null;
+}
+
+/** Die Pfade, deren Arbeitskopie vom geladenen Stand abweicht. */
+function offenePfade(teil) {
+  const kopie = arbeitskopie(teil)[ebeneVon(teil)];
+  return Object.keys(kopie).filter(function (pfad) { return !gleichwertig(kopie[pfad], geladenerWert(teil, pfad)); });
+}
+
+/** Der Auftrag dieses Teils: feinkörnige Pfade, damit Nachbarfelder ungespeichert bleiben. */
+function auftragVon(teil) {
+  const aenderungen = offenePfade(teil).map(function (pfad) { return { pfad: pfad, wert: wertVon(teil, pfad) }; });
+  return { ebene: ebeneVon(teil), teil: teil.kennung, aenderungen: aenderungen };
+}
+`,
+
+  // ------------------------------------------------------------
+  // Vorschau und Fuß eines Teils (Kriterien 2 und 3)
+  // ------------------------------------------------------------
+  //
+  // Die Prüfung liegt im Modul hinter POST …/vorschau (Plan #721 E1). Der Browser fragt sie
+  // entprellt an — beim Tippen soll nicht je Anschlag ein Lauf entstehen — und verteilt die
+  // Befunde an die Zeilen, die ihren Pfad nennen.
+  vorschau: String.raw`
+const VORSCHAU_MS = 250;
+let vorschauTimer = null;
+
+function vorschauAnfordern(teil) {
+  clearTimeout(vorschauTimer);
+  vorschauTimer = setTimeout(function () { vorschauHolen(teil); }, VORSCHAU_MS);
+}
+
+async function vorschauHolen(teil) {
+  const body = Object.assign({}, auftragVon(teil), { hashes: zustand.hashes });
+  const r = await api("/api/projekt/" + encodeURIComponent(zustand.name) + "/vorschau", { method: "POST", body: body });
+  if (r.status !== 200) { melde("Vorschau nicht möglich (" + r.status + ").", "warn"); return; }
+  teil.vorschau = r.daten;
+  befundeVerteilen(teil);
+  fussAktualisieren(teil);
+}
+
+const betrifft = function (befundPfad, pfad) {
+  return befundPfad === pfad || befundPfad.indexOf(pfad + ".") === 0 || befundPfad.indexOf(pfad + "[") === 0;
+};
+
+/** Die Befunde der Vorschau, die zu dieser Zeile gehören. */
+function befundeFuer(teil, pfad) {
+  const alle = (teil.vorschau && teil.vorschau.befunde) || [];
+  return alle.filter(function (b) { return betrifft(b.pfad, pfad); });
+}
+
+/** Die abgeleiteten Anzeigen dieses Teils — Wirkung, Beispiel, Nutzung, Zeitbudget. */
+function abgeleitetVon(teil) { return (teil.vorschau && teil.vorschau.abgeleitet) || {}; }
+
+/** Trägt die Befunde an die Zeilen, die ihren Pfad nennen, und markiert sie. */
+function befundeVerteilen(teil) {
+  if (!teil.element) return;
+  const stellen = teil.element.querySelectorAll("[data-pfad]");
+  for (const stelle of stellen) {
+    const behaelter = stelle.querySelector(".befunde");
+    if (!behaelter) continue;
+    const befunde = befundeFuer(teil, stelle.dataset.pfad);
+    behaelter.replaceChildren();
+    for (const b of befunde) behaelter.append(el("div", "befund" + (b.art === "fehler" ? "" : " befund-warn"), b.grund));
+    const zeile = stelle.querySelector(".zeile");
+    if (zeile) zeile.classList.toggle("zeile-warn", befunde.length > 0);
   }
 }
 
+/** Der Fuß eines Teils: Zahl und Inhalt der offenen Änderungen, Verwerfen und Speichern. */
+function fuss(teil) {
+  const f = el("div", "fuss");
+  teil.fussText = el("span", "", "");
+  const rechts = el("div", "rechts");
+  const verwerfen = el("button", "taste", "Verwerfen");
+  verwerfen.addEventListener("click", function () { verwirf(teil); zeichne(); });
+  const speichern = el("button", "taste taste-kupfer", "Speichern");
+  speichern.addEventListener("click", function () { sende(auftragVon(teil), teil); });
+  rechts.append(verwerfen, speichern);
+  f.append(el("span", "punkt"), teil.fussText, rechts);
+  teil.fussTasten = [verwerfen, speichern];
+  fussAktualisieren(teil);
+  return f;
+}
+
+function fussAktualisieren(teil) {
+  if (!teil.fussText) return;
+  const liste = (teil.vorschau && teil.vorschau.aenderungen) || [];
+  const offen = offenePfade(teil).length;
+  const saetze = liste.map(function (a) { return a.satz; }).join("; ");
+  teil.fussText.textContent = offen === 0
+    ? "keine offene Änderung"
+    : (liste.length || offen) + ((liste.length || offen) === 1 ? " Änderung" : " Änderungen") + (saetze ? ": " + saetze : "");
+  for (const taste of teil.fussTasten || []) taste.disabled = offen === 0;
+}
+`,
+
+  // ------------------------------------------------------------
+  // Gemeinsame Bedienelemente
+  // ------------------------------------------------------------
+  //
+  // Was jeder Redaktor braucht und keiner zweimal bauen soll. Die markierte Fehlerzeile ist
+  // kein Sonderfall der Rollen: Sie ist dasselbe Element für alle drei Fälle aus Kriterium 4a
+  // — unbekannter Name in einer Paarung, unbekannter Bereich an einem Prüfkommando,
+  // unbekannter Rollenname.
+  elemente: String.raw`
 function zeigeWert(titel, wert) {
   const w = el("div", "wert");
   w.append(el("div", "etikett", titel));
   w.append(el("pre", wert === undefined ? "leer" : "", wert === undefined ? "—" : JSON.stringify(wert, null, 2)));
   return w;
+}
+
+/**
+ * Teamwert, persönliche Abweichung und geltender Wert — nur dort, wo eine persönliche
+ * Abweichung überhaupt erlaubt ist (Kriterium 4b). Wo sie es nicht ist, gibt es nichts zu
+ * unterscheiden: Der Team-Wert steht unmittelbar in der Eingabe.
+ */
+function dreierAnzeige(eintrag) {
+  if (!eintrag.persoenlichErlaubt) return null;
+  const w = el("div", "werte");
+  w.append(zeigeWert("Team", eintrag.team), zeigeWert("Persönlich", eintrag.persoenlich), zeigeWert("Gilt", eintrag.gilt));
+  return w;
+}
+
+/** Die Wahl der Ebene — nur, wo eine persönliche Abweichung erlaubt ist. */
+function ebenenWahl(teil, eintrag, aufWechsel) {
+  if (!eintrag.persoenlichErlaubt) return null;
+  const wahl = el("div", "wahl wahl-klein");
+  const knopf = function (schluessel, text) {
+    const b = el("button", "", text);
+    b.setAttribute("aria-selected", String(ebeneVon(teil) === schluessel));
+    b.addEventListener("click", function () { teil.ebene = schluessel; aufWechsel(); });
+    return b;
+  };
+  wahl.append(knopf("team", "Team"), knopf("persoenlich", "Persönlich"));
+  return wahl;
+}
+
+/**
+ * Eine Zeile samt Befund-Behälter. Der Pfad steht am Behälter, nicht an der Zeile: Die
+ * Befunde stehen unter der Zeile und nicht als weitere Gitterspalte in ihr.
+ */
+function zeilenGruppe(pfad, gitter) {
+  const gruppe = el("div", "");
+  if (pfad) gruppe.dataset.pfad = pfad;
+  const zeile = el("div", "zeile" + (gitter ? " " + gitter : ""));
+  gruppe.append(zeile, el("div", "befunde"));
+  return { gruppe: gruppe, zeile: zeile };
+}
+
+function entfernenKnopf(titel, tun) {
+  const x = el("button", "x", "×");
+  x.title = titel;
+  x.addEventListener("click", tun);
+  return x;
+}
+
+/** Der Griff zum Verschieben einer Zeile; die Reihenfolge steuert die Auswahl. */
+function griff(i, anzahl, verschieben) {
+  const g = el("div", "griff");
+  const hoch = el("button", "", "▲");
+  const runter = el("button", "", "▼");
+  hoch.title = "nach oben";
+  runter.title = "nach unten";
+  hoch.disabled = i === 0;
+  runter.disabled = i === anzahl - 1;
+  hoch.addEventListener("click", function () { verschieben(i, i - 1); });
+  runter.addEventListener("click", function () { verschieben(i, i + 1); });
+  g.append(hoch, runter);
+  return g;
+}
+
+/**
+ * Eine Tabelle mit einer Zeile je Eintrag. bauen(wert, i) liefert die Zellen, das
+ * Verschieben und das Entfernen kommen vom Element.
+ */
+function zeilentabelle(o) {
+  const t = el("div", "tabelle");
+  if (o.kopf) {
+    const k = el("div", "zeile zeile-kopf etikett " + o.gitter);
+    for (const titel of o.kopf) k.append(el("span", "", titel));
+    t.append(k);
+  }
+  (o.werte || []).forEach(function (wert, i) {
+    const g = zeilenGruppe(o.pfad ? o.pfad + "[" + i + "]" : null, o.gitter);
+    if (o.verschieben) g.zeile.append(griff(i, o.werte.length, o.verschieben));
+    for (const zelle of o.bauen(wert, i)) g.zeile.append(zelle);
+    if (o.entfernen) g.zeile.append(entfernenKnopf("Entfernen", function () { o.entfernen(i); }));
+    t.append(g.gruppe);
+  });
+  if (o.neu) t.append(o.neu());
+  return t;
+}
+
+/** Eine Liste von Chips mit Nummer; ab dem Index "aus" sind sie ausgegraut — sie kommen nicht zum Zug. */
+function chipListe(o) {
+  const liste = el("div", "chips");
+  (o.werte || []).forEach(function (wert, i) {
+    const c = el("span", "chip");
+    c.append(el("span", "nr" + (o.aus !== undefined && i >= o.aus ? " aus" : ""), String(i + 1)));
+    c.append(document.createTextNode(wert));
+    if (o.umordnen && i > 0) {
+      const vor = el("button", "x", "‹");
+      vor.title = "nach vorn";
+      vor.addEventListener("click", function () { o.umordnen(i, i - 1); });
+      c.append(vor);
+    }
+    if (o.entfernen) c.append(entfernenKnopf("Herausnehmen", function () { o.entfernen(i); }));
+    liste.append(c);
+  });
+  if (o.frei && o.frei.length > 0 && o.dazu) {
+    const wahl = el("select", "dazu");
+    wahl.append(el("option", "", o.dazuText || "+ hinzufügen"));
+    for (const name of o.frei) wahl.append(el("option", "", name));
+    wahl.addEventListener("change", function () { if (wahl.selectedIndex > 0) o.dazu(wahl.value); });
+    liste.append(wahl);
+  }
+  return liste;
+}
+
+/** Ein Zähler mit Ober- und Untergrenze; die Grenze bremst nur das Hinaufzählen (Plan E6). */
+function zaehler(o) {
+  const s = el("div", "stepper");
+  const minus = el("button", "", "−");
+  const zahl = el("span", "", String(o.wert));
+  const plus = el("button", "", "+");
+  minus.disabled = o.wert <= o.min;
+  plus.disabled = o.wert >= o.max;
+  minus.addEventListener("click", function () { o.aendern(o.wert - 1); });
+  plus.addEventListener("click", function () { o.aendern(o.wert + 1); });
+  s.append(minus, zahl, plus);
+  return s;
+}
+
+/** Eine Liste von Mustern als Chips, mit einem Feld zum Anhängen. */
+function musterListe(o) {
+  const liste = el("div", "chips nute");
+  (o.muster || []).forEach(function (muster, i) {
+    const c = el("span", "chip chip-muster");
+    c.append(document.createTextNode(muster));
+    if (o.entfernen) c.append(entfernenKnopf("Muster entfernen", function () { o.entfernen(i); }));
+    liste.append(c);
+  });
+  if (o.dazu) {
+    const feld = el("input");
+    feld.type = "text";
+    feld.placeholder = "+ Muster, Enter";
+    feld.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || feld.value.trim() === "") return;
+      e.preventDefault();
+      o.dazu(feld.value.trim());
+    });
+    liste.append(feld);
+  }
+  return liste;
+}
+
+/** Ein Feld, dessen leerer Zustand den Vorgabewert aus dem Schema blass zeigt (Plan E12). */
+function feldMitVorgabe(o) {
+  const feld = el("input");
+  feld.type = o.typ || "text";
+  feld.value = o.wert === undefined || o.wert === null ? "" : String(o.wert);
+  if (o.vorgabe !== undefined) feld.placeholder = String(o.vorgabe) + " (Vorgabe)";
+  feld.addEventListener("input", function () {
+    const roh = feld.value.trim();
+    if (roh === "") { o.aendern(undefined); return; }
+    o.aendern(o.typ === "number" ? Number(roh) : roh);
+  });
+  return feld;
+}
+
+/**
+ * Ein Bestandswert, den das Kit nicht kennt (Plan E6): Er steht markiert da, nennt seinen
+ * Grund und lässt sich nur entfernen oder ersetzen. Alles andere an der Einstellung bleibt
+ * bearbeitbar — ein Altfehler hält das Speichern nicht auf.
+ */
+function fehlerzeile({ wert, grund, wahl, ersetzen, entfernen, gitter }) {
+  const g = zeilenGruppe(null, gitter);
+  g.zeile.classList.add("zeile-warn");
+  g.zeile.append(el("span", "mono", String(wert)));
+  if (wahl && wahl.length > 0 && ersetzen) {
+    const auswahl = el("select");
+    auswahl.append(el("option", "", "ersetzen durch …"));
+    for (const name of wahl) auswahl.append(el("option", "", name));
+    auswahl.addEventListener("change", function () { if (auswahl.selectedIndex > 0) ersetzen(auswahl.value); });
+    g.zeile.append(auswahl);
+  }
+  if (entfernen) g.zeile.append(entfernenKnopf("Entfernen", entfernen));
+  g.gruppe.querySelector(".befunde").append(el("div", "befund befund-warn", grund));
+  return g.gruppe;
+}
+
+/** Ein Wert in lesbarer Form, ohne Dateischreibweise. */
+function lesbarerWert(wert) {
+  if (wert === undefined || wert === null) return el("span", "leer", "—");
+  if (Array.isArray(wert)) {
+    return chipListe({ werte: wert.map(function (w) { return typeof w === "object" ? (w.name || w.cmd || "…") : String(w); }) });
+  }
+  if (typeof wert === "object") {
+    return chipListe({ werte: Object.keys(wert) });
+  }
+  return el("span", "mono", String(wert));
+}
+
+/**
+ * Die Anzeige in Dateischreibweise — der Rückfall für night.modelle und für alles, was das
+ * Kit nicht kennt. Für ein bekanntes zusammengesetztes Feld entsteht sie nicht mehr.
+ */
+function dateischreibweise(teil, eintrag) {
+  const g = zeilenGruppe(eintrag.pfad, "");
+  g.zeile.style.display = "block";
+  const editor = el("div", "editor");
+  const wahl = ebenenWahl(teil, eintrag, function () { zeichne(); });
+  if (wahl) editor.append(wahl);
+  const e = eingabe(eintrag.schema, wertVon(teil, eintrag.pfad));
+  const uebernimm = function () {
+    try { setzeWert(teil, eintrag.pfad, e.lies()); } catch (err) { melde("Kein gültiges JSON: " + err.message, "fehler"); }
+  };
+  e.feld.addEventListener("input", uebernimm);
+  e.feld.addEventListener("change", uebernimm);
+  editor.append(e.feld);
+  if (eintrag.persoenlich !== undefined) {
+    const entfernen = el("button", "taste", "Persönliche Abweichung entfernen");
+    entfernen.addEventListener("click", function () { sende({ ebene: "persoenlich", entfernt: [eintrag.pfad] }, teil); });
+    editor.append(entfernen);
+  }
+  g.zeile.append(editor);
+  return g.gruppe;
 }
 
 /** Ein Eingabefeld passend zum Schema; liefert Element und Leser. */
@@ -1501,48 +1972,116 @@ function eingabe(schema, wert) {
   return { feld: json, lies: function () { return json.value.trim() === "" ? undefined : JSON.parse(json.value); } };
 }
 
-function platte(eintrag) {
-  const p = el("section", "platte");
-  const kopf = el("div", "platte-kopf");
-  kopf.append(el("h3", "platte-pfad mono", eintrag.pfad), el("span", "etikett", eintrag.persoenlichErlaubt ? "Team oder persönlich" : "gilt für das Team"));
-  p.append(kopf);
-  if (eintrag.beschreibung) p.append(el("p", "erklaerung", eintrag.beschreibung));
-  const werte = el("div", "werte");
-  werte.append(zeigeWert("Team", eintrag.team), zeigeWert("Persönlich", eintrag.persoenlich), zeigeWert("Gilt", eintrag.gilt));
-  p.append(werte);
-  const befunde = el("div");
-  for (const b of eintrag.befunde) befunde.append(el("div", "befund" + (b.art === "unbekannt" ? " befund-unbekannt" : ""), b.pfad + ": " + b.grund));
-  p.append(befunde);
-  if (!zustand.bearbeitbar) return p;
+`,
 
-  const editor = el("div", "editor");
-  const ebene = el("select");
-  const team = el("option", "", "Team");
-  team.value = "team";
-  ebene.append(team);
-  if (eintrag.persoenlichErlaubt) {
-    const pers = el("option", "", "Persönlich");
-    pers.value = "persoenlich";
-    ebene.append(pers);
+  // ------------------------------------------------------------
+  // Die Platte eines Teils und die Registry der Redaktoren
+  // ------------------------------------------------------------
+  //
+  // Nicht mehr das Schema eines Feldes entscheidet über seine Eingabe, sondern der Teil, zu
+  // dem es gehört. Die Redaktoren der sieben Teile des Entwurfs entstehen je in einem eigenen
+  // Arbeitspaket; bis dahin zeigt `redaktorEntsteht` ihren geltenden Wert lesbar — und nicht
+  // mehr als Textblock in Dateischreibweise.
+  platte: String.raw`
+const REDAKTOREN = {
+  reviewer: redaktorEntsteht,
+  paarungen: redaktorEntsteht,
+  pruefstufen: redaktorEntsteht,
+  pruefkommandos: redaktorEntsteht,
+  spezifikation: redaktorEntsteht,
+  nachtkette: redaktorEntsteht,
+  gruppe: redaktorEntsteht,
+  wert: redaktorWert,
+  text: redaktorText,
+};
+
+function platte(teil) {
+  const p = el("section", "platte");
+  teil.element = p;
+  const erster = teil.eintraege[0];
+  const kopf = el("div", "platte-kopf");
+  kopf.append(el("h3", "platte-pfad", teil.titel || erster.pfad));
+  if (teil.titel) kopf.append(el("span", "feldpfad mono", teil.eintraege.map(function (e) { return e.pfad; }).join(" · ")));
+  kopf.append(el("span", "etikett", erster.persoenlichErlaubt ? "Team oder persönlich" : "gilt für das Team"));
+  p.append(kopf);
+  if (teil.eintraege.length === 1 && erster.beschreibung) p.append(el("p", "erklaerung", erster.beschreibung));
+
+  const baue = REDAKTOREN[teil.redaktor] || redaktorEntsteht;
+  p.append(baue(teil));
+
+  // Was schon in der Datei stand, steht am Teil — die Befunde der Vorschau kommen später
+  // dazu und ersetzen sie an der betroffenen Zeile.
+  const alt = el("div");
+  for (const eintrag of teil.eintraege) {
+    for (const b of eintrag.befunde) alt.append(el("div", "befund" + (b.art === "fehler" ? "" : " befund-unbekannt"), b.pfad + ": " + b.grund));
   }
-  const start = eintrag.persoenlich !== undefined ? eintrag.persoenlich : eintrag.team;
-  const e = eingabe(eintrag.schema, start);
-  const speichern = el("button", "taste taste-kupfer", "Speichern");
-  speichern.addEventListener("click", function () {
-    let wert;
-    try { wert = e.lies(); } catch (err) { befunde.replaceChildren(el("div", "befund", "Kein gültiges JSON: " + err.message)); return; }
-    sende({ ebene: ebene.value, aenderungen: [{ pfad: eintrag.pfad, wert: wert }] }, befunde);
-  });
-  editor.append(ebene, e.feld, speichern);
-  if (eintrag.persoenlich !== undefined) {
-    const entfernen = el("button", "taste", "Persönliche Abweichung entfernen");
-    entfernen.addEventListener("click", function () { sende({ ebene: "persoenlich", entfernt: [eintrag.pfad] }, befunde); });
-    editor.append(entfernen);
-  }
-  p.append(editor);
+  p.append(alt);
+  if (zustand.bearbeitbar) p.append(fuss(teil));
+  befundeVerteilen(teil);
   return p;
 }
+`,
 
+  // Ein einfacher Wert: ein Feld, passend zum Schema.
+  redaktorWert: String.raw`
+function redaktorWert(teil) {
+  const eintrag = teil.eintraege[0];
+  const kasten = el("div", "stapel");
+  const drei = dreierAnzeige(eintrag);
+  if (drei) kasten.append(drei);
+  const g = zeilenGruppe(eintrag.pfad, "");
+  const editor = el("div", "editor");
+  const wahl = ebenenWahl(teil, eintrag, function () { zeichne(); });
+  if (wahl) editor.append(wahl);
+  const e = eingabe(eintrag.schema, wertVon(teil, eintrag.pfad));
+  const uebernimm = function () { setzeWert(teil, eintrag.pfad, e.lies()); };
+  e.feld.addEventListener("input", uebernimm);
+  e.feld.addEventListener("change", uebernimm);
+  editor.append(e.feld);
+  if (eintrag.persoenlich !== undefined) {
+    const entfernen = el("button", "taste", "Persönliche Abweichung entfernen");
+    entfernen.addEventListener("click", function () { sende({ ebene: "persoenlich", entfernt: [eintrag.pfad] }, teil); });
+    editor.append(entfernen);
+  }
+  g.zeile.style.display = "block";
+  g.zeile.append(editor);
+  kasten.append(g.gruppe);
+  return kasten;
+}
+`,
+
+  // Der Rückfall: die Anzeige in Dateischreibweise für `night.modelle` und unbekannte Felder.
+  redaktorText: String.raw`
+function redaktorText(teil) {
+  const eintrag = teil.eintraege[0];
+  const kasten = el("div", "stapel");
+  const drei = dreierAnzeige(eintrag);
+  if (drei) kasten.append(drei);
+  kasten.append(dateischreibweise(teil, eintrag));
+  return kasten;
+}
+`,
+
+  // Ein Teil, dessen Redaktor noch aussteht: lesbar, aber ohne Eingabe.
+  redaktorEntsteht: String.raw`
+function redaktorEntsteht(teil) {
+  const kasten = el("div", "stapel");
+  const t = el("div", "tabelle");
+  for (const eintrag of teil.eintraege) {
+    const g = zeilenGruppe(eintrag.pfad, "");
+    g.zeile.append(el("span", "feldpfad mono", eintrag.pfad), lesbarerWert(eintrag.gilt));
+    t.append(g.gruppe);
+  }
+  kasten.append(t);
+  kasten.append(el("p", "erklaerung", "Die Eingabe für diesen Teil entsteht mit einem der folgenden Arbeitspakete. Bis dahin steht der geltende Wert hier zum Lesen."));
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // Rückfragen und Speichern eines Teils
+  // ------------------------------------------------------------
+  rueckfrage: String.raw`
 function dialog(titel, zeilen, knoepfe) {
   const d = document.getElementById("dialog");
   d.replaceChildren(el("h2", "", titel));
@@ -1557,35 +2096,41 @@ function dialog(titel, zeilen, knoepfe) {
   d.showModal();
 }
 
-async function sende(auftrag, befunde, bestaetigt) {
+async function sende(auftrag, teil, bestaetigt) {
   const body = Object.assign({}, auftrag, { hashes: zustand.hashes, bestaetigt: bestaetigt || [] });
   const r = await api("/api/projekt/" + encodeURIComponent(zustand.name), { method: "POST", body: body });
-  if (r.status === 200) { zustand = r.daten; melde("Gespeichert.", ""); zeichne(); return; }
+  if (r.status === 200) { zustand = r.daten; entwuerfe = {}; melde("Gespeichert.", ""); zeichne(); return; }
   if (r.status === 422) {
-    befunde.replaceChildren();
-    for (const b of r.daten.befunde) befunde.append(el("div", "befund", b.pfad + ": " + b.grund));
+    teil.vorschau = Object.assign({}, teil.vorschau, { befunde: r.daten.befunde });
+    befundeVerteilen(teil);
+    melde("Nicht gespeichert — die markierten Zeilen nennen den Grund.", "fehler");
     return;
   }
   if (r.status === 409 && r.daten && r.daten.art === "bestaetigung") {
     const pfade = r.daten.abgeschaltet.map(function (a) { return a.pfad; });
     dialog("Schutzfunktion abschalten?", r.daten.abgeschaltet.map(function (a) { return a.text; }), [
       { text: "Abbrechen" },
-      { text: "Trotzdem speichern", kupfer: true, tun: function () { sende(auftrag, befunde, pfade); } },
+      { text: "Trotzdem speichern", kupfer: true, tun: function () { sende(auftrag, teil, pfade); } },
     ]);
     return;
   }
   if (r.status === 409 && r.daten && r.daten.art === "geaendert") {
     dialog("Datei wurde geändert", ["Die Einstellungsdatei hat sich seit dem Laden geändert. Deine Änderung wurde nicht gespeichert."], [
       { text: "Meine Änderung verwerfen", tun: function () { oeffne(zustand.name); } },
-      { text: "Neu laden und erneut anwenden", kupfer: true, tun: async function () { await oeffne(zustand.name); sende(auftrag, befunde, bestaetigt); } },
+      { text: "Neu laden und erneut anwenden", kupfer: true, tun: async function () { await oeffne(zustand.name); sende(auftrag, teil, bestaetigt); } },
     ]);
     return;
   }
   melde("Speichern nicht möglich (" + r.status + "): " + JSON.stringify(r.daten), "fehler");
 }
+`,
 
+  start: String.raw`
 ladeProjekte();
-`;
+`,
+};
+
+const SEITEN_SKRIPT = Object.values(SEITEN_BAUSTEINE).join("\n");
 
 const SEITEN_KOERPER = `<div class="warte">
   <nav class="schiene" aria-label="Projekte">

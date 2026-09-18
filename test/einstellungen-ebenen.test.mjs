@@ -7,11 +7,18 @@ import { ebenen, aenderungAnwenden } from "../kit/einstellungen.mjs";
 
 const TEAM = { codeHost: "github", reviewModel: "claude-opus-5", reviewScope: "diff", buildChecks: ["node --test"], toolbox: { host: "https://x" } };
 
-test("[einstellungen-3] je Einstellung stehen Teamwert, persönliche Abweichung und geltender Wert", () => {
+test("[einstellungen-3] die drei Werte stehen, wo eine persönliche Abweichung erlaubt ist; sonst trägt der Team-Wert allein", () => {
   const e = ebenen(TEAM, { reviewScope: "full", toolbox: { tokenFile: ".tok" } });
   assert.deepEqual(e.reviewScope, { team: "diff", persoenlich: "full", gilt: "full", persoenlichErlaubt: true });
-  assert.deepEqual(e.codeHost, { team: "github", persoenlich: undefined, gilt: "github", persoenlichErlaubt: false });
   assert.deepEqual(e["toolbox.tokenFile"], { team: undefined, persoenlich: ".tok", gilt: ".tok", persoenlichErlaubt: true });
+  // Wo keine Abweichung erlaubt ist, gibt es nichts zu unterscheiden: Was gilt, ist der
+  // Team-Wert — er steht unmittelbar in der Eingabe, nicht neben zwei weiteren Kästen
+  // (Kriterium 4b der fachlichen Quelle #705).
+  for (const pfad of ["codeHost", "buildChecks", "mainBranch"]) {
+    assert.equal(e[pfad].persoenlichErlaubt, false, pfad);
+    assert.equal(e[pfad].persoenlich, undefined, pfad);
+    assert.deepEqual(e[pfad].gilt, e[pfad].team, `${pfad}: der geltende Wert ist der Team-Wert`);
+  }
 });
 
 test("[einstellungen-3] persönlich speichern geht nur für Felder der Allowlist", () => {
