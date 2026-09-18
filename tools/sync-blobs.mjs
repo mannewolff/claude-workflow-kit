@@ -64,6 +64,10 @@ const BLOBS = [
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
   { constName: "SPEC_MJS_B64", source: join(root, "kit", "spec.mjs") },
+  // Preistabelle des Sitzungs-Melders (Issue #734). Eigene Datei, weil sie
+  // Pflegedaten mit eigenem Stand traegt und kein Code ist; board.mjs laedt sie als
+  // Nachbardatei und kommt ohne sie aus (dann eben ohne Dollarbetrag).
+  { constName: "PREISE_MJS_B64", source: join(root, "kit", "preise.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
   // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
@@ -76,7 +80,7 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.

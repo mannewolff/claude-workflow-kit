@@ -25,9 +25,10 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
-// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441),
-// faellt hier genau eine Stelle an statt drei ueber die Datei verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
+// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441,
+// preise.mjs mit Issue #734), faellt hier genau eine Stelle an statt drei ueber die
+// Datei verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -67,6 +68,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
     `const SPEC_MJS_B64 = "";`,
+    `const PREISE_MJS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));

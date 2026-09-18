@@ -122,6 +122,14 @@ Nutzung:
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
+  node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
+      Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
+      (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus
+      .claude/wegmarken.tsv. Ohne --protokoll kommt der Pfad als 'transcript_path'
+      aus dem Hook-Rumpf auf stdin. --complete meldet das Sitzungsende und leert die
+      Wegmarken; ohne das Flag wird hoechstens alle fuenf Minuten gemeldet.
+      Schweigt ohne Fehler bei gesetztem KIT_AGENT_MODEL (der Nacht-Runner meldet
+      selbst) und ohne Toolbox-Token.
 
   node board.mjs --version
 
@@ -3797,6 +3805,407 @@ async function dispatchNightrun(command, args) {
   }
 }
 
+// ============================================================
+// Sitzungs-Melder fuer den interaktiven Verbrauch (Issue #734)
+// ============================================================
+//
+// WARUM HIER UND NICHT IN EINER EIGENEN kit/sitzung.mjs (die Entscheidung, die das
+// Arbeitspaket offen liess): Der Melder braucht vier Dinge, die alle in dieser Datei
+// liegen und keine davon ist exportiert — `loadConfig`, `resolveToolboxToken`,
+// `ToolboxIssueTracker._fetch` und `agentModelHeader`. Eine Nachbardatei muesste sie
+// entweder nachbauen (zwei Wege zum selben Board, die auseinanderlaufen) oder ihre
+// Freigabe erzwingen (der interne Adapter wird oeffentlicher Vertrag). Dazu kommt:
+// Die Aussagen board-11 bis board-15 gehoeren laut `spec.bereiche` zum Bereich
+// 'board', und ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im
+// Installer — Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt
+// trotzdem daneben (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein
+// Code, und genau deshalb hat sie eine eigene Datei verdient.
+//
+// Der Vertrag ist derselbe wie beim Nachtlauf (`POST /api/kanban/night-runs`,
+// mannewolff/kanban-kit#1012), nur mit `kind`/`mode` INTERACTIVE und dem
+// Sitzungsstart als fachlichem Schluessel.
+
+const SITZUNG_ART = "INTERACTIVE";
+const SITZUNG_ZUSTAND = "GREEN";
+const SITZUNG_DROSSEL_MS = 5 * 60 * 1000;
+const SITZUNG_STAND_DATEI = "sitzung-meldung.json";
+
+// Die Preistabelle als Nachbardatei, nach demselben Muster wie spec.mjs oben:
+// bedingtes `await import`, damit board.mjs auch als allein kopierte Datei laeuft.
+// Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben keinen Betrag.
+// Das ist genau das Verhalten, das board-15 fuer ein unbekanntes Modell verlangt,
+// und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
+const NACHBAR_PREISE = join(NACHBAR_DIR, "preise.mjs");
+const { preisFuer } = existsSync(NACHBAR_PREISE)
+  ? await import(pathToFileURL(NACHBAR_PREISE).href)
+  : { preisFuer: () => null };
+
+/**
+ * Liest das Sitzungsprotokoll von Claude Code (JSON Lines).
+ *
+ * DER KERN IST DIE ENTDOPPLUNG. Ein Zug steht mit einer Zeile je Inhaltsblock im
+ * Protokoll — Text, Werkzeugaufruf, Gedanke —, und JEDE dieser Zeilen traegt dieselbe
+ * `message.id` und dieselbe `usage`. An den Protokollen dieses Projekts gemessen
+ * (2026-09-18): 90 Zeilen mit usage auf 40 Zuege. Wer je Zeile addiert, meldet das
+ * Zwei- bis Sechsfache des Verbrauchs. Es gewinnt die letzte Zeile einer id: Waehrend
+ * ein Zug laeuft, waechst seine usage, und der letzte Stand ist der vollstaendige.
+ *
+ * `start` ist der frueheste Zeitstempel im Protokoll — auch aus einer Zeile ohne
+ * usage, denn die Sitzung beginnt mit der Eingabe des Menschen, nicht mit der ersten
+ * Antwort. Er ist der fachliche Schluessel der Meldung; derselbe Schluessel ersetzt
+ * am Endpunkt die vorige Meldung derselben Sitzung.
+ *
+ * Unlesbare Zeilen werden gezaehlt, nicht geworfen: Ein Protokoll, das gerade
+ * geschrieben wird, endet regelmaessig mitten in einer Zeile, und eine halbe Zeile
+ * darf keine Meldung kosten. Die Zahl geht als `unparsedCount` in den Vertrag.
+ */
+export function sitzungProtokoll(text) {
+  const proId = new Map();
+  let start = null;
+  let unlesbar = 0;
+  for (const zeile of String(text ?? "").split(/\r\n|\r|\n/)) {
+    if (zeile.trim() === "") continue;
+    let obj;
+    try { obj = JSON.parse(zeile); } catch { unlesbar++; continue; }
+    const zeit = Date.parse(obj?.timestamp);
+    if (Number.isFinite(zeit) && (start === null || zeit < start)) start = zeit;
+    const zug = sitzungZug(obj, zeit);
+    if (zug) proId.set(zug.id, zug);
+  }
+  return {
+    start: start === null ? null : new Date(start).toISOString(),
+    zuege: [...proId.values()].sort((a, b) => a.zeit - b.zeit),
+    unlesbar,
+  };
+}
+
+/** Ein Protokolleintrag als Zug, oder `null`, wenn er keine Mengen traegt. */
+function sitzungZug(obj, zeit) {
+  const usage = obj?.message?.usage;
+  const id = obj?.message?.id;
+  if (!usage || typeof usage !== "object" || typeof id !== "string" || !Number.isFinite(zeit)) return null;
+  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  // Der Zwischenspeicher wird nach Haltedauer getrennt gefuehrt: Der Stunden-Speicher
+  // kostet das Doppelte der Eingabe, der Fuenf-Minuten-Speicher das 1,25-fache. Das
+  // Protokoll fuehrt beide Mengen unter `cache_creation`, und ihre Summe ist immer
+  // `cache_creation_input_tokens` (an allen Protokollen dieses Projekts geprueft).
+  // Fehlt die Aufschluesselung, faellt alles auf den Fuenf-Minuten-Satz — die Angabe
+  // gibt es seit es die Stunden-Variante gibt, und der kleinere Satz behauptet im
+  // Zweifel weniger.
+  const teile = usage.cache_creation;
+  const erzeugt = zahl(usage.cache_creation_input_tokens);
+  const cache1h = teile && typeof teile === "object" ? zahl(teile.ephemeral_1h_input_tokens) : 0;
+  return {
+    id,
+    zeit,
+    modell: typeof obj?.message?.model === "string" ? obj.message.model : null,
+    eingabe: zahl(usage.input_tokens),
+    ausgabe: zahl(usage.output_tokens),
+    cache1h,
+    cache5m: erzeugt - cache1h,
+    cacheGelesen: zahl(usage.cache_read_input_tokens),
+  };
+}
+
+// Die beiden Spalten, die `issue move` vermerkt (WEGMARKEN_SPALTEN oben). `in_review`
+// SCHLIESST den Abschnitt seiner Karte, `in_progress` oeffnet ihn.
+const WEGMARKE_SCHLIESST = "in_review";
+
+/**
+ * Uebersetzt `.claude/wegmarken.tsv` in Abschnitte `{ karte, von, bis }` in
+ * Millisekunden; `bis === null` heisst "bis zum Ende der Sitzung".
+ *
+ * ZWEI DURCHGAENGE, UND DAS IST DER GANZE PUNKT. Die Datei ist eine flache,
+ * angehaengte Liste ohne Sitzungskennung — laufen zwei Sitzungen im selben
+ * Verzeichnis, mischen sich ihre Wegmarken darin. Nur die Paarung aus eigenem
+ * `in_progress` und eigenem `in_review` macht sichtbar, dass zwei Karten
+ * GLEICHZEITIG offen waren (E21). Wer die Marken bloss der Reihe nach als Grenzen
+ * liest, sieht diese Ueberlappung nie und schreibt den Verbrauch der einen Sitzung
+ * der Karte der anderen zu.
+ *
+ * Durchgang 1 paart jedes `in_review` mit dem juengsten offenen `in_progress`
+ * derselben Karte — das ergibt die geschlossenen Abschnitte.
+ * Durchgang 2 nimmt die `in_progress` ohne eigenen Abschluss: Sie enden an der
+ * naechsten Wegmarke einer ANDEREN Karte (der Normalfall der gestaffelten Arbeit) —
+ * oder gar nicht, wenn keine mehr kommt.
+ *
+ * Was kein Abschnitt abdeckt oder was zwei Abschnitte abdecken, bekommt keine Karte.
+ * Geraten wird nicht; die Zuordnung selbst macht `sitzungMeldung`.
+ */
+export function wegmarkenAbschnitte(text) {
+  const marken = [];
+  for (const zeile of String(text ?? "").split(/\r\n|\r|\n/)) {
+    const [zeitText, karte, status] = zeile.split("\t");
+    const zeit = Date.parse(zeitText);
+    if (!Number.isFinite(zeit) || !karte || !WEGMARKEN_SPALTEN.has(status)) continue;
+    marken.push({ zeit, karte, status });
+  }
+  marken.sort((a, b) => a.zeit - b.zeit);
+
+  const abschnitte = [];
+  const offen = new Map(); // karte -> Index der eroeffnenden Marke
+  for (const [i, marke] of marken.entries()) {
+    if (marke.status === WEGMARKE_SCHLIESST) {
+      const start = offen.get(marke.karte);
+      if (start !== undefined) {
+        abschnitte.push({ karte: marke.karte, von: marken[start].zeit, bis: marke.zeit });
+        offen.delete(marke.karte);
+      }
+      continue;
+    }
+    if (!offen.has(marke.karte)) offen.set(marke.karte, i);
+  }
+  for (const [karte, start] of offen) {
+    const naechste = marken.slice(start + 1).find((m) => m.karte !== karte);
+    abschnitte.push({ karte, von: marken[start].zeit, bis: naechste ? naechste.zeit : null });
+  }
+  return abschnitte.sort((a, b) => a.von - b.von);
+}
+
+/**
+ * Die Karte eines Zeitpunkts — `null`, wenn ihn kein Abschnitt abdeckt oder mehr als
+ * einer. Beides ist "ohne Karte": kein Abschnitt heisst, es lief keine Karte; zwei
+ * Abschnitte heissen, es liefen zwei Sitzungen und keine Zuordnung waere belegbar.
+ */
+function sitzungKarte(abschnitte, zeit) {
+  const treffer = abschnitte.filter((a) => zeit >= a.von && (a.bis === null || zeit < a.bis));
+  return treffer.length === 1 ? treffer[0].karte : null;
+}
+
+/**
+ * Der Dollarbetrag einer Menge Zuege, oder `null`, wenn er nicht bestimmbar ist.
+ *
+ * `null` statt 0, sobald EIN Zug ein Modell fuehrt, das die Preistabelle nicht kennt
+ * und das Token verbraucht hat: Die Summe waere dann zu klein, saehe aber aus wie
+ * gemessen. Ein unbekanntes Modell OHNE Token kostet dagegen zu jedem Preis nichts —
+ * das ist Rechnen, kein Raten, und es haelt Claude Codes eigene Platzhalter-Eintraege
+ * (`<synthetic>`, immer null Token) aus dem Ergebnis heraus.
+ *
+ * Auf sechs Stellen gerundet, wie `verbrauchOhneEinheit` in night.mjs: Sonst stuende
+ * Gleitkomma-Rauschen im Betrag.
+ */
+function sitzungKosten(zuege) {
+  let summe = 0;
+  for (const z of zuege) {
+    const mengen = [z.eingabe, z.ausgabe, z.cache5m, z.cache1h, z.cacheGelesen];
+    if (mengen.every((m) => m === 0)) continue;
+    const preis = preisFuer(z.modell);
+    if (!preis) return null;
+    const saetze = [preis.eingabe, preis.ausgabe, preis.cacheSchreiben5m, preis.cacheSchreiben1h, preis.cacheLesen];
+    summe += mengen.reduce((s, menge, i) => s + (menge * saetze[i]) / 1e6, 0);
+  }
+  return Math.round(summe * 1e6) / 1e6 + 0;
+}
+
+/**
+ * Die Mengen einer Menge Zuege im Vertragsformat — dieselbe Deutung wie
+ * `nachtlaufUsage`: Eingabemenge ist alles Verarbeitete (eigene Eingabe plus beide
+ * Zwischenspeicher-Mengen), der Zwischenspeicher-Anteil nur das Gelesene.
+ */
+function sitzungUsage(zuege) {
+  const summe = (feld) => zuege.reduce((s, z) => s + z[feld], 0);
+  return {
+    costUsd: sitzungKosten(zuege),
+    inputTokens: summe("eingabe") + summe("cache5m") + summe("cache1h") + summe("cacheGelesen"),
+    outputTokens: summe("ausgabe"),
+    cachedInputTokens: summe("cacheGelesen"),
+  };
+}
+
+/**
+ * Baut den Rumpf fuer `POST /api/kanban/night-runs`. Reine Funktion; `jetzt` bestimmt
+ * die Dauer, weil fortschreibend gemeldet wird.
+ *
+ * Der Rest ohne Kartennummer steht NICHT als eigener Eintrag in `items` — er ergibt
+ * sich als Sitzungssumme minus Summe der Karten, genau wie `verbrauchOhneEinheit`
+ * beim Nachtlauf. Ein Eintrag ohne `cardNumber` waere ein neues Feld im Vertrag eines
+ * fremden Dienstes; die Differenz ist dieselbe Auskunft ohne Vertragsaenderung.
+ *
+ * `state: GREEN` mit `errorClass: null` fuer jede Karte: Eine interaktive Sitzung
+ * meldet Verbrauch, keinen Ausgang. GREY hiesse "uebersprungen" und waere falsch — an
+ * der Karte wurde gearbeitet.
+ */
+export function sitzungMeldung({ start, zuege, unlesbar = 0, abschnitte = [], complete = false, jetzt = new Date() }) {
+  const jeKarte = new Map();
+  for (const z of zuege) {
+    const karte = sitzungKarte(abschnitte, z.zeit);
+    if (karte === null) continue;
+    if (!jeKarte.has(karte)) jeKarte.set(karte, []);
+    jeKarte.get(karte).push(z);
+  }
+  const ende = jetzt.getTime();
+  const items = [...jeKarte.entries()]
+    .filter(([karte]) => /^\d+$/.test(karte))
+    .slice(0, NACHTLAUF_EINHEITEN_MAX)
+    .map(([karte, eigene]) => ({
+      cardNumber: Number(karte),
+      // @NotBlank im Vertrag. Den Titel kennt der Melder nicht — ihn zu holen waere ein
+      // Board-Aufruf je Karte fuer eine Angabe, die am Board ohnehin steht.
+      title: `#${karte}`.slice(0, NACHTLAUF_TITEL_MAX),
+      state: SITZUNG_ZUSTAND,
+      errorClass: null,
+      durationMs: abschnitte
+        .filter((a) => a.karte === karte)
+        .reduce((s, a) => s + Math.max(0, Math.min(a.bis ?? ende, ende) - a.von), 0),
+      commitHash: null,
+      excerpt: null,
+      usage: sitzungUsage(eigene),
+    }));
+  const beginn = start === null ? ende : Date.parse(start);
+  return {
+    startedAt: start,
+    kind: SITZUNG_ART,
+    mode: SITZUNG_ART,
+    durationMs: Math.max(0, ende - beginn),
+    processedCount: items.length,
+    skippedCount: 0,
+    unparsedCount: unlesbar,
+    complete,
+    usage: sitzungUsage(zuege),
+    items,
+  };
+}
+
+/** Der Pfad des Protokolls: `--protokoll`, sonst `transcript_path` aus dem Hook-Rumpf. */
+function sitzungProtokollPfad(args) {
+  if (typeof args.protokoll === "string") return args.protokoll;
+  // Ein Claude-Code-Hook reicht seinen Rumpf ueber stdin herein. Ist keine da oder
+  // steht nichts Brauchbares drin, meldet der Melder nichts — er soll nie raten,
+  // welches der Protokolle im Benutzerverzeichnis die laufende Sitzung ist.
+  try {
+    const rumpf = JSON.parse(readFileSync(0, "utf-8"));
+    return typeof rumpf?.transcript_path === "string" ? rumpf.transcript_path : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Das Ergebnis eines Laufs ohne Meldung — immer Exit 0, nie ein Fehler. */
+function sitzungSchweigt(grund) {
+  process.stdout.write(JSON.stringify({ ok: true, gemeldet: false, grund }) + "\n");
+}
+
+/**
+ * Der Stand der letzten Meldung dieser Sitzung, fuer die Drosselung. Liegt neben den
+ * Wegmarken unter `.claude/`; eine fremde oder kaputte Datei zaehlt als "noch nie
+ * gemeldet" — im Zweifel wird gemeldet, nicht geschwiegen.
+ */
+function sitzungStandLesen(start) {
+  try {
+    const stand = JSON.parse(readFileSync(resolve(".claude", SITZUNG_STAND_DATEI), "utf-8"));
+    return stand?.sitzung === start ? Date.parse(stand.zuletzt) : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
+/**
+ * Verbucht eine gelungene Meldung: Zwischenmeldung -> Zeitpunkt merken (Drosselung),
+ * Sitzungsende -> Wegmarken leeren und den Stand wegraeumen.
+ *
+ * Geleert, nicht geloescht: Die Datei ist der Ort, an den `issue move` anhaengt, und
+ * sie zu entfernen hiesse, das naechste Anhaengen auf `mkdir` zurueckzuwerfen.
+ * Scheitert das Schreiben, bleibt es beim Hinweis — die Meldung ist raus, und daran
+ * aendert eine klemmende Datei nichts mehr.
+ */
+function sitzungVerbuchen(start, complete, jetzt) {
+  const stand = resolve(".claude", SITZUNG_STAND_DATEI);
+  try {
+    mkdirSync(dirname(stand), { recursive: true });
+    if (complete) {
+      writeFileSync(resolve(".claude", WEGMARKEN_DATEI), "", "utf-8");
+      writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: null }) + "\n", "utf-8");
+    } else {
+      writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: jetzt.toISOString() }) + "\n", "utf-8");
+    }
+  } catch (e) {
+    process.stderr.write(`Hinweis: Sitzungs-Stand nicht geschrieben (${stand}): ${e.message}\n`);
+  }
+}
+
+/**
+ * `sitzung melden` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
+ *
+ * Jeder Grund zu schweigen endet mit Exit 0 und ohne HTTP-Aufruf. Der Melder laeuft
+ * an einem Hook und darf eine Sitzung niemals stoeren: Er ist Buchhaltung, keine
+ * Bedingung — dieselbe Haltung wie bei `wegmarkeSchreiben`.
+ *
+ * Die Reihenfolge der Pruefungen ist bindend. KIT_AGENT_MODEL steht ganz vorn, VOR
+ * jedem Config- und Dateizugriff: Nachts ist diese Sitzung bereits in der Meldung des
+ * Runners enthalten (E15), und ein Melder, der erst die Config liest, koennte an ihr
+ * scheitern statt zu schweigen.
+ */
+async function sitzungMelden(args) {
+  if (agentModelHeader()["X-Agent-Model"]) return sitzungSchweigt("nachtbetrieb");
+
+  const config = readWorkflowConfig();
+  if (config?.issueTracker !== "toolbox") return sitzungSchweigt("kein-board");
+  // E3: Ohne projektgebundenes Token gibt es kein Zielprojekt — und es wird auch
+  // keines aus dem Aufruf geraten. Die Bindung des Tokens bestimmt, wohin gemeldet wird.
+  try {
+    resolveToolboxToken({ cfg: config, env: process.env, readFile: (p) => readFileSync(p, "utf-8") });
+  } catch {
+    return sitzungSchweigt("kein-token");
+  }
+
+  const pfad = sitzungProtokollPfad(args);
+  if (!pfad) return sitzungSchweigt("kein-protokoll");
+  let protokoll;
+  try {
+    protokoll = sitzungProtokoll(readFileSync(pfad, "utf-8"));
+  } catch {
+    return sitzungSchweigt("protokoll-nicht-lesbar");
+  }
+  if (protokoll.zuege.length === 0) return sitzungSchweigt("nichts-gemessen");
+
+  // E16: Das Sitzungsende meldet immer. Dazwischen hoechstens einmal je fuenf Minuten —
+  // nur am Ende zu melden verloere jede abgestuerzte Sitzung, ungedrosselt erzeugte
+  // jeder Zug einen HTTP-Aufruf.
+  const complete = args.complete === true;
+  const jetzt = new Date();
+  const zuletzt = sitzungStandLesen(protokoll.start);
+  if (!complete && Number.isFinite(zuletzt) && jetzt.getTime() - zuletzt < SITZUNG_DROSSEL_MS) {
+    return sitzungSchweigt("gedrosselt");
+  }
+
+  let wegmarken = "";
+  try { wegmarken = readFileSync(resolve(".claude", WEGMARKEN_DATEI), "utf-8"); } catch { /* keine Wegmarke: alles Rest */ }
+  const meldung = sitzungMeldung({
+    ...protokoll,
+    abschnitte: wegmarkenAbschnitte(wegmarken),
+    complete,
+    jetzt,
+  });
+
+  let antwort = null;
+  try {
+    const res = await new ToolboxIssueTracker(config)._fetch("/api/kanban/night-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meldung),
+    });
+    try { antwort = await res.json(); } catch { /* kein JSON-Rumpf */ }
+  } catch (e) {
+    // Nicht eingeliefert heisst nicht verbucht: Weder wird gedrosselt noch werden die
+    // Wegmarken geleert — der naechste Versuch soll denselben Abschnitt noch sehen.
+    process.stderr.write(`Hinweis: Sitzungs-Meldung nicht eingeliefert: ${e.message}\n`);
+    return sitzungSchweigt("nicht-eingeliefert");
+  }
+  sitzungVerbuchen(protokoll.start, complete, jetzt);
+  process.stdout.write(JSON.stringify({
+    ok: true, gemeldet: true, complete, karten: meldung.items.length, outcome: antwort?.outcome ?? null,
+  }) + "\n");
+}
+
+async function dispatchSitzung(command, args) {
+  switch (command) {
+    case "melden": return sitzungMelden(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter sitzung-Befehl: '${command}'`);
+  }
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
@@ -3835,9 +4244,11 @@ async function main() {
     await dispatchKontext(command, args);
   } else if (axis === "nightrun") {
     await dispatchNightrun(command, args);
+  } else if (axis === "sitzung") {
+    await dispatchSitzung(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun | sitzung`);
   }
 }
 
