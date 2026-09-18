@@ -39,7 +39,18 @@
     "modelle": [
       "claude-opus-5",
       "claude-sonnet-5"
-    ]
+    ],
+    "stufen": {
+      "schwer": {
+        "modell": "claude-opus-5"
+      },
+      "mittel": {
+        "modell": "claude-sonnet-5"
+      },
+      "leicht": {
+        "modell": "claude-sonnet-5"
+      }
+    }
   },
   "issueReview": {
     "requiredBeforeReady": false,
