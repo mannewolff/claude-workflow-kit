@@ -1,9 +1,13 @@
-// Die Folgen einer Reviewer-Aenderung in den Paarungen (Issue #726, Plan #721, Kriterien 8, 9, 9a).
+// Die Folgen einer Umbenennung (Issue #726 und #728, Plan #721, Kriterien 8, 9, 9a, 18, 19, 20).
 //
 // Einen Reviewer umzubenennen oder zu entfernen ist samt seiner Folgen in `issueReview.pairs`
 // EINE Aenderung des Reviewer-Teils: Sie wird dort gespeichert oder verworfen, und eine
 // unabhaengige Aenderung im Paarungs-Teil kommt dabei nicht mit. Gerechnet wird das in
 // `paarungsFolgen` — dieselbe Fassung, die das Browser-Skript als Baustein traegt.
+//
+// Dasselbe gilt fuer einen Bereich aus `checkAreas` und die `buildChecks`, die ihn nennen:
+// `bereichsFolgen` rechnet die Folge, `checkForm` und `checkSetzen` halten die Form eines
+// Eintrags fest. Beide Wege stehen im selben Teil M4 und werden mit ihm gespeichert.
 //
 // Jeder Lauf steht auf einer echten Kopie der `.claude/workflow.config.json` dieses Projekts
 // (Kriterium der Aufgabe). Ihre Namen sind kein Mass: Der Test holt Autor und Pruefer aus der
@@ -15,7 +19,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { paarungsFolgen, projektZustand, speichere, vorschau } from "../kit/einstellungen.mjs";
+import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, speichere, vorschau } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -238,5 +242,209 @@ test("[einstellungen-12] ein unbekannter Name in einer Paarung haelt eine unabha
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(p.gespeichert().issueReview.requiredBeforeReady, true);
     assert.deepEqual(p.gespeichert().issueReview.pairs[autor], ["erfunden"], "der Altfehler wurde stillschweigend geraeumt");
+  });
+});
+
+// ============================================================
+// M4: die drei Formen eines Pruefkommandos (Issue #728, Kriterium 18)
+// ============================================================
+
+test("[einstellungen-2] checkForm liest die drei Formen des Bestands auseinander", () => {
+  // Der bloße String und das Objekt nur mit `cmd` laufen gleich, sagen aber Verschiedenes:
+  // "noch niemand zugeordnet" gegen "bewusst entschieden". Beide sind `offen`.
+  assert.deepEqual(checkForm("node --test"), { cmd: "node --test", laufart: "offen", areas: [] });
+  assert.deepEqual(checkForm({ cmd: "node --test" }), { cmd: "node --test", laufart: "offen", areas: [] });
+  assert.deepEqual(checkForm({ cmd: "x", always: true }), { cmd: "x", laufart: "immer", areas: [] });
+  assert.deepEqual(checkForm({ cmd: "x", areas: ["kit"] }), { cmd: "x", laufart: "bereiche", areas: ["kit"] });
+  // Ein `areas` ohne Eintrag bleibt `bereiche` — es wird nie still zu "immer" (Kriterium 19).
+  assert.deepEqual(checkForm({ cmd: "x", areas: [] }), { cmd: "x", laufart: "bereiche", areas: [] });
+  // Unsinn in der Datei darf nicht werfen.
+  assert.deepEqual(checkForm(undefined), { cmd: "", laufart: "offen", areas: [] });
+  assert.deepEqual(checkForm({ cmd: "x", areas: "unsinn" }), { cmd: "x", laufart: "offen", areas: [] });
+});
+
+test("[einstellungen-2] eine Zeile, deren Laufart unveraendert bleibt, behaelt ihre Form", () => {
+  // Aus einem String wird kein Objekt — auch nicht, wenn nur das Kommando getippt wurde.
+  assert.equal(checkSetzen("node --test", { cmd: "node --test -w" }), "node --test -w");
+  assert.equal(checkSetzen("node --test", { laufart: "offen" }), "node --test");
+  // Ohne Aenderung derselbe Eintrag, nicht nur ein gleicher: Der Schreiber sieht dann nichts.
+  const objekt = { cmd: "x", always: true };
+  assert.equal(checkSetzen(objekt, { laufart: "immer" }), objekt);
+  assert.equal(checkSetzen(objekt, { cmd: "x" }), objekt);
+  // "immer (offen)" wird beim Speichern nicht zu always: true.
+  assert.deepEqual(checkSetzen({ cmd: "x" }, { cmd: "y" }), { cmd: "y" });
+  assert.equal("always" in checkSetzen({ cmd: "x" }, { cmd: "y" }), false);
+});
+
+test("[einstellungen-2] ein Wechsel der Laufart legt genau das Feld der neuen Form an", () => {
+  assert.deepEqual(checkSetzen("node --test", { laufart: "immer" }), { cmd: "node --test", always: true });
+  assert.deepEqual(checkSetzen("node --test", { laufart: "bereiche" }), { cmd: "node --test", areas: [] });
+  assert.deepEqual(checkSetzen({ cmd: "x", always: true }, { laufart: "offen" }), { cmd: "x" });
+  assert.deepEqual(checkSetzen({ cmd: "x", always: true }, { laufart: "bereiche" }), { cmd: "x", areas: [] });
+  assert.deepEqual(checkSetzen({ cmd: "x", areas: ["kit"] }, { laufart: "immer" }), { cmd: "x", always: true });
+  // Zurueck nach "offen" ist der Objektfall — ein String waere eine Formaenderung ohne Anlass.
+  assert.deepEqual(checkSetzen({ cmd: "x", areas: ["kit"] }, { laufart: "offen" }), { cmd: "x" });
+  // Die Bereiche gehen beim Setzen mit, und die Form bleibt `bereiche`, auch wenn sie leer sind.
+  assert.deepEqual(checkSetzen({ cmd: "x", areas: ["kit"] }, { areas: [] }), { cmd: "x", areas: [] });
+});
+
+test("[einstellungen-2] checkSetzen erhaelt ein Feld, das die Tabelle nicht zeigt, und aendert nichts am Bestand", () => {
+  const bestand = { cmd: "x", areas: ["kit"], notiz: "bleibt stehen" };
+  const neu = checkSetzen(bestand, { areas: ["kit", "doku"] });
+  assert.deepEqual(neu, { cmd: "x", areas: ["kit", "doku"], notiz: "bleibt stehen" });
+  assert.deepEqual(bestand, { cmd: "x", areas: ["kit"], notiz: "bleibt stehen" });
+});
+
+// ============================================================
+// M4: die Folgen einer Bereichs-Aenderung (Issue #728, Kriterium 20)
+// ============================================================
+
+test("[einstellungen-12] einen Bereich umbenennen zieht jedes Kommando mit, das ihn nennt", () => {
+  const checks = ["node --test", { cmd: "eslint", areas: ["kit", "doku"] }, { cmd: "md", areas: ["doku"] }];
+  const folge = bereichsFolgen(checks, [{ von: "doku", nach: "docs" }], []);
+  assert.deepEqual(folge.buildChecks, ["node --test", { cmd: "eslint", areas: ["kit", "docs"] }, { cmd: "md", areas: ["docs"] }]);
+  // Eine Umbenennung nimmt keinem Kommando etwas weg und braucht keine Rueckfrage.
+  assert.deepEqual(folge.betroffen, []);
+});
+
+test("[einstellungen-12] einen Bereich entfernen nimmt seinen Namen aus jedem Kommando", () => {
+  const checks = [{ cmd: "eslint", areas: ["kit", "doku"] }, { cmd: "immer", always: true }];
+  const folge = bereichsFolgen(checks, [], ["doku"]);
+  assert.deepEqual(folge.buildChecks, [{ cmd: "eslint", areas: ["kit"] }, { cmd: "immer", always: true }]);
+  assert.deepEqual(folge.betroffen, [{ index: 0, cmd: "eslint", art: "name" }]);
+});
+
+test("[einstellungen-12] ein Kommando, das dadurch ohne Bereich bliebe, wird nicht zu immer", () => {
+  const folge = bereichsFolgen([{ cmd: "md", areas: ["doku"] }], [], ["doku"]);
+  // Kriterium 19: Das leere `areas` bleibt stehen und haelt das Speichern auf — es wird nie
+  // stillschweigend zu "immer".
+  assert.deepEqual(folge.buildChecks, [{ cmd: "md", areas: [] }]);
+  assert.deepEqual(folge.betroffen, [{ index: 0, cmd: "md", art: "leer" }]);
+});
+
+test("[einstellungen-12] bereichsFolgen laesst jeden Eintrag ohne Bereiche unangetastet", () => {
+  const checks = ["node --test", { cmd: "offen" }, { cmd: "immer", always: true }];
+  const folge = bereichsFolgen(checks, [{ von: "doku", nach: "docs" }], ["kit"]);
+  assert.deepEqual(folge.buildChecks, checks);
+  assert.deepEqual(folge.betroffen, []);
+  // Dieselben Eintraege, nicht nur gleiche: Der Schreiber findet dann keine Aenderung.
+  folge.buildChecks.forEach((eintrag, i) => assert.equal(eintrag, checks[i]));
+});
+
+test("[einstellungen-12] bereichsFolgen ohne Umbenennung, ohne Entfernung und ohne Bestand wirft nicht", () => {
+  const checks = [{ cmd: "eslint", areas: ["kit"] }];
+  assert.deepEqual(bereichsFolgen(checks, [], []), { buildChecks: checks, betroffen: [] });
+  assert.deepEqual(bereichsFolgen(undefined, [], ["kit"]), { buildChecks: [], betroffen: [] });
+  assert.deepEqual(bereichsFolgen(checks, [{ von: "kit", nach: "k" }], ["kit"]), {
+    buildChecks: [{ cmd: "eslint", areas: [] }],
+    betroffen: [{ index: 0, cmd: "eslint", art: "leer" }],
+  });
+  // Die uebergebenen Kommandos bleiben unveraendert.
+  assert.deepEqual(checks, [{ cmd: "eslint", areas: ["kit"] }]);
+});
+
+// ============================================================
+// M4 gegen Vorschau und Speichern, an der echten Konfiguration
+// ============================================================
+
+test("[einstellungen-2] die drei Kommandostrings dieses Projekts bleiben nach einer anderen Aenderung Strings", async () => {
+  // Das Akzeptanzkriterium des Pakets: Die `buildChecks` der echten Datei sind drei Strings.
+  assert.ok(ECHT.buildChecks.length >= 3, "die echte Datei traegt keine drei Kommandos mehr");
+  for (const eintrag of ECHT.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
+  await mitProjekt(ECHT, async (p) => {
+    const res = speichere(p.projekt, {
+      hashes: p.hashes(),
+      ebene: "team",
+      teil: "m4",
+      aenderungen: [{ pfad: "checkAreas", wert: { kit: ["kit/**"] } }],
+    }, p.optionen);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const datei = p.gespeichert();
+    assert.deepEqual(datei.buildChecks, ECHT.buildChecks, "die Kommandos wurden mitgeschrieben");
+    for (const eintrag of datei.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
+  });
+});
+
+test("[einstellungen-2] eine Aenderung an einem Kommandostring laesst die Nachbarn als Strings stehen", async () => {
+  await mitProjekt(ECHT, async (p) => {
+    const geaendert = ECHT.buildChecks.map((e, i) => (i === 0 ? checkSetzen(e, { cmd: `${e} --concurrency 4` }) : e));
+    const res = speichere(p.projekt, {
+      hashes: p.hashes(),
+      ebene: "team",
+      teil: "m4",
+      aenderungen: [{ pfad: "buildChecks", wert: geaendert }],
+    }, p.optionen);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const datei = p.gespeichert();
+    assert.equal(datei.buildChecks[0], `${ECHT.buildChecks[0]} --concurrency 4`);
+    for (const eintrag of datei.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
+    // Und die Datei traegt weiter drei Zeilen in Stringform, keine aufgeblaehten Objekte.
+    const text = readFileSync(p.datei, "utf-8");
+    assert.doesNotMatch(text, /"always"/, "eine Zeile wurde zu always: true gehoben");
+    assert.doesNotMatch(text, /"cmd"/, "eine Zeile wurde von der String- in die Objektform gehoben");
+  });
+});
+
+test("[einstellungen-12] ein Kommando mit einem Bereich, den checkAreas nicht kennt, ergibt einen Befund am Pfad seiner Zeile", async () => {
+  const team = { ...ECHT, buildChecks: [...ECHT.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
+  await mitProjekt(team, async (p) => {
+    const zustand = projektZustand(p.projekt, p.optionen);
+    const eintraege = Object.values(zustand.themen).flat().flatMap((t) => t.eintraege);
+    const zeile = eintraege.find((e) => e.pfad === "buildChecks");
+    const befunde = zeile.befunde.filter((b) => b.art === "fehler");
+    assert.equal(befunde.length, 1, JSON.stringify(befunde));
+    assert.equal(befunde[0].pfad, `buildChecks[${team.buildChecks.length - 1}].areas`);
+    assert.match(befunde[0].grund, /erfunden/);
+  });
+});
+
+test("[einstellungen-12] ein unbekannter Bereich haelt eine unabhaengige Aenderung nicht auf", async () => {
+  const team = { ...ECHT, buildChecks: [...ECHT.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
+  await mitProjekt(team, async (p) => {
+    const res = speichere(p.projekt, {
+      hashes: p.hashes(),
+      ebene: "team",
+      teil: "m4",
+      aenderungen: [{ pfad: "checkAreas", wert: { kit: ["kit/**"], doku: ["docs/**"] } }],
+    }, p.optionen);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const datei = p.gespeichert();
+    assert.deepEqual(datei.checkAreas, { kit: ["kit/**"], doku: ["docs/**"] });
+    assert.deepEqual(datei.buildChecks.at(-1), { cmd: "eslint", areas: ["erfunden"] }, "der Altfehler wurde stillschweigend geraeumt");
+  });
+});
+
+test("[einstellungen-13] ein Bereich ohne Muster laesst sich speichern, ein areas ohne Eintrag nicht", async () => {
+  await mitProjekt(ECHT, async (p) => {
+    // Kriterium 20: Ein Bereich ohne Muster erfasst nichts — das ist eine Warnung und haelt
+    // das Speichern nicht auf.
+    const wert = { kit: ["kit/**"], leer: [] };
+    const sicht = vorschau(p.projekt, { hashes: p.hashes(), ebene: "team", teil: "m4", aenderungen: [{ pfad: "checkAreas", wert }] }, p.optionen);
+    assert.equal(sicht.status, 200);
+    const warnung = sicht.body.befunde.find((b) => b.pfad === "checkAreas.leer");
+    assert.ok(warnung, JSON.stringify(sicht.body.befunde));
+    assert.equal(warnung.art, "warnung");
+    const gespeichert = speichere(p.projekt, { hashes: p.hashes(), ebene: "team", teil: "m4", aenderungen: [{ pfad: "checkAreas", wert }] }, p.optionen);
+    assert.equal(gespeichert.status, 200, JSON.stringify(gespeichert.body));
+    assert.deepEqual(p.gespeichert().checkAreas, wert);
+  });
+});
+
+test("[einstellungen-12] ein Kommando, das durch das Entfernen eines Bereichs ohne Bereich bliebe, haelt das Speichern auf", async () => {
+  const team = { ...ECHT, buildChecks: [{ cmd: "eslint", areas: ["kit"] }], checkAreas: { kit: ["kit/**"] } };
+  await mitProjekt(team, async (p) => {
+    // Was der Redaktor der Rueckfrage vorlegt: der Bereich weg, und das Kommando bliebe leer.
+    const folge = bereichsFolgen(team.buildChecks, [], ["kit"]);
+    assert.deepEqual(folge.betroffen, [{ index: 0, cmd: "eslint", art: "leer" }]);
+    const res = speichere(p.projekt, {
+      hashes: p.hashes(),
+      ebene: "team",
+      teil: "m4",
+      aenderungen: [{ pfad: "checkAreas", wert: {} }, { pfad: "buildChecks", wert: folge.buildChecks }],
+    }, p.optionen);
+    assert.equal(res.status, 422, JSON.stringify(res.body));
+    assert.ok(res.body.befunde.some((b) => b.pfad.startsWith("buildChecks[0]")), JSON.stringify(res.body.befunde));
+    // Nichts wurde geschrieben, und das Kommando steht weiter auf seinem Bereich.
+    assert.deepEqual(p.gespeichert().buildChecks, team.buildChecks);
   });
 });

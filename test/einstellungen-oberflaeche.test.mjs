@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, paarungsFolgen, ROLLEN_KATALOG, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, LAUFARTEN, paarungsFolgen, ROLLEN_KATALOG, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -366,4 +366,78 @@ test("[einstellungen-9] eine Aenderung an einer Stufe legt die anderen mit den K
 test("[einstellungen-9] der eingebettete Rollenkatalog des Browsers ist aus ROLLEN_KATALOG gerechnet, kein zweites Literal", () => {
   const eingebettet = JSON.stringify(ROLLEN_KATALOG);
   assert.ok(SEITEN_BAUSTEINE.redaktorPruefstufen.includes(`const ROLLEN_KATALOG_BROWSER = ${eingebettet};`), "der Katalog im Browser-Skript weicht von ROLLEN_KATALOG ab");
+});
+
+// ------------------------------------------------------------
+// M4 Pruefkommandos und Bereiche (Issue #728)
+// ------------------------------------------------------------
+
+test("[einstellungen-9] die Registry fuehrt den Redaktor von M4 aus, keinen Platzhalter mehr", () => {
+  const registry = SEITEN_BAUSTEINE.platte;
+  assert.match(registry, /pruefkommandos: redaktorPruefkommandos/, "M4 haengt noch am Platzhalter redaktorEntsteht");
+  assert.match(SEITEN_BAUSTEINE.redaktorPruefkommandos, /function redaktorPruefkommandos\(teil\)/);
+});
+
+test("[einstellungen-2] die Formrechnung des Browsers ist die Fassung des Moduls, keine zweite", () => {
+  // Wie bei den Paarungen: Abgeschrieben laege die Fassung, die der Mensch bedient, ungeprueft
+  // im Zeichenketten-Literal. Formtreue und Bereichsfolgen sind genau die Regeln, die ein
+  // Test halten muss.
+  for (const f of [checkSetzen, bereichsFolgen]) {
+    assert.ok(SEITEN_BAUSTEINE.checkformen.includes(f.toString()), `der Baustein traegt eine andere Fassung als ${f.name}`);
+  }
+  assert.match(SEITEN_BAUSTEINE.redaktorPruefkommandos, /checkSetzen\(/, "der Redaktor setzt die Form nicht ueber checkSetzen");
+  assert.match(SEITEN_BAUSTEINE.redaktorPruefkommandos, /bereichsFolgen\(/, "der Redaktor rechnet die Folgen einer Bereichs-Aenderung nicht");
+});
+
+test("[einstellungen-2] M4 bietet die drei Laufarten an und haelt die Form einer unveraenderten Zeile", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefkommandos;
+  assert.match(stueck, /check-grid/, "die Kommando-Tabelle nutzt nicht das Gitter des Entwurfs");
+  for (const paar of LAUFARTEN) assert.ok(stueck.includes(JSON.stringify(paar[1])), `die Laufart ${paar[1]} fehlt`);
+  // Kein zweites Literal: Die Aufschriften kommen aus LAUFARTEN desselben Moduls.
+  assert.ok(stueck.includes(`const LAUFART_TEXTE = ${JSON.stringify(LAUFARTEN)};`), "die Laufarten des Browser-Skripts weichen von LAUFARTEN ab");
+  assert.match(stueck, /verschieben:/, "die Reihenfolge der Kommandos laesst sich nicht aendern");
+  assert.match(stueck, /zeile-neu/, "es gibt keine Zeile zum Hinzufuegen");
+  // Die Form entsteht nie im Redaktor: Er ruft checkSetzen und schreibt nie always oder areas
+  // von Hand an einen Eintrag.
+  assert.doesNotMatch(stueck, /always:/, "der Redaktor setzt always von Hand statt ueber checkSetzen");
+});
+
+test("[einstellungen-2] M4 nennt bei einer Zeile ohne Bereich, dass das Kommando nie liefe", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefkommandos;
+  // Das Schema sperrt ein leeres `areas` schon (Plan E7) — es meldet aber nur "passt auf keine
+  // der erlaubten Formen". Der Grundtext kommt vom Redaktor (Kriterium 19).
+  assert.match(stueck, /nie/, "der Satz zum Kommando, das nie liefe, fehlt");
+  assert.match(stueck, /befund/, "der Satz steht nicht als Befund an der Zeile");
+  // Nur bekannte Bereiche stehen zur Wahl (Kriterium 19), ein unbekannter als Geist-Chip
+  // mit genau zwei Wegen (Kriterium 4a).
+  assert.match(stueck, /fremd:/, "ein Bereich, den checkAreas nicht kennt, steht nicht als Geist da");
+  assert.match(stueck, /ersetzen:/, "ein unbekannter Bereich laesst sich nicht ersetzen");
+});
+
+test("[einstellungen-13] M4 zeichnet die Bereiche mit Mustern, Nutzung und der Rueckfrage beim Entfernen", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefkommandos;
+  assert.match(stueck, /bereich-grid/, "die Bereichstabelle nutzt nicht das Gitter des Entwurfs");
+  assert.match(stueck, /musterListe\(/, "die Pfadmuster stehen nicht als eigene Eintraege");
+  assert.match(stueck, /abgeleitetVon\(teil\)/, "die Zahl der Kommandos je Bereich kommt nicht aus der Vorschau");
+  assert.match(stueck, /vorschauAnfordern\(teil\)/, "die Nutzung steht erst nach der ersten Aenderung da");
+  assert.match(stueck, /dialog\(/, "einen genutzten Bereich zu entfernen geht ohne Rueckfrage");
+  assert.match(stueck, /betroffen/, "die Rueckfrage nennt die betroffenen Kommandos nicht");
+  // Ein Bereich ohne Muster ist eine Warnung, keine Sperre — sie steht an der Zeile.
+  assert.match(stueck, /zeile-warn|erfasst nichts/, "ein Bereich ohne Muster wird nicht markiert");
+  // Beide Pfade liegen im selben Teil, deshalb ist die Folge ein Auftrag (Kriterium 9a sinngemaess).
+  assert.match(stueck, /setzeWert\(teil, "buildChecks"/, "die Folge landet nicht in der Arbeitskopie von M4");
+  assert.match(stueck, /setzeWert\(teil, "checkAreas"/, "die Bereiche landen nicht in der Arbeitskopie von M4");
+});
+
+test("[einstellungen-13] M4 bearbeitet beide Pfade in einem Teil und braucht keinen Folgepfad", () => {
+  const m4 = TEILE.find((t) => t.kennung === "m4");
+  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas"]);
+  assert.equal(m4.folgen, undefined, "M4 nennt einen Folgepfad, obwohl es beide Pfade selbst bearbeitet");
+  const pfade = new Set(aenderungsliste(
+    { buildChecks: [{ cmd: "eslint", areas: ["alt"] }], checkAreas: { alt: ["x"] } },
+    { buildChecks: [{ cmd: "eslint", areas: ["neu"] }], checkAreas: { neu: ["x"] } },
+    "m4",
+  ).map((a) => a.pfad));
+  assert.ok(pfade.has("buildChecks[0].areas[0]"), [...pfade].join(", "));
+  assert.ok(pfade.has("checkAreas.neu"), [...pfade].join(", "));
 });

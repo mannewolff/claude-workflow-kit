@@ -345,12 +345,15 @@ export function vorgabeAus(pfad) {
 }
 
 /**
- * Eine Paarungszeile nach Umbenennung und Entfernung: die bleibenden Prüfer in ihrer
- * Reihenfolge und ob dabei ein Name herausfiel. `neuerName` und `weg` sind schlichte Objekte,
- * damit die Funktion ohne Map und Set auskommt — sie läuft auch im Browser (siehe
- * `paarungsFolgen`).
+ * Eine Namensliste nach Umbenennung und Entfernung: die bleibenden Namen in ihrer Reihenfolge
+ * und ob dabei einer herausfiel. `neuerName` und `weg` sind schlichte Objekte, damit die
+ * Funktion ohne Map und Set auskommt — sie läuft auch im Browser (siehe `paarungsFolgen`).
+ *
+ * Der Name nennt keine Paarung, weil die Rechnung zweimal gebraucht wird: für die Prüfer einer
+ * Paarungszeile und für die Bereiche eines Prüfkommandos (`bereichsFolgen`). Beides ist eine
+ * Liste von Namen, aus der Namen umbenannt und entfernt werden.
  */
-function paarungsZeile(liste, neuerName, weg) {
+function namensliste(liste, neuerName, weg) {
   const bleibt = [];
   let nameWeg = false;
   for (const name of Array.isArray(liste) ? liste : []) {
@@ -368,7 +371,7 @@ function paarungsZeile(liste, neuerName, weg) {
  * Prüfer und fällt mit weg. Eine Umbenennung nimmt niemandem etwas weg und ergibt deshalb
  * keinen Eintrag; sie steht im Fuß, nicht in einer Rückfrage.
  *
- * Die Funktion benutzt nichts aus dieser Datei außer `paarungsZeile`: Der Quelltext beider
+ * Die Funktion benutzt nichts aus dieser Datei außer `namensliste`: Der Quelltext beider
  * ist zugleich der Baustein `folgen` des Browser-Skripts (`SEITEN_BAUSTEINE`). Der Redaktor
  * muss die Folgen in der Arbeitskopie zeigen, bevor etwas gespeichert wird — abgeschrieben
  * läge die Fassung, die der Mensch bedient, ungeprüft im Zeichenketten-Literal.
@@ -387,7 +390,7 @@ export function paarungsFolgen(pairs, umbenannt, entfernt) {
       betroffen.push({ autor: autor, art: "autorzeile" });
       continue;
     }
-    const zeile = paarungsZeile(alt[autor], neuerName, weg);
+    const zeile = namensliste(alt[autor], neuerName, weg);
     if (zeile.nameWeg && zeile.bleibt.length === 0) betroffen.push({ autor: autor, art: "leer" });
     else {
       if (zeile.nameWeg) betroffen.push({ autor: autor, art: "name" });
@@ -398,7 +401,104 @@ export function paarungsFolgen(pairs, umbenannt, entfernt) {
 }
 
 /** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.folgen`. */
-const FOLGEN_QUELLE = [paarungsZeile, paarungsFolgen].map((f) => f.toString()).join("\n\n");
+const FOLGEN_QUELLE = [namensliste, paarungsFolgen].map((f) => f.toString()).join("\n\n");
+
+// ============================================================
+// Die drei Formen eines Prüfkommandos (Plan #721, Kriterien 18, 19, 20)
+// ============================================================
+//
+// `buildChecks` kennt drei Formen: den bloßen Kommandostring beziehungsweise ein Objekt nur mit
+// `cmd`, `{cmd, always: true}` und `{cmd, areas}`. Die ersten beiden laufen gleich, sagen aber
+// Verschiedenes — „noch niemand zugeordnet" gegen „bewusst entschieden". Lesen und Schreiben
+// stehen deshalb als zwei Funktionen hier und nicht im Redaktor: Die Formtreue ist eine Regel,
+// und eine Regel im Zeichenketten-Literal prüfte kein Test.
+
+/** Die drei Laufarten mit ihrer Aufschrift, in der Reihenfolge des Entwurfs. */
+export const LAUFARTEN = [["offen", "immer (offen)"], ["immer", "immer"], ["bereiche", "bei Bereichen"]];
+
+/**
+ * Ein `buildChecks`-Eintrag als Kommando, Laufart und Bereiche. Ein `areas` ohne Eintrag bleibt
+ * die Laufart `bereiche` — es wird nie stillschweigend zu `immer` (Kriterium 19). Was die Form
+ * nicht trifft, gilt als `offen`; ein unbrauchbarer Wert in der Datei darf nicht werfen, denn
+ * seinen Grund nennt ohnehin die Prüfung.
+ */
+export function checkForm(eintrag) {
+  if (typeof eintrag === "string") return { cmd: eintrag, laufart: "offen", areas: [] };
+  const o = eintrag !== null && typeof eintrag === "object" && !Array.isArray(eintrag) ? eintrag : {};
+  const cmd = typeof o.cmd === "string" ? o.cmd : "";
+  if (Array.isArray(o.areas)) return { cmd: cmd, laufart: "bereiche", areas: o.areas.slice() };
+  if (o.always === true) return { cmd: cmd, laufart: "immer", areas: [] };
+  return { cmd: cmd, laufart: "offen", areas: [] };
+}
+
+/**
+ * Setzt Kommando, Laufart oder Bereiche einer Zeile — formtreu (Kriterium 18): Eine Zeile,
+ * deren Laufart unverändert bleibt, behält ihre Form. Aus einem String wird kein Objekt, und
+ * „immer (offen)" bekommt kein `always`. Bleibt inhaltlich alles gleich, kommt derselbe Eintrag
+ * zurück — nur so sieht der Schreiber keine Änderung und die Zeile bleibt in der Datei stehen.
+ *
+ * Ergänzen statt neu bauen (Plan E9): Ein Feld, das die Tabelle nicht zeigt, bleibt stehen.
+ */
+export function checkSetzen(eintrag, aenderung) {
+  const a = aenderung || {};
+  const form = checkForm(eintrag);
+  const cmd = a.cmd === undefined ? form.cmd : a.cmd;
+  const laufart = a.laufart === undefined ? form.laufart : a.laufart;
+  const areas = a.areas === undefined ? form.areas : a.areas;
+  if (typeof eintrag === "string" && laufart === "offen") return cmd === eintrag ? eintrag : cmd;
+  const alt = eintrag !== null && typeof eintrag === "object" && !Array.isArray(eintrag) ? eintrag : { cmd: form.cmd };
+  const neu = Object.assign({}, alt);
+  neu.cmd = cmd;
+  if (laufart === "immer") {
+    delete neu.areas;
+    neu.always = true;
+  } else if (laufart === "bereiche") {
+    delete neu.always;
+    neu.areas = areas.slice();
+  } else {
+    delete neu.areas;
+    delete neu.always;
+  }
+  if (typeof eintrag !== "string" && JSON.stringify(neu) === JSON.stringify(alt)) return eintrag;
+  return neu;
+}
+
+/**
+ * Die Folgen einer Umbenennung oder Entfernung von Bereichen in `buildChecks` (Kriterium 20).
+ * Liefert die neuen Kommandos und je betroffenem Kommando einen Eintrag für die Rückfrage:
+ * `name` — nur ein Bereichsname fällt aus seiner Liste, `leer` — das Kommando bliebe ganz ohne
+ * Bereich. Dann bleibt `areas` leer stehen: Das hält das Speichern auf (Kriterium 19), und das
+ * Kommando wird nie stillschweigend zu „immer". Eine Umbenennung nimmt keinem Kommando etwas
+ * weg und ergibt deshalb keinen Eintrag.
+ *
+ * Wie `paarungsFolgen` benutzt die Funktion nichts aus dieser Datei außer `namensliste`,
+ * `checkForm` und `checkSetzen` — ihr Quelltext ist zugleich der Baustein `checkformen` des
+ * Browser-Skripts, und der Redaktor muss die Folgen in der Arbeitskopie zeigen, bevor etwas
+ * gespeichert wird.
+ */
+export function bereichsFolgen(buildChecks, umbenannt, entfernt) {
+  const alt = Array.isArray(buildChecks) ? buildChecks : [];
+  const neuerName = {};
+  for (const u of umbenannt || []) neuerName[u.von] = u.nach;
+  const weg = {};
+  for (const name of entfernt || []) weg[name] = true;
+  const neu = [];
+  const betroffen = [];
+  alt.forEach(function (eintrag, i) {
+    const form = checkForm(eintrag);
+    if (form.laufart !== "bereiche") {
+      neu.push(eintrag);
+      return;
+    }
+    const zeile = namensliste(form.areas, neuerName, weg);
+    if (zeile.nameWeg) betroffen.push({ index: i, cmd: form.cmd, art: zeile.bleibt.length === 0 ? "leer" : "name" });
+    neu.push(checkSetzen(eintrag, { areas: zeile.bleibt }));
+  });
+  return { buildChecks: neu, betroffen: betroffen };
+}
+
+/** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.checkformen`. */
+const CHECK_QUELLE = [checkForm, checkSetzen, bereichsFolgen].map((f) => f.toString()).join("\n\n");
 
 // ============================================================
 // Themen (Plan #674 E14)
@@ -2126,7 +2226,7 @@ const REDAKTOREN = {
   reviewer: redaktorReviewer,
   paarungen: redaktorPaarungen,
   pruefstufen: redaktorPruefstufen,
-  pruefkommandos: redaktorEntsteht,
+  pruefkommandos: redaktorPruefkommandos,
   spezifikation: redaktorEntsteht,
   nachtkette: redaktorEntsteht,
   gruppe: redaktorEntsteht,
@@ -2682,6 +2782,301 @@ function redaktorPruefstufen(teil) {
   teil.aufVorschau = neuZeichnen;
   neuZeichnen();
   kasten.append(box);
+  vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // Die Formen eines Pruefkommandos — eine Fassung fuer beide Seiten
+  // ------------------------------------------------------------
+  //
+  // Nicht abgeschrieben, sondern der Quelltext der Modulfunktionen: Die Formtreue aus
+  // Kriterium 18 und die Folgen einer Bereichs-Aenderung sind Regeln, und eine zweite Fassung
+  // im Zeichenketten-Literal pruefte kein Test. `namensliste` steht im Baustein `folgen`.
+  checkformen: CHECK_QUELLE,
+
+  // ------------------------------------------------------------
+  // M4 Pruefkommandos und Bereiche (Kriterien 4a, 17, 18, 19, 20)
+  // ------------------------------------------------------------
+  //
+  // Zwei Tabellen in einem Teil: die Kommandos in ihrer Laufreihenfolge und die Bereiche, auf
+  // die sie zeigen. Beide Pfade gehoeren M4, deshalb ist die Folge einer Umbenennung ohne
+  // Folgepfad schon ein Auftrag dieses Teils (Kriterium 9a sinngemaess). Die Form einer Zeile
+  // entsteht nie hier, sondern immer in `checkSetzen` — der Redaktor nennt nur die Laufart.
+  // Die Aufschriften der Laufarten sind kein zweites Literal: Sie kommen aus `LAUFARTEN`
+  // desselben Moduls, als JSON in die Seite gerechnet.
+  redaktorPruefkommandos: `
+const LAUFART_TEXTE = ${JSON.stringify(LAUFARTEN)};
+` + String.raw`
+/** Die Kommandos dieses Teils, immer frisch aus der Arbeitskopie. */
+function checksVon(teil) {
+  const wert = wertVon(teil, "buildChecks");
+  return Array.isArray(wert) ? wert : [];
+}
+
+/** Die Bereiche dieses Teils, immer frisch aus der Arbeitskopie. */
+function bereicheVon(teil) {
+  const wert = wertVon(teil, "checkAreas");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : {};
+}
+
+function bereichsNamen(teil) { return Object.keys(bereicheVon(teil)); }
+
+function bereicheSetzen(teil, neu, neuZeichnen) {
+  setzeWert(teil, "checkAreas", neu);
+  if (neuZeichnen) neuZeichnen();
+}
+
+/** Aendert ein Kommando formtreu — die Form entscheidet checkSetzen, nicht der Redaktor. */
+function checkAendern(teil, i, aenderung) {
+  const liste = checksVon(teil).slice();
+  liste[i] = checkSetzen(liste[i], aenderung);
+  setzeWert(teil, "buildChecks", liste);
+}
+
+/** Traegt die Folgen einer Bereichs-Aenderung in die Arbeitskopie desselben Teils. */
+function bereichsFolgenEintragen(teil, umbenannt, entfernt) {
+  const vorher = checksVon(teil);
+  const folge = bereichsFolgen(vorher, umbenannt, entfernt);
+  if (!gleichwertig(folge.buildChecks, vorher)) setzeWert(teil, "buildChecks", folge.buildChecks);
+  return folge;
+}
+
+/** Je betroffenem Kommando ein Satz fuer die Rueckfrage (Kriterium 20). */
+function bereichsSaetze(name, betroffen) {
+  return betroffen.map(function (b) {
+    if (b.art === "leer") return "„" + b.cmd + "“ bliebe ohne Bereich und lässt sich dann nicht speichern — es wird nicht zu „immer“.";
+    return "Aus „" + b.cmd + "“ fällt der Bereich " + name + " heraus.";
+  });
+}
+
+/** Die Bereichs-Chips einer Kommandozeile: nur bekannte zur Wahl, ein fremder als Geist. */
+function checkBereiche(teil, form, i, neuZeichnen) {
+  const namen = bereichsNamen(teil);
+  const setze = function (liste) { checkAendern(teil, i, { areas: liste }); neuZeichnen(); };
+  const chips = chipListe({
+    werte: form.areas,
+    // Kriterium 4a: ein Bereich, den checkAreas nicht kennt, steht als Geist da und laesst sich
+    // nur herausnehmen oder durch einen bekannten ersetzen.
+    fremd: form.areas.filter(function (n) { return namen.indexOf(n) < 0; }),
+    frei: namen.filter(function (n) { return form.areas.indexOf(n) < 0; }),
+    dazu: function (name) { setze(form.areas.concat([name])); },
+    dazuText: "+ Bereich",
+    entfernen: function (j) {
+      const neu = form.areas.slice();
+      neu.splice(j, 1);
+      setze(neu);
+    },
+    ersetzen: function (j, name) {
+      const neu = form.areas.slice();
+      neu[j] = name;
+      setze(neu);
+    },
+  });
+  // Kriterium 19: Das Schema sperrt ein leeres areas schon, meldet aber nur „passt auf keine
+  // der erlaubten Formen". Der Grund gehoert an die Zeile, und der steht hier.
+  if (form.areas.length === 0) chips.append(el("span", "befund", "mindestens ein Bereich, sonst liefe das Kommando nie"));
+  return chips;
+}
+
+/** Die Zellen einer Kommandozeile: Kommando, Laufart und — nur bei Bereichen — die Chips. */
+function checkZellen(teil, eintrag, i, neuZeichnen) {
+  const form = checkForm(eintrag);
+  const feld = el("input", "kommando");
+  feld.type = "text";
+  feld.value = form.cmd;
+  feld.title = form.cmd;
+  feld.addEventListener("input", function () { checkAendern(teil, i, { cmd: feld.value }); });
+  const wahl = el("div", "wahl wahl-klein");
+  for (const paar of LAUFART_TEXTE) {
+    const b = el("button", "", paar[1]);
+    b.setAttribute("aria-selected", String(form.laufart === paar[0]));
+    b.addEventListener("click", function () { checkAendern(teil, i, { laufart: paar[0] }); neuZeichnen(); });
+    wahl.append(b);
+  }
+  if (form.laufart !== "bereiche") return [feld, wahl, el("span", "leer", "— läuft bei jeder Änderung")];
+  return [feld, wahl, checkBereiche(teil, form, i, neuZeichnen)];
+}
+
+/** Die gestrichelte Zeile: ein Kommando, und es entsteht — als String, also „immer (offen)". */
+function checkNeueZeile(teil, neuZeichnen) {
+  const zeile = el("div", "zeile zeile-neu check-grid");
+  const feld = el("input");
+  feld.type = "text";
+  feld.placeholder = "Kommando hinzufügen …";
+  const anlegen = function () {
+    const cmd = feld.value.trim();
+    if (cmd === "") return;
+    setzeWert(teil, "buildChecks", checksVon(teil).concat([cmd]));
+    neuZeichnen();
+  };
+  feld.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    anlegen();
+  });
+  const dazu = el("button", "dazu", "+ Kommando hinzufügen");
+  dazu.addEventListener("click", anlegen);
+  zeile.append(el("span"), feld, dazu, el("span"), el("span"));
+  return zeile;
+}
+
+/** Benennt einen Bereich um und zieht die Kommandos nach; die Reihenfolge bleibt (Kriterium 20). */
+function bereichUmbenennen(teil, alt, neuerName, neuZeichnen) {
+  const bisher = bereicheVon(teil);
+  const kopie = {};
+  for (const name of Object.keys(bisher)) kopie[name === alt ? neuerName : name] = bisher[name];
+  bereicheSetzen(teil, kopie);
+  bereichsFolgenEintragen(teil, [{ von: alt, nach: neuerName }], []);
+  neuZeichnen();
+}
+
+/** Entfernt einen Bereich; nennen ihn Kommandos, fragt der Redaktor vorher nach (Kriterium 20). */
+function bereichEntfernen(teil, name, neuZeichnen) {
+  const tun = function () {
+    const bisher = bereicheVon(teil);
+    const kopie = {};
+    for (const n of Object.keys(bisher)) {
+      if (n !== name) kopie[n] = bisher[n];
+    }
+    bereicheSetzen(teil, kopie);
+    bereichsFolgenEintragen(teil, [], [name]);
+    neuZeichnen();
+  };
+  const probe = bereichsFolgen(checksVon(teil), [], [name]);
+  if (probe.betroffen.length === 0) { tun(); return; }
+  dialog("„" + name + "“ entfernen?", bereichsSaetze(name, probe.betroffen), [
+    { text: "Abbrechen" },
+    { text: "Mit den Kommandos entfernen", kupfer: true, tun: tun },
+  ]);
+}
+
+/** Die dritte Zelle einer Bereichszeile: die Nutzung aus der Vorschau, sonst die Warnung. */
+function bereichsNutzung(teil, name, muster) {
+  const zelle = el("span", "nutzung");
+  const zahl = (abgeleitetVon(teil).nutzung || {})[name];
+  if (muster.length === 0) {
+    // Kriterium 20: ein Bereich ohne Muster erfasst nichts. Eine Warnung, keine Sperre — den
+    // Befund an der Zeile setzt die Vorschau dazu.
+    zelle.textContent = "ohne Muster: erfasst nichts";
+    zelle.style.color = "var(--bernst)";
+  } else if (zahl === undefined) zelle.textContent = "Nutzung folgt …";
+  else zelle.textContent = zahl === 1 ? "1 Kommando" : zahl + " Kommandos";
+  return zelle;
+}
+
+/** Die Zellen einer Bereichszeile: Name, Pfadmuster und die Zahl der Kommandos. */
+function bereichsZellen(teil, name, neuZeichnen) {
+  const muster = Array.isArray(bereicheVon(teil)[name]) ? bereicheVon(teil)[name] : [];
+  const feld = el("input");
+  feld.type = "text";
+  feld.value = name;
+  // Umbenannt wird erst beim Verlassen des Feldes: Der Name ist der Schluessel, und jeder
+  // Zwischenstand stuende sonst als eigener Bereich da und als eigene Umbenennung in den
+  // Kommandos.
+  feld.addEventListener("change", function () {
+    const neuerName = feld.value.trim();
+    if (neuerName === "" || neuerName === name) { feld.value = name; return; }
+    bereichUmbenennen(teil, name, neuerName, neuZeichnen);
+  });
+  const setze = function (liste) {
+    const kopie = Object.assign({}, bereicheVon(teil));
+    kopie[name] = liste;
+    bereicheSetzen(teil, kopie, neuZeichnen);
+  };
+  const liste = musterListe({
+    muster: muster,
+    entfernen: function (i) {
+      const neu = muster.slice();
+      neu.splice(i, 1);
+      setze(neu);
+    },
+    dazu: function (wert) { setze(muster.concat([wert])); },
+  });
+  return [feld, liste, bereichsNutzung(teil, name, muster)];
+}
+
+/** Die gestrichelte Zeile: ein Name, und der Bereich entsteht — ohne Muster, das ist erlaubt. */
+function bereichNeueZeile(teil, neuZeichnen) {
+  const zeile = el("div", "zeile zeile-neu bereich-grid");
+  const feld = el("input");
+  feld.type = "text";
+  feld.placeholder = "Bereich hinzufügen …";
+  const anlegen = function () {
+    const name = feld.value.trim();
+    if (name === "" || bereichsNamen(teil).indexOf(name) >= 0) return;
+    const kopie = Object.assign({}, bereicheVon(teil));
+    kopie[name] = [];
+    bereicheSetzen(teil, kopie, neuZeichnen);
+  };
+  feld.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    anlegen();
+  });
+  const dazu = el("button", "dazu", "+ Bereich hinzufügen");
+  dazu.addEventListener("click", anlegen);
+  zeile.append(feld, dazu, el("span"), el("span"));
+  return zeile;
+}
+
+/** Die Zwischenueberschrift der zweiten Tabelle — der Teil traegt zwei Pfade. */
+function unterKopf(titel, pfad) {
+  const kopf = el("div", "platte-kopf");
+  kopf.append(el("h3", "platte-pfad", titel), el("span", "feldpfad mono", pfad));
+  return kopf;
+}
+
+function redaktorPruefkommandos(teil) {
+  const kasten = el("div", "stapel");
+  const behaelter = el("div", "stapel");
+  const neuZeichnen = function () {
+    const kommandos = zeilentabelle({
+      kopf: ["", "Kommando", "Läuft", "Bereiche", ""],
+      gitter: "check-grid",
+      pfad: "buildChecks",
+      werte: checksVon(teil),
+      bauen: function (eintrag, i) { return checkZellen(teil, eintrag, i, neuZeichnen); },
+      verschieben: function (von, nach) {
+        const neu = checksVon(teil).slice();
+        neu.splice(nach, 0, neu.splice(von, 1)[0]);
+        setzeWert(teil, "buildChecks", neu);
+        neuZeichnen();
+      },
+      entfernen: function (i) {
+        const neu = checksVon(teil).slice();
+        neu.splice(i, 1);
+        setzeWert(teil, "buildChecks", neu);
+        neuZeichnen();
+      },
+      neu: function () { return checkNeueZeile(teil, neuZeichnen); },
+    });
+    const namen = bereichsNamen(teil);
+    const bereiche = zeilentabelle({
+      kopf: ["Name", "Pfadmuster", "Genutzt von", ""],
+      gitter: "bereich-grid",
+      pfad: function (name) { return "checkAreas." + name; },
+      werte: namen,
+      bauen: function (name) { return bereichsZellen(teil, name, neuZeichnen); },
+      entfernen: function (i) { bereichEntfernen(teil, namen[i], neuZeichnen); },
+      neu: function () { return bereichNeueZeile(teil, neuZeichnen); },
+    });
+    behaelter.replaceChildren(
+      el("p", "erklaerung", "Kommandos, die die lokale Prüfung nacheinander ausführt. Jedes läuft entweder immer oder nur, wenn ein Bereich berührt ist."),
+      kommandos,
+      el("p", "erklaerung", "„immer (offen)“ steht für ein Kommando, das noch niemandem zugeordnet wurde, „immer“ für eine bewusste Entscheidung. Beide laufen gleich; der Unterschied bleibt sichtbar, damit offene Zuordnungen auffallen."),
+      unterKopf("Bereiche", "checkAreas"),
+      el("p", "erklaerung", "Benannte Teile des Projekts, jeweils mit den Pfadmustern, die dazugehören. Einen Bereich zu entfernen, den Kommandos nennen, geht nur nach Rückfrage."),
+      bereiche,
+    );
+    befundeVerteilen(teil);
+  };
+  // Die Zahl der Kommandos je Bereich kommt aus der Vorschau — einmal beim Zeichnen, danach
+  // nach jeder Aenderung.
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(behaelter);
   vorschauAnfordern(teil);
   return kasten;
 }
