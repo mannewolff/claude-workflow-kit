@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
+import { aenderungsliste, paarungsFolgen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -220,4 +220,112 @@ test("[einstellungen-7] die gemeinsamen Bedienelemente stehen als eigene Baustei
   // Sie nimmt den Befund entgegen und laesst genau zwei Wege offen.
   assert.match(elemente, /function fehlerzeile\(\{[^}]*grund/, "die Fehlerzeile nimmt keinen Grund entgegen");
   assert.match(elemente, /zeile-warn/, "die Fehlerzeile ist nicht markiert");
+});
+
+// ------------------------------------------------------------
+// M1 Reviewer und M2 Paarungen (Issue #726)
+// ------------------------------------------------------------
+
+test("[einstellungen-12] die Folgen-Rechnung des Browsers ist die Fassung des Moduls, keine zweite", () => {
+  // Waere sie abgeschrieben, laege die Fassung, die der Mensch bedient, ungeprueft im
+  // Zeichenketten-Literal — genau der Grund, aus dem die abgeleiteten Anzeigen im Modul stehen.
+  assert.ok(SEITEN_BAUSTEINE.folgen.includes(paarungsFolgen.toString()), "der Baustein traegt eine andere Fassung als das Modul");
+  assert.match(SEITEN_BAUSTEINE.redaktorReviewer, /paarungsFolgen\(/, "der Reviewer-Redaktor rechnet die Folgen nicht");
+});
+
+test("[einstellungen-12] die Registry fuehrt die Redaktoren von M1 und M2 aus", () => {
+  const registry = SEITEN_BAUSTEINE.platte;
+  assert.match(registry, /reviewer: redaktorReviewer/, "M1 haengt noch am Platzhalter");
+  assert.match(registry, /paarungen: redaktorPaarungen/, "M2 haengt noch am Platzhalter");
+  assert.match(SEITEN_BAUSTEINE.redaktorReviewer, /function redaktorReviewer\(teil\)/);
+  assert.match(SEITEN_BAUSTEINE.redaktorPaarungen, /function redaktorPaarungen\(teil\)/);
+});
+
+test("[einstellungen-12] M1 zeigt Schalter, Rangtabelle und das Kommandofeld nur bei der Art Kommando", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorReviewer;
+  assert.match(stueck, /issueReview\.requiredBeforeReady/, "der Schalter fuer die Review-Pflicht fehlt");
+  assert.match(stueck, /rev-grid/, "die Tabelle nutzt nicht das Gitter des Entwurfs");
+  assert.match(stueck, /"rang"/, "die Rangnummer fehlt");
+  assert.match(stueck, /verschieben:/, "die Reihenfolge laesst sich nicht aendern");
+  assert.match(stueck, /kind === "command"/, "das Kommandofeld haengt nicht an der Art");
+  assert.match(stueck, /zeile-neu/, "es gibt keine Zeile zum Hinzufuegen");
+  // Ergaenzen statt neu bauen (Plan E9, Kriterium 4): Was die Tabelle nicht zeigt, bleibt stehen.
+  assert.match(stueck, /Object\.assign\(\{\}, /, "der Eintrag wird neu gebaut statt ergaenzt");
+});
+
+test("[einstellungen-12] M1 legt die Folgen einer Entfernung der Rueckfrage vor", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorReviewer;
+  assert.match(stueck, /dialog\(/, "es gibt keine Rueckfrage");
+  assert.match(stueck, /betroffen/, "die Rueckfrage nennt die betroffenen Zeilen nicht");
+  // Die Folge landet in der Arbeitskopie desselben Teils — sie wird mit ihm gespeichert
+  // oder mit ihm verworfen (Kriterium 9a).
+  assert.match(stueck, /setzeWert\(teil, "issueReview\.pairs"/, "die Folge landet nicht in der Arbeitskopie von M1");
+});
+
+test("[einstellungen-12] der Reviewer-Teil traegt die Paarungen als Folgepfad", () => {
+  const m1 = TEILE.find((t) => t.kennung === "m1");
+  assert.deepEqual(m1.folgen, ["issueReview.pairs"]);
+  // Kein zweiter Teil beansprucht den Pfad als eigenen — bearbeitet wird er in M2.
+  assert.equal(TEILE.find((t) => t.pfade.includes("issueReview.pairs")).kennung, "m2");
+});
+
+test("[einstellungen-12] M2 zeichnet je Autor eine Zeile mit Chips und der Wirkung", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPaarungen;
+  assert.match(stueck, /paar-grid/, "die Tabelle nutzt nicht das Gitter des Entwurfs");
+  assert.match(stueck, /"issueReview\.pairs\." \+ autor/, "die Zeile nennt ihren Pfad nicht");
+  assert.match(stueck, /chipListe\(/, "die Pruefer stehen nicht als Chips");
+  assert.match(stueck, /abgeleitetVon\(teil\)/, "die Wirkung kommt nicht aus der Vorschau");
+  assert.match(stueck, /unterbesetzt/, "eine unterbesetzte Stufe wird nicht genannt");
+  assert.match(stueck, /fehlerzeile\(/, "ein unbekannter Autor steht nicht als markierte Fehlerzeile da");
+  assert.match(stueck, /vorschauAnfordern\(teil\)/, "die Wirkung steht erst nach der ersten Aenderung da");
+});
+
+test("[einstellungen-12] M2 bietet als Pruefer nur Namen aus der Reviewer-Tabelle an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPaarungen;
+  assert.match(stueck, /function reviewerNamen\(\)/, "die Namensquelle fehlt");
+  assert.match(stueck, /issueReview\.reviewers/, "die Namen kommen nicht aus der Reviewer-Tabelle");
+  assert.match(stueck, /n !== autor/, "der Autor steht als eigener Pruefer zur Wahl");
+  assert.match(stueck, /indexOf\(n\) < 0/, "ein Name, der schon in der Zeile steht, steht erneut zur Wahl");
+});
+
+/**
+ * Was ein Browser-Skript von aussen braucht. Alles andere muss es selbst deklarieren —
+ * `vm.Script` sieht nur die Form, ein Aufruf ins Leere faellt erst im Browser auf.
+ */
+const BROWSER_GLOBALE = new Set([
+  "fetch", "setTimeout", "clearTimeout", "String", "Number", "Boolean", "RegExp", "Set", "Map",
+  "URLSearchParams", "Error", "Promise", "encodeURIComponent", "decodeURIComponent", "isNaN",
+  "parseInt", "parseFloat",
+]);
+const SCHLUESSELWORT = new Set([
+  "if", "for", "while", "switch", "catch", "function", "return", "typeof", "new", "do", "else",
+  "await", "in", "of", "delete", "void", "instanceof", "throw", "yield",
+]);
+
+test("[einstellungen-12] jede Funktion, die ein Baustein ruft, steht auch in einem", () => {
+  const skript = Object.values(SEITEN_BAUSTEINE).join("\n");
+  // Kommentare und Zeichenketten fallen weg: Ein Funktionsname in einem Satz ist kein Aufruf.
+  const kern = skript
+    .replaceAll(/\/\*[\s\S]*?\*\//g, " ")
+    .replaceAll(/\/\/[^\n]*/g, " ")
+    .replaceAll(/"(?:[^"\\]|\\.)*"/g, '""');
+  const deklariert = new Set([...kern.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]));
+  for (const m of kern.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) deklariert.add(m[1]);
+  // Parameter zaehlen mit: Ein uebergebenes `verschieben` wird gerufen, ohne deklariert zu sein.
+  for (const m of kern.matchAll(/function\s*[A-Za-z_$][\w$]*\s*\(([^)]*)\)|function\s*\(([^)]*)\)/g)) {
+    for (const name of (m[1] ?? m[2] ?? "").match(/[A-Za-z_$][\w$]*/g) ?? []) deklariert.add(name);
+  }
+  const gerufen = [...kern.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]);
+  const offen = [...new Set(gerufen)].filter((n) => !deklariert.has(n) && !SCHLUESSELWORT.has(n) && !BROWSER_GLOBALE.has(n)).sort();
+  assert.deepEqual(offen, [], `im Browser-Skript gerufen, aber nirgends deklariert: ${offen.join(", ")}`);
+});
+
+test("[einstellungen-12] ein Folgepfad kommt in die Aenderungsliste seines Teils", () => {
+  const alt = { issueReview: { reviewers: [{ name: "a", kind: "claude" }], pairs: { b: ["a"] } } };
+  const neu = { issueReview: { reviewers: [{ name: "c", kind: "claude" }], pairs: { b: ["c"] } } };
+  const pfade = new Set(aenderungsliste(alt, neu, "m1").map((a) => a.pfad));
+  assert.ok(pfade.has("issueReview.reviewers[0].name"), [...pfade].join(", "));
+  assert.ok(pfade.has("issueReview.pairs.b[0]"), [...pfade].join(", "));
+  // Der Paarungs-Teil bleibt bei seinem eigenen Pfad — er kennt keinen Folgepfad.
+  assert.deepEqual(aenderungsliste(alt, neu, "m2").map((a) => a.pfad), ["issueReview.pairs.b[0]"]);
 });

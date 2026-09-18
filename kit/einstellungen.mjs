@@ -323,6 +323,62 @@ export function vorgabeAus(pfad) {
   return schemaFuer(pfad)?.default;
 }
 
+/**
+ * Eine Paarungszeile nach Umbenennung und Entfernung: die bleibenden Prüfer in ihrer
+ * Reihenfolge und ob dabei ein Name herausfiel. `neuerName` und `weg` sind schlichte Objekte,
+ * damit die Funktion ohne Map und Set auskommt — sie läuft auch im Browser (siehe
+ * `paarungsFolgen`).
+ */
+function paarungsZeile(liste, neuerName, weg) {
+  const bleibt = [];
+  let nameWeg = false;
+  for (const name of Array.isArray(liste) ? liste : []) {
+    if (weg[name] === true) nameWeg = true;
+    else bleibt.push(Object.prototype.hasOwnProperty.call(neuerName, name) ? neuerName[name] : name);
+  }
+  return { bleibt: bleibt, nameWeg: nameWeg };
+}
+
+/**
+ * Die Folgen einer Umbenennung oder Entfernung in `issueReview.pairs` (Kriterien 8, 9, 9a).
+ * Liefert die neuen Paarungen und je betroffener Zeile einen Eintrag für die Rückfrage:
+ * `autorzeile` — die eigene Zeile des Entfernten als Autor fällt weg, `name` — aus der Zeile
+ * eines anderen Autors wird nur sein Name genommen, `leer` — die Zeile bliebe dadurch ohne
+ * Prüfer und fällt mit weg. Eine Umbenennung nimmt niemandem etwas weg und ergibt deshalb
+ * keinen Eintrag; sie steht im Fuß, nicht in einer Rückfrage.
+ *
+ * Die Funktion benutzt nichts aus dieser Datei außer `paarungsZeile`: Der Quelltext beider
+ * ist zugleich der Baustein `folgen` des Browser-Skripts (`SEITEN_BAUSTEINE`). Der Redaktor
+ * muss die Folgen in der Arbeitskopie zeigen, bevor etwas gespeichert wird — abgeschrieben
+ * läge die Fassung, die der Mensch bedient, ungeprüft im Zeichenketten-Literal.
+ */
+export function paarungsFolgen(pairs, umbenannt, entfernt) {
+  const alt = pairs !== null && typeof pairs === "object" && !Array.isArray(pairs) ? pairs : {};
+  const neuerName = {};
+  for (const u of umbenannt || []) neuerName[u.von] = u.nach;
+  const weg = {};
+  for (const name of entfernt || []) weg[name] = true;
+  const benannt = function (name) { return Object.prototype.hasOwnProperty.call(neuerName, name) ? neuerName[name] : name; };
+  const neu = {};
+  const betroffen = [];
+  for (const autor of Object.keys(alt)) {
+    if (weg[autor] === true) {
+      betroffen.push({ autor: autor, art: "autorzeile" });
+      continue;
+    }
+    const zeile = paarungsZeile(alt[autor], neuerName, weg);
+    if (zeile.nameWeg && zeile.bleibt.length === 0) betroffen.push({ autor: autor, art: "leer" });
+    else {
+      if (zeile.nameWeg) betroffen.push({ autor: autor, art: "name" });
+      neu[benannt(autor)] = zeile.bleibt;
+    }
+  }
+  return { pairs: neu, betroffen: betroffen };
+}
+
+/** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.folgen`. */
+const FOLGEN_QUELLE = [paarungsZeile, paarungsFolgen].map((f) => f.toString()).join("\n\n");
+
 // ============================================================
 // Themen (Plan #674 E14)
 // ============================================================
@@ -363,9 +419,14 @@ const ZERSCHNITTEN = new Set(["issueReview", "night"]);
  * und der Name seines Redaktors. Ein Teil ohne eigenes Thema (`thema: null`) ist generisch:
  * Er tritt je Pfad einmal auf und trägt dessen Thema und dessen Pfad als Überschrift. Ein Test
  * verlangt, dass jedes Wurzelfeld des Schemas außer `version` hier einen Ort hat.
+ *
+ * `folgen` sind Pfade, die ein Teil nicht bearbeitet, aber als Folge einer eigenen Änderung
+ * mitschreibt (Kriterium 9a): Einen Reviewer umzubenennen oder zu entfernen ist samt der
+ * Folgen in den Paarungen eine Änderung des Reviewer-Teils. Der Fuß nennt sie deshalb mit;
+ * bearbeitet wird der Pfad weiter dort, wo er in `pfade` steht.
  */
 export const TEILE = [
-  { kennung: "m1", titel: "Reviewer", thema: "Review", reihenfolge: 1, redaktor: "reviewer", pfade: ["issueReview.requiredBeforeReady", "issueReview.reviewers"] },
+  { kennung: "m1", titel: "Reviewer", thema: "Review", reihenfolge: 1, redaktor: "reviewer", pfade: ["issueReview.requiredBeforeReady", "issueReview.reviewers"], folgen: ["issueReview.pairs"] },
   { kennung: "m2", titel: "Paarungen", thema: "Review", reihenfolge: 2, redaktor: "paarungen", pfade: ["issueReview.pairs"] },
   { kennung: "m3", titel: "Prüfstufen", thema: "Review", reihenfolge: 3, redaktor: "pruefstufen", pfade: ["reviewStufen"] },
   { kennung: "m4", titel: "Prüfkommandos und Bereiche", thema: "Prüfungen", reihenfolge: 1, redaktor: "pruefkommandos", pfade: ["buildChecks", "checkAreas"] },
@@ -1079,13 +1140,14 @@ function unterschied(pfad, alt, neu, out) {
 
 /**
  * Je offener Änderung ein Satz für den Fuß des Teils (Kriterium 2). `teil` ist eine
- * Teil-Kennung und grenzt auf die Pfade ein, die dieser Teil bearbeitet; ohne Teil werden
- * die Wurzelfelder beider Konfigurationen verglichen.
+ * Teil-Kennung und grenzt auf die Pfade ein, die dieser Teil bearbeitet, samt seinen
+ * Folgepfaden; ohne Teil werden die Wurzelfelder beider Konfigurationen verglichen.
  */
 export function aenderungsliste(alt, neu, teil = null) {
+  const eintrag = TEILE.find((t) => t.kennung === teil);
   const pfade = teil === null || teil === undefined
     ? [...new Set([...Object.keys(alt ?? {}), ...Object.keys(neu ?? {})])]
-    : TEILE.find((t) => t.kennung === teil)?.pfade ?? [];
+    : [...(eintrag?.pfade ?? []), ...(eintrag?.folgen ?? [])];
   const out = [];
   for (const pfad of pfade) unterschied(pfad, lies(alt ?? {}, pfad), lies(neu ?? {}, pfad), out);
   return out;
@@ -1393,11 +1455,20 @@ dialog::backdrop { background: rgba(18,24,33,.35); }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .dazu { font-family: "IBM Plex Sans", sans-serif; font-size: 11.5px; color: var(--kupfer); border: 1px dashed color-mix(in srgb, var(--kupfer) 50%, var(--rand)); background: transparent; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
 
+/* Reviewer: der Schalter ueber der Tabelle (im Entwurf eine Nute mit Inline-Stil) */
+.einzeiler { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; }
+.einzeiler label { display: flex; align-items: center; gap: 8px; }
+.einzeiler label b { font-family: "IBM Plex Sans", sans-serif; }
+.einzeiler .nutzung { margin-left: auto; }
+
 /* Paarungen */
 .paar-grid { grid-template-columns: 130px 24px minmax(0,1fr) minmax(210px, .9fr); }
 .pfeil { color: var(--text-schwach); text-align: center; }
 .wirkung { font-size: 11.5px; color: var(--text-matt); display: flex; flex-direction: column; gap: 1px; }
 .wirkung span b { color: var(--text); font-weight: 600; }
+.wirkung .knapp { color: var(--bernst); font-weight: 600; }
+.autorzelle { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.autorzelle select { min-width: 0; flex: 1; }
 
 /* Prüfstufen */
 .stufen { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
@@ -1576,9 +1647,25 @@ function eintragVon(teil, pfad) {
   return teil.eintraege.filter(function (e) { return e.pfad === pfad; })[0] || null;
 }
 
+/**
+ * Der geladene Eintrag eines Pfads, gleich zu welchem Teil er gehört — die Quelle für einen
+ * Folgepfad (issueReview.pairs in M1) und für die Namen, die ein Teil aus einem anderen
+ * liest. Ohne ihn sähe eine Folge aus wie eine Änderung gegen nichts und bliebe offen,
+ * auch wenn sie den geladenen Stand wiederherstellt.
+ */
+function eintragImZustand(pfad) {
+  for (const teile of Object.values(zustand ? zustand.themen : {})) {
+    for (const t of teile) {
+      const e = eintragVon(t, pfad);
+      if (e) return e;
+    }
+  }
+  return null;
+}
+
 /** Der geladene Wert eines Pfads auf der Ebene des Teils — der Stand, auf den Verwerfen zeigt. */
 function geladenerWert(teil, pfad) {
-  const e = eintragVon(teil, pfad);
+  const e = eintragVon(teil, pfad) || eintragImZustand(pfad);
   if (!e) return undefined;
   return ebeneVon(teil) === "persoenlich" ? e.persoenlich : e.team;
 }
@@ -1635,6 +1722,10 @@ async function vorschauHolen(teil) {
   teil.vorschau = r.daten;
   befundeVerteilen(teil);
   fussAktualisieren(teil);
+  // Ein Teil, dessen Anzeige aus der Vorschau kommt — die Wirkung der Paarungen —, zeichnet
+  // sich danach selbst neu. Die ganze Platte neu zu bauen verboete sich: Wer gerade tippt,
+  // verlöre den Eingabeplatz.
+  if (teil.aufVorschau) teil.aufVorschau();
 }
 
 const betrifft = function (befundPfad, pfad) {
@@ -1771,7 +1862,9 @@ function griff(i, anzahl, verschieben) {
 
 /**
  * Eine Tabelle mit einer Zeile je Eintrag. bauen(wert, i) liefert die Zellen, das
- * Verschieben und das Entfernen kommen vom Element.
+ * Verschieben und das Entfernen kommen vom Element. Der Pfad ist entweder ein Listenpfad —
+ * die Zeile bekommt dann ihren Index — oder eine Funktion, die den Pfad einer Zeile nennt
+ * (die Paarungen stehen unter dem Namen ihres Autors, nicht unter einer Nummer).
  */
 function zeilentabelle(o) {
   const t = el("div", "tabelle");
@@ -1780,8 +1873,12 @@ function zeilentabelle(o) {
     for (const titel of o.kopf) k.append(el("span", "", titel));
     t.append(k);
   }
+  const zeilenPfad = function (wert, i) {
+    if (typeof o.pfad === "function") return o.pfad(wert, i);
+    return o.pfad ? o.pfad + "[" + i + "]" : null;
+  };
   (o.werte || []).forEach(function (wert, i) {
-    const g = zeilenGruppe(o.pfad ? o.pfad + "[" + i + "]" : null, o.gitter);
+    const g = zeilenGruppe(zeilenPfad(wert, i), o.gitter);
     if (o.verschieben) g.zeile.append(griff(i, o.werte.length, o.verschieben));
     for (const zelle of o.bauen(wert, i)) g.zeile.append(zelle);
     if (o.entfernen) g.zeile.append(entfernenKnopf("Entfernen", function () { o.entfernen(i); }));
@@ -1791,14 +1888,25 @@ function zeilentabelle(o) {
   return t;
 }
 
-/** Eine Liste von Chips mit Nummer; ab dem Index "aus" sind sie ausgegraut — sie kommen nicht zum Zug. */
+/**
+ * Eine Liste von Chips mit Nummer; ab dem Index "aus" sind sie ausgegraut — sie kommen nicht
+ * zum Zug. Ein Wert aus "fremd" ist ein Bestandswert, den das Kit nicht kennt (Kriterium 4a):
+ * Er steht als Geist da und laesst sich nur herausnehmen oder durch einen bekannten ersetzen.
+ */
 function chipListe(o) {
   const liste = el("div", "chips");
+  const istFremd = function (wert) { return (o.fremd || []).indexOf(wert) >= 0; };
   (o.werte || []).forEach(function (wert, i) {
-    const c = el("span", "chip");
-    c.append(el("span", "nr" + (o.aus !== undefined && i >= o.aus ? " aus" : ""), String(i + 1)));
+    const c = el("span", "chip" + (istFremd(wert) ? " chip-geist" : ""));
+    c.append(el("span", "nr" + (istFremd(wert) || (o.aus !== undefined && i >= o.aus) ? " aus" : ""), String(i + 1)));
     c.append(document.createTextNode(wert));
-    if (o.umordnen && i > 0) {
+    if (istFremd(wert) && o.ersetzen && (o.frei || []).length > 0) {
+      const ersatz = el("select");
+      ersatz.append(el("option", "", "ersetzen durch …"));
+      for (const name of o.frei) ersatz.append(el("option", "", name));
+      ersatz.addEventListener("change", function () { if (ersatz.selectedIndex > 0) o.ersetzen(i, ersatz.value); });
+      c.append(ersatz);
+    } else if (o.umordnen && i > 0) {
       const vor = el("button", "x", "‹");
       vor.title = "nach vorn";
       vor.addEventListener("click", function () { o.umordnen(i, i - 1); });
@@ -1984,8 +2092,8 @@ function eingabe(schema, wert) {
   // mehr als Textblock in Dateischreibweise.
   platte: String.raw`
 const REDAKTOREN = {
-  reviewer: redaktorEntsteht,
-  paarungen: redaktorEntsteht,
+  reviewer: redaktorReviewer,
+  paarungen: redaktorPaarungen,
   pruefstufen: redaktorEntsteht,
   pruefkommandos: redaktorEntsteht,
   spezifikation: redaktorEntsteht,
@@ -2019,6 +2127,389 @@ function platte(teil) {
   if (zustand.bearbeitbar) p.append(fuss(teil));
   befundeVerteilen(teil);
   return p;
+}
+`,
+
+  // ------------------------------------------------------------
+  // Die Folgen einer Reviewer-Aenderung — eine Fassung fuer beide Seiten
+  // ------------------------------------------------------------
+  //
+  // Nicht abgeschrieben, sondern der Quelltext der Modulfunktionen: Der Redaktor muss die
+  // Folgen in der Arbeitskopie zeigen, bevor etwas gespeichert wird, und eine zweite Fassung
+  // im Zeichenketten-Literal pruefte kein Test.
+  folgen: FOLGEN_QUELLE,
+
+  // ------------------------------------------------------------
+  // M1 Reviewer (Kriterien 6, 7, 8, 9, 9a)
+  // ------------------------------------------------------------
+  //
+  // Eine Zeile je Reviewer, die Rangnummer zeigt die Auswahlreihenfolge. Umbenennen und
+  // Entfernen tragen ihre Folgen in `issueReview.pairs` — den Folgepfad dieses Teils. Beides
+  // steht damit in derselben Arbeitskopie und wird mit ihr gespeichert oder verworfen.
+  redaktorReviewer: String.raw`
+const REVIEWER_ARTEN = ["claude", "command"];
+
+/** Die Reviewer-Liste dieses Teils, immer frisch aus der Arbeitskopie. */
+function reviewerListe(teil) {
+  const wert = wertVon(teil, "issueReview.reviewers");
+  return Array.isArray(wert) ? wert : [];
+}
+
+/** Die Paarungen, wie der Reviewer-Teil sie gerade sieht — Arbeitskopie vor geladenem Stand. */
+function reviewerPaare(teil) {
+  const wert = wertVon(teil, "issueReview.pairs");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : {};
+}
+
+/**
+ * Traegt die Folgen einer Umbenennung oder Entfernung in die Arbeitskopie desselben Teils
+ * (Kriterium 9a) und liefert die betroffenen Zeilen fuer die Rueckfrage.
+ */
+function folgenEintragen(teil, umbenannt, entfernt) {
+  const vorher = reviewerPaare(teil);
+  const folge = paarungsFolgen(vorher, umbenannt, entfernt);
+  if (!gleichwertig(folge.pairs, vorher)) setzeWert(teil, "issueReview.pairs", folge.pairs);
+  return folge;
+}
+
+/** Je betroffener Paarungszeile ein Satz fuer die Rueckfrage (Kriterium 9). */
+function folgenSaetze(name, betroffen) {
+  return betroffen.map(function (b) {
+    if (b.art === "autorzeile") return "Die eigene Paarung von " + b.autor + " als Autor verschwindet mit.";
+    if (b.art === "leer") return "Die Zeile von " + b.autor + " bliebe ohne Prüfer und verschwindet mit.";
+    return "Aus der Zeile von " + b.autor + " wird nur der Name " + name + " genommen.";
+  });
+}
+
+/** Der Schalter fuer die Review-Pflicht ueber der Tabelle (Kriterium 6). */
+function pflichtSchalter(teil) {
+  const nute = el("div", "nute einzeiler");
+  const marke = el("label", "gilt");
+  const box = el("input");
+  box.type = "checkbox";
+  box.checked = wertVon(teil, "issueReview.requiredBeforeReady") === true;
+  // Abschalten braucht eine Bestaetigung — die holt der vorhandene Weg beim Speichern
+  // (einstellungen-6); hier wird nur die Arbeitskopie gesetzt.
+  box.addEventListener("change", function () { setzeWert(teil, "issueReview.requiredBeforeReady", box.checked); });
+  marke.append(box, el("b", "", "Review-Pflicht vor Ready"));
+  nute.append(marke, el("span", "feldpfad mono", "issueReview.requiredBeforeReady"));
+  nute.append(el("span", "nutzung", "Ungeprüfte Pakete stellt der Nachtlauf zurück. Abschalten nur nach Rückfrage."));
+  return nute;
+}
+
+/** Die Zellen einer Reviewer-Zeile: Rang, Name, Art, Modell und — nur bei Kommando — die Zeile. */
+function reviewerZellen(teil, r, i, neuZeichnen) {
+  // Ergaenzen statt neu bauen (Plan E9, Kriterium 4): Jedes Feld, das die Tabelle nicht
+  // zeigt, bleibt am Eintrag stehen.
+  const aendere = function (feld, wert) {
+    const liste = reviewerListe(teil).slice();
+    liste[i] = Object.assign({}, liste[i]);
+    liste[i][feld] = wert;
+    setzeWert(teil, "issueReview.reviewers", liste);
+  };
+  const name = el("input");
+  name.type = "text";
+  name.value = r.name === undefined ? "" : String(r.name);
+  // Der Name wandert bei jedem Anschlag in die Arbeitskopie, damit der Fuss mitzaehlt. Die
+  // Paarungen zieht erst das Verlassen des Feldes nach (Kriterium 8): Jeder Zwischenstand
+  // eines getippten Namens stuende sonst als eigene Umbenennung in den Paarungen.
+  let inPaaren = r.name;
+  name.addEventListener("input", function () { aendere("name", name.value); });
+  name.addEventListener("change", function () {
+    if (!inPaaren || !name.value || inPaaren === name.value) return;
+    folgenEintragen(teil, [{ von: inPaaren, nach: name.value }], []);
+    inPaaren = name.value;
+  });
+  const art = el("div", "wahl wahl-klein");
+  for (const k of REVIEWER_ARTEN) {
+    const b = el("button", "", k);
+    b.setAttribute("aria-selected", String(r.kind === k));
+    b.addEventListener("click", function () { aendere("kind", k); neuZeichnen(); });
+    art.append(b);
+  }
+  const modell = el("input");
+  modell.type = "text";
+  modell.value = r.model === undefined ? "" : String(r.model);
+  modell.addEventListener("input", function () { aendere("model", modell.value); });
+  let kommando;
+  if (r.kind === "command") {
+    kommando = el("input", "kommando");
+    kommando.type = "text";
+    kommando.value = r.command === undefined ? "" : String(r.command);
+    kommando.placeholder = "Kommandozeile, Prompt kommt über stdin";
+    kommando.title = kommando.value;
+    kommando.addEventListener("input", function () { aendere("command", kommando.value); });
+  } else {
+    kommando = el("span", "leer", "— läuft als Claude-Subagent");
+  }
+  return [el("span", "rang", String(i + 1)), name, art, modell, kommando];
+}
+
+/**
+ * Entfernt einen Reviewer. Kommt er in einer Paarung vor, nennt eine Rueckfrage jede
+ * betroffene Zeile, bevor die Folge in die Arbeitskopie geht (Kriterium 9).
+ */
+function reviewerEntfernen(teil, i, neuZeichnen) {
+  const name = (reviewerListe(teil)[i] || {}).name;
+  const tun = function () {
+    const liste = reviewerListe(teil).slice();
+    liste.splice(i, 1);
+    setzeWert(teil, "issueReview.reviewers", liste);
+    folgenEintragen(teil, [], [name]);
+    neuZeichnen();
+  };
+  const probe = paarungsFolgen(reviewerPaare(teil), [], [name]);
+  if (probe.betroffen.length === 0) { tun(); return; }
+  dialog("„" + name + "“ entfernen?", folgenSaetze(name, probe.betroffen), [
+    { text: "Abbrechen" },
+    { text: "Mit Paarungen entfernen", kupfer: true, tun: tun },
+  ]);
+}
+
+/** Die gestrichelte Zeile am Fuss der Tabelle: ein Name, und der Reviewer entsteht. */
+function reviewerNeueZeile(teil, neuZeichnen) {
+  const zeile = el("div", "zeile zeile-neu rev-grid");
+  const feld = el("input");
+  feld.type = "text";
+  feld.placeholder = "Name";
+  const anlegen = function () {
+    const name = feld.value.trim();
+    if (name === "") return;
+    // Nur Name und Art: Ein leeres Modell stuende als Wert in der Datei, wo bisher nichts stand.
+    setzeWert(teil, "issueReview.reviewers", reviewerListe(teil).concat([{ name: name, kind: "claude" }]));
+    neuZeichnen();
+  };
+  feld.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    anlegen();
+  });
+  const dazu = el("button", "dazu", "+ Reviewer hinzufügen");
+  dazu.addEventListener("click", anlegen);
+  zeile.append(el("span"), el("span"), feld, el("span", "leer", ""), el("span"), dazu, el("span"));
+  return zeile;
+}
+
+function redaktorReviewer(teil) {
+  const kasten = el("div", "stapel");
+  kasten.append(el("p", "erklaerung", "Wer Dokumente prüfen kann. Die Reihenfolge steuert die Auswahl: Ohne eigene Paarung prüfen die vordersten Namen, die nicht selbst Autor sind."));
+  kasten.append(pflichtSchalter(teil));
+  const behaelter = el("div", "");
+  // Neu gezeichnet wird bei Hinzufuegen, Entfernen, Verschieben und beim Umschalten der Art —
+  // nicht beim Tippen: Ein Neuaufbau je Anschlag naehme dem Menschen den Eingabeplatz.
+  const neuZeichnen = function () {
+    const liste = reviewerListe(teil);
+    behaelter.replaceChildren(zeilentabelle({
+      kopf: ["", "Rang", "Name", "Art", "Modell", "Kommando", ""],
+      gitter: "rev-grid",
+      pfad: "issueReview.reviewers",
+      werte: liste,
+      bauen: function (r, i) { return reviewerZellen(teil, r, i, neuZeichnen); },
+      verschieben: function (von, nach) {
+        const neu = reviewerListe(teil).slice();
+        neu.splice(nach, 0, neu.splice(von, 1)[0]);
+        setzeWert(teil, "issueReview.reviewers", neu);
+        neuZeichnen();
+      },
+      entfernen: function (i) { reviewerEntfernen(teil, i, neuZeichnen); },
+      neu: function () { return reviewerNeueZeile(teil, neuZeichnen); },
+    }));
+    befundeVerteilen(teil);
+  };
+  neuZeichnen();
+  kasten.append(behaelter);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // M2 Paarungen (Kriterien 4a, 10, 11, 12, 13)
+  // ------------------------------------------------------------
+  //
+  // Je Autor mit eigener Paarung eine Zeile. Die Wirkung daneben ist keine Einstellung,
+  // sondern die Antwort der Vorschau auf den Stand der Arbeitskopie — deshalb haengt der
+  // Redaktor sich an `aufVorschau` und fordert schon beim Zeichnen einmal an.
+  redaktorPaarungen: String.raw`
+const PAAR_STUFEN = [["fachlich", "Fachplan"], ["plan", "Plan"], ["issue", "Arbeitspaket"]];
+
+/** Die Paarungen dieses Teils, immer frisch aus der Arbeitskopie. */
+function paarungenVon(teil) {
+  const wert = wertVon(teil, "issueReview.pairs");
+  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : {};
+}
+
+/**
+ * Die Namen aus der Reviewer-Tabelle — die einzige Wahl fuer einen Pruefer (Kriterium 11).
+ * Genommen wird der geladene Stand: Was M1 gerade offen hat, ist dort noch nicht gespeichert
+ * und wuerde hier eine Wahl anbieten, die nach dem Verwerfen von M1 keine mehr waere.
+ */
+function reviewerNamen() {
+  const e = eintragImZustand("issueReview.reviewers");
+  const liste = e && Array.isArray(e.gilt) ? e.gilt : [];
+  return liste.map(function (r) { return r && r.name; }).filter(Boolean);
+}
+
+/** Setzt eine Zeile; die leere Zeile verschwindet, dann gilt wieder die Reihenfolge-Regel. */
+function paarungSetzen(teil, autor, liste, neuZeichnen) {
+  const kopie = Object.assign({}, paarungenVon(teil));
+  if (liste === null || liste.length === 0) delete kopie[autor];
+  else kopie[autor] = liste;
+  setzeWert(teil, "issueReview.pairs", kopie);
+  neuZeichnen();
+}
+
+/** Ab welchem Chip die Pruefer nicht mehr zum Zug kommen — die groesste Besetzung der Stufen. */
+function hoechsteBesetzung(wirkung) {
+  if (!wirkung) return undefined;
+  let max = 0;
+  for (const paar of PAAR_STUFEN) {
+    const s = wirkung[paar[0]];
+    if (s && s.pruefer.length > max) max = s.pruefer.length;
+  }
+  return max;
+}
+
+/** Was aus dieser Zeile folgt: je Stufe die Pruefer, und ob die Stufe unterbesetzt bleibt. */
+function wirkungZelle(wirkung) {
+  const w = el("div", "wirkung");
+  if (!wirkung) {
+    w.append(el("span", "leer", "Wirkung folgt …"));
+    return w;
+  }
+  for (const paar of PAAR_STUFEN) {
+    const s = wirkung[paar[0]] || { pruefer: [], unterbesetzt: true };
+    const zeile = el("span");
+    zeile.append(document.createTextNode(paar[1] + ": "));
+    zeile.append(el("b", "", s.pruefer.map(function (p) { return p.name; }).join(" + ") || "—"));
+    // Nicht aufgefuellt: Reicht die Zeile nicht, bleibt die Stufe unterbesetzt (Kriterium 12).
+    if (s.unterbesetzt) zeile.append(el("span", "knapp", " · unterbesetzt"));
+    w.append(zeile);
+  }
+  return w;
+}
+
+/** Die Zellen einer Paarungszeile: Autor samt Entfernen, Pfeil, Pruefer-Chips, Wirkung. */
+function paarungsZellen(teil, autor, namen, wirkung, neuZeichnen) {
+  const liste = Array.isArray(paarungenVon(teil)[autor]) ? paarungenVon(teil)[autor] : [];
+  const frei = namen.filter(function (n) { return n !== autor && liste.indexOf(n) < 0; });
+  const links = el("div", "autorzelle");
+  const wahl = el("select");
+  for (const n of namen) {
+    const o = el("option", "", n);
+    if (n === autor) o.selected = true;
+    wahl.append(o);
+  }
+  wahl.addEventListener("change", function () {
+    if (wahl.value === autor) return;
+    const kopie = {};
+    for (const a of Object.keys(paarungenVon(teil))) {
+      const alt = Array.isArray(paarungenVon(teil)[a]) ? paarungenVon(teil)[a] : [];
+      // Der neue Autor darf nicht sein eigener Pruefer sein.
+      kopie[a === autor ? wahl.value : a] = a === autor ? alt.filter(function (n) { return n !== wahl.value; }) : alt;
+    }
+    setzeWert(teil, "issueReview.pairs", kopie);
+    neuZeichnen();
+  });
+  links.append(wahl, entfernenKnopf("Paarung entfernen, dann gilt wieder die Reihenfolge der Reviewer-Tabelle", function () {
+    paarungSetzen(teil, autor, null, neuZeichnen);
+  }));
+  const chips = chipListe({
+    werte: liste,
+    aus: hoechsteBesetzung(wirkung),
+    fremd: liste.filter(function (n) { return namen.indexOf(n) < 0; }),
+    frei: frei,
+    dazu: function (name) { paarungSetzen(teil, autor, liste.concat([name]), neuZeichnen); },
+    dazuText: "+ Prüfer",
+    umordnen: function (von, nach) {
+      const neu = liste.slice();
+      neu.splice(nach, 0, neu.splice(von, 1)[0]);
+      paarungSetzen(teil, autor, neu, neuZeichnen);
+    },
+    entfernen: function (i) {
+      const neu = liste.slice();
+      neu.splice(i, 1);
+      paarungSetzen(teil, autor, neu, neuZeichnen);
+    },
+    ersetzen: function (i, name) {
+      const neu = liste.slice();
+      neu[i] = name;
+      paarungSetzen(teil, autor, neu, neuZeichnen);
+    },
+  });
+  return [links, el("span", "pfeil", "→"), chips, wirkungZelle(wirkung)];
+}
+
+/** Die gestrichelte Zeile: ein Autor ohne eigene Paarung bekommt eine (Kriterien 11 und 13). */
+function paarungNeueZeile(teil, autoren, namen, neuZeichnen) {
+  const rahmen = el("div", "tabelle");
+  const zeile = el("div", "zeile zeile-neu paar-grid");
+  const frei = namen.filter(function (n) { return autoren.indexOf(n) < 0; });
+  const wahl = el("select");
+  wahl.append(el("option", "", "Autor hinzufügen …"));
+  if (frei.length === 0) {
+    const leer = el("option", "", "alle Reviewer haben eine Paarung");
+    leer.disabled = true;
+    wahl.append(leer);
+  }
+  for (const n of frei) wahl.append(el("option", "", n));
+  wahl.addEventListener("change", function () {
+    if (wahl.selectedIndex <= 0) return;
+    const kopie = Object.assign({}, paarungenVon(teil));
+    kopie[wahl.value] = [];
+    setzeWert(teil, "issueReview.pairs", kopie);
+    neuZeichnen();
+  });
+  zeile.append(wahl, el("span", "pfeil", "→"));
+  zeile.append(el("span", "leer", "Autoren ohne Paarung: Reihenfolge-Regel aus M1. × an einer Zeile entfernt die Paarung, dann gilt wieder die Regel."));
+  zeile.append(el("span"));
+  rahmen.append(zeile);
+  return rahmen;
+}
+
+function redaktorPaarungen(teil) {
+  const kasten = el("div", "stapel");
+  const behaelter = el("div", "");
+  const neuZeichnen = function () {
+    const pairs = paarungenVon(teil);
+    const namen = reviewerNamen();
+    const autoren = Object.keys(pairs);
+    const wirkung = abgeleitetVon(teil).wirkung || {};
+    const bekannt = autoren.filter(function (a) { return namen.indexOf(a) >= 0; });
+    const tabelle = zeilentabelle({
+      kopf: ["Autor", "", "Prüfer, in Reihenfolge", "Wirkung"],
+      gitter: "paar-grid",
+      pfad: function (autor) { return "issueReview.pairs." + autor; },
+      werte: bekannt,
+      bauen: function (autor) { return paarungsZellen(teil, autor, namen, wirkung[autor], neuZeichnen); },
+    });
+    // Ein Autor, den die Reviewer-Tabelle nicht kennt, waehlt nie jemanden aus: Seine Zeile
+    // steht markiert da und laesst sich nur entfernen oder ersetzen (Kriterium 4a).
+    for (const autor of autoren) {
+      if (namen.indexOf(autor) >= 0) continue;
+      tabelle.append(fehlerzeile({
+        wert: autor,
+        grund: "'" + autor + "' steht nicht in issueReview.reviewers — diese Zeile kommt nie zum Zug.",
+        gitter: "paar-grid",
+        wahl: namen.filter(function (n) { return autoren.indexOf(n) < 0; }),
+        ersetzen: function (name) {
+          const kopie = Object.assign({}, paarungenVon(teil));
+          kopie[name] = (kopie[autor] || []).filter(function (n) { return n !== name; });
+          delete kopie[autor];
+          setzeWert(teil, "issueReview.pairs", kopie);
+          neuZeichnen();
+        },
+        entfernen: function () { paarungSetzen(teil, autor, null, neuZeichnen); },
+      }));
+    }
+    behaelter.replaceChildren(tabelle, paarungNeueZeile(teil, autoren, namen, neuZeichnen));
+    befundeVerteilen(teil);
+  };
+  // Die Wirkung kommt aus der Vorschau — einmal beim Zeichnen, danach nach jeder Aenderung.
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(behaelter);
+  vorschauAnfordern(teil);
+  return kasten;
 }
 `,
 
