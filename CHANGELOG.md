@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [1.53.6] - 2026-09-18
+## [2.0.0] - 2026-09-18
 - Doppelte Spec-IDs des Batches auf night-33 bis night-42 aufgeloest (#736)
 - Hook-Block und Installer melden die Sitzung von selbst (#735)
 - Sitzungs-Melder fuer den interaktiven Verbrauch (#734)
