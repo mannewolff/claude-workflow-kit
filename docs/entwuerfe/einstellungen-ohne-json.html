@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einstellungen ohne JSON — Entwurf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --grund: #E7E9ED; --grund-tief: #D8DBE2; --nute: #D5D9E0; --platte: #FDFDFE; --platte-fuss: #F2F4F7; --platte-hoch: #FFFFFF;
+  --rand: #CDD2DA; --rand-stark: #B7BEC9; --kante: rgba(255,255,255,.9);
+  --text: #14181E; --text-matt: #58606C; --text-schwach: #868E9B;
+  --kupfer: #A85F2C; --kupfer-hell: #C2743C; --kupfer-schat: rgba(168,95,44,.16);
+  --gruen: #2F8F4E; --bernst: #B07C15; --zinnob: #C8393E; --stahl: #2F6FC9; --grau: #8A929E;
+  --schatten-platte: 0 1px 0 var(--kante) inset, 0 1px 2px rgba(18,24,33,.10), 0 10px 24px -14px rgba(18,24,33,.35);
+  --schatten-nute: 0 2px 5px rgba(18,24,33,.14) inset, 0 -1px 0 var(--kante) inset;
+  --schatten-taste: 0 1px 0 var(--kante) inset, 0 1px 2px rgba(18,24,33,.18);
+  --r-gross: 14px; --r-mittel: 10px; --r-klein: 6px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(1100px 600px at 18% -8%, var(--kupfer-schat), transparent 62%), var(--grund); color: var(--text); font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { font-family: Archivo, system-ui, sans-serif; font-stretch: 112%; margin: 0; }
+h3 { font-size: 15px; }
+.mono { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+:is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--kupfer); outline-offset: 2px; }
+.etikett { font-family: Archivo, system-ui, sans-serif; font-stretch: 118%; font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--text-schwach); }
+.warte { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+.schiene { background: linear-gradient(180deg, var(--grund-tief), var(--nute)); border-right: 1px solid var(--rand); box-shadow: var(--schatten-nute); padding: 18px 14px 24px; display: flex; flex-direction: column; gap: 18px; }
+.marke { display: flex; align-items: center; gap: 10px; padding-inline: 4px; }
+.marke-mal { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(155deg, var(--kupfer-hell), var(--kupfer) 62%, #7b421c); box-shadow: 0 1px 0 rgba(255,255,255,.35) inset, 0 2px 6px rgba(0,0,0,.35); flex: none; }
+.marke-name { font-family: Archivo, sans-serif; font-stretch: 118%; font-weight: 700; font-size: 14px; }
+.marke-zusatz { font-size: 10.5px; color: var(--text-schwach); letter-spacing: .04em; }
+.nav-block { display: flex; flex-direction: column; gap: 3px; }
+.nav-titel { padding: 0 8px 7px; }
+.nav-eintrag { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; border-radius: var(--r-mittel); color: var(--text-matt); font: inherit; font-size: 13px; font-weight: 500; text-align: left; border: 1px solid transparent; background: transparent; }
+.nav-eintrag[aria-current="page"] { background: linear-gradient(180deg, var(--platte-hoch), var(--platte)); border-color: var(--rand); box-shadow: var(--schatten-taste); color: var(--text); }
+.nav-unter { font-size: 10.5px; color: var(--text-schwach); }
+.mockup-liste { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.mockup-liste a { color: var(--text-matt); text-decoration: none; padding: 3px 10px; border-radius: 6px; }
+.mockup-liste a:hover { background: color-mix(in srgb, var(--platte) 70%, transparent); color: var(--text); }
+.inhalt { min-width: 0; display: flex; flex-direction: column; }
+.kopf { display: flex; align-items: center; gap: 16px; padding: 14px 26px; border-bottom: 1px solid var(--rand); background: color-mix(in srgb, var(--grund) 86%, var(--platte)); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
+.pfad { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-matt); }
+.pfad b { font-weight: 600; color: var(--text); font-family: Archivo, sans-serif; font-stretch: 110%; }
+.taste { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); background: linear-gradient(180deg, var(--platte-hoch), var(--platte-fuss)); border: 1px solid var(--rand); box-shadow: var(--schatten-taste); border-radius: 9px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.taste:hover { box-shadow: var(--schatten-platte); }
+.taste-klein { font-size: 11.5px; padding: 3px 9px; border-radius: 7px; }
+.taste-kupfer { color: #fff; background: linear-gradient(180deg, var(--kupfer-hell), var(--kupfer)); border-color: color-mix(in srgb, var(--kupfer) 70%, #000); }
+.taste-leise { background: transparent; box-shadow: none; border-color: transparent; color: var(--text-matt); }
+.taste-leise:hover { background: var(--platte-fuss); box-shadow: none; border-color: var(--rand); }
+.wahl { display: inline-flex; flex-wrap: wrap; background: var(--nute); border: 1px solid var(--rand); border-radius: 10px; box-shadow: var(--schatten-nute); padding: 3px; gap: 3px; }
+.wahl button { font-family: Archivo, sans-serif; font-stretch: 112%; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; padding: 5px 12px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--text-matt); cursor: pointer; }
+.wahl button[aria-selected="true"] { background: linear-gradient(180deg, var(--platte-hoch), var(--platte)); border-color: var(--rand); box-shadow: var(--schatten-taste); color: var(--text); }
+.wahl-klein button { font-size: 10.5px; padding: 3px 9px; }
+.buehne { padding: 22px 26px 60px; display: flex; flex-direction: column; gap: 14px; max-width: 1180px; }
+.melder { padding: 10px 14px; border-radius: var(--r-mittel); border: 1px solid var(--rand); background: var(--platte); box-shadow: var(--schatten-platte); font-size: 13px; }
+.melder-entwurf { border-color: color-mix(in srgb, var(--kupfer) 40%, var(--rand)); background: linear-gradient(180deg, #fff, #fbf5f0); }
+.platte { border-radius: var(--r-gross); border: 1px solid var(--rand); background: linear-gradient(180deg, var(--platte-hoch), var(--platte-fuss)); box-shadow: var(--schatten-platte); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.platte-kopf { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.platte-kopf .rechts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.m-marke { font-family: Archivo, sans-serif; font-stretch: 118%; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--kupfer); border-radius: 5px; padding: 1px 7px; align-self: center; }
+.feldpfad { font-size: 11.5px; color: var(--text-schwach); }
+.erklaerung { color: var(--text-matt); font-size: 13px; margin: 0; max-width: 820px; }
+.anmerkung { font-size: 12px; color: var(--text-matt); border-left: 3px solid var(--kupfer-hell); padding: 4px 10px; background: color-mix(in srgb, var(--kupfer-schat) 35%, transparent); border-radius: 0 6px 6px 0; }
+.anmerkung b { color: var(--text); }
+input[type=text], input[type=number], input[type=date], select { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; background: var(--platte-hoch); border: 1px solid var(--rand-stark); border-radius: var(--r-klein); padding: 5px 8px; color: var(--text); min-width: 0; }
+input.sans, select.sans { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+.nute { background: var(--nute); border: 1px solid var(--rand); border-radius: var(--r-mittel); box-shadow: var(--schatten-nute); padding: 6px; }
+.fuss { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--rand); font-size: 12.5px; color: var(--text-matt); }
+.fuss .rechts { margin-left: auto; display: flex; gap: 8px; }
+.punkt { width: 8px; height: 8px; border-radius: 50%; background: var(--kupfer); display: inline-block; }
+.befund { font-size: 12px; padding: 3px 0 3px 10px; border-left: 3px solid var(--zinnob); color: var(--text); }
+.befund-warn { border-left-color: var(--bernst); }
+.leer { color: var(--text-schwach); }
+.zeige-nicht { display: none !important; }
+
+/* Tabellenzeilen */
+.tabelle { display: flex; flex-direction: column; gap: 5px; }
+.zeile { display: grid; align-items: center; gap: 8px; background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-klein); padding: 6px 8px; box-shadow: 0 1px 0 var(--kante) inset; }
+.zeile-kopf { background: transparent; border-color: transparent; box-shadow: none; padding-block: 0; }
+.zeile-warn { border-color: color-mix(in srgb, var(--bernst) 60%, var(--rand)); background: #fffbf2; }
+.zeile-neu { border-style: dashed; background: transparent; }
+.griff { display: flex; flex-direction: column; gap: 0; }
+.griff button { font-size: 9px; line-height: 1; padding: 2px 4px; border: 1px solid transparent; background: transparent; color: var(--text-schwach); cursor: pointer; border-radius: 4px; }
+.griff button:hover { background: var(--nute); color: var(--text); }
+.rang { font-family: Archivo, sans-serif; font-stretch: 110%; font-weight: 700; font-size: 12px; color: var(--text-matt); text-align: center; background: var(--nute); border-radius: 5px; box-shadow: var(--schatten-nute); padding: 2px 0; }
+.rev-grid { grid-template-columns: 22px 28px minmax(90px,1fr) 150px minmax(120px,1.1fr) minmax(200px,2.6fr) 30px; }
+.rev-grid input { width: 100%; }
+.kommando { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x { border: none; background: transparent; color: var(--text-schwach); font-size: 15px; cursor: pointer; border-radius: 5px; padding: 0 5px; }
+.x:hover { color: var(--zinnob); background: #fbeaea; }
+
+/* Chips */
+.chip { display: inline-flex; align-items: center; gap: 5px; font-family: "IBM Plex Mono", monospace; font-size: 12px; background: linear-gradient(180deg, var(--platte-hoch), var(--platte-fuss)); border: 1px solid var(--rand-stark); border-radius: 999px; padding: 2px 4px 2px 6px; box-shadow: var(--schatten-taste); white-space: nowrap; }
+.chip .nr { font-family: Archivo, sans-serif; font-weight: 700; font-size: 10px; color: #fff; background: var(--kupfer); border-radius: 999px; width: 16px; height: 16px; display: inline-grid; place-items: center; }
+.chip .nr.aus { background: var(--grau); }
+.chip .x { font-size: 13px; padding: 0 3px; }
+.chip-geist { border-style: dashed; box-shadow: none; background: transparent; color: var(--text-schwach); }
+.chip-muster { border-radius: 6px; padding-left: 7px; }
+.chip-bereich { border-radius: 6px; border-color: color-mix(in srgb, var(--stahl) 45%, var(--rand)); background: #eef4fc; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.dazu { font-family: "IBM Plex Sans", sans-serif; font-size: 11.5px; color: var(--kupfer); border: 1px dashed color-mix(in srgb, var(--kupfer) 50%, var(--rand)); background: transparent; border-radius: 999px; padding: 2px 9px; cursor: pointer; }
+
+/* Paarungen */
+.paar-grid { grid-template-columns: 130px 24px minmax(0,1fr) minmax(210px, .9fr); }
+.pfeil { color: var(--text-schwach); text-align: center; }
+.wirkung { font-size: 11.5px; color: var(--text-matt); display: flex; flex-direction: column; gap: 1px; }
+.wirkung span b { color: var(--text); font-weight: 600; }
+.matrix-rahmen { overflow-x: auto; }
+table.matrix { border-collapse: separate; border-spacing: 3px; }
+.matrix th { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 500; padding: 4px 8px; color: var(--text-matt); }
+.matrix th.spalte { writing-mode: vertical-rl; transform: rotate(180deg); height: 84px; text-align: left; vertical-align: bottom; }
+.matrix th.zeilenkopf { text-align: right; }
+.matrix td { width: 46px; height: 34px; text-align: center; background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: 6px; cursor: pointer; }
+.matrix td:hover { border-color: var(--kupfer-hell); }
+.matrix td.selbst { background: repeating-linear-gradient(45deg, var(--nute), #c3c8d1 4px, #e2e5ea 4px, #e2e5ea 8px); cursor: not-allowed; color: var(--text-schwach); font-size: 11px; }
+.matrix td .nr { font-family: Archivo, sans-serif; font-weight: 700; font-size: 12px; color: #fff; background: var(--kupfer); border-radius: 999px; width: 22px; height: 22px; display: inline-grid; place-items: center; }
+.matrix td .nr.zwei { background: var(--kupfer-hell); }
+.matrix td .nr.drei { background: var(--grau); }
+
+/* Prüfstufen */
+.stufen { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.stufe { background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-mittel); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.stufe h4 { margin: 0; font-family: Archivo, sans-serif; font-stretch: 110%; font-size: 13.5px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--rand-stark); border-radius: 8px; overflow: hidden; background: var(--platte-hoch); }
+.stepper button { border: none; background: var(--platte-fuss); width: 26px; height: 26px; font-size: 15px; cursor: pointer; color: var(--text-matt); }
+.stepper button:hover { color: var(--text); background: var(--nute); }
+.stepper span { min-width: 30px; text-align: center; font-family: Archivo, sans-serif; font-weight: 700; }
+.rolle { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 6px; align-items: center; }
+.rolle select { width: 100%; }
+
+/* Prüfkommandos */
+.check-grid { grid-template-columns: 22px minmax(220px,1.4fr) auto minmax(160px,1fr) 30px; }
+.bereich-grid { grid-template-columns: 130px minmax(0,1fr) 150px 30px; }
+.nutzung { font-size: 11.5px; color: var(--text-schwach); }
+.zwei-spalten { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.feld { display: flex; flex-direction: column; gap: 3px; }
+.feld label { font-size: 12px; font-weight: 600; color: var(--text-matt); }
+.feld .hilfe { font-size: 11.5px; color: var(--text-schwach); }
+.beispiel { font-size: 11.5px; background: var(--nute); border-radius: 6px; padding: 4px 8px; box-shadow: var(--schatten-nute); }
+.beispiel mark { background: #f6e3d3; color: var(--kupfer); border-radius: 3px; padding: 0 2px; }
+
+/* Nacht */
+.budget-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+.budget { background: var(--platte-hoch); border: 1px solid var(--rand); border-radius: var(--r-mittel); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.einheit { display: flex; align-items: center; gap: 6px; }
+.einheit input { width: 80px; }
+.einheit span { font-size: 12px; color: var(--text-schwach); }
+.leiste { display: flex; height: 22px; border-radius: 6px; overflow: hidden; box-shadow: var(--schatten-nute); font-size: 10.5px; font-family: Archivo, sans-serif; font-weight: 600; color: #fff; }
+.leiste div { display: grid; place-items: center; white-space: nowrap; overflow: hidden; }
+.modell-grid { grid-template-columns: 22px 28px minmax(0,1fr) 150px 30px; }
+.staerke { font-size: 11px; color: var(--text-schwach); text-align: right; }
+.trig-grid { grid-template-columns: 130px minmax(0,1fr) 190px minmax(0,1fr); }
+.gilt { font-size: 12px; color: var(--text-matt); }
+.gilt b { font-family: "IBM Plex Mono", monospace; font-weight: 500; color: var(--text); }
+@media (max-width: 900px) { .warte { grid-template-columns: 1fr; } .schiene { display: none; } .stufen, .budget-grid, .zwei-spalten { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="warte">
+  <nav class="schiene" aria-label="Projekte">
+    <div class="marke"><div class="marke-mal" aria-hidden="true"></div><div><div class="marke-name">Einstellungen</div><div class="marke-zusatz mono">Oberfläche 1.53.5 · Entwurf</div></div></div>
+    <div class="nav-block"><div class="etikett nav-titel">Projekte</div>
+      <button class="nav-eintrag" aria-current="page"><span>claude-workflow-kit</span><span class="nav-unter mono">Kit 1.53.5</span></button>
+      <button class="nav-eintrag"><span>kanban-kit</span><span class="nav-unter mono">Kit 1.53.3</span></button>
+    </div>
+    <div class="nav-block"><div class="etikett nav-titel">Entwürfe</div>
+      <div class="mockup-liste">
+        <a href="#m1" data-thema="Review">M1 · Reviewer</a>
+        <a href="#m2" data-thema="Review">M2 · Paarungen</a>
+        <a href="#m3" data-thema="Review">M3 · Prüfstufen</a>
+        <a href="#m4" data-thema="Prüfungen">M4 · Prüfkommandos &amp; Bereiche</a>
+        <a href="#m5" data-thema="Prüfungen">M5 · Spezifikation</a>
+        <a href="#m6" data-thema="Nachtbetrieb">M6 · Nacht-Kette</a>
+        <a href="#m7" data-thema="Release">M7 · Einfache Gruppen</a>
+      </div>
+    </div>
+  </nav>
+  <main class="inhalt">
+    <header class="kopf">
+      <div class="pfad"><span>Workflow-Kit</span><span aria-hidden="true">/</span><b>claude-workflow-kit</b></div>
+      <div class="wahl" id="themen" role="tablist">
+        <button data-thema="Prüfungen">Prüfungen</button>
+        <button data-thema="Board">Board</button>
+        <button data-thema="Review" aria-selected="true">Review</button>
+        <button data-thema="Nachtbetrieb">Nachtbetrieb</button>
+        <button data-thema="Release">Release</button>
+      </div>
+    </header>
+
+    <div class="buehne">
+      <div class="melder melder-entwurf"><b>Entwurf zu Idee #682.</b> Freigegeben zur Vorlage am 2026-09-17, nach dem Fachplan-Review angepasst: Paarungen in Zeilen (M2), Review-Pflicht in M1, Spezifikation ohne Ausschalter (M5); die Modellliste für die Nacht folgt mit #701. Die Werte stammen aus der echten Einstellungsdatei dieses Projekts. Nur wo sie nichts trägt, stehen Beispielwerte: die Bereiche in M4 und die persönliche Push-Phrase in M7. Die Bedienung ist angedeutet und speichert nichts. Kupferne Kästen (<span class="m-marke">M1</span> …) markieren die Entwürfe, auf die sich der Fachplan bezieht.</div>
+
+      <!-- ============================== REVIEW ============================== -->
+      <section class="thema stapel" data-thema="Review" style="display:flex;flex-direction:column;gap:14px">
+
+        <!-- M1 Reviewer -->
+        <section class="platte" id="m1">
+          <div class="platte-kopf">
+            <span class="m-marke">M1</span><h3>Reviewer</h3><span class="feldpfad mono">issueReview.reviewers</span>
+            <span class="etikett">gilt für das Team</span>
+          </div>
+          <p class="erklaerung">Wer Dokumente prüfen kann. <b>Die Reihenfolge steuert die Auswahl:</b> Ohne eigene Paarung prüfen die vordersten, die nicht selbst Autor sind.</p>
+          <div class="nute" style="display:flex;align-items:center;gap:10px;padding:8px 12px"><label class="gilt" style="display:flex;align-items:center;gap:8px"><input type="checkbox"> <b style="font-family:'IBM Plex Sans',sans-serif">Review-Pflicht vor Ready</b></label><span class="feldpfad mono">issueReview.requiredBeforeReady</span><span class="nutzung" style="margin-left:auto">Ungeprüfte Pakete stellt der Nachtlauf zurück. Abschalten nur nach Rückfrage.</span></div>
+          <div class="tabelle" id="reviewer">
+            <div class="zeile zeile-kopf rev-grid etikett"><span></span><span>Rang</span><span>Name</span><span>Art</span><span>Modell</span><span>Kommando</span><span></span></div>
+          </div>
+          <div class="befund befund-warn" id="rev-warn" style="display:none"></div>
+          <div class="anmerkung"><b>Art umschalten</b> blendet das Kommandofeld ein oder aus. Ein Name, der in einer Paarung vorkommt, lässt sich nur mit Rückfrage entfernen (siehe Zeile <span class="mono">gpt-sol</span>): Seine eigene Zeile als Autor verschwindet, aus den Zeilen anderer Autoren nur sein Name. Bliebe eine Zeile ohne Prüfer, sagt die Rückfrage das. Umbenennen zieht die Paarungen mit. Beides ist <b>eine</b> Änderung dieses Teils, gespeichert oder verworfen mit ihm; der Fuß nennt die betroffenen Paarungen.</div>
+          <div class="fuss"><span class="punkt"></span><span>1 Änderung: Reihenfolge von <span class="mono">sonnet</span> und <span class="mono">fable</span></span><div class="rechts"><button class="taste">Verwerfen</button><button class="taste taste-kupfer">Speichern</button></div></div>
+        </section>
+
+        <!-- M2 Paarungen -->
+        <section class="platte" id="m2">
+          <div class="platte-kopf">
+            <span class="m-marke">M2</span><h3>Paarungen</h3><span class="feldpfad mono">issueReview.pairs</span>
+            <span class="etikett">gilt für das Team</span>
+            
+          </div>
+          <p class="erklaerung">Wer die Dokumente eines Autors prüft, in der Reihenfolge der Zuteilung. Zur Wahl stehen nur Namen aus <a href="#m1">M1</a>, nie der Autor selbst. Rechts steht, was daraus mit den Prüfstufen aus <a href="#m3">M3</a> folgt.</p>
+
+          <div id="paar-a">
+            <div class="tabelle" id="paare">
+              <div class="zeile zeile-kopf paar-grid etikett"><span>Autor</span><span></span><span>Prüfer, in Reihenfolge</span><span>Wirkung</span></div>
+            </div>
+            <div class="tabelle" style="margin-top:5px">
+              <div class="zeile zeile-neu paar-grid">
+                <select class="sans"><option>Autor hinzufügen …</option><option disabled>alle Reviewer haben eine Paarung</option></select>
+                <span class="pfeil">→</span>
+                <span class="leer" style="font-size:12px">Autoren ohne Paarung: Reihenfolge-Regel aus M1. × an einer Zeile entfernt die Paarung, dann gilt wieder die Regel.</span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- M3 Prüfstufen -->
+        <section class="platte" id="m3">
+          <div class="platte-kopf">
+            <span class="m-marke">M3</span><h3>Prüfstufen</h3><span class="feldpfad mono">reviewStufen</span>
+            <span class="etikett">gilt für das Team</span>
+          </div>
+          <p class="erklaerung">Wie viele Reviewer jede Stufe prüfen und mit welchem Blick. Die Zahl der Rollen folgt der Zahl der Prüfer, deshalb kann beides nicht auseinanderlaufen.</p>
+          <div class="stufen" id="stufen"></div>
+        </section>
+      </section>
+
+      <!-- ============================== PRÜFUNGEN ============================== -->
+      <section class="thema stapel" data-thema="Prüfungen" style="display:none;flex-direction:column;gap:14px">
+
+        <!-- M4 Prüfkommandos & Bereiche -->
+        <section class="platte" id="m4">
+          <div class="platte-kopf">
+            <span class="m-marke">M4</span><h3>Prüfkommandos</h3><span class="feldpfad mono">buildChecks</span>
+            <span class="etikett">gilt für das Team</span>
+          </div>
+          <p class="erklaerung">Kommandos, die die lokale Prüfung nacheinander ausführt. Jedes Kommando läuft entweder <b>immer</b> oder <b>nur, wenn ein Bereich berührt ist</b>.</p>
+          <div class="tabelle" id="checks">
+            <div class="zeile zeile-kopf check-grid etikett"><span></span><span>Kommando</span><span>Läuft</span><span>Bereiche</span><span></span></div>
+          </div>
+          <div class="tabelle"><div class="zeile zeile-neu check-grid"><span></span><input type="text" placeholder="Kommando hinzufügen …"><span></span><span></span><span></span></div></div>
+          <div class="anmerkung"><b>„immer (offen)“</b> steht für ein Kommando, das noch niemandem zugeordnet wurde, <b>„immer“</b> für eine bewusste Entscheidung. Beide laufen gleich. Die Oberfläche zeigt den Unterschied, damit offene Zuordnungen sichtbar bleiben. <b>Einen genutzten Bereich entfernen</b> geht nur mit Rückfrage, die die Kommandos nennt. Danach fällt der Name dort heraus; ein Kommando ohne Bereich lässt sich nicht speichern und wird nie still zu „immer“.</div>
+
+          <div style="height:4px"></div>
+          <div class="platte-kopf"><h3>Bereiche</h3><span class="feldpfad mono">checkAreas</span></div>
+          <p class="erklaerung">Benannte Teile des Projekts, jeweils mit den Pfadmustern, die dazugehören.</p>
+          <div class="tabelle" id="bereiche">
+            <div class="zeile zeile-kopf bereich-grid etikett"><span>Name</span><span>Pfadmuster</span><span>Genutzt von</span><span></span></div>
+          </div>
+          <div class="fuss"><span class="punkt"></span><span>3 Änderungen: <span class="mono">npx eslint …</span> dem Bereich <span class="mono">kit</span> zugeordnet, 2 Bereiche neu</span><div class="rechts"><button class="taste">Verwerfen</button><button class="taste taste-kupfer">Speichern</button></div></div>
+        </section>
+
+        <!-- M5 Spezifikation -->
+        <section class="platte" id="m5">
+          <div class="platte-kopf">
+            <span class="m-marke">M5</span><h3>Spezifikation</h3><span class="feldpfad mono">spec</span>
+            <span class="etikett">gilt für das Team</span>
+            <div class="rechts"><span class="gilt">eingeschaltet · <span class="leer">kein Rückweg</span></span></div>
+          </div>
+          <p class="erklaerung">Spec-Driven Development: welche Teile des Codes zu welchem Bereich der Spezifikation gehören und wo die Tests liegen. Ist die Spezifikation noch aus, steht hier nur „Einschalten“. Es verlangt „Gilt seit“ und mindestens einen Bereich. Ausschalten bietet die Oberfläche nicht an, weil das Kit die Entscheidung nicht zurücknimmt.</p>
+          <div class="zwei-spalten">
+            <div class="feld"><label>Gilt seit</label><input type="date" value="2026-09-03" style="width:170px"><span class="hilfe">Nur Pakete ab diesem Tag werden geprüft.</span></div>
+            <div class="feld"><label>Testorte</label><div class="chips nute" style="padding:6px"><span class="chip chip-muster">test/*.test.mjs<button class="x">×</button></span><button class="dazu">+ Muster</button></div></div>
+          </div>
+          <div class="feld"><label>Verweis im Testnamen</label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="text" value="\[<ID>\]" style="width:170px"><span class="beispiel mono">Findet in: test("<mark>[night-34]</mark> Umsetzung zieht Pakete einzeln")</span></div>
+            <span class="hilfe">Ein Beispiel zeigt sofort, ob das Muster greift. Wer keine regulären Ausdrücke schreibt, sieht das am Beispiel.</span>
+          </div>
+          <div class="platte-kopf" style="margin-top:4px"><h4 style="margin:0;font-family:Archivo,sans-serif;font-size:13.5px">Bereiche der Spezifikation</h4><span class="feldpfad mono">spec.bereiche</span></div>
+          <div class="tabelle" id="spec-bereiche">
+            <div class="zeile zeile-kopf bereich-grid etikett"><span>Name</span><span>Code-Muster</span><span>Spec-Datei</span><span></span></div>
+          </div>
+          <div class="anmerkung">Derselbe Baustein wie die Bereiche in <a href="#m4">M4</a>, mit einer Regel mehr: Ein Bereich <b>ohne</b> Muster ist hier ein Fehler und lässt sich nicht speichern.</div>
+        </section>
+      </section>
+
+      <!-- ============================== NACHTBETRIEB ============================== -->
+      <section class="thema stapel" data-thema="Nachtbetrieb" style="display:none;flex-direction:column;gap:14px">
+        <section class="platte" id="m6">
+          <div class="platte-kopf">
+            <span class="m-marke">M6</span><h3>Nacht-Kette</h3><span class="feldpfad mono">night.kette</span>
+            <span class="etikett">gilt für das Team</span>
+          </div>
+          <p class="erklaerung">Kennzeichen, Zeit- und Kostenbudgets der Kette. Leere Felder stehen für den Vorgabewert und zeigen ihn blass an.</p>
+          <div class="zwei-spalten">
+            <div class="feld"><label>Kennzeichen: Kette starten</label><input type="text" value="kit:night"></div>
+            <div class="feld"><label>Kennzeichen: Variante B (mit Umsetzung)</label><input type="text" placeholder="kit:durchziehen (Vorgabe)"></div>
+          </div>
+          <div class="etikett" style="margin-top:4px">Zeitbudgets je Stufe</div>
+          <div class="budget-grid">
+            <div class="budget"><label class="etikett">Plan</label><div class="einheit"><input type="number" value="30"><span>min</span></div></div>
+            <div class="budget"><label class="etikett">Plan-Review</label><div class="einheit"><input type="number" value="30"><span>min</span></div></div>
+            <div class="budget"><label class="etikett">Pakete</label><div class="einheit"><input type="number" value="25"><span>min</span></div></div>
+            <div class="budget"><label class="etikett">Abdeckung</label><div class="einheit"><input type="number" value="10"><span>min</span></div></div>
+          </div>
+          <div class="leiste" title="Summe der Stufen">
+            <div style="flex:30;background:var(--kupfer)">Plan 30</div><div style="flex:30;background:var(--kupfer-hell)">Review 30</div><div style="flex:25;background:#c98d62">Pakete 25</div><div style="flex:10;background:var(--grau)">10</div>
+          </div>
+          <div class="gilt">Kette ohne Umsetzung: bis <b>95 min</b>. Mit Umsetzung (Variante B) kommen <b>120 min</b> (Vorgabe) dazu.</div>
+          <div class="budget-grid">
+            <div class="budget"><label class="etikett">Umsetzung (B)</label><div class="einheit"><input type="number" placeholder="120"><span>min</span></div></div>
+            <div class="budget"><label class="etikett">Kosten je Kette</label><div class="einheit"><input type="number" value="50"><span>USD</span></div></div>
+            <div class="budget"><label class="etikett">Kosten je Kette (B)</label><div class="einheit"><input type="number" placeholder="150"><span>USD</span></div></div>
+            <div class="budget"><label class="etikett">Korrekturrunden</label><div class="einheit"><div class="stepper"><button>−</button><span>2</span><button>+</button></div><span>je Dokument</span></div></div>
+          </div>
+        </section>
+      </section>
+
+      <!-- ============================== BOARD ============================== -->
+      <section class="thema stapel" data-thema="Board" style="display:none;flex-direction:column;gap:14px">
+        <div class="melder">Board enthält nur einfache Gruppen (Spaltennamen, Toolbox, GitHub, lokaler Tracker). Das Muster steht unter <a href="#m7" data-thema="Release">M7 im Thema Release</a>.</div>
+      </section>
+
+      <!-- ============================== RELEASE ============================== -->
+      <section class="thema stapel" data-thema="Release" style="display:none;flex-direction:column;gap:14px">
+        <section class="platte" id="m7">
+          <div class="platte-kopf">
+            <span class="m-marke">M7</span><h3>Trigger-Phrasen</h3><span class="feldpfad mono">triggers</span>
+            <span class="etikett">Team oder persönlich</span>
+          </div>
+          <p class="erklaerung">Muster für alle einfachen Gruppen (auch Spaltennamen, Toolbox, GitHub): <b>ein Feld je Eintrag statt eines Textblocks</b>. Wo persönliche Abweichungen erlaubt sind, zeigt jede Zeile beide Ebenen und was gilt.</p>
+          <div class="tabelle">
+            <div class="zeile zeile-kopf trig-grid etikett"><span>Stop-Punkt</span><span>Team</span><span>Persönlich</span><span>Gilt</span></div>
+            <div class="zeile trig-grid"><span>GO</span><input type="text" value="GO"><input type="text" placeholder="wie Team"><span class="gilt"><b>GO</b></span></div>
+            <div class="zeile trig-grid"><span>Push</span><input type="text" value="push main"><input type="text" value="pushen"><span class="gilt"><b>pushen</b> · persönlich <button class="taste taste-leise taste-klein">zurücksetzen</button></span></div>
+            <div class="zeile trig-grid"><span>Merge</span><input type="text" value="merge production"><input type="text" placeholder="wie Team"><span class="gilt"><b>merge production</b></span></div>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+/* ---------- Themen ---------- */
+function zeigeThema(t) {
+  document.querySelectorAll("#themen button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.thema === t)));
+  document.querySelectorAll("section.thema").forEach(s => s.style.display = s.dataset.thema === t ? "flex" : "none");
+}
+document.querySelectorAll("#themen button").forEach(b => b.addEventListener("click", () => zeigeThema(b.dataset.thema)));
+document.querySelectorAll("a[data-thema]").forEach(a => a.addEventListener("click", () => zeigeThema(a.dataset.thema)));
+document.querySelectorAll('a[href^="#m"]:not([data-thema])').forEach(a => a.addEventListener("click", () => {
+  const ziel = document.querySelector(a.getAttribute("href")); const t = ziel && ziel.closest("section.thema"); if (t) zeigeThema(t.dataset.thema);
+}));
+
+/* ---------- Daten (aus .claude/workflow.config.json) ---------- */
+const reviewer = [
+  { name: "opus", kind: "claude", model: "claude-opus-5" },
+  { name: "qwen", kind: "command", model: "qwen-kit", command: "/Users/manfredwolff/.local/bin/claude-qwen -p --output-format text --system-prompt \"Bearbeite den Review-Auftrag …\" --tools Read,Glob,Grep" },
+  { name: "fable", kind: "claude", model: "claude-fable-5.1" },
+  { name: "sonnet", kind: "claude", model: "claude-sonnet-5" },
+  { name: "gpt-astra", kind: "command", model: "gpt-6-astra", command: "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"" },
+  { name: "gpt-sol", kind: "command", model: "gpt-5.6-sol", command: "codex exec --model gpt-5.6-sol -c model_reasoning_effort=\"high\"", warn: true },
+];
+const paare = { opus: ["fable", "gpt-astra"], sonnet: ["gpt-astra", "opus"], fable: ["opus", "gpt-astra"], "gpt-sol": ["opus", "gpt-astra"], qwen: ["opus", "gpt-astra"], "gpt-astra": ["fable", "opus"] };
+const KATALOG = { fachlich: ["form-beobachtbarkeit", "abgrenzung"], plan: ["architektur-bestand", "schnitt-abhaengigkeiten"], issue: ["pruefbarkeit"] };
+const stufen = { fachlich: { titel: "Fachplan", reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] }, plan: { titel: "Plan", reviewer: 1, rollen: ["architektur-bestand"] }, issue: { titel: "Arbeitspaket", reviewer: 1, rollen: ["pruefbarkeit"] } };
+
+/* ---------- M1 Reviewer ---------- */
+function zeichneReviewer() {
+  const t = $("#reviewer"); t.querySelectorAll(".zeile:not(.zeile-kopf)").forEach(z => z.remove());
+  reviewer.forEach((r, i) => {
+    const z = el("div", "zeile rev-grid" + (r.warn ? " zeile-warn" : ""));
+    const g = el("div", "griff"); const hoch = el("button", "", "▲"); const runter = el("button", "", "▼");
+    hoch.onclick = () => { if (i > 0) { [reviewer[i - 1], reviewer[i]] = [reviewer[i], reviewer[i - 1]]; zeichneAlles(); } };
+    runter.onclick = () => { if (i < reviewer.length - 1) { [reviewer[i + 1], reviewer[i]] = [reviewer[i], reviewer[i + 1]]; zeichneAlles(); } };
+    g.append(hoch, runter);
+    const name = el("input"); name.type = "text"; name.value = r.name;
+    const art = el("div", "wahl wahl-klein");
+    ["claude", "command"].forEach(k => { const b = el("button", "", k); b.setAttribute("aria-selected", String(r.kind === k)); b.onclick = () => { r.kind = k; zeichneReviewer(); }; art.append(b); });
+    const modell = el("input"); modell.type = "text"; modell.value = r.model || "";
+    let kmd;
+    if (r.kind === "command") { kmd = el("input", "kommando"); kmd.type = "text"; kmd.value = r.command || ""; kmd.placeholder = "Kommandozeile, Prompt kommt über stdin"; kmd.title = r.command || ""; }
+    else { kmd = el("span", "leer", "— läuft als Claude-Subagent"); kmd.style.fontSize = "12px"; }
+    const x = el("button", "x", "×"); x.title = "Entfernen";
+    x.onclick = () => { const w = $("#rev-warn"); const in_ = Object.entries(paare).filter(([a, l]) => a === r.name || l.includes(r.name)).map(([a]) => a); w.style.display = "block"; w.textContent = in_.length ? `„${r.name}“ entfernen? Kommt in den Paarungen von ${in_.join(", ")} vor. Diese Einträge würden mit entfernt.` : `„${r.name}“ entfernt.`; };
+    z.append(g, el("span", "rang", String(i + 1)), name, art, modell, kmd, x);
+    t.append(z);
+  });
+  const w = $("#rev-warn"); w.style.display = "block";
+  w.textContent = "„gpt-sol“ entfernen? Seine eigene Paarung als Autor (gpt-sol → opus, gpt-astra) verschwindet mit. Als Prüfer steht er in keiner Zeile. [Abbrechen] [Mit Paarung entfernen]";
+  const neu = el("div", "zeile zeile-neu rev-grid");
+  const ph = el("input"); ph.type = "text"; ph.placeholder = "Name";
+  neu.append(el("span"), el("span"), ph, el("span", "leer", ""), el("span"), el("button", "dazu", "+ Reviewer hinzufügen"), el("span"));
+  t.append(neu);
+}
+
+/* ---------- M2 Paarungen ---------- */
+const namen = () => reviewer.map(r => r.name);
+function reihenfolgeRegel(autor, n) { return namen().filter(x => x !== autor).slice(0, n); }
+function wirkung(autor) {
+  const liste = paare[autor] || reihenfolgeRegel(autor, 3);
+  return Object.entries(stufen).map(([k, s]) => [s.titel, liste.slice(0, s.reviewer)]);
+}
+function zeichnePaare() {
+  const t = $("#paare"); t.querySelectorAll(".zeile:not(.zeile-kopf)").forEach(z => z.remove());
+  Object.keys(paare).forEach(autor => {
+    const z = el("div", "zeile paar-grid");
+    const a = el("select"); namen().forEach(n => { const o = el("option", "", n); if (n === autor) o.selected = true; a.append(o); });
+    const chips = el("div", "chips");
+    paare[autor].forEach((p, i) => {
+      const c = el("span", "chip"); const nr = el("span", "nr" + (i >= 2 ? " aus" : ""), String(i + 1)); const x = el("button", "x", "×");
+      x.onclick = () => { paare[autor].splice(i, 1); zeichneAlles(); };
+      c.append(nr, document.createTextNode(p), x); c.draggable = true; c.title = "Ziehen zum Umsortieren"; chips.append(c);
+    });
+    const frei = namen().filter(n => n !== autor && !paare[autor].includes(n));
+    const dazu = el("select", "dazu"); dazu.append(el("option", "", "+ Prüfer"));
+    frei.forEach(n => dazu.append(el("option", "", n)));
+    dazu.onchange = () => { if (dazu.selectedIndex > 0) { paare[autor].push(dazu.value); zeichneAlles(); } };
+    if (frei.length) chips.append(dazu);
+    const w = el("div", "wirkung");
+    wirkung(autor).forEach(([titel, l], k) => { const soll = Object.values(stufen)[k].reviewer; const s = el("span"); s.append(document.createTextNode(titel + ": ")); const b = el("b", "", l.join(" + ") || "—"); s.append(b); if (l.length < soll) { const u = el("span", "", " · unterbesetzt"); u.style.color = "var(--bernst)"; u.style.fontWeight = "600"; s.append(u); } w.append(s); });
+    const x = el("button", "x", "×"); x.title = "Paarung entfernen, Reihenfolge-Regel greift";
+    const links = el("div"); links.style.display = "flex"; links.style.gap = "4px"; links.append(a);
+    x.onclick = () => { delete paare[autor]; zeichneAlles(); }; links.append(x); z.append(links, el("span", "pfeil", "→"), chips, w);
+    t.append(z);
+  });
+}
+
+/* ---------- M3 Prüfstufen ---------- */
+function zeichneStufen() {
+  const box = $("#stufen"); box.replaceChildren();
+  Object.entries(stufen).forEach(([k, s]) => {
+    const d = el("div", "stufe");
+    const kopf = el("div"); kopf.style.display = "flex"; kopf.style.alignItems = "center"; kopf.style.gap = "8px";
+    kopf.append(el("h4", "", s.titel), el("span", "feldpfad mono", k));
+    const st = el("div", "stepper"); const minus = el("button", "", "−"); const zahl = el("span", "", String(s.reviewer)); const plus = el("button", "", "+");
+    minus.onclick = () => { if (s.reviewer > 1) { s.reviewer--; s.rollen.pop(); zeichneAlles(); } };
+    plus.onclick = () => { if (s.reviewer < KATALOG[k].length) { s.reviewer++; s.rollen.push(KATALOG[k].find(r => !s.rollen.includes(r)) || KATALOG[k][0]); zeichneAlles(); } };
+    st.append(minus, zahl, plus);
+    const zeile = el("div"); zeile.style.display = "flex"; zeile.style.alignItems = "center"; zeile.style.gap = "8px";
+    zeile.append(el("span", "etikett", "Prüfer"), st, el("span", "nutzung", `höchstens ${KATALOG[k].length}, so viele Rollen kennt die Stufe`));
+    d.append(kopf, zeile);
+    s.rollen.forEach((r, i) => {
+      const rz = el("div", "rolle"); const sel = el("select");
+      KATALOG[k].forEach(o => { const opt = el("option", "", o); if (o === r) opt.selected = true; sel.append(opt); });
+      rz.append(el("span", "rang", String(i + 1)), sel); d.append(rz);
+    });
+    const bsp = el("div", "nutzung"); const l = paare.opus.slice(0, s.reviewer);
+    bsp.textContent = "Beispiel Autor opus: " + l.map((n, i) => `${n} als ${s.rollen[i]}`).join(", ");
+    d.append(bsp);
+    box.append(d);
+  });
+}
+
+/* ---------- M4 Prüfkommandos & Bereiche ---------- */
+const bereiche = [
+  { name: "kit", muster: ["kit/**", "install.mjs"] },
+  { name: "doku", muster: ["docs/**", "*.md"] },
+  { name: "neu", muster: [] },
+];
+const checks = [
+  { cmd: "node --test", laeuft: "immer" },
+  { cmd: "node tools/sync-blobs.mjs --check", laeuft: "offen" },
+  { cmd: "npx eslint kit tools test install.mjs .githooks", laeuft: "bereiche", areas: ["kit"] },
+];
+function zeichneChecks() {
+  const t = $("#checks"); t.querySelectorAll(".zeile:not(.zeile-kopf)").forEach(z => z.remove());
+  checks.forEach((c, i) => {
+    const z = el("div", "zeile check-grid");
+    const g = el("div", "griff"); g.append(el("button", "", "▲"), el("button", "", "▼"));
+    const cmd = el("input"); cmd.type = "text"; cmd.value = c.cmd;
+    const w = el("div", "wahl wahl-klein");
+    [["offen", "immer (offen)"], ["immer", "immer"], ["bereiche", "bei Bereichen"]].forEach(([k, txt]) => {
+      const b = el("button", "", txt); b.setAttribute("aria-selected", String(c.laeuft === k));
+      b.onclick = () => { c.laeuft = k; if (k === "bereiche" && !c.areas) c.areas = []; zeichneChecks(); }; w.append(b);
+    });
+    const ch = el("div", "chips");
+    if (c.laeuft === "bereiche") {
+      (c.areas || []).forEach((a, j) => { const s = el("span", "chip chip-bereich"); const x = el("button", "x", "×"); x.onclick = () => { c.areas.splice(j, 1); zeichneChecks(); }; s.append(document.createTextNode(a), x); ch.append(s); });
+      const sel = el("select", "dazu"); sel.append(el("option", "", "+ Bereich"));
+      bereiche.filter(b => !(c.areas || []).includes(b.name)).forEach(b => sel.append(el("option", "", b.name)));
+      sel.onchange = () => { if (sel.selectedIndex > 0) { c.areas.push(sel.value); zeichneChecks(); } };
+      ch.append(sel);
+      if (!c.areas.length) ch.append(el("span", "befund", "mindestens ein Bereich, sonst läuft es nie"));
+    } else ch.append(el("span", "leer", "—"));
+    z.append(g, cmd, w, ch, el("button", "x", "×"));
+    t.append(z);
+  });
+  zeichneBereiche();
+}
+function musterZeile(t, b, grid, dritte) {
+  const z = el("div", "zeile " + grid);
+  const n = el("input"); n.type = "text"; n.value = b.name;
+  const ch = el("div", "chips");
+  b.muster.forEach(m => { const s = el("span", "chip chip-muster"); s.append(document.createTextNode(m), el("button", "x", "×")); ch.append(s); });
+  const inp = el("input"); inp.type = "text"; inp.placeholder = "+ Muster, Enter"; inp.style.width = "130px"; ch.append(inp);
+  z.append(n, ch, dritte, el("button", "x", "×"));
+  t.append(z);
+  return z;
+}
+function zeichneBereiche() {
+  const t = $("#bereiche"); t.querySelectorAll(".zeile:not(.zeile-kopf)").forEach(z => z.remove());
+  bereiche.forEach(b => {
+    const nutzer = checks.filter(c => c.laeuft === "bereiche" && (c.areas || []).includes(b.name)).length;
+    const d = el("div", "nutzung"); d.textContent = nutzer ? `${nutzer} Kommando${nutzer > 1 ? "s" : ""}` : "kein Kommando";
+    const z = musterZeile(t, b, "bereich-grid", d);
+    if (!b.muster.length) { z.classList.add("zeile-warn"); d.textContent = "ohne Muster: erfasst nichts"; d.style.color = "var(--bernst)"; }
+  });
+  const neu = el("div", "zeile zeile-neu bereich-grid"); const i = el("input"); i.type = "text"; i.placeholder = "Bereich hinzufügen …";
+  neu.append(i, el("span"), el("span"), el("span")); t.append(neu);
+}
+
+/* ---------- M5 Spec-Bereiche ---------- */
+const specBereiche = { board: ["kit/board.mjs"], night: ["kit/night.mjs"], checks: ["kit/checks.mjs"], spec: ["kit/spec.mjs"], gate: [".githooks/gate.mjs"], installer: ["install.mjs", "tools/sync-blobs.mjs"], skills: ["skills/**/SKILL.md"], einstellungen: ["kit/einstellungen.mjs"] };
+function zeichneSpec() {
+  const t = $("#spec-bereiche");
+  Object.entries(specBereiche).forEach(([name, muster]) => {
+    const d = el("span", "nutzung mono", `specs/${name}.md`);
+    musterZeile(t, { name, muster }, "bereich-grid", d);
+  });
+  const neu = el("div", "zeile zeile-neu bereich-grid"); const i = el("input"); i.type = "text"; i.placeholder = "Bereich hinzufügen …";
+  neu.append(i, el("span"), el("span"), el("span")); t.append(neu);
+}
+
+
+function zeichneAlles() { zeichneReviewer(); zeichnePaare(); zeichneStufen(); }
+zeichneAlles(); zeichneChecks(); zeichneSpec();
+if (location.hash) { const z = document.querySelector(location.hash); const t = z && z.closest("section.thema"); if (t) zeigeThema(t.dataset.thema); }
+</script>
+</body>
+</html>

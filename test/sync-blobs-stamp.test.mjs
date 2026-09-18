@@ -25,9 +25,10 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
-// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441),
-// faellt hier genau eine Stelle an statt drei ueber die Datei verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
+// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441,
+// preise.mjs mit Issue #734), faellt hier genau eine Stelle an statt drei ueber die
+// Datei verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -49,6 +50,10 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
+  // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
+  writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"),
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconsole.log("einstellungen");\n`);
   for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
@@ -63,6 +68,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
     `const SPEC_MJS_B64 = "";`,
+    `const PREISE_MJS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -256,6 +262,38 @@ test("Lokale Kopie: ohne .claude/kit/ laeuft sync-blobs durch und legt nichts an
     assert.equal(existsSync(join(dir, ".claude")), false,
       "sync-blobs haette .claude/ nicht anlegen duerfen");
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette gruen sein muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Download-Datei: Stempel ohne Kopie, eingebettetes Schema (Issue #676) ---
+
+test("[installer-8] einstellungen.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    assert.equal(stempel(dir, "einstellungen.mjs"), "2.5.0");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "einstellungen.mjs")), false, "die Download-Datei gehoert in kein Projekt");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), true, "die uebrigen Kopien entstehen weiter");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweichung beider", () => {
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    const lies = () => readFileSync(join(dir, "kit", "einstellungen.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
+    const vorlage = readFileSync(join(dir, "templates", "workflow.config.schema.json"), "utf-8");
+    assert.equal(Buffer.from(lies(), "base64").toString("utf-8"), vorlage);
+    assert.equal(syncBlobs(dir, "--check").status, 0);
+
+    writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: {} }) + "\n");
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /einstellungen\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

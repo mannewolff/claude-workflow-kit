@@ -60,10 +60,11 @@ test("das Entscheidungsformat steht als Codeblock mit den vier Schluesselwoerter
   }
 });
 
-test("die Stopp-Klasse hat genau fuenf nummerierte Punkte", () => {
+test("die Stopp-Klasse hat genau sechs nummerierte Punkte", () => {
   const punkte = TEXT.match(/^\d\. /gm) || [];
-  assert.deepEqual(punkte, ["1. ", "2. ", "3. ", "4. ", "5. "]);
-  for (const stichwort of ["Datenverlust", "Sicherheit", "Verträge nach außen", "Widerspruch im Fachplan", "W1 bis W4"]) {
+  assert.deepEqual(punkte, ["1. ", "2. ", "3. ", "4. ", "5. ", "6. "]);
+  // Punkt 6 seit Issue #685: die Treue zum fachlichen Anlass, nicht ein Widerspruch in ihm (Punkt 4).
+  for (const stichwort of ["Datenverlust", "Sicherheit", "Verträge nach außen", "Widerspruch im Fachplan", "W1 bis W4", "Abweichung vom fachlichen Anlass", "offen gelassene Frage zu Aussehen, Ort einer Ansicht oder einer fachlichen Grenze"]) {
     assert.ok(TEXT.includes(stichwort), `in der Stopp-Klasse fehlt '${stichwort}'`);
   }
   assert.ok(TEXT.includes("genau eine Frage"), "jeder Halt traegt genau eine Frage");

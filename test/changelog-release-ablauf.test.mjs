@@ -86,6 +86,29 @@ test("die alte Reihenfolge zeigt den Fehler — Changelog vor dem Commit", () =>
   }
 });
 
+test("der neue Ablauf mit --marke ist ohne --amend gruen", () => {
+  // Die umgekehrte Reihenfolge (Issue #657): Bump und Changelog entstehen VOR dem
+  // Commit, die kommende Marke nimmt --marke vorweg. Der Beleg ist, dass --check
+  // danach gruen ist — die Marke liefert denselben Text wie ein Lauf nach dem
+  // Commit, sonst waere genau dieses Gate rot.
+  const dir = wegwerfRepo();
+  try {
+    commit(dir, "Ein Feature (Issue #1)");
+
+    writeFileSync(join(dir, "install.mjs"), 'const VERSION = "1.16.1";\n'); // der Bump
+    changelog(dir, "--marke", "v1.16.1");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "chore: v1.16.1");
+
+    assert.ok(checkGruen(dir), "--check ist nach dem neuen Ablauf rot");
+    const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
+    assert.match(inhalt, /## \[1\.16\.1\]/, "die vorweggenommene Version fehlt im Changelog");
+    assert.match(inhalt, /Ein Feature \(#1\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("ein Commit nach dem Release erzeugt keinen zweiten Block mit derselben Nummer", () => {
   const dir = wegwerfRepo();
   try {

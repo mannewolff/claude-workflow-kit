@@ -47,7 +47,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.53.0";
+const KIT_VERSION = "2.0.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -167,6 +167,7 @@ function normalisiere(check) {
  * nicht zu pruefen: Das Schema schliesst beide aus (minItems 1, not). Was das
  * Schema verhindert, muss die Laufzeit nicht erklaeren (Issue #422).
  */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelBereiche) vor dem Speichern.
 function pruefeBereichsnamen(checks, checkAreas) {
   const bekannt = new Set(Object.keys(checkAreas));
   for (const check of checks) {
@@ -510,6 +511,13 @@ function ausfuehren(args) {
   // gesehen hat, sobald ein Kommando eine Datei anfasst — ein Formatter mit
   // `--fix` genuegt. Veraendert ein Check die Datei, passt der Hash beim Commit
   // nicht mehr und das Gate weist ab: die sichere Richtung.
+  //
+  // Der Zeitstempel steht unmittelbar daneben und aus demselben Grund (Issue #655):
+  // Er bezeugt denselben Moment wie die Hashes — den Stand, der in die Pruefung
+  // ging, nicht den Zeitpunkt, zu dem sie endete. Die Nachweiszeile der
+  // Release-Skills nennt Hash und Zeitpunkt gemeinsam; stammte der eine aus dem
+  // Lauf und der andere aus der Sitzung, bezeugten sie Verschiedenes.
+  const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
 
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
@@ -531,7 +539,7 @@ function ausfuehren(args) {
 
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, hashes });
+  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }

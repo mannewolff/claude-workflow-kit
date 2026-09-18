@@ -30,6 +30,8 @@ function setupFixture(installInhalt, boardUiInhalt) {
 
   writeFileSync(join(dir, "install.mjs"), installInhalt);
   writeFileSync(join(dir, "kit", "board-ui.mjs"), boardUiInhalt);
+  // Seit Issue #679 die dritte Download-Datei.
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), "// einstellungen\nconst KIT_VERSION = \"9.9.9\";\n");
   return dir;
 }
 
@@ -74,6 +76,18 @@ test("Kopien: ein zweiter Lauf zieht eine geaenderte Quelle nach", () => {
     assert.equal(res.status, 0, `zweiter Lauf schlug fehl: ${res.stderr}${res.stdout}`);
     assert.equal(readFileSync(join(dir, "docs", "public", "board-ui.mjs"), "utf-8"), "// board-ui v2\n",
       "die Kopie traegt noch den alten Stand");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Kopien: die Einstellungs-Oberflaeche landet byte-gleich unter docs/public/ (Issue #679)", () => {
+  const dir = setupFixture("// install\n", "// board-ui\n");
+  try {
+    const res = copyDownloads(dir);
+    assert.equal(res.status, 0, `Script schlug fehl: ${res.stderr}${res.stdout}`);
+    assert.ok(gleicheBytes(dir, ["kit", "einstellungen.mjs"], ["docs", "public", "einstellungen.mjs"]),
+      "docs/public/einstellungen.mjs fehlt oder weicht von der Quelle ab");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

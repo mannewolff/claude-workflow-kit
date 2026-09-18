@@ -44,57 +44,69 @@ die nachtraegliche Wertung im Nacht-Runner (Issue #471).
 
 ## Ablauf
 
-**Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
+Die Listen unten fuehren nur die **Erzeugungsschritte**. Prueflauf, Festschreiben und
+Veroeffentlichen kommen aus dem Skill (`push-main` bzw. `merge-production`): Er faehrt
+alles bis zum ersten festschreibenden Schritt, dann genau einen Prueflauf ueber den
+fertigen Stand, dann genau einen Commit. Deshalb ordnet diese Datei weder das
+Festschreiben noch das Veroeffentlichen noch den Prueflauf an — taete sie es, gaebe es
+zwei Stellen, die dasselbe anordnen, und eine fremde `RELEASING.md` braeuchte Wissen
+ueber das Commit-Gate.
+
+**Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`):
 1. `node tools/version.mjs --patch`
 2. `node tools/sync-blobs.mjs` — stempelt die neue Version in die Kit-Dateien.
-3. `node .claude/kit/checks.mjs run`, dann Version-Commit: `chore: vX.Y.Z`
-   (`install.mjs` und die gestempelten Kit-Dateien).
-4. `node tools/changelog.mjs` — **jetzt**, nachdem die Marke existiert.
-5. `node .claude/kit/checks.mjs run`, dann
-   `git add CHANGELOG.md && git commit --amend --no-edit` — der Changelog wandert in
-   denselben Commit.
-6. Push auf `main`.
+3. `node tools/changelog.mjs --marke vX.Y.Z` — mit der Kennung aus Schritt 1.
 
-**Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`, Schritt 3 "Projekt-eigene Release-Schritte"):
+**Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`):
 1. `node tools/version.mjs --minor`
 2. `node tools/sync-blobs.mjs`
-3. `node .claude/kit/checks.mjs run`, dann Version-Commit: `chore: vX.Y.Z`
-4. `node tools/changelog.mjs`
-5. `node .claude/kit/checks.mjs run`, dann
-   `git add CHANGELOG.md && git commit --amend --no-edit`
-6. Push auf `main`.
-7. PR `main -> production` erstellen. **Den Merge macht der Mensch von Hand.**
+3. `node tools/changelog.mjs --marke vX.Y.Z`
 
-### Warum der Changelog erst nach dem Commit entsteht
+PR, Tag-Kommando und Release-Kommando kommen ebenfalls aus dem Skill. **Den Merge macht
+der Mensch von Hand.**
 
-`changelog.mjs` leitet die Versionsmarken aus den `chore:`-Commits ab. Lief es
-**vor** dem Version-Commit, kannte es die Marke nicht, die dieser Commit gerade
-setzt — die eben geschriebene Datei war in dem Moment veraltet, in dem sie
-committet wurde, und `--check` schlug direkt danach fehl (Issue #265, belegt beim
-Release v1.36.0: die veroeffentlichte Version fehlte im Changelog).
+### Warum der Changelog vor dem Commit entsteht und die Marke mitbekommt
 
-Der `--amend` passiert **lokal vor dem Push** und braucht deshalb keinen
-Force-Push. Er aendert weder Betreff noch Datum des Commits — und nur an denen
-haengt das Generat, weshalb `--check` danach stabil gruen bleibt.
+`changelog.mjs` leitet die Versionsmarken aus den `chore:`-Commits ab. Lief es frueher
+**vor** dem Version-Commit, kannte es die Marke nicht, die dieser Commit gerade setzt —
+die eben geschriebene Datei war in dem Moment veraltet, in dem sie committet wurde, und
+`--check` schlug direkt danach fehl (Issue #265, belegt beim Release v1.36.0: die
+veroeffentlichte Version fehlte im Changelog). Die Antwort darauf war ein zweiter Commit
+per `--amend`.
 
-**Warum vor jedem Commit ein eigener Prueflauf steht:** Der Nachweis gehoert zum
-Commit, nicht zum Push. Der Lauf aus Schritt 4 des `push-main`-Skills kann die
-Dateien, die der Bump und der Changelog erst danach erzeugen, gar nicht gesehen
-haben — `install.mjs`, die gestempelten Kit-Dateien und `CHANGELOG.md`. Der Aufruf
-laeuft deshalb **ohne `--since`**: Gemessen wird der uncommittete Stand, der gleich
-in den Commit geht, nicht der Batch seit `merge-base` wie in `/local-check`. Wer die
-Anker angleicht, misst das Falsche.
+`--marke vX.Y.Z` loest dasselbe Problem ohne den zweiten Commit: Der Lauf bekommt die
+Kennung gesagt, die gleich committet wird, und traegt sie mit dem lokalen Datum ein, statt
+sie aus der Historie ableiten zu wollen (Issue #657). Danach ist `CHANGELOG.md` fertig,
+bevor irgendetwas festgeschrieben wird — und geht in denselben Commit wie Bump und Stempel.
 
-**Nicht umdrehen:** Erst Bump, dann Commit, dann Changelog, dann Amend. Wer den
-Changelog wieder vor den Commit zieht, bekommt denselben Fehler zurueck.
+**Nicht umdrehen:** Erst Bump, dann Stempel, dann Changelog mit der Marke — und erst
+danach der eine Lauf und der eine Commit. Wer den Changelog ohne `--marke` faehrt, bekommt
+den Fehler aus Issue #265 zurueck.
+
+**Warum ein Lauf genuegt:** Der Nachweis gehoert zum Commit, nicht zum Push — daran hat
+sich nichts geaendert. Frueher gab es auf diesem Weg aber mehrere Commits, und jeder
+brauchte seinen eigenen Lauf; bis zu vier bei `push main`. Jetzt entstehen erst alle
+Dateien des Wegs, dann misst ein Lauf den fertigen Stand, dann traegt ein Commit ihn und
+seinen Nachweis.
+
+Dieser eine Lauf traegt den **Batch-Anker** — `--since` mit dem `git merge-base` gegen
+`origin/<mainBranch>`; die Kommandozeile steht im Skill. Nicht den ankerlosen Aufruf:
+Ohne `--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als
+Basis; ist seit `HEAD` nichts geaendert, meldet es `leeresPaket` und laesst **jede**
+Pruefung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md` und ohne Spec-Ertrag liefe damit
+vor dem Push durch eine leere Pruefung, waehrend frueher der volle `buildChecks`-Katalog
+lief. Der Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, also genau
+der Batch, der gleich hinausgeht.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
-`KIT_VERSION`-Konstante von `kit/board.mjs` und `kit/night.mjs`, bevor es die Blobs
-backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
+`KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`, `kit/spec.mjs`
+und `kit/einstellungen.mjs`, bevor es die Blobs backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
 sie stammt (`node .claude/kit/board.mjs --version`). Deshalb steht es als Schritt 2
 in den Listen oben — vor dem Version-Commit, damit die gestempelten Kit-Dateien mit
 hineingehen. `sync-blobs --check` ist ohnehin ein `buildCheck` dieses Repos und
-schlaegt an, wenn der Stempel fehlt.
+schlaegt an, wenn der Stempel fehlt. `kit/einstellungen.mjs` ist Download, nicht
+Installation: Sie wird gestempelt und bekommt das Schema eingebettet, aber nicht nach
+`.claude/kit/` gespiegelt.
 
 Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzlichen
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.

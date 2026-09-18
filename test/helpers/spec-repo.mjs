@@ -50,7 +50,7 @@ export function spec(dir, ...cliArgs) {
  * Legt das Wegwerf-Repo an: git, Config, Adapter unter .claude/kit/ und
  * optional eine Spec-Fixture unter specs/.
  *
- * `specBlock: null` laesst den Block weg (Projekt ohne beschriebenes Verhalten),
+ * `specBlock: null` laesst den Block weg (Projekt ohne Spec-Driven Development),
  * `fixture: null` laesst specs/ ganz fehlen (Projekt vor der ersten Aussage).
  */
 export function repoAnlegen({ fixture = "zwei-bereiche", specBlock = SPEC_BLOCK } = {}) {

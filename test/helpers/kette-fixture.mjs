@@ -12,6 +12,10 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, read
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+// Die Konstanten aus dem Runner selbst, nicht abgeschrieben: Der Fake der
+// Umsetzungs-Session soll genau das Label setzen und genau den Satz schreiben, an
+// denen der Runner den Halt erkennt (wie in night-angehalten.test.mjs).
+import { HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL } from "../../kit/night.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -47,16 +51,32 @@ const CONFIG = {
 /**
  * Ein Repo mit Commit, lokalem Tracker, Kit-Kopie und `night.kette`-Block. Alles, was
  * der Runner braucht, ist committet — der Vorflug prueft den Arbeitsbaum.
+ *
+ * `configZusatz` mischt weitere Felder in die Config (etwa `issueReview`), die schon
+ * beim ersten Commit dastehen muessen: Die Umsetzungsstufe prueft die Hauptkopie auf
+ * einen sauberen Arbeitsbaum, eine nachtraeglich geaenderte Config waere ein Rest.
  */
-export function setupProjekt(kette = {}, praefix = "night-kette-") {
+export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz = {}) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   mkdirSync(join(dir, "issues"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, night: { kette } }, null, 2));
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\nhelfer/\n");
+  //
+  // issues/ und die Pruef-Zusammenfassung ebenso: Der lokale Tracker legt seine Karten
+  // im Repo ab, und `checks.mjs` schreibt seine Zusammenfassung unter `.claude/`. Beides
+  // gehoert nicht zum Arbeitsstand — im Betrieb liegt das Board ausserhalb des Repos und
+  // die Zusammenfassung im ignorierten `.claude/`. Ohne die beiden Zeilen saehe die
+  // Umsetzungsstufe die Hauptkopie schon vor dem ersten Paket als unsauber.
+  //
+  // Der Umsetzungs-Lock (Issue #696) und die Wegmarken (Issue #733) stehen aus demselben
+  // Grund hier: Im Betrieb deckt sie der `.claude/*`-Block, den der Installer schreibt;
+  // das Fixture fuehrt die `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen
+  // muss. Fuer `gitReste()` sind beide ohnehin ausgeschlossen — die Probe der
+  // Umsetzungsstufe liest aber ein rohes `git status`, das diese Ausschluesse nicht kennt.
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
@@ -66,8 +86,8 @@ export function setupProjekt(kette = {}, praefix = "night-kette-") {
   return dir;
 }
 
-export function mitProjekt(fn, kette = {}, praefix) {
-  const dir = setupProjekt(kette, praefix);
+export function mitProjekt(fn, kette = {}, praefix, configZusatz) {
+  const dir = setupProjekt(kette, praefix, configZusatz);
   try {
     fn(dir);
   } finally {
@@ -77,10 +97,17 @@ export function mitProjekt(fn, kette = {}, praefix) {
 
 const FACHPLAN_BODY = "## Ziel\n\nEin Anliegen.\n\nAutor-Modell: claude-opus-5\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n";
 
-/** Ein [Fachlich]-Issue im Backlog, wahlweise mit Label. Liefert die Nummer (lokal: 0001 …). */
-export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night") {
+/**
+ * Ein [Fachlich]-Issue im Backlog, wahlweise mit Label. Liefert die Nummer (lokal: 0001 …).
+ *
+ * `review:fertig` haengt per Default mit dran: Die Kette nimmt seit Issue #718 nur
+ * gepruefte Anforderungen auf, und ohne das Label liefe in keinem Ablauf-Test mehr eine
+ * Kette an. `geprueft: false` ist der Weg fuer die Ablehnungsfaelle.
+ */
+export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night", geprueft = true) {
   const issue = board(dir, "issue", "create", "--title", titel, "--body", FACHPLAN_BODY);
   if (label) board(dir, "issue", "label", "add", String(issue.id), label);
+  if (geprueft) board(dir, "issue", "label", "add", String(issue.id), REVIEW_FERTIG_LABEL);
   return String(issue.id);
 }
 
@@ -107,20 +134,31 @@ export function planBody({ offeneFragen = "- Keine.", ohneVerifizierung = false 
 }
 
 /**
- * Der Session-Fake als POSIX-Shell. `stufen` bildet NIGHT_KETTE_STUFE auf Shell-Zeilen
- * ab; was nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
+ * Der Session-Fake als POSIX-Shell. `stufen` bildet die Stufe auf Shell-Zeilen ab; was
+ * nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
  * KIT_AGENT_MODEL in `$KETTE_LOG` und liefert ein result-Ereignis mit `$KETTE_KOSTEN`.
+ *
+ * Die vier erzeugenden Stufen nennt der Runner in NIGHT_KETTE_STUFE. Die Sessions der
+ * Stufe `umsetzung` bekommen sie NICHT gesetzt — sie sehen ein regulaeres Ready-Paket
+ * und erfahren von der Variante nichts (Plan #691, E11). Der Fake benennt sie deshalb
+ * selbst, damit `sessions()` auch sie ausweist; die Salvage-Session ist daneben an
+ * NIGHT_SALVAGE erkennbar und bekommt einen eigenen Namen, sonst liefe sie in den
+ * Zweig der Umsetzung.
  */
 export function fake(stufen = {}) {
   const faelle = Object.entries(stufen).map(([stufe, zeilen]) => `  ${stufe}) ${zeilen} ;;`).join("\n");
   return [
-    String.raw`printf "%s\t%s\t%s\n" "$NIGHT_KETTE_STUFE" "$(pwd -P)" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
-    'case "$NIGHT_KETTE_STUFE" in',
+    'stufe="$NIGHT_KETTE_STUFE"',
+    'if [ -z "$stufe" ]; then',
+    '  if [ -n "$NIGHT_SALVAGE" ]; then stufe=salvage; else stufe=umsetzung; fi',
+    "fi",
+    String.raw`printf "%s\t%s\t%s\n" "$stufe" "$(pwd -P)" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
+    'case "$stufe" in',
     faelle,
     "  *) : ;;",
     "esac",
     'if [ -z "$KETTE_OHNE_RESULT" ]; then',
-    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
+    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
     "fi",
   ].join("\n");
 }
@@ -201,21 +239,72 @@ export const ABDECKUNG_SCHREIBT = String.raw`node .claude/kit/board.mjs issue co
 /** Ein Vorflug ohne Befund-Block: die Vorflug-Session gilt als nicht auswertbar, der Lauf stoppt hart. */
 export const VORFLUG_KAPUTT = "echo 'kein Befund'";
 
+// --- Bausteine der Stufe umsetzung (Plan #691; Issue #695) ---
+
+/**
+ * Die Fake-Zeile einer erfolgreichen Umsetzungs-Session: eine echte Aenderung in der
+ * Hauptkopie, committet, das Paket nach In review.
+ *
+ * Die Pruef-Zusammenfassung schreibt hier der Fake statt `checks.mjs` — ohne sie griffe
+ * der Nachweis-Guard (#471) und die Runde endete als Fehlschlag, obwohl die Karte steht.
+ */
+export const UMSETZUNG_ERFOLG = [
+  String.raw`printf "Paket %s\n" "$NIGHT_ISSUE_ID" >> umsetzung.txt`,
+  "git add -A >/dev/null",
+  'git commit -q -m "Paket $NIGHT_ISSUE_ID (Fake)"',
+  String.raw`printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}' > .claude/checks-summary.json`,
+  'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review >/dev/null',
+].join("; ");
+
+/** Die Fake-Zeile einer Umsetzungs-Session, die an einer Stopp-Frage anhaelt: Label, Kommentar mit Folgesatz, Backlog. */
+export const UMSETZUNG_HALT = [
+  `node .claude/kit/board.mjs issue label add "$NIGHT_ISSUE_ID" ${KLAEREN_LABEL} >/dev/null`,
+  `node .claude/kit/board.mjs issue comment "$NIGHT_ISSUE_ID" --text "Beim Umsetzen tauchte eine Abwaegung auf: zwei vertretbare Schnitte. ${HALT_FOLGESATZ}" >/dev/null`,
+  'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" backlog >/dev/null',
+].join("; ");
+
+/**
+ * Verzweigt eine Fake-Zeile nach der Paketnummer. Die Nummern des lokalen Trackers sind
+ * fortlaufend und damit vorhersagbar (Fachplan 0001, Plan 0002, Pakete ab 0003) — wie in
+ * den uebrigen Ketten-Tests wird darauf gebaut.
+ */
+export function jePaket(faelle, sonst = ":") {
+  const zweige = Object.entries(faelle).map(([id, zeilen]) => `  ${id}) ${zeilen} ;;`).join("\n");
+  return ['case "$NIGHT_ISSUE_ID" in', zweige, `  *) ${sonst} ;;`, "esac"].join("\n");
+}
+
+/**
+ * Die Fake-Zeile der Stufe pakete fuer die Umsetzung: drei Pakete mit `Plan: Issue #M`,
+ * von denen das zweite im Abschnitt Abhaengigkeiten auf das erste zeigt.
+ *
+ * Die Nummer des ersten Pakets liest der Fake aus der Antwort von `issue create`, statt
+ * sie zu raten: Nur so bleibt die Referenz richtig, wenn der Test weitere Karten anlegt.
+ */
+export const PAKETE_MIT_ABHAENGIGKEIT = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 2 ]; then dep="Issue #$erste"; else dep="Keine."; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
+
 /**
  * Ersetzt die Kit-Kopie von board.mjs im Fixture durch einen Umweg ueber das echte
  * board.mjs, der `issue comment <id>` abweist, wenn `BOARD_FAKE_ABLEHNEN` die Nummer
- * nennt — der Tracker ist dann fuer genau diesen Kommentar "nicht erreichbar". Der
- * Umweg wird committet, damit der Vorflug den Arbeitsbaum weiter als sauber sieht; er
- * spiegelt sich mit `.claude/` in den Worktree jeder Kette.
+ * nennt — der Tracker ist dann fuer genau diesen Kommentar "nicht erreichbar". Nennt
+ * `BOARD_FAKE_SCHLUCKEN` die Nummer, nimmt der Fake den Kommentar an (Exit 0, JSON auf
+ * stdout) und speichert ihn nicht — die Karte liegt danach ohne ihn vor, wie am
+ * 2026-09-14 an Plan #577 (Issue #653). Der Umweg wird committet, damit der Vorflug den
+ * Arbeitsbaum weiter als sauber sieht; er spiegelt sich mit `.claude/` in den Worktree
+ * jeder Kette.
  */
 export function boardFakeInstallieren(dir) {
   const echt = join(repoRoot, "kit", "board.mjs");
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [
     'import { spawnSync } from "node:child_process";',
     "const args = process.argv.slice(2);",
-    'if (process.env.BOARD_FAKE_ABLEHNEN && args[0] === "issue" && args[1] === "comment" && String(args[2]) === process.env.BOARD_FAKE_ABLEHNEN) {',
+    'const kommentarAn = (nummer) => nummer && args[0] === "issue" && args[1] === "comment" && String(args[2]) === nummer;',
+    "if (kommentarAn(process.env.BOARD_FAKE_ABLEHNEN)) {",
     String.raw`  process.stderr.write("Fehler: Tracker nicht erreichbar (Board-Fake)\n");`,
     "  process.exit(1);",
+    "}",
+    "if (kommentarAn(process.env.BOARD_FAKE_SCHLUCKEN)) {",
+    String.raw`  process.stdout.write(JSON.stringify({ ok: true, id: args[2] }) + "\n");`,
+    "  process.exit(0);",
     "}",
     `const res = spawnSync(process.execPath, [${JSON.stringify(echt)}, ...args], { stdio: "inherit" });`,
     "process.exit(res.status ?? 1);",

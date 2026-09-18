@@ -2,7 +2,7 @@
 /**
  * claude-workflow-kit Spec-Werkzeug (Issue #440, #442, #445, #446, #450, #451, Plan #437)
  *
- * Liest das beschriebene Verhalten eines Projekts — eine Datei je Bereich unter
+ * Liest die Spezifikation eines Projekts — eine Datei je Bereich unter
  * specs/ — und beantwortet acht Fragen: `index` schreibt die Uebersicht ueber
  * alle Bereiche, `show` gibt die Aussage zu einer einzelnen ID aus,
  * `check --paket` prueft die Form des Abschnitts `## Spec-Wirkung` eines
@@ -60,7 +60,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.53.0";
+const KIT_VERSION = "2.0.0";
 
 const SPECS_DIR = "specs";
 const VORHABEN_DIR = "vorhaben";
@@ -82,7 +82,7 @@ const ENTFALLEN_UEBERSCHRIFT = "## Entfallen";
 // wie in board.mjs seit Issue #196.
 const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
 
-const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — beschriebenes Verhalten lesen
+const HELP = `spec.mjs (claude-workflow-kit v${KIT_VERSION}) — die Spezifikation lesen
 
   node spec.mjs index
   node spec.mjs show <id>
@@ -301,7 +301,7 @@ const INDEX_KOPF = ["# Spec-Index", "", "| Bereich | Datei | Gueltig | Entfallen
  * Schreibt den Index vollstaendig neu — kein Merge.
  *
  * Ein zusammengefuehrter Index behielte die Zeile eines geloeschten Bereichs:
- * Der Index behauptete dann ein beschriebenes Verhalten, zu dem es keine Datei
+ * Der Index behauptete dann eine Spezifikation, zu der es keine Datei
  * mehr gibt. Lieber eine Zeile zu wenig als eine erfundene.
  */
 /**
@@ -460,7 +460,7 @@ function configLesen(root = process.cwd()) {
   }
 }
 
-// Tracker, die das beschriebene Verhalten nicht tragen (A19, Issue #461).
+// Tracker, die Spec-Driven Development nicht tragen (A19, Issue #461).
 //
 // Der Ausschluss richtet sich gegen diese beiden, nicht gegen alle ausser einem:
 // `toolbox` bringt Aktivitaetsverlauf und Suche mit, `local` braucht beides nicht —
@@ -485,7 +485,7 @@ function trackerPruefen(root = process.cwd()) {
   const tracker = config.issueTracker ?? TRACKER_DEFAULT;
   if (!TRACKER_OHNE_SPEC.has(tracker)) return;
   fail(
-    `Das beschriebene Verhalten traegt 'issueTracker: ${tracker}' nicht (A19 in Plan #437): ` +
+    `Spec-Driven Development traegt 'issueTracker: ${tracker}' nicht (A19 in Plan #437): ` +
     `Aktivitaetsverlauf und Suche ueber Aussagen gibt es dort nicht. ` +
     `Moeglich sind 'toolbox' und 'local'. Entweder den Tracker wechseln oder den 'spec'-Block ` +
     `aus ${CONFIG_DATEI} entfernen.`

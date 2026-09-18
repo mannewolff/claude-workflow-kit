@@ -41,9 +41,12 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
+  // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
+  writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\n`);
   // Hook und Gate liegen ausserhalb von kit/ und tragen keinen Versions-Stempel
   // (Issue #473): gate.mjs steht bewusst nicht in STAMPED.
   writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
@@ -58,6 +61,7 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
     'const NIGHT_MJS_B64 = "";',
     'const CHECKS_MJS_B64 = "";',
     'const SPEC_MJS_B64 = "";',
+    'const PREISE_MJS_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',

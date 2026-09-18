@@ -57,7 +57,7 @@ Nur bei gesetztem spec-Block.
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
 
-`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Die ID-Vergabe fuer `## Spec-Wirkung` steht in `/issues` und wird hier nicht wiederholt.
+`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Die ID-Vergabe fuer `## Spec-Wirkung` steht in `/issues` und wird hier nicht wiederholt. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts.
 
 **Keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.** Ein `[Task]` hat keinen Vorfahren; die Idee ist der Anlass, nicht der Vorfahr.
 
@@ -112,5 +112,5 @@ Fehlt einem Werkzeug ein versionierbarer Weg, gehoert dessen Entwicklung in ein 
 
 - **Kein Anlegen ohne Bestaetigung** — unbeaufsichtigt endet der Skill in Schritt 0 und legt nichts an.
 - **Kein Code, kein Commit.** Dieser Skill schreibt ein Arbeitspaket, er setzt es nicht um.
-- **Keine Ready-Bewegung.** Ready ist das GO des Menschen.
+- **Keine Ready-Bewegung.** Ready ist das GO des Menschen. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.
 - **Kein `[Fachlich]`- und kein `[Plan]`-Dokument als Quelle** — dort ist der volle Weg bereits begonnen.

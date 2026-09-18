@@ -150,7 +150,7 @@ test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig"
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
 });
 
-// --- spec: der Schalter fuer das beschriebene Verhalten (Issue #438) ---
+// --- spec: der Schalter fuer Spec-Driven Development (Issue #438) ---
 
 // Der Block selbst ist der Schalter, sein Feld 'seit' der Zeitpunkt. Gebaut aus der
 // ausgelieferten Vorlage, damit die Faelle eine echte Config treffen und sich nur im
@@ -215,14 +215,13 @@ test("spec: der defaults-Block traegt keinen spec-Eintrag", () => {
   assert.ok(!("spec" in schema.defaults), "defaults traegt kein spec");
 });
 
-test("spec: die description warnt vor der Wirkungslosigkeit und nennt die Teamweit-Formel", () => {
+test("spec: die description nennt Einschalten ohne Rueckweg, die Tracker-Grenze und die Teamweit-Formel", () => {
   // JSON kennt keine Kommentare — die description ist der einzige Ort, an dem die Lage
-  // im Schema selbst steht: eingeschaltet durch Vorhandensein, kein Weg zurueck, und bis
-  // zur Ausbaustufe 4 ohne Wirkung. Genau daraus entstand bei checkAreas eine Falle.
+  // im Schema selbst steht: eingeschaltet durch Vorhandensein und kein Weg zurueck. Der
+  // fruehere Satz "bis Ausbaustufe 4 ohne Wirkung" ist seit spec.mjs ueberholt (Issue #675).
   const text = schema.properties.spec.description;
   assert.ok(text, "spec hat eine description");
-  assert.match(text, /ACHTUNG/, "der Warnton folgt dem ACHTUNG-Satz an buildChecks");
-  assert.match(text, /keine Wirkung/, "die description sagt, dass der Block noch nichts bewirkt");
+  assert.match(text, /ACHTUNG/, "die Tracker-Grenze steht als ACHTUNG-Satz");
   assert.match(text, /enabled/, "die description sagt, dass es kein enabled gibt");
   // Seit Issue #461 (A19) traegt der Block nicht auf jedem Tracker. Wer die Lage nur
   // im Plan festhaelt, laesst denjenigen im Regen, der die Config vor sich hat.
@@ -296,4 +295,123 @@ test("die description-Felder nennen die drei Formen und den Unterschied String/a
     }
     assert.match(text, /entschieden/, `${name} benennt den Unterschied vergessen/entschieden`);
   }
+});
+
+// --- night.modelle (Issue #664) ---
+//
+// Der Nacht-Runner soll das Modell einer Karte uebernehmen koennen. Ohne eine Liste
+// erlaubter Namen wanderte ein Wert aus einem Issue-Body unbesehen in `argv` — ein Paket
+// mit `Empfohlenes Modell: --dangerously-skip-permissions` waere ein Angriff ueber eine
+// Karte. Das `pattern` faengt das schon bei der Config-Pruefung ab, nicht erst zur
+// Laufzeit: Was das Schema verhindert, muss der Runner nicht erklaeren.
+//
+// Die Liste ist GEORDNET, absteigend nach Staerke. Das ist keine Kosmetik — `/issues`
+// leitet daraus ab, welcher Name das staerkste und welcher das schnellste Modell
+// benennt, und nachts fragt niemand nach.
+
+const configMitModellen = (modelle) => ({ ...beispielConfig, night: { modelle } });
+
+test("night.modelle: eine Liste von Modellnamen ist gueltig", () => {
+  assert.deepEqual(pruefe(schema, configMitModellen(["claude-opus-5", "claude-sonnet-5"])), []);
+});
+
+test("night.modelle: ein Eintrag mit fuehrendem Bindestrich faellt durch", () => {
+  // Der eigentliche Zweck des Feldes. Ein Wert, der als Flag gelesen wuerde, darf gar
+  // nicht erst in die Config kommen.
+  assert.notDeepEqual(pruefe(schema, configMitModellen(["--dangerously-skip-permissions"])), []);
+});
+
+test("night.modelle: ein Eintrag, der keine Zeichenkette ist, faellt durch", () => {
+  assert.notDeepEqual(pruefe(schema, configMitModellen([{ name: "claude-opus-5" }])), []);
+  assert.notDeepEqual(pruefe(schema, configMitModellen([5])), []);
+});
+
+test("night.modelle: die Feldbeschreibung nennt die Ordnung nach Staerke", () => {
+  const feld = schema.properties.night.properties.modelle;
+  assert.ok(feld, "das Feld night.modelle fehlt im Schema");
+  assert.match(feld.description, /St(ä|ae)rke/i, "die Ordnung nach Staerke steht nicht in der Beschreibung");
+  assert.match(feld.description, /schnellste/i, "dass der letzte Eintrag das schnellste Modell ist, steht nicht da");
+});
+
+test("night: die Blockbeschreibung nennt die Umsetzungsnacht nicht mehr als blocklos", () => {
+  // Sie tat es, solange nur die Kette einen Block brauchte. Mit night.modelle stimmt der
+  // Satz nicht mehr — und eine Beschreibung, die das Gegenteil behauptet, ist schlechter
+  // als keine.
+  assert.doesNotMatch(
+    schema.properties.night.description,
+    /Umsetzungsnacht braucht keinen Block/,
+    "die Beschreibung behauptet weiterhin, die Umsetzungsnacht brauche keinen Block",
+  );
+});
+
+test("night.modelle: die ausgelieferte Vorlage traegt die Liste", () => {
+  assert.deepEqual(pruefe(schema, beispielConfig), [], "die Vorlage bleibt gueltig");
+  assert.ok(Array.isArray(beispielConfig.night?.modelle), "templates/workflow.config.json fuehrt night.modelle nicht");
+  assert.equal(beispielConfig.night.modelle.length, 2, "zwei Eintraege erwartet");
+  assert.ok(
+    beispielConfig.night.modelle.every((m) => typeof m === "string" && m.startsWith("claude-")),
+    "die Vorlage traegt nur Claude-Namen",
+  );
+});
+
+// --- Das Schema als Quelle der Einstellungs-Referenz (Issue #675, Plan #674 E17) ---
+//
+// Oberfläche und Dokumentation zeigen die Beschreibungen wortgleich. Ein Fehler hier
+// erschiene an beiden Orten zugleich — deshalb gelten für sie die Regeln der Doku.
+
+/** Alle Properties mit ihrem Pfad, rekursiv bis in items und additionalProperties. */
+function alleProperties(knoten, pfad = "", out = []) {
+  if (!istObjekt(knoten)) return out;
+  for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
+    const p = pfad ? `${pfad}.${name}` : name;
+    out.push([p, kind]);
+    alleProperties(kind, p, out);
+  }
+  if (istObjekt(knoten.items)) alleProperties(knoten.items, `${pfad}[]`, out);
+  for (const variante of knoten.oneOf ?? []) alleProperties(variante, pfad, out);
+  if (istObjekt(knoten.additionalProperties)) alleProperties(knoten.additionalProperties, `${pfad}.*`, out);
+  return out;
+}
+
+/** Alle description-Texte des Schemas, einschliesslich Wurzel und items. */
+function alleBeschreibungen(knoten, out = []) {
+  if (Array.isArray(knoten)) { for (const k of knoten) alleBeschreibungen(k, out); return out; }
+  if (!istObjekt(knoten)) return out;
+  if (typeof knoten.description === "string") out.push(knoten.description);
+  for (const [schluessel, wert] of Object.entries(knoten)) {
+    if (schluessel !== "defaults" && schluessel !== "validationRules") alleBeschreibungen(wert, out);
+  }
+  return out;
+}
+
+test("jede Property im Schema traegt eine nicht leere description", () => {
+  const ohne = alleProperties(schema).filter(([, kind]) => typeof kind.description !== "string" || kind.description.trim() === "").map(([p]) => p);
+  assert.deepEqual(ohne, [], `ohne description: ${ohne.join(", ")}`);
+});
+
+test("keine description ist transliteriert oder verweist auf ein Issue", () => {
+  // Bezeichner in Anfuehrungszeichen oder Backticks bleiben, wie sie heissen
+  // ('vollstaendigkeit-pruefbarkeit' ist ein Rollenname, kein Text).
+  const WOERTER = /\b\w*(fuer|ueber|koennen|wuerde|pruef|schluessel|geaendert|ausfuehr)\w*/i;
+  const funde = [];
+  for (const text of alleBeschreibungen(schema)) {
+    const ohneBezeichner = text.replaceAll(/'[^']*'|`[^`]*`|"[^"]*"/g, "");
+    const wort = ohneBezeichner.match(WOERTER);
+    if (wort) funde.push(`transliteriert '${wort[0]}': ${text.slice(0, 60)}…`);
+    if (/Issue #/.test(text)) funde.push(`Issue-Verweis: ${text.slice(0, 60)}…`);
+  }
+  assert.deepEqual(funde, []);
+});
+
+test("keine description traegt die ueberholten Warnungen", () => {
+  const alle = alleBeschreibungen(schema).join("\n");
+  for (const satz of [/noch nicht verstanden/, /erst mit dem Folgepaket/, /Ausbaustufe 4/]) {
+    assert.doesNotMatch(alle, satz);
+  }
+});
+
+test("validationRules fuehrt fuer issueTracker dieselben Werte wie das enum", () => {
+  const regel = schema.validationRules.find((r) => r.field === "issueTracker");
+  assert.ok(regel, "keine validationRule fuer issueTracker");
+  assert.deepEqual([...regel.allowed].sort(), [...schema.properties.issueTracker.enum].sort());
 });

@@ -126,7 +126,10 @@ test("die Doku benennt das Format als Maszstab der Pruefung", () => {
 });
 
 test("die Doku nennt die Rueckwaertskompatibilitaet ohne reviewStufen-Block", () => {
-  const absatz = DOKU.split(/\n\n/).find((a) => /reviewStufen/.test(a) && /ohne/i.test(a));
+  // Ohne den aus dem Schema erzeugten Abschnitt (Issue #675): Dessen Feldbeschreibungen
+  // nennen reviewStufen ebenfalls, sagen aber nichts ueber bestehende Installationen.
+  const ohneReferenz = DOKU.replace(/<!-- einstellungen:start -->[\s\S]*?<!-- einstellungen:ende -->/, "");
+  const absatz = ohneReferenz.split(/\n\n/).find((a) => /reviewStufen/.test(a) && /ohne/i.test(a));
   assert.ok(absatz, "kein Absatz zum Verhalten ohne reviewStufen-Block");
   assert.match(absatz, /zwei/i, "die bisherige Besetzung mit zwei Reviewern ist nicht genannt");
   assert.match(absatz, /bestehend|Bestands/i, "der Bezug auf bestehende Installationen fehlt");

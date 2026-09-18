@@ -89,14 +89,16 @@ test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --
 });
 
 test("[night-19] waehleKettenKandidaten: nur Karten mit Label, in Reihenfolge, mit Grund je Ausschluss", () => {
+  const geprueft = ["kit:night", "review:fertig"];
   const karten = [
-    { id: "1", title: "[Fachlich] A", status: "backlog", labels: ["kit:night"] },
+    { id: "1", title: "[Fachlich] A", status: "backlog", labels: geprueft },
     { id: "2", title: "[Fachlich] ohne Label", status: "backlog", labels: [] },
-    { id: "3", title: "[Plan] P", status: "backlog", labels: ["kit:night"] },
-    { id: "4", title: "[Fachlich] in Ready", status: "ready", labels: ["kit:night"] },
-    { id: "5", title: "[Fachlich] geklaert?", status: "backlog", labels: ["kit:night", "kit:klaeren"] },
-    { id: "6", title: "[Fachlich] B", status: "backlog", labels: ["kit:night"] },
-    { id: "7", title: "[Fachlich] C", status: "backlog", labels: ["kit:night"] },
+    { id: "3", title: "[Plan] P", status: "backlog", labels: geprueft },
+    { id: "4", title: "[Fachlich] in Ready", status: "ready", labels: geprueft },
+    { id: "5", title: "[Fachlich] geklaert?", status: "backlog", labels: [...geprueft, "kit:klaeren"] },
+    { id: "6", title: "[Fachlich] B", status: "backlog", labels: geprueft },
+    { id: "7", title: "[Fachlich] C", status: "backlog", labels: geprueft },
+    { id: "8", title: "[Fachlich] ungeprueft", status: "backlog", labels: ["kit:night"] },
   ];
   const r = waehleKettenKandidaten(karten, "kit:night", 2);
   assert.deepEqual(r.kandidaten.map((k) => k.id), ["1", "6"]);
@@ -105,6 +107,7 @@ test("[night-19] waehleKettenKandidaten: nur Karten mit Label, in Reihenfolge, m
     ["3", "kein fachliches Issue ([Fachlich])"],
     ["4", "steht in ready"],
     ["5", "traegt kit:klaeren"],
+    ["8", "ungeprueft: Label 'review:fertig' fehlt"],
   ]);
   assert.deepEqual(waehleKettenKandidaten(undefined, "kit:night", 3), { kandidaten: [], uebersprungen: [], liegengeblieben: [] });
   assert.equal(waehleKettenKandidaten([{ id: "9", status: "backlog", labels: ["kit:night"] }], "kit:night", 1).uebersprungen[0].grund.startsWith("kein fachliches Issue"), true, "eine Karte ohne Titel ist kein Fachplan");

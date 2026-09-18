@@ -2,6 +2,83 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.0] - 2026-09-18
+- Doppelte Spec-IDs des Batches auf night-33 bis night-42 aufgeloest (#736)
+- Hook-Block und Installer melden die Sitzung von selbst (#735)
+- Sitzungs-Melder fuer den interaktiven Verbrauch (#734)
+- Wegmarken beim Verschieben einer Karte (#733)
+- Nutzerdokumentation: review:fertig als Voraussetzung der Nacht-Kette (#720)
+- Nacht-Kette: Kommentar am ungeprueften Fachplan und Hinweis auf fehlendes Kennzeichen (#719)
+- Nacht-Kette: Fachplan ohne review:fertig wird uebersprungen (#718)
+- Regeltext: review:fertig als Voraussetzung der Nacht-Kette (#717)
+- Nutzerdokumentation zu Aufgabenstufen, lokalem Modell und Nacht-Kette (#715)
+- Skills schneiden mit Stufe: /issues, /task, /implement-ready und /implement-next (#714)
+- Nachtbericht unter Variante B: Stufe und Modell je umgesetztem Paket (#713)
+- Vorschau und Vorflug: Stufe und Modell vor dem Lauf sichtbar (#712)
+- Stufenweg in laufeRunde: Modellwahl je Paket, frische Einstellung, Felder im Ergebnisstand (#711)
+- Session-Start ueber ein Programm der Stufe: Kommando-Zweig in runSession (#710)
+- Stufenwahl im Nacht-Runner: Aufgabenstufe, Einstellung, Ausweichen nach oben (#709)
+- night.stufen und night.stufenRegel: Schema und Konfigurationsprüfung (#708)
+- Gui Entwürfe eingecheckt
+- Nutzerdokumentation zu Variante B: beide Koernungen des GO und die fuenfte Stufe (#698)
+- Nachtbericht und Ergebnisstand unter Variante B: Variante, Paketlisten, Entscheidungen (#697)
+- Der Umsetzungs-Lock: Kette und Umsetzungsnacht bauen nicht gleichzeitig (#696)
+- Die Stufe umsetzung: Pakete einzeln ziehen, umsetzen und zurueckstellen (#695)
+- Variantenerkennung der Nacht-Kette: varianteVon und die Weiche in der Stufenfolge (#694)
+
+## [1.53.5] - 2026-09-17
+- Test zu skills-28: Ausnahme fuer Variante B in acht Skills (#700)
+
+## [1.53.4] - 2026-09-17
+- CLAUDE.md: Quelle unter kit/, installierte Kopie unter .claude/ wird nie bearbeitet
+- Config-Felder fuer Variante B: varianteBLabel, umsetzungMin, kostenUsdB (#693)
+- Bindende Quelle: Ausnahmesatz fuer Variante B in Regeltext und acht Skills (#692)
+- Windows-CI: zwei Tests mit falscher Pfadannahme korrigiert (#689)
+
+## [1.53.3] - 2026-09-17
+- Nacht-Runner: Board-Ausgaben ueber 1 MB brechen die Kette nicht mehr ab (#699)
+- qwen aus Konfiguration entfernt
+
+## [1.53.2] - 2026-09-16
+- /issues liest uebernommene Review-Funde gegen (#687)
+- Schlussmeldung eines Vorhabens nennt zuerst Sichtbares und Fehlendes (#686)
+- Stopp-Klasse: Abweichung vom fachlichen Anlass als Punkt 6 (#685)
+- Plan-Review liest fachliche Quelle und Vorlage mit (#684)
+- Vorlage als Spur durch Fachplan, Plan und Arbeitspakete (#683)
+- /retro weist Pakete der Nacht ohne Einwand als fuenfte Kennzahl aus (#680)
+- Einstellungs-Oberflaeche als Download ueber docs.mwolff.org (#679)
+- Oberflaeche der Einstellungen in den Farben der Kupferwarte (#678)
+- Lokaler Server der Einstellungs-Oberflaeche mit Absicherung (#677)
+- Kern der Einstellungs-Oberflaeche: Pruefung, Ebenen, minimaler Schreiber (#676)
+- Schema bereinigen, Einstellungs-Referenz der Doku daraus erzeugen (#675)
+- Runner erfasst den Verbrauch je Einheit und liefert ihn ein (#669)
+- Budgets der Kette aus den Defaults im Lauf sichtbar (#659)
+
+## [1.53.1] - 2026-09-16
+- Board-Adapter liest den Aktivitaetsverlauf ueber die Kanban-Route (#670)
+- Fachartikel über Umbau workflow-kit
+- implement-next und implement-ready nennen das empfohlene Modell (#667)
+- /issues schreibt das empfohlene Modell in das Arbeitspaket (#666)
+- Nacht-Runner startet jede Session mit dem Modell ihrer Karte (#665)
+- night.modelle: Liste erlaubter Modellnamen (#664)
+- Release-Weg: ein Lauf, ein Commit (#658)
+- Wartende Session gilt dem Runner nicht mehr als gescheitert (#668)
+- Neues Konzept für workflow-kit 2.0
+- Qwen als zusätzlichen Reviewer einbinden
+- version.mjs rechnet den Bump ab dem committeten Stand (#656)
+- changelog.mjs bekommt die Option --marke mit lokalem Datum (#657)
+- checks.mjs run stempelt den Zeitpunkt in die Zusammenfassung (#655)
+- Abbruch der Review-Stufe hinterlaesst einen Vermerk am Plandokument (#654)
+- Der Ueberholt-Kommentar der Kette wird zurueckgelesen (#653)
+- /kontext blendet Vorhaben ohne Arbeitspakete aus (#651)
+- Umbenennung: beschriebenes Verhalten wird Spec-Driven Development (#465)
+- merge-production prueft den CI-Status vor dem Release-PR (#316)
+- Zeiten für Reviews erhöht
+- /kontext begrenzt die letzten Entscheidungen auf den juengsten Tag (#649)
+- /kontext gibt vom Spec-Index nur noch die Hinweiszeile aus (#648)
+- /kontext zeigt nur laufende Vorhaben und keine Arbeitspakete (#647)
+- CI gruen: Doku-Test ohne Installer-Kopie, Worktree-Test ohne CRLF-Annahme (#650)
+
 ## [1.53.0] - 2026-09-14
 - chore: Spec fortgeschrieben; Vorhaben-Notizen gesichert (#639 #640 #641 #642 #643 #644 #645 #646 #620 #618)
 - Nacht-Runner stoppt vor der ersten Session bei ungueltiger settings.json (#618)

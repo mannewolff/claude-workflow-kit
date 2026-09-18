@@ -43,22 +43,28 @@ test("Schritt 1 nennt den spec-Block als gelesenes Feld", () => {
   );
 });
 
-// Der Kern des Issues: apply vor den Pflicht-Checks, Gate danach.
-test("apply steht vor den Pflicht-Checks, check --anker danach", () => {
-  const checks = ueberschriftPos("Pflicht-Checks");
+// Der Kern des Issues: apply vor dem Prueflauf, Gate danach.
+//
+// Seit Issue #658 heisst der Schritt nicht mehr "Pflicht-Checks", und es gibt nur noch
+// EINEN Lauf — aber die Reihenfolge ist dieselbe Aussage geblieben: `apply` schreibt
+// Dateien, die der Lauf sehen muss, und das Spec-Gate misst den Batch, wie er gepusht
+// wird, also erst nach dem Commit.
+test("apply steht vor dem einen Prueflauf, check --anker danach", () => {
+  const lauf = SKILL.search(/node \.claude\/kit\/checks\.mjs run/);
+  assert.notEqual(lauf, -1, "der Prueflauf fehlt im Skill");
 
   const apply = SKILL.search(/spec\.mjs apply --anker/);
   assert.notEqual(apply, -1, "der `apply`-Aufruf fehlt im Skill");
   assert.ok(
-    apply < checks,
-    "`apply` steht hinter den Pflicht-Checks — dann pruefte niemand, was tatsaechlich hinausgeht",
+    apply < lauf,
+    "`apply` steht hinter dem Prueflauf — dann pruefte niemand, was tatsaechlich hinausgeht",
   );
 
   const gate = SKILL.search(/spec\.mjs check --anker/);
   assert.notEqual(gate, -1, "der Gate-Aufruf `check --anker` fehlt im Skill");
   assert.ok(
-    gate > checks,
-    "das Gate steht vor den Pflicht-Checks — es misst dann nicht den Batch, wie er gepusht wird",
+    gate > lauf,
+    "das Gate steht vor dem Prueflauf — es misst dann nicht den Batch, wie er gepusht wird",
   );
 });
 
@@ -151,15 +157,18 @@ test("ein roter apply-Lauf haelt den Push auf", () => {
 });
 
 // Kriterium 2 des Plans, an diesem Skill: Wer den Schalter nicht setzt, merkt nichts.
-test("ohne spec-Block laeuft der Skill unveraendert", () => {
-  // `[\s*_]` laesst Markdown-Auszeichnung zwischen den Woertern zu („ohne **`spec`-Block**").
+test("ohne spec-Block entfaellt der Spec-Schritt, und der Skill sagt das", () => {
+  // Bis Issue #658 stand hier "laeuft unveraendert". Das stimmt seitdem nicht mehr: Ohne
+  // den Block faehrt der Weg WENIGER Schritte, und die Fortschrittszeile zaehlt anders.
+  // Geprueft wird deshalb, dass der Abschnitt den Wegfall benennt statt Gleichheit zu
+  // behaupten, die es nicht gibt.
   const absatz = SKILL.split(/\n\n/).find(
-    (a) => /ohne[\s*_]*`?spec`?-Block/i.test(a) && /unver(ä|ae)ndert/i.test(a),
+    (a) => /ohne[\s*_]*`?spec`?-Block/i.test(a) && /Schritt 3/.test(a),
   );
-  assert.ok(absatz, "kein Satz dazu, dass Projekte ohne `spec`-Block den Skill unveraendert fahren");
+  assert.ok(absatz, "kein Absatz dazu, was Projekte ohne `spec`-Block sehen");
   assert.match(
     absatz,
     /nicht|kein/i,
-    "es steht nicht, dass der neue Schritt ohne den Block entfaellt",
+    "es steht nicht, dass der Spec-Schritt ohne den Block entfaellt",
   );
 });

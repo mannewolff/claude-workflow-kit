@@ -6,5 +6,8 @@
 - installer-5 — Der Installer erzwingt bei gesetztem Test-Hook den Blob-Fehlerpfad und die TTY-Fuehrung der Fragen; der Blob-Hook traegt keinen Inhalt, ohne gesetzte Hooks verhaelt sich der Installer unveraendert, und beide Namen erscheinen in keiner Ausgabe.
 - installer-6 — Der Installer schreibt Skills ausschliesslich aus dem eingebetteten Blob; konnte er keinen einzigen schreiben, bricht er mit einer benennenden Meldung und Exit-Code ungleich 0 ab, statt einen Dateisystem-Pfad zu versuchen, und ein Blob-Eintrag ohne Dateien wird als uebersprungen gemeldet.
 - installer-7 — Der Installer legt die Prozessvorlage und die beiden Gate-Register bytegleich zur jeweiligen Vorlage unter `templates/` ab.
+- installer-8 — `sync-blobs` stempelt `kit/einstellungen.mjs` mit dem Kit-Stand, ohne eine Kopie unter `.claude/kit/` anzulegen, und bettet das Schema aus `templates/workflow.config.schema.json` ein; `--check` meldet eine Abweichung beider.
+- installer-9 — Der Installer traegt in `.claude/settings.json` des Projekts einen `hooks`-Block fuer `SessionEnd` und `Stop` ein, der den Sitzungs-Melder aufruft; vorhandene Schluessel und fremde Hook-Eintraege bleiben stehen, und ein wiederholter Lauf verdoppelt nichts.
+- installer-10 — Die Kit-Dokumentation nennt, was der Hook meldet, wann er meldet und wie man ihn abschaltet; bleibt eine Sitzung im Worktree unerfasst, steht diese Luecke ebenfalls dort.
 
 ## Entfallen

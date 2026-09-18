@@ -22,15 +22,21 @@ test("[skills-15] die vierte Leitfrage steht woertlich nach der dritten", () => 
   assert.match(SKILL, /## Vier Leitfragen/, "die Ueberschrift zaehlt noch drei");
 });
 
-test("[skills-15] die vier Kennzahlen sind benannt, jede mit Quelle", () => {
+test("[skills-15] die fuenf Kennzahlen sind benannt, jede mit Quelle", () => {
   const a = SKILL.indexOf("### 4. Was sagen die Zahlen?");
   const abschnitt = SKILL.slice(a, SKILL.indexOf("\n## ", a));
-  for (const kennzahl of ["Gekippte Entscheidungen", "Stopp-Fragen", "Anforderung bis GO", "GO bis Push"]) {
+  for (const kennzahl of ["Gekippte Entscheidungen", "Stopp-Fragen", "Anforderung bis GO", "GO bis Push", "Pakete der Nacht ohne Einwand"]) {
     assert.ok(abschnitt.includes("**" + kennzahl), `Kennzahl fehlt: ${kennzahl}`);
   }
   assert.match(abschnitt, /issue list|issue get|git log/, "die Quellen sind nicht benannt");
   assert.match(abschnitt, /Entscheiden statt fragen/, "der Bezug zum Entscheidungsformat fehlt");
   assert.match(abschnitt, /Stopp-Klasse/, "der Bezug zur Stopp-Klasse fehlt");
+  assert.match(abschnitt, /Fünf Kennzahlen/, "der Abschnitt zaehlt noch vier");
+  // Die neue Kennzahl (Issue #680): drei Zahlen, ihre Quellen, wofuer sie steht, und der Rueckfall.
+  const neu = abschnitt.slice(abschnitt.indexOf("**Pakete der Nacht ohne Einwand"));
+  for (const teil of ["ohne Einwand", "nach Änderung", "zurückgehalten", "## Nachtbericht, Kette", "issue activity", "issue get", "Variante B", "nicht ermittelbar"]) {
+    assert.notEqual(neu.indexOf(teil), -1, `die neue Kennzahl nennt nicht: ${teil}`);
+  }
 });
 
 test("[skills-15] der Output traegt die Kennzahlen als Tabelle und den Stopp-Klasse-Vorschlag", () => {
@@ -38,6 +44,7 @@ test("[skills-15] der Output traegt die Kennzahlen als Tabelle und den Stopp-Kla
   assert.match(block, /^### Kennzahlen$/m, "der Output-Block hat keinen Kennzahlen-Abschnitt");
   assert.match(block, /^\| Kennzahl \| Wert \| Quelle \|/m, "die Tabelle fehlt");
   assert.match(block, /nicht ermittelbar/, "die Form fuer fehlende Zahlen fehlt im Block");
+  assert.match(block, /^\| Pakete der Nacht ohne Einwand \| <ohne Einwand> \/ <nach Änderung> \/ <zurückgehalten> \| Nachtberichte, Board-Verlauf \|$/m, "die Tabellenzeile der neuen Kennzahl fehlt");
   assert.match(SKILL, /nicht ermittelbar: <Grund>/, "die Form fuer fehlende Zahlen nennt keinen Grund");
   assert.match(SKILL, /Vorschlag für die Stopp-Klasse/, "der Vorschlag fuer die Stopp-Klasse fehlt");
   assert.match(SKILL, /nicht selbst in `CLAUDE-workflow\.md` eingetragen/, "die Retro darf die Stopp-Klasse nicht selbst aendern");

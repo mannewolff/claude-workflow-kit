@@ -33,6 +33,9 @@
  *       aendert `issue move` (Issue #249).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
+ *   node board.mjs code ci-status --commit <sha>
+ *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
+ *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -41,7 +44,7 @@
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -52,7 +55,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.53.0";
+const KIT_VERSION = "2.0.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -99,11 +102,16 @@ Nutzung:
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I4. Die Stufe
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I5. Die Stufe
       kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
+  node board.mjs code ci-status --commit <sha>
+      Zustand der CI fuer genau diesen Commit (Issue #316):
+      { status: gruen|rot|laeuft|keine, jobs: [{ name, ergebnis }] }. Vorrang rot vor
+      laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch unsichtbarer
+      Lauf ist 'laeuft'.
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -111,6 +119,17 @@ Nutzung:
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
+  node board.mjs nightrun melden --datei <ergebnisstand.json>
+      Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
+      (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
+  node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
+      Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
+      (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus
+      .claude/wegmarken.tsv. Ohne --protokoll kommt der Pfad als 'transcript_path'
+      aus dem Hook-Rumpf auf stdin. --complete meldet das Sitzungsende und leert die
+      Wegmarken; ohne das Flag wird hoechstens alle fuenf Minuten gemeldet.
+      Schweigt ohne Fehler bei gesetztem KIT_AGENT_MODEL (der Nacht-Runner meldet
+      selbst) und ohne Toolbox-Token.
 
   node board.mjs --version
 
@@ -235,13 +254,13 @@ function configRoot() {
 // Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
-// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs — Aenderungen dort nachziehen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
 // koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/night.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/night.mjs und kit/einstellungen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 /**
@@ -833,6 +852,63 @@ function githubStatusName(status, config) {
   return columnLabels(config)[status] || status;
 }
 
+// ============================================================
+// CI-Status (Achse `code ci-status`, Issue #316)
+// ============================================================
+
+// Ein lokal gruener Lauf sagt nichts ueber die CI: Dieses Repo faehrt seit Issue #196
+// einen zweiten Job auf windows-latest, und genau der war rot, als v1.37.0 und v1.38.0
+// nach production gingen. Die Auskunft gehoert in den Adapter und nicht als `gh`-Aufruf
+// in einen Skill-Text — die Skills sind provider-unabhaengig, und `gh run list` gibt es
+// bei GitLab und im lokalen Modus nicht.
+
+const GITHUB_CI_GRUEN = new Set(["success", "neutral", "skipped"]);
+const GITHUB_CI_ROT = new Set(["failure", "timed_out", "cancelled", "startup_failure", "action_required"]);
+const GITLAB_CI_GRUEN = new Set(["success", "skipped"]);
+const GITLAB_CI_ROT = new Set(["failed", "canceled"]);
+
+// Ein unbekannter oder fehlender Zustand ist `laeuft`: Die Zustandslisten der beiden
+// Hosts wachsen, und ein neuer Wert stillschweigend als `gruen` zu werten hiesse, ein
+// Release auf eine Auskunft zu stuetzen, die es nicht gibt.
+function ciErgebnis(wert, gruen, rot) {
+  if (gruen.has(wert)) return "gruen";
+  if (rot.has(wert)) return "rot";
+  return "laeuft";
+}
+
+/**
+ * Das Gesamturteil aus den Einzeljobs: rot vor laeuft vor gruen.
+ *
+ * Eine LEERE Jobliste ist `laeuft`, nicht `gruen`: Unmittelbar nach einem Push ist der
+ * Lauf fuer einige Sekunden unsichtbar, und ein `gruen` an dieser Stelle risse genau die
+ * Luecke wieder auf, die diese Achse schliesst. `keine` gibt es nur bei codeHost `local`
+ * — dort ist die Abwesenheit von CI der Dauerzustand und kein Zwischenschritt.
+ */
+function ciGesamturteil(jobs) {
+  if (jobs.some((j) => j.ergebnis === "rot")) return "rot";
+  if (jobs.length === 0 || jobs.some((j) => j.ergebnis === "laeuft")) return "laeuft";
+  return "gruen";
+}
+
+/**
+ * Wie execJSON, aber jeder Fehlweg endet als abfangbarer BoardError mit Klartext:
+ * fehlendes CLI, fehlende Authentifizierung, Netzfehler und ungueltiges JSON. Ohne das
+ * traegt die Meldung „Unerwarteter Fehler" und sieht aus wie ein Defekt des Adapters.
+ */
+function ciJSON(datei, args) {
+  let roh;
+  try {
+    roh = exec(datei, args);
+  } catch (e) {
+    throw new BoardError(`${datei} ${args.join(" ")}: ${e.message}`);
+  }
+  try {
+    return JSON.parse(roh);
+  } catch {
+    throw new BoardError(`${datei} ${args.join(" ")} lieferte kein gueltiges JSON: ${roh.slice(0, 200)}`);
+  }
+}
+
 class GitHubCodeHost {
   constructor(config) { this._cfg = config; }
 
@@ -857,6 +933,23 @@ class GitHubCodeHost {
     const t = title || `${from} → ${to}`;
     const url = exec("gh", ["pr", "create", "--base", to, "--head", from, "--title", t, "--body", ""]);
     return { url };
+  }
+
+  // Das Urteil entsteht ausschliesslich aus jobs[]: `gh run list --json name` liefert den
+  // WORKFLOW-Namen, nicht den Job — damit waere der rote Job nicht zu benennen, und genau
+  // sein Name ist es, den das Gate in `/merge-production` ausgibt.
+  async getCiStatus(commit) {
+    const laeufe = ciJSON("gh", [
+      "run", "list", "--commit", commit, "--json", "databaseId,workflowName,conclusion,status",
+    ]);
+    const jobs = [];
+    for (const lauf of Array.isArray(laeufe) ? laeufe : []) {
+      const detail = ciJSON("gh", ["run", "view", String(lauf.databaseId), "--json", "jobs"]);
+      for (const job of Array.isArray(detail.jobs) ? detail.jobs : []) {
+        jobs.push({ name: job.name, ergebnis: ciErgebnis(job.conclusion, GITHUB_CI_GRUEN, GITHUB_CI_ROT) });
+      }
+    }
+    return { status: ciGesamturteil(jobs), jobs };
   }
 }
 
@@ -1030,6 +1123,24 @@ class GitLabCodeHost {
     // glab gibt die MR-URL aus
     const match = url.match(/https?:\/\/\S+/);
     return { url: match ? match[0] : url.trim() };
+  }
+
+  // `glab ci status` scheidet aus: Es filtert nach Branch, nicht nach SHA. `ci list`
+  // liefert absteigend nach id (glab-Default), das erste Element ist also die neueste
+  // Pipeline des Commits; ihre Jobs holt `ci get --with-job-details`.
+  async getCiStatus(commit) {
+    const pipelines = ciJSON("glab", ["ci", "list", "--sha", commit, "--output", "json"]);
+    const liste = Array.isArray(pipelines) ? pipelines : [];
+    if (liste.length === 0) return { status: "laeuft", jobs: [] };
+
+    const detail = ciJSON("glab", [
+      "ci", "get", "--pipeline-id", String(liste[0].id), "--with-job-details", "--output", "json",
+    ]);
+    const jobs = (Array.isArray(detail.jobs) ? detail.jobs : []).map((job) => ({
+      name: job.name,
+      ergebnis: ciErgebnis(job.status, GITLAB_CI_GRUEN, GITLAB_CI_ROT),
+    }));
+    return { status: ciGesamturteil(jobs), jobs };
   }
 }
 
@@ -1279,6 +1390,12 @@ class LocalCodeHost {
   // den Hinweis auf den lokalen git-Merge aus. Eine Methode hier waere unerreichbar
   // (entfernt in Issue #188) — und ein zweiter, abweichender Wortlaut fuer denselben Fall.
   supportsPullRequests() { return false; }
+
+  // `keine` liefert ausschliesslich dieser Host: Ein Projekt ohne CI darf nicht
+  // releaseunfaehig werden, deshalb Exit 0 und kein Fehler.
+  async getCiStatus() {
+    return { status: "keine", jobs: [] };
+  }
 }
 
 // ============================================================
@@ -1575,21 +1692,23 @@ class ToolboxIssueTracker {
   /**
    * Aktivitaetsverlauf einer Karte (Issue #460).
    *
-   * Zwei Unterschiede zu `_comments`, beide beabsichtigt:
+   * Die Route ist `/api/kanban/items/{id}/activity` (Issue #670) und adressiert die
+   * **interne** ID — dieselbe Falle wie bei move, comments und labels (Befund vom
+   * 2026-08-29). Daher `_resolveByNumber`. Sie gibt es seit kanban-kit v1.43.0: Dort
+   * bleibt ein board-gebundenes Token auf `/api/kanban/**` beschraenkt (kanban-kit
+   * #877), und der Verlauf ist innerhalb dieser Grenze lesbar (#876). Die fruehere
+   * Karten-Route ausserhalb der Grenze beantwortet ein solches Token mit 403.
    *
-   * 1. Die Route liegt unter `/api/cards/{cardId}/...`, nicht unter
-   *    `/api/kanban/items/...`, und adressiert die **interne** ID — dieselbe Falle wie
-   *    bei move, comments und labels (Befund vom 2026-08-29). Daher `_resolveByNumber`.
-   * 2. **Ein Fehler wird nicht geschluckt.** `_comments` faengt 404/405 aelterer
-   *    Instanzen ab und liefert `[]`; hier waere das falsch. Der Verlauf ist die
-   *    Quelle des Anlagedatums — eine leere Liste hiesse „Karte ohne Geschichte" und
-   *    liesse das Gate ein altes Paket fuer neu halten. Der Aufrufer soll den Fehler
-   *    sehen, samt HTTP-Status.
+   * Ein Unterschied zu `_comments` bleibt, und er ist beabsichtigt: **Ein Fehler wird
+   * nicht geschluckt.** `_comments` faengt 404/405 aelterer Instanzen ab und liefert
+   * `[]`; hier waere das falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
+   * leere Liste hiesse „Karte ohne Geschichte" und liesse das Gate ein altes Paket fuer
+   * neu halten. Der Aufrufer soll den Fehler sehen, samt HTTP-Status.
    */
   async listActivity(number) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
-    const res = await this._fetch(`/api/cards/${item.id}/activity`);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
   }
 
@@ -2488,6 +2607,38 @@ async function issueActivity(tracker, config, args) {
   out(await tracker.listActivity(id));
 }
 
+// Spalten, deren Betreten den Beginn eines zuordenbaren Abschnitts markiert (Issue #733).
+// Ready, Backlog und Done stehen bewusst nicht dabei: Sie sind Ablagen, keine Arbeit.
+const WEGMARKEN_SPALTEN = new Set(["in_progress", "in_review"]);
+const WEGMARKEN_DATEI = "wegmarken.tsv";
+
+/**
+ * Haengt eine Wegmarke an `.claude/wegmarken.tsv` im Arbeitsverzeichnis an (Issue #733).
+ *
+ * Wozu: Der Melder teilt den Verbrauch einer interaktiven Sitzung anhand der Zeitstempel
+ * seines Protokolls auf die hier vermerkten Abschnitte auf. Was zwischen keinen zwei
+ * Wegmarken liegt, zaehlt "ohne Karte" — geraten wird nicht.
+ *
+ * Vermerkt wird der KANONISCHE Status, nicht der Anzeigename der Spalte: Der steht
+ * projektweise verschieden unter `columns` in der Config, und der Melder liest die Datei
+ * ohne Zugriff auf die Config, die sie erzeugt hat.
+ *
+ * Angehaengt, nie ueberschrieben — sonst saehe der Melder nur den letzten Abschnitt einer
+ * Sitzung. Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Eine Wegmarke
+ * ist Buchhaltung, keine Bedingung, und eine gescheiterte Buchung darf die Kartenbewegung
+ * nicht mitreissen.
+ */
+function wegmarkeSchreiben(id, status, jetzt = new Date()) {
+  if (!WEGMARKEN_SPALTEN.has(status)) return;
+  const pfad = resolve(".claude", WEGMARKEN_DATEI);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
+  } catch (e) {
+    process.stderr.write(`Hinweis: Wegmarke nicht geschrieben (${pfad}): ${e.message}\n`);
+  }
+}
+
 async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
   if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
@@ -2496,6 +2647,9 @@ async function issueMove(tracker, args) {
     fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
   }
   await tracker.moveIssue(id, toStatus);
+  // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
+  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden.
+  wegmarkeSchreiben(id, toStatus);
   out({ ok: true, id, status: toStatus });
 }
 
@@ -2810,6 +2964,20 @@ function pruefeAbhaengigkeiten(zeilen) {
   return verstoesse;
 }
 
+// Die Vorlage-Zeile im Kontext (Issue #683): `Vorlage: <Pfad> — verbindlich | Anregung`.
+const VORLAGE_VERBINDLICH = /^Vorlage:[^\S\n]*\S.*[—–-][^\S\n]*verbindlich[^\S\n]*$/i;
+
+/**
+ * I5: Eine verbindliche Vorlage verlangt die Abnahme per Bildschirmfoto im Akzeptanzkriterium
+ * (Issue #683). Ohne Pruefung verdunstet die Vorlage zwischen Plan und Paket — alle Checks
+ * gruen, und die Ansicht sieht aus wie vorher. Der Block unter dem Kriterium zaehlt mit.
+ */
+function pruefeVorlage(kontext, akzeptanz) {
+  if (!kontext?.zeilen.some((z) => VORLAGE_VERBINDLICH.test(z.trim()))) return [];
+  if (akzeptanz?.zeilen.some((z) => /bildschirmfoto/i.test(z))) return [];
+  return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
+}
+
 function pruefeIssue(abschnitte) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
@@ -2818,6 +2986,7 @@ function pruefeIssue(abschnitte) {
   if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
+  verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }
@@ -2827,8 +2996,9 @@ function pruefeIssue(abschnitte) {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I4 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
- * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt. Die
+ * Arbeitspaket: I1 bis I5 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
+ * Vorlage ein Bildschirmfoto im Akzeptanzkriterium. Die
  * `[Urteil]`-Gates bleiben beim Reviewer.
  */
 export function pruefeForm(body, title) {
@@ -2918,11 +3088,18 @@ async function codePr(host, args) {
   out(await host.createPullRequest({ from: args.from, to: args.to, title: args.title }));
 }
 
+async function codeCiStatus(host, args) {
+  if (args.commit === undefined) fail("--commit ist erforderlich");
+  if (args.commit === true) fail("--commit braucht einen Wert");
+  out(await host.getCiStatus(String(args.commit)));
+}
+
 async function dispatchCode(command, args) {
   const host = resolveCodeHost(loadConfig());
   switch (command) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
+    case "ci-status": return codeCiStatus(host, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter code-Befehl: '${command}'`);
@@ -3114,6 +3291,7 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
 // Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
 // Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
 // gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelPaare) vor dem Speichern.
 function validatePairs(pairs, reviewers) {
   const bekannt = new Set(reviewers.map((r) => r.name));
   for (const [autor, genannt] of Object.entries(pairs || {})) {
@@ -3154,6 +3332,7 @@ function validateReviewers(reviewers) {
  * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
  * Rueckfallebene nicht unterscheiden.
  */
+// SYNC: die Regel rollen.length === reviewer prueft kit/einstellungen.mjs (regelRollenzahl) vor dem Speichern.
 function validateReviewStufen(block) {
   if (block === undefined || block === null) {
     return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT])), stufenQuelle: "default" };
@@ -3457,6 +3636,576 @@ async function dispatchIssueReview(command, args) {
   }
 }
 
+// ============================================================
+// Nachtlauf einliefern (Issue #669)
+// ============================================================
+//
+// Der Vertrag ist `POST /api/kanban/night-runs` in kanban-kit (NightRunIngestController,
+// Plan #943): ein fertig gedeuteter Lauf mit Farbe je Arbeitspaket. Die Deutung folgt
+// kanban-kit `frontend/src/lib/nightRunErgebnisstand.ts`, beschraenkt auf die beiden
+// Lauf-Arten, die night.mjs heute schreibt. Anders als der Parser dort lehnt sie einen
+// unbekannten Ausgang nicht ab: Der Runner kann nachts niemanden fragen, und ein roter
+// UNEXPECTED_STATE ist ehrlicher als eine verlorene Nacht.
+
+// Laengengrenzen des Vertrags (NightRunController, NightRunLimits).
+const NACHTLAUF_TITEL_MAX = 300;
+const NACHTLAUF_AUSZUG_MAX = 4000;
+const NACHTLAUF_COMMIT_MAX = 40;
+const NACHTLAUF_EINHEITEN_MAX = 200;
+
+const NACHTLAUF_MODUS = { implementierung: "IMPLEMENTATION", kette: "CHAIN" };
+
+// Die Art des Laufs im Vertrag (mannewolff/kanban-kit#1012). Der Endpunkt faellt ohne das
+// Feld auf NIGHT zurueck; ausgeschrieben steht es trotzdem hier, damit ein Nachtlauf nicht
+// am Vorgabewert haengt, sobald derselbe Endpunkt auch andere Arten annimmt.
+const NACHTLAUF_ART = "NIGHT";
+
+// Farbe nach Pruefzustand, getrennt fuer erfolg und fehlschlag (NACH_ZUSTAND dort).
+const NACHTLAUF_NACH_PRUEFUNG = {
+  geprueft: { erfolg: ["GREEN", null] },
+  leeresPaket: { erfolg: ["GREEN", null] },
+  ungeprueft: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },
+  unlesbar: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },
+  rot: { erfolg: ["YELLOW", "CHECKS_RED"], fehlschlag: ["RED", "CHECKS_RED"] },
+};
+
+// Ausgaenge mit fester Farbe, in beiden Lauf-Arten.
+const NACHTLAUF_FEST = {
+  uebersprungen: ["GREY", null],
+  liegengeblieben: ["GREY", null],
+  unbekannt: ["RED", "HARD_ABORT"],
+  harterStopp: ["RED", "HARD_ABORT"],
+  angehalten: ["RED", "AWAITING_DECISION"],
+  fertig: ["GREEN", null],
+};
+
+/** Die Farbe eines zurueckgestellten Pakets — erster Treffer gewinnt (ZURUECKGESTELLT dort). */
+function farbeZurueckgestellt(grund) {
+  if (grund.includes("Abhaengigkeit")) return ["GREY", "DEPENDENCY_UNMET"];
+  if (grund.includes("kit:klaeren")) return ["RED", "AWAITING_DECISION"];
+  if (grund.startsWith("Session ohne In-review-Ergebnis")) return ["RED", "UNEXPECTED_STATE"];
+  return ["GREY", null];
+}
+
+/** Die Farbe eines abgebrochenen Ketten-Vorgangs (deuteKettenAusgang dort). */
+function farbeAbgebrochen(einheit, grund) {
+  if (!grund.startsWith("Zeitbudget ")) return ["RED", "HARD_ABORT"];
+  const s = einheit.stufen;
+  const dokument = typeof s?.plan?.id === "string" || (Array.isArray(s?.pakete?.ids) && s.pakete.ids.length > 0);
+  return [dokument ? "YELLOW" : "RED", "TIME_BUDGET_EXCEEDED"];
+}
+
+function nachtlaufFarbe(einheit) {
+  const grund = typeof einheit.grund === "string" ? einheit.grund : "";
+  const ausgang = einheit.ausgang;
+  if (NACHTLAUF_FEST[ausgang]) return NACHTLAUF_FEST[ausgang];
+  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grund);
+  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grund);
+  if (ausgang === "erfolg" || ausgang === "fehlschlag") {
+    const zeile = NACHTLAUF_NACH_PRUEFUNG[einheit.pruefung?.zustand ?? "ungeprueft"];
+    return zeile?.[ausgang] ?? ["RED", "UNEXPECTED_STATE"];
+  }
+  return ["RED", "UNEXPECTED_STATE"];
+}
+
+/**
+ * Die Mengen im Vertragsformat, `null`, wenn nichts gemessen wurde. Eingabemenge ist alles
+ * Verarbeitete — eigene Eingabe plus beide Zwischenspeicher-Mengen —, der Zwischenspeicher-
+ * Anteil nur das daraus Gelesene. So ergibt das Beispiel aus Issue #669 die dort genannten
+ * 97,8 Prozent.
+ */
+function nachtlaufUsage(v) {
+  if (!v) return null;
+  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
+  const eingaben = [v.eingabeTokens, v.cacheErzeugtTokens, v.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
+  const usage = {
+    costUsd: zahl(v.kostenUsd),
+    inputTokens: eingaben.length ? eingaben.reduce((a, b) => a + b, 0) : null,
+    outputTokens: zahl(v.ausgabeTokens),
+    cachedInputTokens: zahl(v.cacheGelesenTokens),
+  };
+  return Object.values(usage).every((x) => x === null) ? null : usage;
+}
+
+function nachtlaufDauer(einheit) {
+  if (typeof einheit.dauerMs === "number") return einheit.dauerMs;
+  const stufen = Object.values(einheit.stufen ?? {}).map((s) => s?.dauerMs).filter((d) => typeof d === "number");
+  return stufen.length ? stufen.reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * Uebersetzt einen Ergebnisstand in die Meldung fuer `POST /api/kanban/night-runs`.
+ * Reine Funktion; `jetzt` bestimmt die Dauer seit dem Start, weil der Stand fortschreibend
+ * und damit vor seinem Ende gemeldet wird.
+ */
+export function nachtlaufMeldung(stand, jetzt = new Date()) {
+  const mode = NACHTLAUF_MODUS[stand?.art];
+  if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
+    .filter((e) => /^\d+$/.test(String(e?.id)))
+    .slice(0, NACHTLAUF_EINHEITEN_MAX)
+    .map((e) => {
+      const [state, errorClass] = nachtlaufFarbe(e);
+      const grund = typeof e.grund === "string" && e.grund !== "" ? e.grund : null;
+      return {
+        cardNumber: Number(e.id),
+        // @NotBlank im Vertrag: Ein leerer Titel faellt auf die Nummer zurueck.
+        title: String(e.titel || `#${e.id}`).slice(0, NACHTLAUF_TITEL_MAX),
+        state,
+        errorClass,
+        durationMs: nachtlaufDauer(e),
+        commitHash: typeof e.commit === "string" ? e.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
+        excerpt: grund === null ? null : grund.slice(0, NACHTLAUF_AUSZUG_MAX),
+        usage: nachtlaufUsage(e.verbrauch),
+      };
+    });
+  const grau = items.filter((i) => i.state === "GREY").length;
+  return {
+    startedAt: stand.start,
+    kind: NACHTLAUF_ART,
+    mode,
+    durationMs: Math.max(0, jetzt.getTime() - new Date(stand.start).getTime()),
+    processedCount: items.length - grau,
+    skippedCount: grau,
+    unparsedCount: 0,
+    complete: stand.complete === true,
+    usage: nachtlaufUsage(stand.verbrauch),
+    items,
+  };
+}
+
+async function nightrunMelden(args) {
+  const config = loadConfig();
+  if (config.issueTracker !== "toolbox") {
+    fail(`Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '${config.issueTracker}'.`);
+  }
+  if (!args.datei) fail("nightrun melden braucht --datei <ergebnisstand.json>");
+  let stand;
+  try {
+    stand = JSON.parse(readFileSync(args.datei, "utf-8"));
+  } catch (e) {
+    fail(`Ergebnisstand ${args.datei} nicht lesbar: ${e.message}`);
+  }
+  const res = await new ToolboxIssueTracker(config)._fetch("/api/kanban/night-runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(nachtlaufMeldung(stand)),
+  });
+  let antwort = null;
+  try { antwort = await res.json(); } catch { /* kein JSON-Rumpf */ }
+  process.stdout.write(JSON.stringify({ ok: true, outcome: antwort?.outcome ?? null }) + "\n");
+}
+
+async function dispatchNightrun(command, args) {
+  switch (command) {
+    case "melden": return nightrunMelden(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter nightrun-Befehl: '${command}'`);
+  }
+}
+
+// ============================================================
+// Sitzungs-Melder fuer den interaktiven Verbrauch (Issue #734)
+// ============================================================
+//
+// WARUM HIER UND NICHT IN EINER EIGENEN kit/sitzung.mjs (die Entscheidung, die das
+// Arbeitspaket offen liess): Der Melder braucht vier Dinge, die alle in dieser Datei
+// liegen und keine davon ist exportiert — `loadConfig`, `resolveToolboxToken`,
+// `ToolboxIssueTracker._fetch` und `agentModelHeader`. Eine Nachbardatei muesste sie
+// entweder nachbauen (zwei Wege zum selben Board, die auseinanderlaufen) oder ihre
+// Freigabe erzwingen (der interne Adapter wird oeffentlicher Vertrag). Dazu kommt:
+// Die Aussagen board-11 bis board-15 gehoeren laut `spec.bereiche` zum Bereich
+// 'board', und ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im
+// Installer — Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt
+// trotzdem daneben (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein
+// Code, und genau deshalb hat sie eine eigene Datei verdient.
+//
+// Der Vertrag ist derselbe wie beim Nachtlauf (`POST /api/kanban/night-runs`,
+// mannewolff/kanban-kit#1012), nur mit `kind`/`mode` INTERACTIVE und dem
+// Sitzungsstart als fachlichem Schluessel.
+
+const SITZUNG_ART = "INTERACTIVE";
+const SITZUNG_ZUSTAND = "GREEN";
+const SITZUNG_DROSSEL_MS = 5 * 60 * 1000;
+const SITZUNG_STAND_DATEI = "sitzung-meldung.json";
+
+// Die Preistabelle als Nachbardatei, nach demselben Muster wie spec.mjs oben:
+// bedingtes `await import`, damit board.mjs auch als allein kopierte Datei laeuft.
+// Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben keinen Betrag.
+// Das ist genau das Verhalten, das board-15 fuer ein unbekanntes Modell verlangt,
+// und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
+const NACHBAR_PREISE = join(NACHBAR_DIR, "preise.mjs");
+const { preisFuer } = existsSync(NACHBAR_PREISE)
+  ? await import(pathToFileURL(NACHBAR_PREISE).href)
+  : { preisFuer: () => null };
+
+/**
+ * Liest das Sitzungsprotokoll von Claude Code (JSON Lines).
+ *
+ * DER KERN IST DIE ENTDOPPLUNG. Ein Zug steht mit einer Zeile je Inhaltsblock im
+ * Protokoll — Text, Werkzeugaufruf, Gedanke —, und JEDE dieser Zeilen traegt dieselbe
+ * `message.id` und dieselbe `usage`. An den Protokollen dieses Projekts gemessen
+ * (2026-09-18): 90 Zeilen mit usage auf 40 Zuege. Wer je Zeile addiert, meldet das
+ * Zwei- bis Sechsfache des Verbrauchs. Es gewinnt die letzte Zeile einer id: Waehrend
+ * ein Zug laeuft, waechst seine usage, und der letzte Stand ist der vollstaendige.
+ *
+ * `start` ist der frueheste Zeitstempel im Protokoll — auch aus einer Zeile ohne
+ * usage, denn die Sitzung beginnt mit der Eingabe des Menschen, nicht mit der ersten
+ * Antwort. Er ist der fachliche Schluessel der Meldung; derselbe Schluessel ersetzt
+ * am Endpunkt die vorige Meldung derselben Sitzung.
+ *
+ * Unlesbare Zeilen werden gezaehlt, nicht geworfen: Ein Protokoll, das gerade
+ * geschrieben wird, endet regelmaessig mitten in einer Zeile, und eine halbe Zeile
+ * darf keine Meldung kosten. Die Zahl geht als `unparsedCount` in den Vertrag.
+ */
+export function sitzungProtokoll(text) {
+  const proId = new Map();
+  let start = null;
+  let unlesbar = 0;
+  for (const zeile of String(text ?? "").split(/\r\n|\r|\n/)) {
+    if (zeile.trim() === "") continue;
+    let obj;
+    try { obj = JSON.parse(zeile); } catch { unlesbar++; continue; }
+    const zeit = Date.parse(obj?.timestamp);
+    if (Number.isFinite(zeit) && (start === null || zeit < start)) start = zeit;
+    const zug = sitzungZug(obj, zeit);
+    if (zug) proId.set(zug.id, zug);
+  }
+  return {
+    start: start === null ? null : new Date(start).toISOString(),
+    zuege: [...proId.values()].sort((a, b) => a.zeit - b.zeit),
+    unlesbar,
+  };
+}
+
+/** Ein Protokolleintrag als Zug, oder `null`, wenn er keine Mengen traegt. */
+function sitzungZug(obj, zeit) {
+  const usage = obj?.message?.usage;
+  const id = obj?.message?.id;
+  if (!usage || typeof usage !== "object" || typeof id !== "string" || !Number.isFinite(zeit)) return null;
+  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : 0);
+  // Der Zwischenspeicher wird nach Haltedauer getrennt gefuehrt: Der Stunden-Speicher
+  // kostet das Doppelte der Eingabe, der Fuenf-Minuten-Speicher das 1,25-fache. Das
+  // Protokoll fuehrt beide Mengen unter `cache_creation`, und ihre Summe ist immer
+  // `cache_creation_input_tokens` (an allen Protokollen dieses Projekts geprueft).
+  // Fehlt die Aufschluesselung, faellt alles auf den Fuenf-Minuten-Satz — die Angabe
+  // gibt es seit es die Stunden-Variante gibt, und der kleinere Satz behauptet im
+  // Zweifel weniger.
+  const teile = usage.cache_creation;
+  const erzeugt = zahl(usage.cache_creation_input_tokens);
+  const cache1h = teile && typeof teile === "object" ? zahl(teile.ephemeral_1h_input_tokens) : 0;
+  return {
+    id,
+    zeit,
+    modell: typeof obj?.message?.model === "string" ? obj.message.model : null,
+    eingabe: zahl(usage.input_tokens),
+    ausgabe: zahl(usage.output_tokens),
+    cache1h,
+    cache5m: erzeugt - cache1h,
+    cacheGelesen: zahl(usage.cache_read_input_tokens),
+  };
+}
+
+// Die beiden Spalten, die `issue move` vermerkt (WEGMARKEN_SPALTEN oben). `in_review`
+// SCHLIESST den Abschnitt seiner Karte, `in_progress` oeffnet ihn.
+const WEGMARKE_SCHLIESST = "in_review";
+
+/**
+ * Uebersetzt `.claude/wegmarken.tsv` in Abschnitte `{ karte, von, bis }` in
+ * Millisekunden; `bis === null` heisst "bis zum Ende der Sitzung".
+ *
+ * ZWEI DURCHGAENGE, UND DAS IST DER GANZE PUNKT. Die Datei ist eine flache,
+ * angehaengte Liste ohne Sitzungskennung — laufen zwei Sitzungen im selben
+ * Verzeichnis, mischen sich ihre Wegmarken darin. Nur die Paarung aus eigenem
+ * `in_progress` und eigenem `in_review` macht sichtbar, dass zwei Karten
+ * GLEICHZEITIG offen waren (E21). Wer die Marken bloss der Reihe nach als Grenzen
+ * liest, sieht diese Ueberlappung nie und schreibt den Verbrauch der einen Sitzung
+ * der Karte der anderen zu.
+ *
+ * Durchgang 1 paart jedes `in_review` mit dem juengsten offenen `in_progress`
+ * derselben Karte — das ergibt die geschlossenen Abschnitte.
+ * Durchgang 2 nimmt die `in_progress` ohne eigenen Abschluss: Sie enden an der
+ * naechsten Wegmarke einer ANDEREN Karte (der Normalfall der gestaffelten Arbeit) —
+ * oder gar nicht, wenn keine mehr kommt.
+ *
+ * Was kein Abschnitt abdeckt oder was zwei Abschnitte abdecken, bekommt keine Karte.
+ * Geraten wird nicht; die Zuordnung selbst macht `sitzungMeldung`.
+ */
+export function wegmarkenAbschnitte(text) {
+  const marken = [];
+  for (const zeile of String(text ?? "").split(/\r\n|\r|\n/)) {
+    const [zeitText, karte, status] = zeile.split("\t");
+    const zeit = Date.parse(zeitText);
+    if (!Number.isFinite(zeit) || !karte || !WEGMARKEN_SPALTEN.has(status)) continue;
+    marken.push({ zeit, karte, status });
+  }
+  marken.sort((a, b) => a.zeit - b.zeit);
+
+  const abschnitte = [];
+  const offen = new Map(); // karte -> Index der eroeffnenden Marke
+  for (const [i, marke] of marken.entries()) {
+    if (marke.status === WEGMARKE_SCHLIESST) {
+      const start = offen.get(marke.karte);
+      if (start !== undefined) {
+        abschnitte.push({ karte: marke.karte, von: marken[start].zeit, bis: marke.zeit });
+        offen.delete(marke.karte);
+      }
+      continue;
+    }
+    if (!offen.has(marke.karte)) offen.set(marke.karte, i);
+  }
+  for (const [karte, start] of offen) {
+    const naechste = marken.slice(start + 1).find((m) => m.karte !== karte);
+    abschnitte.push({ karte, von: marken[start].zeit, bis: naechste ? naechste.zeit : null });
+  }
+  return abschnitte.sort((a, b) => a.von - b.von);
+}
+
+/**
+ * Die Karte eines Zeitpunkts — `null`, wenn ihn kein Abschnitt abdeckt oder mehr als
+ * einer. Beides ist "ohne Karte": kein Abschnitt heisst, es lief keine Karte; zwei
+ * Abschnitte heissen, es liefen zwei Sitzungen und keine Zuordnung waere belegbar.
+ */
+function sitzungKarte(abschnitte, zeit) {
+  const treffer = abschnitte.filter((a) => zeit >= a.von && (a.bis === null || zeit < a.bis));
+  return treffer.length === 1 ? treffer[0].karte : null;
+}
+
+/**
+ * Der Dollarbetrag einer Menge Zuege, oder `null`, wenn er nicht bestimmbar ist.
+ *
+ * `null` statt 0, sobald EIN Zug ein Modell fuehrt, das die Preistabelle nicht kennt
+ * und das Token verbraucht hat: Die Summe waere dann zu klein, saehe aber aus wie
+ * gemessen. Ein unbekanntes Modell OHNE Token kostet dagegen zu jedem Preis nichts —
+ * das ist Rechnen, kein Raten, und es haelt Claude Codes eigene Platzhalter-Eintraege
+ * (`<synthetic>`, immer null Token) aus dem Ergebnis heraus.
+ *
+ * Auf sechs Stellen gerundet, wie `verbrauchOhneEinheit` in night.mjs: Sonst stuende
+ * Gleitkomma-Rauschen im Betrag.
+ */
+function sitzungKosten(zuege) {
+  let summe = 0;
+  for (const z of zuege) {
+    const mengen = [z.eingabe, z.ausgabe, z.cache5m, z.cache1h, z.cacheGelesen];
+    if (mengen.every((m) => m === 0)) continue;
+    const preis = preisFuer(z.modell);
+    if (!preis) return null;
+    const saetze = [preis.eingabe, preis.ausgabe, preis.cacheSchreiben5m, preis.cacheSchreiben1h, preis.cacheLesen];
+    summe += mengen.reduce((s, menge, i) => s + (menge * saetze[i]) / 1e6, 0);
+  }
+  return Math.round(summe * 1e6) / 1e6 + 0;
+}
+
+/**
+ * Die Mengen einer Menge Zuege im Vertragsformat — dieselbe Deutung wie
+ * `nachtlaufUsage`: Eingabemenge ist alles Verarbeitete (eigene Eingabe plus beide
+ * Zwischenspeicher-Mengen), der Zwischenspeicher-Anteil nur das Gelesene.
+ */
+function sitzungUsage(zuege) {
+  const summe = (feld) => zuege.reduce((s, z) => s + z[feld], 0);
+  return {
+    costUsd: sitzungKosten(zuege),
+    inputTokens: summe("eingabe") + summe("cache5m") + summe("cache1h") + summe("cacheGelesen"),
+    outputTokens: summe("ausgabe"),
+    cachedInputTokens: summe("cacheGelesen"),
+  };
+}
+
+/**
+ * Baut den Rumpf fuer `POST /api/kanban/night-runs`. Reine Funktion; `jetzt` bestimmt
+ * die Dauer, weil fortschreibend gemeldet wird.
+ *
+ * Der Rest ohne Kartennummer steht NICHT als eigener Eintrag in `items` — er ergibt
+ * sich als Sitzungssumme minus Summe der Karten, genau wie `verbrauchOhneEinheit`
+ * beim Nachtlauf. Ein Eintrag ohne `cardNumber` waere ein neues Feld im Vertrag eines
+ * fremden Dienstes; die Differenz ist dieselbe Auskunft ohne Vertragsaenderung.
+ *
+ * `state: GREEN` mit `errorClass: null` fuer jede Karte: Eine interaktive Sitzung
+ * meldet Verbrauch, keinen Ausgang. GREY hiesse "uebersprungen" und waere falsch — an
+ * der Karte wurde gearbeitet.
+ */
+export function sitzungMeldung({ start, zuege, unlesbar = 0, abschnitte = [], complete = false, jetzt = new Date() }) {
+  const jeKarte = new Map();
+  for (const z of zuege) {
+    const karte = sitzungKarte(abschnitte, z.zeit);
+    if (karte === null) continue;
+    if (!jeKarte.has(karte)) jeKarte.set(karte, []);
+    jeKarte.get(karte).push(z);
+  }
+  const ende = jetzt.getTime();
+  const items = [...jeKarte.entries()]
+    .filter(([karte]) => /^\d+$/.test(karte))
+    .slice(0, NACHTLAUF_EINHEITEN_MAX)
+    .map(([karte, eigene]) => ({
+      cardNumber: Number(karte),
+      // @NotBlank im Vertrag. Den Titel kennt der Melder nicht — ihn zu holen waere ein
+      // Board-Aufruf je Karte fuer eine Angabe, die am Board ohnehin steht.
+      title: `#${karte}`.slice(0, NACHTLAUF_TITEL_MAX),
+      state: SITZUNG_ZUSTAND,
+      errorClass: null,
+      durationMs: abschnitte
+        .filter((a) => a.karte === karte)
+        .reduce((s, a) => s + Math.max(0, Math.min(a.bis ?? ende, ende) - a.von), 0),
+      commitHash: null,
+      excerpt: null,
+      usage: sitzungUsage(eigene),
+    }));
+  const beginn = start === null ? ende : Date.parse(start);
+  return {
+    startedAt: start,
+    kind: SITZUNG_ART,
+    mode: SITZUNG_ART,
+    durationMs: Math.max(0, ende - beginn),
+    processedCount: items.length,
+    skippedCount: 0,
+    unparsedCount: unlesbar,
+    complete,
+    usage: sitzungUsage(zuege),
+    items,
+  };
+}
+
+/** Der Pfad des Protokolls: `--protokoll`, sonst `transcript_path` aus dem Hook-Rumpf. */
+function sitzungProtokollPfad(args) {
+  if (typeof args.protokoll === "string") return args.protokoll;
+  // Ein Claude-Code-Hook reicht seinen Rumpf ueber stdin herein. Ist keine da oder
+  // steht nichts Brauchbares drin, meldet der Melder nichts — er soll nie raten,
+  // welches der Protokolle im Benutzerverzeichnis die laufende Sitzung ist.
+  try {
+    const rumpf = JSON.parse(readFileSync(0, "utf-8"));
+    return typeof rumpf?.transcript_path === "string" ? rumpf.transcript_path : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Das Ergebnis eines Laufs ohne Meldung — immer Exit 0, nie ein Fehler. */
+function sitzungSchweigt(grund) {
+  process.stdout.write(JSON.stringify({ ok: true, gemeldet: false, grund }) + "\n");
+}
+
+/**
+ * Der Stand der letzten Meldung dieser Sitzung, fuer die Drosselung. Liegt neben den
+ * Wegmarken unter `.claude/`; eine fremde oder kaputte Datei zaehlt als "noch nie
+ * gemeldet" — im Zweifel wird gemeldet, nicht geschwiegen.
+ */
+function sitzungStandLesen(start) {
+  try {
+    const stand = JSON.parse(readFileSync(resolve(".claude", SITZUNG_STAND_DATEI), "utf-8"));
+    return stand?.sitzung === start ? Date.parse(stand.zuletzt) : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
+/**
+ * Verbucht eine gelungene Meldung: Zwischenmeldung -> Zeitpunkt merken (Drosselung),
+ * Sitzungsende -> Wegmarken leeren und den Stand wegraeumen.
+ *
+ * Geleert, nicht geloescht: Die Datei ist der Ort, an den `issue move` anhaengt, und
+ * sie zu entfernen hiesse, das naechste Anhaengen auf `mkdir` zurueckzuwerfen.
+ * Scheitert das Schreiben, bleibt es beim Hinweis — die Meldung ist raus, und daran
+ * aendert eine klemmende Datei nichts mehr.
+ */
+function sitzungVerbuchen(start, complete, jetzt) {
+  const stand = resolve(".claude", SITZUNG_STAND_DATEI);
+  try {
+    mkdirSync(dirname(stand), { recursive: true });
+    if (complete) {
+      writeFileSync(resolve(".claude", WEGMARKEN_DATEI), "", "utf-8");
+      writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: null }) + "\n", "utf-8");
+    } else {
+      writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: jetzt.toISOString() }) + "\n", "utf-8");
+    }
+  } catch (e) {
+    process.stderr.write(`Hinweis: Sitzungs-Stand nicht geschrieben (${stand}): ${e.message}\n`);
+  }
+}
+
+/**
+ * `sitzung melden` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
+ *
+ * Jeder Grund zu schweigen endet mit Exit 0 und ohne HTTP-Aufruf. Der Melder laeuft
+ * an einem Hook und darf eine Sitzung niemals stoeren: Er ist Buchhaltung, keine
+ * Bedingung — dieselbe Haltung wie bei `wegmarkeSchreiben`.
+ *
+ * Die Reihenfolge der Pruefungen ist bindend. KIT_AGENT_MODEL steht ganz vorn, VOR
+ * jedem Config- und Dateizugriff: Nachts ist diese Sitzung bereits in der Meldung des
+ * Runners enthalten (E15), und ein Melder, der erst die Config liest, koennte an ihr
+ * scheitern statt zu schweigen.
+ */
+async function sitzungMelden(args) {
+  if (agentModelHeader()["X-Agent-Model"]) return sitzungSchweigt("nachtbetrieb");
+
+  const config = readWorkflowConfig();
+  if (config?.issueTracker !== "toolbox") return sitzungSchweigt("kein-board");
+  // E3: Ohne projektgebundenes Token gibt es kein Zielprojekt — und es wird auch
+  // keines aus dem Aufruf geraten. Die Bindung des Tokens bestimmt, wohin gemeldet wird.
+  try {
+    resolveToolboxToken({ cfg: config, env: process.env, readFile: (p) => readFileSync(p, "utf-8") });
+  } catch {
+    return sitzungSchweigt("kein-token");
+  }
+
+  const pfad = sitzungProtokollPfad(args);
+  if (!pfad) return sitzungSchweigt("kein-protokoll");
+  let protokoll;
+  try {
+    protokoll = sitzungProtokoll(readFileSync(pfad, "utf-8"));
+  } catch {
+    return sitzungSchweigt("protokoll-nicht-lesbar");
+  }
+  if (protokoll.zuege.length === 0) return sitzungSchweigt("nichts-gemessen");
+
+  // E16: Das Sitzungsende meldet immer. Dazwischen hoechstens einmal je fuenf Minuten —
+  // nur am Ende zu melden verloere jede abgestuerzte Sitzung, ungedrosselt erzeugte
+  // jeder Zug einen HTTP-Aufruf.
+  const complete = args.complete === true;
+  const jetzt = new Date();
+  const zuletzt = sitzungStandLesen(protokoll.start);
+  if (!complete && Number.isFinite(zuletzt) && jetzt.getTime() - zuletzt < SITZUNG_DROSSEL_MS) {
+    return sitzungSchweigt("gedrosselt");
+  }
+
+  let wegmarken = "";
+  try { wegmarken = readFileSync(resolve(".claude", WEGMARKEN_DATEI), "utf-8"); } catch { /* keine Wegmarke: alles Rest */ }
+  const meldung = sitzungMeldung({
+    ...protokoll,
+    abschnitte: wegmarkenAbschnitte(wegmarken),
+    complete,
+    jetzt,
+  });
+
+  let antwort = null;
+  try {
+    const res = await new ToolboxIssueTracker(config)._fetch("/api/kanban/night-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meldung),
+    });
+    try { antwort = await res.json(); } catch { /* kein JSON-Rumpf */ }
+  } catch (e) {
+    // Nicht eingeliefert heisst nicht verbucht: Weder wird gedrosselt noch werden die
+    // Wegmarken geleert — der naechste Versuch soll denselben Abschnitt noch sehen.
+    process.stderr.write(`Hinweis: Sitzungs-Meldung nicht eingeliefert: ${e.message}\n`);
+    return sitzungSchweigt("nicht-eingeliefert");
+  }
+  sitzungVerbuchen(protokoll.start, complete, jetzt);
+  process.stdout.write(JSON.stringify({
+    ok: true, gemeldet: true, complete, karten: meldung.items.length, outcome: antwort?.outcome ?? null,
+  }) + "\n");
+}
+
+async function dispatchSitzung(command, args) {
+  switch (command) {
+    case "melden": return sitzungMelden(args);
+    default:
+      process.stdout.write(HELP);
+      fail(`Unbekannter sitzung-Befehl: '${command}'`);
+  }
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
@@ -3493,9 +4242,13 @@ async function main() {
     await dispatchIssueReview(command, args);
   } else if (axis === "kontext") {
     await dispatchKontext(command, args);
+  } else if (axis === "nightrun") {
+    await dispatchNightrun(command, args);
+  } else if (axis === "sitzung") {
+    await dispatchSitzung(command, args);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun | sitzung`);
   }
 }
 

@@ -93,8 +93,13 @@ export function board(dir, ...cliArgs) {
  * Event-Loop blockieren und der Request nie bedient werden (dieselbe Begruendung wie
  * in board-agent-model.test.mjs). Liefert immer {status, stdout, stderr} — auch bei
  * Exit ungleich 0, damit Fehlerpfade wie Erfolgspfade geprueft werden koennen.
+ *
+ * `stdinText` schreibt einen Rumpf in die stdin des Kindes und schliesst sie danach
+ * (Issue #734): Der Sitzungs-Melder nimmt den Pfad des Protokolls aus dem Rumpf, den
+ * ein Claude-Code-Hook dort hineinschreibt. Ohne den Parameter bleibt stdin leer und
+ * wird sofort geschlossen — sonst wartete ein lesender Aufruf endlos.
  */
-export function runBoardAsync(dir, cliArgs, extraEnv = {}) {
+export function runBoardAsync(dir, cliArgs, extraEnv = {}, stdinText = "") {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
   Object.assign(env, {
@@ -104,9 +109,10 @@ export function runBoardAsync(dir, cliArgs, extraEnv = {}) {
     KIT_AGENT_MODEL: "fixture-modell", // siehe runBoard (Issue #266)
   }, extraEnv);
   return new Promise((fertig) => {
-    execFile(process.execPath, [BOARD, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {
+    const kind = execFile(process.execPath, [BOARD, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {
       fertig({ status: err ? (err.code ?? 1) : 0, stdout, stderr });
     });
+    kind.stdin.end(stdinText);
   });
 }
 

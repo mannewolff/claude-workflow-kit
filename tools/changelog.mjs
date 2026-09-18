@@ -16,8 +16,22 @@
  * Handpflege-Zustand. Gedacht als Release-Schritt (siehe RELEASING.md): laeuft
  * nach dem Version-Bump, CHANGELOG.md wandert in denselben Version-Commit.
  *
+ * --marke nimmt genau eine kommende Versionsmarke vorweg: Der Lauf haengt einen
+ * virtuellen `chore: vX.Y.Z`-Eintrag an die aus git gelesene Historie an, bevor
+ * die Bloecke entstehen. Damit kann CHANGELOG.md VOR dem Version-Commit
+ * geschrieben werden und trotzdem denselben Text tragen, den ein Lauf danach
+ * erzeugte — noetig, seit der eine Prueflauf den fertigen Stand misst und das
+ * nachtraegliche `--amend` entfaellt (Issue #657, Plan #652). Das Datum dieses
+ * Eintrags entsteht in LOKALER Zeit, nicht ueber toISOString(): `git log
+ * --date=short` datiert lokal, und zwischen dem lokalen und dem UTC-Tageswechsel
+ * bekaeme die Marke sonst ein anderes Datum als der Commit danach — --check
+ * waere genau an dem Kriterium rot, das den Umbau verifizieren soll.
+ * --marke und --check schliessen sich aus: "erzeuge den Stand nach dem
+ * kommenden Commit" und "ist der Stand aktuell" koennen nicht gleichzeitig gelten.
+ *
  * Nutzung:  node tools/changelog.mjs        # CHANGELOG.md (neu) schreiben
  *           node tools/changelog.mjs --check # nur pruefen, ob aktuell (Exit 1 wenn nicht)
+ *           node tools/changelog.mjs --marke v1.2.3 # die kommende Marke vorwegnehmen
  *
  * Single-File-Tool: nur node:*-Imports, git im PATH, Pfade relativ zum cwd.
  */
@@ -136,15 +150,44 @@ function readEntries() {
     });
 }
 
-function generate() {
-  const today = new Date().toISOString().slice(0, 10);
-  const blocks = parseVersions(readEntries(), today);
+// Heutiges Datum in LOKALER Zeit, in der Form von `git log --date=short`. Kein
+// toISOString(): das liefert UTC, und die vorweggenommene Marke muss dasselbe
+// Datum tragen wie der Commit, der ihr folgt (siehe Kopfkommentar).
+function heuteLokal() {
+  const d = new Date();
+  const zweistellig = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${zweistellig(d.getMonth() + 1)}-${zweistellig(d.getDate())}`;
+}
+
+function generate(marke) {
+  const today = new Date().toISOString().slice(0, 10); // nur fuer [Unreleased], nie gerendert
+  const entries = readEntries();
+  // Der virtuelle Eintrag steht am Ende der chronologischen Liste, also dort, wo
+  // der Bump-Commit gleich stehen wird. Danach laufen Block-Bildung und die
+  // Block-Verschmelzung aus Issue #245 unveraendert.
+  if (marke) entries.push({ date: heuteLokal(), subject: `chore: v${marke}` });
+  const blocks = parseVersions(entries, today);
   return renderChangelog(blocks);
 }
 
+// Liest --marke <x.y.z> aus den Argumenten. Rueckgabe: die Version ohne fuehrendes
+// "v", oder null wenn die Option fehlt. Ein fehlender oder formfremder Wert bricht ab.
+function leseMarke(args) {
+  const i = args.indexOf("--marke");
+  if (i === -1) return null;
+  const wert = args[i + 1];
+  const m = /^v?(\d+\.\d+\.\d+)$/.exec(wert ?? "");
+  if (!m) fail(`--marke braucht eine Version der Form vX.Y.Z, bekommen: ${wert ?? "(nichts)"}`);
+  return m[1];
+}
+
 function main() {
-  const check = process.argv.slice(2).includes("--check");
-  const next = generate();
+  const args = process.argv.slice(2);
+  const check = args.includes("--check");
+  if (check && args.includes("--marke")) {
+    fail("--marke und --check schliessen sich aus: die Marke erzeugt den Stand NACH dem kommenden Commit, --check prueft den aktuellen.");
+  }
+  const next = generate(leseMarke(args));
   if (check) {
     const current = existsSync(CHANGELOG_PATH) ? readFileSync(CHANGELOG_PATH, "utf-8") : "";
     if (current !== next) fail("CHANGELOG.md ist nicht aktuell. Bitte `node tools/changelog.mjs` ausfuehren.");

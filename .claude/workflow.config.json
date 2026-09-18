@@ -29,13 +29,17 @@
   "night": {
     "kette": {
       "label": "kit:night",
-      "planMin": 20,
-      "paketeMin": 15,
-      "reviewMin": 15,
+      "planMin": 30,
+      "paketeMin": 25,
+      "reviewMin": 30,
       "abdeckungMin": 10,
       "kostenUsd": 50,
       "korrekturrunden": 2
-    }
+    },
+    "modelle": [
+      "claude-opus-5",
+      "claude-sonnet-5"
+    ]
   },
   "issueReview": {
     "requiredBeforeReady": false,
@@ -44,6 +48,12 @@
         "name": "opus",
         "kind": "claude",
         "model": "claude-opus-5"
+      },
+      {
+        "name": "qwen",
+        "kind": "command",
+        "model": "qwen-kit",
+        "command": "/Users/manfredwolff/.local/bin/claude-qwen -p --output-format text --system-prompt \"Bearbeite den Review-Auftrag aus stdin. Prüfe Aussagen am Bestand. Melde konkrete Befunde und ändere keine Dateien.\" --tools Read,Glob,Grep --allowedTools Read,Glob,Grep"
       },
       {
         "name": "sonnet",
@@ -74,15 +84,19 @@
         "gpt-astra"
       ],
       "sonnet": [
-        "opus",
-        "gpt-sol"
+        "gpt-astra",
+        "opus"
       ],
       "fable": [
         "opus",
         "gpt-astra"
       ],
       "gpt-sol": [
-        "fable",
+        "opus",
+        "gpt-astra"
+      ],
+      "qwen": [
+        "opus",
         "gpt-astra"
       ],
       "gpt-astra": [
@@ -140,6 +154,9 @@
       ],
       "skills": [
         "skills/**/SKILL.md"
+      ],
+      "einstellungen": [
+        "kit/einstellungen.mjs"
       ]
     },
     "testGlobs": [

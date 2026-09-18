@@ -1,4 +1,4 @@
-// A19: `github` und `gitlab` sind vom beschriebenen Verhalten ausgeschlossen
+// A19: `github` und `gitlab` sind von Spec-Driven Development ausgeschlossen
 // (Issue #461).
 //
 // Der Grund steht in Plan #437, A19: Aktivitaetsverlauf, Suche ueber Aussagen und

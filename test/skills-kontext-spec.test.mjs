@@ -85,27 +85,16 @@ test("das Neubau-Kommando steht woertlich im Skill", () => {
   );
 });
 
-// --- 3. Der Abschnitt in beiden Vorlagen ------------------------------------
+// --- 3. Kein Abschnitt in den Vorlagen --------------------------------------
 
-test("`### Beschriebenes Verhalten` steht in beiden Vorlagen", () => {
+test("`### Spec-Driven Development` steht in keiner Vorlage", () => {
   for (const [i, vorlage] of vorlagen().entries()) {
-    assert.ok(
-      vorlage.includes("### Beschriebenes Verhalten"),
-      `Vorlage ${i + 1} hat keinen Abschnitt '### Beschriebenes Verhalten'`,
-    );
-    assert.ok(
-      vorlage.indexOf("### Aktive Issues") < vorlage.indexOf("### Beschriebenes Verhalten"),
-      `in Vorlage ${i + 1} steht der Abschnitt nicht nach '### Aktive Issues'`,
-    );
-  }
-});
-
-test("die Zeilenform je Bereich steht in beiden Vorlagen", () => {
-  for (const [i, vorlage] of vorlagen().entries()) {
-    assert.match(
+    assert.doesNotMatch(
       vorlage,
-      /- <Bereich> — <n> gueltig, <m> entfallen/,
-      `Vorlage ${i + 1} nennt die Zeilenform je Bereich nicht`,
+      /### Spec-Driven Development/,
+      `Vorlage ${i + 1} gibt die Aufstellung je Bereich aus — der Einstieg braucht ` +
+        "nicht die Statistik der Spezifikation, nur den Hinweis auf einen " +
+        "Index, der nicht mehr stimmt",
     );
   }
 });

@@ -1,4 +1,4 @@
-// Die Doku zum beschriebenen Verhalten (Issue #454).
+// Die Doku zu Spec-Driven Development (Issue #454).
 //
 // Zwei Dinge sind hier die Hauptsache:
 //
@@ -24,7 +24,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOKU = readFileSync(join(repoRoot, "docs/dokumentation.md"), "utf-8");
 const README = readFileSync(join(repoRoot, "README.md"), "utf-8");
 
-const UEBERSCHRIFT = "## Beschriebenes Verhalten";
+const UEBERSCHRIFT = "## Spec-Driven Development";
 
 /**
  * Der Text des Kapitels, von seiner Ueberschrift bis zur naechsten `## `-Zeile
@@ -105,7 +105,7 @@ test("was ein Projekt ohne Schalter merkt, steht da: nichts", () => {
 test("die ausgeschlossenen und die moeglichen Tracker stehen da", () => {
   assert.ok(
     absatzMit(kapitel(), /github/i, /gitlab/i, /toolbox/i),
-    "das Kapitel nennt nicht, welche Tracker das Verhalten tragen",
+    "das Kapitel nennt nicht, welche Tracker die Spezifikation tragen",
   );
 });
 
@@ -146,7 +146,7 @@ test("die fuenf Bestandsabschnitte verweisen auf das Kapitel", () => {
     assert.notEqual(start, -1, `${abschnitt} fehlt`);
     const naechste = DOKU.indexOf("\n#", start + abschnitt.length + 2);
     const text = DOKU.slice(start, naechste === -1 ? undefined : naechste);
-    assert.match(text, /beschriebenes-verhalten/, `${abschnitt} verweist nicht auf das Kapitel`);
+    assert.match(text, /spec-driven-development/, `${abschnitt} verweist nicht auf das Kapitel`);
   }
 });
 
@@ -167,7 +167,7 @@ test("die Frageliste zaehlt so viele Punkte, wie der Einleitungssatz nennt", () 
 });
 
 test("die README verweist auf das Kapitel, ohne es zu wiederholen", () => {
-  assert.match(README, /Beschriebenes Verhalten/);
+  assert.match(README, /Spec-Driven Development/);
   assert.match(README, /docs\/dokumentation\.md/);
   assert.doesNotMatch(README, /NEU {2,}<BEREICH>/, "die README wiederholt die Grammatik");
 });

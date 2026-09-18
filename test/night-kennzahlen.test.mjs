@@ -45,14 +45,26 @@ test("aus einem stdout mit result-Zeile kommen Kosten, API-Dauer und Zuege", () 
     kostenUsd: 2.4124460000000005,
     apiDauerMs: 296247,
     zuege: 37,
+    stopReason: "end_turn",
+    isError: false,
+    eingabeTokens: 70,
+    ausgabeTokens: 17688,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
 // Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand.
-test("die Schluessel des Ergebnisses sind kostenUsd, apiDauerMs und zuege", () => {
+test("[night-29] die Schluessel des Ergebnisses sind kostenUsd, apiDauerMs, zuege, stopReason, isError und die vier Token-Mengen", () => {
   assert.deepEqual(Object.keys(leseKennzahlen(RESULT_ZEILE)).sort(), [
     "apiDauerMs",
+    "ausgabeTokens",
+    "cacheErzeugtTokens",
+    "cacheGelesenTokens",
+    "eingabeTokens",
+    "isError",
     "kostenUsd",
+    "stopReason",
     "zuege",
   ]);
 });
@@ -92,6 +104,12 @@ test("eine abgeschnittene JSON-Zeile fuehrt nicht zum Wurf", () => {
     kostenUsd: 2.4124460000000005,
     apiDauerMs: 296247,
     zuege: 37,
+    stopReason: "end_turn",
+    isError: false,
+    eingabeTokens: 70,
+    ausgabeTokens: 17688,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
@@ -109,6 +127,12 @@ test("ein fehlendes Kostenfeld liefert null, die anderen Werte bleiben", () => {
     kostenUsd: null,
     apiDauerMs: 143003,
     zuege: 22,
+    stopReason: null,
+    isError: null,
+    eingabeTokens: null,
+    ausgabeTokens: null,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
@@ -120,6 +144,12 @@ test("num_turns mit dem Wert 0 wird als 0 gelesen, nicht als null", () => {
     kostenUsd: 0,
     apiDauerMs: 0,
     zuege: 0,
+    stopReason: null,
+    isError: null,
+    eingabeTokens: null,
+    ausgabeTokens: null,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
@@ -130,13 +160,20 @@ test("nicht-endliche und falsch getypte Werte liefern fuer ihr Feld null", () =>
     kostenUsd: null,
     apiDauerMs: null,
     zuege: null,
+    stopReason: null,
+    isError: null,
+    eingabeTokens: null,
+    ausgabeTokens: null,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
 // --- Mehrere result-Zeilen ---
 
-// `subtype` und `is_error` bleiben unbeachtet: Auch eine abgebrochene Session hat
-// gekostet, und der Ausgang steht ohnehin am Board.
+// `subtype` bleibt unbeachtet: Auch eine abgebrochene Session hat gekostet, und ihr
+// Ausgang steht ohnehin am Board. `is_error` wird seit Issue #668 gelesen — es
+// unterscheidet den Abbruch von der Session, die regulaer endete, ohne fertig zu sein.
 test("bei mehreren result-Zeilen zaehlt die letzte", () => {
   const frueher =
     '{"type":"result","subtype":"error_max_turns","is_error":true,' +
@@ -145,11 +182,23 @@ test("bei mehreren result-Zeilen zaehlt die letzte", () => {
     kostenUsd: 2.4124460000000005,
     apiDauerMs: 296247,
     zuege: 37,
+    stopReason: "end_turn",
+    isError: false,
+    eingabeTokens: 70,
+    ausgabeTokens: 17688,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
   assert.deepEqual(leseKennzahlen(ZEILEN(RESULT_ZEILE, frueher)), {
     kostenUsd: 0.5,
     apiDauerMs: 1000,
     zuege: 2,
+    stopReason: null,
+    isError: true,
+    eingabeTokens: null,
+    ausgabeTokens: null,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
 });
 
@@ -158,5 +207,72 @@ test("Windows-Zeilenenden aendern nichts", () => {
     kostenUsd: 2.4124460000000005,
     apiDauerMs: 296247,
     zuege: 37,
+    stopReason: "end_turn",
+    isError: false,
+    eingabeTokens: 70,
+    ausgabeTokens: 17688,
+    cacheErzeugtTokens: null,
+    cacheGelesenTokens: null,
   });
+});
+
+// --- stop_reason und is_error (Issue #668) ---
+//
+// Der Runner muss eine regulaer beendete Session (`end_turn`) von einem Abbruch
+// (`is_error: true`) und vom Zeitlimit unterscheiden koennen. Die Felder stehen in
+// derselben `result`-Zeile, aus der die Kennzahlen kommen — sie hier mitzulesen ist
+// billiger als ein zweiter Durchlauf und haelt die Deutung an einer Stelle.
+
+test("[night-2] stopReason und isError kommen aus derselben result-Zeile", () => {
+  const k = leseKennzahlen(ZEILEN(ASSISTANT_ZEILE, RESULT_ZEILE));
+  assert.equal(k.stopReason, "end_turn");
+  assert.equal(k.isError, false);
+});
+
+test("[night-2] fehlen die Felder, stehen sie auf null statt zu fehlen", () => {
+  const ohne = '{"type":"result","total_cost_usd":1.5,"num_turns":3}';
+  const k = leseKennzahlen(ohne);
+  assert.equal(k.stopReason, null, "ein fehlendes stop_reason ist null");
+  assert.equal(k.isError, null, "ein fehlendes is_error ist null");
+  assert.equal(k.kostenUsd, 1.5, "die bisherigen Felder bleiben unberuehrt");
+});
+
+test("[night-2] ein falsch getyptes stop_reason liefert null, kein Objekt", () => {
+  const krumm = '{"type":"result","stop_reason":{"a":1},"is_error":"nein","num_turns":2}';
+  const k = leseKennzahlen(krumm);
+  assert.equal(k.stopReason, null, "nur ein String zaehlt als stop_reason");
+  assert.equal(k.isError, null, "nur ein Boolean zaehlt als is_error");
+});
+
+test("[night-2] bei mehreren result-Zeilen zaehlt auch hier die letzte", () => {
+  const erste = '{"type":"result","stop_reason":"end_turn","is_error":false}';
+  const zweite = '{"type":"result","stop_reason":"max_tokens","is_error":true}';
+  const k = leseKennzahlen(ZEILEN(erste, zweite));
+  assert.equal(k.stopReason, "max_tokens");
+  assert.equal(k.isError, true);
+});
+
+// --- Token-Mengen (Issue #669) ---
+
+// Die Zahlen aus dem echten Lauf zu Issue #900 in kanban-kit (2026-09-16), wie sie im
+// Issue stehen: Nur `usage` traegt die Mengen, und sie gehen unveraendert durch.
+test("[night-29] die vier Token-Mengen kommen unveraendert aus usage", () => {
+  const zeile = JSON.stringify({
+    type: "result", total_cost_usd: 8.032575, duration_api_ms: 767636, num_turns: 81,
+    usage: { input_tokens: 148, cache_creation_input_tokens: 202998, cache_read_input_tokens: 8883160, output_tokens: 62411 },
+  });
+  const k = leseKennzahlen(zeile);
+  assert.equal(k.eingabeTokens, 148);
+  assert.equal(k.ausgabeTokens, 62411);
+  assert.equal(k.cacheErzeugtTokens, 202998);
+  assert.equal(k.cacheGelesenTokens, 8883160);
+  assert.equal(k.kostenUsd, 8.032575);
+});
+
+test("[night-29] ohne usage oder mit krummen Mengen stehen die Token-Felder auf null", () => {
+  assert.equal(leseKennzahlen("{\"type\":\"result\",\"total_cost_usd\":1}").eingabeTokens, null);
+  const krumm = leseKennzahlen(JSON.stringify({ type: "result", usage: { input_tokens: "5", output_tokens: null, cache_read_input_tokens: 0 } }));
+  assert.equal(krumm.eingabeTokens, null);
+  assert.equal(krumm.ausgabeTokens, null);
+  assert.equal(krumm.cacheGelesenTokens, 0, "eine 0 bleibt eine 0");
 });

@@ -99,10 +99,15 @@ Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du ke
 3. Widerspricht eine Entscheidung einer erkennbaren Konvention des Projekts?
 4. Was bricht, das der Plan nicht nennt — welches Verhalten, welcher Test, welche Kopie?
 5. Was fehlt im Zuschnitt, und was kann RAUS?
+6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen? Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.
 Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast. Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- PLAN ---
 {{ISSUE_BODY}}
+--- FACHLICHE QUELLE ---
+{{QUELLE_BODY}}
 ```
+
+**Die fachliche Quelle im Plan-Review.** Trägt der Plan `Fachliche Quelle: Issue #N`, holt die Session den Body dieser Karte mit `node .claude/kit/board.mjs issue get <N>` — wie den Plan selbst, nie aus dem Gesprächsverlauf — und setzt ihn für `{{QUELLE_BODY}}` ein; `{{VORLAGE_PFAD}}` ist der Pfad aus einer `Vorlage:`-Zeile im Plan oder in der Quelle. Fehlt die Quelle, entfallen der Abschnitt `--- FACHLICHE QUELLE ---` und Frage 6 ohne Vermerk; fehlt eine Vorlage, entfällt nur der Satz zur Vorlage. Ohne diesen Eingang prüft der Reviewer, ob der Plan zum Code passt, aber nicht, ob er das Ziel herstellt, für das er entstand.
 
 **Rolle `schnitt-abhaengigkeiten`** (Stufe `plan`, zweiter Reviewer — nur, wenn `reviewStufen.plan.reviewer` zwei vorsieht): derselbe Prompt wie `architektur-bestand`, aber mit den Fragen: Lässt sich der Plan in einzeln abschließbare Pakete zerlegen? Welche Reihenfolge erzwingt er, und steht sie im Plan? Ist ein Teil zu groß für einen Plan? Sagt „Verifizierung", WIE geprüft wird?
 
@@ -136,7 +141,7 @@ Kein Fund ist auch ein Ergebnis: Marker schreiben, Kommentar mit „keine Funde"
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md
 ```
 
-Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label.
+Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
 
 ### 7. Abschluss
 Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
@@ -145,7 +150,7 @@ Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Mar
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.
 
 ## Stop-Punkte
-- Kein Ziehen nach Ready — das ist das GO des Menschen.
+- Kein Ziehen nach Ready — das ist das GO des Menschen. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.
 - Interaktiv kein Schreiben in den Body ohne ein Wort der Zustimmung.
 - Kein Marker gibt einen Schritt frei; er ist eine Spur. Auch `review:fertig` ist Spur, keine Freigabe.
 - Kein Ersatz-Reviewer aus eigenem Antrieb — die Besetzung kommt aus `roles`.

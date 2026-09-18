@@ -49,13 +49,14 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-function setupProjekt(praefix) {
+function setupProjekt(praefix, night = null) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
+    ...(night ? { night } : {}),
   }, null, 2));
   // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der
@@ -79,8 +80,8 @@ function setupProjekt(praefix) {
 }
 
 /** Erzeugt ein Issue in Ready und liefert seine ID als String. */
-function readyIssue(dir, titel) {
-  const issue = board(dir, "issue", "create", "--title", titel, "--body", "## Abhaengigkeiten\nKeine.");
+function readyIssue(dir, titel, zusatz = "") {
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", `${zusatz}## Abhaengigkeiten\nKeine.`);
   board(dir, "issue", "move", String(issue.id), "ready");
   return String(issue.id);
 }
@@ -158,7 +159,12 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
   }
 });
 
-test("[night-2] ohne --verbose entsteht der Ergebnisstand ebenfalls, mit kennzahlenHinweis am Lauf-Kopf", NUR_POSIX, () => {
+// Bis Issue #668 stand hier das Gegenteil: Ohne --verbose forderte der Runner den Strom
+// nicht an, die Kennzahlen fehlten, und kennzahlenHinweis sagte das am Lauf-Kopf. Seit
+// #668 fordert der Implementierungslauf den Strom immer an — der Hinweis hat damit
+// keinen Gegenstand mehr und entfaellt in JEDEM Lauf. Das Feld bedingt stehenzulassen
+// waere schlimmer als es zu streichen: Es behauptete fehlende Kennzahlen, die es gibt.
+test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis — der Strom wird immer angefordert", NUR_POSIX, () => {
   const dir = setupProjekt("night-stand-still-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -170,20 +176,51 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ebenfalls, mit kennzah
     const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
     assert.equal(stand.schemaFassung, 1, "die Schemafassung bleibt dieselbe");
     assert.ok(
-      typeof stand.kennzahlenHinweis === "string" && stand.kennzahlenHinweis.length > 0,
-      `kennzahlenHinweis muss den Grund nennen, ist ${JSON.stringify(stand.kennzahlenHinweis)}`,
+      !("kennzahlenHinweis" in stand),
+      `ohne --verbose darf kein kennzahlenHinweis mehr entstehen, gefunden: ${JSON.stringify(stand.kennzahlenHinweis)}`,
     );
-    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen — ein bedingtes Feld an
-    // wechselnder Stelle waere Interpretationsspielraum genau dort, wo keiner geduldet ist.
+    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen: Faellt das bedingte Feld
+    // weg, folgt einheiten unmittelbar auf stufe — und zwar in beiden Betriebsarten.
     const schluessel = Object.keys(stand);
     assert.equal(
       schluessel[schluessel.indexOf("stufe") + 1],
-      "kennzahlenHinweis",
-      `kennzahlenHinweis steht nach stufe und vor einheiten, gefunden: ${schluessel.join(", ")}`,
+      "einheiten",
+      `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
     );
-    assert.equal(schluessel[schluessel.indexOf("kennzahlenHinweis") + 1], "einheiten");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Der Beweis, dass der Strom wirklich angefordert wird, und nicht nur der Hinweis
+// verschwunden ist: Der Session-Fake schreibt seine Argumente mit. Ohne diesen Test
+// bestuende das Streichen des Feldes fuer sich — und die Kennzahlen fehlten weiter.
+test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream-json, auch ohne --verbose", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-strom-");
+  let binDir = null;
+  try {
+    readyIssue(dir, "Belegt die Stream-Anforderung");
+    // NIGHT_CLAUDE_CMD ist der Test-Hook-Zweig und baut die Argumente NICHT — deshalb
+    // faehrt dieser Test den Produktivzweig ueber eine Fake-CLI im PATH.
+    //
+    // Fake und Mitschrift liegen AUSSERHALB des Fixture-Repos: Im Repo machten sie den
+    // Working Tree dirty, und der Vorflug beendete den Lauf, bevor eine Session startet.
+    binDir = mkdtempSync(join(tmpdir(), "night-stand-fakebin-"));
+    const argLog = join(binDir, "cli-args.txt");
+    writeFileSync(join(binDir, "claude"), `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\nexit 0\n`);
+    chmodSync(join(binDir, "claude"), 0o755);
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      PATH: `${binDir}:${process.env.PATH}`,
+    });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const args = readFileSync(argLog, "utf-8").split("\n");
+    assert.ok(args.includes("--output-format"), `--output-format fehlt: ${args.join(" ")}`);
+    assert.ok(args.includes("stream-json"), `stream-json fehlt: ${args.join(" ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (binDir) rmSync(binDir, { recursive: true, force: true });
   }
 });
 
@@ -229,6 +266,11 @@ test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textpro
     // beschreibbaren Verzeichnis. Nur das Anlegen der JSON-Datei scheitert (EACCES).
     const logPfad = join(claudeDir, `night-run-${new Date().toISOString().slice(0, 10)}.log`);
     writeFileSync(logPfad, "", "utf-8");
+    // Der Umsetzungs-Lock (Issue #696) aus demselben Grund vorab: Er liegt ebenfalls unter
+    // `.claude/`, und ein nicht schreibbarer Lock laesst die Umsetzung aus — dann liefe die
+    // Runde gar nicht erst, und dieser Test prueefte nicht mehr, was er prueft. Leer heisst
+    // verwaist, der Lauf nimmt ihn also selbst.
+    writeFileSync(join(claudeDir, "night-umsetzung.lock"), "", "utf-8");
     chmodSync(claudeDir, 0o555);
 
     const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;
@@ -289,6 +331,55 @@ test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefs
     assert.equal(e.kennzahlen.zuege, 37);
     assert.equal(stand(dir).abschluss, "regulaer", "ein sauber beendeter Lauf traegt regulaer");
     assert.ok(textprotokollDa(dir), "das Textprotokoll liegt weiterhin daneben");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-4] die Einheit traegt stufe und stufeVerwendet hinter den drei Modellfeldern", NUR_POSIX, () => {
+  // Issue #711: Zwei Felder kommen hinzu, die bestehenden behalten Namen und Reihenfolge —
+  // sie sind der Vertrag mit den Auswertungen.
+  const dir = setupProjekt("night-stand-stufe-", {
+    modelle: ["claude-opus-5", "claude-sonnet-5"],
+    stufen: { schwer: { modell: "claude-sonnet-5" } },
+  });
+  try {
+    const id = readyIssue(dir, "Leichtes Paket", "Aufgabenstufe: leicht\n\n");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--model", "claude-opus-5"],
+      { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.stufe, "leicht", "die Stufe des Pakets fehlt");
+    assert.equal(e.stufeVerwendet, "schwer", "die Stufe, die das Modell gestellt hat, fehlt");
+    assert.equal(e.modell, "claude-sonnet-5");
+    assert.equal(e.modellHerkunft, "stufe");
+    assert.ok(e.modellGrund && e.modellGrund.length > 0, "der Grund des Ausweichens fehlt");
+    assert.deepEqual(
+      Object.keys(e).slice(0, 7),
+      ["id", "titel", "modell", "modellHerkunft", "modellGrund", "stufe", "stufeVerwendet"],
+      `die Feldreihenfolge der Einheit hat sich verschoben: ${Object.keys(e).join(", ")}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-4] ohne Stufe stehen beide Felder als null in der Einheit", NUR_POSIX, () => {
+  // Ein fehlendes Feld liesse offen, ob niemand gemessen hat oder ob die Frage sich nicht
+  // stellte — dieselbe Begruendung wie bei den drei Modellfeldern.
+  const dir = setupProjekt("night-stand-ohne-stufe-");
+  try {
+    const id = readyIssue(dir, "Paket ohne Stufe");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.stufe, null);
+    assert.equal(e.stufeVerwendet, null);
+    assert.ok("stufe" in e && "stufeVerwendet" in e, "die Felder fehlen ganz, statt null zu tragen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -368,6 +459,7 @@ test("ein Abbruch waehrend der Runde hinterlaesst harterStopp, Fehlerklasse trac
 
     const s = stand(dir);
     assert.equal(s.abschluss, "harterStopp", "ein erkannter Stopp darf nicht wie ein Absturz aussehen");
+    assert.equal(s.complete, false, "[night-31] ein harter Stopp laesst complete auf false");
     assert.equal(s.fehlerklasse, "tracker");
     assert.ok(typeof s.fehlerText === "string" && s.fehlerText.length > 0, "der Fehlertext fehlt");
     const e = einheit(dir, id);

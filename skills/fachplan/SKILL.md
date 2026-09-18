@@ -43,6 +43,8 @@ Was muss im Groomen geklärt werden?
 
 Der Grund ist nicht die Leitplanke, sondern das, wofür es sie gibt: Ohne die Autor-Modell-Angabe ist nicht bestimmbar, welches Modell das fachliche Issue prüfen darf, ohne sein eigenes Dokument zu prüfen. Ein Prüfer, der seinen eigenen Text liest, ist keiner.
 
+**Vorlage-Konvention.** Bringt der Mensch eine Vorlage mit — einen Gestaltungsentwurf, ein Mockup, eine Skizze —, trägt jedes Dokument der Kette die Zeile `Vorlage: <Pfad> — verbindlich | Anregung`: `/fachplan` im Abschnitt `## Ziel`, `/techplan` im Kopf des Plans, `/issues` im `## Kontext` jedes Pakets, das Aussehen oder Aufbau einer Ansicht berührt. Bei „verbindlich“ entscheidet `/techplan` keine offene Gestaltungsfrage gegen die Vorlage — ein Widerspruch ist eine Stopp-Frage, nachts `kit:klaeren` —, und jedes solche Paket nennt die Stelle der Vorlage und trägt als Akzeptanzkriterium die Abnahme per Bildschirmfoto neben der Vorlage; `issue check-form` weist ein Paket mit verbindlicher Vorlage ohne Bildschirmfoto im Akzeptanzkriterium ab (I5). Bei „verbindlich“ fragt `/fachplan`, ob die Designquelle des Projekts (etwa `CLAUDE-design.md`) zuerst auf die Vorlage umgestellt werden soll; die Antwort steht im Body, und bei Ja ist das Umstellen das erste Paket.
+
 Der Body entsteht nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": stückweise per Shell in eine Datei außerhalb des Projektverzeichnisses, jedes Stück höchstens 6.000 Zeichen und ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, nie als Kommandozeilen-Argument:
 ```bash
 printenv TMPDIR

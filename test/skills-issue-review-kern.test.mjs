@@ -134,4 +134,28 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
   assert.match(SKILL, /Endet der Lauf danach vorzeitig, bleibt das Label ab/);
   assert.match(SKILL, /am Board nicht definiert/);
   assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:fertig` ist Spur, keine Freigabe\./);
+  assert.match(SKILL, /Nacht-Kette verlangt dieses Label als Voraussetzung/);
+  assert.match(SKILL, /Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen/);
+});
+
+// Die fachliche Quelle im Plan-Review (Issue #684): Der Reviewer prueft nicht nur, ob der
+// Plan zum Code passt, sondern ob er herstellt, was die Quelle verlangt.
+test("[skills-25] der Plan-Prompt traegt die fachliche Quelle, die Vorlage und eine sechste Frage", () => {
+  const plan = codebloecke().find((b) => b.includes("Du prüfst einen technischen Plan"));
+  assert.ok(plan, "der Plan-Prompt fehlt");
+  assert.match(plan, /^6\. Stellt der Plan her, was die fachliche Quelle verlangt/m);
+  assert.match(plan, /jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage/);
+  assert.match(plan, /\{\{VORLAGE_PFAD\}\}/);
+  assert.match(plan, /^--- FACHLICHE QUELLE ---\n\{\{QUELLE_BODY\}\}$/m);
+  assert.ok(plan.indexOf("--- PLAN ---") < plan.indexOf("--- FACHLICHE QUELLE ---"), "die Quelle steht hinter dem Plan");
+});
+
+test("[skills-25] der Skill sagt, woher der Body der Quelle kommt und wann er entfaellt", () => {
+  const a = SKILL.indexOf("**Die fachliche Quelle im Plan-Review.**");
+  assert.ok(a > 0, "der Absatz zur fachlichen Quelle fehlt");
+  const absatz = SKILL.slice(a, SKILL.indexOf("\n\n", a));
+  assert.match(absatz, /node \.claude\/kit\/board\.mjs issue get <N>/);
+  assert.match(absatz, /nie aus dem Gesprächsverlauf/);
+  assert.match(absatz, /Fehlt die Quelle, entfallen/);
+  assert.match(absatz, /`Vorlage:`/);
 });

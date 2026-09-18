@@ -67,6 +67,8 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wirkung`; daraus stammen die IDs fuer die Testnamen. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
 
+**Trägt das Issue eine Zeile `Empfohlenes Modell: <name>` oder `Aufgabenstufe: <schwer|mittel|leicht>`, nenne sie** — zusammen mit dem Hinweis, dass die laufende Sitzung ihr Modell nicht wechselt. Beide sind eine Angabe, keine Anweisung: Nachts wirkt sie von selbst (der Runner startet die Session der Karte damit), tagsüber wählt der Mensch sein Modell selbst und sitzt ohnehin daneben. **Kein Halt, keine Rückfrage, keine Änderung am Ablauf** — wer eine laufende Sitzung für eine Empfehlung zum Neustart auffordert, kostet mehr, als die Empfehlung wert ist.
+
 ### 3. Implementieren
 
 - TDD: Tests zuerst schreiben und rot laufen lassen, dann gegen die Tests implementieren, bis grün
@@ -203,6 +205,16 @@ Format des Abschlussberichts:
 
 Sobald das Issue in In review liegt: naechstes Issue aus dem zuvor geladenen Ready-Array abarbeiten (in Array-Reihenfolge). Wenn Ready leer ist: Vollzug melden.
 
+### Stand des Vorhabens
+
+Hat dieser Lauf das letzte offene Paket eines Vorhabens nach In review gebracht — ein Paket mit `Plan: Issue #M`, und keine andere Karte mit derselben Zeile steht laut `node .claude/kit/board.mjs issue list` noch in Backlog, Ready oder In progress —, beginnt die Schlussmeldung mit dem Abschnitt `## Stand des Vorhabens`:
+
+1. **Was der Mensch jetzt sieht** — was sich für jemanden, der die Software benutzt, sichtbar geändert hat, in wenigen Sätzen.
+2. **Was vom Anlass nicht enthalten ist** — jedes Ziel und jedes fachliche Akzeptanzkriterium der fachlichen Quelle, das kein Paket hergestellt hat, und bei einer `Vorlage:`-Zeile jede Abweichung von der Vorlage. „Nichts" steht dort nur nach einem Abgleich Punkt für Punkt.
+3. Erst danach Commits, Checks und Hinweise.
+
+Die fachliche Quelle kommt aus der Zeile `Fachliche Quelle: Issue #N` des Plans `#M`, geholt mit `node .claude/kit/board.mjs issue get <N>` — nie aus dem Gespräch. Grün heißt „erfüllt, was aufgeschrieben wurde", nicht „erfüllt, was gemeint war"; wer das Fehlende weiter unten liest, hält das Vorhaben für fertig. Ein Paket ohne `Plan:`-Zeile gehört zu keinem Vorhaben, der Abschnitt entfällt. Unbeaufsichtigt steht derselbe Abschnitt am Anfang des Abschlussberichts des letzten Pakets.
+
 ## Verhalten bei leerem Ready
 
 > "Ready ist leer. Alle Issues in In review. Ich warte auf dein GO für den nächsten Batch."
@@ -213,6 +225,6 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 - Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
-- Backlog nach Ready ziehen: nie — das ist Mannes GO
+- Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief.
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
 - Issue-schließende Commit-Keywords (`Closes`/`Fixes`/`Resolves #N`): nie — sie schließen das Issue beim Push/Merge und die Board-Automation zieht es nach Done, bevor getestet wurde. Nur `Refs #N` verwenden.

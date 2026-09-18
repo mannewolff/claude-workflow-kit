@@ -79,4 +79,4 @@ Tests stehen rot. Weiter mit /implement-done.
 - Kein Produktionscode: dieser Skill schreibt ausschließlich Tests.
 - Kein Commit: der entsteht erst in `/implement-done`.
 - Kein zweites Issue parallel starten, solange eins in In progress liegt.
-- Pushen, Backlog nach Ready ziehen, Issues auf Done setzen: wie bei `/implement-ready` nie eigenmächtig.
+- Pushen, Backlog nach Ready ziehen, Issues auf Done setzen: wie bei `/implement-ready` nie eigenmächtig — inklusive der dortigen Ausnahme fuer die Umsetzungsstufe der Nacht-Kette unter Variante B, die den Nacht-Runner betrifft, nicht diesen Skill.

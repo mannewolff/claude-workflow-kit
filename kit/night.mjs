@@ -23,6 +23,10 @@
  *                      /issue-review — im eigenen Worktree, mit Zeit- und Kostenbudget.
  *                      --max zaehlt hier Ketten (Default 3). Laeuft neben einer
  *                      Umsetzungsnacht; ein Issue in In progress haelt sie nicht auf.
+ *                      Ausnahme unter Variante B: Deren Umsetzungsstufe baut in der
+ *                      Hauptkopie und nimmt dafuer denselben Lock wie die
+ *                      Umsetzungsnacht (.claude/night-umsetzung.lock, Issue #696) —
+ *                      wer ihn gehalten vorfindet, laesst die Umsetzung aus.
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
  *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -239,7 +243,7 @@ export const nachbarn = {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "1.53.0";
+const KIT_VERSION = "2.0.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const DEFAULT_MAX_SESSIONS = 10;
@@ -262,9 +266,11 @@ Flags:
   --kette            Nacht-Kette statt Implementierung: je [Fachlich]-Issue mit dem
                      Label aus night.kette.label (Default kit:night) eine Kette aus
                      /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
-                     eigenen Worktree, mit Nachtbericht am Fachplan. --max zaehlt
-                     Ketten (Default 3); --label gilt hier nicht, das Label kommt
-                     aus der Config. Budgets in night.kette.
+                     eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
+                     aus night.kette.varianteBLabel (Default kit:durchziehen) waehlt
+                     Variante B statt Variante A; ohne dieses Label laeuft Variante A.
+                     --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
+                     Label kommt aus der Config. Budgets in night.kette.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
   --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
@@ -426,6 +432,9 @@ let LAUF_STEMPEL = null;
 // Die Budgets der Kette, geladen in vorbereiten() — Modul-Zustand wie `config`, weil
 // ART_LABEL und die Stufen sie brauchen, ohne dass jede Funktion sie durchreicht.
 let KETTE_BUDGET = null;
+// Die Budget-Felder, die aus den Defaults stammen (Issue #659) — geladen zusammen mit
+// KETTE_BUDGET, gezeigt im Protokoll und am Lauf-Kopf.
+let KETTE_BUDGET_AUS_DEFAULT = [];
 
 // Der Grund des zuletzt gemerkten harten Stopps (Issue #558). Er nimmt denselben Weg
 // wie die Fehlerklasse — Modul-Zustand statt neuem Rueckgabewert —, damit die
@@ -440,6 +449,12 @@ let STOPP_GRUND = "";
 // steckt (damit reine Funktionen importierbar sind), waere eine dort deklarierte
 // Konstante fuer gitReste() unsichtbar.
 let config = null;
+
+// Der Pfad, aus dem `config` stammt (Issue #711). Die Runde liest `night.stufen` und
+// `night.stufenRegel` unmittelbar vor jedem Paket von dort neu; ohne den gemerkten Pfad
+// muesste sie ihn ein zweites Mal zusammensetzen, und zwei Herleitungen desselben Pfades
+// liefen bei der ersten Aenderung auseinander.
+let CONFIG_PATH = null;
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`;
@@ -468,6 +483,7 @@ function fail(msg, klasse = "unbekannt") {
     LAUF.fehlerText = msg;
     LAUF.abschluss = "harterStopp";
     schreibeErgebnisstand();
+    laufMelden();
   }
   process.exit(1);
 }
@@ -583,10 +599,33 @@ export function sicherheitsnetzGrund(lauf, stoppGrund) {
 }
 
 /** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
-function einheitAnlegen(id, titel) {
+function einheitAnlegen(id, titel, modellStand = null) {
   // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
   // Dry-Run haengt es an nichts und wird nie geschrieben.
-  const einheit = { id: String(id), titel, ausgang: "unbekannt" };
+  //
+  // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665),
+  // dahinter `stufe` und `stufeVerwendet` (Issue #711). Die Feldreihenfolge ist der Vertrag
+  // mit den Auswertungen: Die fuenf alten Namen behalten ihre Plaetze, die neuen kommen
+  // hinten an. `schemaFassung` bleibt 1, weil nur Felder hinzukommen. Ohne uebergebenen
+  // Stand — die Kette, ein Gate-Rueckfall — tragen sie `null` statt zu fehlen: Ein fehlendes
+  // Feld liesse offen, ob niemand gemessen hat oder ob die Frage sich nicht stellte.
+  //
+  // `stufe` ist die Stufe, die das Paket sich selbst gegeben hat; `stufeVerwendet` die, die
+  // das Modell wirklich gestellt hat. Beide getrennt, weil das Ausweichen nach oben genau
+  // der Unterschied zwischen ihnen ist — ein Feld liesse ihn verschwinden.
+  const einheit = {
+    id: String(id),
+    titel,
+    modell: modellStand?.modell ?? null,
+    modellHerkunft: modellStand?.herkunft ?? null,
+    modellGrund: modellStand?.grund ?? null,
+    stufe: modellStand?.stufe ?? null,
+    stufeVerwendet: modellStand?.stufeVerwendet ?? null,
+    // Die Lauf-Art je Einheit (Issue #669): Die auswertende Seite ordnet ihr den
+    // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
+    art: LAUF?.art ?? null,
+    ausgang: "unbekannt",
+  };
   if (LAUF) {
     LAUF.einheiten.push(einheit);
     schreibeErgebnisstand();
@@ -598,6 +637,42 @@ function einheitAnlegen(id, titel) {
 function einheitErgaenzen(einheit, felder) {
   Object.assign(einheit, felder);
   schreibeErgebnisstand();
+  // Fortschreibend eingeliefert (Issue #669): Ein harter Stopp nimmt sonst die Daten der
+  // ganzen Nacht mit. Der Server ersetzt denselben Lauf bei jeder Meldung.
+  if (felder.ausgang !== undefined) laufMelden();
+}
+
+// Die zuletzt protokollierte Einliefer-Meldung — dieselbe Zeile steht nur einmal im
+// Protokoll, auch wenn fortschreibend nach jeder Einheit gemeldet wird.
+let LETZTE_MELDEZEILE = null;
+
+function meldezeile(zeile) {
+  if (zeile === LETZTE_MELDEZEILE) return;
+  LETZTE_MELDEZEILE = zeile;
+  log(zeile);
+}
+
+/**
+ * Liefert den Ergebnisstand ueber `board.mjs nightrun melden` an kanban-kit ein (Issue #669).
+ *
+ * Nie ein Abbruch: Faellt die Einlieferung aus, bleibt die Datei der Rueckfall, und das
+ * Protokoll nennt den Grund. Nur der toolbox-Tracker kennt die Schnittstelle; bei jedem
+ * anderen entfaellt der Aufruf mit einer Zeile. `NIGHT_MELDEN_ERZWINGEN` ist ein Test-Hook,
+ * der den Aufruf auch ohne toolbox erzwingt, damit der Fehlerpfad pruefbar ist.
+ */
+function laufMelden() {
+  if (!ERGEBNIS_FILE || !LAUF) return;
+  const tracker = config?.issueTracker;
+  if (tracker !== "toolbox" && !process.env.NIGHT_MELDEN_ERZWINGEN) {
+    meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
+    return;
+  }
+  const res = boardRoh("nightrun", "melden", "--datei", ERGEBNIS_FILE);
+  if (res.status !== 0) {
+    meldezeile(`Einlieferung fehlgeschlagen: ${res.text.trim().slice(0, 300)} — der Ergebnisstand bleibt als Datei.`);
+    return;
+  }
+  if (LAUF.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
 }
 
 /**
@@ -610,11 +685,13 @@ function einheitErgaenzen(einheit, felder) {
 function laufAbschliessen(abschluss) {
   if (!LAUF) return;
   LAUF.abschluss = abschluss;
+  LAUF.complete = abschluss === "regulaer";
   if (abschluss === "harterStopp") {
     const netz = sicherheitsnetzGrund(LAUF, STOPP_GRUND);
     if (netz !== null) LAUF.fehlerText = netz;
   }
   schreibeErgebnisstand();
+  laufMelden();
 }
 
 /**
@@ -646,10 +723,11 @@ const ART_LABEL = {
  * An --verbose haengt die Entstehung ausdruecklich NICHT mehr (Issue #557): Es fehlte
  * sonst genau in der Nacht die Auswertung, in der jemand das Flag vergessen hat — und
  * das ist die Nacht, in der man sie braucht. Der Grund eines Abbruchs wiegt mehr als die
- * Kennzahlen eines glatten Laufs. Ohne das Flag fordert der Runner die Stream-Ausgabe
- * nicht an, leseKennzahlen liefert null; damit das nicht als "diese Session hatte nichts
- * zu messen" gelesen wird, sagt kennzahlenHinweis den Grund einmal am Lauf-Kopf, nicht
- * je Einheit.
+ * Kennzahlen eines glatten Laufs.
+ *
+ * Seit Issue #668 haengen auch die KENNZAHLEN nicht mehr am Flag: Der Implementierungslauf
+ * fordert den Strom immer an, wie die Kette es seit Plan #638 tut. Der frueher hier
+ * gesetzte `kennzahlenHinweis` ist damit gegenstandslos und entfallen.
  *
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
@@ -677,17 +755,26 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // Bleibt als Feld erhalten, weil die Feldreihenfolge der Vertrag der Schemafassung 1
     // ist (Issue #522); seit Plan #638 gibt es keine Stufe mehr, der Wert ist immer null.
     stufe: null,
-    // Bedingt, und darum an fester Stelle: Die Feldreihenfolge ist der Vertrag, ein
-    // wanderndes Feld waere Interpretationsspielraum. Bei --verbose fehlt es ganz —
-    // es ist nicht null, denn es gibt dann nichts zu erklaeren.
-    ...(args.verbose || args.kette
-      ? {}
-      : { kennzahlenHinweis: "Ohne --verbose fordert der Runner die Stream-Ausgabe der Session nicht an; die Session-Kennzahlen fehlen darum in allen Einheiten." }),
+    // `kennzahlenHinweis` ist mit Issue #668 entfallen und kommt nicht zurueck: Seit
+    // der Implementierungslauf den Strom immer anfordert, gibt es keinen Lauf mehr ohne
+    // Kennzahlen, den er erklaeren koennte. Das Feld bedingt stehenzulassen waere
+    // schlechter als es zu streichen — es behauptete ein Fehlen, das es nicht gibt.
     // Die Kette fordert den Strom immer an (Plan #638, A5) und traegt ihre Budgets
     // am Lauf-Kopf, damit eine Auswertung den Abbruchgrund gegen die Zahl halten kann.
     ...(args.kette ? { budget: { ...KETTE_BUDGET } } : {}),
+    // Nur wenn Felder aus den Defaults stammen (Issue #659): Ein vollstaendiger Block
+    // hinterlaesst keine Spur, damit das Feld selbst schon der Befund ist.
+    ...(args.kette && KETTE_BUDGET_AUS_DEFAULT.length > 0 ? { budgetAusDefault: [...KETTE_BUDGET_AUS_DEFAULT] } : {}),
     einheiten: [],
     abschluss: null,
+    // Ab hier Issue #669, hinter abschluss, weil die Folge stufe → einheiten Vertrag ist.
+    // `complete` ist `false`, solange der Lauf laeuft, und `true` nur am regulaeren Ende: Ein
+    // harter Stopp laesst es stehen, damit die Nacht am Board nicht als ganze erscheint.
+    complete: false,
+    // Der Verbrauch des ganzen Laufs, einschliesslich der Sessions ohne Karte, und der Teil
+    // davon, der zu keiner Einheit gehoert.
+    verbrauch: verbrauchLeer(),
+    verbrauchOhneEinheit: verbrauchLeer(),
   };
 }
 
@@ -711,15 +798,45 @@ function schreibeErgebnisstand() {
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
 
+// Ohne `maxBuffer` puffert Node hoechstens 1 MB stdout/stderr, beendet den Kindprozess
+// mit SIGTERM (ENOBUFS) und die Fehlermeldung traegt die halb gelesene Ausgabe statt
+// eines Befunds (Issue #699): `issue list` ohne Statusfilter lag im kanban-kit bei
+// 1.110 KB, die Done-Spalte allein bei 801 KB. 256 MB ist grosszuegig bemessen und gilt
+// fuer beide Board-Helfer.
+const BOARD_MAX_BUFFER = 256 * 1024 * 1024;
+
+// Eine zitierte Board-Ausgabe traegt hoechstens so viele Zeichen (Issue #699) — eine
+// echte Fehlermeldung von board.mjs steht fast immer in den ersten Zeilen.
+const BOARD_ZITAT_MAX = 500;
+
+function boardZitat(text) {
+  if (text.length <= BOARD_ZITAT_MAX) return text;
+  return `${text.slice(0, BOARD_ZITAT_MAX)}… (${text.length - BOARD_ZITAT_MAX} Zeichen gekürzt)`;
+}
+
+/**
+ * Reine Funktion (Issue #699): baut die Fehlermeldung eines gescheiterten board()-Aufrufs.
+ * Nennt Fehlercode bzw. Signal des Kindprozesses, sofern gesetzt, und zitiert
+ * `stderr || stdout` gekuerzt auf `BOARD_ZITAT_MAX` Zeichen.
+ */
+export function boardFehlertext(cliArgs, res) {
+  const hinweise = [];
+  if (res.error?.code) hinweise.push(res.error.code);
+  if (res.signal) hinweise.push(`Signal ${res.signal}`);
+  const praefix = hinweise.length ? ` (${hinweise.join(", ")})` : "";
+  const zitat = boardZitat((res.stderr || res.stdout || "").trim());
+  return `board.mjs ${cliArgs.join(" ")} schlug fehl${praefix}: ${zitat}`;
+}
+
 // Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
 // Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
 // Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd() });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER });
   if (res.status !== 0) {
-    fail(`board.mjs ${cliArgs.join(" ")} schlug fehl: ${(res.stderr || res.stdout || "").trim()}`, "tracker");
+    fail(boardFehlertext(cliArgs, res), "tracker");
   }
   try {
     return JSON.parse(res.stdout);
@@ -734,14 +851,14 @@ function board(...cliArgs) {
  * Rueckgabe `{ status, json, text }`; `json` ist null, wenn stdout kein JSON traegt.
  */
 function boardRoh(...cliArgs) {
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8" });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", maxBuffer: BOARD_MAX_BUFFER });
   let json = null;
   try {
     json = JSON.parse(res.stdout);
   } catch {
     json = null;
   }
-  return { status: res.status, json, text: (res.stderr || res.stdout || "").trim() };
+  return { status: res.status, json, text: boardZitat((res.stderr || res.stdout || "").trim()) };
 }
 
 // --- Git-Helfer ---
@@ -788,6 +905,23 @@ function gitReste(cwd = process.cwd()) {
   // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
   // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
   pathspec.push(":(exclude).claude/night-bericht-*");
+  // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
+  // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
+  // die Vorhaben-Notiz darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
+  // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
+  // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
+  // ersten Paket als unsauber.
+  pathspec.push(`:(exclude)${UMSETZUNG_LOCK}`);
+  // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
+  // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
+  // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
+  // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
+  // `.claude/*`-Block nach der ersten erfolgreichen Runde hart. Damit waere die Wegmarke
+  // eine Bedingung der Arbeit statt ihrer Buchhaltung.
+  // SYNC: derselbe Pfad steckt als WEGMARKEN_DATEI in kit/board.mjs, das ihn schreibt;
+  // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
+  // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
+  pathspec.push(":(exclude).claude/wegmarken.tsv");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
@@ -808,6 +942,97 @@ function lastCommitHash(cwd = process.cwd()) {
   // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
   const res = spawnSync("git", ["log", "-1", "--format=%h"], { encoding: "utf-8", cwd });
   return res.status === 0 ? res.stdout.trim() : "?";
+}
+
+// --- Der Umsetzungs-Lock (Plan #691, E10; Issue #696) ---
+//
+// Kette und Umsetzungsnacht liefen bisher ausdruecklich nebeneinander: Die Kette baute im
+// Worktree, die Umsetzungsnacht in der Hauptkopie. Unter Variante B stimmt das nicht mehr —
+// die Umsetzungsstufe baut selbst in der Hauptkopie (E4), und zwei Laeufe, die gleichzeitig
+// in denselben Working Tree committen, hinterlassen einen Zustand, den morgens niemand
+// entwirrt. E10 entscheidet deshalb den Lock und nicht einen Satz in der Dokumentation:
+// Ein Satz, den ein Cron-Eintrag nicht liest, verhindert nichts.
+//
+// Verwaist wird ueber die Prozess-Id erkannt, nicht ueber eine Verfallsfrist. Eine Frist
+// waere geraten — eine Umsetzungsnacht darf laenger dauern als jede Schaetzung, und ein zu
+// kurzer Verfall gaebe genau die Gleichzeitigkeit frei, die der Lock verhindern soll.
+//
+// Die Datei liegt unter `.claude/` und ist damit in jedem Projekt mit dem `.claude/*`-Block
+// des Installers per `.gitignore` gedeckt — in den uebrigen deckt sie der Ausschluss in
+// `gitReste()`, wie bei Protokoll, Vorhaben-Notiz und wartendem Bericht. Beendet ein harter
+// Stopp den Prozess an einem `finally` vorbei, bleibt sie liegen; der naechste Lauf erkennt
+// sie als verwaist.
+
+/** Der Pfad der Lock-Datei, relativ zur Hauptkopie. */
+export const UMSETZUNG_LOCK = ".claude/night-umsetzung.lock";
+
+/**
+ * Die Prozess-Id aus einer Lock-Datei — null, wenn es sie nicht gibt, sie nicht lesbar ist
+ * oder nicht als positive ganze Zahl dasteht. Alle drei zaehlen als verwaist: Ein Lock,
+ * dessen Halter nicht benennbar ist, kann niemanden abhalten.
+ *
+ * `0` ist ausdruecklich keine gueltige Id — `process.kill(0, 0)` zielte auf die eigene
+ * Prozessgruppe und meldete damit fuer jede kaputte Datei einen lebenden Halter.
+ */
+function lockPid(pfad) {
+  try {
+    const pid = Number(readFileSync(pfad, "utf-8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Laeuft der Prozess mit dieser Id noch? `ESRCH` heisst nein; `EPERM` heisst, es gibt ihn
+ * und er gehoert einem anderen Nutzer — das ist kein verwaister Lock.
+ */
+function prozessLaeuft(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== "ESRCH";
+  }
+}
+
+/**
+ * Nimmt den Umsetzungs-Lock in der Hauptkopie.
+ *
+ * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, grund }`. Ein
+ * Schreibfehler zaehlt wie ein vorgefundener Lock und laesst die Umsetzung aus: Ein Lock,
+ * der bei Schreibfehlern uebergangen wird, ist keiner — und die Kette faellt in diesem Fall
+ * auf Variante A zurueck, was ein vorgesehener Ausgang ist.
+ *
+ * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
+ */
+export function umsetzungLockNehmen(repoRoot) {
+  const pfad = join(repoRoot, UMSETZUNG_LOCK);
+  const pid = lockPid(pfad);
+  if (pid !== null && prozessLaeuft(pid)) {
+    return { ok: false, grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+  }
+  const verwaist = existsSync(pfad);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(pfad, `${process.pid}\n`, "utf-8");
+  } catch (e) {
+    return { ok: false, grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+  }
+  return {
+    ok: true,
+    hinweis: verwaist ? `verwaisten Lock ${UMSETZUNG_LOCK} aufgeraeumt und selbst genommen` : null,
+    freigeben: () => {
+      try {
+        rmSync(pfad, { force: true });
+      } catch (e) {
+        // Gerufen wird das aus einem `finally`; ein Wurf von hier risse den ganzen Lauf
+        // mit, nach getaner Arbeit. Liegenbleiben ist unschaedlich — der naechste Lauf
+        // findet die Id dieses Prozesses vor und erkennt sie als verwaist.
+        log(`${UMSETZUNG_LOCK} liess sich nicht entfernen (${e.message}) — der naechste Lauf raeumt ihn als verwaist auf.`);
+      }
+    },
+  };
 }
 
 // --- Worktree je Kette (Plan #638, A3) ---
@@ -977,6 +1202,57 @@ export const KLAEREN_LABEL = "kit:klaeren";
 export function hatKlaerenLabel(issue) {
   return (issue?.labels || []).includes(KLAEREN_LABEL);
 }
+
+/**
+ * Die Spur einer gelaufenen Pruefung, die die Nacht-Kette voraussetzt (Fachplan #702,
+ * Plan #716, E2).
+ *
+ * Der Name ist eine feste Konstante und kommt bewusst NICHT aus der Config: Die Regel
+ * soll in jedem Projekt ohne Einstellung gelten, und ein Config-Feld waere ueber einen
+ * leeren Wert genau die Abschaltung, die es nicht geben soll. `/issue-review` setzt das
+ * Label; die Kette liest es nur.
+ */
+export const REVIEW_FERTIG_LABEL = "review:fertig";
+
+export function hatReviewFertigLabel(issue) {
+  return (issue?.labels || []).includes(REVIEW_FERTIG_LABEL);
+}
+
+/**
+ * Das feste Praefix jedes Grundes „Pruefung fehlt" (Plan #716).
+ *
+ * Fest, weil der ganze Grundtext je Karte verschieden ist — er nennt ihre Nummer. Wer
+ * die Faelle wiedererkennen will (der Kommentar an der abgelehnten Anforderung), prueft
+ * auf dieses Praefix und nicht auf den ganzen Text.
+ */
+export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fehlt`;
+
+/**
+ * Grund und naechster Schritt fuer eine Karte ohne `review:fertig` — getrennt geliefert.
+ *
+ * Das Kettenlabel kommt als Argument aus `night.kette.label` und wird nicht fest
+ * geschrieben: Der Bestand nennt es ueberall dynamisch, und in einem Projekt mit anderem
+ * Label waere `kit:night` im Text schlicht falsch (Plan #716, E8).
+ */
+export function pruefungFehltGrund(id, kettenLabel) {
+  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${REVIEW_FERTIG_LABEL}; das Label ${kettenLabel} bleibt dran`;
+  return { praefix: UNGEPRUEFT_PRAEFIX, schritt, text: `${UNGEPRUEFT_PRAEFIX} — ${schritt}` };
+}
+
+/**
+ * Der Anker des Kommentars an der wegen fehlender Pruefung abgelehnten Anforderung
+ * (Fachplan #702, Kriterium 4; Plan #716, E3).
+ *
+ * Er steht als erste Zeile des Kommentars und traegt keinen Laufstempel: Genau daran
+ * erkennt der naechste Lauf, dass der Hinweis schon dasteht, und schreibt keinen
+ * zweiten. Ein Label als Merker verlangte ein weiteres Kennzeichen am Board, eine
+ * lokale Datei ueberlebte den Worktree nicht.
+ *
+ * Aehnlich, aber nicht dasselbe wie der Kommentar `Kette nicht gestartet` bei
+ * gescheitertem Reviewer-Vorflug: Der eine sagt, die Pruefung der Anforderung fehlt,
+ * der andere, die Reviewer waren nicht erreichbar.
+ */
+export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt";
 
 /**
  * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
@@ -1223,6 +1499,19 @@ function endlicheZahl(wert) {
   return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
 }
 
+// Dieselbe Strenge fuer die beiden Felder, an denen der Ausgang einer Session haengt
+// (Issue #668): Ein `stop_reason`, das kein String ist, und ein `is_error`, das kein
+// Boolean ist, sind kein Messwert, sondern eine unbekannte Fassung des Ereignisses.
+// Sie als `null` zu fuehren sagt "nicht gemessen"; sie durchzureichen hiesse, einen
+// Grund-Praefix auf ein Objekt zu stuetzen.
+function nurString(wert) {
+  return typeof wert === "string" ? wert : null;
+}
+
+function nurBoolean(wert) {
+  return typeof wert === "boolean" ? wert : null;
+}
+
 /**
  * Liest Kosten, API-Dauer und Zahl der Zuege aus dem `result`-Ereignis eines
  * Session-Streams.
@@ -1240,13 +1529,19 @@ function endlicheZahl(wert) {
  * Zeitlimit, Fremdausgabe) werden uebersprungen statt geworfen: Eine Kennzahl darf einen
  * ausgewerteten Lauf nicht zu Fall bringen.
  *
- * Bei mehreren `result`-Zeilen zaehlt die letzte. `subtype` und `is_error` bleiben
- * unbeachtet — auch eine abgebrochene Session hat gekostet, und ihr Ausgang steht
- * ohnehin am Board.
+ * Bei mehreren `result`-Zeilen zaehlt die letzte. `subtype` bleibt unbeachtet — auch
+ * eine abgebrochene Session hat gekostet, und ihr Ausgang steht ohnehin am Board.
  *
- * Rueckgabe: `{ kostenUsd, apiDauerMs, zuege }` in US-Dollar, Millisekunden und Anzahl —
- * je eine Zahl oder `null` —, oder `null`, wenn keine `result`-Zeile im stdout steht.
- * Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand.
+ * Seit Issue #668 kommen `stop_reason` und `is_error` mit: An ihnen haengt, ob eine
+ * Runde ohne Ergebnis regulaer beendet wurde (`end_turn` — die Session hat auf etwas
+ * gewartet, das nie kam) oder abgebrochen ist. Sie stehen in derselben Zeile; ein
+ * zweiter Durchlauf ueber dasselbe stdout waere Aufwand ohne Gewinn, und zwei Stellen,
+ * die dieselbe Zeile deuten, laufen auseinander.
+ *
+ * Rueckgabe: `{ kostenUsd, apiDauerMs, zuege, stopReason, isError }` in US-Dollar,
+ * Millisekunden, Anzahl, Zeichenkette und Ja/Nein — je ein Wert oder `null` —, oder
+ * `null`, wenn keine `result`-Zeile im stdout steht. Die Schluessel sind verbindlich:
+ * Issue #488 uebernimmt sie in den Ergebnisstand.
  */
 export function leseKennzahlen(stdout) {
   let letzte = null;
@@ -1264,11 +1559,78 @@ export function leseKennzahlen(stdout) {
     if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
   }
   if (!letzte) return null;
+  // Die vier Mengen aus `usage` (Issue #669): Die CLI meldet sie ohnehin, und nur wer sie
+  // nicht verwirft, kann sie am Board zeigen. Kein Rechnen, nur Durchreichen.
+  const usage = letzte.usage && typeof letzte.usage === "object" ? letzte.usage : {};
   return {
     kostenUsd: endlicheZahl(letzte.total_cost_usd),
     apiDauerMs: endlicheZahl(letzte.duration_api_ms),
     zuege: endlicheZahl(letzte.num_turns),
+    stopReason: nurString(letzte.stop_reason),
+    isError: nurBoolean(letzte.is_error),
+    eingabeTokens: endlicheZahl(usage.input_tokens),
+    ausgabeTokens: endlicheZahl(usage.output_tokens),
+    cacheErzeugtTokens: endlicheZahl(usage.cache_creation_input_tokens),
+    cacheGelesenTokens: endlicheZahl(usage.cache_read_input_tokens),
   };
+}
+
+// --- Verbrauch je Einheit und Lauf (Issue #669) ---
+
+/** Die Felder des Verbrauchs, in dieser Reihenfolge im Ergebnisstand. */
+const VERBRAUCH_FELDER = ["kostenUsd", "eingabeTokens", "ausgabeTokens", "cacheErzeugtTokens", "cacheGelesenTokens"];
+
+/** Ein Verbrauch, in dem noch nichts gemessen wurde: jedes Feld `null`, nie 0. */
+export function verbrauchLeer() {
+  return Object.fromEntries(VERBRAUCH_FELDER.map((feld) => [feld, null]));
+}
+
+/**
+ * Addiert die Mengen einer Session feldweise auf `ziel`. Eine fehlende Menge traegt nichts
+ * bei; ein Feld, zu dem nie eine Menge kam, bleibt `null` — eine 0 behauptete, es sei
+ * nichts verbraucht worden. Reine Funktion ueber dem uebergebenen Objekt.
+ */
+export function verbrauchAddieren(ziel, kennzahlen) {
+  for (const feld of VERBRAUCH_FELDER) {
+    const wert = kennzahlen?.[feld];
+    if (typeof wert === "number" && Number.isFinite(wert)) ziel[feld] = (ziel[feld] ?? 0) + wert;
+  }
+  return ziel;
+}
+
+/**
+ * Der Verbrauch, der zu keiner Einheit gehoert: Lauf-Summe minus Summe ueber die Einheiten.
+ * Nur der Runner kennt beide Seiten — gerechnet aus den Einheiten allein waere der Rest per
+ * Konstruktion null. Ohne Lauf-Menge bleibt ein Feld `null`; eine Seite ohne Einheiten zaehlt
+ * 0, denn dann gehoert der ganze Verbrauch zu keiner Karte. Die Kosten werden auf sechs
+ * Stellen gerundet, damit kein Gleitkomma-Rauschen als Rest erscheint.
+ */
+export function verbrauchOhneEinheit(lauf) {
+  const einheiten = verbrauchLeer();
+  for (const e of lauf?.einheiten ?? []) verbrauchAddieren(einheiten, e.verbrauch);
+  const rest = verbrauchLeer();
+  for (const feld of VERBRAUCH_FELDER) {
+    const gesamt = lauf?.verbrauch?.[feld];
+    if (typeof gesamt !== "number") continue;
+    const differenz = gesamt - (einheiten[feld] ?? 0);
+    // `+ 0` macht aus einer gerundeten -0 eine 0.
+    rest[feld] = feld === "kostenUsd" ? Math.round(differenz * 1e6) / 1e6 + 0 : differenz;
+  }
+  return rest;
+}
+
+/**
+ * Verbucht die Mengen einer Session auf den Lauf und — gehoert sie zu einer Karte — auf
+ * deren juengste Einheit; danach steht der Rest neu im Stand. `issueId` ist `null` fuer
+ * Sessions ohne Karte, etwa den Vorflug.
+ */
+function verbrauchErfassen(issueId, kennzahlen) {
+  if (!LAUF || !kennzahlen) return;
+  verbrauchAddieren(LAUF.verbrauch, kennzahlen);
+  const einheit = issueId === null ? null : LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (einheit) verbrauchAddieren(einheit.verbrauch ??= verbrauchLeer(), kennzahlen);
+  LAUF.verbrauchOhneEinheit = verbrauchOhneEinheit(LAUF);
+  schreibeErgebnisstand();
 }
 
 /**
@@ -1311,7 +1673,344 @@ export function leseErgebnisText(stdout) {
   return text === "" ? null : text;
 }
 
+// --- Das Modell einer Karte (Issue #665) ---
+
+// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: Anker am Zeilenanfang, damit
+// eine Erwaehnung im Fliesstext nicht trifft, und `\S+` als Wert — kein Leerraum, kein
+// zweites Wort. Ein Wert wie `claude-opus-5 --yolo` faellt damit schon hier durch und
+// nicht erst am Vergleich mit der Liste.
+const EMPFOHLENES_MODELL_ZEILE = /^Empfohlenes Modell:[^\S\n]*(\S+)[^\S\n]*$/m;
+
+/**
+ * Das Modell, mit dem die Session dieser Karte starten soll (Issue #665).
+ *
+ * Reine Funktion ueber Body und Liste — kein Board, kein Dateisystem —, damit die
+ * Zuordnung an Fixtures pruefbar ist.
+ *
+ * **Die Liste ist die einzige Pruefung** (Plan #663, E3), und sie ist der
+ * Sicherheitskern dieses Wegs: Ohne sie wanderte ein Wert aus einem Issue-Body unbesehen
+ * in `argv`. Ein Paket mit `Empfohlenes Modell: --dangerously-skip-permissions` waere ein
+ * Angriff ueber eine Karte — deshalb gilt ein Wert mit fuehrendem Bindestrich nicht
+ * einmal als Kandidat, und deshalb wird gegen eine Liste verglichen statt gegen ein
+ * Muster. Ein Muster liesse sich erweitern, eine Liste nicht.
+ *
+ * Rueckgabe `{ modell, grund }`:
+ *   - Name auf der Liste  -> `{ modell: <name>, grund: null }`
+ *   - Name nicht auf der Liste -> `{ modell: null, grund: <ein Satz> }`
+ *   - keine Zeile, leere oder fehlende Liste -> `{ modell: null, grund: null }`
+ *
+ * Der Unterschied zwischen den letzten beiden Faellen ist der Punkt: Ein abgewiesener
+ * Name gehoert in die Einheit, eine fehlende Empfehlung ist der Normalfall und kein
+ * Befund.
+ */
+export function empfohlenesModell(body, erlaubte) {
+  const liste = Array.isArray(erlaubte) ? erlaubte : [];
+  if (liste.length === 0) return { modell: null, grund: null };
+
+  const treffer = String(body ?? "").match(EMPFOHLENES_MODELL_ZEILE);
+  if (!treffer) return { modell: null, grund: null };
+
+  const name = treffer[1];
+  // Fuehrender Bindestrich: nie ein Modellname, immer ein Flag. Der Vergleich mit der
+  // Liste wuerde ihn ohnehin abweisen — die eigene Zeile steht hier, weil diese Stelle
+  // die ist, an der jemand spaeter eine Abkuerzung einbauen koennte.
+  if (name.startsWith("-")) {
+    return { modell: null, grund: `Empfohlenes Modell "${name}" beginnt mit einem Bindestrich und ist kein Modellname — Modell des Laufs.` };
+  }
+  if (!liste.includes(name)) {
+    return { modell: null, grund: `Empfohlenes Modell "${name}" steht nicht in night.modelle — Modell des Laufs.` };
+  }
+  return { modell: name, grund: null };
+}
+
+// --- Die Stufe einer Karte (Issue #709, Plan #707) ---
+
+// Derselbe enge Anker wie EMPFOHLENES_MODELL_ZEILE: Zeilenanfang, ein Wort ohne Leerraum.
+// Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft er nicht,
+// und ein Wert aus zwei Woertern faellt schon hier durch.
+const AUFGABENSTUFE_ZEILE = /^Aufgabenstufe:[^\S\n]*(\S+)[^\S\n]*$/m;
+
+// Die Ordnung der Stufen, von der leichtesten zur schwersten. Sie ist die Richtung, in die
+// ausgewichen wird: nach oben, nie nach unten. Eine Aufgabe, fuer die die vorgesehene Stufe
+// fehlt, laeuft lieber mit einem staerkeren Modell als mit einem schwaecheren.
+const STUFEN_ORDNUNG = ["leicht", "mittel", "schwer"];
+
+/**
+ * Die Stufe, die ein Arbeitspaket sich selbst gibt (Issue #709).
+ *
+ * Reine Funktion ueber den Body — kein Board, kein Dateisystem, keine Einstellung.
+ *
+ * Rueckgabe `{ stufe, grund }`:
+ *   - bekannter Wert -> `{ stufe: <schwer|mittel|leicht>, grund: null }`
+ *   - anderer Wert   -> `{ stufe: null, grund: <ein Satz> }`
+ *   - keine Zeile    -> `{ stufe: null, grund: null }`
+ *
+ * Der Unterschied zwischen den letzten beiden Faellen ist derselbe wie bei
+ * `empfohlenesModell`: Ein abgewiesener Wert gehoert in die Einheit, eine fehlende Zeile ist
+ * der Normalfall und kein Befund. Bestandspakete tragen die Zeile nicht (Plan #707, E12).
+ */
+export function aufgabenStufe(body) {
+  const treffer = String(body ?? "").match(AUFGABENSTUFE_ZEILE);
+  if (!treffer) return { stufe: null, grund: null };
+
+  const wert = treffer[1];
+  if (!STUFEN_ORDNUNG.includes(wert)) {
+    return { stufe: null, grund: `Aufgabenstufe "${wert}" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.` };
+  }
+  return { stufe: wert, grund: null };
+}
+
+const alsText = (wert) => (typeof wert === "string" && wert.trim() !== "" ? wert : null);
+
+/**
+ * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name }`
+ * (Issue #709).
+ *
+ * Leere Stufen werden weggeworfen: Was weder `modell` noch `kommando` traegt, ist keine
+ * Stufe, sondern eine Luecke — und eine Luecke soll zum Ausweichen nach oben fuehren und
+ * nicht zu einem Eintrag, den `modellFuerStufe` erst wieder pruefen muesste.
+ *
+ * `aktiv` ist wahr, sobald **eine** Stufe belegt ist (Plan #707, E4): Teilbelegung ist der
+ * beabsichtigte Normalfall — ein Projekt, das nur die leichten Pakete billiger fahren will,
+ * belegt genau eine Stufe. Ein fehlender Block, ein leerer Block und drei leere Stufen
+ * ergeben `aktiv: false`, und damit bleibt alles beim Modell des Laufs.
+ */
+export function stufenEinstellung(config) {
+  const roh = config?.night?.stufen;
+  const stufen = {};
+  if (roh && typeof roh === "object") {
+    for (const stufe of STUFEN_ORDNUNG) {
+      const eintrag = roh[stufe];
+      if (!eintrag || typeof eintrag !== "object") continue;
+      const modell = alsText(eintrag.modell);
+      const kommando = alsText(eintrag.kommando);
+      if (!modell && !kommando) continue;
+      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name) };
+    }
+  }
+  return { aktiv: Object.keys(stufen).length > 0, stufen };
+}
+
+// Fuehrende Zuweisungen einer Kommandozeile (`OLLAMA_HOST=… PORT=9 mein-runner …`) sind
+// Umgebung und nicht das Programm. Wer sie mitsucht, sucht nach einem Programm namens
+// `OLLAMA_HOST=…` und weicht still nach oben aus, obwohl das Programm daliegt (E8).
+const ZUWEISUNG = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * Laesst sich diese Stufe starten (Issue #709, Plan #707, E8)?
+ *
+ * Die Pruefung liegt nachweislich **vor** dem ersten Arbeitsschritt — das ist ihr Zweck:
+ * Nur was hier scheitert, darf nach oben ausweichen, ohne eine begonnene Umsetzung zu
+ * wiederholen. Jeder spaetere Fehlschlag faellt unter die bisherigen Fehlerregeln.
+ *
+ *   - `modell`: Der Name steht in `night.modelle` (E18). Dieselbe eine Liste wie bei
+ *     `empfohlenesModell`; zwei Listen nebeneinander liefen auseinander.
+ *   - `kommando`: Die Plattform ist nicht Windows (E17), und das erste Wort nach den
+ *     fuehrenden Zuweisungen ist ueber **dieselbe Shell** auffindbar, die spaeter startet.
+ *     `command -v` statt einer eigenen PATH-Suche, damit auch Builtins und Funktionen
+ *     gelten — eine halbe Nachbildung der Shell scheitert still am ersten Sonderfall.
+ *
+ * Rueckgabe `{ ok, grund }`; `grund` ist bei `ok: true` immer `null`.
+ */
+export function stufeStartbar(eintrag, erlaubteModelle) {
+  const modell = alsText(eintrag?.modell);
+  const kommando = alsText(eintrag?.kommando);
+
+  if (modell) {
+    const liste = Array.isArray(erlaubteModelle) ? erlaubteModelle : [];
+    if (!liste.includes(modell)) return { ok: false, grund: `Modell "${modell}" steht nicht in night.modelle` };
+    return { ok: true, grund: null };
+  }
+
+  if (!kommando) return { ok: false, grund: "weder modell noch kommando gesetzt" };
+
+  if (process.platform === "win32") {
+    return { ok: false, grund: "eine Kommando-Stufe braucht eine POSIX-Shell, die es unter Windows nicht gibt" };
+  }
+
+  const woerter = kommando.trim().split(/\s+/);
+  const programm = woerter.find((w) => !ZUWEISUNG.test(w));
+  if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
+
+  // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
+  // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
+  const res = spawnSync("sh", ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], { encoding: "utf-8" });
+  if (res.error) return { ok: false, grund: `die Shell fuer "${programm}" liess sich nicht starten: ${res.error.message}` };
+  if (res.status !== 0) return { ok: false, grund: `das Programm "${programm}" ist ueber die Shell nicht auffindbar` };
+  return { ok: true, grund: null };
+}
+
+/**
+ * Die Stufe, mit der ein Paket dieser Aufgabenstufe laeuft (Issue #709, Plan #707, E7).
+ *
+ * Geht von `stufe` aus nach oben — leicht, mittel, schwer — und liefert die erste belegte
+ * **und** startbare Stufe. Unbelegt und nicht startbar fuehren zur selben Bewegung: Beide
+ * Anlaesse stehen deshalb in einer Funktion, damit sie bei einer Aenderung nicht
+ * auseinanderlaufen. Der Unterschied liegt allein im Ende der Kette, und darueber
+ * entscheidet der Aufrufer — diese Funktion liefert nur den Befund.
+ *
+ * Rueckgabe `{ stufeVerwendet, eintrag, grund }`. `grund` nennt je uebersprungener Stufe
+ * einen Satz und ist `null`, wenn nichts uebersprungen wurde. Findet sich keine Stufe,
+ * steht `stufeVerwendet: null` mit Grund.
+ */
+export function modellFuerStufe(einstellung, stufe, erlaubteModelle) {
+  const stufen = einstellung?.stufen ?? {};
+  const start = STUFEN_ORDNUNG.indexOf(stufe);
+  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: `"${stufe}" ist keine Aufgabenstufe` };
+
+  const uebersprungen = [];
+  for (const kandidat of STUFEN_ORDNUNG.slice(start)) {
+    const eintrag = stufen[kandidat];
+    if (!eintrag) {
+      uebersprungen.push(`Stufe ${kandidat} nicht belegt`);
+      continue;
+    }
+    const { ok, grund } = stufeStartbar(eintrag, erlaubteModelle);
+    if (!ok) {
+      uebersprungen.push(`Stufe ${kandidat} nicht startbar: ${grund}`);
+      continue;
+    }
+    return { stufeVerwendet: kandidat, eintrag, grund: uebersprungen.length > 0 ? uebersprungen.join("; ") : null };
+  }
+  return { stufeVerwendet: null, eintrag: null, grund: uebersprungen.join("; ") };
+}
+
+/** Die Gruende eines Pakets in einem Satz — leere Teile fallen weg. */
+const gruendeFassen = (...teile) => {
+  const gefuellt = teile.filter((t) => typeof t === "string" && t.trim() !== "");
+  return gefuellt.length > 0 ? gefuellt.join(" ") : null;
+};
+
+/**
+ * Womit dieses Arbeitspaket laeuft (Issue #711, Plan #707, E5/E6).
+ *
+ * Die eine Stelle, an der Modellname und Aufgabenstufe aufeinandertreffen — reine Funktion
+ * ueber Body, Einstellung und Modell des Laufs, damit die Reihenfolge an Fixtures pruefbar
+ * ist. Sie ist der Kern des Pakets, und ihre Reihenfolge ist die Sache selbst:
+ *
+ *   1. Der Modellname der Karte nach den heutigen Regeln. Er gewinnt gegen die Stufe
+ *      (Kriterium 8); traegt das Paket beides, vermerkt der Grund die doppelte Angabe.
+ *   2. Ein ABGEWIESENER Name faellt auf das Modell des Laufs und **nicht** auf die Stufe
+ *      (E6). Ein Vertipper darf nicht still ein anderes Modell in Gang setzen — wer
+ *      `claude-opus-5` falsch schreibt, bekommt den Lauf und einen Grund, nicht das Modell
+ *      einer Stufe, an die er nicht gedacht hat.
+ *   3. Sonst, und nur bei aktiver Einstellung, die Stufe mit dem Ausweichen nach oben.
+ *   4. Sonst das Modell des Laufs.
+ *
+ * Rueckgabe: `{ modell, herkunft, grund, stufe, stufeVerwendet, kommando, stufenName,
+ * startbar }`. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
+ * Ebene startet — dann darf **keine** Session beginnen (Kriterium 10), und der Aufrufer
+ * verbucht das Paket als Fehlschlag. `herkunft` kennt `karte`, `stufe` und `lauf`.
+ *
+ * Bei einer Kommando-Stufe steht in `modell` die Selbstauskunft der Stufe (ihr Feld `name`,
+ * ersatzweise `stufe-<aufgabenstufe>`) — derselbe Wert, den `runSession` als
+ * KIT_AGENT_MODEL setzt. Einen Modellnamen gibt es dort nicht, und `null` im Ergebnisstand
+ * liesse offen, womit das Paket gelaufen ist.
+ */
+export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
+  const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(body, erlaubteModelle);
+  const { stufe, grund: stufenGrund } = aufgabenStufe(body);
+  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, startbar: true };
+
+  if (ausKarte) {
+    // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
+    // dass die Stufe der Karte an diesem Paket ohne Wirkung blieb.
+    const doppelt = stufe ? `Karte nennt Modell und Aufgabenstufe ${stufe} — der Modellname gewinnt.` : null;
+    return { ...rahmen, modell: ausKarte, herkunft: "karte", grund: gruendeFassen(doppelt, stufenGrund) };
+  }
+
+  const beimLauf = (grund) => ({ ...rahmen, modell: laufModell, herkunft: "lauf", grund: gruendeFassen(grund) });
+
+  if (modellGrund) return beimLauf(modellGrund);
+  if (!einstellung?.aktiv || !stufe) return beimLauf(stufenGrund);
+
+  const { stufeVerwendet, eintrag, grund } = modellFuerStufe(einstellung, stufe, erlaubteModelle);
+  if (!stufeVerwendet) {
+    // Kein Rueckfall auf das Modell des Laufs (Kriterium 10): Wer eine Stufe setzt, will
+    // dieses Paket auf dieser Ebene laufen lassen — ein stiller Ersatz waere eine Umsetzung,
+    // die niemand so beauftragt hat.
+    return { ...rahmen, modell: null, herkunft: "stufe", grund: gruendeFassen(grund), startbar: false };
+  }
+  const selbstauskunft = eintrag.name || `stufe-${stufe}`;
+  return {
+    ...rahmen,
+    stufeVerwendet,
+    kommando: eintrag.kommando,
+    stufenName: eintrag.name,
+    modell: eintrag.modell ?? selbstauskunft,
+    herkunft: "stufe",
+    grund: gruendeFassen(grund),
+  };
+}
+
+/**
+ * `night.stufen` und `night.stufenRegel`, frisch von Platte (Issue #711, Plan #707, E19).
+ *
+ * Nur diese beiden Felder: Alles andere bleibt beim Stand des Laufbeginns, weil ein Lauf,
+ * der mitten in der Nacht sein Label, seine Checks oder seinen Tracker wechselt, nicht mehr
+ * derselbe Lauf waere. Die Stufen dagegen sollen wirken, sobald sie jemand aendert — sonst
+ * saehe ein laufender Nachtlauf eine Aenderung erst am naechsten Abend.
+ *
+ * Ein unlesbarer Stand haelt den Lauf nie auf: Dann gilt, was beim Start gelesen wurde, und
+ * `grund` sagt es. Reine Funktion ueber Pfad und Startstand, damit dieser Fall ohne einen
+ * kaputten Nachtlauf pruefbar ist.
+ */
+export function frischeStufenFelder(configPfad, stand) {
+  const vomStart = (grund) => ({ stufen: stand?.night?.stufen, stufenRegel: stand?.night?.stufenRegel, grund });
+  if (!configPfad) return vomStart(null);
+  try {
+    const frisch = ladeConfigMitOverrides(configPfad);
+    return { stufen: frisch?.night?.stufen, stufenRegel: frisch?.night?.stufenRegel, grund: null };
+  } catch (fehler) {
+    return vomStart(`die Einstellung liess sich nicht frisch lesen (${fehler.message}) — es gilt der Stand des Laufbeginns.`);
+  }
+}
+
 // --- Nacht-Session ---
+
+/**
+ * Wartet, bis in der Prozessgruppe einer beendeten Session kein Prozess mehr laeuft
+ * (Issue #668).
+ *
+ * `runProcess` gibt jedem Kind eine eigene Prozessgruppe, toetet sie aber nur am
+ * Zeitlimit. Endet eine Session regulaer, waehrend sie noch einen Hintergrundlauf haelt
+ * — den Pflichtcheck, auf den sie zu warten glaubte —, laeuft dieser weiter. Zwei
+ * Schaeden entstehen daraus, und beide sind in der Nacht zu #900 zu besichtigen:
+ *
+ *   1. Die Vorpruefung des Salvage startet ihren eigenen `mvn verify` daneben. Zwei
+ *      gleichzeitige Testcontainers-Laeufe reissen einander die Ressourcen weg; die
+ *      Vorpruefung war nach 72 Sekunden rot, bei einem Lauf, der Minuten braucht.
+ *   2. Der ueberlebende `checks.mjs run` schreibt seine Zusammenfassung spaeter — im
+ *      schlimmsten Fall nach `verwerfeZusammenfassung()` der naechsten Runde, deren
+ *      Nachweis er damit faelscht.
+ *
+ * Gewartet wird hoechstens `restMs`; was laenger braucht, als die Runde hat, ist ohnehin
+ * verloren, und ein unbegrenztes Warten waere genau der Hang, den der Zeitlimit-Timer
+ * verhindern soll. Rueckgabe: `true`, wenn die Gruppe leer ist, `false` bei Ablauf der
+ * Frist — der Aufrufer protokolliert das, haelt den Lauf aber nicht an.
+ *
+ * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht);
+ * die Funktion meldet dort sofort `true`. Dieselbe bekannte Einschraenkung wie beim
+ * Kill am Zeitlimit.
+ */
+export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now } = {}) {
+  if (process.platform === "win32" || !pgid || restMs <= 0) return true;
+  const frist = jetzt() + restMs;
+  // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
+  // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
+  // Wartezeit ist eine Vorsichtsmassnahme und darf keine Runde aufhalten, weil ein
+  // Werkzeug fehlt.
+  const gruppeLaeuft = () => {
+    const res = spawnSync("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
+    if (res.error || res.status !== 0) return false;
+    return (res.stdout || "").trim() !== "";
+  };
+  while (gruppeLaeuft()) {
+    if (jetzt() >= frist) return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return true;
+}
 
 // Startet einen Prozess asynchron, sammelt stdout/stderr und (bei useStream)
 // parst stdout live zeilenweise. Eigener Timeout-Timer statt spawnSync-timeout,
@@ -1347,6 +2046,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     let timedOut = false;
     let settled = false;
     const timers = [];
+    // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
+    // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
+    const gestartet = Date.now();
 
     const done = (result) => {
       if (settled) return;
@@ -1410,11 +2112,21 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     });
 
     child.on("error", (err) => done({ status: null, signal: null, error: err, stdout, stderr }));
-    child.on("close", (code, signal) => {
+    child.on("close", async (code, signal) => {
       if (useStream && buf.trim()) emitVerbose(issueId, buf);
       const error = timedOut
         ? Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })
         : null;
+      // Erst messen, wenn niemand mehr arbeitet (Issue #668). Nach einem Zeitlimit
+      // entfaellt das: Dort hat killTree die Gruppe gerade erledigt, und ein weiteres
+      // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
+      if (!timedOut) {
+        const restMs = Math.max(0, timeoutMs - (Date.now() - gestartet));
+        const leer = await warteAufProzessgruppe(child.pid, restMs);
+        if (!leer) {
+          log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
+        }
+      }
       done({ status: code, signal, error, stdout, stderr });
     });
   });
@@ -1429,6 +2141,69 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
 // Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
 // (geht als NIGHT_KETTE_STUFE in die Kind-Umgebung, A14 — fuer die Test-Fakes und das
 // Protokoll; KIT_AGENT_MODEL bleibt daneben das alleinige Erkennungsmerkmal der Skills).
+//
+// Seit Issue #668 `vordergrundCheck`: sperrt der Session das `Monitor`-Werkzeug und gibt
+// ihr Bash-Zeitlimits in Hoehe des Rundenzeitlimits mit. Beides gehoert zusammen und
+// traegt darum EINEN Schalter — die Sperre allein liesse die Session im Vordergrund an
+// der Zehn-Minuten-Grenze des Bash-Werkzeugs sterben, die Zeitlimits allein aenderten
+// nichts daran, dass sie weiterhin wartend enden kann. Gesetzt wird er fuer die
+// Implementierungs-Runde; die Salvage-Session bekommt ihn nicht, ihr Prompt verbietet
+// lange Laeufe ohnehin.
+//
+// Seit Issue #710 der Kommando-Zweig (Plan #707, E9/E10): `kommando` (die Kommandozeile
+// der Stufe), `stufenName` (ihr Feld `name`) und `aufgabenstufe` (schwer, mittel, leicht)
+// — gesetzt, wenn dieses Paket ueber ein Programm des Projekts statt ueber `claude` laufen
+// soll. `aufgabenstufe` heisst bewusst nicht `stufe`: Das ist hier die Stufe der Nacht-Kette
+// und bleibt es (E20). Ohne `kommando` aendert sich nichts.
+
+/**
+ * Womit eine Session startet: `{ cmd, cmdArgs }` fuer `runProcess()` (Issue #710).
+ *
+ * Drei Wege, und ihre Reihenfolge ist Teil der Sache:
+ *
+ *   1. `NIGHT_CLAUDE_CMD` — der Test-Hook. Er behaelt seinen Vorrang vor beiden anderen
+ *      Zweigen; die Testsuite ersetzt damit die ganze Session. Bleibt bewusst bei `sh`
+ *      (Issue #199): Die Fake-Skripte sind POSIX-Shell, und die night-Tests sind unter
+ *      Windows ohnehin ausgenommen (Issue #197).
+ *   2. `kommando` — das Programm der Stufe (Plan #707, E9). Der Auftrag steht als Argument
+ *      daneben und erreicht das Programm ueber `"$@"`; er wird **nie** in den Shell-String
+ *      eingesetzt. Eine Einsetzung waere die Einsetzungsluecke im eigenen Haus: Ein Auftrag
+ *      mit Anfuehrungszeichen oder Backtick liefe dann als Shell-Kommando.
+ *      `sh -c` statt einer eigenen Zerlegung der Kommandozeile (E17) — sie darf
+ *      Anfuehrungszeichen und fuehrende NAME=WERT-Zuweisungen tragen, und eine halbe
+ *      Nachbildung der Shell scheitert still am ersten Sonderfall. Unter Windows steht der
+ *      Zweig damit nicht zur Verfuegung; das faengt `stufeStartbar` vor dem Start ab.
+ *      `--model` entfaellt hier: Das Programm ist nicht `claude` und kennt das Flag nicht.
+ *   3. sonst `claude --model <name>` wie bisher.
+ *
+ * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
+ * darum in jedem der drei Wege.
+ */
+function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
+  if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
+  if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
+
+  const permArgs = args.yolo
+    ? ["--dangerously-skip-permissions"]
+    : ["--permission-mode", "acceptEdits"];
+  const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
+  // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
+  // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
+  // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
+  // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
+  //
+  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
+  // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
+  // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
+  // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
+  // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
+  const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
+  return {
+    cmd: "claude",
+    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs],
+  };
+}
+
 // Exportiert fuer die Kette und ihre Tests.
 export async function runSession(issueId, args, opts = {}) {
   const timeoutMs = process.env.NIGHT_TIMEOUT_MS
@@ -1438,24 +2213,23 @@ export async function runSession(issueId, args, opts = {}) {
   // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
   // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
   const prompt = opts.prompt || `/implement-next #${issueId}`;
+  // Das Modell dieser Session (Issue #665). `opts.model ?? args.model` statt eines
+  // Pflichtparameters: `runSession` ist exportiert und wird an mehreren Stellen mit
+  // `args` allein gerufen — die Kette behaelt so ohne Zutun das Modell des Laufs.
+  const modell = opts.model ?? args.model;
+  // Die Kommandozeile der Stufe (Issue #710). Leerer Text zaehlt wie nicht gesetzt: Eine
+  // Stufe ohne Programm ist keine Kommando-Stufe, und `sh -c ' "$@"'` startete gar nichts.
+  const kommando = alsText(opts.kommando);
+  // Die Selbstauskunft dieser Session (Plan #707, E10). Im Kommando-Zweig gibt es keinen
+  // Modellnamen, den man melden koennte — dort steht das Feld `name` der Stufe, ersatzweise
+  // `stufe-<schwer|mittel|leicht>`. Leer darf der Wert unter keinen Umstaenden sein:
+  // KIT_AGENT_MODEL ist das alleinige Erkennungsmerkmal des unbeaufsichtigten Laufs, und
+  // ohne Wert hielte sich jeder Skill dieser Session fuer beaufsichtigt.
+  const selbstauskunft = kommando
+    ? (alsText(opts.stufenName) || `stufe-${alsText(opts.aufgabenstufe) || "unbekannt"}`)
+    : modell;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
-  let cmd, cmdArgs;
-  if (testCmd) {
-    // Bleibt bewusst bei sh (Issue #199): Dieser Zweig ist ausschliesslich der
-    // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell. Ihn auf die
-    // Plattform-Shell umzustellen wuerde unter Windows nichts gewinnen — die Fakes
-    // selbst liefen dort trotzdem nicht. Die night-Tests sind deshalb unter Windows
-    // ausgenommen (Issue #197); der Produktivpfad unten ist davon nicht betroffen.
-    cmd = "sh";
-    cmdArgs = ["-c", testCmd];
-  } else {
-    const permArgs = args.yolo
-      ? ["--dangerously-skip-permissions"]
-      : ["--permission-mode", "acceptEdits"];
-    const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
-    cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", args.model, ...permArgs, ...streamArgs];
-  }
+  const { cmd, cmdArgs } = sessionStart({ testCmd, kommando, prompt, modell, args, opts });
   const res = await runProcess(cmd, cmdArgs, {
     issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
@@ -1465,17 +2239,43 @@ export async function runSession(issueId, args, opts = {}) {
     // Sessions machen bewusst keine Angabe.
     extraEnv: {
       NIGHT_PROMPT: prompt,
-      KIT_AGENT_MODEL: args.model,
+      // Derselbe Wert wie in --model (Issue #665): Der Aktivitaetsverlauf des Boards
+      // soll das Modell zeigen, mit dem wirklich gearbeitet wurde, nicht das des Laufs.
+      // Im Kommando-Zweig steht hier der Name der Stufe (Issue #710, E10) — nie leer.
+      KIT_AGENT_MODEL: selbstauskunft,
       ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
+      // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
+      // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
+      // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
+      // Testcontainers liegt darueber; die Session staerbe an der Uhr statt am Code.
+      // Das Rundenzeitlimit ist die richtige Obergrenze: Was laenger braucht, als die
+      // Runde hat, ist ohnehin verloren.
+      ...(opts.vordergrundCheck
+        ? { BASH_MAX_TIMEOUT_MS: String(timeoutMs), BASH_DEFAULT_TIMEOUT_MS: String(timeoutMs) }
+        : {}),
       ...opts.extraEnv,
     },
   });
   if (!testCmd && res.error?.code === "ENOENT") {
-    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    if (kommando) {
+      // Im Kommando-Zweig bedeutet ein ENOENT des Spawns allein, dass `sh` selbst fehlt —
+      // der Windows-Fall aus E17. Ein von der Shell nicht gefundenes Programm endet mit
+      // Exit 127 und ist bereits von `stufeStartbar` vor dem Start gefangen (E8).
+      //
+      // Darum kein `fail()` wie beim fehlenden claude-CLI: Der Aufrufer soll nach oben
+      // ausweichen koennen, statt den ganzen Lauf an einer Stufe zu verlieren, die nur
+      // dieses eine Paket betrifft.
+      res.startfehler = `die Shell "sh" fuer die Kommando-Stufe wurde nicht gefunden`;
+    } else {
+      fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    }
   }
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
+  // Jede Session einer Karte an genau einer Stelle verbucht (Issue #669): Implementierung,
+  // Salvage und alle Stufen der Kette laufen hier durch.
+  verbrauchErfassen(issueId, leseKennzahlen(res.stdout));
   return res;
 }
 
@@ -1659,9 +2459,12 @@ function runBuildChecksSync(cfg) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
-    if (res.status !== 0) return { ok: false, output };
+    // Das rote Kommando namentlich (Issue #668): Ohne es nennt die Stopp-Meldung nur,
+    // DASS die Checks rot waren. Im Protokoll zu #900 fehlte deshalb jede Spur davon,
+    // welcher der vier Checks versagt hat — und die Ursache liess sich nicht pruefen.
+    if (res.status !== 0) return { ok: false, output, rotesKommando: cmd };
   }
-  return { ok: true, output };
+  return { ok: true, output, rotesKommando: null };
 }
 
 // Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
@@ -1675,10 +2478,10 @@ function runBuildChecksSync(cfg) {
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
 function verifyChecksForSalvage(cfg) {
   const first = runBuildChecksSync(cfg);
-  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null };
+  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
 
   const fixCmd = (cfg.formatFixCommand || "").trim();
-  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null };
+  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
   // Wie oben: fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
@@ -1686,9 +2489,9 @@ function verifyChecksForSalvage(cfg) {
   spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
 
   const second = runBuildChecksSync(cfg);
-  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null };
+  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
   log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
-  return { ok: true, output: second.output, formatFixCmd: fixCmd };
+  return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
 }
 
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
@@ -1726,7 +2529,7 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
 
 // --- Config mit persoenlichen Overrides (Issue #207) ---
 
-// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs
+// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs und kit/einstellungen.mjs
 // (LOCAL_OVERRIDE_ALLOWLIST, mergeWorkflowConfig) — Aenderungen dort nachziehen.
 // board.mjs und night.mjs sind bewusst eigenstaendige Single-File-Tools ohne
 // gemeinsames Modul; geteilte Logik wird dupliziert und hier markiert.
@@ -1739,7 +2542,7 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope",
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide sind persoenlich ueberschreibbar — sonst koennte jemand seinen Claude-Reviewer
 // lokal setzen, seinen Kommando-Reviewer aber nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/board.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/board.mjs und kit/einstellungen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
@@ -1839,11 +2642,14 @@ function mischeBlattfelder(bisher, wert, blaetter, feld) {
 // Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
 export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   label: "kit:night",
+  varianteBLabel: "kit:durchziehen",
   planMin: 20,
   paketeMin: 15,
   reviewMin: 15,
   abdeckungMin: 10,
+  umsetzungMin: 120,
   kostenUsd: 50,
+  kostenUsdB: 150,
   korrekturrunden: 2,
 });
 
@@ -1862,7 +2668,11 @@ export function ladeKetteBudget(config) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
     budget.label = block.label.trim();
   }
-  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd", "korrekturrunden"]) {
+  if (block.varianteBLabel !== undefined) {
+    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
+    budget.varianteBLabel = block.varianteBLabel.trim();
+  }
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
@@ -1874,6 +2684,30 @@ export function ladeKetteBudget(config) {
     budget[feld] = wert;
   }
   return budget;
+}
+
+/**
+ * Die Budget-Felder, die nicht in `night.kette` stehen und deshalb aus den Defaults
+ * kommen (Issue #659), in der Reihenfolge von `ladeKetteBudget`.
+ *
+ * Eigene Funktion statt einer zweiten Rueckgabe von `ladeKetteBudget`: Deren Ergebnis ist
+ * exportiert und an Fixtures getestet, die Herkunft ist eine andere Frage.
+ */
+export function ketteBudgetDefaults(config) {
+  const block = config?.night?.kette ?? {};
+  return Object.keys(KETTE_BUDGET_DEFAULTS).filter((feld) => block[feld] === undefined);
+}
+
+/**
+ * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3): "B", wenn die Karte
+ * das Label aus `budget.varianteBLabel` traegt, sonst "A". Reine Funktion, nie ein
+ * Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
+ * ein leeres Label-Array und ein fehlendes `budget` ergeben alle "A".
+ */
+export function varianteVon(issue, budget) {
+  const label = budget?.varianteBLabel;
+  if (!label) return "A";
+  return (issue?.labels || []).includes(label) ? "B" : "A";
 }
 
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
@@ -2064,7 +2898,10 @@ async function runVorflugSession(args, prompt) {
   } else {
     const permArgs = args.yolo ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"];
     cmd = "claude";
-    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, ...permArgs];
+    // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
+    // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
+    // Befund-Block steht dann im Text des result-Ereignisses (siehe reviewerVorflug).
+    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, "--output-format", "stream-json", "--verbose", ...permArgs];
   }
   const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
     ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
@@ -2076,6 +2913,7 @@ async function runVorflugSession(args, prompt) {
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
+  verbrauchErfassen(null, leseKennzahlen(res.stdout));
   return { res, timeoutMs };
 }
 
@@ -2102,7 +2940,9 @@ async function reviewerVorflug(args, reviewers, trackerId) {
   if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   if (res.error) return gescheitert(res.error.message);
 
-  const roh = parseVorflugBefund(res.stdout);
+  // Im Strom steht der Befund im Text des result-Ereignisses; ohne Strom (Test-Fakes, eine
+  // CLI, die das Format ignoriert) ist stdout selbst der Text.
+  const roh = parseVorflugBefund(leseErgebnisText(res.stdout) ?? res.stdout);
   if (!roh) {
     return gescheitert(res.status === 0
       ? "die Vorflug-Session endete ohne auswertbaren Befund-Block"
@@ -2217,6 +3057,21 @@ function ketteBudgetLaden() {
   } catch (e) {
     fail(e.message, "zustand");
   }
+  KETTE_BUDGET_AUS_DEFAULT = ketteBudgetDefaults(config);
+}
+
+/**
+ * Die Protokollzeile zu den Budgets aus den Defaults (Issue #659), `null` ohne solche.
+ * Setzt `night.kette` kein einziges Feld, sagt die Zeile das dazu: Ob der Block fehlt oder
+ * leer ist, macht fuer den Leser keinen Unterschied — beide Male gilt kein eigener Wert.
+ */
+function budgetDefaultsZeile(budget, ausDefault) {
+  if (ausDefault.length === 0) return null;
+  const werte = ausDefault.map((feld) => `${feld}=${budget[feld]}`).join(", ");
+  const ganz = ausDefault.length === Object.keys(KETTE_BUDGET_DEFAULTS).length
+    ? " — night.kette in .claude/workflow.config.json fehlt oder setzt kein Feld."
+    : "";
+  return `Budget der Kette aus den Defaults: ${werte}${ganz}`;
 }
 
 /**
@@ -2261,6 +3116,27 @@ function settingsVorflug(args) {
   fail(meldung, "zustand");
 }
 
+/**
+ * Je belegter Stufe eine Pruefung ohne Netz, ob sie startbar ist (Issue #712, Plan #707).
+ *
+ * Dieselbe `stufeStartbar` wie vor jedem Paket, hier nur einmal vor der ersten Kette —
+ * eine Probe-Session je Stufe kostete Zeit und Geld fuer eine Aussage, die `laufeRunde`
+ * ohnehin vor jedem Paket neu erhebt. Kein `fail`, auch nicht ausserhalb des Dry-Runs: Eine
+ * nicht erreichbare Stufe weicht bei den betroffenen Paketen nach oben aus (oder scheitert
+ * ohne Session), das ist kein Grund, die Nacht abzusagen (Kriterium 11). Bei nicht aktiver
+ * Einstellung schreibt sie keine Zeile (Kriterium 12).
+ */
+function stufenVorflug() {
+  const einstellung = stufenEinstellung(config);
+  if (!einstellung.aktiv) return;
+  for (const stufe of STUFEN_ORDNUNG) {
+    const eintrag = einstellung.stufen[stufe];
+    if (!eintrag) continue;
+    const { ok, grund } = stufeStartbar(eintrag, config.night?.modelle);
+    if (!ok) log(`  WARNUNG: Stufe ${stufe} nicht startbar: ${grund}`);
+  }
+}
+
 /** Die beiden Zustands-Vorfluege der Implementierung: kein Absturzrest, sauberer Baum. */
 function zustandsVorflug() {
   const inProgress = board("issue", "list", "--status", "in_progress");
@@ -2283,6 +3159,7 @@ export function vorbereiten(args) {
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
+  CONFIG_PATH = configPath;
   if (args.kette) ketteBudgetLaden();
 
   const jetzt = new Date();
@@ -2327,6 +3204,9 @@ export function vorbereiten(args) {
   if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
     fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
   }
+  // Nach den bestehenden Vorfluegen (Issue #712): eine Warnzeile je nicht erreichbarer
+  // Stufe, ohne den Lauf aufzuhalten.
+  stufenVorflug();
 
   // Erst hinter dem Vorflug (Issue #486): Ein Baum, der schon vor dem Lauf unsauber
   // war, soll weiterhin die alte Meldung bekommen und nicht eine, die die eben
@@ -2491,12 +3371,16 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  *
  * Die Reihenfolge ist die Antwort: Erst das Praefix (das Kennzeichen gilt nur am
  * Fachplan), dann die Spalte (E4: ausserhalb von Backlog ist ein Versehen), dann
- * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen).
+ * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen),
+ * zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht hinter
+ * `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund behaelt:
+ * Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
  */
-function kettenAusschluss(issue) {
+function kettenAusschluss(issue, kettenLabel) {
   if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+  if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
 }
 
@@ -2513,7 +3397,7 @@ export function waehleKettenKandidaten(issues, label, max) {
   const liegengeblieben = [];
   for (const issue of issues || []) {
     if (!(issue?.labels || []).includes(label)) continue;
-    const grund = kettenAusschluss(issue);
+    const grund = kettenAusschluss(issue, label);
     if (grund !== null) {
       uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
       continue;
@@ -2604,10 +3488,23 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs) {
   // Das Kostenbudget wird hier nur gemerkt: Die Stufe verbucht erst, was die Session
   // hinterlassen hat (den Plan, die Korrektur), und bricht dann ab — sonst stuende ein
   // angelegter Plan nicht im Ergebnisstand.
-  if (kette.kosten.kostenSumme > kette.budget.kostenUsd && !kette.kostenGrund) {
-    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${kette.budget.kostenUsd} $ nach der Stufe ${stufe}`;
+  const deckel = kettenKostendeckel(kette);
+  if (kette.kosten.kostenSumme > deckel && !kette.kostenGrund) {
+    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ nach der Stufe ${stufe}`;
   }
   return { ausgang: "fertig", dauerMs, kennzahlen, res };
+}
+
+/**
+ * Der Kostendeckel DIESER Kette (Plan #691): unter Variante B `kostenUsdB` an der Stelle
+ * von `kostenUsd`.
+ *
+ * Der Deckel gilt der ganzen Kette und nicht nur der Umsetzungsstufe: Eine B-Kette, die
+ * in der Plan-Stufe am Deckel einer A-Nacht abbraeche, erreichte die Umsetzung nie — und
+ * der groessere Betrag stuende in der Config fuer eine Stufe, die dann nicht laeuft.
+ */
+function kettenKostendeckel(kette) {
+  return kette.variante === "B" ? kette.budget.kostenUsdB : kette.budget.kostenUsd;
 }
 
 /** Der Abbruch wegen Kosten — `null`, solange das Budget reicht. */
@@ -2688,6 +3585,44 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   }
 }
 
+/** Der Anker des Vermerks, den ein Abbruch der Review-Stufe am Plandokument hinterlaesst. */
+export const REVIEW_REST_ANKER = "## Review unvollstaendig";
+
+/**
+ * Der Vermerk am Plan, wenn die Review-Stufe zwischen Befunden und Einarbeitung abbricht
+ * (Issue #654).
+ *
+ * Die Einarbeitung steht am Ende der Stufe, hinter Reviewer-Laeufen und Befunde-Kommentar
+ * — ein Abbruch trifft deshalb fast immer genau diese Luecke. Zurueck bleibt der teuerste
+ * aller Zustaende: Die Pruefung ist bezahlt, ihre Befunde stehen am Board, der Body ist
+ * unveraendert und traegt keinen Marker. Wer das Dokument spaeter sichtet, sieht ein
+ * ungeprueftes und prueft erneut; genau so blieb Issue #316 einen Monat lang liegen.
+ *
+ * Ein groesseres Zeitbudget verschiebt die Grenze, es beseitigt sie nicht — eine Spur am
+ * Dokument schon. Sie aendert den Ausgang nicht: Der Abbruch bleibt ein Abbruch mit
+ * seinem Grund, die Spur ist Hinweis, kein Zustand.
+ */
+function reviewRestVermerken(kette, planId, grund) {
+  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [
+    REVIEW_REST_ANKER,
+    "",
+    `Kette ${LAUF_STEMPEL ?? "ohne Stempel"}, Stufe review: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an diesem Dokument.`,
+    "",
+    `Die Einarbeitung fehlt — der Lauf endete davor (${grund}) —, und der Body ist deshalb unveraendert: Er traegt keinen Plan-Review-Marker, obwohl geprueft wurde.`,
+    "",
+    `Weg nach vorn: /issue-review #${planId} von Hand fahren.`,
+    "",
+  ].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    board("issue", "comment", planId, "--text-file", pfad);
+    log(`  Review #${planId} abgebrochen, Befunde ohne Einarbeitung — Vermerk '${REVIEW_REST_ANKER}' an Plan #${planId} geschrieben.`);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
 /**
  * Stufe Review: /issue-review am Plan, Halt an kit:klaeren (Plan #638, A8, A16).
  */
@@ -2700,7 +3635,13 @@ async function stufeReview(kette, planId) {
   const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
-  if (s.ausgang !== "fertig") return s;
+  if (s.ausgang !== "fertig") {
+    // Auch beim Abbruch wird nachgesehen, was in der bezahlten Zeit entstanden ist.
+    const rest = board("issue", "get", planId);
+    stand.marker = /^\s*Plan-Review:\s*\S/m.test(rest.body || "");
+    if (!stand.marker && neueKommentare(vorher, rest).length > 0) reviewRestVermerken(kette, planId, s.grund);
+    return s;
+  }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   const nachher = board("issue", "get", planId);
   stand.marker = /^\s*Plan-Review:\s*\S/m.test(nachher.body || "");
@@ -2801,15 +3742,265 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   return { ausgang: "fertig" };
 }
 
+// --- Stufe Umsetzung, nur unter Variante B (Plan #691, E4-E8, E11, E14, E16-E18) ---
+
+/** Der Kommentar an einem selbst gezogenen Paket, das nicht in In review endet (E7). */
+const UMSETZUNG_RUECKSTELLUNG = "Nacht-Kette, Variante B: Der Runner hatte dieses Paket fuer die Umsetzungsstufe "
+  + "selbst nach Ready gezogen; die Runde endete nicht in In review. Es geht zurueck nach Backlog — ein Paket in "
+  + "Ready waere fuer die naechste Nacht und fuer /implement-ready ein GO, das niemand gegeben hat.";
+
+/** Der Grund, mit dem ein bereits von der Session zurueckgelegtes Paket im Bericht steht. */
+const UMSETZUNG_SCHON_ZURUECK = "die Runde endete ohne In-review-Ergebnis; die Session hatte das Paket selbst zurueckgelegt";
+
+/**
+ * Bucht die Kosten der eben gelaufenen Runde auf die Kette.
+ *
+ * Die Kennzahlen stehen in der Einheit, die `laufeRunde` ohnehin anlegt — der
+ * Session-Strom wird kein zweites Mal gelesen, und `laufeRunde` bleibt unveraendert (E8).
+ * Ohne Ergebnisstand zaehlt die Runde als nicht gemessen, wie jede Session ohne Kennzahl.
+ */
+function rundeVerbuchen(kette, id) {
+  const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
+  kostenAddieren(kette.kosten, einheit?.kennzahlen);
+}
+
+/**
+ * Der Endstand jedes selbst gezogenen Pakets — die Rueckstellpflicht aus E7.
+ *
+ * Genau eine Stelle entscheidet, in welche Liste ein gezogenes Paket faellt, und sie
+ * fragt dafuer das Board, nicht den Rueckgabewert der Runde: Sie laeuft auch nach einem
+ * Wurf und nach einem harten Stopp, wo es keinen Rueckgabewert gibt.
+ *
+ * Was in Backlog liegt, bleibt liegen — ein angehaltenes Paket hat die Session selbst
+ * dorthin geschoben und kommentiert, ein zweiter Kommentar waere die zweite Wahrheit
+ * ueber denselben Vorgang. Pakete, die der Runner nicht gezogen hat, sind hier nie
+ * dabei. `boardRoh` statt `board`: Ein toter Tracker darf diesen Aufraeumschritt nicht
+ * in einen Prozessabbruch verwandeln, der den eigentlichen Fehler verschluckt.
+ *
+ * Ein umgesetztes Paket traegt zusaetzlich `stufe`, `stufeVerwendet` und `modell` —
+ * dieselben Werte, die `laufeRunde` in der Paket-Einheit ablegt (Issue #713). Die
+ * Paket-Einheit steht in `LAUF.einheiten`; ohne sie (Dry-Run, toter Ergebnisstand)
+ * tragen alle drei `null`.
+ */
+function paketeAbschliessen(stand, gezogen) {
+  for (const id of gezogen) {
+    const status = leseKarte(id)?.status ?? null;
+    if (status === "in_review") {
+      const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
+      stand.umgesetzt.push({
+        id, stufe: einheit?.stufe ?? null, stufeVerwendet: einheit?.stufeVerwendet ?? null, modell: einheit?.modell ?? null,
+      });
+      continue;
+    }
+    if (stand.angehalten.includes(id)) continue;
+    if (status === "backlog") {
+      stand.zurueckgestellt.push({ id, grund: UMSETZUNG_SCHON_ZURUECK });
+      continue;
+    }
+    stand.zurueckgestellt.push({ id, grund: `die Runde endete in ${status ?? "unbekanntem Zustand"} statt in In review` });
+    boardRoh("issue", "comment", id, "--text", UMSETZUNG_RUECKSTELLUNG);
+    const move = boardRoh("issue", "move", id, "backlog");
+    log(move.status === 0
+      ? `  Paket #${id} nach Backlog zurueckgestellt — es steht nicht in In review.`
+      : `  Paket #${id} liess sich nicht zurueckstellen (${move.text.slice(0, 200)}) — bitte morgens sichten.`);
+  }
+}
+
+/** Fuehrt Pakete als nicht begonnen mit ihrem Grund — im Bericht und im Protokoll. */
+function paketeNichtBegonnen(stand, ids, grund) {
+  for (const id of ids) {
+    stand.nichtBegonnen.push({ id: String(id), grund });
+    log(`  Paket #${id} nicht begonnen: ${grund}.`);
+  }
+}
+
+/**
+ * Der Grund, aus dem vor dem naechsten Paket keine Session mehr startet — `null`,
+ * solange beide Budgets reichen.
+ *
+ * Die Mindestrestzeit ist dieselbe wie bei den erzeugenden Stufen: Was darunter liegt,
+ * reicht fuer kein Arbeitspaket, und eine Session, die sofort ins Limit laeuft, kostet
+ * nur. Der Kostendeckel ist unter Variante B `kostenUsdB`.
+ */
+function umsetzungBudgetGrund(kette, lauf) {
+  const restMs = lauf.budgetMs - (Date.now() - lauf.stufeStart);
+  if (restMs < KETTE_MINDEST_REST_MS) {
+    return `Zeitbudget umsetzung (${kette.budget.umsetzungMin} min) erschoepft, bevor eine weitere Session starten konnte`;
+  }
+  const deckel = kettenKostendeckel(kette);
+  if (kette.kosten.kostenSumme > deckel) {
+    return `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ erschoepft`;
+  }
+  return null;
+}
+
+/**
+ * Ein Paket der Stufe umsetzung: pruefen, ziehen, Runde fahren, verbuchen.
+ *
+ * Rueckgabe ist `null`, solange die Stufe weiterlaufen kann — sonst der Grund ihres
+ * Abbruchs. Das Paket wird erst UNMITTELBAR vor seiner Session gezogen (E5), und die
+ * Gates laufen VOR dem Zug (E6): Ein angehaltenes oder gescheitertes Paket steht in
+ * Backlog, damit ist jede `Issue #N`-Referenz auf es unerfuellt und die abhaengigen
+ * fallen hier von selbst heraus. Bei `issueReview.requiredBeforeReady` faellt so jedes
+ * Paket heraus und die Kette auf Variante A zurueck (E18).
+ */
+async function umsetzePaket(kette, id, lauf, zaehler) {
+  const karte = leseKarte(id);
+  if (!karte) {
+    paketeNichtBegonnen(lauf.stand, [id], "die Karte war am Board nicht lesbar");
+    return null;
+  }
+  const gate = pruefeIssueGates(karte);
+  if (gate) {
+    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
+    return null;
+  }
+
+  board("issue", "move", id, "ready");
+  lauf.gezogen.add(id);
+  log(`  Paket #${id} nach Ready gezogen — Session ${zaehler} der Stufe umsetzung.`);
+  // Test-Hook wie NIGHT_MELDEN_ERZWINGEN: Von aussen laesst sich hier sonst keine
+  // Ausnahme ausloesen, und der Wurf-Pfad der Rueckstellpflicht bliebe ungeprueft —
+  // genau der Pfad, der ein Paket in Ready zuruecklassen wuerde.
+  if (process.env.NIGHT_KETTE_WURF === id) throw new Error(`Test-Hook NIGHT_KETTE_WURF bei Paket #${id}`);
+
+  const ausgang = await laufeRunde({ id, title: karte.title, labels: karte.labels }, kette.args, lauf.salvageAttempted, lauf.pruefungen);
+  rundeVerbuchen(kette, id);
+  if (ausgang === "angehalten") lauf.stand.angehalten.push(id);
+  return ausgang === "hardStop" ? `Stufe umsetzung: harter Stopp in der Runde zu Paket #${id}` : null;
+}
+
+/** Die Pakete der Reihe nach (E16), bis eines hart stoppt oder ein Budget endet. */
+async function umsetzungSchleife(kette, paketIds, lauf) {
+  for (let i = 0; i < paketIds.length; i++) {
+    const budgetGrund = umsetzungBudgetGrund(kette, lauf);
+    if (budgetGrund) {
+      paketeNichtBegonnen(lauf.stand, paketIds.slice(i), budgetGrund);
+      break;
+    }
+    const stopp = await umsetzePaket(kette, String(paketIds[i]), lauf, `${i + 1}/${paketIds.length}`);
+    if (stopp) {
+      paketeNichtBegonnen(lauf.stand, paketIds.slice(i + 1), "der Lauf ist an einem frueheren Paket hart gestoppt");
+      return { ausgang: "abgebrochen", grund: stopp };
+    }
+  }
+  return { ausgang: "fertig" };
+}
+
+/**
+ * Stufe Umsetzung: die Pakete des gekennzeichneten Fachplans in derselben Nacht bauen.
+ *
+ * Sie baut zuerst den Worktree ab und arbeitet in der Hauptkopie (E4) — seine Commits
+ * traegen kein Ref und waeren am Morgen verloren. Die Pakete kommen aus
+ * `kette.stufen.pakete.ids` (E16); gewertet wird mit `laufeRunde` unveraendert (E8), und
+ * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
+ *
+ * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
+ * Pakete stehen als nicht begonnen im Bericht) und bei einem gehaltenen Umsetzungs-Lock
+ * (Issue #696, der Rueckfall auf Variante A), `angehalten` bei mindestens einem
+ * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
+ * Stopp und bei einer unsauberen Hauptkopie vor dem ersten Paket.
+ */
+async function stufeUmsetzung(kette, paketIds) {
+  const { budget } = kette;
+  const stufeStart = Date.now();
+  const stand = { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
+  kette.stufen.umsetzung = stand;
+  const lauf = {
+    stand, gezogen: new Set(), salvageAttempted: new Set(), pruefungen: [],
+    stufeStart, budgetMs: budget.umsetzungMin * 60 * 1000,
+  };
+
+  // Der Lock steht vor allem anderen — auch vor dem Worktree-Abbau und vor dem
+  // Sauberkeits-Guard. Haelt ihn ein lebender Lauf, verhaelt sich die Kette wie eine unter
+  // Variante A und laesst den Worktree bis zu ihrem eigenen Ende stehen. Und eine
+  // Hauptkopie, in der gerade ein anderer Lauf baut, ist erwartbar unsauber: Der Lock ist
+  // dafuer die genauere Auskunft als "nicht sauber" und der freundlichere Ausgang.
+  const lock = umsetzungLockNehmen(kette.repoRoot);
+  if (!lock.ok) {
+    paketeNichtBegonnen(stand, paketIds, lock.grund);
+    stand.dauerMs = Date.now() - stufeStart;
+    log(`  Stufe umsetzung ausgelassen: ${lock.grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.`);
+    return { ausgang: "fertig" };
+  }
+  if (lock.hinweis) log(`  ${lock.hinweis}`);
+
+  try {
+    if (kette.wt) {
+      worktreeEntfernen(kette.wt, kette.repoRoot);
+      kette.wt = null;
+      log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
+    }
+    log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
+
+    // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
+    // Rest-Guard und Dirty-Guard in `werteRunde`.
+    if (!gitClean(kette.repoRoot)) {
+      const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
+      paketeNichtBegonnen(stand, paketIds, grund);
+      stand.dauerMs = Date.now() - stufeStart;
+      return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
+    }
+
+    let ergebnis = { ausgang: "fertig" };
+    try {
+      ergebnis = await umsetzungSchleife(kette, paketIds, lauf);
+    } finally {
+      // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
+      paketeAbschliessen(stand, lauf.gezogen);
+      stand.dauerMs = Date.now() - stufeStart;
+      for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+    }
+    if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
+      // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
+      // `waehleKettenKandidaten` aus und blockierte die naechste Kette (E17).
+      return {
+        ausgang: "angehalten",
+        grund: `Stufe umsetzung: ${stand.angehalten.map((id) => "#" + id).join(", ")} haelt an einer Stopp-Frage`,
+        ohneHaltAmFachplan: true,
+      };
+    }
+    return ergebnis;
+  } finally {
+    // Auch nach einem Wurf aus der Stufe heraus: Ein liegengebliebener Lock haelt die
+    // naechste Nacht ab, bis sein Prozess als tot erkannt wird.
+    lock.freigeben();
+  }
+}
+
+/** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
+export const UEBERHOLT_UNBESTAETIGT_GRUND = "der Kommentar wurde geschrieben, war danach aber an der Karte nicht auffindbar";
+
 /**
  * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
  * #638, A8): ein Kommentar je Karte, kein Label, kein Move.
+ *
+ * Jeder Kommentar wird danach einmal zurueckgelesen (Issue #653). Ein erfolgreicher
+ * POST ist kein Beweis, dass der Kommentar am Board steht — am 2026-09-14 fehlte er an
+ * Plan #577, obwohl der Bericht ihn auswies. Ein Bericht, der eine Handlung behauptet,
+ * die niemand sieht, ist schlimmer als keiner: Wer ihn liest, sieht nicht nach.
+ *
+ * Nicht bestaetigt heisst getrennt ausweisen, nicht abbrechen: Der Kommentar ist
+ * Hinweis, kein Gate. Rueckgabe sind beide Listen — die Funktion setzt nichts an
+ * `kette`, sie wird an genau einer Stelle gerufen.
  */
 function aeltereUeberholen(kette, aeltere, neuerPlan) {
+  const ueberholt = [];
+  const ueberholtUnbestaetigt = [];
   for (const id of aeltere) {
-    board("issue", "comment", id, "--text", `Ueberholt durch Plan #${neuerPlan} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
-    log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+    // Der Anker steht am Zeilenanfang des geschriebenen Textes und traegt den
+    // Kettenstempel nicht — er bleibt ueber Laeufe hinweg wiedererkennbar.
+    const anker = `Ueberholt durch Plan #${neuerPlan}`;
+    board("issue", "comment", id, "--text", `${anker} (Kette ${LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
+    if (kommentareVon(board("issue", "get", id)).some((k) => k.includes(anker))) {
+      ueberholt.push(id);
+      log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+    } else {
+      ueberholtUnbestaetigt.push({ id, grund: UEBERHOLT_UNBESTAETIGT_GRUND });
+      log(`  Plan #${id}: der Ueberholt-Kommentar ist am Board nicht auffindbar — im Bericht als nicht bestaetigt gefuehrt.`);
+    }
   }
+  return { ueberholt, ueberholtUnbestaetigt };
 }
 
 /**
@@ -2850,6 +4041,7 @@ export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die
 const BERICHT_DATEI_PRAEFIX = "night-bericht-";
 const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
 const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
+const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = /^ {0,3}###\s*Entscheidungen\s*$/i;
 const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
 
 function minutenText(ms) {
@@ -2889,10 +4081,82 @@ function entscheidungsZeilen(body) {
   return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
 }
 
+/**
+ * Die Aufzaehlungspunkte aus `### Entscheidungen` in den Kommentaren eines Pakets —
+ * Format des Abschlussberichts (`skills/implement-ready/SKILL.md`, Issue #697). Ein
+ * Paket ohne diesen Block und eines ganz ohne Kommentare liefern beide `[]`, kein Wurf.
+ */
+function entscheidungenAusKommentaren(paket) {
+  const eintraege = [];
+  for (const kommentar of kommentareVon(paket)) eintraege.push(...punkteErsterEbene(kommentar, ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT));
+  return eintraege;
+}
+
+/** `#<id> <Titel>` fuer den Bericht — nur `#<id>`, wenn die Karte ihren Titel nicht mitbringt. */
+function paketBezeichnung(pakete, id) {
+  const titel = pakete.find((k) => String(k.id) === String(id))?.title;
+  return titel ? `#${id} ${titel}` : `#${id}`;
+}
+
+/**
+ * Der Abschnitt `### Umsetzung`, ausschliesslich unter Variante B (Issue #697): die drei
+ * Listen umgesetzt / angehalten / nicht begonnen, jede mit `keine` statt Weglassen. Die
+ * Rueckstellungen (`zurueckgestellt` — gezogen, aber ohne In-review-Ergebnis) zaehlen im
+ * Bericht zu "nicht begonnen": Kriterium 4 des Fachplans #681 nennt genau drei Zustaende,
+ * und fuer den Menschen zaehlt an dieser Stelle nur, ob ein Paket in Review liegt.
+ */
+function berichtUmsetzungMitGrund(pakete, id, grund) {
+  const bezeichnung = paketBezeichnung(pakete, id);
+  return `${bezeichnung} (${grund})`;
+}
+
+/**
+ * Stufe und Modell hinter einem umgesetzten Paket, als Klammerzusatz (Issue #713).
+ *
+ * Ein Eintrag ohne `stufe` — auch ein reiner Id-String aus einem Ergebnisstand vor
+ * dieser Aenderung, dem die neuen Felder ganz fehlen — erscheint als "ohne Stufe"; die
+ * Funktion wirft dafuer nie. Wich der Lauf auf eine hoehere Stufe aus, stehen beide
+ * Stufen da, wie in `rundenHinweis`.
+ */
+function berichtUmsetzungStufe(eintrag) {
+  const stufe = eintrag && typeof eintrag === "object" ? eintrag.stufe : null;
+  if (!stufe) return "ohne Stufe";
+  const { stufeVerwendet, modell } = eintrag;
+  const stufeText = stufeVerwendet && stufeVerwendet !== stufe
+    ? `Aufgabenstufe ${stufe}, ueber Stufe ${stufeVerwendet}`
+    : `Aufgabenstufe ${stufe}`;
+  return modell ? `${stufeText}, Modell ${modell}` : stufeText;
+}
+
+function berichtUmsetzungEintrag(pakete, eintrag) {
+  const id = eintrag && typeof eintrag === "object" ? eintrag.id : eintrag;
+  return `${paketBezeichnung(pakete, id)} (${berichtUmsetzungStufe(eintrag)})`;
+}
+
+function berichtUmsetzung(einheit, pakete) {
+  const stand = einheit.stufen?.umsetzung ?? {};
+  const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
+  const umgesetzt = stand.umgesetzt ?? [];
+  const umgesetztText = umgesetzt.length > 0
+    ? `${umgesetzt.map((e) => berichtUmsetzungEintrag(pakete, e)).join(", ")}.`
+    : "keine";
+  const nichtBegonnen = [...(stand.nichtBegonnen ?? []), ...(stand.zurueckgestellt ?? [])];
+  const nichtBegonnenText = nichtBegonnen.length > 0
+    ? `${nichtBegonnen.map((e) => berichtUmsetzungMitGrund(pakete, e.id, e.grund)).join(", ")}.`
+    : "keine";
+  return [
+    "### Umsetzung", "",
+    `- umgesetzt: ${umgesetztText}`,
+    `- angehalten: ${liste(stand.angehalten ?? [])}`,
+    `- nicht begonnen: ${nichtBegonnenText}`,
+    "",
+  ];
+}
+
 function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const p = stufen.plan;
-  const zeilen = [];
+  const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
   if (p?.id) {
     const pruefer = String(plan?.body || "").match(/^\s*Plan-Review:\s*(.+?)\s*$/m)?.[1] ?? "keiner";
     const kosten = p.kennzahlen?.kostenUsd;
@@ -2903,12 +4167,8 @@ function berichtStufen(einheit, plan, pakete) {
     zeilen.push("- Plan: keiner entstanden.");
   }
   const ids = stufen.pakete?.ids ?? [];
-  const paketText = (id) => {
-    const titel = pakete.find((k) => String(k.id) === String(id))?.title;
-    return titel ? `#${id} ${titel}` : `#${id}`;
-  };
   zeilen.push(ids.length > 0
-    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map(paketText).join(", ")}.`
+    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.`
     : "- Pakete: keine.");
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
   if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
@@ -2927,9 +4187,20 @@ function berichtAbgelehnt(einarbeitung) {
  * den gelesenen Karten, damit sie an Fixtures pruefbar ist; `jetzt` nur fuer Tests.
  *
  * Die Entscheidungen der Nacht sind die Aufzaehlungspunkte erster Ebene aus den
- * Architektonischen Entscheidungen des Plans, woertlich, und die `Entscheidung:`-Zeilen
- * aus dem Kontext jedes Pakets — fortlaufend nummeriert, mit dem Ort in Klammern.
+ * Architektonischen Entscheidungen des Plans, woertlich, die `Entscheidung:`-Zeilen aus
+ * dem Kontext jedes Pakets und die `### Entscheidungen`-Bloecke aus dessen Kommentaren
+ * (Abschlussbericht, Issue #697) — fortlaufend nummeriert, mit dem Ort in Klammern.
  */
+/** Alle Entscheidungen der Nacht, woertlich, mit dem Ort in Klammern — siehe `berichtBauen`. */
+function berichtEntscheidungen(stufen, plan, pakete) {
+  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
+  for (const k of pakete) {
+    for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+    for (const e of entscheidungenAusKommentaren(k)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  }
+  return entscheidungen;
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
 } = {}) {
@@ -2937,9 +4208,9 @@ export function berichtBauen(einheit, {
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
   z.push("### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "");
   z.push("### Stufen", "", ...berichtStufen(einheit, plan, pakete), "");
+  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete));
 
-  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
-  for (const k of pakete) for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
+  const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
   z.push("### Entscheidungen der Nacht", "");
   if (entscheidungen.length === 0) z.push("- Keine.");
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
@@ -2965,6 +4236,9 @@ export function berichtBauen(einheit, {
     "");
   if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
   if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
+  if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
+    z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
+  }
   z.push(BERICHT_SCHLUSS, "");
   return z.join("\n");
 }
@@ -3036,6 +4310,78 @@ function ketteNichtGestartet(kandidaten, grund) {
   }
 }
 
+/**
+ * Der einmalige Hinweis an einer Anforderung, die die Kette wegen fehlender Pruefung
+ * abgelehnt hat (Fachplan #702, Kriterium 4; Issue #719).
+ *
+ * Grund und naechster Schritt stehen im Wortlaut des Protokolls: Wer morgens die Karte
+ * liest, soll nicht erst im Protokoll nachsehen muessen. Einmalig wird der Kommentar
+ * ueber den Anker — die Karte wird vorher zurueckgelesen, wie die Kette es mit ihren
+ * Ueberholt-Kommentaren haelt (Plan #716, E3).
+ *
+ * Nicht lesbar heisst nicht schreiben: Ohne die vorhandenen Kommentare ist nicht zu
+ * entscheiden, ob der Hinweis schon dasteht, und ein Lauf, der das jede Nacht neu
+ * versucht, haengte der Karte den Hinweis mehrfach an. Ein gescheiterter Board-Aufruf
+ * wird protokolliert und haelt den Lauf nicht auf — der Kommentar ist Hinweis, kein Gate.
+ */
+function pruefungFehltKommentieren(u) {
+  const karte = leseKarte(u.id);
+  if (!karte) {
+    log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
+    return;
+  }
+  if (kommentareVon(karte).some((k) => k.includes(KETTE_UNGEPRUEFT_ANKER))) {
+    log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
+    return;
+  }
+  const res = boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
+  log(res.status === 0
+    ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
+    : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
+}
+
+/**
+ * Der Hinweis, dass das Board `review:fertig` offenbar gar nicht kennt (Fachplan #702,
+ * Kriterium 8; Plan #716, E4).
+ *
+ * Ob das Kennzeichen am Board definiert ist, kann der Runner nicht fragen — kein
+ * Kommando liest die dort angelegten Labels. Der Hinweis entsteht deshalb als Heuristik
+ * ueber die ohnehin geholte Liste: Traegt keine einzige Karte das Label, ist er in
+ * beiden Lesarten wahr, und sein Text nennt beide Wege.
+ *
+ * Er erscheint nur, wenn mindestens eine Anforderung deshalb abgelehnt wurde — ohne
+ * Adressaten waere er Rauschen in jedem Protokoll. In Vorschau und Lauf gleichermassen:
+ * Er schreibt nichts, er sagt nur etwas.
+ */
+function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
+  if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
+  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jede fachliche Anforderung abgelehnt.`);
+  log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
+}
+
+/**
+ * Die uebersprungenen Karten einer Nacht: Protokollzeile und Einheit im Ergebnisstand
+ * wie bisher, dazu der Hinweis an den wegen fehlender Pruefung abgelehnten Anforderungen
+ * (Issue #719).
+ *
+ * Beides steht VOR dem Reviewer-Vorflug (Plan #716, E7): Der Vorflug betrifft nur die
+ * laufenden Ketten; scheitert er, sollen die abgelehnten Fachplaene ihren Kommentar
+ * trotzdem schon haben.
+ */
+function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
+  // Erkannt am festen Praefix, nicht am ganzen Grundtext: Der traegt je Karte ihre
+  // Nummer und ist deshalb kein Vergleichswert.
+  const abgelehnt = uebersprungen.filter((u) => String(u.grund).startsWith(UNGEPRUEFT_PRAEFIX));
+  for (const u of uebersprungen) {
+    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+    // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
+    // auch dort, er ist nur eine Protokollzeile.
+    if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
+  }
+  hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
+}
+
 /** Eine Karte ohne harten Stopp — null, wenn der Tracker sie nicht liefert. */
 function leseKarte(id) {
   const res = boardRoh("issue", "get", String(id));
@@ -3056,8 +4402,9 @@ function berichtFuerKette(kette, einheit, ergebnis) {
 }
 
 /**
- * Die vier Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
- * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar).
+ * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
+ * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
+ * hinter `abdeckung` die fuenfte Stufe `umsetzung` dazu (Plan #691, E12).
  */
 async function stufenDerKette(kette) {
   const plan = await stufePlan(kette);
@@ -3068,6 +4415,11 @@ async function stufenDerKette(kette) {
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
   const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
+  if (kette.variante !== "B") return { ausgang: "fertig" };
+  // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
+  // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft.
+  const umsetzung = await stufeUmsetzung(kette, kette.stufen.pakete?.ids ?? []);
+  if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
   return { ausgang: "fertig" };
 }
 
@@ -3083,6 +4435,7 @@ async function laufeEineKette(kandidat, nummer, args) {
   const kette = {
     F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
+    variante: varianteVon(kandidat, KETTE_BUDGET),
   };
   log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
@@ -3106,14 +4459,21 @@ async function laufeEineKette(kandidat, nummer, args) {
   }
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
-    if (ergebnis.ausgang === "angehalten") haltAmFachplan(kette, ergebnis);
+    // `ohneHaltAmFachplan` setzt allein die Stufe umsetzung (E17): Dort traegt das
+    // angehaltene PAKET bereits kit:klaeren, und ein zweites am Fachplan schloesse ihn
+    // aus der naechsten Kette aus.
+    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmFachplan(kette, ergebnis);
     const neuerPlan = kette.stufen.plan?.id;
-    if (neuerPlan && aeltere.length > 0) aeltereUeberholen(kette, aeltere, neuerPlan);
+    const ueberholung = neuerPlan && aeltere.length > 0
+      ? aeltereUeberholen(kette, aeltere, neuerPlan)
+      : { ueberholt: [], ueberholtUnbestaetigt: [] };
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
       ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      variante: kette.variante,
       stufen: kette.stufen,
-      ...(aeltere.length > 0 && neuerPlan ? { ueberholt: aeltere } : {}),
+      ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
+      ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
       ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
       kostenUsd: kette.kosten.kostenSumme,
       kostenUnbekannt: kette.kosten.kostenUnbekannt,
@@ -3148,16 +4508,15 @@ function warneVorAltenLabels(issues) {
 export async function laufeKette(args) {
   const budget = KETTE_BUDGET;
   const repoRoot = process.cwd();
+  const defaultsZeile = budgetDefaultsZeile(budget, KETTE_BUDGET_AUS_DEFAULT);
+  if (defaultsZeile) log(defaultsZeile);
   if (!args.dryRun) {
     for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
   }
   const alle = board("issue", "list");
   warneVorAltenLabels(alle);
   const { kandidaten, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
-  for (const u of uebersprungen) {
-    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
-  }
+  uebersprungeneVerbuchen(uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
     einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
@@ -3180,7 +4539,7 @@ export async function laufeKette(args) {
 
   if (args.dryRun) {
     log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
-    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1}`));
+    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1} (Variante ${varianteVon(k, budget)})`));
     log(`Dry-Run beendet: ${kandidaten.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
     process.exit(0);
   }
@@ -3193,7 +4552,7 @@ export async function laufeKette(args) {
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
-  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Protokoll: ${LOG_FILE}`);
+  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }
@@ -3209,6 +4568,25 @@ export async function laufeKette(args) {
  * Getrennt gehalten statt geteilt, weil die Texte verschieden sein muessen — "wuerde
  * ins Backlog" ist eine andere Aussage als "ins Backlog verschoben".
  */
+/**
+ * Der Zusatz an die Session-Zeile des Dry-Runs, wenn `night.stufen` aktiv ist (Issue #712).
+ *
+ * Dieselbe `paketWahl` wie im echten Lauf, nur im Konjunktiv: Stufe und Modell, die
+ * eingesetzt wuerden, samt Herkunft — inklusive einer nicht belegten eigenen Stufe, die
+ * nach oben ausweicht (Kriterium siehe Aufgabe: `, Stufe leicht, Modell <x> (Stufe leicht)`
+ * bzw. `, Stufe leicht nicht belegt, Modell <x> (Stufe mittel)`). Herkunft "karte" und
+ * "lauf" bleiben wortgleich mit der Zeile von vor der Stufen-Einstellung.
+ */
+function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund }) {
+  if (herkunft === "karte") return `, Modell ${modell} (Karte)`;
+  if (herkunft === "lauf") {
+    const nachsatz = grund ? ` — ${grund}` : "";
+    return `, Modell ${modell} (Lauf)${nachsatz}`;
+  }
+  const stufeText = stufeVerwendet === stufe ? `Stufe ${stufe}` : `Stufe ${stufe} nicht belegt`;
+  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})`;
+}
+
 function dryRunBefund(issue, ctx, assumedDone) {
   const aus = (grund) => ({ grund, vermerk: "" });
   if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
@@ -3230,7 +4608,32 @@ function dryRunBefund(issue, ctx, assumedDone) {
   if (unmet.length > 0) {
     return aus(`wuerde ins Backlog (Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt)`);
   }
-  return { grund: null, vermerk: "" };
+
+  // Ohne aktive Einstellung bleibt die Zeile zeichengleich mit der von vor #712 (Kriterium
+  // 1 des Issues) — dieselben zwei Zweige wie bisher, unveraendert.
+  const einstellung = stufenEinstellung(config);
+  if (!einstellung.aktiv) {
+    // Das Modell gehoert in den Dry-Run (Issue #665): Wer vor der Nacht prueft, was
+    // laufen wuerde, prueft auch, WOMIT. Herkunft dazu, sonst liesse sich ein Rueckfall
+    // auf das Lauf-Modell nicht von einer Karte unterscheiden, die es selbst empfiehlt.
+    const { modell, grund } = empfohlenesModell(full.body, config.night?.modelle);
+    if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)` };
+    const nachsatz = grund ? ` — ${grund}` : "";
+    return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}` };
+  }
+
+  // Bei aktiver Einstellung entscheidet dieselbe Funktion wie im echten Lauf, samt Stufe
+  // und Ausweichen nach oben (Issue #712).
+  const modellStand = paketWahl({
+    body: full.body,
+    einstellung,
+    erlaubteModelle: config.night?.modelle,
+    laufModell: ctx.laufModell,
+  });
+  if (!modellStand.startbar) {
+    return aus(`wuerde nicht starten (keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund})`);
+  }
+  return { grund: null, vermerk: dryRunStufenVermerk(modellStand) };
 }
 
 /**
@@ -3241,6 +4644,9 @@ function dryRunBefund(issue, ctx, assumedDone) {
  * Subprozess-Tests beschraenkt.
  */
 export function laufeDryRun(args, ctx) {
+  // Das Modell des Laufs wandert in den ctx, damit `dryRunBefund` es fuer den Rueckfall
+  // nennen kann, ohne `args` zu kennen (Issue #665).
+  ctx = { ...ctx, laufModell: args.model };
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) {
     log("Ready ist leer — nichts zu tun.");
@@ -3347,16 +4753,26 @@ export function pruefeIssueGates(top) {
  * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
  * Fehlschlag-Zeile zu viel oder eine zu wenig.
  */
-async function versucheSalvage(top, args) {
+async function versucheSalvage(top, args, sessionWahl) {
   const checks = verifyChecksForSalvage(config);
   if (!checks.ok) {
-    log(`  Salvage nicht moeglich: buildChecks sind rot — die Runde ist wirklich gescheitert.`);
+    // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
+    // Urteil nannte. Wer morgens sichtet, braucht den Befund — die letzten Zeilen sind
+    // dieselbe Menge, die auch der Salvage-Prompt mitgibt.
+    const tail = (checks.output || "").trim().split("\n").slice(-15).join("\n");
+    log(`  Salvage nicht moeglich: ${grundCheckRot(checks.rotesKommando ?? "unbenanntes Kommando", "Vorpruefung des Runners")} — die Runde ist wirklich gescheitert.`);
+    if (tail) log(`  Ausgabe des roten Checks:\n${tail}`);
     return "nichtMoeglich";
   }
   log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
   await runSession(top.id, args, {
     prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
     timeoutMs: SALVAGE_TIMEOUT_MS,
+    // Derselbe Weg wie die regulaere Runde (Issue #665, erweitert um #711): Der Salvage
+    // prueft deren Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde
+    // Arbeit nach anderem Massstab, und die Wahl galt der Karte, nicht der Betriebsart —
+    // darum geht bei einer Kommando-Stufe auch die Kommandozeile mit.
+    ...sessionWahl,
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
   const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
@@ -3377,6 +4793,44 @@ async function versucheSalvage(top, args) {
   return "gescheitert";
 }
 
+// Die Gruende einer Runde ohne Ergebnis (Issue #668).
+//
+// Woertliche Konstanten, weil Tests per Regex auf sie pruefen und weil sie in drei
+// Ausgaben zugleich erscheinen: Protokoll, Board-Kommentar und `grund` des
+// Ergebnisstands. Eine zweite Fassung an einer der drei Stellen waere eine zweite
+// Wahrheit ueber denselben Vorgang.
+//
+// Sie beantworten die Frage, die der bisherige Text offenliess: nicht WAS der Runner
+// vorgefunden hat — "nicht in In review UND Working Tree dirty" —, sondern WARUM. Die
+// naechsten Schritte sind je Fall verschieden: Ein `end_turn` ohne Commit ist eine
+// Session, die auf etwas gewartet hat; ein Zeitlimit ist ein zu grosses Paket; ein
+// `is_error` ist ein Abbruch; ein roter Pflichtcheck ist Arbeit am Code.
+const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
+const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
+const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
+const GRUND_UNBEKANNT = "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet";
+const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${kommando} (${quelle})`;
+
+/**
+ * Warum hat diese Runde nichts abgeschlossen (Issue #668)?
+ *
+ * Reine Funktion ueber dem Ergebnis von `runSession` und der Pruef-Zusammenfassung der
+ * Session, damit die Zuordnung an Fixtures pruefbar ist. Die Reihenfolge ist die
+ * Rangfolge: Das Zeitlimit schlaegt alles, weil ein gekillter Baum ueber seinen
+ * `stop_reason` nichts mehr sagt; danach der Abbruch; danach ein roter Pflichtcheck der
+ * Session, weil er konkreter ist als jedes Ende; zuletzt das regulaere Ende.
+ *
+ * Exportiert fuer die Tests.
+ */
+export function rundenGrund(res, pruefung) {
+  if (res?.error?.code === "ETIMEDOUT" || res?.signal === "SIGTERM") return GRUND_ZEITLIMIT;
+  const kennzahlen = leseKennzahlen(res?.stdout);
+  if (kennzahlen?.isError === true) return GRUND_IS_ERROR;
+  if (pruefung?.zustand === "rot") return grundCheckRot(pruefung.rotesKommando ?? "unbenanntes Kommando", "Session");
+  if (kennzahlen?.stopReason === "end_turn") return GRUND_END_TURN;
+  return GRUND_UNBEKANNT;
+}
+
 /**
  * Der vierte harte Stopp: die Runde hat nichts abgeschlossen und den Baum
  * veraendert (Issue #404).
@@ -3394,7 +4848,7 @@ async function versucheSalvage(top, args) {
  * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
  * Stand, den der Halt gerade verworfen hat.
  */
-async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
+async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl) {
   // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
   // Label nicht, das die Session selbst gesetzt hat.
   if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
@@ -3407,15 +4861,19 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted) {
   }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
-    const salvage = await versucheSalvage(top, args);
+    const salvage = await versucheSalvage(top, args, sessionWahl);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") return "hardStop";
   }
-  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} nicht in In review UND Working Tree dirty — harter Stopp.`;
+  // Der Grund steht VOR dem Zustand (Issue #668): Wer morgens sichtet, liest zuerst,
+  // warum die Runde nichts abgeschlossen hat, und danach, was der Runner vorgefunden hat.
+  // Der Zustandstext bleibt erhalten — er war nie falsch, nur unvollstaendig.
+  const grund = rundenGrund(res, pruefung);
+  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
   log(`  ${satz}`);
   board("issue", "comment", String(top.id), "--text",
-    "Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+    `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`);
   merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }
@@ -3493,7 +4951,7 @@ export function istHalt(vorher, nachher) {
   return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher) {
+async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -3541,7 +4999,7 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, v
     return "hardStop";
   }
 
-  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted);
+  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl);
 
   // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
   // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
@@ -3573,6 +5031,69 @@ function stelleAmGateZurueck(top, gate) {
 }
 
 /**
+ * Uebernimmt `night.stufen` und `night.stufenRegel` frisch von Platte in die Lauf-Config
+ * (Issue #711, Plan #707, E19).
+ *
+ * Geschrieben wird in dieselbe `config`, mit der der Lauf ohnehin arbeitet: Eine zweite,
+ * daneben gefuehrte Fassung der Einstellung waere eine zweite Wahrheit darueber, was
+ * gerade gilt. Ein Feld, das auf Platte verschwunden ist, verschwindet auch hier — sonst
+ * bliebe eine geloeschte Stufe bis zum Laufende aktiv.
+ */
+function stufenFelderAuffrischen() {
+  const { stufen, stufenRegel, grund } = frischeStufenFelder(CONFIG_PATH, config);
+  if (grund) log(`  ${grund}`);
+  config.night ??= {};
+  for (const [feld, wert] of [["stufen", stufen], ["stufenRegel", stufenRegel]]) {
+    if (wert === undefined) delete config.night[feld];
+    else config.night[feld] = wert;
+  }
+}
+
+/**
+ * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711).
+ *
+ * Sie erscheint nur, wenn es etwas zu sagen gibt — eine Stufe im Spiel oder ein Grund.
+ * Ein Paket ohne beides protokolliert wie bisher nichts: Eine Zeile je Paket, die nur
+ * "Modell des Laufs" wiederholt, machte die interessanten Zeilen unsichtbar.
+ */
+function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet }) {
+  if (!stufe && !grund) return null;
+  const teile = [];
+  if (stufe) teile.push(`Aufgabenstufe ${stufe}`);
+  teile.push(modell ? `Modell ${modell} (${herkunft})` : `kein Modell (${herkunft})`);
+  if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(`ueber Stufe ${stufeVerwendet}`);
+  return grund ? `${teile.join(", ")} — ${grund}` : teile.join(", ");
+}
+
+/**
+ * Ein Paket, dessen Stufe auf keiner Ebene startet (Issue #711, Kriterium 10).
+ *
+ * Fehlschlag und nicht Rueckstellung: Zurueckgestellt ist ein Paket, das an einem Gate
+ * haengt oder dessen Session nichts abgeschlossen hat — hier ist die Einstellung des
+ * Projekts unvollstaendig, und das soll morgens als Fehlschlag sichtbar sein. Das Issue
+ * wandert nach Backlog wie bei jeder Runde ohne Ergebnis; bliebe es in Ready, zoege die
+ * naechste Iteration dasselbe Paket erneut, bis MAX_ITERATIONS erschoepft ist.
+ */
+function ohneSessionGescheitert(top, einheit, modellStand, started) {
+  const grund = `Keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund}`;
+  log(`  Fehlschlag ohne Session: Issue #${top.id} — ${grund} — Issue ins Backlog, weiter.`);
+  board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${grund} Es wurde keine Session gestartet.`);
+  board("issue", "move", String(top.id), "backlog");
+  einheitErgaenzen(einheit, {
+    ausgang: "fehlschlag",
+    grund,
+    dauerMs: Date.now() - started,
+    commit: null,
+    endStatus: board("issue", "get", String(top.id)).status,
+    // Ohne Session gibt es weder Pruefstand noch Kennzahlen. Beide Felder stehen trotzdem
+    // da: Ein fehlendes Feld liesse offen, ob niemand gemessen hat oder ob nichts lief.
+    pruefung: null,
+    kennzahlen: null,
+  });
+  return "fehlschlag";
+}
+
+/**
  * Eine vollstaendige Runde: Session starten, auswerten, Einheit fuellen (Issue #488).
  *
  * Liefert den Ausgang aus `werteRunde` unveraendert zurueck — die Uebersetzung ins
@@ -3583,7 +5104,6 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Die Einheit entsteht VOR der Session und wird sofort geschrieben: Bricht der Lauf
   // mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand — mit ausgang
   // "unbekannt", was etwas anderes sagt als ein Fehlschlag.
-  const einheit = einheitAnlegen(top.id, top.title);
   const commitVorher = lastCommitHash();
   const started = Date.now();
   // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
@@ -3595,7 +5115,45 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
   // traegt den Body nicht in jeder Adapter-Fassung.
   const vorher = board("issue", "get", String(top.id));
-  const res = await runSession(top.id, args);
+  // Die Einstellung frisch von Platte, unmittelbar vor diesem Paket (Issue #711, E19):
+  // Eine Aenderung an den Stufen soll noch in derselben Nacht wirken. Alles andere bleibt
+  // beim Stand des Laufbeginns.
+  stufenFelderAuffrischen();
+  // Modell und Stufe dieser Karte (Issue #665, #711) — aus dem Body, den `vorher` ohnehin
+  // traegt. Ein eigener `issue get` je Karte waere ein zweiter Aufruf gegen eine API, die
+  // drosselt, fuer einen Wert, der bereits vorliegt.
+  const modellStand = paketWahl({
+    body: vorher?.body,
+    einstellung: stufenEinstellung(config),
+    erlaubteModelle: config.night?.modelle,
+    laufModell: args.model,
+  });
+  // Die Einheit entsteht erst hier, weil sie das Modell traegt — und das steht erst fest,
+  // wenn der Body gelesen ist. Sie wird weiterhin VOR der Session geschrieben: Bricht der
+  // Lauf mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand.
+  const einheit = einheitAnlegen(top.id, top.title, modellStand);
+  const hinweis = rundenHinweis(modellStand);
+  if (hinweis) log(`  Hinweis zu #${top.id}: ${hinweis}`);
+
+  // Kein startbarer Weg fuer die Stufe dieses Pakets (Issue #711, Kriterium 10): Das Paket
+  // wird OHNE Session als Fehlschlag verbucht und der Lauf zieht das naechste. Der Rueckfall
+  // auf das Modell des Laufs waere hier falsch — wer eine Stufe setzt, will dieses Paket auf
+  // dieser Ebene laufen lassen. Und weil die Entscheidung vor dem ersten Arbeitsschritt
+  // faellt, wird keine begonnene Umsetzung mit einem zweiten Modell wiederholt.
+  if (!modellStand.startbar) return ohneSessionGescheitert(top, einheit, modellStand, started);
+
+  // Womit die Session startet (Issue #711): Modellname oder die Kommandozeile der Stufe.
+  // Dasselbe Buendel geht spaeter an die Salvage-Session desselben Pakets — sie prueft den
+  // Zwischenstand der regulaeren Runde und muss dafuer auf demselben Weg laufen.
+  const sessionWahl = modellStand.kommando
+    ? { model: modellStand.modell, kommando: modellStand.kommando, stufenName: modellStand.stufenName, aufgabenstufe: modellStand.stufe }
+    : { model: modellStand.modell };
+  // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
+  // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
+  // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
+  // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
+  // Implementierungs-Runde.
+  const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, ...sessionWahl });
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
@@ -3606,7 +5164,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher);
+  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl);
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);
@@ -3625,32 +5183,27 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
 }
 
 /**
- * Die Implementierungsschleife (Phase 9 aus Issue #398).
+ * Nimmt den Umsetzungs-Lock und meldet, was daraus wurde (Issue #696).
  *
- * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
- * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
- * und brachen mit `break` ab, die uebrigen Enden liessen es ungesetzt, und der
- * Exit-Code entstand am Ende von main(). Wuerde die Schleife selbst exiten, ginge der
- * Unterschied zwischen "sauber beendet" und "hart gestoppt" verloren — und das ist
- * das Signal, das der Morgen liest.
+ * Steht getrennt, damit die Schleife nur zwei Zeilen dafuer braucht: Sie ruft die Funktion
+ * ueber `??=` genau einmal — vor der ersten Session — und liest danach nur noch `ok`.
  */
-export async function laufeImplementierung(args, ctx) {
-  let sessions = 0;
-  let iterations = 0;
-  let hardStop = false;
-  // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
-  // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
-  // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
-  // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
-  // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
-  const zaehler = { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 };
-  // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
-  const salvageAttempted = new Set();
-  // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
-  // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
-  const pruefungen = [];
+function lockVorErsterSession() {
+  const lock = umsetzungLockNehmen(process.cwd());
+  if (!lock.ok) log(`Umsetzung ausgelassen: ${lock.grund}. Der Lauf endet ohne Paket.`);
+  else if (lock.hinweis) log(lock.hinweis);
+  return lock;
+}
 
-  while (sessions < args.max && iterations < MAX_ITERATIONS) {
+/**
+ * Die Runden der Umsetzungsnacht, eine nach der anderen.
+ *
+ * Fuehrt ihren Zustand in `lauf`, nicht ueber Rueckgaben: Bricht sie mit `break` ab — und
+ * das tun vier harte Stopps —, muss der Aufrufer trotzdem wissen, wie weit sie kam.
+ */
+async function implementierungsSchleife(args, ctx, lauf) {
+  let iterations = 0;
+  while (lauf.sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) break;
@@ -3664,19 +5217,62 @@ export async function laufeImplementierung(args, ctx) {
     const gate = pruefeIssueGates(top);
     if (gate) {
       stelleAmGateZurueck(top, gate);
-      zaehler.deferred++;
+      lauf.zaehler.deferred++;
       continue;
     }
 
-    sessions++;
-    log(`Session ${sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
-    const ausgang = await laufeRunde(top, args, salvageAttempted, pruefungen);
+    // Erst hier, nicht beim Eintritt: Ein Lauf, der an leerem Ready, am Routing-Label oder
+    // an lauter Gates endet, setzt keine Umsetzung in Gang und darf keine Kette abhalten.
+    lauf.lock ??= lockVorErsterSession();
+    if (!lauf.lock.ok) break;
+
+    lauf.sessions++;
+    log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
+    const ausgang = await laufeRunde(top, args, lauf.salvageAttempted, lauf.pruefungen);
     if (ausgang === "hardStop") {
-      hardStop = true;
+      lauf.hardStop = true;
       break;
     }
-    zaehler[ausgang]++;
+    lauf.zaehler[ausgang]++;
   }
+}
+
+/**
+ * Die Implementierungsschleife (Phase 9 aus Issue #398).
+ *
+ * Liefert ein Ergebnisobjekt und beendet den Prozess NIE selbst. In der Phase endete
+ * bis Issue #404 kein Pfad mit `return`: Die vier harten Stopps setzten `hardStop`
+ * und brachen mit `break` ab, die uebrigen Enden liessen es ungesetzt, und der
+ * Exit-Code entstand am Ende von main(). Wuerde die Schleife selbst exiten, ginge der
+ * Unterschied zwischen "sauber beendet" und "hart gestoppt" verloren — und das ist
+ * das Signal, das der Morgen liest.
+ */
+export async function laufeImplementierung(args, ctx) {
+  const lauf = {
+    sessions: 0,
+    hardStop: false,
+    // Die Ausgaenge von werteRunde als Zaehler, unter ihren eigenen Namen. Der
+    // Ausgang indiziert direkt — eine if/else-Kette waere eine zweite Stelle, an der
+    // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
+    // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
+    // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
+    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 },
+    // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
+    salvageAttempted: new Set(),
+    // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
+    // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
+    pruefungen: [],
+    lock: null,
+  };
+  const { zaehler, pruefungen } = lauf;
+
+  try {
+    await implementierungsSchleife(args, ctx, lauf);
+  } finally {
+    // Nur den eigenen: Wer ihn nicht genommen hat, gibt ihn nicht frei.
+    if (lauf.lock?.ok) lauf.lock.freigeben();
+  }
+  const { sessions, hardStop } = lauf;
 
   // Der Abschluss gehoert hierher und nicht in main(): Der Dry-Run beendet den Prozess
   // selbst und kaeme an einer Stelle in main() nie an.

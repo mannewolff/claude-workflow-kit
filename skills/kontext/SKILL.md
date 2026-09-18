@@ -20,7 +20,7 @@ Daraus ergibt sich einer von zwei Modi:
 
 **Modus A (Vollmodus):** Nach dem Merge ist `vault` gesetzt. Normaler Ablauf mit Vault, Projektnotizen, always-Dateien.
 
-**Modus B (Degraded Mode):** Nach dem Merge kein `vault` (kein Feld gesetzt oder gar keine Config gefunden). Vault-Schritte überspringen. Nur offene Issues und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
+**Modus B (Degraded Mode):** Nach dem Merge kein `vault` (kein Feld gesetzt oder gar keine Config gefunden). Vault-Schritte überspringen. Nur Vorhaben und projectDocs laden. Am Ende Hinweis ausgeben: "Kein Vault konfiguriert, arbeite ohne persistentes Memory."
 
 Kein harter Abbruch. Beide Modi liefern sinnvollen Output.
 
@@ -71,19 +71,21 @@ find . -maxdepth 1 -name "CLAUDE-*" -type f
 
 Fehlende Dateien und Muster ohne Treffer leise überspringen (kein Fehler).
 
-### 5. Offene Issues holen (beide Modi)
+### 5. Vorhaben holen (beide Modi)
 
-Offene Issues, Vorhaben und Repo-Name ueber den Board-Adapter:
+Vorhaben und Repo-Name ueber den Board-Adapter:
 
 ```bash
-node .claude/kit/board.mjs issue list
 node .claude/kit/board.mjs issue epics
 node .claude/kit/board.mjs code repo-name
 ```
 
-`issue list` liefert **nur Arbeitspakete** — Vorhaben sind dort seit Issue #377
-ausgeschlossen, unabhaengig vom Status-Filter. Sie kommen ueber `issue epics`, und
-zwar mit Kuerzel und Fortschritt.
+**Welche Vorhaben erscheinen.** Ein Vorhaben erscheint, wenn mindestens eines
+seiner Arbeitspakete noch nicht erledigt ist (`done` kleiner als `total`).
+Ausgeblendet wird damit beides: was alle seine Arbeitspakete erledigt hat und
+was gar keine hat (`0/0`) — ein Vorhaben ohne Arbeitspakete ist nicht begonnen
+worden und traegt den Einstieg nicht. Erfuellt kein Vorhaben die Regel,
+entfaellt der Abschnitt `### Vorhaben` ganz.
 
 **Ein Fehlschlag von `issue epics` wird still uebersprungen**, nicht gemeldet:
 GitHub und GitLab kennen keine Vorhaben, der Adapter weist das Kommando dort ab.
@@ -94,19 +96,13 @@ ueber eine Faehigkeit, die es dort nie geben wird.
 Wenn der Adapter bei den uebrigen Aufrufen einen Fehler zurueckgibt: Schritt
 ueberspringen, kein harter Abbruch.
 
-### 6. Beschriebenes Verhalten laden (beide Modi)
+### 6. Zustand des Spec-Index prüfen (beide Modi)
 
-Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, lies zusätzlich `specs/INDEX.md` — die Tabelle dort nennt je Bereich die Zahl der gültigen und der entfallenen Aussagen und füllt den Abschnitt `### Beschriebenes Verhalten` in Schritt 7.
+Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, wird geprüft, ob `specs/INDEX.md` fehlt oder veraltet ist; trifft eines zu, erscheint in Schritt 7 die Hinweiszeile, sonst nichts. Der Inhalt des Index wird nicht gelesen.
 
-**Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für das beschriebene Verhalten wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
+**Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für Spec-Driven Development wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
 
-**Veralteten Index melden.** Ist eine Bereichsdatei jünger als `specs/INDEX.md`, folgt als letzte Zeile des Abschnitts:
-
-```
-> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
-```
-
-Gemessen wird mit:
+**Veralteten Index erkennen.** Veraltet ist der Index, wenn eine Bereichsdatei jünger ist als `specs/INDEX.md`. Gemessen wird mit:
 
 ```bash
 find specs -type f -name '*.md' -not -path 'specs/vorhaben/*' -not -name INDEX.md -newer specs/INDEX.md
@@ -116,9 +112,9 @@ Nicht leere Ausgabe heißt veraltet. Ein still falscher Index ist schlechter als
 
 **`specs/vorhaben/` zählt nicht mit.** Die Notizen dort entstehen weiterhin beim Planen — `/techplan` legt sie als wartende Datei unter `.claude/` ab, und der nächste `push main` hebt sie nach `specs/vorhaben/` auf. Sie stehen nicht im Index; ohne die Ausnahme meldete `/kontext` nach jedem Push mit einer aufgehobenen Notiz einen Index als veraltet, der stimmt. Ein Fehlalarm nach `git pull` bleibt möglich (alle Dateien bekommen den Checkout-Zeitpunkt) und ist hinnehmbar: Die Meldung schlägt ein Kommando vor und hält nichts auf.
 
-**Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: Der Abschnitt besteht aus der einen Zeile mit dem Neubau-Kommando, ohne Bereiche.
+**Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: In Schritt 7 erscheint die Hinweiszeile.
 
-Fehlt dagegen die Config, der `spec`-Block oder der Ordner `specs/`, entfällt der Schritt **leise**, wie die übrigen optionalen Schritte — nichts wird gemeldet, und in Schritt 7 entfällt der Abschnitt ganz.
+Fehlt dagegen die Config, der `spec`-Block oder der Ordner `specs/`, entfällt der Schritt **leise**, wie die übrigen optionalen Schritte — nichts wird gemeldet, und in Schritt 7 steht dazu keine Zeile.
 
 ### 7. Zusammenfassung ausgeben
 
@@ -134,20 +130,14 @@ Kompakter Session-Start-Stand.
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
-### Aktive Issues
-- #N Titel [Status]
-- ...
-
-### Beschriebenes Verhalten
-- <Bereich> — <n> gueltig, <m> entfallen
-- ...
-(aus `specs/INDEX.md`; Abschnitt weglassen ohne `spec`-Block oder ohne `specs/`)
+> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
+(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Letzte Entscheidungen / Zuletzt aktualisiert
-(aus der Projektnotiz — nur Modus A)
+(aus der Projektnotiz — nur Modus A; nur der jüngste dokumentierte Tag)
 
 ### Was als nächstes kommt
-(aus der Projektnotiz oder Board-Ready-Spalte)
+(aus der Projektnotiz)
 ```
 
 **Mit `parentProject`** (Multi-Repo-Setup): Der Kopf benennt beide Ebenen, damit sofort sichtbar ist, in welchem Service man sitzt und zu welchem System er gehört. Wurden beide Notizen gelesen, bleiben systemweiter Stand und Stand dieses Service getrennt — eine zusammengerührte Liste wäre beim Einstieg wertlos, weil nicht mehr erkennbar ist, was für alle Services gilt:
@@ -160,29 +150,32 @@ Kompakter Session-Start-Stand.
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
 
-### Aktive Issues
-- #N Titel [Status]
-- ...
-
-### Beschriebenes Verhalten
-- <Bereich> — <n> gueltig, <m> entfallen
-- ...
-(aus `specs/INDEX.md`; Abschnitt weglassen ohne `spec`-Block oder ohne `specs/`)
+> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
+(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Systemweiter Stand ({parentProject})
 (aus der Dach-Notiz — Abschnitt weglassen wenn sie fehlt)
 
 ### Stand {project}
-(aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert)
+(aus der Projektnotiz — letzte Entscheidungen / zuletzt aktualisiert; nur der jüngste dokumentierte Tag)
 
 ### Was als nächstes kommt
-(aus der Projektnotiz oder Board-Ready-Spalte)
+(aus der Projektnotiz)
 ```
 
-**Die Vorhaben stehen vor den Issues**, weil sie die Gliederung sind, unter der die
-Arbeit haengt: Wer zuerst die Klammern sieht, liest die Nummernliste darunter als
-Inhalt und nicht als Haufen. Ein Vorhaben ohne Fortschritt (`0/0`) bleibt stehen —
-dass es leer ist, ist beim Einstieg eine Information.
+**Nur der jüngste dokumentierte Tag.** Unter den letzten Entscheidungen steht, was am jüngsten in der Notiz dokumentierten Tag festgehalten wurde — auch dann, wenn dieser Tag keine Entscheidung enthält.
+- Maßgeblich sind ausschließlich Datumsangaben der Form `JJJJ-MM-TT`, die einen Eintrag einleiten, gesucht in der ganzen Notiz und nicht nur im ersten `## Zuletzt aktualisiert`-Abschnitt. Eine Notiz kann mehrere solcher Abschnitte tragen.
+- Ein Datum leitet einen Eintrag ein, wenn es am Zeilenanfang steht, allenfalls nach einem Listenpunkt, und ihm ein `:` oder ein Klammerzusatz folgt — die Form, in der `/document` schreibt: `- JJJJ-MM-TT: …` oder `- JJJJ-MM-TT (Abend): …`.
+- Datumsnennungen im Fließtext eines Eintrags zählen nicht, ebenso wenig ein Datum in anderer Form wie `**Stand JJJJ-MM-TT**`.
+- Gehören mehrere Einträge zum jüngsten Tag, gehören sie alle dazu; ein Zusatz wie „(Abend)" ist eine Tageszeit, kein anderer Tag.
+- Trägt die Notiz keine Datumsangabe, die einen Eintrag einleitet, erscheint ihr zuletzt geschriebener Abschnitt so, wie er dasteht — die Verdichtungsregel gilt für diesen Rückfall nicht.
+- Werden zwei Notizen gelesen, wird der Tag je Notiz getrennt bestimmt.
+
+**Die Vorhaben stehen oben**, weil sie die Gliederung sind, unter der die Arbeit
+haengt: Wer sie zuerst sieht, hat den Rahmen, in den alles Weitere gehoert. Die
+einzelnen Arbeitspakete stehen auf dem Board und werden hier nicht wiederholt —
+was der Session-Start ausgibt, steht danach im Kontextfenster der ganzen Sitzung
+und fehlt dort fuer die eigentliche Arbeit.
 
 Im Degraded Mode am Ende anfuegen:
 > "Kein Vault konfiguriert, arbeite ohne persistentes Memory. Fuer Vollmodus: `~/.claude/kontext.config.json` anlegen mit vault-Pfad."

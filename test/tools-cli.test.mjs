@@ -106,6 +106,87 @@ test("version.mjs bricht bei fehlender oder unlesbarer VERSION-Konstante ab", ()
   }
 });
 
+// Wegwerf-Repo mit install.mjs — wahlweise committet oder nur in der Arbeitskopie.
+// Der Bump rechnet ab dem committeten Stand (Issue #656), also braucht er HEAD.
+function mitGitInstall(praefix, { version = "1.26.0", committen = true, vorlauf = false } = {}) {
+  const dir = tempDir(praefix);
+  const git = (...args) => {
+    const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${args.join(" ")}: ${res.stderr}`);
+  };
+  git("init", "-q");
+  git("config", "user.email", "test@example.invalid");
+  git("config", "user.name", "Version Test");
+  if (vorlauf) {
+    writeFileSync(join(dir, "LIESMICH.md"), "irgendwas ohne Version\n", "utf-8");
+    git("add", "-A");
+    git("commit", "-q", "-m", "Vorlauf ohne install.mjs");
+  }
+  writeFileSync(join(dir, "install.mjs"), `const VERSION = "${version}";\n`, "utf-8");
+  if (committen) {
+    git("add", "-A");
+    git("commit", "-q", "-m", `chore: v${version}`);
+  }
+  return { dir, git };
+}
+
+test("version.mjs bumpt idempotent, solange nichts committet wurde", () => {
+  const { dir } = mitGitInstall("version-idempotent-");
+  try {
+    const erst = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(erst.status, 0, erst.stderr);
+    assert.equal(erst.stdout.trim(), "1.26.1");
+
+    const zweit = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(zweit.status, 0, zweit.stderr);
+    assert.equal(zweit.stdout.trim(), "1.26.1",
+      "ohne Commit dazwischen darf der Bump nicht ein zweites Mal weiterspringen");
+    assert.equal(installVersionVon(dir), "1.26.1");
+
+    const get = laufe(dir, VERSION_TOOL, ["--get"]);
+    assert.equal(get.status, 0, get.stderr);
+    assert.equal(get.stdout.trim(), "1.26.1", "--get liest weiterhin die Arbeitskopie, nicht HEAD");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("version.mjs rechnet nach einem Commit ab dem neuen Stand weiter", () => {
+  const { dir, git } = mitGitInstall("version-nachcommit-");
+  try {
+    assert.equal(laufe(dir, VERSION_TOOL, ["--patch"]).stdout.trim(), "1.26.1");
+    git("add", "-A");
+    git("commit", "-q", "-m", "chore: v1.26.1");
+
+    const res = laufe(dir, VERSION_TOOL, ["--patch"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.26.2", "nach dem Commit ist die neue Version die Basis");
+    assert.equal(installVersionVon(dir), "1.26.2");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("version.mjs faellt auf die Arbeitskopie zurueck, wenn HEAD keine install.mjs fuehrt", () => {
+  const ohneCommit = mitGitInstall("version-ohnecommit-", { committen: false }).dir;
+  try {
+    const res = laufe(ohneCommit, VERSION_TOOL, ["--patch"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.26.1", "im frischen Repo ohne Commit gilt die Arbeitskopie");
+  } finally {
+    rmSync(ohneCommit, { recursive: true, force: true });
+  }
+
+  const nurUncommittet = mitGitInstall("version-uncommittet-", { committen: false, vorlauf: true }).dir;
+  try {
+    const res = laufe(nurUncommittet, VERSION_TOOL, ["--minor"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout.trim(), "1.27.0", "fehlt die Datei in HEAD, gilt die Arbeitskopie");
+  } finally {
+    rmSync(nurUncommittet, { recursive: true, force: true });
+  }
+});
+
 // ============================================================
 // tools/sync-blobs.mjs — Fehlerpfade und der Fall "nichts zu tun"
 // ============================================================
@@ -126,14 +207,17 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
+  // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
+  writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), installZeilen.join("\n") + "\n");
   return dir;
 }
 
-const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SPEC_MJS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64"];
+const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "SPEC_MJS_B64", "PREISE_MJS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64"];
 
 test("sync-blobs bricht ab, wenn install.mjs keine VERSION-Konstante hat", () => {
   const dir = syncFixture("sync-noversion-", {
@@ -274,6 +358,72 @@ test("changelog.mjs braucht install.mjs nicht mehr", () => {
     const res = laufe(dir, CHANGELOG_TOOL);
     assert.equal(res.status, 0, res.stderr);
     assert.match(readFileSync(join(dir, "CHANGELOG.md"), "utf-8"), /Ein Feature \(#7\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- --marke: die kommende Versionsmarke vorwegnehmen (Issue #657) ---
+
+test("changelog.mjs --marke nimmt die kommende Marke vorweg", () => {
+  for (const wert of ["v1.18.0", "1.18.0"]) {
+    const dir = changelogFixture(`changelog-marke-${wert}-`, { commits: ["Ein Feature (Issue #8)"] });
+    try {
+      const res = laufe(dir, CHANGELOG_TOOL, ["--marke", wert]);
+      assert.equal(res.status, 0, res.stderr);
+      const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
+      assert.match(inhalt, /## \[1\.18\.0\] - \d{4}-\d{2}-\d{2}/, `'${wert}' erzeugte keinen Block fuer 1.18.0`);
+      assert.match(inhalt, /Ein Feature \(#8\)/, "der Commit gehoert unter die vorweggenommene Marke");
+      assert.doesNotMatch(inhalt, /## \[Unreleased\]/, "mit Marke ist nichts mehr unveroeffentlicht");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("changelog.mjs weist --marke zusammen mit --check ab", () => {
+  // Die beiden Fragen schliessen sich aus: "erzeuge den Stand nach dem kommenden
+  // Commit" und "ist der Stand aktuell" koennen nicht gleichzeitig gelten.
+  const dir = changelogFixture("changelog-marke-check-", { commits: ["Ein Feature (Issue #9)"] });
+  try {
+    const res = laufe(dir, CHANGELOG_TOOL, ["--marke", "v1.18.0", "--check"]);
+    assert.equal(res.status, 1, "--marke mit --check haette abbrechen muessen");
+    assert.match(res.stderr, /--marke .* --check/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("changelog.mjs weist eine Marke ohne x.y.z-Form ab", () => {
+  const dir = changelogFixture("changelog-marke-form-", { commits: ["Ein Feature (Issue #10)"] });
+  try {
+    for (const args of [["--marke", "1.2"], ["--marke", "abc"], ["--marke", "v1.2.3.4"], ["--marke"]]) {
+      const res = laufe(dir, CHANGELOG_TOOL, args);
+      assert.equal(res.status, 1, `'${args.join(" ")}' haette abbrechen muessen`);
+      assert.match(res.stderr, /--marke/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("changelog.mjs datiert die vorweggenommene Marke wie git selbst", () => {
+  // Die Falle: `git log --date=short` datiert in LOKALER Zeit, ein
+  // `new Date().toISOString()` in UTC. Zwischen den beiden Tageswechseln lieferte
+  // die Marke ein anderes Datum als der Commit danach — und --check waere rot.
+  // Gemessen wird deshalb gegen die git-Ausgabe, nicht gegen ein im Test
+  // gebildetes Datum; sonst haengt der Test an der Uhrzeit des Laufs.
+  const dir = changelogFixture("changelog-marke-datum-", { commits: ["Ein Feature (Issue #11)"] });
+  try {
+    const gitDatum = spawnSync("git", ["log", "-1", "--date=short", "--format=%cd"],
+      { cwd: dir, encoding: "utf-8" }).stdout.trim();
+    assert.match(gitDatum, /^\d{4}-\d{2}-\d{2}$/, "das Fixture liefert kein git-Datum");
+
+    const res = laufe(dir, CHANGELOG_TOOL, ["--marke", "v1.18.0"]);
+    assert.equal(res.status, 0, res.stderr);
+    const inhalt = readFileSync(join(dir, "CHANGELOG.md"), "utf-8");
+    assert.match(inhalt, new RegExp(String.raw`^## \[1\.18\.0\] - ${gitDatum}$`, "m"),
+      `der Block traegt nicht das Datum, das git dem Commit gibt (${gitDatum})`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

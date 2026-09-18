@@ -64,6 +64,10 @@ const BLOBS = [
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
   { constName: "SPEC_MJS_B64", source: join(root, "kit", "spec.mjs") },
+  // Preistabelle des Sitzungs-Melders (Issue #734). Eigene Datei, weil sie
+  // Pflegedaten mit eigenem Stand traegt und kein Code ist; board.mjs laedt sie als
+  // Nachbardatei und kommt ohne sie aus (dann eben ohne Dollarbetrag).
+  { constName: "PREISE_MJS_B64", source: join(root, "kit", "preise.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
   // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
@@ -76,7 +80,17 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"];
+
+// Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
+// Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
+const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
+
+// Das Schema, das die Einstellungs-Oberflaeche eingebettet traegt (Plan #674 E2). Eine
+// eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei.
+const SCHEMA_QUELLE = join(root, "templates", "workflow.config.schema.json");
+const SCHEMA_ZIEL = "einstellungen.mjs";
+const SCHEMA_RE = /(const SCHEMA_B64 = ")([A-Za-z0-9+/=]*)(";)/;
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;
 
@@ -96,7 +110,7 @@ const checkOnly = process.argv.includes("--check");
 const version = kitVersion();
 const stampDrift = [];
 
-for (const datei of STAMPED) {
+for (const datei of [...STAMPED, ...STAMPED_DOWNLOADS]) {
   const pfad = join(root, "kit", datei);
   const src = readFileSync(pfad, "utf-8");
   const m = src.match(KIT_VERSION_RE);
@@ -109,6 +123,25 @@ for (const datei of STAMPED) {
   if (m[2] !== version) {
     stampDrift.push(`kit/${datei} ist ${m[2]}, erwartet ${version}`);
     if (!checkOnly) writeFileSync(pfad, src.replace(KIT_VERSION_RE, `$1${version}$3`), "utf-8");
+  }
+}
+
+// --- Eingebettetes Schema (Issue #676) ---
+// Nach dem Stempel gelesen, damit beide Schritte auf demselben Dateistand arbeiten.
+const schemaDrift = [];
+{
+  const pfad = join(root, "kit", SCHEMA_ZIEL);
+  const src = readFileSync(pfad, "utf-8");
+  const erwartet = Buffer.from(readFileSync(SCHEMA_QUELLE, "utf-8"), "utf-8").toString("base64");
+  const m = src.match(SCHEMA_RE);
+  if (!m) {
+    process.stderr.write(`Fehler: SCHEMA_B64-Konstante nicht in kit/${SCHEMA_ZIEL} gefunden\n`);
+    process.exit(1);
+  }
+  if (m[2] !== erwartet) {
+    schemaDrift.push(`kit/${SCHEMA_ZIEL}`);
+    // Base64 enthaelt kein '$' — Ersetzung ohne Escaping sicher.
+    if (!checkOnly) writeFileSync(pfad, src.replace(SCHEMA_RE, `$1${erwartet}$3`), "utf-8");
   }
 }
 
@@ -208,18 +241,20 @@ if (checkOnly) {
   if (stampDrift.length > 0) probleme.push(`Versions-Stempel: ${stampDrift.join("; ")}.`);
   if (drift.length > 0) probleme.push(`Blob-Drift in install.mjs: ${drift.join(", ")} weicht von kit/ ab.`);
   if (copyDrift.length > 0) probleme.push(`Lokale Kopie veraltet: ${copyDrift.join(", ")}.`);
+  if (schemaDrift.length > 0) probleme.push(`Eingebettetes Schema veraltet: ${schemaDrift.join(", ")} weicht von templates/workflow.config.schema.json ab.`);
   if (probleme.length > 0) {
     process.stderr.write(`${probleme.join("\n")}\nBeheben mit: node tools/sync-blobs.mjs\n`);
     process.exit(1);
   }
   process.stdout.write("Blobs und Versions-Stempel synchron mit kit/.\n");
-} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0) {
+} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0 || schemaDrift.length > 0) {
   if (drift.length > 0) writeFileSync(INSTALL, installSrc, "utf-8");
   const teile = [];
-  const gestempelt = STAMPED.map((d) => `kit/${d}`).join(", ");
+  const gestempelt = [...STAMPED, ...STAMPED_DOWNLOADS].map((d) => `kit/${d}`).join(", ");
   if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${gestempelt}`);
   if (drift.length > 0) teile.push(`Aktualisiert: ${drift.join(", ")}`);
   if (copyDrift.length > 0) teile.push(`Lokale Kopie aufgefrischt: ${copyDrift.join(", ")}`);
+  if (schemaDrift.length > 0) teile.push(`Schema eingebettet: ${schemaDrift.join(", ")}`);
   process.stdout.write(`${teile.join("\n")}\n`);
 } else {
   process.stdout.write("Blobs bereits synchron.\n");

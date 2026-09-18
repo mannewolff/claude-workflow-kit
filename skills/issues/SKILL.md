@@ -27,12 +27,12 @@ Eine Stopp-Frage wird interaktiv gestellt; unbeaufsichtigt endet der Skill mit d
 
 ### 2. Issues schneiden
 Ein Issue = ein logischer Schritt, der eigenständig getestet werden kann. Kriterien:
-- Ein Issue löst genau eine Sache
-- Es kann isoliert committed und reviewed werden
+- Ein Issue löst genau eine Sache und kann isoliert committed und reviewed werden
 - Es hat messbare Akzeptanzkriterien
 - Abhängigkeiten zu anderen Issues sind explizit
 - Was sich nicht in überschaubarem Aufwand erledigen lässt, wird in Sub-Issues geschnitten
 - Portabilitaets-Konvention: Wenn eine Datei oder ein Artefakt als eigenstaendig portabel gedacht ist (Installer, Single-File-Tool, kopierbares Script), muss das Akzeptanzkriterium explizit enthalten: "lauffaehig ohne weiteren Repo-Kontext". Ohne diesen Prueffall bleibt die Portabilitaet ungetestet.
+- Vorlage-Konvention: Bringt der Mensch eine Vorlage mit — einen Gestaltungsentwurf, ein Mockup, eine Skizze —, trägt jedes Dokument der Kette die Zeile `Vorlage: <Pfad> — verbindlich | Anregung`: `/fachplan` im Abschnitt `## Ziel`, `/techplan` im Kopf des Plans, `/issues` im `## Kontext` jedes Pakets, das Aussehen oder Aufbau einer Ansicht berührt. Bei „verbindlich“ entscheidet `/techplan` keine offene Gestaltungsfrage gegen die Vorlage — ein Widerspruch ist eine Stopp-Frage, nachts `kit:klaeren` —, und jedes solche Paket nennt die Stelle der Vorlage und trägt als Akzeptanzkriterium die Abnahme per Bildschirmfoto neben der Vorlage; `issue check-form` weist ein Paket mit verbindlicher Vorlage ohne Bildschirmfoto im Akzeptanzkriterium ab (I5).
 
 Autor-Modell-Konvention: Jedes Issue traegt im Kontext-Abschnitt die Zeile `Autor-Modell: <wert>`. Der Wert entsteht in dieser Reihenfolge:
 
@@ -181,17 +181,21 @@ Gelesen wird `specs/<bereich>.md`, und zwar **beide** Abschnitte: die gueltigen 
 
 **Pakete ohne Wirkung schreiben `KEINE — <Begruendung>`.** Die Begruendung ist **Pflicht**: „keine Wirkung" ist eine Aussage, kein Weglassen. Neben `KEINE` steht keine weitere Wirkungszeile.
 
+### 3b. Übernommene Review-Funde gegenlesen
+Liegt ein `[Plan]`-Issue `#M` vor, liest die Session **vor dem Schneiden** dessen Kommentare mit `node .claude/kit/board.mjs issue get <M>` — die Befunde der Plan-Prüfung und vor allem `## Einarbeitung, Runde 1` mit der Liste der übernommenen Funde. Nach dem Schneiden prüft sie je übernommenem Fund, ob er in mindestens einem Paket ankommt: als Aufgabe, als Akzeptanzkriterium oder als `Entscheidung:`-Zeile. Ein Fund, der im Plan-Body steht, aber in keinem Paket ankommt, geht beim Übertrag verloren. Der Abschluss nennt jeden solchen Fund unter **Nicht übertragene Review-Funde** mit seiner Kennung und einem Satz, sonst steht dort „keine“. Unbeaufsichtigt geht dieselbe Liste als Kommentar am Plan. Trägt der Plan keinen Einarbeitungs-Kommentar, entfällt der Schritt, und der Abschluss sagt das.
+
 ### 4. Abschluss
-Liste alle angelegten Issues mit Nummern und Titeln und ergänze eine Tabelle mit einer Modell-Empfehlung pro Issue. Sie hilft dem Menschen, vor dem GO zu entscheiden, mit welchem Modell jedes Issue umgesetzt wird — ohne den Plan-Kontext noch einmal zu lesen. Heuristik für die Empfehlung:
+**Die Empfehlung steht im Paket, nicht nur im Bericht.** Ist `night.stufen` in `.claude/workflow.config.json` nicht aktiv, trägt jedes angelegte Issue im Abschnitt `## Kontext` — neben `Autor-Modell:` — die Zeile `Empfohlenes Modell: <name>`. Der Nacht-Runner liest genau sie und startet die Session der Karte damit; eine Empfehlung, die nur in der Tabelle unten steht, findet er nicht. Der Name kommt aus `night.modelle`, absteigend nach Stärke geordnet: **erster Eintrag** für Aufgaben mit Architektur-, Sicherheits- oder komplexer Interaktionslogik (OAuth-Flows, neue Komponenten mit viel Zustand, Nebenläufigkeit, Datenmigrationen), **letzter Eintrag** für mechanische, klar spezifizierte Aufgaben (ein Enum erweitern, Typen nachziehen, Restyling nach Vorlage, eine Änderung nach bestehendem Muster). Fehlt die Liste oder ist sie leer, **entfällt die Zeile ersatzlos** — eine erfundene Angabe wäre schlechter als keine, und der Runner fällt ohne Zeile auf das Modell des Laufs zurück.
 
-| Issue | Empfehlung | Begründung |
-|-------|------------|------------|
-| #N | <Modell> | <ein Satz> |
+**Ist `night.stufen` aktiv**, trägt jedes Paket stattdessen die Zeilen `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` und **keine** `Empfohlenes Modell:`-Zeile — `Autor-Modell:` bleibt, sie ist eine Herkunftsangabe, keine Empfehlung. Die mitgelieferte Regel, genau einmal im Kit: **schwer** bei Architektur-, Sicherheits- oder komplexer Interaktionslogik, **mittel** bei Änderungen an mehreren Stellen nach bestehendem Muster, **leicht** bei mechanischen, klar umrissenen Änderungen; ein belegtes `night.stufenRegel` ersetzt sie. Die Stufe gilt unabhängig davon, wann und auf welchem Weg ein Paket entsteht — auch für Pakete aus der Nacht-Kette.
 
-- **Schnelleres Standard-Modell** für mechanische, klar spezifizierte Aufgaben: ein Enum erweitern, Typen nachziehen, Restyling nach Vorlage, eine Änderung nach bestehendem Muster.
-- **Stärkstes verfügbares Modell** für Aufgaben mit Architektur-, Sicherheits- oder komplexer Interaktionslogik: OAuth-Flows, neue Komponenten mit viel Zustand, Nebenläufigkeit, Datenmigrationen.
+Liste danach alle angelegten Issues mit Nummern und Titeln und ergänze die Tabelle: ohne aktive Einstellung mit Empfehlung und Begründung, mit aktiver Einstellung mit Stufe, Begründung und dem ihr zugeordneten Modell. Sie hilft dem Menschen, vor dem GO zu entscheiden — die Zeile(n) im Paket tragen den Wert für die Maschine, die Tabelle die Begründung für den Leser:
+
+| Issue | Empfehlung/Stufe | Begründung |
+|-------|-------------------|------------|
+| #N | <Modell bzw. schwer\|mittel\|leicht> | <ein Satz> |
 
 Schreibe darunter: "Alle Issues liegen in Backlog. Zieh die Issues die du umsetzen willst nach Ready — das ist dein GO." Wer ein Paket prüfen lassen will, ruft `/issue-review #N`; der Regelfall ist Ready ohne Paket-Review.
 
 ## Stop-Punkt
-Dieser Skill endet nach dem Anlegen der Issues. Kein Code, kein Commit. Das GO (Ready-Bewegung) macht der Mensch.
+Dieser Skill endet nach dem Anlegen der Issues. Kein Code, kein Commit. Das GO (Ready-Bewegung) macht der Mensch. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.

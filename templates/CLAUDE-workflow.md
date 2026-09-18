@@ -52,13 +52,14 @@ Die neun Schritte oben sind der Prozess aus dem Whitepaper. Was hier steht, ist 
 
 ## Die drei Stop-Punkte (nie automatisiert)
 
-1. **GO (Schritt 4):** Issue nach Ready ziehen. Claude wartet.
+1. **GO (Schritt 4):** Issue nach Ready ziehen. Claude wartet. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief. Der Push am Morgen (Schritt 8) nimmt die Entscheidungen der Nacht mit an.
 2. **Push (Schritt 8):** Trigger-Phrase `push main`. Claude pusht nicht autonom.
 3. **Merge (Schritt 9):** Trigger-Phrase `merge production`. Claude merged nicht.
 
 Geprueft werden die fachliche Anforderung und das Plandokument: `/issue-review` laesst sie von Modellen lesen, die sie nicht geschrieben haben; wie viele das sind, sagt `reviewStufen`. Ein Arbeitspaket wird nicht standardmaessig geprueft — wer es will, ruft `/issue-review #N`. Der Schalter `issueReview.requiredBeforeReady` bleibt fuer Projekte, die das Gate wollen; ausgeschaltet ist der Regelfall. Bei gesetztem `issueReview.requiredBeforeReady` stellt der Nacht-Runner ungepruefte Ready-Issues zurueck.
 
 **Der Aufruf ist immer derselbe: `/issue-review #N`.** Welche Stufe greift — fachliche Anforderung, Plandokument oder Arbeitspaket —, liest der Skill am Titel-Praefix ab; es gibt bewusst kein eigenes Kommando je Stufe. Das gilt interaktiv genauso wie im Nachtbetrieb: Ein Plandokument laesst sich jederzeit tagsueber pruefen. Der Marker, den die Pruefung hinterlaesst, ist eine Spur und keine Freigabe. Daneben setzt die Pruefung das Label `review:fertig` als sichtbare Spur am Board; es muss je Board einmal angelegt sein (GitHub und GitLab als Repo-Label, kanban-kit ueber `POST /api/boards/{boardId}/labels`).
+Das Label bleibt eine Spur der Pruefung und gibt den Inhalt nicht frei; die Nacht-Kette verlangt diese Spur aber als Voraussetzung — ein Fachplan ohne `review:fertig` wird uebersprungen, auch wenn er das Kettenlabel traegt.
 
 ---
 
@@ -86,6 +87,7 @@ Eine Session, die ein Dokument schreibt oder unbeaufsichtigt laeuft, entscheidet
 3. Verträge nach außen: eine Schnittstelle, die jemand anderes nutzt.
 4. Ein Widerspruch im Fachplan selbst, etwa zwei Akzeptanzkriterien, die sich ausschliessen.
 5. Eine Aenderung an Gates, Stop-Punkten oder am Prozess (W1 bis W4).
+6. Eine Abweichung vom fachlichen Anlass: Ein Plan oder eine Umsetzung weicht von einer vorgelegten Vorlage oder vom Ziel des Fachplans ab, oder beantwortet eine im Fachplan offen gelassene Frage zu Aussehen, Ort einer Ansicht oder einer fachlichen Grenze selbst.
 
 Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frage. Alles andere — ausdruecklich auch Randfaelle, Namensfragen, Fehlerpfade, Reihenfolgen und die Frage, welcher Test gemeint ist — wird entschieden. Schiedsrichter ist die Ordnung aus „Prioritaeten bei Zielkonflikten"; im Zweifel gewinnt der kleinste rueckbaubare Eingriff.
 
@@ -125,7 +127,7 @@ Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mit
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue mit dem Routing-Label `kit:nightrun` eine frische Headless-Session mit `/implement-next #N`. Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Nachts wird committet, nie gepusht — Review, Test und `push main` passieren morgens durch den Menschen.
 
-Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`). Die Geste ist das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog; der Runner verbraucht es beim Start, jedes Setzen autorisiert genau eine Kette. Je Fachplan entsteht in einem eigenen Worktree ein Plan (`/techplan`), der geprueft wird (`/issue-review`), daraus die Arbeitspakete (`/issues`) und eine Abdeckung gegen den Fachplan — gebaut wird nichts, die Pakete bleiben im Backlog, das GO nach Ready bleibt beim Menschen. Drei Ausgaenge: `fertig`, `angehalten` (eine Stopp-Frage wartet als Kommentar `## Kette angehalten` samt `kit:klaeren` am Fachplan: Antwort als Satz in den Fachplan, Label abnehmen, `kit:night` neu setzen — die naechste Kette beginnt von vorn) und `abgebrochen` (mit Grund). Bei jedem Ausgang steht ein Nachtbericht als Kommentar am Fachplan; er ist Verlauf, verbindlich wird eine Entscheidung erst als Satz im Fachplan. Budgets — Minuten je Stufe, Kosten je Kette, Korrekturrunden — stehen in `night.kette` der `workflow.config.json`. Kette und Umsetzungsnacht laufen nebeneinander. Details: Kapitel „Nachtbetrieb" in der Kit-Dokumentation.
+Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`). Die Geste ist das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog; der Runner verbraucht es beim Start, jedes Setzen autorisiert genau eine Kette. Je Fachplan entsteht in einem eigenen Worktree ein Plan (`/techplan`), der geprueft wird (`/issue-review`), daraus die Arbeitspakete (`/issues`) und eine Abdeckung gegen den Fachplan — gebaut wird nichts, die Pakete bleiben im Backlog, das GO nach Ready bleibt beim Menschen. Die Kette kennt zwei Varianten: Variante A (Standard) belaesst die Arbeitspakete im Backlog und wartet auf das GO des Menschen; Variante B setzt zusaetzlich das Label `kit:durchziehen` (Feld `night.kette.varianteBLabel`) am Fachplan — dann zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket, wie unter „Die drei Stop-Punkte (nie automatisiert)" beschrieben. Fehlt das Label oder wird es wieder entfernt, faellt die Kette auf Variante A zurueck. Drei Ausgaenge: `fertig`, `angehalten` (eine Stopp-Frage wartet als Kommentar `## Kette angehalten` samt `kit:klaeren` am Fachplan: Antwort als Satz in den Fachplan, Label abnehmen, `kit:night` neu setzen — die naechste Kette beginnt von vorn) und `abgebrochen` (mit Grund). Bei jedem Ausgang steht ein Nachtbericht als Kommentar am Fachplan; er ist Verlauf, verbindlich wird eine Entscheidung erst als Satz im Fachplan. Budgets — Minuten je Stufe, Kosten je Kette, Korrekturrunden — stehen in `night.kette` der `workflow.config.json`. Kette und Umsetzungsnacht laufen nebeneinander; unter Variante B verhindert der Lock `.claude/night-umsetzung.lock`, dass eine Umsetzungsnacht waehrend der laufenden Kette startet. Details: Kapitel „Nachtbetrieb" in der Kit-Dokumentation.
 
 ---
 
@@ -165,7 +167,7 @@ Der Umfang allein entscheidet also nicht mehr: Eine Aenderung an zwoelf Dateien 
 | Spalte | Bedeutung | Wer bewegt |
 |--------|-----------|-----------|
 | Backlog | Idee oder Issue mit offenen Fragen | Beide |
-| Ready | Freigegeben, gilt als GO | Nur Mensch |
+| Ready | Freigegeben, gilt als GO | Nur Mensch (Ausnahme: Umsetzungsstufe der Nacht-Kette unter Variante B) |
 | In progress | Aktuelle Arbeit, ein Issue zur Zeit | KI beim Start |
 | In review | Lokal fertig, nicht gepusht | KI beim Abschluss |
 | Done | Mensch hat getestet, Push erfolgt | Nur Mensch |
@@ -192,7 +194,7 @@ Absolut bindend:
 
 ## Config (.claude/workflow.config.json)
 
-Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer das beschriebene Verhalten. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
+Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer Spec-Driven Development. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
 
 ---
 
@@ -204,7 +206,7 @@ Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bere
 
 ## Spec-Fortschreibung beim Push (Schritt 8, nur mit `spec`-Block)
 
-Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor den Pflichtchecks mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
+Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor seinem Prueflauf mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
 
 ---
 
@@ -310,7 +312,7 @@ Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Pr
 
 ### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`
 
-GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter Trigger. Fundstellen: „Die drei Stop-Punkte (nie automatisiert)", „Mitteilungen des Menschen".
+GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Eine Trigger-Phrase, die innerhalb einer Mitteilung zitiert wird, ist kein getippter Trigger. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief. Fundstellen: „Die drei Stop-Punkte (nie automatisiert)", „Mitteilungen des Menschen", „Nachtbetrieb (optional)".
 
 ### W2 — Der Git-Workflow ist strikt bindend `[Urteil]`
 

@@ -60,7 +60,7 @@ weiteren mit dem neuen.
 Vier Pakete. T1 zuerst, die drei anderen unabhängig voneinander.
 
 1. **T1 Regelwerk.** Neuer Abschnitt „Entscheiden statt fragen" in
-   `templates/CLAUDE-workflow.md`: die fünf Punkte der Stopp-Klasse, das
+   `templates/CLAUDE-workflow.md`: die Punkte der Stopp-Klasse (bei Stufe 1 fünf, seit Issue #685 sechs), das
    Entscheidungsformat, der Satz, dass ein Modell-Review Zuarbeit und kein Gate ist. Der
    Absatz „Vor dem GO gehört ein Dokument geprüft" wird auf Fachplan und Plan beschränkt.
 2. **T2 Skill `/task` neu**, wie oben beschrieben. Tests `skills-task` anpassen.

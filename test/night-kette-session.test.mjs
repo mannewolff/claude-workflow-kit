@@ -93,7 +93,9 @@ test("[night-18] mit stream: true fordert die Session stream-json auch ohne --ve
     const argumente = readFileSync(aus, "utf-8").trim().split("\n");
     assert.ok(argumente.includes("--output-format"), `stream-json fehlt: ${argumente.join(" ")}`);
     assert.ok(argumente.includes("stream-json"));
-    assert.deepEqual(leseKennzahlen(res.stdout), { kostenUsd: 1.25, apiDauerMs: 10, zuege: 2 });
+    // stopReason und isError seit Issue #668 im Vertrag; die Fixture-Zeile dieses Tests
+    // traegt sie nicht, also stehen sie auf null — das ist der Wert fuer "nicht gemessen".
+    assert.deepEqual(leseKennzahlen(res.stdout), { kostenUsd: 1.25, apiDauerMs: 10, zuege: 2, stopReason: null, isError: null, eingabeTokens: null, ausgabeTokens: null, cacheErzeugtTokens: null, cacheGelesenTokens: null });
   });
 });
 

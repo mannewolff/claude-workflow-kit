@@ -62,7 +62,7 @@ export function indexText(dir) {
 export function configSchreiben(dir, config) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   // `issueTracker` gehoert seit Issue #461 dazu: Ein fehlendes Feld gilt als 'github'
-  // (Schema-Default), und github traegt das beschriebene Verhalten nicht (A19) — jede
+  // (Schema-Default), und github traegt Spec-Driven Development nicht (A19) — jede
   // Fixture ohne das Feld wuerde abgewiesen. 'local' ist der Tracker dieser Tests und
   // ausdruecklich erlaubt; ein Test, der einen anderen braucht, setzt ihn selbst.
   const vollstaendig = { issueTracker: "local", ...config };

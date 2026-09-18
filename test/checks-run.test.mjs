@@ -35,6 +35,12 @@ function gelaufen(dir, name) {
 
 const ERGEBNISSE = (liste) => liste.map((e) => e.ergebnis);
 
+/**
+ * Die Form des Zeitstempels, nicht sein Wert (Issue #655): ISO 8601 in UTC, mit
+ * `Z` am Ende. Die Uhrzeit des Laufs darf keinen Test rot machen.
+ */
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+
 test("nur die ausgewaehlten Kommandos laufen, die ausgelassenen nennt die Ausgabe mit Grund", () => {
   const config = {
     buildChecks: [
@@ -148,6 +154,56 @@ test("leeres Paket: Exit 0, kein Kindprozess, Zusammenfassung trotzdem geschrieb
     assert.deepEqual(summary.laufen, []);
     assert.deepEqual(kommandos(summary.ausgelassen), [marke("nie.txt")]);
     assert.match(eintrag(summary.ausgelassen, marke("nie.txt")).grund, /leeres Paket/);
+  });
+});
+
+test("[checks-3] ein gruener Lauf stempelt einen ISO-Zeitpunkt in die Zusammenfassung", () => {
+  // Der Zeitpunkt gehoert zum Nachweis, den die Nachweiszeile der Release-Skills
+  // je Commit nennt (Plan #652, E7): Hash und Stempel bezeugen denselben Moment.
+  const config = {
+    buildChecks: [{ cmd: "echo gruen", always: true }],
+    checkAreas: { kern: ["src/**"] },
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "src/a.txt");
+
+    const res = run(dir);
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(zusammenfassung(dir).zeitpunkt, ISO_UTC);
+  });
+});
+
+test("[checks-3] ein roter Lauf traegt den Zeitpunkt ebenfalls", () => {
+  const config = {
+    buildChecks: [
+      { cmd: "exit 1", always: true },
+      { cmd: "echo nie", always: true },
+    ],
+    checkAreas: { kern: ["src/**"] },
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "src/a.txt");
+
+    const res = run(dir);
+
+    assert.notEqual(res.status, 0, "ein roter Check muss den Exit-Code rot faerben");
+    assert.match(zusammenfassung(dir).zeitpunkt, ISO_UTC);
+  });
+});
+
+test("[checks-3] ein leeres Paket traegt den Zeitpunkt ebenfalls", () => {
+  const config = {
+    buildChecks: [{ cmd: "echo nie", always: true }],
+    checkAreas: { kern: ["src/**"] },
+  };
+  mitRepo({ config }, (dir) => {
+    const res = run(dir);
+
+    assert.equal(res.status, 0, `leeres Paket ist kein Fehler: ${res.stderr}`);
+    const summary = zusammenfassung(dir);
+    assert.equal(summary.leeresPaket, true);
+    assert.match(summary.zeitpunkt, ISO_UTC);
   });
 });
 

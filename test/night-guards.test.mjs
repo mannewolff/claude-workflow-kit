@@ -258,7 +258,11 @@ test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Mo
     assert.match(zeile, new RegExp(`-p /implement-next #${id}`), "das Issue muss verbindlich uebergeben werden");
     assert.match(zeile, /--model claude-test-modell/);
     assert.match(zeile, /--permission-mode acceptEdits/);
-    assert.doesNotMatch(zeile, /--output-format/, "ohne --verbose kein Stream-Format");
+    // Bis Issue #668 stand hier das Gegenteil ("ohne --verbose kein Stream-Format"). Der
+    // Implementierungslauf fordert den Strom jetzt immer an: An `stop_reason` haengt der
+    // Grund einer Runde ohne Ergebnis, und der darf nicht am Konsolenflag haengen.
+    assert.match(zeile, /--output-format stream-json/, "der Implementierungslauf fordert den Strom immer an");
+    assert.match(zeile, /--disallowedTools Monitor/, "das Monitor-Werkzeug ist gesperrt");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
