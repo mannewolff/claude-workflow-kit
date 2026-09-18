@@ -82,3 +82,38 @@ test("der Abschnitt fuehrt je Wurzelfeld ausser version eine Ueberschrift", () =
   }
   assert.doesNotMatch(abschnitt, /^### `version`$/m);
 });
+
+function oberflaechenAbschnitt() {
+  const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+  const start = doku.indexOf("## Einstellungen über die Oberfläche");
+  const ende = doku.indexOf("## Alle Einstellungen");
+  assert.ok(start !== -1 && ende !== -1 && start < ende, "Abschnitt 'Einstellungen über die Oberfläche' nicht gefunden");
+  return doku.slice(start, ende);
+}
+
+test("der Oberflaechen-Abschnitt nennt die sieben Teile", () => {
+  const abschnitt = oberflaechenAbschnitt();
+  for (const teil of ["Reviewer", "Paarungen", "Prüfstufen", "Prüfkommandos und Bereiche", "Spezifikation", "Nacht-Kette", "einfache Gruppen"]) {
+    assert.ok(abschnitt.includes(teil), `Teil '${teil}' fehlt im Abschnitt`);
+  }
+});
+
+test("der Absatz 'Team und persoenlich' gilt nicht mehr fuer jede Einstellung", () => {
+  const abschnitt = oberflaechenAbschnitt();
+  const start = abschnitt.indexOf("**Team und persönlich.**");
+  const ende = abschnitt.indexOf("**", start + 25);
+  assert.ok(start !== -1, "Absatz 'Team und persoenlich' fehlt");
+  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
+  assert.doesNotMatch(absatz, /zu jeder Einstellung/i);
+  assert.match(absatz, /persönliche Abweichung erlaubt ist/);
+});
+
+test("die Beschreibung des Textblocks in Dateischreibweise nennt Modellliste und unbekannte Felder", () => {
+  const abschnitt = oberflaechenAbschnitt();
+  const start = abschnitt.indexOf("**Textblock in Dateischreibweise.**");
+  assert.ok(start !== -1, "Absatz 'Textblock in Dateischreibweise' fehlt");
+  const ende = abschnitt.indexOf("**", start + 40);
+  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
+  assert.match(absatz, /night\.modelle/);
+  assert.match(absatz, /nicht kennt/);
+});
