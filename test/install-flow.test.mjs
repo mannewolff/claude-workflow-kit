@@ -174,6 +174,7 @@ test("Projektlokaler Install: workflow.config.json bleibt versionierbar, der Res
     assert.equal(wirdIgnoriert(dir, ".claude/workflow.config.local.json"), true,
       "die persoenliche Config gehoert nicht ins Repo");
     assert.equal(wirdIgnoriert(dir, ".claude/board-meta-cache.json"), true);
+    assert.equal(wirdIgnoriert(dir, ".claude/wegmarken.tsv"), true);
     assert.equal(wirdIgnoriert(dir, ".claude/settings.local.json"), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });

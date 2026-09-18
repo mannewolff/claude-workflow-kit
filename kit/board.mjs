@@ -44,7 +44,7 @@
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -2599,6 +2599,38 @@ async function issueActivity(tracker, config, args) {
   out(await tracker.listActivity(id));
 }
 
+// Spalten, deren Betreten den Beginn eines zuordenbaren Abschnitts markiert (Issue #733).
+// Ready, Backlog und Done stehen bewusst nicht dabei: Sie sind Ablagen, keine Arbeit.
+const WEGMARKEN_SPALTEN = new Set(["in_progress", "in_review"]);
+const WEGMARKEN_DATEI = "wegmarken.tsv";
+
+/**
+ * Haengt eine Wegmarke an `.claude/wegmarken.tsv` im Arbeitsverzeichnis an (Issue #733).
+ *
+ * Wozu: Der Melder teilt den Verbrauch einer interaktiven Sitzung anhand der Zeitstempel
+ * seines Protokolls auf die hier vermerkten Abschnitte auf. Was zwischen keinen zwei
+ * Wegmarken liegt, zaehlt "ohne Karte" — geraten wird nicht.
+ *
+ * Vermerkt wird der KANONISCHE Status, nicht der Anzeigename der Spalte: Der steht
+ * projektweise verschieden unter `columns` in der Config, und der Melder liest die Datei
+ * ohne Zugriff auf die Config, die sie erzeugt hat.
+ *
+ * Angehaengt, nie ueberschrieben — sonst saehe der Melder nur den letzten Abschnitt einer
+ * Sitzung. Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Eine Wegmarke
+ * ist Buchhaltung, keine Bedingung, und eine gescheiterte Buchung darf die Kartenbewegung
+ * nicht mitreissen.
+ */
+function wegmarkeSchreiben(id, status, jetzt = new Date()) {
+  if (!WEGMARKEN_SPALTEN.has(status)) return;
+  const pfad = resolve(".claude", WEGMARKEN_DATEI);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
+  } catch (e) {
+    process.stderr.write(`Hinweis: Wegmarke nicht geschrieben (${pfad}): ${e.message}\n`);
+  }
+}
+
 async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
   if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
@@ -2607,6 +2639,9 @@ async function issueMove(tracker, args) {
     fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
   }
   await tracker.moveIssue(id, toStatus);
+  // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
+  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden.
+  wegmarkeSchreiben(id, toStatus);
   out({ ok: true, id, status: toStatus });
 }
 
@@ -3612,6 +3647,11 @@ const NACHTLAUF_EINHEITEN_MAX = 200;
 
 const NACHTLAUF_MODUS = { implementierung: "IMPLEMENTATION", kette: "CHAIN" };
 
+// Die Art des Laufs im Vertrag (mannewolff/kanban-kit#1012). Der Endpunkt faellt ohne das
+// Feld auf NIGHT zurueck; ausgeschrieben steht es trotzdem hier, damit ein Nachtlauf nicht
+// am Vorgabewert haengt, sobald derselbe Endpunkt auch andere Arten annimmt.
+const NACHTLAUF_ART = "NIGHT";
+
 // Farbe nach Pruefzustand, getrennt fuer erfolg und fehlschlag (NACH_ZUSTAND dort).
 const NACHTLAUF_NACH_PRUEFUNG = {
   geprueft: { erfolg: ["GREEN", null] },
@@ -3714,6 +3754,7 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
   const grau = items.filter((i) => i.state === "GREY").length;
   return {
     startedAt: stand.start,
+    kind: NACHTLAUF_ART,
     mode,
     durationMs: Math.max(0, jetzt.getTime() - new Date(stand.start).getTime()),
     processedCount: items.length - grau,

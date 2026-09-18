@@ -35,6 +35,15 @@ test("[night-31] Kopf: Modus, Start, Dauer, complete und der Lauf-Verbrauch im V
   assert.equal(nachtlaufMeldung(stand("kette", [], { verbrauch: V(null, null, null, null, null) }), JETZT).usage, null, "nichts gemessen heisst null, nicht 0");
 });
 
+// Die Art des Laufs steht seit mannewolff/kanban-kit#1012 ausdruecklich im Rumpf. Der
+// Endpunkt faellt ohne das Feld auf NIGHT zurueck — genau deshalb wird es hier gesetzt:
+// Sobald der Melder interaktiver Sitzungen dieselbe Route mit einem anderen `kind`
+// bedient, darf der Nachtlauf nicht am Vorgabewert haengen.
+test("[board-10] die Meldung nennt die Art des Laufs ausdruecklich als NIGHT", () => {
+  assert.equal(nachtlaufMeldung(stand("implementierung", []), JETZT).kind, "NIGHT");
+  assert.equal(nachtlaufMeldung(stand("kette", []), JETZT).kind, "NIGHT");
+});
+
 test("[night-31] eine unbekannte Lauf-Art wird abgewiesen statt geraten", () => {
   assert.throws(() => nachtlaufMeldung(stand("review", []), JETZT), /Lauf-Art 'review'/);
 });
@@ -115,6 +124,7 @@ test("[night-31] nightrun melden schickt die Meldung mit Token an /api/kanban/ni
     assert.equal(requests[0].headers["content-type"], "application/json");
     const body = JSON.parse(requests[0].body);
     assert.equal(body.mode, "IMPLEMENTATION");
+    assert.equal(body.kind, "NIGHT");
     assert.equal(body.items[0].state, "GREEN");
   } finally {
     rmSync(dir, { recursive: true, force: true });

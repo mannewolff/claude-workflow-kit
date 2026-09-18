@@ -912,6 +912,16 @@ function gitReste(cwd = process.cwd()) {
   // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
   // ersten Paket als unsauber.
   pathspec.push(`:(exclude)${UMSETZUNG_LOCK}`);
+  // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
+  // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
+  // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
+  // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
+  // `.claude/*`-Block nach der ersten erfolgreichen Runde hart. Damit waere die Wegmarke
+  // eine Bedingung der Arbeit statt ihrer Buchhaltung.
+  // SYNC: derselbe Pfad steckt als WEGMARKEN_DATEI in kit/board.mjs, das ihn schreibt;
+  // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
+  // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
+  pathspec.push(":(exclude).claude/wegmarken.tsv");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");

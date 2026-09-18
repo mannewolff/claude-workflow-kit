@@ -161,3 +161,44 @@ test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsver
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Derselbe Gegenpol wie bei der Vorhaben-Notiz oben, fuer die Wegmarken (Issue #733):
+// Jeder Zug nach In progress oder In review schreibt eine Zeile nach
+// `.claude/wegmarken.tsv` — real zwei je Runde, weil `/implement-next` die Karte erst
+// nach In progress und am Ende nach In review zieht. Waere das ein Rest, stoppte JEDE
+// erfolgreiche Runde hart, sobald `.gitignore` den `.claude/*`-Block nicht fuehrt. Damit
+// waere die Wegmarke eine Bedingung der Arbeit statt ihrer Buchhaltung — genau das
+// Gegenteil ihres Zwecks.
+//
+// Die `.gitignore` des Fixtures fuehrt `.claude/*` bewusst nicht; nur der Ausschluss im
+// Code kann die Datei entschaerfen.
+test("Nachtlauf: eine Wegmarke ist kein unkommittierter Rest", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette weiterlaufen muessen: ${res.stderr}\n${res.stdout}`);
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
+
+    // Vorbedingung des Tests: Die Wegmarken sind entstanden und fuer git sichtbar —
+    // sonst waere der Fall auch ohne den Ausschluss gruen.
+    // Der Session-Fake zieht je Runde einmal nach In review — zwei Runden, zwei Zeilen.
+    const zeilen = readFileSync(join(dir, ".claude", "wegmarken.tsv"), "utf-8").split("\n").filter(Boolean);
+    assert.equal(zeilen.length, 2, `unerwartete Zahl Wegmarken: ${zeilen.join(" | ")}`);
+    const stand = spawnSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf-8" }).stdout;
+    assert.match(stand, /\.claude\/wegmarken\.tsv/,
+      "git sieht die Wegmarken-Datei nicht — der Fall waere auch ohne den Ausschluss gruen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
