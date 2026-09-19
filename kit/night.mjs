@@ -1502,6 +1502,100 @@ function emitVerbose(issueId, line) {
   }
 }
 
+// --- Werkzeugzeit am Session-Strom (Issue #748) ---
+
+/**
+ * Beobachtet einen `stream-json`-Strom und misst, wie lange eine Session an ihren
+ * Werkzeugen gehangen hat (Plan #745, E1/E2).
+ *
+ * Gemessen wird allein die SPANNE: Ein `assistant`-Ereignis mit `tool_use`-Bloecken
+ * eroeffnet einen Schub, das letzte zugehoerige `tool_result` schliesst ihn. Der Inhalt
+ * eines Aufrufs wird nie gelesen — kein Werkzeugname, kein Argument wird gespeichert.
+ * Deutete der Beobachter den Aufruf, haette er eine Meinung darueber, was "Arbeit" ist;
+ * so hat er nur eine Uhr.
+ *
+ * Drei parallele Aufrufe eines Schubs zaehlen als EIN Zeitraum. Ihre Einzelspannen zu
+ * addieren buchte dieselbe Wanduhr dreifach — die Session hat einmal gewartet, nicht
+ * dreimal. Dass es mehr als einer war, steht darum in `nebenlaeufigeSchuebe` und nicht
+ * in der Zeit.
+ *
+ * Ein Schub, dessen `tool_result` nie ankommt (abgeschnittener Strom, Zeitlimit), zaehlt
+ * als `offeneSchuebe` und geht NICHT in `werkzeugMs` ein: Ein fehlender Messwert darf
+ * nicht als Null erscheinen, und die Spanne bis zum letzten gesehenen Ereignis waere eine
+ * Schaetzung, die sich als Messung ausgaebe.
+ *
+ * Eigener Zustand statt einer reinen Funktion ueber dem ganzen stdout (wie
+ * `leseKennzahlen`), weil die Zeitstempel aus der ANKUNFT der Zeilen stammen — im
+ * gesammelten stdout stehen sie nicht mehr. Der Aufrufer gibt den Zeitstempel darum mit;
+ * das haelt den Beobachter an Fixtures prueffbar, und deshalb ist er exportiert.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein bereits geparstes Objekt, `ergebnis()`
+ * liefert jederzeit `{ werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe }`.
+ * Unlesbare Zeilen werden tolerant uebersprungen, wie in `leseKennzahlen()` — eine
+ * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
+ */
+export function werkzeugZeitBeobachter() {
+  let werkzeugMs = 0;
+  let schuebe = 0;
+  let nebenlaeufigeSchuebe = 0;
+  let verwaiste = 0;
+  // Der Schub, der gerade laeuft: Startzeit, noch offene tool_use-Ids und die Zahl der
+  // Aufrufe, mit der er begonnen hat.
+  let offen = null;
+
+  const parse = (roh) => {
+    if (roh && typeof roh === "object") return roh;
+    if (typeof roh !== "string") return null;
+    const trimmed = roh.trim();
+    // Billiger Vorfilter wie in leseKennzahlen: Ein Stream-Ereignis ist immer ein
+    // JSON-Objekt. Das haelt JSON.parse von jeder Fliesstext-Zeile fern — und der
+    // Beobachter sitzt im stdout-Handler jeder Session.
+    if (!trimmed.startsWith("{")) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  };
+
+  return {
+    zeile(roh, ts) {
+      const obj = parse(roh);
+      if (!obj || !Array.isArray(obj.message?.content)) return;
+
+      if (obj.type === "assistant") {
+        // Ohne Id liesse sich einem Aufruf kein Ergebnis zuordnen; er eroeffnet darum
+        // keinen Schub, statt einen zu eroeffnen, der nie schliesst.
+        const ids = obj.message.content
+          .filter((b) => b?.type === "tool_use" && typeof b.id === "string" && b.id)
+          .map((b) => b.id);
+        if (!ids.length) return;
+        // Ein neuer Schub, waehrend der alte noch offen ist: Der alte bekommt kein
+        // Ergebnis mehr und zaehlt als offen.
+        if (offen) verwaiste += 1;
+        offen = { start: ts, ids: new Set(ids), aufrufe: ids.length };
+        return;
+      }
+
+      if (!offen) return;
+      for (const block of obj.message.content) {
+        if (block?.type === "tool_result") offen.ids.delete(block.tool_use_id);
+      }
+      if (offen.ids.size === 0) {
+        werkzeugMs += ts - offen.start;
+        schuebe += 1;
+        if (offen.aufrufe > 1) nebenlaeufigeSchuebe += 1;
+        offen = null;
+      }
+    },
+    ergebnis() {
+      // Der noch laufende Schub wird hier dazugezaehlt statt beim Eintreffen abgeschlossen:
+      // ergebnis() darf mehrfach abgerufen werden, ohne den Zustand zu veraendern.
+      return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0) };
+    },
+  };
+}
+
 // --- Session-Kennzahlen (Issue #487) ---
 
 // Ein Feld gilt nur als gelesen, wenn es eine endliche Zahl ist — auch die 0. Alles
@@ -2030,8 +2124,14 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
 // weil wir waehrend des Laufs streamen muessen. Das Rueckgabe-Objekt spiegelt
 // die von spawnSync bekannten Felder (status, signal, error, stdout, stderr),
 // damit der Infrastruktur-Guard (#149) und die Erfolgs-/Fehlschlag-Pfade
-// unveraendert weiterarbeiten.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd }) {
+// unveraendert weiterarbeiten; seit Issue #748 kommt `werkzeugzeit` dazu.
+//
+// `useStream` und `verbose` sind seit Issue #748 zwei Schalter und nicht mehr einer
+// (Plan #745, Fund B1): MESSEN gehoert an den angeforderten Strom, AUSGEBEN an
+// --verbose. Waeren sie weiterhin derselbe Schalter, gaebe es nur zwei gleich falsche
+// Stellungen — die Werkzeugzeit in jedem normalen Nachtlauf dauerhaft "nicht gemessen",
+// oder jedes Stream-Ereignis jeder Session in Konsole und Tagesprotokoll.
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -2059,6 +2159,10 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
     let timedOut = false;
     let settled = false;
     const timers = [];
+    // Nur angelegt, wenn der Strom auch angefordert ist (Issue #748). Ohne Strom gibt es
+    // nichts zu messen, und `werkzeugzeit: null` sagt genau das — ein Ergebnis mit Nullen
+    // waere die Behauptung, eine Session habe kein Werkzeug benutzt.
+    const werkzeugzeit = useStream ? werkzeugZeitBeobachter() : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
     const gestartet = Date.now();
@@ -2067,7 +2171,10 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
       if (settled) return;
       settled = true;
       timers.forEach(clearTimeout);
-      resolve(result);
+      // An genau einer Stelle angehaengt, damit auch die Zeitlimit- und Fehlerpfade das
+      // Gemessene mitbringen: Gerade eine abgebrochene Session ist die, bei der die
+      // Werkzeugzeit erklaert, woran die Runde haengengeblieben ist.
+      resolve({ ...result, werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null });
     };
 
     // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
@@ -2112,10 +2219,18 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
       const text = chunk.toString();
       stdout += text;
       if (useStream) {
+        // Der Zeitstempel je Zeile stammt aus ihrer ANKUNFT — daraus entsteht die Spanne,
+        // und im gesammelten stdout am Ende steht sie nicht mehr. Ein Stempel je Chunk
+        // genuegt: Die Zeilen eines Chunks sind zusammen eingetroffen.
+        const ts = Date.now();
         buf += text;
         let idx;
         while ((idx = buf.indexOf("\n")) >= 0) {
-          emitVerbose(issueId, buf.slice(0, idx));
+          const zeile = buf.slice(0, idx);
+          werkzeugzeit.zeile(zeile, ts);
+          // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
+          // gemessen wird immer, sobald der Strom angefordert ist.
+          if (verbose) emitVerbose(issueId, zeile);
           buf = buf.slice(idx + 1);
         }
       }
@@ -2126,7 +2241,13 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, extraEnv, cwd
 
     child.on("error", (err) => done({ status: null, signal: null, error: err, stdout, stderr }));
     child.on("close", async (code, signal) => {
-      if (useStream && buf.trim()) emitVerbose(issueId, buf);
+      // Die letzte Zeile ohne Zeilenumbruch — oft die interessanteste einer Session, und
+      // beim Zeitlimit die abgeschnittene. Auch sie geht erst in die Messung, dann in die
+      // Ausgabe.
+      if (useStream && buf.trim()) {
+        werkzeugzeit.zeile(buf, Date.now());
+        if (verbose) emitVerbose(issueId, buf);
+      }
       const error = timedOut
         ? Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })
         : null;
@@ -2244,7 +2365,11 @@ export async function runSession(issueId, args, opts = {}) {
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   const { cmd, cmdArgs } = sessionStart({ testCmd, kommando, prompt, modell, args, opts });
   const res = await runProcess(cmd, cmdArgs, {
-    issueId, timeoutMs, useStream: args.verbose, cwd: opts.cwd,
+    // Verarbeitet wird der Strom, sobald er angefordert ist — dieselbe Bedingung wie in
+    // `sessionStart` (Issue #748). Bisher stand hier `args.verbose` allein, und damit lag
+    // der Strom jedes normalen Nachtlaufs unausgewertet als Block in `res.stdout`.
+    // `verbose` daneben steuert nur noch die Ausgabe der Ereignisse.
+    issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd,
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
     // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
     // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
