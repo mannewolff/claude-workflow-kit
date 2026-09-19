@@ -40,6 +40,7 @@ test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, W
     assert.equal(lauf.label, "kit:night");
     assert.equal(lauf.budget.kostenUsd, 50);
     assert.equal("kennzahlenHinweis" in lauf, false, "die Kette fordert den Strom immer an");
+    assert.equal("noWorkReason" in lauf, false, "eine Kette mit Arbeit traegt keinen Grund ohne Arbeit (Issue #744)");
     assert.equal(lauf.abschluss, "regulaer");
     const einheit = lauf.einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig");

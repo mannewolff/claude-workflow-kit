@@ -579,6 +579,11 @@ export const ERSATZ_GRUND = "Kein Grund ermittelbar — der Lauf ist hart gestop
 export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus dem zuletzt gemerkten harten "
   + "Stopp, nicht von der betroffenen Einheit und nicht vom Lauf. Bitte melden.)";
 
+// Die Gruende eines Laufs ohne Arbeitspaket (Issue #744) — derselbe Wortlaut steht im
+// Textprotokoll und am Lauf-Kopf (`LAUF.noWorkReason`), damit beide nie auseinanderlaufen.
+const KETTE_LEER_GRUND = "Keine Kette zu fahren — nichts zu tun.";
+const READY_LEER_GRUND = "Ready ist leer — nichts zu tun.";
+
 /**
  * Das Sicherheitsnetz fuer einen harten Stopp ohne Grund — der Text, oder `null`
  * (Issue #558).
@@ -4557,7 +4562,8 @@ export async function laufeKette(args) {
   await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
-    log("Keine Kette zu fahren — nichts zu tun.");
+    log(KETTE_LEER_GRUND);
+    if (LAUF) LAUF.noWorkReason = KETTE_LEER_GRUND;
     laufAbschliessen("regulaer");
     process.exit(0);
   }
@@ -4674,7 +4680,8 @@ export function laufeDryRun(args, ctx) {
   ctx = { ...ctx, laufModell: args.model };
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) {
-    log("Ready ist leer — nichts zu tun.");
+    log(READY_LEER_GRUND);
+    if (LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
     process.exit(0);
   }
   warnWennLabelNirgendsVorkommt(ctx, ready);
@@ -5252,6 +5259,16 @@ function lockVorErsterSession() {
 }
 
 /**
+ * Vermerkt den Grund, wenn die Umsetzungsschleife mit leerem Ready endet, ohne bis
+ * hierher ein einziges Paket gezogen zu haben (Issue #744). Ein Lauf mit Arbeit endet
+ * an dieser Stelle ebenso, aber ohne noWorkReason — sonst entschiede diese Stelle
+ * dieselbe Frage wie processedCount noch einmal.
+ */
+function readyLeerGrundVermerken(lauf) {
+  if (lauf.sessions === 0 && LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
+}
+
+/**
  * Die Runden der Umsetzungsnacht, eine nach der anderen.
  *
  * Fuehrt ihren Zustand in `lauf`, nicht ueber Rueckgaben: Bricht sie mit `break` ab — und
@@ -5262,7 +5279,10 @@ async function implementierungsSchleife(args, ctx, lauf) {
   while (lauf.sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
-    if (ready.length === 0) break;
+    if (ready.length === 0) {
+      readyLeerGrundVermerken(lauf);
+      break;
+    }
     warnWennLabelNirgendsVorkommt(ctx, ready);
 
     // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte

@@ -249,6 +249,26 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis
   }
 });
 
+// Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Bricht
+// der Implementierungslauf schon in der ersten Runde am leeren Ready ab, steht "Ready
+// ist leer" wortgleich am Lauf-Kopf, hinter den Feldern der Schemafassung 1.
+test("[night-44] ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-ohnearbeit-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const dateien = staende(dir);
+    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+    assert.equal(stand.noWorkReason, "Ready ist leer — nichts zu tun.");
+    const schluessel = Object.keys(stand);
+    assert.equal(schluessel.at(-1), "noWorkReason", "das Feld gehoert ans Ende des Lauf-Kopfes");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Der Beweis, dass der Strom wirklich angefordert wird, und nicht nur der Hinweis
 // verschwunden ist: Der Session-Fake schreibt seine Argumente mit. Ohne diesen Test
 // bestuende das Streichen des Feldes fuer sich — und die Kennzahlen fehlten weiter.
@@ -387,6 +407,10 @@ test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefs
     assert.equal(e.kennzahlen.kostenUsd, 2.4124460000000005, "die Kosten stammen aus der result-Zeile");
     assert.equal(e.kennzahlen.zuege, 37);
     assert.equal(stand(dir).abschluss, "regulaer", "ein sauber beendeter Lauf traegt regulaer");
+    // [night-44]: Die Schleife bricht danach zwar ebenso am leeren Ready (kein weiteres
+    // Paket steht mehr an), aber mit einem Arbeitspaket im Lauf traegt der Kopf keinen
+    // Grund — sonst saehe ein Lauf mit Arbeit aus wie einer ohne.
+    assert.ok(!("noWorkReason" in stand(dir)), "ein Lauf mit Arbeitspaket darf keinen noWorkReason tragen");
     assert.ok(textprotokollDa(dir), "das Textprotokoll liegt weiterhin daneben");
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -3653,6 +3653,9 @@ const NACHTLAUF_TITEL_MAX = 300;
 const NACHTLAUF_AUSZUG_MAX = 4000;
 const NACHTLAUF_COMMIT_MAX = 40;
 const NACHTLAUF_EINHEITEN_MAX = 200;
+// Die Gegenstelle kuerzt `noWorkReason` nicht selbst und weist es ab, wenn es laenger
+// ist (Issue #744) — die Kuerzung passiert deshalb hier.
+const NACHTLAUF_NOWORKREASON_MAX = 300;
 
 const NACHTLAUF_MODUS = { implementierung: "IMPLEMENTATION", kette: "CHAIN" };
 
@@ -3761,6 +3764,9 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
       };
     });
   const grau = items.filter((i) => i.state === "GREY").length;
+  const noWorkReason = typeof stand.noWorkReason === "string" && stand.noWorkReason !== ""
+    ? stand.noWorkReason.slice(0, NACHTLAUF_NOWORKREASON_MAX)
+    : null;
   return {
     startedAt: stand.start,
     kind: NACHTLAUF_ART,
@@ -3772,6 +3778,10 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     complete: stand.complete === true,
     usage: nachtlaufUsage(stand.verbrauch),
     items,
+    // Nur bei einem Lauf ohne Arbeit gesetzt (Issue #744) — die Gegenstelle setzt den
+    // gruenen Ersatztext sonst nur bei null Arbeitspaketen; ihn immer mitzuschicken
+    // liesse zwei Stellen ueber dieselbe Frage entscheiden.
+    ...(noWorkReason !== null ? { noWorkReason } : {}),
   };
 }
 

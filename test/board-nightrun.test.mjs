@@ -35,6 +35,32 @@ test("[night-31] Kopf: Modus, Start, Dauer, complete und der Lauf-Verbrauch im V
   assert.equal(nachtlaufMeldung(stand("kette", [], { verbrauch: V(null, null, null, null, null) }), JETZT).usage, null, "nichts gemessen heisst null, nicht 0");
 });
 
+// Ein Lauf ohne Arbeitspaket vermerkt seinen Grund am Lauf-Kopf (Issue #744); die
+// Meldung traegt ihn als eigenes Feld weiter, ohne ihn selbst zu erfinden oder zu
+// interpretieren.
+test("[board-16] ein vermerkter Grund ohne Arbeit steht als noWorkReason im Rumpf", () => {
+  const m = nachtlaufMeldung(stand("implementierung", [], { noWorkReason: "Ready ist leer — nichts zu tun." }), JETZT);
+  assert.equal(m.noWorkReason, "Ready ist leer — nichts zu tun.");
+});
+
+// Ohne vermerkten Grund — der Regelfall eines Laufs mit Arbeit — fehlt das Feld ganz,
+// statt `null` zu behaupten: Ein leerer Grund waere sonst nicht von einem nicht
+// uebermittelten zu unterscheiden.
+test("[board-16] ohne vermerkten Grund fehlt noWorkReason im Rumpf", () => {
+  const m = nachtlaufMeldung(stand("implementierung", []), JETZT);
+  assert.ok(!("noWorkReason" in m), "noWorkReason darf ohne Grund gar nicht erst auftauchen");
+});
+
+// Die Gegenstelle kuerzt nicht selbst und weist einen zu langen Grund ab (Issue #744) —
+// die Kuerzung auf 300 Zeichen muss deshalb hier passieren, bevor die Meldung das Haus
+// verlaesst.
+test("[board-16] ein Grund laenger als 300 Zeichen wird auf 300 Zeichen gekuerzt", () => {
+  const lang = "x".repeat(400);
+  const m = nachtlaufMeldung(stand("implementierung", [], { noWorkReason: lang }), JETZT);
+  assert.equal(m.noWorkReason.length, 300);
+  assert.equal(m.noWorkReason, "x".repeat(300));
+});
+
 // Die Art des Laufs steht seit mannewolff/kanban-kit#1012 ausdruecklich im Rumpf. Der
 // Endpunkt faellt ohne das Feld auf NIGHT zurueck — genau deshalb wird es hier gesetzt:
 // Sobald der Melder interaktiver Sitzungen dieselbe Route mit einem anderen `kind`

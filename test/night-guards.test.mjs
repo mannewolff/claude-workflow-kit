@@ -169,6 +169,20 @@ test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", NUR_POSI
   }
 });
 
+// Der Dry-Run legt nie einen Ergebnisstand an (Issue #486) — auch nicht seit Issue #744
+// den Grund vermerkt, ihn dort trotzdem am Lauf-Kopf zu vermerken: Es gibt fuer den
+// Dry-Run keinen Lauf-Kopf, der ihn tragen koennte.
+test("[night-44] Dry-Run: leeres Ready legt weiterhin keinen Ergebnisstand an", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-dryempty-stand-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Dry-Run: unerfuellte Abhaengigkeit und --max-Grenze werden ausgewiesen", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-drydeps-");
   try {
