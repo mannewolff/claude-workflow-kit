@@ -681,6 +681,48 @@
         }
       },
       "additionalProperties": false
+    },
+    "aufwand": {
+      "type": "object",
+      "description": "Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "laeufe": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst."
+        },
+        "schwellen": {
+          "type": "object",
+          "description": "Ab welchem Anteil die Auswertung einen Befund meldet.",
+          "properties": {
+            "pruefungAnteil": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            },
+            "eingrenzungOhneWirkung": {
+              "type": "boolean",
+              "default": true,
+              "description": "Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat."
+            },
+            "werkzeugAnteil": {
+              "type": "number",
+              "default": 0.5,
+              "description": "Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            },
+            "schreibkostenAnteil": {
+              "type": "number",
+              "default": 0.75,
+              "description": "Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
     }
   },
   "required": [],

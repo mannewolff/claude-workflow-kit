@@ -440,6 +440,17 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
+
+### `aufwand`
+
+Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `aufwand.laeufe` — Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst.
+- `aufwand.schwellen` — Ab welchem Anteil die Auswertung einen Befund meldet.
+- `aufwand.schwellen.pruefungAnteil` — Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+- `aufwand.schwellen.eingrenzungOhneWirkung` — Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat.
+- `aufwand.schwellen.werkzeugAnteil` — Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+- `aufwand.schwellen.schreibkostenAnteil` — Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
 <!-- einstellungen:ende -->
 
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess
@@ -1100,6 +1111,16 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 `--verbose` zeigt im Protokoll jeden Tool-Aufruf der Session. Daran siehst du binnen Minuten, ob das Modell die Board-Operationen sauber hinbekommt — das ist der schnellste Machbarkeitstest, und er entscheidet die Frage, bevor du eine ganze Nacht investierst.
 
 **Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde) — derselbe Stand liegt zusätzlich auswertbar als `.claude/night-run-<datum>-<uhrzeit>.json` daneben —, dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
+
+## Aufwand des Prozesses
+
+Jeder Ergebnisstand einer Nacht-Session (`.claude/night-run-<datum>-<uhrzeit>.json`) trägt seit Issue #748/#749 bereits Dauer, Kosten, Menge, Modell und Prüfstand. `node .claude/kit/aufwand.mjs auswerten` liest die jüngsten davon, aggregiert Zeit, Prüfungen, Umfang und Kosten und schreibt daraus `.claude/aufwand.md` (für Menschen) sowie `.claude/aufwand.json` (für die beiden Ausgabestellen unten). Das Werkzeug sagt nur, was auffällt — nie, was zu tun ist, und es schweigt, wenn nichts auffällt.
+
+**Wo der Befund erscheint.** An genau zwei Stellen, und beide zusammen: als Abschlussblock im Laufprotokoll `.claude/night-run-<datum>.log`, den jeder unbeaufsichtigte Lauf am Ende selbst schreibt, und im Skill `/push-main`, der `node .claude/kit/aufwand.mjs befund` vor dem ersten Schritt ausführt und die Ausgabe zeigt. Beide sind nötig: Läuft der Nachtbetrieb künftig ohne Zutun eines Menschen an, liest den Laufbericht womöglich niemand mehr; das Veröffentlichen bleibt dagegen ein Schritt, den ein Mensch selbst auslöst.
+
+**Kein Gate.** Der Befund hält weder einen Lauf noch `/push-main` auf. Ein Fehlschlag der Auswertung ist eine Protokollzeile, kein Abbruch.
+
+**Laufzahl und Schwellen ändern.** Beides steht im optionalen Block `aufwand` der `.claude/workflow.config.json` (siehe [Alle Einstellungen](#alle-einstellungen)) — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, ein bestehendes Projekt bekommt die Auswertung also ohne weitere Einrichtung. `aufwand.laeufe` bestimmt, wie viele der jüngsten Ergebnisstände einbezogen werden; `aufwand.schwellen` trägt die vier Grenzwerte (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`), ab denen ein Befund erscheint. In der Einstellungs-Oberfläche steht der Block unter dem Thema „Nachtbetrieb".
 
 ## Verbrauch interaktiver Sitzungen
 

@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
+import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
@@ -219,4 +219,57 @@ test("[einstellungen-1] ein gespeicherter ungültiger Wert trägt denselben Grun
 test("[einstellungen-1] jedes Wurzelfeld des Schemas außer version hat genau ein Thema", () => {
   const felder = Object.keys(VORLAGE.properties).filter((f) => f !== "version").sort();
   assert.deepEqual(Object.keys(THEMEN).sort(), felder);
+});
+
+test("[einstellungen-14] eine Config ohne aufwand-Block ist gültig", () => {
+  assert.deepEqual(fehler(pruefe({ codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" }, null)), []);
+});
+
+test("[einstellungen-14] aufwand.laeufe außerhalb ganzer Zahlen über null wird mit Pfad abgewiesen, 1 und 10 sind gültig", () => {
+  const laeufeBefunde = (laeufe) => fehler(pruefeSchema({ aufwand: { laeufe } })).filter((b) => b.pfad === "aufwand.laeufe");
+  for (const schlecht of [0, -1, 2.5, "10"]) {
+    assert.ok(laeufeBefunde(schlecht).length > 0, `laeufe ${JSON.stringify(schlecht)} nicht abgewiesen`);
+  }
+  for (const gut of [1, 10]) {
+    assert.deepEqual(laeufeBefunde(gut), []);
+  }
+});
+
+test("[einstellungen-14] jede der drei Anteil-Schwellen außerhalb von 0 bis 1 wird mit Pfad abgewiesen, 0, 0,5 und 1 sind gültig", () => {
+  const felder = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
+  for (const feld of felder) {
+    const befunde = (wert) => zusatzregeln({ aufwand: { schwellen: { [feld]: wert } } }).filter((b) => b.pfad === `aufwand.schwellen.${feld}`);
+    for (const schlecht of [-0.1, 1.1, 2]) {
+      assert.ok(befunde(schlecht).length > 0, `${feld}=${schlecht} nicht abgewiesen`);
+    }
+    for (const gut of [0, 0.5, 1]) {
+      assert.deepEqual(befunde(gut), [], `${feld}=${gut}`);
+    }
+  }
+});
+
+test("[einstellungen-14] aufwand.schwellen.eingrenzungOhneWirkung als Nicht-Boolean wird mit Pfad abgewiesen", () => {
+  const befunde = (wert) => fehler(pruefeSchema({ aufwand: { schwellen: { eingrenzungOhneWirkung: wert } } })).filter((b) => b.pfad === "aufwand.schwellen.eingrenzungOhneWirkung");
+  assert.ok(befunde("ja").length > 0);
+  assert.ok(befunde(1).length > 0);
+  assert.deepEqual(befunde(true), []);
+  assert.deepEqual(befunde(false), []);
+});
+
+test("[einstellungen-14] ein unbekanntes Feld in aufwand ist eine Warnung mit Pfad, kein Fehler", () => {
+  const befunde = pruefeSchema({ aufwand: { erfunden: 1 } });
+  assert.ok(befunde.some((b) => b.art === "unbekannt" && b.pfad === "aufwand.erfunden"));
+  assert.deepEqual(fehler(befunde).filter((b) => b.pfad === "aufwand.erfunden"), []);
+});
+
+test("[einstellungen-14] aufwand steht nicht in der Allowlist für persönliche Abweichungen", () => {
+  const basis = { reviewModel: "claude-opus-5" };
+  const r = aenderungAnwenden(basis, {}, { ebene: "persoenlich", aenderungen: [{ pfad: "aufwand", wert: { laeufe: 3 } }] });
+  assert.equal(r.ok, false);
+  assert.match(r.grund, /aufwand/);
+});
+
+test("[einstellungen-14] ein aufwand-Block mit laeufe: 3 ändert nur laeufe, die Vorgaben der Schwellen bleiben unberührt", () => {
+  const config = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5", aufwand: { laeufe: 3 } };
+  assert.deepEqual(fehler(pruefe(config, null)), []);
 });
