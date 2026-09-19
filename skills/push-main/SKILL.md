@@ -27,6 +27,29 @@ oder ohne `RELEASING.md` sind es weniger, und dann zählt die Zeile auch weniger
 ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
 `buildChecks`-Katalog, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
 
+**Aufwand melden.** Noch vor dem ersten Schritt:
+
+```bash
+node .claude/kit/aufwand.mjs befund
+```
+
+Zeige die Ausgabe **unverändert**. Sie ist bereits die Form, in der der Aufwands-Befund an
+beiden Ausgabestellen erscheint — hier und als Abschlussblock im Laufprotokoll eines
+unbeaufsichtigten Laufs. Hier steht sie, weil das Veröffentlichen der eine Schritt bleibt,
+den ein Mensch auslöst: Läuft nachts niemand mit, liest sonst womöglich niemand mehr, was
+der Prozess gekostet hat.
+
+Eine **leere Ausgabe** heißt: kein Befund. Sie wird nicht kommentiert — kein „alles
+unauffällig", keine leere Überschrift. Ein **Fehlschlag** des Kommandos wird in **einer
+Zeile** vermerkt, und er hält nichts auf. Der Befund braucht die Config nicht; er
+liest allein `.claude/aufwand.json`, die der letzte unbeaufsichtigte Lauf hinterlassen hat.
+Fehlt sie, ist die Ausgabe leer und der Exit-Code 0.
+
+Dieser Block trägt bewusst **keine Nummer** und zählt in keiner Fortschrittszeile mit: Eine
+Nummer verschöbe jede folgende Schrittzahl um eins und machte sämtliche Querverweise auf
+„Schritt 3" und „Schritt 5" falsch. Die Fortschrittszeilen der neun — ohne `spec`-Block
+sieben — Schritte bleiben davon unberührt.
+
 ### 1. Config lesen
 
 Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt fuer alle) und wird optional durch `.claude/workflow.config.local.json` ergaenzt (nicht im Repository, nur persoenliche Felder: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, Token-Pfade). Issue #207.
@@ -287,3 +310,6 @@ Fortschrittszeile zählt dann entsprechend weniger Schritte — `Schritt k von 7
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
+- Kein Halt wegen des Aufwands-Befunds: Er ist **kein Gate**, weder sein Inhalt noch sein
+  Fehlschlag hält das Veröffentlichen auf. Er sagt, was auffällt — was daraus folgt,
+  entscheidet der Mensch.

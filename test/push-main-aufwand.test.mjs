@@ -1,0 +1,107 @@
+// Die zweite Ausgabestelle: der Aufwands-Befund in `/push-main` (Issue #752, Plan #745).
+//
+// Beide Stellen sind noetig (Kriterium 8): Wenn unbeaufsichtigte Laeufe kuenftig ohne
+// Zutun eines Menschen starten, liest ihren Bericht womoeglich niemand mehr — das
+// Veroeffentlichen bleibt der eine Schritt, den ein Mensch ausloest.
+//
+// DER BLOCK TRAEGT KEINE NUMMER (W5 aus dem Plan-Review). Ein nummerierter Schritt
+// verschoebe jede Schrittzahl des Skills um eins und machte die gueltige Aussage
+// `skills-4` („zeigt in Schritt 3 …") falsch, dazu saemtliche Querverweise. Der
+// unnummerierte Block stellt dasselbe her, ohne etwas zu brechen — und genau das haelt
+// dieser Test fest, samt der Zahlen, die vor dem Paket galten.
+//
+// Geprueft wird Text, nicht Verhalten — wie in `test/skills-push-main-spec.test.mjs`.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SKILL = readFileSync(join(repoRoot, "skills", "push-main", "SKILL.md"), "utf-8");
+
+/** Der Block „Aufwand melden" — von seiner Ueberschrift bis zur naechsten Ueberschrift. */
+function aufwandBlock() {
+  const treffer = SKILL.match(/^#{2,4}.*Aufwand melden.*$|^\*\*Aufwand melden\.?\*\*.*$/m);
+  assert.ok(treffer, "im Skill steht kein Block 'Aufwand melden'");
+  const rest = SKILL.slice(treffer.index + treffer[0].length);
+  const ende = rest.search(/^(#{2,4} |\*\*[A-ZÄÖÜ])/m);
+  return { start: treffer.index, kopf: treffer[0], text: ende === -1 ? rest : rest.slice(0, ende) };
+}
+
+/** Zahl der Vorkommen eines Musters im Skill. */
+function zaehle(muster) {
+  return (SKILL.match(muster) ?? []).length;
+}
+
+test("[skills-30] der Block 'Aufwand melden' steht hinter 'Fortschritt melden' und vor Schritt 1", () => {
+  const fortschritt = SKILL.indexOf("**Fortschritt melden.**");
+  assert.notEqual(fortschritt, -1, "der Absatz 'Fortschritt melden' fehlt");
+  const schritt1 = SKILL.indexOf("### 1. Config lesen");
+  assert.notEqual(schritt1, -1, "der Abschnitt 'Config lesen' fehlt");
+
+  const block = aufwandBlock();
+  assert.ok(block.start > fortschritt, "der Block steht vor 'Fortschritt melden'");
+  assert.ok(block.start < schritt1, "der Block steht hinter Schritt 1 — dann liefe der Befund erst nach der Config");
+});
+
+test("[skills-30] der Block traegt keine Nummer — die Ueberschriften zaehlen unveraendert 1 bis 9", () => {
+  const block = aufwandBlock();
+  assert.ok(!/\d/.test(block.kopf), `der Kopf des Blocks traegt eine Zahl: ${block.kopf}`);
+
+  const nummern = [...SKILL.matchAll(/^### (\d+)\. /gm)].map((m) => Number(m[1]));
+  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6, 7, 8, 9], "die Schrittnummern des Skills haben sich verschoben");
+  const ueberschriften = (SKILL.match(/^### /gm) ?? []).length;
+  assert.equal(ueberschriften, 9, "es gibt eine `###`-Ueberschrift, die keine der neun Schrittnummern traegt");
+});
+
+// Die Zahlen stammen aus dem Stand VOR dem Paket (gemessen an skills/push-main/SKILL.md,
+// v2.0.1): Sie sind der Vergleichsmassstab, gegen den die Schrittzaehlung unveraendert
+// bleiben muss. Faellt einer dieser Werte, hat der Einschub die Zaehlung verschoben.
+test("[skills-30] die Fortschrittszeilen nennen unveraendert dieselben Schrittzahlen", () => {
+  assert.equal(zaehle(/Schritt k von 9/g), 0, "die literale Form 'Schritt k von 9' hat sich geaendert");
+  assert.equal(zaehle(/Schritt k von 7/g), 1, "die literale Form 'Schritt k von 7' hat sich geaendert");
+  assert.equal(zaehle(/Schritt \d+ von 9/g), 6, "die Zahl der nummerierten Fortschrittszeilen hat sich geaendert");
+  assert.equal(zaehle(/Schritt \d+ von 7/g), 0, "es sind nummerierte Zeilen mit 'von 7' hinzugekommen");
+});
+
+// Die gueltige Aussage `skills-4` haengt daran: Sie sagt, die Vorschau stehe in Schritt 3.
+test("[skills-30] die Vorschau steht weiterhin in Schritt 3", () => {
+  const start = SKILL.indexOf("### 3. ");
+  assert.notEqual(start, -1, "Schritt 3 fehlt");
+  const abschnitt = SKILL.slice(start).split(/\n### /)[0];
+  assert.match(abschnitt, /spec\.mjs apply --anker[^\n]*--dry-run/, "die Vorschau steht nicht mehr in Schritt 3");
+});
+
+test("[skills-30] der Block ruft `aufwand.mjs befund` und zeigt die Ausgabe unveraendert", () => {
+  const { text } = aufwandBlock();
+  assert.match(text, /node \.claude\/kit\/aufwand\.mjs befund/, "der Aufruf fehlt");
+  assert.match(text, /unver[aä]ndert/i, "es steht nicht, dass die Ausgabe unveraendert gezeigt wird");
+});
+
+test("[skills-30] eine leere Ausgabe bleibt unkommentiert", () => {
+  const { text } = aufwandBlock();
+  assert.match(text, /[Ll]eere? Ausgabe/, "der Leerfall fehlt");
+  assert.match(text, /nicht kommentiert|unkommentiert|kein Befund/, "es steht nicht, dass der Leerfall unkommentiert bleibt");
+});
+
+test("[skills-30] ein Fehlschlag wird in einer Zeile vermerkt und haelt nichts auf", () => {
+  const { text } = aufwandBlock();
+  assert.match(text, /Fehlschlag|scheitert/, "der Fehlerfall fehlt");
+  assert.match(text, /h[aä]lt nichts auf/, "es steht nicht, dass der Fehlschlag nichts aufhaelt");
+});
+
+test("[skills-30] der Befund braucht die Config nicht und liest allein den Auswertungsstand", () => {
+  const { text } = aufwandBlock();
+  assert.match(text, /\.claude\/aufwand\.json/, "die gelesene Datei fehlt");
+  assert.match(text, /Config/, "es steht nicht, dass der Befund die Config nicht braucht");
+});
+
+test("[skills-30] 'Was dieser Skill nicht tut' nennt den Befund ausdruecklich als kein Gate", () => {
+  const start = SKILL.indexOf("## Was dieser Skill nicht tut");
+  assert.notEqual(start, -1, "der Abschnitt fehlt");
+  const abschnitt = SKILL.slice(start);
+  assert.match(abschnitt, /Aufwand/, "der Aufwands-Befund kommt im Abschnitt nicht vor");
+  assert.match(abschnitt, /kein Gate/, "es steht nicht, dass der Befund kein Gate ist");
+});

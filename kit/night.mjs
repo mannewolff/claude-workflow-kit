@@ -151,6 +151,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const NACHBAR_DIR = process.env.NIGHT_NACHBAR_DIR ? resolve(process.env.NIGHT_NACHBAR_DIR) : __dirname;
 const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
+const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -187,6 +188,14 @@ const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() =
 const BOARD_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
   : join(__dirname, "board.mjs");
+
+// Dasselbe fuer die Aufwands-Auswertung (Issue #752): Sie wird als Kindprozess gerufen,
+// nicht importiert, und misst das Projekt, in dem der Runner arbeitet — also derselbe
+// KIT_ROOT-Weg wie beim Board. Die reine Textform kommt dagegen ueber NACHBAR_AUFWAND,
+// genau wie board.mjs zweimal auftaucht: einmal als CLI, einmal als Funktion.
+const AUFWAND_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "aufwand.mjs")
+  : join(__dirname, "aufwand.mjs");
 
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
@@ -231,6 +240,22 @@ const zusammenfassungPfadFallback = (root) => {
 const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : { zusammenfassungPfad: zusammenfassungPfadFallback };
+
+// Die Form des Befundblocks kommt aus aufwand.mjs und wird NICHT nachgebaut (Issue #752):
+// Es ist die eine Form, die an beiden Ausgabestellen erscheint — im Laufprotokoll hier und
+// in `/push-main`. Ein zweiter Textbau waere eine zweite Wahrheit darueber, wie ein Befund
+// aussieht, und die beiden liefen bei der ersten Aenderung auseinander.
+//
+// Bedingt und mit werfendem Ersatz wie die beiden Nachbarn darueber: `--version` und
+// `--help` antworten auch ohne Nachbarn (Issue #170). Der Wurf ist hier ungefaehrlich —
+// aufwandAuswerten() faengt ihn ab und macht daraus die eine Protokollzeile, die ein
+// Fehlschlag der Auswertung sein darf (E15).
+const befundTextFallback = () => {
+  throw new Error(`aufwand.mjs liegt nicht neben night.mjs (${NACHBAR_AUFWAND})`);
+};
+const { befundText } = existsSync(NACHBAR_AUFWAND)
+  ? await import(pathToFileURL(NACHBAR_AUFWAND).href)
+  : { befundText: befundTextFallback };
 
 // Nur fuer Tests; der Runner nutzt die Bindungen direkt, nicht ueber dieses Objekt.
 // Ohne den Export ist der Identitaetsnachweis nicht fuehrbar — ob im Regelbetrieb die
@@ -688,12 +713,79 @@ function laufMelden() {
   if (LAUF.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
 }
 
+/** Die erste Zeile eines Fremdtextes, gekuerzt — damit eine Meldung eine Zeile bleibt. */
+function ersteZeile(text) {
+  const zeile = (text || "").split(/\r?\n/).find((z) => z.trim() !== "") ?? "";
+  return boardZitat(zeile.trim());
+}
+
+/**
+ * Ruft die Aufwands-Auswertung und legt ihr Ergebnis am Lauf-Kopf ab (Issue #752).
+ *
+ * Als KINDPROZESS und nicht als Funktion: Die Auswertung schreibt `.claude/aufwand.md`
+ * und `.claude/aufwand.json` fuer das Projekt, in dem der Runner arbeitet — dieselbe
+ * Trennung wie beim Board. Die Textform des Befundblocks kommt dagegen aus dem Modul
+ * (siehe befundText oben), damit beide Ausgabestellen dieselbe Form zeigen.
+ *
+ * KEIN GATE (E15): Jeder Fehlschlag — ein Kindprozess mit Exit ungleich 0, eine
+ * unlesbare Ausgabe, eine fehlende Datei — ist genau eine Protokollzeile und nie ein
+ * `fail()`. Die Auswertung misst den Lauf; sie darf ihn nicht beenden, und ein Lauf, der
+ * an seiner eigenen Buchhaltung scheitert, verlöre den Bericht ueber die Arbeit.
+ *
+ * KRITERIUM 11: Ohne Befund bleibt das Protokoll stumm. `befundText` liefert dann eine
+ * leere Zeichenkette, und es wird nichts geschrieben — keine Ueberschrift, keine leere
+ * Tabelle, kein beruhigender Satz.
+ */
+function aufwandAuswerten() {
+  try {
+    // Die fehlende Datei wird vorher abgefangen, statt sie in Node laufen zu lassen: Der
+    // Kindprozess endete dann zwar auch mit Exit 1, aber die erste Zeile seines stderr ist
+    // ein Pfad aus dem Modul-Lader ("node:internal/modules/cjs/loader:1573"). Die eine
+    // Zeile, die dieser Fehlschlag sein darf, soll den Grund nennen und nicht den Ort.
+    if (!existsSync(AUFWAND_PATH)) throw new Error(`${AUFWAND_PATH} liegt nicht vor`);
+    // maxBuffer wie bei den Board-Aufrufen: Der Stand traegt alle einbezogenen Laeufe,
+    // und ein abgeschnittener Puffer machte daraus einen Parse-Fehler.
+    const res = spawnSync(process.execPath, [AUFWAND_PATH, "auswerten"], {
+      encoding: "utf-8",
+      cwd: process.cwd(),
+      maxBuffer: BOARD_MAX_BUFFER,
+    });
+    if (res.error) throw new Error(`${AUFWAND_PATH} liess sich nicht starten: ${res.error.message}`);
+    if (res.status !== 0) throw new Error(`Exit ${res.status}: ${ersteZeile(res.stderr || res.stdout)}`);
+    let stand;
+    try {
+      stand = JSON.parse(res.stdout);
+    } catch (err) {
+      throw new Error(`Ausgabe nicht lesbar: ${err.message}`);
+    }
+    LAUF.aufwand = stand;
+    for (const zeile of befundText(stand).split("\n")) {
+      if (zeile.trim() !== "") log(zeile);
+    }
+  } catch (err) {
+    // Nur, wenn kein Ergebnis vorliegt: Wirft erst der Textbau, bleibt das gelesene
+    // Ergebnis am Lauf-Kopf stehen — es ist gemessen, und der Fehlschlag betrifft die Form.
+    if (!("aufwand" in LAUF)) LAUF.aufwand = { ok: false, fehler: err.message };
+    log(`Aufwands-Auswertung fehlgeschlagen: ${err.message} — der Lauf endet unveraendert.`);
+  }
+}
+
 /**
  * Schliesst den Lauf ab — `regulaer` oder `harterStopp`, aber nie mehr `null`.
  *
  * Bei `harterStopp` greift hier das Sicherheitsnetz aus Issue #558: Kam kein Grund an,
  * traegt der Lauf den zuletzt gemerkten samt Ankervermerk, sonst den Ersatztext. Ein
  * Stand ohne Grund entsteht damit nicht mehr.
+ *
+ * DIE REIHENFOLGE IST BEGRUENDET (Issue #752, W6): erst schreiben, dann auswerten, dann
+ * erneut schreiben. `abschluss` und `complete` stehen bis hierher nur im Speicher; auf
+ * der Platte traegt die Datei dieses Laufs noch `abschluss: null, complete: false`. Genau
+ * die liest die Auswertung, und der frischeste Lauf — der, um den es im Abschlussblock
+ * geht — ginge als unvollstaendig ein. Wer diese Reihenfolge spaeter aendert, nimmt dem
+ * Block seine Aussage.
+ *
+ * Und erst danach `laufMelden()`: Eingeliefert wird der Stand einschliesslich seiner
+ * Auswertung, nicht der Stand davor.
  */
 function laufAbschliessen(abschluss) {
   if (!LAUF) return;
@@ -703,6 +795,8 @@ function laufAbschliessen(abschluss) {
     const netz = sicherheitsnetzGrund(LAUF, STOPP_GRUND);
     if (netz !== null) LAUF.fehlerText = netz;
   }
+  schreibeErgebnisstand();
+  aufwandAuswerten();
   schreibeErgebnisstand();
   laufMelden();
 }
@@ -935,6 +1029,14 @@ function gitReste(cwd = process.cwd()) {
   // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
   // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
   pathspec.push(":(exclude).claude/wegmarken.tsv");
+  // Die Aufwands-Auswertung (Issue #752) entsteht am Ende JEDES Laufs im Arbeitsbaum —
+  // `.claude/aufwand.md` fuer Menschen, `.claude/aufwand.json` fuer die zwei
+  // Ausgabestellen. Protokoll-Zustand, kein Code-Zustand, und aus demselben Grund
+  // ausgeschlossen wie `night-run-*` darueber: Ohne den Ausschluss stoppte der Rest-Guard
+  // (#152) im naechsten Lauf nach der ersten erfolgreichen Runde hart, sobald `.gitignore`
+  // den `.claude/*`-Block nicht fuehrt. Die Messung machte dann die Arbeit unmoeglich,
+  // die sie misst.
+  pathspec.push(":(exclude).claude/aufwand.*");
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
@@ -1072,6 +1174,10 @@ function gitIm(repoRoot, gitArgs) {
  *
  * `force`, weil der Worktree `workflow.config.json` schon traegt — dieselbe Datei, sie
  * wird ueberschrieben, nicht gedoppelt.
+ *
+ * Die Aufwands-Auswertung (`aufwand.md`, `aufwand.json`, Issue #752) bleibt aus demselben
+ * Grund zurueck wie `night-run-*`: Sie gehoert dem Lauf, der sie geschrieben hat, und
+ * liegt in der Hauptkopie. Im Worktree waere sie ein fremder Stand, der mit ihm verginge.
  */
 function claudeSpiegeln(repoRoot, pfad) {
   const quelle = join(repoRoot, ".claude");
@@ -1079,7 +1185,10 @@ function claudeSpiegeln(repoRoot, pfad) {
   cpSync(quelle, join(pfad, ".claude"), {
     recursive: true,
     force: true,
-    filter: (src) => !basename(src).startsWith("night-run-"),
+    filter: (src) => {
+      const name = basename(src);
+      return !name.startsWith("night-run-") && !name.startsWith("aufwand.");
+    },
   });
 }
 
