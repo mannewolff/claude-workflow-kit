@@ -501,6 +501,13 @@ function schreibeZusammenfassung(daten) {
  * Der Rueckgabewert je gelaufenem Kommando steht in der Zusammenfassung: `gruen`,
  * `rot` oder `nicht gestartet`. Ohne dieses Feld koennte der Runner einen
  * Fehlschlag nicht dem ausloesenden Paket zuordnen (Kriterium 9 aus Issue #420).
+ *
+ * Die Dauer je Kommando entsteht hier und nicht aus der Werkzeugzeit des
+ * Session-Stroms (Issue #747, Plan #745, E3): Der Strom kennt nur "ein
+ * Bash-Aufruf dauerte n Sekunden", nicht welches konfigurierte Kommando darin
+ * lief — die Zuordnung braeuchte genau die inhaltliche Deutung, die das
+ * Nicht-Ziel "Keine inhaltliche Deutung der Aufrufe" ausschliesst. `checks.mjs`
+ * kennt seine Kommandos dagegen beim Namen.
  */
 function ausfuehren(args) {
   const auswahl = planen(args);
@@ -525,21 +532,31 @@ function ausfuehren(args) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
   }
 
-  const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet" }));
+  const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
   for (const eintrag of laufen) {
     if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+    const start = process.hrtime.bigint();
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
+    eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     process.stdout.write(ausgabe);
     eintrag.ergebnis = gruen ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
     rot = !gruen;
   }
 
+  // null statt 0, wenn kein Kommando gemessen wurde (leeres Paket, voller
+  // Umfang ohne Lauf gibt es hier nicht) — "nichts gemessen" ist kein
+  // Nullbetrag.
+  const gemessen = laufen.filter((e) => e.dauerMs !== null);
+  const dauerGesamtMs = gemessen.length > 0
+    ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0)
+    : null;
+
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes });
+  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
