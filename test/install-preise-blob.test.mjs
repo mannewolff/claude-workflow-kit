@@ -31,7 +31,9 @@ import { starteServer } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
-const QUELLE = join(repoRoot, "kit", "preise.mjs");
+// Beide Nachbardateien in einem Lauf: Ein zweiter Installer-Lauf kostete Sekunden und
+// belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu.
+const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
 const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
@@ -54,22 +56,23 @@ function installiertesProjekt(praefix) {
   return { dir, ausgabe: res.stdout };
 }
 
-// Ohne Aussage-ID: Dieses Paket beschreibt keine Zusage im Bereich 'installer' — die
-// Auslieferung einer Kit-Datei ist bestehendes Verhalten, hier nur um eine Datei
-// erweitert. Der Beleg gehoert trotzdem hierher, sonst faellt sie beim naechsten
-// Werkzeug wieder aus dem Blick.
-test("der Installer schreibt .claude/kit/preise.mjs byteweise identisch zur Quelle", () => {
+// `[installer-11]` gilt aufwand.mjs (Issue #750). preise.mjs steht ohne eigene ID
+// daneben: Ihre Auslieferung war bestehendes Verhalten, als sie dazukam — der Beleg
+// gehoert trotzdem hierher, sonst faellt sie beim naechsten Werkzeug aus dem Blick.
+test("[installer-11] der Installer schreibt die Nachbardateien byteweise identisch zur Quelle", () => {
   const { dir, ausgabe } = installiertesProjekt("install-preise-blob-");
   try {
-    const ziel = join(dir, ".claude", "kit", "preise.mjs");
-    assert.ok(existsSync(ziel), "preise.mjs wurde nicht ausgeliefert");
-    // Byteweise, nicht als Text: Ein Blob, der beim Kodieren die Kodierung wechselt,
-    // faellt ueber einen utf-8-Vergleich nicht auf.
-    assert.ok(
-      readFileSync(ziel).equals(readFileSync(QUELLE)),
-      "die ausgelieferte Datei weicht von kit/preise.mjs ab — Blob nicht nachgezogen?"
-    );
-    assert.match(ausgabe, /preise\.mjs geschrieben:/);
+    for (const datei of AUSGELIEFERT) {
+      const ziel = join(dir, ".claude", "kit", datei);
+      assert.ok(existsSync(ziel), `${datei} wurde nicht ausgeliefert`);
+      // Byteweise, nicht als Text: Ein Blob, der beim Kodieren die Kodierung wechselt,
+      // faellt ueber einen utf-8-Vergleich nicht auf.
+      assert.ok(
+        readFileSync(ziel).equals(readFileSync(join(repoRoot, "kit", datei))),
+        `die ausgelieferte Datei weicht von kit/${datei} ab — Blob nicht nachgezogen?`
+      );
+      assert.ok(ausgabe.includes(`${datei} geschrieben:`), `der Installer meldet ${datei} nicht`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
