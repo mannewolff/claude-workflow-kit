@@ -131,6 +131,16 @@ Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`
 
 ---
 
+## Aufwand des Prozesses
+
+Jeder unbeaufsichtigte Lauf schreibt seine Auswertung nach `.claude/aufwand.md`; sie liegt dort vollstaendig, auch wenn nichts auffaellt. Ein Befund erscheint unaufgefordert an genau zwei Stellen: im Abschlussblock des Laufprotokolls `.claude/night-run-<datum>.log` und zu Beginn von `/push-main`. Der Befund haelt nirgends etwas auf und ist kein Gate.
+
+Drei Begriffe tragen die Auswertung: **Nachdenken** ist die Zeit, in der das Modell arbeitet; **Werkzeugarbeit** ist die Zeit, in der etwas anderes fuer den Lauf arbeitet; eine **Pruefung** ist ein Eintrag aus `buildChecks`, mehrfache Ausfuehrungen desselben Eintrags werden zusammengefasst. Zeit, die sich keiner Seite zuordnen laesst, ist ein dritter, eigener Posten.
+
+Laufzahl und Schwellen stehen optional im Config-Block `aufwand`; fehlt er, gelten die eingebauten Vorgaben.
+
+---
+
 ## Drei Bahnen
 
 **Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger. **Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus** — das Commit-Gate ist mechanisch und kennt keine Bahn. Dasselbe gilt für jeden Commit von Hand. Was das Gate nicht leistet — `--no-verify` und der frische Klon ohne Installer-Lauf — steht unter „Git-Workflow (strikt bindend)“.

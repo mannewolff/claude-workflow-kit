@@ -2,6 +2,7 @@
 
 | Bereich | Datei | Gueltig | Entfallen |
 | --- | --- | --- | --- |
+| aufwand | specs/aufwand.md | 0 | 0 |
 | board | specs/board.md | 11 | 2 |
 | checks | specs/checks.md | 3 | 0 |
 | einstellungen | specs/einstellungen.md | 13 | 0 |

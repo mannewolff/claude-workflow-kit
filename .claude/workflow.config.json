@@ -158,6 +158,9 @@
       ],
       "einstellungen": [
         "kit/einstellungen.mjs"
+      ],
+      "aufwand": [
+        "kit/aufwand.mjs"
       ]
     },
     "testGlobs": [

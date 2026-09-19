@@ -12,9 +12,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
-test("die Vorlage bleibt unter 340 Zeilen", () => {
+test("die Vorlage bleibt unter 350 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 341, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 340`);
+  assert.ok(zeilen <= 350, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 350`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
