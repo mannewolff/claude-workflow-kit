@@ -1669,6 +1669,12 @@ export function leseKennzahlen(stdout) {
   // Die vier Mengen aus `usage` (Issue #669): Die CLI meldet sie ohnehin, und nur wer sie
   // nicht verwirft, kann sie am Board zeigen. Kein Rechnen, nur Durchreichen.
   const usage = letzte.usage && typeof letzte.usage === "object" ? letzte.usage : {};
+  // Die Teilung des Zwischenspeichers nach Haltedauer (Issue #749, Review-Fund W2): Die
+  // Preistabelle (kit/preise.mjs) fuehrt zwei Saetze, die um bis zu 60 Prozent auseinander
+  // liegen — ohne die Teilung waere die Kostenverteilung geraten. `cacheErzeugtTokens`
+  // bleibt unveraendert die Summe; fehlt `usage.cache_creation` im Strom, bleiben beide
+  // neuen Felder `null` statt einer Schaetzung.
+  const teilung = usage.cache_creation && typeof usage.cache_creation === "object" ? usage.cache_creation : null;
   return {
     kostenUsd: endlicheZahl(letzte.total_cost_usd),
     apiDauerMs: endlicheZahl(letzte.duration_api_ms),
@@ -1679,6 +1685,8 @@ export function leseKennzahlen(stdout) {
     ausgabeTokens: endlicheZahl(usage.output_tokens),
     cacheErzeugtTokens: endlicheZahl(usage.cache_creation_input_tokens),
     cacheGelesenTokens: endlicheZahl(usage.cache_read_input_tokens),
+    cache5mTokens: endlicheZahl(teilung?.ephemeral_5m_input_tokens),
+    cache1hTokens: endlicheZahl(teilung?.ephemeral_1h_input_tokens),
   };
 }
 
@@ -1737,6 +1745,42 @@ function verbrauchErfassen(issueId, kennzahlen) {
   const einheit = issueId === null ? null : LAUF.einheiten.findLast((e) => e.id === String(issueId));
   if (einheit) verbrauchAddieren(einheit.verbrauch ??= verbrauchLeer(), kennzahlen);
   LAUF.verbrauchOhneEinheit = verbrauchOhneEinheit(LAUF);
+  schreibeErgebnisstand();
+}
+
+/**
+ * Die Zeiten einer Session nach den Begriffen aus Issue #737 (Plan #745, E1/E2): Nachdenken
+ * ist die API-Dauer der Session, Werkzeugarbeit kommt vom Beobachter aus Issue #748, und der
+ * Rest ist die Session-Dauer selbst — kein gerechneter dritter Wert, sondern die Gesamtspanne,
+ * aus der Nachdenken und Werkzeugarbeit ohnehin Teilmengen sind.
+ *
+ * Reine Funktion ueber den drei Quellen, damit sie an Fixtures pruefbar ist — dieselbe Linie
+ * wie `verbrauchAddieren`. Ein nicht gemessener Wert bleibt `null`, nie 0.
+ */
+export function zeitenBauen(dauerMs, kennzahlen, werkzeug) {
+  return {
+    dauerMs: endlicheZahl(dauerMs),
+    nachdenkenMs: endlicheZahl(kennzahlen?.apiDauerMs),
+    werkzeugMs: endlicheZahl(werkzeug?.werkzeugMs),
+    werkzeugSchuebe: endlicheZahl(werkzeug?.schuebe),
+    nebenlaeufigeSchuebe: endlicheZahl(werkzeug?.nebenlaeufigeSchuebe),
+  };
+}
+
+/**
+ * Schreibt die Zeiten einer Session auf die juengste Einheit der Karte — an derselben
+ * Stelle aufgerufen wie `verbrauchErfassen()`, mit demselben Ziel-Muster (`findLast`): Laeuft
+ * dieselbe Karte mehrfach in einem Lauf (etwa regulaere Runde und Salvage), trifft jeder
+ * Aufruf dieselbe, juengste Einheit und ueberschreibt ihre Zeiten mit dem neuesten Stand.
+ *
+ * `issueId === null` (eine Session ohne Karte, etwa der Vorflug) schreibt nichts: Es gibt
+ * keine Einheit, der die Zeit gehoert.
+ */
+function zeitenErfassen(issueId, dauerMs, kennzahlen, werkzeug) {
+  if (!LAUF || issueId === null) return;
+  const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (!einheit) return;
+  einheit.zeiten = zeitenBauen(dauerMs, kennzahlen, werkzeug);
   schreibeErgebnisstand();
 }
 
@@ -2364,6 +2408,9 @@ export async function runSession(issueId, args, opts = {}) {
     : modell;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   const { cmd, cmdArgs } = sessionStart({ testCmd, kommando, prompt, modell, args, opts });
+  // Die Session-Dauer fuer die Zeiten-Erfassung (Issue #749): gemessen um genau den
+  // Prozesslauf, wie Nachdenken (apiDauerMs) und Werkzeugarbeit (werkzeugzeit) es auch sind.
+  const gestartet = Date.now();
   const res = await runProcess(cmd, cmdArgs, {
     // Verarbeitet wird der Strom, sobald er angefordert ist — dieselbe Bedingung wie in
     // `sessionStart` (Issue #748). Bisher stand hier `args.verbose` allein, und damit lag
@@ -2413,7 +2460,9 @@ export async function runSession(issueId, args, opts = {}) {
   }
   // Jede Session einer Karte an genau einer Stelle verbucht (Issue #669): Implementierung,
   // Salvage und alle Stufen der Kette laufen hier durch.
-  verbrauchErfassen(issueId, leseKennzahlen(res.stdout));
+  const kennzahlen = leseKennzahlen(res.stdout);
+  verbrauchErfassen(issueId, kennzahlen);
+  zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
   return res;
 }
 
@@ -2459,7 +2508,19 @@ function lesePruefung(issueId) {
   if (!existsSync(pfad)) return { id: String(issueId), zustand: "ungeprueft" };
   try {
     const daten = JSON.parse(readFileSync(pfad, "utf-8"));
-    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket" };
+    // Der Umfang der Pruefung (Issue #749, Review-Fund): Kriterium 2 der Auswertung fragt,
+    // wie oft eine Pruefung im vollen statt im eingegrenzten Umfang lief — ohne diese Felder
+    // waere das nicht beantwortbar. Ein Stand aus der Zeit vor diesem Paket fuehrt sie nicht;
+    // ein fehlendes Feld gilt als `unbekannt` und nicht als `eingegrenzt`, darum `null` und
+    // nie `false`.
+    const umfangFelder = {
+      vollerUmfang: typeof daten.vollerUmfang === "boolean" ? daten.vollerUmfang : null,
+      leeresPaket: typeof daten.leeresPaket === "boolean" ? daten.leeresPaket : null,
+      basis: typeof daten.basis === "string" ? daten.basis : null,
+      bereiche: Array.isArray(daten.bereiche) ? daten.bereiche : null,
+      dauerGesamtMs: endlicheZahl(daten.dauerGesamtMs),
+    };
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder };
     const laufen = daten.laufen ?? [];
     // Ein nicht gruener Eintrag ist etwas anderes als eine fehlende Datei: Dort ist
     // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
@@ -2472,6 +2533,7 @@ function lesePruefung(issueId) {
       ...(ungruen ? { rotesKommando: ungruen.cmd, rotesErgebnis: ungruen.ergebnis } : {}),
       laufen,
       ausgelassen: daten.ausgelassen ?? [],
+      ...umfangFelder,
     };
   } catch (err) {
     // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
@@ -3055,6 +3117,7 @@ async function runVorflugSession(args, prompt) {
   const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
     ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
     : VORFLUG_TIMEOUT_MS;
+  const gestartet = Date.now();
   const res = await runProcess(cmd, cmdArgs, {
     issueId: "vorflug", timeoutMs, useStream: false,
     extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1" },
@@ -3062,7 +3125,11 @@ async function runVorflugSession(args, prompt) {
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
-  verbrauchErfassen(null, leseKennzahlen(res.stdout));
+  const kennzahlen = leseKennzahlen(res.stdout);
+  verbrauchErfassen(null, kennzahlen);
+  // issueId null: die Vorflug-Session gehoert zu keiner Karte, zeitenErfassen schreibt
+  // darum nichts (derselbe Aufruf wie verbrauchErfassen, Issue #749).
+  zeitenErfassen(null, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
   return { res, timeoutMs };
 }
 

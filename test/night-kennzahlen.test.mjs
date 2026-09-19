@@ -51,14 +51,19 @@ test("aus einem stdout mit result-Zeile kommen Kosten, API-Dauer und Zuege", () 
     ausgabeTokens: 17688,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
-// Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand.
-test("[night-29] die Schluessel des Ergebnisses sind kostenUsd, apiDauerMs, zuege, stopReason, isError und die vier Token-Mengen", () => {
+// Die Schluessel sind verbindlich: Issue #488 uebernimmt sie in den Ergebnisstand. Seit
+// Issue #749 kommen die zwei Felder der Cache-Teilung dazu (night-45).
+test("[night-29] die Schluessel des Ergebnisses sind kostenUsd, apiDauerMs, zuege, stopReason, isError und die Token-Mengen", () => {
   assert.deepEqual(Object.keys(leseKennzahlen(RESULT_ZEILE)).sort(), [
     "apiDauerMs",
     "ausgabeTokens",
+    "cache1hTokens",
+    "cache5mTokens",
     "cacheErzeugtTokens",
     "cacheGelesenTokens",
     "eingabeTokens",
@@ -110,6 +115,8 @@ test("eine abgeschnittene JSON-Zeile fuehrt nicht zum Wurf", () => {
     ausgabeTokens: 17688,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
@@ -133,6 +140,8 @@ test("ein fehlendes Kostenfeld liefert null, die anderen Werte bleiben", () => {
     ausgabeTokens: null,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
@@ -150,6 +159,8 @@ test("num_turns mit dem Wert 0 wird als 0 gelesen, nicht als null", () => {
     ausgabeTokens: null,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
@@ -166,6 +177,8 @@ test("nicht-endliche und falsch getypte Werte liefern fuer ihr Feld null", () =>
     ausgabeTokens: null,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
@@ -188,6 +201,8 @@ test("bei mehreren result-Zeilen zaehlt die letzte", () => {
     ausgabeTokens: 17688,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
   assert.deepEqual(leseKennzahlen(ZEILEN(RESULT_ZEILE, frueher)), {
     kostenUsd: 0.5,
@@ -199,6 +214,8 @@ test("bei mehreren result-Zeilen zaehlt die letzte", () => {
     ausgabeTokens: null,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 
@@ -213,6 +230,8 @@ test("Windows-Zeilenenden aendern nichts", () => {
     ausgabeTokens: 17688,
     cacheErzeugtTokens: null,
     cacheGelesenTokens: null,
+    cache5mTokens: null,
+    cache1hTokens: null,
   });
 });
 

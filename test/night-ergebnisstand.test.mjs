@@ -252,7 +252,7 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis
 // Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Bricht
 // der Implementierungslauf schon in der ersten Runde am leeren Ready ab, steht "Ready
 // ist leer" wortgleich am Lauf-Kopf, hinter den Feldern der Schemafassung 1.
-test("[night-44] ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
+test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
   const dir = setupProjekt("night-stand-ohnearbeit-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -407,7 +407,7 @@ test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefs
     assert.equal(e.kennzahlen.kostenUsd, 2.4124460000000005, "die Kosten stammen aus der result-Zeile");
     assert.equal(e.kennzahlen.zuege, 37);
     assert.equal(stand(dir).abschluss, "regulaer", "ein sauber beendeter Lauf traegt regulaer");
-    // [night-44]: Die Schleife bricht danach zwar ebenso am leeren Ready (kein weiteres
+    // Die Schleife bricht danach zwar ebenso am leeren Ready (kein weiteres
     // Paket steht mehr an), aber mit einem Arbeitspaket im Lauf traegt der Kopf keinen
     // Grund — sonst saehe ein Lauf mit Arbeit aus wie einer ohne.
     assert.ok(!("noWorkReason" in stand(dir)), "ein Lauf mit Arbeitspaket darf keinen noWorkReason tragen");
