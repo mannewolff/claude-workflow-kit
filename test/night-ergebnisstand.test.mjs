@@ -25,7 +25,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -77,6 +77,63 @@ function setupProjekt(praefix, night = null) {
     assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
   }
   return dir;
+}
+
+// `nightrun melden` postet gegen die echte Toolbox-API — in der Testumgebung nicht
+// erreichbar. Der Stellvertreter faengt nur diesen einen Unterbefehl ab und haengt den
+// tatsaechlich gebauten Meldungs-Rumpf (ueber die echte, reine nachtlaufMeldung()) an
+// NIGHT43_CAPTURE an; jeder andere Befehl geht unveraendert an das echte board.mjs
+// (als board-real.mjs daneben abgelegt) — Issues entstehen und bewegen sich weiterhin
+// ueber den lokalen Tracker (Issue #743).
+const BOARD_STUB = [
+  'import { spawnSync } from "node:child_process";',
+  'import { readFileSync, appendFileSync } from "node:fs";',
+  'import { join, dirname } from "node:path";',
+  'import { fileURLToPath } from "node:url";',
+  'import { nachtlaufMeldung } from "./board-real.mjs";',
+  "",
+  "const args = process.argv.slice(2);",
+  'if (args[0] === "nightrun" && args[1] === "melden") {',
+  '  const datei = args[args.indexOf("--datei") + 1];',
+  '  const stand = JSON.parse(readFileSync(datei, "utf-8"));',
+  String.raw`  appendFileSync(process.env.NIGHT43_CAPTURE, JSON.stringify(nachtlaufMeldung(stand)) + "\n");`,
+  String.raw`  process.stdout.write(JSON.stringify({ ok: true, outcome: "TEST" }) + "\n");`,
+  "} else {",
+  '  const real = join(dirname(fileURLToPath(import.meta.url)), "board-real.mjs");',
+  "  const res = spawnSync(process.execPath, [real, ...args], { stdio: \"inherit\" });",
+  "  process.exit(res.status ?? 1);",
+  "}",
+  "",
+].join("\n");
+
+/** Wie setupProjekt, aber mit dem meldung-abfangenden Stellvertreter aus BOARD_STUB. */
+function setupProjektMitMeldeCapture(praefix) {
+  const dir = mkdtempSync(join(tmpdir(), praefix));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board-real.mjs"));
+  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), BOARD_STUB);
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
+    codeHost: "local", issueTracker: "local", buildChecks: ["true"],
+    local: { issuesDir: "issues" },
+  }, null, 2));
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
+  for (const [c, a] of [
+    ["git", ["init", "-q"]],
+    ["git", ["config", "user.email", "test@example.invalid"]],
+    ["git", ["config", "user.name", "Night Test"]],
+    ["git", ["add", "-A"]],
+    ["git", ["commit", "-q", "-m", "setup"]],
+  ]) {
+    const res = run(dir, c, a);
+    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
+  }
+  return dir;
+}
+
+/** Die Meldungen aus NIGHT43_CAPTURE, eine je Zeile. */
+function meldungen(captureFile) {
+  if (!existsSync(captureFile)) return [];
+  return readFileSync(captureFile, "utf-8").split("\n").filter((z) => z.trim() !== "").map((z) => JSON.parse(z));
 }
 
 /** Erzeugt ein Issue in Ready und liefert seine ID als String. */
@@ -508,5 +565,45 @@ test("ein Vorflug-Abbruch traegt die Fehlerklasse zustand", NUR_POSIX, () => {
     assert.deepEqual(s.einheiten, [], "vor der ersten Session gibt es keine Einheiten");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Die Startmeldung vor dem ersten Arbeitspaket (Issue #743) ---
+
+test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Abschluss, bevor ein Arbeitspaket gezogen wird", NUR_POSIX, () => {
+  const dir = setupProjektMitMeldeCapture("night-stand-start-melden-");
+  const captureFile = join(dir, "..", "night43-capture-melden.jsonl");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
+      { NIGHT_CLAUDE_CMD: "true", NIGHT_MELDEN_ERZWINGEN: "1", NIGHT43_CAPTURE: captureFile });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const gemeldet = meldungen(captureFile);
+    // Ohne die Aenderung aus Issue #743 meldet ein Lauf ohne Arbeitspaket nur einmal —
+    // am regulaeren Ende (laufAbschliessen). Zwei Meldungen beweisen die neue Startmeldung.
+    assert.equal(gemeldet.length, 2, `zwei Meldungen erwartet (Start und Ende), gefunden: ${gemeldet.length}`);
+
+    assert.deepEqual(gemeldet[0].items, [], "die Startmeldung traegt keine Arbeitspakete");
+    assert.equal(gemeldet[0].complete, false, "die Startmeldung gilt nicht als abgeschlossen");
+
+    assert.equal(gemeldet[1].complete, true, "die Endmeldung eines regulaeren Laufs ist abgeschlossen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(captureFile, { force: true });
+  }
+});
+
+test("[night-43] im Dry-Run bleibt die Startmeldung aus", NUR_POSIX, () => {
+  const dir = setupProjektMitMeldeCapture("night-stand-start-dry-");
+  const captureFile = join(dir, "..", "night43-capture-dry.jsonl");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"],
+      { NIGHT_CLAUDE_CMD: "true", NIGHT_MELDEN_ERZWINGEN: "1", NIGHT43_CAPTURE: captureFile });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    assert.deepEqual(meldungen(captureFile), [], "der Dry-Run legt keinen Ergebnisstand an, also gibt es nichts zu melden");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(captureFile, { force: true });
   }
 });

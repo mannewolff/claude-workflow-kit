@@ -3202,6 +3202,12 @@ export function vorbereiten(args) {
   const yoloAngabe = args.yolo ? ", YOLO" : "";
 
   ergebnisstandAnlegen(args, aktivesLabel, jetzt);
+  // Meldet den Lauf sofort mit leerer Paketliste (Issue #743): Ein Stopp im Vorflug oder
+  // in der ersten Session soll am Board sichtbar sein, nicht erst nach dem ersten Paket.
+  // laufMelden() liest ERGEBNIS_FILE ueber einen eigenen Prozess von der Platte, darum
+  // erst schreiben, dann melden — sonst faende board.mjs die Datei noch nicht vor.
+  schreibeErgebnisstand();
+  laufMelden();
 
   log(`Nacht-Runner startet (Modus ${modus}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
