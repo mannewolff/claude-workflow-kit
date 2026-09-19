@@ -251,7 +251,8 @@ test("[night-11] der Infrastruktur-Guard der Implementierungsrunde nennt exitInf
 
 test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", NUR_POSIX, () => {
   // Gruene buildChecks fuehren in den Salvage-Versuch; die Salvage-Session hinterlaesst
-  // wieder nur Dreck, also endet sie als `gescheitert`.
+  // wieder nur Dreck — weder Commit noch Board-Zug, also endet sie als `gescheitert`.
+  // Seit Issue #672 nennt der Satz auch, was genau fehlt.
   mitProjekt("night-grund-salvage-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
@@ -262,6 +263,7 @@ test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", 
     assert.equal(s.fehlerklasse, "harterStopp");
     const grund = grundDerKarte(s, id);
     assert.match(grund, /SALVAGE-VERSUCH gescheitert/, `der Salvage-Satz fehlt: ${grund}`);
+    assert.match(grund, /kein Commit, Board nicht bewegt/, `der Endzustand fehlt: ${grund}`);
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
   });
 });

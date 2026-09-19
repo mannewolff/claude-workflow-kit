@@ -54,9 +54,13 @@
  * Runner deshalb die buildChecks selbst (nicht mutationCommand — das ist ein
  * nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
- * gegen das Issue zu pruefen, zu committen und das Board zu bewegen. Rote Checks
- * oder eine gescheiterte Salvage-Session -> harter Stopp. Immer an; ein Opt-out-
- * Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
+ * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
+ * Board zu bewegen. Rote Checks -> harter Stopp. Endet die Session nicht mit
+ * sauberem Baum UND der Karte in In review, stoppt der Lauf ebenfalls hart und
+ * unterscheidet dabei drei Endzustaende (Issue #672): kein Commit und kein
+ * Board-Zug (gescheitert), Commit ohne Board-Zug (unvollstaendig) und In review
+ * bei unsauberem Baum (widerspruechlich). Immer an; ein Opt-out-Flag waere in der
+ * Praxis wirkungslos, weil man es nachts vergisst.
  * Die Vorpruefung mergt den env-Block aus .claude/settings.json und
  * .claude/settings.local.json (local gewinnt, wie in Claude Code) in die eigene
  * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
@@ -288,8 +292,12 @@ Flags:
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
 Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
-zu pruefen, zu committen und nach In review zu verschieben (Zeitlimit 10 min). Rote
-Checks oder ein gescheiterter Salvage-Versuch fuehren zum harten Stopp.
+zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
+zu verschieben (Zeitlimit 10 min). Rote Checks fuehren zum harten Stopp, und ebenso
+jeder Salvage, der nicht mit sauberem Baum und der Karte in In review endet — das
+Protokoll nennt dann einen von drei Endzustaenden: "SALVAGE-VERSUCH gescheitert"
+(kein Commit, Board nicht bewegt), "SALVAGE UNVOLLSTAENDIG" (Commit, Board nicht
+bewegt) oder "SALVAGE WIDERSPRUECHLICH" (In review, aber Arbeit blieb liegen).
 
 Ist in der Config "formatFixCommand" gesetzt (z.B. "mvn spotless:apply" oder
 "npx prettier --write ."), laeuft es bei roten Checks genau einmal, danach werden
@@ -2497,6 +2505,13 @@ function verifyChecksForSalvage(cfg) {
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern
 // gruen — die Session darf sie NICHT erneut starten, sonst laeuft sie in genau
 // den Hintergrund-Check, der die Runde ueberhaupt erst gekostet hat.
+//
+// Zweiter Kernpunkt seit Issue #672: Der Board-Zug steht HINTER der Sauberkeits-
+// pruefung, nicht daneben. Bis dahin liess Schritt 3 committen, verschieben und
+// kommentieren in einem Zug — und im Nachtlauf vom 2026-08-05 (kanban-kit) stand die
+// Karte danach in In review, waehrend Arbeit im Baum lag. Das Board meldete Erfolg,
+// der Lauf meldete Fehlschlag, und auf main lag ein roter Stand. Wer nicht committen
+// kann, soll die Karte gar nicht erst bewegen.
 function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
@@ -2506,11 +2521,15 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
     `Im Working Tree liegen unkommittete Aenderungen zu Issue #${issueId}. Deine einzige Aufgabe:`,
     `1. Lies das Issue: node .claude/kit/board.mjs issue get ${issueId}`,
     `2. Sieh dir den Stand an: git status und git diff`,
-    `3. Passt der Stand zum Issue, committe ihn (Betreff mit "(Issue #${issueId})", im Body "Refs #${issueId}"`,
-    `   — niemals Closes/Fixes/Resolves), verschiebe das Issue mit`,
-    `   node .claude/kit/board.mjs issue move ${issueId} in_review`,
-    `   und kommentiere den Abschlussbericht per`,
-    `   node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
+    `3. Passt der Stand zum Issue, arbeite GENAU DIESE REIHENFOLGE ab:`,
+    `   a) Committe ihn (Betreff mit "(Issue #${issueId})", im Body "Refs #${issueId}"`,
+    `      — niemals Closes/Fixes/Resolves).`,
+    `   b) Pruefe danach den Arbeitsbaum: git status --porcelain`,
+    `   c) NUR wenn diese Ausgabe leer ist, bewege das Board und kommentiere:`,
+    `      node .claude/kit/board.mjs issue move ${issueId} in_review`,
+    `      node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
+    `   d) Ist die Ausgabe NICHT leer, bleibt das Board unberuehrt: nicht verschieben,`,
+    `      nicht kommentieren, sondern die liegengebliebenen Pfade in deiner Ausgabe benennen.`,
     `4. Passt der Stand nicht zum Issue oder wirkt unvollstaendig: NICHT committen,`,
     `   nichts am Board bewegen, und klar benennen was fehlt.`,
     // Ohne diesen Hinweis blieben die Formatierungsaenderungen unkommittiert liegen
@@ -4752,6 +4771,16 @@ export function pruefeIssueGates(top) {
  * `nichtMoeglich` (rote Checks — danach gilt die regulaere Fehlschlag-Meldung des
  * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
  * Fehlschlag-Zeile zu viel oder eine zu wenig.
+ *
+ * Der Ausgang `gescheitert` traegt seit Issue #672 drei unterscheidbare Endzustaende,
+ * weil sie morgens drei verschiedene Griffe verlangen (Rueckgabewert bleibt einer —
+ * `behandleDirtyRunde` behandelt alle drei als harten Stopp):
+ *   - kein neuer Commit, Karte nicht bewegt -> die Session hat nichts hinterlassen
+ *   - neuer Commit, Karte nicht bewegt      -> die Arbeit ist da, der Board-Zug fehlt
+ *   - Karte in In review, Baum unsauber     -> die Karte behauptet mehr, als committet ist
+ * Ob committet wurde, sagt der Vergleich des Commit-Hashes vor und nach der Session:
+ * Der Arbeitsbaum ist vor der regulaeren Runde sauber, ein neuer Commit ist damit die
+ * einzige Spur, die die Salvage-Session sicher hinterlaesst.
  */
 async function versucheSalvage(top, args, sessionWahl) {
   const checks = verifyChecksForSalvage(config);
@@ -4765,6 +4794,7 @@ async function versucheSalvage(top, args, sessionWahl) {
     return "nichtMoeglich";
   }
   log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
+  const commitVorher = lastCommitHash();
   await runSession(top.id, args, {
     prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
     timeoutMs: SALVAGE_TIMEOUT_MS,
@@ -4776,20 +4806,40 @@ async function versucheSalvage(top, args, sessionWahl) {
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
   const salvaged = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
-  if (salvaged && gitClean()) {
+  const reste = gitReste();
+  if (salvaged && reste.length === 0) {
     log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
     board("issue", "comment", String(top.id), "--text",
       "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
     return "erfolg";
   }
-  const satz = `SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}${salvaged ? " ist in In review, aber der Tree ist weiterhin dirty" : " weiterhin nicht in In review"}.`;
+  // Der Grund traegt den Protokollsatz woertlich. Wo der Satz die Reste bereits nennt,
+  // waere ein zweites `resteText` dieselbe Liste ein zweites Mal — nur beim engen
+  // "kein Commit"-Satz kommt sie hier dazu, denn morgens braucht auch er die Namen.
+  const commitNachher = lastCommitHash();
+  const committet = commitNachher !== commitVorher;
+  let satz;
+  let grund;
+  let kommentar;
+  if (salvaged) {
+    satz = `SALVAGE WIDERSPRUECHLICH — harter Stopp. Issue #${top.id} steht in In review, obwohl Arbeit liegen blieb; ${resteText(reste)}.`;
+    grund = satz;
+    kommentar = "Nachtlauf: Die Salvage-Session hat das Issue nach In review verschoben, obwohl Arbeit im Working Tree liegen blieb — Lauf hart gestoppt. Die Karte behauptet mehr, als committet ist. Bitte morgens manuell sichten.";
+  } else if (committet) {
+    satz = `SALVAGE UNVOLLSTAENDIG — harter Stopp. Issue #${top.id}: Commit ${commitNachher}, Board nicht bewegt; ${resteText(reste)}.`;
+    grund = satz;
+    kommentar = `Nachtlauf: Die Salvage-Session hat committet, aber Arbeit liegen gelassen und das Board nicht bewegt — Lauf hart gestoppt. Der Commit ${commitNachher} liegt lokal. Bitte morgens manuell sichten.`;
+  } else {
+    satz = `SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}: kein Commit, Board nicht bewegt.`;
+    grund = `${satz} ${resteText(reste)}`;
+    kommentar = "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session hat weder committet noch das Board bewegt — Lauf hart gestoppt. Bitte morgens manuell sichten.";
+  }
   log(`  ${satz}`);
-  board("issue", "comment", String(top.id), "--text",
-    "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session konnte den Zwischenstand nicht sauber abschliessen — Lauf hart gestoppt. Bitte morgens manuell sichten.");
+  board("issue", "comment", String(top.id), "--text", kommentar);
   // Der Stopp wird HIER gemerkt und nicht beim Aufrufer (Issue #558): Der Text steht an
   // dieser Stelle, und eine Kopie in behandleDirtyRunde waere eine zweite, die
   // auseinanderlaeuft. Der Rueckgabewert bleibt derselbe String wie bisher.
-  merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
+  merkeHartenStopp("harterStopp", grund);
   return "gescheitert";
 }
 
