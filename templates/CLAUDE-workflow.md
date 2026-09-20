@@ -204,13 +204,13 @@ Absolut bindend:
 
 ## Config (.claude/workflow.config.json)
 
-Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer Spec-Driven Development. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
+Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen und optionaler Stufenangabe `stufe`; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer Spec-Driven Development. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
 
 ---
 
 ## Pflichtchecks vor Push (Schritt 6)
 
-Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch. Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen. Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen.
+Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch. Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen. Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen. **Die Pruefungen laufen gestaffelt:** Jede traegt eine Stufe — `paket` beim Abschluss eines Arbeitspakets, `push` vor dem Veroeffentlichen, `merge` vor der Freigabe; ohne Angabe gilt `paket`. Eine spaetere Stufe laeuft an der frueheren **nicht mit** (eine Pruefung der Stufe `push` bleibt beim Abschluss eines Arbeitspakets aus), und jede Stufe faehrt ihre **Vorgaengerstufen** mit (`push` fuehrt `paket` und `push` aus, `merge` alle drei). **Keine Pflichtpruefung entfaellt damit aus dem Gesamtprozess**; sie laeuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zaehlt. Welche Pruefung in welche Stufe gehoert, entscheidet das Projekt. Die Stufe einer Pflichtpruefung (`stufe`) ist dabei etwas anderes als die Pruefstufen des Reviews (`reviewStufen`) und als die Stufen der Nacht-Kette: Sie sagt, *wann* geprueft wird, nicht wie gruendlich gelesen und nicht welcher Abschnitt eines unbeaufsichtigten Laufs dran ist.
 
 ---
 
@@ -318,7 +318,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei 
 
 ## Gates (prozessweit)
 
-Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Prozesses tragen. Sie zitieren Saetze, die weiter oben in dieser Datei stehen; ein Vorschlag, der eine davon aushebelt, ist keine Detailaenderung, sondern eine Aenderung der Bauart — und damit eine Frage der Stopp-Klasse.
+Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Prozesses tragen — gemeint ist die Pruefstufe des Reviews (`reviewStufen`), nicht die Stufe einer Pflichtpruefung (`stufe`) und nicht die Stufe der Nacht-Kette. Sie zitieren Saetze, die weiter oben in dieser Datei stehen; ein Vorschlag, der eine davon aushebelt, ist keine Detailaenderung, sondern eine Aenderung der Bauart — und damit eine Frage der Stopp-Klasse.
 
 ### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`
 
@@ -330,7 +330,7 @@ Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelan
 
 ### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`
 
-Alle **betroffenen** `buildChecks` laufen gruen, bevor gepusht wird; unberuehrte Bereiche werden mit Nachweis ausgelassen, und ein nicht lokal ausfuehrbarer Check wird im Abschlussbericht vermerkt, nicht verschwiegen. Ein Vorschlag, der einen Check zur Empfehlung macht oder eine Schwelle senkt, hebt die Mechanik auf. Fundstelle: „Pflichtchecks vor Push (Schritt 6)".
+Alle **betroffenen** `buildChecks` der **faelligen Stufe** laufen gruen, bevor gepusht wird; unberuehrte Bereiche werden mit Nachweis ausgelassen, und ein nicht lokal ausfuehrbarer Check wird im Abschlussbericht vermerkt, nicht verschwiegen. Die Mechanik bleibt unveraendert hart, nur ihr Umfang haengt am Zeitpunkt: **Keine Pflichtpruefung entfaellt aus dem Gesamtprozess**, und vor jeder Freigabe laufen alle drei Stufen. Ein Vorschlag, der einen Check zur Empfehlung macht oder eine Schwelle senkt, hebt die Mechanik auf. Fundstelle: „Pflichtchecks vor Push (Schritt 6)".
 
 ### W4 — Die Prioritaetenordnung bei Zielkonflikten `[Urteil]`
 

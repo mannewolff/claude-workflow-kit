@@ -4,9 +4,9 @@
 // Geprueft wird damit statt mit ajv (entschieden am 2026-09-01): Das Repo fuehrt
 // heute keinen Schema-Validator, und das Kit liefert seine Werkzeuge bewusst
 // abhaengigkeitsfrei aus. Der Validator kennt nur die Schluesselwoerter, die dieses
-// Schema braucht — type, oneOf, required, not, pattern, minItems, minProperties,
-// additionalProperties, properties, items. Alles andere (enum, minLength, minimum,
-// uniqueItems) ignoriert er; er ist damit nachsichtiger als ein echter Validator,
+// Schema braucht — type, oneOf, required, not, pattern, enum, minItems,
+// minProperties, additionalProperties, properties, items. Alles andere (minLength,
+// minimum, uniqueItems) ignoriert er; er ist damit nachsichtiger als ein echter Validator,
 // aber fuer die belegten Aussagen genau scharf genug: Jede negative Aussage haengt
 // an einem der unterstuetzten Schluesselwoerter.
 //
@@ -75,6 +75,12 @@ export function pruefe(teilschema, wert, pfad = "$") {
   if (typeof teilschema.pattern === "string" && typeof wert === "string"
       && !new RegExp(teilschema.pattern).test(wert)) {
     fehler.push(`${pfad}: passt nicht auf '${teilschema.pattern}'`);
+  }
+  // Seit Issue #757: Die Stufenangabe an einem buildChecks-Eintrag ist ein enum,
+  // und die Aussage 'eine Stufe ausserhalb der drei Namen wird abgewiesen' haengt
+  // allein daran. Ein ignoriertes enum liesse sie unbelegt durchgehen.
+  if (Array.isArray(teilschema.enum) && !teilschema.enum.includes(wert)) {
+    fehler.push(`${pfad}: '${wert}' ist keiner der erlaubten Werte`);
   }
   if (Array.isArray(teilschema.oneOf)) {
     const treffer = teilschema.oneOf.filter((zweig) => pruefe(zweig, wert, pfad).length === 0);

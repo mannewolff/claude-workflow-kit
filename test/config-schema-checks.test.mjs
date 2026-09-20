@@ -56,6 +56,8 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.equal(pruefe({ type: "object", minProperties: 1 }, {}).length, 1, "minProperties weist das leere Objekt ab");
   assert.deepEqual(pruefe({ type: "string", pattern: "^claude-" }, "claude-opus-5"), [], "pattern trifft");
   assert.equal(pruefe({ type: "string", pattern: "^claude-" }, "gpt-5").length, 1, "pattern trifft nicht");
+  assert.deepEqual(pruefe({ enum: ["paket", "push"] }, "push"), [], "enum trifft");
+  assert.equal(pruefe({ enum: ["paket", "push"] }, "abend").length, 1, "enum trifft nicht");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -94,6 +96,56 @@ test("buildChecks: ein leeres areas-Array ist ungueltig", () => {
 
 test("buildChecks: unbekannte Felder in der Objektform sind ungueltig", () => {
   assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", area: ["backend"] }), []);
+});
+
+// --- Die vierte Form: die Stufenangabe (Issue #757) ---
+//
+// Jede Pruefung traegt eine Stufe — `paket`, `push` oder `merge`. Ein fehlendes
+// Feld bedeutet `paket` und damit unveraendertes Verhalten; das ist der Grund,
+// warum die Stufe ein optionales Feld ist und keine eigene Liste je Stufe.
+
+test("buildChecks: die Objektform mit stufe ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "push" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "paket" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "merge" }), []);
+});
+
+test("buildChecks: eine Stufe ausserhalb der drei Namen ist ungueltig", () => {
+  // Der eigentliche Zweck des enum. Ein 'abend' wuerde zur Laufzeit keiner Stufe
+  // zugeordnet — die Pruefung liefe still nie, das Fehlbild dieses Vorhabens.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "abend" }), []);
+});
+
+test("buildChecks: die Stufe steht neben areas und always", () => {
+  // Die Stufe sagt, wann eine Pruefung laeuft, areas und always sagen, ob sie
+  // betroffen ist. Zwei Achsen, keine Vorrangfrage — deshalb schliessen sie sich
+  // nicht aus.
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", areas: ["backend"], stufe: "merge" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", always: true, stufe: "push" }), []);
+});
+
+test("buildChecks: die String-Form und ein Objekt ohne stufe bleiben gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: fehlendes Feld = paket = unveraendertes
+  // Verhalten.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test" }), []);
+});
+
+test("buildChecks: das Feld stufe traegt den Default paket im Schema", () => {
+  const feld = eintragSchema.oneOf.find((z) => z.type === "object")?.properties?.stufe;
+  assert.ok(feld, "das Feld 'stufe' fehlt in der Objektform von buildChecks");
+  assert.deepEqual(feld.enum, ["paket", "push", "merge"], "die drei Stufennamen stimmen nicht");
+  assert.equal(feld.default, "paket", "der Default 'paket' fehlt am Feld");
+});
+
+test("buildChecks: die Beschreibung nennt die vierte Form und das fehlende Feld als paket", () => {
+  // JSON kennt keine Kommentare — wer die Config vor sich hat, liest die
+  // Bedeutung nur hier. Dass ein fehlendes Feld unveraendertes Verhalten
+  // bedeutet, ist der Satz, der eine Bestandsconfig beruhigt.
+  const text = eintragSchema.description;
+  assert.match(text, /stufe/, "die Beschreibung nennt 'stufe' nicht");
+  assert.match(text, /paket/, "die Beschreibung nennt die Vorgabe 'paket' nicht");
+  assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
 });
 
 // --- Bestand ---
