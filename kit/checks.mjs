@@ -207,6 +207,25 @@ function pruefeBereichsnamen(checks, checkAreas) {
   }
 }
 
+/**
+ * Die Grenzen der Guetemessung (Issue #763, Plan #753): hoechstens ein Eintrag
+ * traegt `guete`, und nie mit `stufe: "merge"` — eine Messung erst vor der
+ * Freigabe kaeme zu spaet, um noch etwas zu aendern. Beides prueft das Schema
+ * nicht: Es sind Aussagen ueber die Liste bzw. ueber zwei Felder zusammen.
+ * Derselbe Weg wie beim unbekannten Bereichsnamen: Abbruch statt stiller Wahl.
+ */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #764).
+function pruefeGuete(checks) {
+  const traeger = checks.filter((check) => check.guete);
+  if (traeger.length > 1) {
+    const liste = traeger.map((check) => `'${check.cmd}'`).join(", ");
+    fail(`Mehr als eine Guetemessung: ${liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.`);
+  }
+  if (traeger[0]?.stufe === "merge") {
+    fail(`Die Guetemessung '${traeger[0].cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: paket oder push.`);
+  }
+}
+
 // --- Muster ----------------------------------------------------------------
 
 // SYNC: strukturgleich in kit/spec.mjs — Aenderungen dort nachziehen.
@@ -363,16 +382,32 @@ function entscheidung(check, beruehrt) {
  *
  * `entscheiden` bekommt nur die faelligen Pruefungen und beantwortet die zweite
  * Frage: die des jeweiligen Auswahlfalls (Anker, leeres Paket, Bereiche).
+ *
+ * Die GUETEMESSUNG laeuft oberhalb der Paketstufe IMMER (Issue #763, E11): AK 8
+ * des Fachplans (#738) macht ihr Ergebnis fuer den Stand massgeblich, der
+ * veroeffentlicht werden soll — eine wegen leeren Pakets oder unberuehrten
+ * Bereichs ausgelassene Messung liesse den Halt ins Leere laufen, und das faellt
+ * niemandem auf. An der Paketstufe gilt die normale Auswahl: Dort wird ein
+ * Arbeitspaket gemessen, kein Veroeffentlichungsstand. Der Eintrag behaelt
+ * seinen `guete`-Block, damit `ausfuehren` die Auswertung nicht ein zweites Mal
+ * aus der Config lesen muss.
  */
 function verteilen(checks, stufe, entscheiden) {
   const laufen = [];
   const ausgelassen = [];
   const gefahren = STUFEN.indexOf(stufe);
   for (const check of checks) {
-    const { laeuft, grund } = STUFEN.indexOf(check.stufe) <= gefahren
-      ? entscheiden(check)
-      : { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
-    (laeuft ? laufen : ausgelassen).push({ cmd: check.cmd, stufe: check.stufe, grund });
+    let ergebnis;
+    if (check.guete && stufe !== STUFEN[0]) {
+      ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
+    } else if (STUFEN.indexOf(check.stufe) <= gefahren) {
+      ergebnis = entscheiden(check);
+    } else {
+      ergebnis = { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+    }
+    const eintrag = { cmd: check.cmd, stufe: check.stufe, grund: ergebnis.grund };
+    if (check.guete) eintrag.guete = check.guete;
+    (ergebnis.laeuft ? laufen : ausgelassen).push(eintrag);
   }
   return { laufen, ausgelassen };
 }
@@ -387,6 +422,7 @@ function planen(args) {
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
+  pruefeGuete(checks);
 
   const stufe = args.stufe ?? STUFEN[0];
   const refText = args.since ?? "HEAD";
@@ -562,6 +598,85 @@ function blobHashes(pfade) {
   return hashes;
 }
 
+/**
+ * Liest den Anteil aus der Ausgabe der Guetemessung (Issue #763, Plan #753).
+ *
+ * Das Muster ist Pflicht, weil die Werkzeuge Verschiedenes melden — PIT
+ * schreibt `Killed 42 (84%)`, Stryker `Mutation score: 84.21`. Die erste
+ * Gruppe gilt als Prozentwert, wie die Marke: eine Einheit, keine zwei.
+ *
+ * Jeder Weg ohne Zahl endet mit `erfuellt: false` und einem Grund (E10):
+ * "Ein fehlendes Ergebnis gilt nie als bestandene Pruefung" (AK 11, #738) —
+ * dieselbe Richtung, in die dieses Kommando ueberall irrt: mehr pruefen, nie
+ * weniger. Das gilt auch fuer ein Muster, das sich nicht uebersetzen laesst:
+ * Die Konfigurationspruefung faengt es frueher (Issue #764), aber hier darf es
+ * trotzdem nicht als bestanden durchrutschen.
+ */
+function gueteAuswerten(guete, ausgabe) {
+  let regex;
+  try {
+    regex = new RegExp(guete.muster);
+  } catch (err) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' ist kein regulaerer Ausdruck: ${err.message}` };
+  }
+  const treffer = regex.exec(ausgabe);
+  if (treffer === null) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' trifft die Ausgabe nicht` };
+  }
+  if (treffer[1] === undefined) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' hat keine Gruppe` };
+  }
+  const anteil = Number(treffer[1]);
+  if (!Number.isFinite(anteil)) {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist keine Zahl` };
+  }
+  const erfuellt = anteil >= guete.marke;
+  return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };
+}
+
+/**
+ * Das Ergebnisfeld der Zusammenfassung fuer einen gelaufenen Guete-Eintrag.
+ * Ein rotes Kommando wird nicht ausgewertet: Seine Ausgabe ist der Stand eines
+ * Abbruchs, und ein darin zufaellig gefundener Anteil bescheinigte eine
+ * Messung, die es nicht gab.
+ */
+function gueteErgebnis(eintrag, gruen, ausgabe) {
+  const auswertung = gruen
+    ? gueteAuswerten(eintrag.guete, ausgabe)
+    : { anteil: null, erfuellt: false, grund: "kein Anteil erhoben — das Kommando selbst war rot" };
+  return {
+    cmd: eintrag.cmd,
+    anteil: auswertung.anteil,
+    marke: eintrag.guete.marke,
+    erfuellt: auswertung.erfuellt,
+    grund: auswertung.grund,
+  };
+}
+
+function gueteZeile(ergebnis) {
+  return ergebnis.anteil === null
+    ? `Guete: kein auswertbares Ergebnis (${ergebnis.grund})`
+    : `Guete: ${ergebnis.anteil} % erreicht, Marke ${ergebnis.marke} % — ${ergebnis.grund}`;
+}
+
+/**
+ * Das Ergebnisfeld, wenn die Messung nicht lief — nicht gestartet (ein
+ * frueheres Kommando war rot) oder an der Paketstufe ausgelassen. Auch das
+ * steht in der Zusammenfassung: "kein Ergebnis" ist ein Ergebnis und nie ein
+ * Bestehen, und wer die Datei liest, sieht, dass kein Anteil erhoben wurde.
+ */
+function gueteOhneLauf(laufen, ausgelassen) {
+  const geplant = laufen.find((e) => e.guete);
+  if (geplant) {
+    return { cmd: geplant.cmd, anteil: null, marke: geplant.guete.marke, erfuellt: false, grund: "nicht gestartet: ein frueheres Kommando war rot" };
+  }
+  const eintrag = ausgelassen.find((e) => e.guete);
+  if (eintrag) {
+    return { cmd: eintrag.cmd, anteil: null, marke: eintrag.guete.marke, erfuellt: false, grund: `ausgelassen: ${eintrag.grund}` };
+  }
+  return null;
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -626,6 +741,7 @@ function ausfuehren(args) {
 
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
+  let guete = null;
   for (const eintrag of laufen) {
     if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
@@ -633,10 +749,20 @@ function ausfuehren(args) {
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     process.stdout.write(ausgabe);
-    eintrag.ergebnis = gruen ? "gruen" : "rot";
+    // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke
+    // oder ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder
+    // rote Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
+    let bestanden = gruen;
+    if (eintrag.guete) {
+      guete = gueteErgebnis(eintrag, gruen, ausgabe);
+      process.stdout.write(`${gueteZeile(guete)}\n`);
+      bestanden = gruen && guete.erfuellt;
+    }
+    eintrag.ergebnis = bestanden ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
-    rot = !gruen;
+    rot = !bestanden;
   }
+  guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
 
   // null statt 0, wenn kein Kommando gemessen wurde (leeres Paket, voller
   // Umfang ohne Lauf gibt es hier nicht) — "nichts gemessen" ist kein
@@ -648,7 +774,11 @@ function ausfuehren(args) {
 
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs });
+  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat —
+  // dann aber immer, auch beim gruenen Lauf (Issue #763).
+  const pfad = schreibeZusammenfassung({
+    ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs, ...(guete ? { guete } : {}),
+  });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
