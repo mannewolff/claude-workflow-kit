@@ -34,6 +34,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
  *  nicht versioniert — in CI existiert sie nicht. */
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
+/** Die Nutzer-Dokumentation (Issue #765). */
+const DOKU = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+
 /** Ein `##`-Abschnitt der Vorlage, bis zur naechsten Trennlinie. */
 function abschnitt(ueberschrift) {
   const idx = VORLAGE.indexOf(ueberschrift);
@@ -110,6 +113,70 @@ test("W3 schliesst eine vierte Entscheidungsstelle aus", () => {
   const regel = gateW3();
   assert.match(regel, /kein[en]? vierte[rn]? Stop-Punkt|keine vierte/,
     "W3 sagt nicht, dass der Halt kein vierter Stop-Punkt ist");
+});
+
+// --- Die Nutzer-Dokumentation (Issue #765) ---
+//
+// Der Regeltext oben bindet die Session; dieser Abschnitt erklaert dem Menschen,
+// wie er die Messung einschaltet. Sein Kern sind die beiden Werkzeug-Beispiele:
+// PIT und Stryker melden Verschiedenes, und ohne je ein Beispiel schreibt jeder
+// sein eigenes Muster — meist eines ohne Gruppe, das dann nie greift.
+
+/** Ein `###`-Abschnitt der Doku, bis zur naechsten Ueberschrift gleicher oder
+ *  hoeherer Ebene. */
+function dokuAbschnitt(muster) {
+  const treffer = DOKU.match(muster);
+  assert.ok(treffer, `kein Abschnitt zu ${muster} in docs/dokumentation.md`);
+  const idx = DOKU.indexOf(treffer[0]);
+  return DOKU.slice(idx + treffer[0].length).split(/\n##+ /)[0];
+}
+
+test("die Dokumentation fuehrt den Abschnitt zur Guetemessung und ihrer Marke", () => {
+  const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
+  assert.match(text, /`guete`/, "der Abschnitt nennt den Block `guete` nicht");
+  assert.match(text, /`muster`/, "der Abschnitt nennt das Feld `muster` nicht");
+  assert.match(text, /`marke`/, "der Abschnitt nennt das Feld `marke` nicht");
+  // Die Benennung ist die Einschaltstelle: hoechstens ein Eintrag der Liste.
+  assert.match(text, /\*\*eine\*\*|h(ö|oe)chstens ein/i,
+    "dass hoechstens ein Eintrag die Messung traegt, steht nicht im Abschnitt");
+});
+
+test("der Abschnitt zeigt je ein Muster-Beispiel fuer PIT und fuer Stryker", () => {
+  // Der eigentliche Gebrauchswert. Beide Werkzeuge melden Verschiedenes; wer nur
+  // eines sieht, haelt dessen Form fuer die Form.
+  const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
+  assert.match(text, /PIT/, "das PIT-Beispiel fehlt");
+  assert.match(text, /Killed 42 \(84%\)/, "die PIT-Ausgabe `Killed 42 (84%)` fehlt");
+  assert.match(text, /Stryker/, "das Stryker-Beispiel fehlt");
+  assert.match(text, /Mutation score: 84\.21/, "die Stryker-Ausgabe `Mutation score: 84.21` fehlt");
+  assert.match(text, /genau eine[nr]? Gruppe|eine Gruppe/i,
+    "dass das Muster genau eine Gruppe braucht, steht nicht im Abschnitt");
+});
+
+test("der Abschnitt nennt den Halt beim Veroeffentlichen als denselben roten Lauf", () => {
+  const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
+  assert.match(text, /unter der Marke/,
+    "der Fall 'gemessener Anteil unter der Marke' steht nicht im Abschnitt");
+  assert.match(text, /rote[nr]? Pflichtpr(ü|ue)fung/,
+    "dass der Halt derselbe ist wie bei einer roten Pflichtpruefung, fehlt");
+  assert.match(text, /kein (eigener|neuer) Stop-Punkt/,
+    "dass es kein eigener Stop-Punkt ist, fehlt");
+});
+
+test("der Abschnitt grenzt mutationCommand gegen die Guetemessung ab", () => {
+  const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
+  assert.match(text, /`mutationCommand`/,
+    "die Abgrenzung zu `mutationCommand` fehlt im Abschnitt");
+  assert.match(text, /`mutationCommand`[\s\S]{0,300}(kein|nicht)/,
+    "es steht nicht, was `mutationCommand` gerade nicht ist");
+});
+
+test("der Abschnitt sagt, dass ein Projekt ohne Benennung unberuehrt bleibt", () => {
+  // Derselbe Satz wie im Regeltext, hier fuer den Menschen mit Bestandsconfig:
+  // Wer nichts benennt, merkt von der Guetemessung nichts.
+  const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
+  assert.match(text, /[Oo]hne (die )?Benennung[\s\S]{0,160}Halt/,
+    "der Satz, dass es ohne Benennung weder Messung noch Marke noch Halt gibt, fehlt");
 });
 
 test("die drei Stop-Punkte bleiben drei", () => {

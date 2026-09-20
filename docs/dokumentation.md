@@ -285,6 +285,42 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 
 **Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
 
+### Gütemessung und Marke: `guete`
+
+Grüne Tests sagen, dass die Tests durchlaufen — nicht, dass sie etwas bemerken würden. **Eine** Prüfung der Liste darf ein Projekt deshalb als **Gütemessung** benennen: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der vereinbarten Marke hält das Veröffentlichen an. Getragen wird die Benennung von einem `guete`-Block mit `muster` und `marke`:
+
+```json
+{
+  "buildChecks": [
+    "node --test",
+    {
+      "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage",
+      "stufe": "push",
+      "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 }
+    }
+  ]
+}
+```
+
+**Höchstens ein Eintrag trägt den Block.** Zwei Messungen bräuchten eine Vorrangregel darüber, welche Marke den Halt auslöst, und die läse niemand. Trägt ein Eintrag `guete`, darf seine `stufe` nicht `merge` sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Beides weist `checks.mjs` beim Start ab, statt still zu wählen; dieselben Regeln prüft die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) vor dem Speichern.
+
+**Das `muster` ist Pflicht, weil die Werkzeuge Verschiedenes melden.** Es ist ein regulärer Ausdruck mit **genau einer Gruppe**; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos:
+
+| Werkzeug | Zeile in der Ausgabe | Muster |
+| --- | --- | --- |
+| PIT (Java) | `Killed 42 (84%)` | `Killed \\d+ \\((\\d+)%\\)` |
+| Stryker (JS/TS) | `Mutation score: 84.21` | `Mutation score: ([\\d.]+)` |
+
+Die erfasste Zahl gilt als Prozentwert, wie die `marke` — eine Einheit, keine zwei. Zulässig sind für die Marke 0 bis 100; eine höhere wäre nie erreichbar. Liegt der gemessene Anteil **auf** der Marke, genügt er.
+
+**Ein Wert unter der Marke ist derselbe Halt wie eine rote Pflichtprüfung** — kein eigener Stop-Punkt, keine Ausnahme, keine persönliche Marke: Die Marke gilt teamweit, eine Abweichung in `workflow.config.local.json` bleibt unwirksam. Ebenso behandelt wird jeder Weg ohne Zahl: ein Muster, das die Ausgabe nicht trifft, ein rotes Kommando, eine Messung, die wegen eines früheren roten Kommandos gar nicht startete. **Ein fehlendes Ergebnis gilt nie als bestandene Prüfung.** Gemessener Anteil, Marke und Grund stehen in der Ausgabe des Prüflaufs und im Abschlussbericht, nachts zusätzlich als eigene Protokollzeile.
+
+**Der Halt kostet keine Arbeit.** Er ist ein roter Lauf **vor Commit und Push**: Die bereits fertigen Pakete bleiben lokal committet, der Versionsbump von `/push-main` bleibt idempotent stehen, und nach der Nachbesserung läuft derselbe Batch weiter.
+
+**Nicht zu verwechseln mit `mutationCommand`.** Das Feld [`mutationCommand`](#mutationcommand) bleibt, was es war: ein dem Build nachgelagertes Kommando, das `/local-check` ausführt und dessen Ergebnis im Bericht landet. Es ist **keine Gütemessung** — es trägt keine Marke, sein Wert wird nicht ausgewertet, und es löst **keinen Halt** aus. Wer die Verbindlichkeit will, führt sein Mutationstest-Kommando als `buildChecks`-Eintrag mit `guete`-Block, wie oben. Beides zugleich zu setzen ergibt zwei Läufe desselben Werkzeugs, von denen nur einer zählt.
+
+**Ohne die Benennung bleibt ein Projekt unberührt:** keine Messung, keine Marke, kein Halt. Wer nichts hinschreibt, merkt von der Gütemessung nichts — auch nicht mit gesetztem `mutationCommand`.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.

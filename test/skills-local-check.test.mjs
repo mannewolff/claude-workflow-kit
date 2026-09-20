@@ -99,6 +99,31 @@ test("der Skill weist mutationCommand als unveraendert immer laufend aus", () =>
     "es steht nicht, dass `mutationCommand` immer laeuft");
 });
 
+// Abgrenzung zur Guetemessung (Issue #765, Plan #753, Entscheidung E8). Die
+// beiden liegen nah beieinander — beide messen mit absichtlich eingebauten
+// Fehlern —, aber nur die Guetemessung haelt an. Ohne diesen Absatz liest die
+// naechste Session `mutationCommand` als die Guetemessung des Kits und wundert
+// sich, warum ein gesetztes Kommando kein Gate ist. Der Weg zur Verbindlichkeit
+// fuehrt deshalb ausdruecklich ueber einen `buildChecks`-Eintrag mit `guete`.
+test("[skills-32] der Skill grenzt mutationCommand gegen die Guetemessung ab", () => {
+  const start = SKILL.search(/### \d+\. Mutations-Test/);
+  assert.notEqual(start, -1, "der Mutations-Test-Abschnitt fehlt");
+  const abschnitt = SKILL.slice(start).split(/\n### /)[0];
+
+  assert.match(abschnitt, /G(ü|ue)temessung/,
+    "der Abschnitt nennt die Guetemessung nicht — die Abgrenzung fehlt ganz");
+  assert.match(abschnitt, /keine G(ü|ue)temessung/,
+    "es steht nicht, dass `mutationCommand` keine Guetemessung ist");
+  assert.match(abschnitt, /Halt/,
+    "es steht nicht, dass `mutationCommand` keinen Halt ausloest");
+  assert.match(abschnitt, /Marke/,
+    "es steht nicht, dass `mutationCommand` keine Marke traegt");
+  // Der Ausweg gehoert dazu: Eine blosse Verneinung liesse offen, wie man die
+  // Verbindlichkeit bekommt, und die Antwort ist nicht `mutationCommand`.
+  assert.match(abschnitt, /`buildChecks`[\s\S]{0,120}`guete`/,
+    "der Weg ueber einen `buildChecks`-Eintrag mit `guete`-Block fehlt");
+});
+
 // Der Format-Fix-Pfad bleibt (Punkt 3 des Issues): ein Fix, ein zweiter Lauf —
 // derselbe Aufruf mit demselben Anker.
 test("der Format-Fix-Pfad wiederholt denselben checks.mjs-Aufruf genau einmal", () => {

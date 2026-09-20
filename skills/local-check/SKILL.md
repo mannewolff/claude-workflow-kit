@@ -105,6 +105,8 @@ Nur wenn `mutationCommand` in der Config gesetzt ist. Wenn der Test nicht lokal 
 
 **`mutationCommand` bleibt unverändert und läuft weiterhin immer.** Es steht nicht in `buildChecks` und ist damit **nicht Teil der bereichsbezogenen Auswahl** — es wird direkt ausgeführt, ohne `checks.mjs`, unabhängig davon, welche Bereiche der Anker findet. Das ist Absicht und keine Lücke: Es war im Bestand schon dem Build nachgelagert, und es in die Auswahl zu ziehen erweiterte den Zuschnitt der Umstellung.
 
+**`mutationCommand` ist keine Gütemessung.** Die beiden liegen inhaltlich nah beieinander — auch die Gütemessung misst, wie viele absichtlich eingebauten Fehler die Tests bemerken —, aber `mutationCommand` bleibt, was es war: ein nachgelagertes Kommando. Es trägt **keine Marke**, sein Ergebnis wird nicht ausgewertet, und es löst **keinen Halt** aus; ein Wert, der niemandem gefällt, bleibt eine Zahl im Bericht. Wer die Verbindlichkeit will, führt sein Kommando stattdessen als `buildChecks`-Eintrag mit `guete`-Block (`muster` und `marke`): Erst dort wird der gemessene Anteil erhoben, gegen die Marke gehalten und ein Wert darunter zum roten Lauf wie jede andere rote Pflichtprüfung. Beides zugleich zu setzen ergibt zwei Läufe desselben Werkzeugs, von denen nur einer zählt.
+
 ### 3. Manuelle UI-Verifikation (bei Frontend-Änderungen)
 
 Wenn die letzten Commits Frontend-Dateien betreffen:
