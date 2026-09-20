@@ -284,6 +284,76 @@ function regelPaketstufeFehlt(config) {
   )];
 }
 
+// --- Die Gütemessung (Issue #764, Plan #753) ---
+//
+// Vier Regeln, die das Schema nicht ausdrücken kann: "höchstens ein Eintrag" ist eine Aussage
+// über die Liste, "nicht zusammen mit stufe merge" eine über zwei Felder, und die Zahl der
+// Gruppen eines Musters steht in keinem Schlüsselwort. Dieselben Grenzen bricht `pruefeGuete`
+// in kit/checks.mjs zur Laufzeit ab — hier stehen sie vor dem Speichern, damit man sie sieht,
+// bevor ein Nachtlauf daran hängt.
+//
+// Jeder Befund nennt seinen Pfad (Plan #753, E18): Die Oberfläche zeigt den guete-Block an,
+// sie bearbeitet ihn nicht, und ein Befund ohne Ort erschiene unbehebbar. Deshalb steht in
+// jeder dieser Meldungen auch der Weg in die Datei.
+// SYNC: `pruefeGuete` in kit/checks.mjs.
+const GUETE_DATEI = "der Block steht je Eintrag in .claude/workflow.config.json";
+
+/** Die Einträge von `buildChecks`, die einen `guete`-Block tragen, mit ihrer Zeilennummer. */
+function gueteTraeger(config) {
+  const out = [];
+  (Array.isArray(config.buildChecks) ? config.buildChecks : []).forEach((check, i) => {
+    if (istObjekt(check) && istObjekt(check.guete)) out.push({ check, i });
+  });
+  return out;
+}
+
+/**
+ * Die Zahl der fangenden Gruppen eines Musters, `null` bei einem Ausdruck, den die
+ * Laufzeit nicht übersetzen kann. Das angehängte `|` macht jeden Pfad des Ausdrucks
+ * optional: Der Treffer auf dem leeren Text nennt dann für jede Gruppe ein Feld,
+ * ohne dass das Muster selbst passen müsste.
+ */
+function gruppenZahl(muster) {
+  try {
+    return new RegExp(`${muster}|`).exec("").length - 1;
+  } catch {
+    return null;
+  }
+}
+
+function regelGueteMuster(guete, pfad) {
+  if (typeof guete.muster !== "string") return []; // den Typ meldet das Schema
+  const gruppen = gruppenZahl(guete.muster);
+  if (gruppen === null) {
+    return [befund(`${pfad}.muster`, `'${guete.muster}' ist kein regulärer Ausdruck — ${GUETE_DATEI}`)];
+  }
+  if (gruppen === 1) return [];
+  return [befund(`${pfad}.muster`, `nennt ${gruppen} fangende Gruppen, gebraucht wird genau eine — sie greift den Prozentwert aus der Ausgabe, ${GUETE_DATEI}`)];
+}
+
+function regelGueteMarke(guete, pfad) {
+  if (typeof guete.marke !== "number" || (guete.marke >= 0 && guete.marke <= 100)) return [];
+  return [befund(`${pfad}.marke`, `${guete.marke} liegt außerhalb von 0 bis 100 — eine höhere Marke wäre nie erreichbar, ${GUETE_DATEI}`)];
+}
+
+function regelGuete(config) {
+  const traeger = gueteTraeger(config);
+  const erster = traeger[0];
+  const out = [];
+  for (const { check, i } of traeger) {
+    const pfad = `buildChecks[${i}].guete`;
+    if (check !== erster.check) {
+      out.push(befund(pfad, `ein zweiter guete-Block — höchstens ein Eintrag darf messen, und 'buildChecks[${erster.i}]' trägt ihn bereits, ${GUETE_DATEI}`));
+      continue; // Welche der beiden Messungen gilt, ist offen; ihre Felder zu prüfen hieße, sie schon anzunehmen.
+    }
+    if (check.stufe === CHECK_STUFEN[2]) {
+      out.push(befund(`buildChecks[${i}].stufe`, `'${CHECK_STUFEN[2]}' zusammen mit einer Gütemessung — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Möglich sind '${CHECK_STUFEN[0]}' und '${CHECK_STUFEN[1]}'`));
+    }
+    out.push(...regelGueteMarke(check.guete, pfad), ...regelGueteMuster(check.guete, pfad));
+  }
+  return out;
+}
+
 // Das Schema-oneOf fängt eine Stufe mit beiden oder keinem der Felder bereits ab, meldet aber
 // nur "passt auf keine der erlaubten Formen" — diese Regel benennt, welches Feld zu viel oder
 // zu wenig ist (Issue #708, E21).
@@ -335,7 +405,8 @@ export function zusatzregeln(config) {
   return [
     ...regelRollenzahl(config), ...regelRollenKatalog(config), ...regelPaare(config), ...regelBereiche(config),
     ...regelLeereBereiche(config), ...regelCheckStufe(config), ...regelPaketstufeFehlt(config),
-    ...regelStufenFelder(config), ...regelStufenModell(config), ...regelAufwandSchwellen(config),
+    ...regelGuete(config), ...regelStufenFelder(config), ...regelStufenModell(config),
+    ...regelAufwandSchwellen(config),
   ];
 }
 
@@ -1343,6 +1414,23 @@ function nutzungJeBereich(config) {
   return out;
 }
 
+/**
+ * Marke und Stufe der Gütemessung, oder `null`, wenn das Projekt keine benannt hat
+ * (Issue #764). Die Oberfläche zeigt beides und bearbeitet es nicht: Der Block steht
+ * in der Datei, und wer ihn dort ändert, soll am Bildschirm sehen, was gilt. Bei zwei
+ * Blöcken zeigt die Anzeige den ersten — welcher gälte, ist offen, und genau das sagt
+ * der Befund daneben.
+ */
+function gueteAnzeige(config) {
+  const traeger = gueteTraeger(config)[0];
+  if (!traeger) return null;
+  return {
+    cmd: typeof traeger.check.cmd === "string" ? traeger.check.cmd : "",
+    marke: traeger.check.guete.marke,
+    stufe: stufeVon(traeger.check),
+  };
+}
+
 /** Ob das Verweis-Muster am Beispieltext einen Verweis findet — und warum nicht (Kriterium 22). */
 function verweisProbe(spec) {
   const muster = typeof spec.testPattern === "string" && spec.testPattern !== "" ? spec.testPattern : TEST_PATTERN_VORGABE;
@@ -1383,7 +1471,7 @@ export function abgeleitet(config, teil = null) {
   const alle = {
     m2: () => ({ wirkung: paarungsWirkung(config) }),
     m3: () => ({ beispiel: beispielBesetzung(config) }),
-    m4: () => ({ nutzung: nutzungJeBereich(config) }),
+    m4: () => ({ nutzung: nutzungJeBereich(config), guete: gueteAnzeige(config) }),
     m5: () => specAnzeigen(config),
     m6: () => ({ zeit: zeitbudget(config) }),
   };
@@ -3214,6 +3302,20 @@ function unterKopf(titel, pfad) {
   return kopf;
 }
 
+/**
+ * Marke und Stufe der Guetemessung (Issue #764). Die Oberflaeche zeigt sie und bearbeitet sie
+ * nicht: Der Block steht in der Datei, und dorthin verweist der Satz — sonst stuende hier eine
+ * Angabe, zu der es keinen Handgriff gibt. Ohne benannte Messung sagt derselbe Satz, dass es
+ * weder Messung noch Marke noch Halt gibt; eine leere Stelle liesse offen, ob nur nichts geladen ist.
+ */
+function gueteHinweis(teil) {
+  const g = abgeleitetVon(teil).guete;
+  if (!g) return el("p", "erklaerung", "Keine Prüfung ist als Gütemessung benannt — ohne sie gibt es weder Messung noch Marke noch Halt.");
+  return el("p", "erklaerung", "Gütemessung: „" + g.cmd + "“ misst gegen die Marke " + g.marke
+    + " %, Stufe " + g.stufe + ". Ein Anteil unter der Marke ist derselbe Halt wie jede rote Prüfung."
+    + " Geändert wird der Block in .claude/workflow.config.json.");
+}
+
 function redaktorPruefkommandos(teil) {
   const kasten = el("div", "stapel");
   const behaelter = el("div", "stapel");
@@ -3252,6 +3354,7 @@ function redaktorPruefkommandos(teil) {
       el("p", "erklaerung", "Kommandos, die die lokale Prüfung nacheinander ausführt. Jedes läuft entweder immer oder nur, wenn ein Bereich berührt ist."),
       kommandos,
       el("p", "erklaerung", "„immer (offen)“ steht für ein Kommando, das noch niemandem zugeordnet wurde, „immer“ für eine bewusste Entscheidung. Beide laufen gleich; der Unterschied bleibt sichtbar, damit offene Zuordnungen auffallen."),
+      gueteHinweis(teil),
       unterKopf("Bereiche", "checkAreas"),
       el("p", "erklaerung", "Benannte Teile des Projekts, jeweils mit den Pfadmustern, die dazugehören. Einen Bereich zu entfernen, den Kommandos nennen, geht nur nach Rückfrage."),
       bereiche,

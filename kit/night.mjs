@@ -2630,7 +2630,13 @@ function lesePruefung(issueId) {
       bereiche: Array.isArray(daten.bereiche) ? daten.bereiche : null,
       dauerGesamtMs: endlicheZahl(daten.dauerGesamtMs),
     };
-    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder };
+    // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
+    // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf
+    // (Issue #763). Es wird hier nur weitergereicht und nirgends ausgewertet: Der Halt wegen
+    // verfehlter Marke ist bereits der rote Lauf, und eine zweite Beurteilung an dieser
+    // Stelle waere ein zweites Gate fuer dieselbe Entscheidung.
+    const guete = daten.guete && typeof daten.guete === "object" ? { guete: daten.guete } : {};
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder, ...guete };
     const laufen = daten.laufen ?? [];
     // Ein nicht gruener Eintrag ist etwas anderes als eine fehlende Datei: Dort ist
     // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
@@ -2644,6 +2650,7 @@ function lesePruefung(issueId) {
       laufen,
       ausgelassen: daten.ausgelassen ?? [],
       ...umfangFelder,
+      ...guete,
     };
   } catch (err) {
     // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
@@ -2666,6 +2673,27 @@ function pruefZeile(p) {
   return `  Issue #${p.id}: gelaufen: ${gelaufen} | ausgelassen: ${pruefListe(p.ausgelassen, "keine")}`;
 }
 
+/**
+ * Die Guete-Zeile einer Session (Issue #764, AK 9 aus #738): der erreichte Anteil und die
+ * Marke, nach JEDEM Lauf — auch wenn er genuegt. Sonst bliebe genau das Problem des
+ * Fachplans bestehen: Das Ergebnis wird angesehen, und dann passiert nichts. Hier faellt
+ * ein Absinken frueh auf (Plan #753, E6).
+ *
+ * Eine eigene Zeile und kein Anhaengsel der Pruefzeile: Die traegt je nach Zustand
+ * Verschiedenes, und der Anteil gehoert in keinen ihrer Saetze.
+ */
+function pruefGueteZeile(p) {
+  const g = p.guete;
+  const anteil = typeof g.anteil === "number" ? `${g.anteil} % erreicht` : `kein Anteil erhoben (${g.grund})`;
+  const bewertung = typeof g.anteil === "number" ? ` — ${g.grund}` : "";
+  return `  Issue #${p.id}: Guete: ${anteil}, Marke ${g.marke} %${bewertung}`;
+}
+
+/** Die Zeilen einer Session: die Pruefzeile, und darunter die Guete-Zeile, wenn gemessen wurde. */
+function pruefZeilen(p) {
+  return p.guete ? [pruefZeile(p), pruefGueteZeile(p)] : [pruefZeile(p)];
+}
+
 function pruefSummenzeile(pruefungen) {
   const zaehle = (zustand) => pruefungen.filter((p) => p.zustand === zustand).length;
   const geprueft = pruefungen.filter((p) => p.zustand === "geprueft");
@@ -2685,7 +2713,7 @@ function pruefSummenzeile(pruefungen) {
  */
 function pruefBericht(pruefungen) {
   if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen."];
-  return ["Pruefungen der Sessions:", ...pruefungen.map(pruefZeile), pruefSummenzeile(pruefungen)];
+  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen)];
 }
 
 // --- Salvage (Issue #167) ---
