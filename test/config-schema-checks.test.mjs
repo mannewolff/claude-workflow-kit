@@ -58,6 +58,9 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.equal(pruefe({ type: "string", pattern: "^claude-" }, "gpt-5").length, 1, "pattern trifft nicht");
   assert.deepEqual(pruefe({ enum: ["paket", "push"] }, "push"), [], "enum trifft");
   assert.equal(pruefe({ enum: ["paket", "push"] }, "abend").length, 1, "enum trifft nicht");
+  assert.deepEqual(pruefe({ type: "number", minimum: 0, maximum: 100 }, 80), [], "in den Grenzen");
+  assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, 120).length, 1, "ueber der Obergrenze");
+  assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, -1).length, 1, "unter der Untergrenze");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -146,6 +149,95 @@ test("buildChecks: die Beschreibung nennt die vierte Form und das fehlende Feld 
   assert.match(text, /stufe/, "die Beschreibung nennt 'stufe' nicht");
   assert.match(text, /paket/, "die Beschreibung nennt die Vorgabe 'paket' nicht");
   assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
+});
+
+// --- Der guete-Block: die Guetemessung an einem Eintrag (Issue #762) ---
+//
+// Der Block haengt am Eintrag und nicht neben buildChecks: mutationCommand steht
+// ausserhalb der Liste und damit ausserhalb der Staffelung — die Guetemessung
+// braucht aber eine Stufenzuordnung. Beide Felder sind Pflicht. Ein muster ohne
+// marke messe ohne Folge, eine marke ohne muster koenne nichts messen; in beiden
+// Faellen entstuende eine Messung, die nie einen Halt ausloest, und das faellt
+// niemandem auf.
+
+const guete = { muster: String.raw`(\d+)%`, marke: 80 };
+
+test("guete: ein Eintrag mit muster und marke ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete }), []);
+});
+
+test("guete: ein Block ohne muster ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { marke: 80 } }), []);
+});
+
+test("guete: ein Block ohne marke ist ungueltig", () => {
+  assert.notDeepEqual(
+    pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { muster: guete.muster } }),
+    []
+  );
+});
+
+test("guete: eine marke ausserhalb 0 bis 100 ist ungueltig", () => {
+  // Der eigentliche Zweck der Grenzen. Eine Marke von 120 waere nie erreichbar —
+  // der Lauf haengt dauerhaft rot, und niemand sieht den Grund in der Config.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: 120 } }), []);
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: -1 } }), []);
+});
+
+test("guete: eine marke, die keine Zahl ist, ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: "80" } }), []);
+});
+
+test("guete: ein unbekanntes Feld im Block ist ungueltig", () => {
+  assert.notDeepEqual(
+    pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, schwelle: 80 } }),
+    []
+  );
+});
+
+test("guete: der Block steht neben areas, always und stufe", () => {
+  // Der Block sagt, was gemessen wird, nicht ob oder wann. Drei Achsen, keine
+  // Vorrangfrage — deshalb schliessen sie sich nicht aus.
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", areas: ["backend"], guete }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", always: true, stufe: "push", guete }), []);
+});
+
+test("guete: ein Eintrag ohne Block bleibt gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: ohne Benennung weder Messung noch Marke
+  // noch Halt.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test", stufe: "push" }), []);
+});
+
+test("guete: die Pflichtfelder und die Grenzen stehen am Feld im Schema", () => {
+  const objektform = eintragSchema.oneOf.find((z) => z.type === "object");
+  const feld = objektform?.properties?.guete;
+  assert.ok(feld, "das Feld 'guete' fehlt in der Objektform von buildChecks");
+  assert.deepEqual([...feld.required].sort(), ["marke", "muster"], "die beiden Pflichtfelder stimmen nicht");
+  assert.equal(feld.additionalProperties, false, "der Block ist nicht geschlossen");
+  assert.equal(feld.properties.muster.type, "string", "muster ist kein String");
+  assert.equal(feld.properties.marke.type, "number", "marke ist keine Zahl");
+  assert.equal(feld.properties.marke.minimum, 0, "die Untergrenze 0 fehlt");
+  assert.equal(feld.properties.marke.maximum, 100, "die Obergrenze 100 fehlt");
+});
+
+test("guete: die Beschreibung nennt den einen Eintrag, die Stufengrenze und die Teamweit-Formel", () => {
+  // JSON kennt keine Kommentare — wer die Config vor sich hat, liest die drei
+  // Regeln nur hier. Sie stehen im Block und nicht am Feld marke: Es sind
+  // Aussagen ueber die Liste, nicht ueber eine Zahl.
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.guete.description;
+  assert.ok(text, "der guete-Block hat keine description");
+  assert.match(text, /höchstens ein/i, "dass hoechstens ein Eintrag den Block traegt, steht nicht in der Beschreibung");
+  assert.match(text, /"merge"|`merge`/, "die Stufengrenze merge steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel"
+  );
+});
+
+test("guete: die Beschreibung des Musters nennt genau eine Gruppe", () => {
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.guete.properties.muster.description;
+  assert.match(text, /genau eine[rn]? Gruppe/, "dass das Muster genau eine Gruppe hat, steht nicht in der Beschreibung");
 });
 
 // --- Bestand ---

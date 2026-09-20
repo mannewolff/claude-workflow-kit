@@ -43,7 +43,7 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist.",
+        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"guete\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann.",
         "oneOf": [
           {
             "type": "string"
@@ -78,6 +78,28 @@
                 ],
                 "default": "paket",
                 "description": "Wann die Prüfung an der Reihe ist: \"paket\" beim Abschluss eines Arbeitspakets, \"push\" vor dem Veröffentlichen, \"merge\" vor der Freigabe. Fehlendes Feld = \"paket\" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStufen (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette."
+              },
+              "guete": {
+                "type": "object",
+                "properties": {
+                  "muster": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Regulärer Ausdruck mit genau einer Gruppe; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos. Pflicht, weil die Werkzeuge Verschiedenes melden — PIT schreibt \"Killed 42 (84%)\", Stryker \"Mutation score: 84.21\". Die erfasste Zahl gilt als Prozentwert, wie die Marke."
+                  },
+                  "marke": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Der Prozentwert, ab dem die Messung genügt. Liegt der gemessene Anteil darunter, ist der Lauf rot — derselbe Halt wie bei jeder roten Pflichtprüfung, kein eigener Stop-Punkt. Zulässig sind 0 bis 100; eine höhere Marke wäre nie erreichbar."
+                  }
+                },
+                "required": [
+                  "muster",
+                  "marke"
+                ],
+                "additionalProperties": false,
+                "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stufe\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [

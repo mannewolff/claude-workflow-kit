@@ -34,6 +34,9 @@ const FAELLE = [
   ["minLength", { type: "string", minLength: 1 }, "a", ""],
   ["minimum", { type: "number", minimum: 1 }, 1, 0],
   ["exclusiveMinimum", { type: "number", exclusiveMinimum: 0 }, 0.5, 0],
+  // Seit Issue #762: Die Marke der Gütemessung ist eine Zahl von 0 bis 100. Die
+  // Obergrenze stand bis dahin nirgends im Schema und deshalb nicht im Validator.
+  ["maximum", { type: "number", maximum: 100 }, 100, 120],
   ["uniqueItems", { type: "array", uniqueItems: true }, ["a", "b"], ["a", "a"]],
 ];
 
@@ -64,7 +67,7 @@ test("[einstellungen-1] der Validator kennt jedes Schlüsselwort, das das Schema
   sammle(VORLAGE);
   const unbekannt = [...benutzt].filter((w) => !SCHLUESSELWOERTER.includes(w) && !BESCHREIBEND.has(w));
   assert.deepEqual(unbekannt, [], `unbekannte Schlüsselwörter: ${unbekannt.join(", ")}`);
-  assert.equal(SCHLUESSELWOERTER.length, 15);
+  assert.equal(SCHLUESSELWOERTER.length, 16);
 });
 
 test("[einstellungen-1] das eingebettete Schema gleicht der Vorlage", () => {
