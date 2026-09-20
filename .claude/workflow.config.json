@@ -42,13 +42,13 @@
     ],
     "stufen": {
       "schwer": {
-        "modell": "claude-opus-5"
+        "modell": "claude-fable-5"
       },
       "mittel": {
-        "modell": "claude-sonnet-5"
+        "modell": "claude-opus-5"
       },
       "leicht": {
-        "modell": "claude-sonnet-5"
+        "modell": "claude-opus-5"
       }
     }
   },
