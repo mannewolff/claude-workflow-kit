@@ -88,7 +88,7 @@ test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGes
       Object.keys(summary).sort(),
       [
         "ausgelassen", "basis", "bereiche", "dauerGesamtMs", "geaendert",
-        "hashes", "laufen", "leeresPaket", "vollerUmfang", "zeitpunkt",
+        "hashes", "laufen", "leeresPaket", "stufe", "vollerUmfang", "zeitpunkt",
       ],
     );
   });

@@ -245,12 +245,13 @@ test("run und plan treffen dieselbe Auswahl", () => {
     const summary = zusammenfassung(dir);
 
     assert.equal(summary.basis, erwartet.basis);
+    assert.equal(summary.stufe, erwartet.stufe);
     assert.deepEqual(summary.geaendert, erwartet.geaendert);
     assert.deepEqual(summary.bereiche, erwartet.bereiche);
     assert.equal(summary.vollerUmfang, erwartet.vollerUmfang);
     assert.equal(summary.leeresPaket, erwartet.leeresPaket);
     assert.deepEqual(
-      summary.laufen.map(({ cmd, grund }) => ({ cmd, grund })),
+      summary.laufen.map(({ cmd, stufe, grund }) => ({ cmd, stufe, grund })),
       erwartet.laufen,
       "run laeuft gegen eine andere Auswahl als plan",
     );

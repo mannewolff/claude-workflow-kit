@@ -26,8 +26,15 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>]
+ * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
+ * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
+ * sind kumulativ — `push` faehrt `paket` mit, `merge` alle drei —, ein Eintrag
+ * ohne `stufe` gilt als Paketstufe, und damit bleibt jede bestehende Config
+ * unveraendert. Die beiden Achsen beantworten Verschiedenes: `areas`/`always`
+ * sagen, OB eine Pruefung betroffen ist, `stufe` sagt, WANN sie an der Reihe ist.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -107,10 +114,15 @@ export function vergleicheText(a, b) {
   return a > b ? 1 : 0;
 }
 
+// Rangfolge der Pruefzeitpunkte (Issue #758). Die Reihenfolge IST die Regel: Eine
+// Pruefung ist faellig, sobald der Index ihrer Stufe den der gefahrenen nicht
+// uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
+const STUFEN = ["paket", "push", "merge"];
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>]
-  node checks.mjs run  [--since <ref>]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -122,12 +134,18 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
                   laufen alle Pruefungen.
+  --stufe <s>     Gefahrener Zeitpunkt: ${STUFEN.join(" | ")} (Default ${STUFEN[0]}).
+                  Kumulativ — push faehrt paket mit, merge alle drei. Pruefungen
+                  spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
+                  Freigabestufe (merge) faehrt jede Pruefung, auch bei leerem
+                  Paket und unberuehrten Bereichen.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
-(Kommandostring, { cmd, areas } oder { cmd, always }) und 'checkAreas'
-(Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines Pfadsegments und
-'**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als 'frontend/**'.
+(Kommandostring, { cmd, areas }, { cmd, always } oder { cmd, stufe }) und
+'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
+Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
+'frontend/**'.
 `;
 
 class ChecksError extends Error {}
@@ -154,9 +172,18 @@ function ladeConfig() {
   }
 }
 
-/** Die String-Form und das Objekt nur mit `cmd` bedeuten dasselbe. */
+/**
+ * Die String-Form und das Objekt nur mit `cmd` bedeuten dasselbe.
+ *
+ * Die fehlende `stufe` wird hier auf `paket` gesetzt und nicht erst bei der
+ * Auswahl (Issue #758): So laufen die String-Form, das Objekt ohne `stufe` und
+ * das Objekt mit `stufe: "paket"` durch dieselbe Bahn, und jede bestehende
+ * Config behaelt ihr Verhalten. Ein Default, der an jeder Lesestelle einzeln
+ * nachgezogen wuerde, waere die naechste Stelle, an der er einmal fehlt.
+ */
 function normalisiere(check) {
-  return typeof check === "string" ? { cmd: check } : check;
+  const objekt = typeof check === "string" ? { cmd: check } : check;
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0] };
 }
 
 /**
@@ -324,13 +351,35 @@ function entscheidung(check, beruehrt) {
     : { laeuft: false, grund: `${bereichsText(check.areas)} unberuehrt` };
 }
 
-function mitGrund(checks, grund) {
-  return checks.map((check) => ({ cmd: check.cmd, grund }));
+/**
+ * Verteilt jede Pruefung auf `laufen` oder `ausgelassen` — in der Reihenfolge der
+ * Config, damit beide Listen so lesbar bleiben wie die Datei.
+ *
+ * Die STUFENAUSWAHL GREIFT VOR der Bereichsauswahl (Issue #758): Wer nicht dran
+ * ist, wird gar nicht erst gefragt, ob er betroffen waere. Andersherum stuende im
+ * Grund einer ausgelassenen Push-Pruefung „Bereich unberuehrt", obwohl sie auch
+ * im beruehrten Bereich nicht gelaufen waere — ein Grund, der auf die falsche
+ * Ursache zeigt, kostet beim naechsten Lesen mehr, als er erklaert.
+ *
+ * `entscheiden` bekommt nur die faelligen Pruefungen und beantwortet die zweite
+ * Frage: die des jeweiligen Auswahlfalls (Anker, leeres Paket, Bereiche).
+ */
+function verteilen(checks, stufe, entscheiden) {
+  const laufen = [];
+  const ausgelassen = [];
+  const gefahren = STUFEN.indexOf(stufe);
+  for (const check of checks) {
+    const { laeuft, grund } = STUFEN.indexOf(check.stufe) <= gefahren
+      ? entscheiden(check)
+      : { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+    (laeuft ? laufen : ausgelassen).push({ cmd: check.cmd, stufe: check.stufe, grund });
+  }
+  return { laufen, ausgelassen };
 }
 
-function bauen({ basis, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
+function bauen({ basis, stufe, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
   vollerUmfang = false, leeresPaket = false }) {
-  return { basis, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
+  return { basis, stufe, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
 }
 
 function planen(args) {
@@ -339,33 +388,64 @@ function planen(args) {
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
 
+  const stufe = args.stufe ?? STUFEN[0];
   const refText = args.since ?? "HEAD";
   const basis = ankerAufloesen(refText);
   if (basis === null) {
+    // Der Zweifelsfall behaelt seinen eigenen Grund, auch an der Freigabestufe:
+    // Dort laeuft ohnehin alles, aber WARUM ist verschieden — entschieden gegen
+    // nicht gewusst.
     const grund = `voller Umfang: Anker '${refText}' laesst sich nicht aufloesen`;
-    return bauen({ basis: refText, laufen: mitGrund(checks, grund), vollerUmfang: true });
+    return bauen({
+      basis: refText, stufe, vollerUmfang: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
   }
 
   const geaendert = geaenderteDateien(basis);
-  if (geaendert.length === 0) {
-    const grund = `leeres Paket: keine Aenderung seit ${basis}`;
-    return bauen({ basis, ausgelassen: mitGrund(checks, grund), leeresPaket: true });
-  }
-
   const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
   const bereiche = [...beruehrt].sort(vergleicheText);
-  if (ohneMuster !== null) {
-    const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
-    return bauen({ basis, geaendert, bereiche, laufen: mitGrund(checks, grund), vollerUmfang: true });
+
+  // Die Freigabestufe faehrt jede Pruefung (Plan #753, E12): Ihr Ergebnis gilt
+  // fuer den Stand, der freigegeben wird, und der besteht aus mehr als dem
+  // letzten Arbeitspaket. Eine Auslassung wegen leeren Pakets oder unberuehrten
+  // Bereichs zeigte hier auf den falschen Vergleich — deshalb greift keine von
+  // beiden. `basis`, `geaendert`, `bereiche` und (in `run`) `hashes` bleiben
+  // trotzdem aus dem Anker bestimmt: Sie sind der Nachweis, gegen den das
+  // Commit-Gate den Index prueft (gate-1), und nicht Teil der Auswahl.
+  //
+  // `vollerUmfang` bleibt dabei false — das Feld markiert den Zweifelsfall
+  // („wir wissen es nicht, also alles"), und die Freigabestufe ist das Gegenteil
+  // davon: eine Entscheidung. Denselben Unterschied halten String-Form und
+  // `always: true` auseinander.
+  if (stufe === "merge") {
+    const grund = "Freigabestufe: voller Umfang";
+    return bauen({
+      basis, stufe, geaendert, bereiche,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
   }
 
-  const laufen = [];
-  const ausgelassen = [];
-  for (const check of checks) {
-    const { laeuft, grund } = entscheidung(check, beruehrt);
-    (laeuft ? laufen : ausgelassen).push({ cmd: check.cmd, grund });
+  if (geaendert.length === 0) {
+    const grund = `leeres Paket: keine Aenderung seit ${basis}`;
+    return bauen({
+      basis, stufe, leeresPaket: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: false, grund })),
+    });
   }
-  return bauen({ basis, geaendert, bereiche, laufen, ausgelassen });
+
+  if (ohneMuster !== null) {
+    const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
+    return bauen({
+      basis, stufe, geaendert, bereiche, vollerUmfang: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
+  }
+
+  return bauen({
+    basis, stufe, geaendert, bereiche,
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
+  });
 }
 
 // --- Ausfuehrung (Issue #424) ----------------------------------------------
@@ -527,6 +607,18 @@ function ausfuehren(args) {
   const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
 
+  // Die Ankuendigung steht im Kommando und nicht in den Skills (Issue #758): Eine
+  // Regel im Prompt wirkt nicht unter Druck — dieselbe Begruendung, aus der
+  // checks.mjs ueberhaupt entstand. Das Kommando kennt die Liste ohnehin.
+  //
+  // Nur oberhalb der Paketstufe: Dort kommt nichts hinzu, und der haeufigste Lauf
+  // bleibt still. Eine Zeile, die in jedem Lauf steht, liest bald niemand mehr.
+  if (auswahl.stufe !== STUFEN[0]) {
+    const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
+    const liste = hinzu.length > 0 ? hinzu.join(", ") : "keine weitere Pruefung";
+    process.stdout.write(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
+  }
+
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
@@ -570,6 +662,18 @@ function parseArgs(rest) {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
       args.since = rest[i + 1] ?? "";
+      i += 1;
+    } else if (rest[i] === "--stufe") {
+      // Ein unbekannter Wert ist ein Fehler und nicht stillschweigend die
+      // Paketstufe (Issue #758): Ein Tippfehler liesse sonst genau die
+      // Pruefungen aus, um deren Zeitpunkt es beim Aufruf ging — weniger
+      // pruefen, ohne dass es auffaellt. Der fehlende Wert zaehlt wie ein
+      // falscher; anders als bei `--since` gibt es hier keine sichere Deutung.
+      const wert = rest[i + 1] ?? "";
+      if (!STUFEN.includes(wert)) {
+        fail(`Unbekannte Stufe '${wert}'. Erwartet: ${STUFEN.join(", ")}.`);
+      }
+      args.stufe = wert;
       i += 1;
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
