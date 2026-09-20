@@ -129,6 +129,13 @@ uebergibt nie selbst einen. Weil der Aufruf **vor** dem Commit steht, misst `HEA
 genau dieses eine Arbeitspaket: Ein Fehlschlag gehoert dem Paket, das ihn ausgeloest
 hat — in beiden Betriebsarten und auch dann, wenn eine Session mehrfach festschreibt.
 
+**Gefahren wird die Paketstufe.** Auch `--stufe` uebergibt der Skill nie: Die Paketstufe
+ist die Vorgabe, und sie ist hier die richtige — gemessen wird ein Arbeitspaket. Traegt
+eine Pruefung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste
+`ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt:
+Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht sie wie
+jede andere Auslassung.
+
 Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
 
 Das Kommando nennt in seiner Ausgabe die **gelaufenen und die ausgelassenen**

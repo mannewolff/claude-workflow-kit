@@ -202,8 +202,15 @@ Jetzt liegen alle Dateien des Wegs auf der Platte: der Spec-Ertrag aus Schritt 3
 Release-Dateien aus Schritt 4. Genau diesen Stand misst **ein** Lauf:
 
 ```bash
-node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"
 ```
+
+**Dieser Skill fährt die Push-Stufe.** Damit laufen zusätzlich zu den Prüfungen der
+Paketstufe alle, die ihr Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat.
+Der Lauf nennt die **zusätzlichen Prüfungen vorab** in einer eigenen Zeile (`Stufe push:
+zusaetzlich zur Paketstufe laeuft …`) — er kann darum spürbar **länger dauern** als der
+Lauf je Arbeitspaket in `/implement-next`. Das ist der vorgesehene Zeitpunkt und kein
+Grund, ihn abzukürzen.
 
 **Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
 `kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es

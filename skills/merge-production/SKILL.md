@@ -109,8 +109,13 @@ stand vor **jedem** Commit dieses Wegs ein eigener Lauf — es gab zwei. Jetzt g
 Commit und darum einen Lauf.
 
 ```bash
-node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --stufe merge --since "$(git merge-base HEAD origin/<mainBranch>)"
 ```
+
+**Dieser Skill fährt die Freigabestufe.** Auf ihr laufen **alle drei Stufen** — Paket,
+Push und Merge —, und zwar im vollen Umfang: auch dann, wenn seit dem letzten Push nichts
+hinzugekommen ist. Das ist gewollt. Der Stand, der nach `production` geht, ist der Stand,
+für den das Ergebnis gilt; eine bereichsbezogene Auswahl misst hier zu wenig.
 
 **Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
 `kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
