@@ -207,14 +207,20 @@ test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sicht
   assert.match(absatz, /Summenzeile|Summe/i, "die Summenzeile fehlt");
 });
 
-// Der Salvage-Pfad ist die eine Stelle, an der bewusst weiterhin alles laeuft. Ohne
-// die Begruendung im Text liest ein spaeterer Leser das als vergessene Umstellung.
-test("der Salvage-Absatz weist den vollen Lauf mit Begruendung aus", () => {
+// Der Salvage-Pfad ist die eine Stelle, an der die bereichsbezogene Auswahl bewusst
+// ausbleibt. Ohne die Begruendung im Text liest ein spaeterer Leser das als vergessene
+// Umstellung. Die Stufenauswahl greift dort aber sehr wohl — beides muss dastehen,
+// sonst ist der Absatz in die eine oder die andere Richtung falsch.
+test("der Salvage-Absatz weist die fehlende Bereichsauswahl mit Begruendung aus", () => {
   const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
   const absatz = absatzMit(kapitel, /Salvage/, /buildChecks/);
   assert.ok(absatz, "kein Salvage-Absatz mit buildChecks");
-  assert.match(absatz, /volle[nrs]? (Liste|Umfang)|alle `buildChecks`/i,
-    "es steht nicht, dass im Salvage-Pfad die volle Liste laeuft");
+  assert.match(absatz, /ohne\s+\*{0,2}bereichsbezogene\*{0,2}\s+Auswahl|ohne\s+\*{0,2}Bereichsauswahl/i,
+    "es steht nicht, dass im Salvage-Pfad die bereichsbezogene Auswahl ausbleibt");
+  assert.match(absatz, /Paketstufe/,
+    "es steht nicht, dass der Salvage-Pfad die Pruefungen der Paketstufe faehrt");
+  assert.doesNotMatch(absatz, /volle[nrs]? (Liste|Umfang)|alle `buildChecks`/i,
+    "der Absatz behauptet weiterhin die volle Liste — mit der Staffelung stimmt das nicht mehr");
   assert.match(absatz, /kaputt|beschädigt/i,
     "die Frage nach einem sauberen Paket ('hat diese Arbeit etwas kaputtgemacht?') fehlt");
   assert.match(absatz, /brauchbar|Zwischenstand überhaupt/i,

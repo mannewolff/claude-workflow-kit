@@ -222,15 +222,20 @@ test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeil
   });
 });
 
-// --- Salvage: unveraendert der volle Umfang (Entscheidung A6 des Plans #421) ---
+// --- Salvage: die Paketstufe, ohne bereichsbezogene Auswahl ---
 
-test("Salvage prueft weiterhin die volle Liste, unabhaengig von den geaenderten Bereichen", NUR_POSIX, () => {
+test("[night-48] Salvage faehrt die Paketstufe: ohne Bereichsauswahl, aber ohne spaetere Stufen", NUR_POSIX, () => {
   // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
-  // exportiert, und eine Auswahl gibt es in night.mjs gar nicht. Beide Pruefungen
-  // protokollieren ihre Ausfuehrung; die Session fasst nur den Bereich 'kit' an.
+  // exportiert. Alle drei Pruefungen protokollieren ihre Ausfuehrung; die Session
+  // fasst nur den Bereich 'kit' an.
+  //
+  // Beide Aussagen in einem Lauf: Die BEREICHSauswahl bleibt aus (der unberuehrte
+  // Bereich 'frontend' laeuft trotzdem, Entscheidung A6 des Plans #421), die
+  // STUFENauswahl greift (der Push-Eintrag laeuft nicht, Plan #753, E13).
   const buildChecks = [
     { cmd: "echo kit >> checklauf.log", areas: ["kit"] },
     { cmd: "echo frontend >> checklauf.log", areas: ["frontend"] },
+    { cmd: "echo push >> checklauf.log", stufe: "push" },
   ];
   mitProjekt((dir) => {
     const id = readyIssue(dir);
@@ -251,7 +256,7 @@ test("Salvage prueft weiterhin die volle Liste, unabhaengig von den geaenderten 
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
     const laeufe = readFileSync(join(dir, "checklauf.log"), "utf-8").trim().split("\n");
     assert.deepEqual(laeufe, ["kit", "frontend"],
-      `beide Pruefungen haetten laufen muessen, tatsaechlich: ${laeufe.join(", ")}`);
+      `beide Paketstufen-Pruefungen haetten laufen muessen und nur sie, tatsaechlich: ${laeufe.join(", ")}`);
     assert.ok(board(dir, "issue", "list", "--status", "in_review").some((i) => String(i.id) === id),
       "das gerettete Issue haette in In review landen muessen");
   }, { buildChecks });

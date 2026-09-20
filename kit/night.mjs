@@ -32,7 +32,7 @@
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
- *   --no-checks-ok     Start trotz leerer buildChecks erlauben
+ *   --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
  *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
  *                      kit:nightrun); --label none schaltet den Filter ab (altes
  *                      Verhalten: striktes ready[0])
@@ -51,8 +51,8 @@
  * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
  * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
  * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
- * Runner deshalb die buildChecks selbst (nicht mutationCommand — das ist ein
- * nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
+ * Runner deshalb die buildChecks der Paketstufe selbst (nicht mutationCommand —
+ * das ist ein nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
  * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
  * Board zu bewegen. Rote Checks -> harter Stopp. Endet die Session nicht mit
@@ -305,7 +305,7 @@ Flags:
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
-  --no-checks-ok     Start trotz leerer buildChecks erlauben
+  --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
@@ -315,7 +315,8 @@ Flags:
   --help, -h         diese Uebersicht
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
-Working Tree, fuehrt der Runner die buildChecks selbst aus. Sind sie gruen, bekommt
+Working Tree, fuehrt der Runner die buildChecks der Paketstufe selbst aus — ohne
+bereichsbezogene Auswahl, denn was die Runde angefasst hat, weiss niemand. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
 zu verschieben (Zeitlimit 10 min). Rote Checks fuehren zum harten Stopp, und ebenso
@@ -2730,6 +2731,26 @@ function checkEnv() {
   return { ...process.env, ...settingsEnv() };
 }
 
+/**
+ * Die Eintraege aus `buildChecks`, die die Paketstufe tragen (Plan #753, E13/E14).
+ *
+ * Ein Eintrag ohne `stufe` gehoert zur Paketstufe — die String-Form, das Objekt
+ * ohne `stufe` und `stufe: "paket"` bedeuten dasselbe. Das ist derselbe Default
+ * wie in checks.mjs, und er haelt jede bestehende Config bei ihrem Verhalten.
+ *
+ * Der Nacht-Runner braucht sie an zwei Stellen: fuer die Salvage-Vorpruefung
+ * (welche Kommandos laufen) und fuer den Start-Guard (gibt es ueberhaupt ein
+ * Gate). Beide meinen die Paketstufe, denn beide urteilen ueber ein Arbeitspaket.
+ */
+// SYNC: derselbe Default steht in kit/checks.mjs (normalisiere) und wird in
+// kit/einstellungen.mjs geprueft.
+function paketstufenChecks(cfg) {
+  return (cfg.buildChecks || []).filter((eintrag) => {
+    const stufe = typeof eintrag === "string" ? undefined : eintrag.stufe;
+    return (stufe ?? "paket") === "paket";
+  });
+}
+
 // Eine Shell ist hier zwingend — anders als in board.mjs, wo Issue #196 sie gerade
 // abgeschafft hat. Der Unterschied: Dort stehen die Kommandos fest im Code und lassen
 // sich als Argument-Array uebergeben. Hier ist `cmd` eine frei konfigurierte
@@ -2750,21 +2771,28 @@ function checkEnv() {
 //
 // PATH-Aufloesung bewusst (S4036, Issue #183).
 //
-// Die VOLLE Liste, absichtlich (Entscheidung A6 des Plans #421, Issue #428): Hier
-// laeuft KEINE bereichsbezogene Auswahl, auch nicht ueber checks.mjs. Wer das
-// spaeter als Luecke liest, dreht die Frage um, die diese Pruefung beantwortet.
-// Nach einem sauberen Arbeitspaket lautet sie "hat diese Arbeit etwas
-// kaputtgemacht?" — dort genuegen die beruehrten Bereiche. Beim Retten lautet sie
-// "ist dieser unklare Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne
-// Ergebnis ist genau die, deren Absicht niemand kennt: Was sie angefasst hat, sagt
-// kein Anker verlaesslich.
+// KEINE bereichsbezogene Auswahl, absichtlich (Entscheidung A6 des Plans #421,
+// Issue #428): auch nicht ueber checks.mjs. Wer das spaeter als Luecke liest,
+// dreht die Frage um, die diese Pruefung beantwortet. Nach einem sauberen
+// Arbeitspaket lautet sie "hat diese Arbeit etwas kaputtgemacht?" — dort genuegen
+// die beruehrten Bereiche. Beim Retten lautet sie "ist dieser unklare
+// Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne Ergebnis ist genau
+// die, deren Absicht niemand kennt: Was sie angefasst hat, sagt kein Anker
+// verlaesslich.
 //
-// Die drei Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
-// meinen hier alle dasselbe — nur das Kommando zaehlt. `areas` wird nicht gelesen.
+// Die STUFENauswahl beantwortet eine andere Frage und greift deshalb sehr wohl
+// (Plan #753, E13): "ist dieser Zwischenstand brauchbar?" ist die Frage der
+// Paketstufe. Eintraege mit `stufe` push oder merge sind erst beim Veroeffentlichen
+// faellig; liefen sie hier mit, wartete jeder Rettungsversuch auf Pruefungen, die
+// ihn nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
+//
+// Die Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
+// meinen hier alle dasselbe — nur Kommando und Stufe zaehlen. `areas` wird nicht
+// gelesen.
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
-  for (const eintrag of cfg.buildChecks || []) {
+  for (const eintrag of paketstufenChecks(cfg)) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
@@ -3532,8 +3560,15 @@ export function vorbereiten(args) {
   settingsVorflug(args);
   // Nachts ohne Gate zu implementieren ist riskant; ein Lauf, der nichts baut, hebt die
   // Pflicht ueber `noChecksOk` auf (so machen es die Folgepakete fuer die Kette).
-  if ((!config.buildChecks || config.buildChecks.length === 0) && !args.noChecksOk) {
-    fail("buildChecks in workflow.config.json ist leer — nachts ohne Gate zu implementieren ist riskant. Override: --no-checks-ok", "zustand");
+  //
+  // Gezaehlt wird die Paketstufe und nicht die Listenlaenge (Plan #753, E14): Eine
+  // gefuellte Liste aus lauter Push-Pruefungen liefe hier sonst durch, obwohl die
+  // Umsetzung eines Arbeitspakets damit kein einziges Gate haette — genau der
+  // Zustand, den dieser Guard verhindern soll. Die Meldung nennt deshalb den Grund
+  // und nicht nur "leer": Wer drei Eintraege in seiner Config sieht, sucht bei einem
+  // blossen "ist leer" an der falschen Stelle.
+  if (paketstufenChecks(config).length === 0 && !args.noChecksOk) {
+    fail("buildChecks in workflow.config.json ist leer an der Paketstufe — keine Pruefung traegt die Stufe 'paket', und damit hat die Umsetzung nachts kein Gate. Eintraege mit stufe 'push' oder 'merge' laufen erst beim Veroeffentlichen. Override: --no-checks-ok", "zustand");
   }
   // Nach den bestehenden Vorfluegen (Issue #712): eine Warnzeile je nicht erreichbarer
   // Stufe, ohne den Lauf aufzuhalten.
