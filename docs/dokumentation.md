@@ -253,6 +253,38 @@ Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuord
 
 Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
+**`stufe` steht auf einer eigenen Achse.** `areas` und `always` sagen, **ob** eine Prüfung betroffen ist; **wann** sie an der Reihe ist, sagt [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe).
+
+### Gestaffelte Prüfungen: `stufe`
+
+Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der zwanzig Minuten läuft, nach jedem Arbeitspaket zu fahren, macht die Prüfung vor dem Commit so teuer, dass sie niemand mehr abwartet — ihn wegzulassen macht sie wertlos. Ein `buildChecks`-Eintrag kann deshalb sagen, **wann** er an der Reihe ist:
+
+```json
+{
+  "buildChecks": [
+    "node --test",
+    { "cmd": "mvn verify -Pintegration", "stufe": "push" },
+    { "cmd": "npm run e2e", "areas": ["frontend"], "stufe": "merge" }
+  ]
+}
+```
+
+| Stufe | Zeitpunkt | Skill |
+| --- | --- | --- |
+| `paket` | Abschluss eines Arbeitspakets, vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `push` | vor dem Veröffentlichen auf `main` | `/push-main` |
+| `merge` | vor der Freigabe nach `production` | `/merge-production` |
+
+**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Wer die Freigabestufe fährt, bekommt außerdem den vollen Umfang: Dort wird keine Prüfung mehr nach Bereichen ausgewählt.
+
+**Ein fehlendes Feld bedeutet `paket`.** Die bloße String-Form und ein Objekt ohne `stufe` tragen die Paketstufe, und damit bleibt jede Bestandskonfiguration unverändert in ihrem Verhalten. Wer die Staffelung nicht will, schreibt nichts hin.
+
+**Was später läuft, erscheint als Auslassung** — in der Checklist und im Abschlussbericht, mit ihrer Stufe als Grund. Das ist **kein Mangel, sondern ihr Zeitpunkt**: `Stufe push, gefahren wird paket` heißt, dass diese Prüfung in `/push-main` an der Reihe ist. Oberhalb der Paketstufe nennt das Kommando zusätzlich, was gegenüber ihr hinzukommt (`Stufe push: zusätzlich zur Paketstufe läuft …`) — ein solcher Lauf dauert spürbar länger als der vor dem Commit.
+
+**Mindestens eine Prüfung gehört auf die Paketstufe.** Tragen alle Einträge `push` oder `merge`, läuft vor dem Commit nichts: Die Umsetzung eines Arbeitspakets hat dann kein Gate. Nachts ist das kein stiller Zustand — der Nacht-Runner prüft es beim Start und startet gar nicht erst (Override: `--no-checks-ok`). Die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) meldet diesen Zustand als Warnung; speichern lässt sich eine solche Konfiguration trotzdem, denn gültig ist sie.
+
+**Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.
@@ -613,6 +645,8 @@ Modelle, die das Dokument nicht geschrieben haben, liefern Befunde als Kommentar
 
 Der Skill ruft `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"` auf: Das Kommando wählt die **betroffenen** `buildChecks` aus und führt genau sie sequenziell aus. Der `merge-base`-Anker ist hier der richtige, weil der Skill nach dem lokalen Commit läuft — er misst alles, was seit dem letzten Push dazugekommen ist (siehe [Bereichsbezogene Prüfungen](#bereichsbezogene-prüfungen-checkareas)). Danach läuft `mutationCommand`, sofern gesetzt; es steht außerhalb der Auswahl. Bei Frontend-Änderungen erinnert der Skill an die manuelle UI-Verifikation im Browser und vermerkt im Bericht, wenn diese nicht automatisch möglich war.
 
+**Gefahren wird die Paketstufe** (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Der Aufruf trägt kein `--stufe`: Dieser Schritt ist die lokale Prüfung vor der menschlichen Testrunde, und sie teuer zu machen nähme ihr den Nutzen. Eine Prüfung mit der Stufe `push` oder `merge` erscheint darum als Auslassung mit ihrer Stufe als Grund — sie läuft in `/push-main` bzw. `/merge-production`.
+
 Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp; ausgelassene Prüfungen stehen mit ihrem Grund als eigene Zeile darin, damit ein verkürzter Lauf nicht wie ein vollständiger aussieht. Ein roter Check blockiert den weiteren Prozess. Es gibt keine Ausnahmen und kein Übergehen.
 
 ### /review
@@ -633,6 +667,8 @@ Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du
 
 Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
 
+**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Dieser Lauf kann spürbar länger dauern als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
+
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
 Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du prüfst das Ergebnis im Browser: den Golden Path, kritische Edge Cases, keine sichtbaren Regressionen. Erst nach dieser Prüfung gehst du zu Schritt 9.
@@ -644,6 +680,8 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
 **Vor dem PR steht ein CI-Gate.** Der Skill holt sich per `node .claude/kit/board.mjs code ci-status --commit <sha>` den Zustand der CI für den Stand auf `origin/main` — vor Versionsbump, Commit und PR. Bei **rot** entsteht **kein PR**: Der Skill nennt die roten Jobs mit Namen und endet; ein Exit-Code 1 der Achse zählt genauso. Läuft die CI noch, fragt er genau einmal nach, und nur ein `ja` fährt fort. Hat ein Projekt keine CI (`codeHost: local`), meldet die Achse `keine` und der Lauf geht unverändert weiter.
+
+**Gefahren wird die Stufe `merge`, die Freigabestufe** — der Skill ruft `checks.mjs run --stufe merge` auf. Auf ihr laufen alle drei Stufen, und zwar im vollen Umfang: Vor der Freigabe wird keine Prüfung mehr nach Bereichen ausgewählt (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Es ist der teuerste und der letzte Lauf vor production.
 
 Der Grund für ein zweites Gate neben den Pflicht-Checks: Die lokalen `buildChecks` messen nur, was deine Maschine messen kann — sie messen nicht, was die CI misst. Dieses Repo fährt einen zweiten Job auf `windows-latest`; zwei Releases gingen nach production, während genau dieser Job fehlschlug. Die Information lag jedes Mal vor, sie wurde nur nie abgerufen.
 

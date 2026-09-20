@@ -242,6 +242,47 @@ function regelLeereBereiche(config) {
   return out;
 }
 
+// Die drei Zeitpunkte einer Pflichtprüfung, in der Reihenfolge des Prozesses.
+// SYNC: `STUFEN` in kit/checks.mjs und das enum in templates/workflow.config.schema.json.
+const CHECK_STUFEN = ["paket", "push", "merge"];
+
+/** Die Stufe eines `buildChecks`-Eintrags, wie `checks.mjs` sie liest: ein fehlendes Feld ist `paket`. */
+function stufeVon(eintrag) {
+  return istObjekt(eintrag) && "stufe" in eintrag ? eintrag.stufe : CHECK_STUFEN[0];
+}
+
+// SYNC: Laufzeitregel in kit/checks.mjs, `STUFEN` — die Stufe eines Eintrags ist einer der drei
+// Namen. Das Schema-oneOf fängt einen fremden Wert bereits ab, meldet aber nur "passt auf keine
+// der erlaubten Formen" — dieselbe Lage wie bei night.stufen (Issue #708, E21). Diese Regel
+// benennt das Feld und zeigt auf die Zeile des Eintrags (Plan #753, E18).
+function regelCheckStufe(config) {
+  const out = [];
+  (Array.isArray(config.buildChecks) ? config.buildChecks : []).forEach((check, i) => {
+    if (!istObjekt(check) || !("stufe" in check)) return;
+    if (CHECK_STUFEN.includes(check.stufe)) return;
+    const genannt = typeof check.stufe === "string" ? `'${check.stufe}'` : JSON.stringify(check.stufe);
+    const moeglich = CHECK_STUFEN.map((s) => "'" + s + "'").join(", ");
+    out.push(befund(`buildChecks[${i}].stufe`, `${genannt} ist keine Stufe — möglich sind ${moeglich}`));
+  });
+  return out;
+}
+
+// Trägt keine Prüfung die Paketstufe, hat die nächtliche Umsetzung kein Gate: Der Start-Guard des
+// Nacht-Runners weist genau diesen Zustand ab (Issue #760). Kein Fehler — die Konfiguration ist
+// gültig und soll sich speichern lassen (Plan #753, E18, Befundart aus einstellungen-13). Die
+// Oberfläche bearbeitet die Stufe nicht, deshalb nennt die Meldung den Weg in die Datei; sonst
+// stünde am Bildschirm ein Mangel, für den es dort keinen Handgriff gibt.
+function regelPaketstufeFehlt(config) {
+  const checks = Array.isArray(config.buildChecks) ? config.buildChecks : [];
+  if (checks.length === 0) return [];
+  if (checks.some((check) => stufeVon(check) === CHECK_STUFEN[0])) return [];
+  return [befund(
+    "buildChecks",
+    "keine Prüfung trägt die Stufe 'paket' — damit hat die Umsetzung eines Arbeitspakets kein Gate, und der Nacht-Runner startet nicht. Die Stufe steht je Eintrag in .claude/workflow.config.json",
+    "warnung",
+  )];
+}
+
 // Das Schema-oneOf fängt eine Stufe mit beiden oder keinem der Felder bereits ab, meldet aber
 // nur "passt auf keine der erlaubten Formen" — diese Regel benennt, welches Feld zu viel oder
 // zu wenig ist (Issue #708, E21).
@@ -292,7 +333,8 @@ export function zusatzregeln(config) {
   if (!istObjekt(config)) return [];
   return [
     ...regelRollenzahl(config), ...regelRollenKatalog(config), ...regelPaare(config), ...regelBereiche(config),
-    ...regelLeereBereiche(config), ...regelStufenFelder(config), ...regelStufenModell(config), ...regelAufwandSchwellen(config),
+    ...regelLeereBereiche(config), ...regelCheckStufe(config), ...regelPaketstufeFehlt(config),
+    ...regelStufenFelder(config), ...regelStufenModell(config), ...regelAufwandSchwellen(config),
   ];
 }
 
@@ -456,7 +498,10 @@ export function checkForm(eintrag) {
  * „immer (offen)" bekommt kein `always`. Bleibt inhaltlich alles gleich, kommt derselbe Eintrag
  * zurück — nur so sieht der Schreiber keine Änderung und die Zeile bleibt in der Datei stehen.
  *
- * Ergänzen statt neu bauen (Plan E9): Ein Feld, das die Tabelle nicht zeigt, bleibt stehen.
+ * Ergänzen statt neu bauen (Plan E9): Ein Feld, das die Tabelle nicht zeigt, bleibt stehen —
+ * insbesondere `stufe`. Die Oberfläche zeigt und prüft die Stufe, sie bearbeitet sie nicht
+ * (Plan #753, E18); ginge sie beim Speichern einer Zeile verloren, fiele die Prüfung
+ * stillschweigend auf die Paketstufe zurück.
  */
 export function checkSetzen(eintrag, aenderung) {
   const a = aenderung || {};
