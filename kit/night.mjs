@@ -2390,7 +2390,18 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
     // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
     const child = spawn(cmd, cmdArgs, {
-      env: { ...process.env, NIGHT_ISSUE_ID: String(issueId), ...extraEnv },
+      // CLAUDE_CODE_DISABLE_AUTO_MEMORY (Issue #772): Das Auto-Memory des Menschen ist fuer
+      // die Zusammenarbeit mit ihm geschrieben und wirkt in einer unbeaufsichtigten Session
+      // falsch — es sagt "im Gespraech klaeren", wo niemand danebensitzt. Was nachts gelten
+      // muss, steht in den Skills und den CLAUDE-*.md des Kits, nicht im Gedaechtnis eines
+      // Menschen. Hier zentral gesetzt und vor dem Spread von `extraEnv`: Ein Aufrufer kann
+      // sie bewusst ueberschreiben, aber kein kuenftiger Session-Weg sie vergessen.
+      env: {
+        ...process.env,
+        NIGHT_ISSUE_ID: String(issueId),
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+        ...extraEnv,
+      },
       detached: process.platform !== "win32",
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
       // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
