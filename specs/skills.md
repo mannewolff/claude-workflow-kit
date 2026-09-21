@@ -30,6 +30,7 @@
 - skills-32 — `/local-check` grenzt `mutationCommand` gegen die Guetemessung ab: Es bleibt ein nachgelagertes Kommando ohne Marke und ohne Halt, und der Weg zur Verbindlichkeit fuehrt ueber einen `buildChecks`-Eintrag mit `guete`-Block.
 - skills-33 — `/implement-next` und `/implement-ready` tragen unmittelbar bei der Leitplanke zum im Hintergrund gestarteten Pflichtcheck deren verallgemeinerte Fassung: Keine Session endet mit laufender eigener Arbeit, gleich welcher; wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag, und eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst.
 - skills-34 — `/implement-next` und `/implement-ready` melden beim Lesen des Issues einen vorhandenen Vermerk mit dem Anker `## Nachtlauf: wartende Sitzung` samt dem Hinweis, dass das Paket schon einmal angefangen wurde und der zuletzt bekannte Stand im Vermerk steht; die Meldung loest keinen Halt und keine Ruecksprache aus.
+- skills-35 — `/implement-next` und `/implement-ready` erklaeren ihren Halt-Ablauf bei einer Frage der Stopp-Klasse fuer ausnahmslos: Er gilt in jeder Betriebsart, hat Vorrang vor jeder anderen Regel zu offenen Fragen, auch vor einer aus dem persoenlichen Gedaechtnis des Menschen, und die Frage steht am Board statt nur in der Ausgabe der Session.
 
 ## Entfallen
 

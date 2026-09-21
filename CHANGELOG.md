@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.6] - 2026-09-21
+- Spec-ID auf night-63 umgestellt, night-52 vergab v2.0.3 (#772)
+- Kennzahlen einer Stufe mit Korrekturrunden summieren (#807)
+- kit/befunde.mjs mit arten und pruefen, Spec-Bereich befunde, Verteilung durch den Installer (#799)
+- Regeltext haelt die Form eines Befunds fest (#798)
+- Der Halt-Ablauf bei einer Stopp-Frage gilt ohne Ausnahme (#770)
+- Nacht-Sessions starten ohne das Auto-Memory des Menschen (#772)
+
 ## [2.0.5] - 2026-09-21
 - Spec-IDs auf night-61 und board-19 umgestellt, night-59 und board-17 vergab v2.0.4 (#794)
 - Kettenlauf meldet sich nach jeder Stufe (#794)

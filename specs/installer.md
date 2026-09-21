@@ -12,5 +12,7 @@
 - installer-11 — `sync-blobs` stempelt `kit/aufwand.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
 - installer-13 — `sync-blobs` stempelt `kit/wirksamkeit.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
 - installer-12 — Der `.gitignore`-Block des Installers fuehrt `.claude/ausfuehrungen.tsv` und `.claude/bewegungen.tsv` namentlich neben `.claude/wegmarken.tsv`, damit die Protokolle in einem frisch installierten Projekt nicht als Reste im Arbeitsbaum liegen.
+- installer-14 — `sync-blobs` stempelt `kit/befunde.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
+- installer-15 — Der `.gitignore`-Block des Installers fuehrt `.claude/befunde.tsv` und `.claude/befunde-vorschlaege.json` namentlich und die Berichte `.claude/befunde.md` und `.claude/befunde.json` bewusst nicht, weil der Block die fortgeschriebenen Zustandsdateien aufzaehlt und nicht jedes erzeugte Ergebnis.
 
 ## Entfallen

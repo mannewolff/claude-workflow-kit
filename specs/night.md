@@ -57,6 +57,7 @@
 - night-59 — `gitReste()` wertet `.claude/wirksamkeit.md`, `.claude/wirksamkeit.json`, `.claude/bewegungen.tsv` und `.claude/ausfuehrungen.tsv` nicht als unsaubere Arbeitsbaum-Reste, und der Spiegel nach `.claude/` eines Worktrees laesst alle vier in der Hauptkopie zurueck.
 - night-61 — Nach jeder abgeschlossenen Stufe einer Kette (plan, review, pakete, abdeckung) schreibt der Nacht-Runner den Ergebnisstand und meldet den Lauf, gleich mit welchem Ausgang die Stufe endet.
 - night-62 — Eine Stufe der Kette mit Korrekturrunden meldet die Summe der Kennzahlen aller ihrer Sessions, nicht nur die der letzten.
+- night-63 — Der Nacht-Runner startet jede Session — Implementierung, Vorflug und Salvage — mit `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, so dass das persoenliche Auto-Memory des Menschen in unbeaufsichtigten Sessions nicht geladen wird; die Variable steht in der zentralen Umgebung jedes gestarteten Prozesses und nicht bei den einzelnen Aufrufern.
 
 ## Entfallen
 
