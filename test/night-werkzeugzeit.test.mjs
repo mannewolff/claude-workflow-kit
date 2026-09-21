@@ -32,7 +32,7 @@ function beobachte(paare) {
   return b.ergebnis();
 }
 
-test("[night-43] ein Schub mit genau einem Aufruf liefert die Spanne bis zu seinem Ergebnis", () => {
+test("[night-50] ein Schub mit genau einem Aufruf liefert die Spanne bis zu seinem Ergebnis", () => {
   const erg = beobachte([
     [toolUse("t1"), 1000],
     [toolResult("t1"), 1250],
@@ -43,7 +43,7 @@ test("[night-43] ein Schub mit genau einem Aufruf liefert die Spanne bis zu sein
   assert.equal(erg.offeneSchuebe, 0);
 });
 
-test("[night-43] drei parallele Aufrufe zaehlen als EIN Zeitraum bis zum letzten Ergebnis, nicht als Summe", () => {
+test("[night-50] drei parallele Aufrufe zaehlen als EIN Zeitraum bis zum letzten Ergebnis, nicht als Summe", () => {
   // Start 1000; die drei Ergebnisse treffen bei 1100, 1400, 1900 ein.
   // Vereinigung der Zeitraeume: 900 ms. Summe der Einzelspannen: 100+400+900 = 1400 ms.
   const erg = beobachte([
@@ -59,7 +59,7 @@ test("[night-43] drei parallele Aufrufe zaehlen als EIN Zeitraum bis zum letzten
   assert.equal(erg.offeneSchuebe, 0);
 });
 
-test("[night-43] zwei aufeinanderfolgende Schuebe addieren ihre Spannen", () => {
+test("[night-50] zwei aufeinanderfolgende Schuebe addieren ihre Spannen", () => {
   const erg = beobachte([
     [toolUse("t1"), 1000],
     [toolResult("t1"), 1200],
@@ -72,7 +72,7 @@ test("[night-43] zwei aufeinanderfolgende Schuebe addieren ihre Spannen", () => 
   assert.equal(erg.offeneSchuebe, 0);
 });
 
-test("[night-43] ein abgeschnittener Strom laesst den offenen Schub aussen vor und zaehlt ihn eigens", () => {
+test("[night-50] ein abgeschnittener Strom laesst den offenen Schub aussen vor und zaehlt ihn eigens", () => {
   const erg = beobachte([
     [toolUse("t1"), 1000],
     [toolResult("t1"), 1200],
@@ -84,7 +84,7 @@ test("[night-43] ein abgeschnittener Strom laesst den offenen Schub aussen vor u
   assert.equal(erg.offeneSchuebe, 1);
 });
 
-test("[night-43] ein offener Schub mit teilweise eingetroffenen Ergebnissen bleibt offen", () => {
+test("[night-50] ein offener Schub mit teilweise eingetroffenen Ergebnissen bleibt offen", () => {
   const erg = beobachte([
     [toolUse("a", "b"), 1000],
     [toolResult("a"), 1100],
@@ -95,7 +95,7 @@ test("[night-43] ein offener Schub mit teilweise eingetroffenen Ergebnissen blei
   assert.equal(erg.nebenlaeufigeSchuebe, 0);
 });
 
-test("[night-43] ein Strom ganz ohne tool_use meldet 0 — hier ist 0 gemessen und richtig", () => {
+test("[night-50] ein Strom ganz ohne tool_use meldet 0 — hier ist 0 gemessen und richtig", () => {
   const erg = beobachte([
     [JSON.stringify({ type: "system", subtype: "init" }), 1000],
     [JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "nur Text" }] } }), 1100],
@@ -107,7 +107,7 @@ test("[night-43] ein Strom ganz ohne tool_use meldet 0 — hier ist 0 gemessen u
   assert.equal(erg.offeneSchuebe, 0);
 });
 
-test("[night-43] unlesbare und nicht-JSON-Zeilen werden tolerant uebersprungen", () => {
+test("[night-50] unlesbare und nicht-JSON-Zeilen werden tolerant uebersprungen", () => {
   const erg = beobachte([
     ["kein JSON", 900],
     ["", 910],
@@ -127,7 +127,7 @@ test("[night-43] unlesbare und nicht-JSON-Zeilen werden tolerant uebersprungen",
   assert.equal(erg.offeneSchuebe, 0);
 });
 
-test("[night-43] ein tool_use ohne Id eroeffnet keinen Schub — ihm liesse sich kein Ergebnis zuordnen", () => {
+test("[night-50] ein tool_use ohne Id eroeffnet keinen Schub — ihm liesse sich kein Ergebnis zuordnen", () => {
   const erg = beobachte([
     [JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read" }] } }), 1000],
   ]);
@@ -136,7 +136,7 @@ test("[night-43] ein tool_use ohne Id eroeffnet keinen Schub — ihm liesse sich
   assert.equal(erg.werkzeugMs, 0);
 });
 
-test("[night-43] der Beobachter nimmt auch eine bereits geparste Zeile entgegen", () => {
+test("[night-50] der Beobachter nimmt auch eine bereits geparste Zeile entgegen", () => {
   const erg = beobachte([
     [JSON.parse(toolUse("t1")), 1000],
     [JSON.parse(toolResult("t1")), 1400],
@@ -145,7 +145,7 @@ test("[night-43] der Beobachter nimmt auch eine bereits geparste Zeile entgegen"
   assert.equal(erg.schuebe, 1);
 });
 
-test("[night-43] ergebnis() ist mehrfach abrufbar und veraendert den Zustand nicht", () => {
+test("[night-50] ergebnis() ist mehrfach abrufbar und veraendert den Zustand nicht", () => {
   const b = werkzeugZeitBeobachter();
   b.zeile(toolUse("t1"), 1000);
   b.zeile(toolResult("t1"), 1100);
@@ -153,7 +153,7 @@ test("[night-43] ergebnis() ist mehrfach abrufbar und veraendert den Zustand nic
   assert.equal(b.ergebnis().werkzeugMs, 100);
 });
 
-test("[night-43] der Durchsatz reicht fuer einen echten Session-Strom (5.000 Zeilen unter 1 s)", () => {
+test("[night-50] der Durchsatz reicht fuer einen echten Session-Strom (5.000 Zeilen unter 1 s)", () => {
   // Kriterium 13: gemessen statt geschaetzt. Der Beobachter sitzt im stdout-Handler jeder
   // unbeaufsichtigten Session — was dort je Zeile zu lange braucht, bremst den ganzen Lauf.
   const zeilen = [];

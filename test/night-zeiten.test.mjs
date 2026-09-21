@@ -24,7 +24,7 @@ import { zeitenBauen } from "../kit/night.mjs";
 // zeitenBauen — reine Feldkonstruktion
 // ============================================================
 
-test("[night-44] der Regelfall: nachdenkenMs aus apiDauerMs, werkzeugMs/werkzeugSchuebe/nebenlaeufigeSchuebe vom Beobachter, dauerMs durchgereicht", () => {
+test("[night-51] der Regelfall: nachdenkenMs aus apiDauerMs, werkzeugMs/werkzeugSchuebe/nebenlaeufigeSchuebe vom Beobachter, dauerMs durchgereicht", () => {
   const kennzahlen = { apiDauerMs: 296247, kostenUsd: 1 };
   const werkzeug = { werkzeugMs: 1234, schuebe: 3, nebenlaeufigeSchuebe: 1, offeneSchuebe: 0 };
   assert.deepEqual(zeitenBauen(50000, kennzahlen, werkzeug), {
@@ -36,7 +36,7 @@ test("[night-44] der Regelfall: nachdenkenMs aus apiDauerMs, werkzeugMs/werkzeug
   });
 });
 
-test("[night-44] keine Kennzahlen: nachdenkenMs bleibt null, die anderen Felder bleiben", () => {
+test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, die anderen Felder bleiben", () => {
   const werkzeug = { werkzeugMs: 500, schuebe: 1, nebenlaeufigeSchuebe: 0 };
   const z = zeitenBauen(10000, null, werkzeug);
   assert.equal(z.nachdenkenMs, null);
@@ -46,7 +46,7 @@ test("[night-44] keine Kennzahlen: nachdenkenMs bleibt null, die anderen Felder 
   assert.equal(z.dauerMs, 10000);
 });
 
-test("[night-44] kein Beobachter-Ergebnis: werkzeugMs, werkzeugSchuebe und nebenlaeufigeSchuebe bleiben null", () => {
+test("[night-51] kein Beobachter-Ergebnis: werkzeugMs, werkzeugSchuebe und nebenlaeufigeSchuebe bleiben null", () => {
   const kennzahlen = { apiDauerMs: 8000 };
   const z = zeitenBauen(10000, kennzahlen, null);
   assert.equal(z.nachdenkenMs, 8000);
@@ -56,12 +56,12 @@ test("[night-44] kein Beobachter-Ergebnis: werkzeugMs, werkzeugSchuebe und neben
   assert.equal(z.dauerMs, 10000);
 });
 
-test("[night-44] beides fehlt: nur dauerMs bleibt eine Zahl, der Rest ist null — nie 0", () => {
+test("[night-51] beides fehlt: nur dauerMs bleibt eine Zahl, der Rest ist null — nie 0", () => {
   const z = zeitenBauen(5000, null, null);
   assert.deepEqual(z, { dauerMs: 5000, nachdenkenMs: null, werkzeugMs: null, werkzeugSchuebe: null, nebenlaeufigeSchuebe: null });
 });
 
-test("[night-44] eine 0 bleibt eine 0, kein `|| null`", () => {
+test("[night-51] eine 0 bleibt eine 0, kein `|| null`", () => {
   const kennzahlen = { apiDauerMs: 0 };
   const werkzeug = { werkzeugMs: 0, schuebe: 0, nebenlaeufigeSchuebe: 0 };
   assert.deepEqual(zeitenBauen(0, kennzahlen, werkzeug), {
@@ -148,7 +148,7 @@ const SCHUB = [
   `echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'`,
 ].join("\n");
 
-test("[night-44] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen fuenf Feldern", NUR_POSIX, () => {
+test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen fuenf Feldern", NUR_POSIX, () => {
   const dir = setupProjekt("night-zeiten-regel-");
   try {
     const id = readyIssue(dir, "Volle Zeiten");
@@ -169,7 +169,7 @@ test("[night-44] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traeg
   }
 });
 
-test("[night-44] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", NUR_POSIX, () => {
+test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", NUR_POSIX, () => {
   const dir = setupProjekt("night-zeiten-ohne-kennzahlen-");
   try {
     const id = readyIssue(dir, "Ohne Kennzahlen");
@@ -187,7 +187,7 @@ test("[night-44] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Da
   }
 });
 
-test("[night-44] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit — genau eine Einheit im Stand", NUR_POSIX, () => {
+test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit — genau eine Einheit im Stand", NUR_POSIX, () => {
   const dir = setupProjekt("night-zeiten-ohne-karte-");
   try {
     const id = readyIssue(dir, "Regulaeres Paket");
@@ -207,7 +207,7 @@ test("[night-44] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendein
   }
 });
 
-test("[night-44] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und ueberschreibt ihre Zeiten", NUR_POSIX, () => {
+test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und ueberschreibt ihre Zeiten", NUR_POSIX, () => {
   // Rote buildChecks lassen die erste (regulaere) Session als dirty zurueck; gruene
   // buildChecks (per Fake selbst geschrieben) erlauben danach den Salvage-Versuch — das
   // ist der einzige Weg in diesem Runner, an dem eine Karte zwei Sessions bekommt

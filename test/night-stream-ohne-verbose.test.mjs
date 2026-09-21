@@ -85,7 +85,7 @@ function protokoll(dir) {
   return readFileSync(join(dir, ".claude", datei), "utf-8");
 }
 
-test("[night-43] ohne --verbose misst die Session die Werkzeugzeit, sobald sie den Strom anfordert", NUR_POSIX, async () => {
+test("[night-50] ohne --verbose misst die Session die Werkzeugzeit, sobald sie den Strom anfordert", NUR_POSIX, async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", ARGS, { stream: true });
@@ -99,7 +99,7 @@ test("[night-43] ohne --verbose misst die Session die Werkzeugzeit, sobald sie d
   }
 });
 
-test("[night-43] mit --verbose wird ebenso gemessen", NUR_POSIX, async () => {
+test("[night-50] mit --verbose wird ebenso gemessen", NUR_POSIX, async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", { ...ARGS, verbose: true }, { stream: true });
@@ -111,7 +111,7 @@ test("[night-43] mit --verbose wird ebenso gemessen", NUR_POSIX, async () => {
   }
 });
 
-test("[night-43] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobachter-Ergebnis — nicht etwa eines mit Nullen", NUR_POSIX, async () => {
+test("[night-50] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobachter-Ergebnis — nicht etwa eines mit Nullen", NUR_POSIX, async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", ARGS, {});
@@ -122,7 +122,7 @@ test("[night-43] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobac
   }
 });
 
-test("[night-43] ohne --verbose bleibt das Tagesprotokoll frei von Stream-Ereignissen", NUR_POSIX, () => {
+test("[night-50] ohne --verbose bleibt das Tagesprotokoll frei von Stream-Ereignissen", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -140,7 +140,7 @@ test("[night-43] ohne --verbose bleibt das Tagesprotokoll frei von Stream-Ereign
   }
 });
 
-test("[night-43] mit --verbose traegt das Tagesprotokoll die Stream-Ereignisse weiterhin", NUR_POSIX, () => {
+test("[night-50] mit --verbose traegt das Tagesprotokoll die Stream-Ereignisse weiterhin", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Laut-Issue", "--body", "## Abhaengigkeiten\nKeine.");
