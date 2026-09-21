@@ -53,6 +53,7 @@
 - night-56 — Bei unsauberem Arbeitsbaum laeuft der Salvage zuerst; sein Erfolg bleibt unberuehrt, waehrend ein nicht moeglicher und ein gescheiterter Salvage nach wartender Sitzung den Grund, den Vermerk und das Feld wartendBeendet tragen.
 - night-57 — Eine Stufen-Session der Nacht-Kette mit wartendem Schlusstext endet abgebrochen mit dem Grund der wartenden Sitzung und haengt ihren Vermerk an das Dokument der Stufe, ausgenommen die Abdeckungs-Stufe.
 - night-58 — Der Zusatz, den jede Stufen-Session der Nacht-Kette im Prompt bekommt, verbietet ihr, die Arbeit mit laufender eigener Arbeit zu beenden.
+- night-60 — `laufAbschliessen` ruft hinter der Aufwands-Auswertung und vor dem zweiten Schreiben des Ergebnisstands die Wirksamkeits-Auswertung als Kindprozess, legt deren Ergebnis am Lauf-Kopf ab und schreibt ihren Befundblock als eigenen Block hinter den Aufwands-Block in das Laufprotokoll; ohne Befund bleibt das Protokoll an dieser Stelle leer, ein Fehlschlag der Auswertung ist eine Protokollzeile und hält den Lauf nicht auf, und im Dry-Run entfällt der Aufruf.
 
 ## Entfallen
 

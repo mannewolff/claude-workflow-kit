@@ -152,6 +152,7 @@ const NACHBAR_DIR = process.env.NIGHT_NACHBAR_DIR ? resolve(process.env.NIGHT_NA
 const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
 const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
+const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "wirksamkeit.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -196,6 +197,13 @@ const BOARD_PATH = process.env.KIT_ROOT
 const AUFWAND_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "aufwand.mjs")
   : join(__dirname, "aufwand.mjs");
+
+// Und dasselbe noch einmal fuer die Wirksamkeits-Auswertung (Issue #790): Sie misst mit
+// `.claude/ausfuehrungen.tsv` und `.claude/bewegungen.tsv` ebenfalls das Projekt, in dem
+// der Runner arbeitet, und schreibt ihre Berichte dorthin — also derselbe KIT_ROOT-Weg.
+const WIRKSAMKEIT_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "wirksamkeit.mjs")
+  : join(__dirname, "wirksamkeit.mjs");
 
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
@@ -256,6 +264,17 @@ const befundTextFallback = () => {
 const { befundText } = existsSync(NACHBAR_AUFWAND)
   ? await import(pathToFileURL(NACHBAR_AUFWAND).href)
   : { befundText: befundTextFallback };
+
+// Dieselbe Trennung fuer die Wirksamkeit (Issue #790): Die Textform kommt aus dem Modul,
+// weil sie an beiden Ausgabestellen erscheint — im Laufprotokoll hier und im Kopf von
+// `/push-main`. Der Wurf des Ersatzes ist ungefaehrlich, weil wirksamkeitAuswerten() ihn
+// abfaengt und daraus die eine Protokollzeile macht, die ein Fehlschlag sein darf (E9).
+const wirksamkeitBefundTextFallback = () => {
+  throw new Error(`wirksamkeit.mjs liegt nicht neben night.mjs (${NACHBAR_WIRKSAMKEIT})`);
+};
+const { befundText: wirksamkeitBefundText } = existsSync(NACHBAR_WIRKSAMKEIT)
+  ? await import(pathToFileURL(NACHBAR_WIRKSAMKEIT).href)
+  : { befundText: wirksamkeitBefundTextFallback };
 
 // Nur fuer Tests; der Runner nutzt die Bindungen direkt, nicht ueber dieses Objekt.
 // Ohne den Export ist der Identitaetsnachweis nicht fuehrbar — ob im Regelbetrieb die
@@ -746,20 +765,44 @@ function ersteZeile(text) {
  * Tabelle, kein beruhigender Satz.
  */
 function aufwandAuswerten() {
+  auswertungLaufen(AUFWAND_PATH, "aufwand", "Aufwands-Auswertung", befundText);
+}
+
+/**
+ * Ruft die Wirksamkeits-Auswertung und legt ihr Ergebnis am Lauf-Kopf ab (Issue #790).
+ *
+ * Die Zwillingsfunktion zu aufwandAuswerten(), mit derselben Aufloesung des Nachbarn,
+ * derselben Fehlerbehandlung und derselben Zusage aus E9: Jeder Fehlschlag ist genau eine
+ * Protokollzeile und nie ein `fail()`. Ihr Befundblock geht als EIGENER Block hinter den
+ * Aufwands-Block; ohne Befund bleibt das Protokoll an dieser Stelle stumm.
+ */
+function wirksamkeitAuswerten() {
+  auswertungLaufen(WIRKSAMKEIT_PATH, "wirksamkeit", "Wirksamkeits-Auswertung", wirksamkeitBefundText);
+}
+
+/**
+ * Der geteilte Kern beider Auswertungen (Issue #790).
+ *
+ * Geteilt und nicht zweimal geschrieben, weil „dieselbe Fehlerbehandlung" sonst bei der
+ * ersten Aenderung an einer der beiden Stellen aufhoerte, dieselbe zu sein. Was die
+ * beiden unterscheidet, steht in den vier Parametern: Pfad des Werkzeugs, Feldname am
+ * Lauf-Kopf, Name in der Protokollzeile und die Textform ihres Befundblocks.
+ */
+function auswertungLaufen(pfad, feld, bezeichnung, textform) {
   try {
     // Die fehlende Datei wird vorher abgefangen, statt sie in Node laufen zu lassen: Der
     // Kindprozess endete dann zwar auch mit Exit 1, aber die erste Zeile seines stderr ist
     // ein Pfad aus dem Modul-Lader ("node:internal/modules/cjs/loader:1573"). Die eine
     // Zeile, die dieser Fehlschlag sein darf, soll den Grund nennen und nicht den Ort.
-    if (!existsSync(AUFWAND_PATH)) throw new Error(`${AUFWAND_PATH} liegt nicht vor`);
+    if (!existsSync(pfad)) throw new Error(`${pfad} liegt nicht vor`);
     // maxBuffer wie bei den Board-Aufrufen: Der Stand traegt alle einbezogenen Laeufe,
     // und ein abgeschnittener Puffer machte daraus einen Parse-Fehler.
-    const res = spawnSync(process.execPath, [AUFWAND_PATH, "auswerten"], {
+    const res = spawnSync(process.execPath, [pfad, "auswerten"], {
       encoding: "utf-8",
       cwd: process.cwd(),
       maxBuffer: BOARD_MAX_BUFFER,
     });
-    if (res.error) throw new Error(`${AUFWAND_PATH} liess sich nicht starten: ${res.error.message}`);
+    if (res.error) throw new Error(`${pfad} liess sich nicht starten: ${res.error.message}`);
     if (res.status !== 0) throw new Error(`Exit ${res.status}: ${ersteZeile(res.stderr || res.stdout)}`);
     let stand;
     try {
@@ -767,15 +810,15 @@ function aufwandAuswerten() {
     } catch (err) {
       throw new Error(`Ausgabe nicht lesbar: ${err.message}`);
     }
-    LAUF.aufwand = stand;
-    for (const zeile of befundText(stand).split("\n")) {
+    LAUF[feld] = stand;
+    for (const zeile of textform(stand).split("\n")) {
       if (zeile.trim() !== "") log(zeile);
     }
   } catch (err) {
     // Nur, wenn kein Ergebnis vorliegt: Wirft erst der Textbau, bleibt das gelesene
     // Ergebnis am Lauf-Kopf stehen — es ist gemessen, und der Fehlschlag betrifft die Form.
-    if (!("aufwand" in LAUF)) LAUF.aufwand = { ok: false, fehler: err.message };
-    log(`Aufwands-Auswertung fehlgeschlagen: ${err.message} — der Lauf endet unveraendert.`);
+    if (!(feld in LAUF)) LAUF[feld] = { ok: false, fehler: err.message };
+    log(`${bezeichnung} fehlgeschlagen: ${err.message} — der Lauf endet unveraendert.`);
   }
 }
 
@@ -793,6 +836,12 @@ function aufwandAuswerten() {
  * geht — ginge als unvollstaendig ein. Wer diese Reihenfolge spaeter aendert, nimmt dem
  * Block seine Aussage.
  *
+ * BEIDE Auswertungen stehen zwischen den zwei Schreibvorgaengen (Issue #790): erst der
+ * Aufwand, dann die Wirksamkeit, dann das zweite Schreiben. Ein Schreibvorgang dazwischen
+ * waere nicht falsch, aber ueberfluessig; entscheidend ist, dass der geschriebene Stand
+ * am Ende BEIDE Ergebnisse traegt. Die Folge der beiden Aufrufe ist die Folge ihrer
+ * Bloecke im Protokoll — der Wirksamkeits-Block steht hinter dem des Aufwands.
+ *
  * Und erst danach `laufMelden()`: Eingeliefert wird der Stand einschliesslich seiner
  * Auswertung, nicht der Stand davor.
  */
@@ -806,6 +855,7 @@ function laufAbschliessen(abschluss) {
   }
   schreibeErgebnisstand();
   aufwandAuswerten();
+  wirksamkeitAuswerten();
   schreibeErgebnisstand();
   laufMelden();
 }
