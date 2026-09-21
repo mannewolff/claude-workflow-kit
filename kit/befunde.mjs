@@ -33,6 +33,12 @@
  * nichts — sonst meldete die Pruefung einen Mangel an einem Absatz, der gar kein Fund
  * ist (der Abschnitt „Geprueft ohne Befund" nennt die Marken regelmaessig).
  *
+ * Marke und Kopfzeile gelten auch als Eintrag einer Aufzaehlung: Reviewer schreiben
+ * ihre Funde als Liste ('1. **WICHTIG — Titel**'), und ohne das Abziehen der
+ * Listenmarke lieferte ein solcher Review ueberhaupt keine Funde (Issue #823). Fett ist
+ * dabei nur die ganz fett gesetzte Zeile; '**Datei:** …' innerhalb eines Funds ist eine
+ * Beschriftung und keine Kopfzeile.
+ *
  * Aufruf im Projekt-Root:  node .claude/kit/befunde.mjs arten
  *                          node .claude/kit/befunde.mjs pruefen --datei <pfad>
  *
@@ -79,6 +85,19 @@ const MARKEN = ["KRITISCH", "BLOCKER", "WICHTIG", "HINWEIS"];
 const DEKO_VORN_RE = /^[\s>#*_]+/;
 const DEKO_HINTEN_RE = /[\s*_#]+$/;
 
+// Die Aufzaehlungsmarke am Zeilenanfang: Bindestrich, Plus, Stern oder Nummer mit Punkt
+// oder Klammer. Sie faellt vor jeder Erkennung weg, damit '- **WICHTIG — Titel**' und
+// '1. **WICHTIG — Titel**' dieselbe Marke ergeben wie '**WICHTIG — Titel**' — Reviewer
+// schreiben ihre Funde durchweg als Liste (Issue #823). Der Stern zaehlt nur mit
+// folgendem Leerzeichen als Listenpunkt, sonst verschluckte die Marke jede Fettschrift.
+const LISTE_VORN_RE = /^\s*(?:[-+*]|\d+[.)])\s+/;
+
+// Eine Fund-Kopfzeile ist ganz fett gesetzt. Die Beschriftungen innerhalb eines Funds
+// ('**Datei:** kit/board.mjs:12', '**Behebung:** …') beginnen zwar ebenfalls fett,
+// tragen danach aber weiteren Text — zaehlte jede fette Zeile als Kopfzeile, ergaebe ein
+// Review mit 30 Funde tragenden Bloecken 90 Funde.
+const KOPFZEILE_RE = /^\*\*.+\*\*$/;
+
 const MARKE_RE = new RegExp(`^(${MARKEN.join("|")})(?![A-Za-zÄÖÜäöü])`);
 
 // Die Pflichtzeilen eines Funds. `^Gegenprobe\s*:` trifft bewusst nicht auf
@@ -93,7 +112,7 @@ const ART_RE = /^Art\s*:\s*(.*)$/;
 const STAND_RE = /[—–-]\s*(geprueft|geprüft)\s*,\s*(bestaetigt|bestätigt)\s*\.?\s*$|[—–-]\s*nicht\s+(geprueft|geprüft)\s*\.?\s*$/i;
 
 const ANGABEN = {
-  gegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt.",
+  gegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt oder nennt vor ihrem Stand keine Beobachtung.",
   stand: "Der Stand der Gegenprobe fehlt — erwartet wird '— geprueft, bestaetigt' oder '— nicht geprueft' am Zeilenende.",
   art: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
 };
@@ -125,9 +144,25 @@ function fail(nachricht) {
   throw new BefundeError(nachricht);
 }
 
-/** Der Zeilentext ohne Markdown-Dekoration an beiden Enden. */
+/** Der Zeilentext ohne fuehrende Aufzaehlungsmarke — sonst unveraendert. */
+function ohneListenmarke(zeile) {
+  return zeile.replace(LISTE_VORN_RE, "");
+}
+
+/**
+ * Der Zeilentext ohne Markdown-Dekoration an beiden Enden.
+ *
+ * Vorn wird in Runden abgezogen, weil Listenmarke und Dekoration einander umschliessen
+ * koennen: '- **WICHTIG**' braucht beide, '> - #### WICHTIG' die Runde noch einmal.
+ */
 function kern(zeile) {
-  return zeile.replace(DEKO_VORN_RE, "").replace(DEKO_HINTEN_RE, "");
+  let vorn = zeile;
+  for (;;) {
+    const kuerzer = ohneListenmarke(vorn).replace(DEKO_VORN_RE, "");
+    if (kuerzer === vorn) break;
+    vorn = kuerzer;
+  }
+  return vorn.replace(DEKO_HINTEN_RE, "");
 }
 
 /** Die Schweregrad-Marke, mit der eine Zeile beginnt — null, wenn keine. */
@@ -178,7 +213,7 @@ function fundeLesen(text) {
       offen = null;
       continue;
     }
-    if (marke !== null && roh.startsWith("**")) {
+    if (marke !== null && KOPFZEILE_RE.test(ohneListenmarke(roh))) {
       if (offen !== null && offen.nurUeberschrift) funde.pop();
       beginne(marke, text_, i + 1);
       continue;
@@ -193,6 +228,20 @@ function fundeLesen(text) {
   return funde.map((fund, i) => ({ nummer: i + 1, marke: fund.marke, titel: fund.titel, zeile: fund.zeile, zeilen: fund.zeilen }));
 }
 
+/**
+ * Beobachtung und Stand einer Gegenprobe-Zeile.
+ *
+ * Getrennt wird am Stand-Suffix und damit am Zeilenende, nicht am ersten Gedankenstrich:
+ * 'Ein zweiter Ort in skills/ — kein Treffer. — geprueft, bestaetigt' traegt beides.
+ */
+function gegenprobeTeile(rest) {
+  const stand = STAND_RE.exec(rest);
+  return {
+    beobachtung: (stand === null ? rest : rest.slice(0, stand.index)).trim(),
+    hatStand: stand !== null,
+  };
+}
+
 /** Welche der drei Pflichtangaben einem Fund fehlen, in fester Reihenfolge. */
 function fehlendeAngaben(fund) {
   const zeilen = [fund.titel, ...fund.zeilen];
@@ -204,8 +253,13 @@ function fehlendeAngaben(fund) {
     // Ohne die Zeile fehlt auch ihr Stand — beides sind eigene Angaben, und ein
     // stillschweigend unterschlagener Stand liesse den Fund vollstaendiger aussehen.
     fehlt.push("gegenprobe", "stand");
-  } else if (!STAND_RE.test(gegenprobe[1])) {
-    fehlt.push("stand");
+  } else {
+    // Der Stand allein ist keine Gegenprobe: 'Gegenprobe: — nicht geprueft' nennt nicht
+    // „die Beobachtung, die ihn widerlegen wuerde" (templates/CLAUDE-workflow.md), und
+    // als vollstaendig gezaehlt saehe das Werkzeug einen Beleg, wo keiner steht.
+    const { beobachtung, hatStand } = gegenprobeTeile(gegenprobe[1]);
+    if (beobachtung === "") fehlt.push("gegenprobe");
+    if (!hatStand) fehlt.push("stand");
   }
 
   let gefundeneArt = null;

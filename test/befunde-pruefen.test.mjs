@@ -187,6 +187,98 @@ test("eine Marke mitten im Fliesstext eroeffnet keinen Fund", () => {
   });
 });
 
+test("[befunde-1] eine Marke als Aufzaehlungseintrag eroeffnet einen Fund", () => {
+  // Die vier Formen, in denen Reviewer ihre Funde tatsaechlich aufschreiben. Ohne das
+  // Abziehen der Listenmarke ergaben die drei Listenformen zusammen null Funde — der
+  // Code-Review vom 2026-09-21 (`1. **WICHTIG — …**`) liess sich so gar nicht pruefen.
+  for (const zeile of [
+    "**WICHTIG — Fehlende Validierung**",
+    "- **WICHTIG — Fehlende Validierung**",
+    "* **WICHTIG — Fehlende Validierung**",
+    "1. **WICHTIG — Fehlende Validierung**",
+    "2) **WICHTIG — Fehlende Validierung**",
+  ]) {
+    pruefe([zeile, "Fundstelle: a"].join("\n"), (res, json) => {
+      assert.equal(json.funde.length, 1, `'${zeile}' ergab keinen Fund`);
+      assert.equal(json.funde[0].marke, "WICHTIG");
+      assert.equal(json.funde[0].titel, "WICHTIG — Fehlende Validierung");
+    });
+  }
+});
+
+test("[befunde-1] die Eintraege einer Liste unter einer Marken-Ueberschrift zaehlen einzeln", () => {
+  const text = [
+    "#### WICHTIG",
+    "",
+    "- **Fund A — Der erste.**",
+    "  Fundstelle: a",
+    "  Gegenprobe: Nachgesehen in kit/board.mjs. — geprueft, bestaetigt",
+    "  Art: luecke",
+    "- **Fund B — Der zweite.**",
+    "  Fundstelle: b",
+  ].join("\n");
+
+  pruefe(text, (res, json) => {
+    assert.equal(json.funde.length, 2, "die Gruppenueberschrift zaehlte als einziger Fund");
+    assert.deepEqual(json.funde.map((f) => f.marke), ["WICHTIG", "WICHTIG"]);
+    assert.deepEqual(json.funde.map((f) => f.titel), ["Fund A — Der erste.", "Fund B — Der zweite."]);
+    assert.deepEqual(json.funde.map((f) => f.fehlt), [[], ["gegenprobe", "stand", "art"]],
+      "die eingerueckten Angaben des ersten Eintrags wurden nicht gelesen");
+  });
+});
+
+test("[befunde-1] eine fette Beschriftung mitten im Fund eroeffnet keinen zweiten", () => {
+  // Aus dem echten Code-Review an #799: Unter jeder Fund-Kopfzeile stehen '**Datei:**'
+  // und '**Behebung:**'. Nur eine ganz fett gesetzte Zeile ist eine Kopfzeile; zaehlte
+  // jede fette Zeile, ergaeben die 30 Funde jenes Reviews 90.
+  const text = [
+    "#### WICHTIG",
+    "",
+    "1. **W1 — Der eine Fund.**",
+    "   **Datei:** `kit/board.mjs:12`",
+    "   - „Die Tests liefen im Hintergrund.\" → `true`",
+    "   **Behebung:** Die Zeile abziehen.",
+  ].join("\n");
+
+  pruefe(text, (res, json) => {
+    assert.equal(json.funde.length, 1, "eine Beschriftung oder ein Unterpunkt wurde als Fund gelesen");
+    assert.match(json.funde[0].titel, /W1/);
+  });
+});
+
+test("[befunde-2] eine Gegenprobe ohne Beobachtung gilt als fehlend, ihr Stand nicht", () => {
+  // `templates/CLAUDE-workflow.md` verlangt „die Beobachtung, die ihn widerlegen
+  // wuerde" — und dazu den Stand. Steht nur der Stand da, ist die Angabe nicht
+  // gemacht; als vollstaendig gezaehlt, sae das Werkzeug einen Beleg, wo keiner ist.
+  for (const zeile of ["Gegenprobe: — nicht geprueft", "Gegenprobe:  — geprueft, bestaetigt"]) {
+    const text = VOLLSTAENDIG.replace(
+      "Gegenprobe: Ein zweiter Ort in skills/ — kein Treffer. — geprueft, bestaetigt", zeile);
+
+    pruefe(text, (res, json) => {
+      assert.deepEqual(json.funde[0].fehlt, ["gegenprobe"], `'${zeile}' galt als Beobachtung`);
+      assert.equal(json.eintraege.length, 1);
+      assert.equal(json.vollstaendig, 0);
+    });
+  }
+});
+
+test("[befunde-2] eine leere Gegenprobe-Zeile laesst beide Angaben fehlen", () => {
+  const text = VOLLSTAENDIG.replace(
+    "Gegenprobe: Ein zweiter Ort in skills/ — kein Treffer. — geprueft, bestaetigt", "Gegenprobe:");
+
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.funde[0].fehlt, ["gegenprobe", "stand"]);
+  });
+});
+
+test("[befunde-2] eine Beobachtung mit Gedankenstrich bleibt vollstaendig", () => {
+  // Der Stand wird am Zeilenende abgetrennt, nicht am ersten Gedankenstrich — sonst
+  // gaelte 'Gegenprobe: X — kein Treffer. — geprueft, bestaetigt' als leer.
+  pruefe(VOLLSTAENDIG, (res, json) => {
+    assert.deepEqual(json.funde[0].fehlt, []);
+  });
+});
+
 test("ein Text ohne jede Marke ergibt keine Funde und bleibt gruen", () => {
   pruefe("## Review\n\nAlles in Ordnung, nichts gefunden.\n", (res, json) => {
     assert.equal(res.status, 0);
