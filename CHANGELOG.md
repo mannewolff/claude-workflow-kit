@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.5] - 2026-09-21
+- Spec-IDs auf night-61 und board-19 umgestellt, night-59 und board-17 vergab v2.0.4 (#794)
+- Kettenlauf meldet sich nach jeder Stufe (#794)
+- docs.mwolff.org wieder baubar machen und v2.0.2/v2.0.3 nachdokumentieren (#792)
+
 ## [2.0.4] - 2026-09-21
 - Nacht-Runner ruft die Wirksamkeits-Auswertung (#790)
 - Config-Block wirksamkeit: Schema, Referenz und einstellungen.mjs (#789)
