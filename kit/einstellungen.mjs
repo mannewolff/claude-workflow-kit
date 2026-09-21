@@ -1975,6 +1975,9 @@ function zeigeProjekte() {
 
 async function oeffne(name) {
   aktuell = name;
+  // Sofort, nicht erst nach dem Laden: Ein wartender Timer des alten Projekts fragte sonst
+  // mit dem neuen Zustand fuer einen Teil, den es dort nicht gibt (einstellungen-19).
+  vorschauAufraeumen();
   zeigeProjekte();
   const r = await api("/api/projekt/" + encodeURIComponent(name));
   if (r.status !== 200) { melde("Projekt nicht ladbar (" + r.status + ").", "fehler"); return; }
@@ -2127,11 +2130,22 @@ function auftragVon(teil) {
   // Befunde an die Zeilen, die ihren Pfad nennen.
   vorschau: String.raw`
 const VORSCHAU_MS = 250;
-let vorschauTimer = null;
+let vorschauTimer = {};
 
+/** Ein Timer je Teil (einstellungen-19): Die Anforderung eines Teils verdraengt nie die eines anderen. */
 function vorschauAnfordern(teil) {
-  clearTimeout(vorschauTimer);
-  vorschauTimer = setTimeout(function () { vorschauHolen(teil); }, VORSCHAU_MS);
+  const s = teilSchluessel(teil);
+  clearTimeout(vorschauTimer[s]);
+  vorschauTimer[s] = setTimeout(function () {
+    delete vorschauTimer[s];
+    vorschauHolen(teil);
+  }, VORSCHAU_MS);
+}
+
+/** Raeumt alle Timer ab — beim Projektwechsel fragte ein alter Timer sonst mit dem neuen Zustand. */
+function vorschauAufraeumen() {
+  for (const s of Object.keys(vorschauTimer)) clearTimeout(vorschauTimer[s]);
+  vorschauTimer = {};
 }
 
 async function vorschauHolen(teil) {
@@ -2142,9 +2156,40 @@ async function vorschauHolen(teil) {
   befundeVerteilen(teil);
   fussAktualisieren(teil);
   // Ein Teil, dessen Anzeige aus der Vorschau kommt — die Wirkung der Paarungen —, zeichnet
-  // sich danach selbst neu. Die ganze Platte neu zu bauen verboete sich: Wer gerade tippt,
-  // verlöre den Eingabeplatz.
-  if (teil.aufVorschau) teil.aufVorschau();
+  // sich danach selbst neu. Der Neuaufbau laeuft unter Eingabe-Erhalt (einstellungen-19):
+  // Wer gerade tippt, behaelt Feld, Cursor und halb getippten Text.
+  if (teil.aufVorschau) mitEingabeErhalt(teil, teil.aufVorschau);
+}
+
+/**
+ * Fuehrt einen Neuaufbau aus und erhaelt dem Menschen dabei die Eingabe (einstellungen-19):
+ * das fokussierte Feld samt Wert und Cursor, und den halb getippten Text der Neu-Felder —
+ * ein Feld, das nach dem Neuaufbau leer ist, obwohl es vorher Text trug, ist ein offenes
+ * Neu-Feld, denn sein Wert steht noch in keiner Arbeitskopie. Zugeordnet wird ueber die
+ * Position: Ein Neuaufbau aus derselben Arbeitskopie erzeugt dieselbe Folge von Feldern;
+ * weicht die Zahl ab, hat sich die Struktur geaendert, und es gibt nichts zuzuordnen.
+ */
+function mitEingabeErhalt(teil, neuZeichnen) {
+  const wurzel = teil.element;
+  if (!wurzel) { neuZeichnen(); return; }
+  const felder = function () { return Array.prototype.slice.call(wurzel.querySelectorAll("input, textarea, select")); };
+  const vorher = felder();
+  const aktiv = vorher.indexOf(document.activeElement);
+  const stand = vorher.map(function (f) { return { wert: f.value, anfang: f.selectionStart, ende: f.selectionEnd }; });
+  neuZeichnen();
+  const nachher = felder();
+  if (nachher.length !== vorher.length) return;
+  nachher.forEach(function (f, i) {
+    if (f.value === "" && typeof stand[i].wert === "string" && stand[i].wert !== "") f.value = stand[i].wert;
+  });
+  if (aktiv < 0) return;
+  const feld = nachher[aktiv];
+  if (feld.tagName !== "SELECT" && feld.type !== "checkbox") feld.value = stand[aktiv].wert;
+  feld.focus();
+  // Nur Textfelder tragen einen Cursor — bei number und date ist selectionStart null.
+  if (typeof feld.setSelectionRange === "function" && typeof stand[aktiv].anfang === "number") {
+    feld.setSelectionRange(stand[aktiv].anfang, stand[aktiv].ende);
+  }
 }
 
 const betrifft = function (befundPfad, pfad) {
@@ -4120,7 +4165,15 @@ function dialog(titel, zeilen, knoepfe) {
 async function sende(auftrag, teil, bestaetigt) {
   const body = Object.assign({}, auftrag, { hashes: zustand.hashes, bestaetigt: bestaetigt || [] });
   const r = await api("/api/projekt/" + encodeURIComponent(zustand.name), { method: "POST", body: body });
-  if (r.status === 200) { zustand = r.daten; entwuerfe = {}; melde("Gespeichert.", ""); zeichne(); return; }
+  if (r.status === 200) {
+    zustand = r.daten;
+    // Nur der gespeicherte Teil ist erledigt — unabhaengige Aenderungen anderer Teile
+    // bleiben ungespeichert erhalten (einstellungen-12, einstellungen-19).
+    delete entwuerfe[teilSchluessel(teil)];
+    melde("Gespeichert.", "");
+    zeichne();
+    return;
+  }
   if (r.status === 422) {
     teil.vorschau = Object.assign({}, teil.vorschau, { befunde: r.daten.befunde });
     befundeVerteilen(teil);
