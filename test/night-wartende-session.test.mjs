@@ -33,7 +33,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { wartendeSession, wartendVermerk, rundenGrund, WARTEND_ANKER } from "../kit/night.mjs";
+import { wartendeSession, wartendVermerk, rundenGrund, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
+// Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
+// uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
+// gleichen Namens (`setupProjekt`, `board`, `run`, `stand`, `NUR_POSIX`) schon gehoeren.
+import * as kette from "./helpers/kette-fixture.mjs";
 
 // Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
 // damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
@@ -671,5 +675,174 @@ test("[night-55] eine Wartemeldung mitten im Strom vor erfolgreichem Abschluss l
     assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `der Grund steht im Protokoll einer erfolgreichen Runde:\n${res.stdout}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- night-57, night-58: die wartende Sitzung in den Stufen der Nacht-Kette (Issue #778) ---
+//
+// Der dritte Auswertungsweg, und der einzige ohne Arbeitspaket: In den Stufen liefert
+// `ketteSession` je Stufe einen Ausgang und einen Grund, und der Nachtbericht am Fachplan
+// (night-21) traegt beides. Eine wartende Stufen-Session zaehlte bis hierher als `fertig`,
+// obwohl sie nichts hinterlassen hat.
+//
+// Ausgenommen bleibt die Abdeckungs-Stufe: Ihr Schlusstext ist kein Abschlussbericht,
+// sondern das Arbeitsergebnis selbst — `stufeAbdeckung` liest ihn als Befundliste ein, und
+// bei einem anderen Ausgang als `fertig` faellt der Befund weg. Ein Befundsatz wie
+// "Kriterium 3: Ergebnis steht noch aus" traefe die Musterliste und verwuerfe den Befund
+// genau dann, wenn er etwas zu sagen hat.
+
+/** Der Schlusstext einer wartenden Stufen-Session — trifft das Muster "laeuft noch". */
+const KETTE_WARTE_TEXT = "Der Plan ist geschrieben, die Formpruefung laeuft noch im Hintergrund.";
+
+/** Derselbe Satz ohne den Fall: eine Stufen-Session, die regulaer fertig wird. */
+const KETTE_FERTIG_TEXT = "Der Plan ist geschrieben und steht am Board.";
+
+/** Die Einheit der Kette zu ihrem Fachplan. */
+function kettenEinheit(dir, F) {
+  const treffer = kette.stand(dir).einheiten.find((e) => e.id === F);
+  assert.ok(treffer, `keine Einheit fuer Fachplan #${F}`);
+  return treffer;
+}
+
+test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Vermerk am Dokument der Stufe und Feld", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, { stufen: { plan: kette.PLAN_ANLEGEN } });
+    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = kettenEinheit(dir, F);
+    assert.equal(e.ausgang, "abgebrochen", `die Stufe haette abbrechen muessen: ${JSON.stringify(e)}`);
+    assert.equal(e.grund, WARTEND_WORTLAUT, `der Grund der wartenden Sitzung fehlt: ${e.grund}`);
+    assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Ketten-Einheit");
+
+    // Der Vermerk am Dokument der Stufe plan — dem Fachplan; einen Plan gibt es noch nicht.
+    const body = kette.board(dir, "issue", "get", F).body;
+    assert.ok(body.includes(WARTEND_ANKER), `der Anker fehlt am Fachplan:\n${body}`);
+    assert.ok(body.includes(WARTEND_WORTLAUT), `der Fall steht nicht im Wortlaut am Fachplan:\n${body}`);
+    assert.ok(body.includes(KETTE_WARTE_TEXT), `der zuletzt bekannte Stand fehlt am Fachplan:\n${body}`);
+    // Ohne Pfadzeile: Die Stufen-Session arbeitet im Worktree, und die Reste der
+    // Hauptkopie sagten ueber sie nichts.
+    assert.doesNotMatch(body, /Im Arbeitsverzeichnis/, `der Vermerk meldet Reste der Hauptkopie:\n${body}`);
+
+    // Der Abbruch haelt die Kette an — keine Stufe danach.
+    assert.deepEqual(kette.sessions(env.logPfad).map((s) => s.stufe), ["plan"]);
+    assert.ok(res.stdout.includes(WARTEND_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
+  });
+});
+
+test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht am Fachplan", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    // Nur die Review-Session wartet; die Plan-Stufe davor endet regulaer.
+    const env = kette.umgebung(dir, {
+      stufen: { plan: kette.PLAN_ANLEGEN, review: `KETTE_RESULT_TEXT="${KETTE_WARTE_TEXT}"` },
+    });
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = kettenEinheit(dir, F);
+    assert.equal(e.ausgang, "abgebrochen", `die Stufe haette abbrechen muessen: ${JSON.stringify(e)}`);
+    assert.equal(e.grund, WARTEND_WORTLAUT);
+    assert.equal(e.wartendBeendet, true);
+
+    const planId = e.stufen.plan.id;
+    assert.ok(planId, `ohne Plan laesst sich das Dokument der Stufe nicht pruefen: ${JSON.stringify(e.stufen)}`);
+    const planBody = kette.board(dir, "issue", "get", planId).body;
+    assert.ok(planBody.includes(WARTEND_ANKER), `der Anker fehlt am Plan:\n${planBody}`);
+    assert.ok(planBody.includes(KETTE_WARTE_TEXT), `der zuletzt bekannte Stand fehlt am Plan:\n${planBody}`);
+    // Der eigene Vermerk ist kein Reviewer-Befund: Er darf den Vermerk
+    // "## Review unvollstaendig" nicht ausloesen (night-19).
+    assert.ok(!planBody.includes(REVIEW_REST_ANKER), `der eigene Vermerk gilt als Reviewer-Befund:\n${planBody}`);
+    assert.ok(!kette.board(dir, "issue", "get", F).body.includes(WARTEND_ANKER),
+      "der Vermerk der Review-Stufe gehoert an den Plan, nicht an den Fachplan");
+  });
+});
+
+test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig, ohne Vermerk und ohne Feld", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, {
+      stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN },
+    });
+    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_FERTIG_TEXT });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = kettenEinheit(dir, F);
+    assert.equal(e.ausgang, "fertig", `die Kette haette durchlaufen muessen: ${e.grund}`);
+    // Weg statt `false`, dieselbe Linie wie bei night-55.
+    assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
+    assert.ok(!kette.board(dir, "issue", "get", F).body.includes(WARTEND_ANKER),
+      "ohne den Fall gehoert kein Vermerk an den Fachplan");
+    assert.ok(!kette.board(dir, "issue", "get", e.stufen.plan.id).body.includes(WARTEND_ANKER),
+      "ohne den Fall gehoert kein Vermerk an den Plan");
+    assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `ohne den Fall gehoert der Grund nicht ins Protokoll:\n${res.stdout}`);
+  });
+});
+
+test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, auch wenn er eine Wendung der Musterliste traegt", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    // Ein echter Befundsatz, der die Musterliste trifft — genau der Fall, den die
+    // Ausnahme schuetzt: Bei einem anderen Ausgang als `fertig` fiele er weg.
+    const befund = "### Ohne Paket Kriterium 3: Ergebnis steht noch aus.";
+    const env = kette.umgebung(dir, {
+      stufen: {
+        plan: kette.PLAN_ANLEGEN,
+        review: kette.REVIEW_MARKER,
+        pakete: kette.PAKETE_ANLEGEN,
+        abdeckung: `KETTE_RESULT_TEXT="${befund}"`,
+      },
+    });
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = kettenEinheit(dir, F);
+    assert.equal(e.ausgang, "fertig", `die Abdeckung ist eine Auskunft, kein Tor: ${e.grund}`);
+    assert.equal(e.stufen.abdeckung.text, befund, "der Befund der Abdeckung ist verloren gegangen");
+    assert.ok(!("wartendBeendet" in e), `die Ausnahme greift nicht: ${JSON.stringify(e)}`);
+    assert.ok(!kette.board(dir, "issue", "get", F).body.includes(WARTEND_ANKER),
+      "die Abdeckungs-Stufe hinterlaesst keinen Vermerk");
+  });
+});
+
+test("[night-58] der Zusatz der Stufen-Sessions nennt die Regel, der Prompt der Implementierungs-Runde nicht", kette.NUR_POSIX, () => {
+  // Die Regel selbst — der Wortlaut steht hier ein zweites Mal, wie bei WARTEND_WORTLAUT:
+  // Wer den Zusatz umformuliert, soll es an einem roten Test merken.
+  assert.match(KETTE_ZUSATZ, /Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft/);
+  assert.match(KETTE_ZUSATZ, /Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag/);
+  // Der bisherige Satz bleibt daneben stehen.
+  assert.match(KETTE_ZUSATZ, /Dieser Lauf ist unbeaufsichtigt/);
+
+  // Am Prompt einer Stufen-Session gemessen, nicht nur an der Konstanten.
+  kette.mitProjekt((dir) => {
+    kette.fachplan(dir);
+    const env = kette.umgebung(dir, {
+      stufen: { plan: String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.prompt"` },
+    });
+    assert.equal(kette.run(dir, ["--kette"], env).status, 0);
+    const prompt = readFileSync(`${env.logPfad}.prompt`, "utf-8");
+    assert.match(prompt, /^\/techplan #0001/, `der Auftrag fehlt im Prompt:\n${prompt}`);
+    assert.ok(prompt.includes(KETTE_ZUSATZ), `der Zusatz fehlt am Prompt der Stufe:\n${prompt}`);
+  });
+
+  // Die Implementierungs-Runde bekommt ihn ausdruecklich nicht — ihre Anweisung steht im
+  // Skill, und zwei Orte fuer dieselbe Regel liefen auseinander.
+  const dir = setupProjekt("night-warte-zusatz-", ["true"]);
+  // Die Mitschrift liegt ausserhalb des Fixture-Repos: im Repo machte sie den Working
+  // Tree dirty, und der Lauf fiele in den Dirty-Zweig statt in die Rueckstellung.
+  const ausserhalb = mkdtempSync(join(tmpdir(), "night-warte-prompt-"));
+  try {
+    const id = readyIssue(dir, "Belegt den blossen Prompt");
+    const mitschrift = join(ausserhalb, "prompt.txt");
+    const fake = `printf '%s' "$NIGHT_PROMPT" > ${JSON.stringify(mitschrift)}; `
+      + `echo '${resultZeile("end_turn")}'; exit 0`;
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(readFileSync(mitschrift, "utf-8"), `/implement-next #${id}`,
+      "der Prompt der Implementierungs-Runde traegt mehr als den Auftrag");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(ausserhalb, { recursive: true, force: true });
   }
 });

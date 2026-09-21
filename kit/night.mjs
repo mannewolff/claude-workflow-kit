@@ -3727,7 +3727,20 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = 
 
 // Der Zusatz, der einer Kette-Session die Betriebsart nennt. Massgeblich bleibt allein
 // KIT_AGENT_MODEL — der Satz wiederholt es nur an der Stelle, an der es ankommt.
-const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. Schreibe dein Ergebnis ans Board, bevor die Session endet.";
+//
+// Der zweite Teil ist die Regel aus `CLAUDE-workflow.md` („Keine Session endet mit
+// laufender eigener Arbeit", Issue #774), fuer die Stufen-Sessions ausgeschrieben: Sie
+// haben keinen Skill, der sie ihnen sagt — `/techplan`, `/issue-review` und `/issues`
+// fuehren sie nicht, und die Korrektur- und Abdeckungs-Sessions laufen ohne Skill. Die
+// Implementierungs-Runde bekommt den Zusatz ausdruecklich NICHT: Ihre Anweisung steht in
+// `implement-next` und `implement-done`, und zwei Orte fuer dieselbe Regel liefen
+// auseinander.
+//
+// Exportiert fuer die Tests.
+export const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
+  + "Schreibe dein Ergebnis ans Board, bevor die Session endet. "
+  + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
+  + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.";
 // Der Anker des Halt-Kommentars am Fachplan.
 export const KETTE_HALT_ANKER = "## Kette angehalten";
 // Die Routing-Labels der beiden entfallenen Betriebsarten: Wer sie noch setzt, bekommt
@@ -3857,6 +3870,40 @@ function trackerImWorktreeUmleiten(wt, repoRoot) {
 }
 
 /**
+ * Die eine Stufe ohne Erkennung der wartenden Sitzung (Issue #778).
+ *
+ * Der Schlusstext der Abdeckung ist kein Abschlussbericht, sondern das Arbeitsergebnis
+ * selbst: `stufeAbdeckung` liest ihn mit `leseErgebnisText` als Befundliste ein, und bei
+ * einem anderen Ausgang als `fertig` faellt der Befund weg. Ein Befundsatz wie
+ * "Kriterium 3: Ergebnis steht noch aus" traefe die Musterliste und liesse die Stufe als
+ * wartend abbrechen — der Befund waere verworfen, und zwar genau dann, wenn er etwas zu
+ * sagen hat.
+ */
+const STUFE_OHNE_WARTEND_ERKENNUNG = "abdeckung";
+
+/**
+ * Der Vermerk einer wartenden Stufen-Session am Dokument ihrer Stufe (Issue #778).
+ *
+ * Derselbe Text wie am Arbeitspaket — `wartendVermerk` ist die eine Fassung —, nur OHNE
+ * die Pfade aus `gitReste()`: Die Stufen-Session arbeitet im Worktree der Kette, und die
+ * Reste der Hauptkopie sagten ueber sie nichts.
+ *
+ * Ueber eine Datei wie `reviewRestVermerken`, und aus demselben Grund: Der Vermerk traegt
+ * bis zu 2.000 Zeichen fremden Schlusstext, und der geht nicht als Argument an eine
+ * Kommandozeile.
+ */
+function wartendVermerken(dokId, stufe, schlusstext) {
+  const pfad = join(tmpdir(), `night-wartend-${process.pid}-${dokId}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  writeFileSync(pfad, wartendVermerk(schlusstext), "utf-8");
+  try {
+    board("issue", "comment", String(dokId), "--text-file", pfad);
+    log(`  Stufe ${stufe}: ${GRUND_WARTEND} — Vermerk '${WARTEND_ANKER}' an #${dokId} geschrieben.`);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
+/**
  * Eine Session der Kette mit Zeit- und Kostenbudget (Plan #638, A5, A6).
  *
  * `stufeStart` und `budgetMs` beschreiben die Stufe: Jede Session bekommt als Timeout,
@@ -3864,8 +3911,12 @@ function trackerImWorktreeUmleiten(wt, repoRoot) {
  * Nach der Session werden die Kosten addiert und gegen das Kettenbudget gehalten; ein
  * Ueberschreiten endet NACH der Session, nicht mittendrin (ein halb geschriebenes
  * Dokument waere der teurere Fehler). Rueckgabe: `{ ausgang, grund, dauerMs, kennzahlen, res }`.
+ *
+ * `dokId` ist das Dokument der Stufe — der Fachplan, solange es keinen Plan gibt, sonst
+ * der Plan oder das Paket in der Formpruefung. Nur eine wartende Sitzung braucht es
+ * (Issue #778); eine Stufe ohne Dokument uebergibt nichts und bekommt keinen Vermerk.
  */
-async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs) {
+async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null) {
   const rest = budgetMs - (Date.now() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null };
@@ -3886,6 +3937,21 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs) {
   if (res.error || res.status !== 0) {
     const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
     return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen };
+  }
+  // Die wartende Sitzung (Plan #773, Issue #778) — hinter Zeitbudget und technischem
+  // Fehler, weil sie ein REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit
+  // angestossen, darauf gewartet und damit ihren Zug beendet. Ohne diesen Zweig zaehlte
+  // sie als `fertig`, obwohl sie nichts hinterlassen hat.
+  //
+  // Vor dem Kostendeckel, weil der Grund der konkretere ist: Eine Kette, die beides
+  // zugleich erreicht, soll morgens den Fall benennen und nicht den Betrag.
+  const schlusstext = leseErgebnisText(res.stdout);
+  if (stufe !== STUFE_OHNE_WARTEND_ERKENNUNG && wartendeSession(schlusstext)) {
+    if (dokId) wartendVermerken(dokId, stufe, schlusstext);
+    // `wartend` reist am Ergebnis mit, statt ueber den Modul-Merker WARTEND_BEENDET zu
+    // laufen: Der gehoert einer Implementierungs-RUNDE und wird vor jeder zurueckgesetzt
+    // — unter Variante B saehe die Ketten-Einheit sonst den Befund einer Paket-Session.
+    return { ausgang: "abgebrochen", grund: GRUND_WARTEND, wartend: true, dauerMs, kennzahlen };
   }
   // Das Kostenbudget wird hier nur gemerkt: Die Stufe verbucht erst, was die Session
   // hinterlassen hat (den Plan, die Korrektur), und bricht dann ab — sonst stuende ein
@@ -3927,7 +3993,8 @@ async function stufePlan(kette) {
 
   const vorher = new Set(board("issue", "list").map((i) => String(i.id)));
   log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
-  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs);
+  // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
+  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F);
   summe(s);
   const notizen = notizenZurueck(kette.wt, kette.repoRoot);
   for (const n of notizen) log(`  Vorhaben-Notiz aus dem Worktree in die Hauptkopie geholt: .claude/${n}`);
@@ -3980,7 +4047,7 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     }
     stand.korrekturrunden++;
     log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
-    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, form.json.verstoesse), stufeStart, budgetMs);
+    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, form.json.verstoesse), stufeStart, budgetMs, stand.id);
     summe(k);
     if (k.ausgang !== "fertig") return k;
     if (kostenErschoepft(kette)) return kostenErschoepft(kette);
@@ -4034,14 +4101,18 @@ async function stufeReview(kette, planId) {
   kette.stufen.review = stand;
   const vorher = board("issue", "get", planId);
   log(`  Stufe review: /issue-review #${planId} (Budget ${budget.reviewMin} min).`);
-  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000);
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000, planId);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
     // Auch beim Abbruch wird nachgesehen, was in der bezahlten Zeit entstanden ist.
     const rest = board("issue", "get", planId);
     stand.marker = /^\s*Plan-Review:\s*\S/m.test(rest.body || "");
-    if (!stand.marker && neueKommentare(vorher, rest).length > 0) reviewRestVermerken(kette, planId, s.grund);
+    // Der eigene Vermerk der wartenden Sitzung zaehlt hier nicht (Issue #778): Er ist in
+    // genau diesem Zweig kurz zuvor an den Plan gegangen, und ohne den Ausschluss
+    // behauptete die Spur daneben, es lägen Reviewer-Befunde am Dokument.
+    const fremde = neueKommentare(vorher, rest).filter((k) => !String(k).includes(WARTEND_ANKER));
+    if (!stand.marker && fremde.length > 0) reviewRestVermerken(kette, planId, s.grund);
     return s;
   }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
@@ -4073,7 +4144,7 @@ async function stufePakete(kette, planId) {
   const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
   const vorherPlan = board("issue", "get", planId);
   log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
-  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs);
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId);
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
@@ -4877,6 +4948,11 @@ async function laufeEineKette(kandidat, nummer, args) {
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
       ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
       ...(kette.abdeckungSchrieb ? { abdeckungSchrieb: true } : {}),
+      // Derselbe Feldname wie an der Einheit einer Implementierungsrunde (Issue #776) und
+      // aus demselben Grund WEG statt `false`, wenn der Fall nicht eintrat: Ein `false`
+      // behauptete eine Messung, die es nicht gab. Der Befund kommt aus dem Ergebnis der
+      // Stufe und nicht aus dem Modul-Merker — die Begruendung steht in `ketteSession`.
+      ...(ergebnis.wartend ? { wartendBeendet: true } : {}),
       kostenUsd: kette.kosten.kostenSumme,
       kostenUnbekannt: kette.kosten.kostenUnbekannt,
     });

@@ -51,6 +51,8 @@
 - night-54 — Der Vermerk der wartenden Sitzung nennt unter seinem Anker den Fall, den gekuerzten Schlusstext und die Reste im Arbeitsverzeichnis, sofern welche liegen.
 - night-55 — Eine Runde, die bei sauberem Arbeitsbaum mit wartender Sitzung endet, traegt den Grund der wartenden Sitzung samt Vermerk am Paket und ihre Einheit das Feld wartendBeendet, waehrend Backlog-Move und Weiterlauf unveraendert bleiben.
 - night-56 — Bei unsauberem Arbeitsbaum laeuft der Salvage zuerst; sein Erfolg bleibt unberuehrt, waehrend ein nicht moeglicher und ein gescheiterter Salvage nach wartender Sitzung den Grund, den Vermerk und das Feld wartendBeendet tragen.
+- night-57 — Eine Stufen-Session der Nacht-Kette mit wartendem Schlusstext endet abgebrochen mit dem Grund der wartenden Sitzung und haengt ihren Vermerk an das Dokument der Stufe, ausgenommen die Abdeckungs-Stufe.
+- night-58 — Der Zusatz, den jede Stufen-Session der Nacht-Kette im Prompt bekommt, verbietet ihr, die Arbeit mit laufender eigener Arbeit zu beenden.
 
 ## Entfallen
 
