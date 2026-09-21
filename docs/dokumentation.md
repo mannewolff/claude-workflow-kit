@@ -523,6 +523,16 @@ Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände d
 - `aufwand.schwellen.eingrenzungOhneWirkung` — Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat.
 - `aufwand.schwellen.werkzeugAnteil` — Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
 - `aufwand.schwellen.schreibkostenAnteil` — Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+
+### `wirksamkeit`
+
+Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausführungen und Beanstandungen zählt und ab welchen Mengen und Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `wirksamkeit.fensterTage` — Wie viele Tage zurück die Auswertung zählt. Das Fenster wird am Beginn der Erhebung abgeschnitten, damit es nie weiter zurückreicht, als Daten vorliegen.
+- `wirksamkeit.nieBeanstandetAbAusfuehrungen` — Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Darunter ist 'nichts gefunden' keine Aussage, sondern zu wenig Erfahrung.
+- `wirksamkeit.quoteSchwelle` — Ab welcher Rückläuferquote ein Befund erscheint — der Anteil der Arbeitspakete, die aus In review zurück in Arbeit gingen. Ein Wert zwischen 0 und 1.
+- `wirksamkeit.quoteAbPaketen` — Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen.
+- `wirksamkeit.kandidatenMax` — Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar.
 <!-- einstellungen:ende -->
 
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess

@@ -755,6 +755,45 @@
       },
       "required": [],
       "additionalProperties": false
+    },
+    "wirksamkeit": {
+      "type": "object",
+      "description": "Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausführungen und Beanstandungen zählt und ab welchen Mengen und Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "fensterTage": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 30,
+          "description": "Wie viele Tage zurück die Auswertung zählt. Das Fenster wird am Beginn der Erhebung abgeschnitten, damit es nie weiter zurückreicht, als Daten vorliegen."
+        },
+        "nieBeanstandetAbAusfuehrungen": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Darunter ist 'nichts gefunden' keine Aussage, sondern zu wenig Erfahrung."
+        },
+        "quoteSchwelle": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.2,
+          "description": "Ab welcher Rückläuferquote ein Befund erscheint — der Anteil der Arbeitspakete, die aus In review zurück in Arbeit gingen. Ein Wert zwischen 0 und 1."
+        },
+        "quoteAbPaketen": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen."
+        },
+        "kandidatenMax": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 200,
+          "description": "Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
     }
   },
   "required": [],
