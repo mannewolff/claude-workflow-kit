@@ -2993,37 +2993,70 @@ function redaktorPaarungen(teil) {
   redaktorPruefstufen: `
 const ROLLEN_KATALOG_BROWSER = ${JSON.stringify(ROLLEN_KATALOG)};
 ` + String.raw`
+const istStufenObjekt = function (wert) { return wert !== null && typeof wert === "object" && !Array.isArray(wert); };
+
 /** Der reviewStufen-Block der Arbeitskopie, oder null ohne eigene Einstellung. */
 function reviewStufenVon(teil) {
   const wert = wertVon(teil, "reviewStufen");
-  return wert !== null && typeof wert === "object" && !Array.isArray(wert) ? wert : null;
+  return istStufenObjekt(wert) ? wert : null;
 }
 
 function katalogVon(stufe) {
   return ROLLEN_KATALOG_BROWSER[stufe] || [];
 }
 
+/** Der eigene Eintrag einer Stufe, unangetastet — oder null, wenn die Arbeitskopie keinen hat. */
+function eigeneStufe(teil, stufe) {
+  const block = reviewStufenVon(teil);
+  return block && istStufenObjekt(block[stufe]) ? block[stufe] : null;
+}
+
+/** Eine Stufe, wie der Katalog sie vorsieht: je Rolle ein Reviewer. */
+function katalogStufe(stufe) {
+  const kat = katalogVon(stufe);
+  return { reviewer: kat.length, rollen: kat.slice() };
+}
+
+/**
+ * Ein Eintrag in der Form, die die Anzeige braucht. Ein Bestand ohne rollen oder mit einem
+ * fremden Typ dort ist ein Altfehler (Plan E6): Er wird hier nur fuer die Darstellung
+ * geglaettet — gespeichert wird nichts, und den Mangel nennt weiter der Befund des Servers.
+ * Ohne das Glaetten riss der Durchlauf durch die Rollen den Aufbau des ganzen Themas ab.
+ */
+function stufeForm(roh) {
+  const quelle = istStufenObjekt(roh) ? roh : {};
+  const rollen = Array.isArray(quelle.rollen) ? quelle.rollen : [];
+  return { reviewer: Number.isInteger(quelle.reviewer) ? quelle.reviewer : rollen.length, rollen: rollen };
+}
+
 /** Reviewerzahl und Rollen einer Stufe: aus der Arbeitskopie, sonst die Vorgabe des Eintrags. */
 function stufeWert(teil, stufe) {
-  const block = reviewStufenVon(teil);
-  if (block && block[stufe] && typeof block[stufe] === "object") return block[stufe];
+  const eigen = eigeneStufe(teil, stufe);
+  if (eigen) return stufeForm(eigen);
   const eintrag = eintragVon(teil, "reviewStufen");
-  return (eintrag && eintrag.vorgabe && eintrag.vorgabe[stufe]) || { reviewer: 1, rollen: [] };
+  return stufeForm(eintrag && eintrag.vorgabe && eintrag.vorgabe[stufe]);
+}
+
+/**
+ * Der Ausgangspunkt einer Aenderung. Fehlt der eigene Eintrag, ist es der Katalog der Stufe
+ * und nicht die angezeigte Bestandsvorgabe: Deren zwei Rollennamen kennt der Katalog bewusst
+ * nicht (Plan E5), und die erste Aenderung schriebe sie sonst als Fehler in die Datei.
+ */
+function stufeBasis(teil, stufe) {
+  const eigen = eigeneStufe(teil, stufe);
+  return eigen ? stufeForm(eigen) : katalogStufe(stufe);
 }
 
 /**
  * Setzt eine Stufe. Fehlte der Block bisher, entstehen die anderen Stufen mit ihren
  * Katalogrollen (Plan E5) — nie mit der Vorgabe der fehlenden Datei, die der Katalog nicht
- * kennt.
+ * kennt. Ein vorhandener Eintrag einer anderen Stufe geht unveraendert mit: Was der Mensch
+ * nicht bearbeitet hat, schreibt diese Aenderung auch nicht um.
  */
 function stufeSetzen(teil, stufe, eintrag, neuZeichnen) {
-  const bisher = reviewStufenVon(teil);
   const voll = {};
   for (const k of Object.keys(ROLLEN_KATALOG_BROWSER)) {
-    if (k === stufe) { voll[k] = eintrag; continue; }
-    if (bisher && bisher[k] && typeof bisher[k] === "object") { voll[k] = bisher[k]; continue; }
-    const kat = katalogVon(k);
-    voll[k] = { reviewer: kat.length, rollen: kat.slice() };
+    voll[k] = k === stufe ? eintrag : (eigeneStufe(teil, k) || katalogStufe(k));
   }
   setzeWert(teil, "reviewStufen", voll);
   neuZeichnen();
@@ -3032,14 +3065,14 @@ function stufeSetzen(teil, stufe, eintrag, neuZeichnen) {
 /** Die Rollenliste folgt der neuen Zahl: dazu aus dem Katalog, weg vom Ende (Kriterium 15). */
 function stufeReviewerAendern(teil, stufe, anzahl, neuZeichnen) {
   const kat = katalogVon(stufe);
-  const rollen = stufeWert(teil, stufe).rollen.slice();
+  const rollen = stufeBasis(teil, stufe).rollen.slice();
   while (rollen.length < anzahl) rollen.push(kat.find(function (r) { return rollen.indexOf(r) < 0; }) || kat[0] || "");
   while (rollen.length > anzahl) rollen.pop();
   stufeSetzen(teil, stufe, { reviewer: anzahl, rollen: rollen }, neuZeichnen);
 }
 
 function stufeRolleAendern(teil, stufe, index, name, neuZeichnen) {
-  const bisher = stufeWert(teil, stufe);
+  const bisher = stufeBasis(teil, stufe);
   const rollen = bisher.rollen.slice();
   rollen[index] = name;
   stufeSetzen(teil, stufe, { reviewer: bisher.reviewer, rollen: rollen }, neuZeichnen);
@@ -3060,18 +3093,23 @@ function stufePlatte(teil, stufe, titel, neuZeichnen) {
   if (istVorgabe) {
     d.append(el("p", "erklaerung", "Noch keine eigene Einstellung — es gilt die Bestandsvorgabe. Eine Änderung hier legt reviewStufen mit den Katalogrollen jeder Stufe an."));
   }
-  const zeile = el("div");
-  zeile.style.display = "flex";
-  zeile.style.alignItems = "center";
-  zeile.style.gap = "8px";
+  // Die Stufe nennt ihren Pfad: Ein Befund zu .reviewer oder .rollen findet ueber das Praefix
+  // diese Zeile. Ohne ihn blieb ein abgelehntes Speichern bei "die markierten Zeilen nennen
+  // den Grund" stehen, ohne dass eine Zeile markiert war. Die Gruppe steht vor den
+  // Rollenzeilen — befundeVerteilen nimmt den ersten .befunde-Behaelter, und der einer
+  // Fehlerzeile traegt bereits ihren eigenen Grund.
+  const g = zeilenGruppe("reviewStufen." + stufe, "");
+  g.zeile.style.display = "flex";
+  g.zeile.style.alignItems = "center";
+  g.zeile.style.gap = "8px";
   const stepper = zaehler({
     wert: eintrag.reviewer,
     min: 1,
     max: kat.length,
     aendern: function (n) { stufeReviewerAendern(teil, stufe, n, neuZeichnen); },
   });
-  zeile.append(el("span", "etikett", "Prüfer"), stepper, el("span", "nutzung", "höchstens " + kat.length + ", so viele Rollen kennt die Stufe"));
-  d.append(zeile);
+  g.zeile.append(el("span", "etikett", "Prüfer"), stepper, el("span", "nutzung", "höchstens " + kat.length + ", so viele Rollen kennt die Stufe"));
+  d.append(g.gruppe);
   eintrag.rollen.forEach(function (rolle, i) {
     if (kat.indexOf(rolle) < 0) {
       // Kriterium 4a: ein Rollenname, den der Katalog nicht kennt — nur ersetzbar, nicht
@@ -3113,6 +3151,8 @@ function redaktorPruefstufen(teil) {
     // PAAR_STUFEN traegt Kennung und Titel schon aus M2 — dieselben drei Stufen, keine
     // zweite Liste.
     for (const paar of PAAR_STUFEN) box.append(stufePlatte(teil, paar[0], paar[1], neuZeichnen));
+    // Der Neuaufbau wirft die verteilten Befunde mit weg — sie gehoeren danach wieder an ihre Zeile.
+    befundeVerteilen(teil);
   };
   teil.aufVorschau = neuZeichnen;
   neuZeichnen();
