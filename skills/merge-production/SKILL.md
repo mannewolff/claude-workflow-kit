@@ -20,8 +20,8 @@ Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Mensc
 ## Ablauf
 
 **Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
-Das `n` ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `spec`-Block
-oder ohne `RELEASING.md` sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
+Das `n` ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `RELEASING.md`
+sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
 ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
 `buildChecks`-Katalog, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
 

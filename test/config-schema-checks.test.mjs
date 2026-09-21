@@ -359,22 +359,17 @@ test("spec: der defaults-Block traegt keinen spec-Eintrag", () => {
   assert.ok(!("spec" in schema.defaults), "defaults traegt kein spec");
 });
 
-test("spec: die description nennt Einschalten ohne Rueckweg, die Tracker-Grenze und die Teamweit-Formel", () => {
+test("spec: die description weist den Block als nicht mehr ausgewertete Altlast aus", () => {
   // JSON kennt keine Kommentare — die description ist der einzige Ort, an dem die Lage
-  // im Schema selbst steht: eingeschaltet durch Vorhandensein und kein Weg zurueck. Der
-  // fruehere Satz "bis Ausbaustufe 4 ohne Wirkung" ist seit spec.mjs ueberholt (Issue #675).
+  // im Schema selbst steht. Seit dem Rueckbau von Spec-Driven Development (Issue #827)
+  // liest kein Skill und kein Kommando den Block mehr; er bleibt allein, damit eine
+  // Bestandsconfig gueltig bleibt. Ohne diesen Satz haelt ihn jemand fuer wirksam.
   const text = schema.properties.spec.description;
   assert.ok(text, "spec hat eine description");
-  assert.match(text, /ACHTUNG/, "die Tracker-Grenze steht als ACHTUNG-Satz");
-  assert.match(text, /enabled/, "die description sagt, dass es kein enabled gibt");
-  // Seit Issue #461 (A19) traegt der Block nicht auf jedem Tracker. Wer die Lage nur
-  // im Plan festhaelt, laesst denjenigen im Regen, der die Config vor sich hat.
-  assert.match(text, /github und gitlab/, "die description nennt die ausgeschlossenen Tracker nicht");
-  assert.match(text, /toolbox und local/, "die description nennt die moeglichen Tracker nicht");
-  assert.ok(
-    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
-    "die description endet mit der Standardformel der Top-Level-Felder"
-  );
+  assert.match(text, /ALTLAST/, "die description weist den Block nicht als Altlast aus");
+  assert.match(text, /nicht mehr ausgewertet/, "die description sagt nicht, dass der Block unausgewertet bleibt");
+  assert.match(text, /Bestandsconfig/, "die description sagt nicht, warum der Block im Schema bleibt");
+  assert.match(text, /entfernt werden/, "die description sagt nicht, dass der Block entfernt werden kann");
 });
 
 // --- Das Reviewer-Paar: genau eines von reviewModel und reviewCommand (Issue #432) ---

@@ -383,7 +383,7 @@ Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste
 
 ### `spec`
 
-Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+ALTLAST, wird nicht mehr ausgewertet. Der Block beschrieb Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Kit hat diesen Weg zurückgebaut; kein Skill und kein Kommando liest den Block noch. Er bleibt im Schema, damit eine Bestandsconfig gültig bleibt, und kann samt dem Ordner specs/ entfernt werden.
 
 - `spec.seit` — Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt.
 - `spec.bereiche` — Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.

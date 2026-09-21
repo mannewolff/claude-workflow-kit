@@ -38,9 +38,9 @@ const MIT_HALT = ["implement-next", "implement-ready"];
 const OHNE_HALT = ["implement-test", "implement-done"];
 
 const FETTMARKE = "**Entscheiden statt fragen.**";
-const ENDMARKE = "**Aussage-ID in den Testnamen";
+const ENDMARKE = "### 4. Pruefungen vor dem Commit";
 
-/** Der Halt-Abschnitt von der Fettmarke bis zur Marke des Aussage-ID-Blocks. */
+/** Der Halt-Abschnitt von der Fettmarke bis zur Ueberschrift des naechsten Schritts. */
 function haltAbschnitt(name) {
   const text = quelle(name);
   const anfang = text.indexOf(FETTMARKE);
@@ -63,7 +63,7 @@ test("[skills-6] der Halt-Abschnitt steht in implement-next und implement-ready 
   }
 });
 
-test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor dem Aussage-ID-Block", () => {
+test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor Schritt 4", () => {
   for (const name of MIT_HALT) {
     const text = quelle(name);
     const schritt = text.indexOf("### 3. Implementieren");
@@ -75,10 +75,10 @@ test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor dem Aussage-ID-Block
       naechster < 0 || marke < naechster,
       `in ${name} steht der Abschnitt hinter Schritt 3`,
     );
-    // Der Regelblock zur Aussage-ID bleibt unberuehrt: Der Halt endet davor.
+    // Schritt 4 bleibt unberuehrt: Der Halt endet davor.
     assert.ok(
       marke < text.indexOf(ENDMARKE),
-      `in ${name} steht der Abschnitt hinter dem Aussage-ID-Block`,
+      `in ${name} steht der Abschnitt hinter Schritt 4`,
     );
   }
 });

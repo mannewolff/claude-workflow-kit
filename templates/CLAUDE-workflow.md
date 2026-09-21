@@ -165,7 +165,7 @@ Zwei Messgrenzen gehoeren zum Bild: Die Salvage-Pruefungen des Nacht-Runners lau
 
 Vier Begriffe tragen die Auswertung: ein **Fund** ist eine gemeldete Beanstandung einer Modell-Pruefung; die **Gegenprobe** ist die Beobachtung, die den Fund widerlegen wuerde, samt ihrem Stand; die **Art** ist die Einordnung aus der festen Liste; ein **Vorkommen** ist ein uebernommener Fund mit bestaetigter Gegenprobe — nicht gepruefte, unvollstaendige und abgelehnte Funde sind keine Vorkommen.
 
-Zwei Messgrenzen gehoeren auch hier zum Bild: Vor der Einfuehrung dieser Form geschriebene Funde zaehlen nicht und werden nicht nachtraeglich eingeordnet. Und Buchungen, die in einem abgestuerzten Nacht-Worktree entstanden sind, gehen verloren — `worktreesAufraeumen` in `kit/night.mjs` raeumt liegengebliebene Worktrees beim naechsten Start weg, wie es heute schon mit einer dort wartenden Vorhaben-Notiz geschieht.
+Zwei Messgrenzen gehoeren auch hier zum Bild: Vor der Einfuehrung dieser Form geschriebene Funde zaehlen nicht und werden nicht nachtraeglich eingeordnet. Und Buchungen, die in einem abgestuerzten Nacht-Worktree entstanden sind, gehen verloren — `worktreesAufraeumen` in `kit/night.mjs` raeumt liegengebliebene Worktrees beim naechsten Start weg, samt allem, was darin noch ungesichert wartet.
 
 ---
 
@@ -232,19 +232,13 @@ Absolut bindend:
 
 ## Config (.claude/workflow.config.json)
 
-Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen und optionaler Stufenangabe `stufe`; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer Spec-Driven Development. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
+Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen und optionaler Stufenangabe `stufe`; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
 
 ---
 
 ## Pflichtchecks vor Push (Schritt 6)
 
 Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch. Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen. Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen. **Die Pruefungen laufen gestaffelt:** Jede traegt eine Stufe — `paket` beim Abschluss eines Arbeitspakets, `push` vor dem Veroeffentlichen, `merge` vor der Freigabe; ohne Angabe gilt `paket`. Eine spaetere Stufe laeuft an der frueheren **nicht mit** (eine Pruefung der Stufe `push` bleibt beim Abschluss eines Arbeitspakets aus), und jede Stufe faehrt ihre **Vorgaengerstufen** mit (`push` fuehrt `paket` und `push` aus, `merge` alle drei). **Keine Pflichtpruefung entfaellt damit aus dem Gesamtprozess**; sie laeuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zaehlt. Welche Pruefung in welche Stufe gehoert, entscheidet das Projekt. Die Stufe einer Pflichtpruefung (`stufe`) ist dabei etwas anderes als die Pruefstufen des Reviews (`reviewStufen`) und als die Stufen der Nacht-Kette: Sie sagt, *wann* geprueft wird, nicht wie gruendlich gelesen und nicht welcher Abschnitt eines unbeaufsichtigten Laufs dran ist. **Eine** seiner Pruefungen darf ein Projekt ausserdem als **Guetemessung** benennen (`guete` mit `muster` und `marke`): Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken. Liegt der gemessene Anteil unter der Marke, ist das **derselbe Halt wie eine rote Pflichtpruefung** — kein neuer Stop-Punkt, keine Ausnahme, keine persoenliche Marke (die Marke gilt teamweit, eine Abweichung in `workflow.config.local.json` bleibt unwirksam). Der Halt kostet keine Arbeit: Er ist ein roter Lauf **vor Commit und Push**, die bereits fertigen Pakete bleiben lokal committet, und der Versionsbump von `/push-main` bleibt idempotent stehen — nach der Nachbesserung laeuft derselbe Batch weiter. **Ohne Benennung gibt es weder Messung noch Marke noch Halt.**
-
----
-
-## Spec-Fortschreibung beim Push (Schritt 8, nur mit `spec`-Block)
-
-Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor seinem Prueflauf mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
 
 ---
 

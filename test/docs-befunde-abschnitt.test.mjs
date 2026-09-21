@@ -164,8 +164,8 @@ test("der Abschnitt nennt den Verlust aus einem abgestuerzten Nacht-Worktree", (
   const text = abschnitt(BEFUNDE);
   assert.match(text, /worktreesAufraeumen/,
     "`worktreesAufraeumen` fehlt im Abschnitt — die zweite Messgrenze ist unverortet");
-  assert.match(text, /Vorhaben-Notiz/,
-    "der Vergleich mit den heute schon wartenden Vorhaben-Notizen fehlt");
+  assert.match(text, /ungesichert wartet/,
+    "dass die Worktrees samt allem darin ungesichert Wartenden weggeraeumt werden, steht nicht da");
 });
 
 // --- Der Anschluss an „Reviews sind Zuarbeit." ---

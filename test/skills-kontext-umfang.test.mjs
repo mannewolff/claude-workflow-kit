@@ -107,24 +107,6 @@ test("[skills-16] 'offene Issues' kommt im Skill nicht mehr vor", () => {
   );
 });
 
-// --- 5. Die Hinweiszeile ist alles, was vom Index bleibt --------------------
-
-test("[skills-17] die Hinweiszeile zum Index steht in beiden Vorlagen, ohne Ueberschrift", () => {
-  for (const [i, vorlage] of vorlagen().entries()) {
-    const zeilen = vorlage.split("\n");
-    const hinweis = zeilen.findIndex((z) => z.includes("Index veraltet — neu bauen mit"));
-    assert.ok(hinweis >= 0, `Vorlage ${i + 1} traegt die Hinweiszeile zum Index nicht`);
-    const davor = zeilen.slice(0, hinweis).findLast((z) => z.trim() !== "") ?? "";
-    assert.doesNotMatch(
-      davor,
-      /^###/,
-      `in Vorlage ${i + 1} steht eine Ueberschrift ueber der Hinweiszeile — eine ` +
-        "Ueberschrift fuer eine Zeile, die im Normalfall gar nicht erscheint, waere " +
-        "entweder ein leerer Abschnitt oder einer, der mal da ist und mal nicht",
-    );
-  }
-});
-
 // --- 6. Die Tagesgrenze der letzten Entscheidungen --------------------------
 
 test("[skills-18] die Tagesregel steht im Skill", () => {

@@ -131,7 +131,7 @@
     },
     "spec": {
       "type": "object",
-      "description": "Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "ALTLAST, wird nicht mehr ausgewertet. Der Block beschrieb Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Kit hat diesen Weg zurückgebaut; kein Skill und kein Kommando liest den Block noch. Er bleibt im Schema, damit eine Bestandsconfig gültig bleibt, und kann samt dem Ordner specs/ entfernt werden.",
       "properties": {
         "seit": {
           "type": "string",

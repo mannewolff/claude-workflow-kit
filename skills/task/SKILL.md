@@ -22,7 +22,7 @@ Zwei Eingaenge, und nur zwei: der Chat (`/task <Anforderung>`) oder eine `[Idee]
 
 ### 2. Bestand lesen
 
-Betroffene Dateien und vorhandene Muster lesen, wiederverwendbare Funktionen suchen. Bei gesetztem `spec`-Block in `.claude/workflow.config.json` gilt die Rangfolge aus `/techplan`: erst `specs/INDEX.md` und die Specs der betroffenen Bereiche, Produktionscode erst, wenn die Specs schweigen. **Keine Vorhaben-Notiz auf diesem Weg.** `spec.mjs vorhaben` haengt am Planen und am Plandokument — genau das spart der `[Task]`-Weg ein.
+Betroffene Dateien und vorhandene Muster lesen, wiederverwendbare Funktionen suchen.
 
 ### Entscheiden statt fragen
 
@@ -50,14 +50,11 @@ Was konkret zu tun ist: Dateien, Tests, Aenderungen.
 ## Akzeptanzkriterium
 Wie verifiziert wird: konkret, messbar oder ausfuehrbar.
 
-## Spec-Wirkung
-Nur bei gesetztem spec-Block.
-
 ## Abhängigkeiten
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
 
-`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Die ID-Vergabe fuer `## Spec-Wirkung` steht in `/issues` und wird hier nicht wiederholt. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts.
+`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts.
 
 **Keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.** Ein `[Task]` hat keinen Vorfahren; die Idee ist der Anlass, nicht der Vorfahr.
 

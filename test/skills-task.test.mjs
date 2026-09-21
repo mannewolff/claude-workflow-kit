@@ -155,7 +155,7 @@ test("[skills-7] der vorgeschriebene Body traegt keine Plan- und keine Quelle-Ze
 });
 
 test("[skills-7] das Vier-Abschnitt-Format steht mit Abhaengigkeiten als letztem Abschnitt", () => {
-  for (const abschnitt of ["## Kontext", "## Aufgabe", "## Akzeptanzkriterium", "## Spec-Wirkung"]) {
+  for (const abschnitt of ["## Kontext", "## Aufgabe", "## Akzeptanzkriterium"]) {
     assert.ok(SKILL.includes(abschnitt), `der Abschnitt ${abschnitt} ist nicht genannt`);
   }
   assert.match(
@@ -272,21 +272,6 @@ test("[skills-7] ein `[Task]`, der einen Befund ablehnt, hat die Regel als Krite
     SKILL,
     /unabh(?:ae|ä)ngiger Kontrollbefund|Kontrollbefund/,
     "die Verifikation ueber einen Kontrollbefund fehlt",
-  );
-});
-
-// --- Was der Weg einspart ------------------------------------------------------
-
-test("[skills-7] auf dem Task-Weg entsteht keine Vorhaben-Notiz", () => {
-  assert.match(
-    SKILL,
-    /Keine Vorhaben-Notiz/i,
-    "der Entfall der Vorhaben-Notiz ist nicht benannt",
-  );
-  assert.match(
-    SKILL,
-    /spec\.mjs vorhaben/,
-    "das Kommando, das hier entfaellt, ist nicht benannt",
   );
 });
 

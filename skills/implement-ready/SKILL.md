@@ -65,7 +65,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 ### 2. Issue vollständig lesen
 
-Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wirkung`; daraus stammen die IDs fuer die Testnamen. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
+Lies alle Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
 
 **Trägt das Issue eine Zeile `Empfohlenes Modell: <name>` oder `Aufgabenstufe: <schwer|mittel|leicht>`, nenne sie** — zusammen mit dem Hinweis, dass die laufende Sitzung ihr Modell nicht wechselt. Beide sind eine Angabe, keine Anweisung: Nachts wirkt sie von selbst (der Runner startet die Session der Karte damit), tagsüber wählt der Mensch sein Modell selbst und sitzt ohnehin daneben. **Kein Halt, keine Rückfrage, keine Änderung am Ablauf** — wer eine laufende Sitzung für eine Empfehlung zum Neustart auffordert, kostet mehr, als die Empfehlung wert ist.
 
@@ -102,15 +102,6 @@ Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann gesch
 **Ob sich jeder eigene Anteil namentlich zuruecknehmen laesst, wird vor Schritt 2 entschieden.** Nicht namentlich zuruecknehmbar ist etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug und die die Session weiter geaendert hat — `git restore` naehme dem Menschen seinen Anteil weg. Bleibt so eine eigene Aenderung zurueck, wird **nicht** angehalten: keiner der Schritte 2 bis 5, also kein Label, kein Kommentar, kein Move, kein Commit. Die Session meldet, welche Datei zurueckbleibt und warum, und endet; das Issue bleibt in In progress. Interaktiv entscheidet der Mensch, nachts greift der Dirty-Guard des Runners wie bei jeder Runde ohne In-review-Ergebnis.
 
 Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
-
-**Aussage-ID in den Testnamen (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Die ID-Form ist `<bereich>-<N>`; vergeben hat sie `/issues`, und sie steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
-
-- **„Im Testnamen" heisst:** im Titel-String des Tests — `test("[<ID>] …")`, `it("[<ID>] …")`. Wo der Testname ein Bezeichner ist und keine eckigen Klammern erlaubt (JUnit, pytest), steht der Verweis in `@DisplayName` bzw. im Docstring. Massgeblich ist, dass `spec.testPattern` ihn im **Dateitext** findet.
-- Belegt ein Test mehrere Aussagen, steht jede ID in einer eigenen Klammer: `[board-7] [board-8]`.
-- Bei **`GEAENDERT`** wird der vorhandene Test mit `[<ID>]` an den neuen Aussage-Text angepasst; ein zweiter Verweis ist nicht noetig, aber ein **unveraenderter Test ist kein Beleg**. Der Verweis allein sagt bei `GEAENDERT` nichts — er stuende sonst ueber einem Test, der noch das alte Verhalten prueft, und das Gate saehe die Aussage als belegt.
-- **`ENTFAELLT` braucht keinen** neuen Verweis.
-- Gesucht wird mit `spec.testPattern` (regulaerer Ausdruck mit dem Platzhalter `<ID>`, Default `\[<ID>\]`) in den Dateien aus `spec.testGlobs` — beide Felder stehen im `spec`-Block der `.claude/workflow.config.json`.
-- Bei einem Paket mit `KEINE` und in Projekten ohne `spec`-Block aendert sich nichts.
 
 ### 4. Pruefungen vor dem Commit
 

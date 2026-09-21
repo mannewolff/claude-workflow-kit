@@ -5,12 +5,12 @@
 // Veroeffentlichen bleibt der eine Schritt, den ein Mensch ausloest.
 //
 // DER BLOCK TRAEGT KEINE NUMMER (W5 aus dem Plan-Review). Ein nummerierter Schritt
-// verschoebe jede Schrittzahl des Skills um eins und machte die gueltige Aussage
-// `skills-4` („zeigt in Schritt 3 …") falsch, dazu saemtliche Querverweise. Der
-// unnummerierte Block stellt dasselbe her, ohne etwas zu brechen — und genau das haelt
-// dieser Test fest, samt der Zahlen, die vor dem Paket galten.
+// verschoebe jede Schrittzahl des Skills um eins und machte saemtliche Querverweise
+// auf „Schritt 3" und „Schritt 5" falsch. Der unnummerierte Block stellt dasselbe her,
+// ohne etwas zu brechen — und genau das haelt dieser Test fest, samt der Zahlen, die
+// der Skill heute fuehrt.
 //
-// Geprueft wird Text, nicht Verhalten — wie in `test/skills-push-main-spec.test.mjs`.
+// Geprueft wird Text, nicht Verhalten.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,32 +46,33 @@ test("[skills-30] der Block 'Aufwand melden' steht hinter 'Fortschritt melden' u
   assert.ok(block.start < schritt1, "der Block steht hinter Schritt 1 — dann liefe der Befund erst nach der Config");
 });
 
-test("[skills-30] der Block traegt keine Nummer — die Ueberschriften zaehlen unveraendert 1 bis 9", () => {
+test("[skills-30] der Block traegt keine Nummer — die Ueberschriften zaehlen unveraendert 1 bis 7", () => {
   const block = aufwandBlock();
   assert.ok(!/\d/.test(block.kopf), `der Kopf des Blocks traegt eine Zahl: ${block.kopf}`);
 
   const nummern = [...SKILL.matchAll(/^### (\d+)\. /gm)].map((m) => Number(m[1]));
-  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6, 7, 8, 9], "die Schrittnummern des Skills haben sich verschoben");
+  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6, 7], "die Schrittnummern des Skills haben sich verschoben");
   const ueberschriften = (SKILL.match(/^### /gm) ?? []).length;
-  assert.equal(ueberschriften, 9, "es gibt eine `###`-Ueberschrift, die keine der neun Schrittnummern traegt");
+  assert.equal(ueberschriften, 7, "es gibt eine `###`-Ueberschrift, die keine der sieben Schrittnummern traegt");
 });
 
-// Die Zahlen stammen aus dem Stand VOR dem Paket (gemessen an skills/push-main/SKILL.md,
-// v2.0.1): Sie sind der Vergleichsmassstab, gegen den die Schrittzaehlung unveraendert
-// bleiben muss. Faellt einer dieser Werte, hat der Einschub die Zaehlung verschoben.
+// Die Zahlen gelten fuer den Stand nach dem Rueckbau von Spec-Driven Development
+// (Issue #827): Der Skill faehrt sieben Schritte. Sie sind der Vergleichsmassstab,
+// gegen den die Schrittzaehlung unveraendert bleiben muss. Faellt einer dieser
+// Werte, hat der Einschub die Zaehlung verschoben.
 test("[skills-30] die Fortschrittszeilen nennen unveraendert dieselben Schrittzahlen", () => {
   assert.equal(zaehle(/Schritt k von 9/g), 0, "die literale Form 'Schritt k von 9' hat sich geaendert");
   assert.equal(zaehle(/Schritt k von 7/g), 1, "die literale Form 'Schritt k von 7' hat sich geaendert");
-  assert.equal(zaehle(/Schritt \d+ von 9/g), 6, "die Zahl der nummerierten Fortschrittszeilen hat sich geaendert");
-  assert.equal(zaehle(/Schritt \d+ von 7/g), 0, "es sind nummerierte Zeilen mit 'von 7' hinzugekommen");
+  assert.equal(zaehle(/Schritt \d+ von 9/g), 0, "es sind nummerierte Zeilen mit 'von 9' hinzugekommen");
+  assert.equal(zaehle(/Schritt \d+ von 7/g), 4, "die Zahl der nummerierten Fortschrittszeilen hat sich geaendert");
 });
 
-// Die gueltige Aussage `skills-4` haengt daran: Sie sagt, die Vorschau stehe in Schritt 3.
-test("[skills-30] die Vorschau steht weiterhin in Schritt 3", () => {
+// Ohne Spec-Fortschreibung ist Schritt 3 das Erzeugen der Release-Dateien.
+test("[skills-30] Schritt 3 erzeugt die Release-Dateien", () => {
   const start = SKILL.indexOf("### 3. ");
   assert.notEqual(start, -1, "Schritt 3 fehlt");
   const abschnitt = SKILL.slice(start).split(/\n### /)[0];
-  assert.match(abschnitt, /spec\.mjs apply --anker[^\n]*--dry-run/, "die Vorschau steht nicht mehr in Schritt 3");
+  assert.match(abschnitt, /RELEASING\.md/, "Schritt 3 nennt die `RELEASING.md` nicht mehr");
 });
 
 test("[skills-30] der Block ruft `aufwand.mjs befund` und zeigt die Ausgabe unveraendert", () => {
