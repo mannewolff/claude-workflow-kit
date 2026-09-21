@@ -5623,7 +5623,6 @@ const GRUND_WARTEND =
 const WARTEN_MUSTER = [
   /\bwarte[nt]?\s+auf\b/i,
   /\bl(?:ae|ä)uft\s+noch\b/i,
-  /\bim\s+Hintergrund\b/i,
   // "sobald … fertig ist" — die beiden Woerter stehen selten direkt beieinander
   // ("sobald der Lauf durch ist"), darum eine begrenzte Spanne dazwischen und keine
   // Satzgrenze darin.
@@ -5631,11 +5630,24 @@ const WARTEN_MUSTER = [
   /\bErgebnis\s+steht\s+noch\s+aus\b/i,
 ];
 
+// "im Hintergrund" steht nicht in der Musterliste, weil die Wendung ueber den Zeitpunkt
+// nichts sagt (Issue #819): Dieselben drei Woerter stehen im Rueckblick einer fertigen
+// Sitzung ("die Checks liefen im Hintergrund durch, alles gruen"). Als eigenes Muster
+// gewertet, endete eine erledigte Runde als abgebrochen und ihr Paket bekam den Vermerk
+// der wartenden Sitzung. Sie zaehlt darum nur zusammen mit einem Warteverb im Praesens —
+// das Praeteritum ("liefen") und ein Abschlusswort ("erledigt") bleiben draussen.
+const HINTERGRUND_MUSTER = /\bim\s+Hintergrund\b/i;
+const HINTERGRUND_PRAESENS_MUSTER = /\b(?:l(?:ae|ä)uft|laufen|warte[nt]?|noch\s+nicht\s+fertig)\b/i;
+
 const WARTEN_AUSNAHME_MUSTER = [
   /\bAntwort\b/i,
   /\bR(?:ue|ü)ckmeldung\b/i,
   /\bFreigabe\b/i,
-  /\bGO\b/i,
+  // Case-sensitiv und ohne Bindestrich an den Raendern, waehrend die uebrigen Ausnahmen
+  // `i` tragen: "GO" ist als kurzes Wort so unspezifisch, dass jede Lockerung es in
+  // Bezeichnern treffen laesst ("Go-Test", "GO-Baustein") — und weil die Ausnahme Vorrang
+  // hat, zoege jeder solche Treffer einen echten Wartefall aus der Wertung.
+  /(?<![\w-])GO(?![\w-])/,
   /\bKl(?:ae|ä)rung\b/i,
   /\bReview\s+durch\b/i,
 ];
@@ -5656,6 +5668,7 @@ export function wartendeSession(text) {
   const s = typeof text === "string" ? text : "";
   if (s.trim() === "") return false;
   if (WARTEN_AUSNAHME_MUSTER.some((m) => m.test(s))) return false;
+  if (HINTERGRUND_MUSTER.test(s) && HINTERGRUND_PRAESENS_MUSTER.test(s)) return true;
   return WARTEN_MUSTER.some((m) => m.test(s));
 }
 

@@ -284,8 +284,23 @@ test("[night-52] wartendeSession erkennt die Wendungen der Musterliste", () => {
     "Das Ergebnis steht noch aus.",
     // Gross-/Kleinschreibung spielt keine Rolle: dieselbe Wendung, anderer Satzanfang.
     "WARTE AUF das Ende des Mutationstests.",
+    // "im Hintergrund" mit einem Warteverb im Praesens: genau der Fall, um den es geht.
+    "Die Tests laufen im Hintergrund, ich melde mich.",
   ]) {
     assert.equal(wartendeSession(text), true, `nicht als wartend erkannt: ${text}`);
+  }
+});
+
+test("[night-52] wartendeSession wertet im Hintergrund abgeschlossene Arbeit nicht als Warten", () => {
+  // "im Hintergrund" allein sagt nichts ueber den Zeitpunkt: Dieselbe Wendung steht im
+  // Rueckblick einer fertigen Sitzung. Ohne Warteverb im Praesens galt eine erledigte
+  // Runde als abgebrochen, und ihr Paket bekam den Vermerk der wartenden Sitzung.
+  for (const text of [
+    "Die Tests liefen im Hintergrund und sind inzwischen erfolgreich abgeschlossen.",
+    "Fertig. Die Checks liefen im Hintergrund durch, alles gruen, committet.",
+    "alles im Hintergrund erledigt",
+  ]) {
+    assert.equal(wartendeSession(text), false, `abgeschlossene Arbeit als Warten gewertet: ${text}`);
   }
 });
 
@@ -307,10 +322,16 @@ test("[night-52] wartendeSession wertet das Warten auf einen Menschen nicht als 
   assert.equal(wartendeSession("Issue #775 ist umgesetzt, committet und in In review."), false);
 });
 
-test("[night-52] das kurze GO trifft nicht mitten im Wort", () => {
+test("[night-52] die GO-Ausnahme trifft nur das grossgeschriebene Wort fuer sich", () => {
   // Ohne Wortgrenze verschluckte das „GO\" in ALGOL den ganzen Fall: Die Ausnahmeliste hat
   // Vorrang, und der wartende Schlusstext saehe aus wie Warten auf einen Menschen.
   assert.equal(wartendeSession("Der ALGOL-Uebersetzer laeuft noch."), true);
+  // Dasselbe eine Ebene feiner: Gross-/Kleinschreibung und der Bindestrich unterscheiden
+  // das kurze GO des Menschen von einem Wortbestandteil.
+  assert.equal(wartendeSession("Der Go-Test laeuft noch."), true);
+  assert.equal(wartendeSession("Der GO-Baustein laeuft noch."), true);
+  // Und das kurze GO selbst bleibt die Ausnahme, die es war.
+  assert.equal(wartendeSession("Ich warte auf dein GO."), false);
 });
 
 test("[night-53] rundenGrund liefert den neuen Grund beim regulaeren Ende einer wartenden Sitzung", () => {
