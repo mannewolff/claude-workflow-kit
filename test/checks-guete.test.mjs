@@ -228,3 +228,138 @@ test("[checks-6] eine ausgelassene Guetemessung steht mit ihrem Grund im guete-F
     assert.match(guete.grund, /ausgelassen/);
   });
 });
+
+// --- Was gar kein Anteil ist (Issue #817) ---
+//
+// Bis hierher galt jede endliche Zahl als Messwert. `Number("")` und
+// `Number("   ")` sind aber 0, und 0 genuegt jeder Marke 0 — eine leere Gruppe
+// bescheinigte so eine Messung, die es nie gab. Und einen Anteil von 184
+// Prozent meldet kein Werkzeug; er entsteht aus einem verbogenen Muster und
+// traegt darum keine Aussage ueber die Guete. Beides ist "nicht auswertbar" im
+// Sinne von checks-6 und damit rot, nicht gruen.
+
+/** Ein Kommando mit einem Anteil ausserhalb von 0 bis 100. */
+const MISST_184 = `node -e "console.log('Killed 99 (184%)')"`;
+
+/** Ein Kommando, dessen Ausgabe nur Leerzeichen in die Gruppe legt. */
+const MISST_LEERZEICHEN = `node -e "console.log('Score:   84')"`;
+
+test("[checks-9] ein Anteil ueber 100 gilt als nicht auswertbar und faerbt den Lauf rot", () => {
+  const config = {
+    buildChecks: [{ cmd: MISST_184, always: true, guete: { muster: MUSTER, marke: 80 } }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.notEqual(res.status, 0, "184 % ist kein Messwert und darf nicht als bestanden gelten");
+    assert.match(res.stdout, /Guete: kein auswertbares Ergebnis \(.+\)/);
+    const guete = zusammenfassung(dir).guete;
+    assert.equal(guete.anteil, null);
+    assert.equal(guete.erfuellt, false);
+    assert.match(guete.grund, /184/, "der Grund nennt den gefundenen Wert nicht");
+    assert.match(guete.grund, /0 bis 100/, "der Grund nennt den erlaubten Bereich nicht");
+  });
+});
+
+test("[checks-9] ein negativer Anteil gilt ebenso als nicht auswertbar", () => {
+  const config = {
+    buildChecks: [{
+      cmd: `node -e "console.log('Score: -5')"`,
+      always: true,
+      guete: { muster: String.raw`Score: (-?\d+)`, marke: 0 },
+    }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.notEqual(res.status, 0, "ein negativer Anteil darf nicht als bestanden gelten");
+    assert.equal(zusammenfassung(dir).guete.anteil, null);
+  });
+});
+
+test("[checks-9] eine leere Gruppe gegen Marke 0 ist rot — nicht gruen mit Anteil 0", () => {
+  const config = {
+    buildChecks: [{ cmd: OHNE_ANTEIL, always: true, guete: { muster: String.raw`(\d*)`, marke: 0 } }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.notEqual(res.status, 0, "eine leere Gruppe ist kein Messwert");
+    assert.match(res.stdout, /Guete: kein auswertbares Ergebnis \(.+\)/);
+    const guete = zusammenfassung(dir).guete;
+    assert.equal(guete.anteil, null);
+    assert.equal(guete.erfuellt, false);
+    assert.match(guete.grund, /leer/, "der Grund nennt die leere Gruppe nicht");
+  });
+});
+
+test("[checks-9] eine Gruppe aus lauter Leerzeichen gegen Marke 0 ist rot", () => {
+  const config = {
+    buildChecks: [{
+      cmd: MISST_LEERZEICHEN,
+      always: true,
+      guete: { muster: String.raw`Score:(\s*)`, marke: 0 },
+    }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.notEqual(res.status, 0, "Leerzeichen sind kein Messwert");
+    const guete = zusammenfassung(dir).guete;
+    assert.equal(guete.anteil, null);
+    assert.equal(guete.erfuellt, false);
+    assert.match(guete.grund, /leer/);
+  });
+});
+
+test("[checks-9] 100 % gegen Marke 100 bleibt gruen — die obere Grenze gehoert dazu", () => {
+  const config = {
+    buildChecks: [{
+      cmd: `node -e "console.log('Killed 9 (100%)')"`,
+      always: true,
+      guete: { muster: MUSTER, marke: 100 },
+    }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.equal(res.status, 0, `100 % gegen Marke 100 haette gruen sein muessen: ${res.stdout}${res.stderr}`);
+    assert.equal(zusammenfassung(dir).guete.anteil, 100);
+  });
+});
+
+test("[checks-9] 0 % gegen Marke 0 bleibt gruen, solange die Null wirklich gemessen wurde", () => {
+  const config = {
+    buildChecks: [{
+      cmd: `node -e "console.log('Killed 0 (0%)')"`,
+      always: true,
+      guete: { muster: MUSTER, marke: 0 },
+    }],
+    checkAreas: BEREICHE,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.equal(res.status, 0, `0 % gegen Marke 0 haette gruen sein muessen: ${res.stdout}${res.stderr}`);
+    const guete = zusammenfassung(dir).guete;
+    assert.equal(guete.anteil, 0);
+    assert.equal(guete.erfuellt, true);
+  });
+});

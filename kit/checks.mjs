@@ -638,8 +638,18 @@ function blobHashes(pfade) {
  * weniger. Das gilt auch fuer ein Muster, das sich nicht uebersetzen laesst:
  * Die Konfigurationspruefung faengt es frueher (Issue #764), aber hier darf es
  * trotzdem nicht als bestanden durchrutschen.
+ *
+ * Zwei dieser Wege sahen bis Issue #817 nach einer Zahl aus, ohne eine zu sein:
+ * `Number("")` und `Number("   ")` sind 0, und 0 genuegt der Marke 0 — eine
+ * leere Gruppe bescheinigte so eine Messung, die es nie gab. Und ein Anteil
+ * ausserhalb von 0 bis 100 ist keiner: Kein Werkzeug meldet 184 Prozent, der
+ * Wert entsteht aus einem verbogenen Muster und sagt ueber die Guete nichts.
+ * Beides ist ein nicht auswertbares Ergebnis und damit rot.
  */
-function gueteAuswerten(guete, ausgabe) {
+// SYNC: dieselbe Wertung traegt kit/night.mjs (gueteAuswerten) fuer die
+// Salvage-Vorpruefung des Runners; test/guete-wertung-sync.test.mjs haelt beide
+// an derselben Fallliste gegeneinander.
+export function gueteAuswerten(guete, ausgabe) {
   let regex;
   try {
     regex = new RegExp(guete.muster);
@@ -653,9 +663,15 @@ function gueteAuswerten(guete, ausgabe) {
   if (treffer[1] === undefined) {
     return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' hat keine Gruppe` };
   }
+  if (treffer[1].trim() === "") {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist leer` };
+  }
   const anteil = Number(treffer[1]);
   if (!Number.isFinite(anteil)) {
     return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist keine Zahl` };
+  }
+  if (anteil < 0 || anteil > 100) {
+    return { anteil: null, erfuellt: false, grund: `Anteil ${anteil} liegt ausserhalb von 0 bis 100 Prozent` };
   }
   const erfuellt = anteil >= guete.marke;
   return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };

@@ -2957,19 +2957,79 @@ function paketstufenChecks(cfg) {
 // ihn nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
 //
 // Die Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
-// meinen hier alle dasselbe — nur Kommando und Stufe zaehlen. `areas` wird nicht
-// gelesen.
+// meinen hier alle dasselbe — nur Kommando, Stufe und Guetemessung zaehlen.
+// `areas` wird nicht gelesen.
+
+/**
+ * Die Wertung der Guetemessung, wie sie checks.mjs fuehrt (Issue #817).
+ *
+ * Der Runner braucht sie, weil ein Kommando mit Guetemessung gruen endet und
+ * trotzdem rot ist: Exit 0 heisst "gelaufen", nicht "Marke erreicht". Bis #817
+ * las die Vorpruefung nur den Exit-Code, und ein Mutationstest mit 84 Prozent
+ * gegen Marke 90 galt ihr als gruen — die Salvage-Session bekam "Checks extern
+ * verifiziert gruen" zu hoeren und schob das Paket nach In review, waehrend
+ * `checks.mjs` denselben Stand rot faerbt.
+ *
+ * Die Wertung ist eine Kopie, kein Import: Die Kit-Werkzeuge sind
+ * eigenstaendige Single-File-Tools, die einzeln ausgeliefert werden, und
+ * night.mjs kennt checks.mjs bisher nur als Kindprozess.
+ */
+// SYNC: Original ist kit/checks.mjs (gueteAuswerten); gleich gehalten von
+// test/guete-wertung-sync.test.mjs an derselben Fallliste.
+export function gueteAuswerten(guete, ausgabe) {
+  let regex;
+  try {
+    regex = new RegExp(guete.muster);
+  } catch (err) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' ist kein regulaerer Ausdruck: ${err.message}` };
+  }
+  const treffer = regex.exec(ausgabe);
+  if (treffer === null) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' trifft die Ausgabe nicht` };
+  }
+  if (treffer[1] === undefined) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' hat keine Gruppe` };
+  }
+  if (treffer[1].trim() === "") {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist leer` };
+  }
+  const anteil = Number(treffer[1]);
+  if (!Number.isFinite(anteil)) {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist keine Zahl` };
+  }
+  if (anteil < 0 || anteil > 100) {
+    return { anteil: null, erfuellt: false, grund: `Anteil ${anteil} liegt ausserhalb von 0 bis 100 Prozent` };
+  }
+  const erfuellt = anteil >= guete.marke;
+  return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };
+}
+
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
   for (const eintrag of paketstufenChecks(cfg)) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
-    output += `$ ${cmd}\n${res.stdout || ""}${res.stderr || ""}`;
+    const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
+    output += `$ ${cmd}\n${ausgabe}`;
     // Das rote Kommando namentlich (Issue #668): Ohne es nennt die Stopp-Meldung nur,
     // DASS die Checks rot waren. Im Protokoll zu #900 fehlte deshalb jede Spur davon,
     // welcher der vier Checks versagt hat — und die Ursache liess sich nicht pruefen.
     if (res.status !== 0) return { ok: false, output, rotesKommando: cmd };
+
+    // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
+    // Grund wie in checks.mjs: Die Ausgabe eines Abbruchs ist der Stand eines Abbruchs,
+    // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
+    // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
+    // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
+    const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
+    if (guete) {
+      const auswertung = gueteAuswerten(guete, ausgabe);
+      output += auswertung.anteil === null
+        ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
+        : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
+      if (!auswertung.erfuellt) return { ok: false, output, rotesKommando: cmd };
+    }
   }
   return { ok: true, output, rotesKommando: null };
 }
