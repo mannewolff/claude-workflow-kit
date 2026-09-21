@@ -28,6 +28,8 @@
 - skills-30 — `/push-main` führt vor dem ersten nummerierten Schritt und ohne eigene Nummer `aufwand.mjs befund` aus und zeigt die Ausgabe unverändert; eine leere Ausgabe bleibt unkommentiert, ein Fehlschlag wird in einer Zeile vermerkt und hält nichts auf, der Befund ist kein Gate, und die Schrittzählung des Skills bleibt unverändert.
 - skills-31 — Die Skills nennen die Stufe, die sie fahren: `/push-main` ruft die Pruefungen mit `--stufe push`, `/merge-production` mit `--stufe merge`, und `/local-check` sowie die `implement-*`-Skills bleiben ohne Argument bei der Paketstufe.
 - skills-32 — `/local-check` grenzt `mutationCommand` gegen die Guetemessung ab: Es bleibt ein nachgelagertes Kommando ohne Marke und ohne Halt, und der Weg zur Verbindlichkeit fuehrt ueber einen `buildChecks`-Eintrag mit `guete`-Block.
+- skills-33 — `/implement-next` und `/implement-ready` tragen unmittelbar bei der Leitplanke zum im Hintergrund gestarteten Pflichtcheck deren verallgemeinerte Fassung: Keine Session endet mit laufender eigener Arbeit, gleich welcher; wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag, und eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst.
+- skills-34 — `/implement-next` und `/implement-ready` melden beim Lesen des Issues einen vorhandenen Vermerk mit dem Anker `## Nachtlauf: wartende Sitzung` samt dem Hinweis, dass das Paket schon einmal angefangen wurde und der zuletzt bekannte Stand im Vermerk steht; die Meldung loest keinen Halt und keine Ruecksprache aus.
 
 ## Entfallen
 

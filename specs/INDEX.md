@@ -9,5 +9,5 @@
 | gate | specs/gate.md | 1 | 0 |
 | installer | specs/installer.md | 10 | 0 |
 | night | specs/night.md | 46 | 5 |
-| skills | specs/skills.md | 28 | 3 |
+| skills | specs/skills.md | 30 | 3 |
 | spec | specs/spec.md | 2 | 0 |

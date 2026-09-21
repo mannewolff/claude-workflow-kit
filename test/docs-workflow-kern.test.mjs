@@ -12,9 +12,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
-test("die Vorlage bleibt unter 350 Zeilen", () => {
+// Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +5 fuer die Regel zur
+// wartenden Sitzung im Nachtbetrieb-Abschnitt (Issue #774).
+test("die Vorlage bleibt unter 355 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 350, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 350`);
+  assert.ok(zeilen <= 355, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 355`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
