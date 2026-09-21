@@ -276,3 +276,66 @@ test("[einstellungen-14] ein aufwand-Block mit laeufe: 3 ändert nur laeufe, die
   const config = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5", aufwand: { laeufe: 3 } };
   assert.deepEqual(fehler(pruefe(config, null)), []);
 });
+
+// --- Pflichtfelder eines Reviewers (Issue #816) -----------------------------
+//
+// `validateReviewers` in kit/board.mjs bricht bei einem leeren Namen, einem claude-Reviewer
+// ohne `model` und einem command-Reviewer ohne `command` hart ab — ausdrücklich, damit ein
+// Tippfehler nicht zu einem unsichtbaren Ein-Reviewer-Lauf wird. Ohne dieselbe Regel hier
+// speichert die Oberfläche eine Config, an der `/issue-review` danach scheitert.
+
+const REVIEWER_BASIS = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" };
+const mitReviewern = (reviewers) => pruefe({ ...REVIEWER_BASIS, issueReview: { reviewers } }, null);
+const anPfad = (befunde, pfad) => fehler(befunde).filter((b) => b.pfad === pfad);
+
+test("[einstellungen-22] ein claude-Reviewer ohne model ergibt einen Fehler an .model", () => {
+  const befunde = mitReviewern([{ name: "neu", kind: "claude" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].model").length, 1, JSON.stringify(befunde));
+  assert.match(anPfad(befunde, "issueReview.reviewers[0].model")[0].grund, /model/);
+});
+
+test("[einstellungen-22] ein command-Reviewer ohne command ergibt einen Fehler an .command", () => {
+  const befunde = mitReviewern([{ name: "x", kind: "command" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].command").length, 1, JSON.stringify(befunde));
+  assert.match(anPfad(befunde, "issueReview.reviewers[0].command")[0].grund, /command/);
+});
+
+test("[einstellungen-22] ein leerer Name ergibt einen Fehler an .name", () => {
+  const befunde = mitReviewern([{ name: "", kind: "claude", model: "claude-opus-5" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].name").length, 1, JSON.stringify(befunde));
+});
+
+test("[einstellungen-22] der Pfad nennt die Zeile, nicht nur die Liste", () => {
+  const befunde = mitReviewern([
+    { name: "gut", kind: "claude", model: "claude-opus-5" },
+    { name: "ohne", kind: "command" },
+  ]);
+  assert.deepEqual(fehler(befunde).map((b) => b.pfad), ["issueReview.reviewers[1].command"]);
+});
+
+test("[einstellungen-22] eine vollständige Reviewer-Liste bleibt ohne Befund", () => {
+  assert.deepEqual(fehler(mitReviewern([
+    { name: "opus", kind: "claude", model: "claude-opus-5" },
+    { name: "gpt", kind: "command", command: "codex exec" },
+  ])), []);
+  // Auch ein Block ohne reviewers darf nichts melden — die Regel liest nur, was dasteht.
+  assert.deepEqual(fehler(pruefe(REVIEWER_BASIS, null)), []);
+});
+
+test("[einstellungen-22] die Regel trifft genau die drei Fälle, an denen validateReviewers abbricht", () => {
+  // Der Quelltext von kit/board.mjs ist hier das Maß: Jede Bedingung, an der er `fail` ruft,
+  // hat hier ihren Befund. Läuft die Liste dort auseinander, fällt es an dieser Stelle auf —
+  // sonst speichert die Oberfläche eine Config, die der Nachtlauf danach nicht mehr lädt.
+  const quelle = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8");
+  const rumpf = quelle.slice(quelle.indexOf("function validateReviewers(")).split("\n}")[0];
+  assert.match(rumpf, /typeof r\.name !== "string" \|\| !r\.name/, "board.mjs prüft den Namen nicht mehr so");
+  assert.match(rumpf, /r\.kind === "claude" && !r\.model/, "board.mjs prüft das Modell nicht mehr so");
+  assert.match(rumpf, /r\.kind === "command" && !r\.command/, "board.mjs prüft das Kommando nicht mehr so");
+  for (const [reviewer, feld] of [
+    [{ name: "", kind: "claude", model: "m" }, "name"],
+    [{ name: "a", kind: "claude" }, "model"],
+    [{ name: "a", kind: "command" }, "command"],
+  ]) {
+    assert.equal(anPfad(mitReviewern([reviewer]), `issueReview.reviewers[0].${feld}`).length, 1, `${feld} wird nicht gemeldet`);
+  }
+});

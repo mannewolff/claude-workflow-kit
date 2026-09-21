@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, speichere, vorschau } from "../kit/einstellungen.mjs";
+import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, schluesselUmbenennen, speichere, vorschau } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -447,4 +447,67 @@ test("[einstellungen-12] ein Kommando, das durch das Entfernen eines Bereichs oh
     // Nichts wurde geschrieben, und das Kommando steht weiter auf seinem Bereich.
     assert.deepEqual(p.gespeichert().buildChecks, team.buildChecks);
   });
+});
+
+// ============================================================
+// Ein belegter Zielname (Issue #816)
+// ============================================================
+//
+// Bereiche, Paarungszeilen und Spec-Bereiche stehen alle drei unter ihrem Namen in einem
+// flachen Objekt, und alle drei wurden bis hierher gleich umbenannt: den Schluessel neu
+// setzen. Traegt das Objekt den Zielnamen schon, fiel der alte Eintrag dabei still weg —
+// samt seiner Muster beziehungsweise seiner Pruefer. `schluesselUmbenennen` ist die eine
+// Fassung, die das abweist; der Validator kann es nicht sehen, weil jedes Ergebnis fuer
+// sich gueltig ist.
+
+test("[einstellungen-21] schluesselUmbenennen haelt die Reihenfolge und laesst das Original stehen", () => {
+  const bereiche = { kit: ["kit/**"], test: ["test/**"], docs: ["docs/**"] };
+  const folge = schluesselUmbenennen(bereiche, "test", "pruefung");
+  assert.equal(folge.ok, true);
+  assert.equal(folge.grund, null);
+  assert.deepEqual(Object.keys(folge.objekt), ["kit", "pruefung", "docs"]);
+  assert.deepEqual(folge.objekt.pruefung, ["test/**"]);
+  assert.deepEqual(bereiche, { kit: ["kit/**"], test: ["test/**"], docs: ["docs/**"] });
+});
+
+test("[einstellungen-21] ein belegter Zielname wird abgewiesen — Bereiche, Paarungen, Spec-Bereiche", () => {
+  // Drei Formen desselben Falls: der alte Eintrag traegt Muster, Pruefer oder die Muster
+  // eines Spec-Bereichs. Abgewiesen wird in allen dreien, und nichts geht verloren.
+  const faelle = [
+    { a: ["a/**"], b: ["b/**"] },
+    { opus: ["fable"], sonnet: ["opus"] },
+    { board: ["kit/board.mjs"], night: ["kit/night.mjs"] },
+  ];
+  for (const objekt of faelle) {
+    const [alt, belegt] = Object.keys(objekt);
+    const vorher = structuredClone(objekt);
+    const folge = schluesselUmbenennen(objekt, alt, belegt);
+    assert.equal(folge.ok, false, `${alt} -> ${belegt} durchgelassen`);
+    assert.match(folge.grund, new RegExp(belegt), folge.grund);
+    assert.deepEqual(folge.objekt, vorher, "das Ergebnis weicht vom Bestand ab");
+    assert.deepEqual(objekt, vorher, "das uebergebene Objekt wurde angefasst");
+  }
+});
+
+test("[einstellungen-21] ein unbekannter alter Name und ein Name auf sich selbst aendern nichts", () => {
+  const bereiche = { kit: ["kit/**"] };
+  assert.equal(schluesselUmbenennen(bereiche, "gibtsnicht", "neu").ok, false);
+  const gleich = schluesselUmbenennen(bereiche, "kit", "kit");
+  assert.equal(gleich.ok, true, "der eigene Name gilt nicht als belegt");
+  assert.deepEqual(gleich.objekt, bereiche);
+  // Eine Datei ohne den Block darf nicht werfen.
+  assert.equal(schluesselUmbenennen(undefined, "kit", "neu").ok, false);
+});
+
+test("[einstellungen-21] eine abgewiesene Umbenennung laesst die areas der buildChecks unberuehrt", () => {
+  const checkAreas = { a: ["a/**"], b: ["b/**"] };
+  const buildChecks = [{ cmd: "lint-a", areas: ["a"] }, { cmd: "lint-b", areas: ["b"] }];
+  const folge = schluesselUmbenennen(checkAreas, "a", "b");
+  assert.equal(folge.ok, false);
+  assert.deepEqual(folge.objekt, checkAreas);
+  // Der Grund, warum der Redaktor erst `ok` prueft und dann rechnet: Ungeprueft haengt die
+  // Folge "lint-a" auf den Bereich "b" um, und das Kommando liefe bei den falschen Dateien.
+  const ungeprueft = bereichsFolgen(buildChecks, [{ von: "a", nach: "b" }], []);
+  assert.deepEqual(ungeprueft.buildChecks[0].areas, ["b"]);
+  assert.deepEqual(buildChecks[0].areas, ["a"], "der Bestand selbst bleibt unberuehrt");
 });

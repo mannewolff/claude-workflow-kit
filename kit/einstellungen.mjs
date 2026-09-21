@@ -218,6 +218,23 @@ function regelPaare(config) {
   return out;
 }
 
+// SYNC: Laufzeitregel in kit/board.mjs, validateReviewers — dieselben drei Fälle, an denen
+// sie hart abbricht. `kind` fehlt hier bewusst: Das Schema führt an dem Feld ein `enum` und
+// meldet einen falschen Wert schon selbst. Ohne diese Regel speichert die Oberfläche eine
+// Config, die gültig aussieht und an der /issue-review danach abbricht (Issue #816).
+function regelReviewerFelder(config) {
+  const block = istObjekt(config.issueReview) ? config.issueReview : {};
+  const out = [];
+  (Array.isArray(block.reviewers) ? block.reviewers : []).forEach((r, i) => {
+    if (!istObjekt(r)) return;
+    const pfad = `issueReview.reviewers[${i}]`;
+    if (typeof r.name !== "string" || !r.name) out.push(befund(`${pfad}.name`, "'name' fehlt oder ist leer — /issue-review bricht damit ab"));
+    if (r.kind === "claude" && !r.model) out.push(befund(`${pfad}.model`, "'model' fehlt — ein Reviewer der Art 'claude' läuft ohne Modell-Identifier nicht"));
+    if (r.kind === "command" && !r.command) out.push(befund(`${pfad}.command`, "'command' fehlt — ein Reviewer der Art 'command' läuft ohne Kommandozeile nicht"));
+  });
+  return out;
+}
+
 // SYNC: Laufzeitregel in kit/checks.mjs, pruefeBereichsnamen — jedes areas steht in checkAreas.
 function regelBereiche(config) {
   const bekannt = new Set(Object.keys(istObjekt(config.checkAreas) ? config.checkAreas : {}));
@@ -403,7 +420,8 @@ function regelAufwandSchwellen(config) {
 export function zusatzregeln(config) {
   if (!istObjekt(config)) return [];
   return [
-    ...regelRollenzahl(config), ...regelRollenKatalog(config), ...regelPaare(config), ...regelBereiche(config),
+    ...regelRollenzahl(config), ...regelRollenKatalog(config), ...regelReviewerFelder(config),
+    ...regelPaare(config), ...regelBereiche(config),
     ...regelLeereBereiche(config), ...regelCheckStufe(config), ...regelPaketstufeFehlt(config),
     ...regelGuete(config), ...regelStufenFelder(config), ...regelStufenModell(config),
     ...regelAufwandSchwellen(config),
@@ -497,6 +515,34 @@ function namensliste(liste, neuerName, weg) {
 }
 
 /**
+ * Benennt den Schlüssel eines flachen Objekts um und hält dabei die Reihenfolge — die eine
+ * Fassung für die drei Stellen, die einen Namen als Schlüssel führen: die Bereiche aus
+ * `checkAreas` (M4), die Paarungszeilen aus `issueReview.pairs` (M2) und die Bereiche aus
+ * `spec.bereiche` (M6). Liefert `{ok, grund, objekt}`; bei `ok: false` ist `objekt` der
+ * unveränderte Bestand, und der Aufrufer rechnet keine Folge (Issue #816).
+ *
+ * Ein schon belegter Zielname wird abgelehnt statt zusammengeführt: Zusammenführen ist bei
+ * Mustern, Prüfern und Spec-Bereichen je eine eigene fachliche Frage, und bis hierher fiel
+ * der alte Eintrag dabei still weg — samt seiner Muster. Der Validator kann das nicht
+ * sehen, weil jedes Ergebnis für sich gültig ist.
+ *
+ * Wie `namensliste` kommt die Funktion ohne Map und Set aus: Ihr Quelltext ist zugleich Teil
+ * des Bausteins `folgen` des Browser-Skripts, und der Redaktor muss die Ablehnung zeigen,
+ * bevor etwas in die Arbeitskopie geht.
+ */
+export function schluesselUmbenennen(objekt, alt, neu) {
+  const bisher = objekt !== null && typeof objekt === "object" && !Array.isArray(objekt) ? objekt : {};
+  const hat = function (name) { return Object.prototype.hasOwnProperty.call(bisher, name); };
+  if (!hat(alt)) return { ok: false, grund: "„" + alt + "“ gibt es nicht mehr", objekt: bisher };
+  if (neu !== alt && hat(neu)) {
+    return { ok: false, grund: "„" + neu + "“ gibt es schon — der bisherige Eintrag würde dabei wegfallen", objekt: bisher };
+  }
+  const kopie = {};
+  for (const name of Object.keys(bisher)) kopie[name === alt ? neu : name] = bisher[name];
+  return { ok: true, grund: null, objekt: kopie };
+}
+
+/**
  * Die Folgen einer Umbenennung oder Entfernung in `issueReview.pairs` (Kriterien 8, 9, 9a).
  * Liefert die neuen Paarungen und je betroffener Zeile einen Eintrag für die Rückfrage:
  * `autorzeile` — die eigene Zeile des Entfernten als Autor fällt weg, `name` — aus der Zeile
@@ -534,7 +580,7 @@ export function paarungsFolgen(pairs, umbenannt, entfernt) {
 }
 
 /** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.folgen`. */
-const FOLGEN_QUELLE = [namensliste, paarungsFolgen].map((f) => f.toString()).join("\n\n");
+const FOLGEN_QUELLE = [namensliste, schluesselUmbenennen, paarungsFolgen].map((f) => f.toString()).join("\n\n");
 
 // ============================================================
 // Die drei Formen eines Prüfkommandos (Plan #721, Kriterien 18, 19, 20)
@@ -2302,6 +2348,20 @@ function zeilenGruppe(pfad, gitter) {
   return { gruppe: gruppe, zeile: zeile };
 }
 
+/**
+ * Meldet eine abgewiesene Eingabe an ihrer Zeile (Issue #816) — etwa einen Namen, den es
+ * schon gibt. Die Meldung steht im selben Behaelter wie die Befunde der Vorschau: Sie
+ * beschreibt dasselbe Feld, und die naechste Vorschau raeumt sie ueber befundeVerteilen von
+ * selbst wieder weg. Eine Zeile ohne Behaelter — die gestrichelte am Fuss — bleibt stumm.
+ */
+function feldBefund(element, grund) {
+  const zeile = element.closest(".zeile");
+  const behaelter = zeile && zeile.nextElementSibling;
+  if (!behaelter || !behaelter.classList.contains("befunde")) return;
+  behaelter.replaceChildren(el("div", "befund", grund));
+  zeile.classList.add("zeile-warn");
+}
+
 function entfernenKnopf(titel, tun) {
   const x = el("button", "x", "×");
   x.title = titel;
@@ -2857,23 +2917,29 @@ function wirkungZelle(wirkung) {
 /** Die Zellen einer Paarungszeile: Autor samt Entfernen, Pfeil, Pruefer-Chips, Wirkung. */
 function paarungsZellen(teil, autor, namen, wirkung, neuZeichnen) {
   const liste = Array.isArray(paarungenVon(teil)[autor]) ? paarungenVon(teil)[autor] : [];
+  const autoren = Object.keys(paarungenVon(teil));
   const frei = namen.filter(function (n) { return n !== autor && liste.indexOf(n) < 0; });
   const links = el("div", "autorzelle");
   const wahl = el("select");
-  for (const n of namen) {
+  // Kein Name, der schon eine eigene Zeile hat (Issue #816): Sein Eintrag fiele bei der
+  // Umbenennung still weg, und die Wahl boete damit an, eine Paarung zu verlieren.
+  for (const n of namen.filter(function (n2) { return n2 === autor || autoren.indexOf(n2) < 0; })) {
     const o = el("option", "", n);
     if (n === autor) o.selected = true;
     wahl.append(o);
   }
   wahl.addEventListener("change", function () {
     if (wahl.value === autor) return;
-    const kopie = {};
-    for (const a of Object.keys(paarungenVon(teil))) {
-      const alt = Array.isArray(paarungenVon(teil)[a]) ? paarungenVon(teil)[a] : [];
-      // Der neue Autor darf nicht sein eigener Pruefer sein.
-      kopie[a === autor ? wahl.value : a] = a === autor ? alt.filter(function (n) { return n !== wahl.value; }) : alt;
+    const folge = schluesselUmbenennen(paarungenVon(teil), autor, wahl.value);
+    if (!folge.ok) {
+      wahl.value = autor;
+      feldBefund(wahl, folge.grund);
+      return;
     }
-    setzeWert(teil, "issueReview.pairs", kopie);
+    // Der neue Autor darf nicht sein eigener Pruefer sein.
+    const eigene = Array.isArray(folge.objekt[wahl.value]) ? folge.objekt[wahl.value] : [];
+    folge.objekt[wahl.value] = eigene.filter(function (n) { return n !== wahl.value; });
+    setzeWert(teil, "issueReview.pairs", folge.objekt);
     neuZeichnen();
   });
   links.append(wahl, entfernenKnopf("Paarung entfernen, dann gilt wieder die Reihenfolge der Reviewer-Tabelle", function () {
@@ -3297,14 +3363,19 @@ function checkNeueZeile(teil, neuZeichnen) {
   return zeile;
 }
 
-/** Benennt einen Bereich um und zieht die Kommandos nach; die Reihenfolge bleibt (Kriterium 20). */
+/**
+ * Benennt einen Bereich um und zieht die Kommandos nach; die Reihenfolge bleibt (Kriterium 20).
+ * Gibt es den Zielnamen schon, bleibt alles stehen — auch die areas der Kommandos, denn die
+ * Folge wird erst nach der Pruefung gerechnet (Issue #816). Der Rueckgabewert sagt es dem
+ * Aufrufer, der das Feld zuruecksetzt und den Grund an der Zeile zeigt.
+ */
 function bereichUmbenennen(teil, alt, neuerName, neuZeichnen) {
-  const bisher = bereicheVon(teil);
-  const kopie = {};
-  for (const name of Object.keys(bisher)) kopie[name === alt ? neuerName : name] = bisher[name];
-  bereicheSetzen(teil, kopie);
+  const folge = schluesselUmbenennen(bereicheVon(teil), alt, neuerName);
+  if (!folge.ok) return folge;
+  bereicheSetzen(teil, folge.objekt);
   bereichsFolgenEintragen(teil, [{ von: alt, nach: neuerName }], []);
   neuZeichnen();
+  return folge;
 }
 
 /** Entfernt einen Bereich; nennen ihn Kommandos, fragt der Redaktor vorher nach (Kriterium 20). */
@@ -3353,7 +3424,10 @@ function bereichsZellen(teil, name, neuZeichnen) {
   feld.addEventListener("change", function () {
     const neuerName = feld.value.trim();
     if (neuerName === "" || neuerName === name) { feld.value = name; return; }
-    bereichUmbenennen(teil, name, neuerName, neuZeichnen);
+    const folge = bereichUmbenennen(teil, name, neuerName, neuZeichnen);
+    if (folge.ok) return;
+    feld.value = name;
+    feldBefund(feld, folge.grund);
   });
   const setze = function (liste) {
     const kopie = Object.assign({}, bereicheVon(teil));
@@ -3531,10 +3605,15 @@ function specBereichsZellen(teil, name, neuZeichnen) {
   feld.addEventListener("change", function () {
     const neuerName = feld.value.trim();
     if (neuerName === "" || neuerName === name) { feld.value = name; return; }
-    const bisher = specBereicheVon(teil);
-    const kopie = {};
-    for (const n of Object.keys(bisher)) kopie[n === name ? neuerName : n] = bisher[n];
-    specAendern(teil, { bereiche: kopie });
+    // Ein schon belegter Zielname wird abgewiesen (Issue #816): Der bisherige Bereich fiele
+    // sonst still weg, und mit ihm die Muster, aus denen seine Spec-Datei entsteht.
+    const folge = schluesselUmbenennen(specBereicheVon(teil), name, neuerName);
+    if (!folge.ok) {
+      feld.value = name;
+      feldBefund(feld, folge.grund);
+      return;
+    }
+    specAendern(teil, { bereiche: folge.objekt });
     neuZeichnen();
   });
   const setze = function (liste) {

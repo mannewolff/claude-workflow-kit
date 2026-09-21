@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -627,4 +627,43 @@ test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfeld
   assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [] });
   const felder = gruppenZeilen("toolbox", SCHEMA.properties.toolbox, { team: { host: "https://x", tokenFile: ".t" } }, GRUPPEN_AUSNAHMEN.toolbox);
   assert.deepEqual(felder.map((z) => z.feld), ["host", "ideaStored"]);
+});
+
+// ------------------------------------------------------------
+// Ein belegter Zielname beim Umbenennen (Issue #816)
+// ------------------------------------------------------------
+
+test("[einstellungen-21] alle drei Umbenennungen laufen ueber die eine Fassung des Moduls", () => {
+  assert.ok(SEITEN_BAUSTEINE.folgen.includes(schluesselUmbenennen.toString()), "der Baustein traegt eine andere Fassung als das Modul");
+  for (const [name, stueck] of [
+    ["M4 (Bereiche)", SEITEN_BAUSTEINE.redaktorPruefkommandos],
+    ["M2 (Paarungen)", SEITEN_BAUSTEINE.redaktorPaarungen],
+    ["M6 (Spec-Bereiche)", SEITEN_BAUSTEINE.redaktorSpezifikation],
+  ]) {
+    assert.match(stueck, /schluesselUmbenennen\(/, `${name} benennt weiter von Hand um`);
+    assert.match(stueck, /feldBefund\(/, `${name} meldet den abgewiesenen Namen nicht am Feld`);
+  }
+});
+
+test("[einstellungen-21] M4 rechnet die Folge in den Kommandos erst nach der Pruefung", () => {
+  // Ungeprueft haengt bereichsFolgen die areas auf den belegten Namen um — das Kommando
+  // liefe danach bei den falschen Dateien, und der Validator saehe nichts davon.
+  const stueck = SEITEN_BAUSTEINE.redaktorPruefkommandos;
+  const rumpf = stueck.slice(stueck.indexOf("function bereichUmbenennen("));
+  const abbruch = rumpf.indexOf("if (!folge.ok) return folge;");
+  assert.ok(abbruch >= 0, "M4 bricht bei einem belegten Namen nicht ab");
+  assert.ok(abbruch < rumpf.indexOf("bereichsFolgenEintragen("), "die Folge wird vor der Pruefung gerechnet");
+});
+
+test("[einstellungen-21] die Meldung landet im Befund-Behaelter der Zeile", () => {
+  const stueck = SEITEN_BAUSTEINE.elemente;
+  assert.match(stueck, /function feldBefund\(element, grund\)/, "der Helfer fehlt");
+  assert.match(stueck, /closest\("\.zeile"\)/, "die Meldung findet ihre Zeile nicht");
+  assert.match(stueck, /"befunde"/, "die Meldung steht nicht im Behaelter der Vorschau-Befunde");
+});
+
+test("[einstellungen-21] M2 bietet als Autor keinen Namen an, der schon eine eigene Zeile hat", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorPaarungen;
+  const rumpf = stueck.slice(stueck.indexOf("function paarungsZellen("));
+  assert.match(rumpf, /autoren\.indexOf\(n\) < 0/, "die Autorauswahl filtert die belegten Namen nicht");
 });
