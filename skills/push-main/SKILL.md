@@ -39,11 +39,23 @@ unbeaufsichtigten Laufs. Hier steht sie, weil das Veröffentlichen der eine Schr
 den ein Mensch auslöst: Läuft nachts niemand mit, liest sonst womöglich niemand mehr, was
 der Prozess gekostet hat.
 
+Unmittelbar danach der zweite Befund:
+
+```bash
+node .claude/kit/wirksamkeit.mjs befund
+```
+
+Für ihn gelten **dieselben Regeln**: Ausgabe unverändert zeigen, und er liest allein
+`.claude/wirksamkeit.json`, die der letzte unbeaufsichtigte Lauf hinterlassen hat. Er sagt,
+welche Pflichtprüfung sich verdient hat, was sie kostet — und welche in ihrem Fenster nie
+beanstandet hat. Auch er ist kein Gate.
+
 Eine **leere Ausgabe** heißt: kein Befund. Sie wird nicht kommentiert — kein „alles
 unauffällig", keine leere Überschrift. Ein **Fehlschlag** des Kommandos wird in **einer
-Zeile** vermerkt, und er hält nichts auf. Der Befund braucht die Config nicht; er
-liest allein `.claude/aufwand.json`, die der letzte unbeaufsichtigte Lauf hinterlassen hat.
-Fehlt sie, ist die Ausgabe leer und der Exit-Code 0.
+Zeile** vermerkt, und er hält nichts auf. Beides gilt **je Befund**: Ein leerer oder
+gescheiterter Aufwands-Befund sagt nichts über den Wirksamkeits-Befund und umgekehrt.
+Beide brauchen die Config nicht; sie lesen allein `.claude/aufwand.json` beziehungsweise
+`.claude/wirksamkeit.json`. Fehlt die Datei, ist die Ausgabe leer und der Exit-Code 0.
 
 Dieser Block trägt bewusst **keine Nummer** und zählt in keiner Fortschrittszeile mit: Eine
 Nummer verschöbe jede folgende Schrittzahl um eins und machte sämtliche Querverweise auf
@@ -317,6 +329,6 @@ Fortschrittszeile zählt dann entsprechend weniger Schritte — `Schritt k von 7
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
-- Kein Halt wegen des Aufwands-Befunds: Er ist **kein Gate**, weder sein Inhalt noch sein
-  Fehlschlag hält das Veröffentlichen auf. Er sagt, was auffällt — was daraus folgt,
-  entscheidet der Mensch.
+- Kein Halt wegen des Aufwands- oder des Wirksamkeits-Befunds: Beide sind **kein Gate**,
+  weder ihr Inhalt noch ihr Fehlschlag hält das Veröffentlichen auf. Sie sagen, was
+  auffällt — was daraus folgt, entscheidet der Mensch.

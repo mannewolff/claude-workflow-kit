@@ -80,10 +80,31 @@ test("[skills-30] der Block ruft `aufwand.mjs befund` und zeigt die Ausgabe unve
   assert.match(text, /unver[aä]ndert/i, "es steht nicht, dass die Ausgabe unveraendert gezeigt wird");
 });
 
+// Der zweite Befund (Issue #783, Plan #782): Die Wirksamkeit der Pruefungen steht
+// unmittelbar hinter dem Aufwand. Die Reihenfolge ist Teil der Aussage — der Aufwand
+// ist der aeltere Befund, und wer die beiden tauscht, aendert, was ein Mensch zuerst
+// liest, ohne dass ein Gate es meldet.
+test("[skills-30] der Block ruft beide Befunde, `wirksamkeit.mjs befund` hinter `aufwand.mjs befund`", () => {
+  const { text } = aufwandBlock();
+  const aufwand = text.indexOf("node .claude/kit/aufwand.mjs befund");
+  const wirksamkeit = text.indexOf("node .claude/kit/wirksamkeit.mjs befund");
+  assert.notEqual(aufwand, -1, "der Aufruf `aufwand.mjs befund` fehlt");
+  assert.notEqual(wirksamkeit, -1, "der Aufruf `wirksamkeit.mjs befund` fehlt");
+  assert.ok(wirksamkeit > aufwand, "der Wirksamkeits-Befund steht vor dem Aufwands-Befund");
+});
+
+test("[skills-30] fuer den Wirksamkeits-Befund gelten dieselben Regeln wie fuer den Aufwands-Befund", () => {
+  const { text } = aufwandBlock();
+  const ab = text.slice(text.indexOf("node .claude/kit/wirksamkeit.mjs befund"));
+  assert.match(ab, /dieselben Regeln|denselben Regeln/, "es steht nicht, dass dieselben Regeln gelten");
+  assert.match(ab, /\.claude\/wirksamkeit\.json/, "die gelesene Datei des zweiten Befunds fehlt");
+});
+
 test("[skills-30] eine leere Ausgabe bleibt unkommentiert", () => {
   const { text } = aufwandBlock();
   assert.match(text, /[Ll]eere? Ausgabe/, "der Leerfall fehlt");
   assert.match(text, /nicht kommentiert|unkommentiert|kein Befund/, "es steht nicht, dass der Leerfall unkommentiert bleibt");
+  assert.match(text, /je Befund/, "der Leerfall gilt nicht erkennbar fuer jeden der beiden Befunde");
 });
 
 test("[skills-30] ein Fehlschlag wird in einer Zeile vermerkt und haelt nichts auf", () => {
@@ -98,10 +119,11 @@ test("[skills-30] der Befund braucht die Config nicht und liest allein den Auswe
   assert.match(text, /Config/, "es steht nicht, dass der Befund die Config nicht braucht");
 });
 
-test("[skills-30] 'Was dieser Skill nicht tut' nennt den Befund ausdruecklich als kein Gate", () => {
+test("[skills-30] 'Was dieser Skill nicht tut' nennt beide Befunde ausdruecklich als kein Gate", () => {
   const start = SKILL.indexOf("## Was dieser Skill nicht tut");
   assert.notEqual(start, -1, "der Abschnitt fehlt");
   const abschnitt = SKILL.slice(start);
   assert.match(abschnitt, /Aufwand/, "der Aufwands-Befund kommt im Abschnitt nicht vor");
-  assert.match(abschnitt, /kein Gate/, "es steht nicht, dass der Befund kein Gate ist");
+  assert.match(abschnitt, /Wirksamkeit/, "der Wirksamkeits-Befund kommt im Abschnitt nicht vor");
+  assert.match(abschnitt, /kein Gate/, "es steht nicht, dass die Befunde kein Gate sind");
 });

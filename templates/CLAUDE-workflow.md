@@ -143,6 +143,18 @@ Laufzahl und Schwellen stehen optional im Config-Block `aufwand`; fehlt er, gelt
 
 ---
 
+## Wirksamkeit der Pruefungen
+
+Was die Pflichtpruefungen einbringen, steht in `.claude/wirksamkeit.md` fuer Menschen und in `.claude/wirksamkeit.json` fuer die Ausgabestellen; beide liegen dort vollstaendig, auch wenn nichts auffaellt. Je Pruefung steht dort, wie oft sie lief, wie oft sie beanstandete und wie viel Zeit sie kostete, dazu die Ruecklaeuferquote aus „In review". Ein Befund erscheint unaufgefordert an denselben zwei Stellen wie der Aufwands-Befund: im Abschlussblock des Laufprotokolls und zu Beginn von `/push-main`. Der Befund haelt nirgends etwas auf und ist kein Gate.
+
+Vier Begriffe tragen die Auswertung: eine **Ausfuehrung** ist ein Lauf einer Pruefung fuer ein Arbeitspaket — eine Zeile im Ausfuehrungsprotokoll; ein **Lauf** ist ein unbeaufsichtigter Lauf; **beanstandet** heisst, dass eine Ausfuehrung nicht gruen endete — eine Pruefung, die gar nicht erst startete, ist keine Ausfuehrung; ein **Ruecklaeufer** ist jede Bewegung aus „In review" zurueck, gleich wer sie ausloest. Daraus folgt der Unterschied, auf den es ankommt: „nie beanstandet" ist ein Ergebnis vieler Ausfuehrungen, „nicht gelaufen" ist gar keines — nur das erste sagt etwas ueber die Pruefung.
+
+Fenster, Quote und Mindestmengen stehen optional im Config-Block `wirksamkeit`; fehlt er, gelten die eingebauten Vorgaben.
+
+Zwei Messgrenzen gehoeren zum Bild: Die Salvage-Pruefungen des Nacht-Runners laufen an `checks.mjs` vorbei und zaehlen darum nicht mit. Und eine Karte, die das Kit nie bewegt hat, steht nicht im Nenner der Ruecklaeuferquote — was ohne den Prozess entstand, misst er auch nicht.
+
+---
+
 ## Drei Bahnen
 
 **Bahn 1 — Kleine Änderung** (direkt; kein Plan/Issue/GO): genau eine Datei / ein Asset / eine Config; keine Flyway-Migration; kein neuer/geänderter Endpoint; kein Datenmodell; ≤ 1 Modul; keine sicherheitsrelevante Logik → direkt umsetzen, ein Commit, kein Push ohne Trigger. **Auch dieser Commit setzt einen grünen `node .claude/kit/checks.mjs run` auf dem zu committenden Stand voraus** — das Commit-Gate ist mechanisch und kennt keine Bahn. Dasselbe gilt für jeden Commit von Hand. Was das Gate nicht leistet — `--no-verify` und der frische Klon ohne Installer-Lauf — steht unter „Git-Workflow (strikt bindend)“.

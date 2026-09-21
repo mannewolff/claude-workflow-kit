@@ -13,11 +13,12 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +5 fuer die Regel zur
-// wartenden Sitzung im Nachtbetrieb-Abschnitt (Issue #774).
-test("die Vorlage bleibt unter 355 Zeilen", () => {
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +9 fuer den Abschnitt
+// "Wirksamkeit der Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem
+// Werkzeug). Davor +5 fuer die Regel zur wartenden Sitzung (Issue #774).
+test("die Vorlage bleibt unter 364 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 355, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 355`);
+  assert.ok(zeilen <= 364, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 364`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
