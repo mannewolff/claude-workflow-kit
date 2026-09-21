@@ -5238,6 +5238,121 @@ const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
 const GRUND_UNBEKANNT = "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet";
 const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${kommando} (${quelle})`;
 
+// --- Die wartende Sitzung (Plan #773, Issue #775) ---
+//
+// Der fuenfte Grund, und der einzige, der nicht aus einem Feld der CLI kommt, sondern aus
+// dem, was die Sitzung zuletzt gesagt hat: Sie hat eine lange Arbeit angestossen, darauf
+// gewartet und damit ihren Zug beendet — headless gibt es keinen Folge-Turn. Bis hierher
+// sah dieser Ausgang aus wie ein regulaeres Ende ohne Commit, also wie Aufgeben.
+//
+// Woertliche Konstante aus demselben Grund wie die vier darueber: Der Text erscheint in
+// Protokoll, Board-Kommentar und `grund` des Ergebnisstands zugleich.
+const GRUND_WARTEND =
+  "Grund: Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden";
+
+// Erkannt wird am Schlusstext, nicht am Werkzeug und nicht an der Zeit (Plan #773, A1).
+// Die Muster sind benannt, weil sie zwei verschiedene Dinge beschreiben: das Warten auf
+// eine selbst angestossene Arbeit — der Fall — und das Warten auf einen Menschen, das
+// keiner ist. Eine Sitzung, die auf eine Antwort wartet, hat nichts verloren; ihre Frage
+// steht am Board und der Halt-Weg hat sie schon verbucht.
+//
+// Ueberall `\b…\b`: Ohne Wortgrenze traefe das kurze "GO" der Ausnahmeliste in beliebigen
+// Woertern (ALGOL, Logo) und zoege damit echte Faelle aus der Wertung — die Ausnahme hat
+// Vorrang, also ist ein Fehltreffer dort teurer als einer in der Musterliste.
+const WARTEN_MUSTER = [
+  /\bwarte[nt]?\s+auf\b/i,
+  /\bl(?:ae|ä)uft\s+noch\b/i,
+  /\bim\s+Hintergrund\b/i,
+  // "sobald … fertig ist" — die beiden Woerter stehen selten direkt beieinander
+  // ("sobald der Lauf durch ist"), darum eine begrenzte Spanne dazwischen und keine
+  // Satzgrenze darin.
+  /\bsobald\b[^.!?\n]{0,80}\b(?:fertig|durch)\b/i,
+  /\bErgebnis\s+steht\s+noch\s+aus\b/i,
+];
+
+const WARTEN_AUSNAHME_MUSTER = [
+  /\bAntwort\b/i,
+  /\bR(?:ue|ü)ckmeldung\b/i,
+  /\bFreigabe\b/i,
+  /\bGO\b/i,
+  /\bKl(?:ae|ä)rung\b/i,
+  /\bReview\s+durch\b/i,
+];
+
+/**
+ * Hat diese Sitzung auf eine selbst angestossene Arbeit gewartet (Plan #773, A2)?
+ *
+ * Reine Funktion neben `rundenGrund` und `istHalt`: nur Text hinein, nur Ja/Nein heraus —
+ * kein Board, kein Dateisystem. Nur so ist die Zuordnung an Fixtures pruefbar, ohne eine
+ * Nacht zu fahren.
+ *
+ * Gelesen wird ausschliesslich der Schlusstext. Eine Wartemeldung mitten im Strom bleibt
+ * damit folgenlos: Wer spaeter fertig wird, sagt zum Schluss etwas anderes.
+ *
+ * Exportiert fuer die Tests.
+ */
+export function wartendeSession(text) {
+  const s = typeof text === "string" ? text : "";
+  if (s.trim() === "") return false;
+  if (WARTEN_AUSNAHME_MUSTER.some((m) => m.test(s))) return false;
+  return WARTEN_MUSTER.some((m) => m.test(s));
+}
+
+/**
+ * Der Anker des Vermerks am Arbeitspaket (Plan #773, A8).
+ *
+ * Woertlich derselbe Text, den `implement-next` und `implement-done` nennen: Die Skills
+ * weisen die naechste Sitzung an, ihn zu melden, statt stillschweigend auf halbem Weg
+ * weiterzumachen. Zwei Fassungen waeren zwei Anker, und einer davon fuehrte ins Leere.
+ *
+ * Exportiert fuer die Tests und die Auswertungswege der Folgepakete.
+ */
+export const WARTEND_ANKER = "## Nachtlauf: wartende Sitzung";
+
+// Mehr als 2.000 Zeichen Schlusstext sagen ueber den Stand nichts Neues, machen den
+// Board-Kommentar aber unlesbar.
+const WARTEND_STAND_MAX = 2000;
+
+/**
+ * Der Vermerk, den eine wartende Sitzung am Arbeitspaket hinterlaesst (Plan #773, A8).
+ *
+ * Reine Funktion: Schlusstext und die Pfade aus `gitReste()` hinein, Text heraus. Mehr
+ * weiss der Runner nicht — eine Liste der angefangenen und nicht abgeschlossenen Schritte
+ * waere geraten und saehe aus wie Wissen.
+ *
+ * Ist die Pfadliste leer, entfaellt der Abschnitt ersatzlos statt "keine" zu melden: Im
+ * Rueckstellungsfall ist der Baum sauber, und eine Meldung ueber nichts ist keine.
+ *
+ * Einen Fall "Schlusstext fehlt" gibt es nicht — `leseErgebnisText` liefert bei leerem
+ * Text `null`, und ohne Schlusstext erkennt `wartendeSession` den Fall gar nicht erst.
+ *
+ * Exportiert fuer die Tests und die Auswertungswege der Folgepakete.
+ */
+export function wartendVermerk(schlusstext, pfade = []) {
+  const stand = String(schlusstext ?? "");
+  const gekuerzt = stand.length > WARTEND_STAND_MAX
+    ? `${stand.slice(0, WARTEND_STAND_MAX)}\n\n(Schlusstext auf ${WARTEND_STAND_MAX} Zeichen gekuerzt.)`
+    : stand;
+
+  const teile = [
+    WARTEND_ANKER,
+    "",
+    GRUND_WARTEND,
+    "",
+    "### Zuletzt bekannter Stand",
+    "",
+    gekuerzt,
+  ];
+
+  if (Array.isArray(pfade) && pfade.length > 0) {
+    // `resteText` kuerzt ab dem elften Eintrag auf Anzahl und die ersten zehn — dieselbe
+    // Darstellung wie in jedem anderen Grund des Runners (night-11).
+    teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
+  }
+
+  return `${teile.join("\n")}\n`;
+}
+
 /**
  * Warum hat diese Runde nichts abgeschlossen (Issue #668)?
  *
@@ -5247,6 +5362,11 @@ const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${komma
  * `stop_reason` nichts mehr sagt; danach der Abbruch; danach ein roter Pflichtcheck der
  * Session, weil er konkreter ist als jedes Ende; zuletzt das regulaere Ende.
  *
+ * Der Grund der wartenden Sitzung (Plan #773, A4) sitzt hinter dem roten Pflichtcheck und
+ * vor `end_turn`: Er VERFEINERT das regulaere Ende und loest es nicht ab — eine Sitzung,
+ * die regulaer endet, ohne zu warten, behaelt `GRUND_END_TURN`. Ein anderer `stop_reason`
+ * sagt ueber den Ausgang zu wenig, um den Fall zu behaupten.
+ *
  * Exportiert fuer die Tests.
  */
 export function rundenGrund(res, pruefung) {
@@ -5254,7 +5374,9 @@ export function rundenGrund(res, pruefung) {
   const kennzahlen = leseKennzahlen(res?.stdout);
   if (kennzahlen?.isError === true) return GRUND_IS_ERROR;
   if (pruefung?.zustand === "rot") return grundCheckRot(pruefung.rotesKommando ?? "unbenanntes Kommando", "Session");
-  if (kennzahlen?.stopReason === "end_turn") return GRUND_END_TURN;
+  if (kennzahlen?.stopReason === "end_turn") {
+    return wartendeSession(leseErgebnisText(res?.stdout)) ? GRUND_WARTEND : GRUND_END_TURN;
+  }
   return GRUND_UNBEKANNT;
 }
 

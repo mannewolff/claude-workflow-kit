@@ -46,6 +46,9 @@
 - night-47 — `laufAbschliessen` setzt Abschlussart und Vollständigkeit, schreibt den Ergebnisstand, ruft danach die Aufwands-Auswertung als Kindprozess, legt deren Ergebnis am Lauf-Kopf ab, schreibt den Stand erneut, schreibt den Befundblock als Abschlussblock in das Laufprotokoll und meldet erst dann; ohne Befund bleibt das Protokoll leer, ein Fehlschlag der Auswertung ist eine Protokollzeile und hält den Lauf nicht auf, und im Dry-Run entfällt der Aufruf. `gitClean` nimmt `.claude/aufwand.*` vom Rest-Guard aus, und der Spiegel nach `.claude/` eines Worktrees lässt sie zurück.
 - night-48 — Der Nacht-Runner richtet sich nach der Paketstufe: Die Salvage-Vorpruefung faehrt deren Pruefungen (weiterhin ohne bereichsbezogene Auswahl), und der Start-Guard weist einen Lauf ab, dessen Konfiguration keine Pruefung der Paketstufe traegt, mit diesem Grund in der Meldung.
 - night-49 — Liegt in der Pruef-Zusammenfassung ein Guete-Feld, fuehrt der Nacht-Runner je Paket eine Protokollzeile mit Anteil und Marke, ohne dass sich der Ausgang des Laufs dadurch aendert.
+- night-52 — wartendeSession erkennt am Schlusstext einer Session, ob sie auf eine selbst angestossene Arbeit gewartet hat, und wertet das Warten auf einen Menschen nicht als solchen Fall.
+- night-53 — rundenGrund liefert den Grund der wartenden Sitzung hinter dem roten Pflichtcheck und vor dem regulaeren Ende.
+- night-54 — Der Vermerk der wartenden Sitzung nennt unter seinem Anker den Fall, den gekuerzten Schlusstext und die Reste im Arbeitsverzeichnis, sofern welche liegen.
 
 ## Entfallen
 
