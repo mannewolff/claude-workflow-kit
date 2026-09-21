@@ -122,7 +122,7 @@ test("[night-31] Kette: fertig, angehalten und die drei Abbrueche", () => {
 // Vertragsaenderung ohne Nutzen.
 const LAEUFT = { abschluss: null, complete: false };
 
-test("[board-17] ein laufender Lauf meldet nur Einheiten, die ihren Ausgang schon haben", () => {
+test("[board-19] ein laufender Lauf meldet nur Einheiten, die ihren Ausgang schon haben", () => {
   const m = nachtlaufMeldung(stand("kette", [
     { id: "5", titel: "Fachplan in der Planungsphase", ausgang: "unbekannt" },
     { id: "9", titel: "Fertiges Paket", ausgang: "erfolg", pruefung: { zustand: "geprueft" } },
@@ -134,7 +134,7 @@ test("[board-17] ein laufender Lauf meldet nur Einheiten, die ihren Ausgang scho
   assert.equal(m.skippedCount, 0);
 });
 
-test("[board-17] ein fehlendes Ausgangsfeld zaehlt wie der Platzhalter", () => {
+test("[board-19] ein fehlendes Ausgangsfeld zaehlt wie der Platzhalter", () => {
   const m = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "Ohne Feld" }], LAEUFT), JETZT);
   assert.deepEqual(m.items, []);
   assert.equal(m.processedCount, 0);
@@ -143,7 +143,7 @@ test("[board-17] ein fehlendes Ausgangsfeld zaehlt wie der Platzhalter", () => {
 
 // Der Gegenfall: Am Ende des Laufs ist derselbe Platzhalter die Aussage, dass diese
 // Einheit nie zu ihrem Ergebnis kam — sie bleibt sichtbar und behaelt ihre Farbe.
-test("[board-17] am Ende eines Laufs bleibt eine Einheit ohne Ausgang als harter Abbruch sichtbar", () => {
+test("[board-19] am Ende eines Laufs bleibt eine Einheit ohne Ausgang als harter Abbruch sichtbar", () => {
   const hart = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "F", ausgang: "unbekannt" }], { abschluss: "harterStopp", complete: false }), JETZT);
   assert.deepEqual(hart.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"]]);
   const regulaer = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "F", ausgang: "unbekannt" }]), JETZT);
