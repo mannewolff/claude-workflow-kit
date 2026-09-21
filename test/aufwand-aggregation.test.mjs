@@ -348,6 +348,40 @@ test("[aufwand-1] ohne Argument gibt aufwand.mjs die Hilfe aus, --version den Ki
   });
 });
 
+test("[aufwand-3] die wartend beendeten Sitzungen werden ueber die Staende gezaehlt und ausgewiesen", () => {
+  // Die Einheiten tragen `wartendBeendet: true` (Issue #776). Gezaehlt werden die
+  // Einheiten, gemerkt werden die Laeufe, die den Fall ueberhaupt getragen haben —
+  // dieselbe Buchfuehrung wie bei den uebrigen Kennzahlen.
+  const laeufe = [
+    lauf("2026-09-01-100000", { einheiten: [einheit(1, { wartendBeendet: true }), einheit(2)] }),
+    lauf("2026-09-02-100000", { einheiten: [einheit(3, { wartendBeendet: true })] }),
+    lauf("2026-09-03-100000", { einheiten: [einheit(4)] }),
+  ];
+  mitProjekt({ laeufe }, (dir) => {
+    const e = auswerten(dir);
+
+    assert.equal(e.wartendBeendet.einheiten, 2);
+    assert.equal(e.wartendBeendet.laeufe, 2, "nur die zwei Laeufe, die den Fall getragen haben");
+    assert.equal(stand(dir).wartendBeendet.einheiten, 2, "aufwand.json fuehrt die Groesse nicht");
+    assert.match(bericht(dir), /^2 Sitzungen haben .*gewartet.* ohne Ergebnis beendet.*\(ueber 2 Laeufe\)/m,
+      "der Bericht nennt die Zahl und die Zahl der Laeufe nicht in Worten");
+  });
+});
+
+test("[aufwand-3] ein Lauf ohne das Feld traegt 0 bei und gilt nicht als unvollstaendig", () => {
+  // Die allermeisten Naechte haben den Fall schlicht nicht. Er fehlt dort, weil er
+  // nicht eintrat — nicht, weil nicht gemessen wurde.
+  mitProjekt({ laeufe: [lauf("2026-09-01-100000", { einheiten: [einheit(1)] })] }, (dir) => {
+    const e = auswerten(dir);
+
+    assert.equal(e.wartendBeendet.einheiten, 0);
+    assert.equal(e.wartendBeendet.laeufe, 0);
+    assert.deepEqual(e.laeufe.unvollstaendig, [], "ein fehlendes Feld macht keinen Lauf unvollstaendig");
+    assert.match(bericht(dir), /Keine Sitzung hat .*gewartet/,
+      "der Bericht schweigt zum Fall, statt die Null zu nennen");
+  });
+});
+
 test("[aufwand-1] ein unlesbarer Ergebnisstand kostet keine Auswertung, sondern einen Vermerk", () => {
   // Eine halbe Datei entsteht, wenn ein Lauf gerade schreibt — sie darf die
   // Auswertung nicht kosten.

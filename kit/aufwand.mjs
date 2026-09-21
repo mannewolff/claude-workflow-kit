@@ -286,6 +286,7 @@ function sammlerAnlegen() {
   return {
     zeit: { gesamt: reihe(), nachdenken: reihe(), werkzeug: reihe(), rest: reihe() },
     nebenlaeufig: { einheiten: 0, laeufe: new Set() },
+    wartendBeendet: { einheiten: 0, laeufe: new Set() },
     kommandos: new Map(),
     pruefGesamt: reihe(),
     umfang: { voll: 0, eingegrenzt: 0, unbekannt: 0, laeufe: new Set() },
@@ -323,6 +324,21 @@ function zeitErfassen(s, einheit, stempel) {
     s.nebenlaeufig.laeufe.add(stempel);
   }
   return true;
+}
+
+/**
+ * Die wartend beendeten Sitzungen (Issue #779): Einheiten, deren Session auf eine selbst
+ * angestossene Arbeit gewartet hat und ohne Ergebnis beendet worden ist. Das Feld
+ * `wartendBeendet` setzt night.mjs an die Einheit (Issue #776).
+ *
+ * Ein fehlendes Feld traegt 0 bei und macht den Lauf NICHT unvollstaendig — anders als
+ * bei den Messwerten: Hier heisst das Schweigen "der Fall trat nicht ein", nicht "nicht
+ * gemessen". Die allermeisten Naechte haben ihn schlicht nicht.
+ */
+function wartendErfassen(s, einheit, stempel) {
+  if (einheit?.wartendBeendet !== true) return;
+  s.wartendBeendet.einheiten += 1;
+  s.wartendBeendet.laeufe.add(stempel);
 }
 
 /**
@@ -399,6 +415,7 @@ function standErfassen(s, { stempel, daten }) {
     if (zeitErfassen(s, einheit, stempel)) mitZeiten += 1;
     if (pruefungErfassen(s, einheit, stempel)) mitPruefstand += 1;
     kostenErfassen(s, einheit, stempel);
+    wartendErfassen(s, einheit, stempel);
   }
   // Was zu keiner Karte gehoert (Vorflug, Kette) — nur der Runner kennt diesen Rest.
   messen(s.kosten.nichtZuordenbar, daten?.verbrauchOhneEinheit?.kostenUsd, stempel);
@@ -438,6 +455,7 @@ function aggregieren(staende) {
 
   return {
     einheiten: s.einheitenGesamt,
+    wartendBeendet: { einheiten: s.wartendBeendet.einheiten, laeufe: s.wartendBeendet.laeufe.size },
     zeit: {
       gesamtMs: fertig(s.zeit.gesamt),
       nachdenkenMs: fertig(s.zeit.nachdenken),
@@ -651,8 +669,23 @@ function berichtKopf(e) {
   if (e.laeufe.einbezogen === 1) {
     zeilen.push("", "Die Zahlen stammen aus **einem einzigen Lauf**. Das ist eine Momentaufnahme, keine Tendenz.");
   }
-  zeilen.push("");
+  zeilen.push("", wartendZeile(e), "");
   return zeilen;
+}
+
+/**
+ * Die wartend beendeten Sitzungen in Worten (Issue #779).
+ *
+ * Die Zeile steht auch bei 0 — und dann ausdruecklich als Null: Der Fall ist selten, und
+ * ein Schweigen liesse offen, ob er nicht eintrat oder nicht gezaehlt wurde. Was gezaehlt
+ * wurde, sagt die Zeile aus, statt einen Feldnamen zu zeigen.
+ */
+function wartendZeile(e) {
+  const { einheiten, laeufe } = e.wartendBeendet;
+  const gewartet = "auf eine selbst angestossene Arbeit gewartet und";
+  if (einheiten === 0) return `Keine Sitzung hat ${gewartet} ist ohne Ergebnis beendet worden.`;
+  if (einheiten === 1) return `Eine Sitzung hat ${gewartet} ist ohne Ergebnis beendet worden (${laufText(laeufe)}).`;
+  return `${einheiten} Sitzungen haben ${gewartet} sind ohne Ergebnis beendet worden (${laufText(laeufe)}).`;
 }
 
 function berichtZeit(e) {
@@ -847,6 +880,7 @@ export function auswerten(root, { laeufe: grenzeArg } = {}) {
       unlesbar,
     },
     einheiten: a.einheiten,
+    wartendBeendet: a.wartendBeendet,
     zeit: a.zeit,
     pruefungen: a.pruefungen,
     umfang: a.umfang,
