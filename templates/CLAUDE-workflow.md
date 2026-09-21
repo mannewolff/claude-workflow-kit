@@ -91,7 +91,7 @@ Eine Session, die ein Dokument schreibt oder unbeaufsichtigt laeuft, entscheidet
 
 Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frage. Alles andere — ausdruecklich auch Randfaelle, Namensfragen, Fehlerpfade, Reihenfolgen und die Frage, welcher Test gemeint ist — wird entschieden. Schiedsrichter ist die Ordnung aus „Prioritaeten bei Zielkonflikten"; im Zweifel gewinnt der kleinste rueckbaubare Eingriff.
 
-**Reviews sind Zuarbeit.** Ein Modell-Review eines Fachplans, Plans oder Arbeitspakets liefert Befunde an den Autor der Stufe; der arbeitet sie ein oder lehnt sie mit einem Satz ab. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
+**Reviews sind Zuarbeit.** Ein Modell-Review eines Fachplans, Plans oder Arbeitspakets liefert Befunde an den Autor der Stufe; jeder Fund kommt dabei mit den drei zusaetzlichen Angaben aus „Befunde der Modell-Pruefungen" — Gegenprobe, ihr Stand und die Mangel-Art —, und der Autor liest sie mit, bevor er uebernimmt oder mit einem Satz ablehnt. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
 
 ---
 
@@ -152,6 +152,20 @@ Vier Begriffe tragen die Auswertung: eine **Ausfuehrung** ist ein Lauf einer Pru
 Fenster, Quote und Mindestmengen stehen optional im Config-Block `wirksamkeit`; fehlt er, gelten die eingebauten Vorgaben.
 
 Zwei Messgrenzen gehoeren zum Bild: Die Salvage-Pruefungen des Nacht-Runners laufen an `checks.mjs` vorbei und zaehlen darum nicht mit. Und eine Karte, die das Kit nie bewegt hat, steht nicht im Nenner der Ruecklaeuferquote — was ohne den Prozess entstand, misst er auch nicht.
+
+---
+
+## Befunde der Modell-Pruefungen
+
+**Aufbau eines Funds.** Jeder Fund einer vom Kit vorgesehenen Modell-Pruefung — fachliche Anforderung, Plan, Arbeitspaket, Code — traegt neben Schweregrad, Fundstelle und Vorschlag drei weitere Angaben: die Beobachtung, die ihn widerlegen wuerde; den Stand dieser Gegenprobe, `geprueft, bestaetigt` oder `nicht geprueft`; und seine Mangel-Art. Ein Fund, den die eigene Gegenprobe widerlegt hat, wird nicht gemeldet.
+
+**Die Artenliste hat genau einen Wortlaut:** `node .claude/kit/befunde.mjs arten`. Dieser Abschnitt zaehlt die Arten nicht selbst auf, sondern verweist auf das Kommando — zwei Orte driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt. Ein Projekt ergaenzt keine eigenen Arten.
+
+**Aus dieser Form wird kein Gate.** Ein Fund ohne Gegenprobe oder mit fehlender Angabe haelt nichts auf. Fehlt eine Angabe, wird sie beim liefernden Reviewer genau einmal nachgefordert; bleibt sie aus, traegt der Fundblock `Angaben: unvollstaendig` und wird trotzdem eingearbeitet.
+
+Vier Begriffe tragen die Auswertung: ein **Fund** ist eine gemeldete Beanstandung einer Modell-Pruefung; die **Gegenprobe** ist die Beobachtung, die den Fund widerlegen wuerde, samt ihrem Stand; die **Art** ist die Einordnung aus der festen Liste; ein **Vorkommen** ist ein uebernommener Fund mit bestaetigter Gegenprobe — nicht gepruefte, unvollstaendige und abgelehnte Funde sind keine Vorkommen.
+
+Zwei Messgrenzen gehoeren auch hier zum Bild: Vor der Einfuehrung dieser Form geschriebene Funde zaehlen nicht und werden nicht nachtraeglich eingeordnet. Und Buchungen, die in einem abgestuerzten Nacht-Worktree entstanden sind, gehen verloren — `worktreesAufraeumen` in `kit/night.mjs` raeumt liegengebliebene Worktrees beim naechsten Start weg, wie es heute schon mit einer dort wartenden Vorhaben-Notiz geschieht.
 
 ---
 
