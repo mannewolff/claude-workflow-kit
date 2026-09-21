@@ -12,6 +12,8 @@
 - board-14 — Der Sitzungs-Melder meldet am Sitzungsende mit `complete: true` und dazwischen hoechstens einmal je fuenf Minuten mit `complete: false`; nach einer Meldung mit `complete: true` ist die Wegmarken-Datei leer.
 - board-15 — Ohne Betrag im Protokoll und ohne Preistabelleneintrag fuer das Modell meldet der Sitzungs-Melder keinen Dollarbetrag statt einer Null.
 - board-16 — `nachtlaufMeldung` traegt den am Lauf vermerkten Grund ohne Arbeit als Feld `noWorkReason` im gemeldeten Rumpf, hoechstens 300 Zeichen lang, und laesst es weg, wenn kein Grund vermerkt ist.
+- board-17 — Jede Kartenbewegung ueber `issueMove` haengt eine Zeile aus Zeitstempel, Kartennummer und Status-Schluessel an `.claude/bewegungen.tsv` an — fuer jeden Status und ohne die Datei je zu leeren; scheitert das Schreiben, wird die Karte trotzdem bewegt und eine Warnung ausgegeben.
+- board-18 — `issue activity --ids <n,n,…>` loest die Kartenliste genau einmal auf und gibt ein Objekt mit je einer Verlaufsliste pro Nummer aus; eine nicht auffindbare Nummer erscheint darin mit einem Fehlergrund statt den Aufruf abzubrechen, die Einzelform `issue activity <id>` bleibt unveraendert, und beide Eingabewege zusammen werden abgewiesen.
 
 ## Entfallen
 

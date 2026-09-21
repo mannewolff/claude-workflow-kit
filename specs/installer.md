@@ -11,5 +11,6 @@
 - installer-10 — Die Kit-Dokumentation nennt, was der Hook meldet, wann er meldet und wie man ihn abschaltet; bleibt eine Sitzung im Worktree unerfasst, steht diese Luecke ebenfalls dort.
 - installer-11 — `sync-blobs` stempelt `kit/aufwand.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
 - installer-13 — `sync-blobs` stempelt `kit/wirksamkeit.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
+- installer-12 — Der `.gitignore`-Block des Installers fuehrt `.claude/ausfuehrungen.tsv` und `.claude/bewegungen.tsv` namentlich neben `.claude/wegmarken.tsv`, damit die Protokolle in einem frisch installierten Projekt nicht als Reste im Arbeitsbaum liegen.
 
 ## Entfallen

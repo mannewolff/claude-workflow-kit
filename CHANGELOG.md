@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.4] - 2026-09-21
+- Nacht-Runner ruft die Wirksamkeits-Auswertung (#790)
+- Config-Block wirksamkeit: Schema, Referenz und einstellungen.mjs (#789)
+- Ruecklaeuferquote in kit/wirksamkeit.mjs (#788)
+- kit/wirksamkeit.mjs: Auswertung und Befund der Pruefungs-Kennzahlen (#787)
+- Bewegungsprotokoll und Verlaufs-Sammelabfrage in board.mjs (#786)
+- Ausfuehrungsprotokoll: checks.mjs schreibt je Pruefung eine Zeile (#785)
+- Rest-Guard, Worktree-Spiegel und .gitignore kennen die vier neuen Dateien (#784)
+- Regeltext: Wirksamkeit der Pruefungen und der zweite Befund in /push-main (#783)
+
 ## [2.0.3] - 2026-09-21
 - Auswertung zaehlt die wartend beendeten Sitzungen (#779)
 - Wartende Sitzung in den Stufen der Nacht-Kette (#778)
