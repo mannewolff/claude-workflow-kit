@@ -5397,6 +5397,13 @@ export function rundenGrund(res, pruefung) {
  * hat seine Begruendung dagegen schon protokolliert und kommentiert; die Zeile hier
  * waere die zweite zum selben Fall.
  *
+ * Die wartende Sitzung (Plan #773, night-56) wird in BEIDEN Fehlschlag-Wegen vermerkt,
+ * nicht nur im Fehlschlag-Zweig unten: Bei `gescheitert` kehrt die Funktion vor
+ * `rundenGrund` zurueck, und ohne den eigenen Griff dort entstuende der Befund nur fuer
+ * die Haelfte der Faelle. Geprueft wird allein der Schlusstext der REGULAEREN Runde —
+ * die Salvage-Session hat mit night-27 bereits drei eigene Endzustaende samt Grund, und
+ * ein zweites Urteil ueber denselben Vorgang waere eine zweite Wahrheit.
+ *
  * Das Issue bleibt liegen, wo es ist: Ein Backlog-Move saehe morgens aus wie ein
  * regulaer zurueckgestelltes Ticket, nicht wie ein Lauf, der stehengeblieben ist.
  *
@@ -5421,16 +5428,37 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
     const salvage = await versucheSalvage(top, args, sessionWahl);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
-    if (salvage === "gescheitert") return "hardStop";
+    if (salvage === "gescheitert") {
+      const schlusstext = leseErgebnisText(res?.stdout);
+      if (wartendeSession(schlusstext)) {
+        WARTEND_BEENDET = true;
+        // Vorangestellt, nicht ersetzt: Der night-27-Grund ist die konkretere Auskunft
+        // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch — zwei
+        // Vorgaenge sind zu berichten: warum die regulaere Runde nichts hinterliess, und
+        // was der Salvage vorfand.
+        merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${STOPP_GRUND}`);
+        board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, gitReste()));
+      }
+      return "hardStop";
+    }
   }
   // Der Grund steht VOR dem Zustand (Issue #668): Wer morgens sichtet, liest zuerst,
   // warum die Runde nichts abgeschlossen hat, und danach, was der Runner vorgefunden hat.
   // Der Zustandstext bleibt erhalten — er war nie falsch, nur unvollstaendig.
   const grund = rundenGrund(res, pruefung);
+  // `rundenGrund` traegt den Fall der wartenden Sitzung bereits mit seiner Rangfolge —
+  // ein zweiter Aufruf von `wartendeSession` hier waere eine zweite Herleitung desselben
+  // Befunds, ohne Zeitlimit, Abbruch und roten Pflichtcheck davor.
+  const wartend = grund === GRUND_WARTEND;
+  if (wartend) WARTEND_BEENDET = true;
   const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
   log(`  ${satz}`);
+  const kommentar = `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`;
+  // Der Vermerk ERWEITERT den Kommentar, anders als im Rueckstellungsfall: Dort ist er
+  // die ganze Botschaft, hier steht der harte Stopp davor — mit den Pfaden aus
+  // `gitReste()`, denn der Baum ist unsauber.
   board("issue", "comment", String(top.id), "--text",
-    `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`);
+    wartend ? `${kommentar}\n\n${wartendVermerk(leseErgebnisText(res?.stdout), gitReste())}` : kommentar);
   merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }

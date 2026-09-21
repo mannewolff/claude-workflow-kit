@@ -478,6 +478,172 @@ test("[night-55] dieselbe Runde ohne wartenden Schlusstext behaelt den bisherige
   }
 });
 
+// --- night-56: die beiden Salvage-Fehlschlaege bei unsauberem Arbeitsbaum (Issue #777) ---
+//
+// Der zweite Auswertungsweg. Der Salvage laeuft unveraendert zuerst, und sein Erfolg
+// bleibt ein Erfolg ohne Grund, Vermerk und Feld — die wartende Sitzung wird erst dort
+// vermerkt, wo die Runde als Fehlschlag endet: beim nicht moeglichen Salvage (rote
+// Vorpruefung) und beim gescheiterten (kein Commit, Board nicht bewegt). Ohne den
+// zweiten Fall entstuende der Befund nur fuer die Haelfte der Fehlschlaege: Bei
+// `gescheitert` kehrt `behandleDirtyRunde` zurueck, bevor der Fehlschlag-Zweig mit
+// `rundenGrund` erreicht ist — genau die Luecke aus dem Plan-Review zu #773.
+
+const NICHT_WARTEND_SCHLUSSTEXT = "Ich komme nicht weiter und hoere hier auf.";
+
+/** Ein Fake, der die regulaere Runde (dirty, eigener Schlusstext) vom Salvage trennt. */
+function salvageFake(schlusstext, salvageTeil) {
+  return [
+    'if [ -n "$NIGHT_SALVAGE" ]; then',
+    salvageTeil,
+    "else",
+    '  echo arbeit > "work-$NIGHT_ISSUE_ID.txt"',
+    `  echo '${resultZeileMitText("end_turn", schlusstext)}'`,
+    "fi",
+  ].join("\n");
+}
+
+// Der Salvage-Teil eines erfolgreichen Versuchs: committen, dann das Board bewegen.
+const SALVAGE_ERFOLG = [
+  '  git add "work-$NIGHT_ISSUE_ID.txt" && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"',
+  '  node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null',
+].join("\n");
+
+test("[night-56] wartender Schlusstext, Salvage erfolgreich: der Erfolg bleibt unberuehrt", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-erfolg-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Wartet, der Salvage rettet");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      NIGHT_CLAUDE_CMD: salvageFake(WARTE_SCHLUSSTEXT, SALVAGE_ERFOLG),
+    });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "erfolg", `der Salvage-Erfolg bleibt ein Erfolg: ${JSON.stringify(e)}`);
+    assert.ok(!("wartendBeendet" in e), `ein Erfolg traegt das Feld nicht: ${JSON.stringify(e)}`);
+    assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ein gerettetes Paket bekommt keinen Vermerk");
+    assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `der Grund steht im Protokoll einer geretteten Runde:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-56] wartender Schlusstext, Salvage nicht moeglich: harter Stopp mit Grund, Vermerk samt Resten und Feld", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-rot-", ["false"]);
+  try {
+    const id = readyIssue(dir, "Wartet, die Vorpruefung ist rot");
+    const fake = `echo arbeit > arbeit.txt; echo '${resultZeileMitText("end_turn", WARTE_SCHLUSSTEXT)}'; exit 0`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+
+    // Der Grund im Protokoll — der Zustandstext bleibt daneben stehen (Linie von night-24).
+    assert.ok(res.stdout.includes(WARTEND_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
+    assert.match(res.stdout, /nicht in In review UND Working Tree dirty/, `der Zustandstext ist verschwunden:\n${res.stdout}`);
+
+    // Der Vermerk am Paket: Anker, Fall, Stand — und die Reste, denn der Baum ist unsauber.
+    const body = karte(dir, id).body;
+    assert.ok(body.includes(WARTEND_ANKER), `der Anker fehlt am Paket:\n${body}`);
+    assert.ok(body.includes(WARTE_SCHLUSSTEXT), `der zuletzt bekannte Stand fehlt am Paket:\n${body}`);
+    assert.match(body, /Im Arbeitsverzeichnis/, `die Reste fehlen im Vermerk:\n${body}`);
+    assert.match(body, /arbeit\.txt/, `die liegengebliebene Datei fehlt im Vermerk:\n${body}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
+    assert.ok(String(e.grund).includes(WARTEND_WORTLAUT), `der Grund fehlt an der Einheit: ${e.grund}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-56] wartender Schlusstext, Salvage gescheitert: der night-27-Grund bleibt und traegt den Warte-Grund vorangestellt", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-fehl-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Wartet, der Salvage tut nichts");
+    // Die Salvage-Session tut nichts: kein Commit, kein Board-Zug — night-27, gescheitert.
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      NIGHT_CLAUDE_CMD: salvageFake(WARTE_SCHLUSSTEXT, "  :"),
+    });
+    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
+    // Vorangestellt, nicht ersetzt: Der night-27-Zustand ist die konkretere Auskunft
+    // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch.
+    const grund = String(e.grund);
+    assert.ok(grund.startsWith(WARTEND_WORTLAUT), `der Warte-Grund steht nicht vorn: ${grund}`);
+    assert.match(grund, /SALVAGE-VERSUCH gescheitert — harter Stopp/, `der night-27-Grund fehlt: ${grund}`);
+    assert.match(grund, /kein Commit, Board nicht bewegt/, `die night-27-Begruendung fehlt: ${grund}`);
+
+    const body = karte(dir, id).body;
+    assert.ok(body.includes(WARTEND_ANKER), `der Anker fehlt am Paket:\n${body}`);
+    assert.ok(body.includes(WARTE_SCHLUSSTEXT), `der zuletzt bekannte Stand fehlt am Paket:\n${body}`);
+    assert.match(body, /weder committet noch das Board bewegt/, `der Salvage-Kommentar bleibt daneben stehen:\n${body}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-56] ohne wartenden Schlusstext bleibt der Salvage-Erfolg wie heute", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-erfolg-alt-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Gibt auf, der Salvage rettet");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      NIGHT_CLAUDE_CMD: salvageFake(NICHT_WARTEND_SCHLUSSTEXT, SALVAGE_ERFOLG),
+    });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "erfolg");
+    assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
+    assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ohne den Fall gehoert kein Vermerk ans Paket");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-56] ohne wartenden Schlusstext behaelt der nicht moegliche Salvage den bisherigen Grund", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-rot-alt-", ["false"]);
+  try {
+    const id = readyIssue(dir, "Gibt auf, die Vorpruefung ist rot");
+    const fake = `echo arbeit > arbeit.txt; echo '${resultZeileMitText("end_turn", NICHT_WARTEND_SCHLUSSTEXT)}'; exit 0`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout, /Grund: Session regulaer beendet ohne Commit \(end_turn\)/, `der bisherige Grund fehlt:\n${res.stdout}`);
+    assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `ohne den Fall gehoert der Grund nicht ins Protokoll:\n${res.stdout}`);
+    assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ohne den Fall gehoert kein Vermerk ans Paket");
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "harterStopp");
+    assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-56] ohne wartenden Schlusstext behaelt der gescheiterte Salvage den unveraenderten night-27-Grund", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-salvage-fehl-alt-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Gibt auf, der Salvage tut nichts");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
+      NIGHT_CLAUDE_CMD: salvageFake(NICHT_WARTEND_SCHLUSSTEXT, "  :"),
+    });
+    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "harterStopp");
+    assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
+    const grund = String(e.grund);
+    assert.ok(grund.startsWith("SALVAGE-VERSUCH gescheitert"), `der night-27-Grund traegt einen Vorspann: ${grund}`);
+    assert.ok(!grund.includes(WARTEND_WORTLAUT), `der Warte-Grund steht da, obwohl der Fall nicht eintrat: ${grund}`);
+    assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ohne den Fall gehoert kein Vermerk ans Paket");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("[night-55] eine Wartemeldung mitten im Strom vor erfolgreichem Abschluss loest nichts aus", NUR_POSIX, () => {
   // Gelesen wird nur der Schlusstext (night-52). Wer spaeter fertig wird, sagt zum Schluss
   // etwas anderes — und genau das ist hier der Fall: Die Runde schliesst ab.

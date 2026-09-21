@@ -50,6 +50,7 @@
 - night-53 — rundenGrund liefert den Grund der wartenden Sitzung hinter dem roten Pflichtcheck und vor dem regulaeren Ende.
 - night-54 — Der Vermerk der wartenden Sitzung nennt unter seinem Anker den Fall, den gekuerzten Schlusstext und die Reste im Arbeitsverzeichnis, sofern welche liegen.
 - night-55 — Eine Runde, die bei sauberem Arbeitsbaum mit wartender Sitzung endet, traegt den Grund der wartenden Sitzung samt Vermerk am Paket und ihre Einheit das Feld wartendBeendet, waehrend Backlog-Move und Weiterlauf unveraendert bleiben.
+- night-56 — Bei unsauberem Arbeitsbaum laeuft der Salvage zuerst; sein Erfolg bleibt unberuehrt, waehrend ein nicht moeglicher und ein gescheiterter Salvage nach wartender Sitzung den Grund, den Vermerk und das Feld wartendBeendet tragen.
 
 ## Entfallen
 

@@ -8,6 +8,6 @@
 | einstellungen | specs/einstellungen.md | 16 | 0 |
 | gate | specs/gate.md | 1 | 0 |
 | installer | specs/installer.md | 10 | 0 |
-| night | specs/night.md | 50 | 5 |
+| night | specs/night.md | 51 | 5 |
 | skills | specs/skills.md | 30 | 3 |
 | spec | specs/spec.md | 2 | 0 |
