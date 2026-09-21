@@ -107,8 +107,8 @@ function fakeGit(dir, ...sonderfaelle) {
 }
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
-// reviewModel, reviewCommand, Spec-Frage — und an zehnter Stelle die Hook-Frage.
-const antworten = (spec, hook) => ["projekt", "github", "toolbox", "", "", "", "", "", spec, hook];
+// reviewModel, reviewCommand — und an neunter Stelle die Hook-Frage.
+const antworten = (hook) => ["projekt", "github", "toolbox", "", "", "", "", "", hook];
 
 function hooksPath(dir) {
   const res = git(dir, "config", "--get", "core.hooksPath");
@@ -122,7 +122,7 @@ function mitFixture(praefix, fn, optionen = {}) {
 
 test("[installer-2] bei Zustimmung liegen Hook und Gate, und core.hooksPath steht auf .githooks", () => {
   mitFixture("install-gate-ja-", (dir) => {
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.ok(existsSync(join(dir, ".githooks", "gate.mjs")), "gate.mjs fehlt");
     assert.ok(existsSync(join(dir, ".githooks", "pre-commit")), "pre-commit fehlt");
@@ -132,7 +132,7 @@ test("[installer-2] bei Zustimmung liegen Hook und Gate, und core.hooksPath steh
 
 test("[installer-2] das ausgelieferte gate.mjs ist bytegleich zum Blob", () => {
   mitFixture("install-gate-byte-", (dir) => {
-    installiere(dir, antworten("n", "j"));
+    installiere(dir, antworten("j"));
     assert.equal(
       readFileSync(join(dir, ".githooks", "gate.mjs"), "utf-8"),
       readFileSync(join(repoRoot, ".githooks", "gate.mjs"), "utf-8"),
@@ -145,7 +145,7 @@ test("[installer-2] das ausgelieferte gate.mjs laeuft im Zielprojekt ohne Import
   // Der Nachweis, dass die Pfadaufloesung aus Issue #470 dort greift, wo checks.mjs
   // unter .claude/kit/ liegt — ein statischer Import auf ../kit/ waere hier rot.
   mitFixture("install-gate-import-", (dir) => {
-    installiere(dir, antworten("n", "j"));
+    installiere(dir, antworten("j"));
     const res = spawnSync(process.execPath, [join(dir, ".githooks", "gate.mjs"), "pre-commit"], {
       cwd: dir, encoding: "utf-8",
     });
@@ -156,7 +156,7 @@ test("[installer-2] das ausgelieferte gate.mjs laeuft im Zielprojekt ohne Import
 
 test("[installer-2] pre-commit ist ausfuehrbar", NUR_POSIX, () => {
   mitFixture("install-gate-x-", (dir) => {
-    installiere(dir, antworten("n", "j"));
+    installiere(dir, antworten("j"));
     const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
     assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
   });
@@ -221,7 +221,7 @@ function mitWerfendemChmod(dir) {
 // immer, also wird der Fehlschlag untergeschoben.
 test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", NUR_POSIX, () => {
   mitFixture("install-gate-chmod-", (dir) => {
-    const res = installiere(dir, antworten("n", "j"), {}, [mitWerfendemChmod(dir)]);
+    const res = installiere(dir, antworten("j"), {}, [mitWerfendemChmod(dir)]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /✓ pre-commit geschrieben/, "der Hook gilt trotzdem als geschrieben");
 
@@ -236,7 +236,7 @@ test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)",
 
 test("[installer-2] bei Ablehnung liegen die Dateien, core.hooksPath bleibt leer", () => {
   mitFixture("install-gate-nein-", (dir) => {
-    const res = installiere(dir, antworten("n", "n"));
+    const res = installiere(dir, antworten("n"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.ok(existsSync(join(dir, ".githooks", "gate.mjs")), "die Dateien gehoeren trotzdem geschrieben");
     assert.equal(hooksPath(dir), null);
@@ -258,7 +258,7 @@ test("[installer-2] ein belegter core.hooksPath bleibt unveraendert und verbrauc
 
 test("[installer-2] ein frisches Repo mit nur *.sample-Dateien gilt als frei", () => {
   mitFixture("install-gate-sample-", (dir) => {
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
     assert.equal(hooksPath(dir), ".githooks");
   });
@@ -292,7 +292,7 @@ test("[installer-2] ein Unterverzeichnis im Hooks-Verzeichnis ist keine aktive D
     // Ein Verzeichnis fuehrt keinen Hook aus. Zaehlte es als belegt, entfiele die Frage
     // in jedem Repo, das dort etwas ablegt.
     mkdirSync(join(hooksDir(dir), "abgelegt"), { recursive: true });
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
@@ -305,7 +305,7 @@ test("[installer-2] ein haengender Symlink im Hooks-Verzeichnis kippt die Pruefu
     // statSync folgt dem Link und wirft. Ohne den abgefangenen Fehler brach der
     // Installer hier ab, statt die Frage zu stellen.
     symlinkSync(join(dir, "gibt-es-nicht"), join(hooksDir(dir), "pre-push"));
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
@@ -317,7 +317,7 @@ test("[installer-2] ein fehlendes Hooks-Verzeichnis gilt als frei", () => {
   mitFixture("install-gate-ohnehooks-", (dir) => {
     // `git rev-parse --git-path hooks` nennt den Pfad auch dann, wenn dort nichts liegt.
     rmSync(hooksDir(dir), { recursive: true, force: true });
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
@@ -330,7 +330,7 @@ test("[installer-2] ein fehlendes Hooks-Verzeichnis gilt als frei", () => {
 test("[installer-2] eine leere Antwort lehnt ab — der Default ist Nein", () => {
   mitFixture("install-gate-enter-", (dir) => {
     // Die Frage steht als "[j/N]"; Enter muss deshalb ablehnen und nicht setzen.
-    const res = installiere(dir, antworten("n", ""));
+    const res = installiere(dir, antworten(""));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(hooksPath(dir), null, "Enter darf core.hooksPath nicht setzen");
@@ -340,12 +340,12 @@ test("[installer-2] eine leere Antwort lehnt ab — der Default ist Nein", () =>
 
 test("[installer-2] 'nein' lehnt ab, 'ja' stimmt zu — beide Langformen gelten", () => {
   mitFixture("install-gate-nein-lang-", (dir) => {
-    const res = installiere(dir, antworten("n", "nein"));
+    const res = installiere(dir, antworten("nein"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(hooksPath(dir), null, "'nein' darf core.hooksPath nicht setzen");
   });
   mitFixture("install-gate-ja-lang-", (dir) => {
-    const res = installiere(dir, antworten("n", "ja"));
+    const res = installiere(dir, antworten("ja"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(hooksPath(dir), ".githooks", "'ja' haette setzen muessen");
   });
@@ -355,7 +355,7 @@ test("[installer-2] eine ungueltige Antwort bricht im Pipe-Modus ab, statt weite
   mitFixture("install-gate-ungueltig-", (dir) => {
     // Interaktiv wird nachgefragt; gepipt antwortet niemand nach. Weiterlaufen hiesse,
     // die naechste Antwortzeile als Antwort auf diese Frage zu verbrauchen.
-    const res = installiere(dir, antworten("n", "x"));
+    const res = installiere(dir, antworten("x"));
 
     assert.notEqual(res.status, 0, "eine ungueltige Antwort darf nicht gruen enden");
     assert.match(res.stderr, /Bitte 'j' oder 'n' eingeben\./, "die Meldung nennt die gueltigen Antworten");
@@ -371,7 +371,7 @@ test("[installer-2] scheitert das Setzen von core.hooksPath, endet der Lauf rot 
     // Lage gilt also weiter als frei und die Frage wird gestellt. Kein Rechtetrick und
     // kein Fake-git: der Weg greift auch als root und auch unter Windows.
     mkdirSync(join(dir, ".git", "config.lock"), { recursive: true });
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
 
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
     assert.notEqual(res.status, 0, "ein nicht gesetztes Gate darf nicht gruen gemeldet werden");
@@ -386,7 +386,7 @@ test("[installer-2] scheitert git stumm, meldet der Installer trotzdem einen Gru
     // Ohne Fehlertext bliebe von der Meldung "…liess sich nicht setzen: undefined"
     // uebrig. Der Test haelt fest, dass die Meldung dann leer endet statt zu raten.
     const binDir = fakeGit(dir, 'if [ "$1" = "config" ] && [ "$2" = "core.hooksPath" ]; then exit 1; fi');
-    const res = installiere(dir, antworten("n", "j"), { PATH: `${binDir}:${process.env.PATH}` });
+    const res = installiere(dir, antworten("j"), { PATH: `${binDir}:${process.env.PATH}` });
 
     assert.notEqual(res.status, 0, "ein nicht gesetztes Gate darf nicht gruen gemeldet werden");
     assert.match(res.stderr, /core\.hooksPath liess sich nicht setzen/);
@@ -406,7 +406,7 @@ test("[installer-2] laesst git sich gar nicht mehr starten, nennt die Meldung de
       dir,
       `if [ "$1" = "rev-parse" ] && [ "$2" = "--git-path" ]; then rm -f ${eigenerPfad}; fi`,
     );
-    const res = installiere(dir, antworten("n", "j"), { PATH: binDir });
+    const res = installiere(dir, antworten("j"), { PATH: binDir });
 
     assert.notEqual(res.status, 0, "ein nicht gesetztes Gate darf nicht gruen gemeldet werden");
     assert.match(res.stderr, /core\.hooksPath liess sich nicht setzen/);
@@ -420,7 +420,7 @@ test("[installer-2] antwortet git ohne Ausgabe, gilt das Hooks-Verzeichnis als u
     // leer — etwa hinter einem fremden git-Wrapper —, darf der Installer daraus keinen
     // Pfad basteln: Ohne Pfad ist keine aktive Datei feststellbar, die Lage gilt als frei.
     const binDir = fakeGit(dir, 'if [ "$1" = "rev-parse" ] && [ "$2" = "--git-path" ]; then exit 0; fi');
-    const res = installiere(dir, antworten("n", "j"), { PATH: `${binDir}:${process.env.PATH}` });
+    const res = installiere(dir, antworten("j"), { PATH: `${binDir}:${process.env.PATH}` });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
@@ -433,7 +433,7 @@ test("[installer-2] ein fremdes .githooks/pre-commit bleibt bytegleich erhalten"
     mkdirSync(join(dir, ".githooks"), { recursive: true });
     const fremd = "#!/bin/sh\n# husky\nexit 0\n";
     writeFileSync(join(dir, ".githooks", "pre-commit"), fremd, "utf-8");
-    const res = installiere(dir, antworten("n", "j"));
+    const res = installiere(dir, antworten("j"));
     assert.equal(readFileSync(join(dir, ".githooks", "pre-commit"), "utf-8"), fremd,
       "ein fremder Hook darf nicht ueberschrieben werden");
     assert.match(res.stdout, /stammt nicht aus diesem Kit/);

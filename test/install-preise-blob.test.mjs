@@ -4,8 +4,7 @@
 // geprueft, nicht in zweien:
 //
 // 1. kit/preise.mjs wird ausgeliefert. Ein Werkzeug, das nur im Kit-Repo liegt, ist
-//    gebaut, aber nicht verteilt — dieselbe Luecke wie bei checks.mjs (#425) und
-//    spec.mjs (#441).
+//    gebaut, aber nicht verteilt — dieselbe Luecke wie bei checks.mjs (#425).
 // 2. "Das Tool bleibt ohne weiteren Repo-Kontext lauffaehig: aus einem Wegwerf-
 //    Verzeichnis heraus aufrufbar, in dem nur das Kit, eine workflow.config.json und
 //    ein Token liegen."
@@ -15,7 +14,7 @@
 // fehlende Preistabelle nicht — der Melder kommt ohne sie aus und meldete stillschweigend
 // keinen Betrag mehr.
 //
-// Sicherheitsvorkehrungen wie in test/install-spec-blob.test.mjs: cwd UND
+// Sicherheitsvorkehrungen wie in test/install-checks-blob.test.mjs: cwd UND
 // HOME/USERPROFILE zeigen ins Wegwerf-Verzeichnis, damit kein Testlauf die echte
 // Konfiguration anfasst.
 

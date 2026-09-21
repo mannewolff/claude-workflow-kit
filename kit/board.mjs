@@ -1292,14 +1292,12 @@ class LocalIssueTracker {
    * Aktivitaetsverlauf, synthetisch (Issue #460).
    *
    * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
-   * entsteht **ein** Eintrag vom Typ CREATED, damit `spec.mjs` hier dieselbe Quelle
-   * lesen kann wie beim Board. Ohne diese Bruecke waere in jedem local-Projekt jedes
-   * Paket „ohne Anlage-Eintrag" — und die gesamte Spec-Testsuite, die ueber `local`
-   * und `created:` laeuft, haette keine Grundlage mehr.
+   * entsteht **ein** Eintrag vom Typ CREATED, damit Auswertungen (etwa
+   * `wirksamkeit.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
+   * wie beim Board.
    *
    * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes
-   * Datum: `spec.mjs` behandelt ein Paket ohne CREATED-Eintrag als vor `seit`
-   * angelegt, und genau das trifft auf eine Datei ohne Anlagedatum zu.
+   * Datum: Eine Datei ohne Anlagedatum hat schlicht keinen Anlage-Eintrag.
    */
   async listActivity(id) {
     const { created } = this._read(id);
@@ -2300,34 +2298,8 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 }
 
 // ============================================================
-// Spec-Wirkung am Arbeitspaket (Issue #443, Plan #437)
+// Dokument-Praefixe im Titel (Issue #464)
 // ============================================================
-//
-// Ein Arbeitspaket muss sagen, was es an der Beschreibung unter specs/ aendert.
-// Dieselbe Bauart wie die Autor-Modell-Leitplanke darueber, aus demselben Grund
-// (A7): Eine Bitte im Skill-Text ist genau die Leitplanke, die unter Druck
-// uebersprungen wird — in diesem Repo dreimal belegt.
-//
-// Geprueft wird hier NUR die Anwesenheit des Abschnitts. Welche Zeilen darin
-// stehen duerfen, prueft `spec.mjs check --paket` (Issue #442) — und nur dort.
-// Zwei Fassungen derselben Grammatik waeren zwei Wahrheiten, von denen die
-// zweite still veraltet.
-//
-// Anders als beim Autor-Modell ergaenzt der Adapter nichts: Es gibt keinen Wert,
-// den er kennen koennte. Eine erfundene Wirkungsangabe waere schlimmer als keine.
-
-/**
- * Die Ueberschrift des Abschnitts — dieselbe Form, die
- * `WIRKUNG_UEBERSCHRIFT_RE` in kit/spec.mjs liest.
- *
- * Exportiert, weil der Laufzeitwaechter in test/board-regex-laufzeit.test.mjs
- * gegen die Konstante des Bestands misst und kein Literal kopieren soll — eine
- * Kopie driftet ab, sobald der Ausdruck sich aendert.
- *
- * `[^\S\n]*` statt `\s*`, wie bei AUTOR_MODELL_ZEILE: So folgt dem Leerraum-Lauf
- * keine zweite Wiederholung, die dieselben Zeichen akzeptiert (S8786).
- */
-export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
 
 /**
  * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
@@ -2367,118 +2339,6 @@ export function istPlan(title) {
 
 export function istIdee(title) {
   return IDEE_PRAEFIX.test(title || "");
-}
-
-/** Traegt der Titel eines der drei Dokument-Praefixe? */
-export function istDokumentPraefix(title) {
-  return istFachlich(title) || istPlan(title) || istIdee(title);
-}
-
-// Der Hilfetext nennt den fehlenden Abschnitt und einen Weg, eine Datei vorab zu
-// pruefen. Die Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der
-// die Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
-// Regex.
-const SPEC_WIRKUNG_HILFE =
-  'Der Body braucht einen Abschnitt "## Spec-Wirkung" (eigene Zeile, ausserhalb eines Code-Fences), ' +
-  "der sagt, was das Paket an der Beschreibung unter specs/ aendert. " +
-  "Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen.";
-
-// Die Grammatik der Wirkungszeilen kommt aus spec.mjs und wird hier NICHT
-// nachgebaut (Issue #526, Entscheidung aus #443): Zwei Fassungen derselben
-// Grammatik waeren zwei Wahrheiten, von denen die zweite still veraltet. Geprueft
-// wird trotzdem hier, denn `spec.mjs check --paket` rief niemand auf — ein Paket
-// mit formal ungueltiger Wirkungsangabe ueberstand am 2026-09-08 einen ganzen
-// Nachtlauf und fiel erst am Push-Gate auf.
-//
-// Dieselbe Bauart wie die Nachbarn in kit/night.mjs: Verzeichniskonstante mit
-// Test-Hook, bedingtes `await import` und ein Ersatz, der erst BEIM AUFRUF wirft.
-// Bedingt und nicht statisch, weil board.mjs auch als allein kopierte Datei
-// Auskunft geben koennen muss; werfend und nicht still, weil ein stilles
-// Durchlassen genau die Luecke waere, die dieses Paket schliesst. Ein Projekt ohne
-// `spec`-Block ruft den Ersatz nie — damit ist "nur bei gesetztem Block" ohne
-// zweite Bauart erfuellt.
-//
-// BOARD_NACHBAR_DIR ist ein reiner Test-Hook (wie NIGHT_NACHBAR_DIR in night.mjs):
-// Ohne ihn sind die Ersatzfunktionen nur mit einer Kopie im Temp-Verzeichnis
-// erreichbar, deren Treffer die Coverage nicht auf kit/board.mjs abbildet.
-// Bewusst nicht KIT_ROOT: Das verlegt die Suche nach der CONFIG in ein fremdes
-// Projekt — eine reine Funktion holt man sich aus dem spec.mjs, das zu dieser
-// Datei gehoert.
-const NACHBAR_DIR = process.env.BOARD_NACHBAR_DIR ? resolve(process.env.BOARD_NACHBAR_DIR) : __dirname;
-const NACHBAR_SPEC = join(NACHBAR_DIR, "spec.mjs");
-
-// Dieselbe Signatur wie die echte Funktion, `const` statt spaeterem Reassignment
-// (Begruendung bei den Fallbacks in night.mjs, Issue #394): Eine `let`-Bindung
-// laesst die statische Analyse nur den Stub sehen und meldet jeden korrekten
-// Aufruf als Fehler.
-const wirkungPruefenFallback = (text, bekannte, root = null) => {
-  throw new Error(
-    `spec.mjs liegt nicht neben board.mjs (${NACHBAR_SPEC}) — die Form der Spec-Wirkung ist nicht pruefbar.`,
-  );
-};
-const { wirkungPruefen } = existsSync(NACHBAR_SPEC)
-  ? await import(pathToFileURL(NACHBAR_SPEC).href)
-  : { wirkungPruefen: wirkungPruefenFallback };
-
-/**
- * Traegt der Body die Ueberschrift ausserhalb eines Code-Fences?
- *
- * Die Fence-Behandlung ist der Kern — dieselbe wie bei `kontextGrenzen`: Ohne sie
- * kaeme eine Doku-Karte durch, die die Grammatik als Beispiel zeigt, statt sie
- * anzuwenden.
- */
-function specWirkungVorhanden(body) {
-  const imFence = fenceLauf();
-  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
-    if (!imFence(zeile) && SPEC_WIRKUNG_UEBERSCHRIFT.test(zeile)) return true;
-  }
-  return false;
-}
-
-/**
- * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt oder nicht zur
- * Grammatik passt.
- *
- * Der Schalter ist das Vorhandensein des `spec`-Blocks, nicht ein Feld darin
- * (A1). Ohne Block bleiben `issue create` und `issue update` unveraendert — das
- * Kit selbst ist so ein Projekt, und waere diese Bedingung falsch, lehnte die
- * Leitplanke die Pakete ab, mit denen sie gebaut wird.
- *
- * Zwei Schritte, zwei verschiedene Auskuenfte: Die Anwesenheit prueft
- * `specWirkungVorhanden` hier (mit Fence-Regel), die FORM der Zeilen prueft
- * `wirkungPruefen` aus spec.mjs. Uebergeben werden nur die Bereichsnamen aus der
- * Config und KEIN root — damit misst die Leitplanke Form und Config-Wissen, nicht
- * den Dateibestand unter specs/. Das ist derselbe Umfang, den `apply` waehlt:
- * Ein Paket darf eine Aussage anlegen, die ein spaeteres aendert, und gegen den
- * Dateistand geprueft waere die zweite Angabe stets ein Befund.
- *
- * Die beiden lesen den Abschnitt nicht gleich: `wirkungsAbschnitt` in spec.mjs
- * nimmt die ERSTE `## Spec-Wirkung`-Zeile ohne Fence-Regel. Ein gefenctes
- * Beispiel VOR dem echten Abschnitt wird deshalb von der Formpruefung gelesen.
- * Die Grenze bleibt bewusst so — `fenceLauf` liegt hier, und ein Import aus
- * spec.mjs heraus ergaebe einen Zyklus oder eine zweite Fence-Fassung.
- * test/board-spec-wirkung-form.test.mjs haelt den Fall fest.
- *
- * Gemeldet wird JEDER Befund mit seiner Zeilennummer, nicht nur der erste: Wer je
- * Lauf einen einzigen Fehler bekommt, braucht so viele Laeufe wie das Paket
- * Fehler hat.
- */
-function specWirkungSicherstellen(config, body, title) {
-  if (!config?.spec || istDokumentPraefix(title)) return;
-  if (!specWirkungVorhanden(body)) {
-    fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
-  }
-
-  const fehler = wirkungPruefen(body, Object.keys(config.spec.bereiche ?? {}));
-  if (fehler.length === 0) return;
-
-  // Der fehlende Abschnitt hat keine Zeile — dort bleibt das Praefix weg, statt
-  // eine Zeilennummer zu erfinden, die niemand aufschlagen kann (wie in spec.mjs).
-  const zeilen = fehler.map(({ nr, grund }) => {
-    const stelle = nr === null ? "" : `Zeile ${nr}: `;
-    return `  ${stelle}${grund}`;
-  });
-  fail(`Der Abschnitt "## Spec-Wirkung" ist nicht gueltig:\n${zeilen.join("\n")}\n${SPEC_WIRKUNG_HILFE}`);
 }
 
 // ============================================================
@@ -2589,7 +2449,7 @@ function derivedFromOption(wert) {
   return nummer;
 }
 
-async function issueCreate(tracker, config, args) {
+async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
@@ -2610,11 +2470,6 @@ async function issueCreate(tracker, config, args) {
     color: args.color,
     shortcode: args.shortcode,
   };
-  // Nach der Autor-Modell-Leitplanke und auf demselben aufgeloesten Body
-  // (Issue #443): Fehlt beides, meldet der Adapter das Autor-Modell zuerst, weil
-  // die aeltere Pruefung schon in der Zeile darueber abbricht. Und vor jedem
-  // Netzaufruf — ein Body ohne Wirkungsangabe soll keine Karte anlegen.
-  specWirkungSicherstellen(config, felder.body, felder.title);
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
@@ -2644,11 +2499,12 @@ async function issueEpics(tracker) {
 /**
  * Aktivitaetsverlauf einer Karte (Issue #460).
  *
- * `spec.mjs` liest daraus das Anlagedatum: Die Karten-Route fuehrt keins — an der
- * Instanz belegt am 2026-09-02 (manuelle Pruefung zu Issue #457). Der Verlauf geht
- * unveraendert durch, einschliesslich seiner Reihenfolge; wer das aelteste Ereignis
- * braucht, sucht nach dem kleinsten `createdAt` und verlaesst sich nicht auf die
- * Sortierung der Antwort.
+ * Auswertungen wie `wirksamkeit.mjs` lesen daraus die Ereignisdaten: Die
+ * Karten-Route fuehrt kein Anlagedatum — an der Instanz belegt am 2026-09-02
+ * (manuelle Pruefung zu Issue #457). Der Verlauf geht unveraendert durch,
+ * einschliesslich seiner Reihenfolge; wer das aelteste Ereignis braucht, sucht
+ * nach dem kleinsten `createdAt` und verlaesst sich nicht auf die Sortierung
+ * der Antwort.
  */
 async function issueActivity(tracker, config, args) {
   const id = args._[0];
@@ -2873,26 +2729,12 @@ async function issueComment(tracker, args) {
 //
 // Ein leerer Body ist ein harter Fehler statt eines stillen No-ops — ein
 // versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
-async function issueUpdate(tracker, config, args) {
+async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
   const neu = leseTextQuelle(args.body, args["body-file"], "body");
-  // Read before write (Issue #303, seit Plan #638 nur noch fuer den Titel): Ohne den
-  // Titel laesst sich die Praefix-Ausnahme der Spec-Wirkung nicht anwenden. Scheitert
-  // das Lesen, endet der Aufruf hier — ein Schreibzugriff auf halbem Wissen waere genau
-  // der Bypass, den die Leitplanke schliessen soll.
-  const { title } = await tracker.getIssue(id);
-  // Die Spec-Wirkung wird auch beim Schreiben geprueft (Issue #526): Genau ueber
-  // `update` schreibt `/issue-review` den geschaerften Body zurueck — auch nachts —,
-  // und eine Leitplanke, die nur beim Anlegen greift, hat dort ihre offene Tuer.
-  //
-  // NACH getIssue und VOR updateIssue: Der Lesezugriff ist zulaessig, der
-  // Schreibzugriff nicht. `update` traegt bewusst keinen Titel, und erst getIssue
-  // liefert ihn fuer die Praefix-Ausnahme — ohne diese Reihenfolge wiese der
-  // Adapter jedes `[Plan]`-Dokument ab, das der Nacht-Review zurueckschreibt.
-  specWirkungSicherstellen(config, neu, title);
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
-  // er kommt. Das `getIssue` davor bleibt fuer den Titel.
+  // er kommt.
   await tracker.updateIssue(id, { body: neu });
   out({ ok: true, id });
 }
@@ -3040,17 +2882,11 @@ function pruefePlan(kopf, abschnitte, alleZeilen) {
   return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "Plan-Review:")];
 }
 
-/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt, Spec-Wirkung nur davor. */
+/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt. */
 function pruefeI1Lage(abschnitte) {
   const meldungen = [];
-  const index = (name) => abschnitte.findIndex((a) => a.titel === name);
-  const abh = index("abhaengigkeiten");
+  const abh = abschnitte.findIndex((a) => a.titel === "abhaengigkeiten");
   if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push("'## Abhaengigkeiten' ist nicht der letzte Abschnitt");
-  const spec = index("spec-wirkung");
-  const akz = index("akzeptanzkriterium");
-  if (spec >= 0 && !(akz >= 0 && abh >= 0 && akz < spec && spec < abh)) {
-    meldungen.push("'## Spec-Wirkung' gehoert zwischen '## Akzeptanzkriterium' und '## Abhaengigkeiten'");
-  }
   return meldungen;
 }
 
@@ -3164,13 +3000,13 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, config, args);
+    case "create":  return issueCreate(tracker, args);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
     case "activity": return issueActivity(tracker, config, args);
     case "move":    return issueMove(tracker, args);
-    case "update":  return issueUpdate(tracker, config, args);
+    case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, args);
@@ -4036,11 +3872,10 @@ async function dispatchNightrun(command, args) {
 // `ToolboxIssueTracker._fetch` und `agentModelHeader`. Eine Nachbardatei muesste sie
 // entweder nachbauen (zwei Wege zum selben Board, die auseinanderlaufen) oder ihre
 // Freigabe erzwingen (der interne Adapter wird oeffentlicher Vertrag). Dazu kommt:
-// Die Aussagen board-11 bis board-15 gehoeren laut `spec.bereiche` zum Bereich
-// 'board', und ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im
-// Installer — Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt
-// trotzdem daneben (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein
-// Code, und genau deshalb hat sie eine eigene Datei verdient.
+// Ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im Installer —
+// Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt trotzdem daneben
+// (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein Code, und genau
+// deshalb hat sie eine eigene Datei verdient.
 //
 // Der Vertrag ist derselbe wie beim Nachtlauf (`POST /api/kanban/night-runs`,
 // mannewolff/kanban-kit#1012), nur mit `kind`/`mode` INTERACTIVE und dem
@@ -4051,11 +3886,19 @@ const SITZUNG_ZUSTAND = "GREEN";
 const SITZUNG_DROSSEL_MS = 5 * 60 * 1000;
 const SITZUNG_STAND_DATEI = "sitzung-meldung.json";
 
-// Die Preistabelle als Nachbardatei, nach demselben Muster wie spec.mjs oben:
-// bedingtes `await import`, damit board.mjs auch als allein kopierte Datei laeuft.
-// Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben keinen Betrag.
-// Das ist genau das Verhalten, das board-15 fuer ein unbekanntes Modell verlangt,
-// und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
+// Das Verzeichnis, in dem board.mjs seine Nachbardateien sucht — heute allein
+// kit/preise.mjs. BOARD_NACHBAR_DIR ist ein reiner Test-Hook (wie
+// NIGHT_NACHBAR_DIR in night.mjs): Ohne ihn ist der Fallback-Zweig nur mit einer
+// Kopie im Temp-Verzeichnis erreichbar, deren Treffer die Coverage nicht auf
+// kit/board.mjs abbildet. Bewusst nicht KIT_ROOT: Das verlegt die Suche in ein
+// fremdes Projekt — eine Nachbardatei gehoert zu dieser Datei, nicht zum cwd.
+const NACHBAR_DIR = process.env.BOARD_NACHBAR_DIR ? resolve(process.env.BOARD_NACHBAR_DIR) : __dirname;
+
+// Die Preistabelle als Nachbardatei: bedingtes `await import`, damit board.mjs
+// auch als allein kopierte Datei laeuft (dieselbe Bauart wie die Fallbacks in
+// night.mjs). Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben
+// keinen Betrag. Das ist genau das Verhalten, das board-15 fuer ein unbekanntes
+// Modell verlangt, und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
 const NACHBAR_PREISE = join(NACHBAR_DIR, "preise.mjs");
 const { preisFuer } = existsSync(NACHBAR_PREISE)
   ? await import(pathToFileURL(NACHBAR_PREISE).href)

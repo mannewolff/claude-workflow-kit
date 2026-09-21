@@ -25,7 +25,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 const QUELLE = readFileSync(INSTALLER, "utf-8");
 
-// Wie HINWEIS/FRAGE in install-spec-frage.test.mjs: Der Wortlaut steht als Konstante im
+// Wie HINWEIS in install-spec-altlast.test.mjs: Der Wortlaut steht als Konstante im
 // Quelltext, der Test prueft ihn gegen die Quelle UND gegen die Ausgabe. Ohne den
 // festgelegten Text maesse der Test gegen die Wahl der Implementierung.
 const HINWEIS = "reviewModel entfaellt";
@@ -56,9 +56,8 @@ function schreibeConfig(dir, werte) {
 }
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
-// reviewModel, reviewCommand und die Spec-Frage (#439) — alles ab Frage 4 leer, also
-// Default uebernehmen bzw. Nein.
-const ALLES_DEFAULT = ["projekt", "github", "github", "", "", "", "", "", ""];
+// reviewModel, reviewCommand — alles ab Frage 4 leer, also Default uebernehmen.
+const ALLES_DEFAULT = ["projekt", "github", "github", "", "", "", "", ""];
 
 // --- Frischer Install: der DEFAULTS-Spread setzt den Claude-Reviewer ---
 

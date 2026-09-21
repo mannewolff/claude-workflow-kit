@@ -1,8 +1,9 @@
 // Tests fuer `issue activity` (Issue #460).
 //
-// Das Kommando gibt den Aktivitaetsverlauf einer Karte aus. `spec.mjs` liest daraus
-// das Anlagedatum, seit an der Instanz belegt ist, dass die Karten-Route keins fuehrt
-// (Issue #457, manuelle Pruefung vom 2026-09-02).
+// Das Kommando gibt den Aktivitaetsverlauf einer Karte aus. Auswertungen wie
+// `wirksamkeit.mjs` lesen daraus die Ereignisdaten, seit an der Instanz belegt ist,
+// dass die Karten-Route kein Anlagedatum fuehrt (Issue #457, manuelle Pruefung vom
+// 2026-09-02).
 //
 // Zwei Dinge sind hier die Hauptsache:
 //   1. Der Endpunkt adressiert die INTERNE cardId, nicht die Kartennummer — dieselbe
@@ -67,7 +68,7 @@ test("[board-1] activity adressiert die interne cardId, nicht die Kartennummer",
       "der Request ging an die Kartennummer statt an die cardId",
     );
     // Die Karten-Route beantwortet einem board-gebundenen Token seit kanban-kit #877 jede
-    // Anfrage mit 403 — schon ein einziger Aufruf dorthin haelt `spec.mjs apply` an.
+    // Anfrage mit 403 — schon ein einziger Aufruf dorthin schluege fehl.
     assert.ok(
       !requests.some((r) => r.url.startsWith("/api/cards/")),
       "es ging noch eine Anfrage an die Karten-Route ausserhalb der Board-Grenze",

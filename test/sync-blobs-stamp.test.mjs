@@ -25,11 +25,11 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
-// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441,
-// preise.mjs mit Issue #734, aufwand.mjs mit Issue #750, wirksamkeit.mjs mit
-// Issue #787, befunde.mjs mit Issue #799), faellt hier genau eine Stelle an statt
-// drei ueber die Datei verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
+// Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, preise.mjs mit Issue #734,
+// aufwand.mjs mit Issue #750, wirksamkeit.mjs mit Issue #787, befunde.mjs mit
+// Issue #799), faellt hier genau eine Stelle an statt drei ueber die Datei
+// verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -68,7 +68,6 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const BOARD_MJS_B64 = "";`,
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
-    `const SPEC_MJS_B64 = "";`,
     `const PREISE_MJS_B64 = "";`,
     `const AUFWAND_MJS_B64 = "";`,
     `const WIRKSAMKEIT_MJS_B64 = "";`,
@@ -174,45 +173,6 @@ test("Stempel: fehlende KIT_VERSION-Konstante ist ein harter Fehler, kein stille
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
-test("Blob-Drift: eine Aenderung an kit/spec.mjs ohne Sync macht --check rot", () => {
-  // Der Beleg fuer den BLOBS-Eintrag von spec.mjs (Issue #441). Mit STAMPED allein
-  // bliebe SPEC_MJS_B64 leer und dieser Lauf gruen — genau der Drift, gegen den das
-  // Werkzeug existiert.
-  //
-  // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf
-  // waere ebenso rot, wenn spec.mjs nur in STAMPED stuende.
-  const dir = setupFixture("2.5.0", "1.0.0");
-  try {
-    assert.equal(syncBlobs(dir).status, 0);
-    assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette gruen sein muessen");
-
-    // Nur den Inhalt aendern, den Stempel unberuehrt lassen: So kann allein der Blob
-    // driften.
-    const pfad = join(dir, "kit", "spec.mjs");
-    writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
-
-    const res = syncBlobs(dir, "--check");
-    assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
-    const meldung = res.stderr + res.stdout;
-    assert.match(meldung, /Blob-Drift/, "die Meldung nennt den Blob-Drift nicht");
-    assert.match(meldung, /SPEC_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
-    assert.doesNotMatch(meldung, /Versions-Stempel/, "Stempel-Drift faelschlich gemeldet");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// --- Dogfooding-Kopie unter .claude/kit/ (Issue #173) ---
-//
-// Das Kit betreibt eine eigene Kopie seiner Kit-Werkzeuge unter
-// .claude/kit/ und liess sie bis #173 von Hand per cp auffrischen — ein Schritt,
-// den man vergisst (bei Issue #167 waere er beinahe untergegangen). Mit den
-// Versionsstempeln wuerde eine vergessene Kopie eine falsche Version behaupten.
-//
-// Besonderheit: .claude/ ist gitignored. sync-blobs schreibt hier also bewusst
-// eine nicht versionierte Datei — deshalb auch der stille Skip, wenn es die
-// lokale Installation gar nicht gibt (frischer Clone).
 
 test("Lokale Kopie: sync-blobs frischt .claude/kit/ mit der gestempelten Fassung auf", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
