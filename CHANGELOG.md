@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.3] - 2026-09-21
+- Auswertung zaehlt die wartend beendeten Sitzungen (#779)
+- Wartende Sitzung in den Stufen der Nacht-Kette (#778)
+- Wartende Sitzung bei unsauberem Arbeitsbaum: beide Salvage-Fehlschlaege tragen den neuen Ausgang (#777)
+- Wartende Sitzung bei sauberem Arbeitsbaum: Grund, Vermerk und Feld (#776)
+- Bausteine der wartenden Sitzung: Erkennung, Grund und Vermerk (#775)
+- Nachtbetrieb-Regel: keine Session endet mit laufender eigener Arbeit (#774)
+
 ## [2.0.2] - 2026-09-21
 - specs/night.md: die zwei falsch belegten Zeilen night-43 und night-44 entfernt (#766)
 - Doppelte Spec-IDs night-43 und night-44 aufgeloest (#766)
