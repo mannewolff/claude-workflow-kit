@@ -25,6 +25,9 @@
 - skills-27 — `/issues` liest vor dem Schneiden die Einarbeitungs-Kommentare des Plans und meldet im Abschluss jeden übernommenen Review-Fund, der in keinem Arbeitspaket ankommt; unbeaufsichtigt als Kommentar am Plan.
 - skills-28 — Die Skills `/implement-ready`, `/implement-next`, `/implement-done`, `/implement-test`, `/issues`, `/task`, `/techplan` und `/issue-review` nennen in ihrem Stop-Punkt-Abschnitt die Ausnahme, dass allein der Nacht-Runner in der Umsetzungsstufe der Nacht-Kette unter Variante B Arbeitspakete selbst nach Ready zieht, und halten fuer sich selbst an der Regel fest, dass keiner von ihnen eine Ready-Bewegung ausloest.
 - skills-29 — Ist `night.stufen` aktiv, traegt `/task` im Kontext-Abschnitt seines einen `[Task]`-Pakets die Zeilen `Aufgabenstufe:` und `Stufengrund:` nach derselben Regel wie `/issues` und verweist auf deren Wortlaut, statt ihn zu wiederholen; ohne aktive Einstellung bleibt der Skill unveraendert, und `issue check-form` bekommt kein Gate fuer die Stufenzeile.
+- skills-30 — `/push-main` führt vor dem ersten nummerierten Schritt und ohne eigene Nummer `aufwand.mjs befund` aus und zeigt die Ausgabe unverändert; eine leere Ausgabe bleibt unkommentiert, ein Fehlschlag wird in einer Zeile vermerkt und hält nichts auf, der Befund ist kein Gate, und die Schrittzählung des Skills bleibt unverändert.
+- skills-31 — Die Skills nennen die Stufe, die sie fahren: `/push-main` ruft die Pruefungen mit `--stufe push`, `/merge-production` mit `--stufe merge`, und `/local-check` sowie die `implement-*`-Skills bleiben ohne Argument bei der Paketstufe.
+- skills-32 — `/local-check` grenzt `mutationCommand` gegen die Guetemessung ab: Es bleibt ein nachgelagertes Kommando ohne Marke und ohne Halt, und der Weg zur Verbindlichkeit fuehrt ueber einen `buildChecks`-Eintrag mit `guete`-Block.
 
 ## Entfallen
 

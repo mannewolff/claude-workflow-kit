@@ -11,6 +11,7 @@
 - board-13 — Der Sitzungs-Melder teilt die Sitzungssumme anhand der Zeitstempel auf die Abschnitte zwischen den Wegmarken auf; was zwischen keinen zwei Wegmarken liegt und was in ueberlappende Abschnitte faellt, meldet er als Rest ohne Kartennummer.
 - board-14 — Der Sitzungs-Melder meldet am Sitzungsende mit `complete: true` und dazwischen hoechstens einmal je fuenf Minuten mit `complete: false`; nach einer Meldung mit `complete: true` ist die Wegmarken-Datei leer.
 - board-15 — Ohne Betrag im Protokoll und ohne Preistabelleneintrag fuer das Modell meldet der Sitzungs-Melder keinen Dollarbetrag statt einer Null.
+- board-16 — `nachtlaufMeldung` traegt den am Lauf vermerkten Grund ohne Arbeit als Feld `noWorkReason` im gemeldeten Rumpf, hoechstens 300 Zeichen lang, und laesst es weg, wenn kein Grund vermerkt ist.
 
 ## Entfallen
 

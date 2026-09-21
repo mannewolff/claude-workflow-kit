@@ -2,6 +2,36 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.2] - 2026-09-21
+- specs/night.md: die zwei falsch belegten Zeilen night-43 und night-44 entfernt (#766)
+- Doppelte Spec-IDs night-43 und night-44 aufgeloest (#766)
+- Abgrenzung zu mutationCommand und die Doku der Guetemessung (#765)
+- Der Anteil wird sichtbar: Protokollzeile der Nacht und vier Pruefregeln (#764)
+- checks.mjs: die Guetemessung auswerten und an der Marke messen (#763)
+- Regeltext und Schema: der guete-Block mit Muster und Marke (#762)
+- Abschluss Stufe A: Pruefregel fuer stufe und die Dokumentation (#761)
+- night.mjs: Salvage-Vorpruefung und Start-Guard an der Paketstufe (#760)
+- Die Skills nennen ihre Stufe: push-main, merge-production und die Paketstufe (#759)
+- checks.mjs: --stufe, kumulative Rangfolge und die Ankuendigung (#758)
+- Regeltext und Schema: die Stufenangabe stufe an buildChecks (#757)
+- Auswahl der Modelle auf best möglich gestllt
+- Auswahl der Modelle auf best möglich gestllt
+- Der Befund wird sichtbar: Abschlussblock im Laufprotokoll und /push-main (#752)
+- Der Config-Block aufwand: Schema, Prüfung, Oberfläche und Doku (#751)
+- specs/aufwand.md und specs/installer.md: aufwand-1, aufwand-2, installer-11 nachgezogen (#750)
+- kit/aufwand.mjs: Auswertung, Schwellen, Befund (#750)
+- specs/night.md: night-44 bis night-46 nachgezogen (#749)
+- Der Ergebnisstand traegt Zeiten, Cache-Teilung und den vollen Pruefstand (#749)
+- specs/night.md: night-43 nachgezogen (#748)
+- night.mjs misst die Werkzeugzeit am Session-Strom (#748)
+- specs/checks.md: checks-4 nachgezogen (#747)
+- checks.mjs misst die Dauer je Prüfkommando (#747)
+- Regeltext und Spec-Bereich: der Rahmen fuer die Aufwands-Auswertung (#746)
+- Lauf ohne Arbeit meldet seinen Grund am Lauf-Kopf (#744)
+- Nachtlauf meldet seinen Beginn vor dem ersten Arbeitspaket (#743)
+- Salvage bewegt das Board erst bei sauberem Arbeitsbaum und meldet drei Endzustaende (#672)
+- qwen auch aus den Paarungen entfernt
+
 ## [2.0.1] - 2026-09-18
 - Dokumentation der neuen Einstellungs-Oberflaeche und Abschluss der Spec-Wirkung (#732)
 - M7 Einfache Gruppen: ein Feld je Eintrag und persoenliche Abweichung je Zeile (#731)
