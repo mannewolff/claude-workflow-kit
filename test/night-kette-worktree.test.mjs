@@ -74,6 +74,46 @@ test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an
   });
 });
 
+test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unter .claude/kit/ kommen alle mit", () => {
+  mitRepo((dir, angelegt) => {
+    // Die Kit-Kopie traegt Werkzeuge, deren Namen wie die Berichte der Hauptkopie
+    // beginnen. Ein Filter ueber den blossen Dateinamen liesse sie zurueck, und eine
+    // Kettenstufe im Worktree riefe ins Leere.
+    for (const werkzeug of ["aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+      writeFileSync(join(dir, ".claude", "kit", werkzeug), `// ${werkzeug}\n`);
+    }
+    // Und die Berichte, die in der Hauptkopie bleiben sollen — direkt unter `.claude/`.
+    for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
+      writeFileSync(join(dir, ".claude", bericht), `stand ${bericht}\n`);
+    }
+
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010203" });
+    angelegt.push(pfad);
+
+    for (const werkzeug of ["board.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+      assert.ok(existsSync(join(pfad, ".claude", "kit", werkzeug)), `.claude/kit/${werkzeug} fehlt im Worktree`);
+    }
+    for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
+      assert.ok(!existsSync(join(pfad, ".claude", bericht)), `.claude/${bericht} darf nicht in den Worktree`);
+    }
+  });
+});
+
+test("[night-68] ein Unterverzeichnis mit dem Namen eines Berichts kommt mit", () => {
+  mitRepo((dir, angelegt) => {
+    // `.claude/night-run-*` bleibt zurueck, aber nur direkt unter `.claude/`: Ein
+    // gleichnamiger Pfad eine Ebene tiefer ist eine andere Datei.
+    mkdirSync(join(dir, ".claude", "kit", "night-run-hilfen"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "kit", "night-run-hilfen", "x.mjs"), "// hilfe\n");
+
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010204" });
+    angelegt.push(pfad);
+
+    assert.ok(existsSync(join(pfad, ".claude", "kit", "night-run-hilfen", "x.mjs")),
+      "nur der Name direkt unter .claude/ entscheidet, nicht der Name irgendwo im Pfad");
+  });
+});
+
 test("[night-17] notizenZurueck kopiert wartende Vorhaben-Notizen in die Hauptkopie", () => {
   mitRepo((dir, angelegt) => {
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "635", stempel: "s1" });

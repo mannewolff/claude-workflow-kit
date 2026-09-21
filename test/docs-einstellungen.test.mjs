@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSy
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { TEILE } from "../kit/einstellungen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL = join(repoRoot, "tools", "config-referenz.mjs");
@@ -121,10 +122,30 @@ function oberflaechenAbschnitt() {
   return doku.slice(start, ende);
 }
 
-test("der Oberflaechen-Abschnitt nennt die sieben Teile", () => {
+test("der Oberflaechen-Abschnitt nennt jeden benannten Teil der Oberflaeche", () => {
+  // Die Titel kommen aus TEILE und stehen nicht zweimal: Kam ein Teil hinzu (Aufwand,
+  // Wirksamkeit), zaehlte der Absatz ihn sonst weiter nicht mit und behauptete eine
+  // Gliederung, die es nicht mehr gibt.
   const abschnitt = oberflaechenAbschnitt();
-  for (const teil of ["Reviewer", "Paarungen", "Prüfstufen", "Prüfkommandos und Bereiche", "Spezifikation", "Nacht-Kette", "einfache Gruppen"]) {
-    assert.ok(abschnitt.includes(teil), `Teil '${teil}' fehlt im Abschnitt`);
+  for (const teil of TEILE.filter((t) => t.titel !== null)) {
+    assert.ok(abschnitt.includes(teil.titel), `Teil '${teil.titel}' fehlt im Abschnitt`);
+  }
+  assert.ok(abschnitt.includes("einfache Gruppen"), "der generische Gruppen-Teil fehlt im Abschnitt");
+});
+
+test("[einstellungen-8] der Textblock-Absatz nennt jeden Pfad des Text-Teils in Dateischreibweise", () => {
+  // `night.stufen` und `night.stufenRegel` stehen seit Issue #708 neben `night.modelle`
+  // im Text-Teil (kit/einstellungen.mjs, TEILE). Nannte die Doku nur die Modellliste,
+  // suchte wer die beiden pflegen will vergeblich nach einer eigenen Eingabe.
+  const abschnitt = oberflaechenAbschnitt();
+  const start = abschnitt.indexOf("**Textblock in Dateischreibweise.**");
+  assert.ok(start !== -1, "Absatz 'Textblock in Dateischreibweise' fehlt");
+  const ende = abschnitt.indexOf("**", start + 40);
+  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
+  const textTeil = TEILE.find((t) => t.kennung === "text");
+  for (const pfad of textTeil.pfade) {
+    const maskiert = pfad.replaceAll(".", String.raw`\.`);
+    assert.match(absatz, new RegExp(`\`${maskiert}\``), `der Pfad '${pfad}' fehlt im Textblock-Absatz`);
   }
 });
 

@@ -94,6 +94,11 @@ const STUB_EXIT_UNGLEICH_NULL = `${CAPTURE_KOPF}`
 // etwas anderes schreibt als abgemacht.
 const STUB_UNLESBAR = `${CAPTURE_KOPF}process.stdout.write("kein JSON, sondern Fliesstext\\n");\n`;
 
+// Ein Werkzeug, das nicht zurueckkehrt (Issue #824, night-67). Ohne CAPTURE_KOPF: Der
+// Stub soll nichts voraussetzen, nur haengen. Der Timer haelt den Prozess am Leben, bis
+// das Zeitlimit des Runners ihn abraeumt.
+const STUB_HAENGT = "setTimeout(() => {}, 600000);\n";
+
 function setupProjekt(praefix, { aufwandStub = stubMitErgebnis(ERGEBNIS_MIT_BEFUND), buildChecks = ["true"] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
@@ -264,6 +269,29 @@ test("[night-47] fehlt aufwand.mjs ganz, endet der Lauf mit unveraendertem Exit-
     // Der Ergebnisstand entsteht trotzdem und ist vollstaendig — er ist der Bericht des
     // Laufs, und der haengt nicht an seiner Auswertung.
     assert.equal(stand(dir).complete, true);
+  });
+});
+
+test("[night-67] eine Auswertung, die nicht zurueckkehrt, endet am Zeitlimit als Protokollzeile — der Lauf meldet", NUR_POSIX, () => {
+  // Die Wirksamkeits-Auswertung ruft `board.mjs issue activity`, also das Netz. Haengt
+  // der Aufruf, erreichte der Lauf ohne Zeitlimit `laufMelden()` nie.
+  mitProjekt("night-abschluss-timeout-", { aufwandStub: STUB_HAENGT }, (dir) => {
+    readyIssue(dir, "Erstes Issue");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], {
+      NIGHT_CLAUDE_CMD: FAKE_ERFOLG,
+      NIGHT_AUSWERTUNG_TIMEOUT_MS: "1500",
+    });
+    assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);
+
+    const zeilen = fehlerzeilen(dir);
+    assert.equal(zeilen.length, 1, `genau eine Zeile zum Fehlschlag erwartet: ${zeilen.join(" / ")}`);
+    assert.match(zeilen[0], /fehlgeschlagen/, "die Zeile meldet den Fehlschlag nicht");
+    assert.match(zeilen[0], /Zeitlimit/, "die Zeile nennt das Zeitlimit als Grund nicht");
+    // Und danach geht der Abschluss weiter: Der Ergebnisstand ist vollstaendig.
+    const s = stand(dir);
+    assert.equal(s.abschluss, "regulaer");
+    assert.equal(s.complete, true);
+    assert.equal(s.aufwand.ok, false, "der Lauf-Kopf traegt den Fehlschlag der Auswertung");
   });
 });
 

@@ -239,9 +239,11 @@ test("[einstellungen-14] aufwand.laeufe außerhalb ganzer Zahlen über null wird
 });
 
 test("[einstellungen-14] jede der drei Anteil-Schwellen außerhalb von 0 bis 1 wird mit Pfad abgewiesen, 0, 0,5 und 1 sind gültig", () => {
+  // Seit Issue #824 stehen die Grenzen am Feld des Schemas statt in einer Zusatzregel;
+  // die Aussage ist dieselbe, geprüft wird sie über `pruefeSchema`.
   const felder = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
   for (const feld of felder) {
-    const befunde = (wert) => zusatzregeln({ aufwand: { schwellen: { [feld]: wert } } }).filter((b) => b.pfad === `aufwand.schwellen.${feld}`);
+    const befunde = (wert) => fehler(pruefeSchema({ aufwand: { schwellen: { [feld]: wert } } })).filter((b) => b.pfad === `aufwand.schwellen.${feld}`);
     for (const schlecht of [-0.1, 1.1, 2]) {
       assert.ok(befunde(schlecht).length > 0, `${feld}=${schlecht} nicht abgewiesen`);
     }

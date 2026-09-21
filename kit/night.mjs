@@ -123,11 +123,14 @@
  *                     unterscheiden kann.
  *   NIGHT_NACHBAR_DIR Verzeichnis, aus dem night.mjs board.mjs und checks.mjs
  *                     laedt (statt neben der eigenen Datei). Nur fuer Tests.
+ *   NIGHT_AUSWERTUNG_TIMEOUT_MS ueberschreibt das Zeitlimit der beiden
+ *                     Auswertungen (Aufwand, Wirksamkeit), damit der
+ *                     Timeout-Pfad schnell testbar ist.
  */
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
-import { join, dirname, resolve, basename } from "node:path";
+import { join, dirname, resolve, basename, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir, homedir } from "node:os";
 
@@ -782,6 +785,15 @@ function wirksamkeitAuswerten() {
   auswertungLaufen(WIRKSAMKEIT_PATH, "wirksamkeit", "Wirksamkeits-Auswertung", wirksamkeitBefundText);
 }
 
+// Das Zeitlimit beider Auswertungen (Issue #824, night-67). Ohne Limit haengt der
+// ganze Abschluss an ihnen: `kit/wirksamkeit.mjs` ruft fuer die Ruecklaeuferquote
+// `board.mjs issue activity` und damit das Netz — bleibt der Aufruf stehen, erreichte
+// der Lauf `laufMelden()` erst, wenn die Grenzen von `fetch` greifen. Grosszuegig
+// bemessen: Die Auswertung liest ein ganzes Bewegungsprotokoll und holt Aktivitaeten
+// fuer bis zu `kandidatenMax` Karten; 120 s sind ein Hut ueber dem Normalfall und
+// keine Vorgabe, wie schnell sie zu sein hat.
+const AUSWERTUNG_TIMEOUT_MS = 120 * 1000;
+
 /**
  * Der geteilte Kern beider Auswertungen (Issue #790).
  *
@@ -791,6 +803,9 @@ function wirksamkeitAuswerten() {
  * Lauf-Kopf, Name in der Protokollzeile und die Textform ihres Befundblocks.
  */
 function auswertungLaufen(pfad, feld, bezeichnung, textform) {
+  const timeoutMs = process.env.NIGHT_AUSWERTUNG_TIMEOUT_MS
+    ? Number(process.env.NIGHT_AUSWERTUNG_TIMEOUT_MS)
+    : AUSWERTUNG_TIMEOUT_MS;
   try {
     // Die fehlende Datei wird vorher abgefangen, statt sie in Node laufen zu lassen: Der
     // Kindprozess endete dann zwar auch mit Exit 1, aber die erste Zeile seines stderr ist
@@ -803,7 +818,11 @@ function auswertungLaufen(pfad, feld, bezeichnung, textform) {
       encoding: "utf-8",
       cwd: process.cwd(),
       maxBuffer: BOARD_MAX_BUFFER,
+      timeout: timeoutMs,
     });
+    // ETIMEDOUT bekommt eine eigene Meldung: "liess sich nicht starten" waere hier falsch
+    // — das Werkzeug lief, es kam nur nicht zurueck.
+    if (res.error?.code === "ETIMEDOUT") throw new Error(`Zeitlimit von ${timeoutMs} ms ueberschritten`);
     if (res.error) throw new Error(`${pfad} liess sich nicht starten: ${res.error.message}`);
     if (res.status !== 0) throw new Error(`Exit ${res.status}: ${ersteZeile(res.stderr || res.stdout)}`);
     let stand;
@@ -1326,12 +1345,19 @@ function claudeSpiegeln(repoRoot, pfad) {
     recursive: true,
     force: true,
     filter: (src) => {
-      const name = basename(src);
-      return !name.startsWith("night-run-")
-        && !name.startsWith("aufwand.")
-        && !name.startsWith("wirksamkeit.")
-        && name !== "bewegungen.tsv"
-        && name !== "ausfuehrungen.tsv";
+      // Gemessen wird der Pfad RELATIV zu `.claude/`, nicht der blosse Dateiname
+      // (Issue #824, night-68): Zurueckbleiben sollen die Berichte des Laufs, und die
+      // liegen direkt unter `.claude/`. Ueber den Namen allein blieben auch
+      // `.claude/kit/aufwand.mjs` und `.claude/kit/wirksamkeit.mjs` zurueck — die
+      // Werkzeuge, nicht ihre Ergebnisse. Eine Kettenstufe, die sie im Worktree riefe,
+      // fand sie nicht vor.
+      const rel = relative(quelle, src);
+      if (dirname(rel) !== ".") return true;
+      return !rel.startsWith("night-run-")
+        && !rel.startsWith("aufwand.")
+        && !rel.startsWith("wirksamkeit.")
+        && rel !== "bewegungen.tsv"
+        && rel !== "ausfuehrungen.tsv";
     },
   });
 }

@@ -64,21 +64,59 @@ const HTML_ELEMENTE = new Set([
   "svg", "path", "circle", "rect", "line", "polygon", "polyline", "g", "text", "math",
 ]);
 
+/** Eine Zeile ohne Inline-Code, Autolinks und Mail-Adressen — alles, was kein Template ist. */
+function ohneCode(zeile) {
+  return zeile
+    .replaceAll(/(`+)(.*?)\1/g, "")
+    .replaceAll(/<(?:https?:\/\/|mailto:)[^>\s]*>/g, "")
+    .replaceAll(/<[^>\s@]+@[^>\s]+>/g, "");
+}
+
+/**
+ * Eine Zeile ohne ihre HTML-Kommentare, samt dem Zustand am Zeilenende.
+ *
+ * Getilgt wird erst, NACHDEM der Inline-Code der Zeile weg ist (Issue #824, Fund 4.4):
+ * Ein `<!--` in Backticks ist Text und kein Kommentaranfang. Innerhalb eines Kommentars
+ * bleibt der Code stehen, wie er ist — dort gibt es keine Code-Spans, und ein Backtick
+ * im Kommentar paarte sonst mit einem hinter dem `-->`.
+ */
+function ohneKommentar(zeile, imKommentar) {
+  let rest = zeile;
+  let drin = imKommentar;
+  let raus = "";
+  for (;;) {
+    if (drin) {
+      const ende = rest.indexOf("-->");
+      if (ende === -1) return { text: raus, imKommentar: true };
+      rest = rest.slice(ende + 3);
+      drin = false;
+    }
+    const sichtbar = ohneCode(rest);
+    const start = sichtbar.indexOf("<!--");
+    if (start === -1) return { text: raus + sichtbar, imKommentar: false };
+    raus += sichtbar.slice(0, start);
+    rest = sichtbar.slice(start + 4);
+    drin = true;
+  }
+}
+
 /**
  * Der Text einer Datei ohne alles, was der Vue-Compiler nicht als Template liest:
  * Code-Bloecke, Inline-Code, HTML-Kommentare und Autolinks.
  *
  * Zeilenweise, damit Inline-Code nicht ueber Absatzgrenzen hinweg zusammenfaellt: Ein
  * `\`` am Anfang einer Datei und eines am Ende verschluckten sonst alles dazwischen —
- * und ein Test, der nichts mehr sieht, ist immer gruen.
+ * und ein Test, der nichts mehr sieht, ist immer gruen. Zeilenweise auch, damit jede
+ * Zeile ihre Nummer behaelt: Ein mehrzeiliger Kommentar vorweg zu tilgen schob jeden
+ * Fund dahinter nach oben.
  */
 function nurTemplate(text) {
-  const ohneKommentare = text.replaceAll(/<!--[\s\S]*?-->/g, "");
-  const zeilen = ohneKommentare.split("\n");
   const raus = [];
   let zaun = null;
-  for (const zeile of zeilen) {
-    const treffer = zeile.match(/^\s*(`{3,}|~{3,})/);
+  let imKommentar = false;
+  for (const zeile of text.split("\n")) {
+    // Im Kommentar eroeffnet keine Zeile einen Zaun: Was dort steht, ist verdeckt.
+    const treffer = imKommentar ? null : zeile.match(/^\s*(`{3,}|~{3,})/);
     if (zaun) {
       if (treffer && treffer[1][0] === zaun[0] && treffer[1].length >= zaun.length) zaun = null;
       raus.push("");
@@ -89,12 +127,9 @@ function nurTemplate(text) {
       raus.push("");
       continue;
     }
-    raus.push(
-      zeile
-        .replaceAll(/(`+)(.*?)\1/g, "")
-        .replaceAll(/<(?:https?:\/\/|mailto:)[^>\s]*>/g, "")
-        .replaceAll(/<[^>\s@]+@[^>\s]+>/g, "")
-    );
+    const { text: ohne, imKommentar: danach } = ohneKommentar(zeile, imKommentar);
+    imKommentar = danach;
+    raus.push(ohne);
   }
   return raus;
 }
@@ -137,4 +172,28 @@ test("der Pruefer erkennt ein nacktes Tag und laesst Code und Autolinks in Ruhe"
   assert.deepEqual(fremdeTags("<!-- <ID> -->"), []);
   assert.deepEqual(fremdeTags("Ein <br> und ein <details> sind erlaubt."), []);
   assert.deepEqual(fremdeTags("Ein Zaun im Zaun:\n````\n```\n<ID>\n```\n````\n"), []);
+});
+
+test("ein Kommentar-Zeichen in Inline-Code eroeffnet keinen Kommentar", () => {
+  // Issue #824, Fund 4.4: Wurden HTML-Kommentare VOR Zaeunen und Inline-Code entfernt,
+  // sah der Pruefer das in Backticks gesetzte `<!--` als Kommentaranfang, verschluckte
+  // alles bis zum ebenso gesetzten `-->` — und fand das nackte `<ID>` dazwischen nicht.
+  const text = "Kommentar `<!--`\n<ID>\nund `-->` hier.";
+  assert.deepEqual(fremdeTags(text).map((f) => f.tag), ["<ID>"]);
+  assert.equal(fremdeTags(text)[0].zeile, 2, "die Zeilennummer des Fundes stimmt nicht");
+});
+
+test("ein mehrzeiliger Kommentar verschiebt die Zeilennummern nicht", () => {
+  // Vorher wurden Kommentare samt ihrer Zeilenumbrueche getilgt: Nach einem
+  // mehrzeiligen Kommentar zeigte jeder Fund auf eine zu kleine Zeile.
+  const text = "<!--\nverdeckt\n-->\n<ID> steht hier.";
+  assert.deepEqual(fremdeTags(text).map((f) => f.tag), ["<ID>"]);
+  assert.equal(fremdeTags(text)[0].zeile, 4, "die Zeilennummer des Fundes stimmt nicht");
+});
+
+test("ein mehrzeiliger Kommentar verdeckt weiterhin, was in ihm steht", () => {
+  assert.deepEqual(fremdeTags("<!--\n<ID>\n-->"), []);
+  assert.deepEqual(fremdeTags("Davor <!-- <ID>\nnoch drin\n--> und <Danach> dahinter."), [{ zeile: 3, tag: "<Danach>" }]);
+  assert.deepEqual(fremdeTags("```\n<!--\n```\n<ID> steht ausserhalb.").map((f) => f.tag), ["<ID>"],
+    "ein Kommentaranfang im Code-Zaun darf nichts dahinter verdecken");
 });

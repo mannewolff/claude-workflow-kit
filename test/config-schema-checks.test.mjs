@@ -559,3 +559,41 @@ test("validationRules fuehrt fuer issueTracker dieselben Werte wie das enum", ()
   assert.ok(regel, "keine validationRule fuer issueTracker");
   assert.deepEqual([...regel.allowed].sort(), [...schema.properties.issueTracker.enum].sort());
 });
+
+// --- Die Anteilsschwellen der Aufwands-Auswertung (Issue #824) ----------------
+//
+// Sie sind Anteile zwischen 0 und 1. Ohne Grenzen am Feld bestand `pruefungAnteil: 80`
+// das Schema, und nur eine Zusatzregel in kit/einstellungen.mjs wies den Wert ab — wer
+// die Config von Hand gegen das Schema prueft, bekam ihn durch.
+
+const ANTEIL_FELDER = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
+
+test("aufwand.schwellen: jede Anteilsschwelle traegt die Grenzen 0 und 1 am Feld", () => {
+  const felder = schema.properties.aufwand.properties.schwellen.properties;
+  for (const feld of ANTEIL_FELDER) {
+    assert.equal(felder[feld].type, "number", `${feld} ist keine Zahl`);
+    assert.equal(felder[feld].minimum, 0, `die Untergrenze 0 fehlt an ${feld}`);
+    assert.equal(felder[feld].maximum, 1, `die Obergrenze 1 fehlt an ${feld}`);
+  }
+});
+
+test("aufwand.schwellen: 80 und -0.1 werden je Feld abgewiesen, 0, 0,5 und 1 gehen durch", () => {
+  const schwellenSchema = schema.properties.aufwand.properties.schwellen;
+  for (const feld of ANTEIL_FELDER) {
+    for (const schlecht of [80, -0.1]) {
+      assert.equal(pruefe(schwellenSchema, { [feld]: schlecht }).length, 1, `${feld}=${schlecht} nicht abgewiesen`);
+    }
+    for (const gut of [0, 0.5, 1]) {
+      assert.deepEqual(pruefe(schwellenSchema, { [feld]: gut }), [], `${feld}=${gut}`);
+    }
+  }
+});
+
+test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte", () => {
+  // Gezaehlt werden Ruecklaufbewegungen je Karte mit Eintritt nach In review, nicht
+  // der Anteil der Arbeitspakete (kit/wirksamkeit.mjs, "Zaehlweise der Quote"). Die
+  // Beschreibung war falsch, nicht der Code.
+  const text = schema.properties.wirksamkeit.properties.quoteSchwelle.description;
+  assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");
+  assert.doesNotMatch(text, /Anteil der Arbeitspakete/, "die falsche Zaehlweise steht noch in der Beschreibung");
+});

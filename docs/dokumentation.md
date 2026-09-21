@@ -333,9 +333,9 @@ node einstellungen.mjs ~/ki-projects
 
 **Die Adresse trägt das Zugangstoken.** Beim Start nennt die Oberfläche eine Adresse der Form `http://127.0.0.1:<port>/#token=…`. Sie ist nur von diesem Rechner erreichbar, und ohne das Token nimmt sie keine Anfrage an — auch nicht von einer anderen Seite im selben Browser. Das Token gilt bis zum Beenden mit Strg+C.
 
-**Sieben Teile.** Die Oberfläche gliedert die Einstellungen in sieben Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Spezifikation, Nacht-Kette und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Bei der Spezifikation gilt das nur für das Einschalten: Ausschalten bietet die Oberfläche nicht an, das Kit nimmt diese Entscheidung nicht zurück.
+**Neun Teile.** Die Oberfläche gliedert die Einstellungen in neun Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Spezifikation, Nacht-Kette, Aufwand, Wirksamkeit und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Bei der Spezifikation gilt das nur für das Einschalten: Ausschalten bietet die Oberfläche nicht an, das Kit nimmt diese Entscheidung nicht zurück. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die Modellliste der Nacht (`night.modelle`) und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der sieben Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die drei Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`), die Stufen (`night.stufen`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der neun Teile.
 
 **Rückfragen bei Folgen.** Manche Änderung wirkt über ihren eigenen Teil hinaus. Einen Reviewer umzubenennen oder zu entfernen wirkt sich auf die Paarungen aus, einen Bereich umzubenennen oder zu entfernen auf die Prüfkommandos, die ihn nutzen. Eine Rückfrage nennt vorher die betroffenen Stellen; die Folge ist Teil derselben Änderung wie der auslösende Teil und wird mit ihm gespeichert oder verworfen. Eine unabhängige Änderung am betroffenen anderen Teil bleibt davon unberührt.
 
@@ -530,7 +530,7 @@ Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausfüh
 
 - `wirksamkeit.fensterTage` — Wie viele Tage zurück die Auswertung zählt. Das Fenster wird am Beginn der Erhebung abgeschnitten, damit es nie weiter zurückreicht, als Daten vorliegen.
 - `wirksamkeit.nieBeanstandetAbAusfuehrungen` — Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Darunter ist 'nichts gefunden' keine Aussage, sondern zu wenig Erfahrung.
-- `wirksamkeit.quoteSchwelle` — Ab welcher Rückläuferquote ein Befund erscheint — der Anteil der Arbeitspakete, die aus In review zurück in Arbeit gingen. Ein Wert zwischen 0 und 1.
+- `wirksamkeit.quoteSchwelle` — Ab welcher Rückläuferquote ein Befund erscheint. Gezählt werden Rücklaufbewegungen je Karte mit Eintritt nach In review; eine Karte, die mehrfach zurückging, zählt mehrfach, und die Quote kann deshalb über 1 liegen. Die Schwelle selbst ist ein Wert zwischen 0 und 1.
 - `wirksamkeit.quoteAbPaketen` — Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen.
 - `wirksamkeit.kandidatenMax` — Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar.
 <!-- einstellungen:ende -->

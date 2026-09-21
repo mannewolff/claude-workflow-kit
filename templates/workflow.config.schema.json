@@ -730,6 +730,8 @@
           "properties": {
             "pruefungAnteil": {
               "type": "number",
+              "minimum": 0,
+              "maximum": 1,
               "default": 0.5,
               "description": "Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
             },
@@ -740,11 +742,15 @@
             },
             "werkzeugAnteil": {
               "type": "number",
+              "minimum": 0,
+              "maximum": 1,
               "default": 0.5,
               "description": "Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
             },
             "schreibkostenAnteil": {
               "type": "number",
+              "minimum": 0,
+              "maximum": 1,
               "default": 0.75,
               "description": "Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
             }
@@ -777,7 +783,7 @@
           "minimum": 0,
           "maximum": 1,
           "default": 0.2,
-          "description": "Ab welcher Rückläuferquote ein Befund erscheint — der Anteil der Arbeitspakete, die aus In review zurück in Arbeit gingen. Ein Wert zwischen 0 und 1."
+          "description": "Ab welcher Rückläuferquote ein Befund erscheint. Gezählt werden Rücklaufbewegungen je Karte mit Eintritt nach In review; eine Karte, die mehrfach zurückging, zählt mehrfach, und die Quote kann deshalb über 1 liegen. Die Schwelle selbst ist ein Wert zwischen 0 und 1."
         },
         "quoteAbPaketen": {
           "type": "integer",
