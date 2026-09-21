@@ -63,6 +63,36 @@ test("ohne --check schreibt das Werkzeug den Abschnitt, ein zweiter Lauf aendert
   });
 });
 
+test("ein Platzhalter der Form <X> erscheint in der Ausgabe als Inline-Code", () => {
+  // Issue #792: Ein nacktes `<X>` in einer Beschreibung wandert sonst unveraendert in die
+  // Doku, und der Vue-Compiler von VitePress liest es als Element ohne End-Tag — der
+  // Build bricht ab. Entschaerft wird beim Erzeugen und nicht im Schema: Sonst bricht die
+  // naechste Beschreibung mit Platzhalter denselben Build.
+  mitKopie((dir) => {
+    const pfad = join(dir, "templates", "workflow.config.schema.json");
+    const schema = JSON.parse(readFileSync(pfad, "utf-8"));
+    schema.properties.mainBranch.description = "Muster mit dem Platzhalter <X>, gefolgt von Text.";
+    writeFileSync(pfad, JSON.stringify(schema, null, 2));
+    assert.equal(lauf([], dir).status, 0);
+    const doku = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    assert.match(doku, /Muster mit dem Platzhalter `<X>`, gefolgt von Text\./);
+    assert.doesNotMatch(doku, /Platzhalter <X>/);
+  });
+});
+
+test("ein Platzhalter in einem Unterfeld und ein schon gesetzter Backtick bleiben richtig", () => {
+  mitKopie((dir) => {
+    const pfad = join(dir, "templates", "workflow.config.schema.json");
+    const schema = JSON.parse(readFileSync(pfad, "utf-8"));
+    schema.properties.spec.properties.testPattern.description = "Ausdruck mit `<ID>` und dazu <Bereich>.";
+    writeFileSync(pfad, JSON.stringify(schema, null, 2));
+    assert.equal(lauf([], dir).status, 0);
+    const doku = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    // Der schon gesetzte Backtick wird nicht verdoppelt, der nackte bekommt seinen.
+    assert.match(doku, /Ausdruck mit `<ID>` und dazu `<Bereich>`\./);
+  });
+});
+
 test("fehlen die Marker, endet das Werkzeug mit Exit 1 und benennt sie", () => {
   mitKopie((dir) => {
     const doku = join(dir, "docs", "dokumentation.md");
