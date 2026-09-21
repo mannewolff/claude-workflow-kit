@@ -4,7 +4,7 @@
 | --- | --- | --- | --- |
 | aufwand | specs/aufwand.md | 3 | 0 |
 | befunde | specs/befunde.md | 0 | 0 |
-| board | specs/board.md | 15 | 2 |
+| board | specs/board.md | 16 | 2 |
 | checks | specs/checks.md | 7 | 0 |
 | einstellungen | specs/einstellungen.md | 17 | 0 |
 | gate | specs/gate.md | 1 | 0 |

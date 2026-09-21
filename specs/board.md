@@ -15,6 +15,7 @@
 - board-17 — Jede Kartenbewegung ueber `issueMove` haengt eine Zeile aus Zeitstempel, Kartennummer und Status-Schluessel an `.claude/bewegungen.tsv` an — fuer jeden Status und ohne die Datei je zu leeren; scheitert das Schreiben, wird die Karte trotzdem bewegt und eine Warnung ausgegeben.
 - board-18 — `issue activity --ids <n,n,…>` loest die Kartenliste genau einmal auf und gibt ein Objekt mit je einer Verlaufsliste pro Nummer aus; eine nicht auffindbare Nummer erscheint darin mit einem Fehlergrund statt den Aufruf abzubrechen, die Einzelform `issue activity <id>` bleibt unveraendert, und beide Eingabewege zusammen werden abgewiesen.
 - board-19 — `nachtlaufMeldung` nimmt eine Einheit ohne Ausgang nicht in die gemeldeten Arbeitspakete auf.
+- board-20 — `nachtlaufMeldung` traegt Budgets, deren Herkunft, die Stufen einer Kette mit Dauer und Verbrauch sowie Modellzeit und Zuege je Lauf und Paket im gemeldeten Rumpf, soweit der Ergebnisstand sie fuehrt.
 
 ## Entfallen
 

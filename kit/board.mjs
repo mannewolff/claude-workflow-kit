@@ -3817,23 +3817,94 @@ function nachtlaufFarbe(einheit) {
   return ["RED", "UNEXPECTED_STATE"];
 }
 
+/** Eine endliche Zahl oder `null` — die Waehrung aller gemeldeten Kennzahlen. */
+function nachtlaufZahl(x) {
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
+}
+
 /**
  * Die Mengen im Vertragsformat, `null`, wenn nichts gemessen wurde. Eingabemenge ist alles
  * Verarbeitete — eigene Eingabe plus beide Zwischenspeicher-Mengen —, der Zwischenspeicher-
  * Anteil nur das daraus Gelesene. So ergibt das Beispiel aus Issue #669 die dort genannten
  * 97,8 Prozent.
+ *
+ * Seit Issue #808 kommen Modellzeit und Zuege aus den `kennzahlen` dazu — sie stehen nicht
+ * im `verbrauch`, dessen Feldliste (VERBRAUCH_FELDER in night.mjs) unveraendert bleibt.
  */
-function nachtlaufUsage(v) {
-  if (!v) return null;
-  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
-  const eingaben = [v.eingabeTokens, v.cacheErzeugtTokens, v.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
+function nachtlaufUsage(v, kennzahlen = null) {
+  const zahl = nachtlaufZahl;
+  const eingaben = [v?.eingabeTokens, v?.cacheErzeugtTokens, v?.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
   const usage = {
-    costUsd: zahl(v.kostenUsd),
+    costUsd: zahl(v?.kostenUsd),
     inputTokens: eingaben.length ? eingaben.reduce((a, b) => a + b, 0) : null,
-    outputTokens: zahl(v.ausgabeTokens),
-    cachedInputTokens: zahl(v.cacheGelesenTokens),
+    outputTokens: zahl(v?.ausgabeTokens),
+    cachedInputTokens: zahl(v?.cacheGelesenTokens),
+    modelDurationMs: zahl(kennzahlen?.apiDauerMs),
+    turns: zahl(kennzahlen?.zuege),
   };
   return Object.values(usage).every((x) => x === null) ? null : usage;
+}
+
+/**
+ * Modellzeit und Zuege einer Einheit: die eigenen Kennzahlen, je Feld — traegt die Einheit
+ * keins, die Summe ueber ihre Stufen, wie `zuegeDerEinheit` (kanban-kit,
+ * nightRunErgebnisstand.ts) es im Browser tut. Ein Feld ohne jede Meldung bleibt `null`,
+ * eine leere Summe stuende sonst als 0 da, wo nichts gemessen wurde.
+ */
+function nachtlaufKennzahlen(einheit) {
+  const summe = {};
+  for (const feld of ["apiDauerMs", "zuege"]) {
+    const eigen = nachtlaufZahl(einheit.kennzahlen?.[feld]);
+    if (eigen !== null) { summe[feld] = eigen; continue; }
+    const gemeldet = Object.values(einheit.stufen ?? {}).map((s) => nachtlaufZahl(s?.kennzahlen?.[feld])).filter((x) => x !== null);
+    summe[feld] = gemeldet.length ? gemeldet.reduce((a, b) => a + b, 0) : null;
+  }
+  return summe;
+}
+
+// Die vier Stufen, die eine Meldung je Ketten-Vorgang fuehrt (Issue #808, E17), in der
+// Reihenfolge der Kette. `umsetzung` bleibt draussen: Der Vertrag nimmt hoechstens vier
+// Stufen an, ein fuenfter Eintrag liesse die ganze Meldung scheitern — ihr Verbrauch
+// bleibt im `usage` des Vorgangs und damit in jeder Gesamtsumme enthalten.
+const NACHTLAUF_STUFEN = ["plan", "review", "pakete", "abdeckung"];
+
+/** Die Stufen einer Ketten-Einheit fuer die Meldung; `null` ohne Stufen (Implementierung). */
+function nachtlaufStages(einheit) {
+  const stufen = einheit.stufen;
+  if (!stufen || typeof stufen !== "object") return null;
+  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage]).map((stage) => ({
+    stage,
+    durationMs: nachtlaufZahl(stufen[stage].dauerMs),
+    // Die Stufe fuehrt Mengen und Kennzahlen in EINEM Objekt (leseKennzahlen nutzt
+    // dieselben Feldnamen wie der Verbrauch) — es bedient beide Parameter.
+    usage: nachtlaufUsage(stufen[stage].kennzahlen, stufen[stage].kennzahlen),
+  }));
+  return stages.length ? stages : null;
+}
+
+// Die Budget-Felder, die die Fusszeile der Laeufe-Seite zeigt (Issue #808, E4) — nur auf
+// sie wird Budget und Herkunft zugeschnitten. KETTE_BUDGET_DEFAULTS (night.mjs) fuehrt
+// mehr; ungefiltert entstuende "aus Voreinstellungen" mit lauter Feldern, die niemand sieht.
+const NACHTLAUF_BUDGET_FELDER = ["planMin", "reviewMin", "paketeMin", "abdeckungMin", "kostenUsd"];
+
+/**
+ * Das Budget des Laufs samt Herkunft fuer die Meldung; `null`, wenn der Stand keins fuehrt
+ * (nur die Kette traegt eins). Ist nach dem Zuschnitt kein Default-Feld uebrig, heisst die
+ * Herkunft CONFIGURED ohne Aufzaehlung — eine leere Liste saehe aus wie eine Aussage.
+ */
+function nachtlaufBudget(stand) {
+  const b = stand?.budget;
+  if (!b || typeof b !== "object") return null;
+  const budget = {};
+  for (const feld of NACHTLAUF_BUDGET_FELDER) {
+    const wert = nachtlaufZahl(b[feld]);
+    if (wert !== null) budget[feld] = wert;
+  }
+  const defaultFields = (Array.isArray(stand.budgetAusDefault) ? stand.budgetAusDefault : [])
+    .filter((feld) => NACHTLAUF_BUDGET_FELDER.includes(feld));
+  budget.origin = defaultFields.length ? "DEFAULTED" : "CONFIGURED";
+  if (defaultFields.length) budget.defaultFields = defaultFields;
+  return budget;
 }
 
 function nachtlaufDauer(einheit) {
@@ -3883,6 +3954,7 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     .map((e) => {
       const [state, errorClass] = nachtlaufFarbe(e);
       const grund = typeof e.grund === "string" && e.grund !== "" ? e.grund : null;
+      const stages = nachtlaufStages(e);
       return {
         cardNumber: Number(e.id),
         // @NotBlank im Vertrag: Ein leerer Titel faellt auf die Nummer zurueck.
@@ -3892,13 +3964,17 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
         durationMs: nachtlaufDauer(e),
         commitHash: typeof e.commit === "string" ? e.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
         excerpt: grund === null ? null : grund.slice(0, NACHTLAUF_AUSZUG_MAX),
-        usage: nachtlaufUsage(e.verbrauch),
+        usage: nachtlaufUsage(e.verbrauch, nachtlaufKennzahlen(e)),
+        // Nur, wo der Stand Stufen fuehrt (Issue #808) — ein Implementierungs-Paket
+        // meldet das Feld gar nicht erst, wie noWorkReason am Lauf-Kopf.
+        ...(stages !== null ? { stages } : {}),
       };
     });
   const grau = items.filter((i) => i.state === "GREY").length;
   const noWorkReason = typeof stand.noWorkReason === "string" && stand.noWorkReason !== ""
     ? stand.noWorkReason.slice(0, NACHTLAUF_NOWORKREASON_MAX)
     : null;
+  const budget = nachtlaufBudget(stand);
   return {
     startedAt: stand.start,
     kind: NACHTLAUF_ART,
@@ -3914,6 +3990,8 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     // gruenen Ersatztext sonst nur bei null Arbeitspaketen; ihn immer mitzuschicken
     // liesse zwei Stellen ueber dieselbe Frage entscheiden.
     ...(noWorkReason !== null ? { noWorkReason } : {}),
+    // Nur, wo der Stand ein Budget fuehrt (Issue #808) — heute allein die Kette.
+    ...(budget !== null ? { budget } : {}),
   };
 }
 

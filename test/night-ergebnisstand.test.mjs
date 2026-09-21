@@ -26,7 +26,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 // Die Kennzahlen je Stufe einer Kette (Issue #807) entstehen nur im Kettenlauf; das
@@ -749,4 +749,49 @@ test("[night-62] Review und Abdeckung haben keine Korrekturrunden und tragen die
       assert.equal(k.isError, null, `Stufe ${stufe}: der Fake liefert kein is_error`);
     }
   });
+});
+
+// --- Budgets, Herkunft, Stufen, Modellzeit und Zuege in der Meldung (Issue #808) ---
+//
+// Der Unit-Test in board-nightrun.test.mjs belegt die reine nachtlaufMeldung(); dieser
+// hier belegt ueber den meldungs-abfangenden Board-Stellvertreter, dass der ECHTE Runner
+// diese Payload baut — nicht nur die Hilfsfunktion im Test. Die Kette laeuft ohne
+// eigenen night.kette-Block: Alle Budget-Felder kommen aus den Defaults, der Zuschnitt
+// auf die fuenf gezeigten Felder (E4) ist damit direkt sichtbar.
+test("[board-20] der echte Kettenlauf meldet Budget samt Herkunft, die vier Stufen und Modellzeit und Zuege je Vorgang", kette.NUR_POSIX, () => {
+  const dir = kette.setupProjekt({}, "night-stand-payload-");
+  const capture = join(dir, "..", `melde-capture-${basename(dir)}.jsonl`);
+  kette.meldeCaptureInstallieren(dir);
+  try {
+    const F = kette.fachplan(dir);
+    const env = {
+      ...kette.umgebung(dir, { stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN } }),
+      NIGHT_MELDEN_ERZWINGEN: "1",
+      KETTE_MELDE_CAPTURE: capture,
+    };
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const alle = readFileSync(capture, "utf-8").trim().split("\n").filter(Boolean).map((z) => JSON.parse(z));
+    const m = alle.at(-1).meldung;
+    assert.deepEqual(m.budget, {
+      planMin: 20, reviewMin: 15, paketeMin: 15, abdeckungMin: 10, kostenUsd: 50,
+      origin: "DEFAULTED", defaultFields: ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "kostenUsd"],
+    }, "das Budget traegt die fuenf gezeigten Felder und die zugeschnittene Herkunft");
+
+    const einheit = m.items.find((i) => i.cardNumber === Number(F));
+    assert.ok(einheit, `kein Item zur Kette #${F} in der Meldung: ${JSON.stringify(m.items)}`);
+    assert.deepEqual(einheit.stages.map((s) => s.stage), ["plan", "review", "pakete", "abdeckung"]);
+    for (const s of einheit.stages) {
+      assert.equal(typeof s.durationMs, "number", `Stufe ${s.stage}: die Dauer fehlt`);
+      assert.equal(s.usage.costUsd, 1, `Stufe ${s.stage}: die Kosten der einen Session`);
+      assert.equal(s.usage.modelDurationMs, 5, `Stufe ${s.stage}: die Modellzeit der einen Session`);
+      assert.equal(s.usage.turns, 1, `Stufe ${s.stage}: die Zuege der einen Session`);
+    }
+    assert.equal(einheit.usage.modelDurationMs, 20, "die Kette summiert die Modellzeit ihrer vier Stufen");
+    assert.equal(einheit.usage.turns, 4, "die Kette summiert die Zuege ihrer vier Stufen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(capture, { force: true });
+  }
 });
