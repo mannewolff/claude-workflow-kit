@@ -10,5 +10,6 @@
 - installer-9 — Der Installer traegt in `.claude/settings.json` des Projekts einen `hooks`-Block fuer `SessionEnd` und `Stop` ein, der den Sitzungs-Melder aufruft; vorhandene Schluessel und fremde Hook-Eintraege bleiben stehen, und ein wiederholter Lauf verdoppelt nichts.
 - installer-10 — Die Kit-Dokumentation nennt, was der Hook meldet, wann er meldet und wie man ihn abschaltet; bleibt eine Sitzung im Worktree unerfasst, steht diese Luecke ebenfalls dort.
 - installer-11 — `sync-blobs` stempelt `kit/aufwand.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
+- installer-13 — `sync-blobs` stempelt `kit/wirksamkeit.mjs` mit dem Kit-Stand, legt die Kopie unter `.claude/kit/` an und meldet mit `--check` eine Abweichung; der Installer schreibt die Datei aus dem eingebetteten Blob ins Zielprojekt.
 
 ## Entfallen

@@ -7,7 +7,8 @@
 | checks | specs/checks.md | 6 | 0 |
 | einstellungen | specs/einstellungen.md | 16 | 0 |
 | gate | specs/gate.md | 1 | 0 |
-| installer | specs/installer.md | 10 | 0 |
+| installer | specs/installer.md | 11 | 0 |
 | night | specs/night.md | 53 | 5 |
 | skills | specs/skills.md | 30 | 3 |
 | spec | specs/spec.md | 2 | 0 |
+| wirksamkeit | specs/wirksamkeit.md | 4 | 0 |

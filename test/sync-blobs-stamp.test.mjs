@@ -26,9 +26,10 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
 // Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441,
-// preise.mjs mit Issue #734, aufwand.mjs mit Issue #750), faellt hier genau eine Stelle
-// an statt drei ueber die Datei verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs", "aufwand.mjs"];
+// preise.mjs mit Issue #734, aufwand.mjs mit Issue #750, wirksamkeit.mjs mit
+// Issue #787), faellt hier genau eine Stelle an statt drei ueber die Datei
+// verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -70,6 +71,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const SPEC_MJS_B64 = "";`,
     `const PREISE_MJS_B64 = "";`,
     `const AUFWAND_MJS_B64 = "";`,
+    `const WIRKSAMKEIT_MJS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -340,6 +342,51 @@ test("[installer-11] --check meldet eine Abweichung von kit/aufwand.mjs", () => 
     assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
     const meldung = res.stderr + res.stdout;
     assert.match(meldung, /AUFWAND_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Das Wirksamkeits-Werkzeug (Issue #787) ----------------------------------
+//
+// Dieselbe Auslieferungskette wie beim Aufwands-Werkzeug darueber: Ohne Stempel, Blob
+// und Dogfooding-Kopie gaebe es `.claude/kit/wirksamkeit.mjs` nicht — und kein
+// Folgepaket koennte `node .claude/kit/wirksamkeit.mjs` aufrufen.
+
+test("[installer-13] wirksamkeit.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+
+    assert.equal(stempel(dir, "wirksamkeit.mjs"), "2.5.0");
+    assert.equal(
+      readFileSync(join(dir, ".claude", "kit", "wirksamkeit.mjs"), "utf-8"),
+      readFileSync(join(dir, "kit", "wirksamkeit.mjs"), "utf-8"),
+      ".claude/kit/wirksamkeit.mjs weicht von der Quelle ab"
+    );
+    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const WIRKSAMKEIT_MJS_B64 = "([^"]*)";/)[1];
+    assert.match(Buffer.from(b64, "base64").toString("utf-8"), /const KIT_VERSION = "2\.5\.0";/,
+      "der eingebettete Blob traegt nicht die gestempelte Fassung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-13] --check meldet eine Abweichung von kit/wirksamkeit.mjs", () => {
+  // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf waere
+  // ebenso rot, wenn wirksamkeit.mjs nur in STAMPED stuende.
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    assert.equal(syncBlobs(dir, "--check").status, 0);
+
+    const pfad = join(dir, "kit", "wirksamkeit.mjs");
+    writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
+    const meldung = res.stderr + res.stdout;
+    assert.match(meldung, /WIRKSAMKEIT_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
