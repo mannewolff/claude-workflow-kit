@@ -721,6 +721,29 @@ function gueteOhneLauf(laufen, ausgelassen) {
 }
 
 /**
+ * Maskiert die Trennzeichen des Protokolls im Kommando (Issue #822).
+ *
+ * Eine Zeile des Protokolls ist zeilen- und tabgetrennt, und `cmd` steht frei
+ * konfiguriert dazwischen: Ein Kommando mit Zeilenumbruch zerriss ohne Maskierung
+ * seine eigene Zeile, und die Auswertung sah zwei fehlerhafte Zeilen statt einer
+ * Ausfuehrung — die Pruefung stuende dort als "nicht gelaufen".
+ *
+ * Der Backslash wird ZUERST verdoppelt: sonst liesse sich ein echtes `\n` im Kommando
+ * nach dem Lesen nicht mehr von einem maskierten Zeilenumbruch unterscheiden.
+ *
+ * SYNC: kit/wirksamkeit.mjs wandelt in `kommandoLesen` zurueck. Die Kit-Werkzeuge sind
+ * eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird
+ * dupliziert und an beiden Enden markiert.
+ */
+function kommandoMaskieren(cmd) {
+  return cmd
+    .replaceAll("\\", String.raw`\\`)
+    .replaceAll("\t", String.raw`\t`)
+    .replaceAll("\n", String.raw`\n`)
+    .replaceAll("\r", String.raw`\r`);
+}
+
+/**
  * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
  *
  * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer. Ein Kommando
@@ -740,7 +763,7 @@ function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
   const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
   try {
     mkdirSync(dirname(pfad), { recursive: true });
-    appendFileSync(pfad, `${jetzt.toISOString()}\t${cmd}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
   } catch (err) {
     process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
   }

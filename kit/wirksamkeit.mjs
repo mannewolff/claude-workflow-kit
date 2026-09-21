@@ -109,6 +109,11 @@ const TAG_MS = 24 * 60 * 60 * 1000;
 // Kennzahl zu verschieben.
 const ERGEBNISSE = new Set(["gruen", "rot"]);
 
+// SYNC: `kommandoMaskieren` in kit/checks.mjs setzt diese Maskierungen (Issue #822).
+// Jedes andere Zeichen hinter einem Backslash bleibt, was es ist — eine alte, vor der
+// Maskierung geschriebene Zeile liest sich damit unveraendert.
+const MASKIERUNGEN = new Map([["t", "\t"], ["n", "\n"], ["r", "\r"], ["\\", "\\"]]);
+
 const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamkeit der Pruefungen
 
   node wirksamkeit.mjs auswerten [--fenster <tage>]
@@ -229,9 +234,34 @@ function bruchzahl(wert) {
 // --- Protokoll lesen ---------------------------------------------------------
 
 /**
+ * Wandelt die Maskierung aus `kommandoMaskieren` (kit/checks.mjs) zurueck: `\t`, `\n`,
+ * `\r` und `\\` werden wieder Tabulator, Zeilenumbruch, Wagenruecklauf und Backslash.
+ *
+ * Von links nach rechts und in EINEM Durchgang — nacheinander ausgefuehrte
+ * Ersetzungen laesen ein maskiertes `\\n` (ein echter Backslash, gefolgt von einem n)
+ * als Zeilenumbruch.
+ *
+ * Ein Backslash vor einem anderen Zeichen bleibt stehen, samt Zeichen: Genau daran
+ * liest sich eine alte Zeile aus der Zeit vor der Maskierung unveraendert.
+ */
+function kommandoLesen(feld) {
+  let text = "";
+  for (let i = 0; i < feld.length; i += 1) {
+    const ersatz = feld[i] === "\\" ? MASKIERUNGEN.get(feld[i + 1]) : undefined;
+    if (ersatz === undefined) {
+      text += feld[i];
+      continue;
+    }
+    text += ersatz;
+    i += 1;
+  }
+  return text;
+}
+
+/**
  * Liest `.claude/ausfuehrungen.tsv` und parst jede Zeile: Zeitpunkt, Kommando,
  * Ergebnis, Dauer — durch Tabs getrennt, wie `ausfuehrungSchreiben` in kit/checks.mjs
- * sie anhaengt.
+ * sie anhaengt. Das Kommando steht dort maskiert und wird zurueckgewandelt.
  *
  * Eine unlesbare oder fehlerhafte Zeile wird uebersprungen und GEZAEHLT, nicht zum
  * Abbruch: Das Protokoll waechst ueber Monate, und eine halbe Zeile am Dateiende darf
@@ -258,7 +288,7 @@ function protokollLesen(root) {
       fehlerhaft += 1;
       continue;
     }
-    zeilen.push({ zeitMs, tag: teile[0].slice(0, 10), cmd: teile[1], ergebnis: teile[2], dauerMs });
+    zeilen.push({ zeitMs, tag: teile[0].slice(0, 10), cmd: kommandoLesen(teile[1]), ergebnis: teile[2], dauerMs });
   }
   return { vorhanden: true, zeilen, fehlerhaft };
 }
@@ -270,10 +300,27 @@ function protokollLesen(root) {
  * Erhebungsbeginn — dem fruehesten Zeitstempel im Protokoll, auch wenn er ausserhalb
  * des Fensters liegt. Das Protokoll traegt seinen eigenen Anfang; eine Konstante im
  * Werkzeug oder ein Config-Feld waere eine zweite Wahrheit darueber.
+ *
+ * NACH HINTEN begrenzt `jetzt` das Fenster (Issue #822): Eine Zeile aus der Zukunft —
+ * eine falsch gehende Uhr genuegt als Ausloeser — zaehlt weder als Ausfuehrung noch
+ * bildet sie den Erhebungsbeginn; sie ist eine fehlerhafte Zeile wie jede andere, die
+ * sich nicht deuten laesst. Ohne diese Grenze stuende im Bericht `von 2099, bis heute`.
+ *
+ * Das Minimum entsteht in einer SCHLEIFE und nicht per `Math.min(...zeilen)`: Der
+ * Spread legt jede Zeile als eigenes Argument auf den Aufrufstapel, und ab etwa
+ * 150.000 Zeilen endet die Auswertung mit `RangeError`. Das Protokoll wird nie geleert.
  */
 function fensterBestimmen(zeilen, fensterTage, jetztMs) {
   const roh = jetztMs - fensterTage * TAG_MS;
-  const erhebungsbeginn = zeilen.length > 0 ? Math.min(...zeilen.map((z) => z.zeitMs)) : null;
+  let erhebungsbeginn = null;
+  let zukunft = 0;
+  for (const z of zeilen) {
+    if (z.zeitMs > jetztMs) {
+      zukunft += 1;
+      continue;
+    }
+    if (erhebungsbeginn === null || z.zeitMs < erhebungsbeginn) erhebungsbeginn = z.zeitMs;
+  }
   const abgeschnitten = erhebungsbeginn !== null && erhebungsbeginn > roh;
   return {
     tage: fensterTage,
@@ -284,6 +331,25 @@ function fensterBestimmen(zeilen, fensterTage, jetztMs) {
     // Die Grenze fuer die Auswahl bleibt die rohe: Vor dem Erhebungsbeginn liegt
     // ohnehin keine Zeile, und so haengt die Auswahl nicht an der Abschneide-Frage.
     grenzeMs: roh,
+    obergrenzeMs: jetztMs,
+    zukunft,
+  };
+}
+
+/** Liegt ein Zeitpunkt im Fenster? Beide Grenzen zaehlen mit. */
+function imFenster(zeitMs, fenster) {
+  return zeitMs >= fenster.grenzeMs && zeitMs <= fenster.obergrenzeMs;
+}
+
+/**
+ * Die Zeilenbilanz eines Protokolls fuer den Bericht: gueltige und fehlerhafte Zeilen.
+ * Eine Zeile aus der Zukunft steht bei den fehlerhaften und nicht bei den gueltigen —
+ * zusammen ergeben beide Zahlen weiter die Zahl der Zeilen in der Datei.
+ */
+function zeilenbilanz(protokoll, fenster) {
+  return {
+    zeilen: protokoll.zeilen.length - fenster.zukunft,
+    fehlerhafteZeilen: protokoll.fehlerhaft + fenster.zukunft,
   };
 }
 
@@ -304,7 +370,7 @@ function aggregieren(zeilen, buildCmds, fenster) {
     jeCmd.set(cmd, { cmd, vorgeschrieben: true, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() });
   }
   for (const z of zeilen) {
-    if (z.zeitMs < fenster.grenzeMs) continue;
+    if (!imFenster(z.zeitMs, fenster)) continue;
     const p = jeCmd.get(z.cmd)
       ?? { cmd: z.cmd, vorgeschrieben: false, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() };
     p.ausfuehrungen += 1;
@@ -449,7 +515,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
   const protokoll = bewegungenLesen(root);
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const basis = {
-    protokoll: { vorhanden: protokoll.vorhanden, zeilen: protokoll.zeilen.length, fehlerhafteZeilen: protokoll.fehlerhaft },
+    protokoll: { vorhanden: protokoll.vorhanden, ...zeilenbilanz(protokoll, fenster) },
     erhebungsbeginn: fenster.erhebungsbeginn,
     abgeschnitten: fenster.abgeschnitten,
     quote: null,
@@ -473,7 +539,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
     };
   }
 
-  const gewertet = kandidatenBestimmen(protokoll.zeilen, fenster.grenzeMs, einstellungen.kandidatenMax);
+  const gewertet = kandidatenBestimmen(protokoll.zeilen, fenster, einstellungen.kandidatenMax);
   basis.kandidaten = gewertet.kandidaten;
   if (gewertet.ids.length === 0) return { ...basis, status: "nichtBerechenbar" };
 
@@ -482,7 +548,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
     return { ...basis, status: "entfallen", grund: `der Verlaufs-Aufruf des Boards schlug fehl: ${geholt.fehler}` };
   }
 
-  const gezaehlt = kartenZaehlen(geholt.verlaeufe, gewertet.ids, einstellungen.spalten, fenster.grenzeMs);
+  const gezaehlt = kartenZaehlen(geholt.verlaeufe, gewertet.ids, einstellungen.spalten, fenster);
   return {
     ...basis,
     ...gezaehlt,
@@ -497,10 +563,10 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
  * zuerst. Was wegfaellt, steht im Bericht und in der Traglast — nie stilles
  * Abschneiden.
  */
-function kandidatenBestimmen(zeilen, grenzeMs, kandidatenMax) {
+function kandidatenBestimmen(zeilen, fenster, kandidatenMax) {
   const juengste = new Map();
   for (const z of zeilen) {
-    if (z.zeitMs < grenzeMs) continue;
+    if (!imFenster(z.zeitMs, fenster)) continue;
     juengste.set(z.id, Math.max(juengste.get(z.id) ?? 0, z.zeitMs));
   }
   const sortiert = [...juengste.entries()].sort((a, b) => b[1] - a[1] || vergleicheText(a[0], b[0]));
@@ -517,7 +583,7 @@ function kandidatenBestimmen(zeilen, grenzeMs, kandidatenMax) {
  * Verlauf. Eine Nummer mit Fehlereintrag der Sammelform kostet einen Kandidaten,
  * nicht die Auswertung — sie wird gezaehlt und im Bericht genannt.
  */
-function kartenZaehlen(verlaeufe, ids, spalten, grenzeMs) {
+function kartenZaehlen(verlaeufe, ids, spalten, fenster) {
   const zuordnung = spaltenZuordnung(spalten);
   const summe = { zaehler: 0, nenner: 0, nichtZuordenbareBewegungen: 0, fehlerKarten: 0 };
   for (const id of ids) {
@@ -526,7 +592,7 @@ function kartenZaehlen(verlaeufe, ids, spalten, grenzeMs) {
       summe.fehlerKarten += 1;
       continue;
     }
-    const karte = karteZaehlen(verlauf, zuordnung, grenzeMs);
+    const karte = karteZaehlen(verlauf, zuordnung, fenster);
     summe.zaehler += karte.ruecklaeufe;
     summe.nichtZuordenbareBewegungen += karte.nichtZuordenbar;
     if (karte.eintritt) summe.nenner += 1;
@@ -540,11 +606,11 @@ function kartenZaehlen(verlaeufe, ids, spalten, grenzeMs) {
  * Ruecklauf von heute erst erkennbar. Gezaehlt (Eintritt wie Ruecklauf) wird nur,
  * was im Fenster liegt; genau deshalb kann die Quote ueber 100 % liegen.
  */
-function karteZaehlen(verlauf, zuordnung, grenzeMs) {
+function karteZaehlen(verlauf, zuordnung, fenster) {
   const karte = { ruecklaeufe: 0, eintritt: false, nichtZuordenbar: 0 };
   let zustand = null;
   for (const b of kartenBewegungen(verlauf, zuordnung)) {
-    if (b.zeitMs >= grenzeMs) {
+    if (imFenster(b.zeitMs, fenster)) {
       if (b.ziel === null) karte.nichtZuordenbar += 1;
       if (zustand === "in_review" && b.ziel !== "in_review" && b.ziel !== "done") karte.ruecklaeufe += 1;
       if (b.ziel === "in_review") karte.eintritt = true;
@@ -850,8 +916,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
     },
     protokoll: {
       vorhanden: protokoll.vorhanden,
-      zeilen: protokoll.zeilen.length,
-      fehlerhafteZeilen: protokoll.fehlerhaft,
+      ...zeilenbilanz(protokoll, fenster),
     },
     pruefungen,
     ruecklauf,
