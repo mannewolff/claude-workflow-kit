@@ -145,6 +145,13 @@ export function planBody({ offeneFragen = "- Keine.", ohneVerifizierung = false 
  * selbst, damit `sessions()` auch sie ausweist; die Salvage-Session ist daneben an
  * NIGHT_SALVAGE erkennbar und bekommt einen eigenen Namen, sonst liefe sie in den
  * Zweig der Umsetzung.
+ *
+ * `stop_reason` und `is_error` kommen aus `$KETTE_STOP` und `$KETTE_IS_ERROR` und
+ * stehen ROH im JSON — der Wert traegt seine Anfuehrungszeichen also selbst
+ * (`KETTE_STOP='"end_turn"'`). Ohne die beiden bleibt es bei `null`, dem Stand vor
+ * Issue #807. Eine Fake-Zeile darf sie setzen: Das `case` laeuft vor dem `echo` in
+ * derselben Shell, und nur so bekommen zwei Sessions derselben Stufe (Korrekturrunden)
+ * verschiedene Werte.
  */
 export function fake(stufen = {}) {
   const faelle = Object.entries(stufen).map(([stufe, zeilen]) => `  ${stufe}) ${zeilen} ;;`).join("\n");
@@ -159,7 +166,7 @@ export function fake(stufen = {}) {
     "  *) : ;;",
     "esac",
     'if [ -z "$KETTE_OHNE_RESULT" ]; then',
-    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
+    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"stop_reason":'"\${KETTE_STOP:-null}"',"is_error":'"\${KETTE_IS_ERROR:-null}"',"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
     "fi",
   ].join("\n");
 }

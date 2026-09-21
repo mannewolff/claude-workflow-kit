@@ -29,6 +29,10 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, read
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+// Die Kennzahlen je Stufe einer Kette (Issue #807) entstehen nur im Kettenlauf; das
+// Fixture dafuer liegt neben den uebrigen Kette-Tests. Als Namensraum eingebunden,
+// weil diese Datei `run`, `board`, `stand` und `NUR_POSIX` selbst fuehrt.
+import * as kette from "./helpers/kette-fixture.mjs";
 
 // Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
 // damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
@@ -639,4 +643,110 @@ test("[night-43] im Dry-Run bleibt die Startmeldung aus", NUR_POSIX, () => {
     rmSync(dir, { recursive: true, force: true });
     rmSync(captureFile, { force: true });
   }
+});
+
+// --- Kennzahlen einer Stufe mit Korrekturrunden (Issue #807) ---
+//
+// Eine Stufe der Nacht-Kette kann mehrere Sessions fahren: die eigentliche plus bis zu
+// `korrekturrunden` Formkorrekturen. Bis Issue #807 behielt die Stufe die Kennzahlen der
+// LETZTEN Session — die Summe ueber die Stufen entsprach damit nicht dem Verbrauch des
+// Vorgangs, und eine Plan-Stufe mit zwei Korrekturrunden sah zu billig aus. Summiert
+// werden alle numerischen Felder; `stopReason` und `isError` tragen den Wert der letzten
+// Session, weil eine Summe ueber sie nicht definiert ist.
+
+/** Die Fake-Zeile der Stufe form: repariert erst in der zweiten Runde, je Runde eigene Kennzahlen. */
+const FORM_ZWEITE_RUNDE = [
+  'runde=$(cat "$KETTE_LOG.formrunde" 2>/dev/null || echo 0)',
+  "runde=$((runde + 1))",
+  'printf "%s" "$runde" > "$KETTE_LOG.formrunde"',
+  String.raw`KETTE_STOP="\"runde$runde\""`,
+  `if [ "$runde" -ge 2 ]; then KETTE_IS_ERROR=false; ${kette.FORM_REPARIEREN}; else KETTE_IS_ERROR=true; fi`,
+].join("; ");
+
+/** Die Fake-Zeile der Stufe form fuer ein Paket, mit eigenen Kennzahlen der Korrekturrunde. */
+const PAKET_REPARIEREN_MIT_KENNZAHLEN = `KETTE_STOP='"korrektur"'; KETTE_IS_ERROR=true; ${kette.PAKET_REPARIEREN}`;
+
+test("[night-62] die Plan-Stufe mit zwei Korrekturrunden traegt die Summe ihrer drei Sessions, stopReason und isError der letzten", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, {
+      stufen: { plan: kette.PLAN_ANLEGEN, form: FORM_ZWEITE_RUNDE, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN },
+      plan: kette.planBody({ ohneVerifizierung: true }),
+      fix: kette.planBody(),
+    });
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const e = kette.stand(dir).einheiten.find((x) => x.id === F);
+    assert.equal(e.ausgang, "fertig", e.grund);
+    assert.equal(e.stufen.plan.korrekturrunden, 2, "der Test braucht genau zwei Korrekturrunden");
+    // Drei Sessions à 1 $, 5 ms API-Dauer, 1 Zug und den vier Token-Mengen des Fakes.
+    // Vor Issue #807 stand hier der Wert der letzten Session allein (1 $, 5 ms, 1 Zug).
+    assert.deepEqual(e.stufen.plan.kennzahlen, {
+      kostenUsd: 3,
+      apiDauerMs: 15,
+      zuege: 3,
+      stopReason: "runde2",
+      isError: false,
+      eingabeTokens: 30,
+      ausgabeTokens: 60,
+      cacheErzeugtTokens: 90,
+      cacheGelesenTokens: 120,
+      cache5mTokens: null,
+      cache1hTokens: null,
+    });
+  });
+});
+
+test("[night-62] die Pakete-Stufe mit einer Korrekturrunde traegt die Summe ihrer zwei Sessions, stopReason und isError der letzten", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, {
+      stufen: {
+        plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER,
+        pakete: kette.PAKET_OHNE_ABHAENGIGKEITEN, form: PAKET_REPARIEREN_MIT_KENNZAHLEN,
+      },
+    });
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const e = kette.stand(dir).einheiten.find((x) => x.id === F);
+    assert.equal(e.ausgang, "fertig", e.grund);
+    assert.equal(e.stufen.pakete.korrekturrunden, 1, "der Test braucht genau eine Korrekturrunde");
+    assert.deepEqual(e.stufen.pakete.kennzahlen, {
+      kostenUsd: 2,
+      apiDauerMs: 10,
+      zuege: 2,
+      stopReason: "korrektur",
+      isError: true,
+      eingabeTokens: 20,
+      ausgabeTokens: 40,
+      cacheErzeugtTokens: 60,
+      cacheGelesenTokens: 80,
+      cache5mTokens: null,
+      cache1hTokens: null,
+    });
+  });
+});
+
+test("[night-62] Review und Abdeckung haben keine Korrekturrunden und tragen die Kennzahlen ihrer einen Session", kette.NUR_POSIX, () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, {
+      stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN },
+    });
+    const res = kette.run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const e = kette.stand(dir).einheiten.find((x) => x.id === F);
+    assert.equal(e.ausgang, "fertig", e.grund);
+    const eineSession = { kostenUsd: 1, apiDauerMs: 5, zuege: 1 };
+    for (const stufe of ["plan", "review", "pakete", "abdeckung"]) {
+      const k = e.stufen[stufe].kennzahlen;
+      assert.deepEqual({ kostenUsd: k.kostenUsd, apiDauerMs: k.apiDauerMs, zuege: k.zuege }, eineSession,
+        `Stufe ${stufe}: eine Session, also unveraendert deren Kennzahlen`);
+      assert.equal(k.stopReason, null, `Stufe ${stufe}: der Fake liefert keinen stop_reason`);
+      assert.equal(k.isError, null, `Stufe ${stufe}: der Fake liefert kein is_error`);
+    }
+  });
 });

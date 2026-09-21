@@ -1895,6 +1895,42 @@ export function leseKennzahlen(stdout) {
   };
 }
 
+/**
+ * Die Felder der Kennzahlen, die nicht summiert werden: Ueber einen `stop_reason` und
+ * ein `is_error` ist keine Summe definiert. Sie tragen den Wert der letzten Session.
+ */
+const KENNZAHLEN_LETZTE = new Set(["stopReason", "isError"]);
+
+/**
+ * Die Kennzahlen mehrerer Sessions derselben Stufe zu einer zusammengefasst (Issue #807):
+ * jedes numerische Feld summiert, die Felder aus `KENNZAHLEN_LETZTE` von der letzten
+ * Session.
+ *
+ * Eine Stufe der Nacht-Kette faehrt bis zu `korrekturrunden` Sessions mehr als eine.
+ * Behielte sie nur die letzte, entspraeche die Summe ueber die Stufen nicht dem Verbrauch
+ * des Vorgangs — eine Plan-Stufe mit zwei Korrekturrunden saehe zu billig aus.
+ *
+ * `verbrauchAddieren` ist dafuer das Vorbild, nicht das Werkzeug: Es laeuft ueber
+ * `VERBRAUCH_FELDER` und kennt weder `apiDauerMs` noch `zuege`, die hier mitzaehlen.
+ * Deshalb entscheidet der Typ des Werts und keine Feldliste — was `leseKennzahlen`
+ * spaeter als Zahl hinzunimmt, ist damit von selbst dabei.
+ *
+ * Reine Funktion: `ziel` bleibt unangetastet, das Ergebnis ist neu. `ziel` ist `null`,
+ * solange die Stufe nichts gemessen hat; eine Session ohne Kennzahlen traegt nichts bei
+ * und laesst den Stand, wie er war. Ein Feld, zu dem nie eine Zahl kam, bleibt `null` —
+ * eine 0 behauptete, es sei nichts verbraucht worden.
+ */
+export function kennzahlenAddieren(ziel, kennzahlen) {
+  if (!kennzahlen) return ziel;
+  const summe = { ...ziel };
+  for (const [feld, wert] of Object.entries(kennzahlen)) {
+    if (KENNZAHLEN_LETZTE.has(feld)) summe[feld] = wert;
+    else if (typeof wert === "number" && Number.isFinite(wert)) summe[feld] = (typeof summe[feld] === "number" ? summe[feld] : 0) + wert;
+    else if (!(feld in summe)) summe[feld] = wert;
+  }
+  return summe;
+}
+
 // --- Verbrauch je Einheit und Lauf (Issue #669) ---
 
 /** Die Felder des Verbrauchs, in dieser Reihenfolge im Ergebnisstand. */
@@ -4087,7 +4123,7 @@ async function stufePlan(kette) {
   const budgetMs = budget.planMin * 60 * 1000;
   const stand = { id: null, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
   kette.stufen.plan = stand;
-  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = s.kennzahlen ?? stand.kennzahlen; };
+  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
   const vorher = new Set(board("issue", "list").map((i) => String(i.id)));
   log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
@@ -4237,7 +4273,7 @@ async function stufePakete(kette, planId) {
   const budgetMs = budget.paketeMin * 60 * 1000;
   const stand = { ids: [], nichtZuordenbar: [], dauerMs: 0, kennzahlen: null, korrekturrunden: 0 };
   kette.stufen.pakete = stand;
-  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = s.kennzahlen ?? stand.kennzahlen; };
+  const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
   const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
   const vorherPlan = board("issue", "get", planId);

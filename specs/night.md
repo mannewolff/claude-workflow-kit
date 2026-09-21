@@ -56,6 +56,7 @@
 - night-60 — `laufAbschliessen` ruft hinter der Aufwands-Auswertung und vor dem zweiten Schreiben des Ergebnisstands die Wirksamkeits-Auswertung als Kindprozess, legt deren Ergebnis am Lauf-Kopf ab und schreibt ihren Befundblock als eigenen Block hinter den Aufwands-Block in das Laufprotokoll; ohne Befund bleibt das Protokoll an dieser Stelle leer, ein Fehlschlag der Auswertung ist eine Protokollzeile und hält den Lauf nicht auf, und im Dry-Run entfällt der Aufruf.
 - night-59 — `gitReste()` wertet `.claude/wirksamkeit.md`, `.claude/wirksamkeit.json`, `.claude/bewegungen.tsv` und `.claude/ausfuehrungen.tsv` nicht als unsaubere Arbeitsbaum-Reste, und der Spiegel nach `.claude/` eines Worktrees laesst alle vier in der Hauptkopie zurueck.
 - night-61 — Nach jeder abgeschlossenen Stufe einer Kette (plan, review, pakete, abdeckung) schreibt der Nacht-Runner den Ergebnisstand und meldet den Lauf, gleich mit welchem Ausgang die Stufe endet.
+- night-62 — Eine Stufe der Kette mit Korrekturrunden meldet die Summe der Kennzahlen aller ihrer Sessions, nicht nur die der letzten.
 
 ## Entfallen
 
