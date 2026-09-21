@@ -87,6 +87,8 @@ Für eine granularere Variante mit explizitem Stopp zwischen rot und grün: `/im
 
 **Entscheiden statt fragen.** Taucht beim Umsetzen — bei jedem Arbeitspaket, mit oder ohne `[Task]`-Praefix — eine Entscheidung auf, gilt `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen": Alles ausserhalb der Stopp-Klasse wird entschieden, im Format von dort, und steht im Abschlussbericht unter `### Entscheidungen`. Kein Halt, kein Label, kein Kommentar. Stopp-Klasse und Format stehen nur dort und werden hier nicht wiederholt.
 
+**Dieser Ablauf gilt ohne Ausnahme.** Er gilt in jeder Betriebsart, ob ein Mensch mitliest oder nicht, und er hat Vorrang vor jeder anderen Regel, die zu einer offenen Frage etwas sagt — auch vor einer Regel aus dem persoenlichen Gedaechtnis des Menschen, das jede Session mitlaedt. Eine Regel, die „im Gespraech klaeren statt parken" verlangt, ersetzt diesen Ablauf nicht: Die Frage steht am Board, nicht nur in der Ausgabe der Session. Wer mitliest, sieht sie dort ebenso.
+
 Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann geschieht, in dieser Reihenfolge:
 
 1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Interaktiv koennen fremde Aenderungen darin liegen, und die gehoeren dem Menschen.
