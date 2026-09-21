@@ -1046,6 +1046,24 @@ function gitReste(cwd = process.cwd()) {
   // den `.claude/*`-Block nicht fuehrt. Die Messung machte dann die Arbeit unmoeglich,
   // die sie misst.
   pathspec.push(":(exclude).claude/aufwand.*");
+  // Die Wirksamkeits-Auswertung (Plan #782, E12) legt vier weitere Dateien im Arbeitsbaum
+  // an: die Protokolle `bewegungen.tsv` und `ausfuehrungen.tsv`, die in JEDEM Lauf
+  // mitschreiben, und die beiden Berichte `wirksamkeit.md` (fuer Menschen) und
+  // `wirksamkeit.json` (fuer die Weiterverarbeitung). Erhebung und Auswertung, kein
+  // Code-Zustand — und aus demselben Grund ausgeschlossen wie `aufwand.*` darueber:
+  // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt, dessen
+  // `.gitignore` den `.claude/*`-Block nicht fuehrt, nach der ersten erfolgreichen Runde
+  // hart. Die Messung machte dann die Arbeit unmoeglich, die sie misst. Dieses Repo
+  // fuehrt den Block und ist darum nicht selbst betroffen; ein frisch installiertes
+  // Projekt ohne ihn waere es.
+  // SYNC: die schreibenden Stellen liegen anderswo — `bewegungen.tsv` in kit/board.mjs,
+  // `ausfuehrungen.tsv` in kit/checks.mjs, `wirksamkeit.md` und `wirksamkeit.json` in
+  // kit/wirksamkeit.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
+  // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
+  pathspec.push(":(exclude).claude/bewegungen.tsv"); // SYNC: kit/board.mjs schreibt sie
+  pathspec.push(":(exclude).claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
+  pathspec.push(":(exclude).claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
+  pathspec.push(":(exclude).claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
   const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
@@ -1187,6 +1205,21 @@ function gitIm(repoRoot, gitArgs) {
  * Die Aufwands-Auswertung (`aufwand.md`, `aufwand.json`, Issue #752) bleibt aus demselben
  * Grund zurueck wie `night-run-*`: Sie gehoert dem Lauf, der sie geschrieben hat, und
  * liegt in der Hauptkopie. Im Worktree waere sie ein fremder Stand, der mit ihm verginge.
+ *
+ * Dasselbe gilt fuer die vier Dateien der Wirksamkeits-Auswertung (Plan #782, E12):
+ * `bewegungen.tsv`, `ausfuehrungen.tsv`, `wirksamkeit.md` und `wirksamkeit.json` bleiben
+ * in der Hauptkopie.
+ *
+ * ANNAHME (E12): Bewegungen und Ausfuehrungen, die IM Worktree entstuenden, gingen mit
+ * ihm verloren — der Spiegel geht nur in eine Richtung, und `notizenZurueck` holt allein
+ * Vorhaben-Notizen. Heute trifft das nichts: Die Umsetzungsstufe baut den Worktree
+ * zuerst ab und arbeitet in der Hauptkopie, und die erzeugenden Stufen bewegen nichts
+ * nach In review und fahren keine Pruefungen — im Worktree entsteht also gar nichts,
+ * was zu protokollieren waere. Bricht diese Annahme (arbeitet eine Stufe kuenftig am
+ * Board oder faehrt Pruefungen im Worktree), bricht die Erhebung still: Die Auswertung
+ * saehe die Bewegungen und Ausfuehrungen jener Stufe nie und meldete darum zu wenig,
+ * ohne dass etwas rot wird. Dann muessen die beiden Protokolle wie die Notizen
+ * zurueckgeholt werden.
  */
 function claudeSpiegeln(repoRoot, pfad) {
   const quelle = join(repoRoot, ".claude");
@@ -1196,7 +1229,11 @@ function claudeSpiegeln(repoRoot, pfad) {
     force: true,
     filter: (src) => {
       const name = basename(src);
-      return !name.startsWith("night-run-") && !name.startsWith("aufwand.");
+      return !name.startsWith("night-run-")
+        && !name.startsWith("aufwand.")
+        && !name.startsWith("wirksamkeit.")
+        && name !== "bewegungen.tsv"
+        && name !== "ausfuehrungen.tsv";
     },
   });
 }
