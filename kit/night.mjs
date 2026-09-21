@@ -338,7 +338,9 @@ Working Tree, fuehrt der Runner die buildChecks der Paketstufe selbst aus — oh
 bereichsbezogene Auswahl, denn was die Runde angefasst hat, weiss niemand. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
-zu verschieben (Zeitlimit 10 min). Rote Checks fuehren zum harten Stopp, und ebenso
+zu verschieben (Zeitlimit 10 min). Das Kommando dazu steht im Prompt der Session und
+laesst dieselben Laufzeit-Dateien aus, die auch der Rest-Guard nicht als Rest wertet
+— sonst urteilte die Session strenger als der Runner. Rote Checks fuehren zum harten Stopp, und ebenso
 jeder Salvage, der nicht mit sauberem Baum und der Karte in In review endet — das
 Protokoll nennt dann einen von drei Endzustaenden: "SALVAGE-VERSUCH gescheitert"
 (kein Commit, Board nicht bewegt), "SALVAGE UNVOLLSTAENDIG" (Commit, Board nicht
@@ -1048,36 +1050,52 @@ function boardRoh(...cliArgs) {
 // eigenen Maschine startet. Wer dort ein PATH-Verzeichnis beschreiben kann, hat bereits
 // Codeausfuehrung unter derselben Kennung — der Angriff setzt voraus, was er erreichen
 // soll. Die Findings sind in SonarCloud als accepted markiert, mit derselben Begruendung.
-function gitReste(cwd = process.cwd()) {
+/**
+ * Die Pfade, die kein Rest sind — eine Liste mit zwei Lesern (Issue #818).
+ *
+ * `gitReste()` misst damit, was als unkommittete Arbeit zaehlt, und
+ * `salvageSauberkeitsKommando()` baut daraus das Kommando, das der Salvage-Prompt
+ * der Session nennt. Bis #818 stand im Prompt ein nacktes `git status --porcelain`,
+ * und damit urteilten Session und Runner in einem Projekt ohne den `.claude/*`-Block
+ * in `.gitignore` verschieden: Die Session sah `night-run-*`, den Umsetzungs-Lock und
+ * die Protokolle, liess das Board darum unberuehrt, und der Runner meldete danach
+ * "SALVAGE UNVOLLSTAENDIG" mit hartem Stopp. Die Rettung scheiterte an einem
+ * Widerspruch zwischen zwei Regeln desselben Werkzeugs. Eine Liste kann nicht
+ * auseinanderlaufen, zwei Aufzaehlungen koennen es.
+ *
+ * `cfg` ist aus demselben Grund ein Parameter wie `config` ein Modul-Let ist: Die
+ * Funktion wird aus der Hauptschleife heraus gerufen, aber auch fuer sich getestet.
+ */
+export function gitResteAusnahmen(cfg = config) {
+  const ausnahmen = [];
   // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
   // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
-  const pathspec = ["--", "."];
-  if (config.issueTracker === "local") {
-    pathspec.push(`:(exclude)${config.local?.issuesDir || "issues"}`);
+  if (cfg?.issueTracker === "local") {
+    ausnahmen.push(cfg.local?.issuesDir || "issues");
   }
   // Das Nacht-Protokoll (Textdatei und Ergebnisstand, Issue #486) entsteht waehrend
   // des Laufs im Arbeitsbaum: Protokoll-Zustand ist kein Code-Zustand. Anders als die
   // issuesDir-Ausnahme gilt diese unabhaengig vom Tracker — der Runner legt seine
   // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
   // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
-  pathspec.push(":(exclude).claude/night-run-*");
+  ausnahmen.push(".claude/night-run-*");
   // Eine wartende Vorhaben-Notiz (Issue #546) entsteht beim Planen und wird erst
   // beim naechsten `push main` nach specs/vorhaben/ aufgehoben: Vorhaben-Zustand ist
   // kein Code-Zustand. Wie beim Protokoll darueber steht der Ausschluss ausdruecklich
   // hier, obwohl `.gitignore` den Pfad meist deckt — der Installer laesst eine
   // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
   // Block, und dort hielte die erste geplante Notiz den Lauf an.
-  pathspec.push(":(exclude).claude/vorhaben-wartend-*");
+  ausnahmen.push(".claude/vorhaben-wartend-*");
   // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
   // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
-  pathspec.push(":(exclude).claude/night-bericht-*");
+  ausnahmen.push(".claude/night-bericht-*");
   // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
   // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
   // die Vorhaben-Notiz darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
   // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
   // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
   // ersten Paket als unsauber.
-  pathspec.push(`:(exclude)${UMSETZUNG_LOCK}`);
+  ausnahmen.push(UMSETZUNG_LOCK);
   // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
   // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
   // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
@@ -1087,7 +1105,7 @@ function gitReste(cwd = process.cwd()) {
   // SYNC: derselbe Pfad steckt als WEGMARKEN_DATEI in kit/board.mjs, das ihn schreibt;
   // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
   // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
-  pathspec.push(":(exclude).claude/wegmarken.tsv");
+  ausnahmen.push(".claude/wegmarken.tsv");
   // Die Aufwands-Auswertung (Issue #752) entsteht am Ende JEDES Laufs im Arbeitsbaum —
   // `.claude/aufwand.md` fuer Menschen, `.claude/aufwand.json` fuer die zwei
   // Ausgabestellen. Protokoll-Zustand, kein Code-Zustand, und aus demselben Grund
@@ -1095,7 +1113,7 @@ function gitReste(cwd = process.cwd()) {
   // (#152) im naechsten Lauf nach der ersten erfolgreichen Runde hart, sobald `.gitignore`
   // den `.claude/*`-Block nicht fuehrt. Die Messung machte dann die Arbeit unmoeglich,
   // die sie misst.
-  pathspec.push(":(exclude).claude/aufwand.*");
+  ausnahmen.push(".claude/aufwand.*");
   // Die Wirksamkeits-Auswertung (Plan #782, E12) legt vier weitere Dateien im Arbeitsbaum
   // an: die Protokolle `bewegungen.tsv` und `ausfuehrungen.tsv`, die in JEDEM Lauf
   // mitschreiben, und die beiden Berichte `wirksamkeit.md` (fuer Menschen) und
@@ -1110,11 +1128,41 @@ function gitReste(cwd = process.cwd()) {
   // `ausfuehrungen.tsv` in kit/checks.mjs, `wirksamkeit.md` und `wirksamkeit.json` in
   // kit/wirksamkeit.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
   // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
-  pathspec.push(":(exclude).claude/bewegungen.tsv"); // SYNC: kit/board.mjs schreibt sie
-  pathspec.push(":(exclude).claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
-  pathspec.push(":(exclude).claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
-  pathspec.push(":(exclude).claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
-  const res = spawnSync("git", ["status", "--porcelain", ...pathspec], { encoding: "utf-8", cwd });
+  ausnahmen.push(".claude/bewegungen.tsv"); // SYNC: kit/board.mjs schreibt sie
+  ausnahmen.push(".claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
+  ausnahmen.push(".claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
+  ausnahmen.push(".claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
+  return ausnahmen;
+}
+
+/**
+ * Die Ausnahmen als git-Pathspec (Issue #818). Eine Herleitung, zwei Verwendungen:
+ * `gitReste()` uebergibt sie als Argumente, das Salvage-Kommando setzt sie als Text
+ * zusammen. Zwei Herleitungen desselben Pathspec liefen bei der ersten Aenderung
+ * auseinander — und genau das war der Fehler, den #818 behebt.
+ */
+export function gitRestePathspec(ausnahmen = gitResteAusnahmen()) {
+  return ["--", ".", ...ausnahmen.map((pfad) => `:(exclude)${pfad}`)];
+}
+
+/**
+ * Das Kommando, mit dem eine Session ihren Arbeitsbaum genauso misst wie der Runner
+ * (Issue #818). Es geht als Text in den Salvage-Prompt und wird dort von einer Shell
+ * ausgefuehrt, darum die Anfuehrungszeichen: Ein `:(exclude).claude/night-run-*` ohne
+ * sie waere ein Glob, das die Shell vorher aufloeste.
+ */
+export function salvageSauberkeitsKommando(ausnahmen = gitResteAusnahmen()) {
+  // Ein Apostroph im Pfad beendet die Quotierung; die Shell-uebliche Folge setzt ihn
+  // ausserhalb wieder ein. Unwahrscheinlich in einem issuesDir, aber billiger als die
+  // Annahme, dass es ihn nie gibt.
+  const apostroph = String.raw`'\''`;
+  const teile = gitRestePathspec(ausnahmen).map((teil) =>
+    /^[A-Za-z0-9._/-]+$/.test(teil) ? teil : `'${teil.replaceAll("'", apostroph)}'`);
+  return `git status --porcelain ${teile.join(" ")}`;
+}
+
+function gitReste(cwd = process.cwd()) {
+  const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec()], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
 }
@@ -3071,7 +3119,7 @@ function verifyChecksForSalvage(cfg) {
 // Karte danach in In review, waehrend Arbeit im Baum lag. Das Board meldete Erfolg,
 // der Lauf meldete Fehlschlag, und auf main lag ein roter Stand. Wer nicht committen
 // kann, soll die Karte gar nicht erst bewegen.
-function salvagePrompt(issueId, checksOutput, formatFixCmd) {
+export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
@@ -3083,7 +3131,10 @@ function salvagePrompt(issueId, checksOutput, formatFixCmd) {
     `3. Passt der Stand zum Issue, arbeite GENAU DIESE REIHENFOLGE ab:`,
     `   a) Committe ihn (Betreff mit "(Issue #${issueId})", im Body "Refs #${issueId}"`,
     `      — niemals Closes/Fixes/Resolves).`,
-    `   b) Pruefe danach den Arbeitsbaum: git status --porcelain`,
+    `   b) Pruefe danach den Arbeitsbaum mit GENAU diesem Kommando — es laesst dieselben`,
+    `      Laufzeit-Dateien aus, die auch der Runner nicht als Rest wertet (ein nacktes`,
+    `      git status --porcelain urteilte strenger als er und verhinderte die Rettung):`,
+    `      ${salvageSauberkeitsKommando()}`,
     `   c) NUR wenn diese Ausgabe leer ist, bewege das Board und kommentiere:`,
     `      node .claude/kit/board.mjs issue move ${issueId} in_review`,
     `      node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
