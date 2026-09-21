@@ -19,7 +19,7 @@
  *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
  *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
- *   node board.mjs issue activity <id>
+ *   node board.mjs issue activity <id> | issue activity --ids <n,n,...>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
  *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -91,6 +91,9 @@ Nutzung:
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
+  node board.mjs issue activity --ids <n,n,...>
+      Verlauf mehrerer Karten als Objekt {"<nummer>": [...]}. Loest die Kartenliste
+      genau einmal auf; eine unbekannte Nummer erscheint mit Fehlergrund (Issue #786).
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -1304,6 +1307,27 @@ class LocalIssueTracker {
     return [{ type: "CREATED", createdAt: created, detail: "Karte angelegt" }];
   }
 
+  /**
+   * Sammelform des Verlaufs (Issue #786).
+   *
+   * Hier gibt es nichts einzusparen — jede Nummer ist ein Dateizugriff, die
+   * Beschleunigung von `--ids` betrifft allein das Board. Was bleibt, ist die
+   * gemeinsame Zusage der Sammelform: Eine Nummer ohne Datei wird zum Eintrag mit
+   * Fehlergrund und nicht zum Abbruch, damit ein geloeschtes Paket die Auswertung
+   * der uebrigen nicht kostet.
+   */
+  async listActivityMany(ids) {
+    const ergebnis = {};
+    for (const id of ids) {
+      try {
+        ergebnis[id] = await this.listActivity(id);
+      } catch (e) {
+        ergebnis[id] = { fehler: e.message };
+      }
+    }
+    return ergebnis;
+  }
+
   // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
   // (das Vorhaben ausschliesst) und listEpics (das genau sie braucht) — ohne die
   // Trennung liefe listEpics nach dem Epic-Ausschluss leer (Issue #377).
@@ -1710,6 +1734,35 @@ class ToolboxIssueTracker {
     const item = this._resolveByNumber(await this._boardItems(), num);
     const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
+  }
+
+  /**
+   * Sammelform des Verlaufs (Issue #786).
+   *
+   * Der Grund fuer diese Methode steht in EINER Zeile: `_boardItems()` laeuft genau
+   * einmal. Die Einzelform holt die vollstaendige Kartenliste bei jedem Aufruf mit;
+   * die Ruecklaeuferquote fragt Dutzende Karten ab und haette sie sonst Dutzende Male
+   * geholt — gegen eine API, die drosselt.
+   *
+   * Eine nicht auffindbare Nummer wird zum Eintrag mit Fehlergrund. Ein TRANSPORTFEHLER
+   * dagegen — 403, 404 auf die Verlaufs-Route, Netz weg — reisst den Aufruf rot ab, wie
+   * in der Einzelform: Er betrifft nicht eine Karte, sondern den Zugang. Still
+   * weitergezaehlt ergaebe er eine Quote, die nach Null aussieht und in Wahrheit nichts
+   * gemessen hat.
+   */
+  async listActivityMany(numbers) {
+    const items = await this._boardItems();
+    const ergebnis = {};
+    for (const number of numbers) {
+      const item = this._findByNumber(items, Number(number));
+      if (!item) {
+        ergebnis[number] = { fehler: `Issue ${number} nicht gefunden` };
+        continue;
+      }
+      const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
+      ergebnis[number] = await res.json();
+    }
+    return ergebnis;
   }
 
   // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
@@ -2599,10 +2652,26 @@ async function issueEpics(tracker) {
  */
 async function issueActivity(tracker, config, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue activity <id>");
+  const ids = args.ids;
+  // Beide Eingabewege zusammen werden abgewiesen statt einer stillschweigend zu
+  // gewinnen: Welcher das waere, kann der Aufrufer nicht wissen, und die Ausgabeform
+  // der beiden ist verschieden (Liste gegen Objekt).
+  if (ids !== undefined && id) {
+    fail("--ids und eine Einzelnummer schliessen sich aus: board.mjs issue activity <id> | issue activity --ids <n,n,...>");
+  }
+  if (ids === undefined && !id) fail("id ist erforderlich: board.mjs issue activity <id> | --ids <n,n,...>");
   if (typeof tracker.listActivity !== "function") {
     const name = config?.issueTracker ?? "dieser Tracker";
     fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+  }
+  if (ids !== undefined) {
+    // `--ids` ohne Wert kommt als `true` aus parseArgs. Ein leerer oder nur aus Kommas
+    // bestehender Wert bliebe sonst eine Sammelabfrage ueber nichts und gaebe `{}` aus —
+    // von einem Ergebnis ohne Ruecklaeufer nicht zu unterscheiden.
+    const nummern = (ids === true ? [] : String(ids).split(",").map((n) => n.trim()).filter(Boolean));
+    if (!nummern.length) fail("--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13");
+    out(await tracker.listActivityMany(nummern));
+    return;
   }
   out(await tracker.listActivity(id));
 }
@@ -2639,6 +2708,40 @@ function wegmarkeSchreiben(id, status, jetzt = new Date()) {
   }
 }
 
+// SYNC: Der Dateiname steht auch in kit/night.mjs (Ausschluss im Rest-Guard und in
+// der Spiegel-Liste des Worktrees) und in install.mjs (GITIGNORE_BLOCK). Wer ihn hier
+// aendert, aendert ihn dort mit — sonst haelt der Dirty-Guard das Protokoll fuer einen
+// unkommittierten Rest und stoppt den Nachtlauf.
+const BEWEGUNGEN_DATEI = "bewegungen.tsv";
+
+/**
+ * Haengt jede geglueckte Kartenbewegung an `.claude/bewegungen.tsv` an (Issue #786).
+ *
+ * Wozu: Die Ruecklaeuferquote braucht einen KANDIDATENFILTER — welche Karten hat das
+ * Kit ueberhaupt je bewegt. Die Wahrheit darueber, ob eine davon zurueckging, holt die
+ * Auswertung anschliessend aus dem Aktivitaetsverlauf des Boards; das Protokoll sagt
+ * nur, wen sie fragen muss. Deshalb kostet eine fehlende Zeile hier keine Genauigkeit,
+ * sondern hoechstens einen Kandidaten.
+ *
+ * Anders als die Wegmarke daneben protokolliert es JEDEN Status, nicht nur die beiden
+ * Arbeitsspalten: Der Ruecklaeufer ist gerade der Zug nach Backlog, und ein Filter, der
+ * ihn nicht kennt, faende die Karte nie wieder.
+ *
+ * Alles Uebrige teilt es mit der Wegmarke, aus denselben Gruenden: der kanonische
+ * Status statt des projektweise verschiedenen Spaltennamens, angehaengt statt
+ * ueberschrieben, und ein gescheitertes Schreiben bleibt ein Hinweis auf stderr — eine
+ * Buchung darf den Vorgang nicht mitreissen, den sie bucht.
+ */
+function bewegungSchreiben(id, status, jetzt = new Date()) {
+  const pfad = resolve(".claude", BEWEGUNGEN_DATEI);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
+  } catch (e) {
+    process.stderr.write(`Hinweis: Bewegung nicht protokolliert (${pfad}): ${e.message}\n`);
+  }
+}
+
 async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
   if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
@@ -2648,8 +2751,10 @@ async function issueMove(tracker, args) {
   }
   await tracker.moveIssue(id, toStatus);
   // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
-  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden.
+  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden. Fuer das
+  // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
+  bewegungSchreiben(id, toStatus);
   out({ ok: true, id, status: toStatus });
 }
 
