@@ -77,7 +77,7 @@ function envZeilen(logPfad) {
   });
 }
 
-test("[night-52] Implementierungs- und Salvage-Session starten ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
+test("[night-63] Implementierungs- und Salvage-Session starten ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -121,7 +121,7 @@ test("[night-52] Implementierungs- und Salvage-Session starten ohne das Auto-Mem
   }
 });
 
-test("[night-52] auch die Vorflug-Session startet ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
+test("[night-63] auch die Vorflug-Session startet ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
