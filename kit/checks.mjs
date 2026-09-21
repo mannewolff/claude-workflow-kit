@@ -46,7 +46,7 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { lstatSync, existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -66,6 +66,33 @@ const KIT_VERSION = "2.0.3";
 // und innerhalb einer Session der letzte. Eine Session darf `run` mehrfach fahren
 // (rot, Fix, erneut), daraus entsteht bewusst keine Historie.
 const SUMMARY_DATEI = ".claude/checks-summary.json";
+
+// Das Ausfuehrungsprotokoll (Issue #785, Plan #782, E17) — die Zaehleinheit, die der
+// Zusammenfassung daneben fehlt.
+//
+// Die Zusammenfassung traegt bewusst keine Historie (Kommentar zu SUMMARY_DATEI): Der
+// Nacht-Runner loescht sie vor jeder Session, und innerhalb einer Session ueberschreibt
+// jeder `run` den vorigen. Die Wirksamkeits-Auswertung fragt aber, wie oft eine Pruefung
+// lief und wie oft sie beanstandet hat — und genau diese Zahl verliert die
+// Zusammenfassung: Eine Pruefung, die rot anschlaegt, worauf die Session den Mangel
+// behebt und erneut prueft, hinterliesse dort einen gruenen Endstand. Sie erschiene als
+// "nie beanstandet" und loeste damit genau den Befund aus, der zu ihrer Abschaffung
+// einlaedt — die Kennzahl truege systematisch das falsche Vorzeichen.
+//
+// Deshalb eine eigene Datei, angehaengt und nie geleert, nach dem Muster der Wegmarken
+// (board-9). Derselbe Ort wie die Zusammenfassung: im Projekt, aber hinter der
+// Ignore-Regel `.claude/*`.
+//
+// MESSGRENZE (E17): Die Salvage-Pruefungen des Nacht-Runners rufen die Kommandos roh
+// ueber spawnSync auf und laufen an checks.mjs vorbei; ihre Ausfuehrungen stehen hier
+// nicht. Der Salvage ist ein Rettungsversuch am Rand eines gescheiterten Pakets, keine
+// Pruefung eines Arbeitspakets — ihn mitzuzaehlen mischte zwei Zaehleinheiten.
+//
+// SYNC: kit/night.mjs nimmt denselben Pfad im Rest-Guard aus (`:(exclude)` in gitReste,
+// dazu der Worktree-Spiegel), kit/wirksamkeit.mjs liest die Datei. Die Kit-Werkzeuge sind
+// bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), geteilte
+// Konstanten werden dupliziert und hier markiert.
+const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
 
 // Wartende Vorhaben-Notizen (Issue #546, Plan #545): `spec.mjs vorhaben` legt seine
 // Notiz hier ab, `push main` hebt sie nach `specs/vorhaben/` auf. Bis dahin liegt
@@ -677,6 +704,32 @@ function gueteOhneLauf(laufen, ausgelassen) {
   return null;
 }
 
+/**
+ * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
+ *
+ * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer. Ein Kommando
+ * mit dem Ergebnis `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als
+ * Zeile gezaehlt senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht
+ * lief.
+ *
+ * Angehaengt, nie geleert — sonst saehe die Auswertung nur die letzte Runde, und genau
+ * die zweite Runde nach einem Fix ist der Fall, um den es geht.
+ *
+ * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
+ * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
+ * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
+ * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
+ */
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
+  const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${cmd}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
+  } catch (err) {
+    process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
+  }
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -760,6 +813,10 @@ function ausfuehren(args) {
     }
     eintrag.ergebnis = bestanden ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
+    // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
+    // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
+    // Auswertung zu allererst geht.
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
     rot = !bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
