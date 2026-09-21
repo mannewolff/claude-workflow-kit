@@ -3843,15 +3843,42 @@ function nachtlaufDauer(einheit) {
 }
 
 /**
+ * Eine Einheit, der ihr Ausgang noch fehlt (Issue #794).
+ *
+ * `unbekannt` ist der Platzhalter, den `night.mjs` beim Anlegen einer Einheit setzt; ein
+ * ganz fehlendes Feld zaehlt genauso. Beides heisst dasselbe: Hier steht noch kein
+ * Ergebnis.
+ */
+function nachtlaufOhneAusgang(einheit) {
+  const ausgang = einheit?.ausgang;
+  return ausgang === undefined || ausgang === null || ausgang === "" || ausgang === "unbekannt";
+}
+
+/**
  * Uebersetzt einen Ergebnisstand in die Meldung fuer `POST /api/kanban/night-runs`.
  * Reine Funktion; `jetzt` bestimmt die Dauer seit dem Start, weil der Stand fortschreibend
  * und damit vor seinem Ende gemeldet wird.
+ *
+ * Solange der Lauf laeuft, gehen nur Einheiten mit Ausgang mit (Issue #794): Eine Kette
+ * legt ihre Einheit beim Start an und traegt den Ausgang erst hinter der letzten Stufe
+ * ein — in der ganzen Planungsphase stuende der Fachplan sonst als rotes Paket in der
+ * Auswertung, obwohl nur noch nichts entschieden ist. Ein eigener Zustand "laeuft" waere
+ * eine Vertragsaenderung ohne Nutzen: Der Lauf selbst gilt bei der Gegenstelle ohnehin
+ * als laufend, solange er nicht abgeschlossen ist.
+ *
+ * NACH dem Abschluss bleibt dieselbe Einheit sichtbar: Dort ist der fehlende Ausgang
+ * kein Zwischenstand mehr, sondern der Befund, dass sie nie zu ihrem Ergebnis kam — und
+ * genau dafuer haelt `nachtlaufFarbe` den harten Abbruch bereit.
  */
 export function nachtlaufMeldung(stand, jetzt = new Date()) {
   const mode = NACHTLAUF_MODUS[stand?.art];
   if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  const laeuft = stand.abschluss === null || stand.abschluss === undefined;
   const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
     .filter((e) => /^\d+$/.test(String(e?.id)))
+    // Vor dem Kappen auf NACHTLAUF_EINHEITEN_MAX, damit eine laufende Einheit den Platz
+    // nicht einer belegt, die ihr Ergebnis schon hat.
+    .filter((e) => !(laeuft && nachtlaufOhneAusgang(e)))
     .slice(0, NACHTLAUF_EINHEITEN_MAX)
     .map((e) => {
       const [state, errorClass] = nachtlaufFarbe(e);

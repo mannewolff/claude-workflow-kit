@@ -114,6 +114,42 @@ test("[night-31] Kette: fertig, angehalten und die drei Abbrueche", () => {
   ]);
 });
 
+// Eine Einheit, der ihr Ausgang noch fehlt, ist ein laufender Vorgang und kein Befund
+// (Issue #794). `einheitAnlegen` traegt bis zum Ergebnis den Platzhalter "unbekannt" ein;
+// waehrend der Planungsphase einer Kette stuende der Fachplan damit als rotes Paket in
+// der Auswertung. Solange der Lauf laeuft, geht er darum gar nicht mit — kanban-kit
+// zeigt den Lauf ohnehin als laufend, und ein eigener Zustand "laeuft" waere eine
+// Vertragsaenderung ohne Nutzen.
+const LAEUFT = { abschluss: null, complete: false };
+
+test("[board-17] ein laufender Lauf meldet nur Einheiten, die ihren Ausgang schon haben", () => {
+  const m = nachtlaufMeldung(stand("kette", [
+    { id: "5", titel: "Fachplan in der Planungsphase", ausgang: "unbekannt" },
+    { id: "9", titel: "Fertiges Paket", ausgang: "erfolg", pruefung: { zustand: "geprueft" } },
+  ], LAEUFT), JETZT);
+  assert.equal(m.items.length, 1, "die noch laufende Ketten-Einheit geht nicht mit");
+  assert.equal(m.items[0].cardNumber, 9);
+  assert.deepEqual(m.items.map((i) => i.errorClass), [null], "kein Item traegt eine Fehlerklasse, nur weil die Kette noch laeuft");
+  assert.equal(m.processedCount, 1);
+  assert.equal(m.skippedCount, 0);
+});
+
+test("[board-17] ein fehlendes Ausgangsfeld zaehlt wie der Platzhalter", () => {
+  const m = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "Ohne Feld" }], LAEUFT), JETZT);
+  assert.deepEqual(m.items, []);
+  assert.equal(m.processedCount, 0);
+  assert.equal(m.skippedCount, 0);
+});
+
+// Der Gegenfall: Am Ende des Laufs ist derselbe Platzhalter die Aussage, dass diese
+// Einheit nie zu ihrem Ergebnis kam — sie bleibt sichtbar und behaelt ihre Farbe.
+test("[board-17] am Ende eines Laufs bleibt eine Einheit ohne Ausgang als harter Abbruch sichtbar", () => {
+  const hart = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "F", ausgang: "unbekannt" }], { abschluss: "harterStopp", complete: false }), JETZT);
+  assert.deepEqual(hart.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"]]);
+  const regulaer = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "F", ausgang: "unbekannt" }]), JETZT);
+  assert.deepEqual(regulaer.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"]]);
+});
+
 test("[night-31] Arbeitspaket: Nummer, gekuerzte Texte, Dauer, Commit, Verbrauch; Zaehlwerte nach Farbe", () => {
   const lang = "x".repeat(5000);
   const m = nachtlaufMeldung(stand("kette", [

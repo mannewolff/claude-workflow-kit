@@ -293,6 +293,50 @@ export const PAKETE_MIT_ABHAENGIGKEIT = String.raw`m=$(printf "%s" "$NIGHT_PROMP
  * Arbeitsbaum weiter als sauber sieht; er spiegelt sich mit `.claude/` in den Worktree
  * jeder Kette.
  */
+/**
+ * Ersetzt die Kit-Kopie von board.mjs durch einen Umweg, der `nightrun melden` abfaengt
+ * und jede Meldung nach `$KETTE_MELDE_CAPTURE` schreibt (Issue #794).
+ *
+ * Je Meldung eine JSON-Zeile `{ sessions, meldung }`: `sessions` ist die Zahl der bis
+ * dahin gelaufenen Fake-Sessions aus `$KETTE_LOG` und ordnet die Meldung damit einer
+ * Stelle im Ablauf zu — der Rumpf selbst nennt die Stufe nicht. `meldung` baut die
+ * echte, reine `nachtlaufMeldung()` aus dem Bestand, damit der Mitschnitt zeigt, was
+ * wirklich das Haus verliesse. Mit `$KETTE_MELDE_FEHLER` endet der Aufruf stattdessen
+ * mit Exit 1 — der Weg, auf dem eine gescheiterte Einlieferung geprueft wird.
+ *
+ * Wie `boardFakeInstallieren` wird der Umweg committet (der Vorflug prueft den
+ * Arbeitsbaum) und spiegelt sich mit `.claude/` in den Worktree jeder Kette.
+ */
+export function meldeCaptureInstallieren(dir) {
+  const echt = join(repoRoot, "kit", "board.mjs");
+  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [
+    'import { spawnSync } from "node:child_process";',
+    'import { readFileSync, appendFileSync } from "node:fs";',
+    `import { nachtlaufMeldung } from ${JSON.stringify("file://" + echt)};`,
+    "const args = process.argv.slice(2);",
+    'if (args[0] === "nightrun" && args[1] === "melden") {',
+    '  if (process.env.KETTE_MELDE_FEHLER) {',
+    String.raw`    process.stderr.write("Fehler: Einlieferung abgewiesen (Melde-Fake)\n");`,
+    "    process.exit(1);",
+    "  }",
+    '  const datei = args[args.indexOf("--datei") + 1];',
+    '  const stand = JSON.parse(readFileSync(datei, "utf-8"));',
+    "  let sessions = 0;",
+    String.raw`  try { sessions = readFileSync(process.env.KETTE_LOG, "utf-8").split("\n").filter(Boolean).length; } catch { sessions = 0; }`,
+    String.raw`  appendFileSync(process.env.KETTE_MELDE_CAPTURE, JSON.stringify({ sessions, meldung: nachtlaufMeldung(stand) }) + "\n");`,
+    String.raw`  process.stdout.write(JSON.stringify({ ok: true, outcome: "TEST" }) + "\n");`,
+    "  process.exit(0);",
+    "}",
+    `const res = spawnSync(process.execPath, [${JSON.stringify(echt)}, ...args], { stdio: "inherit" });`,
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"));
+  for (const a of [["add", "-A"], ["commit", "-q", "-m", "melde-capture"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
+}
+
 export function boardFakeInstallieren(dir) {
   const echt = join(repoRoot, "kit", "board.mjs");
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [

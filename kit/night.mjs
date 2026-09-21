@@ -4962,18 +4962,50 @@ function berichtFuerKette(kette, einheit, ergebnis) {
 }
 
 /**
+ * Fuehrt eine Stufe der Kette aus und meldet danach den Lauf (Issue #794).
+ *
+ * Der Grund liegt bei der Gegenstelle: kanban-kit erklaert einen nicht abgeschlossenen
+ * Lauf fuer verstummt, wenn laenger als seine Stillefrist keine neue Meldung kam, und
+ * als Lebenszeichen zaehlt allein eine Meldung (kanban-kit #1086, AK 6; ein eigenes
+ * Lebenszeichen hat es mit #1074 bewusst abgelehnt). Zwischen der Startmeldung (Issue
+ * #743) und der ersten Paket-Meldung lag bis hierher die ganze Planungsphase — mit den
+ * Budgets dieses Repos bis zu 95 Minuten, mehr als die Frist. Ein gesunder Kettenlauf
+ * fiel dort mitten in der Planung aus den aktiven Laeufen.
+ *
+ * Die Stufe meldet, nicht ihr Ausgang: Jede Stufe hat ein Budget von hoechstens 30
+ * Minuten, und weil dieser Wrapper JEDEN Aufruf in `stufenDerKette` umschliesst, fuehrt
+ * kein Weg durch die Kette ueber zwei Stufen ohne Meldung — gleich, ob eine Stufe fertig
+ * wird, anhaelt oder abbricht. Stuende der Aufruf stattdessen an den Rueckgabepunkten der
+ * Stufen selbst, waere er an jedem neuen `return` erneut zu bedenken.
+ *
+ * Erst schreiben, dann melden, wie beim Start: `laufMelden()` liest ERGEBNIS_FILE ueber
+ * einen eigenen Prozess von der Platte. Ohne eigene Protokollzeile — `laufMelden()`
+ * bringt seine eigene mit, und `meldezeile()` fasst sie ueber den ganzen Lauf zu einer
+ * zusammen.
+ */
+async function mitMeldung(stufe) {
+  const ergebnis = await stufe();
+  schreibeErgebnisstand();
+  laufMelden();
+  return ergebnis;
+}
+
+/**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
  * hinter `abdeckung` die fuenfte Stufe `umsetzung` dazu (Plan #691, E12).
+ *
+ * Jede der vier erzeugenden Stufen laeuft durch `mitMeldung` (Issue #794). Die Stufe
+ * `umsetzung` nicht: Sie meldet ueber `laufeRunde` schon nach jedem fertigen Paket.
  */
 async function stufenDerKette(kette) {
-  const plan = await stufePlan(kette);
+  const plan = await mitMeldung(() => stufePlan(kette));
   if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-  const review = await stufeReview(kette, plan.id);
+  const review = await mitMeldung(() => stufeReview(kette, plan.id));
   if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-  const pakete = await stufePakete(kette, plan.id);
+  const pakete = await mitMeldung(() => stufePakete(kette, plan.id));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  const abdeckung = await stufeAbdeckung(kette, kette.F, plan.id, pakete.ids);
+  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, plan.id, pakete.ids));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
   if (kette.variante !== "B") return { ausgang: "fertig" };
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
