@@ -477,6 +477,14 @@ let KETTE_BUDGET_AUS_DEFAULT = [];
 // Sicherheitsnetz in laufAbschliessen().
 let STOPP_GRUND = "";
 
+// Hat die Sitzung der laufenden Runde auf eine selbst angestossene Arbeit gewartet
+// (Issue #776)? Modul-Zustand nach demselben Muster wie STOPP_GRUND darueber und aus
+// demselben Grund: Der Befund faellt in der Auswertung, gebraucht wird er beim Fuellen der
+// Einheit — und die Rueckgabewerte der Auswertungswege bleiben die Zaehlwoerter, die
+// mehrere Stellen als String vergleichen. Vor jeder Session zurueckgesetzt, damit keine
+// Runde den Befund ihrer Vorgaengerin erbt.
+let WARTEND_BEENDET = false;
+
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
 // Muster wie LOG_FILE darueber, und aus demselben Grund: gitReste() braucht sie, wird
 // aber aus der Hauptschleife heraus aufgerufen. Seit das Hauptprogramm in main()
@@ -5471,6 +5479,22 @@ const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zuruec
  * Ergebnisstands (`zurueckgestellt`, `harterStopp`) bleiben getrennt: Die Zaehler
  * gehoeren dem Textprotokoll und den bestehenden Tests, die Einheit dem Leitstand.
  */
+/**
+ * Das Feld `wartendBeendet` fuer die Einheit — oder gar keines (Issue #776).
+ *
+ * Die eine Stelle, an der alle drei Auswertungswege des Plans #773 ihren Befund in die
+ * Einheit bringen. Ohne den Fall bleibt das Feld WEG statt `false` zu tragen: Dieselbe
+ * Linie wie bei den nicht gemessenen Feldern des Ergebnisstands — ein `false` behauptete
+ * eine Messung, die es nicht gab, und eine Zaehlung ueber mehrere Naechte kaeme auf
+ * dieselbe Zahl, egal ob gemessen wurde oder nicht.
+ *
+ * `ausgang` ruehrt es nicht an: Ausgang und Weiterlauf haengen am Zustand des
+ * Arbeitsverzeichnisses und nicht an diesem Fall.
+ */
+function wartendFelder() {
+  return WARTEND_BEENDET ? { wartendBeendet: true } : {};
+}
+
 function ausgangsFelder(ausgang) {
   if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
@@ -5559,8 +5583,35 @@ async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, v
     return "angehalten";
   }
 
-  log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
-  board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${DEFERRED_GRUND}`);
+  return stelleRundeZurueck(top, res, minutes);
+}
+
+/**
+ * Der Rueckstellungsweg: kein In-review-Ergebnis, Arbeitsbaum sauber, kein Halt
+ * (Issue #488, um die wartende Sitzung erweitert in #776).
+ *
+ * Steht getrennt von `werteRunde`, seit der Zweig zwei Faelle unterscheidet — die
+ * Auswertung liest sich sonst als eine Folge von Guards mit einem Schluss, der selbst
+ * wieder verzweigt.
+ *
+ * Der Fall der wartenden Sitzung (Plan #773) VERFEINERT die Rueckstellung und loest sie
+ * nicht ab: Ausgangsart, Backlog-Move und Weiterlauf haengen am Zustand des
+ * Arbeitsverzeichnisses, und der ist hier sauber. Anders ist nur, was der Morgen liest —
+ * ein Text, der den Fall benennt, statt eine geordnete Rueckstellung zu behaupten.
+ */
+function stelleRundeZurueck(top, res, minutes) {
+  const schlusstext = leseErgebnisText(res?.stdout);
+  const wartend = wartendeSession(schlusstext);
+  if (wartend) WARTEND_BEENDET = true;
+  // Der Grund steht VOR dem Zustand — dieselbe Ordnung wie im Dirty-Zweig (Issue #668):
+  // erst warum die Runde nichts abgeschlossen hat, dann was der Runner vorgefunden hat.
+  const grundTeil = wartend ? ` — ${GRUND_WARTEND};` : "";
+  log(`  Fehlschlag nach ${minutes} min: Issue #${top.id}${grundTeil} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
+  // Der Vermerk IST der Kommentar: Er traegt GRUND_WARTEND bereits im Wortlaut, und ein
+  // vorangestelltes zweites Mal waere dieselbe Aussage doppelt. Ohne Pfade — in diesem
+  // Zweig ist der Baum sauber, und eine Meldung ueber nichts ist keine.
+  board("issue", "comment", String(top.id),
+    "--text", wartend ? wartendVermerk(schlusstext) : `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
   return "deferred";
 }
@@ -5659,6 +5710,10 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
   // weiter unten in werteRunde laufen kann, ist aussen vor.
   verwerfeZusammenfassung();
+  // Ebenfalls vor dem Start (Issue #776): Der Merker der wartenden Sitzung gehoert dieser
+  // einen Runde. Ohne das Zuruecksetzen truege die naechste Einheit den Befund der
+  // vorigen — und im Ergebnisstand stuende eine Runde als wartend, die es nie war.
+  WARTEND_BEENDET = false;
   // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
   // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
@@ -5727,6 +5782,9 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     endStatus: board("issue", "get", String(top.id)).status,
     pruefung,
     kennzahlen: leseKennzahlen(res.stdout),
+    // Ganz hinten (Issue #776): Neue Felder haengen an, die bestehenden behalten Namen und
+    // Reihenfolge — sie sind der Vertrag mit den Auswertungen.
+    ...wartendFelder(),
   });
   return ausgang;
 }

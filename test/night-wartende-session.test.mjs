@@ -28,7 +28,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, chmodSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -63,7 +63,11 @@ function setupProjekt(praefix, buildChecks) {
     buildChecks,
     local: { issuesDir: "issues" },
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n");
+  // `checks-summary.json` steht hier, seit ein Test dieser Datei eine erfolgreiche Runde
+  // faehrt (night-55): Die Zusammenfassung entsteht im Arbeitsbaum, und ohne die Regel
+  // sieht der Rest-Guard sie als liegengebliebenen Rest — dieselbe Linie wie in
+  // `night-ergebnisstand.test.mjs`.
+  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/checks-summary.json\n");
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.com"]],
@@ -363,4 +367,143 @@ test("[night-54] bei leerer Pfadliste entfaellt die Zeile zu den Resten ersatzlo
   // Rueckstellungsfall ist der Baum ohnehin sauber.
   assert.doesNotMatch(vermerk, /Rest/i, `der Vermerk meldet die leere Liste:\n${vermerk}`);
   assert.doesNotMatch(vermerk, /Arbeitsverzeichnis/i, `der Vermerk meldet die leere Liste:\n${vermerk}`);
+});
+
+// --- night-55: der Rueckstellungsweg bei sauberem Arbeitsbaum (Issue #776) ---
+//
+// Der erste der drei Auswertungswege. Was sich aendert, ist der TEXT und ein Feld — nicht
+// der Weg: `ausgang` bleibt `zurueckgestellt`, die Karte geht nach Backlog, der Lauf laeuft
+// weiter. Darueber entscheidet der Zustand des Arbeitsverzeichnisses und nicht der neue
+// Fall; ein Test, der das nicht mitprueft, liesse eine stille Verhaltensaenderung durch.
+
+// Der Wortlaut des bisherigen Grundes, ebenfalls ein zweites Mal — aus demselben Grund wie
+// WARTEND_WORTLAUT darueber: Der unveraenderte Fall muss ihn behalten.
+const DEFERRED_WORTLAUT =
+  "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
+
+const WARTE_SCHLUSSTEXT = "Der Pflichtcheck laeuft noch im Hintergrund, ich melde mich, sobald er durch ist.";
+
+/** Die eine Ergebnisstand-Datei des Laufs — mehr als eine waere hier ein Fehler. */
+function stand(dir) {
+  const dateien = readdirSync(join(dir, ".claude"))
+    .filter((n) => /^night-run-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(n))
+    .sort();
+  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+  return JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+}
+
+/** Die Einheit zu einem Issue — der Zugriff ueber die ID, nicht ueber die Position. */
+function einheit(dir, id) {
+  const s = stand(dir);
+  const treffer = s.einheiten.find((e) => String(e.id) === String(id));
+  assert.ok(treffer, `keine Einheit fuer Issue #${id}: ${JSON.stringify(s.einheiten)}`);
+  return treffer;
+}
+
+/** Der Body der Karte — beim lokalen Tracker haengen die Kommentare darin. */
+function karte(dir, id) {
+  return board(dir, "issue", "get", String(id));
+}
+
+test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, Vermerk und Feld — der Lauf laeuft weiter", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-zurueck-", ["true"]);
+  try {
+    const erstes = readyIssue(dir, "Wartet auf den eigenen Pflichtcheck");
+    const zweites = readyIssue(dir, "Kommt nach dem wartenden Paket");
+    // Kein Schreibzugriff, kein Commit, kein Move: der Rueckstellungszweig bei sauberem Baum.
+    const fake = `echo '${resultZeileMitText("end_turn", WARTE_SCHLUSSTEXT)}'; exit 0`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    // Der Grund im Protokoll — und der Zustandstext bleibt daneben stehen: Er war nie
+    // falsch, nur unvollstaendig (dieselbe Linie wie bei night-24).
+    assert.ok(res.stdout.includes(WARTEND_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
+    assert.match(res.stdout, /nicht in In review, Tree sauber/, `der Zustandstext ist verschwunden:\n${res.stdout}`);
+
+    // Der Vermerk am Paket: unter dem Anker, mit dem Fall im Wortlaut und dem Stand.
+    const body = karte(dir, erstes).body;
+    assert.ok(body.includes(WARTEND_ANKER), `der Anker fehlt am Paket:\n${body}`);
+    assert.ok(body.includes(WARTEND_WORTLAUT), `der Fall steht nicht im Wortlaut am Paket:\n${body}`);
+    assert.ok(body.includes(WARTE_SCHLUSSTEXT), `der zuletzt bekannte Stand fehlt am Paket:\n${body}`);
+    assert.ok(!body.includes(DEFERRED_WORTLAUT), `der alte Grund steht noch am Paket:\n${body}`);
+    // Ohne Pfadzeile: Der Baum ist in diesem Zweig sauber, und eine Meldung ueber nichts
+    // ist keine.
+    assert.doesNotMatch(body, /Im Arbeitsverzeichnis/, `der Vermerk meldet Reste, die es nicht gibt:\n${body}`);
+
+    // Weg und Weiterlauf bleiben, wie sie waren.
+    assert.equal(karte(dir, erstes).status, "backlog", "die Karte gehoert weiterhin ins Backlog");
+    const e = einheit(dir, erstes);
+    assert.equal(e.ausgang, "zurueckgestellt", "der Ausgang bleibt die Rueckstellung");
+    assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
+    // Das neue Feld haengt hinten an — die Feldreihenfolge ist der Vertrag mit den
+    // Auswertungen, und die sieben alten Namen behalten ihre Plaetze.
+    assert.deepEqual(
+      Object.keys(e).slice(0, 7),
+      ["id", "titel", "modell", "modellHerkunft", "modellGrund", "stufe", "stufeVerwendet"],
+      `die Feldreihenfolge der Einheit hat sich verschoben: ${Object.keys(e).join(", ")}`,
+    );
+
+    // Der Weiterlauf, an der zweiten Karte gemessen: Sie wurde gezogen und ebenso behandelt.
+    assert.ok(einheit(dir, zweites), "der Lauf hat das zweite Paket nicht mehr gezogen");
+    assert.equal(karte(dir, zweites).status, "backlog");
+    assert.match(res.stdout, /0 erfolgreich, 2 zurueckgestellt/, `die Zaehlung stimmt nicht:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-55] dieselbe Runde ohne wartenden Schlusstext behaelt den bisherigen Grund, ohne Vermerk und ohne Feld", NUR_POSIX, () => {
+  const dir = setupProjekt("night-warte-zurueck-alt-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Endet ohne zu warten");
+    const fake = `echo '${resultZeileMitText("end_turn", "Ich komme nicht weiter und hoere hier auf.")}'; exit 0`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const body = karte(dir, id).body;
+    assert.ok(body.includes(DEFERRED_WORTLAUT), `der bisherige Grund fehlt am Paket:\n${body}`);
+    assert.ok(!body.includes(WARTEND_ANKER), `ohne den Fall gehoert kein Vermerk ans Paket:\n${body}`);
+    assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `ohne den Fall gehoert der Grund nicht ins Protokoll:\n${res.stdout}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "zurueckgestellt");
+    // Weg statt `false`: Dieselbe Linie wie bei den nicht gemessenen Feldern des
+    // Ergebnisstands — ein `false` behauptete eine Messung, die nicht stattgefunden hat.
+    assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
+    assert.equal(karte(dir, id).status, "backlog");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-55] eine Wartemeldung mitten im Strom vor erfolgreichem Abschluss loest nichts aus", NUR_POSIX, () => {
+  // Gelesen wird nur der Schlusstext (night-52). Wer spaeter fertig wird, sagt zum Schluss
+  // etwas anderes — und genau das ist hier der Fall: Die Runde schliesst ab.
+  const dir = setupProjekt("night-warte-strom-", ["true"]);
+  try {
+    const id = readyIssue(dir, "Wartet zwischendurch und wird fertig");
+    const zwischendurch =
+      `{"type":"assistant","message":{"content":[{"type":"text","text":${JSON.stringify(WARTE_SCHLUSSTEXT)}}]}}`;
+    const fake = [
+      `echo '${zwischendurch}'`,
+      `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}' > .claude/checks-summary.json`,
+      'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "work-$NIGHT_ISSUE_ID.txt"'
+        + ' && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"',
+      'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null',
+      `echo '${resultZeileMitText("end_turn", "Issue umgesetzt, committet und in In review.")}'`,
+    ].join("\n");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
+
+    const e = einheit(dir, id);
+    assert.equal(e.ausgang, "erfolg", `die Runde haette ein Erfolg sein muessen: ${JSON.stringify(e)}`);
+    assert.ok(!("wartendBeendet" in e), `die Wartemeldung im Strom hat das Feld gesetzt: ${JSON.stringify(e)}`);
+    assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ein erfolgreiches Paket bekommt keinen Vermerk");
+    assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `der Grund steht im Protokoll einer erfolgreichen Runde:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
