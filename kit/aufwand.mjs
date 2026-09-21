@@ -239,6 +239,34 @@ function ladeStaende(root, grenze) {
 // --- Kosten je Einheit -------------------------------------------------------
 
 /**
+ * Die Summe der gemessenen Posten je Million Token — `null`, wenn kein einziger gemessen
+ * ist (Issue #821).
+ *
+ * Eine fehlende Menge traegt nichts bei und macht die Summe nicht zur 0: Ein Posten ohne
+ * jede Menge ist nicht gemessen, und eine 0 behauptete, es sei nichts verbraucht worden.
+ * Dieselbe Regel wie in `reihe()`, nur eine Ebene tiefer.
+ */
+function postenSumme(posten) {
+  const gemessen = posten.filter((p) => p !== null);
+  if (gemessen.length === 0) return null;
+  return gemessen.reduce((summe, p) => summe + p, 0) / 1e6;
+}
+
+/**
+ * Die Cache-Erzeugung, die keine Teilung nach Haltedauer traegt: was `cacheErzeugtTokens`
+ * ueber `cache5mTokens` + `cache1hTokens` hinaus ausweist.
+ *
+ * Ohne gemessene Erzeugung ist es nichts; ohne gemessene Teilung ist es alles. Negativ
+ * kann es nicht werden — `kennzahlen` traegt nur die letzte Session einer Karte, und die
+ * darf nicht mehr ausweisen, als `verbrauch` fuer alle zusammen zaehlt.
+ */
+function ungeteilteErzeugung(erzeugt, geteilt) {
+  if (erzeugt === null) return 0;
+  if (geteilt === null) return erzeugt;
+  return Math.max(0, erzeugt - geteilt);
+}
+
+/**
  * Teilt den Verbrauch einer Einheit in Lese- und Schreibkosten.
  *
  * Lesekosten sind Eingabe, Cache-Erzeugung und Cache-Lesen; Schreibkosten allein die
@@ -253,8 +281,14 @@ function ladeStaende(root, grenze) {
  * faehrt fuer lange Sitzungen den Stunden-Speicher, und genau diese Laeufe sind lang.
  * Dass geraten wurde, steht im Bericht — sonst saehe der Betrag aus wie gemessen.
  *
+ * EINE FEHLENDE MENGE IST KEINE NULL (Issue #821): Jeder Posten steht auf `null`, solange
+ * keine seiner Mengen gemessen ist. Frueher wurde jede fehlende Menge mit `?? 0` gerechnet
+ * — eine Einheit mit gemeldetem Betrag, aber ohne Mengen ergab Lesen, Schreiben und Gesamt
+ * je 0, und der gemeldete Betrag verschwand zwischen den Posten.
+ *
  * Rueckgabe `null`, wenn die Preistabelle das Modell nicht kennt: Der Aufrufer macht
- * daraus den Posten "nicht zuordenbar", nie eine 0.
+ * daraus den Posten "nicht zuordenbar", nie eine 0. Sind beide Posten `null`, ist keine
+ * Menge gemessen — auch daraus macht der Aufrufer "nicht zuordenbar".
  */
 export function einheitKosten(einheit) {
   const preis = preisFuer(einheit?.modell);
@@ -262,19 +296,24 @@ export function einheitKosten(einheit) {
   const v = einheit.verbrauch ?? {};
   const k = einheit.kennzahlen ?? {};
 
-  const erzeugt = zahl(v.cacheErzeugtTokens) ?? 0;
+  const eingabe = zahl(v.eingabeTokens);
+  const gelesen = zahl(v.cacheGelesenTokens);
+  const ausgabe = zahl(v.ausgabeTokens);
+  const erzeugt = zahl(v.cacheErzeugtTokens);
   const c5 = zahl(k.cache5mTokens);
   const c1 = zahl(k.cache1hTokens);
   const geteilt = c5 === null && c1 === null ? null : (c5 ?? 0) + (c1 ?? 0);
-  const ungeteilt = geteilt === null ? erzeugt : Math.max(0, erzeugt - geteilt);
-
-  const cacheSchreiben =
-    ((c5 ?? 0) * preis.cacheSchreiben5m + (c1 ?? 0) * preis.cacheSchreiben1h + ungeteilt * preis.cacheSchreiben1h) / 1e6;
+  const ungeteilt = ungeteilteErzeugung(erzeugt, geteilt);
 
   return {
-    lesen: ((zahl(v.eingabeTokens) ?? 0) * preis.eingabe + (zahl(v.cacheGelesenTokens) ?? 0) * preis.cacheLesen) / 1e6
-      + cacheSchreiben,
-    schreiben: ((zahl(v.ausgabeTokens) ?? 0) * preis.ausgabe) / 1e6,
+    lesen: postenSumme([
+      eingabe === null ? null : eingabe * preis.eingabe,
+      gelesen === null ? null : gelesen * preis.cacheLesen,
+      c5 === null ? null : c5 * preis.cacheSchreiben5m,
+      c1 === null ? null : c1 * preis.cacheSchreiben1h,
+      erzeugt === null ? null : ungeteilt * preis.cacheSchreiben1h,
+    ]),
+    schreiben: postenSumme([ausgabe === null ? null : ausgabe * preis.ausgabe]),
     ungeteilt,
   };
 }
@@ -285,6 +324,10 @@ export function einheitKosten(einheit) {
 function sammlerAnlegen() {
   return {
     zeit: { gesamt: reihe(), nachdenken: reihe(), werkzeug: reihe(), rest: reihe() },
+    // Die Grundlage des Werkzeuganteils: NUR die Einheiten, die Gesamtdauer und
+    // Werkzeugzeit beide tragen (Issue #821). Zaehler und Nenner aus zwei verschiedenen
+    // Mengen zu bilden ergaebe einen Anteil, den keine Einheit belegt.
+    werkzeugBasis: { gesamt: reihe(), werkzeug: reihe(), ohneBeide: { einheiten: 0, laeufe: new Set() } },
     nebenlaeufig: { einheiten: 0, laeufe: new Set() },
     wartendBeendet: { einheiten: 0, laeufe: new Set() },
     kommandos: new Map(),
@@ -293,6 +336,7 @@ function sammlerAnlegen() {
     eingrenzung: { faelle: 0, gemessen: 0 },
     kosten: { lesen: reihe(), schreiben: reihe(), nichtZuordenbar: reihe() },
     ohneTeilung: { einheiten: 0, tokens: 0 },
+    ohneMengen: { einheiten: 0 },
     ohnePreissatz: { einheiten: 0, modelle: new Set() },
     unvollstaendig: [],
     einheitenGesamt: 0,
@@ -308,13 +352,17 @@ function sammlerAnlegen() {
  */
 function zeitErfassen(s, einheit, stempel) {
   const z = einheit?.zeiten;
-  if (!z) return false;
+  if (!z) {
+    werkzeugbasisErfassen(s, null, null, stempel);
+    return false;
+  }
   const gesamt = zahl(z.dauerMs);
   const nachdenken = zahl(z.nachdenkenMs);
   const werkzeug = zahl(z.werkzeugMs);
   messen(s.zeit.gesamt, gesamt, stempel);
   messen(s.zeit.nachdenken, nachdenken, stempel);
   messen(s.zeit.werkzeug, werkzeug, stempel);
+  werkzeugbasisErfassen(s, gesamt, werkzeug, stempel);
   if (gesamt === null || nachdenken === null || werkzeug === null) return true;
   const rest = gesamt - nachdenken - werkzeug;
   if (rest >= 0) {
@@ -324,6 +372,27 @@ function zeitErfassen(s, einheit, stempel) {
     s.nebenlaeufig.laeufe.add(stempel);
   }
   return true;
+}
+
+/**
+ * Die Grundlage des Werkzeuganteils (Issue #821).
+ *
+ * Beitragen darf nur eine Einheit, die BEIDE Zeiten traegt — sonst stuenden Zaehler und
+ * Nenner auf verschiedenen Mengen: Eine Einheit mit 600 von 1.000 ms und eine mit 9.000 ms
+ * ohne Werkzeugmessung ergaeben 6 statt 60 Prozent, und der Befund verschwaende an einer
+ * Einheit, die zur Frage gar nichts sagt.
+ *
+ * Die uebrigen zaehlt `ohneBeide` — damit im Bericht steht, worauf der Anteil NICHT
+ * beruht. Das Schweigen darueber liesse den Anteil vollstaendiger aussehen, als er ist.
+ */
+function werkzeugbasisErfassen(s, gesamt, werkzeug, stempel) {
+  if (gesamt !== null && werkzeug !== null) {
+    messen(s.werkzeugBasis.gesamt, gesamt, stempel);
+    messen(s.werkzeugBasis.werkzeug, werkzeug, stempel);
+    return;
+  }
+  s.werkzeugBasis.ohneBeide.einheiten += 1;
+  s.werkzeugBasis.ohneBeide.laeufe.add(stempel);
 }
 
 /**
@@ -342,17 +411,34 @@ function wartendErfassen(s, einheit, stempel) {
 }
 
 /**
+ * Der Grund, den allein die BEREICHSAUSWAHL in checks.mjs schreibt (`entscheidung`):
+ * "Bereich kern unberuehrt" beziehungsweise "Bereiche kern, doku unberuehrt".
+ *
+ * Nur er belegt eine gegriffene Eingrenzung. Die anderen Gruende einer Auslassung sagen
+ * etwas anderes: "Stufe push, gefahren wird paket" heisst, die Pruefung war nicht dran,
+ * und "leeres Paket: keine Aenderung seit ..." heisst, es gab nichts zu pruefen. Beide
+ * entstehen auch im vollen Umfang.
+ */
+const BEREICH_UNBERUEHRT = /^Bereiche? .+ unberuehrt$/;
+
+/**
  * Pruefstand und Umfang einer Einheit: je Kommando Anzahl und Summe der Dauer,
  * wiederholte Ausfuehrungen desselben Eintrags zusammengefasst — eine Session darf
  * `run` mehrfach fahren (rot, Fix, erneut).
  *
- * Ob die Eingrenzung gegriffen hat, haengt an den AUSGELASSENEN Pruefungen und nicht
- * allein an `vollerUmfang`: Das Feld gibt es erst seit Issue #749, `ausgelassen` schon
- * lange. Ein Stand ohne `vollerUmfang` traegt trotzdem den Beleg.
+ * Ob die Eingrenzung gegriffen hat, haengt allein an einer Auslassung wegen UNBERUEHRTEN
+ * BEREICHS (Issue #821). `vollerUmfang === false` belegt sie nicht: checks.mjs setzt das
+ * Feld standardmaessig so, an der Merge-Stufe sogar bewusst — es markiert den Zweifelsfall
+ * und nicht die Eingrenzung. Und eine Auslassung allein genuegt auch nicht: Auslassungen
+ * wegen spaeterer Stufen legt checks.mjs im vollen Umfang genauso an.
  */
 function pruefungErfassen(s, einheit, stempel) {
   const p = einheit?.pruefung;
   for (const eintrag of Array.isArray(p?.laufen) ? p.laufen : []) {
+    // "nicht gestartet" ist keine Ausfuehrung: Dort war ein frueheres Kommando rot, und
+    // dieses hier lief nie. Dieselbe Begruendung, aus der `ausfuehrungSchreiben` in
+    // checks.mjs ihm keine Zeile im Protokoll gibt.
+    if (eintrag?.ergebnis === "nicht gestartet") continue;
     const cmd = typeof eintrag?.cmd === "string" ? eintrag.cmd : "(ohne Namen)";
     const k = s.kommandos.get(cmd) ?? { cmd, anzahl: 0, dauer: reihe() };
     k.anzahl += 1;
@@ -366,20 +452,32 @@ function pruefungErfassen(s, einheit, stempel) {
   else if (p.vollerUmfang === false) s.umfang.eingegrenzt += 1;
   else s.umfang.unbekannt += 1;
   s.eingrenzung.gemessen += 1;
-  if ((p.ausgelassen?.length ?? 0) > 0 || p.vollerUmfang === false) s.eingrenzung.faelle += 1;
+  const ausgelassen = Array.isArray(p.ausgelassen) ? p.ausgelassen : [];
+  if (ausgelassen.some((e) => BEREICH_UNBERUEHRT.test(e?.grund ?? ""))) s.eingrenzung.faelle += 1;
   return true;
 }
 
 /**
- * Die Kosten einer Einheit: geteilt, wo ein Preissatz vorliegt; sonst der gemeldete
- * Betrag als "nicht zuordenbar". Ein geratener Satz erzeugte einen Betrag, der aussieht
- * wie gemessen — dieselbe Begruendung wie bei `preisFuer`.
+ * Die Kosten einer Einheit: geteilt, wo ein Preissatz UND eine Menge vorliegen; sonst der
+ * gemeldete Betrag als "nicht zuordenbar". Ein geratener Satz erzeugte einen Betrag, der
+ * aussieht wie gemessen — dieselbe Begruendung wie bei `preisFuer`.
+ *
+ * Die beiden Ausfaelle bleiben getrennt gezaehlt (Issue #821), weil sie Verschiedenes
+ * sagen: Der Preistabelle fehlt ein Satz, oder dem Stand fehlt die Menge. Wer beide in
+ * einen Topf wuerfe, suchte den Fehler an der falschen Stelle.
  */
 function kostenErfassen(s, einheit, stempel) {
   const anteile = einheitKosten(einheit);
   if (!anteile) {
     s.ohnePreissatz.einheiten += 1;
     if (typeof einheit?.modell === "string") s.ohnePreissatz.modelle.add(einheit.modell);
+    messen(s.kosten.nichtZuordenbar, einheit?.verbrauch?.kostenUsd, stempel);
+    return;
+  }
+  // Keine einzige gemessene Menge: Der gemeldete Betrag ist alles, was diese Einheit
+  // hergibt. Geteilt ergaeben sich zweimal 0 — und die 0 saehe aus wie gemessen.
+  if (anteile.lesen === null && anteile.schreiben === null) {
+    s.ohneMengen.einheiten += 1;
     messen(s.kosten.nichtZuordenbar, einheit?.verbrauch?.kostenUsd, stempel);
     return;
   }
@@ -440,6 +538,7 @@ function kostenErgebnis(s) {
       laeufe: laeufe.size,
     },
     ohneTeilung: s.ohneTeilung,
+    ohneMengen: s.ohneMengen,
     ohnePreissatz: { einheiten: s.ohnePreissatz.einheiten, modelle: [...s.ohnePreissatz.modelle].sort(vergleicheText) },
     preistabelle: PREISE_STAND,
   };
@@ -462,6 +561,14 @@ function aggregieren(staende) {
       werkzeugMs: fertig(s.zeit.werkzeug),
       restMs: fertig(s.zeit.rest),
       nebenlaeufig: { einheiten: s.nebenlaeufig.einheiten, laeufe: s.nebenlaeufig.laeufe.size },
+      werkzeugBasis: {
+        gesamtMs: fertig(s.werkzeugBasis.gesamt),
+        werkzeugMs: fertig(s.werkzeugBasis.werkzeug),
+        ohneBeideZeiten: {
+          einheiten: s.werkzeugBasis.ohneBeide.einheiten,
+          laeufe: s.werkzeugBasis.ohneBeide.laeufe.size,
+        },
+      },
     },
     pruefungen: {
       // Absteigend nach Dauer: Die teuerste Pruefung ist die, um die es geht. Gleiche
@@ -538,9 +645,10 @@ function anteilPruefung(a, schwellen) {
 /**
  * Eine Eingrenzung, die in keinem Fall gegriffen hat.
  *
- * Gemessen wird an den AUSGELASSENEN Pruefungen, nicht allein an `vollerUmfang`: Das
- * Feld gibt es erst seit Issue #749, `ausgelassen` schon lange. Ein Stand ohne
- * `vollerUmfang` traegt trotzdem den Beleg, dass nichts ausgelassen wurde.
+ * Gemessen wird an den Auslassungen wegen UNBERUEHRTEN BEREICHS — sie allein sind die
+ * Eingrenzung (Issue #821). Weder `vollerUmfang === false` noch eine Auslassung wegen
+ * spaeterer Stufe noch das leere Paket belegen sie; alle drei entstehen auch dort, wo die
+ * volle Auswahl lief, und als Beleg genommen liessen sie den Befund ausbleiben.
  */
 function anteilEingrenzung(a, schwellen) {
   if (a.eingrenzung.gemessen === 0) return "eingrenzungOhneWirkung";
@@ -551,17 +659,23 @@ function anteilEingrenzung(a, schwellen) {
     grenze: 0,
     laeufe: a.umfang.laeufe,
     text: `Die Eingrenzung der Pruefungen hat in keinem der ${a.eingrenzung.gemessen} Pruefstaende gegriffen: `
-      + "In keinem wurde eine Pruefung ausgelassen, es lief jedes Mal die volle Auswahl.",
+      + "In keinem wurde eine Pruefung wegen eines unberuehrten Bereichs ausgelassen, "
+      + "es lief jedes Mal die volle Auswahl.",
   };
 }
 
-/** Werkzeugarbeit ueber ihrem Anteil an der Gesamtzeit. */
+/**
+ * Werkzeugarbeit ueber ihrem Anteil an der Gesamtzeit — gerechnet ueber die Einheiten,
+ * die BEIDE Zeiten tragen (Issue #821). Die Summen aus `zeit.gesamtMs` und
+ * `zeit.werkzeugMs` stehen auf verschiedenen Mengen; ihr Quotient waere ein Anteil, den
+ * keine einzige Einheit belegt.
+ */
 function anteilWerkzeug(a, schwellen) {
-  const gesamt = a.zeit.gesamtMs.wert;
-  const werkzeug = a.zeit.werkzeugMs.wert;
-  const laeufe = a.zeit.werkzeugMs.laeufe;
+  const gesamt = a.zeit.werkzeugBasis.gesamtMs.wert;
+  const werkzeug = a.zeit.werkzeugBasis.werkzeugMs.wert;
+  const laeufe = a.zeit.werkzeugBasis.werkzeugMs.laeufe;
   return anteilBefund("werkzeugAnteil", werkzeug, gesamt, schwellen.werkzeugAnteil, laeufe,
-    (anteil) => `Werkzeugarbeit macht ${prozent(anteil)} der gemessenen Gesamtzeit aus `
+    (anteil) => `Werkzeugarbeit macht ${prozent(anteil)} der Gesamtzeit der Einheiten aus, die beide Zeiten tragen `
       + `(${dauer(werkzeug)} von ${dauer(gesamt)}), gemessen ${laufText(laeufe)}.`);
 }
 
@@ -699,6 +813,18 @@ function berichtZeit(e) {
     zeilen.push(`| ${name} | ${dauer(feld.wert)} | ${laufText(feld.laeufe)} |`);
   }
   zeilen.push("");
+  // Woraufhin der Werkzeuganteil gerechnet wird, und was nicht eingeht (Issue #821):
+  // Ohne den Absatz saehe der Anteil aus, als beruhte er auf allen Einheiten.
+  const basis = e.zeit.werkzeugBasis;
+  zeilen.push(
+    "Der Werkzeuganteil wird ueber die Einheiten gebildet, die Gesamtdauer und Werkzeugzeit beide tragen: "
+    + `${dauer(basis.werkzeugMs.wert)} von ${dauer(basis.gesamtMs.wert)} (${laufText(basis.werkzeugMs.laeufe)}).`
+    + (basis.ohneBeideZeiten.einheiten > 0
+      ? ` ${basis.ohneBeideZeiten.einheiten} Einheiten (${laufText(basis.ohneBeideZeiten.laeufe)}) tragen nur eine `
+        + "der beiden Zeiten oder keine; sie gehen in den Anteil nicht ein."
+      : ""),
+    ""
+  );
   if (e.zeit.nebenlaeufig.einheiten > 0) {
     zeilen.push(
       `Bei ${e.zeit.nebenlaeufig.einheiten} Einheiten (${laufText(e.zeit.nebenlaeufig.laeufe)}) uebersteigt die Summe `
@@ -815,6 +941,13 @@ function kostenHinweise(e) {
       `Bei ${e.kosten.ohneTeilung.einheiten} Einheiten lagen ${e.kosten.ohneTeilung.tokens} Token der Cache-Erzeugung `
       + "ohne Teilung nach Haltedauer vor. Sie wurden mit dem Stunden-Satz bepreist — dem teureren. "
       + "Der Betrag ist insoweit eine Obergrenze und kein Messwert."
+    );
+  }
+  if (e.kosten.ohneMengen.einheiten > 0) {
+    hinweise.push(
+      `Bei ${e.kosten.ohneMengen.einheiten} Einheiten liegt keine einzige Token-Menge vor. `
+      + "Ihr gemeldeter Betrag steht unter 'nicht zuordenbar'; geteilt wird er nicht. "
+      + "Eine fehlende Menge wird nicht als 0 gerechnet — sonst verschwaende der Betrag zwischen den Posten."
     );
   }
   if (e.kosten.ohnePreissatz.einheiten > 0) {
