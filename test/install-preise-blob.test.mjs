@@ -32,8 +32,9 @@ import { starteServer } from "./helpers/board-fixture.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 // Alle Nachbardateien in einem Lauf: Ein zweiter Installer-Lauf kostete Sekunden und
-// belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu, wirksamkeit.mjs mit #787.
-const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs"];
+// belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu, wirksamkeit.mjs mit #787,
+// befunde.mjs mit #799.
+const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
 const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
@@ -57,10 +58,10 @@ function installiertesProjekt(praefix) {
 }
 
 // `[installer-11]` gilt aufwand.mjs (Issue #750), `[installer-13]` wirksamkeit.mjs
-// (Issue #787). preise.mjs steht ohne eigene ID daneben: Ihre Auslieferung war
-// bestehendes Verhalten, als sie dazukam — der Beleg gehoert trotzdem hierher, sonst
-// faellt sie beim naechsten Werkzeug aus dem Blick.
-test("[installer-11] [installer-13] der Installer schreibt die Nachbardateien byteweise identisch zur Quelle", () => {
+// (Issue #787), `[installer-14]` befunde.mjs (Issue #799). preise.mjs steht ohne eigene
+// ID daneben: Ihre Auslieferung war bestehendes Verhalten, als sie dazukam — der Beleg
+// gehoert trotzdem hierher, sonst faellt sie beim naechsten Werkzeug aus dem Blick.
+test("[installer-11] [installer-13] [installer-14] der Installer schreibt die Nachbardateien byteweise identisch zur Quelle", () => {
   const { dir, ausgabe } = installiertesProjekt("install-preise-blob-");
   try {
     for (const datei of AUSGELIEFERT) {

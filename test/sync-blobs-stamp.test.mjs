@@ -27,9 +27,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
 // Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, spec.mjs mit Issue #441,
 // preise.mjs mit Issue #734, aufwand.mjs mit Issue #750, wirksamkeit.mjs mit
-// Issue #787), faellt hier genau eine Stelle an statt drei ueber die Datei
-// verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs"];
+// Issue #787, befunde.mjs mit Issue #799), faellt hier genau eine Stelle an statt
+// drei ueber die Datei verteilte Literale.
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -72,6 +72,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const PREISE_MJS_B64 = "";`,
     `const AUFWAND_MJS_B64 = "";`,
     `const WIRKSAMKEIT_MJS_B64 = "";`,
+    `const BEFUNDE_MJS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -387,6 +388,65 @@ test("[installer-13] --check meldet eine Abweichung von kit/wirksamkeit.mjs", ()
     assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
     const meldung = res.stderr + res.stdout;
     assert.match(meldung, /WIRKSAMKEIT_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Das Befunde-Werkzeug (Issue #799) ---------------------------------------
+//
+// Dieselbe Auslieferungskette wie bei den beiden Werkzeugen darueber. Der Regeltext
+// verweist fuer die Artenliste auf `node .claude/kit/befunde.mjs arten` — ohne Stempel,
+// Blob und Dogfooding-Kopie ginge dieser Verweis in jedem Projekt ins Leere.
+
+test("[installer-14] befunde.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+
+    assert.equal(stempel(dir, "befunde.mjs"), "2.5.0");
+    assert.equal(
+      readFileSync(join(dir, ".claude", "kit", "befunde.mjs"), "utf-8"),
+      readFileSync(join(dir, "kit", "befunde.mjs"), "utf-8"),
+      ".claude/kit/befunde.mjs weicht von der Quelle ab"
+    );
+    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const BEFUNDE_MJS_B64 = "([^"]*)";/)[1];
+    assert.match(Buffer.from(b64, "base64").toString("utf-8"), /const KIT_VERSION = "2\.5\.0";/,
+      "der eingebettete Blob traegt nicht die gestempelte Fassung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-14] --check meldet eine Abweichung von kit/befunde.mjs", () => {
+  // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf waere
+  // ebenso rot, wenn befunde.mjs nur in STAMPED stuende.
+  const dir = setupFixture("2.5.0", "1.0.0");
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    assert.equal(syncBlobs(dir, "--check").status, 0);
+
+    const pfad = join(dir, "kit", "befunde.mjs");
+    writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
+    const meldung = res.stderr + res.stdout;
+    assert.match(meldung, /BEFUNDE_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-14] --check meldet eine von Hand geaenderte Kopie unter .claude/kit/", () => {
+  const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
+  try {
+    assert.equal(syncBlobs(dir).status, 0);
+    writeFileSync(join(dir, ".claude", "kit", "befunde.mjs"), "von Hand verbogen\n");
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette die abweichende Kopie melden muessen");
+    assert.match(res.stderr + res.stdout, /\.claude\/kit\/befunde\.mjs/, "die Meldung nennt die Kopie nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

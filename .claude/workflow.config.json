@@ -162,6 +162,12 @@
       ],
       "aufwand": [
         "kit/aufwand.mjs"
+      ],
+      "befunde": [
+        "kit/befunde.mjs"
+      ],
+      "wirksamkeit": [
+        "kit/wirksamkeit.mjs"
       ]
     },
     "testGlobs": [

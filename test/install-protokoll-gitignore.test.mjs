@@ -56,3 +56,28 @@ test("[installer-12] der .gitignore-Block fuehrt beide Protokolle namentlich neb
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("[installer-15] der Block fuehrt die beiden Befunde-Zustandsdateien, aber keinen der Berichte", () => {
+  // Der Block zaehlt die Zustandsdateien auf, die der Prozess fortschreibt, nicht jedes
+  // erzeugte Ergebnis: `.claude/befunde.md` und `.claude/befunde.json` sind Berichte und
+  // stehen aus demselben Grund nicht darin wie `.claude/wirksamkeit.md` und
+  // `.claude/wirksamkeit.json` — gedeckt sind sie ueber `.claude/*` (Fund W2 der
+  // Plan-Pruefung zu #797).
+  const dir = fixture("install-befunde-gitignore-");
+  try {
+    spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+
+    const zeilen = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n").map((z) => z.trim());
+    for (const pfad of [".claude/befunde.tsv", ".claude/befunde-vorschlaege.json"]) {
+      assert.ok(zeilen.includes(pfad), `${pfad} fehlt im .gitignore-Block:\n${zeilen.join("\n")}`);
+    }
+    for (const bericht of [".claude/befunde.md", ".claude/befunde.json"]) {
+      assert.equal(zeilen.includes(bericht), false,
+        `${bericht} ist ein Bericht und gehoert nicht in den Block der Zustandsdateien`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
