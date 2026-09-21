@@ -2045,22 +2045,55 @@ function verbrauchErfassen(issueId, kennzahlen) {
  *
  * Reine Funktion ueber den drei Quellen, damit sie an Fixtures pruefbar ist — dieselbe Linie
  * wie `verbrauchAddieren`. Ein nicht gemessener Wert bleibt `null`, nie 0.
+ *
+ * `offeneSchuebe` kommt vom Beobachter mit und entscheidet ueber `werkzeugMs` (Issue #820):
+ * Blieb ein Schub ohne `tool_result`, ist die gemessene Spanne nur ein Teil der Werkzeugarbeit.
+ * Als Zahl gaebe sie sich als vollstaendige Messung aus, und die Auswertung rechnete damit —
+ * deshalb `null`, mit der Zahl der offenen Schuebe daneben als Grund.
  */
 export function zeitenBauen(dauerMs, kennzahlen, werkzeug) {
+  const offeneSchuebe = endlicheZahl(werkzeug?.offeneSchuebe);
   return {
     dauerMs: endlicheZahl(dauerMs),
     nachdenkenMs: endlicheZahl(kennzahlen?.apiDauerMs),
-    werkzeugMs: endlicheZahl(werkzeug?.werkzeugMs),
+    werkzeugMs: offeneSchuebe > 0 ? null : endlicheZahl(werkzeug?.werkzeugMs),
     werkzeugSchuebe: endlicheZahl(werkzeug?.schuebe),
     nebenlaeufigeSchuebe: endlicheZahl(werkzeug?.nebenlaeufigeSchuebe),
+    offeneSchuebe,
   };
+}
+
+/** Die Felder der Zeiten, in dieser Reihenfolge im Ergebnisstand. */
+const ZEITEN_FELDER = ["dauerMs", "nachdenkenMs", "werkzeugMs", "werkzeugSchuebe", "nebenlaeufigeSchuebe", "offeneSchuebe"];
+
+/**
+ * Addiert die Zeiten zweier Sessions derselben Einheit feldweise (Issue #820).
+ *
+ * Vorbild ist `kennzahlenAddieren`: Die Einheit ist die Karte, nicht die Session, und wer je
+ * Einheit rechnet, will wissen, was sie insgesamt gekostet hat. Eine Runde von 60 Minuten und
+ * eine Rettung von 2 Minuten sind 62 Minuten Arbeit an diesem Paket.
+ *
+ * Anders als dort macht ein fehlender Wert auf EINER Seite die Summe `null`: Ein Teil, der als
+ * Ganzes erschiene, ist schlimmer als ein offen fehlender Wert — 1000 ms Nachdenken der Runde
+ * stehenzulassen, weil die Rettung nichts gemeldet hat, behauptete eine Zahl, die niemand
+ * gemessen hat. Reine Funktion, `ziel` bleibt unangetastet.
+ */
+export function zeitenAddieren(ziel, zeiten) {
+  const summe = {};
+  for (const feld of ZEITEN_FELDER) {
+    const a = endlicheZahl(ziel?.[feld]);
+    const b = endlicheZahl(zeiten?.[feld]);
+    summe[feld] = a === null || b === null ? null : a + b;
+  }
+  return summe;
 }
 
 /**
  * Schreibt die Zeiten einer Session auf die juengste Einheit der Karte — an derselben
- * Stelle aufgerufen wie `verbrauchErfassen()`, mit demselben Ziel-Muster (`findLast`): Laeuft
- * dieselbe Karte mehrfach in einem Lauf (etwa regulaere Runde und Salvage), trifft jeder
- * Aufruf dieselbe, juengste Einheit und ueberschreibt ihre Zeiten mit dem neuesten Stand.
+ * Stelle aufgerufen wie `verbrauchErfassen()`, mit demselben Ziel-Muster (`findLast`) und
+ * derselben Rechnung: Laeuft dieselbe Karte mehrfach in einem Lauf (etwa regulaere Runde und
+ * Salvage), trifft jeder Aufruf dieselbe, juengste Einheit und addiert seine Zeiten zu denen
+ * der vorigen Session.
  *
  * `issueId === null` (eine Session ohne Karte, etwa der Vorflug) schreibt nichts: Es gibt
  * keine Einheit, der die Zeit gehoert.
@@ -2069,7 +2102,8 @@ function zeitenErfassen(issueId, dauerMs, kennzahlen, werkzeug) {
   if (!LAUF || issueId === null) return;
   const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
   if (!einheit) return;
-  einheit.zeiten = zeitenBauen(dauerMs, kennzahlen, werkzeug);
+  const zeiten = zeitenBauen(dauerMs, kennzahlen, werkzeug);
+  einheit.zeiten = einheit.zeiten ? zeitenAddieren(einheit.zeiten, zeiten) : zeiten;
   schreibeErgebnisstand();
 }
 
