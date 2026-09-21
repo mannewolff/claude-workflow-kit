@@ -11,4 +11,4 @@
 | night | specs/night.md | 53 | 5 |
 | skills | specs/skills.md | 30 | 3 |
 | spec | specs/spec.md | 2 | 0 |
-| wirksamkeit | specs/wirksamkeit.md | 4 | 0 |
+| wirksamkeit | specs/wirksamkeit.md | 6 | 0 |

@@ -9,9 +9,19 @@
  * (fuer die Ausgabestellen). `befund` gibt allein den Befundblock als Text aus.
  *
  * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU (Plan #782, E1): nach dem Muster von
- * kit/aufwand.mjs — eine reine Leseoperation ueber Dateien, ohne Board und ohne Git,
- * und genau deshalb vollstaendig an Fixtures pruefbar. Diese Auswertung braucht ein
- * Zeitfenster statt einer Laufzahl; die Ruecklaeuferquote kommt in einem Folgepaket.
+ * kit/aufwand.mjs — die Pruefungs-Kennzahlen sind eine reine Leseoperation ueber
+ * Dateien und vollstaendig an Fixtures pruefbar. Die Ruecklaeuferquote (Issue #788)
+ * kommt dazu: Sie paart den Kandidatenfilter aus `.claude/bewegungen.tsv` mit dem
+ * Aktivitaetsverlauf der Karten — der einzige Board-Zugriff des Werkzeugs, und jeder
+ * seiner Fehlschlaege ist ein Vermerk im Bericht, kein Abbruch (E9).
+ *
+ * ZAEHLWEISE DER QUOTE (Fund 8): Der Nenner zaehlt KARTEN mit mindestens einem
+ * Eintritt nach "In review" im Fenster, der Zaehler zaehlt RUECKLAUFBEWEGUNGEN im
+ * Fenster — die Quote kann ueber 100 % liegen und wird nicht gekappt.
+ *
+ * RESTLUECKE (Fund 6): Eine Karte, die ein Mensch am Board-UI nach "In review"
+ * zieht, ohne dass das Kit sie je bewegt hat, erzeugt keine Protokollzeile und wird
+ * nie Kandidat — sie fehlt in Zaehler und Nenner. Der Bericht nennt das sichtbar.
  *
  * DREI ZUSTAENDE JE PRUEFUNG, streng getrennt: ausgefuehrt mit Beanstandungen,
  * ausgefuehrt und nie beanstandet, nicht gelaufen. "Nicht gelaufen" loest nie einen
@@ -38,6 +48,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,6 +67,28 @@ const CONFIG_DATEI = "workflow.config.json";
 // Modul (#440); geteilte Konstanten werden dupliziert und hier markiert.
 const AUSFUEHRUNGEN_DATEI = "ausfuehrungen.tsv";
 
+// SYNC: kit/board.mjs schreibt diese Datei (`bewegungSchreiben`, Issue #786) —
+// eine Zeile je gegluecktem `issue move`: Zeitpunkt, Kartennummer, Status.
+const BEWEGUNGEN_DATEI = "bewegungen.tsv";
+
+// SYNC: derselbe Pfad wie BOARD_KOMMANDO in kit/spec.mjs — die Auswertung ruft die
+// installierte Kopie des Adapters auf, nie die Quelle.
+const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
+
+// SYNC: COLUMN_DEFAULTS aus kit/board.mjs — die Anzeigenamen der Spalten, gegen die
+// das Ziel einer Verlaufsbewegung gehalten wird, wenn die Config schweigt.
+const SPALTEN_VORGABE = {
+  backlog:     "Backlog",
+  ready:       "Ready",
+  in_progress: "In progress",
+  in_review:   "In review",
+  done:        "Done",
+};
+
+// Das Praefix der MOVED-Detailzeile, wie das Board sie fuehrt (E6): Dahinter steht
+// der ANZEIGENAME der Zielspalte, nicht der Statusschluessel.
+const VERSCHOBEN_PRAEFIX = "Verschoben nach ";
+
 /**
  * Die eingebauten Vorgaben. Sie gelten, solange die Config schweigt — damit ein
  * bestehendes Projekt die Auswertung bekommt, sobald es die neue Fassung des
@@ -64,6 +97,9 @@ const AUSFUEHRUNGEN_DATEI = "ausfuehrungen.tsv";
  */
 const VORGABE_FENSTER_TAGE = 30;
 const VORGABE_NIE_BEANSTANDET_AB = 10;
+const VORGABE_KANDIDATEN_MAX = 200;
+const VORGABE_QUOTE_SCHWELLE = 0.2;
+const VORGABE_QUOTE_AB_PAKETEN = 10;
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
@@ -79,10 +115,13 @@ const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamk
   node wirksamkeit.mjs befund
 
 auswerten  Liest ${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}, aggregiert je Pruefkommando
-           Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster und schreibt
+           Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, ermittelt
+           die Ruecklaeuferquote (Kandidaten aus ${CLAUDE_DIR}/${BEWEGUNGEN_DATEI},
+           Verlauf ueber board.mjs issue activity) und schreibt
            ${CLAUDE_DIR}/${BERICHT_DATEI} sowie ${CLAUDE_DIR}/${STAND_DATEI}. Die
            Ausgabe auf stdout ist immer JSON — auch im Leerfall und auch bei einem
-           abgewiesenen Aufruf.
+           abgewiesenen Aufruf. Ein Fehlschlag des Board-Teils ist ein Vermerk im
+           Bericht, kein Abbruch.
 befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, mit
            Datum der Auswertung und Fenster in der Kopfzeile. Liegt kein Befund vor,
            fehlt die Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer
@@ -94,9 +133,11 @@ befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, m
   --help, -h        Diese Uebersicht.
 
 Gelesen wird ${CLAUDE_DIR}/${CONFIG_DATEI} im Arbeitsverzeichnis: 'buildChecks' (fuer
-die Menge der vorgeschriebenen Pruefungen) und der optionale Block 'wirksamkeit' mit
-'fensterTage' und 'nieBeanstandetAbAusfuehrungen'. Fehlt der Block oder ein Feld
-darin, gelten die Vorgaben.
+die Menge der vorgeschriebenen Pruefungen), 'columns' und 'issueTracker' (fuer die
+Ruecklaeuferquote) und der optionale Block 'wirksamkeit' mit 'fensterTage',
+'nieBeanstandetAbAusfuehrungen', 'kandidatenMax' (Vorgabe ${VORGABE_KANDIDATEN_MAX}),
+'quoteSchwelle' (Vorgabe ${VORGABE_QUOTE_SCHWELLE}) und 'quoteAbPaketen' (Vorgabe
+${VORGABE_QUOTE_AB_PAKETEN}). Fehlt der Block oder ein Feld darin, gelten die Vorgaben.
 `;
 
 class WirksamkeitError extends Error {}
@@ -139,6 +180,11 @@ function ladeEinstellungen(root) {
   const vorgabe = {
     fensterTage: VORGABE_FENSTER_TAGE,
     nieBeanstandetAb: VORGABE_NIE_BEANSTANDET_AB,
+    kandidatenMax: VORGABE_KANDIDATEN_MAX,
+    quoteSchwelle: VORGABE_QUOTE_SCHWELLE,
+    quoteAbPaketen: VORGABE_QUOTE_AB_PAKETEN,
+    spalten: SPALTEN_VORGABE,
+    issueTracker: null,
     buildCmds: [],
     configGelesen: null,
   };
@@ -160,6 +206,11 @@ function ladeEinstellungen(root) {
   return {
     fensterTage: ganzzahl(block.fensterTage) ?? VORGABE_FENSTER_TAGE,
     nieBeanstandetAb: ganzzahl(block.nieBeanstandetAbAusfuehrungen) ?? VORGABE_NIE_BEANSTANDET_AB,
+    kandidatenMax: ganzzahl(block.kandidatenMax) ?? VORGABE_KANDIDATEN_MAX,
+    quoteSchwelle: bruchzahl(block.quoteSchwelle) ?? VORGABE_QUOTE_SCHWELLE,
+    quoteAbPaketen: ganzzahl(block.quoteAbPaketen) ?? VORGABE_QUOTE_AB_PAKETEN,
+    spalten: config?.columns && typeof config.columns === "object" ? config.columns : SPALTEN_VORGABE,
+    issueTracker: typeof config?.issueTracker === "string" ? config.issueTracker : null,
     buildCmds,
     configGelesen: null,
   };
@@ -168,6 +219,11 @@ function ladeEinstellungen(root) {
 /** Eine ganze Zahl groesser null oder `null` — ein unbrauchbarer Wert faellt auf die Vorgabe zurueck. */
 function ganzzahl(wert) {
   return Number.isInteger(wert) && wert > 0 ? wert : null;
+}
+
+/** Eine endliche Zahl groesser null oder `null` — die Quoten-Schwelle darf gebrochen sein. */
+function bruchzahl(wert) {
+  return typeof wert === "number" && Number.isFinite(wert) && wert > 0 ? wert : null;
 }
 
 // --- Protokoll lesen ---------------------------------------------------------
@@ -299,6 +355,228 @@ function befundBestimmen(pruefungen, nieBeanstandetAb) {
   return befund;
 }
 
+// --- Ruecklaeuferquote (Issue #788) ------------------------------------------
+
+/**
+ * Liest `.claude/bewegungen.tsv`: Zeitpunkt, Kartennummer, Status — durch Tabs
+ * getrennt, wie `bewegungSchreiben` in kit/board.mjs sie anhaengt. Der Status wird
+ * hier nicht gebraucht: Das Protokoll ist nur der KANDIDATENFILTER (E5), die
+ * Wahrheit ueber Eintritte und Ruecklaeufe kommt aus dem Aktivitaetsverlauf.
+ *
+ * Fehlerhafte Zeilen werden uebersprungen und gezaehlt, wie beim
+ * Ausfuehrungsprotokoll — eine halbe Zeile darf keine Auswertung kosten.
+ */
+function bewegungenLesen(root) {
+  const pfad = join(root, CLAUDE_DIR, BEWEGUNGEN_DATEI);
+  if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
+  let inhalt;
+  try {
+    inhalt = readFileSync(pfad, "utf-8");
+  } catch {
+    return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
+  }
+  const zeilen = [];
+  let fehlerhaft = 0;
+  for (const roh of inhalt.split("\n")) {
+    if (roh === "") continue;
+    const teile = roh.split("\t");
+    const zeitMs = Date.parse(teile[0]);
+    if (teile.length !== 3 || Number.isNaN(zeitMs) || teile[1] === "") {
+      fehlerhaft += 1;
+      continue;
+    }
+    zeilen.push({ zeitMs, id: teile[1] });
+  }
+  return { vorhanden: true, zeilen, fehlerhaft };
+}
+
+/**
+ * Die Zuordnung Anzeigename -> Statusschluessel, ohne Ruecksicht auf Gross- und
+ * Kleinschreibung (E6): Der Verlauf traegt den Anzeigenamen der Zielspalte, und der
+ * weicht projektweise vom Schluessel ab (am Board dieser Instanz etwa "Anstehend"
+ * fuer backlog).
+ */
+function spaltenZuordnung(spalten) {
+  const map = new Map();
+  for (const [schluessel, name] of Object.entries(spalten)) {
+    if (typeof name === "string" && name !== "") map.set(name.toLowerCase(), schluessel);
+  }
+  return map;
+}
+
+/** Das Ziel einer Verlaufsbewegung als Statusschluessel, oder `null` fuer "nicht zuordenbar". */
+function zielVon(detail, zuordnung) {
+  if (typeof detail !== "string" || !detail.startsWith(VERSCHOBEN_PRAEFIX)) return null;
+  return zuordnung.get(detail.slice(VERSCHOBEN_PRAEFIX.length).trim().toLowerCase()) ?? null;
+}
+
+/**
+ * Der Aktivitaetsverlauf aller Kandidaten ueber genau EINEN Kindprozess (E13):
+ * `issue activity --ids` holt die Kartenliste des Boards einmal statt je Karte —
+ * gegen eine API, die drosselt. Muster wie `verlaufLesen` in kit/spec.mjs, aber mit
+ * umgekehrter Fehlerhaltung: Hier ist ein Fehlschlag ein VERMERK, kein Abbruch (E9) —
+ * auf dem Spiel steht eine Kennzahl, nicht ein Gate.
+ */
+function verlaeufeHolen(root, ids) {
+  const res = spawnSync(
+    process.execPath,
+    [join(root, ...BOARD_KOMMANDO), "issue", "activity", "--ids", ids.join(",")],
+    { cwd: root, encoding: "utf-8" }
+  );
+  if (res.status !== 0) {
+    const grund = (res.stderr || "").trim() || `der Adapter endete mit ${res.status ?? res.error?.message ?? "?"}`;
+    return { fehler: grund };
+  }
+  try {
+    return { verlaeufe: JSON.parse(res.stdout) };
+  } catch (err) {
+    return { fehler: `der Adapter lieferte kein JSON (${err.message})` };
+  }
+}
+
+/**
+ * Die Ruecklaeuferquote (E5): Kandidaten aus dem Bewegungsprotokoll, Wahrheit aus
+ * dem Verlauf. Ein Ruecklaeufer ist jedes Verlassen von "In review" in ein anderes
+ * Ziel als "Done" — auch in ein nicht zuordenbares: Wo die Karte hinging, ist fuer
+ * die Frage "kam sie aus dem Review zurueck?" zweitrangig.
+ *
+ * Drei Endzustaende, streng getrennt: `berechnet` (mindestens ein Eintritt im
+ * Fenster), `nichtBerechenbar` (kein zuordenbarer Eintritt — die Quote ist dann
+ * NICHT null, E7) und `entfallen` (der Tracker fuehrt keinen Verlauf oder der
+ * Board-Aufruf schlug fehl — mit Grund, E15/E9).
+ */
+function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
+  const protokoll = bewegungenLesen(root);
+  const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
+  const basis = {
+    protokoll: { vorhanden: protokoll.vorhanden, zeilen: protokoll.zeilen.length, fehlerhafteZeilen: protokoll.fehlerhaft },
+    erhebungsbeginn: fenster.erhebungsbeginn,
+    abgeschnitten: fenster.abgeschnitten,
+    quote: null,
+    zaehler: 0,
+    nenner: 0,
+    nichtZuordenbareBewegungen: 0,
+    fehlerKarten: 0,
+    kandidaten: { imFenster: 0, gewertet: 0, weggefallen: 0 },
+    grund: null,
+  };
+
+  // Der Tracker `local` fuehrt keinen Verlauf: `listActivity` liefert genau einen
+  // synthetischen CREATED-Eintrag und nie ein MOVED (E15). Ohne diesen Vermerk liefe
+  // er formal durch und wiese die Quote auf ewig als "nicht berechenbar" aus, ohne
+  // den Grund zu nennen — deshalb entfaellt sie hier ausdruecklich, ohne Kindprozess.
+  if (einstellungen.issueTracker === "local") {
+    return {
+      ...basis,
+      status: "entfallen",
+      grund: "der Tracker 'local' fuehrt keinen Verlauf (nur ein synthetischer CREATED-Eintrag, nie eine Bewegung)",
+    };
+  }
+
+  const gewertet = kandidatenBestimmen(protokoll.zeilen, fenster.grenzeMs, einstellungen.kandidatenMax);
+  basis.kandidaten = gewertet.kandidaten;
+  if (gewertet.ids.length === 0) return { ...basis, status: "nichtBerechenbar" };
+
+  const geholt = verlaeufeHolen(root, gewertet.ids);
+  if (geholt.fehler) {
+    return { ...basis, status: "entfallen", grund: `der Verlaufs-Aufruf des Boards schlug fehl: ${geholt.fehler}` };
+  }
+
+  const gezaehlt = kartenZaehlen(geholt.verlaeufe, gewertet.ids, einstellungen.spalten, fenster.grenzeMs);
+  return {
+    ...basis,
+    ...gezaehlt,
+    status: gezaehlt.nenner > 0 ? "berechnet" : "nichtBerechenbar",
+    quote: gezaehlt.nenner > 0 ? gezaehlt.zaehler / gezaehlt.nenner : null,
+  };
+}
+
+/**
+ * Die Kandidaten (E5): jede Kartennummer mit mindestens einer Zeile im Fenster,
+ * gedeckelt (E14) auf hoechstens `kandidatenMax` Karten, die juengsten Eintritte
+ * zuerst. Was wegfaellt, steht im Bericht und in der Traglast — nie stilles
+ * Abschneiden.
+ */
+function kandidatenBestimmen(zeilen, grenzeMs, kandidatenMax) {
+  const juengste = new Map();
+  for (const z of zeilen) {
+    if (z.zeitMs < grenzeMs) continue;
+    juengste.set(z.id, Math.max(juengste.get(z.id) ?? 0, z.zeitMs));
+  }
+  const sortiert = [...juengste.entries()].sort((a, b) => b[1] - a[1] || vergleicheText(a[0], b[0]));
+  const ids = sortiert.slice(0, kandidatenMax).map(([id]) => id);
+  return {
+    ids,
+    kandidaten: { imFenster: sortiert.length, gewertet: ids.length, weggefallen: sortiert.length - ids.length },
+  };
+}
+
+/**
+ * Zaehlt Nenner (Karten mit Eintritt nach "In review" im Fenster), Zaehler
+ * (Ruecklaufbewegungen im Fenster), nicht zuordenbare Bewegungen und Karten ohne
+ * Verlauf. Eine Nummer mit Fehlereintrag der Sammelform kostet einen Kandidaten,
+ * nicht die Auswertung — sie wird gezaehlt und im Bericht genannt.
+ */
+function kartenZaehlen(verlaeufe, ids, spalten, grenzeMs) {
+  const zuordnung = spaltenZuordnung(spalten);
+  const summe = { zaehler: 0, nenner: 0, nichtZuordenbareBewegungen: 0, fehlerKarten: 0 };
+  for (const id of ids) {
+    const verlauf = verlaeufe[id];
+    if (!Array.isArray(verlauf)) {
+      summe.fehlerKarten += 1;
+      continue;
+    }
+    const karte = karteZaehlen(verlauf, zuordnung, grenzeMs);
+    summe.zaehler += karte.ruecklaeufe;
+    summe.nichtZuordenbareBewegungen += karte.nichtZuordenbar;
+    if (karte.eintritt) summe.nenner += 1;
+  }
+  return summe;
+}
+
+/**
+ * Die Zaehlung EINER Karte. Der Zustand VOR einer Bewegung ist das Ziel der
+ * vorigen — auch einer vor dem Fenster: Ein Eintritt von letzter Woche macht den
+ * Ruecklauf von heute erst erkennbar. Gezaehlt (Eintritt wie Ruecklauf) wird nur,
+ * was im Fenster liegt; genau deshalb kann die Quote ueber 100 % liegen.
+ */
+function karteZaehlen(verlauf, zuordnung, grenzeMs) {
+  const karte = { ruecklaeufe: 0, eintritt: false, nichtZuordenbar: 0 };
+  let zustand = null;
+  for (const b of kartenBewegungen(verlauf, zuordnung)) {
+    if (b.zeitMs >= grenzeMs) {
+      if (b.ziel === null) karte.nichtZuordenbar += 1;
+      if (zustand === "in_review" && b.ziel !== "in_review" && b.ziel !== "done") karte.ruecklaeufe += 1;
+      if (b.ziel === "in_review") karte.eintritt = true;
+    }
+    zustand = b.ziel;
+  }
+  return karte;
+}
+
+/** Die MOVED-Eintraege eines Verlaufs als {zeitMs, ziel}, zeitlich aufsteigend. */
+function kartenBewegungen(verlauf, zuordnung) {
+  return verlauf
+    .filter((e) => e?.type === "MOVED" && typeof e.createdAt === "string" && !Number.isNaN(Date.parse(e.createdAt)))
+    .map((e) => ({ zeitMs: Date.parse(e.createdAt), ziel: zielVon(e.detail, zuordnung) }))
+    .sort((a, b) => a.zeitMs - b.zeitMs);
+}
+
+/**
+ * Der Befund der Quote: ab `quoteSchwelle` bei mindestens `quoteAbPaketen` Karten.
+ * Unterhalb der Kartenzahl ist die Quote eine Momentaufnahme, kein Befund — dieselbe
+ * Schutzlogik wie die Ausfuehrungs-Schwelle bei "nie beanstandet".
+ */
+function ruecklaufBefund(r, einstellungen) {
+  if (r.status !== "berechnet") return [];
+  if (r.nenner < einstellungen.quoteAbPaketen || r.quote < einstellungen.quoteSchwelle) return [];
+  return [{
+    schwelle: "ruecklaufquote",
+    text: `Von ${r.nenner} Karten, die im Fenster nach 'In review' kamen, gingen ${r.zaehler} Bewegungen `
+      + `zurueck in die Arbeit — Ruecklaeuferquote ${prozent(r.quote)}.`,
+  }];
+}
+
 // --- Textformen --------------------------------------------------------------
 
 /**
@@ -314,6 +592,15 @@ function zahlform(wert, stellen) {
   const ziffern = vorzeichen ? ganz.slice(1) : ganz;
   const gruppiert = ziffern.replaceAll(/\B(?=(\d{3})+$)/g, ".");
   return bruch ? `${vorzeichen}${gruppiert},${bruch}` : `${vorzeichen}${gruppiert}`;
+}
+
+/**
+ * Eine Quote als Prozentzahl — ganzzahlig ohne, sonst mit einer Nachkommastelle.
+ * Nie gekappt: 200 % ist eine wahre Aussage ueber zwei Ruecklaeufe je Karte.
+ */
+function prozent(quote) {
+  const p = quote * 100;
+  return `${zahlform(p, Number.isInteger(p) ? 0 : 1)} %`;
 }
 
 /** Eine Dauer in Millisekunden als lesbare Spanne; `null` sagt "nicht gemessen". */
@@ -356,6 +643,7 @@ export function berichtText(e) {
   return [
     ...berichtKopf(e),
     ...berichtPruefungen(e),
+    ...berichtRuecklauf(e),
     ...berichtBefund(e),
     // Die Messgrenze aus E17 steht in JEDEM Bericht, auch im Leerfall: Wer die Datei
     // liest, soll wissen, was sie systematisch nicht sieht.
@@ -415,12 +703,81 @@ function berichtPruefungen(e) {
   return zeilen;
 }
 
+/**
+ * Der Abschnitt zur Ruecklaeuferquote. Bei `entfallen` steht dort NUR der Vermerk
+ * mit dem Grund — die Pruefungs-Kennzahlen daneben bleiben vollstaendig (E15). In
+ * jedem anderen Fall nennt er neben der Quote (oder ihrer Nichtberechenbarkeit, E7)
+ * die Traglast: nicht zuordenbare Bewegungen, Deckel-Wegfaelle, den Erhebungsbeginn
+ * des Bewegungsprotokolls und die Restluecke aus Fund 6.
+ */
+function berichtRuecklauf(e) {
+  const r = e.ruecklauf;
+  if (r.status === "entfallen") {
+    return [
+      "## Ruecklaeuferquote", "",
+      `Die Ruecklaeuferquote entfaellt: ${r.grund}. Die Pruefungs-Kennzahlen oben bleiben davon unberuehrt.`,
+      "",
+    ];
+  }
+  return [
+    "## Ruecklaeuferquote", "",
+    ruecklaufKernsatz(r),
+    `Nicht zuordenbare Bewegungen im Fenster: ${r.nichtZuordenbareBewegungen}.`,
+    ...ruecklaufVermerke(r, e.schwellen),
+    "Restluecke: Karten, die das Kit nie bewegt hat, stehen nicht im Nenner — eine von Hand am Board "
+    + "nach 'In review' gezogene Karte fehlt in Zaehler und Nenner.",
+    "",
+  ];
+}
+
+/** Die erste Aussage des Quote-Abschnitts: die Quote selbst oder ihr Nicht-Berechenbar-Grund. */
+function ruecklaufKernsatz(r) {
+  if (r.status !== "berechnet") {
+    return r.kandidaten.gewertet === 0
+      ? "Im Fenster traegt keine Karte eine Kit-Bewegung — die Quote ist nicht berechenbar."
+      : "Kein Eintritt nach 'In review' ist im Fenster zuordenbar — die Quote ist nicht berechenbar, nicht null.";
+  }
+  const karten = `${r.nenner} ${r.nenner === 1 ? "Karte" : "Karten"}`;
+  const kam = r.nenner === 1 ? "kam" : "kamen";
+  const bewegungen = r.zaehler === 1 ? "ging 1 Bewegung" : `gingen ${r.zaehler} Bewegungen`;
+  return `Von ${karten}, die im Fenster nach 'In review' ${kam}, ${bewegungen} zurueck in die Arbeit — `
+    + `Ruecklaeuferquote ${prozent(r.quote)}.`;
+}
+
+/** Die Traglast-Vermerke der Quote — nur die Zeilen, deren Anlass eingetreten ist. */
+function ruecklaufVermerke(r, schwellen) {
+  const zeilen = [];
+  if (r.kandidaten.weggefallen > 0) {
+    zeilen.push(
+      `Der Deckel von ${schwellen.kandidatenMax} Karten griff: `
+      + `${r.kandidaten.weggefallen} ${r.kandidaten.weggefallen === 1 ? "Karte ist" : "Karten sind"} weggefallen — `
+      + `gewertet wurden die ${r.kandidaten.gewertet} juengsten.`
+    );
+  }
+  if (r.abgeschnitten) {
+    zeilen.push(
+      `Das Bewegungsprotokoll beginnt erst am ${r.erhebungsbeginn} — die Quote traegt nur den Zeitraum seit diesem Anfang.`
+    );
+  }
+  if (r.fehlerKarten > 0) {
+    zeilen.push(
+      `${r.fehlerKarten} ${r.fehlerKarten === 1 ? "Karte lieferte" : "Karten lieferten"} keinen Verlauf `
+      + "(Fehlereintrag des Boards) und fehlen in der Zaehlung."
+    );
+  }
+  if (r.protokoll.fehlerhafteZeilen > 0) {
+    zeilen.push(`${r.protokoll.fehlerhafteZeilen} Zeilen des Bewegungsprotokolls waren unlesbar und wurden uebersprungen.`);
+  }
+  return zeilen;
+}
+
 function berichtBefund(e) {
   const zeilen = ["## Befund", ""];
   if (e.befund.length === 0) zeilen.push("Keine Pruefung liegt ueber der Schwelle.", "");
   else zeilen.push(...e.befund.map((b) => `- ${b.text}`), "");
   zeilen.push(
     `Schwellen dieses Laufs: nie beanstandet ab ${e.schwellen.nieBeanstandetAbAusfuehrungen} Ausfuehrungen, `
+    + `Ruecklaeuferquote ab ${prozent(e.schwellen.quoteSchwelle)} bei mindestens ${e.schwellen.quoteAbPaketen} Karten, `
     + `Fenster ${e.schwellen.fensterTage} Tage. Eine nicht gelaufene Pruefung loest nie einen Befund aus.`,
     ""
   );
@@ -471,13 +828,18 @@ function schreibeDatei(pfad, inhalt) {
 export function auswerten(root, { fenster: fensterArg } = {}) {
   const einstellungen = ladeEinstellungen(root);
   const fensterTage = fensterArg ?? einstellungen.fensterTage;
+  const jetztMs = Date.now();
   const protokoll = protokollLesen(root);
-  const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, Date.now());
+  const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster);
-  const befund = befundBestimmen(pruefungen, einstellungen.nieBeanstandetAb);
+  const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs);
+  const befund = [
+    ...befundBestimmen(pruefungen, einstellungen.nieBeanstandetAb),
+    ...ruecklaufBefund(ruecklauf, einstellungen),
+  ];
 
   const ergebnis = {
-    erzeugtAm: new Date().toISOString(),
+    erzeugtAm: new Date(jetztMs).toISOString(),
     kitVersion: KIT_VERSION,
     fenster: {
       tage: fenster.tage,
@@ -492,9 +854,13 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
       fehlerhafteZeilen: protokoll.fehlerhaft,
     },
     pruefungen,
+    ruecklauf,
     schwellen: {
       fensterTage,
       nieBeanstandetAbAusfuehrungen: einstellungen.nieBeanstandetAb,
+      kandidatenMax: einstellungen.kandidatenMax,
+      quoteSchwelle: einstellungen.quoteSchwelle,
+      quoteAbPaketen: einstellungen.quoteAbPaketen,
     },
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
     // alten Stand — ein ausgelassenes Feld liesse den Befund von gestern stehen.
