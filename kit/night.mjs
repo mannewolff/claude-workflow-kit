@@ -1337,28 +1337,35 @@ function gitIm(repoRoot, gitArgs) {
  * ohne dass etwas rot wird. Dann muessen die beiden Protokolle aus dem Worktree
  * zurueckgeholt werden.
  */
+/**
+ * Ob ein Eintrag direkt unter `.claude/` in der Hauptkopie zurueckbleibt: die Protokolle
+ * und Auswertungen des Laufs, nicht die Werkzeuge. Entschieden wird am Namen des Eintrags
+ * auf der obersten Ebene (Issue #824, night-68) — `.claude/kit/aufwand.mjs` und
+ * `.claude/kit/wirksamkeit.mjs` kommen darum mit, `.claude/aufwand.json` nicht.
+ */
+function bleibtInHauptkopie(name) {
+  return name.startsWith("night-run-")
+    || name.startsWith("aufwand.")
+    || name.startsWith("wirksamkeit.")
+    || name === "bewegungen.tsv"
+    || name === "ausfuehrungen.tsv";
+}
+
 function claudeSpiegeln(repoRoot, pfad) {
   const quelle = join(repoRoot, ".claude");
   if (!existsSync(quelle)) return;
-  cpSync(quelle, join(pfad, ".claude"), {
-    recursive: true,
-    force: true,
-    filter: (src) => {
-      // Gemessen wird der Pfad RELATIV zu `.claude/`, nicht der blosse Dateiname
-      // (Issue #824, night-68): Zurueckbleiben sollen die Berichte des Laufs, und die
-      // liegen direkt unter `.claude/`. Ueber den Namen allein blieben auch
-      // `.claude/kit/aufwand.mjs` und `.claude/kit/wirksamkeit.mjs` zurueck — die
-      // Werkzeuge, nicht ihre Ergebnisse. Eine Kettenstufe, die sie im Worktree riefe,
-      // fand sie nicht vor.
-      const rel = relative(quelle, src);
-      if (dirname(rel) !== ".") return true;
-      return !rel.startsWith("night-run-")
-        && !rel.startsWith("aufwand.")
-        && !rel.startsWith("wirksamkeit.")
-        && rel !== "bewegungen.tsv"
-        && rel !== "ausfuehrungen.tsv";
-    },
-  });
+  const ziel = join(pfad, ".claude");
+  mkdirSync(ziel, { recursive: true });
+  // Die oberste Ebene geht der Runner selbst durch und kopiert jeden uebrigen Eintrag ohne
+  // Filter (Issue #832). Bis dahin entschied ein `cpSync`-Filter ueber den Pfad von `src`
+  // relativ zu `.claude/` — und das hing daran, dass `cpSync` ihn in derselben Schreibweise
+  // uebergibt wie die Quelle. Unter Windows tat es das nicht (Kurzname des Temp-Verzeichnisses), der
+  // Filter liess alles durch, und die Protokolle landeten im Worktree. Ohne Pfadvergleich
+  // gibt es keine Schreibweise, die abweichen kann.
+  for (const eintrag of readdirSync(quelle, { withFileTypes: true })) {
+    if (bleibtInHauptkopie(eintrag.name)) continue;
+    cpSync(join(quelle, eintrag.name), join(ziel, eintrag.name), { recursive: true, force: true });
+  }
 }
 
 /**
