@@ -3090,7 +3090,11 @@ function lesePruefung(issueId) {
     // verfehlter Marke ist bereits der rote Lauf, und eine zweite Beurteilung an dieser
     // Stelle waere ein zweites Gate fuer dieselbe Entscheidung.
     const guete = daten.guete && typeof daten.guete === "object" ? { guete: daten.guete } : {};
-    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder, ...guete };
+    // `roh` ist das Durchreichen der gelesenen Datei an `bewertePruefung` und kommt dort
+    // wieder weg (Issue #865): Der Abgleich mit dem Commit braucht `hashes` und
+    // `abgeschlossen`, der Pruefstand der Einheit soll sie nicht tragen — er ist der
+    // Vertrag mit den Auswertungen, und zwei Blob-Listen je Nacht sind kein Bericht.
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder, ...guete, roh: daten };
     const laufen = daten.laufen ?? [];
     // Ein nicht gruener Eintrag ist etwas anderes als eine fehlende Datei: Dort ist
     // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
@@ -3105,6 +3109,7 @@ function lesePruefung(issueId) {
       ausgelassen: daten.ausgelassen ?? [],
       ...umfangFelder,
       ...guete,
+      roh: daten,
     };
   } catch (err) {
     // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
@@ -3113,12 +3118,139 @@ function lesePruefung(issueId) {
   }
 }
 
+// --- Gehoert der Nachweis zum Commit des Pakets? (Issue #865) ---
+//
+// Die Zusammenfassung traegt keinen Vermerk darueber, welchen Stand sie gemessen hat —
+// sie ist schlicht die letzte, die eine Session hinterlassen hat. Lauf #118 zeigte, was
+// daraus folgt: Nach einem gruen geprueften Commit startete die Session eine weitere
+// Pruefung und brach sie ab; deren Zwischenfassung ("nicht gestartet") stand danach in
+// der Datei, und der Runner meldete ein sauberes Paket als "Nachweis rot".
+//
+// Die Frage ist dieselbe, die das Commit-Gate (.githooks/gate.mjs) vor jedem Commit
+// stellt, nur gegen den Commit statt gegen den Index: Traegt die Zusammenfassung fuer
+// JEDE Datei, die der Commit aendert, genau den Blob, der dort gelandet ist?
+//
+// Die Richtung ist mit Bedacht die des Gates (Commit -> Nachweis) und nicht die
+// umgekehrte: Eine Zusammenfassung enthaelt regelmaessig mehr, als der Commit aufnimmt
+// — der Board-Move nach In progress aendert beim lokalen Tracker issues/<id>.md, und
+// die Session committet die Datei nicht. Gegen diese Beifaenge zu pruefen, hiesse den
+// Nachweis in jedem Lauf dieses Repos als fremd zu verwerfen.
+
+const NACHPRUEF_GRUND = "Nachpruefung des Commits (Nachweis war fremd)";
+
+/** Die Pfade samt Status, die ein Commit aendert. `null`, wenn git nicht antwortet. */
+function commitEintraege(commit) {
+  // `--root`, damit auch ein erster Commit ohne Eltern Eintraege liefert; `-z` und
+  // `--no-renames` aus denselben Gruenden wie im Gate (quotePath, R-Zeilen mit zwei Pfaden).
+  const res = spawnSync("git", ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "--no-renames", "--root", commit],
+    { encoding: "utf-8", cwd: process.cwd() });
+  if (res.status !== 0) return null;
+  const felder = res.stdout.split("\0");
+  const eintraege = [];
+  for (let i = 0; i + 1 < felder.length; i += 2) {
+    if (felder[i]) eintraege.push({ status: felder[i], pfad: felder[i + 1] });
+  }
+  return eintraege;
+}
+
+/** Der Blob eines Pfads im Commit, oder `null`, wenn er dort nicht liegt. */
+function blobImCommit(commit, pfad) {
+  const res = spawnSync("git", ["rev-parse", `${commit}:${pfad}`], { encoding: "utf-8", cwd: process.cwd() });
+  return res.status === 0 ? res.stdout.trim() : null;
+}
+
+/**
+ * Passt die Zusammenfassung `daten` zum Commit `commit`? Mit dem Grund, wenn nicht —
+ * er nennt die erste abweichende Stelle und geht so, wie er ist, in Log und Bericht.
+ *
+ * Zwei Faelle heissen "nicht beurteilbar" und gelten darum als passend: eine
+ * Zusammenfassung ohne `hashes` (Format vor Issue #469) und ein git-Aufruf, der
+ * scheitert. Ein Nachweis, den dieser Abgleich nicht lesen kann, soll denselben Weg
+ * gehen wie vor diesem Paket — nicht einen strengeren.
+ */
+function nachweisPasstZuCommit(daten, commit) {
+  if (!daten || daten.hashes === null || typeof daten.hashes !== "object") return { passt: true, grund: null };
+  // `abgeschlossen: false` heisst: Diese Fassung hat ein Abbruch hinterlassen (Issue
+  // #857). Sie kann nie der Nachweis eines Commits sein, unabhaengig von den Blobs.
+  if (daten.abgeschlossen === false) return { passt: false, grund: "die Pruefung wurde abgebrochen" };
+  const eintraege = commitEintraege(commit);
+  if (eintraege === null) return { passt: true, grund: null };
+  for (const { status, pfad } of eintraege) {
+    if (!(pfad in daten.hashes)) return { passt: false, grund: `${pfad} ist darin nicht geprueft` };
+    // Bei einer Loeschung genuegt, dass der Pfad geprueft wurde — einen Blob gibt es
+    // im Commit nicht mehr, und die Zusammenfassung fuehrt ihn mit `null`.
+    if (status.startsWith("D")) continue;
+    if (daten.hashes[pfad] !== blobImCommit(commit, pfad)) {
+      return { passt: false, grund: `${pfad} wurde in einer anderen Fassung geprueft` };
+    }
+  }
+  return { passt: true, grund: null };
+}
+
+/** Der Pruefstand der Nachpruefung: die Paketstufe, bis einschliesslich des roten Kommandos. */
+function nachpruefLaufen(cfg, nach) {
+  const laufen = [];
+  for (const eintrag of paketstufenChecks(cfg)) {
+    const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
+    const rot = !nach.ok && cmd === nach.rotesKommando;
+    laufen.push({ cmd, grund: NACHPRUEF_GRUND, ergebnis: rot ? "rot" : "gruen" });
+    if (rot) break;
+  }
+  return laufen;
+}
+
+/**
+ * Der Pruefstand einer Session, gegen den Commit des Pakets gehalten (Issue #865).
+ *
+ * Ohne Commit — die Runde hat nichts abgeliefert — bleibt alles, wie `lesePruefung` es
+ * gelesen hat: Es gibt keinen Stand, zu dem der Nachweis gehoeren muesste.
+ *
+ * Passt er nicht, faehrt der Runner die Paketstufe selbst nach, statt den Fall nur zu
+ * melden. Ein Morgen mit "unklar" zwingt den Menschen zu genau der Pruefung, die der
+ * Runner nachts billiger hat.
+ */
+function bewertePruefung(issueId, commit, cfg) {
+  const { roh, ...pruefung } = lesePruefung(issueId);
+  if (!commit || !roh) return pruefung;
+  const abgleich = nachweisPasstZuCommit(roh, commit);
+  if (abgleich.passt) return pruefung;
+
+  log(`  Der Pruefnachweis gehoert nicht zum Commit ${commit} (${abgleich.grund}) — die Pflicht-Checks werden nachgefahren.`);
+  const nach = runBuildChecksSync(cfg);
+  const ausgang = nach.ok ? "gruen" : `rot — ${nach.rotesKommando}`;
+  log(`  Nachpruefung ${ausgang}.`);
+  return {
+    ...pruefung,
+    zustand: nach.ok ? "nachgeprueft" : "rot",
+    ...(nach.ok ? {} : { rotesKommando: nach.rotesKommando, rotesErgebnis: "rot" }),
+    // Der Umfang ist der der Nachpruefung, nicht der des fremden Nachweises: Sie faehrt
+    // die Paketstufe ohne Bereichsauswahl, wie der Salvage.
+    laufen: nachpruefLaufen(cfg, nach),
+    ausgelassen: [],
+    vollerUmfang: true,
+    leeresPaket: false,
+    basis: commit,
+    bereiche: null,
+    dauerGesamtMs: null,
+    // Ganz hinten (Issue #776): Neue Felder haengen an, die bestehenden behalten Namen
+    // und Reihenfolge.
+    nachweisFremd: true,
+    nachweisGrund: abgleich.grund,
+  };
+}
+
 function pruefListe(eintraege, leerText) {
   return eintraege.length === 0 ? leerText : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
 }
 
 /** Eine Zeile je Session — auch die ohne Pruefung, sonst saehe sie aus wie keine. */
 function pruefZeile(p) {
+  // Der fremde Nachweis zuerst (Issue #865): Was hier zaehlt, ist nicht das Ergebnis der
+  // Session, sondern das der Nachpruefung — und der Grund, aus dem sie noetig war.
+  if (p.nachweisFremd) {
+    const ergebnis = p.zustand === "rot" ? `Nachpruefung rot — ${p.rotesKommando} endete rot` : "Nachpruefung gruen";
+    return `  Issue #${p.id}: ${p.zustand} — Nachweis gehoerte nicht zum Commit (${p.nachweisGrund}), ${ergebnis}.`;
+  }
   if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
   if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
   if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
@@ -3151,10 +3283,15 @@ function pruefZeilen(p) {
 function pruefSummenzeile(pruefungen) {
   const zaehle = (zustand) => pruefungen.filter((p) => p.zustand === zustand).length;
   const geprueft = pruefungen.filter((p) => p.zustand === "geprueft");
+  // Die Nachpruefung zaehlt mit (Issue #865): Sie ist gelaufen, ihre Kommandos stehen im
+  // Pruefstand, und "0 Pruefung(en) gelaufen" waere nach einem nachgefahrenen Lauf falsch.
+  // Die Session-Zahl davor bleibt getrennt — `nachgeprueft` hat dort seine eigene Stelle.
+  const mitLaeufen = pruefungen.filter((p) => p.zustand === "geprueft" || p.zustand === "nachgeprueft");
   const summe = (feld, filter = () => true) =>
-    geprueft.reduce((n, p) => n + p[feld].filter(filter).length, 0);
+    mitLaeufen.reduce((n, p) => n + p[feld].filter(filter).length, 0);
   const rot = summe("laufen", (e) => e.ergebnis === "rot");
   return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
+    + `${zaehle("nachgeprueft")} nachgeprueft, `
     + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft, `
     + `${zaehle("rot")} rot; `
     + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
@@ -6487,7 +6624,12 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
-  const pruefung = lesePruefung(top.id);
+  //
+  // Der Commit dieser Session, sofort nach ihr (Issue #865): Er ist der Stand, zu dem
+  // der Nachweis gehoeren muss. `commitNachher` weiter unten taugt dafuer nicht — es
+  // steht hinter werteRunde und kann der Commit einer Salvage-Session sein.
+  const commitDerSession = lastCommitHash();
+  const pruefung = bewertePruefung(top.id, commitDerSession === commitVorher ? null : commitDerSession, config);
   pruefungen.push(pruefung);
   // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
   // Textzeile (Issue #488): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.

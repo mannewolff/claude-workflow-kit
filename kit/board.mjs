@@ -3897,6 +3897,9 @@ const NACHTLAUF_ART = "NIGHT";
 // Farbe nach Pruefzustand, getrennt fuer erfolg und fehlschlag (NACH_ZUSTAND dort).
 const NACHTLAUF_NACH_PRUEFUNG = {
   geprueft: { erfolg: ["GREEN", null] },
+  // Der Runner hat den Nachweis selbst nachgefahren, weil der hinterlassene nicht zum
+  // Commit des Pakets gehoerte (Issue #865) — gruen ist gruen, wie bei `geprueft`.
+  nachgeprueft: { erfolg: ["GREEN", null] },
   leeresPaket: { erfolg: ["GREEN", null] },
   ungeprueft: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },
   unlesbar: { erfolg: ["YELLOW", "CHECKS_NOT_STARTED"], fehlschlag: ["RED", "CHECKS_NOT_STARTED"] },

@@ -210,12 +210,23 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
   //
   // `kill -9 $PPID` toetet aus dem Pruefkommando heraus dessen Elternprozess, also
   // checks.mjs selbst — derselbe Tod wie durch die Uhr oder das Ende der Session.
-  // Die Session-Shell lebt weiter und committet, die Runde saehe sonst erfolgreich aus.
-  const buildChecks = [{ cmd: "kill -9 $PPID", areas: ["kit"] }, FRONTEND_CHECK];
+  // Die Marke `.gestorben` begrenzt das auf den ERSTEN Lauf: Jeder weitere Aufruf
+  // desselben Kommandos — der Salvage-Vorlauf — laeuft gruen durch, statt den Runner
+  // selbst zu erschlagen.
+  //
+  // Die Session committet hier bewusst NICHT (seit Issue #865): Gaebe es einen Commit,
+  // gehoerte die Zwischenfassung nachweislich nicht zu ihm, und der Runner pruefte
+  // nach — dann stuende im Bericht das Ergebnis der Nachpruefung statt der Zustand,
+  // um den es hier geht. Der Fall mit Commit steht in test/night-nachweis-commit.test.mjs.
+  const buildChecks = [
+    { cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; kill -9 $PPID", areas: ["kit"] },
+    FRONTEND_CHECK,
+  ];
+  const fake = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_PRUEFUNG });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /rot/.test(z));
     assert.ok(zeile, `Issue #${id} erscheint nicht als rot:\n${res.stdout}`);
