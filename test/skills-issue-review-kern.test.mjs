@@ -23,9 +23,13 @@ function codebloecke(sprache = null) {
     .map((m) => m[2]);
 }
 
-test("[skills-13] der Skill bleibt unter 160 Zeilen", () => {
+// Die Schranke haelt den Skill knapp; sie ist keine feste Zahl. Sie stieg von 160 auf
+// 200, als der Fundblock dazukam: Er steht in jedem der vier Rollen-Prompts woertlich
+// (nicht als Verweis, damit ein Reviewer ihn im eigenen Prompt liest) und kostet damit
+// rund 35 Zeilen. Wer den Skill ohne solchen Anlass ueber 200 Zeilen treibt, kuerzt.
+test("[skills-13] der Skill bleibt unter 200 Zeilen", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 160, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 160`);
+  assert.ok(zeilen < 200, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 200`);
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {

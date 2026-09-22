@@ -1,11 +1,14 @@
-// Stufe umsetzung der Nacht-Kette unter Variante B (Plan #691, E4-E8, E11, E14, E16-E18;
+// Stufe umsetzung der Nacht-Kette unter Variante B (Plan #691, E4-E8, E14, E16-E18;
 // Issue #695).
 //
 // Die fuenfte Stufe baut die Arbeitspakete des gekennzeichneten Fachplans selbst: Sie
 // baut zuvor den Worktree ab und arbeitet in der Hauptkopie, zieht jedes Paket einzeln
 // unmittelbar vor seiner Session nach Ready und wertet mit `laufeRunde` unveraendert.
-// Was sie gezogen hat und nicht in In review endet, geht zurueck nach Backlog — ein
-// Paket in Ready waere fuer die naechste Nacht ein GO, das niemand gegeben hat.
+//
+// Erste von zwei Dateien zur Stufe (Issue #836): Hier stehen Ablauf, Worktree und die
+// Auswahl der Pakete. Die Rueckstellpflicht und die Budgets liegen in
+// `night-kette-umsetzung-rueckstellung.test.mjs`, die gemeinsamen Hilfen in
+// `helpers/kette-umsetzung-fixture.mjs`.
 //
 // Wie in den uebrigen Ketten-Tests laeuft das ECHTE kit/night.mjs gegen ein Temp-Repo
 // mit lokalem Tracker; die Sessions sind Shell-Fakes ueber NIGHT_CLAUDE_CMD.
@@ -16,44 +19,13 @@ import { existsSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, PAKETE_MIT_ABHAENGIGKEIT,
-  UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
+  NUR_POSIX, run, board, mitProjekt, umgebung, sessions, stand,
+  PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
 } from "./helpers/kette-fixture.mjs";
+import {
+  ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
+} from "./helpers/kette-umsetzung-fixture.mjs";
 
-/** Die vier erzeugenden Stufen, wie sie jeder dieser Tests braucht. */
-const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };
-
-/** Ein Fachplan mit beiden Labels: Kettenlabel und das Kennzeichen der Variante B. */
-function fachplanB(dir, titel = "[Fachlich] Ein Anliegen") {
-  const F = fachplan(dir, titel);
-  board(dir, "issue", "label", "add", F, "kit:durchziehen");
-  return F;
-}
-
-/** Die Einheit der Kette und ihr Stand der Stufe umsetzung. */
-function umsetzung(dir, F) {
-  const einheit = stand(dir).einheiten.find((e) => e.id === F);
-  assert.ok(einheit, `keine Einheit fuer Fachplan #${F}`);
-  return { einheit, stufe: einheit.stufen?.umsetzung };
-}
-
-/** Die Nummern der Karten einer Spalte. */
-function inSpalte(dir, status) {
-  return board(dir, "issue", "list", "--status", status).map((i) => String(i.id));
-}
-
-/** Keine Karte bleibt in Ready oder In progress zurueck — die Zusicherung aus dem Akzeptanzkriterium. */
-function keinRestInArbeit(dir, erlaubtInReady = []) {
-  assert.deepEqual(inSpalte(dir, "ready"), erlaubtInReady, "es blieb ein Paket in Ready liegen");
-  assert.deepEqual(inSpalte(dir, "in_progress"), [], "es blieb ein Paket in In progress liegen");
-}
-
-/** Jedes genannte Paket liegt in Backlog — neben Fachplan, Plan und fremden Karten, die dort ohnehin stehen. */
-function stehenInBacklog(dir, ids) {
-  const backlog = inSpalte(dir, "backlog");
-  for (const id of ids) assert.ok(backlog.includes(id), `Paket #${id} liegt nicht in Backlog, sondern in ${board(dir, "issue", "get", id).status}`);
-}
 
 test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", NUR_POSIX, () => {
   mitProjekt((dir) => {
@@ -133,56 +105,6 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
   });
 });
 
-test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } });
-    // Das Zeitlimit gilt jeder Session; die vier erzeugenden sind schnell genug.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500" });
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const { einheit } = umsetzung(dir, F);
-    stehenInBacklog(dir, einheit.stufen.pakete.ids);
-    assert.deepEqual(inSpalte(dir, "in_review"), []);
-    keinRestInArbeit(dir);
-  });
-});
-
-test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "abgebrochen", einheit.grund);
-    const [erstes, zweites] = einheit.stufen.pakete.ids;
-    assert.deepEqual(stufe.zurueckgestellt.map((p) => p.id), [erstes], "das gezogene Paket steht nicht als zurueckgestellt");
-    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), [zweites], "das zweite Paket wurde begonnen");
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 1, "es lief mehr als eine Umsetzungs-Session");
-    stehenInBacklog(dir, [erstes, zweites]);
-    keinRestInArbeit(dir);
-  });
-});
-
-test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    // Der Test-Hook wirft zwischen `issue move ready` und der Session des ersten Pakets —
-    // die Stelle, an der ein Wurf das Paket in Ready zuruecklassen wuerde.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_KETTE_WURF: "0003" });
-    assert.notEqual(res.status, 0, "ein Wurf aus der Stufe heraus endet nicht regulaer");
-
-    // Der Wurf reisst die Kette mitten aus der Stufe; die Einheit traegt deshalb keinen
-    // Stand der Stufen mehr. Die Paketnummern des lokalen Trackers stehen fest.
-    stehenInBacklog(dir, ["0003", "0004"]);
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0, "es lief eine Umsetzungs-Session");
-    keinRestInArbeit(dir);
-  });
-});
-
 test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
@@ -253,59 +175,4 @@ test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
     assert.doesNotMatch(fach.body || "", new RegExp(KETTE_HALT_ANKER), "der Fachplan traegt den Abschnitt 'Kette angehalten'");
     keinRestInArbeit(dir);
   });
-});
-
-test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die Pakete sind nicht begonnen", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
-    for (const p of stufe.nichtBegonnen) assert.match(p.grund, /Zeitbudget umsetzung/);
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0, "es lief eine Umsetzungs-Session");
-    stehenInBacklog(dir, einheit.stufen.pakete.ids);
-    keinRestInArbeit(dir);
-  }, { umsetzungMin: 0.5 });
-});
-
-test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von kostenUsd, die Kette bleibt fertig", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    // Vier erzeugende Sessions zu je 0.25 $ = 1.00 $. Unter `kostenUsd` (0.5 $) waere die
-    // Kette laengst abgebrochen; unter `kostenUsdB` (1.1 $) laeuft das erste Paket und
-    // treibt die Summe auf 1.25 $ — das zweite beginnt nicht mehr.
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG }, kosten: 0.25 });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    const [erstes, zweites] = einheit.stufen.pakete.ids;
-    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), [erstes]);
-    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), [zweites]);
-    assert.match(stufe.nichtBegonnen[0].grund, /Kostenbudget/);
-    assert.equal(board(dir, "issue", "get", zweites).status, "backlog");
-    keinRestInArbeit(dir);
-  }, { kostenUsd: 0.5, kostenUsdB: 1.1 });
-});
-
-test("[night-34] mit issueReview.requiredBeforeReady faellt die Kette auf Variante A zurueck und bleibt fertig", NUR_POSIX, () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.deepEqual(stufe.umgesetzt, []);
-    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0, "es lief eine Umsetzungs-Session");
-    stehenInBacklog(dir, einheit.stufen.pakete.ids);
-    keinRestInArbeit(dir);
-  }, {}, undefined, { issueReview: { requiredBeforeReady: true, reviewers: [{ name: "opus", kind: "claude", model: "claude-opus-5" }] } });
 });

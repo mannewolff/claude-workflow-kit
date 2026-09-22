@@ -31,6 +31,16 @@ export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", ".."
 export const BOARD = join(repoRoot, "kit", "board.mjs");
 
 /**
+ * Das Budget der Toolbox-Wiederholschleife fuer jeden Prozess, den die Tests starten
+ * (Issue #842). Ohne die Variable wiederholt der Adapter bei `5xx` und `429`, bis das
+ * Gesamtbudget erschoepft ist — mit dem KIT_AGENT_MODEL der Fixture waeren das zwei
+ * Minuten je Aufruf gegen einen dauerhaft fehlerhaften Mock-Server. Die gestellte Uhr
+ * der Unit-Tests greift im Kindprozess nicht, deshalb der kurze Wert hier. Er liegt
+ * unter der ersten Wartezeit der Staffel (500 ms): Es bleibt bei einem Versuch.
+ */
+export const TEST_TOOLBOX_BUDGET_MS = "200";
+
+/**
  * Legt ein Fixture-Projekt im Temp-Verzeichnis an. `config === null` laesst die
  * workflow.config.json bewusst weg (Fall "Installer noch nicht gelaufen").
  */
@@ -70,6 +80,7 @@ export function runBoard(dir, cliArgs, extraEnv = {}, spawnOpts = {}) {
     // (kein Durchschlagen des Rechnerzustands) bleibt damit gewahrt. Tests, die
     // gerade das Fehlen pruefen, uebergeben KIT_AGENT_MODEL: "" in extraEnv.
     KIT_AGENT_MODEL: "fixture-modell",
+    KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // siehe oben (Issue #842)
   }, extraEnv);
   // `spawnOpts` reicht einzelne spawnSync-Optionen durch (Issue #502): Nur ueber
   // `stdio` laesst sich eine stdin herstellen, aus der nicht gelesen werden kann —
@@ -107,6 +118,7 @@ export function runBoardAsync(dir, cliArgs, extraEnv = {}, stdinText = "") {
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_AGENT_MODEL: "fixture-modell", // siehe runBoard (Issue #266)
+    KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // siehe runBoard (Issue #842)
   }, extraEnv);
   return new Promise((fertig) => {
     const kind = execFile(process.execPath, [BOARD, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {

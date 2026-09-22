@@ -51,12 +51,26 @@ Für ihn gelten **dieselben Regeln**: Ausgabe unverändert zeigen, und er liest 
 welche Pflichtprüfung sich verdient hat, was sie kostet — und welche in ihrem Fenster nie
 beanstandet hat. Auch er ist kein Gate.
 
+Unmittelbar danach der dritte Befund:
+
+```bash
+node .claude/kit/befunde.mjs befund
+```
+
+Auch für ihn gelten **dieselben Regeln**, und er liest allein `.claude/befunde.json`. Er
+sagt, welche Mangel-Art die Modell-Prüfungen wie oft gefunden haben und ob daraus schon
+ein Vorschlag entstanden ist. Hier steht er, weil `/retro` nur alle ein bis zwei Wochen
+läuft und die Zahl damit zu spät trüge. In einem Projekt **ohne Modell-Prüfungen** gibt es
+kein Protokoll, der Befund bleibt leer, und das wird nicht kommentiert — die Abwesenheit
+der Prüfung entscheidet das bereits, dafür braucht es keinen Schalter.
+
 Eine **leere Ausgabe** heißt: kein Befund. Sie wird nicht kommentiert — kein „alles
 unauffällig", keine leere Überschrift. Ein **Fehlschlag** des Kommandos wird in **einer
 Zeile** vermerkt, und er hält nichts auf. Beides gilt **je Befund**: Ein leerer oder
-gescheiterter Aufwands-Befund sagt nichts über den Wirksamkeits-Befund und umgekehrt.
-Beide brauchen die Config nicht; sie lesen allein `.claude/aufwand.json` beziehungsweise
-`.claude/wirksamkeit.json`. Fehlt die Datei, ist die Ausgabe leer und der Exit-Code 0.
+gescheiterter Aufwands-Befund sagt nichts über die beiden anderen, und umgekehrt genauso.
+Alle drei brauchen die Config nicht; sie lesen allein `.claude/aufwand.json`,
+`.claude/wirksamkeit.json` beziehungsweise `.claude/befunde.json`. Fehlt die Datei, ist die
+Ausgabe leer und der Exit-Code 0.
 
 Dieser Block trägt bewusst **keine Nummer** und zählt in keiner Fortschrittszeile mit: Eine
 Nummer verschöbe jede folgende Schrittzahl um eins und machte sämtliche Querverweise auf
@@ -112,17 +126,21 @@ node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD orig
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
 
-**Dieser Skill fährt die Push-Stufe.** Damit laufen zusätzlich zu den Prüfungen der
-Paketstufe alle, die ihr Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat.
-Der Lauf nennt die **zusätzlichen Prüfungen vorab** in einer eigenen Zeile (`Stufe push:
-zusaetzlich zur Paketstufe laeuft …`) — er kann darum spürbar **länger dauern** als der
+**Dieser Skill fährt die Push-Stufe, und die fährt den vollen Umfang.** Es laufen
+zusätzlich zu den Prüfungen der Paketstufe alle, die ihr Projekt für den Zeitpunkt des
+Veröffentlichens vorgesehen hat — und zwar **jede von ihnen**, auch bei unberührten
+Bereichen und auch dann, wenn seit dem Anker nichts geändert wurde. Vor dem Push wird der
+Stand gemessen, der hinausgeht, und der besteht aus mehr als dem letzten Arbeitspaket. Der
+Lauf nennt die **zusätzlichen Prüfungen vorab** in einer eigenen Zeile (`Stufe push:
+zusaetzlich zur Paketstufe laeuft …`) — er wird darum spürbar **länger dauern** als der
 Lauf je Arbeitspaket in `/implement-next`. Das ist der vorgesehene Zeitpunkt und kein
 Grund, ihn abzukürzen.
 
-**Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
-`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
-`leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md`
-liefe damit vor dem Push durch eine leere Prüfung.
+**Der Anker ist der Batch, nicht `HEAD`.** Er entscheidet nicht mehr, **was** läuft — an
+dieser Stufe läuft ohnehin alles —, sondern welchen Stand die Zusammenfassung **bezeugt**:
+`basis`, `geaendert` und die Blob-Hashes, gegen die das Commit-Gate den Index prüft. Ohne
+`--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als Basis, und der Nachweis spräche
+dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
 
 - **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals den
   Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren (siehe die
@@ -138,6 +156,34 @@ Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Is
 prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 3 hat kein
 früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
 Commit ab.
+
+**Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
+Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
+von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
+`Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der
+Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
+
+```bash
+node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+```
+
+Für **jede** Art, die das Kommando unter `arten` als `erreicht` meldet, ein Aufruf:
+
+```bash
+node .claude/kit/befunde.mjs vorschlag --art <a>
+```
+
+**Hier und nicht früher.** Der Vergleichsstand der Code-Stufe fragt, ob jede heute geänderte
+Datei von `.claude/checks-summary.json` gedeckt ist. Vor Schritt 4 trüge die Zusammenfassung
+den Stand **vor** der Einarbeitung, und jede dabei geänderte Datei machte den Stand
+`nicht-vergleichbar`, obwohl die Pflichtprüfungen gleich darauf grün laufen. Nach dem
+Prüflauf liegt eine Zusammenfassung über genau den Stand vor, auf dem gebucht wird.
+
+Liegen keine Code-Review-Befunde vor, entfällt dieser Block **ohne Vermerk**. **Kein Gate:**
+Ein Fehlschlag von `buchen` oder `vorschlag` wird in **einer Zeile** vermerkt und hält
+Commit und Push nicht auf. Wie der Befund-Block vor Schritt 1 trägt dieser Block **keine
+Nummer** und zählt in keiner Fortschrittszeile mit.
 
 ### 5. Der eine Commit
 
@@ -197,6 +243,10 @@ Hinweis auf nächsten Schritt:
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
-- Kein Halt wegen des Aufwands- oder des Wirksamkeits-Befunds: Beide sind **kein Gate**,
-  weder ihr Inhalt noch ihr Fehlschlag hält das Veröffentlichen auf. Sie sagen, was
-  auffällt — was daraus folgt, entscheidet der Mensch.
+- Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
+  Modell-Prüfungen: Alle drei sind **kein Gate**, weder ihr Inhalt noch ihr Fehlschlag
+  hält das Veröffentlichen auf. Sie sagen, was auffällt — was daraus folgt, entscheidet
+  der Mensch.
+- Kein Halt wegen der Buchung der Code-Review-Befunde: Auch sie ist kein Gate, und sie
+  bucht nichts ohne Übernahmevermerk — entschieden hat der Mensch, bevor eingearbeitet
+  wurde.

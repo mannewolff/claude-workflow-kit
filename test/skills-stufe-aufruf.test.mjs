@@ -32,8 +32,15 @@ function fliesstext(text) {
 // Alle Zeilen, die das Pruefkommando aufrufen. `/local-check` ruft es zweimal
 // (einmal regulaer, einmal nach dem Format-Fix) — beide muessen dieselbe Stufe
 // fahren, sonst maesse der zweite Lauf etwas anderes als der erste.
+//
+// Gemeint sind die Kommandozeilen aus den Bash-Bloecken, nicht jede Erwaehnung:
+// Seit Issue #835 nennt die Regel zum Testumfang `checks.mjs run` auch im
+// Fliesstext. Eine Prosa-Zeile traegt nie eine Stufe und liesse den Test
+// gruen, waehrend der echte Aufruf daneben liegen koennte.
 function aufrufzeilen(text) {
-  const zeilen = text.split("\n").filter((z) => z.includes("checks.mjs run"));
+  const zeilen = text
+    .split("\n")
+    .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
   assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
   return zeilen;
 }
@@ -84,14 +91,23 @@ for (const name of PAKETSTUFE) {
 
   test(`[skills-31] ${name} benennt die Paketstufe und die Auslassung spaeterer Stufen`, () => {
     const text = fliesstext(skill(name));
-    const start = text.indexOf("checks.mjs run");
-    const fenster = text.slice(start, start + 1400);
 
-    assert.match(fenster, /Paketstufe/,
-      "der Skill benennt die gefahrene Stufe nicht");
-    assert.match(fenster, /ausgelassen/,
-      "es fehlt, dass Pruefungen spaeterer Stufen hier als ausgelassen erscheinen");
-    assert.match(fenster, /kein Mangel/,
-      "es fehlt, dass die Auslassung kein Mangel ist");
+    // Die Erklaerung steht nahe beim Aufruf — geprueft wird, dass es eine
+    // solche Stelle gibt, nicht die erste Erwaehnung von `checks.mjs run`:
+    // Seit Issue #835 nennt die Regel zum Testumfang das Kommando schon im
+    // Fliesstext davor.
+    const treffer = [];
+    for (let i = text.indexOf("checks.mjs run"); i !== -1; i = text.indexOf("checks.mjs run", i + 1)) {
+      treffer.push(text.slice(i, i + 1400));
+    }
+    assert.ok(treffer.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
+
+    for (const [muster, fehlt] of [
+      [/Paketstufe/, "der Skill benennt die gefahrene Stufe nicht"],
+      [/ausgelassen/, "es fehlt, dass Pruefungen spaeterer Stufen hier als ausgelassen erscheinen"],
+      [/kein Mangel/, "es fehlt, dass die Auslassung kein Mangel ist"],
+    ]) {
+      assert.ok(treffer.some((fenster) => muster.test(fenster)), fehlt);
+    }
   });
 }

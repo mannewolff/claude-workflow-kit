@@ -217,7 +217,11 @@ test("[night-47] ohne Befund steht nichts im Protokoll — keine Ueberschrift, k
     const s = stand(dir);
     assert.deepEqual(s.aufwand.befund, [], "der Lauf-Kopf traegt den leeren Befund — er ist gemessen, nicht ausgelassen");
 
-    const log = protokoll(dir);
+    // Ohne die Fehlschlagzeilen der beiden anderen Auswertungen: In diesem Fixture liegen
+    // wirksamkeit.mjs und befunde.mjs nicht, und die Zeile „Befunde-Auswertung
+    // fehlgeschlagen" traegt das Wort, nach dem hier gesucht wird. Sie ist kein
+    // beruhigender Satz, sondern das Gegenteil — der gemeldete Fehlschlag (Issue #806).
+    const log = protokoll(dir).split("\n").filter((z) => !/-Auswertung fehlgeschlagen/.test(z)).join("\n");
     assert.ok(!/Auswertung vom/.test(log), `ohne Befund darf keine Kopfzeile im Protokoll stehen:\n${log}`);
     assert.ok(!/Befund|Schwelle|unauffaellig/i.test(log), `ohne Befund darf kein beruhigender Satz im Protokoll stehen:\n${log}`);
   });

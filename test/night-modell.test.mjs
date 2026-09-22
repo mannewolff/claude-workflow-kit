@@ -309,7 +309,9 @@ test("[night-37] eine belegte Stufe genuegt fuer aktiv true", () => {
 test("[night-37] eine Kommando-Stufe behaelt ihren Namen", () => {
   const { aktiv, stufen } = stufenEinstellung({ night: { stufen: { leicht: { kommando: "mein-runner --auftrag", name: "lokal" } } } });
   assert.equal(aktiv, true);
-  assert.deepEqual(stufen.leicht, { modell: null, kommando: "mein-runner --auftrag", name: "lokal" });
+  // `effort: null` seit Issue #846: Der normalisierte Eintrag traegt das Feld immer,
+  // eine Kommando-Stufe hat dort nie einen Wert.
+  assert.deepEqual(stufen.leicht, { modell: null, kommando: "mein-runner --auftrag", name: "lokal", effort: null });
 });
 
 test("[night-37] das Ausweichen geht ueber zwei Stufen nach oben", () => {

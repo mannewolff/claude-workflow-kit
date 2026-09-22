@@ -61,6 +61,9 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   mkdirSync(join(dir, "issues"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
+  // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
+  copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.
@@ -71,13 +74,14 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // die Zusammenfassung im ignorierten `.claude/`. Ohne die beiden Zeilen saehe die
   // Umsetzungsstufe die Hauptkopie schon vor dem ersten Paket als unsauber.
   //
-  // Der Umsetzungs-Lock (Issue #696), die Wegmarken (Issue #733) und das
-  // Bewegungsprotokoll (Issue #786) stehen aus demselben Grund hier: Im Betrieb deckt
+  // Der Umsetzungs-Lock (Issue #696), die Wegmarken (Issue #733), das
+  // Bewegungsprotokoll (Issue #786) und das Befunde-Protokoll (Issue #803) stehen aus
+  // demselben Grund hier: Im Betrieb deckt
   // sie der `.claude/*`-Block, den der Installer schreibt; das Fixture fuehrt die
   // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss. Fuer `gitReste()`
-  // sind sie ohnehin ausgeschlossen — die Probe der Umsetzungsstufe liest aber ein rohes
-  // `git status`, das diese Ausschluesse nicht kennt.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\nissues/\nhelfer/\n");
+  // sind sie ohnehin ausgeschlossen — der Session-Fake der Umsetzung committet aber mit
+  // einem rohen `git add -A`, das diese Ausschluesse nicht kennt.
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\n.claude/befunde.md\n.claude/befunde.json\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {

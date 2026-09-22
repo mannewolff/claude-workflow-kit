@@ -96,8 +96,8 @@ test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Ein
   const { zustand, raeumAuf } = wegwerfProjekt();
   try {
     const imText = instanzen(zustand).filter((i) => i.kennung === "text").flatMap((i) => i.eintraege.map((e) => e.pfad));
-    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufen", "night.stufenRegel"]);
-    for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
+    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufenRegel"]);
+    for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "night.stufen", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
       assert.notEqual(teilFuer(pfad).kennung, "text", `${pfad} braucht eine eigene Eingabe`);
     }
   } finally {

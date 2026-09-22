@@ -51,6 +51,8 @@ node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --au
 ### 4. Reviewer starten
 Jeder Reviewer bekommt denselben unveränderten Body und seine Rolle: `kind: claude` als Subagent mit dem konfigurierten Modell, `kind: command` als CLI mit dem Prompt über stdin. Jede Rolle trägt die Streich-Frage — Ergänzen ist leichter als Streichen, und ein Dokument, das nach dem Review doppelt so lang ist, ist nicht besser.
 
+**Die Artenliste wird nicht abgeschrieben.** Vor dem Start füllt die Session `{{ARTEN}}` in jedem Prompt aus der Ausgabe von `node .claude/kit/befunde.mjs arten` — je Art eine Zeile aus Name und erklärendem Satz —, genau wie `{{ISSUE_BODY}}` und `{{QUELLE_BODY}}`. Zwei Orte für denselben Wortlaut driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt.
+
 Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:fertig`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
 
 **Rolle `pruefbarkeit`** (Stufe `issue`):
@@ -60,7 +62,14 @@ Du prüfst ein Arbeitspaket, das gleich implementiert werden soll. Du kennst die
 2. Ist "fertig" eindeutig, oder bleibt Interpretationsspielraum?
 3. Fehlen Randfälle, Fehlerpfade, Rückwärtskompatibilität?
 4. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Ort (Abschnitt, zitierter Satz) und ein konkreter Formulierungsvorschlag. Wenn du nichts findest, schreibe das ausdrücklich hin.
+Für jeden Fund ein Block mit diesen Angaben:
+- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
+- Ort (Abschnitt, zitierter Satz) und ein konkreter Formulierungsvorschlag
+- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
+- Art: <name> aus dieser Liste, nur der Name:
+{{ARTEN}}
+Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
+Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- ISSUE ---
 {{ISSUE_BODY}}
 ```
@@ -73,7 +82,14 @@ Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan entst
 3. Steht Technik drin, wo keine hingehört — Dateien, Architektur, Implementierungsdetails?
 4. Ist das Ziel als Nutzerwirkung formuliert, oder beschreibt es eine Lösung?
 5. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, ein konkreter Formulierungsvorschlag. Wenn du nichts findest, schreibe das ausdrücklich hin.
+Für jeden Fund ein Block mit diesen Angaben:
+- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
+- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag
+- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
+- Art: <name> aus dieser Liste, nur der Name:
+{{ARTEN}}
+Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
+Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- ANFORDERUNG ---
 {{ISSUE_BODY}}
 ```
@@ -86,7 +102,14 @@ Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan entst
 3. Ist eine offene Frage durch Ziel, Kriterium, Nicht-Ziel oder eine im Body dokumentierte PO-Antwort bereits entschieden? Unterstelle keine Entscheidungen, die nicht im Body stehen.
 4. Fehlt eine Frage, die vor dem Plan beantwortet sein muss? Wo müsste ein Planer raten?
 5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, ein konkreter Formulierungsvorschlag. Wenn du nichts findest, schreibe das ausdrücklich hin.
+Für jeden Fund ein Block mit diesen Angaben:
+- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
+- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag
+- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
+- Art: <name> aus dieser Liste, nur der Name:
+{{ARTEN}}
+Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
+Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- ANFORDERUNG ---
 {{ISSUE_BODY}}
 ```
@@ -100,7 +123,14 @@ Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du ke
 4. Was bricht, das der Plan nicht nennt — welches Verhalten, welcher Test, welche Kopie?
 5. Was fehlt im Zuschnitt, und was kann RAUS?
 6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen? Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.
-Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast. Wenn du nichts findest, schreibe das ausdrücklich hin.
+Für jeden Fund ein Block mit diesen Angaben:
+- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
+- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast
+- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
+- Art: <name> aus dieser Liste, nur der Name:
+{{ARTEN}}
+Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
+Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- PLAN ---
 {{ISSUE_BODY}}
 --- FACHLICHE QUELLE ---
@@ -112,7 +142,12 @@ Für jeden Fund: Schweregrad BLOCKER / WICHTIG / HINWEIS, Fundstelle mit Zitat, 
 **Rolle `schnitt-abhaengigkeiten`** (Stufe `plan`, zweiter Reviewer — nur, wenn `reviewStufen.plan.reviewer` zwei vorsieht): derselbe Prompt wie `architektur-bestand`, aber mit den Fragen: Lässt sich der Plan in einzeln abschließbare Pakete zerlegen? Welche Reihenfolge erzwingt er, und steht sie im Plan? Ist ein Teil zu groß für einen Plan? Sagt „Verifizierung", WIE geprüft wird?
 
 ### 5. Befunde ans Board
-Ein Kommentar je Lauf. Erste Zeile wörtlich `## <Stufe>-Review, Runde 1` mit `Issue`, `Fachplan` oder `Plan`; Zeile 2 nennt Ausfall, Unterbesetzung oder den Regelvorschlag beim Autor-Modell, sonst bleibt sie leer; darunter je Reviewer Rolle, Modell und seine Funde. Datei `<tmpdir>/<id>-befunde.md`, dann:
+Ein Kommentar je Lauf. Erste Zeile wörtlich `## <Stufe>-Review, Runde 1` mit `Issue`, `Fachplan` oder `Plan`; Zeile 2 nennt Ausfall, Unterbesetzung oder den Regelvorschlag beim Autor-Modell, sonst bleibt sie leer; darunter je Reviewer Rolle, Modell und seine Funde. Datei `<tmpdir>/<id>-befunde.md`, dann die Form der Funde prüfen:
+```bash
+node .claude/kit/befunde.mjs pruefen --datei <tmpdir>/<id>-befunde.md
+```
+
+Meldet das Kommando fehlende Angaben, fordert die Session sie beim liefernden Reviewer genau **einmal** nach und schreibt die Datei neu. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile in Zeile 2 des Kommentars. Der Kommentar geht in jedem dieser Fälle ans Board:
 ```bash
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.md
 ```
@@ -141,10 +176,16 @@ Kein Fund ist auch ein Ergebnis: Marker schreiben, Kommentar mit „keine Funde"
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md
 ```
 
+Dann die Buchung: Je Fundblock ergänzt die Session im Befunde-Text die Zeile `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` — dieselbe Entscheidung, die der Kommentar in Prosa trägt —, schreibt den Text nach der Transportregel als `<tmpdir>/<id>-buchung.md` und bucht ihn mit der Stufe des Laufs aus Schritt 1b; für **jede** Art, die `buchen` unter `arten` als `erreicht` meldet, folgt ein Vorschlag. **Kein Gate:** Ein Fehlschlag von `buchen` oder `vorschlag` steht in **einer Zeile** und hält weder Lauf noch Label auf — das Protokoll ist Buchhaltung, keine Bedingung. Wird der Lauf mit `kit:klaeren` geparkt, **wird nicht gebucht**: Dort hat niemand über die Funde entschieden, und ein Fund ohne Übernahmevermerk gehört nicht ins Protokoll.
+```bash
+node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe <fachlich|plan|issue> --karte <id>
+node .claude/kit/befunde.mjs vorschlag --art <a>
+```
+
 Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
 
 ### 7. Abschluss
-Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
+Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
 
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.

@@ -7,6 +7,26 @@
  * Befunde-Text und meldet je Fund, welche der drei Pflichtangaben aus dem Abschnitt
  * „Befunde der Modell-Pruefungen" (templates/CLAUDE-workflow.md) fehlt.
  *
+ * `buchen --datei <f> --stufe <s> --karte <n>` (Issue #802) schreibt je Fund mit
+ * bestaetigter Gegenprobe UND Uebernahmevermerk eine Zeile nach `.claude/befunde.tsv`
+ * — anhaengend, nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und
+ * ob die Schwelle erreicht ist. Nicht gepruefte, unvollstaendige und abgelehnte Funde
+ * sind keine Vorkommen (AK 7 der fachlichen Quelle #768). Fuer die Stufe `code`
+ * ermittelt es zusaetzlich den Vergleichsstand: ob die maschinellen Pflichtpruefungen
+ * auf demselben Stand gruen waren (AK 10, Plan #797 E12).
+ *
+ * `auswerten` (Issue #806) liest Protokoll und Vorschlagsstand und schreibt den Bericht
+ * nach `.claude/befunde.md` (fuer Menschen) und `.claude/befunde.json` (fuer die
+ * Ausgabestellen); `befund` gibt allein den Befundblock aus diesem Stand als Text aus —
+ * dieselbe Teilung von Messen und Anzeigen wie bei `aufwand.mjs` und `wirksamkeit.mjs`.
+ *
+ * `vorschlag --art <a>` (Issue #804) legt am Board eine Idee an, sobald die Art oberhalb
+ * ihres Nullpunkts die Schwelle erreicht — und ergaenzt einen bereits offenen Vorschlag,
+ * statt einen zweiten anzulegen (AK 8). `vorschlag --abgelehnt <a>` vermerkt die
+ * Ablehnung und setzt den Nullpunkt auf den aktuellen Zaehlerstand (AK 9). Der Vorschlag
+ * ist eine BEOBACHTUNG, keine Entscheidung: Ob daraus eine maschinelle Pruefung wird,
+ * entscheidet der Mensch; ohne sein Zutun entsteht keine.
+ *
  * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU AN wirksamkeit.mjs (Plan #797, E1):
  * `wirksamkeit.mjs` misst die Pflichtpruefungen aus `ausfuehrungen.tsv` und
  * `bewegungen.tsv`; Funde von Modellen sind eine andere Quelle und ein anderer
@@ -41,18 +61,54 @@
  *
  * Aufruf im Projekt-Root:  node .claude/kit/befunde.mjs arten
  *                          node .claude/kit/befunde.mjs pruefen --datei <pfad>
+ *                          node .claude/kit/befunde.mjs vorschlag --art <art>
+ *                          node .claude/kit/befunde.mjs auswerten
+ *                          node .claude/kit/befunde.mjs befund
  *
  * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek — das Kit liefert
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
  */
 
-import { readFileSync, realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.0.0";
+const KIT_VERSION = "3.1.0";
+
+// Blob-Hash und Ort der Pruef-Zusammenfassung kommen aus checks.mjs und werden NICHT
+// nachgebaut (Issue #802, Plan #797 E13): Zwei Implementierungen derselben Frage
+// weichen irgendwann ab, und der Vergleichsstand saehe dann einen Unterschied, den es
+// nicht gibt. Aufgeloest als Nachbardatei mit dynamischem Import, wie night.mjs es
+// fuer `zusammenfassungPfad` tut (Issue #498) — die Kit-Werkzeuge sind bewusst
+// eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), und die
+// Nachbar-Aufloesung mit Fallback ist die Form, in der sie sich trotzdem etwas teilen.
+//
+// Bedingt und mit WERFENDEM Ersatz: `arten`, `pruefen` und `buchen` unterhalb der
+// Code-Stufe laufen auch ohne Nachbarn weiter (Portabilitaets-Zusage), erst der
+// Vergleichsstand braucht ihn — und meldet den fehlenden Nachbarn dann als Fehler,
+// statt still einen falschen Hash zu liefern.
+const NACHBAR_CHECKS = join(dirname(fileURLToPath(import.meta.url)), "checks.mjs");
+const nachbarFehlt = () => {
+  throw new BefundeError(`checks.mjs liegt nicht neben befunde.mjs (${NACHBAR_CHECKS}) — 'buchen --stufe code' braucht blobHashes und den Ort der Pruef-Zusammenfassung aus dem Nachbarn.`);
+};
+const { blobHashes, zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
+  ? await import(pathToFileURL(NACHBAR_CHECKS).href)
+  : { blobHashes: nachbarFehlt, zusammenfassungPfad: nachbarFehlt };
+
+// Der Board-Adapter als KINDPROZESS, nicht als Import (Issue #804): `vorschlag` schreibt
+// ans Board, und board.mjs ist ein CLI mit eigener Config-Aufloesung und eigenem
+// Auth-Weg. KIT_ROOT ist derselbe Test-Hook wie in kit/night.mjs (Issue #189) — nur so
+// laeuft in den Tests das ECHTE kit/befunde.mjs gegen einen Stub-Adapter, statt eine
+// Kopie im Temp-Verzeichnis zu messen. Ohne die Variable ist es der Nachbar, in `kit/`
+// wie in `.claude/kit/`.
+const BOARD_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
+  : join(dirname(fileURLToPath(import.meta.url)), "board.mjs");
 
 /**
  * Die zwoelf Mangel-Arten. Grob statt feinmaschig (Nicht-Ziel des Fachkonzepts): Sie
@@ -111,16 +167,42 @@ const ART_RE = /^Art\s*:\s*(.*)$/;
 // 'geprüft, bestätigt' schreiben — eine Meldung darueber waere eine falsche Meldung.
 const STAND_RE = /[—–-]\s*(geprueft|geprüft)\s*,\s*(bestaetigt|bestätigt)\s*\.?\s*$|[—–-]\s*nicht\s+(geprueft|geprüft)\s*\.?\s*$/i;
 
+const BUCHEN_STUFEN = ["fachlich", "plan", "issue", "code"];
+
+// Die Kommandos dieses Werkzeugs, in der Reihenfolge des Hilfetexts — die eine Liste,
+// aus der die Fehlermeldung des unbekannten Befehls entsteht.
+const KOMMANDOS = ["arten", "pruefen", "buchen", "vorschlag", "auswerten", "befund"];
+
+// Vorgabe des Config-Blocks `befunde.schwelle` (Issue #800): Ab so vielen Vorkommen
+// einer Art oberhalb ihres Nullpunkts meldet `buchen` die Schwelle als erreicht.
+const SCHWELLE_VORGABE = 3;
+
 const ANGABEN = {
   gegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt oder nennt vor ihrem Stand keine Beobachtung.",
   stand: "Der Stand der Gegenprobe fehlt — erwartet wird '— geprueft, bestaetigt' oder '— nicht geprueft' am Zeilenende.",
   art: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
 };
 
+// Die Dateien, mit denen dieses Werkzeug arbeitet. Hier oben und nicht bei
+// `buchen`, weil der Hilfetext sie nennt und ein `const` unterhalb von ihm beim Laden
+// in die temporale Totzone liefe.
+const PROTOKOLL_DATEI = ".claude/befunde.tsv";
+const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
+const CONFIG_DATEI = ".claude/workflow.config.json";
+// Die beiden Ergebnisse von `auswerten` (Issue #806), im Muster von wirksamkeit.mjs:
+// der Bericht fuer Menschen, der Stand fuer die Ausgabestellen.
+const BERICHT_DATEI = ".claude/befunde.md";
+const STAND_DATEI = ".claude/befunde.json";
+
 const HELP = `befunde.mjs (claude-workflow-kit v${KIT_VERSION}) — Form und Arten der Funde
 
   node befunde.mjs arten
   node befunde.mjs pruefen --datei <pfad>
+  node befunde.mjs buchen --datei <pfad> --stufe <fachlich|plan|issue|code> --karte <n>
+  node befunde.mjs vorschlag --art <art>
+  node befunde.mjs vorschlag --abgelehnt <art>
+  node befunde.mjs auswerten
+  node befunde.mjs befund
 
 arten    Gibt die ${ARTEN.length} Mangel-Arten mit je einem erklaerenden Satz aus. Diese Liste
          ist der einzige Wortlaut im Kit; ein Projekt ergaenzt keine eigenen Arten.
@@ -130,12 +212,38 @@ pruefen  Liest einen Befunde-Text, erkennt die Fundbloecke an ihrer Schweregrad-
          Exit 0 auch bei lauter unvollstaendigen Funden — aus der Form wird kein Gate.
          Ungleich 0 wird nur ein Aufruf, der nicht geht: fehlendes --datei, fehlende
          oder unlesbare Datei.
+buchen   Schreibt je Fund mit 'Gegenprobe: … — geprueft, bestaetigt' UND
+         'Uebernahme: uebernommen' eine Zeile nach .claude/befunde.tsv — anhaengend,
+         nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und ob die
+         Schwelle (Config-Block befunde.schwelle, Vorgabe ${SCHWELLE_VORGABE}) erreicht ist. Bei
+         --stufe code steht in der letzten Spalte der Vergleichsstand der
+         Pflichtpruefungen ('gruen' oder 'nicht-vergleichbar'), sonst '-'.
+vorschlag
+         --art <art> legt am Board eine Idee an, sobald die Art oberhalb ihres
+         Nullpunkts die Schwelle erreicht; ein bereits offener Vorschlag wird
+         ergaenzt statt gedoppelt. Unterhalb der Schwelle entsteht nichts, und das
+         ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
+         Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
+         Der Vermerk steht in ${VORSCHLAEGE_DATEI}; ein gescheiterter
+         Board-Aufruf laesst ihn unveraendert und endet ungleich 0.
+auswerten
+         Liest ${PROTOKOLL_DATEI} und ${VORSCHLAEGE_DATEI} und
+         schreibt ${BERICHT_DATEI} sowie ${STAND_DATEI}: je Art
+         die Zahl der Vorkommen, die Verteilung ueber die Stufen und den Stand eines
+         Vorschlags, dazu die Stufe 'code' getrennt nach gruenem und nicht
+         vergleichbarem Vergleichsstand. Beide Dateien entstehen vollstaendig, auch
+         wenn nichts auffaellt.
+befund   Gibt den Befundblock aus ${STAND_DATEI} als Text aus. Liegt kein
+         Befund vor, fehlt die Datei oder ist sie leer oder unlesbar, bleibt die
+         Ausgabe leer. Exit immer 0 — der Befund ist kein Gate.
 
   --version   Kit-Stand dieser Datei.
   --help, -h  Diese Uebersicht.
 
-Die Ausgabe beider Kommandos ist immer JSON auf stdout — auch im Leerfall und auch bei
-einem abgewiesenen Aufruf.
+Die Ausgabe aller Kommandos ist JSON auf stdout — auch im Leerfall und auch bei einem
+abgewiesenen Aufruf. Einzige Ausnahme ist 'befund': Was dort auf stdout steht, reicht
+eine Ausgabestelle unveraendert weiter, und eine Fehlermeldung haette darin nichts zu
+suchen.
 `;
 
 class BefundeError extends Error {}
@@ -319,6 +427,807 @@ export function arten() {
   return { ok: true, anzahl: ARTEN.length, arten: ARTEN };
 }
 
+// --- Buchen (Issue #802) -----------------------------------------------------
+
+// SYNC: dasselbe Praefix steht in kit/checks.mjs (WARTEND_PRAEFIX, Issue #546) —
+// Aenderungen dort nachziehen. Die wartenden Vorhaben-Notizen fallen dort aus
+// `geaendert` heraus und stehen darum nie in `hashes`; zaehlte der Vergleichsstand
+// sie hier mit, waere jeder Lauf mit liegender Notiz faelschlich nicht-vergleichbar.
+const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
+
+// Der Uebernahmevermerk der einarbeitenden Session, je Fundblock eine Zeile. Die
+// Umlautfassung gilt mit, aus demselben Grund wie bei STAND_RE.
+const UEBERNAHME_RE = /^(?:Uebernahme|Übernahme)\s*:\s*(.*)$/;
+
+// Die Kennzeichnung aus E6 (Plan #797): Ein so markierter Fund ist kein Vorkommen,
+// auch wenn seine uebrigen Angaben vollstaendig aussehen.
+const UNVOLLSTAENDIG_RE = /^Angaben\s*:\s*unvollst(?:ae|ä)ndig/i;
+
+// Der Reviewer-Kopf, wie /issue-review Schritt 5 ihn schreibt:
+// '### Reviewer <n>: <rolle>, <modell>'. Die Rolle ist der Teil vor dem Komma; das
+// Modell dahinter wird bewusst nicht gelesen — keine Spalte traegt es (E15).
+const REVIEWER_RE = /^Reviewer\s+\d+\s*:\s*([^,]+),/;
+
+/** Der Uebernahmevermerk eines Funds: 'uebernommen', 'abgelehnt' oder null. */
+function uebernahmeVon(fund) {
+  for (const zeile of fund.zeilen) {
+    const treffer = UEBERNAHME_RE.exec(zeile);
+    if (treffer === null) continue;
+    const wert = treffer[1].replace(/^[\s*_]+/, "").toLowerCase();
+    if (wert.startsWith("uebernommen") || wert.startsWith("übernommen")) return "uebernommen";
+    if (wert.startsWith("abgelehnt")) return "abgelehnt";
+    return null;
+  }
+  return null;
+}
+
+/** Ob die Gegenprobe eines Funds den Stand 'geprueft, bestaetigt' traegt. */
+function gegenprobeBestaetigt(fund) {
+  const zeilen = [fund.titel, ...fund.zeilen];
+  const gegenprobe = zeilen.map((z) => GEGENPROBE_RE.exec(z)).find((t) => t !== null);
+  if (!gegenprobe) return false;
+  const stand = STAND_RE.exec(gegenprobe[1]);
+  // Gruppe 2 ist das bestaetigt-Wort; der 'nicht geprueft'-Ast fuellt Gruppe 3.
+  return stand !== null && stand[2] !== undefined;
+}
+
+/** Die Reviewer-Koepfe eines Texts mit ihrer Zeilennummer, in Textreihenfolge. */
+function reviewerKoepfe(text) {
+  const koepfe = [];
+  for (const [i, zeile] of text.split("\n").entries()) {
+    const treffer = REVIEWER_RE.exec(kern(zeile));
+    if (treffer !== null) koepfe.push({ zeile: i + 1, rolle: treffer[1].trim() });
+  }
+  return koepfe;
+}
+
+/** Die Rolle eines Funds: der letzte Reviewer-Kopf davor, sonst der Stufen-Fallback. */
+function rolleFuer(fundZeile, koepfe, stufe) {
+  let rolle = stufe === "code" ? "code-review" : "unbekannt";
+  for (const kopf of koepfe) {
+    if (kopf.zeile >= fundZeile) break;
+    rolle = kopf.rolle;
+  }
+  return rolle;
+}
+
+/** Die vorhandenen Protokollzeilen; eine fehlende oder unlesbare Datei zaehlt als keine. */
+function protokollZeilen(pfad) {
+  try {
+    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      process.stderr.write(`Hinweis: Protokoll nicht lesbar (${pfad}): ${err.message}\n`);
+    }
+    return [];
+  }
+}
+
+/** Zaehlerstand je Art aus den Protokollzeilen (Spalte 5); fehlerhafte Zeilen zaehlen nicht. */
+function zaehleArten(zeilen) {
+  const zaehler = new Map();
+  for (const zeile of zeilen) {
+    const spalten = zeile.split("\t");
+    if (spalten.length < 7) continue;
+    zaehler.set(spalten[4], (zaehler.get(spalten[4]) ?? 0) + 1);
+  }
+  return zaehler;
+}
+
+/**
+ * Die Schwelle aus `.claude/workflow.config.json`, Block `befunde` (Issue #800).
+ * Teamweit und ohne persoenliche Abweichung — die local-Datei wird darum gar nicht
+ * erst gelesen. Fehlt der Block, das Feld oder die Datei, gilt die Vorgabe; ein
+ * unbrauchbarer Wert ebenso, die Konfigurationspruefung der Einstellungen meldet ihn.
+ */
+function schwelleLesen() {
+  try {
+    const config = JSON.parse(readFileSync(join(process.cwd(), ...CONFIG_DATEI.split("/")), "utf-8"));
+    const wert = config?.befunde?.schwelle;
+    if (Number.isInteger(wert) && wert > 0) return wert;
+  } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }
+  return SCHWELLE_VORGABE;
+}
+
+/**
+ * Der Nullpunkt je Art aus `.claude/befunde-vorschlaege.json` (Plan #797, E11):
+ * Eine Ablehnung setzt ihn auf den damaligen Zaehlerstand, und erst oberhalb davon
+ * zaehlt die Schwelle wieder. Fehlt die Datei, die Art oder das Feld, ist er null.
+ */
+function nullpunktFuer(art) {
+  try {
+    const daten = JSON.parse(readFileSync(join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/")), "utf-8"));
+    const wert = daten?.[art]?.nullpunkt;
+    if (Number.isInteger(wert) && wert >= 0) return wert;
+  } catch { /* keine Vorschlagsdatei ist der Regelfall — Nullpunkt null. */ }
+  return 0;
+}
+
+function gitLauf(...args) {
+  return spawnSync("git", args, { cwd: process.cwd(), encoding: "utf-8" });
+}
+
+/**
+ * Was heute — zum Zeitpunkt der Buchung — gegenueber der Basis des Prueflaufs
+ * geaendert ist. Die Richtung ist die des Commit-Gates (gate-1): Gedeckt sein muss
+ * der heutige Stand, nicht der von damals; eine nach dem Lauf erstmals geaenderte
+ * Datei stuende in `hashes` gar nicht und muss hier auftauchen, um durchzufallen.
+ *
+ * SYNC: der Nachbau von `geaenderteDateien`/`diffPfade`/`untracktePfade` in
+ * kit/checks.mjs — Aenderungen dort nachziehen. Nur `blobHashes` ist exportiert
+ * (checks-8); die Aenderungsermittlung wird nach dem Muster #440 dupliziert und
+ * hier markiert, statt die Schnittstelle des Nachbarn weiter zu verbreitern.
+ */
+/** Die Pfade aus `git diff --name-status -z` — R- und C-Zeilen tragen zwei. */
+function* diffPfade(roh) {
+  const felder = roh.split("\0");
+  let i = 0;
+  while (i < felder.length) {
+    const status = felder[i];
+    i += 1;
+    if (!status) continue;
+    const anzahl = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    for (let n = 0; n < anzahl && i < felder.length; n += 1, i += 1) {
+      if (felder[i]) yield felder[i];
+    }
+  }
+}
+
+function heuteGeaendert(basis) {
+  if (typeof basis !== "string" || basis === "") fail("die Zusammenfassung nennt keine Basis");
+  const dateien = new Set();
+
+  const diff = gitLauf("diff", "--name-status", "-z", basis);
+  if (diff.status !== 0) fail(`git diff gegen '${basis}' schlug fehl: ${(diff.stderr || "").trim()}`);
+  for (const pfad of diffPfade(diff.stdout)) dateien.add(pfad);
+
+  const status = gitLauf("status", "--porcelain", "-z", "--untracked-files=all");
+  if (status.status !== 0) fail(`git status schlug fehl: ${(status.stderr || "").trim()}`);
+  for (const eintrag of status.stdout.split("\0")) {
+    if (eintrag.startsWith("?? ")) dateien.add(eintrag.slice(3));
+  }
+
+  return [...dateien]
+    .map((p) => p.replaceAll("\\", "/"))
+    .filter((p) => !p.startsWith(WARTEND_PRAEFIX));
+}
+
+/**
+ * Der Vergleichsstand der Code-Stufe (Plan #797, E12): `gruen`, wenn jeder Eintrag
+ * unter `laufen` gruen ist, `leeresPaket` falsch ist und jede heute geaenderte Datei
+ * einen Eintrag unter `hashes` mit passendem Hash hat — sonst `nicht-vergleichbar`,
+ * auch bei fehlender oder unlesbarer Zusammenfassung. Eine AUSLASSUNG macht den
+ * Stand nie unvergleichbar: W3 des Regeltextes zaehlt den unberuehrten Bereich zur
+ * vollstaendigen Pflichtpruefung, und die faellige Stufe bestimmt den Umfang —
+ * waere die Stufen-Auslassung ein Makel, gaelte jeder Code-Review vor dem Push als
+ * unvergleichbar und AK 10 liefe leer.
+ *
+ * KEIN Textvergleich auf `grund` (E12, Fund W4 der Plan-Pruefung): `grund` ist in
+ * checks.mjs freier Text und braeche bei jeder Umformulierung still; `leeresPaket`
+ * ist dagegen ein Boolean der Zusammenfassung.
+ *
+ * Der Aufruf von `zusammenfassungPfad` steht VOR dem try: Sein werfender Ersatz
+ * meldet den fehlenden Nachbarn als Fehler des Aufrufs — jeder Fehler DANACH ist
+ * dagegen nur ein nicht vergleichbarer Stand, keine Abweisung.
+ */
+function vergleichsstandCode() {
+  const pfad = zusammenfassungPfad();
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    return "nicht-vergleichbar";
+  }
+  if (daten === null || typeof daten !== "object" || !Array.isArray(daten.laufen)
+    || daten.hashes === null || typeof daten.hashes !== "object") return "nicht-vergleichbar";
+  // Ausdruecklich `=== false`: Ein fehlendes Feld ist ein altes Format, kein Nein.
+  if (daten.leeresPaket !== false) return "nicht-vergleichbar";
+  if (daten.laufen.some((e) => e === null || typeof e !== "object" || e.ergebnis !== "gruen")) return "nicht-vergleichbar";
+  try {
+    const geaendert = heuteGeaendert(daten.basis);
+    const aktuell = blobHashes(geaendert);
+    for (const p of geaendert) {
+      if (!(p in daten.hashes) || daten.hashes[p] !== aktuell[p]) return "nicht-vergleichbar";
+    }
+  } catch {
+    return "nicht-vergleichbar";
+  }
+  return "gruen";
+}
+
+/** Ein Spaltenwert des Protokolls — Tab und Zeilenumbruch koennen keine tragen. */
+function spalte(wert) {
+  return wert.replaceAll(/[\t\n\r]/g, " ").trim();
+}
+
+export function buchen({ datei, stufe, karte }) {
+  let text;
+  try {
+    text = readFileSync(datei, "utf-8");
+  } catch (err) {
+    fail(`Datei nicht lesbar: ${datei} (${err.code || err.message}).`);
+  }
+
+  // Vor dem Schreiben ermittelt: Ein fehlender Nachbar weist den Aufruf ab,
+  // BEVOR eine Zeile entsteht.
+  const vergleichsstand = stufe === "code" ? vergleichsstandCode() : "-";
+
+  const koepfe = reviewerKoepfe(text);
+  const buchbar = fundeLesen(text).flatMap((fund) => {
+    const { fehlt, art } = fehlendeAngaben(fund);
+    const zaehlt = fehlt.length === 0
+      && gegenprobeBestaetigt(fund)
+      && uebernahmeVon(fund) === "uebernommen"
+      && !fund.zeilen.some((z) => UNVOLLSTAENDIG_RE.test(z));
+    return zaehlt ? [{ fund, art }] : [];
+  });
+
+  const pfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const bestand = zaehleArten(protokollZeilen(pfad));
+
+  const zeitpunkt = new Date().toISOString();
+  const zeilen = buchbar.map(({ fund, art }) => [
+    zeitpunkt, spalte(stufe), spalte(karte),
+    spalte(rolleFuer(fund.zeile, koepfe, stufe)),
+    spalte(art), fund.marke, vergleichsstand,
+  ].join("\t"));
+
+  // Anhaengend, nie leerend (E7) — und im Leerfall gar nicht erst angelegt. Ein
+  // gescheitertes Schreiben bleibt ein Hinweis auf stderr, der die Ausgabe nicht
+  // veraendert: Das Protokoll ist Buchhaltung, keine Bedingung (Muster checks-7).
+  if (zeilen.length > 0) {
+    try {
+      mkdirSync(dirname(pfad), { recursive: true });
+      appendFileSync(pfad, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
+    } catch (err) {
+      process.stderr.write(`Hinweis: Buchung nicht protokolliert (${pfad}): ${err.message}\n`);
+    }
+  }
+
+  const beruehrt = new Map();
+  for (const { art } of buchbar) {
+    beruehrt.set(art, (beruehrt.get(art) ?? 0) + 1);
+  }
+
+  const schwelle = schwelleLesen();
+  return {
+    ok: true,
+    datei,
+    stufe,
+    karte,
+    vergleichsstand,
+    geschrieben: zeilen.length,
+    protokoll: PROTOKOLL_DATEI,
+    schwelle,
+    arten: [...beruehrt.keys()].sort().map((art) => {
+      const stand = (bestand.get(art) ?? 0) + beruehrt.get(art);
+      const nullpunkt = nullpunktFuer(art);
+      // `>=` oberhalb des Nullpunkts (E20), nicht `==`: Ein uebersprungener Stand
+      // verloere den Treffer sonst dauerhaft.
+      return { art, stand, nullpunkt, erreicht: stand - nullpunkt >= schwelle };
+    }),
+  };
+}
+
+// --- Vorschlag (Issue #804) --------------------------------------------------
+
+/**
+ * Der Satz, der in jeder Idee und jeder Ergaenzung steht (AK 8 der fachlichen Quelle
+ * #768). Er ist die Leitplanke gegen den naheliegenden Kurzschluss, eine Art sei eine
+ * Pruefung: Drei Funde der Art `luecke` koennen drei verschiedene Luecken sein.
+ */
+const STREUUNG_SATZ = "Nicht alle Funde dieser Art sind mit derselben Pruefung zu fangen.";
+
+/**
+ * Die Autorschaft der Idee. Kein Modellname, denn keines hat sie geschrieben: Der Body
+ * entsteht aus Protokollzeilen, ohne dass ein Modell den Text erzeugt. Die
+ * Autor-Modell-Leitplanke in board.mjs (Issue #266) verlangt eine Zeile; eine erfundene
+ * Modellangabe waere eine gefaelschte Autorschaft, der Werkzeugname ist die wahre.
+ */
+const AUTOR = "kit/befunde.mjs";
+
+/** Der Titel der Idee zu einer Art; `sonstiges` fragt nach der Liste, nicht nach einer Pruefung. */
+function vorschlagTitel(art) {
+  return art === "sonstiges"
+    ? "[Idee] Liste der Mangel-Arten erweitern?"
+    : `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`;
+}
+
+/** Die Vorkommen einer Art aus den Protokollzeilen, in Protokollreihenfolge. */
+function vorkommenFuer(zeilen, art) {
+  const treffer = [];
+  for (const zeile of zeilen) {
+    const s = zeile.split("\t");
+    if (s.length < 7 || s[4] !== art) continue;
+    treffer.push({ zeitpunkt: s[0], stufe: s[1], karte: s[2], rolle: s[3], schweregrad: s[5] });
+  }
+  return treffer;
+}
+
+/** Die Vorkommen als Markdown-Tabelle — je Zeile ein Fund mit seinen fuenf Angaben. */
+function vorkommenTabelle(vorkommen) {
+  return [
+    "| Zeitpunkt | Stufe | Karte | Rolle | Schweregrad |",
+    "| --- | --- | --- | --- | --- |",
+    ...vorkommen.map((v) => `| ${v.zeitpunkt} | ${v.stufe} | ${v.karte} | ${v.rolle} | ${v.schweregrad} |`),
+  ].join("\n");
+}
+
+/**
+ * Der Body der Idee. Die zugrunde liegenden Funde sind die OBERHALB des Nullpunkts:
+ * Was vor einer Ablehnung lag, hat der Mensch bereits gesehen und verworfen — es noch
+ * einmal aufzuzaehlen truege die abgeraeumte Frage zurueck in die neue Idee.
+ */
+function ideeBody(art, vorkommen, { zaehlerstand, nullpunkt, schwelle }) {
+  const frage = art === "sonstiges"
+    ? `Die Auffang-Art \`sonstiges\` hat die Schwelle ${schwelle} erreicht. Das ist ein Hinweis darauf, dass die Liste der Mangel-Arten einen Fall nicht benennt, den die Reviewer regelmaessig finden — nicht darauf, dass eine Pruefung fehlt.`
+    : `Die Mangel-Art \`${art}\` hat die Schwelle ${schwelle} erreicht. Lohnt sich daraus eine maschinelle Pruefung, die solche Funde kuenftig faengt, bevor ein Modell sie melden muss?`;
+  return [
+    "## Kontext",
+    "",
+    `Autor-Modell: ${AUTOR}`,
+    "",
+    frage,
+    "",
+    `Stand im Protokoll \`${PROTOKOLL_DATEI}\`: ${zaehlerstand} Vorkommen, Nullpunkt ${nullpunkt}, Schwelle ${schwelle}.`,
+    "",
+    "Dieser Vorschlag ist eine Beobachtung, keine Entscheidung: Ob daraus eine Pruefung wird, entscheidet ein Mensch. Ohne sein Zutun entsteht keine.",
+    "",
+    STREUUNG_SATZ,
+    "",
+    "## Die zugrunde liegenden Funde",
+    "",
+    vorkommenTabelle(vorkommen),
+    "",
+    "## Weg nach vorn",
+    "",
+    `Diese Idee ist keine Aufgabe. Wer sie aufgreift, fuehrt sie ueber \`/techplan #<n>\` und \`/issues\` in Arbeitspakete; wer sie verwirft, ruft \`node .claude/kit/befunde.mjs vorschlag --abgelehnt ${art}\` — dann zaehlt die Art ab dem heutigen Stand neu.`,
+    "",
+  ].join("\n");
+}
+
+/** Der Kommentar, mit dem ein offener Vorschlag um die seither gebuchten Funde waechst. */
+function ergaenzungText(art, neue, { zaehlerstand, vorher }) {
+  return [
+    `## Weitere Funde der Mangel-Art \`${art}\``,
+    "",
+    `Seit dem Stand dieses Vorschlags (${vorher}) sind ${neue.length} Vorkommen dazugekommen — Stand jetzt ${zaehlerstand}.`,
+    "",
+    vorkommenTabelle(neue),
+    "",
+    STREUUNG_SATZ,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Ruft den Board-Adapter und liefert seine JSON-Antwort; jeder Fehlschlag wirft.
+ *
+ * Werfend und nicht meldend, weil der Aufrufer danach die Zustandsdatei schreibt: Ein
+ * Fehlschlag, der als Wert zurueckkaeme, muesste an jeder Aufrufstelle einzeln
+ * abgefangen werden — und die eine vergessene Stelle hinterliesse einen Vermerk ohne
+ * Karte (die Zusage aus der Aufgabe: kein halb vermerkter Vorschlag).
+ */
+function boardLauf(args) {
+  if (!existsSync(BOARD_PATH)) fail(`board.mjs liegt nicht neben befunde.mjs (${BOARD_PATH}) — 'vorschlag' schreibt ueber den Board-Adapter.`);
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: process.cwd(), encoding: "utf-8" });
+  if (res.error) fail(`board.mjs liess sich nicht starten: ${res.error.message}`);
+  if (res.status !== 0) {
+    const grund = (res.stderr || res.stdout || "").trim().split("\n")[0] || `Exit ${res.status}`;
+    fail(`board.mjs ${args.slice(0, 2).join(" ")} schlug fehl: ${grund}`);
+  }
+  try {
+    return JSON.parse(res.stdout);
+  } catch (err) {
+    fail(`board.mjs ${args.slice(0, 2).join(" ")} lieferte kein JSON: ${err.message}`);
+  }
+}
+
+/**
+ * Fuehrt `fn` mit dem Pfad einer Datei aus, die den Text traegt, und raeumt sie danach weg.
+ *
+ * AUSSERHALB des Projektverzeichnisses (Issue #270, #584): Der Nacht-Runner stoppt hart,
+ * wenn eine erfolgreiche Runde unkommittete Reste hinterlaesst — eine Hilfsdatei im
+ * Arbeitsbaum waere genau so ein Rest. Und als Datei statt als Argument, weil ein Body
+ * mit dreissig Fundzeilen jede Kommandozeilen-Grenze reisst.
+ */
+function mitTextdatei(name, text, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "kit-befunde-"));
+  try {
+    const pfad = join(dir, name);
+    writeFileSync(pfad, text, "utf-8");
+    return fn(pfad);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Der Pfad der Zustandsdatei im aktuellen Projekt. */
+function vorschlaegePfad() {
+  return join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/"));
+}
+
+/**
+ * Die vermerkten Vorschlaege. Eine fehlende Datei ist der Regelfall und liefert `{}`;
+ * eine UNLESBARE wirft dagegen. Sie stillschweigend als leer zu behandeln hiesse, sie
+ * beim naechsten Schreiben zu ueberschreiben — mit ihr gingen die Nullpunkte aller
+ * anderen Arten verloren, und abgelehnte Vorschlaege kaemen von selbst wieder.
+ */
+function vorschlaegeLesen() {
+  let roh;
+  try {
+    roh = readFileSync(vorschlaegePfad(), "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return {};
+    return fail(`Zustandsdatei nicht lesbar: ${VORSCHLAEGE_DATEI} (${err.code || err.message}).`);
+  }
+  let daten;
+  try {
+    daten = JSON.parse(roh);
+  } catch (err) {
+    return fail(`Zustandsdatei nicht lesbar: ${VORSCHLAEGE_DATEI} (${err.message}). Von Hand richten — ein Ueberschreiben verloere die Nullpunkte aller Arten.`);
+  }
+  if (daten === null || typeof daten !== "object" || Array.isArray(daten)) {
+    return fail(`Zustandsdatei ${VORSCHLAEGE_DATEI} traegt kein Objekt.`);
+  }
+  return daten;
+}
+
+function vorschlaegeSchreiben(daten) {
+  const pfad = vorschlaegePfad();
+  mkdirSync(dirname(pfad), { recursive: true });
+  writeFileSync(pfad, `${JSON.stringify(daten, null, 2)}\n`, "utf-8");
+}
+
+/** Der vermerkte Eintrag einer Art in seiner vollen Form; fehlende Felder gefuellt. */
+function eintragVon(daten, art) {
+  const roh = daten[art];
+  if (roh === null || typeof roh !== "object") return null;
+  return {
+    karte: typeof roh.karte === "string" ? roh.karte : null,
+    ideaId: typeof roh.ideaId === "string" ? roh.ideaId : null,
+    stand: roh.stand === "abgelehnt" ? "abgelehnt" : "offen",
+    zaehlerstand: Number.isInteger(roh.zaehlerstand) ? roh.zaehlerstand : 0,
+    nullpunkt: Number.isInteger(roh.nullpunkt) && roh.nullpunkt >= 0 ? roh.nullpunkt : 0,
+  };
+}
+
+/** Die Kennung, die `issue create` geliefert hat — Nummer oder Pool-Idee (board.mjs Z. 1499). */
+function kennungVon(antwort) {
+  const karte = antwort?.id == null ? null : String(antwort.id);
+  const ideaId = antwort?.ideaId == null ? null : String(antwort.ideaId);
+  if (karte === null && ideaId === null) {
+    fail(`board.mjs issue create lieferte weder 'id' noch 'ideaId': ${JSON.stringify(antwort)}`);
+  }
+  return { karte, ideaId };
+}
+
+/**
+ * Legt den Vorschlag an oder ergaenzt ihn (`--art`), beziehungsweise vermerkt seine
+ * Ablehnung (`--abgelehnt`).
+ *
+ * DIE REIHENFOLGE IST DIE ZUSAGE: erst lesen, dann das Board rufen, erst danach
+ * schreiben. Scheitert der Board-Aufruf, wirft `boardLauf` — die Zustandsdatei ist zu
+ * diesem Zeitpunkt noch unberuehrt, und es entsteht kein Vermerk ohne Karte.
+ */
+export function vorschlag({ art, abgelehnt }) {
+  const zielArt = art ?? abgelehnt;
+  const daten = vorschlaegeLesen();
+  const alt = eintragVon(daten, zielArt);
+  const zeilen = protokollZeilen(join(process.cwd(), ...PROTOKOLL_DATEI.split("/")));
+  const vorkommen = vorkommenFuer(zeilen, zielArt);
+  const zaehlerstand = vorkommen.length;
+
+  if (abgelehnt !== null) {
+    // Ein Handgriff ohne Board-Aufruf (Plan #797, E11): Ob eine Idee als abgelehnt
+    // gilt, laesst sich am Board nicht je Tracker gleich erkennen — `github` und
+    // `gitlab` kennen den Ideen-Pool gar nicht. Auch ohne vermerkten Vorschlag wird der
+    // Nullpunkt gesetzt: Wer ablehnt, will ab hier Ruhe, nicht eine Fehlermeldung.
+    const eintrag = {
+      karte: alt?.karte ?? null,
+      ideaId: alt?.ideaId ?? null,
+      stand: "abgelehnt",
+      zaehlerstand: alt?.zaehlerstand ?? zaehlerstand,
+      nullpunkt: zaehlerstand,
+    };
+    vorschlaegeSchreiben({ ...daten, [zielArt]: eintrag });
+    return { ok: true, art: zielArt, ...eintrag, vorschlaege: VORSCHLAEGE_DATEI };
+  }
+
+  const nullpunkt = alt?.nullpunkt ?? 0;
+  const schwelle = schwelleLesen();
+  const erreicht = zaehlerstand - nullpunkt >= schwelle;
+  const basis = {
+    ok: true, art: zielArt, zaehlerstand, nullpunkt, schwelle, erreicht,
+    angelegt: false, ergaenzt: false,
+    karte: alt?.karte ?? null, ideaId: alt?.ideaId ?? null,
+    vorschlaege: VORSCHLAEGE_DATEI,
+  };
+
+  if (!erreicht) {
+    // Kein Fehler, sondern der Normalfall zwischen zwei Schwellentreffern.
+    return { ...basis, grund: `${zaehlerstand} Vorkommen ueber dem Nullpunkt ${nullpunkt} erreichen die Schwelle ${schwelle} nicht.` };
+  }
+
+  if (alt !== null && alt.stand === "offen") {
+    if (alt.karte === null) {
+      // Eine Pool-Idee traegt nur eine `ideaId` und keine adressierbare Nummer — bis ein
+      // Mensch sie einplant, laesst sie sich nicht kommentieren. Gemeldet statt gedoppelt:
+      // Eine zweite Idee waere genau das, was AK 8 ausschliesst.
+      return { ...basis, grund: `Die Pool-Idee ${alt.ideaId} traegt noch keine adressierbare Nummer — sie laesst sich erst ergaenzen, wenn ein Mensch sie einplant.` };
+    }
+    const neue = vorkommen.slice(alt.zaehlerstand);
+    const text = ergaenzungText(zielArt, neue, { zaehlerstand, vorher: alt.zaehlerstand });
+    mitTextdatei(`${zielArt}-ergaenzung.md`, text, (pfad) =>
+      boardLauf(["issue", "comment", alt.karte, "--text-file", pfad]));
+    vorschlaegeSchreiben({ ...daten, [zielArt]: { ...alt, zaehlerstand } });
+    return { ...basis, ergaenzt: true, zaehlerstand };
+  }
+
+  // Neu — entweder gab es nie einen Vorschlag, oder der abgelehnte hat oberhalb seines
+  // Nullpunkts erneut die Schwelle erreicht. Der Nullpunkt der Ablehnung BLEIBT stehen:
+  // Er ist die Grenze, ab der gezaehlt wird, und nicht der Stand dieser Anlage.
+  const titel = vorschlagTitel(zielArt);
+  const body = ideeBody(zielArt, vorkommen.slice(nullpunkt), { zaehlerstand, nullpunkt, schwelle });
+  const antwort = mitTextdatei(`${zielArt}-idee.md`, body, (pfad) =>
+    boardLauf(["issue", "create", "--title", titel, "--body-file", pfad, "--author-model", AUTOR]));
+  const { karte, ideaId } = kennungVon(antwort);
+  const eintrag = { karte, ideaId, stand: "offen", zaehlerstand, nullpunkt };
+  vorschlaegeSchreiben({ ...daten, [zielArt]: eintrag });
+  return { ...basis, angelegt: true, titel, karte, ideaId };
+}
+
+// --- Auswerten und Befund (Issue #806) ---------------------------------------
+
+/**
+ * Die Protokollzeilen als Datensaetze.
+ *
+ * Eine zu kurze Zeile wird GEZAEHLT und nicht gedeutet — dieselbe Linie wie in
+ * `zaehleArten`: Eine Zeile, deren Spalten nicht aufgehen, ist keine halbe Buchung,
+ * und ein stillschweigend ergaenztes Feld erfaende eine Angabe, die nie gebucht wurde.
+ */
+function protokollLesen(zeilen) {
+  const eintraege = [];
+  let fehlerhafteZeilen = 0;
+  for (const zeile of zeilen) {
+    const s = zeile.split("\t");
+    if (s.length < 7) {
+      fehlerhafteZeilen += 1;
+      continue;
+    }
+    eintraege.push({ zeitpunkt: s[0], stufe: s[1], karte: s[2], rolle: s[3], art: s[4], schweregrad: s[5], vergleichsstand: s[6] });
+  }
+  return { eintraege, fehlerhafteZeilen };
+}
+
+/**
+ * Die Arten des Berichts: die zwoelf der Liste in ihrer festen Reihenfolge, dahinter
+ * jede im Protokoll vorgefundene fremde Art.
+ *
+ * Alle zwoelf, auch mit null Vorkommen (die Zusage „beide Dateien entstehen
+ * vollstaendig"): Ein Bericht, der nur die getroffenen Arten fuehrt, saehe bei einer
+ * Art genauso aus wie ein Bericht ueber die ganze Liste. Und die fremde Art wird
+ * angehaengt statt verschluckt — sie kann nur aus einer aelteren oder fremden Buchung
+ * stammen, und wegzulassen hiesse, ein Vorkommen verschwinden zu lassen.
+ */
+function artenReihenfolge(eintraege) {
+  const fremde = [...new Set(eintraege.map((e) => e.art).filter((a) => !ARTEN_NAMEN.has(a)))].sort();
+  return [...ARTEN.map((a) => a.name), ...fremde];
+}
+
+/** Die Verteilung der Eintraege ueber die Stufen; die vier bekannten stehen immer da. */
+function stufenVerteilung(eintraege) {
+  const verteilung = Object.fromEntries(BUCHEN_STUFEN.map((s) => [s, 0]));
+  for (const e of eintraege) {
+    verteilung[e.stufe] = (verteilung[e.stufe] ?? 0) + 1;
+  }
+  return verteilung;
+}
+
+/** Der Vorschlag als ein Satzteil: Stand und, wenn vorhanden, wo er liegt. */
+function vorschlagText(vorschlag) {
+  if (vorschlag === null) return "kein Vorschlag vermerkt";
+  if (vorschlag.karte !== null) return `Vorschlag ${vorschlag.stand} (#${vorschlag.karte})`;
+  if (vorschlag.ideaId !== null) return `Vorschlag ${vorschlag.stand} (Idee ${vorschlag.ideaId})`;
+  return `Vorschlag ${vorschlag.stand}`;
+}
+
+/** Die Stufenverteilung als Aufzaehlung der getroffenen Stufen. */
+function stufenText(stufen) {
+  const teile = Object.entries(stufen).filter(([, n]) => n > 0).map(([s, n]) => `${s} ${n}`);
+  return teile.length === 0 ? "" : ` (${teile.join(", ")})`;
+}
+
+/**
+ * Die Zaehlung der Code-Stufe, GETRENNT nach Vergleichsstand (AK 10 der Quelle #768).
+ *
+ * Zwei Zahlen und ausdruecklich nicht ihre Summe: Ein Fund auf einem Stand, dessen
+ * Pflichtpruefungen gruen waren, sagt etwas ueber die Luecke der Maschine — ein Fund
+ * ohne vergleichbaren Stand sagt darueber nichts. Zusammengezaehlt saehen beide aus
+ * wie das erste.
+ *
+ * Dieselbe Funktion je Art und ueber alle: AK 10 verlangt die Zahl „getrennt nach Art",
+ * und der Gesamtstand ist die Summe derselben Zaehlung ueber alle Eintraege. Eine
+ * zweite Zaehlweise fuer die Gesamtzahl koennte von der Summe ihrer Teile abweichen.
+ */
+function codeZaehlung(eintraege) {
+  const code = eintraege.filter((e) => e.stufe === "code");
+  return {
+    gruen: code.filter((e) => e.vergleichsstand === "gruen").length,
+    nichtVergleichbar: code.filter((e) => e.vergleichsstand === "nicht-vergleichbar").length,
+  };
+}
+
+/** Der Berichtstext fuer Menschen — `.claude/befunde.md`. */
+function berichtText(stand) {
+  const kopfzeilen = [
+    `# Befunde der Modell-Pruefungen`,
+    "",
+    `Auswertung vom ${stand.erzeugtAm} (claude-workflow-kit v${stand.kitVersion}).`,
+    "",
+    stand.protokoll.vorhanden
+      ? `Protokoll \`${stand.protokoll.datei}\`: ${stand.protokoll.zeilen} Zeilen, davon ${stand.protokoll.fehlerhafteZeilen} unlesbar.`
+      : `Protokoll \`${stand.protokoll.datei}\` liegt nicht vor — in diesem Projekt hat noch keine Modell-Pruefung gebucht.`,
+    "",
+    `Schwelle: ${stand.schwelle} Vorkommen oberhalb des Nullpunkts einer Art.`,
+    "",
+    "## Arten",
+    "",
+    `| Art | Vorkommen | ${BUCHEN_STUFEN.join(" | ")} | code gruen | code nicht-vergleichbar | ueber Nullpunkt | Schwelle erreicht | Vorschlag |`,
+    `| --- | --- | ${BUCHEN_STUFEN.map(() => "---").join(" | ")} | --- | --- | --- | --- | --- |`,
+    ...stand.arten.map((a) => [
+      "", `\`${a.art}\``, a.vorkommen, ...BUCHEN_STUFEN.map((s) => a.stufen[s] ?? 0),
+      a.code.gruen, a.code.nichtVergleichbar,
+      a.ueberNullpunkt, a.erreicht ? "ja" : "nein", vorschlagText(a.vorschlag), "",
+    ].join(" | ").trim()),
+    "",
+    "## Stufe code",
+    "",
+    stand.code.gruen + stand.code.nichtVergleichbar === 0
+      ? "Kein uebernommener Fund der Stufe `code` steht im Protokoll."
+      : `Uebernommene Funde der Stufe \`code\` auf einem Stand mit gruenen Pflichtpruefungen: ${stand.code.gruen}. `
+        + `Als \`nicht-vergleichbar\` ausgewiesen: ${stand.code.nichtVergleichbar}.`,
+    "",
+    "## Befund",
+    "",
+  ];
+  const befundzeilen = stand.befund.length === 0
+    ? ["Keine Art traegt ein Vorkommen."]
+    : stand.befund.map((b) => `- ${b.text}`);
+  return [...kopfzeilen, ...befundzeilen, ""].join("\n");
+}
+
+/**
+ * Der Befundblock als Text — mit Datum der Auswertung in der Kopfzeile.
+ *
+ * Ohne Befund eine LEERE Zeichenkette, nicht eine mit Kopfzeile: Die Kopfzeile allein
+ * waere schon der beruhigende Satz, den das Schweigen bei Unauffaelligkeit ausschliesst
+ * (dieselbe Zusage wie `befundText` in kit/aufwand.mjs und kit/wirksamkeit.mjs).
+ */
+export function befundText(stand) {
+  const befund = Array.isArray(stand?.befund) ? stand.befund : [];
+  if (befund.length === 0) return "";
+  const arten = befund.filter((b) => b.art !== null).length;
+  const vorkommen = befund.reduce((summe, b) => summe + (b.vorkommen ?? 0), 0);
+  const kopf = `Befunde der Modell-Pruefungen — Auswertung vom ${stand.erzeugtAm}: `
+    + `${vorkommen} Vorkommen in ${arten} ${arten === 1 ? "Art" : "Arten"}, Schwelle ${stand.schwelle ?? "?"}.`;
+  return [kopf, ...befund.map((b) => `- ${b.text}`)].join("\n") + "\n";
+}
+
+/**
+ * Der Befund: je Art mit mindestens einem Vorkommen eine Zeile, dahinter die Zeile
+ * zur Code-Stufe, sobald dort etwas gebucht ist.
+ *
+ * Nicht erst ab der Schwelle (anders als beim Vorschlag): Im Protokoll steht nur, was
+ * gegengeprueft, bestaetigt und uebernommen wurde — jede Zeile ist ein belegter
+ * Mangel, den eine Maschine nicht gefunden hat. Die Schwelle steuert, wann daraus eine
+ * Idee am Board wird, nicht, ab wann der Mensch die Zahl sehen darf.
+ */
+function befundBestimmen(arten, code, schwelle) {
+  const befund = arten.filter((a) => a.vorkommen > 0).map((a) => {
+    const schwellenteil = a.erreicht ? `, Schwelle ${schwelle} erreicht` : "";
+    return {
+      art: a.art,
+      vorkommen: a.vorkommen,
+      text: `\`${a.art}\`: ${a.vorkommen} Vorkommen${stufenText(a.stufen)}${schwellenteil}`
+        + ` — ${vorschlagText(a.vorschlag)}.`,
+    };
+  });
+  if (befund.length > 0 && code.gruen + code.nichtVergleichbar > 0) {
+    befund.push({
+      art: null,
+      vorkommen: 0,
+      text: `Stufe \`code\`: ${code.gruen} auf einem Stand mit gruenen Pflichtpruefungen, `
+        + `${code.nichtVergleichbar} als \`nicht-vergleichbar\` ausgewiesen.`,
+    });
+  }
+  return befund;
+}
+
+function schreibeDatei(datei, inhalt) {
+  const pfad = join(process.cwd(), ...datei.split("/"));
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(pfad, inhalt, "utf-8");
+  } catch (err) {
+    fail(`${datei} konnte nicht geschrieben werden: ${err.message}`);
+  }
+}
+
+/**
+ * Die Auswertung. Rueckgabe ist der vollstaendige Stand — dieselbe Struktur, die nach
+ * `.claude/befunde.json` geht und auf stdout steht: eine Form, nicht zwei.
+ */
+export function auswerten() {
+  const protokollPfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const zeilen = protokollZeilen(protokollPfad);
+  const { eintraege, fehlerhafteZeilen } = protokollLesen(zeilen);
+  const vorschlaege = vorschlaegeLesen();
+  const schwelle = schwelleLesen();
+
+  const arten = artenReihenfolge(eintraege).map((art) => {
+    const eigene = eintraege.filter((e) => e.art === art);
+    // Aus demselben Eintrag wie der Nullpunkt, nicht ueber `nullpunktFuer`: Der liest
+    // die Zustandsdatei bei jedem Aufruf neu, und hier ist sie schon gelesen.
+    const eintrag = eintragVon(vorschlaege, art);
+    const nullpunkt = eintrag?.nullpunkt ?? 0;
+    const vorschlag = eintrag === null ? null : { stand: eintrag.stand, karte: eintrag.karte, ideaId: eintrag.ideaId };
+    const ueberNullpunkt = Math.max(0, eigene.length - nullpunkt);
+    return {
+      art,
+      vorkommen: eigene.length,
+      stufen: stufenVerteilung(eigene),
+      // Je Art, nicht nur ueber alle: AK 10 der Quelle #768 verlangt die Zahl der
+      // uebernommenen Code-Funde auf gruenem Stand „getrennt nach Art" — eine
+      // Gesamtzahl sagte nicht, welcher Mangel der Maschine entgeht.
+      code: codeZaehlung(eigene),
+      nullpunkt,
+      ueberNullpunkt,
+      erreicht: ueberNullpunkt >= schwelle,
+      vorschlag,
+    };
+  });
+  const code = codeZaehlung(eintraege);
+
+  const ergebnis = {
+    ok: true,
+    erzeugtAm: new Date().toISOString(),
+    kitVersion: KIT_VERSION,
+    protokoll: {
+      datei: PROTOKOLL_DATEI,
+      vorhanden: existsSync(protokollPfad),
+      zeilen: zeilen.length,
+      fehlerhafteZeilen,
+    },
+    schwelle,
+    arten,
+    code,
+    // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
+    // alten Stand — ein ausgelassenes Feld liesse den Befund von gestern stehen.
+    befund: befundBestimmen(arten, code, schwelle),
+    bericht: BERICHT_DATEI,
+  };
+
+  schreibeDatei(BERICHT_DATEI, berichtText(ergebnis));
+  schreibeDatei(STAND_DATEI, JSON.stringify(ergebnis, null, 2) + "\n");
+  return ergebnis;
+}
+
+/**
+ * Der Befund als Text. Nie ein Fehler: Eine fehlende, leere oder unlesbare Datei ist
+ * dasselbe wie kein Befund — es soll dann nichts dastehen und nichts aufgehalten
+ * werden. Das gilt ausdruecklich auch fuer ein Projekt ohne Modell-Pruefungen (AK 12
+ * der Quelle #768): Ohne Protokoll entsteht kein Befund, und niemand muss dafuer einen
+ * Schalter umlegen.
+ */
+export function befund() {
+  try {
+    return befundText(JSON.parse(readFileSync(join(process.cwd(), ...STAND_DATEI.split("/")), "utf-8")));
+  } catch {
+    return "";
+  }
+}
+
 // --- CLI ---------------------------------------------------------------------
 
 function parsePruefenArgs(rest) {
@@ -331,6 +1240,49 @@ function parsePruefenArgs(rest) {
   }
   if (datei === null) fail("'pruefen' braucht --datei <pfad>.");
   return datei;
+}
+
+function parseBuchenArgs(rest) {
+  const werte = { datei: null, stufe: null, karte: null };
+  const optionen = { "--datei": "datei", "--stufe": "stufe", "--karte": "karte" };
+  for (let i = 0; i < rest.length; i += 1) {
+    const feld = optionen[rest[i]];
+    if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
+    werte[feld] = rest[i + 1];
+    if (!werte[feld]) fail(`${rest[i]} erwartet einen Wert.`);
+    i += 1;
+  }
+  if (werte.datei === null || werte.stufe === null || werte.karte === null) {
+    fail("'buchen' braucht --datei <pfad>, --stufe <stufe> und --karte <n>.");
+  }
+  if (!BUCHEN_STUFEN.includes(werte.stufe)) {
+    fail(`Unbekannte Stufe: '${werte.stufe}'. Erwartet: ${BUCHEN_STUFEN.join(", ")}.`);
+  }
+  return werte;
+}
+
+function parseVorschlagArgs(rest) {
+  const werte = { art: null, abgelehnt: null };
+  const optionen = { "--art": "art", "--abgelehnt": "abgelehnt" };
+  for (let i = 0; i < rest.length; i += 1) {
+    const feld = optionen[rest[i]];
+    if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
+    werte[feld] = rest[i + 1];
+    if (!werte[feld]) fail(`${rest[i]} erwartet eine Mangel-Art.`);
+    i += 1;
+  }
+  // Beide zugleich sind zwei gegenlaeufige Auftraege; welcher gewinnt, waere geraten.
+  if (werte.art !== null && werte.abgelehnt !== null) {
+    fail("'vorschlag' nimmt --art ODER --abgelehnt, nicht beides.");
+  }
+  if (werte.art === null && werte.abgelehnt === null) {
+    fail("'vorschlag' braucht --art <art> oder --abgelehnt <art>.");
+  }
+  const zielArt = werte.art ?? werte.abgelehnt;
+  if (!ARTEN_NAMEN.has(zielArt)) {
+    fail(`Unbekannte Art: '${zielArt}'. Gueltig sind die Namen aus 'befunde arten'.`);
+  }
+  return werte;
 }
 
 /** Immer JSON auf stdout — auch hier, wo der Aufruf abgewiesen wird. */
@@ -368,14 +1320,35 @@ function main() {
   if (command === "pruefen") {
     return alsJson(() => pruefen(parsePruefenArgs(rest)));
   }
+  if (command === "buchen") {
+    return alsJson(() => buchen(parseBuchenArgs(rest)));
+  }
+  if (command === "vorschlag") {
+    return alsJson(() => vorschlag(parseVorschlagArgs(rest)));
+  }
+  if (command === "auswerten") {
+    return alsJson(() => {
+      if (rest.length > 0) fail(`'auswerten' nimmt keine Argumente, bekam '${rest[0]}'.`);
+      return auswerten();
+    });
+  }
+  if (command === "befund") {
+    // Hier gilt das Gegenteil der JSON-Regel: Was auf stdout steht, reicht eine
+    // Ausgabestelle unveraendert weiter. Ein abgewiesener Aufruf schreibt deshalb nach
+    // stderr und laesst stdout leer — sonst stuende eine Fehlermeldung dort, wo ein
+    // Befund hingehoert (wie in kit/wirksamkeit.mjs).
+    if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
+    process.stdout.write(befund());
+    return 0;
+  }
 
   // Auch der Aufruf ohne Kommando ist ein Fehler mit JSON-Ausgabe: Wer dieses Werkzeug
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
   process.stderr.write(HELP);
   return alsJson(() => fail(command === undefined
-    ? `Kein Kommando. Erwartet: ${["arten", "pruefen"].join(" oder ")}.`
-    : `Unbekannter Befehl: '${command}'. Erwartet: arten oder pruefen.`));
+    ? `Kein Kommando. Erwartet: ${KOMMANDOS.join(", ")}.`
+    : `Unbekannter Befehl: '${command}'. Erwartet: ${KOMMANDOS.slice(0, -1).join(", ")} oder ${KOMMANDOS.at(-1)}.`));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

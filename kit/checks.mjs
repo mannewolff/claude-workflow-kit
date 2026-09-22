@@ -33,6 +33,11 @@
  * unveraendert. Die beiden Achsen beantworten Verschiedenes: `areas`/`always`
  * sagen, OB eine Pruefung betroffen ist, `stufe` sagt, WANN sie an der Reihe ist.
  *
+ * An den beiden VEROEFFENTLICHUNGSSTUFEN `push` und `merge` faellt die erste
+ * Achse weg: Dort laeuft jede faellige Pruefung, auch bei leerem Paket und
+ * unberuehrten Bereichen (Plan #843, E9). Gemessen wird der Stand, der hinausgeht
+ * — und der besteht aus mehr als dem letzten Arbeitspaket.
+ *
  * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
  *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>]
  *
@@ -54,7 +59,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.0.0";
+const KIT_VERSION = "3.1.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -163,8 +168,8 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
   --stufe <s>     Gefahrener Zeitpunkt: ${STUFEN.join(" | ")} (Default ${STUFEN[0]}).
                   Kumulativ — push faehrt paket mit, merge alle drei. Pruefungen
                   spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
-                  Freigabestufe (merge) faehrt jede Pruefung, auch bei leerem
-                  Paket und unberuehrten Bereichen.
+                  Veroeffentlichungsstufen (push, merge) fahren jede faellige
+                  Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
@@ -261,8 +266,14 @@ const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
  * '/' als Trenner. Ein '**' samt folgendem Trenner darf ganz verschwinden, damit
  * ein Muster wie "doppelstern, Trenner, *.md" auch eine Datei im
  * Wurzelverzeichnis trifft und nicht erst eine in einem Unterverzeichnis.
+ *
+ * Exportiert, damit test/config-teile.test.mjs die Teile dieses Repos gegen
+ * `git ls-files` prueft, ohne die Aufloesung ein zweites Mal zu schreiben
+ * (Issue #850) — derselbe Grund wie bei `blobHashes` fuer befunde.mjs: Ab der
+ * ersten Abweichung bescheinigte die zweite Fassung eine Abdeckung, die das
+ * ausfuehrende Kommando nicht sieht.
  */
-function globZuRegex(muster) {
+export function globZuRegex(muster) {
   let quelle = "";
   let i = 0;
   while (i < muster.length) {
@@ -282,7 +293,8 @@ function globZuRegex(muster) {
   return new RegExp(`^${quelle}$`);
 }
 
-function bereicheVorbereiten(checkAreas) {
+/** Die Teile aus der Config als fertige Regexe. Exportiert aus demselben Grund wie `globZuRegex`. */
+export function bereicheVorbereiten(checkAreas) {
   return Object.entries(checkAreas).map(([name, muster]) => ({
     name,
     regexe: (muster ?? []).map((m) => globZuRegex(m)),
@@ -467,20 +479,25 @@ function planen(args) {
   const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
   const bereiche = [...beruehrt].sort(vergleicheText);
 
-  // Die Freigabestufe faehrt jede Pruefung (Plan #753, E12): Ihr Ergebnis gilt
-  // fuer den Stand, der freigegeben wird, und der besteht aus mehr als dem
-  // letzten Arbeitspaket. Eine Auslassung wegen leeren Pakets oder unberuehrten
-  // Bereichs zeigte hier auf den falschen Vergleich — deshalb greift keine von
-  // beiden. `basis`, `geaendert`, `bereiche` und (in `run`) `hashes` bleiben
-  // trotzdem aus dem Anker bestimmt: Sie sind der Nachweis, gegen den das
-  // Commit-Gate den Index prueft (gate-1), und nicht Teil der Auswahl.
+  // Die Veroeffentlichungsstufen faehren jede faellige Pruefung (Plan #753, E12;
+  // fuer die Push-Stufe Plan #843, E9 nach Fachplan #837, AK 11): Ihr Ergebnis
+  // gilt fuer den Stand, der hinausgeht, und der besteht aus mehr als dem letzten
+  // Arbeitspaket. Eine Auslassung wegen leeren Pakets oder unberuehrten Bereichs
+  // zeigte hier auf den falschen Vergleich — deshalb greift keine von beiden.
+  // `basis`, `geaendert`, `bereiche` und (in `run`) `hashes` bleiben trotzdem aus
+  // dem Anker bestimmt: Sie sind der Nachweis, gegen den das Commit-Gate den Index
+  // prueft (gate-1), und nicht Teil der Auswahl.
+  //
+  // Die Kumulation bleibt davon unberuehrt: Was spaeter dran ist, bleibt aus. Die
+  // Stufe sagt weiter, WANN eine Pruefung laeuft — nur die Eingrenzung unter den
+  // faelligen entfaellt.
   //
   // `vollerUmfang` bleibt dabei false — das Feld markiert den Zweifelsfall
-  // („wir wissen es nicht, also alles"), und die Freigabestufe ist das Gegenteil
+  // („wir wissen es nicht, also alles"), und diese Stufen sind das Gegenteil
   // davon: eine Entscheidung. Denselben Unterschied halten String-Form und
   // `always: true` auseinander.
-  if (stufe === "merge") {
-    const grund = "Freigabestufe: voller Umfang";
+  if (stufe === "push" || stufe === "merge") {
+    const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
       basis, stufe, geaendert, bereiche,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
@@ -588,8 +605,12 @@ function kommandoAusfuehren(cmd, env) {
  * die Pfade und nicht den Inhalt, damit gits Filterkette (`autocrlf`, `clean`)
  * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
  * dem Gate zeigt.
+ *
+ * Exportiert, damit befunde.mjs denselben Blob-Hash ermitteln kann, statt die
+ * Frage ein zweites Mal zu implementieren (Issue #802) — derselbe Grund, aus dem
+ * `zusammenfassungPfad` fuer night.mjs exportiert ist (Issue #428).
  */
-function blobHashes(pfade) {
+export function blobHashes(pfade) {
   const hashes = {};
   const vorhanden = [];
   for (const pfad of pfade) {

@@ -240,7 +240,7 @@ Form 1 und Form 3 verhalten sich gleich und bedeuten trotzdem Verschiedenes: **v
 
 Beide Vertauschungen gehen schief, und beide sähen im Bericht korrekt aus. Ein `merge-base`-Anker **vor dem Commit** sammelte fremde Arbeitspakete ein: Ein roter Check spräche dann über Änderungen, mit denen das laufende Paket nichts zu tun hat — nachts würde der Fehlschlag dem falschen Issue zugeschrieben.
 
-Ein `HEAD`-Anker **vor dem Push** sähe umgekehrt auf sauberem Arbeitsbaum gar nichts: Das Kommando meldete `leeresPaket` und ließe jede Prüfung aus, während der Bericht das als vollständigen Lauf auswiese. Deshalb steht in jedem Skill genau ein Anker, und er steht dort begründet.
+Ein `HEAD`-Anker **vor dem Push** spräche umgekehrt über das falsche Stück: Was dort läuft, entscheidet der Anker zwar nicht mehr — die [Veröffentlichungsstufen fahren den vollen Umfang](#gestaffelte-prüfungen-stufe) —, wohl aber, welchen Stand die Zusammenfassung bezeugt. `basis`, `geaendert` und die Blob-Hashes beschrieben dann das letzte Arbeitspaket statt des Batches, der gleich hinausgeht, und gegen genau diese Hashes prüft das Commit-Gate den Index. Deshalb steht in jedem Skill genau ein Anker, und er steht dort begründet.
 
 **Im Zweifel läuft alles. Nicht abschaltbar.** Drei Wege führen zum vollen Umfang: eine geänderte Datei, die sich **keinem Bereich** zuordnen lässt; eine **nicht zugeordnete Prüfung**, die ohnehin immer läuft; und ein **leerer oder nicht auflösbarer Anker**. Ein leerer zählt dabei wie ein nicht auflösbarer, nie wie ein fehlender — ein fehlender ergäbe den Default `HEAD` und auf committetem Stand gar keine Prüfung. Einen Schalter, der die Regel abstellt, gibt es nicht: Eine Auswahl, die falsch ausfällt, nimmt Prüfung weg, und dieser Fehler geht in die Richtung, in der er niemandem auffällt.
 
@@ -274,7 +274,9 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 | `push` | vor dem Veröffentlichen auf `main` | `/push-main` |
 | `merge` | vor der Freigabe nach `production` | `/merge-production` |
 
-**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Wer die Freigabestufe fährt, bekommt außerdem den vollen Umfang: Dort wird keine Prüfung mehr nach Bereichen ausgewählt.
+**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt.
+
+**Die beiden Veröffentlichungsstufen fahren den vollen Umfang.** `push` und `merge` fahren **jede fällige** Prüfung — auch bei unberührten Bereichen und auch bei leerem Paket. Dort wird der Stand gemessen, der hinausgeht, und der besteht aus mehr als dem letzten Arbeitspaket; eine Auslassung zeigte auf den falschen Vergleich. Die Eingrenzung nach Bereichen gehört an die Paketstufe, wo sie über ein Arbeitspaket spricht. Die Kumulation bleibt davon unberührt: Was später dran ist, bleibt auch hier aus.
 
 **Ein fehlendes Feld bedeutet `paket`.** Die bloße String-Form und ein Objekt ohne `stufe` tragen die Paketstufe, und damit bleibt jede Bestandskonfiguration unverändert in ihrem Verhalten. Wer die Staffelung nicht will, schreibt nichts hin.
 
@@ -283,6 +285,34 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 **Mindestens eine Prüfung gehört auf die Paketstufe.** Tragen alle Einträge `push` oder `merge`, läuft vor dem Commit nichts: Die Umsetzung eines Arbeitspakets hat dann kein Gate. Nachts ist das kein stiller Zustand — der Nacht-Runner prüft es beim Start und startet gar nicht erst (Override: `--no-checks-ok`). Die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) meldet diesen Zustand als Warnung; speichern lässt sich eine solche Konfiguration trotzdem, denn gültig ist sie.
 
 **Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
+
+### Die langsamsten Testdateien finden
+
+Die Testsuite läuft in jedem Arbeitspaket, in jedem `checks.mjs run`, im Commit-Gate und in der CI — jede eingesparte Sekunde wirkt also überall. Der Testrunner von Node fährt die **Dateien parallel**, die Tests **innerhalb** einer Datei nacheinander: Nach unten begrenzt darum die langsamste Datei die Wandzeit der ganzen Suite, und eine Datei deutlich über dem Rest gehört thematisch geteilt (Issue #836).
+
+Welche das sind, sagt ein Lauf mit dem JUnit-Reporter. Er trägt an jedem `<testcase>` die Attribute `file` und `time`; **je `file` summiert** ergibt das die Zeit der Datei:
+
+```bash
+node --test --test-reporter=junit > /tmp/testzeiten.xml
+```
+
+Die Wandzeit selbst steht als `duration_ms` am Ende eines gewöhnlichen `node --test`. Weil sie von Lauf zu Lauf schwankt, ist ein Vergleich vor und nach einer Änderung erst mit **drei Läufen je Seite und dem Median** belastbar.
+
+Die Zahlen gelten für die Maschine, auf der gemessen wurde, und veralten mit jedem neuen Test. Wer die Liste braucht, erhebt sie neu, statt eine ältere fortzuschreiben.
+
+### Die Eingrenzung im Kit selbst
+
+Das Kit bringt die bereichsbezogene Auswahl seit Langem mit, hat sie im eigenen Repo aber lange nicht benutzt: Ohne `checkAreas` und mit `node --test` als einzigem Eintrag meldete jeder Prüfstand vollen Umfang. Wie die Eingrenzung in einem gewachsenen Projekt aussieht, lässt sich deshalb hier nachlesen — mit allen Zugeständnissen, die sie kostet.
+
+**Sechs Teile.** `nachtrunner`, `board`, `pruefungen`, `einstellungen`, `installer` und `skills-doku`. Sie überschneiden sich absichtlich: `kit/preise.mjs` liegt in drei Teilen, `kit/**` steht sowohl im `installer` als auch in `skills-doku`, weil der Installer jede Kit-Datei als Blob ausliefert und die Doku ihre Kommandos beschreibt. Ein Teil ist kein Eigentum an einer Datei, sondern die Antwort auf die Frage „welche Prüfung muss laufen, wenn sich das hier ändert?" — und auf die darf mehr als ein Teil mit Ja antworten.
+
+**Drei Testaufrufe, nicht sechs.** Die Testsuite zerfällt nicht in sechs unabhängige Stücke, weil die Kit-Werkzeuge einander laden: `kit/night.mjs` zieht `board.mjs`, `checks.mjs`, `aufwand.mjs`, `wirksamkeit.mjs` und `befunde.mjs` nach, `.githooks/gate.mjs` lädt `checks.mjs`, und knapp fünfzig Nacht-Tests nennen `board.mjs`. Dazu kommt, dass `checks.mjs run` die Einträge **nacheinander** fährt: Jeder zusätzliche Eintrag verlängert den vollen Umfang um den Startaufwand eines weiteren Laufs, der seine Dateien nicht mehr mit den anderen parallelisiert. Sechs Aufrufe kosteten im vollen Umfang rund eine Minute mehr als drei. Die Zusammenfassung — Kern, Einrichtung, Skills und Doku — grenzt darum grob genug ein, um billig zu bleiben.
+
+**Was ohne Teil bleibt, ist ebenfalls eine Aussage.** `eslint.config.mjs`, `package.json`, `test/helpers/**` und `.claude/**` sind keinem Teil zugeordnet. Eine Änderung an ihnen fällt in den Zweifelsfall und fährt den vollen Umfang — richtig so: Eine geänderte Test-Fixture kann jede Testdatei betreffen, eine geänderte Lint-Konfiguration jede Quelldatei.
+
+**Ein Schutztest gegen die Lücke.** Mit den drei Aufrufen entsteht eine neue Fehlerart, und sie ist still: Eine Testdatei mit einem Präfix, das keiner der drei Aufrufe nennt, läuft **nirgends** — nicht vor dem Commit, nicht im Commit-Gate, nicht in der CI. Grün hieße dann „nicht geprüft". `test/config-teile.test.mjs` prüft deshalb die echte Config gegen `git ls-files`: jede versionierte Testdatei von mindestens einem Aufruf erfasst, jede versionierte Quelldatei in mindestens einem Teil. Die Glob-Auflösung holt der Test aus `kit/checks.mjs` statt sie nachzubauen — ab der ersten Abweichung bescheinigte eine zweite Fassung eine Abdeckung, die das ausführende Kommando nicht sieht.
+
+Wer die Eingrenzung im eigenen Projekt einführt, braucht denselben Schutztest, sobald er die Testsuite auf mehrere Einträge verteilt. Ein Teil zu wenig kostet Rechenzeit; ein nicht erfasster Test kostet die Prüfung.
 
 ### Gütemessung und Marke: `guete`
 
@@ -332,9 +362,11 @@ node einstellungen.mjs ~/ki-projects
 
 **Die Adresse trägt das Zugangstoken.** Beim Start nennt die Oberfläche eine Adresse der Form `http://127.0.0.1:<port>/#token=…`. Sie ist nur von diesem Rechner erreichbar, und ohne das Token nimmt sie keine Anfrage an — auch nicht von einer anderen Seite im selben Browser. Das Token gilt bis zum Beenden mit Strg+C.
 
-**Acht Teile.** Die Oberfläche gliedert die Einstellungen in acht Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
+**Zehn Teile.** Die Oberfläche gliedert die Einstellungen in zehn Teile: Reviewer, Paarungen, Prüfstufen, Befunde, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit, Aufgabenstufen und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die drei Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`), die Stufen (`night.stufen`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der acht Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der zehn Teile.
+
+**Aufgabenstufen.** Der Teil *Aufgabenstufen* pflegt `night.stufen` ohne JSON-Eingabe: je Stufe — schwer, mittel, leicht — eine Wahl zwischen *Keine*, *Modell* und *Kommando*. Zum Modell gehört die Gründlichkeit, die der Nachtlauf als `--effort` an die Claude-CLI gibt; „Voreinstellung“ überlässt sie ihr und schreibt kein Feld. Eine Stufe auf *Keine* zu stellen entfernt ihren Eintrag — der Nachtlauf weicht dann zur nächststärkeren Stufe aus. Neben einem fremden `kommando` gibt es keine Gründlichkeit, und der Wechsel dorthin nimmt `modell` und `effort` mit.
 
 **Rückfragen bei Folgen.** Manche Änderung wirkt über ihren eigenen Teil hinaus. Einen Reviewer umzubenennen oder zu entfernen wirkt sich auf die Paarungen aus, einen Bereich umzubenennen oder zu entfernen auf die Prüfkommandos, die ihn nutzen. Eine Rückfrage nennt vorher die betroffenen Stellen; die Folge ist Teil derselben Änderung wie der auslösende Teil und wird mit ihm gespeichert oder verworfen. Eine unabhängige Änderung am betroffenen anderen Teil bleibt davon unberührt.
 
@@ -491,14 +523,17 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen` — Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Fehlt eine Stufe, weicht der Nachtlauf zur nächststärkeren aus, bis notfalls zum Modell des Laufs selbst. Wirkt nur im nächtlichen Lauf — tagsüber wählt der Mensch sein Modell selbst. Ein modell muss auch in night.modelle stehen (sonst Fehler bei der Konfigurationsprüfung).
 - `night.stufen.schwer` — Modell oder Kommando für eine schwere Aufgabe. Genau eines der beiden Felder ist gesetzt.
 - `night.stufen.schwer.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.schwer.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen. (gültig: `low`, `medium`, `high`, `xhigh`, `max`)
 - `night.stufen.schwer.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.schwer.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufen.mittel` — Modell oder Kommando für eine mittelschwere Aufgabe. Genau eines der beiden Felder ist gesetzt.
 - `night.stufen.mittel.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.mittel.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen. (gültig: `low`, `medium`, `high`, `xhigh`, `max`)
 - `night.stufen.mittel.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.mittel.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufen.leicht` — Modell oder Kommando für eine leichte Aufgabe. Genau eines der beiden Felder ist gesetzt.
 - `night.stufen.leicht.modell` — Modell-ID für diese Stufe. Muss auch in night.modelle stehen.
+- `night.stufen.leicht.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen. (gültig: `low`, `medium`, `high`, `xhigh`, `max`)
 - `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
@@ -523,6 +558,12 @@ Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausfüh
 - `wirksamkeit.quoteSchwelle` — Ab welcher Rückläuferquote ein Befund erscheint. Gezählt werden Rücklaufbewegungen je Karte mit Eintritt nach In review; eine Karte, die mehrfach zurückging, zählt mehrfach, und die Quote kann deshalb über 1 liegen. Die Schwelle selbst ist ein Wert zwischen 0 und 1.
 - `wirksamkeit.quoteAbPaketen` — Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen.
 - `wirksamkeit.kandidatenMax` — Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar.
+
+### `befunde`
+
+Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Gilt für alle Prüfungen, die Funde buchen — den Issue-Review ebenso wie den Code-Review, der nicht unter issueReview hängt; deshalb ein eigener Block. Optional — fehlt der Block oder das Feld darin, gilt die eingebaute Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert, weil zwei Menschen mit verschiedenen Schwellen im selben Projekt verschiedene Vorschläge aus denselben Funden erzeugten.
+
+- `befunde.schwelle` — Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Darunter ist ein Fund ein Einzelfall und keine Regel.
 <!-- einstellungen:ende -->
 
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess
@@ -702,7 +743,7 @@ Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du
 
 Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
 
-**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Dieser Lauf kann spürbar länger dauern als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
+**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Und zwar **jede** dieser Prüfungen: Vor dem Push wird keine mehr nach Bereichen ausgewählt, und ein leeres Paket lässt hier nichts aus. Dieser Lauf dauert spürbar länger als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
 
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
@@ -932,6 +973,10 @@ Das funktioniert, weil `TBX_TOKEN` die höchste Stufe der [Token-Precedence](#to
 3. Sonst gilt das Modell des Laufs (`--model`).
 
 **`night.modelle` ist die einzige Prüfung — und sie ist ein Sicherheitsgatter, kein Komfort.** Ohne sie wanderte ein Wert aus einem Issue-Body unbesehen in die Kommandozeile; ein Paket mit `Empfohlenes Modell: --dangerously-skip-permissions` wäre ein Angriff über eine Karte. Deshalb wird gegen eine **Liste** verglichen und nicht gegen ein Muster: Ein Muster lässt sich erweitern, eine Liste nicht. Ein Wert mit führendem Bindestrich oder mit Leerzeichen gilt gar nicht erst als Kandidat, und das Schema weist ihn schon bei der Config-Prüfung ab. Dieselbe Liste gilt für eine Stufe mit `modell`: Ein Stufen-Modellname muss ebenfalls in `night.modelle` stehen, sonst weist die Konfigurationsprüfung ihn ab — zwei getrennte Listen könnten sonst auseinanderlaufen. Eine Stufe mit `kommando` prüft stattdessen, ob das erste Wort der Kommandozeile über dieselbe Shell auffindbar ist, die später startet, und ob die Plattform kein Windows ist (eine Kommando-Stufe braucht eine POSIX-Shell).
+
+**Wie gründlich eine Stufe nachdenkt.** Neben `modell` trägt eine Stufe optional `effort` — die Gründlichkeit des Nachdenkens, die als `--effort` an die Claude-CLI der Session geht. Möglich sind `low`, `medium`, `high`, `xhigh` und `max`. Ohne das Feld gilt die Voreinstellung der CLI; eine Stufe ohne `effort` verhält sich also wie bisher. Das Feld gehört ausschließlich zu einer Stufe mit `modell`: Neben `kommando` startet ein fremdes Programm, dem das Kit keine Gründlichkeit setzen kann. Dort ist es ein Konfigurationsfehler und wird nicht stillschweigend ignoriert, sondern mit dem Pfad `night.stufen.<stufe>.effort` gemeldet — ebenso ein Wert außerhalb der fünf.
+
+**Wo die Gründlichkeit wirkt — und wo nicht.** Modell und Gründlichkeit kommen immer als Paar aus **einem** Stufen-Eintrag: Weicht der Runner nach oben aus, gilt die Gründlichkeit der Stufe, die das Modell wirklich gestellt hat, nie die der unbelegten darunter. Ohne Wirkung bleibt sie überall dort, wo die Stufe das Modell nicht gestellt hat — beim `Empfohlenes Modell:` der Karte und beim Modell des Laufs — und im Kommando-Zweig, wo ein fremdes Programm startet, das `--effort` nicht kennt. Die Sessions der Nacht-Kette für Fachplan, Plan und Zerlegung bleiben ebenfalls unberührt; die Umsetzungsstufe fährt ihre Pakete durch dieselbe Runde wie die Umsetzungsnacht und bekommt die Gründlichkeit deshalb mit. Sichtbar ist sie an vier Stellen: in der Hinweiszeile einer Runde, in der Vorschau `--dry-run`, im **Ergebnisstand** als Feld `effort` der Einheit (hinter `stufeVerwendet`, `null` wenn keine gesetzt war) und im Bericht der Umsetzungsstufe als Klammerzusatz hinter dem Modell. Die Salvage-Session eines Pakets läuft mit demselben Bündel wie dessen reguläre Runde, also auch mit derselben Gründlichkeit.
 
 Ein Kartenname **außerhalb** der Liste ist kein Fehlschlag: Die Session läuft mit dem Modell des Laufs, und die Einheit im Ergebnisstand trägt `modellHerkunft: "lauf"` samt `modellGrund` mit dem abgewiesenen Namen. Eine fehlende Zeile und eine leere Liste führen ebenfalls zum Lauf-Modell, dann ohne Grund — eine fehlende Empfehlung ist der Normalfall und kein Befund. Ein Modell, das trotz gültigen Namens nicht startet, bleibt dagegen ein Fehlschlag wie jeder andere.
 
@@ -1213,9 +1258,13 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 ## Aufwand des Prozesses
 
-Jeder Ergebnisstand einer Nacht-Session (`.claude/night-run-<datum>-<uhrzeit>.json`) trägt seit Issue #748/#749 bereits Dauer, Kosten, Menge, Modell und Prüfstand. `node .claude/kit/aufwand.mjs auswerten` liest die jüngsten davon, aggregiert Zeit, Prüfungen, Umfang und Kosten und schreibt daraus `.claude/aufwand.md` (für Menschen) sowie `.claude/aufwand.json` (für die beiden Ausgabestellen unten). Das Werkzeug sagt nur, was auffällt — nie, was zu tun ist, und es schweigt, wenn nichts auffällt.
+Jeder Ergebnisstand einer Nacht-Session (`.claude/night-run-<datum>-<uhrzeit>.json`) trägt seit Issue #748/#749 bereits Dauer, Kosten, Menge, Modell und Prüfstand. `node .claude/kit/aufwand.mjs auswerten` liest die jüngsten davon, aggregiert Zeit, Prüfungen, Umfang, Kosten und den Aufwand je Aufgabenstufe und schreibt daraus `.claude/aufwand.md` (für Menschen) sowie `.claude/aufwand.json` (für die beiden Ausgabestellen unten). Das Werkzeug sagt nur, was auffällt — nie, was zu tun ist, und es schweigt, wenn nichts auffällt.
 
 **Wo der Befund erscheint.** An genau zwei Stellen, und beide zusammen: als Abschlussblock im Laufprotokoll `.claude/night-run-<datum>.log`, den jeder unbeaufsichtigte Lauf am Ende selbst schreibt, und im Skill `/push-main`, der `node .claude/kit/aufwand.mjs befund` vor dem ersten Schritt ausführt und die Ausgabe zeigt. Beide sind nötig: Läuft der Nachtbetrieb künftig ohne Zutun eines Menschen an, liest den Laufbericht womöglich niemand mehr; das Veröffentlichen bleibt dagegen ein Schritt, den ein Mensch selbst auslöst.
+
+**Nach Aufgabenstufe.** Der Bericht trägt einen eigenen Abschnitt, der je Paar aus Aufgabenstufe und Gründlichkeit (`effort`) eine Zeile zeigt: Einheiten, Dauer, Kosten, rote Prüfstände und Nacharbeit, jede Zahl mit der Zahl der Läufe, die sie trägt. Damit lässt sich eine Stufe vor und nach einer Umstellung ihrer Gründlichkeit vergleichen, ohne dafür einen eigenen Vergleichslauf zu fahren. Derselbe Block steht als `jeStufe` in `.claude/aufwand.json`.
+
+**Was dort als Nacharbeit zählt.** Eine Einheit, deren Endstatus nicht `in_review` ist **oder** deren Prüfstand rot war. Gezählt werden ausschließlich Arbeitspakete mit gestarteter Session — erkennbar an `art: "implementierung"` und einem Feld `endStatus`. Einheiten ohne Session (übersprungen, liegengeblieben, zurückgestellt) und die Einheiten der Nacht-Kette tragen weder Endstatus noch Prüfstand; als Nacharbeit gezählt wären sie allesamt eine, und die Quote maße nur, wie oft ein Gate hielt. Die Kosten dieser Tabelle sind die je Einheit gemeldeten Beträge, nicht die gerechnete Teilung aus dem Abschnitt „Kosten". Eine Zeile „ohne Stufe" steht am Ende: Sie sammelt Stände vor Issue #711 und Karten, deren Modell nicht über eine Stufe kam.
 
 **Kein Gate.** Der Befund hält weder einen Lauf noch `/push-main` auf. Ein Fehlschlag der Auswertung ist eine Protokollzeile, kein Abbruch.
 
@@ -1648,6 +1697,53 @@ Vier Fälle, damit klar ist, was wann passiert:
 | Legacy-Backend ohne `direct` | egal | wie bisher: Nummer zurück |
 
 Wird direkt angelegt — also im Regelfall —, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden: Sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Die Meldung nennt `ideaStored: true` als Weg in den Pool-Modus. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
+
+#### Wiederholung, Idempotenz-Schlüssel und die drei Rückmeldungen
+
+Ein Nachtlauf schickt Hunderte Board-Befehle in Folge. Das Board begrenzt sie seit kanban-kit 2.5 je Person und weist mit `429`, `Retry-After` (Sekunden) und dem Problem-Detail `type: urn:manban:overload` ab. Ohne Gegenstück im Adapter bricht der Lauf an irgendeiner Stelle ab und hinterlässt eine halb bearbeitete Kette.
+
+Deshalb hat jeder Toolbox-Aufruf eine **Zeitgrenze je Versuch** (10 Sekunden), eine **Wiederholschleife** mit wachsender Wartezeit und Streuung und ein **Gesamtbudget**: 30 Sekunden interaktiv, 120 Sekunden bei gesetztem `KIT_AGENT_MODEL` — dasselbe Signal wie beim Header `X-Agent-Model`. Nachts sitzt niemand daneben, den zwei Minuten stören; interaktiv ist eine halbe Minute die Grenze des Erträglichen. `Retry-After` schlägt die eigene Staffel: Der Server weiß besser, wann sein Fenster wieder offen ist.
+
+**`KIT_TOOLBOX_BUDGET_MS`** setzt das Gesamtbudget ausdrücklich in Millisekunden und schlägt beide Regelwerte; nur ein positiver ganzzahliger Wert gilt, alles andere fällt auf die Regel zurück. Gedacht ist die Variable für Tests, die `board.mjs` als eigenen Prozess gegen einen dauerhaft fehlerhaft antwortenden Server starten — dort wird real gewartet, und ohne kurzes Budget kostet jeder Aufruf die vollen zwei Minuten. Sie wirkt bewusst überall und nicht nur unter Test: Eine nicht genannte Hintertür, die Verhalten ändert, wäre schlechter als eine dokumentierte Stellschraube.
+
+**Wiederholt wird nur, wo es gefahrlos ist:**
+
+| Fall | Wiederholung | Warum |
+|---|---|---|
+| `429` mit `type: urn:manban:overload` | ja, bei jeder Methode | Eine Abweisung hat nichts ausgeführt |
+| `429` ohne diesen `type` | nein | Sagt nichts über den Ausgang |
+| `5xx` bei `GET`, `PUT`, `DELETE` | ja | Folgenlos bzw. bei Wiederholung dasselbe Ergebnis |
+| `5xx` bei `POST` **mit** `Idempotency-Key` | ja | Derselbe Schlüssel führt die Wirkung höchstens einmal aus |
+| `5xx` bei `POST` **ohne** Schlüssel | nein | Sonst doppelte sich eine Nachtlauf-Meldung nach einem `502` des Proxys |
+| Zeitablauf, Verbindungsabbruch | ja | Der wahrscheinliche Fehlermodus unter Volllast |
+| Verbindung abgelehnt (`ECONNREFUSED`, `ENOTFOUND`) | nein | Nachweislich ging kein Aufruf hinaus |
+| `401` | nie | Ein widerrufener Token wird durch Warten nicht gültig |
+| jeder andere Status (`403`, `404`, `409` …) | nein | Sofort gemeldet |
+
+Jeder Wiederholversuch schreibt eine Zeile auf stderr (`board: POST /api/kanban/items — Versuch 2 endete mit HTTP 503, erneut in 1000 ms (Frist 120 s)`). Wer einem Nachtlauf zusieht, kann so Warten von Hängen unterscheiden. Der gelungene Aufruf meldet nichts — eine Zeile je Board-Befehl ertränkte genau dieses Signal.
+
+**Die drei Rückmeldungen.** Jeder abgebrochene Aufruf sagt, was mit seiner Wirkung ist:
+
+- **ausgeführt** — der Server hat mit `2xx` geantwortet.
+- **nicht ausgeführt** — eine beantwortete Ablehnung (`4xx`) oder nachweislich kein hinausgegangener Aufruf. Wiederholen ist gefahrlos.
+- **Ausgang unklar** — ein schreibender Aufruf ging hinaus und blieb ohne verwertbare Antwort (Zeitablauf, Verbindungsabbruch oder `5xx`), und das Budget ist erschöpft. Die Wirkung kann eingetreten sein.
+
+Der dritte Wert ist mit Absicht kein Sonderfall des zweiten: Ein Zeitablauf, der als „nicht ausgeführt“ gemeldet wird, verleitet zu genau der Wiederholung, die einen Abschlussbericht ein zweites Mal ans Board hängt.
+
+**Der Schlüssel kommt von außen zurück.** `POST /api/kanban/items` und `POST /api/kanban/items/{id}/comments` — die beiden Endpunkte, die ihn serverseitig auswerten — tragen einen `Idempotency-Key`. Er entsteht je Auftrag und bleibt über alle Versuche gleich. Die Meldung bei „Ausgang unklar“ nennt ihn samt dem vollständigen Kommando für die Wiederholung:
+
+```
+Toolbox-API-Fehler: HTTP 502
+Ausgang unklar: POST /api/kanban/items/700/comments ging hinaus, blieb aber ohne
+verwertbare Antwort — die Wirkung kann eingetreten sein. Schluessel: 5f2c-…-91ab.
+Mit genau diesem Schluessel wiederholen — derselbe Schluessel fuehrt die Wirkung
+hoechstens einmal aus:
+  node .claude/kit/board.mjs issue comment 7 --text-file /tmp/7-bericht.md --idempotency-key 5f2c-…-91ab
+```
+
+Ein nur prozessinterner Schlüssel machte jede Wiederholung von Hand zu einem neuen Auftrag. Deshalb nehmen `issue create` und `issue comment` ihn über **`--idempotency-key <wert>`** wieder entgegen. Ohne den Schalter bleibt das Verhalten unverändert. Ein Aufruf ohne Schlüssel — `/labels`, `/night-runs` — sagt das in der Meldung ausdrücklich und verweist aufs Nachsehen am Board.
+
+**Andere Backends.** Für Server ohne den Überlast-`type` ändert sich nichts: `429` ohne `urn:manban:overload` wird nicht wiederholt, und der Header `Idempotency-Key` wird dort ignoriert. Bei den Trackern `github`, `gitlab` und `local` nimmt `--idempotency-key` der Aufruf folgenlos an.
 
 ## Aktualisieren und mehrere Projekte
 

@@ -152,7 +152,7 @@ test("[night-36] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
 });
 
-test("[night-36] [night-41] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet und modell", NUR_POSIX, () => {
+test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet, modell und effort", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Ein Anliegen");
     board(dir, "issue", "label", "add", F, "kit:durchziehen");
@@ -170,6 +170,9 @@ test("[night-36] [night-41] die Kette-Einheit des Ergebnisstands traegt variante
       assert.ok("stufe" in eintrag, "traegt stufe");
       assert.ok("stufeVerwendet" in eintrag, "traegt stufeVerwendet");
       assert.ok("modell" in eintrag, "traegt modell");
+      // Die Gruendlichkeit der verwendeten Stufe (Issue #846) — wie die drei Felder
+      // daneben aus der Paket-Einheit, und ohne Stufe schlicht null.
+      assert.ok("effort" in eintrag, "traegt effort");
     }
   });
 });

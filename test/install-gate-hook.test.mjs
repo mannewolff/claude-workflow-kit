@@ -62,8 +62,8 @@ function git(dir, ...args) {
   });
 }
 
-function installiere(dir, antworten, extraEnv = {}, nodeArgs = []) {
-  return spawnSync(process.execPath, [...nodeArgs, INSTALLER], {
+function installiere(dir, antworten, extraEnv = {}, nodeArgs = [], installer = INSTALLER) {
+  return spawnSync(process.execPath, [...nodeArgs, installer], {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
@@ -253,6 +253,73 @@ test("[installer-2] ein belegter core.hooksPath bleibt unveraendert und verbrauc
     assert.equal(hooksPath(dir), ".husky", "ein fremder hooksPath darf nicht ueberschrieben werden");
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "bei belegtem Wert wird nicht gefragt");
     assert.match(res.stdout, /\.husky/, "der gefundene Wert gehoert gemeldet");
+  });
+});
+
+// --- Das eigene .githooks in anderer Schreibweise (Issue #833) --------------
+//
+// `core.hooksPath` kann von Hand gesetzt sein, absolut oder mit `./` davor. Das ist
+// das Gate DIESES Repos und kein fremder Hook-Manager: Entschieden wird am
+// aufgeloesten Verzeichnis, nicht am Wortlaut des Werts.
+
+test("[installer-2] ein absoluter core.hooksPath auf das eigene .githooks gilt als gesetzt", () => {
+  mitFixture("install-gate-absolut-", (dir) => {
+    const absolut = join(dir, ".githooks");
+    assert.equal(git(dir, "config", "core.hooksPath", absolut).status, 0);
+    // Eine Antwort WENIGER: Wird die Frage doch gestellt, fehlt eine Zeile und der
+    // Lauf endet rot — genau das soll der Test fangen.
+    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "das eigene Gate loest keine Frage aus");
+    assert.match(res.stdout, /steht bereits auf \.githooks/, "das eingehaengte Gate gehoert als solches gemeldet");
+    assert.equal(hooksPath(dir), absolut, "der gesetzte Wert bleibt unveraendert");
+  });
+});
+
+test("[installer-2] ein core.hooksPath './.githooks' gilt als gesetzt", () => {
+  mitFixture("install-gate-punkt-", (dir) => {
+    assert.equal(git(dir, "config", "core.hooksPath", "./.githooks").status, 0);
+    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "das eigene Gate loest keine Frage aus");
+    assert.match(res.stdout, /steht bereits auf \.githooks/, "das eingehaengte Gate gehoert als solches gemeldet");
+    assert.equal(hooksPath(dir), "./.githooks", "der gesetzte Wert bleibt unveraendert");
+  });
+});
+
+test("[installer-2] ein .githooks in einem anderen Verzeichnis bleibt belegt", () => {
+  mitFixture("install-gate-fremdes-githooks-", (dir) => {
+    // Gleicher Name, anderer Ort: ein fremdes Hook-Verzeichnis, das nicht ueberschrieben
+    // werden darf. Der Name allein entscheidet also nicht.
+    const fremd = join(dir, "anderswo", ".githooks");
+    mkdirSync(fremd, { recursive: true });
+    assert.equal(git(dir, "config", "core.hooksPath", fremd).status, 0);
+    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "bei belegtem Wert wird nicht gefragt");
+    assert.match(res.stdout, /core\.hooksPath ist bereits /, "der gefundene Wert gehoert gemeldet");
+    assert.doesNotMatch(res.stdout, /steht bereits auf \.githooks/, "ein fremdes .githooks ist nicht das eigene");
+    assert.equal(hooksPath(dir), fremd, "ein fremder hooksPath darf nicht ueberschrieben werden");
+  });
+});
+
+test("[installer-2] das eigene .githooks wird auch aus einer alleinigen Installer-Kopie erkannt", () => {
+  mitFixture("install-gate-kopie-", (dir) => {
+    // install.mjs allein, ohne das Repo, aus dem es stammt: Die Wurzel muss aus dem
+    // Arbeitsverzeichnis kommen und nicht aus dem Ort der Datei — sonst zeigte der
+    // Vergleich auf das .githooks des Kit-Repos statt auf das des Zielprojekts.
+    const kopie = join(dir, "install.mjs");
+    writeFileSync(kopie, readFileSync(INSTALLER));
+    const absolut = join(dir, ".githooks");
+    assert.equal(git(dir, "config", "core.hooksPath", absolut).status, 0);
+    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"], {}, [], kopie);
+
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /steht bereits auf \.githooks/, "das eingehaengte Gate gehoert als solches gemeldet");
+    assert.equal(hooksPath(dir), absolut, "der gesetzte Wert bleibt unveraendert");
   });
 });
 

@@ -17,7 +17,7 @@ import { execFile } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setupProjekt, fakeCli, aufrufe, starteServer } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakeCli, aufrufe, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Unter Windows uebersprungen: `fakeCli` legt das Fake-`gh` als endungslose Datei mit
@@ -122,6 +122,9 @@ function runMigrate(dir, cliArgs, extraEnv = {}) {
     PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
     TBX_TOKEN: TOKEN,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
+    // Kurzes Wiederholbudget wie in board-fixture (Issue #842): Ohne die Variable
+    // wiederholt der Adapter bei 5xx bis zum vollen Budget, hier real.
+    KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS,
   }, extraEnv);
   return new Promise((fertig) => {
     execFile(process.execPath, [MIGRATE, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {

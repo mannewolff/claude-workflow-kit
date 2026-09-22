@@ -142,7 +142,7 @@ test("[checks-5] die Freigabestufe faehrt alles, auch bei unberuehrten Bereichen
     assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo verify", "echo release"]);
     assert.deepEqual(ergebnis.ausgelassen, []);
     for (const cmd of ["echo build", "echo verify", "echo release"]) {
-      assert.equal(eintrag(ergebnis.laufen, cmd).grund, "Freigabestufe: voller Umfang");
+      assert.equal(eintrag(ergebnis.laufen, cmd).grund, "Veroeffentlichungsstufe: voller Umfang");
     }
   });
 });

@@ -156,6 +156,7 @@ const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
 const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
 const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "wirksamkeit.mjs");
+const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -207,6 +208,15 @@ const AUFWAND_PATH = process.env.KIT_ROOT
 const WIRKSAMKEIT_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "wirksamkeit.mjs")
   : join(__dirname, "wirksamkeit.mjs");
+
+// Und dasselbe fuer die Befunde (Issue #804, #806): Nach dem Rueckweg aus dem Worktree
+// ruft die Kette `befunde.mjs vorschlag --art <a>` je zurueckgegebener Mangel-Art, und
+// der Lauf-Abschluss ruft `befunde.mjs auswerten`. Beides ist ein Kindprozess und kein
+// Import — die Kommandos schreiben ueber board.mjs ans Board beziehungsweise nach
+// `.claude/` und loesen ihre Pfade gegen das Projekt auf, in dem der Runner arbeitet.
+const BEFUNDE_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "befunde.mjs")
+  : join(__dirname, "befunde.mjs");
 
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
@@ -279,6 +289,17 @@ const { befundText: wirksamkeitBefundText } = existsSync(NACHBAR_WIRKSAMKEIT)
   ? await import(pathToFileURL(NACHBAR_WIRKSAMKEIT).href)
   : { befundText: wirksamkeitBefundTextFallback };
 
+// Und dieselbe Trennung ein drittes Mal fuer die Befunde der Modell-Pruefungen (Issue
+// #806): Auch ihr Befundblock erscheint an zwei Stellen — im Laufprotokoll hier und im
+// Kopf von `/push-main` —, und auch hier faengt befundeAuswerten() den Wurf des Ersatzes
+// ab und macht daraus die eine Protokollzeile, die ein Fehlschlag sein darf.
+const befundeBefundTextFallback = () => {
+  throw new Error(`befunde.mjs liegt nicht neben night.mjs (${NACHBAR_BEFUNDE})`);
+};
+const { befundText: befundeBefundText } = existsSync(NACHBAR_BEFUNDE)
+  ? await import(pathToFileURL(NACHBAR_BEFUNDE).href)
+  : { befundText: befundeBefundTextFallback };
+
 // Nur fuer Tests; der Runner nutzt die Bindungen direkt, nicht ueber dieses Objekt.
 // Ohne den Export ist der Identitaetsnachweis nicht fuehrbar — ob im Regelbetrieb die
 // echte Funktion oder ihr Ersatz gebunden ist, sieht man von aussen sonst an keinem
@@ -294,7 +315,7 @@ export const nachbarn = {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.0.0";
+const KIT_VERSION = "3.1.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const DEFAULT_MAX_SESSIONS = 10;
@@ -675,7 +696,8 @@ function einheitAnlegen(id, titel, modellStand = null) {
   // Dry-Run haengt es an nichts und wird nie geschrieben.
   //
   // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665),
-  // dahinter `stufe` und `stufeVerwendet` (Issue #711). Die Feldreihenfolge ist der Vertrag
+  // dahinter `stufe` und `stufeVerwendet` (Issue #711) und `effort` (Issue #846, die
+  // Gruendlichkeit der verwendeten Stufe). Die Feldreihenfolge ist der Vertrag
   // mit den Auswertungen: Die fuenf alten Namen behalten ihre Plaetze, die neuen kommen
   // hinten an. `schemaFassung` bleibt 1, weil nur Felder hinzukommen. Ohne uebergebenen
   // Stand — die Kette, ein Gate-Rueckfall — tragen sie `null` statt zu fehlen: Ein fehlendes
@@ -692,6 +714,7 @@ function einheitAnlegen(id, titel, modellStand = null) {
     modellGrund: modellStand?.grund ?? null,
     stufe: modellStand?.stufe ?? null,
     stufeVerwendet: modellStand?.stufeVerwendet ?? null,
+    effort: modellStand?.effort ?? null,
     // Die Lauf-Art je Einheit (Issue #669): Die auswertende Seite ordnet ihr den
     // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
     art: LAUF?.art ?? null,
@@ -785,6 +808,20 @@ function wirksamkeitAuswerten() {
   auswertungLaufen(WIRKSAMKEIT_PATH, "wirksamkeit", "Wirksamkeits-Auswertung", wirksamkeitBefundText);
 }
 
+/**
+ * Ruft die Befunde-Auswertung und legt ihr Ergebnis am Lauf-Kopf ab (Issue #806).
+ *
+ * Die dritte Schwester der beiden darueber, ueber dieselbe geteilte Funktion und mit
+ * derselben Zusage: Jeder Fehlschlag ist genau eine Protokollzeile und nie ein `fail()`.
+ * Ihr Befundblock geht als EIGENER Block hinter den der Wirksamkeit; ohne Befund bleibt
+ * das Protokoll an dieser Stelle stumm — und ohne `.claude/befunde.tsv` ist genau das
+ * der Regelfall (AK 12 der Quelle #768): Ein Projekt ohne Modell-Pruefungen sieht nichts
+ * und braucht dafuer keinen Schalter.
+ */
+function befundeAuswerten() {
+  auswertungLaufen(BEFUNDE_PATH, "befunde", "Befunde-Auswertung", befundeBefundText);
+}
+
 // Das Zeitlimit beider Auswertungen (Issue #824, night-67). Ohne Limit haengt der
 // ganze Abschluss an ihnen: `kit/wirksamkeit.mjs` ruft fuer die Ruecklaeuferquote
 // `board.mjs issue activity` und damit das Netz — bleibt der Aufruf stehen, erreichte
@@ -857,11 +894,11 @@ function auswertungLaufen(pfad, feld, bezeichnung, textform) {
  * geht — ginge als unvollstaendig ein. Wer diese Reihenfolge spaeter aendert, nimmt dem
  * Block seine Aussage.
  *
- * BEIDE Auswertungen stehen zwischen den zwei Schreibvorgaengen (Issue #790): erst der
- * Aufwand, dann die Wirksamkeit, dann das zweite Schreiben. Ein Schreibvorgang dazwischen
- * waere nicht falsch, aber ueberfluessig; entscheidend ist, dass der geschriebene Stand
- * am Ende BEIDE Ergebnisse traegt. Die Folge der beiden Aufrufe ist die Folge ihrer
- * Bloecke im Protokoll — der Wirksamkeits-Block steht hinter dem des Aufwands.
+ * ALLE DREI Auswertungen stehen zwischen den zwei Schreibvorgaengen (Issue #790, #806):
+ * erst der Aufwand, dann die Wirksamkeit, dann die Befunde, dann das zweite Schreiben.
+ * Ein Schreibvorgang dazwischen waere nicht falsch, aber ueberfluessig; entscheidend ist,
+ * dass der geschriebene Stand am Ende ALLE DREI Ergebnisse traegt. Die Folge der Aufrufe
+ * ist die Folge ihrer Bloecke im Protokoll — Aufwand, Wirksamkeit, Befunde.
  *
  * Und erst danach `laufMelden()`: Eingeliefert wird der Stand einschliesslich seiner
  * Auswertung, nicht der Stand davor.
@@ -877,6 +914,7 @@ function laufAbschliessen(abschluss) {
   schreibeErgebnisstand();
   aufwandAuswerten();
   wirksamkeitAuswerten();
+  befundeAuswerten();
   schreibeErgebnisstand();
   laufMelden();
 }
@@ -1150,6 +1188,17 @@ export function gitResteAusnahmen(cfg = config) {
   ausnahmen.push(".claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
   ausnahmen.push(".claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
   ausnahmen.push(".claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
+  // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
+  // an: das Protokoll `befunde.tsv` (`befunde buchen` schreibt es, `befundeZurueck` holt
+  // es aus dem Worktree zurueck), die Nullpunkte `befunde-vorschlaege.json` und die
+  // Berichte `befunde.md` und `befunde.json`. Buchhaltung, kein Code-Zustand — und aus
+  // demselben Grund ausgeschlossen wie die vier Dateien der Wirksamkeits-Auswertung
+  // darueber: Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne
+  // den `.claude/*`-Block nach der ersten Buchung hart.
+  ausnahmen.push(".claude/befunde.tsv"); // SYNC: kit/befunde.mjs schreibt sie
+  ausnahmen.push(".claude/befunde-vorschlaege.json"); // SYNC: kit/befunde.mjs liest sie
+  ausnahmen.push(".claude/befunde.md");
+  ausnahmen.push(".claude/befunde.json");
   return ausnahmen;
 }
 
@@ -1326,6 +1375,13 @@ function gitIm(repoRoot, gitArgs) {
  * `bewegungen.tsv`, `ausfuehrungen.tsv`, `wirksamkeit.md` und `wirksamkeit.json` bleiben
  * in der Hauptkopie.
  *
+ * Auch die vier Dateien der Befunde (Plan #797; Issue #803) bleiben zurueck —
+ * `befunde.tsv`, `befunde-vorschlaege.json`, `befunde.md` und `befunde.json`. Fuer
+ * `befunde.tsv` kommt zum Grund der anderen ein zweiter dazu: Der Rueckweg
+ * `befundeZurueck` HAENGT die im Worktree gebuchten Zeilen an die Hauptkopie AN.
+ * Truege der Spiegel die Hauptkopie hinein, kaeme beim Abbau jede alte Zeile doppelt
+ * zurueck; so enthaelt die Datei im Worktree ausschliesslich die Buchungen dieser Kette.
+ *
  * ANNAHME (E12): Bewegungen und Ausfuehrungen, die IM Worktree entstuenden, gingen mit
  * ihm verloren — der Spiegel geht nur in eine Richtung, und nichts holt sie zurueck.
  * Heute trifft das nichts: Die Umsetzungsstufe baut den Worktree
@@ -1335,7 +1391,9 @@ function gitIm(repoRoot, gitArgs) {
  * Board oder faehrt Pruefungen im Worktree), bricht die Erhebung still: Die Auswertung
  * saehe die Bewegungen und Ausfuehrungen jener Stufe nie und meldete darum zu wenig,
  * ohne dass etwas rot wird. Dann muessen die beiden Protokolle aus dem Worktree
- * zurueckgeholt werden.
+ * zurueckgeholt werden. Fuer die Befunde gilt das seit Issue #803 nicht mehr:
+ * `befundeZurueck` holt `befunde.tsv` an beiden Abbaustellen der Kette zurueck — dort
+ * fallen die meisten Buchungen an, denn /issue-review laeuft im Worktree.
  */
 /**
  * Ob ein Eintrag direkt unter `.claude/` in der Hauptkopie zurueckbleibt: die Protokolle
@@ -1347,6 +1405,8 @@ function bleibtInHauptkopie(name) {
   return name.startsWith("night-run-")
     || name.startsWith("aufwand.")
     || name.startsWith("wirksamkeit.")
+    || name.startsWith("befunde.")
+    || name === "befunde-vorschlaege.json"
     || name === "bewegungen.tsv"
     || name === "ausfuehrungen.tsv";
 }
@@ -1389,6 +1449,143 @@ export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
 export function worktreeEntfernen(pfad, repoRoot) {
   gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
   rmSync(pfad, { recursive: true, force: true });
+}
+
+/**
+ * Die Schwelle aus dem Config-Block `befunde` der Hauptkopie (Issue #800).
+ * SYNC: `schwelleLesen` in kit/befunde.mjs — dieselbe Regel samt Vorgabe 3, dupliziert
+ * nach dem Muster #440 und mit `repoRoot` statt `process.cwd()`, denn der Runner steht
+ * beim Abbau nicht zwingend in der Hauptkopie.
+ */
+function befundeSchwelle(repoRoot) {
+  try {
+    const cfg = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    const wert = cfg?.befunde?.schwelle;
+    if (Number.isInteger(wert) && wert > 0) return wert;
+  } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }
+  return 3;
+}
+
+/**
+ * Der Nullpunkt je Art aus `befunde-vorschlaege.json` der Hauptkopie (Plan #797, E11).
+ * SYNC: `nullpunktFuer` in kit/befunde.mjs — dupliziert wie die Schwelle darueber.
+ */
+function befundeNullpunkt(repoRoot, art) {
+  try {
+    const daten = JSON.parse(readFileSync(join(repoRoot, ".claude", "befunde-vorschlaege.json"), "utf-8"));
+    const wert = daten?.[art]?.nullpunkt;
+    if (Number.isInteger(wert) && wert >= 0) return wert;
+  } catch { /* keine Vorschlagsdatei ist der Regelfall — Nullpunkt null. */ }
+  return 0;
+}
+
+/** Der Zaehlerstand je Art (Spalte 5) aus Protokollzeilen; fehlerhafte Zeilen zaehlen nicht.
+ *  SYNC: `zaehleArten` in kit/befunde.mjs. */
+function befundeArtenZaehlen(zeilen) {
+  const zaehler = new Map();
+  for (const zeile of zeilen) {
+    const spalten = zeile.split("\t");
+    if (spalten.length < 7) continue;
+    zaehler.set(spalten[4], (zaehler.get(spalten[4]) ?? 0) + 1);
+  }
+  return zaehler;
+}
+
+/** Die Zeilen einer `befunde.tsv`; eine fehlende oder unlesbare Datei zaehlt als keine. */
+function befundeZeilen(pfad) {
+  try {
+    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Holt die im Worktree gebuchten Befunde in die Hauptkopie zurueck (Issue #803, night-69).
+ *
+ * ANHAENGEND, nie kopierend (Plan #797, E8): Der Spiegel traegt `befunde.tsv` gar nicht
+ * erst in den Worktree, die Datei dort enthaelt also ausschliesslich die Buchungen dieser
+ * Kette — und Kopieren ueberschriebe die Hauptkopie und loeschte jede fruehere Zeile.
+ *
+ * Die Schwelle prueft der Rueckweg selbst, am GESAMTSTAND der Hauptkopie nach dem
+ * Anhaengen (E20, Fund B1 der Plan-Pruefung): Der Worktree zaehlt ab null — stehen zwei
+ * Vorkommen in der Hauptkopie und kommt das dritte in der Kette, sah `buchen` dort den
+ * Stand 1 und schwieg. Zurueck kommen nur die BERUEHRTEN Arten, die die Schwelle
+ * (oberhalb ihres Nullpunkts, wie bei `buchen`) erreichen; der Aufrufer macht daraus je
+ * Art einen Vorschlag (Issue #804).
+ *
+ * Fehlt die Datei im Worktree, bleibt die Hauptkopie unberuehrt. Ein gescheitertes
+ * Anhaengen ist ein Hinweis im Protokoll und haelt den Abbau nicht auf — das Protokoll
+ * ist Buchhaltung, keine Bedingung (Muster checks-7).
+ */
+export function befundeZurueck(pfad, repoRoot) {
+  const zeilen = befundeZeilen(join(pfad, ".claude", "befunde.tsv"));
+  if (zeilen.length === 0) return [];
+
+  const ziel = join(repoRoot, ".claude", "befunde.tsv");
+  try {
+    mkdirSync(dirname(ziel), { recursive: true });
+    appendFileSync(ziel, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
+  } catch (e) {
+    log(`Hinweis: Befunde aus dem Worktree nicht zurueckgeholt (${ziel}): ${e.message} — der Abbau geht weiter.`);
+    return [];
+  }
+
+  const beruehrt = befundeArtenZaehlen(zeilen);
+  const stand = befundeArtenZaehlen(befundeZeilen(ziel));
+  const schwelle = befundeSchwelle(repoRoot);
+  return [...beruehrt.keys()].sort()
+    .filter((art) => (stand.get(art) ?? 0) - befundeNullpunkt(repoRoot, art) >= schwelle);
+}
+
+/**
+ * Ruft `befunde.mjs vorschlag --art <a>` fuer eine Mangel-Art an der Schwelle
+ * (Issue #804, night-70) und protokolliert das Ergebnis in genau einer Zeile.
+ *
+ * KEIN GATE, wie bei den Auswertungen (E9): Ein Fehlschlag — fehlendes Werkzeug,
+ * unerreichbares Board, unlesbare Zustandsdatei — ist eine Protokollzeile und haelt den
+ * Abbau des Worktrees nicht auf. Auf dem Spiel steht ein Vorschlag, den ein Mensch
+ * ohnehin erst bewerten muss; der Abbau dagegen raeumt einen Worktree weg, dessen
+ * Liegenbleiben den naechsten Lauf stoert.
+ */
+function befundeVorschlagen(repoRoot, art) {
+  try {
+    if (!existsSync(BEFUNDE_PATH)) throw new Error(`${BEFUNDE_PATH} liegt nicht vor`);
+    const res = spawnSync(process.execPath, [BEFUNDE_PATH, "vorschlag", "--art", art], {
+      encoding: "utf-8", cwd: repoRoot, maxBuffer: BOARD_MAX_BUFFER,
+    });
+    if (res.error) throw new Error(`liess sich nicht starten: ${res.error.message}`);
+    let stand;
+    try {
+      stand = JSON.parse(res.stdout);
+    } catch (err) {
+      throw new Error(`Ausgabe nicht lesbar: ${err.message}`);
+    }
+    if (res.status !== 0 || stand?.ok !== true) throw new Error(stand?.fehler || `Exit ${res.status}`);
+    const kennung = stand.karte === null ? `Pool-Idee ${stand.ideaId}` : `Karte ${stand.karte}`;
+    if (stand.angelegt) log(`  Vorschlag fuer '${art}' angelegt: ${kennung} — ${stand.titel}`);
+    else if (stand.ergaenzt) log(`  Vorschlag fuer '${art}' ergaenzt: Karte ${stand.karte}, Stand ${stand.zaehlerstand}.`);
+    else log(`  Kein Vorschlag fuer '${art}': ${stand.grund}`);
+  } catch (err) {
+    log(`Vorschlag fuer '${art}' fehlgeschlagen: ${err.message} — der Abbau geht weiter.`);
+  }
+}
+
+/**
+ * Der Rueckweg unmittelbar vor einem Worktree-Abbau der Kette — an BEIDEN Abbaustellen
+ * gerufen: vor der Stufe umsetzung und im finally am Kettenende. Das Nullen von
+ * `kette.wt` nach dem ersten Abbau verhindert den zweiten Lauf und damit doppeltes
+ * Anhaengen; die Arten an der Schwelle stehen als eine Zeile im Protokoll.
+ *
+ * Je zurueckgegebener Art folgt ein `befunde.mjs vorschlag --art <a>` (Issue #804):
+ * Hier — am Anlass — und nicht erst beim naechsten `push main`, weil ein zweiter Ort
+ * ein zweiter Zeitpunkt waere, zu dem dieselbe Zahl anders herauskommen kann (E9).
+ */
+function kettenBefundeZurueck(kette) {
+  const arten = befundeZurueck(kette.wt, kette.repoRoot);
+  if (arten.length === 0) return;
+  log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
+  for (const art of arten) befundeVorschlagen(kette.repoRoot, art);
 }
 
 /**
@@ -2253,8 +2450,8 @@ export function aufgabenStufe(body) {
 const alsText = (wert) => (typeof wert === "string" && wert.trim() !== "" ? wert : null);
 
 /**
- * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name }`
- * (Issue #709).
+ * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name, effort }`
+ * (Issue #709, erweitert um #846).
  *
  * Leere Stufen werden weggeworfen: Was weder `modell` noch `kommando` traegt, ist keine
  * Stufe, sondern eine Luecke — und eine Luecke soll zum Ausweichen nach oben fuehren und
@@ -2275,7 +2472,10 @@ export function stufenEinstellung(config) {
       const modell = alsText(eintrag.modell);
       const kommando = alsText(eintrag.kommando);
       if (!modell && !kommando) continue;
-      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name) };
+      // `effort` gehoert zum Eintrag und nicht zum Paket (Issue #846): Modell und
+      // Gruendlichkeit kommen als Paar aus EINER Stufe, damit ein Ausweichen nach oben
+      // nicht das Modell der einen mit der Gruendlichkeit der anderen mischt.
+      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name), effort: alsText(eintrag.effort) };
     }
   }
   return { aktiv: Object.keys(stufen).length > 0, stufen };
@@ -2388,7 +2588,9 @@ const gruendeFassen = (...teile) => {
  *   4. Sonst das Modell des Laufs.
  *
  * Rueckgabe: `{ modell, herkunft, grund, stufe, stufeVerwendet, kommando, stufenName,
- * startbar }`. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
+ * effort, startbar }`. `effort` ist die Gruendlichkeit der verwendeten Stufe (Issue #846)
+ * und `null`, wo die Stufe das Modell nicht gestellt hat — bei `herkunft` `karte` und
+ * `lauf` — sowie im Kommando-Zweig. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
  * Ebene startet — dann darf **keine** Session beginnen (Kriterium 10), und der Aufrufer
  * verbucht das Paket als Fehlschlag. `herkunft` kennt `karte`, `stufe` und `lauf`.
  *
@@ -2400,7 +2602,7 @@ const gruendeFassen = (...teile) => {
 export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
   const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(body, erlaubteModelle);
   const { stufe, grund: stufenGrund } = aufgabenStufe(body);
-  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, startbar: true };
+  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, effort: null, startbar: true };
 
   if (ausKarte) {
     // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
@@ -2427,6 +2629,11 @@ export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
     stufeVerwendet,
     kommando: eintrag.kommando,
     stufenName: eintrag.name,
+    // Die Gruendlichkeit der WIRKLICH verwendeten Stufe (Issue #846) — dieselbe Stufe,
+    // die auch das Modell stellt. Im Kommando-Zweig bleibt sie null: Dort startet ein
+    // fremdes Programm, das `--effort` nicht kennt; das Schema verbietet das Feld dort
+    // ohnehin, und diese Zeile verlaesst sich nicht darauf.
+    effort: eintrag.kommando ? null : (eintrag.effort ?? null),
     modell: eintrag.modell ?? selbstauskunft,
     herkunft: "stufe",
     grund: gruendeFassen(grund),
@@ -2706,8 +2913,11 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
  *
  * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
  * darum in jedem der drei Wege.
+ *
+ * Exportiert fuer die Tests (Issue #846): `NIGHT_CLAUDE_CMD` ersetzt den ganzen Aufruf,
+ * eine Fake-Session sieht die gebaute Kommandozeile also nie.
  */
-function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
+export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
   if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
 
@@ -2726,9 +2936,13 @@ function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
   // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
   const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
+  // Die Gruendlichkeit der Stufe (Issue #846). Nur hier, und nur wenn gesetzt: Ohne das
+  // Flag gilt die Voreinstellung der CLI, und eine Stufe ohne `effort` faehrt damit
+  // zeichengleich zu vorher.
+  const effortArgs = alsText(opts.effort) ? ["--effort", opts.effort] : [];
   return {
     cmd: "claude",
-    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs],
+    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs, ...effortArgs],
   };
 }
 
@@ -4555,6 +4769,7 @@ function paketeAbschliessen(stand, gezogen) {
       const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
       stand.umgesetzt.push({
         id, stufe: einheit?.stufe ?? null, stufeVerwendet: einheit?.stufeVerwendet ?? null, modell: einheit?.modell ?? null,
+        effort: einheit?.effort ?? null,
       });
       continue;
     }
@@ -4693,6 +4908,7 @@ async function stufeUmsetzung(kette, paketIds) {
 
   try {
     if (kette.wt) {
+      kettenBefundeZurueck(kette);
       worktreeEntfernen(kette.wt, kette.repoRoot);
       kette.wt = null;
       log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
@@ -4887,11 +5103,15 @@ function berichtUmsetzungMitGrund(pakete, id, grund) {
 function berichtUmsetzungStufe(eintrag) {
   const stufe = eintrag && typeof eintrag === "object" ? eintrag.stufe : null;
   if (!stufe) return "ohne Stufe";
-  const { stufeVerwendet, modell } = eintrag;
+  const { stufeVerwendet, modell, effort } = eintrag;
   const stufeText = stufeVerwendet && stufeVerwendet !== stufe
     ? `Aufgabenstufe ${stufe}, ueber Stufe ${stufeVerwendet}`
     : `Aufgabenstufe ${stufe}`;
-  return modell ? `${stufeText}, Modell ${modell}` : stufeText;
+  // Die Gruendlichkeit hinten und nur, wenn gesetzt (Issue #846) — dieselbe Regel wie in
+  // `rundenHinweis` und im Dry-Run; ein Eintrag aus einem aelteren Ergebnisstand kennt
+  // das Feld nicht und erscheint darum wie bisher.
+  const effortText = effort ? `, Gruendlichkeit ${effort}` : "";
+  return modell ? `${stufeText}, Modell ${modell}${effortText}` : `${stufeText}${effortText}`;
 }
 
 function berichtUmsetzungEintrag(pakete, eintrag) {
@@ -5286,7 +5506,10 @@ async function laufeEineKette(kandidat, nummer, args) {
     // Worktrees.
     einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
   } finally {
-    if (kette.wt) worktreeEntfernen(kette.wt, kette.repoRoot);
+    if (kette.wt) {
+      kettenBefundeZurueck(kette);
+      worktreeEntfernen(kette.wt, kette.repoRoot);
+    }
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
@@ -5381,14 +5604,18 @@ export async function laufeKette(args) {
  * bzw. `, Stufe leicht nicht belegt, Modell <x> (Stufe mittel)`). Herkunft "karte" und
  * "lauf" bleiben wortgleich mit der Zeile von vor der Stufen-Einstellung.
  */
-function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund }) {
+function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund, effort }) {
   if (herkunft === "karte") return `, Modell ${modell} (Karte)`;
   if (herkunft === "lauf") {
     const nachsatz = grund ? ` — ${grund}` : "";
     return `, Modell ${modell} (Lauf)${nachsatz}`;
   }
   const stufeText = stufeVerwendet === stufe ? `Stufe ${stufe}` : `Stufe ${stufe} nicht belegt`;
-  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})`;
+  // Die Gruendlichkeit steht hinten und nur, wenn sie gesetzt ist (Issue #846): Wer vor
+  // der Nacht prueft, WOMIT ein Paket liefe, prueft auch, wie gruendlich — ohne sie bleibt
+  // die Zeile zeichengleich mit der von vor dieser Aenderung.
+  const effortText = effort ? `, Gruendlichkeit ${effort}` : "";
+  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})${effortText}`;
 }
 
 function dryRunBefund(issue, ctx, assumedDone) {
@@ -6092,18 +6319,23 @@ function stufenFelderAuffrischen() {
 }
 
 /**
- * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711).
+ * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711
+ * und #846).
  *
  * Sie erscheint nur, wenn es etwas zu sagen gibt — eine Stufe im Spiel oder ein Grund.
  * Ein Paket ohne beides protokolliert wie bisher nichts: Eine Zeile je Paket, die nur
  * "Modell des Laufs" wiederholt, machte die interessanten Zeilen unsichtbar.
  */
-function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet }) {
+function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet, effort }) {
   if (!stufe && !grund) return null;
   const teile = [];
   if (stufe) teile.push(`Aufgabenstufe ${stufe}`);
   teile.push(modell ? `Modell ${modell} (${herkunft})` : `kein Modell (${herkunft})`);
   if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(`ueber Stufe ${stufeVerwendet}`);
+  // Nur wenn gesetzt (Issue #846): Ohne Gruendlichkeit bleibt die Zeile wortgleich mit
+  // der von vorher — eine Stufe ohne `effort` faehrt mit der Voreinstellung der CLI, und
+  // das ist keine Auskunft, die eine eigene Angabe verdient.
+  if (effort) teile.push(`Gruendlichkeit ${effort}`);
   return grund ? `${teile.join(", ")} — ${grund}` : teile.join(", ");
 }
 
@@ -6191,9 +6423,12 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Womit die Session startet (Issue #711): Modellname oder die Kommandozeile der Stufe.
   // Dasselbe Buendel geht spaeter an die Salvage-Session desselben Pakets — sie prueft den
   // Zwischenstand der regulaeren Runde und muss dafuer auf demselben Weg laufen.
+  // `effort` gehoert ins selbe Buendel (Issue #846): Es ist die Gruendlichkeit der Stufe,
+  // die auch das Modell gestellt hat, und die Salvage-Session desselben Pakets soll auf
+  // demselben Weg laufen — mit demselben Modell und derselben Gruendlichkeit.
   const sessionWahl = modellStand.kommando
     ? { model: modellStand.modell, kommando: modellStand.kommando, stufenName: modellStand.stufenName, aufgabenstufe: modellStand.stufe }
-    : { model: modellStand.modell };
+    : { model: modellStand.modell, effort: modellStand.effort };
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
   // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`

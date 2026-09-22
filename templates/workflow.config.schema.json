@@ -540,6 +540,17 @@
                   "pattern": "^claude-",
                   "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
                 },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                },
                 "kommando": {
                   "type": "string",
                   "minLength": 1,
@@ -570,6 +581,9 @@
                     "required": [
                       "modell"
                     ]
+                  },
+                  "properties": {
+                    "effort": false
                   }
                 }
               ]
@@ -584,6 +598,17 @@
                   "pattern": "^claude-",
                   "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
                 },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                },
                 "kommando": {
                   "type": "string",
                   "minLength": 1,
@@ -614,6 +639,9 @@
                     "required": [
                       "modell"
                     ]
+                  },
+                  "properties": {
+                    "effort": false
                   }
                 }
               ]
@@ -628,6 +656,17 @@
                   "pattern": "^claude-",
                   "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
                 },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ],
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                },
                 "kommando": {
                   "type": "string",
                   "minLength": 1,
@@ -658,6 +697,9 @@
                     "required": [
                       "modell"
                     ]
+                  },
+                  "properties": {
+                    "effort": false
                   }
                 }
               ]
@@ -754,6 +796,20 @@
           "exclusiveMinimum": 0,
           "default": 200,
           "description": "Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "befunde": {
+      "type": "object",
+      "description": "Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Gilt für alle Prüfungen, die Funde buchen — den Issue-Review ebenso wie den Code-Review, der nicht unter issueReview hängt; deshalb ein eigener Block. Optional — fehlt der Block oder das Feld darin, gilt die eingebaute Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert, weil zwei Menschen mit verschiedenen Schwellen im selben Projekt verschiedene Vorschläge aus denselben Funden erzeugten.",
+      "properties": {
+        "schwelle": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 3,
+          "description": "Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Darunter ist ein Fund ein Einzelfall und keine Regel."
         }
       },
       "required": [],

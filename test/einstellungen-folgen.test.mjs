@@ -24,6 +24,19 @@ import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
 
+/**
+ * Die echte Konfiguration mit den Kommandos in ihrer frueheren Stringform und ohne Bereiche.
+ *
+ * Seit Issue #850 traegt die echte Datei `checkAreas` und drei `node --test`-Eintraege in
+ * Objektform. Die Tests zur Stringform und zu fremden Bereichen fragen aber nach einer Datei,
+ * deren Kommandos Strings sind und keinen Bereich nennen: Mit den echten Bereichen stuenden
+ * dort Befunde, die mit der gepruften Regel nichts zu tun haben. Alles uebrige bleibt echt.
+ */
+const ECHT_ALS_STRINGS = (() => {
+  const { checkAreas: _bereiche, ...rest } = ECHT;
+  return { ...rest, buildChecks: ["node --test", "node tools/sync-blobs.mjs --check", "npx eslint kit tools test install.mjs .githooks"] };
+})();
+
 /** Ein Wegwerf-Projekt mit der echten Konfiguration dieses Projekts. */
 function wegwerfProjekt(team = ECHT) {
   const wurzel = mkdtempSync(join(tmpdir(), "einstellungen-folgen-"));
@@ -348,10 +361,10 @@ test("[einstellungen-12] bereichsFolgen ohne Umbenennung, ohne Entfernung und oh
 // ============================================================
 
 test("[einstellungen-2] die drei Kommandostrings dieses Projekts bleiben nach einer anderen Aenderung Strings", async () => {
-  // Das Akzeptanzkriterium des Pakets: Die `buildChecks` der echten Datei sind drei Strings.
-  assert.ok(ECHT.buildChecks.length >= 3, "die echte Datei traegt keine drei Kommandos mehr");
-  for (const eintrag of ECHT.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
-  await mitProjekt(ECHT, async (p) => {
+  // Das Akzeptanzkriterium des Pakets: Drei Kommandos in Stringform bleiben Strings.
+  assert.ok(ECHT_ALS_STRINGS.buildChecks.length >= 3, "die Vorlage traegt keine drei Kommandos mehr");
+  for (const eintrag of ECHT_ALS_STRINGS.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
+  await mitProjekt(ECHT_ALS_STRINGS, async (p) => {
     const res = speichere(p.projekt, {
       hashes: p.hashes(),
       ebene: "team",
@@ -360,14 +373,14 @@ test("[einstellungen-2] die drei Kommandostrings dieses Projekts bleiben nach ei
     }, p.optionen);
     assert.equal(res.status, 200, JSON.stringify(res.body));
     const datei = p.gespeichert();
-    assert.deepEqual(datei.buildChecks, ECHT.buildChecks, "die Kommandos wurden mitgeschrieben");
+    assert.deepEqual(datei.buildChecks, ECHT_ALS_STRINGS.buildChecks, "die Kommandos wurden mitgeschrieben");
     for (const eintrag of datei.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
   });
 });
 
 test("[einstellungen-2] eine Aenderung an einem Kommandostring laesst die Nachbarn als Strings stehen", async () => {
-  await mitProjekt(ECHT, async (p) => {
-    const geaendert = ECHT.buildChecks.map((e, i) => (i === 0 ? checkSetzen(e, { cmd: `${e} --concurrency 4` }) : e));
+  await mitProjekt(ECHT_ALS_STRINGS, async (p) => {
+    const geaendert = ECHT_ALS_STRINGS.buildChecks.map((e, i) => (i === 0 ? checkSetzen(e, { cmd: `${e} --concurrency 4` }) : e));
     const res = speichere(p.projekt, {
       hashes: p.hashes(),
       ebene: "team",
@@ -376,7 +389,7 @@ test("[einstellungen-2] eine Aenderung an einem Kommandostring laesst die Nachba
     }, p.optionen);
     assert.equal(res.status, 200, JSON.stringify(res.body));
     const datei = p.gespeichert();
-    assert.equal(datei.buildChecks[0], `${ECHT.buildChecks[0]} --concurrency 4`);
+    assert.equal(datei.buildChecks[0], `${ECHT_ALS_STRINGS.buildChecks[0]} --concurrency 4`);
     for (const eintrag of datei.buildChecks) assert.equal(typeof eintrag, "string", JSON.stringify(eintrag));
     // Und die Datei traegt weiter drei Zeilen in Stringform, keine aufgeblaehten Objekte.
     const text = readFileSync(p.datei, "utf-8");
@@ -386,7 +399,7 @@ test("[einstellungen-2] eine Aenderung an einem Kommandostring laesst die Nachba
 });
 
 test("[einstellungen-12] ein Kommando mit einem Bereich, den checkAreas nicht kennt, ergibt einen Befund am Pfad seiner Zeile", async () => {
-  const team = { ...ECHT, buildChecks: [...ECHT.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
+  const team = { ...ECHT_ALS_STRINGS, buildChecks: [...ECHT_ALS_STRINGS.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
   await mitProjekt(team, async (p) => {
     const zustand = projektZustand(p.projekt, p.optionen);
     const eintraege = Object.values(zustand.themen).flat().flatMap((t) => t.eintraege);
@@ -399,7 +412,7 @@ test("[einstellungen-12] ein Kommando mit einem Bereich, den checkAreas nicht ke
 });
 
 test("[einstellungen-12] ein unbekannter Bereich haelt eine unabhaengige Aenderung nicht auf", async () => {
-  const team = { ...ECHT, buildChecks: [...ECHT.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
+  const team = { ...ECHT_ALS_STRINGS, buildChecks: [...ECHT_ALS_STRINGS.buildChecks, { cmd: "eslint", areas: ["erfunden"] }], checkAreas: { kit: ["kit/**"] } };
   await mitProjekt(team, async (p) => {
     const res = speichere(p.projekt, {
       hashes: p.hashes(),
@@ -415,7 +428,7 @@ test("[einstellungen-12] ein unbekannter Bereich haelt eine unabhaengige Aenderu
 });
 
 test("[einstellungen-13] ein Bereich ohne Muster laesst sich speichern, ein areas ohne Eintrag nicht", async () => {
-  await mitProjekt(ECHT, async (p) => {
+  await mitProjekt(ECHT_ALS_STRINGS, async (p) => {
     // Kriterium 20: Ein Bereich ohne Muster erfasst nichts — das ist eine Warnung und haelt
     // das Speichern nicht auf.
     const wert = { kit: ["kit/**"], leer: [] };

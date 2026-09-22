@@ -73,11 +73,13 @@ Du bist Code-Reviewer. Du hast keinen Kontext über die Implementierungs-Session
 3. Qualität: fehlende Tests, unklare Benennung, unnötige Komplexität
 4. Architektur: Brüche gegen erkennbare Konventionen, unnötige Abhängigkeiten
 
-Für jeden Fund:
-- Datei und Zeile (wenn aus dem Material ableitbar)
-- Schweregrad: KRITISCH / WICHTIG / HINWEIS
-- Konkrete Beschreibung des Problems
-- Vorschlag zur Behebung
+Für jeden Fund ein Block mit diesen Angaben:
+- Schweregrad KRITISCH / WICHTIG / HINWEIS als fette Kopfzeile
+- Datei und Zeile (wenn aus dem Material ableitbar), konkrete Beschreibung des Problems und ein Vorschlag zur Behebung
+- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
+- Art: <name> aus dieser Liste, nur der Name:
+{{ARTEN}}
+Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
 
 Wenn du nichts findest: schreibe das explizit, nicht "alles gut".
 
@@ -85,7 +87,7 @@ Wenn du nichts findest: schreibe das explizit, nicht "alles gut".
 {{REVIEW_MATERIAL}}
 ```
 
-Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext.
+Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext. **Die Artenliste wird nicht abgeschrieben:** `{{ARTEN}}` füllt die Session vor dem Start aus der Ausgabe von `node .claude/kit/befunde.mjs arten` — je Art eine Zeile aus Name und erklärendem Satz. Zwei Orte für denselben Wortlaut driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt.
 
 ### 3. Ergebnis dokumentieren
 
@@ -108,6 +110,12 @@ cat >> <tmpdir>/id-review.md <<'TEIL2'
 … weitere Stuecke, je hoechstens 6.000 Zeichen …
 TEIL2
 ```
+
+```bash
+node .claude/kit/befunde.mjs pruefen --datei <tmpdir>/id-review.md
+```
+
+Meldet das Kommando fehlende Angaben, fordert die Session sie beim Reviewer genau **einmal** nach und schreibt die Datei neu. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile im Kommentar. Der Kommentar geht in jedem dieser Fälle ans Board — der Ausfallpfad aus Schritt 2 bleibt davon unberührt, denn ein Review, der nicht lief, liefert nichts:
 
 ```bash
 node .claude/kit/board.mjs issue comment <ISSUE-NUMMER> --text-file <tmpdir>/id-review.md

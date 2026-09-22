@@ -127,7 +127,12 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Pa
   mitRepo({ config: gueteConfig(80) }, (dir) => {
     const ergebnis = plan(dir, "--stufe", "push");
 
-    assert.equal(ergebnis.leeresPaket, true, "das Paket ist leer, und das steht auch so da");
+    // Seit Issue #849 faehrt die Push-Stufe ohnehin jede faellige Pruefung, und
+    // `leeresPaket` bleibt dort false. Die Guetemessung behaelt trotzdem ihren
+    // EIGENEN Grund: Ihre Regel steht in `verteilen` vor der Stufenauswahl und
+    // gilt damit unabhaengig davon, welche Auswahlbahn `planen` nimmt.
+    assert.equal(ergebnis.leeresPaket, false, "an der Push-Stufe greift die Leerpaket-Auslassung nicht");
+    assert.deepEqual(ergebnis.geaendert, [], "das Paket ist trotzdem leer, und das steht auch so da");
     assert.deepEqual(kommandos(ergebnis.laufen), [MISST_84]);
     assert.equal(
       eintrag(ergebnis.laufen, MISST_84).grund,
