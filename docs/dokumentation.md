@@ -1661,6 +1661,8 @@ Ein Nachtlauf schickt Hunderte Board-Befehle in Folge. Das Board begrenzt sie se
 
 Deshalb hat jeder Toolbox-Aufruf eine **Zeitgrenze je Versuch** (10 Sekunden), eine **Wiederholschleife** mit wachsender Wartezeit und Streuung und ein **Gesamtbudget**: 30 Sekunden interaktiv, 120 Sekunden bei gesetztem `KIT_AGENT_MODEL` — dasselbe Signal wie beim Header `X-Agent-Model`. Nachts sitzt niemand daneben, den zwei Minuten stören; interaktiv ist eine halbe Minute die Grenze des Erträglichen. `Retry-After` schlägt die eigene Staffel: Der Server weiß besser, wann sein Fenster wieder offen ist.
 
+**`KIT_TOOLBOX_BUDGET_MS`** setzt das Gesamtbudget ausdrücklich in Millisekunden und schlägt beide Regelwerte; nur ein positiver ganzzahliger Wert gilt, alles andere fällt auf die Regel zurück. Gedacht ist die Variable für Tests, die `board.mjs` als eigenen Prozess gegen einen dauerhaft fehlerhaft antwortenden Server starten — dort wird real gewartet, und ohne kurzes Budget kostet jeder Aufruf die vollen zwei Minuten. Sie wirkt bewusst überall und nicht nur unter Test: Eine nicht genannte Hintertür, die Verhalten ändert, wäre schlechter als eine dokumentierte Stellschraube.
+
 **Wiederholt wird nur, wo es gefahrlos ist:**
 
 | Fall | Wiederholung | Warum |

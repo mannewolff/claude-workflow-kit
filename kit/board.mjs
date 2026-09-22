@@ -1598,8 +1598,18 @@ const NETZ_ENDGUELTIG = new Set(["ECONNREFUSED", "ENOTFOUND", "ERR_INVALID_URL",
  * Ist KIT_AGENT_MODEL gesetzt, laeuft der Aufruf unbeaufsichtigt im Nachtbetrieb
  * und darf laenger auf ein ueberlastetes Board warten — dort sitzt niemand, den
  * zwei Minuten stoeren. Interaktiv ist eine halbe Minute die Grenze des Ertraeglichen.
+ *
+ * KIT_TOOLBOX_BUDGET_MS setzt das Budget ausdruecklich in Millisekunden und schlaegt
+ * beide Regelwerte (Issue #842). Der Anlass sind Tests, die board.mjs als eigenen
+ * Prozess gegen einen dauerhaft mit 5xx antwortenden Server starten: Dort greift die
+ * gestellte Uhr der Unit-Tests nicht, und jeder Aufruf liefe bis zum vollen Budget.
+ * Die Variable wirkt bewusst ueberall und nicht nur unter Test — eine nicht genannte
+ * Hintertuer, die Verhalten aendert, waere schlechter als eine dokumentierte Stellschraube.
+ * Es gilt nur ein positiver ganzzahliger Wert; alles andere faellt auf die Regel zurueck.
  */
 export function toolboxBudgetMs(env = process.env) {
+  const gesetzt = Number(String(env.KIT_TOOLBOX_BUDGET_MS ?? "").trim());
+  if (Number.isInteger(gesetzt) && gesetzt > 0) return gesetzt;
   return (env.KIT_AGENT_MODEL || "").trim() ? TOOLBOX_BUDGET_NACHT_MS : TOOLBOX_BUDGET_INTERAKTIV_MS;
 }
 

@@ -17,7 +17,7 @@ import { execFile } from "node:child_process";
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setupProjekt, fakeCli, starteServer } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
@@ -107,6 +107,7 @@ function runMigrate(dir, cliArgs) {
     PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
     TBX_TOKEN: TOKEN,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
+    KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // kurzes Wiederholbudget (Issue #842)
   });
   return new Promise((fertig) => {
     execFile(process.execPath, [MIGRATE, ...cliArgs], { cwd: dir, env }, (err, stdout, stderr) => {
