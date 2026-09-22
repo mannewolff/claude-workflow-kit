@@ -435,6 +435,10 @@ test("night.modelle: die ausgelieferte Vorlage traegt die Liste", () => {
 function alleProperties(knoten, pfad = "", out = []) {
   if (!istObjekt(knoten)) return out;
   for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
+    // Ein Boolean-Teilschema (`"effort": false` im kommando-Zweig, Issue #845) verbietet
+    // ein Feld an dieser Stelle. Es beschreibt keine Einstellung — Oberflaeche und Doku
+    // zeigen es nie, und eine description waere dort nichts als eine zweite Erklaerung.
+    if (kind === false) continue;
     const p = pfad ? `${pfad}.${name}` : name;
     out.push([p, kind]);
     alleProperties(kind, p, out);
