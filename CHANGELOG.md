@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.8] - 2026-09-22
+- Worktree-Spiegel ohne Pfadvergleich, damit er unter Windows filtert (#832)
+
 ## [2.0.7] - 2026-09-22
 - SDD-Rueckbau 5: Doku und specs/ entfernen (#831)
 - SDD-Rueckbau 3: Nacht-Runner ohne Vorhaben-Notizen, SYNC-Kommentare (#829)
