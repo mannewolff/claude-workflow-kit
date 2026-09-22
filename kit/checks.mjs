@@ -266,8 +266,14 @@ const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
  * '/' als Trenner. Ein '**' samt folgendem Trenner darf ganz verschwinden, damit
  * ein Muster wie "doppelstern, Trenner, *.md" auch eine Datei im
  * Wurzelverzeichnis trifft und nicht erst eine in einem Unterverzeichnis.
+ *
+ * Exportiert, damit test/config-teile.test.mjs die Teile dieses Repos gegen
+ * `git ls-files` prueft, ohne die Aufloesung ein zweites Mal zu schreiben
+ * (Issue #850) — derselbe Grund wie bei `blobHashes` fuer befunde.mjs: Ab der
+ * ersten Abweichung bescheinigte die zweite Fassung eine Abdeckung, die das
+ * ausfuehrende Kommando nicht sieht.
  */
-function globZuRegex(muster) {
+export function globZuRegex(muster) {
   let quelle = "";
   let i = 0;
   while (i < muster.length) {
@@ -287,7 +293,8 @@ function globZuRegex(muster) {
   return new RegExp(`^${quelle}$`);
 }
 
-function bereicheVorbereiten(checkAreas) {
+/** Die Teile aus der Config als fertige Regexe. Exportiert aus demselben Grund wie `globZuRegex`. */
+export function bereicheVorbereiten(checkAreas) {
   return Object.entries(checkAreas).map(([name, muster]) => ({
     name,
     regexe: (muster ?? []).map((m) => globZuRegex(m)),

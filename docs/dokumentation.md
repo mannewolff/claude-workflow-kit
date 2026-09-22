@@ -300,6 +300,20 @@ Die Wandzeit selbst steht als `duration_ms` am Ende eines gewöhnlichen `node --
 
 Die Zahlen gelten für die Maschine, auf der gemessen wurde, und veralten mit jedem neuen Test. Wer die Liste braucht, erhebt sie neu, statt eine ältere fortzuschreiben.
 
+### Die Eingrenzung im Kit selbst
+
+Das Kit bringt die bereichsbezogene Auswahl seit Langem mit, hat sie im eigenen Repo aber lange nicht benutzt: Ohne `checkAreas` und mit `node --test` als einzigem Eintrag meldete jeder Prüfstand vollen Umfang. Wie die Eingrenzung in einem gewachsenen Projekt aussieht, lässt sich deshalb hier nachlesen — mit allen Zugeständnissen, die sie kostet.
+
+**Sechs Teile.** `nachtrunner`, `board`, `pruefungen`, `einstellungen`, `installer` und `skills-doku`. Sie überschneiden sich absichtlich: `kit/preise.mjs` liegt in drei Teilen, `kit/**` steht sowohl im `installer` als auch in `skills-doku`, weil der Installer jede Kit-Datei als Blob ausliefert und die Doku ihre Kommandos beschreibt. Ein Teil ist kein Eigentum an einer Datei, sondern die Antwort auf die Frage „welche Prüfung muss laufen, wenn sich das hier ändert?" — und auf die darf mehr als ein Teil mit Ja antworten.
+
+**Drei Testaufrufe, nicht sechs.** Die Testsuite zerfällt nicht in sechs unabhängige Stücke, weil die Kit-Werkzeuge einander laden: `kit/night.mjs` zieht `board.mjs`, `checks.mjs`, `aufwand.mjs`, `wirksamkeit.mjs` und `befunde.mjs` nach, `.githooks/gate.mjs` lädt `checks.mjs`, und knapp fünfzig Nacht-Tests nennen `board.mjs`. Dazu kommt, dass `checks.mjs run` die Einträge **nacheinander** fährt: Jeder zusätzliche Eintrag verlängert den vollen Umfang um den Startaufwand eines weiteren Laufs, der seine Dateien nicht mehr mit den anderen parallelisiert. Sechs Aufrufe kosteten im vollen Umfang rund eine Minute mehr als drei. Die Zusammenfassung — Kern, Einrichtung, Skills und Doku — grenzt darum grob genug ein, um billig zu bleiben.
+
+**Was ohne Teil bleibt, ist ebenfalls eine Aussage.** `eslint.config.mjs`, `package.json`, `test/helpers/**` und `.claude/**` sind keinem Teil zugeordnet. Eine Änderung an ihnen fällt in den Zweifelsfall und fährt den vollen Umfang — richtig so: Eine geänderte Test-Fixture kann jede Testdatei betreffen, eine geänderte Lint-Konfiguration jede Quelldatei.
+
+**Ein Schutztest gegen die Lücke.** Mit den drei Aufrufen entsteht eine neue Fehlerart, und sie ist still: Eine Testdatei mit einem Präfix, das keiner der drei Aufrufe nennt, läuft **nirgends** — nicht vor dem Commit, nicht im Commit-Gate, nicht in der CI. Grün hieße dann „nicht geprüft". `test/config-teile.test.mjs` prüft deshalb die echte Config gegen `git ls-files`: jede versionierte Testdatei von mindestens einem Aufruf erfasst, jede versionierte Quelldatei in mindestens einem Teil. Die Glob-Auflösung holt der Test aus `kit/checks.mjs` statt sie nachzubauen — ab der ersten Abweichung bescheinigte eine zweite Fassung eine Abdeckung, die das ausführende Kommando nicht sieht.
+
+Wer die Eingrenzung im eigenen Projekt einführt, braucht denselben Schutztest, sobald er die Testsuite auf mehrere Einträge verteilt. Ein Teil zu wenig kostet Rechenzeit; ein nicht erfasster Test kostet die Prüfung.
+
 ### Gütemessung und Marke: `guete`
 
 Grüne Tests sagen, dass die Tests durchlaufen — nicht, dass sie etwas bemerken würden. **Eine** Prüfung der Liste darf ein Projekt deshalb als **Gütemessung** benennen: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der vereinbarten Marke hält das Veröffentlichen an. Getragen wird die Benennung von einem `guete`-Block mit `muster` und `marke`:
