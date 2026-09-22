@@ -30,23 +30,25 @@ async function offenesProjekt(s, name) {
 test("[einstellungen-19] das Speichern eines Teils laesst den Entwurf des anderen stehen", async () => {
   await mitServer((w) => projekt(w, "alpha", { team: KONFIG, stand: "5.0.0" }), async (s) => {
     const seite = await offenesProjekt(s, "alpha");
-    const [m4, m5] = seite.platten();
+    seite.klick(seite.knopf(seite.ids.themen, "Nachtbetrieb"));
+    await seite.ruhe();
+    const zahlen = (platte) => seite.alle(platte, (e) => e.tagName === "INPUT" && e.type === "number");
+    const [m6, m8] = seite.platten();
 
-    // M5: Spec einschalten — ein Entwurf, der nur in der Arbeitskopie lebt.
-    seite.klick(seite.knopf(m5, "Einschalten"));
-    // M4: ein Kommando aendern und genau diesen Teil speichern.
-    const kommando = seite.alle(m4, (e) => e.tagName === "INPUT" && e.value === "node --test")[0];
-    seite.tippe(kommando, "node --test --watch");
-    seite.klick(seite.knopf(m4, "Speichern"));
+    // M8 (Aufwand): die Laufzahl aendern — ein Entwurf, der nur in der Arbeitskopie lebt.
+    seite.tippe(zahlen(m8)[0], "7");
+    // M6 (Nacht-Kette): das Planbudget aendern und genau diesen Teil speichern.
+    seite.tippe(zahlen(m6)[0], "25");
+    seite.klick(seite.knopf(m6, "Speichern"));
     await seite.ruhe();
 
     const datei = JSON.parse(readFileSync(join(s.wurzel, "alpha", ".claude", "workflow.config.json"), "utf-8"));
-    assert.deepEqual(datei.buildChecks, ["node --test --watch"], "M4 wurde nicht gespeichert");
+    assert.equal(datei.night?.kette?.planMin, 25, "M6 wurde nicht gespeichert");
+    assert.equal(datei.aufwand, undefined, "der Entwurf von M8 wurde mitgespeichert");
 
-    // Der Entwurf von M5 ist noch da: Der Teil zeigt weiter den eingeschalteten Editor.
-    const [, m5Danach] = seite.platten();
-    assert.ok(!seite.knopf(m5Danach, "Einschalten"), "der Spec-Entwurf wurde beim Speichern von M4 verworfen");
-    assert.ok(seite.alle(m5Danach, (e) => e.tagName === "INPUT" && e.type === "date").length > 0, "der Spec-Editor aus dem Entwurf fehlt");
+    // Der Entwurf von M8 ist noch da: Das Feld zeigt weiter den getippten Wert.
+    const [, m8Danach] = seite.platten();
+    assert.equal(zahlen(m8Danach)[0].value, "7", "der Aufwand-Entwurf wurde beim Speichern von M6 verworfen");
   });
 });
 

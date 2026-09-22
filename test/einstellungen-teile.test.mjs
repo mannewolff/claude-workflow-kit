@@ -73,8 +73,8 @@ test("[einstellungen-9] jeder Teil nennt nur Pfade, die es im Schema gibt", () =
   }
 });
 
-test("[einstellungen-9] die sieben Teile des Entwurfs tragen Titel und Thema, die generischen nicht", () => {
-  for (const kennung of ["m1", "m2", "m3", "m4", "m5", "m6"]) {
+test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema, die generischen nicht", () => {
+  for (const kennung of ["m1", "m2", "m3", "m4", "m6"]) {
     const teil = teilNach(kennung);
     assert.ok(teil, `${kennung} fehlt`);
     assert.ok(teil.titel, `${kennung} hat keinen Titel`);
@@ -84,7 +84,8 @@ test("[einstellungen-9] die sieben Teile des Entwurfs tragen Titel und Thema, di
   assert.deepEqual(teilNach("m2").pfade, ["issueReview.pairs"]);
   assert.deepEqual(teilNach("m3").pfade, ["reviewStufen"]);
   assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas"]);
-  assert.deepEqual(teilNach("m5").pfade, ["spec"]);
+  // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
+  assert.equal(teilNach("m5"), undefined);
   assert.deepEqual(teilNach("m6").pfade, ["night.kette"]);
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
@@ -96,7 +97,7 @@ test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Ein
   try {
     const imText = instanzen(zustand).filter((i) => i.kennung === "text").flatMap((i) => i.eintraege.map((e) => e.pfad));
     assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufen", "night.stufenRegel"]);
-    for (const pfad of ["buildChecks", "checkAreas", "spec", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
+    for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
       assert.notEqual(teilFuer(pfad).kennung, "text", `${pfad} braucht eine eigene Eingabe`);
     }
   } finally {

@@ -129,48 +129,6 @@
         }
       }
     },
-    "spec": {
-      "type": "object",
-      "description": "ALTLAST, wird nicht mehr ausgewertet. Der Block beschrieb Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Kit hat diesen Weg zurückgebaut; kein Skill und kein Kommando liest den Block noch. Er bleibt im Schema, damit eine Bestandsconfig gültig bleibt, und kann samt dem Ordner specs/ entfernt werden.",
-      "properties": {
-        "seit": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-          "description": "Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt."
-        },
-        "bereiche": {
-          "type": "object",
-          "minProperties": 1,
-          "description": "Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.",
-          "additionalProperties": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        "testPattern": {
-          "type": "string",
-          "description": "Regulärer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.",
-          "default": "\\[<ID>\\]"
-        },
-        "testGlobs": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Pfadmuster, unter denen nach den Tests gesucht wird."
-        }
-      },
-      "required": [
-        "seit",
-        "bereiche"
-      ],
-      "additionalProperties": false
-    },
     "mutationCommand": {
       "type": "string",
       "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",

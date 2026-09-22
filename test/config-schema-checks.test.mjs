@@ -294,82 +294,15 @@ test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig"
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
 });
 
-// --- spec: der Schalter fuer Spec-Driven Development (Issue #438) ---
+// --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---
 
-// Der Block selbst ist der Schalter, sein Feld 'seit' der Zeitpunkt. Gebaut aus der
-// ausgelieferten Vorlage, damit die Faelle eine echte Config treffen und sich nur im
-// spec-Block unterscheiden.
-function configMitSpec(spec) {
-  return { ...beispielConfig, spec };
-}
-
-const gueltigerSpec = {
-  seit: "2026-09-02",
-  bereiche: { kit: ["kit/**"], skills: [".claude/skills/**"] },
-};
-
-test("spec: der Block ist im Schema definiert und die Wurzel bleibt geschlossen", () => {
-  // Ohne diese Zusicherung bestuenden die Faelle unten auch ganz ohne spec-Block: Der
-  // Validator hat zu einem fehlenden Teilschema nichts zu beanstanden — und ein Block,
-  // der in der geschlossenen Wurzel nicht eingetragen ist, macht jede Config schemawidrig.
-  assert.ok(schema.properties.spec, "spec ist im Schema definiert");
+test("spec: das Schema kennt den Block nicht mehr, die Wurzel bleibt geschlossen", () => {
+  // Kein Werkzeug wertet den Block mehr aus. Eine Bestandsconfig, die ihn noch traegt,
+  // meldet die Einstellungs-Oberflaeche als unbekannt und haelt das Speichern nicht auf
+  // (einstellungen-vorschau). Das Schema selbst beschreibt ihn nicht mehr.
+  assert.equal(schema.properties.spec, undefined, "spec steht noch im Schema");
   assert.equal(schema.additionalProperties, false, "die Wurzel bleibt geschlossen");
-});
-
-test("spec: eine Config mit gueltigem Block validiert", () => {
-  assert.deepEqual(pruefe(schema, configMitSpec(gueltigerSpec)), []);
-});
-
-test("spec: die optionalen Felder testPattern und testGlobs sind gueltig", () => {
-  assert.deepEqual(
-    pruefe(schema, configMitSpec({ ...gueltigerSpec, testPattern: String.raw`\[<ID>\]`, testGlobs: ["test/**"] })),
-    []
-  );
-});
-
-test("spec: seit im falschen Format ist ungueltig", () => {
-  // Das Gate vergleicht Kalendertage — ein '2.9.2026' waere kein Tag, den es lesen kann.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, seit: "2.9.2026" })), []);
-});
-
-test("spec: ein leeres bereiche ist ungueltig", () => {
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: {} })), []);
-});
-
-test("spec: ein Bereich mit leerem Muster-Array ist ungueltig", () => {
-  // Anders als bei checkAreas, wo ein Bereich ohne Muster schlicht nichts erfasst: hier
-  // waere er ein Bereich, den das Gate nie zuordnen kann.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: { kit: [] } })), []);
-});
-
-test("spec: ein unbekannter Schluessel im Block ist ungueltig", () => {
-  // Insbesondere 'enabled': Der Block selbst ist der Schalter, ein Bool haette einen
-  // Aus-Zustand — und den gibt es nicht.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, enabled: true })), []);
-});
-
-test("spec: die Pflichtfelder seit und bereiche fehlen nicht ungestraft", () => {
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ bereiche: gueltigerSpec.bereiche })), []);
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ seit: gueltigerSpec.seit })), []);
-});
-
-test("spec: der defaults-Block traegt keinen spec-Eintrag", () => {
-  // Ein Default schaltete jeden Installer-Lauf ein — das Vorhandensein IST der Schalter.
-  assert.ok(schema.defaults, "der defaults-Block ist da");
   assert.ok(!("spec" in schema.defaults), "defaults traegt kein spec");
-});
-
-test("spec: die description weist den Block als nicht mehr ausgewertete Altlast aus", () => {
-  // JSON kennt keine Kommentare — die description ist der einzige Ort, an dem die Lage
-  // im Schema selbst steht. Seit dem Rueckbau von Spec-Driven Development (Issue #827)
-  // liest kein Skill und kein Kommando den Block mehr; er bleibt allein, damit eine
-  // Bestandsconfig gueltig bleibt. Ohne diesen Satz haelt ihn jemand fuer wirksam.
-  const text = schema.properties.spec.description;
-  assert.ok(text, "spec hat eine description");
-  assert.match(text, /ALTLAST/, "die description weist den Block nicht als Altlast aus");
-  assert.match(text, /nicht mehr ausgewertet/, "die description sagt nicht, dass der Block unausgewertet bleibt");
-  assert.match(text, /Bestandsconfig/, "die description sagt nicht, warum der Block im Schema bleibt");
-  assert.match(text, /entfernt werden/, "die description sagt nicht, dass der Block entfernt werden kann");
 });
 
 // --- Das Reviewer-Paar: genau eines von reviewModel und reviewCommand (Issue #432) ---

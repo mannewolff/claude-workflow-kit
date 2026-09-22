@@ -85,7 +85,7 @@ test("ein Platzhalter in einem Unterfeld und ein schon gesetzter Backtick bleibe
   mitKopie((dir) => {
     const pfad = join(dir, "templates", "workflow.config.schema.json");
     const schema = JSON.parse(readFileSync(pfad, "utf-8"));
-    schema.properties.spec.properties.testPattern.description = "Ausdruck mit `<ID>` und dazu <Bereich>.";
+    schema.properties.aufwand.properties.laeufe.description = "Ausdruck mit `<ID>` und dazu <Bereich>.";
     writeFileSync(pfad, JSON.stringify(schema, null, 2));
     assert.equal(lauf([], dir).status, 0);
     const doku = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");

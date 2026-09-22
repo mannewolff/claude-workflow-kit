@@ -19,7 +19,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, VERWEIS_BEISPIEL, vorgabeAus, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
+import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, vorgabeAus, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -45,7 +45,6 @@ const BEISPIEL = {
   },
   checkAreas: { kit: ["kit/**"], docs: ["docs/**"], leer: [] },
   buildChecks: ["node --test", { cmd: "eslint", areas: ["kit"] }, { cmd: "markdown", areas: ["kit", "docs"] }, { cmd: "immer", always: true }],
-  spec: { seit: "2026-09-03", bereiche: { board: ["kit/board.mjs"], einstellungen: ["kit/einstellungen.mjs"] }, testGlobs: ["test/*.test.mjs"], testPattern: String.raw`\[<ID>\]` },
   // Kein umsetzungMin: Der fehlende Wert kommt aus dem Vorgabewert des Schemas.
   night: { kette: { planMin: 30, paketeMin: 25, reviewMin: 30, abdeckungMin: 10 } },
 };
@@ -55,8 +54,6 @@ const ohne = (config, feld) => {
   delete kopie[feld];
   return kopie;
 };
-
-const mitSpec = (aenderung) => ({ ...BEISPIEL, spec: { ...BEISPIEL.spec, ...aenderung } });
 
 /** Ein Wegwerf-Projekt samt Kontext fuer `vorschau`; `raeumAuf` loescht beides wieder. */
 function wegwerfProjekt({ team = ECHT, lokal } = {}) {
@@ -334,49 +331,29 @@ test("[einstellungen-9] Speichern ohne Änderung an reviewStufen legt in einem P
   });
 });
 
-test("ein Projekt ohne spec-Block zeigt am Eintrag keinen Team-Wert — die Ansicht bietet dann nur das Einschalten", async () => {
-  await mitProjekt({ team: ohne(ECHT, "spec") }, async (p) => {
-    const zustand = projektZustand(p.projekt, p.optionen);
-    const eintrag = Object.values(zustand.themen).flat().flatMap((t) => t.eintraege).find((e) => e.pfad === "spec");
-    assert.equal(eintrag.team, undefined, "spec steht als Team-Wert da, obwohl die Datei den Block nicht traegt");
-    assert.equal(eintrag.gilt, undefined);
+test("eine Bestandsconfig mit spec-Block meldet ihn als unbekannt und laesst das Speichern zu", async () => {
+  // Spec-Driven Development ist zurueckgebaut (Plan #825, Issue #830): Das Schema kennt den
+  // Block nicht mehr, die geschlossene Wurzel macht ihn zu einem unbekannten Feld. Das ist
+  // ein Hinweis, kein Fehler — der Wert bleibt beim Speichern erhalten.
+  const altlast = { seit: "2026-09-03", bereiche: { board: ["kit/board.mjs"] }, testPattern: String.raw`\[<ID>\]` };
+  await mitProjekt({ team: { ...ECHT, spec: altlast } }, async (p) => {
+    const res = antwortVon(p, { ebene: "team", teil: "wert", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }] });
+    assert.equal(res.status, 200);
+    const zuSpec = res.body.befunde.filter((b) => b.pfad === "spec" || b.pfad.startsWith("spec."));
+    assert.deepEqual(zuSpec.map((b) => [b.pfad, b.art]), [["spec", "unbekannt"]], JSON.stringify(res.body.befunde));
+    assert.deepEqual(fehlerIn(res), [], "der Altlast-Block haelt das Speichern mit einem Fehler auf");
+
+    const gespeichert = speichere(p.projekt, { hashes: p.hashes(), ebene: "team", teil: "wert", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }] }, p.optionen);
+    assert.equal(gespeichert.status, 200);
+    const datei = JSON.parse(readFileSync(p.dateien.team, "utf-8"));
+    assert.equal(datei.mainBranch, "trunk");
+    assert.deepEqual(datei.spec, altlast, "der Altlast-Block ging beim Speichern verloren");
   });
 });
 
 test("[einstellungen-11] je Bereich steht, wie viele Kommandos ihn nutzen", () => {
   assert.deepEqual(abgeleitet(BEISPIEL, "m4").nutzung, { kit: 2, docs: 1, leer: 0 });
   assert.deepEqual(abgeleitet(ohne(BEISPIEL, "checkAreas"), "m4").nutzung, {});
-});
-
-test("[einstellungen-11] je Spec-Bereich steht die Spezifikationsdatei", () => {
-  assert.deepEqual(abgeleitet(BEISPIEL, "m5").datei, { board: "specs/board.md", einstellungen: "specs/einstellungen.md" });
-});
-
-test("[einstellungen-11] das Verweis-Muster wird am Beispieltext ausgewertet", () => {
-  const trifft = abgeleitet(BEISPIEL, "m5").verweis;
-  assert.equal(trifft.trifft, true);
-  assert.equal(trifft.fehler, null);
-  assert.equal(trifft.id, VERWEIS_BEISPIEL.id);
-  assert.equal(trifft.beispiel, VERWEIS_BEISPIEL.text);
-
-  // Ohne testPattern gilt der Vorgabewert, und der findet den Verweis ebenso.
-  assert.equal(abgeleitet(mitSpec({ testPattern: undefined }), "m5").verweis.trifft, true);
-
-  const daneben = abgeleitet(mitSpec({ testPattern: "<ID>-steht-nicht-im-text" }), "m5").verweis;
-  assert.equal(daneben.trifft, false);
-  assert.equal(daneben.fehler, null);
-
-  const ohnePlatzhalter = abgeleitet(mitSpec({ testPattern: "irgendwas" }), "m5").verweis;
-  assert.equal(ohnePlatzhalter.trifft, false);
-  assert.match(ohnePlatzhalter.fehler, /<ID>/);
-
-  const kaputt = abgeleitet(mitSpec({ testPattern: "[<ID>" }), "m5").verweis;
-  assert.equal(kaputt.trifft, false);
-  assert.ok(kaputt.fehler);
-});
-
-test("[einstellungen-11] ohne spec-Block liefert m5 keine abgeleiteten Anzeigen", () => {
-  assert.deepEqual(abgeleitet(ohne(BEISPIEL, "spec"), "m5"), {});
 });
 
 test("[einstellungen-11] die Summe der Zeitbudgets steht getrennt nach Kette und Umsetzung", () => {
@@ -391,7 +368,7 @@ test("[einstellungen-11] ein Teil ohne abgeleitete Anzeige liefert nichts, ohne 
   assert.deepEqual(abgeleitet(BEISPIEL, "text"), {});
   assert.deepEqual(abgeleitet(BEISPIEL, "erfundeneKennung"), {});
   const alles = abgeleitet(BEISPIEL);
-  assert.deepEqual(Object.keys(alles).sort(), ["m2", "m3", "m4", "m5", "m6"]);
+  assert.deepEqual(Object.keys(alles).sort(), ["m2", "m3", "m4", "m6"]);
   assert.deepEqual(alles.m6.zeit, { kette: 95, umsetzung: 120 });
 });
 
@@ -421,31 +398,8 @@ test("[einstellungen-11] die abgeleiteten Anzeigen halten der echten Konfigurati
     }
   }
 
-  assert.deepEqual(Object.keys(alles.m5.datei).sort(), Object.keys(ECHT.spec.bereiche).sort());
-  assert.equal(alles.m5.datei.einstellungen, "specs/einstellungen.md");
-  assert.equal(alles.m5.verweis.trifft, true, "das Verweis-Muster dieses Projekts findet den Beispiel-Verweis nicht");
   assert.deepEqual(alles.m4.nutzung, Object.fromEntries(Object.keys(ECHT.checkAreas ?? {}).map((n) => [n, alles.m4.nutzung[n]])));
   assert.ok(alles.m6.zeit.kette > 0 && alles.m6.zeit.umsetzung > 0);
-});
-
-// ------------------------------------------------------------
-// M5 Spezifikation (Issue #729)
-// ------------------------------------------------------------
-
-test("ein Einschalten der Spezifikation ohne 'Gilt seit' oder ohne Bereich ergibt einen Fehler und wird nicht gespeichert", async () => {
-  const team = ohne(BEISPIEL, "spec");
-  await mitProjekt({ team }, async (p) => {
-    const auftrag = { hashes: p.hashes(), ebene: "team", teil: "m5", aenderungen: [{ pfad: "spec", wert: { bereiche: {} } }] };
-    const vor = antwortVon(p, auftrag);
-    assert.equal(vor.status, 200);
-    const pfade = fehlerIn(vor).map((b) => b.pfad);
-    assert.ok(pfade.includes("spec.seit"), pfade.join(", "));
-    assert.ok(pfade.includes("spec.bereiche"), pfade.join(", "));
-
-    const res = speichere(p.projekt, auftrag, p.optionen);
-    assert.equal(res.status, 422);
-    assert.equal(JSON.parse(readFileSync(p.dateien.team, "utf-8")).spec, undefined, "spec wurde trotz Fehler gespeichert");
-  });
 });
 
 // ------------------------------------------------------------
@@ -488,21 +442,3 @@ test("M6: ein geleertes Budget-Feld entfernt den Schluessel aus der Datei, statt
   });
 });
 
-test("ein Spec-Bereich ohne Muster ergibt einen Fehler, waehrend derselbe Fall in checkAreas eine Warnung bleibt", async () => {
-  await mitProjekt({ team: BEISPIEL }, async (p) => {
-    // BEISPIEL traegt schon checkAreas.leer ohne Muster (Kriterium 20) — hier zusaetzlich ein
-    // Spec-Bereich ohne Muster, der anders als checkAreas kein Warnfall, sondern eine
-    // Schema-Sperre ist (Kriterium 23).
-    const specWert = { ...BEISPIEL.spec, bereiche: { ...BEISPIEL.spec.bereiche, leer: [] } };
-    const res = antwortVon(p, { ebene: "team", teil: "m5", aenderungen: [{ pfad: "spec", wert: specWert }] });
-    assert.equal(res.status, 200);
-
-    const specFehler = res.body.befunde.find((b) => b.pfad === "spec.bereiche.leer");
-    assert.ok(specFehler, JSON.stringify(res.body.befunde));
-    assert.equal(specFehler.art, "fehler");
-
-    const checkWarnung = res.body.befunde.find((b) => b.pfad === "checkAreas.leer");
-    assert.ok(checkWarnung, JSON.stringify(res.body.befunde));
-    assert.equal(checkWarnung.art, "warnung");
-  });
-});

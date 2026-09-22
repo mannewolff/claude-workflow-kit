@@ -165,7 +165,7 @@ test("[einstellungen-7] fuer ein bekanntes zusammengesetztes Feld entsteht kein 
     .sort();
   assert.deepEqual(rufer, ["elemente", "redaktorText"]);
   assert.equal(TEILE.filter((t) => t.redaktor === "text").length, 1, "mehr als ein Teil zeigt die Dateischreibweise");
-  for (const pfad of ["buildChecks", "checkAreas", "spec", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers"]) {
+  for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers"]) {
     const teil = TEILE.find((t) => t.pfade.includes(pfad));
     assert.notEqual(teil.redaktor, "text", `${pfad} zeigt noch die Dateischreibweise`);
   }
@@ -446,62 +446,6 @@ test("[einstellungen-13] M4 bearbeitet beide Pfade in einem Teil und braucht kei
 });
 
 // ------------------------------------------------------------
-// M5 Spezifikation (Issue #729)
-// ------------------------------------------------------------
-
-test("die Registry fuehrt den Redaktor von M5 aus, keinen Platzhalter mehr", () => {
-  const registry = SEITEN_BAUSTEINE.platte;
-  assert.match(registry, /spezifikation: redaktorSpezifikation/, "M5 haengt noch am Platzhalter redaktorEntsteht");
-  assert.match(SEITEN_BAUSTEINE.redaktorSpezifikation, /function redaktorSpezifikation\(teil\)/);
-});
-
-test("M5 bietet ohne spec-Block nur das Einschalten an, keinen Ausschalter", () => {
-  const stueck = SEITEN_BAUSTEINE.redaktorSpezifikation;
-  assert.match(stueck, /el\("button", "taste taste-kupfer", "Einschalten"\)/, "der Einschalten-Knopf fehlt");
-  // Die Erklaerung darf nennen, dass es keinen Ausschalter gibt — nur ein Knopf mit dieser
-  // Aufschrift waere einer.
-  assert.doesNotMatch(stueck, /el\("button"[^)]*"Ausschalten"/, "ein Ausschalt-Knopf steht im Redaktor");
-  // Das Einschalten legt nur das leere Objekt an — kein Weg entfernt spec wieder.
-  assert.match(stueck, /setzeWert\(teil, "spec", \{ bereiche: \{\} \}\)/, "das Einschalten legt kein leeres Objekt mit bereiche an");
-  assert.doesNotMatch(stueck, /entfernt:\s*\[/, "ein Auftrag entfernt ein Feld, das gibt es fuer spec nicht");
-});
-
-test("M5 verlangt Gilt seit als Datumsfeld und Testorte als Muster-Liste", () => {
-  const stueck = SEITEN_BAUSTEINE.redaktorSpezifikation;
-  assert.match(stueck, /seitFeld\.type = "date"/, "Gilt seit ist kein Datumsfeld");
-  assert.match(stueck, /"spec\.seit"/, "das Datumsfeld traegt nicht den Pfad spec.seit");
-  assert.match(stueck, /musterListe\(\{\s*muster: testGlobs/, "Testorte stehen nicht als Muster-Liste");
-  assert.match(stueck, /"spec\.testGlobs"/, "Testorte tragen nicht den Pfad spec.testGlobs");
-});
-
-test("M5 zeigt neben dem Verweis-Muster ein Beispiel aus der Vorschau, keine zweite Rechnung im Browser", () => {
-  const stueck = SEITEN_BAUSTEINE.redaktorSpezifikation;
-  assert.match(stueck, /abgeleitetVon\(teil\)\.verweis/, "das Beispiel kommt nicht aus der Vorschau");
-  assert.doesNotMatch(stueck, /new RegExp\(/, "das Muster wird ein zweites Mal im Browser ausgewertet");
-  assert.match(stueck, /"spec\.testPattern"/, "das Muster-Feld traegt nicht den Pfad spec.testPattern");
-});
-
-test("M5 zeigt die Spec-Datei je Bereich statt der Nutzung, ohne die Warnung aus M4", () => {
-  const stueck = SEITEN_BAUSTEINE.redaktorSpezifikation;
-  assert.match(stueck, /bereich-grid/, "die Bereichstabelle nutzt nicht das Gitter des Entwurfs");
-  assert.match(stueck, /abgeleitetVon\(teil\)\.datei/, "die Spec-Datei kommt nicht aus der Vorschau");
-  assert.doesNotMatch(stueck, /erfasst nichts/, "M5 uebernimmt die Warnung von M4, obwohl ein fehlendes Muster hier ein Fehler ist");
-  assert.match(stueck, /"spec\.bereiche\." \+ name/, "die Bereichszeile traegt ihren Pfad nicht");
-});
-
-test("M5 traegt den Pfad spec.bereiche an der Zwischenueberschrift, damit ein leerer Block dort einen Befund zeigt", () => {
-  const stueck = SEITEN_BAUSTEINE.redaktorSpezifikation;
-  assert.match(stueck, /specBereicheKopf\("Bereiche der Spezifikation", "spec\.bereiche"\)/, "die Zwischenueberschrift traegt nicht den Pfad spec.bereiche");
-  assert.match(stueck, /function specBereicheKopf\(titel, pfad\) \{\s*const g = zeilenGruppe\(pfad, ""\);/, "die Zwischenueberschrift haengt keinen Befund-Behaelter an");
-});
-
-test("M5 bearbeitet nur den Pfad spec und braucht keinen Folgepfad", () => {
-  const m5 = TEILE.find((t) => t.kennung === "m5");
-  assert.deepEqual(m5.pfade, ["spec"]);
-  assert.equal(m5.folgen, undefined);
-});
-
-// ------------------------------------------------------------
 // M6 Nacht-Kette (Issue #730)
 // ------------------------------------------------------------
 
@@ -633,12 +577,11 @@ test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfeld
 // Ein belegter Zielname beim Umbenennen (Issue #816)
 // ------------------------------------------------------------
 
-test("[einstellungen-21] alle drei Umbenennungen laufen ueber die eine Fassung des Moduls", () => {
+test("[einstellungen-21] beide Umbenennungen laufen ueber die eine Fassung des Moduls", () => {
   assert.ok(SEITEN_BAUSTEINE.folgen.includes(schluesselUmbenennen.toString()), "der Baustein traegt eine andere Fassung als das Modul");
   for (const [name, stueck] of [
     ["M4 (Bereiche)", SEITEN_BAUSTEINE.redaktorPruefkommandos],
     ["M2 (Paarungen)", SEITEN_BAUSTEINE.redaktorPaarungen],
-    ["M6 (Spec-Bereiche)", SEITEN_BAUSTEINE.redaktorSpezifikation],
   ]) {
     assert.match(stueck, /schluesselUmbenennen\(/, `${name} benennt weiter von Hand um`);
     assert.match(stueck, /feldBefund\(/, `${name} meldet den abgewiesenen Namen nicht am Feld`);

@@ -131,48 +131,5 @@
   "toolbox": {
     "host": "https://kanban.mwolff.org",
     "ideaStored": false
-  },
-  "spec": {
-    "seit": "2026-09-03",
-    "bereiche": {
-      "board": [
-        "kit/board.mjs"
-      ],
-      "night": [
-        "kit/night.mjs"
-      ],
-      "checks": [
-        "kit/checks.mjs"
-      ],
-      "spec": [
-        "kit/spec.mjs"
-      ],
-      "gate": [
-        ".githooks/gate.mjs"
-      ],
-      "installer": [
-        "install.mjs",
-        "tools/sync-blobs.mjs"
-      ],
-      "skills": [
-        "skills/**/SKILL.md"
-      ],
-      "einstellungen": [
-        "kit/einstellungen.mjs"
-      ],
-      "aufwand": [
-        "kit/aufwand.mjs"
-      ],
-      "befunde": [
-        "kit/befunde.mjs"
-      ],
-      "wirksamkeit": [
-        "kit/wirksamkeit.mjs"
-      ]
-    },
-    "testGlobs": [
-      "test/*.test.mjs"
-    ],
-    "testPattern": "\\[<ID>\\]"
   }
 }

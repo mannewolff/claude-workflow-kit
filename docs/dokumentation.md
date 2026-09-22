@@ -333,9 +333,9 @@ node einstellungen.mjs ~/ki-projects
 
 **Die Adresse trägt das Zugangstoken.** Beim Start nennt die Oberfläche eine Adresse der Form `http://127.0.0.1:<port>/#token=…`. Sie ist nur von diesem Rechner erreichbar, und ohne das Token nimmt sie keine Anfrage an — auch nicht von einer anderen Seite im selben Browser. Das Token gilt bis zum Beenden mit Strg+C.
 
-**Neun Teile.** Die Oberfläche gliedert die Einstellungen in neun Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Spezifikation, Nacht-Kette, Aufwand, Wirksamkeit und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Bei der Spezifikation gilt das nur für das Einschalten: Ausschalten bietet die Oberfläche nicht an, das Kit nimmt diese Entscheidung nicht zurück. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
+**Acht Teile.** Die Oberfläche gliedert die Einstellungen in acht Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die drei Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`), die Stufen (`night.stufen`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der neun Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die drei Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`), die Stufen (`night.stufen`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der acht Teile.
 
 **Rückfragen bei Folgen.** Manche Änderung wirkt über ihren eigenen Teil hinaus. Einen Reviewer umzubenennen oder zu entfernen wirkt sich auf die Paarungen aus, einen Bereich umzubenennen oder zu entfernen auf die Prüfkommandos, die ihn nutzen. Eine Rückfrage nennt vorher die betroffenen Stellen; die Folge ist Teil derselben Änderung wie der auslösende Teil und wird mit ihm gespeichert oder verworfen. Eine unabhängige Änderung am betroffenen anderen Teil bleibt davon unberührt.
 
@@ -380,15 +380,6 @@ Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = k
 ### `checkAreas`
 
 Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt "areas" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein bloßer Kommandostring läuft immer (nicht zugeordnet), { "cmd", "areas" } läuft nur, wenn eines der hier hinterlegten Muster berührt ist, { "cmd", "always": true } läuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
-
-### `spec`
-
-ALTLAST, wird nicht mehr ausgewertet. Der Block beschrieb Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Kit hat diesen Weg zurückgebaut; kein Skill und kein Kommando liest den Block noch. Er bleibt im Schema, damit eine Bestandsconfig gültig bleibt, und kann samt dem Ordner specs/ entfernt werden.
-
-- `spec.seit` — Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt.
-- `spec.bereiche` — Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.
-- `spec.testPattern` — Regulärer Ausdruck mit dem Platzhalter `<ID>`, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.
-- `spec.testGlobs` — Pfadmuster, unter denen nach den Tests gesucht wird.
 
 ### `mutationCommand`
 
