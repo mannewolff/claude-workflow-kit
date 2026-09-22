@@ -1321,6 +1321,8 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 - **Das Gate ist der Hauptfang, SonarQube o. Ä. das Sicherheitsnetz.** Der Round-Trip über main fängt sicher, aber spät — der Fehler ist dann schon auf main. Der Check gehört nach vorn, in `/local-check` und `/implement-ready`, wo der Agent ihn vor Abschluss läuft.
 - **Der konkrete Regel-Katalog lebt im jeweiligen Projekt** (`buildChecks` in der Config, Lint-Setup im Repo), nicht im Kit. Das Kit verankert nur das übertragbare Prinzip.
 
+**Der Maßstab dahinter: „Regel im Text oder Regel im Werkzeug".** Er steht in `CLAUDE-workflow.md` und gilt für jede mitgelieferte Anweisung: Eine **Bedienvorgabe** — ihre Befolgung ist an Ausgabe oder Ergebnis ablesbar, ein Werkzeug könnte sie an der Stelle des Lesers ausführen — gehört ins Werkzeug; eine **Urteilsregel**, die eine Entscheidung im Einzelfall verlangt, bleibt im Text. Gemischte Regeln werden zerlegt, nicht gerundet. Welche Regel von `/local-check` nach diesem Maßstab wohin gewandert ist, führt die Aufstellung [Regeln im Werkzeug](regeln-im-werkzeug.md) — Zeile für Zeile, mit Art, Überführungsgrad und neuem Ort.
+
 **Der Grenzfall: wenn keine Leitplanke zu haben ist.** Manches lässt sich nicht messen — ob ein Modell eine Aussage geglaubt hat, statt sie nachzuschlagen, etwa. Dort tritt die ausgewiesene Selbstauskunft an die Stelle des Gates: Die feste Antwortform „Mitteilung übernommen, ungeprüft — …" aus [Mitteilungen: glauben statt nachsehen](#mitteilungen-glauben-statt-nachsehen) zwingt nichts, macht aber jeden Verstoß zum sichtbaren Widerspruch. Sichtbarer Widerspruch statt Gate — dasselbe Prinzip, nur mit dem schwächeren Mittel, weil das stärkere hier nicht existiert.
 
 ## Issue-Review über mehrere Modelle

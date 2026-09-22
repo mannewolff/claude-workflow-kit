@@ -48,6 +48,7 @@ export default defineConfig({
           { text: "Zwei Bahnen", link: "/dokumentation#zwei-bahnen" },
           { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
           { text: "Was nicht im Kit ist", link: "/dokumentation#was-bewusst-nicht-im-kit-ist" },
+          { text: "Regeln im Werkzeug", link: "/regeln-im-werkzeug" },
           { text: "kontext.config.json", link: "/kontext-config-reference" },
         ],
       },

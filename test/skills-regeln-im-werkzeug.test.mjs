@@ -243,6 +243,118 @@ test("skills/local-check/SKILL.md verweist auf den Massstab", () => {
   );
 });
 
+// Teil Aufstellung (Issue #861, Plan #810/E6; Fachplan #769/AK 7).
+//
+// Die Aufstellung ist das dauerhaft auffindbare Ergebnis der Umstellung: Sie sagt je
+// Regel von /local-check, welcher Art sie ist, wie weit sie ueberfuehrt wurde und wo
+// sie heute steht. Geprueft wird ihre Vollstaendigkeit gegen den Skill, nicht ihr
+// Wortlaut — sonst waere jede Umformulierung ein Testfehler.
+
+const AUFSTELLUNG = readFileSync(join(repoRoot, "docs", "regeln-im-werkzeug.md"), "utf-8");
+const VITEPRESS = readFileSync(join(repoRoot, "docs-site", ".vitepress", "config.ts"), "utf-8");
+const DOKUMENTATION = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+
+const ARTEN = new Set(["Bedienvorgabe", "Urteilsregel", "gemischt"]);
+const GRADE = new Set(["vollständig", "teilweise", "nicht"]);
+
+/** Die Zeilen der Regel-Tabelle, je Zeile ihre Zellen ohne Rahmen. */
+function tabellenzeilen() {
+  return AUFSTELLUNG.split("\n")
+    .filter((zeile) => zeile.startsWith("|"))
+    .map((zeile) => zeile.slice(1, -1).split("|").map((z) => z.trim()))
+    .filter((zellen) => !zellen.every((z) => /^:?-{2,}:?$/.test(z)))
+    .filter((zellen) => zellen[0] !== "Regel");
+}
+
+test("die Aufstellung fuehrt jede Regel mit Art und Ueberfuehrungsgrad", () => {
+  const zeilen = tabellenzeilen();
+  assert.ok(
+    zeilen.length >= 16,
+    `die Aufstellung fuehrt nur ${zeilen.length} Regeln — erwartet sind mindestens 16`,
+  );
+  for (const zellen of zeilen) {
+    assert.equal(
+      zellen.length,
+      5,
+      `die Zeile '${zellen[0]}' hat ${zellen.length} Spalten statt 5 (Regel, Fundstelle, Art, Grad, Ort)`,
+    );
+    assert.ok(ARTEN.has(zellen[2]), `die Zeile '${zellen[0]}' traegt keine bekannte Art: '${zellen[2]}'`);
+    assert.ok(GRADE.has(zellen[3]), `die Zeile '${zellen[0]}' traegt keinen bekannten Grad: '${zellen[3]}'`);
+    assert.ok(zellen[4].length > 0, `die Zeile '${zellen[0]}' nennt keinen Ort und keinen Grund fuers Bleiben`);
+  }
+});
+
+test("die Aufstellung ordnet die vier belegten Regeln so ein wie die Umstellung", () => {
+  const zeilen = tabellenzeilen();
+  /** Die Zeile, deren Fundstelle oder Regel den Suchtext traegt. */
+  const zeile = (suche) => {
+    const treffer = zeilen.find((z) => z[0].includes(suche) || z[1].includes(suche));
+    assert.ok(treffer, `keine Tabellenzeile zu '${suche}'`);
+    return treffer;
+  };
+
+  const rueckgabewert = zeile("Rückgabewert");
+  assert.deepEqual([rueckgabewert[2], rueckgabewert[3]], ["Bedienvorgabe", "vollständig"]);
+  assert.ok(/kommandoAusfuehren/.test(rueckgabewert[4]), "der neue Ort des Rueckgabewerts fehlt");
+
+  const merkmale = zeile("Fehlermerkmale");
+  assert.deepEqual([merkmale[2], merkmale[3]], ["Bedienvorgabe", "vollständig"]);
+  assert.ok(/fehlermerkmal/.test(merkmale[4]), "der neue Ort der Fehlermerkmale fehlt");
+  assert.ok(/night\.mjs/.test(merkmale[4]), "der Nachbau in kit/night.mjs fehlt");
+
+  const zeitrahmen = zeile("Zeitrahmen");
+  assert.deepEqual([zeitrahmen[2], zeitrahmen[3]], ["gemischt", "teilweise"]);
+
+  const hintergrund = zeile("Hintergrundlauf");
+  assert.deepEqual([hintergrund[2], hintergrund[3]], ["gemischt", "teilweise"]);
+
+  for (const suche of ["Coverage", "klassenweite", "UI-Verifikation", "Prüf-Anker", "Paketstufe", "Format-Fix", "Stop-Punkt"]) {
+    assert.equal(zeile(suche)[3], "nicht", `'${suche}' ist nicht als nicht ueberfuehrt gefuehrt`);
+  }
+});
+
+test("jede Leitplanke aus local-check steht in der Aufstellung", () => {
+  const leitplanken = [...LOCAL_CHECK.matchAll(/^\*\*Leitplanke: (.+?)\*\*/gm)].map((m) => m[1]);
+  assert.ok(leitplanken.length >= 4, `im Skill stehen nur ${leitplanken.length} Leitplanken — erwartet sind mindestens 4`);
+  const fundstellen = tabellenzeilen().map((z) => z[1]).join("\n");
+  for (const titel of leitplanken) {
+    assert.ok(
+      fundstellen.includes(titel),
+      `die Leitplanke '${titel}' fehlt in der Aufstellung (sie gehoert woertlich in die Spalte 'Fundstelle')`,
+    );
+  }
+});
+
+test("die Aufstellung nennt den Massstab, aus dem sie entstanden ist", () => {
+  assert.ok(
+    /Regel im Text oder Regel im Werkzeug/.test(AUFSTELLUNG),
+    "der Verweis auf den Massstab in CLAUDE-workflow.md fehlt",
+  );
+});
+
+test("die Aufstellung steht in der Sidebar unter 'Dokumentation'", () => {
+  const dokumentation = VITEPRESS.indexOf('text: "Dokumentation"');
+  assert.ok(dokumentation >= 0, "die Sidebar-Gruppe 'Dokumentation' fehlt");
+  const eintrag = VITEPRESS.indexOf('link: "/regeln-im-werkzeug"');
+  assert.ok(eintrag >= 0, "der Sidebar-Eintrag '/regeln-im-werkzeug' fehlt");
+  assert.ok(eintrag > dokumentation, "der Sidebar-Eintrag steht nicht in der Gruppe 'Dokumentation'");
+  assert.ok(
+    /text: "Regeln im Werkzeug"/.test(VITEPRESS),
+    "der Sidebar-Eintrag traegt nicht den Text 'Regeln im Werkzeug'",
+  );
+});
+
+test("die Nutzerdoku verweist auf den Massstab und auf die Aufstellung", () => {
+  assert.ok(
+    /Regel im Text oder Regel im Werkzeug/.test(DOKUMENTATION),
+    "docs/dokumentation.md nennt den Massstab nicht",
+  );
+  assert.ok(
+    /\(regeln-im-werkzeug\.md\)/.test(DOKUMENTATION),
+    "docs/dokumentation.md verweist nicht auf die Aufstellung",
+  );
+});
+
 test("push-main wertet den Rueckgabewert weiter aus, ohne eigene Merkmal-Liste", () => {
   const text = skillText("push-main");
   assert.ok(
