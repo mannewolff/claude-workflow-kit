@@ -67,7 +67,7 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **7. Review-Modell** und **8. Review-Kommando.** Wer den Code-Review in Schritt 7 fährt — **genau eines von beiden**. Ein Modell (Standard `claude-opus-4-8`) läuft als Subagent; ein Kommando startet ein fremdes Werkzeug und bekommt den Prompt über stdin. Beides zu setzen wird abgewiesen, keines von beidem auch: Sonst liefe Schritt 7 ins Leere. Das gilt für die **Antworten**. Stehen dagegen beide Felder schon **in der Datei**, weist der Installer nicht ab, sondern löst den Widerspruch auf: Er schlägt das vorhandene Kommando vor und sagt vorher, dass das Modell dabei entfällt. Umgekehrt geht es, indem du das Kommando mit `-` leerst und ein Modell einträgst.
 
-**9. Spec-Driven Development (nur projektlokal).** Ob das Projekt unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führt — siehe [Spec-Driven Development](#spec-driven-development). Die Frage erscheint nur bei `issueTracker: toolbox` oder `local` und nur, wenn noch kein `spec`-Block in der Config steht. **Die Entscheidung ist nicht zurückzunehmen**; der Installer sagt das vor der Antwort.
+**9. Commit-Gate (nur projektlokal).** Ob der Installer das Commit-Gate einhängt, also `git config core.hooksPath .githooks` setzt — siehe [Das Commit-Gate](#das-commit-gate). Die Frage erscheint nur, wenn weder ein anderer `core.hooksPath` wirksam ist noch eine aktive Datei im Hooks-Verzeichnis liegt; Standard ist nein.
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
@@ -164,7 +164,6 @@ Die Dateinamen der always-Dateien (Index.md, Profil.md) konfigurierst du selbst 
 
 ## Die Config-Datei
 
-Der Block `spec` ist hier nicht aufgeführt — er steht bei [Spec-Driven Development](#spec-driven-development).
 
 Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Skills lesen ausschließlich aus dieser Datei (nirgendwo sonst werden Projektparameter hart kodiert).
 
@@ -253,6 +252,74 @@ Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuord
 
 Was ausgelassen wurde, bleibt sichtbar: in der Checklist von `/local-check` und im Abschlussbericht am Arbeitspaket, jede Auslassung mit ihrem Grund — und nachts zusätzlich im [Lauf-Bericht des Durchgangs](#nachtbetrieb).
 
+**`stufe` steht auf einer eigenen Achse.** `areas` und `always` sagen, **ob** eine Prüfung betroffen ist; **wann** sie an der Reihe ist, sagt [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe).
+
+### Gestaffelte Prüfungen: `stufe`
+
+Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der zwanzig Minuten läuft, nach jedem Arbeitspaket zu fahren, macht die Prüfung vor dem Commit so teuer, dass sie niemand mehr abwartet — ihn wegzulassen macht sie wertlos. Ein `buildChecks`-Eintrag kann deshalb sagen, **wann** er an der Reihe ist:
+
+```json
+{
+  "buildChecks": [
+    "node --test",
+    { "cmd": "mvn verify -Pintegration", "stufe": "push" },
+    { "cmd": "npm run e2e", "areas": ["frontend"], "stufe": "merge" }
+  ]
+}
+```
+
+| Stufe | Zeitpunkt | Skill |
+| --- | --- | --- |
+| `paket` | Abschluss eines Arbeitspakets, vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `push` | vor dem Veröffentlichen auf `main` | `/push-main` |
+| `merge` | vor der Freigabe nach `production` | `/merge-production` |
+
+**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Wer die Freigabestufe fährt, bekommt außerdem den vollen Umfang: Dort wird keine Prüfung mehr nach Bereichen ausgewählt.
+
+**Ein fehlendes Feld bedeutet `paket`.** Die bloße String-Form und ein Objekt ohne `stufe` tragen die Paketstufe, und damit bleibt jede Bestandskonfiguration unverändert in ihrem Verhalten. Wer die Staffelung nicht will, schreibt nichts hin.
+
+**Was später läuft, erscheint als Auslassung** — in der Checklist und im Abschlussbericht, mit ihrer Stufe als Grund. Das ist **kein Mangel, sondern ihr Zeitpunkt**: `Stufe push, gefahren wird paket` heißt, dass diese Prüfung in `/push-main` an der Reihe ist. Oberhalb der Paketstufe nennt das Kommando zusätzlich, was gegenüber ihr hinzukommt (`Stufe push: zusätzlich zur Paketstufe läuft …`) — ein solcher Lauf dauert spürbar länger als der vor dem Commit.
+
+**Mindestens eine Prüfung gehört auf die Paketstufe.** Tragen alle Einträge `push` oder `merge`, läuft vor dem Commit nichts: Die Umsetzung eines Arbeitspakets hat dann kein Gate. Nachts ist das kein stiller Zustand — der Nacht-Runner prüft es beim Start und startet gar nicht erst (Override: `--no-checks-ok`). Die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) meldet diesen Zustand als Warnung; speichern lässt sich eine solche Konfiguration trotzdem, denn gültig ist sie.
+
+**Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
+
+### Gütemessung und Marke: `guete`
+
+Grüne Tests sagen, dass die Tests durchlaufen — nicht, dass sie etwas bemerken würden. **Eine** Prüfung der Liste darf ein Projekt deshalb als **Gütemessung** benennen: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der vereinbarten Marke hält das Veröffentlichen an. Getragen wird die Benennung von einem `guete`-Block mit `muster` und `marke`:
+
+```json
+{
+  "buildChecks": [
+    "node --test",
+    {
+      "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage",
+      "stufe": "push",
+      "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 }
+    }
+  ]
+}
+```
+
+**Höchstens ein Eintrag trägt den Block.** Zwei Messungen bräuchten eine Vorrangregel darüber, welche Marke den Halt auslöst, und die läse niemand. Trägt ein Eintrag `guete`, darf seine `stufe` nicht `merge` sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Beides weist `checks.mjs` beim Start ab, statt still zu wählen; dieselben Regeln prüft die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) vor dem Speichern.
+
+**Das `muster` ist Pflicht, weil die Werkzeuge Verschiedenes melden.** Es ist ein regulärer Ausdruck mit **genau einer Gruppe**; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos:
+
+| Werkzeug | Zeile in der Ausgabe | Muster |
+| --- | --- | --- |
+| PIT (Java) | `Killed 42 (84%)` | `Killed \\d+ \\((\\d+)%\\)` |
+| Stryker (JS/TS) | `Mutation score: 84.21` | `Mutation score: ([\\d.]+)` |
+
+Die erfasste Zahl gilt als Prozentwert, wie die `marke` — eine Einheit, keine zwei. Zulässig sind für die Marke 0 bis 100; eine höhere wäre nie erreichbar. Liegt der gemessene Anteil **auf** der Marke, genügt er.
+
+**Ein Wert unter der Marke ist derselbe Halt wie eine rote Pflichtprüfung** — kein eigener Stop-Punkt, keine Ausnahme, keine persönliche Marke: Die Marke gilt teamweit, eine Abweichung in `workflow.config.local.json` bleibt unwirksam. Ebenso behandelt wird jeder Weg ohne Zahl: ein Muster, das die Ausgabe nicht trifft, ein rotes Kommando, eine Messung, die wegen eines früheren roten Kommandos gar nicht startete. **Ein fehlendes Ergebnis gilt nie als bestandene Prüfung.** Gemessener Anteil, Marke und Grund stehen in der Ausgabe des Prüflaufs und im Abschlussbericht, nachts zusätzlich als eigene Protokollzeile.
+
+**Der Halt kostet keine Arbeit.** Er ist ein roter Lauf **vor Commit und Push**: Die bereits fertigen Pakete bleiben lokal committet, der Versionsbump von `/push-main` bleibt idempotent stehen, und nach der Nachbesserung läuft derselbe Batch weiter.
+
+**Nicht zu verwechseln mit `mutationCommand`.** Das Feld [`mutationCommand`](#mutationcommand) bleibt, was es war: ein dem Build nachgelagertes Kommando, das `/local-check` ausführt und dessen Ergebnis im Bericht landet. Es ist **keine Gütemessung** — es trägt keine Marke, sein Wert wird nicht ausgewertet, und es löst **keinen Halt** aus. Wer die Verbindlichkeit will, führt sein Mutationstest-Kommando als `buildChecks`-Eintrag mit `guete`-Block, wie oben. Beides zugleich zu setzen ergibt zwei Läufe desselben Werkzeugs, von denen nur einer zählt.
+
+**Ohne die Benennung bleibt ein Projekt unberührt:** keine Messung, keine Marke, kein Halt. Wer nichts hinschreibt, merkt von der Gütemessung nichts — auch nicht mit gesetztem `mutationCommand`.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.
@@ -265,7 +332,13 @@ node einstellungen.mjs ~/ki-projects
 
 **Die Adresse trägt das Zugangstoken.** Beim Start nennt die Oberfläche eine Adresse der Form `http://127.0.0.1:<port>/#token=…`. Sie ist nur von diesem Rechner erreichbar, und ohne das Token nimmt sie keine Anfrage an — auch nicht von einer anderen Seite im selben Browser. Das Token gilt bis zum Beenden mit Strg+C.
 
-**Team und persönlich.** Zu jeder Einstellung zeigt die Oberfläche den Wert aus `workflow.config.json` (Team), die Abweichung aus `workflow.config.local.json` (persönlich) und den Wert, der gilt. Persönlich speichern lässt sich nur, was das Kit persönlich abweichen lässt (siehe „Team-Config und persönliche Abweichungen"); eine Abweichung lässt sich wieder entfernen. Gespeichert wird nur der geänderte Wert — `git diff` zeigt keine neu formatierte Datei.
+**Acht Teile.** Die Oberfläche gliedert die Einstellungen in acht Teile: Reviewer, Paarungen, Prüfstufen, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
+
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die drei Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`), die Stufen (`night.stufen`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der acht Teile.
+
+**Rückfragen bei Folgen.** Manche Änderung wirkt über ihren eigenen Teil hinaus. Einen Reviewer umzubenennen oder zu entfernen wirkt sich auf die Paarungen aus, einen Bereich umzubenennen oder zu entfernen auf die Prüfkommandos, die ihn nutzen. Eine Rückfrage nennt vorher die betroffenen Stellen; die Folge ist Teil derselben Änderung wie der auslösende Teil und wird mit ihm gespeichert oder verworfen. Eine unabhängige Änderung am betroffenen anderen Teil bleibt davon unberührt.
+
+**Team und persönlich.** Wo eine persönliche Abweichung erlaubt ist, zeigt die Oberfläche den Wert aus `workflow.config.json` (Team), die Abweichung aus `workflow.config.local.json` (persönlich) und den Wert, der gilt. Persönlich speichern lässt sich nur, was das Kit persönlich abweichen lässt (siehe „Team-Config und persönliche Abweichungen"); eine Abweichung lässt sich wieder entfernen. Gespeichert wird nur der geänderte Wert — `git diff` zeigt keine neu formatierte Datei.
 
 **Prüfen vor dem Speichern.** Ungültige Werte, auch solche, die erst im Zusammenspiel mit einer anderen Einstellung ungültig werden, weist die Oberfläche mit Grund zurück. Eine Einstellung, die sie nicht kennt, zeigt sie als Warnung und lässt sie beim Speichern stehen. Wer die Pflichtprüfungen leert oder die Review-Pflicht vor Ready abschaltet, muss das ausdrücklich bestätigen. Hat sich die Datei seit dem Laden geändert, speichert die Oberfläche nicht und fragt, ob die eigene Änderung verworfen oder neu angewendet werden soll.
 
@@ -294,23 +367,18 @@ Veraltet (v1). Wird beim Laden auf codeHost/issueTracker migriert. Gilt teamweit
 
 Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 
-- `buildChecks[]` — Ein Eintrag hat eine von drei Formen. (1) Der bloße Kommandostring "npx eslint .": nicht zugeordnet, läuft immer. (2) { "cmd": "...", "areas": ["backend"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { "cmd": "...", "always": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit "cmd" bedeutet dasselbe wie die String-Form. "areas" und "always" schließen sich aus (eine Vorrangregel würde niemand lesen), und "areas" braucht mindestens einen Eintrag (ein leeres Array liefe nie).
+- `buildChecks[]` — Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring "npx eslint .": nicht zugeordnet, Paketstufe, läuft immer. (2) { "cmd": "...", "areas": ["backend"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { "cmd": "...", "always": true }: entschieden immer laufend. (4) { "cmd": "...", "stufe": "push" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld "stufe" bedeutet "paket" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit "cmd" bedeutet dasselbe wie die String-Form. "areas" und "always" schließen sich aus (eine Vorrangregel würde niemand lesen), und "areas" braucht mindestens einen Eintrag (ein leeres Array liefe nie). "stufe" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht "guete": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann.
 - `buildChecks[].cmd` — Die Kommandozeile, wie sie in der String-Form stünde.
 - `buildChecks[].areas` — Bereichsnamen aus checkAreas. Die Prüfung läuft, wenn mindestens einer der Bereiche berührt ist. Nicht zusammen mit "always".
 - `buildChecks[].always` — true = entschieden immer laufend, unabhängig von den berührten Bereichen. Nicht zusammen mit "areas".
+- `buildChecks[].stufe` — Wann die Prüfung an der Reihe ist: "paket" beim Abschluss eines Arbeitspakets, "push" vor dem Veröffentlichen, "merge" vor der Freigabe. Fehlendes Feld = "paket" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStufen (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette. (gültig: `paket`, `push`, `merge`)
+- `buildChecks[].guete` — Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine "stufe" nicht "merge" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; "mutationCommand" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+- `buildChecks[].guete.muster` — Regulärer Ausdruck mit genau einer Gruppe; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos. Pflicht, weil die Werkzeuge Verschiedenes melden — PIT schreibt "Killed 42 (84%)", Stryker "Mutation score: 84.21". Die erfasste Zahl gilt als Prozentwert, wie die Marke.
+- `buildChecks[].guete.marke` — Der Prozentwert, ab dem die Messung genügt. Liegt der gemessene Anteil darunter, ist der Lauf rot — derselbe Halt wie bei jeder roten Pflichtprüfung, kein eigener Stop-Punkt. Zulässig sind 0 bis 100; eine höhere Marke wäre nie erreichbar.
 
 ### `checkAreas`
 
 Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt "areas" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein bloßer Kommandostring läuft immer (nicht zugeordnet), { "cmd", "areas" } läuft nur, wenn eines der hier hinterlegten Muster berührt ist, { "cmd", "always": true } läuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
-
-### `spec`
-
-Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
-
-- `spec.seit` — Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt.
-- `spec.bereiche` — Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.
-- `spec.testPattern` — Regulärer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.
-- `spec.testGlobs` — Pfadmuster, unter denen nach den Tests gesucht wird.
 
 ### `mutationCommand`
 
@@ -434,6 +502,27 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
+
+### `aufwand`
+
+Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `aufwand.laeufe` — Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst.
+- `aufwand.schwellen` — Ab welchem Anteil die Auswertung einen Befund meldet.
+- `aufwand.schwellen.pruefungAnteil` — Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+- `aufwand.schwellen.eingrenzungOhneWirkung` — Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat.
+- `aufwand.schwellen.werkzeugAnteil` — Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+- `aufwand.schwellen.schreibkostenAnteil` — Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1.
+
+### `wirksamkeit`
+
+Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausführungen und Beanstandungen zählt und ab welchen Mengen und Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `wirksamkeit.fensterTage` — Wie viele Tage zurück die Auswertung zählt. Das Fenster wird am Beginn der Erhebung abgeschnitten, damit es nie weiter zurückreicht, als Daten vorliegen.
+- `wirksamkeit.nieBeanstandetAbAusfuehrungen` — Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Darunter ist 'nichts gefunden' keine Aussage, sondern zu wenig Erfahrung.
+- `wirksamkeit.quoteSchwelle` — Ab welcher Rückläuferquote ein Befund erscheint. Gezählt werden Rücklaufbewegungen je Karte mit Eintritt nach In review; eine Karte, die mehrfach zurückging, zählt mehrfach, und die Quote kann deshalb über 1 liegen. Die Schwelle selbst ist ein Wert zwischen 0 und 1.
+- `wirksamkeit.quoteAbPaketen` — Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen.
+- `wirksamkeit.kandidatenMax` — Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar.
 <!-- einstellungen:ende -->
 
 ## Die sechzehn Skills und der 9-Schritt-Kernprozess
@@ -488,7 +577,6 @@ Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge sp
 
 ### /kontext
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill `specs/INDEX.md` nicht, sondern meldet nur, wenn der Index fehlt oder veraltet ist.
 
 **Werkzeug neben dem Prozess, Session-Start.**
 
@@ -516,14 +604,13 @@ Vier Eigenschaften unterscheiden ihn von `/techplan`:
 
 - **Er fragt, bevor er anlegt.** Der Skill benennt die Bahn in einem Satz und wartet auf ein Wort von dir. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
 - **Er nimmt nur zwei Quellen.** Den Chat oder eine `[Idee]` (`/task #N`). Ein `[Fachlich]`- oder `[Plan]`-Dokument lehnt er ab, ohne etwas anzulegen: Dort ist der volle Weg bereits begonnen, und ein `[Task]` daneben wäre eine zweite Wahrheit darüber, was gebaut wird. Entstand der Task aus einer Idee, bleibt an ihr ein Kommentar `Fortsetzung: Issue #T` zurück.
-- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#spec-driven-development): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
+- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.
 - **Er entscheidet, statt zu fragen.** Was beim Schreiben des Pakets unklar ist und nicht in der Stopp-Klasse aus `CLAUDE-workflow.md` steht, entscheidet der Skill selbst und hält es als `Entscheidung:`-Zeile im Kontext fest. Nur eine Frage aus der Stopp-Klasse geht an dich.
 
-**Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue` und braucht bei gesetztem `spec`-Block seinen `## Spec-Wirkung`-Abschnitt. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
+**Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue`. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
 
 ### /techplan
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill zuerst die Spezifikation und weist aus, wo sie schweigt.
 
 **Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
@@ -535,7 +622,6 @@ Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 d
 
 ### /issues
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Spezifikation nichts ändern (Issue #464).
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -595,6 +681,8 @@ Modelle, die das Dokument nicht geschrieben haben, liefern Befunde als Kommentar
 
 Der Skill ruft `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"` auf: Das Kommando wählt die **betroffenen** `buildChecks` aus und führt genau sie sequenziell aus. Der `merge-base`-Anker ist hier der richtige, weil der Skill nach dem lokalen Commit läuft — er misst alles, was seit dem letzten Push dazugekommen ist (siehe [Bereichsbezogene Prüfungen](#bereichsbezogene-prüfungen-checkareas)). Danach läuft `mutationCommand`, sofern gesetzt; es steht außerhalb der Auswahl. Bei Frontend-Änderungen erinnert der Skill an die manuelle UI-Verifikation im Browser und vermerkt im Bericht, wenn diese nicht automatisch möglich war.
 
+**Gefahren wird die Paketstufe** (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Der Aufruf trägt kein `--stufe`: Dieser Schritt ist die lokale Prüfung vor der menschlichen Testrunde, und sie teuer zu machen nähme ihr den Nutzen. Eine Prüfung mit der Stufe `push` oder `merge` erscheint darum als Auslassung mit ihrer Stufe als Grund — sie läuft in `/push-main` bzw. `/merge-production`.
+
 Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp; ausgelassene Prüfungen stehen mit ihrem Grund als eigene Zeile darin, damit ein verkürzter Lauf nicht wie ein vollständiger aussieht. Ein roter Check blockiert den weiteren Prozess. Es gibt keine Ausnahmen und kein Übergehen.
 
 ### /review
@@ -607,13 +695,14 @@ Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (i
 
 ### /push-main
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), läuft vor den Pflicht-Checks zusätzlich die Fortschreibung der Spezifikation, und das Spec-Gate kann den Push aufhalten.
 
 **Schritt 8, nach dem Review, auf dein explizites Kommando.**
 
 Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du. Er ist gegen autonome Invocation gesperrt und reagiert nur auf die explizite Trigger-Phrase. Eine frühere Push-Freigabe in derselben Session gilt nicht für neue Commits. Jeder Batch braucht eine eigene Freigabe.
 
 Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
+
+**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Dieser Lauf kann spürbar länger dauern als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
 
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
@@ -626,6 +715,8 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
 **Vor dem PR steht ein CI-Gate.** Der Skill holt sich per `node .claude/kit/board.mjs code ci-status --commit <sha>` den Zustand der CI für den Stand auf `origin/main` — vor Versionsbump, Commit und PR. Bei **rot** entsteht **kein PR**: Der Skill nennt die roten Jobs mit Namen und endet; ein Exit-Code 1 der Achse zählt genauso. Läuft die CI noch, fragt er genau einmal nach, und nur ein `ja` fährt fort. Hat ein Projekt keine CI (`codeHost: local`), meldet die Achse `keine` und der Lauf geht unverändert weiter.
+
+**Gefahren wird die Stufe `merge`, die Freigabestufe** — der Skill ruft `checks.mjs run --stufe merge` auf. Auf ihr laufen alle drei Stufen, und zwar im vollen Umfang: Vor der Freigabe wird keine Prüfung mehr nach Bereichen ausgewählt (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Es ist der teuerste und der letzte Lauf vor production.
 
 Der Grund für ein zweites Gate neben den Pflicht-Checks: Die lokalen `buildChecks` messen nur, was deine Maschine messen kann — sie messen nicht, was die CI misst. Dieses Repo fährt einen zweiten Job auf `windows-latest`; zwei Releases gingen nach production, während genau dieser Job fehlschlug. Die Information lag jedes Mal vor, sie wurde nur nie abgerufen.
 
@@ -796,7 +887,7 @@ node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde — startet ni
 node .claude/kit/night.mjs             # echter Lauf
 ```
 
-Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start trotz leerer `buildChecks` — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll), `--help`. Dazu das Config-Feld `formatFixCommand` (siehe unten) — kein Flag, weil es projektspezifisch ist.
+Flags: `--max <N>` (Session-Limit pro Nacht, Default 10), `--model <id>` (Default `claude-opus-5`), `--timeout-min <N>` (Zeitlimit pro Runde, Default 60), `--dry-run`, `--no-checks-ok` (Start, ohne dass eine Prüfung die Paketstufe trägt — der Runner verweigert sonst, denn nachts ohne Gate zu implementieren ist riskant; eine Liste aus lauter `push`- und `merge`-Prüfungen ist für die Umsetzung dasselbe wie eine leere), `--yolo` (siehe Permissions), `--label <name>` (Routing-Label, Default `kit:nightrun`; `none` schaltet den Filter ab), `--verbose` (Live-Verlaufsprotokoll), `--help`. Dazu das Config-Feld `formatFixCommand` (siehe unten) — kein Flag, weil es projektspezifisch ist.
 
 **Routing-Label — welche Ready-Issues der Nachtlauf bearbeitet.** Standardmäßig verarbeitet der Runner aus Ready nur Issues mit dem Label `kit:nightrun`; alle anderen bleiben unangetastet liegen (kein Verschieben, kein Kommentar). So markierst du auf **einem** Board gezielt die Teilmenge für den Nachtlauf und behältst den Rest für interaktive Arbeit — ohne ein zweites Board mit eigenem Token, das `Issue #N`-Abhängigkeiten zwischen den Boards unauflösbar machen würde. Das Label ist per `--label <name>` überschreibbar; `--label none` schaltet den Filter ganz ab (dann kommt wie früher strikt das oberste Ready-Issue dran). Ein `--dry-run` weist ungelabelte Issues sichtbar als „übersprungen" aus. Bei **GitLab** sind Labels bereits der Status-Mechanismus — wähle dort einen Routing-Label-Namen, der mit keinem Status-Label kollidiert (der Default `kit:nightrun` mit Namespace-Präfix tut das). **Tragweite:** Wer `night.mjs` bisher ohne Labels nutzte, muss seine Nacht-Issues jetzt mit `kit:nightrun` versehen oder `--label none` setzen — sonst findet der Lauf nichts.
 
@@ -816,7 +907,9 @@ Die finale Abschlussnachricht landet wie gehabt zusätzlich im Log; das Streamin
 
 **Der Grund eines harten Stopps steht als Text in der Datei.** Die Fehlerklasse sagt, *wo* es gerissen ist (`harterStopp`, `umgebung`, `tracker`, `zustand`) — der Grund sagt, *was* passiert ist, und zwar wörtlich mit dem Satz, der ohnehin ins Textprotokoll geht. Er steht an **genau einer Stelle**: am Feld `grund` der betroffenen Einheit, auf die der Lauf über `fehlerEinheit` verweist. Nur der Vorflug-Stopp kennt keine Karte — er läuft, bevor ein Kandidat gezogen ist —, und sein Grund steht deshalb am `fehlerText` des Laufs, `fehlerEinheit` bleibt dort leer. Bei einem unsauberen Arbeitsbaum nennt der Grund zusätzlich die liegengebliebenen Dateien; **ab dem elften Eintrag** wird auf die Anzahl und die ersten zehn gekürzt, in der Reihenfolge von `git status --porcelain`. Vorher musste man für genau diese Frage das Textprotokoll durchsuchen oder eine Sitzung dafür starten. Bleibt ein Grund wider Erwarten aus, trägt der Lauf den zuletzt gemerkten Stopptext samt einem Vermerk, dass die Übergabe gerissen ist, sonst einen Ersatztext mit der Bitte um Meldung — leer bleibt das Feld nie.
 
-**Einlieferung ans Board.** Mit `issueTracker: toolbox` liefert der Runner den Ergebnisstand fortschreibend an kanban-kit ein — nach jeder Einheit und am Ende, über `board.mjs nightrun melden` an `POST /api/kanban/night-runs`, mit dem projektgebundenen Token. kanban-kit ersetzt denselben Lauf bei jeder Meldung; ein harter Stopp hinterlässt die Nacht dort mit `complete: false`. Scheitert die Einlieferung, endet der Lauf **nicht** als Fehlschlag: Das Protokoll nennt den Grund, und die Datei bleibt der Rückfall. Mit jedem anderen Tracker entfällt die Einlieferung mit einer Protokollzeile.
+**Ein Lauf ohne Arbeit nennt seinen Grund.** Endet eine Nacht, ohne dass ein einziges Arbeitspaket an der Reihe war, trägt der Lauf-Kopf dafür das Feld `noWorkReason` — wörtlich mit dem Satz, der ohnehin ins Textprotokoll geht: `Ready ist leer — nichts zu tun.` in der Umsetzungsnacht, `Keine Kette zu fahren — nichts zu tun.` bei `--kette`. Ohne das Feld sah eine leere Nacht in der Auswertung aus wie eine abgebrochene: keine Einheit, kein harter Stopp, kein Hinweis darauf, dass schlicht nichts zu tun war. Ein Lauf mit Arbeit trägt es nicht.
+
+**Einlieferung ans Board.** Mit `issueTracker: toolbox` liefert der Runner den Ergebnisstand fortschreibend an kanban-kit ein — nach jeder Einheit und am Ende, über `board.mjs nightrun melden` an `POST /api/kanban/night-runs`, mit dem projektgebundenen Token. **Die erste Meldung geht raus, bevor das erste Arbeitspaket dran ist:** unmittelbar nachdem der Ergebnisstand angelegt ist, mit leerer Paketliste und `complete: false`. Ein Lauf, der schon im Vorflug oder in der ersten Session stehenbleibt, ist damit am Board zu sehen — vorher war er von einer Nacht, die nie gestartet wurde, nicht zu unterscheiden. Die Startmeldung erzeugt keine Protokollzeile, und im Dry-Run entfällt sie wie jede andere Meldung. kanban-kit ersetzt denselben Lauf bei jeder Meldung; ein harter Stopp hinterlässt die Nacht dort mit `complete: false`. Scheitert die Einlieferung, endet der Lauf **nicht** als Fehlschlag: Das Protokoll nennt den Grund, und die Datei bleibt der Rückfall. Mit jedem anderen Tracker entfällt die Einlieferung mit einer Protokollzeile.
 
 Das **Textprotokoll** — also die `.log`-Datei von oben — bleibt unverändert daneben liegen und ist weiterhin der Weg für den, der ins Detail will; der Ergebnisstand ersetzt es nicht, er ergänzt es um eine auswertbare Form. Zwei Versionsangaben stehen in der Datei: `schemaFassung` als erstes Feld nennt die Fassung des Formats — die braucht, wer die Datei auswertet — und `erzeugtVon` den Kit-Stand, der sie geschrieben hat, für den, der beim Nachsehen wissen will, welcher Runner am Werk war. Getrennt geführt, weil ein Kit-Release die `schemaFassung` nicht ändert und eine Formatänderung nicht auf ein Release wartet. Als unsauberen Working Tree wertet der Runner die Datei nicht — sie muss nicht committet werden; wessen `.gitignore` `.claude/*` nicht führt, sieht sie morgens trotzdem in `git status` stehen.
 
@@ -933,20 +1026,43 @@ Dieser Ausgang ist von den beiden benachbarten zu unterscheiden, und genau dafü
 
 Ein Halt ist **kein Fehlschlag**: Die Session hat richtig gehandelt, indem sie nicht geraten hat. Deshalb steht er im Ergebnisstand als eigener Zähler neben `erfolg`, `zurueckgestellt` und `fehlschlag` — wer die wartenden Entscheidungen morgens in der Rückstellungszahl suchen müsste, fände sie nicht. Der Weg nach vorn führt über `/fachplan #T`: Der Skill nimmt den angehaltenen Task samt Entscheidungskommentar als Eingang und macht eine fachliche Anforderung daraus. Das `kit:klaeren` nimmt dabei ausschließlich der Mensch ab.
 
-**Eine wartende Vorhaben-Notiz ist kein Rest.** Legt eine Nacht-Session mit `/techplan` eine Notiz ab, entsteht sie als `.claude/vorhaben-wartend-<k>.md` — im ignorierten `.claude/`, also außerhalb dessen, was der Rest-Guard misst. Sie liegt am Morgen noch da und gehört dorthin: Abgeholt wird sie erst beim nächsten `push main`, und der ist ein menschlicher Stop-Punkt. Läge die Notiz stattdessen unter `specs/`, wäre jeder nächtliche Plan ein unsauberer Working Tree und damit ein harter Stopp.
+**Eine alte Vorhaben-Notiz ist kein Rest.** Bis zum Rückbau von Spec-Driven Development legte `/techplan` wartende Notizen als `.claude/vorhaben-wartend-<k>.md` ab. Heute entsteht keine mehr; wo noch eine liegt, wertet der Rest-Guard sie nicht als Rest — auch in einem Projekt, dessen `.gitignore` `.claude/` nicht deckt. Die Datei kann gelöscht werden.
 
-**Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus — und zwar die **volle Liste**, ohne bereichsbezogene Auswahl. Das ist kein Versehen: Die beiden Prüfungen beantworten verschiedene Fragen. Nach einem sauberen Arbeitspaket lautet sie „hat diese Arbeit etwas kaputtgemacht?", und dafür genügen die berührten Bereiche. Beim Retten lautet sie „ist dieser unklare Zwischenstand überhaupt brauchbar?" — niemand weiß dann, was die abgebrochene Session angefasst hat, also wird alles gefragt. Sind die Checks grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
+**Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus — und zwar die Prüfungen der **Paketstufe**, diese aber **ohne bereichsbezogene Auswahl**. Das ist kein Versehen: Die beiden Auswahlen beantworten verschiedene Fragen. Nach einem sauberen Arbeitspaket lautet die Frage „hat diese Arbeit etwas kaputtgemacht?", und dafür genügen die berührten Bereiche. Beim Retten lautet sie „ist dieser unklare Zwischenstand überhaupt brauchbar?" — niemand weiß dann, was die abgebrochene Session angefasst hat, also wird über alle Bereiche gefragt. Die Stufe bleibt davon unberührt: Auch beim Retten geht es um ein Arbeitspaket, und Prüfungen mit `stufe` `push` oder `merge` sind erst beim Veröffentlichen fällig — liefen sie hier mit, wartete jeder Rettungsversuch auf sie. Sind die Checks grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
+
+**Trägt der Salvage nicht, sind es drei Endzustände — nicht einer.** Alle drei enden im harten Stopp, aber sie verlangen morgens drei verschiedene Griffe. Protokollzeile, Board-Kommentar und der `grund` des Ergebnisstands nennen sie deshalb beim Namen:
+
+| Endzustand | Was der Runner vorgefunden hat | Was daran zu tun ist |
+|---|---|---|
+| `SALVAGE-VERSUCH gescheitert` | kein neuer Commit, Karte nicht bewegt | die Session hat nichts hinterlassen; die Reste im Arbeitsbaum stehen im Grund |
+| `SALVAGE UNVOLLSTAENDIG` | neuer Commit, Karte nicht bewegt | die Arbeit liegt lokal — der Commit-Hash und die liegengebliebenen Pfade stehen dabei, nur der Board-Zug fehlt |
+| `SALVAGE WIDERSPRUECHLICH` | Karte in In review, Arbeitsbaum unsauber | die Karte behauptet mehr, als committet ist; die betroffenen Pfade stehen dabei |
+
+Ob committet wurde, sagt der Vergleich des Commit-Hashes vor und nach der Salvage-Session: Vor der regulären Runde ist der Arbeitsbaum sauber, ein neuer Commit ist damit die einzige Spur, die sie sicher hinterlässt. **Das Board bewegt der Salvage erst bei sauberem Arbeitsbaum** — seine Anweisung schreibt die Reihenfolge vor: committen, `git status --porcelain` leer sehen, dann erst ziehen. Ohne sie wäre der dritte Fall die Regel statt die Ausnahme.
 
 **Damit es gar nicht erst zum Salvage kommt.** Der Rettungsgriff behandelt den Schaden, nicht die Ursache — und er trug dreimal nicht, weil die Checks danach rot waren. Seit v1.54 setzt der Runner deshalb zwei Dinge davor:
 
 - **Das `Monitor`-Werkzeug ist für Implementierungs-Sessions gesperrt** (`--disallowedTools Monitor`), und ihr Bash-Zeitlimit steht auf dem Rundenzeitlimit (`BASH_MAX_TIMEOUT_MS`, `BASH_DEFAULT_TIMEOUT_MS`). `Monitor` ist das Werkzeug, mit dem eine Session auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug. Ohne das Werkzeug bleibt ihr der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann; ohne das gehobene Zeitlimit stürbe sie dabei nach zehn Minuten an der Uhr statt am Code. Das ist eine Leitplanke, keine Bitte: Die Anweisung, einen Hintergrund-Check aktiv abzuwarten, steht seit Langem im `local-check`-Skill und stand im Kontext genau der Sessions, die trotzdem wartend endeten.
 - **Der Runner misst erst, wenn kein Prozess der Session mehr läuft.** Nach dem Ende einer Session wartet er auf ihre Prozessgruppe, höchstens bis zum Rest des Rundenzeitlimits. Sonst startet die Salvage-Vorprüfung ihren eigenen Build neben einem noch laufenden — zwei gleichzeitige Testcontainers-Läufe reißen einander die Ressourcen weg, und das Rot sagt nichts über den Code. Läuft nach Ablauf der Frist noch etwas, steht ein Hinweis im Protokoll und der Lauf geht weiter.
 
-**Der harte Stopp nennt den Grund, nicht nur den Zustand.** Bis v1.53 stand im Protokoll „nicht in In review UND Working Tree dirty" — das ist die Folge. Wer morgens sichtet, unterscheidet jetzt vier Fälle mit vier verschiedenen nächsten Schritten:
+**Die wartende Sitzung.** Für jede unbeaufsichtigte Sitzung gilt seit v2.0.3 die Regel: **Keine Session endet mit laufender eigener Arbeit.** Sie wartet auf das Ergebnis der langen Arbeit, die sie angestoßen hat, oder bricht diese ab und meldet den Abbruch als Fehlschlag. Hintergrundarbeit bleibt dabei ausdrücklich erlaubt; unzulässig ist allein das Aufhören, während sie noch läuft. Tut eine Sitzung es doch, sah das vorher aus wie ein reguläres Ende ohne Commit — also wie Aufgeben, obwohl die Arbeit womöglich fast fertig war.
+
+**Erkannt wird am Schlusstext**, nicht am Werkzeug und nicht an der Zeit: Wendungen wie „warte auf", „läuft noch", „im Hintergrund" oder „sobald … fertig ist". **Das Warten auf einen Menschen zählt nicht** — ist im Schlusstext von einer Antwort, einer Rückmeldung, einer Freigabe, einem GO, einer Klärung oder einem Review die Rede, hat die Sitzung nichts verloren: Ihre Frage steht am Board, und der Halt-Weg oben hat sie schon verbucht. Gelesen wird ausschließlich der Schlusstext; eine Wartemeldung mitten im Lauf bleibt folgenlos, denn wer später fertig wird, sagt zum Schluss etwas anderes.
+
+**Was der Runner dann tut.** Die Runde bekommt ihren eigenen Grund — dieselbe Zeile in Protokoll, Board-Kommentar und `grund` des Ergebnisstands, siehe die Tabelle unten. An das Arbeitspaket geht ein Kommentar unter dem Anker `## Nachtlauf: wartende Sitzung`: der Fall, der zuletzt bekannte Stand (der Schlusstext, ab 2.000 Zeichen gekürzt) und, sofern welche liegen, die Reste im Arbeitsverzeichnis. Die Einheit im Ergebnisstand trägt `wartendBeendet: true`. Am Ablauf ändert sich nichts: Bei sauberem Arbeitsbaum geht das Paket wie bei jedem Fehlschlag zurück ins Backlog und der Lauf läuft weiter. Die nächste Session, die das Paket zieht, nennt den Vermerk, statt stillschweigend auf halbem Weg weiterzumachen.
+
+**Bei unsauberem Arbeitsbaum kommt der Salvage zuerst.** Rettet er die Runde, bleibt es dabei — dann war nichts verloren, und ein zweites Urteil über denselben Vorgang wäre eine zweite Wahrheit. Ist er nicht möglich (rote Checks) oder gescheitert, treten Grund, Vermerk und `wartendBeendet` hinzu; beim gescheiterten Salvage steht der Grund der wartenden Sitzung **vor** dessen Endzustand aus der Tabelle oben, denn es sind zwei Vorgänge: warum die reguläre Runde nichts hinterlassen hat, und was der Salvage vorgefunden hat.
+
+**In der Nacht-Kette** endet eine Stufen-Session mit wartendem Schlusstext als `abgebrochen`, mit demselben Grund, und ihr Vermerk hängt am Dokument der Stufe — am Plan, am Paket. Einzige Ausnahme ist die Stufe `abdeckung`: Ihre Auskunft *ist* ein Text über laufende Arbeit, und eine Erkennung dort verwürfe den Befund genau dann, wenn er etwas zu sagen hat.
+
+**Gezählt wird sie.** `aufwand.mjs` führt die wartend beendeten Sitzungen als eigene Größe und nennt sie im Befund in einer eigenen Zeile — auch bei null, und dann ausdrücklich als Null: Der Fall ist selten, und ein Schweigen ließe offen, ob er nicht eintrat oder nicht gezählt wurde.
+
+**Der harte Stopp nennt den Grund, nicht nur den Zustand.** Bis v1.53 stand im Protokoll „nicht in In review UND Working Tree dirty" — das ist die Folge. Wer morgens sichtet, unterscheidet jetzt fünf Fälle mit fünf verschiedenen nächsten Schritten:
 
 | Präfix im Protokoll | Was passiert ist |
 |---|---|
-| `Grund: Session regulaer beendet ohne Commit (end_turn)` | Die Session ist normal zu Ende gegangen, ohne fertig zu werden — meist, weil sie auf etwas gewartet hat |
+| `Grund: Session regulaer beendet ohne Commit (end_turn)` | Die Session ist normal zu Ende gegangen, ohne fertig zu werden |
+| `Grund: Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden` | Die Session hat eine lange Arbeit angestoßen und darauf gewartet — headless gibt es keinen Folge-Turn, siehe oben |
 | `Grund: Session am Zeitlimit beendet` | Das Paket war zu groß für die Runde |
 | `Grund: Session mit is_error beendet` | Abbruch |
 | `Grund: Pflichtcheck rot — <Kommando> (Session)` bzw. `(Vorpruefung des Runners)` | Arbeit am Code; das rote Kommando und die letzten 15 Zeilen seiner Ausgabe stehen dabei |
@@ -978,7 +1094,7 @@ Flags: `--max <N>` zählt hier **Ketten** (Default 3); `--model <id>` und `--ver
 
 **Bedingungen:** Ein Kandidat trägt das Label, hat den Titel `[Fachlich]`, steht im **Backlog** und trägt kein `kit:klaeren` — dort wartet eine Antwort, die vorher im Fachplan stehen muss. Was das Label trägt, aber nicht laufen darf, steht mit Grund als `uebersprungen` im Ergebnisstand, und das Label bleibt. Vor der ersten Kette läuft der **Reviewer-Vorflug** wie früher: eine eigene Vorflug-Session prüft die Reviewer und den Tracker in der Umgebung der Sessions, nicht im Runner (siehe Allowlist unten). Scheitert er, bekommt jeder Kandidat den Kommentar `Kette nicht gestartet: <Grund>`, behält sein Label, und der Lauf endet hart — die Geste ist nicht verbraucht, denn es lief nichts. Anders als die Umsetzungsnacht verlangt die Kette **keinen sauberen Arbeitsbaum und keine leere In-progress-Spalte**: Sie arbeitet in einem eigenen Worktree und läuft neben einer Umsetzungsnacht.
 
-**Der Worktree.** Jede Kette bekommt einen `git worktree` unter dem Temp-Verzeichnis (`kette-<repo>-<F>-<stempel>`), in den der Runner `.claude/` der Hauptkopie spiegelt — Kit-Kopie, Skills, Settings, Token —, ohne die Protokolle. Beim lokalen Tracker zeigt die Config im Worktree auf das `issues`-Verzeichnis der Hauptkopie, damit die Karten dort entstehen. Nach der Kette wird der Worktree entfernt; wartende Vorhaben-Notizen holt der Runner vorher in die Hauptkopie, und liegengebliebene Worktrees räumt der nächste Start.
+**Der Worktree.** Jede Kette bekommt einen `git worktree` unter dem Temp-Verzeichnis (`kette-<repo>-<F>-<stempel>`), in den der Runner `.claude/` der Hauptkopie spiegelt — Kit-Kopie, Skills, Settings, Token —, ohne die Protokolle. Beim lokalen Tracker zeigt die Config im Worktree auf das `issues`-Verzeichnis der Hauptkopie, damit die Karten dort entstehen. Nach der Kette wird der Worktree entfernt, und liegengebliebene Worktrees räumt der nächste Start.
 
 **Der Ablauf je Stufe**, jede mit eigener Session im Worktree und gesetztem `KIT_AGENT_MODEL`:
 
@@ -997,7 +1113,7 @@ Andere neue Karten ohne die Herkunftszeile stehen als „nicht zuordenbar" im Be
 
 **Bricht die Review-Stufe ab, nachdem die Befunde schon am Plan stehen**, hinterlässt die Kette dort den Kommentar `## Review unvollstaendig` mit dem Grund des Abbruchs und dem Weg nach vorn (`/issue-review #M` von Hand). Genau diese Lücke trifft ein Abbruch am häufigsten — die Einarbeitung steht am Ende der Stufe —, und ohne Vermerk sieht das Dokument später aus wie ein ungeprüftes: Die Prüfung ist bezahlt, die Befunde stehen am Board, der Body trägt keinen `Plan-Review:`-Marker. Den Ausgang ändert der Vermerk nicht, er bleibt `abgebrochen` mit seinem Grund.
 
-**Drei Ausgänge**, je Kette genau einer: `fertig` (Plan geprüft, Pakete liegen im Backlog), `angehalten` (eine Frage der Stopp-Klasse wartet auf dich) und `abgebrochen` (technisch oder am Budget gescheitert, mit Grund). Abbruchgründe sind: kein Plan oder kein Paket entstanden; Form nach den Korrekturrunden weiterhin verletzt; Zeitbudget einer Stufe erschöpft; Kostenbudget überschritten — geprüft **nach** der Session, nie mittendrin, denn ein halb geschriebenes Dokument wäre der teurere Fehler; Fehlstart einer Session. Ein Abbruch beendet nur diese Kette, der nächste Kandidat kommt dran.
+**Drei Ausgänge**, je Kette genau einer: `fertig` (Plan geprüft, Pakete liegen im Backlog), `angehalten` (eine Frage der Stopp-Klasse wartet auf dich) und `abgebrochen` (technisch oder am Budget gescheitert, mit Grund). Abbruchgründe sind: kein Plan oder kein Paket entstanden; Form nach den Korrekturrunden weiterhin verletzt; Zeitbudget einer Stufe erschöpft; Kostenbudget überschritten — geprüft **nach** der Session, nie mittendrin, denn ein halb geschriebenes Dokument wäre der teurere Fehler; Fehlstart einer Session; eine Stufen-Session, die mit laufender eigener Arbeit aufgehört hat ([Die wartende Sitzung](#nachtbetrieb), Ausnahme ist die Stufe `abdeckung`) — sie hinterlässt ihren Vermerk am Dokument ihrer Stufe. Ein Abbruch beendet nur diese Kette, der nächste Kandidat kommt dran.
 
 **Budgets** stehen in `night.kette` der `workflow.config.json`, alle optional, mit diesen Startwerten:
 
@@ -1095,6 +1211,16 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 **Morgen-Ritual:** Protokoll lesen (`.claude/night-run-<datum>.log`: Issue, Dauer, Ergebnis, Commit pro Runde) — derselbe Stand liegt zusätzlich auswertbar als `.claude/night-run-<datum>-<uhrzeit>.json` daneben —, dann wie immer `/review` → eigener Test → `push main`. Zurückgestellte Issues stehen kommentiert im Backlog.
 
+## Aufwand des Prozesses
+
+Jeder Ergebnisstand einer Nacht-Session (`.claude/night-run-<datum>-<uhrzeit>.json`) trägt seit Issue #748/#749 bereits Dauer, Kosten, Menge, Modell und Prüfstand. `node .claude/kit/aufwand.mjs auswerten` liest die jüngsten davon, aggregiert Zeit, Prüfungen, Umfang und Kosten und schreibt daraus `.claude/aufwand.md` (für Menschen) sowie `.claude/aufwand.json` (für die beiden Ausgabestellen unten). Das Werkzeug sagt nur, was auffällt — nie, was zu tun ist, und es schweigt, wenn nichts auffällt.
+
+**Wo der Befund erscheint.** An genau zwei Stellen, und beide zusammen: als Abschlussblock im Laufprotokoll `.claude/night-run-<datum>.log`, den jeder unbeaufsichtigte Lauf am Ende selbst schreibt, und im Skill `/push-main`, der `node .claude/kit/aufwand.mjs befund` vor dem ersten Schritt ausführt und die Ausgabe zeigt. Beide sind nötig: Läuft der Nachtbetrieb künftig ohne Zutun eines Menschen an, liest den Laufbericht womöglich niemand mehr; das Veröffentlichen bleibt dagegen ein Schritt, den ein Mensch selbst auslöst.
+
+**Kein Gate.** Der Befund hält weder einen Lauf noch `/push-main` auf. Ein Fehlschlag der Auswertung ist eine Protokollzeile, kein Abbruch.
+
+**Laufzahl und Schwellen ändern.** Beides steht im optionalen Block `aufwand` der `.claude/workflow.config.json` (siehe [Alle Einstellungen](#alle-einstellungen)) — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, ein bestehendes Projekt bekommt die Auswertung also ohne weitere Einrichtung. `aufwand.laeufe` bestimmt, wie viele der jüngsten Ergebnisstände einbezogen werden; `aufwand.schwellen` trägt die vier Grenzwerte (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`), ab denen ein Befund erscheint. In der Einstellungs-Oberfläche steht der Block unter dem Thema „Nachtbetrieb".
+
 ## Verbrauch interaktiver Sitzungen
 
 Der Nachtlauf meldet seinen Verbrauch selbst (siehe oben). Für die Sitzungen, in denen du selbst am Rechner sitzt, tut das der **Sitzungs-Melder**: `board.mjs sitzung melden` liest das Sitzungsprotokoll von Claude Code, summiert Eingabe-, Ausgabe- und Zwischenspeicher-Token und liefert sie über dieselbe Route ein wie der Runner — `POST /api/kanban/night-runs`, nur mit `kind`/`mode` **INTERACTIVE** und dem Startzeitpunkt der Sitzung als Schlüssel. Den Pfad des Protokolls nimmt er aus `--protokoll` oder als `transcript_path` aus dem Rumpf, den ein Claude-Code-Hook auf stdin hereinreicht.
@@ -1190,107 +1316,9 @@ Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetz
 
 ## Spec-Driven Development
 
-Ein Projekt kann unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führen. Wer plant, liest sie statt Produktionscode — und bekommt ausdrücklich gesagt, wo sie schweigt. Wer ein Arbeitspaket schneidet, sagt, was es an ihr ändert. Wer pusht, sieht vorher den Diff und wird aufgehalten, wenn Paket und Beschreibung nicht zusammenpassen.
+Spec-Driven Development ist seit Kit-Version **v3.0.0** entfallen (Plan #825). Das Kit führt keine Spezifikation unter `specs/` mehr: keine `## Spec-Wirkung` an Arbeitspaketen, keine Aussage-IDs in Testnamen, keine Fortschreibung und kein Gate beim Push, keine Vorhaben-Notizen. `/push-main` hat dadurch sieben Schritte statt neun.
 
-**Ein Projekt ohne diesen Block merkt davon nichts.** Keine zusätzliche Frage im Ablauf, keine Warnung, kein verändertes Verhalten in irgendeinem Skill — ohne den `spec`-Block bleibt alles unverändert.
-
-### Der Schalter
-
-Eingeschaltet wird über den Block `spec` in `.claude/workflow.config.json`. **Das Vorhandensein des Blocks ist der Schalter** — es gibt bewusst kein Feld `enabled`. Ein Bool hätte einen Aus-Zustand, und den soll es nicht geben.
-
-```json
-"spec": {
-  "seit": "2026-09-03",
-  "bereiche": {
-    "board": ["kit/board.mjs"],
-    "installer": ["install.mjs", "tools/sync-blobs.mjs"]
-  },
-  "testGlobs": ["test/*.test.mjs"],
-  "testPattern": "\\[<ID>\\]"
-}
-```
-
-`seit` ist der Zeitpunkt: Nur Pakete mit einem Anlagedatum ab diesem Tag wertet das Gate. Alles davor bleibt unberührt — es wird nichts nachgetragen.
-
-`bereiche` bildet Bereichsnamen auf Code-Globs ab. **Diesen Schnitt macht ein Mensch.** Kein Werkzeug schlägt ihn vor: Die Bereiche aus dem vorhandenen Code abzuleiten hieße, das Soll aus dem Ist zu rechnen — genau das, was dieses Verfahren vermeiden soll.
-
-`testPattern` und `testGlobs` sagen, wo das Gate den Verweis auf eine Aussage sucht (Standard: `\[<ID>\]`).
-
-Der Installer fragt danach — projektlokal, und nur wenn noch kein Block da ist. Ist er vorhanden, entfällt die Frage: Ein „Nein" dürfte ihn sonst entfernen.
-
-### Es gibt keinen Weg zurück
-
-Die Entscheidung ist nicht zurückzunehmen, und der Installer sagt das vor der Antwort. Ehrlich dazu gehört, was das heißt: **Das Kit bietet keinen Weg zurück an** — es gibt kein Kommando, keine Frage, keine Option dafür. Ein Mensch kann den Block natürlich von Hand aus der Config löschen; niemand hindert ihn daran. Zugesichert ist nur, dass das Werkzeug es nicht anbietet, und mehr wäre auch nicht ehrlich zuzusichern.
-
-### Nicht auf jedem Tracker
-
-Spec-Driven Development setzt auf einem Board mit Aktivitätsverlauf auf: Das Anlagedatum eines Pakets, an dem `seit` hängt, kommt von dort. **Bei `issueTracker: github` und `gitlab` weist `spec.mjs` deshalb jeden Lauf ab** — dort gibt es weder Verlauf noch Suche über Aussagen. Möglich sind `toolbox` und `local`. Die Einschränkung fällt sofort auf und nicht erst beim ersten Push: Der Installer stellt die Frage bei diesen Trackern gar nicht.
-
-### Wie die Beschreibung aussieht
-
-Eine Datei je Bereich, benannt nach ihm:
-
-```
-specs/
-  INDEX.md              eine Zeile je Bereich, erzeugt von `spec.mjs index`
-  board.md              die Aussagen des Bereichs `board`
-  vorhaben/VER.md       je Vorhaben: wurde Produktionscode gelesen?
-```
-
-Die Vorhaben-Notiz nimmt einen Umweg: Beim Planen entsteht sie als **wartende** Datei `.claude/vorhaben-wartend-VER.md`, und erst der nächste Push hebt sie nach `specs/vorhaben/` auf. Der Grund ist der Zeitpunkt — geplant wird mitten in einer Session, oft unbeaufsichtigt, und eine ungefragte Änderung unter `specs/` wäre dort ein unsauberer Working Tree.
-
-Eine Aussage ist eine Zeile mit ID und Text. Gestrichene Aussagen wandern unter `## Entfallen` ans Dateiende — mit Datum und der Nummer des Pakets, das sie gestrichen hat:
-
-```markdown
-- board-1 — issue activity gibt den Aktivitätsverlauf einer Karte aus.
-- board-2 — issue get liefert die Labels als Namen-Array.
-
-## Entfallen
-
-- board-3 — Der Adapter liest das Anlagedatum aus der Karte. (entfallen 2026-09-02, Paket #460)
-```
-
-**Gestrichene Aussagen bleiben unter `## Entfallen` stehen, und ihre Nummern werden nie wieder vergeben.** Der Grund ist die Rückverfolgbarkeit: Ein Test, ein Commit oder ein altes Paket kann Jahre später auf `board-3` verweisen. Würde die Nummer neu vergeben, zeigte der Verweis auf etwas anderes — eine stillschweigende Umdeutung, die niemand bemerkt. So zeigt er auf das ausdrücklich Gestrichene, samt Datum und Anlass.
-
-### Was ein Arbeitspaket sagt
-
-Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Die Pflicht gilt für Arbeitspakete — ein Titel mit `[Fachlich]`, `[Plan]` oder `[Idee]` wird auch ohne den Abschnitt angelegt, weil aus ihm nie ein Commit entsteht. Wer ihn dort freiwillig schreibt, wird an derselben Grammatik gemessen. Er besteht ausschließlich aus Zeilen dieser vier Formen:
-
-```
-NEU       <BEREICH> <ID> — <Aussage>
-GEAENDERT <ID> — <neuer Aussage-Text>
-ENTFAELLT <ID> — <Grund>
-KEINE     — <Begruendung>
-```
-
-Vor dem Freitext steht der Gedankenstrich `—`, nicht der Bindestrich. `KEINE` steht allein und braucht eine Begründung: „keine Wirkung" ist eine Aussage, kein Weglassen.
-
-Der Adapter lehnt ein Paket ohne diesen Abschnitt ab — nicht als Bitte im Skill-Text, sondern beim Anlegen. Eine Bitte ist die Leitplanke, die unter Druck übersprungen wird.
-
-### Das Gate beim Push
-
-`/push-main` bekommt bei eingeschaltetem Projekt einen zusätzlichen Schritt, und seine Lage ist nicht beliebig:
-
-1. **Vorschau, vier Teile.** `spec.mjs apply --dry-run` zeigt, was sich an der Beschreibung ändern würde; `spec.mjs vorhaben-sichern --dry-run`, welche wartenden Vorhaben-Notizen aufgehoben würden. Dazu zwei Blicke mit `git`: was unter `specs/vorhaben/` schon liegt, und was unter `specs/` schon gestaged war. Beide sind nötig, weil die `apply`-Vorschau gegen den Stand auf der Platte rechnet und einen Rest aus einem früheren roten Lauf nicht als Änderung meldet.
-2. **Zustimmung.** Ohne sie wird nicht gepusht. Sie deckt alles Gezeigte ab; eine zweite Rückfrage gibt es nicht.
-3. **`apply`, Aufheben und Commit** — **vor** den Pflicht-Checks. `apply` schreibt Dateien, die in denselben Push gehen; liefen die Checks vorher, prüften sie einen Stand, der nicht der gepushte ist. In den Commit gehen genau drei Mengen: `specs/vorhaben/`, die Dateien aus diesem `apply`-Lauf und was unter `specs/` schon gestaged war — alles andere bleibt liegen, damit der Commit keine handgeführte Änderung einsammelt, die niemand angefordert hat.
-4. **Pflicht-Checks, dann `check`** auf dem Batch, wie er gepusht wird. Ein Befund hält den Push auf.
-
-Ein Fehlschlag beim Aufheben hält den Ablauf **nicht** auf: Die Notiz bleibt an ihrem wartenden Ort, wird benannt, und der nächste Push holt es nach. Der Commit-Betreff trägt dabei nie ein Suffix mit einer Paketnummer — daran und nur daran erkennt das Werkzeug ein Arbeitspaket, und dieser Commit ist keines.
-
-Geprüft wird zweierlei: dass jede Wirkungsangabe in der Beschreibung angekommen ist, und dass jede neue oder geänderte Aussage von mindestens einem Test referenziert wird. **Gewertet werden nur Pakete ab `seit`** — der Bestand bleibt außen vor.
-
-### Die Kommandos
-
-| Kommando | Was es tut |
-|---|---|
-| `node .claude/kit/spec.mjs index` | Schreibt `specs/INDEX.md` neu: je Bereich die Zahl der gültigen und der entfallenen Aussagen. |
-| `node .claude/kit/spec.mjs show` | Gibt die Aussage zu einer ID aus, mit Bereich und Status. |
-| `node .claude/kit/spec.mjs check` | Prüft die Spec-Wirkung — `--paket` die Form einer Paketdatei, `--anker` als Gate den ganzen Batch. |
-| `node .claude/kit/spec.mjs luecken` | Meldet je Bereich, wozu die Beschreibung schweigt — auch wenn die Liste leer ist. |
-| `node .claude/kit/spec.mjs vorhaben` | Legt die Notiz an, ob für ein Vorhaben Produktionscode gelesen wurde. |
-| `node .claude/kit/spec.mjs vorhaben-sichern` | Hebt die wartenden Vorhaben-Notizen nach `specs/vorhaben/` auf — immer mit einer JSON-Antwort, auch wenn keine wartet. |
-| `node .claude/kit/spec.mjs apply` | Schreibt die Beschreibung aus den Wirkungsangaben fort. |
+**Ein Projekt, das noch einen `spec`-Block führt, läuft unverändert weiter.** Kein Werkzeug wertet den Block mehr aus. Der Installer übernimmt ihn bei einem Update und sagt einmal, dass er entfernt werden kann; die Einstellungs-Oberfläche meldet ihn als unbekanntes Feld und lässt das Speichern zu. Block, Verzeichnis `specs/` und eine liegengebliebene `.claude/vorhaben-wartend-*.md` können gelöscht werden. `[ID]`-Präfixe in Testnamen stören nicht und dürfen stehen bleiben.
 
 ## Team-Config und persönliche Abweichungen
 

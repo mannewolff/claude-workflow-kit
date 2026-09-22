@@ -67,9 +67,6 @@ Was.
 ## Akzeptanzkriterium
 - Ein Kommando liefert etwas.
 
-## Spec-Wirkung
-KEINE — nur ein Test.
-
 ## Abhängigkeiten
 Keine.
 `;
@@ -236,16 +233,17 @@ test("[board-5] F9 und F11: Herkunftszeile und Issue-Review-Zeile an der Wurzel 
 
 // --- Arbeitspaket: I1 bis I5 --------------------------------------------------
 
-test("[board-5] I1: die vier Abschnitte in Reihenfolge, Abhaengigkeiten zuletzt, Spec-Wirkung nur davor", () => {
+test("[board-5] I1: die vier Abschnitte in Reihenfolge, Abhaengigkeiten zuletzt", () => {
   mitProjekt((dir) => {
     const ohneAufgabe = dateiWeg(dir, PAKET.replace("## Aufgabe\nWas.\n\n", ""), "[Task] x");
     assert.ok(gates(ohneAufgabe).includes("I1"), JSON.stringify(ohneAufgabe.json));
     const nachAbh = dateiWeg(dir, PAKET + "\n## Notizen\n- x\n", "[Task] x");
     assert.ok(gates(nachAbh).includes("I1"), "eine ##-Ueberschrift nach Abhaengigkeiten verstoesst");
-    const specFalsch = dateiWeg(dir, PAKET.replace("## Spec-Wirkung\nKEINE — nur ein Test.\n\n", "").replace("## Aufgabe\n", "## Spec-Wirkung\nKEINE — nur ein Test.\n\n## Aufgabe\n"), "[Task] x");
-    assert.ok(gates(specFalsch).includes("I1"), "Spec-Wirkung vor Aufgabe verstoesst");
-    const ohneSpec = dateiWeg(dir, PAKET.replace("## Spec-Wirkung\nKEINE — nur ein Test.\n\n", ""), "[Task] x");
-    assert.equal(ohneSpec.json.ok, true, "ohne Spec-Wirkung bleibt das Paket gruen");
+    // Bestandskarten aus der SDD-Zeit tragen noch einen Abschnitt `## Spec-Wirkung`
+    // zwischen Akzeptanzkriterium und Abhaengigkeiten (Plan #825, E3). Seit dem
+    // Rueckbau ist er ein Zusatzabschnitt wie jeder andere und bleibt gruen.
+    const altbestand = dateiWeg(dir, PAKET.replace("## Abhängigkeiten\n", "## Spec-Wirkung\nKEINE — Altbestand.\n\n## Abhängigkeiten\n"), "[Task] x");
+    assert.equal(altbestand.json.ok, true, "ein Spec-Wirkung-Altbestand bleibt gruen");
   });
 });
 
@@ -283,7 +281,7 @@ test("[board-8] I5: eine verbindliche Vorlage verlangt ein Bildschirmfoto im Akz
     assert.ok(gates(ohneFoto).includes("I5"), JSON.stringify(ohneFoto.json));
     const mitFoto = dateiWeg(dir, mitVorlage.replace("## Akzeptanzkriterium\n", "## Akzeptanzkriterium\n- Bildschirmfoto der Ansicht neben docs/x.html, Abschnitt Kopf.\n"), "[Task] x");
     assert.equal(mitFoto.json.ok, true, JSON.stringify(mitFoto.json));
-    const imManuellenBlock = dateiWeg(dir, mitVorlage.replace("## Spec-Wirkung\n", "### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)\n- Abnahme per Bildschirmfoto neben der Vorlage.\n\n## Spec-Wirkung\n"), "[Task] x");
+    const imManuellenBlock = dateiWeg(dir, mitVorlage.replace("## Abhängigkeiten\n", "### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)\n- Abnahme per Bildschirmfoto neben der Vorlage.\n\n## Abhängigkeiten\n"), "[Task] x");
     assert.equal(imManuellenBlock.json.ok, true, "der Block unter dem Akzeptanzkriterium zaehlt mit");
   });
 });

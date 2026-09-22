@@ -43,7 +43,7 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "description": "Ein Eintrag hat eine von drei Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie).",
+        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"guete\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann.",
         "oneOf": [
           {
             "type": "string"
@@ -68,6 +68,38 @@
               "always": {
                 "type": "boolean",
                 "description": "true = entschieden immer laufend, unabhängig von den berührten Bereichen. Nicht zusammen mit \"areas\"."
+              },
+              "stufe": {
+                "type": "string",
+                "enum": [
+                  "paket",
+                  "push",
+                  "merge"
+                ],
+                "default": "paket",
+                "description": "Wann die Prüfung an der Reihe ist: \"paket\" beim Abschluss eines Arbeitspakets, \"push\" vor dem Veröffentlichen, \"merge\" vor der Freigabe. Fehlendes Feld = \"paket\" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStufen (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette."
+              },
+              "guete": {
+                "type": "object",
+                "properties": {
+                  "muster": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Regulärer Ausdruck mit genau einer Gruppe; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos. Pflicht, weil die Werkzeuge Verschiedenes melden — PIT schreibt \"Killed 42 (84%)\", Stryker \"Mutation score: 84.21\". Die erfasste Zahl gilt als Prozentwert, wie die Marke."
+                  },
+                  "marke": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "description": "Der Prozentwert, ab dem die Messung genügt. Liegt der gemessene Anteil darunter, ist der Lauf rot — derselbe Halt wie bei jeder roten Pflichtprüfung, kein eigener Stop-Punkt. Zulässig sind 0 bis 100; eine höhere Marke wäre nie erreichbar."
+                  }
+                },
+                "required": [
+                  "muster",
+                  "marke"
+                ],
+                "additionalProperties": false,
+                "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stufe\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [
@@ -96,48 +128,6 @@
           "minLength": 1
         }
       }
-    },
-    "spec": {
-      "type": "object",
-      "description": "Schalter für Spec-Driven Development — die Spezifikation des fachlichen Soll-Verhaltens unter specs/. Das Vorhandensein des Blocks bedeutet eingeschaltet — es gibt bewusst kein Feld 'enabled', denn ein Bool hätte einen Aus-Zustand, und die Entscheidung ist nicht zurückzunehmen: Es gibt keinen Weg zurück. Der Zeitpunkt steht in 'seit'; nur Pakete mit einem Anlagedatum ab diesem Tag wertet das spätere Gate. ACHTUNG: Der Block trägt nicht auf jedem Tracker. Bei issueTracker github und gitlab weist spec.mjs jeden Lauf ab — dort gibt es weder Aktivitätsverlauf noch Suche über Aussagen, auf denen Spec-Driven Development aufsetzt. Möglich sind toolbox und local. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
-      "properties": {
-        "seit": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-          "description": "Ab wann die Spezifikation gilt (JJJJ-MM-TT). Nur Pakete mit einem Anlagedatum ab diesem Kalendertag wertet das spätere Gate; ältere bleiben unberührt."
-        },
-        "bereiche": {
-          "type": "object",
-          "minProperties": 1,
-          "description": "Bereichsnamen auf Code-Globs. Mindestens ein Bereich, und jeder Bereich mindestens ein Muster. Anders als bei checkAreas ist ein leeres Muster-Array hier nicht erlaubt: Dort erfasst ein Bereich ohne Muster nichts und läuft nie, hier wäre er ein Bereich, den das Gate nie zuordnen kann.",
-          "additionalProperties": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        "testPattern": {
-          "type": "string",
-          "description": "Regulärer Ausdruck mit dem Platzhalter <ID>, der den Verweis auf eine Aussage im Testnamen findet. Fehlendes Feld = der Default.",
-          "default": "\\[<ID>\\]"
-        },
-        "testGlobs": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Pfadmuster, unter denen nach den Tests gesucht wird."
-        }
-      },
-      "required": [
-        "seit",
-        "bereiche"
-      ],
-      "additionalProperties": false
     },
     "mutationCommand": {
       "type": "string",
@@ -680,6 +670,93 @@
           "description": "Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits."
         }
       },
+      "additionalProperties": false
+    },
+    "aufwand": {
+      "type": "object",
+      "description": "Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "laeufe": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst."
+        },
+        "schwellen": {
+          "type": "object",
+          "description": "Ab welchem Anteil die Auswertung einen Befund meldet.",
+          "properties": {
+            "pruefungAnteil": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5,
+              "description": "Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            },
+            "eingrenzungOhneWirkung": {
+              "type": "boolean",
+              "default": true,
+              "description": "Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat."
+            },
+            "werkzeugAnteil": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5,
+              "description": "Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            },
+            "schreibkostenAnteil": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.75,
+              "description": "Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Ein Wert zwischen 0 und 1."
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "wirksamkeit": {
+      "type": "object",
+      "description": "Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausführungen und Beanstandungen zählt und ab welchen Mengen und Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "fensterTage": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 30,
+          "description": "Wie viele Tage zurück die Auswertung zählt. Das Fenster wird am Beginn der Erhebung abgeschnitten, damit es nie weiter zurückreicht, als Daten vorliegen."
+        },
+        "nieBeanstandetAbAusfuehrungen": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Darunter ist 'nichts gefunden' keine Aussage, sondern zu wenig Erfahrung."
+        },
+        "quoteSchwelle": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.2,
+          "description": "Ab welcher Rückläuferquote ein Befund erscheint. Gezählt werden Rücklaufbewegungen je Karte mit Eintritt nach In review; eine Karte, die mehrfach zurückging, zählt mehrfach, und die Quote kann deshalb über 1 liegen. Die Schwelle selbst ist ein Wert zwischen 0 und 1."
+        },
+        "quoteAbPaketen": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Darunter ist die Quote zu wenigen Karten abgelesen."
+        },
+        "kandidatenMax": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 200,
+          "description": "Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Der Deckel hält die Auswertung auf einem großen Bewegungsprotokoll bezahlbar."
+        }
+      },
+      "required": [],
       "additionalProperties": false
     }
   },

@@ -63,11 +63,23 @@ const BLOBS = [
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
-  { constName: "SPEC_MJS_B64", source: join(root, "kit", "spec.mjs") },
   // Preistabelle des Sitzungs-Melders (Issue #734). Eigene Datei, weil sie
   // Pflegedaten mit eigenem Stand traegt und kein Code ist; board.mjs laedt sie als
   // Nachbardatei und kommt ohne sie aus (dann eben ohne Dollarbetrag).
   { constName: "PREISE_MJS_B64", source: join(root, "kit", "preise.mjs") },
+  // Aufwands-Auswertung (Issue #750). Eigene Datei statt Anbau an night.mjs: /push-main
+  // muss den Befund lesen koennen, ohne den Nacht-Runner zu starten. Wie board.mjs laedt
+  // sie preise.mjs als Nachbardatei und kommt ohne sie aus.
+  { constName: "AUFWAND_MJS_B64", source: join(root, "kit", "aufwand.mjs") },
+  // Wirksamkeits-Auswertung (Issue #787). Eigenes Werkzeug nach dem Muster von
+  // aufwand.mjs: eine reine Leseoperation ueber das Ausfuehrungsprotokoll von
+  // checks.mjs (#785), an Fixtures vollstaendig pruefbar.
+  { constName: "WIRKSAMKEIT_MJS_B64", source: join(root, "kit", "wirksamkeit.mjs") },
+  // Form und Arten der Funde (Issue #799). Eigenes Werkzeug nach demselben Muster:
+  // Der Regeltext verweist fuer die Artenliste auf `befunde arten`, und die
+  // Pruef-Skills setzen sie ueber dieses Kommando in ihre Prompts ein — ohne
+  // Auslieferung ginge beides in jedem Projekt ins Leere.
+  { constName: "BEFUNDE_MJS_B64", source: join(root, "kit", "befunde.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
   // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
@@ -80,7 +92,7 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.

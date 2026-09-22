@@ -93,13 +93,13 @@ Dieser eine Lauf traegt den **Batch-Anker** — `--since` mit dem `git merge-bas
 `origin/<mainBranch>`; die Kommandozeile steht im Skill. Nicht den ankerlosen Aufruf:
 Ohne `--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als
 Basis; ist seit `HEAD` nichts geaendert, meldet es `leeresPaket` und laesst **jede**
-Pruefung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md` und ohne Spec-Ertrag liefe damit
+Pruefung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md` liefe damit
 vor dem Push durch eine leere Pruefung, waehrend frueher der volle `buildChecks`-Katalog
 lief. Der Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, also genau
 der Batch, der gleich hinausgeht.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
-`KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`, `kit/spec.mjs`
+`KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`
 und `kit/einstellungen.mjs`, bevor es die Blobs backt — dadurch kann man einer installierten Kopie ansehen, aus welchem Kit-Stand
 sie stammt (`node .claude/kit/board.mjs --version`). Deshalb steht es als Schritt 2
 in den Listen oben — vor dem Version-Commit, damit die gestempelten Kit-Dateien mit

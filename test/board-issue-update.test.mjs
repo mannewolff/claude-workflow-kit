@@ -10,11 +10,9 @@
 // Command-Substitution und Zeilenumbruechen **byte-identisch** ankommt. Das ist die
 // Stelle, an der ein Shell-Aufruf falsch waere (Issue #196).
 //
-// Seit Issue #303 liest `issue update` den alten Stand, BEVOR es schreibt — heute
-// fuer den Titel, an dem die Spec-Wirkung haengt (die Pruefvorgabe-Leitplanke ist mit
-// Plan #638 entfallen). Alle vier Adapterfaelle mocken deshalb auch den Lesebefehl;
-// ein Mock, der nur den Schreibbefehl kennt, faellt hier durch. Der Lesefehler-Test
-// haelt fest, was daran die Hauptsache ist: kein Schreibzugriff auf halbem Wissen.
+// Mit dem Rueckbau der Spec-Wirkung (Issue #828) liest `issue update` vor dem
+// Schreiben nichts mehr — die Leitplanken aus Issue #303 und #526 sind entfallen,
+// der Body wird geschrieben, wie er kommt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -138,33 +136,8 @@ test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", NUR_PO
     assert.ok(call.includes("--repo"));
     // Der Kern: der Body kommt als EIN Argument an, byte-identisch.
     assert.ok(call.includes(BOESER_BODY), "Body kam nicht unveraendert an");
-    // Read-before-write (Issue #303): Ohne den alten Body gaebe es nichts zu vergleichen.
-    const gelesen = alle.findIndex((a) => a[0] === "issue" && a[1] === "view");
-    assert.ok(gelesen !== -1, "der alte Body wurde nicht gelesen");
-    assert.ok(gelesen < alle.indexOf(call), "gelesen wurde erst nach dem Schreiben");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("issue update: ein Lesefehler loest keinen Schreibzugriff aus", NUR_POSIX, () => {
-  // Die gefaehrlichste Variante eines halben Wissens: Der alte Stand ist unbekannt,
-  // also auch der Titel, an dem die Spec-Wirkung haengt. Dann lieber nicht schreiben —
-  // ein durchgewinktes Update waere genau der Bypass, den #303 geschlossen hat.
-  const dir = setupProjekt(GITHUB, "board-update-gh-lesefehler-");
-  try {
-    fakeCli(dir, "gh", [
-      { match: "^repo view", stdout: "besitzer/mein-repo\n" },
-      { match: "^issue view", stderr: "GraphQL: Could not resolve\n", exit: 1 },
-      { match: "^issue edit", stdout: "" },
-    ]);
-    const res = runBoard(dir, ["issue", "update", "42", "--body", BOESER_BODY]);
-    assert.notEqual(res.status, 0, "ein Lesefehler muss den Aufruf beenden");
-
-    assert.ok(
-      !aufrufe(dir, "gh").some((a) => a[0] === "issue" && a[1] === "edit"),
-      "trotz Lesefehler wurde geschrieben",
-    );
+    // Seit dem Rueckbau der Spec-Wirkung (Issue #828) liest update vorher nichts mehr.
+    assert.ok(!alle.some((a) => a[0] === "issue" && a[1] === "view"), "update las den alten Stand, obwohl es ihn nicht mehr braucht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -185,10 +158,6 @@ test("issue update: GitLab ruft 'glab issue update' mit --description", NUR_POSI
     const res = runBoard(dir, ["issue", "update", "7", "--body", BOESER_BODY]);
     assert.equal(res.status, 0, res.stderr);
 
-    assert.ok(
-      aufrufe(dir, "glab").some((a) => a[0] === "issue" && a[1] === "view"),
-      "der alte Body wurde nicht gelesen (Issue #303)",
-    );
     const call = aufrufe(dir, "glab").find((a) => a[0] === "issue" && a[1] === "update");
     assert.ok(call, "glab issue update wurde nicht aufgerufen");
     assert.deepEqual(call.slice(0, 3), ["issue", "update", "7"]);

@@ -1,8 +1,8 @@
 // Wartende Vorhaben-Notizen in der Pruef-Auswahl (Issue #546, Plan #545).
 //
-// `spec.mjs vorhaben` legt seine Notiz kuenftig unter `.claude/vorhaben-wartend-`
-// ab und `push main` hebt sie nach `specs/vorhaben/` auf. Bis dahin liegt sie im
-// Arbeitsbaum, und kein Nebenlauf darf sich an ihr stoeren: Sie ist keine
+// Altlast aus SDD (Plan #825, A5): Bis zum Rueckbau legte `/techplan` Notizen unter
+// `.claude/vorhaben-wartend-` ab. Heute entsteht keine mehr, aber in Zielprojekten
+// kann noch eine liegen, und kein Nebenlauf darf sich an ihr stoeren: Sie ist keine
 // geaenderte Datei des Arbeitspakets, sie beruehrt keinen Bereich und sie darf
 // keine Pruefung ausloesen, zu der sie nicht gehoert.
 //

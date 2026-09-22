@@ -158,7 +158,8 @@ test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exi
 test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", NUR_POSIX, () => {
   // Salvage gilt nur als Erfolg, wenn BEIDES stimmt: Karte in In review UND sauberer
   // Baum. Der halbe Erfolg ist der gefaehrlichste Ausgang — die Karte sieht fertig
-  // aus, der Commit fehlt. Die Meldung muss ihn vom "gar nicht verschoben" trennen.
+  // aus, der Commit fehlt. Die Meldung muss ihn vom "gar nicht verschoben" trennen;
+  // seit Issue #672 heisst dieser Endzustand "widerspruechlich" und nennt die Reste.
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [
@@ -173,9 +174,9 @@ test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", NUR_POS
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, "der halbe Salvage haette hart stoppen muessen");
-    assert.match(res.stdout, new RegExp(`SALVAGE-VERSUCH gescheitert — harter Stopp\\. Issue #${id} ist in In review, aber der Tree ist weiterhin dirty`),
+    assert.match(res.stdout, new RegExp(`SALVAGE WIDERSPRUECHLICH — harter Stopp\\. Issue #${id} steht in In review, obwohl Arbeit liegen blieb`),
       "der halbe Erfolg muss ausdruecklich benannt werden");
-    assert.doesNotMatch(res.stdout, /weiterhin nicht in In review/,
+    assert.doesNotMatch(res.stdout, /kein Commit, Board nicht bewegt/,
       "die Karte wurde verschoben — der andere Zweigtext waere falsch");
   }, {}, "night-rest-salvage-halb-");
 });

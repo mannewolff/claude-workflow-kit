@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefeSchema, pruefe, zusatzregeln, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
+import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
@@ -34,6 +34,9 @@ const FAELLE = [
   ["minLength", { type: "string", minLength: 1 }, "a", ""],
   ["minimum", { type: "number", minimum: 1 }, 1, 0],
   ["exclusiveMinimum", { type: "number", exclusiveMinimum: 0 }, 0.5, 0],
+  // Seit Issue #762: Die Marke der Gütemessung ist eine Zahl von 0 bis 100. Die
+  // Obergrenze stand bis dahin nirgends im Schema und deshalb nicht im Validator.
+  ["maximum", { type: "number", maximum: 100 }, 100, 120],
   ["uniqueItems", { type: "array", uniqueItems: true }, ["a", "b"], ["a", "a"]],
 ];
 
@@ -64,7 +67,7 @@ test("[einstellungen-1] der Validator kennt jedes Schlüsselwort, das das Schema
   sammle(VORLAGE);
   const unbekannt = [...benutzt].filter((w) => !SCHLUESSELWOERTER.includes(w) && !BESCHREIBEND.has(w));
   assert.deepEqual(unbekannt, [], `unbekannte Schlüsselwörter: ${unbekannt.join(", ")}`);
-  assert.equal(SCHLUESSELWOERTER.length, 15);
+  assert.equal(SCHLUESSELWOERTER.length, 16);
 });
 
 test("[einstellungen-1] das eingebettete Schema gleicht der Vorlage", () => {
@@ -84,9 +87,31 @@ const REVIEW = {
 };
 
 test("[einstellungen-1] Zusatzregel: Zahl der Rollen ungleich reviewer", () => {
-  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 2, rollen: ["a"] } } });
+  // "architektur-bestand" steht im Rollenkatalog der Stufe plan — sonst traegt der Befund
+  // auch die neue Katalog-Regel und die Zaehlung dieses Tests waere von ihr abhaengig.
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 2, rollen: ["architektur-bestand"] } } });
   assert.equal(b.length, 1);
   assert.equal(b[0].pfad, "reviewStufen.plan.rollen");
+});
+
+test("Zusatzregel: ein Rollenname außerhalb des Katalogs ergibt einen Befund am Pfad seiner Zeile", () => {
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 1, rollen: ["erfunden"] } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "reviewStufen.plan.rollen[0]");
+  assert.match(b[0].grund, /erfunden/);
+  assert.equal(b[0].art, "fehler");
+});
+
+test("Zusatzregel: ein Rollenname aus dem Katalog der eigenen Stufe ergibt keinen Befund", () => {
+  const b = zusatzregeln({ reviewStufen: { fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] } } });
+  assert.deepEqual(b, []);
+});
+
+test("Zusatzregel: ein Rollenname einer anderen Stufe zaehlt am eigenen Katalog nicht", () => {
+  // "pruefbarkeit" gehoert zur Stufe issue, nicht zu plan — der Katalog ist je Stufe eigen.
+  const b = zusatzregeln({ reviewStufen: { plan: { reviewer: 1, rollen: ["pruefbarkeit"] } } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "reviewStufen.plan.rollen[0]");
 });
 
 test("[einstellungen-1] Zusatzregel: Name in pairs, der nicht in reviewers steht", () => {
@@ -105,6 +130,36 @@ test("[einstellungen-1] Zusatzregel: areas, das nicht in checkAreas steht", () =
   assert.equal(b.length, 1);
   assert.equal(b[0].pfad, "buildChecks[0].areas");
   assert.deepEqual(zusatzregeln({ buildChecks: [{ cmd: "x", areas: ["frontend"] }], checkAreas: { frontend: ["web/**"] } }), []);
+});
+
+test("[einstellungen-13] Zusatzregel: ein Bereich in checkAreas ohne Muster ist eine Warnung am Pfad checkAreas.<name>", () => {
+  const b = zusatzregeln({ checkAreas: { frontend: ["web/**"], backend: [] } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "checkAreas.backend");
+  assert.equal(b[0].art, "warnung");
+  assert.ok(typeof b[0].grund === "string" && b[0].grund.length > 0);
+});
+
+test("[einstellungen-13] ein Bereich ohne Muster hält das Speichern nicht auf", () => {
+  const config = { reviewModel: "claude-opus-5", checkAreas: { backend: [] } };
+  const befunde = pruefe(config, null);
+  assert.deepEqual(fehler(befunde), []);
+  assert.ok(befunde.some((b) => b.art === "warnung" && b.pfad === "checkAreas.backend"));
+});
+
+test("[einstellungen-13] nurFehler lässt eine Warnung durch — oneOf und not zählen sie nicht", () => {
+  // `not` trifft nur, wenn das Teilschema fehlerfrei ist. Ein unbekanntes Feld ist eine
+  // Warnung; wenn `nurFehler` sie zählte, kippte das Ergebnis dieser Prüfung.
+  const schema = { not: { type: "object", properties: { a: { type: "number" } }, additionalProperties: false } };
+  assert.ok(fehler(pruefeSchema({ a: 1, fremd: 2 }, schema)).length > 0, "die ausgeschlossene Form wird erkannt");
+});
+
+test("[einstellungen-13] vorgabeAus liefert den default des Schemas und sonst undefined", () => {
+  assert.equal(vorgabeAus("codeHost"), SCHEMA.properties.codeHost.default);
+  assert.equal(vorgabeAus("night.kette.label"), SCHEMA.properties.night.properties.kette.properties.label.default);
+  assert.equal(vorgabeAus("checkAreas"), undefined);
+  assert.equal(vorgabeAus("gibtEsNicht"), undefined);
+  assert.equal(vorgabeAus("night.gibtEsNicht.tiefer"), undefined);
 });
 
 test("[einstellungen-8] Zusatzregel: Stufe mit modell und kommando wird mit Pfad night.stufen.<stufe> abgewiesen", () => {
@@ -167,4 +222,122 @@ test("[einstellungen-1] ein gespeicherter ungültiger Wert trägt denselben Grun
 test("[einstellungen-1] jedes Wurzelfeld des Schemas außer version hat genau ein Thema", () => {
   const felder = Object.keys(VORLAGE.properties).filter((f) => f !== "version").sort();
   assert.deepEqual(Object.keys(THEMEN).sort(), felder);
+});
+
+test("[einstellungen-14] eine Config ohne aufwand-Block ist gültig", () => {
+  assert.deepEqual(fehler(pruefe({ codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" }, null)), []);
+});
+
+test("[einstellungen-14] aufwand.laeufe außerhalb ganzer Zahlen über null wird mit Pfad abgewiesen, 1 und 10 sind gültig", () => {
+  const laeufeBefunde = (laeufe) => fehler(pruefeSchema({ aufwand: { laeufe } })).filter((b) => b.pfad === "aufwand.laeufe");
+  for (const schlecht of [0, -1, 2.5, "10"]) {
+    assert.ok(laeufeBefunde(schlecht).length > 0, `laeufe ${JSON.stringify(schlecht)} nicht abgewiesen`);
+  }
+  for (const gut of [1, 10]) {
+    assert.deepEqual(laeufeBefunde(gut), []);
+  }
+});
+
+test("[einstellungen-14] jede der drei Anteil-Schwellen außerhalb von 0 bis 1 wird mit Pfad abgewiesen, 0, 0,5 und 1 sind gültig", () => {
+  // Seit Issue #824 stehen die Grenzen am Feld des Schemas statt in einer Zusatzregel;
+  // die Aussage ist dieselbe, geprüft wird sie über `pruefeSchema`.
+  const felder = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
+  for (const feld of felder) {
+    const befunde = (wert) => fehler(pruefeSchema({ aufwand: { schwellen: { [feld]: wert } } })).filter((b) => b.pfad === `aufwand.schwellen.${feld}`);
+    for (const schlecht of [-0.1, 1.1, 2]) {
+      assert.ok(befunde(schlecht).length > 0, `${feld}=${schlecht} nicht abgewiesen`);
+    }
+    for (const gut of [0, 0.5, 1]) {
+      assert.deepEqual(befunde(gut), [], `${feld}=${gut}`);
+    }
+  }
+});
+
+test("[einstellungen-14] aufwand.schwellen.eingrenzungOhneWirkung als Nicht-Boolean wird mit Pfad abgewiesen", () => {
+  const befunde = (wert) => fehler(pruefeSchema({ aufwand: { schwellen: { eingrenzungOhneWirkung: wert } } })).filter((b) => b.pfad === "aufwand.schwellen.eingrenzungOhneWirkung");
+  assert.ok(befunde("ja").length > 0);
+  assert.ok(befunde(1).length > 0);
+  assert.deepEqual(befunde(true), []);
+  assert.deepEqual(befunde(false), []);
+});
+
+test("[einstellungen-14] ein unbekanntes Feld in aufwand ist eine Warnung mit Pfad, kein Fehler", () => {
+  const befunde = pruefeSchema({ aufwand: { erfunden: 1 } });
+  assert.ok(befunde.some((b) => b.art === "unbekannt" && b.pfad === "aufwand.erfunden"));
+  assert.deepEqual(fehler(befunde).filter((b) => b.pfad === "aufwand.erfunden"), []);
+});
+
+test("[einstellungen-14] aufwand steht nicht in der Allowlist für persönliche Abweichungen", () => {
+  const basis = { reviewModel: "claude-opus-5" };
+  const r = aenderungAnwenden(basis, {}, { ebene: "persoenlich", aenderungen: [{ pfad: "aufwand", wert: { laeufe: 3 } }] });
+  assert.equal(r.ok, false);
+  assert.match(r.grund, /aufwand/);
+});
+
+test("[einstellungen-14] ein aufwand-Block mit laeufe: 3 ändert nur laeufe, die Vorgaben der Schwellen bleiben unberührt", () => {
+  const config = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5", aufwand: { laeufe: 3 } };
+  assert.deepEqual(fehler(pruefe(config, null)), []);
+});
+
+// --- Pflichtfelder eines Reviewers (Issue #816) -----------------------------
+//
+// `validateReviewers` in kit/board.mjs bricht bei einem leeren Namen, einem claude-Reviewer
+// ohne `model` und einem command-Reviewer ohne `command` hart ab — ausdrücklich, damit ein
+// Tippfehler nicht zu einem unsichtbaren Ein-Reviewer-Lauf wird. Ohne dieselbe Regel hier
+// speichert die Oberfläche eine Config, an der `/issue-review` danach scheitert.
+
+const REVIEWER_BASIS = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5" };
+const mitReviewern = (reviewers) => pruefe({ ...REVIEWER_BASIS, issueReview: { reviewers } }, null);
+const anPfad = (befunde, pfad) => fehler(befunde).filter((b) => b.pfad === pfad);
+
+test("[einstellungen-22] ein claude-Reviewer ohne model ergibt einen Fehler an .model", () => {
+  const befunde = mitReviewern([{ name: "neu", kind: "claude" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].model").length, 1, JSON.stringify(befunde));
+  assert.match(anPfad(befunde, "issueReview.reviewers[0].model")[0].grund, /model/);
+});
+
+test("[einstellungen-22] ein command-Reviewer ohne command ergibt einen Fehler an .command", () => {
+  const befunde = mitReviewern([{ name: "x", kind: "command" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].command").length, 1, JSON.stringify(befunde));
+  assert.match(anPfad(befunde, "issueReview.reviewers[0].command")[0].grund, /command/);
+});
+
+test("[einstellungen-22] ein leerer Name ergibt einen Fehler an .name", () => {
+  const befunde = mitReviewern([{ name: "", kind: "claude", model: "claude-opus-5" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].name").length, 1, JSON.stringify(befunde));
+});
+
+test("[einstellungen-22] der Pfad nennt die Zeile, nicht nur die Liste", () => {
+  const befunde = mitReviewern([
+    { name: "gut", kind: "claude", model: "claude-opus-5" },
+    { name: "ohne", kind: "command" },
+  ]);
+  assert.deepEqual(fehler(befunde).map((b) => b.pfad), ["issueReview.reviewers[1].command"]);
+});
+
+test("[einstellungen-22] eine vollständige Reviewer-Liste bleibt ohne Befund", () => {
+  assert.deepEqual(fehler(mitReviewern([
+    { name: "opus", kind: "claude", model: "claude-opus-5" },
+    { name: "gpt", kind: "command", command: "codex exec" },
+  ])), []);
+  // Auch ein Block ohne reviewers darf nichts melden — die Regel liest nur, was dasteht.
+  assert.deepEqual(fehler(pruefe(REVIEWER_BASIS, null)), []);
+});
+
+test("[einstellungen-22] die Regel trifft genau die drei Fälle, an denen validateReviewers abbricht", () => {
+  // Der Quelltext von kit/board.mjs ist hier das Maß: Jede Bedingung, an der er `fail` ruft,
+  // hat hier ihren Befund. Läuft die Liste dort auseinander, fällt es an dieser Stelle auf —
+  // sonst speichert die Oberfläche eine Config, die der Nachtlauf danach nicht mehr lädt.
+  const quelle = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8");
+  const rumpf = quelle.slice(quelle.indexOf("function validateReviewers(")).split("\n}")[0];
+  assert.match(rumpf, /typeof r\.name !== "string" \|\| !r\.name/, "board.mjs prüft den Namen nicht mehr so");
+  assert.match(rumpf, /r\.kind === "claude" && !r\.model/, "board.mjs prüft das Modell nicht mehr so");
+  assert.match(rumpf, /r\.kind === "command" && !r\.command/, "board.mjs prüft das Kommando nicht mehr so");
+  for (const [reviewer, feld] of [
+    [{ name: "", kind: "claude", model: "m" }, "name"],
+    [{ name: "a", kind: "claude" }, "model"],
+    [{ name: "a", kind: "command" }, "command"],
+  ]) {
+    assert.equal(anPfad(mitReviewern([reviewer]), `issueReview.reviewers[0].${feld}`).length, 1, `${feld} wird nicht gemeldet`);
+  }
 });

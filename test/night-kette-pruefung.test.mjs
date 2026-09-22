@@ -90,6 +90,18 @@ test("[night-19] im Lauf behaelt die ungepruefte Karte ihr Kettenlabel und steht
   });
 });
 
+// Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Eine
+// Kette ohne Kandidaten endet regulaer, und "Keine Kette zu fahren" steht wortgleich am
+// Lauf-Kopf, nicht nur im Textprotokoll.
+test("[night-44] eine Kette ohne Kandidaten vermerkt 'Keine Kette zu fahren' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
+    const res = run(dir, ["--kette"], umgebung(dir));
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(stand(dir).noWorkReason, "Keine Kette zu fahren — nichts zu tun.");
+  });
+});
+
 // --- Der Kommentar an der abgelehnten Anforderung und der Hinweis auf das
 //     unbekannte Kennzeichen (Fachplan #702, Kriterien 4 und 8; Issue #719) ---
 

@@ -41,7 +41,7 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "spec.mjs", "preise.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
@@ -60,8 +60,10 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
     'const BOARD_MJS_B64 = "";',
     'const NIGHT_MJS_B64 = "";',
     'const CHECKS_MJS_B64 = "";',
-    'const SPEC_MJS_B64 = "";',
     'const PREISE_MJS_B64 = "";',
+    'const AUFWAND_MJS_B64 = "";',
+    'const WIRKSAMKEIT_MJS_B64 = "";',
+    'const BEFUNDE_MJS_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',

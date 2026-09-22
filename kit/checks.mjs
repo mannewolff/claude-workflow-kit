@@ -26,8 +26,15 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>]
+ * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
+ * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
+ * sind kumulativ — `push` faehrt `paket` mit, `merge` alle drei —, ein Eintrag
+ * ohne `stufe` gilt als Paketstufe, und damit bleibt jede bestehende Config
+ * unveraendert. Die beiden Achsen beantworten Verschiedenes: `areas`/`always`
+ * sagen, OB eine Pruefung betroffen ist, `stufe` sagt, WANN sie an der Reihe ist.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -39,7 +46,7 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { lstatSync, existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -47,7 +54,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "2.0.0";
+const KIT_VERSION = "3.0.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -60,16 +67,42 @@ const KIT_VERSION = "2.0.0";
 // (rot, Fix, erneut), daraus entsteht bewusst keine Historie.
 const SUMMARY_DATEI = ".claude/checks-summary.json";
 
-// Wartende Vorhaben-Notizen (Issue #546, Plan #545): `spec.mjs vorhaben` legt seine
-// Notiz hier ab, `push main` hebt sie nach `specs/vorhaben/` auf. Bis dahin liegt
-// sie im Arbeitsbaum — Vorhaben-Zustand, kein Code-Zustand, also keine geaenderte
-// Datei dieses Arbeitspakets.
+// Das Ausfuehrungsprotokoll (Issue #785, Plan #782, E17) — die Zaehleinheit, die der
+// Zusammenfassung daneben fehlt.
+//
+// Die Zusammenfassung traegt bewusst keine Historie (Kommentar zu SUMMARY_DATEI): Der
+// Nacht-Runner loescht sie vor jeder Session, und innerhalb einer Session ueberschreibt
+// jeder `run` den vorigen. Die Wirksamkeits-Auswertung fragt aber, wie oft eine Pruefung
+// lief und wie oft sie beanstandet hat — und genau diese Zahl verliert die
+// Zusammenfassung: Eine Pruefung, die rot anschlaegt, worauf die Session den Mangel
+// behebt und erneut prueft, hinterliesse dort einen gruenen Endstand. Sie erschiene als
+// "nie beanstandet" und loeste damit genau den Befund aus, der zu ihrer Abschaffung
+// einlaedt — die Kennzahl truege systematisch das falsche Vorzeichen.
+//
+// Deshalb eine eigene Datei, angehaengt und nie geleert, nach dem Muster der Wegmarken
+// (board-9). Derselbe Ort wie die Zusammenfassung: im Projekt, aber hinter der
+// Ignore-Regel `.claude/*`.
+//
+// MESSGRENZE (E17): Die Salvage-Pruefungen des Nacht-Runners rufen die Kommandos roh
+// ueber spawnSync auf und laufen an checks.mjs vorbei; ihre Ausfuehrungen stehen hier
+// nicht. Der Salvage ist ein Rettungsversuch am Rand eines gescheiterten Pakets, keine
+// Pruefung eines Arbeitspakets — ihn mitzuzaehlen mischte zwei Zaehleinheiten.
+//
+// SYNC: kit/night.mjs nimmt denselben Pfad im Rest-Guard aus (`:(exclude)` in gitReste,
+// dazu der Worktree-Spiegel), kit/wirksamkeit.mjs liest die Datei. Die Kit-Werkzeuge sind
+// bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), geteilte
+// Konstanten werden dupliziert und hier markiert.
+const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
+
+// Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
+// Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen hier
+// ab. Heute entsteht keine mehr, aber in Zielprojekten kann noch eine liegen — kein
+// Code-Zustand, also keine geaenderte Datei eines Arbeitspakets.
 //
 // Der Ausschluss steht ausdruecklich im Code, obwohl `.gitignore` den Pfad meist
-// schon deckt (Plan #545, A2): Der Installer laesst eine vorhandene eigene
-// `.claude`-Regel unangetastet, also gibt es Projekte ohne den Block. Dort waere
-// die Notiz sonst sichtbar und wuerde eine Pruefung ausloesen, zu der sie nicht
-// gehoert.
+// schon deckt: Der Installer laesst eine vorhandene eigene `.claude`-Regel
+// unangetastet, also gibt es Projekte ohne den Block. Dort waere die Notiz sonst
+// sichtbar und wuerde eine Pruefung ausloesen, zu der sie nicht gehoert.
 //
 // Praefix, kein Teilstring: Genau diese Menge nimmt `:(exclude).claude/vorhaben-wartend-*`
 // in `gitClean()` von night.mjs aus. Ein Teilstring-Match traefe zusaetzlich
@@ -95,10 +128,10 @@ export function zusammenfassungPfad(root = process.cwd()) {
  * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
  * Bericht und in der Zusammenfassung.
  *
- * SYNC: dieselbe Funktion steckt in kit/spec.mjs — Aenderungen dort nachziehen.
- * kit/checks.mjs und kit/spec.mjs sind bewusst eigenstaendige Single-File-Tools
- * ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert und hier
- * markiert.
+ * SYNC: dieselbe Funktion steckt in kit/aufwand.mjs und kit/wirksamkeit.mjs —
+ * Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
+ * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert
+ * und hier markiert.
  *
  * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
  */
@@ -107,10 +140,15 @@ export function vergleicheText(a, b) {
   return a > b ? 1 : 0;
 }
 
+// Rangfolge der Pruefzeitpunkte (Issue #758). Die Reihenfolge IST die Regel: Eine
+// Pruefung ist faellig, sobald der Index ihrer Stufe den der gefahrenen nicht
+// uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
+const STUFEN = ["paket", "push", "merge"];
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>]
-  node checks.mjs run  [--since <ref>]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -122,12 +160,18 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
                   laufen alle Pruefungen.
+  --stufe <s>     Gefahrener Zeitpunkt: ${STUFEN.join(" | ")} (Default ${STUFEN[0]}).
+                  Kumulativ — push faehrt paket mit, merge alle drei. Pruefungen
+                  spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
+                  Freigabestufe (merge) faehrt jede Pruefung, auch bei leerem
+                  Paket und unberuehrten Bereichen.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
-(Kommandostring, { cmd, areas } oder { cmd, always }) und 'checkAreas'
-(Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines Pfadsegments und
-'**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als 'frontend/**'.
+(Kommandostring, { cmd, areas }, { cmd, always } oder { cmd, stufe }) und
+'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
+Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
+'frontend/**'.
 `;
 
 class ChecksError extends Error {}
@@ -154,9 +198,18 @@ function ladeConfig() {
   }
 }
 
-/** Die String-Form und das Objekt nur mit `cmd` bedeuten dasselbe. */
+/**
+ * Die String-Form und das Objekt nur mit `cmd` bedeuten dasselbe.
+ *
+ * Die fehlende `stufe` wird hier auf `paket` gesetzt und nicht erst bei der
+ * Auswahl (Issue #758): So laufen die String-Form, das Objekt ohne `stufe` und
+ * das Objekt mit `stufe: "paket"` durch dieselbe Bahn, und jede bestehende
+ * Config behaelt ihr Verhalten. Ein Default, der an jeder Lesestelle einzeln
+ * nachgezogen wuerde, waere die naechste Stelle, an der er einmal fehlt.
+ */
 function normalisiere(check) {
-  return typeof check === "string" ? { cmd: check } : check;
+  const objekt = typeof check === "string" ? { cmd: check } : check;
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0] };
 }
 
 /**
@@ -180,9 +233,27 @@ function pruefeBereichsnamen(checks, checkAreas) {
   }
 }
 
+/**
+ * Die Grenzen der Guetemessung (Issue #763, Plan #753): hoechstens ein Eintrag
+ * traegt `guete`, und nie mit `stufe: "merge"` — eine Messung erst vor der
+ * Freigabe kaeme zu spaet, um noch etwas zu aendern. Beides prueft das Schema
+ * nicht: Es sind Aussagen ueber die Liste bzw. ueber zwei Felder zusammen.
+ * Derselbe Weg wie beim unbekannten Bereichsnamen: Abbruch statt stiller Wahl.
+ */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #764).
+function pruefeGuete(checks) {
+  const traeger = checks.filter((check) => check.guete);
+  if (traeger.length > 1) {
+    const liste = traeger.map((check) => `'${check.cmd}'`).join(", ");
+    fail(`Mehr als eine Guetemessung: ${liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.`);
+  }
+  if (traeger[0]?.stufe === "merge") {
+    fail(`Die Guetemessung '${traeger[0].cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: paket oder push.`);
+  }
+}
+
 // --- Muster ----------------------------------------------------------------
 
-// SYNC: strukturgleich in kit/spec.mjs — Aenderungen dort nachziehen.
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**
@@ -324,13 +395,51 @@ function entscheidung(check, beruehrt) {
     : { laeuft: false, grund: `${bereichsText(check.areas)} unberuehrt` };
 }
 
-function mitGrund(checks, grund) {
-  return checks.map((check) => ({ cmd: check.cmd, grund }));
+/**
+ * Verteilt jede Pruefung auf `laufen` oder `ausgelassen` — in der Reihenfolge der
+ * Config, damit beide Listen so lesbar bleiben wie die Datei.
+ *
+ * Die STUFENAUSWAHL GREIFT VOR der Bereichsauswahl (Issue #758): Wer nicht dran
+ * ist, wird gar nicht erst gefragt, ob er betroffen waere. Andersherum stuende im
+ * Grund einer ausgelassenen Push-Pruefung „Bereich unberuehrt", obwohl sie auch
+ * im beruehrten Bereich nicht gelaufen waere — ein Grund, der auf die falsche
+ * Ursache zeigt, kostet beim naechsten Lesen mehr, als er erklaert.
+ *
+ * `entscheiden` bekommt nur die faelligen Pruefungen und beantwortet die zweite
+ * Frage: die des jeweiligen Auswahlfalls (Anker, leeres Paket, Bereiche).
+ *
+ * Die GUETEMESSUNG laeuft oberhalb der Paketstufe IMMER (Issue #763, E11): AK 8
+ * des Fachplans (#738) macht ihr Ergebnis fuer den Stand massgeblich, der
+ * veroeffentlicht werden soll — eine wegen leeren Pakets oder unberuehrten
+ * Bereichs ausgelassene Messung liesse den Halt ins Leere laufen, und das faellt
+ * niemandem auf. An der Paketstufe gilt die normale Auswahl: Dort wird ein
+ * Arbeitspaket gemessen, kein Veroeffentlichungsstand. Der Eintrag behaelt
+ * seinen `guete`-Block, damit `ausfuehren` die Auswertung nicht ein zweites Mal
+ * aus der Config lesen muss.
+ */
+function verteilen(checks, stufe, entscheiden) {
+  const laufen = [];
+  const ausgelassen = [];
+  const gefahren = STUFEN.indexOf(stufe);
+  for (const check of checks) {
+    let ergebnis;
+    if (check.guete && stufe !== STUFEN[0]) {
+      ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
+    } else if (STUFEN.indexOf(check.stufe) <= gefahren) {
+      ergebnis = entscheiden(check);
+    } else {
+      ergebnis = { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+    }
+    const eintrag = { cmd: check.cmd, stufe: check.stufe, grund: ergebnis.grund };
+    if (check.guete) eintrag.guete = check.guete;
+    (ergebnis.laeuft ? laufen : ausgelassen).push(eintrag);
+  }
+  return { laufen, ausgelassen };
 }
 
-function bauen({ basis, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
+function bauen({ basis, stufe, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
   vollerUmfang = false, leeresPaket = false }) {
-  return { basis, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
+  return { basis, stufe, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
 }
 
 function planen(args) {
@@ -338,34 +447,66 @@ function planen(args) {
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
+  pruefeGuete(checks);
 
+  const stufe = args.stufe ?? STUFEN[0];
   const refText = args.since ?? "HEAD";
   const basis = ankerAufloesen(refText);
   if (basis === null) {
+    // Der Zweifelsfall behaelt seinen eigenen Grund, auch an der Freigabestufe:
+    // Dort laeuft ohnehin alles, aber WARUM ist verschieden — entschieden gegen
+    // nicht gewusst.
     const grund = `voller Umfang: Anker '${refText}' laesst sich nicht aufloesen`;
-    return bauen({ basis: refText, laufen: mitGrund(checks, grund), vollerUmfang: true });
+    return bauen({
+      basis: refText, stufe, vollerUmfang: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
   }
 
   const geaendert = geaenderteDateien(basis);
-  if (geaendert.length === 0) {
-    const grund = `leeres Paket: keine Aenderung seit ${basis}`;
-    return bauen({ basis, ausgelassen: mitGrund(checks, grund), leeresPaket: true });
-  }
-
   const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
   const bereiche = [...beruehrt].sort(vergleicheText);
-  if (ohneMuster !== null) {
-    const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
-    return bauen({ basis, geaendert, bereiche, laufen: mitGrund(checks, grund), vollerUmfang: true });
+
+  // Die Freigabestufe faehrt jede Pruefung (Plan #753, E12): Ihr Ergebnis gilt
+  // fuer den Stand, der freigegeben wird, und der besteht aus mehr als dem
+  // letzten Arbeitspaket. Eine Auslassung wegen leeren Pakets oder unberuehrten
+  // Bereichs zeigte hier auf den falschen Vergleich — deshalb greift keine von
+  // beiden. `basis`, `geaendert`, `bereiche` und (in `run`) `hashes` bleiben
+  // trotzdem aus dem Anker bestimmt: Sie sind der Nachweis, gegen den das
+  // Commit-Gate den Index prueft (gate-1), und nicht Teil der Auswahl.
+  //
+  // `vollerUmfang` bleibt dabei false — das Feld markiert den Zweifelsfall
+  // („wir wissen es nicht, also alles"), und die Freigabestufe ist das Gegenteil
+  // davon: eine Entscheidung. Denselben Unterschied halten String-Form und
+  // `always: true` auseinander.
+  if (stufe === "merge") {
+    const grund = "Freigabestufe: voller Umfang";
+    return bauen({
+      basis, stufe, geaendert, bereiche,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
   }
 
-  const laufen = [];
-  const ausgelassen = [];
-  for (const check of checks) {
-    const { laeuft, grund } = entscheidung(check, beruehrt);
-    (laeuft ? laufen : ausgelassen).push({ cmd: check.cmd, grund });
+  if (geaendert.length === 0) {
+    const grund = `leeres Paket: keine Aenderung seit ${basis}`;
+    return bauen({
+      basis, stufe, leeresPaket: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: false, grund })),
+    });
   }
-  return bauen({ basis, geaendert, bereiche, laufen, ausgelassen });
+
+  if (ohneMuster !== null) {
+    const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
+    return bauen({
+      basis, stufe, geaendert, bereiche, vollerUmfang: true,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+    });
+  }
+
+  return bauen({
+    basis, stufe, geaendert, bereiche,
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
+  });
 }
 
 // --- Ausfuehrung (Issue #424) ----------------------------------------------
@@ -482,6 +623,150 @@ function blobHashes(pfade) {
   return hashes;
 }
 
+/**
+ * Liest den Anteil aus der Ausgabe der Guetemessung (Issue #763, Plan #753).
+ *
+ * Das Muster ist Pflicht, weil die Werkzeuge Verschiedenes melden — PIT
+ * schreibt `Killed 42 (84%)`, Stryker `Mutation score: 84.21`. Die erste
+ * Gruppe gilt als Prozentwert, wie die Marke: eine Einheit, keine zwei.
+ *
+ * Jeder Weg ohne Zahl endet mit `erfuellt: false` und einem Grund (E10):
+ * "Ein fehlendes Ergebnis gilt nie als bestandene Pruefung" (AK 11, #738) —
+ * dieselbe Richtung, in die dieses Kommando ueberall irrt: mehr pruefen, nie
+ * weniger. Das gilt auch fuer ein Muster, das sich nicht uebersetzen laesst:
+ * Die Konfigurationspruefung faengt es frueher (Issue #764), aber hier darf es
+ * trotzdem nicht als bestanden durchrutschen.
+ *
+ * Zwei dieser Wege sahen bis Issue #817 nach einer Zahl aus, ohne eine zu sein:
+ * `Number("")` und `Number("   ")` sind 0, und 0 genuegt der Marke 0 — eine
+ * leere Gruppe bescheinigte so eine Messung, die es nie gab. Und ein Anteil
+ * ausserhalb von 0 bis 100 ist keiner: Kein Werkzeug meldet 184 Prozent, der
+ * Wert entsteht aus einem verbogenen Muster und sagt ueber die Guete nichts.
+ * Beides ist ein nicht auswertbares Ergebnis und damit rot.
+ */
+// SYNC: dieselbe Wertung traegt kit/night.mjs (gueteAuswerten) fuer die
+// Salvage-Vorpruefung des Runners; test/guete-wertung-sync.test.mjs haelt beide
+// an derselben Fallliste gegeneinander.
+export function gueteAuswerten(guete, ausgabe) {
+  let regex;
+  try {
+    regex = new RegExp(guete.muster);
+  } catch (err) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' ist kein regulaerer Ausdruck: ${err.message}` };
+  }
+  const treffer = regex.exec(ausgabe);
+  if (treffer === null) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' trifft die Ausgabe nicht` };
+  }
+  if (treffer[1] === undefined) {
+    return { anteil: null, erfuellt: false, grund: `Muster '${guete.muster}' hat keine Gruppe` };
+  }
+  if (treffer[1].trim() === "") {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist leer` };
+  }
+  const anteil = Number(treffer[1]);
+  if (!Number.isFinite(anteil)) {
+    return { anteil: null, erfuellt: false, grund: `Gruppe '${treffer[1]}' ist keine Zahl` };
+  }
+  if (anteil < 0 || anteil > 100) {
+    return { anteil: null, erfuellt: false, grund: `Anteil ${anteil} liegt ausserhalb von 0 bis 100 Prozent` };
+  }
+  const erfuellt = anteil >= guete.marke;
+  return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };
+}
+
+/**
+ * Das Ergebnisfeld der Zusammenfassung fuer einen gelaufenen Guete-Eintrag.
+ * Ein rotes Kommando wird nicht ausgewertet: Seine Ausgabe ist der Stand eines
+ * Abbruchs, und ein darin zufaellig gefundener Anteil bescheinigte eine
+ * Messung, die es nicht gab.
+ */
+function gueteErgebnis(eintrag, gruen, ausgabe) {
+  const auswertung = gruen
+    ? gueteAuswerten(eintrag.guete, ausgabe)
+    : { anteil: null, erfuellt: false, grund: "kein Anteil erhoben — das Kommando selbst war rot" };
+  return {
+    cmd: eintrag.cmd,
+    anteil: auswertung.anteil,
+    marke: eintrag.guete.marke,
+    erfuellt: auswertung.erfuellt,
+    grund: auswertung.grund,
+  };
+}
+
+function gueteZeile(ergebnis) {
+  return ergebnis.anteil === null
+    ? `Guete: kein auswertbares Ergebnis (${ergebnis.grund})`
+    : `Guete: ${ergebnis.anteil} % erreicht, Marke ${ergebnis.marke} % — ${ergebnis.grund}`;
+}
+
+/**
+ * Das Ergebnisfeld, wenn die Messung nicht lief — nicht gestartet (ein
+ * frueheres Kommando war rot) oder an der Paketstufe ausgelassen. Auch das
+ * steht in der Zusammenfassung: "kein Ergebnis" ist ein Ergebnis und nie ein
+ * Bestehen, und wer die Datei liest, sieht, dass kein Anteil erhoben wurde.
+ */
+function gueteOhneLauf(laufen, ausgelassen) {
+  const geplant = laufen.find((e) => e.guete);
+  if (geplant) {
+    return { cmd: geplant.cmd, anteil: null, marke: geplant.guete.marke, erfuellt: false, grund: "nicht gestartet: ein frueheres Kommando war rot" };
+  }
+  const eintrag = ausgelassen.find((e) => e.guete);
+  if (eintrag) {
+    return { cmd: eintrag.cmd, anteil: null, marke: eintrag.guete.marke, erfuellt: false, grund: `ausgelassen: ${eintrag.grund}` };
+  }
+  return null;
+}
+
+/**
+ * Maskiert die Trennzeichen des Protokolls im Kommando (Issue #822).
+ *
+ * Eine Zeile des Protokolls ist zeilen- und tabgetrennt, und `cmd` steht frei
+ * konfiguriert dazwischen: Ein Kommando mit Zeilenumbruch zerriss ohne Maskierung
+ * seine eigene Zeile, und die Auswertung sah zwei fehlerhafte Zeilen statt einer
+ * Ausfuehrung — die Pruefung stuende dort als "nicht gelaufen".
+ *
+ * Der Backslash wird ZUERST verdoppelt: sonst liesse sich ein echtes `\n` im Kommando
+ * nach dem Lesen nicht mehr von einem maskierten Zeilenumbruch unterscheiden.
+ *
+ * SYNC: kit/wirksamkeit.mjs wandelt in `kommandoLesen` zurueck. Die Kit-Werkzeuge sind
+ * eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird
+ * dupliziert und an beiden Enden markiert.
+ */
+function kommandoMaskieren(cmd) {
+  return cmd
+    .replaceAll("\\", String.raw`\\`)
+    .replaceAll("\t", String.raw`\t`)
+    .replaceAll("\n", String.raw`\n`)
+    .replaceAll("\r", String.raw`\r`);
+}
+
+/**
+ * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
+ *
+ * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer. Ein Kommando
+ * mit dem Ergebnis `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als
+ * Zeile gezaehlt senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht
+ * lief.
+ *
+ * Angehaengt, nie geleert — sonst saehe die Auswertung nur die letzte Runde, und genau
+ * die zweite Runde nach einem Fix ist der Fall, um den es geht.
+ *
+ * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
+ * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
+ * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
+ * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
+ */
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
+  const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
+  } catch (err) {
+    process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
+  }
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -501,6 +786,13 @@ function schreibeZusammenfassung(daten) {
  * Der Rueckgabewert je gelaufenem Kommando steht in der Zusammenfassung: `gruen`,
  * `rot` oder `nicht gestartet`. Ohne dieses Feld koennte der Runner einen
  * Fehlschlag nicht dem ausloesenden Paket zuordnen (Kriterium 9 aus Issue #420).
+ *
+ * Die Dauer je Kommando entsteht hier und nicht aus der Werkzeugzeit des
+ * Session-Stroms (Issue #747, Plan #745, E3): Der Strom kennt nur "ein
+ * Bash-Aufruf dauerte n Sekunden", nicht welches konfigurierte Kommando darin
+ * lief — die Zuordnung braeuchte genau die inhaltliche Deutung, die das
+ * Nicht-Ziel "Keine inhaltliche Deutung der Aufrufe" ausschliesst. `checks.mjs`
+ * kennt seine Kommandos dagegen beim Namen.
  */
 function ausfuehren(args) {
   const auswahl = planen(args);
@@ -520,26 +812,67 @@ function ausfuehren(args) {
   const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
 
+  // Die Ankuendigung steht im Kommando und nicht in den Skills (Issue #758): Eine
+  // Regel im Prompt wirkt nicht unter Druck — dieselbe Begruendung, aus der
+  // checks.mjs ueberhaupt entstand. Das Kommando kennt die Liste ohnehin.
+  //
+  // Nur oberhalb der Paketstufe: Dort kommt nichts hinzu, und der haeufigste Lauf
+  // bleibt still. Eine Zeile, die in jedem Lauf steht, liest bald niemand mehr.
+  if (auswahl.stufe !== STUFEN[0]) {
+    const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
+    const liste = hinzu.length > 0 ? hinzu.join(", ") : "keine weitere Pruefung";
+    process.stdout.write(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
+  }
+
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
   }
 
-  const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet" }));
+  const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
+  let guete = null;
   for (const eintrag of laufen) {
     if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+    const start = process.hrtime.bigint();
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
+    eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     process.stdout.write(ausgabe);
-    eintrag.ergebnis = gruen ? "gruen" : "rot";
+    // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke
+    // oder ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder
+    // rote Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
+    let bestanden = gruen;
+    if (eintrag.guete) {
+      guete = gueteErgebnis(eintrag, gruen, ausgabe);
+      process.stdout.write(`${gueteZeile(guete)}\n`);
+      bestanden = gruen && guete.erfuellt;
+    }
+    eintrag.ergebnis = bestanden ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
-    rot = !gruen;
+    // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
+    // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
+    // Auswertung zu allererst geht.
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
+    rot = !bestanden;
   }
+  guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
+
+  // null statt 0, wenn kein Kommando gemessen wurde (leeres Paket, voller
+  // Umfang ohne Lauf gibt es hier nicht) — "nichts gemessen" ist kein
+  // Nullbetrag.
+  const gemessen = laufen.filter((e) => e.dauerMs !== null);
+  const dauerGesamtMs = gemessen.length > 0
+    ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0)
+    : null;
 
   // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
   // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  const pfad = schreibeZusammenfassung({ ...auswahl, laufen, zeitpunkt, hashes });
+  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat —
+  // dann aber immer, auch beim gruenen Lauf (Issue #763).
+  const pfad = schreibeZusammenfassung({
+    ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs, ...(guete ? { guete } : {}),
+  });
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
@@ -553,6 +886,18 @@ function parseArgs(rest) {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
       args.since = rest[i + 1] ?? "";
+      i += 1;
+    } else if (rest[i] === "--stufe") {
+      // Ein unbekannter Wert ist ein Fehler und nicht stillschweigend die
+      // Paketstufe (Issue #758): Ein Tippfehler liesse sonst genau die
+      // Pruefungen aus, um deren Zeitpunkt es beim Aufruf ging — weniger
+      // pruefen, ohne dass es auffaellt. Der fehlende Wert zaehlt wie ein
+      // falscher; anders als bei `--since` gibt es hier keine sichere Deutung.
+      const wert = rest[i + 1] ?? "";
+      if (!STUFEN.includes(wert)) {
+        fail(`Unbekannte Stufe '${wert}'. Erwartet: ${STUFEN.join(", ")}.`);
+      }
+      args.stufe = wert;
       i += 1;
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);

@@ -32,6 +32,25 @@ function fehler(meldung) {
   process.exit(1);
 }
 
+/**
+ * Eine Beschreibung mit entschärften Platzhaltern (Issue #792).
+ *
+ * VitePress übersetzt die Doku in eine Vue-Komponente, und der Vue-Compiler liest darin
+ * jedes `<Wort>` als Element: Ohne End-Tag bricht der Build mit „Element is missing end
+ * tag" ab — genau daran stand docs.mwolff.org vier Tage still. Entschärft wird hier und
+ * nicht im Schematext, weil sonst die nächste Beschreibung mit Platzhalter denselben
+ * Build bricht.
+ *
+ * Nur die Form `<Wort>` wird gefasst, und nur außerhalb schon gesetzter Backticks: Ein
+ * `` `<ID>` `` im Schema ist bereits richtig, ein zweiter Backtick machte daraus Unsinn.
+ */
+function entschaerft(text) {
+  return String(text).replaceAll(
+    /(`[^`]*`)|<([A-Za-z][A-Za-z0-9-]*)>/g,
+    (treffer, inCode, name) => (inCode !== undefined ? inCode : `\`<${name}>\``)
+  );
+}
+
 /** Gültige Werte eines Feldes in Klammern, leer ohne enum. */
 function werte(knoten) {
   const liste = knoten?.enum ?? knoten?.items?.enum;
@@ -44,13 +63,13 @@ function werte(knoten) {
 function unterfelder(knoten, pfad, zeilen = []) {
   if (!knoten || typeof knoten !== "object") return zeilen;
   if (knoten.items && typeof knoten.items === "object") {
-    if (typeof knoten.items.description === "string") zeilen.push(`- \`${pfad}[]\` — ${knoten.items.description}`);
+    if (typeof knoten.items.description === "string") zeilen.push(`- \`${pfad}[]\` — ${entschaerft(knoten.items.description)}`);
     unterfelder(knoten.items, `${pfad}[]`, zeilen);
   }
   for (const variante of knoten.oneOf ?? []) unterfelder(variante, pfad, zeilen);
   for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
     const p = `${pfad}.${name}`;
-    if (typeof kind.description === "string") zeilen.push(`- \`${p}\` — ${kind.description}${werte(kind)}`);
+    if (typeof kind.description === "string") zeilen.push(`- \`${p}\` — ${entschaerft(kind.description)}${werte(kind)}`);
     unterfelder(kind, p, zeilen);
   }
   const zusatz = knoten.additionalProperties;
@@ -63,7 +82,7 @@ function referenz(schema) {
   const teile = ["", "_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._", ""];
   for (const [feld, knoten] of Object.entries(schema.properties ?? {})) {
     if (feld === "version") continue;
-    teile.push(`### \`${feld}\``, "", `${knoten.description ?? ""}${werte(knoten)}`, "");
+    teile.push(`### \`${feld}\``, "", `${entschaerft(knoten.description ?? "")}${werte(knoten)}`, "");
     const zeilen = unterfelder(knoten, feld);
     if (zeilen.length) teile.push(...zeilen, "");
   }

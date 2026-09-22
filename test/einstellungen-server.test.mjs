@@ -66,6 +66,51 @@ test("[einstellungen-4] ohne Token, mit falschem Token, fremdem Host oder fremde
   });
 });
 
+test("[einstellungen-4] der Vorschau-Endpunkt liegt hinter derselben Token- und Herkunftspruefung", async () => {
+  await mitServer(ALT, async ({ port, token }) => {
+    const host = `127.0.0.1:${port}`;
+    const auftrag = { ebene: "team", teil: "wert", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }] };
+    const faelle = [
+      { host },
+      { host, "x-einstellungen-token": "falsch" },
+      { host: "evil.example", "x-einstellungen-token": token },
+      { host, "x-einstellungen-token": token, origin: "https://evil.example" },
+    ];
+    for (const headers of faelle) {
+      const res = await roh(port, "/api/projekt/alpha/vorschau", { ...headers, "content-type": "application/json" }, { method: "POST", body: auftrag });
+      assert.equal(res.status, 403, `durchgelassen: ${JSON.stringify(headers)}`);
+      assert.equal(res.headers["access-control-allow-origin"], undefined);
+    }
+  });
+});
+
+test("[einstellungen-10] der Vorschau-Endpunkt liefert Befunde, Aenderungen und Abgeleitetes, ohne zu schreiben", async () => {
+  await mitServer(ALT, async ({ anfrage, wurzel }) => {
+    const stand = await laden(anfrage);
+    const datei = join(wurzel, "alpha", ".claude", "workflow.config.json");
+    const vorher = readFileSync(datei);
+    const res = await anfrage("/api/projekt/alpha/vorschau", {
+      method: "POST",
+      body: { ebene: "team", teil: "wert", aenderungen: [{ pfad: "codeHost", wert: "svn" }], hashes: stand.hashes },
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("access-control-allow-origin"), null);
+    const body = await res.json();
+    assert.ok(body.befunde.some((b) => b.pfad === "codeHost" && b.art === "fehler"));
+    assert.deepEqual(body.aenderungen.map((a) => a.pfad), ["codeHost"]);
+    assert.deepEqual(body.bestaetigung, []);
+    assert.ok(body.abgeleitet);
+    assert.deepEqual(readFileSync(datei), vorher);
+  });
+});
+
+test("[einstellungen-4] der Vorschau-Endpunkt nimmt nur POST", async () => {
+  await mitServer(ALT, async ({ anfrage }) => {
+    assert.equal((await anfrage("/api/projekt/alpha/vorschau")).status, 405);
+    assert.equal((await anfrage("/api/projekt/unbekannt/vorschau", { method: "POST", body: {} })).status, 404);
+  });
+});
+
 test("[einstellungen-6] Speichern mit veraltetem Hash liefert 409 und schreibt nichts", async () => {
   await mitServer(ALT, async ({ anfrage, wurzel }) => {
     const stand = await laden(anfrage);

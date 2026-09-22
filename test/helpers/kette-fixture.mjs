@@ -71,12 +71,13 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // die Zusammenfassung im ignorierten `.claude/`. Ohne die beiden Zeilen saehe die
   // Umsetzungsstufe die Hauptkopie schon vor dem ersten Paket als unsauber.
   //
-  // Der Umsetzungs-Lock (Issue #696) und die Wegmarken (Issue #733) stehen aus demselben
-  // Grund hier: Im Betrieb deckt sie der `.claude/*`-Block, den der Installer schreibt;
-  // das Fixture fuehrt die `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen
-  // muss. Fuer `gitReste()` sind beide ohnehin ausgeschlossen — die Probe der
-  // Umsetzungsstufe liest aber ein rohes `git status`, das diese Ausschluesse nicht kennt.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\nissues/\nhelfer/\n");
+  // Der Umsetzungs-Lock (Issue #696), die Wegmarken (Issue #733) und das
+  // Bewegungsprotokoll (Issue #786) stehen aus demselben Grund hier: Im Betrieb deckt
+  // sie der `.claude/*`-Block, den der Installer schreibt; das Fixture fuehrt die
+  // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss. Fuer `gitReste()`
+  // sind sie ohnehin ausgeschlossen — die Probe der Umsetzungsstufe liest aber ein rohes
+  // `git status`, das diese Ausschluesse nicht kennt.
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
@@ -144,6 +145,13 @@ export function planBody({ offeneFragen = "- Keine.", ohneVerifizierung = false 
  * selbst, damit `sessions()` auch sie ausweist; die Salvage-Session ist daneben an
  * NIGHT_SALVAGE erkennbar und bekommt einen eigenen Namen, sonst liefe sie in den
  * Zweig der Umsetzung.
+ *
+ * `stop_reason` und `is_error` kommen aus `$KETTE_STOP` und `$KETTE_IS_ERROR` und
+ * stehen ROH im JSON — der Wert traegt seine Anfuehrungszeichen also selbst
+ * (`KETTE_STOP='"end_turn"'`). Ohne die beiden bleibt es bei `null`, dem Stand vor
+ * Issue #807. Eine Fake-Zeile darf sie setzen: Das `case` laeuft vor dem `echo` in
+ * derselben Shell, und nur so bekommen zwei Sessions derselben Stufe (Korrekturrunden)
+ * verschiedene Werte.
  */
 export function fake(stufen = {}) {
   const faelle = Object.entries(stufen).map(([stufe, zeilen]) => `  ${stufe}) ${zeilen} ;;`).join("\n");
@@ -158,7 +166,7 @@ export function fake(stufen = {}) {
     "  *) : ;;",
     "esac",
     'if [ -z "$KETTE_OHNE_RESULT" ]; then',
-    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
+    `  echo '{"type":"result","total_cost_usd":'"\${KETTE_KOSTEN:-1}"',"duration_api_ms":5,"num_turns":1,"stop_reason":'"\${KETTE_STOP:-null}"',"is_error":'"\${KETTE_IS_ERROR:-null}"',"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":30,"cache_read_input_tokens":40},"result":"'"\${KETTE_RESULT_TEXT:-}"'"}'`,
     "fi",
   ].join("\n");
 }
@@ -292,6 +300,50 @@ export const PAKETE_MIT_ABHAENGIGKEIT = String.raw`m=$(printf "%s" "$NIGHT_PROMP
  * Arbeitsbaum weiter als sauber sieht; er spiegelt sich mit `.claude/` in den Worktree
  * jeder Kette.
  */
+/**
+ * Ersetzt die Kit-Kopie von board.mjs durch einen Umweg, der `nightrun melden` abfaengt
+ * und jede Meldung nach `$KETTE_MELDE_CAPTURE` schreibt (Issue #794).
+ *
+ * Je Meldung eine JSON-Zeile `{ sessions, meldung }`: `sessions` ist die Zahl der bis
+ * dahin gelaufenen Fake-Sessions aus `$KETTE_LOG` und ordnet die Meldung damit einer
+ * Stelle im Ablauf zu — der Rumpf selbst nennt die Stufe nicht. `meldung` baut die
+ * echte, reine `nachtlaufMeldung()` aus dem Bestand, damit der Mitschnitt zeigt, was
+ * wirklich das Haus verliesse. Mit `$KETTE_MELDE_FEHLER` endet der Aufruf stattdessen
+ * mit Exit 1 — der Weg, auf dem eine gescheiterte Einlieferung geprueft wird.
+ *
+ * Wie `boardFakeInstallieren` wird der Umweg committet (der Vorflug prueft den
+ * Arbeitsbaum) und spiegelt sich mit `.claude/` in den Worktree jeder Kette.
+ */
+export function meldeCaptureInstallieren(dir) {
+  const echt = join(repoRoot, "kit", "board.mjs");
+  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [
+    'import { spawnSync } from "node:child_process";',
+    'import { readFileSync, appendFileSync } from "node:fs";',
+    `import { nachtlaufMeldung } from ${JSON.stringify("file://" + echt)};`,
+    "const args = process.argv.slice(2);",
+    'if (args[0] === "nightrun" && args[1] === "melden") {',
+    '  if (process.env.KETTE_MELDE_FEHLER) {',
+    String.raw`    process.stderr.write("Fehler: Einlieferung abgewiesen (Melde-Fake)\n");`,
+    "    process.exit(1);",
+    "  }",
+    '  const datei = args[args.indexOf("--datei") + 1];',
+    '  const stand = JSON.parse(readFileSync(datei, "utf-8"));',
+    "  let sessions = 0;",
+    String.raw`  try { sessions = readFileSync(process.env.KETTE_LOG, "utf-8").split("\n").filter(Boolean).length; } catch { sessions = 0; }`,
+    String.raw`  appendFileSync(process.env.KETTE_MELDE_CAPTURE, JSON.stringify({ sessions, meldung: nachtlaufMeldung(stand) }) + "\n");`,
+    String.raw`  process.stdout.write(JSON.stringify({ ok: true, outcome: "TEST" }) + "\n");`,
+    "  process.exit(0);",
+    "}",
+    `const res = spawnSync(process.execPath, [${JSON.stringify(echt)}, ...args], { stdio: "inherit" });`,
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"));
+  for (const a of [["add", "-A"], ["commit", "-q", "-m", "melde-capture"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
+}
+
 export function boardFakeInstallieren(dir) {
   const echt = join(repoRoot, "kit", "board.mjs");
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), [

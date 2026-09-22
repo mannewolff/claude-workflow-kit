@@ -45,8 +45,8 @@ export default [
       // als SonarCloud: Ohne Parser-Services prueft der typfreie Zweig der Regel
       // (cjs/S6959/rule.js:35), ob der Empfaenger ein Array-Literal ist oder eine
       // Variable, die genau einmal aus einem Array-Literal zugewiesen wurde.
-      // Ergebnisse von `filter`/`map` bleiben unbewacht — genau der Fund in
-      // kit/spec.mjs kam aus einem `filter()` und waere hier nie gemeldet worden.
+      // Ergebnisse von `filter`/`map` bleiben unbewacht — der historische Fund
+      // (Issue #493) kam aus einem `filter()` und waere hier nie gemeldet worden.
       // Die Regel steht trotzdem: Sie faengt die haeufigere, direkte Form.
       "sonarjs/reduce-initial-value": "error",           // S6959
       // S6594 (RegExp.exec statt String.match) und S6582 (Optional Chaining) haben
@@ -60,9 +60,9 @@ export default [
       // eslint-plugin-sonarjs geben ohne Parser-Services ein leeres Regelobjekt
       // zurueck (cjs/S2871/rule.js:52, cjs/S4043/rule.js:41) und melden fuer
       // reine .mjs-Dateien nichts. Die benannte Vergleichsfunktion
-      // `vergleicheText` in kit/spec.mjs und kit/checks.mjs ist deshalb
-      // Konvention, keine Leitplanke — ein neuer `.sort()`-Aufruf faellt erst
-      // beim naechsten SonarCloud-Lauf auf (Issue #493).
+      // `vergleicheText` in kit/checks.mjs ist deshalb Konvention, keine
+      // Leitplanke — ein neuer `.sort()`-Aufruf faellt erst beim naechsten
+      // SonarCloud-Lauf auf (Issue #493).
     },
   },
 ];

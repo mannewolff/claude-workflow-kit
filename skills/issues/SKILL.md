@@ -76,10 +76,6 @@ Was konkret ist zu tun? Betroffene Dateien, zu schreibende Tests (bei TDD zuerst
 ## Akzeptanzkriterium
 Wie wird verifiziert, dass die Aufgabe erledigt ist? Konkret, messbar oder ausführbar.
 
-## Spec-Wirkung
-Was ändert das Paket an der Beschreibung unter specs/? Nur bei gesetztem spec-Block —
-siehe die Spec-Wirkung-Konvention am Ende dieses Schritts.
-
 ## Abhängigkeiten
 Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 ```
@@ -154,32 +150,6 @@ Jeder Block ist ein **eigener** Werkzeugaufruf, die Datei liegt außerhalb des P
 - Abhängigkeiten zwischen frisch angelegten Issues können noch keine `Issue #N`-Referenz tragen. Sie werden als erläuternder Freitext mit dem **Titel** des anderen Issues notiert; die `Issue #N`-Referenz trägt der Mensch beim Einplanen nach. Für den Nacht-Runner gilt Freitext ohne `#N` als keine prüfbare Abhängigkeit — bewusst akzeptiert, die Ready-Reihenfolge legt ohnehin der Mensch fest.
 
 Status bleibt **Backlog**. Die Bewegung nach Ready ist das menschliche GO (Schritt 4) — Claude zieht Issues nie eigenmaechtig nach Ready. (Beim Ideen-Pool-Flow entsprechend: Einplanen und Ready-Ziehen sind menschlich.)
-
-#### Spec-Wirkung: der fuenfte Abschnitt (nur mit `spec`-Block)
-Traegt `.claude/workflow.config.json` einen `spec`-Block, bekommt jedes Arbeitspaket einen fuenften Body-Abschnitt `## Spec-Wirkung`. Er sagt, was das Paket an der Beschreibung unter `specs/` aendert. **Ohne `spec`-Block gilt das Vier-Abschnitt-Format unveraendert.** Der Schalter ist das Vorhandensein des Blocks, kein Feld darin. Das ist keine Bitte im Text: `board.mjs issue create` und `board.mjs issue update` legen bei gesetztem Block **kein Issue ohne diesen Abschnitt** an und schreiben keins — geprueft wird dabei auch die **Form** der Zeilen darin, ueber dieselbe Grammatik, die `spec.mjs` fuehrt. Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen; der Adapter faengt den Fehler ohnehin ab, bevor eine Karte entsteht. **Der Ort:** zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten` — so, wie der Format-Codeblock oben ihn zeigt. `## Abhängigkeiten` bleibt der **letzte** Abschnitt, weil `parseDeps` in `kit/night.mjs` das voraussetzt.
-
-**Die Grammatik** — je Zeile eine Wirkung; vor dem Freitext steht der Gedankenstrich `—` (U+2014), ein Bindestrich ist ein Fehler:
-```
-NEU       <BEREICH> <ID> — <Aussage>
-GEAENDERT <ID> — <neuer Aussage-Text>
-ENTFAELLT <ID> — <Grund>
-KEINE     — <Begruendung>
-```
-
-**Die ID-Form** ist `<bereich>-<N>`. In der `NEU`-Zeile steht der Bereich zusaetzlich davor, und er muss zum Praefix der ID passen:
-```
-NEU board board-7 — issue create lehnt ein Paket ohne Spec-Wirkung ab.
-```
-
-**Die ID-Vergabe:** Die naechste Nummer eines Bereichs ist die **hoechste je vergebene plus eins — einschliesslich der Nummern unter `## Entfallen`**. IDs werden nie wiederverwendet. Wer nur die gueltigen Aussagen zaehlt, vergibt die Nummer einer gestrichenen Aussage neu; `spec.mjs check --paket` weist das Paket dann zurueck.
-
-Gelesen wird `specs/<bereich>.md`, und zwar **beide** Abschnitte: die gueltigen Aussagen oben und die gestrichenen unter `## Entfallen`. Eine einzelne ID schlaegt `node .claude/kit/spec.mjs show <id>` nach. Die Zahlen in `specs/INDEX.md` sind Anzahlen, nicht die hoechste Nummer — sie taugen fuer diese Rechnung nicht. Drei Faelle:
-
-1. **Bereich ohne eine einzige Aussage** (auch keine entfallene): Die erste Nummer ist `1`.
-2. **Mehrere `NEU`-Zeilen in einem `/issues`-Lauf:** `specs/` kennt sie noch nicht — „hoechste plus eins" ergaebe fuer alle dieselbe Nummer. Die Session zaehlt deshalb **fortlaufend** weiter und rechnet die im Lauf bereits vergebenen Nummern mit.
-3. **Offene Pakete frueherer Laeufe** sind in `specs/` unsichtbar: Ihre Nummern stehen dort erst, wenn die Pakete umgesetzt sind. Die Session kann sie nicht kennen, und das ist hinzunehmen — die Kollision erkennt `spec.mjs check`. Es gibt keinen Weg, sie vorher zu sehen; wer einen sucht, sucht vergeblich.
-
-**Pakete ohne Wirkung schreiben `KEINE — <Begruendung>`.** Die Begruendung ist **Pflicht**: „keine Wirkung" ist eine Aussage, kein Weglassen. Neben `KEINE` steht keine weitere Wirkungszeile.
 
 ### 3b. Übernommene Review-Funde gegenlesen
 Liegt ein `[Plan]`-Issue `#M` vor, liest die Session **vor dem Schneiden** dessen Kommentare mit `node .claude/kit/board.mjs issue get <M>` — die Befunde der Plan-Prüfung und vor allem `## Einarbeitung, Runde 1` mit der Liste der übernommenen Funde. Nach dem Schneiden prüft sie je übernommenem Fund, ob er in mindestens einem Paket ankommt: als Aufgabe, als Akzeptanzkriterium oder als `Entscheidung:`-Zeile. Ein Fund, der im Plan-Body steht, aber in keinem Paket ankommt, geht beim Übertrag verloren. Der Abschluss nennt jeden solchen Fund unter **Nicht übertragene Review-Funde** mit seiner Kennung und einem Satz, sonst steht dort „keine“. Unbeaufsichtigt geht dieselbe Liste als Kommentar am Plan. Trägt der Plan keinen Einarbeitungs-Kommentar, entfällt der Schritt, und der Abschluss sagt das.

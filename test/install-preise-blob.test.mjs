@@ -4,8 +4,7 @@
 // geprueft, nicht in zweien:
 //
 // 1. kit/preise.mjs wird ausgeliefert. Ein Werkzeug, das nur im Kit-Repo liegt, ist
-//    gebaut, aber nicht verteilt — dieselbe Luecke wie bei checks.mjs (#425) und
-//    spec.mjs (#441).
+//    gebaut, aber nicht verteilt — dieselbe Luecke wie bei checks.mjs (#425).
 // 2. "Das Tool bleibt ohne weiteren Repo-Kontext lauffaehig: aus einem Wegwerf-
 //    Verzeichnis heraus aufrufbar, in dem nur das Kit, eine workflow.config.json und
 //    ein Token liegen."
@@ -15,7 +14,7 @@
 // fehlende Preistabelle nicht — der Melder kommt ohne sie aus und meldete stillschweigend
 // keinen Betrag mehr.
 //
-// Sicherheitsvorkehrungen wie in test/install-spec-blob.test.mjs: cwd UND
+// Sicherheitsvorkehrungen wie in test/install-checks-blob.test.mjs: cwd UND
 // HOME/USERPROFILE zeigen ins Wegwerf-Verzeichnis, damit kein Testlauf die echte
 // Konfiguration anfasst.
 
@@ -31,7 +30,10 @@ import { starteServer } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
-const QUELLE = join(repoRoot, "kit", "preise.mjs");
+// Alle Nachbardateien in einem Lauf: Ein zweiter Installer-Lauf kostete Sekunden und
+// belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu, wirksamkeit.mjs mit #787,
+// befunde.mjs mit #799.
+const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
 const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
@@ -54,22 +56,24 @@ function installiertesProjekt(praefix) {
   return { dir, ausgabe: res.stdout };
 }
 
-// Ohne Aussage-ID: Dieses Paket beschreibt keine Zusage im Bereich 'installer' — die
-// Auslieferung einer Kit-Datei ist bestehendes Verhalten, hier nur um eine Datei
-// erweitert. Der Beleg gehoert trotzdem hierher, sonst faellt sie beim naechsten
-// Werkzeug wieder aus dem Blick.
-test("der Installer schreibt .claude/kit/preise.mjs byteweise identisch zur Quelle", () => {
+// `[installer-11]` gilt aufwand.mjs (Issue #750), `[installer-13]` wirksamkeit.mjs
+// (Issue #787), `[installer-14]` befunde.mjs (Issue #799). preise.mjs steht ohne eigene
+// ID daneben: Ihre Auslieferung war bestehendes Verhalten, als sie dazukam — der Beleg
+// gehoert trotzdem hierher, sonst faellt sie beim naechsten Werkzeug aus dem Blick.
+test("[installer-11] [installer-13] [installer-14] der Installer schreibt die Nachbardateien byteweise identisch zur Quelle", () => {
   const { dir, ausgabe } = installiertesProjekt("install-preise-blob-");
   try {
-    const ziel = join(dir, ".claude", "kit", "preise.mjs");
-    assert.ok(existsSync(ziel), "preise.mjs wurde nicht ausgeliefert");
-    // Byteweise, nicht als Text: Ein Blob, der beim Kodieren die Kodierung wechselt,
-    // faellt ueber einen utf-8-Vergleich nicht auf.
-    assert.ok(
-      readFileSync(ziel).equals(readFileSync(QUELLE)),
-      "die ausgelieferte Datei weicht von kit/preise.mjs ab — Blob nicht nachgezogen?"
-    );
-    assert.match(ausgabe, /preise\.mjs geschrieben:/);
+    for (const datei of AUSGELIEFERT) {
+      const ziel = join(dir, ".claude", "kit", datei);
+      assert.ok(existsSync(ziel), `${datei} wurde nicht ausgeliefert`);
+      // Byteweise, nicht als Text: Ein Blob, der beim Kodieren die Kodierung wechselt,
+      // faellt ueber einen utf-8-Vergleich nicht auf.
+      assert.ok(
+        readFileSync(ziel).equals(readFileSync(join(repoRoot, "kit", datei))),
+        `die ausgelieferte Datei weicht von kit/${datei} ab — Blob nicht nachgezogen?`
+      );
+      assert.ok(ausgabe.includes(`${datei} geschrieben:`), `der Installer meldet ${datei} nicht`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

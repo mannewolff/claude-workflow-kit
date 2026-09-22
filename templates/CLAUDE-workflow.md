@@ -91,7 +91,7 @@ Eine Session, die ein Dokument schreibt oder unbeaufsichtigt laeuft, entscheidet
 
 Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frage. Alles andere — ausdruecklich auch Randfaelle, Namensfragen, Fehlerpfade, Reihenfolgen und die Frage, welcher Test gemeint ist — wird entschieden. Schiedsrichter ist die Ordnung aus „Prioritaeten bei Zielkonflikten"; im Zweifel gewinnt der kleinste rueckbaubare Eingriff.
 
-**Reviews sind Zuarbeit.** Ein Modell-Review eines Fachplans, Plans oder Arbeitspakets liefert Befunde an den Autor der Stufe; der arbeitet sie ein oder lehnt sie mit einem Satz ab. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
+**Reviews sind Zuarbeit.** Ein Modell-Review eines Fachplans, Plans oder Arbeitspakets liefert Befunde an den Autor der Stufe; jeder Fund kommt dabei mit den drei zusaetzlichen Angaben aus „Befunde der Modell-Pruefungen" — Gegenprobe, ihr Stand und die Mangel-Art —, und der Autor liest sie mit, bevor er uebernimmt oder mit einem Satz ablehnt. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
 
 ---
 
@@ -128,6 +128,44 @@ Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mit
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue mit dem Routing-Label `kit:nightrun` eine frische Headless-Session mit `/implement-next #N`. Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Nachts wird committet, nie gepusht — Review, Test und `push main` passieren morgens durch den Menschen.
 
 Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`). Die Geste ist das Label `kit:night` am gegroomten `[Fachlich]`-Issue im Backlog; der Runner verbraucht es beim Start, jedes Setzen autorisiert genau eine Kette. Je Fachplan entsteht in einem eigenen Worktree ein Plan (`/techplan`), der geprueft wird (`/issue-review`), daraus die Arbeitspakete (`/issues`) und eine Abdeckung gegen den Fachplan — gebaut wird nichts, die Pakete bleiben im Backlog, das GO nach Ready bleibt beim Menschen. Die Kette kennt zwei Varianten: Variante A (Standard) belaesst die Arbeitspakete im Backlog und wartet auf das GO des Menschen; Variante B setzt zusaetzlich das Label `kit:durchziehen` (Feld `night.kette.varianteBLabel`) am Fachplan — dann zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket, wie unter „Die drei Stop-Punkte (nie automatisiert)" beschrieben. Fehlt das Label oder wird es wieder entfernt, faellt die Kette auf Variante A zurueck. Drei Ausgaenge: `fertig`, `angehalten` (eine Stopp-Frage wartet als Kommentar `## Kette angehalten` samt `kit:klaeren` am Fachplan: Antwort als Satz in den Fachplan, Label abnehmen, `kit:night` neu setzen — die naechste Kette beginnt von vorn) und `abgebrochen` (mit Grund). Bei jedem Ausgang steht ein Nachtbericht als Kommentar am Fachplan; er ist Verlauf, verbindlich wird eine Entscheidung erst als Satz im Fachplan. Budgets — Minuten je Stufe, Kosten je Kette, Korrekturrunden — stehen in `night.kette` der `workflow.config.json`. Kette und Umsetzungsnacht laufen nebeneinander; unter Variante B verhindert der Lock `.claude/night-umsetzung.lock`, dass eine Umsetzungsnacht waehrend der laufenden Kette startet. Details: Kapitel „Nachtbetrieb" in der Kit-Dokumentation.
+
+**Keine Session endet mit laufender eigener Arbeit.** Eine unbeaufsichtigte Sitzung beendet ihre Arbeit nicht, solange eine von ihr angestossene lange Arbeit laeuft — sie wartet auf das Ergebnis oder bricht die lange Arbeit ab und meldet den Abbruch als Fehlschlag. Hintergrundarbeit bleibt dabei ausdruecklich erlaubt; unzulaessig ist allein das Aufhoeren, waehrend sie noch laeuft. Tut eine Sitzung es doch, benennt der Runner den Fall mit eigenem Grund, zaehlt ihn als eigene Groesse und haengt einen Vermerk `## Nachtlauf: wartende Sitzung` an das Arbeitspaket; erledigt ist das Paket damit nicht.
+
+---
+
+## Aufwand des Prozesses
+
+Jeder unbeaufsichtigte Lauf schreibt seine Auswertung nach `.claude/aufwand.md`; sie liegt dort vollstaendig, auch wenn nichts auffaellt. Ein Befund erscheint unaufgefordert an genau zwei Stellen: im Abschlussblock des Laufprotokolls `.claude/night-run-<datum>.log` und zu Beginn von `/push-main`. Der Befund haelt nirgends etwas auf und ist kein Gate.
+
+Drei Begriffe tragen die Auswertung: **Nachdenken** ist die Zeit, in der das Modell arbeitet; **Werkzeugarbeit** ist die Zeit, in der etwas anderes fuer den Lauf arbeitet; eine **Pruefung** ist ein Eintrag aus `buildChecks`, mehrfache Ausfuehrungen desselben Eintrags werden zusammengefasst. Zeit, die sich keiner Seite zuordnen laesst, ist ein dritter, eigener Posten.
+
+Laufzahl und Schwellen stehen optional im Config-Block `aufwand`; fehlt er, gelten die eingebauten Vorgaben.
+
+---
+
+## Wirksamkeit der Pruefungen
+
+Was die Pflichtpruefungen einbringen, steht in `.claude/wirksamkeit.md` fuer Menschen und in `.claude/wirksamkeit.json` fuer die Ausgabestellen; beide liegen dort vollstaendig, auch wenn nichts auffaellt. Je Pruefung steht dort, wie oft sie lief, wie oft sie beanstandete und wie viel Zeit sie kostete, dazu die Ruecklaeuferquote aus „In review". Ein Befund erscheint unaufgefordert an denselben zwei Stellen wie der Aufwands-Befund: im Abschlussblock des Laufprotokolls und zu Beginn von `/push-main`. Der Befund haelt nirgends etwas auf und ist kein Gate.
+
+Vier Begriffe tragen die Auswertung: eine **Ausfuehrung** ist ein Lauf einer Pruefung fuer ein Arbeitspaket — eine Zeile im Ausfuehrungsprotokoll; ein **Lauf** ist ein unbeaufsichtigter Lauf; **beanstandet** heisst, dass eine Ausfuehrung nicht gruen endete — eine Pruefung, die gar nicht erst startete, ist keine Ausfuehrung; ein **Ruecklaeufer** ist jede Bewegung aus „In review" zurueck, gleich wer sie ausloest. Daraus folgt der Unterschied, auf den es ankommt: „nie beanstandet" ist ein Ergebnis vieler Ausfuehrungen, „nicht gelaufen" ist gar keines — nur das erste sagt etwas ueber die Pruefung.
+
+Fenster, Quote und Mindestmengen stehen optional im Config-Block `wirksamkeit`; fehlt er, gelten die eingebauten Vorgaben.
+
+Zwei Messgrenzen gehoeren zum Bild: Die Salvage-Pruefungen des Nacht-Runners laufen an `checks.mjs` vorbei und zaehlen darum nicht mit. Und eine Karte, die das Kit nie bewegt hat, steht nicht im Nenner der Ruecklaeuferquote — was ohne den Prozess entstand, misst er auch nicht.
+
+---
+
+## Befunde der Modell-Pruefungen
+
+**Aufbau eines Funds.** Jeder Fund einer vom Kit vorgesehenen Modell-Pruefung — fachliche Anforderung, Plan, Arbeitspaket, Code — traegt neben Schweregrad, Fundstelle und Vorschlag drei weitere Angaben: die Beobachtung, die ihn widerlegen wuerde; den Stand dieser Gegenprobe, `geprueft, bestaetigt` oder `nicht geprueft`; und seine Mangel-Art. Ein Fund, den die eigene Gegenprobe widerlegt hat, wird nicht gemeldet.
+
+**Die Artenliste hat genau einen Wortlaut:** `node .claude/kit/befunde.mjs arten`. Dieser Abschnitt zaehlt die Arten nicht selbst auf, sondern verweist auf das Kommando — zwei Orte driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt. Ein Projekt ergaenzt keine eigenen Arten.
+
+**Aus dieser Form wird kein Gate.** Ein Fund ohne Gegenprobe oder mit fehlender Angabe haelt nichts auf. Fehlt eine Angabe, wird sie beim liefernden Reviewer genau einmal nachgefordert; bleibt sie aus, traegt der Fundblock `Angaben: unvollstaendig` und wird trotzdem eingearbeitet.
+
+Vier Begriffe tragen die Auswertung: ein **Fund** ist eine gemeldete Beanstandung einer Modell-Pruefung; die **Gegenprobe** ist die Beobachtung, die den Fund widerlegen wuerde, samt ihrem Stand; die **Art** ist die Einordnung aus der festen Liste; ein **Vorkommen** ist ein uebernommener Fund mit bestaetigter Gegenprobe — nicht gepruefte, unvollstaendige und abgelehnte Funde sind keine Vorkommen.
+
+Zwei Messgrenzen gehoeren auch hier zum Bild: Vor der Einfuehrung dieser Form geschriebene Funde zaehlen nicht und werden nicht nachtraeglich eingeordnet. Und Buchungen, die in einem abgestuerzten Nacht-Worktree entstanden sind, gehen verloren — `worktreesAufraeumen` in `kit/night.mjs` raeumt liegengebliebene Worktrees beim naechsten Start weg, samt allem, was darin noch ungesichert wartet.
 
 ---
 
@@ -194,19 +232,13 @@ Absolut bindend:
 
 ## Config (.claude/workflow.config.json)
 
-Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`; optional `spec` fuer Spec-Driven Development. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
+Die Datei ist die einzige projektlokale Stelle, aus der die Skills lesen. Felder: `codeHost` (github | gitlab | local) und `issueTracker` (github | gitlab | local | toolbox); `buildChecks` mit optionalem `checkAreas` fuer bereichsbezogene Pruefungen und optionaler Stufenangabe `stufe`; `mutationCommand` (oder leer); `mainBranch` und `productionBranch`; `reviewScope` (`diff` oder `all`) und genau eines von `reviewCommand` (fremde CLI) oder `reviewModel`; `triggers` fuer GO, Push und Merge; `local.issuesDir`; optional `issueReview` mit `reviewers`, `pairs` und `reviewStufen`. Persoenliche Abweichungen gehoeren in `.claude/workflow.config.local.json`. Ein Beispiel je Stack und die Feldbeschreibung stehen in der Kit-Dokumentation, Abschnitt „Die Config-Datei".
 
 ---
 
 ## Pflichtchecks vor Push (Schritt 6)
 
-Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch. Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen. Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen.
-
----
-
-## Spec-Fortschreibung beim Push (Schritt 8, nur mit `spec`-Block)
-
-Fuehrt `.claude/workflow.config.json` einen Top-Level-Block `spec`, beschreibt das Projekt sein Verhalten unter `specs/`, eine Datei je Bereich. `/push-main` traegt dann vor seinem Prueflauf mit `spec.mjs apply` nach, was die Arbeitspakete des Batches unter `## Spec-Wirkung` angekuendigt haben, und hebt wartende Vorhaben-Notizen aus `/techplan` nach `specs/vorhaben/` auf — nach Vorschau und einer Zustimmung des Menschen. Ohne den Block gibt es diesen Schritt nicht; Details in `/push-main`.
+Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bereiche werden mit Nachweis ausgelassen. Rote Checks blockieren den Push weiterhin mechanisch. Bei UI-Aenderungen: Dev-Server starten, Golden Path und mindestens einen Edge Case manuell pruefen. Wenn ein Check nicht lokal ausfuehrbar ist: im Abschlussbericht vermerken, nicht verschweigen. **Die Pruefungen laufen gestaffelt:** Jede traegt eine Stufe — `paket` beim Abschluss eines Arbeitspakets, `push` vor dem Veroeffentlichen, `merge` vor der Freigabe; ohne Angabe gilt `paket`. Eine spaetere Stufe laeuft an der frueheren **nicht mit** (eine Pruefung der Stufe `push` bleibt beim Abschluss eines Arbeitspakets aus), und jede Stufe faehrt ihre **Vorgaengerstufen** mit (`push` fuehrt `paket` und `push` aus, `merge` alle drei). **Keine Pflichtpruefung entfaellt damit aus dem Gesamtprozess**; sie laeuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zaehlt. Welche Pruefung in welche Stufe gehoert, entscheidet das Projekt. Die Stufe einer Pflichtpruefung (`stufe`) ist dabei etwas anderes als die Pruefstufen des Reviews (`reviewStufen`) und als die Stufen der Nacht-Kette: Sie sagt, *wann* geprueft wird, nicht wie gruendlich gelesen und nicht welcher Abschnitt eines unbeaufsichtigten Laufs dran ist. **Eine** seiner Pruefungen darf ein Projekt ausserdem als **Guetemessung** benennen (`guete` mit `muster` und `marke`): Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken. Liegt der gemessene Anteil unter der Marke, ist das **derselbe Halt wie eine rote Pflichtpruefung** — kein neuer Stop-Punkt, keine Ausnahme, keine persoenliche Marke (die Marke gilt teamweit, eine Abweichung in `workflow.config.local.json` bleibt unwirksam). Der Halt kostet keine Arbeit: Er ist ein roter Lauf **vor Commit und Push**, die bereits fertigen Pakete bleiben lokal committet, und der Versionsbump von `/push-main` bleibt idempotent stehen — nach der Nachbesserung laeuft derselbe Batch weiter. **Ohne Benennung gibt es weder Messung noch Marke noch Halt.**
 
 ---
 
@@ -308,7 +340,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei 
 
 ## Gates (prozessweit)
 
-Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Prozesses tragen. Sie zitieren Saetze, die weiter oben in dieser Datei stehen; ein Vorschlag, der eine davon aushebelt, ist keine Detailaenderung, sondern eine Aenderung der Bauart — und damit eine Frage der Stopp-Klasse.
+Vier Regeln, die unabhaengig von der Pruefstufe gelten und die den Rahmen des Prozesses tragen — gemeint ist die Pruefstufe des Reviews (`reviewStufen`), nicht die Stufe einer Pflichtpruefung (`stufe`) und nicht die Stufe der Nacht-Kette. Sie zitieren Saetze, die weiter oben in dieser Datei stehen; ein Vorschlag, der eine davon aushebelt, ist keine Detailaenderung, sondern eine Aenderung der Bauart — und damit eine Frage der Stopp-Klasse.
 
 ### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`
 
@@ -320,7 +352,7 @@ Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelan
 
 ### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`
 
-Alle **betroffenen** `buildChecks` laufen gruen, bevor gepusht wird; unberuehrte Bereiche werden mit Nachweis ausgelassen, und ein nicht lokal ausfuehrbarer Check wird im Abschlussbericht vermerkt, nicht verschwiegen. Ein Vorschlag, der einen Check zur Empfehlung macht oder eine Schwelle senkt, hebt die Mechanik auf. Fundstelle: „Pflichtchecks vor Push (Schritt 6)".
+Alle **betroffenen** `buildChecks` der **faelligen Stufe** laufen gruen, bevor gepusht wird; unberuehrte Bereiche werden mit Nachweis ausgelassen, und ein nicht lokal ausfuehrbarer Check wird im Abschlussbericht vermerkt, nicht verschwiegen. Die Mechanik bleibt unveraendert hart, nur ihr Umfang haengt am Zeitpunkt: **Keine Pflichtpruefung entfaellt aus dem Gesamtprozess**, und vor jeder Freigabe laufen alle drei Stufen. Ein Vorschlag, der einen Check zur Empfehlung macht oder eine Schwelle senkt, hebt die Mechanik auf. **Eine Guetemessung unter ihrer Marke ist ein Fall genau dieser Mechanik**: ein roter Pflichtcheck, der wie jeder andere blockiert — **kein vierter Stop-Punkt**, keine eigene Entscheidungsstelle, und die Marke zu senken ist die Schwellensenkung aus dem Satz davor. Fundstelle: „Pflichtchecks vor Push (Schritt 6)".
 
 ### W4 — Die Prioritaetenordnung bei Zielkonflikten `[Urteil]`
 

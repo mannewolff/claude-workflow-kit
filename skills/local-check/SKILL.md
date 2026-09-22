@@ -40,6 +40,8 @@ node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranc
 
 Das Kommando wählt die betroffenen `buildChecks` aus und führt genau sie aus. `<mainBranch>` ist der Wert aus `.claude/workflow.config.json` (Default: `main`).
 
+**Gefahren wird die Paketstufe.** Der Aufruf trägt kein `--stufe`: Die Paketstufe ist die Vorgabe, und sie bleibt hier die richtige. Der mechanische Halt vor dem Push sitzt seit skills-20 in `/push-main` selbst — dieser Schritt ist die lokale Prüfung vor der menschlichen Testrunde, und sie teuer zu machen nähme ihr den Nutzen. Trägt eine Prüfung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste `ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt: Sie läuft in `/push-main` bzw. `/merge-production`. In der Checklist steht sie wie jede andere Auslassung.
+
 **Warum dieser Anker und nicht `HEAD`.** Dieser Schritt läuft **nach** dem lokalen Commit aus Schritt 5. Auf sauberem Arbeitsbaum sähe `git diff HEAD` nichts — das Kommando meldete `leeresPaket`, ließe **jede** Prüfung aus, und der Bericht wiese das als korrekt aus. Der letzte gepushte Stand ist der richtige Bezug: Der Schritt sichert alles ab, was seit dem letzten Push dazugekommen ist, also genau das, was gleich hinausgeht. (Die `implement-*`-Skills prüfen dagegen **vor** dem Commit gegen den Default `HEAD` — dort misst er genau ein Arbeitspaket.)
 
 **Randfall: leerer Anker.** Schlägt `git merge-base` fehl (kein `origin`, detached HEAD, kein gemeinsamer Vorfahre), liefert die Substitution einen **leeren String**, und der Aufruf wird zu `--since ""`. `checks.mjs` behandelt einen leeren Anker wie einen nicht auflösbaren und fährt den **vollen Umfang** — nie wie einen fehlenden. Ein fehlender ergäbe den Default `HEAD` und damit auf committetem Stand gar keine Prüfung. Diese Zusicherung nicht „vereinfachen": Sie ist der Grund, warum ein kaputter Anker zu mehr Prüfung führt statt zu keiner.
@@ -102,6 +104,8 @@ Ohne gesetztes `formatFixCommand` entfällt dieser Schritt ersatzlos.
 Nur wenn `mutationCommand` in der Config gesetzt ist. Wenn der Test nicht lokal ausführbar ist (kein Build-Tool, kein Daemon), das explizit vermerken.
 
 **`mutationCommand` bleibt unverändert und läuft weiterhin immer.** Es steht nicht in `buildChecks` und ist damit **nicht Teil der bereichsbezogenen Auswahl** — es wird direkt ausgeführt, ohne `checks.mjs`, unabhängig davon, welche Bereiche der Anker findet. Das ist Absicht und keine Lücke: Es war im Bestand schon dem Build nachgelagert, und es in die Auswahl zu ziehen erweiterte den Zuschnitt der Umstellung.
+
+**`mutationCommand` ist keine Gütemessung.** Die beiden liegen inhaltlich nah beieinander — auch die Gütemessung misst, wie viele absichtlich eingebauten Fehler die Tests bemerken —, aber `mutationCommand` bleibt, was es war: ein nachgelagertes Kommando. Es trägt **keine Marke**, sein Ergebnis wird nicht ausgewertet, und es löst **keinen Halt** aus; ein Wert, der niemandem gefällt, bleibt eine Zahl im Bericht. Wer die Verbindlichkeit will, führt sein Kommando stattdessen als `buildChecks`-Eintrag mit `guete`-Block (`muster` und `marke`): Erst dort wird der gemessene Anteil erhoben, gegen die Marke gehalten und ein Wert darunter zum roten Lauf wie jede andere rote Pflichtprüfung. Beides zugleich zu setzen ergibt zwei Läufe desselben Werkzeugs, von denen nur einer zählt.
 
 ### 3. Manuelle UI-Verifikation (bei Frontend-Änderungen)
 

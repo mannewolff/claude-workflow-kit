@@ -29,9 +29,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 
 // Kein Git-Repo im Wegwerf-Verzeichnis: Die Gate-Frage entfaellt damit und verbraucht
-// keine Antwortzeile. Neun Antworten — Scope, codeHost, issueTracker, mainBranch,
-// productionBranch, reviewScope, reviewModel, reviewCommand, Spec-Frage.
-const PROJEKT = ["projekt", "github", "toolbox", "", "", "", "", "", "n"];
+// keine Antwortzeile. Acht Antworten — Scope, codeHost, issueTracker, mainBranch,
+// productionBranch, reviewScope, reviewModel, reviewCommand.
+const PROJEKT = ["projekt", "github", "toolbox", "", "", "", "", ""];
 const GLOBAL = ["global", "github", "toolbox", "", "", "", "", "", ""];
 
 function installiere(dir, antworten = PROJEKT) {

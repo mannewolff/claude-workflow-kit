@@ -77,9 +77,11 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 ### 2. Issue vollständig lesen
 
-Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wirkung`; daraus stammen die IDs fuer die Testnamen. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
+Lies alle Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
 
 **Trägt das Issue eine Zeile `Empfohlenes Modell: <name>` oder `Aufgabenstufe: <schwer|mittel|leicht>`, nenne sie** — zusammen mit dem Hinweis, dass die laufende Sitzung ihr Modell nicht wechselt. Beide sind eine Angabe, keine Anweisung: Nachts wirkt sie von selbst (der Runner startet die Session der Karte damit), tagsüber wählt der Mensch sein Modell selbst und sitzt ohnehin daneben. **Kein Halt, keine Rückfrage, keine Änderung am Ablauf** — wer eine laufende Sitzung für eine Empfehlung zum Neustart auffordert, kostet mehr, als die Empfehlung wert ist.
+
+**Trägt das Paket einen Vermerk mit dem Anker `## Nachtlauf: wartende Sitzung`, nenne ihn** — dann wurde es schon einmal angefangen, und der zuletzt bekannte Stand steht im Vermerk. **Kein Halt, keine Ruecksprache**, nur die Meldung: Wer den Vermerk verschweigt, macht stillschweigend auf halbem Weg weiter.
 
 ### 3. Implementieren
 
@@ -91,8 +93,11 @@ Lies alle Abschnitte des Issues — bei gesetztem `spec`-Block auch `## Spec-Wir
 - Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
 - Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
 - Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten und den geschriebenen Exit-Code einlesen — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
+- Allgemeiner, und darum die Regel hinter der Zeile davor: **Keine Session endet mit laufender eigener Arbeit** — gleich welcher, nicht nur bei einem Pflichtcheck. Wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag; eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst (Issue #754).
 
 **Entscheiden statt fragen.** Taucht beim Umsetzen — bei jedem Arbeitspaket, mit oder ohne `[Task]`-Praefix — eine Entscheidung auf, gilt `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen": Alles ausserhalb der Stopp-Klasse wird entschieden, im Format von dort, und steht im Abschlussbericht unter `### Entscheidungen`. Kein Halt, kein Label, kein Kommentar. Stopp-Klasse und Format stehen nur dort und werden hier nicht wiederholt.
+
+**Dieser Ablauf gilt ohne Ausnahme.** Er gilt in jeder Betriebsart, ob ein Mensch mitliest oder nicht, und er hat Vorrang vor jeder anderen Regel, die zu einer offenen Frage etwas sagt — auch vor einer Regel aus dem persoenlichen Gedaechtnis des Menschen, das jede Session mitlaedt. Eine Regel, die „im Gespraech klaeren statt parken" verlangt, ersetzt diesen Ablauf nicht: Die Frage steht am Board, nicht nur in der Ausgabe der Session. Wer mitliest, sieht sie dort ebenso.
 
 Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann geschieht, in dieser Reihenfolge:
 
@@ -108,15 +113,6 @@ Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann gesch
 
 Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
 
-**Aussage-ID in den Testnamen (nur mit `spec`-Block).** Traegt `.claude/workflow.config.json` einen `spec`-Block, fuehrt jedes Arbeitspaket den Abschnitt `## Spec-Wirkung`. Fuer jede Aussage, die das Paket dort als `NEU` oder `GEAENDERT` fuehrt, traegt **mindestens ein Test** die Aussage-ID in der Form `[<ID>]`. Die ID-Form ist `<bereich>-<N>`; vergeben hat sie `/issues`, und sie steht in der Wirkungszeile. Beispiel: `test("[board-7] issue create lehnt ein Paket ohne Spec-Wirkung ab", …)`.
-
-- **„Im Testnamen" heisst:** im Titel-String des Tests — `test("[<ID>] …")`, `it("[<ID>] …")`. Wo der Testname ein Bezeichner ist und keine eckigen Klammern erlaubt (JUnit, pytest), steht der Verweis in `@DisplayName` bzw. im Docstring. Massgeblich ist, dass `spec.testPattern` ihn im **Dateitext** findet.
-- Belegt ein Test mehrere Aussagen, steht jede ID in einer eigenen Klammer: `[board-7] [board-8]`.
-- Bei **`GEAENDERT`** wird der vorhandene Test mit `[<ID>]` an den neuen Aussage-Text angepasst; ein zweiter Verweis ist nicht noetig, aber ein **unveraenderter Test ist kein Beleg**. Der Verweis allein sagt bei `GEAENDERT` nichts — er stuende sonst ueber einem Test, der noch das alte Verhalten prueft, und das Gate saehe die Aussage als belegt.
-- **`ENTFAELLT` braucht keinen** neuen Verweis.
-- Gesucht wird mit `spec.testPattern` (regulaerer Ausdruck mit dem Platzhalter `<ID>`, Default `\[<ID>\]`) in den Dateien aus `spec.testGlobs` — beide Felder stehen im `spec`-Block der `.claude/workflow.config.json`.
-- Bei einem Paket mit `KEINE` und in Projekten ohne `spec`-Block aendert sich nichts.
-
 ### 4. Pruefungen vor dem Commit
 
 ```bash
@@ -128,6 +124,13 @@ Das Kommando waehlt die betroffenen `buildChecks` aus und fuehrt genau sie aus.
 uebergibt nie selbst einen. Weil der Aufruf **vor** dem Commit steht, misst `HEAD`
 genau dieses eine Arbeitspaket: Ein Fehlschlag gehoert dem Paket, das ihn ausgeloest
 hat — in beiden Betriebsarten und auch dann, wenn eine Session mehrfach festschreibt.
+
+**Gefahren wird die Paketstufe.** Auch `--stufe` uebergibt der Skill nie: Die Paketstufe
+ist die Vorgabe, und sie ist hier die richtige — gemessen wird ein Arbeitspaket. Traegt
+eine Pruefung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste
+`ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt:
+Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht sie wie
+jede andere Auslassung.
 
 Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
 

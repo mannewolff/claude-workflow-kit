@@ -29,7 +29,7 @@ oder interaktiv über `/implement-next`. Das ist der Teil des Runners, der funkt
 
 ## Der neue Skill `/task`
 
-Was bleibt: genau ein Paket, Präfix `[Task]`, Vier-Abschnitt-Format plus Spec-Wirkung,
+Was bleibt: genau ein Paket, Präfix `[Task]`, Vier-Abschnitt-Format (die Spec-Wirkung entfiel mit Plan #825),
 Eingang aus dem Chat oder einer `[Idee]`, keine `Plan:`- und keine
 `Fachliche Quelle:`-Zeile, kein `--derived-from`, Ablage im Backlog, Ready bleibt das GO.
 Der Abschnitt zum abgelehnten Werkzeug-Befund bleibt.

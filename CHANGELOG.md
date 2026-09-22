@@ -2,6 +2,103 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.0.0] - 2026-09-22
+- Worktree-Spiegel ohne Pfadvergleich, damit er unter Windows filtert (#832)
+
+## [2.0.7] - 2026-09-22
+- SDD-Rueckbau 5: Doku und specs/ entfernen (#831)
+- SDD-Rueckbau 3: Nacht-Runner ohne Vorhaben-Notizen, SYNC-Kommentare (#829)
+- SDD-Rueckbau 4: Einstellungs-Oberflaeche und Schema ohne spec-Block (#830)
+- SDD-Rueckbau 2: spec.mjs, Gate in board.mjs und Installer entfernen (#828)
+- Regeltext und Skills ohne Spec-Driven Development (#827)
+- Kleinkram aus dem Review: Spiegel-Filter, Zeitlimit, Schema-Grenzen, Doku-Abgleich (#824)
+- Funde in Listen erkennen, leere Gegenprobe melden (#823)
+- Ausfuehrungsprotokoll maskieren, Fenster ohne Stack-Grenze und mit Obergrenze (#822)
+- Aufwands-Auswertung rechnet nur mit gemessenen Werten (#821)
+- Zeiten je Einheit: offene Schuebe nicht als 0, Salvage summiert (#820)
+- Warte-Erkennung: abgeschlossene Hintergrundarbeit und Go-Test richtig einordnen (#819)
+- Salvage-Prompt prueft Sauberkeit mit den Ausnahmen von gitReste() (#818)
+- Ungueltige Prozentwerte rot, Salvage wertet die Marke (#817)
+- Umbenennen auf belegten Namen abweisen, Reviewer-Pflichtfelder pruefen (#816)
+- Pruefstufen-Redaktor: fehlerhafter Bestand, Katalogrollen, Befunde an der Zeile (#815)
+- Einstellungs-Oberflaeche haelt Entwuerfe, Vorschau-Timer und Eingabefelder je Teil (#814)
+- Nacht-Runner meldet Budgets, Herkunft, Stufen, Modellzeit und Zuege ans Board (#808)
+
+## [2.0.6] - 2026-09-21
+- Spec-ID auf night-63 umgestellt, night-52 vergab v2.0.3 (#772)
+- Kennzahlen einer Stufe mit Korrekturrunden summieren (#807)
+- kit/befunde.mjs mit arten und pruefen, Spec-Bereich befunde, Verteilung durch den Installer (#799)
+- Regeltext haelt die Form eines Befunds fest (#798)
+- Der Halt-Ablauf bei einer Stopp-Frage gilt ohne Ausnahme (#770)
+- Nacht-Sessions starten ohne das Auto-Memory des Menschen (#772)
+
+## [2.0.5] - 2026-09-21
+- Spec-IDs auf night-61 und board-19 umgestellt, night-59 und board-17 vergab v2.0.4 (#794)
+- Kettenlauf meldet sich nach jeder Stufe (#794)
+- docs.mwolff.org wieder baubar machen und v2.0.2/v2.0.3 nachdokumentieren (#792)
+
+## [2.0.4] - 2026-09-21
+- Nacht-Runner ruft die Wirksamkeits-Auswertung (#790)
+- Config-Block wirksamkeit: Schema, Referenz und einstellungen.mjs (#789)
+- Ruecklaeuferquote in kit/wirksamkeit.mjs (#788)
+- kit/wirksamkeit.mjs: Auswertung und Befund der Pruefungs-Kennzahlen (#787)
+- Bewegungsprotokoll und Verlaufs-Sammelabfrage in board.mjs (#786)
+- Ausfuehrungsprotokoll: checks.mjs schreibt je Pruefung eine Zeile (#785)
+- Rest-Guard, Worktree-Spiegel und .gitignore kennen die vier neuen Dateien (#784)
+- Regeltext: Wirksamkeit der Pruefungen und der zweite Befund in /push-main (#783)
+
+## [2.0.3] - 2026-09-21
+- Auswertung zaehlt die wartend beendeten Sitzungen (#779)
+- Wartende Sitzung in den Stufen der Nacht-Kette (#778)
+- Wartende Sitzung bei unsauberem Arbeitsbaum: beide Salvage-Fehlschlaege tragen den neuen Ausgang (#777)
+- Wartende Sitzung bei sauberem Arbeitsbaum: Grund, Vermerk und Feld (#776)
+- Bausteine der wartenden Sitzung: Erkennung, Grund und Vermerk (#775)
+- Nachtbetrieb-Regel: keine Session endet mit laufender eigener Arbeit (#774)
+
+## [2.0.2] - 2026-09-21
+- specs/night.md: die zwei falsch belegten Zeilen night-43 und night-44 entfernt (#766)
+- Doppelte Spec-IDs night-43 und night-44 aufgeloest (#766)
+- Abgrenzung zu mutationCommand und die Doku der Guetemessung (#765)
+- Der Anteil wird sichtbar: Protokollzeile der Nacht und vier Pruefregeln (#764)
+- checks.mjs: die Guetemessung auswerten und an der Marke messen (#763)
+- Regeltext und Schema: der guete-Block mit Muster und Marke (#762)
+- Abschluss Stufe A: Pruefregel fuer stufe und die Dokumentation (#761)
+- night.mjs: Salvage-Vorpruefung und Start-Guard an der Paketstufe (#760)
+- Die Skills nennen ihre Stufe: push-main, merge-production und die Paketstufe (#759)
+- checks.mjs: --stufe, kumulative Rangfolge und die Ankuendigung (#758)
+- Regeltext und Schema: die Stufenangabe stufe an buildChecks (#757)
+- Auswahl der Modelle auf best möglich gestllt
+- Auswahl der Modelle auf best möglich gestllt
+- Der Befund wird sichtbar: Abschlussblock im Laufprotokoll und /push-main (#752)
+- Der Config-Block aufwand: Schema, Prüfung, Oberfläche und Doku (#751)
+- specs/aufwand.md und specs/installer.md: aufwand-1, aufwand-2, installer-11 nachgezogen (#750)
+- kit/aufwand.mjs: Auswertung, Schwellen, Befund (#750)
+- specs/night.md: night-44 bis night-46 nachgezogen (#749)
+- Der Ergebnisstand traegt Zeiten, Cache-Teilung und den vollen Pruefstand (#749)
+- specs/night.md: night-43 nachgezogen (#748)
+- night.mjs misst die Werkzeugzeit am Session-Strom (#748)
+- specs/checks.md: checks-4 nachgezogen (#747)
+- checks.mjs misst die Dauer je Prüfkommando (#747)
+- Regeltext und Spec-Bereich: der Rahmen fuer die Aufwands-Auswertung (#746)
+- Lauf ohne Arbeit meldet seinen Grund am Lauf-Kopf (#744)
+- Nachtlauf meldet seinen Beginn vor dem ersten Arbeitspaket (#743)
+- Salvage bewegt das Board erst bei sauberem Arbeitsbaum und meldet drei Endzustaende (#672)
+- qwen auch aus den Paarungen entfernt
+
+## [2.0.1] - 2026-09-18
+- Dokumentation der neuen Einstellungs-Oberflaeche und Abschluss der Spec-Wirkung (#732)
+- M7 Einfache Gruppen: ein Feld je Eintrag und persoenliche Abweichung je Zeile (#731)
+- M6 Nacht-Kette: Zahlenfelder mit Einheit, blasse Vorgabewerte und die Summe der Zeitbudgets (#730)
+- M5 Spezifikation: Einschalten ohne Ausschalter, Testorte als Muster und Beispiel am Verweis-Muster (#729)
+- M4 Pruefkommandos und Bereiche: drei Laufarten, Formtreue und Folgen einer Umbenennung (#728)
+- M3 Pruefstufen: Zaehler, Rollenauswahl aus dem Katalog und Beispielbesetzung (#727)
+- M1 Reviewer und M2 Paarungen samt Folgen als eine Aenderung (#726)
+- Oberflaechen-Rahmen: Bausteine, Arbeitskopie je Teil, Fuss und Bedienelemente (#725)
+- Stufen in workflow.config nachgezogen
+- Vorschau-Endpunkt: Befunde, Aenderungsliste und abgeleitete Anzeigen ohne Schreiben (#724)
+- Zuschnitt der Einstellungen in Teile samt Rueckfall auf die Dateischreibweise (#723)
+- Pruefteil der Oberflaeche: Warnung, Rollenkatalog, Reviewer-Wahl, Vorgaben (#722)
+
 ## [2.0.0] - 2026-09-18
 - Doppelte Spec-IDs des Batches auf night-33 bis night-42 aufgeloest (#736)
 - Hook-Block und Installer melden die Sitzung von selbst (#735)

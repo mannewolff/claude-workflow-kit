@@ -94,6 +94,20 @@ export function zusammenfassung(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "checks-summary.json"), "utf-8"));
 }
 
+/** Der Ort des Ausfuehrungsprotokolls (Issue #785). */
+export function ausfuehrungenPfad(dir) {
+  return join(dir, ".claude", "ausfuehrungen.tsv");
+}
+
+/** Die Zeilen des Ausfuehrungsprotokolls; eine fehlende Datei zaehlt als keine Zeile. */
+export function ausfuehrungen(dir) {
+  try {
+    return readFileSync(ausfuehrungenPfad(dir), "utf-8").split("\n").filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Der Stand des Working Tree als Text. `--untracked-files=all` wie in checks.mjs:
  * sonst faellt eine einzelne Datei in einem neuen Verzeichnis unter den Tisch.

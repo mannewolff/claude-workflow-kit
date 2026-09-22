@@ -56,6 +56,11 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.equal(pruefe({ type: "object", minProperties: 1 }, {}).length, 1, "minProperties weist das leere Objekt ab");
   assert.deepEqual(pruefe({ type: "string", pattern: "^claude-" }, "claude-opus-5"), [], "pattern trifft");
   assert.equal(pruefe({ type: "string", pattern: "^claude-" }, "gpt-5").length, 1, "pattern trifft nicht");
+  assert.deepEqual(pruefe({ enum: ["paket", "push"] }, "push"), [], "enum trifft");
+  assert.equal(pruefe({ enum: ["paket", "push"] }, "abend").length, 1, "enum trifft nicht");
+  assert.deepEqual(pruefe({ type: "number", minimum: 0, maximum: 100 }, 80), [], "in den Grenzen");
+  assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, 120).length, 1, "ueber der Obergrenze");
+  assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, -1).length, 1, "unter der Untergrenze");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -94,6 +99,145 @@ test("buildChecks: ein leeres areas-Array ist ungueltig", () => {
 
 test("buildChecks: unbekannte Felder in der Objektform sind ungueltig", () => {
   assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", area: ["backend"] }), []);
+});
+
+// --- Die vierte Form: die Stufenangabe (Issue #757) ---
+//
+// Jede Pruefung traegt eine Stufe — `paket`, `push` oder `merge`. Ein fehlendes
+// Feld bedeutet `paket` und damit unveraendertes Verhalten; das ist der Grund,
+// warum die Stufe ein optionales Feld ist und keine eigene Liste je Stufe.
+
+test("buildChecks: die Objektform mit stufe ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "push" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "paket" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "merge" }), []);
+});
+
+test("buildChecks: eine Stufe ausserhalb der drei Namen ist ungueltig", () => {
+  // Der eigentliche Zweck des enum. Ein 'abend' wuerde zur Laufzeit keiner Stufe
+  // zugeordnet — die Pruefung liefe still nie, das Fehlbild dieses Vorhabens.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", stufe: "abend" }), []);
+});
+
+test("buildChecks: die Stufe steht neben areas und always", () => {
+  // Die Stufe sagt, wann eine Pruefung laeuft, areas und always sagen, ob sie
+  // betroffen ist. Zwei Achsen, keine Vorrangfrage — deshalb schliessen sie sich
+  // nicht aus.
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", areas: ["backend"], stufe: "merge" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", always: true, stufe: "push" }), []);
+});
+
+test("buildChecks: die String-Form und ein Objekt ohne stufe bleiben gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: fehlendes Feld = paket = unveraendertes
+  // Verhalten.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test" }), []);
+});
+
+test("buildChecks: das Feld stufe traegt den Default paket im Schema", () => {
+  const feld = eintragSchema.oneOf.find((z) => z.type === "object")?.properties?.stufe;
+  assert.ok(feld, "das Feld 'stufe' fehlt in der Objektform von buildChecks");
+  assert.deepEqual(feld.enum, ["paket", "push", "merge"], "die drei Stufennamen stimmen nicht");
+  assert.equal(feld.default, "paket", "der Default 'paket' fehlt am Feld");
+});
+
+test("buildChecks: die Beschreibung nennt die vierte Form und das fehlende Feld als paket", () => {
+  // JSON kennt keine Kommentare — wer die Config vor sich hat, liest die
+  // Bedeutung nur hier. Dass ein fehlendes Feld unveraendertes Verhalten
+  // bedeutet, ist der Satz, der eine Bestandsconfig beruhigt.
+  const text = eintragSchema.description;
+  assert.match(text, /stufe/, "die Beschreibung nennt 'stufe' nicht");
+  assert.match(text, /paket/, "die Beschreibung nennt die Vorgabe 'paket' nicht");
+  assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
+});
+
+// --- Der guete-Block: die Guetemessung an einem Eintrag (Issue #762) ---
+//
+// Der Block haengt am Eintrag und nicht neben buildChecks: mutationCommand steht
+// ausserhalb der Liste und damit ausserhalb der Staffelung — die Guetemessung
+// braucht aber eine Stufenzuordnung. Beide Felder sind Pflicht. Ein muster ohne
+// marke messe ohne Folge, eine marke ohne muster koenne nichts messen; in beiden
+// Faellen entstuende eine Messung, die nie einen Halt ausloest, und das faellt
+// niemandem auf.
+
+const guete = { muster: String.raw`(\d+)%`, marke: 80 };
+
+test("guete: ein Eintrag mit muster und marke ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete }), []);
+});
+
+test("guete: ein Block ohne muster ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { marke: 80 } }), []);
+});
+
+test("guete: ein Block ohne marke ist ungueltig", () => {
+  assert.notDeepEqual(
+    pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { muster: guete.muster } }),
+    []
+  );
+});
+
+test("guete: eine marke ausserhalb 0 bis 100 ist ungueltig", () => {
+  // Der eigentliche Zweck der Grenzen. Eine Marke von 120 waere nie erreichbar —
+  // der Lauf haengt dauerhaft rot, und niemand sieht den Grund in der Config.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: 120 } }), []);
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: -1 } }), []);
+});
+
+test("guete: eine marke, die keine Zahl ist, ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, marke: "80" } }), []);
+});
+
+test("guete: ein unbekanntes Feld im Block ist ungueltig", () => {
+  assert.notDeepEqual(
+    pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", guete: { ...guete, schwelle: 80 } }),
+    []
+  );
+});
+
+test("guete: der Block steht neben areas, always und stufe", () => {
+  // Der Block sagt, was gemessen wird, nicht ob oder wann. Drei Achsen, keine
+  // Vorrangfrage — deshalb schliessen sie sich nicht aus.
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", areas: ["backend"], guete }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn -Ppitest verify", always: true, stufe: "push", guete }), []);
+});
+
+test("guete: ein Eintrag ohne Block bleibt gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: ohne Benennung weder Messung noch Marke
+  // noch Halt.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test", stufe: "push" }), []);
+});
+
+test("guete: die Pflichtfelder und die Grenzen stehen am Feld im Schema", () => {
+  const objektform = eintragSchema.oneOf.find((z) => z.type === "object");
+  const feld = objektform?.properties?.guete;
+  assert.ok(feld, "das Feld 'guete' fehlt in der Objektform von buildChecks");
+  assert.deepEqual([...feld.required].sort(), ["marke", "muster"], "die beiden Pflichtfelder stimmen nicht");
+  assert.equal(feld.additionalProperties, false, "der Block ist nicht geschlossen");
+  assert.equal(feld.properties.muster.type, "string", "muster ist kein String");
+  assert.equal(feld.properties.marke.type, "number", "marke ist keine Zahl");
+  assert.equal(feld.properties.marke.minimum, 0, "die Untergrenze 0 fehlt");
+  assert.equal(feld.properties.marke.maximum, 100, "die Obergrenze 100 fehlt");
+});
+
+test("guete: die Beschreibung nennt den einen Eintrag, die Stufengrenze und die Teamweit-Formel", () => {
+  // JSON kennt keine Kommentare — wer die Config vor sich hat, liest die drei
+  // Regeln nur hier. Sie stehen im Block und nicht am Feld marke: Es sind
+  // Aussagen ueber die Liste, nicht ueber eine Zahl.
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.guete.description;
+  assert.ok(text, "der guete-Block hat keine description");
+  assert.match(text, /höchstens ein/i, "dass hoechstens ein Eintrag den Block traegt, steht nicht in der Beschreibung");
+  assert.match(text, /"merge"|`merge`/, "die Stufengrenze merge steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel"
+  );
+});
+
+test("guete: die Beschreibung des Musters nennt genau eine Gruppe", () => {
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.guete.properties.muster.description;
+  assert.match(text, /genau eine[rn]? Gruppe/, "dass das Muster genau eine Gruppe hat, steht nicht in der Beschreibung");
 });
 
 // --- Bestand ---
@@ -150,87 +294,15 @@ test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig"
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
 });
 
-// --- spec: der Schalter fuer Spec-Driven Development (Issue #438) ---
+// --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---
 
-// Der Block selbst ist der Schalter, sein Feld 'seit' der Zeitpunkt. Gebaut aus der
-// ausgelieferten Vorlage, damit die Faelle eine echte Config treffen und sich nur im
-// spec-Block unterscheiden.
-function configMitSpec(spec) {
-  return { ...beispielConfig, spec };
-}
-
-const gueltigerSpec = {
-  seit: "2026-09-02",
-  bereiche: { kit: ["kit/**"], skills: [".claude/skills/**"] },
-};
-
-test("spec: der Block ist im Schema definiert und die Wurzel bleibt geschlossen", () => {
-  // Ohne diese Zusicherung bestuenden die Faelle unten auch ganz ohne spec-Block: Der
-  // Validator hat zu einem fehlenden Teilschema nichts zu beanstanden — und ein Block,
-  // der in der geschlossenen Wurzel nicht eingetragen ist, macht jede Config schemawidrig.
-  assert.ok(schema.properties.spec, "spec ist im Schema definiert");
+test("spec: das Schema kennt den Block nicht mehr, die Wurzel bleibt geschlossen", () => {
+  // Kein Werkzeug wertet den Block mehr aus. Eine Bestandsconfig, die ihn noch traegt,
+  // meldet die Einstellungs-Oberflaeche als unbekannt und haelt das Speichern nicht auf
+  // (einstellungen-vorschau). Das Schema selbst beschreibt ihn nicht mehr.
+  assert.equal(schema.properties.spec, undefined, "spec steht noch im Schema");
   assert.equal(schema.additionalProperties, false, "die Wurzel bleibt geschlossen");
-});
-
-test("spec: eine Config mit gueltigem Block validiert", () => {
-  assert.deepEqual(pruefe(schema, configMitSpec(gueltigerSpec)), []);
-});
-
-test("spec: die optionalen Felder testPattern und testGlobs sind gueltig", () => {
-  assert.deepEqual(
-    pruefe(schema, configMitSpec({ ...gueltigerSpec, testPattern: String.raw`\[<ID>\]`, testGlobs: ["test/**"] })),
-    []
-  );
-});
-
-test("spec: seit im falschen Format ist ungueltig", () => {
-  // Das Gate vergleicht Kalendertage — ein '2.9.2026' waere kein Tag, den es lesen kann.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, seit: "2.9.2026" })), []);
-});
-
-test("spec: ein leeres bereiche ist ungueltig", () => {
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: {} })), []);
-});
-
-test("spec: ein Bereich mit leerem Muster-Array ist ungueltig", () => {
-  // Anders als bei checkAreas, wo ein Bereich ohne Muster schlicht nichts erfasst: hier
-  // waere er ein Bereich, den das Gate nie zuordnen kann.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, bereiche: { kit: [] } })), []);
-});
-
-test("spec: ein unbekannter Schluessel im Block ist ungueltig", () => {
-  // Insbesondere 'enabled': Der Block selbst ist der Schalter, ein Bool haette einen
-  // Aus-Zustand — und den gibt es nicht.
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ ...gueltigerSpec, enabled: true })), []);
-});
-
-test("spec: die Pflichtfelder seit und bereiche fehlen nicht ungestraft", () => {
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ bereiche: gueltigerSpec.bereiche })), []);
-  assert.notDeepEqual(pruefe(schema, configMitSpec({ seit: gueltigerSpec.seit })), []);
-});
-
-test("spec: der defaults-Block traegt keinen spec-Eintrag", () => {
-  // Ein Default schaltete jeden Installer-Lauf ein — das Vorhandensein IST der Schalter.
-  assert.ok(schema.defaults, "der defaults-Block ist da");
   assert.ok(!("spec" in schema.defaults), "defaults traegt kein spec");
-});
-
-test("spec: die description nennt Einschalten ohne Rueckweg, die Tracker-Grenze und die Teamweit-Formel", () => {
-  // JSON kennt keine Kommentare — die description ist der einzige Ort, an dem die Lage
-  // im Schema selbst steht: eingeschaltet durch Vorhandensein und kein Weg zurueck. Der
-  // fruehere Satz "bis Ausbaustufe 4 ohne Wirkung" ist seit spec.mjs ueberholt (Issue #675).
-  const text = schema.properties.spec.description;
-  assert.ok(text, "spec hat eine description");
-  assert.match(text, /ACHTUNG/, "die Tracker-Grenze steht als ACHTUNG-Satz");
-  assert.match(text, /enabled/, "die description sagt, dass es kein enabled gibt");
-  // Seit Issue #461 (A19) traegt der Block nicht auf jedem Tracker. Wer die Lage nur
-  // im Plan festhaelt, laesst denjenigen im Regen, der die Config vor sich hat.
-  assert.match(text, /github und gitlab/, "die description nennt die ausgeschlossenen Tracker nicht");
-  assert.match(text, /toolbox und local/, "die description nennt die moeglichen Tracker nicht");
-  assert.ok(
-    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
-    "die description endet mit der Standardformel der Top-Level-Felder"
-  );
 });
 
 // --- Das Reviewer-Paar: genau eines von reviewModel und reviewCommand (Issue #432) ---
@@ -414,4 +486,42 @@ test("validationRules fuehrt fuer issueTracker dieselben Werte wie das enum", ()
   const regel = schema.validationRules.find((r) => r.field === "issueTracker");
   assert.ok(regel, "keine validationRule fuer issueTracker");
   assert.deepEqual([...regel.allowed].sort(), [...schema.properties.issueTracker.enum].sort());
+});
+
+// --- Die Anteilsschwellen der Aufwands-Auswertung (Issue #824) ----------------
+//
+// Sie sind Anteile zwischen 0 und 1. Ohne Grenzen am Feld bestand `pruefungAnteil: 80`
+// das Schema, und nur eine Zusatzregel in kit/einstellungen.mjs wies den Wert ab — wer
+// die Config von Hand gegen das Schema prueft, bekam ihn durch.
+
+const ANTEIL_FELDER = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
+
+test("aufwand.schwellen: jede Anteilsschwelle traegt die Grenzen 0 und 1 am Feld", () => {
+  const felder = schema.properties.aufwand.properties.schwellen.properties;
+  for (const feld of ANTEIL_FELDER) {
+    assert.equal(felder[feld].type, "number", `${feld} ist keine Zahl`);
+    assert.equal(felder[feld].minimum, 0, `die Untergrenze 0 fehlt an ${feld}`);
+    assert.equal(felder[feld].maximum, 1, `die Obergrenze 1 fehlt an ${feld}`);
+  }
+});
+
+test("aufwand.schwellen: 80 und -0.1 werden je Feld abgewiesen, 0, 0,5 und 1 gehen durch", () => {
+  const schwellenSchema = schema.properties.aufwand.properties.schwellen;
+  for (const feld of ANTEIL_FELDER) {
+    for (const schlecht of [80, -0.1]) {
+      assert.equal(pruefe(schwellenSchema, { [feld]: schlecht }).length, 1, `${feld}=${schlecht} nicht abgewiesen`);
+    }
+    for (const gut of [0, 0.5, 1]) {
+      assert.deepEqual(pruefe(schwellenSchema, { [feld]: gut }), [], `${feld}=${gut}`);
+    }
+  }
+});
+
+test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte", () => {
+  // Gezaehlt werden Ruecklaufbewegungen je Karte mit Eintritt nach In review, nicht
+  // der Anteil der Arbeitspakete (kit/wirksamkeit.mjs, "Zaehlweise der Quote"). Die
+  // Beschreibung war falsch, nicht der Code.
+  const text = schema.properties.wirksamkeit.properties.quoteSchwelle.description;
+  assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");
+  assert.doesNotMatch(text, /Anteil der Arbeitspakete/, "die falsche Zaehlweise steht noch in der Beschreibung");
 });

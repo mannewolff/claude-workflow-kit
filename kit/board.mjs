@@ -19,7 +19,7 @@
  *       [--derived-from <nummer>] schickt die Kartennummer des naechsten Vorfahren
  *       mit (Issue #356). Nur der kanbancompat-Tracker wertet sie aus.
  *   node board.mjs issue get <id>
- *   node board.mjs issue activity <id>
+ *   node board.mjs issue activity <id> | issue activity --ids <n,n,...>
  *   node board.mjs issue list [--status <status>]
  *   node board.mjs issue move <id> <status>
  *   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -55,7 +55,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "2.0.0";
+const KIT_VERSION = "3.0.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -91,6 +91,9 @@ Nutzung:
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
+  node board.mjs issue activity --ids <n,n,...>
+      Verlauf mehrerer Karten als Objekt {"<nummer>": [...]}. Loest die Kartenliste
+      genau einmal auf; eine unbekannte Nummer erscheint mit Fehlergrund (Issue #786).
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
@@ -1289,19 +1292,38 @@ class LocalIssueTracker {
    * Aktivitaetsverlauf, synthetisch (Issue #460).
    *
    * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
-   * entsteht **ein** Eintrag vom Typ CREATED, damit `spec.mjs` hier dieselbe Quelle
-   * lesen kann wie beim Board. Ohne diese Bruecke waere in jedem local-Projekt jedes
-   * Paket „ohne Anlage-Eintrag" — und die gesamte Spec-Testsuite, die ueber `local`
-   * und `created:` laeuft, haette keine Grundlage mehr.
+   * entsteht **ein** Eintrag vom Typ CREATED, damit Auswertungen (etwa
+   * `wirksamkeit.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
+   * wie beim Board.
    *
    * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes
-   * Datum: `spec.mjs` behandelt ein Paket ohne CREATED-Eintrag als vor `seit`
-   * angelegt, und genau das trifft auf eine Datei ohne Anlagedatum zu.
+   * Datum: Eine Datei ohne Anlagedatum hat schlicht keinen Anlage-Eintrag.
    */
   async listActivity(id) {
     const { created } = this._read(id);
     if (!created) return [];
     return [{ type: "CREATED", createdAt: created, detail: "Karte angelegt" }];
+  }
+
+  /**
+   * Sammelform des Verlaufs (Issue #786).
+   *
+   * Hier gibt es nichts einzusparen — jede Nummer ist ein Dateizugriff, die
+   * Beschleunigung von `--ids` betrifft allein das Board. Was bleibt, ist die
+   * gemeinsame Zusage der Sammelform: Eine Nummer ohne Datei wird zum Eintrag mit
+   * Fehlergrund und nicht zum Abbruch, damit ein geloeschtes Paket die Auswertung
+   * der uebrigen nicht kostet.
+   */
+  async listActivityMany(ids) {
+    const ergebnis = {};
+    for (const id of ids) {
+      try {
+        ergebnis[id] = await this.listActivity(id);
+      } catch (e) {
+        ergebnis[id] = { fehler: e.message };
+      }
+    }
+    return ergebnis;
   }
 
   // Alle Issue-Dateien roh, ohne jede Filterung. Gemeinsame Quelle fuer listIssues
@@ -1710,6 +1732,35 @@ class ToolboxIssueTracker {
     const item = this._resolveByNumber(await this._boardItems(), num);
     const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
+  }
+
+  /**
+   * Sammelform des Verlaufs (Issue #786).
+   *
+   * Der Grund fuer diese Methode steht in EINER Zeile: `_boardItems()` laeuft genau
+   * einmal. Die Einzelform holt die vollstaendige Kartenliste bei jedem Aufruf mit;
+   * die Ruecklaeuferquote fragt Dutzende Karten ab und haette sie sonst Dutzende Male
+   * geholt — gegen eine API, die drosselt.
+   *
+   * Eine nicht auffindbare Nummer wird zum Eintrag mit Fehlergrund. Ein TRANSPORTFEHLER
+   * dagegen — 403, 404 auf die Verlaufs-Route, Netz weg — reisst den Aufruf rot ab, wie
+   * in der Einzelform: Er betrifft nicht eine Karte, sondern den Zugang. Still
+   * weitergezaehlt ergaebe er eine Quote, die nach Null aussieht und in Wahrheit nichts
+   * gemessen hat.
+   */
+  async listActivityMany(numbers) {
+    const items = await this._boardItems();
+    const ergebnis = {};
+    for (const number of numbers) {
+      const item = this._findByNumber(items, Number(number));
+      if (!item) {
+        ergebnis[number] = { fehler: `Issue ${number} nicht gefunden` };
+        continue;
+      }
+      const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
+      ergebnis[number] = await res.json();
+    }
+    return ergebnis;
   }
 
   // Ohne eigene Status-Validierung: issueList() im Dispatch prueft den Wert gegen
@@ -2247,34 +2298,8 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 }
 
 // ============================================================
-// Spec-Wirkung am Arbeitspaket (Issue #443, Plan #437)
+// Dokument-Praefixe im Titel (Issue #464)
 // ============================================================
-//
-// Ein Arbeitspaket muss sagen, was es an der Beschreibung unter specs/ aendert.
-// Dieselbe Bauart wie die Autor-Modell-Leitplanke darueber, aus demselben Grund
-// (A7): Eine Bitte im Skill-Text ist genau die Leitplanke, die unter Druck
-// uebersprungen wird — in diesem Repo dreimal belegt.
-//
-// Geprueft wird hier NUR die Anwesenheit des Abschnitts. Welche Zeilen darin
-// stehen duerfen, prueft `spec.mjs check --paket` (Issue #442) — und nur dort.
-// Zwei Fassungen derselben Grammatik waeren zwei Wahrheiten, von denen die
-// zweite still veraltet.
-//
-// Anders als beim Autor-Modell ergaenzt der Adapter nichts: Es gibt keinen Wert,
-// den er kennen koennte. Eine erfundene Wirkungsangabe waere schlimmer als keine.
-
-/**
- * Die Ueberschrift des Abschnitts — dieselbe Form, die
- * `WIRKUNG_UEBERSCHRIFT_RE` in kit/spec.mjs liest.
- *
- * Exportiert, weil der Laufzeitwaechter in test/board-regex-laufzeit.test.mjs
- * gegen die Konstante des Bestands misst und kein Literal kopieren soll — eine
- * Kopie driftet ab, sobald der Ausdruck sich aendert.
- *
- * `[^\S\n]*` statt `\s*`, wie bei AUTOR_MODELL_ZEILE: So folgt dem Leerraum-Lauf
- * keine zweite Wiederholung, die dieselben Zeichen akzeptiert (S8786).
- */
-export const SPEC_WIRKUNG_UEBERSCHRIFT = /^## Spec-Wirkung[^\S\n]*$/m;
 
 /**
  * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
@@ -2314,118 +2339,6 @@ export function istPlan(title) {
 
 export function istIdee(title) {
   return IDEE_PRAEFIX.test(title || "");
-}
-
-/** Traegt der Titel eines der drei Dokument-Praefixe? */
-export function istDokumentPraefix(title) {
-  return istFachlich(title) || istPlan(title) || istIdee(title);
-}
-
-// Der Hilfetext nennt den fehlenden Abschnitt und einen Weg, eine Datei vorab zu
-// pruefen. Die Zeilenformen aus A12 stehen bewusst NICHT hier: Ein Hilfetext, der
-// die Grammatik nachbaut, ist dieselbe zweite Wahrheit, nur als String statt als
-// Regex.
-const SPEC_WIRKUNG_HILFE =
-  'Der Body braucht einen Abschnitt "## Spec-Wirkung" (eigene Zeile, ausserhalb eines Code-Fences), ' +
-  "der sagt, was das Paket an der Beschreibung unter specs/ aendert. " +
-  "Eine Datei laesst sich vorab mit `node .claude/kit/spec.mjs check --paket <datei>` pruefen.";
-
-// Die Grammatik der Wirkungszeilen kommt aus spec.mjs und wird hier NICHT
-// nachgebaut (Issue #526, Entscheidung aus #443): Zwei Fassungen derselben
-// Grammatik waeren zwei Wahrheiten, von denen die zweite still veraltet. Geprueft
-// wird trotzdem hier, denn `spec.mjs check --paket` rief niemand auf — ein Paket
-// mit formal ungueltiger Wirkungsangabe ueberstand am 2026-09-08 einen ganzen
-// Nachtlauf und fiel erst am Push-Gate auf.
-//
-// Dieselbe Bauart wie die Nachbarn in kit/night.mjs: Verzeichniskonstante mit
-// Test-Hook, bedingtes `await import` und ein Ersatz, der erst BEIM AUFRUF wirft.
-// Bedingt und nicht statisch, weil board.mjs auch als allein kopierte Datei
-// Auskunft geben koennen muss; werfend und nicht still, weil ein stilles
-// Durchlassen genau die Luecke waere, die dieses Paket schliesst. Ein Projekt ohne
-// `spec`-Block ruft den Ersatz nie — damit ist "nur bei gesetztem Block" ohne
-// zweite Bauart erfuellt.
-//
-// BOARD_NACHBAR_DIR ist ein reiner Test-Hook (wie NIGHT_NACHBAR_DIR in night.mjs):
-// Ohne ihn sind die Ersatzfunktionen nur mit einer Kopie im Temp-Verzeichnis
-// erreichbar, deren Treffer die Coverage nicht auf kit/board.mjs abbildet.
-// Bewusst nicht KIT_ROOT: Das verlegt die Suche nach der CONFIG in ein fremdes
-// Projekt — eine reine Funktion holt man sich aus dem spec.mjs, das zu dieser
-// Datei gehoert.
-const NACHBAR_DIR = process.env.BOARD_NACHBAR_DIR ? resolve(process.env.BOARD_NACHBAR_DIR) : __dirname;
-const NACHBAR_SPEC = join(NACHBAR_DIR, "spec.mjs");
-
-// Dieselbe Signatur wie die echte Funktion, `const` statt spaeterem Reassignment
-// (Begruendung bei den Fallbacks in night.mjs, Issue #394): Eine `let`-Bindung
-// laesst die statische Analyse nur den Stub sehen und meldet jeden korrekten
-// Aufruf als Fehler.
-const wirkungPruefenFallback = (text, bekannte, root = null) => {
-  throw new Error(
-    `spec.mjs liegt nicht neben board.mjs (${NACHBAR_SPEC}) — die Form der Spec-Wirkung ist nicht pruefbar.`,
-  );
-};
-const { wirkungPruefen } = existsSync(NACHBAR_SPEC)
-  ? await import(pathToFileURL(NACHBAR_SPEC).href)
-  : { wirkungPruefen: wirkungPruefenFallback };
-
-/**
- * Traegt der Body die Ueberschrift ausserhalb eines Code-Fences?
- *
- * Die Fence-Behandlung ist der Kern — dieselbe wie bei `kontextGrenzen`: Ohne sie
- * kaeme eine Doku-Karte durch, die die Grammatik als Beispiel zeigt, statt sie
- * anzuwenden.
- */
-function specWirkungVorhanden(body) {
-  const imFence = fenceLauf();
-  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
-    if (!imFence(zeile) && SPEC_WIRKUNG_UEBERSCHRIFT.test(zeile)) return true;
-  }
-  return false;
-}
-
-/**
- * Bricht ab, wenn der Schalter steht und der Abschnitt fehlt oder nicht zur
- * Grammatik passt.
- *
- * Der Schalter ist das Vorhandensein des `spec`-Blocks, nicht ein Feld darin
- * (A1). Ohne Block bleiben `issue create` und `issue update` unveraendert — das
- * Kit selbst ist so ein Projekt, und waere diese Bedingung falsch, lehnte die
- * Leitplanke die Pakete ab, mit denen sie gebaut wird.
- *
- * Zwei Schritte, zwei verschiedene Auskuenfte: Die Anwesenheit prueft
- * `specWirkungVorhanden` hier (mit Fence-Regel), die FORM der Zeilen prueft
- * `wirkungPruefen` aus spec.mjs. Uebergeben werden nur die Bereichsnamen aus der
- * Config und KEIN root — damit misst die Leitplanke Form und Config-Wissen, nicht
- * den Dateibestand unter specs/. Das ist derselbe Umfang, den `apply` waehlt:
- * Ein Paket darf eine Aussage anlegen, die ein spaeteres aendert, und gegen den
- * Dateistand geprueft waere die zweite Angabe stets ein Befund.
- *
- * Die beiden lesen den Abschnitt nicht gleich: `wirkungsAbschnitt` in spec.mjs
- * nimmt die ERSTE `## Spec-Wirkung`-Zeile ohne Fence-Regel. Ein gefenctes
- * Beispiel VOR dem echten Abschnitt wird deshalb von der Formpruefung gelesen.
- * Die Grenze bleibt bewusst so — `fenceLauf` liegt hier, und ein Import aus
- * spec.mjs heraus ergaebe einen Zyklus oder eine zweite Fence-Fassung.
- * test/board-spec-wirkung-form.test.mjs haelt den Fall fest.
- *
- * Gemeldet wird JEDER Befund mit seiner Zeilennummer, nicht nur der erste: Wer je
- * Lauf einen einzigen Fehler bekommt, braucht so viele Laeufe wie das Paket
- * Fehler hat.
- */
-function specWirkungSicherstellen(config, body, title) {
-  if (!config?.spec || istDokumentPraefix(title)) return;
-  if (!specWirkungVorhanden(body)) {
-    fail(`Der Body traegt keinen Abschnitt "## Spec-Wirkung". ${SPEC_WIRKUNG_HILFE}`);
-  }
-
-  const fehler = wirkungPruefen(body, Object.keys(config.spec.bereiche ?? {}));
-  if (fehler.length === 0) return;
-
-  // Der fehlende Abschnitt hat keine Zeile — dort bleibt das Praefix weg, statt
-  // eine Zeilennummer zu erfinden, die niemand aufschlagen kann (wie in spec.mjs).
-  const zeilen = fehler.map(({ nr, grund }) => {
-    const stelle = nr === null ? "" : `Zeile ${nr}: `;
-    return `  ${stelle}${grund}`;
-  });
-  fail(`Der Abschnitt "## Spec-Wirkung" ist nicht gueltig:\n${zeilen.join("\n")}\n${SPEC_WIRKUNG_HILFE}`);
 }
 
 // ============================================================
@@ -2536,7 +2449,7 @@ function derivedFromOption(wert) {
   return nummer;
 }
 
-async function issueCreate(tracker, config, args) {
+async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
@@ -2557,11 +2470,6 @@ async function issueCreate(tracker, config, args) {
     color: args.color,
     shortcode: args.shortcode,
   };
-  // Nach der Autor-Modell-Leitplanke und auf demselben aufgeloesten Body
-  // (Issue #443): Fehlt beides, meldet der Adapter das Autor-Modell zuerst, weil
-  // die aeltere Pruefung schon in der Zeile darueber abbricht. Und vor jedem
-  // Netzaufruf — ein Body ohne Wirkungsangabe soll keine Karte anlegen.
-  specWirkungSicherstellen(config, felder.body, felder.title);
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
@@ -2591,18 +2499,35 @@ async function issueEpics(tracker) {
 /**
  * Aktivitaetsverlauf einer Karte (Issue #460).
  *
- * `spec.mjs` liest daraus das Anlagedatum: Die Karten-Route fuehrt keins — an der
- * Instanz belegt am 2026-09-02 (manuelle Pruefung zu Issue #457). Der Verlauf geht
- * unveraendert durch, einschliesslich seiner Reihenfolge; wer das aelteste Ereignis
- * braucht, sucht nach dem kleinsten `createdAt` und verlaesst sich nicht auf die
- * Sortierung der Antwort.
+ * Auswertungen wie `wirksamkeit.mjs` lesen daraus die Ereignisdaten: Die
+ * Karten-Route fuehrt kein Anlagedatum — an der Instanz belegt am 2026-09-02
+ * (manuelle Pruefung zu Issue #457). Der Verlauf geht unveraendert durch,
+ * einschliesslich seiner Reihenfolge; wer das aelteste Ereignis braucht, sucht
+ * nach dem kleinsten `createdAt` und verlaesst sich nicht auf die Sortierung
+ * der Antwort.
  */
 async function issueActivity(tracker, config, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue activity <id>");
+  const ids = args.ids;
+  // Beide Eingabewege zusammen werden abgewiesen statt einer stillschweigend zu
+  // gewinnen: Welcher das waere, kann der Aufrufer nicht wissen, und die Ausgabeform
+  // der beiden ist verschieden (Liste gegen Objekt).
+  if (ids !== undefined && id) {
+    fail("--ids und eine Einzelnummer schliessen sich aus: board.mjs issue activity <id> | issue activity --ids <n,n,...>");
+  }
+  if (ids === undefined && !id) fail("id ist erforderlich: board.mjs issue activity <id> | --ids <n,n,...>");
   if (typeof tracker.listActivity !== "function") {
     const name = config?.issueTracker ?? "dieser Tracker";
     fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+  }
+  if (ids !== undefined) {
+    // `--ids` ohne Wert kommt als `true` aus parseArgs. Ein leerer oder nur aus Kommas
+    // bestehender Wert bliebe sonst eine Sammelabfrage ueber nichts und gaebe `{}` aus —
+    // von einem Ergebnis ohne Ruecklaeufer nicht zu unterscheiden.
+    const nummern = (ids === true ? [] : String(ids).split(",").map((n) => n.trim()).filter(Boolean));
+    if (!nummern.length) fail("--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13");
+    out(await tracker.listActivityMany(nummern));
+    return;
   }
   out(await tracker.listActivity(id));
 }
@@ -2639,6 +2564,40 @@ function wegmarkeSchreiben(id, status, jetzt = new Date()) {
   }
 }
 
+// SYNC: Der Dateiname steht auch in kit/night.mjs (Ausschluss im Rest-Guard und in
+// der Spiegel-Liste des Worktrees) und in install.mjs (GITIGNORE_BLOCK). Wer ihn hier
+// aendert, aendert ihn dort mit — sonst haelt der Dirty-Guard das Protokoll fuer einen
+// unkommittierten Rest und stoppt den Nachtlauf.
+const BEWEGUNGEN_DATEI = "bewegungen.tsv";
+
+/**
+ * Haengt jede geglueckte Kartenbewegung an `.claude/bewegungen.tsv` an (Issue #786).
+ *
+ * Wozu: Die Ruecklaeuferquote braucht einen KANDIDATENFILTER — welche Karten hat das
+ * Kit ueberhaupt je bewegt. Die Wahrheit darueber, ob eine davon zurueckging, holt die
+ * Auswertung anschliessend aus dem Aktivitaetsverlauf des Boards; das Protokoll sagt
+ * nur, wen sie fragen muss. Deshalb kostet eine fehlende Zeile hier keine Genauigkeit,
+ * sondern hoechstens einen Kandidaten.
+ *
+ * Anders als die Wegmarke daneben protokolliert es JEDEN Status, nicht nur die beiden
+ * Arbeitsspalten: Der Ruecklaeufer ist gerade der Zug nach Backlog, und ein Filter, der
+ * ihn nicht kennt, faende die Karte nie wieder.
+ *
+ * Alles Uebrige teilt es mit der Wegmarke, aus denselben Gruenden: der kanonische
+ * Status statt des projektweise verschiedenen Spaltennamens, angehaengt statt
+ * ueberschrieben, und ein gescheitertes Schreiben bleibt ein Hinweis auf stderr — eine
+ * Buchung darf den Vorgang nicht mitreissen, den sie bucht.
+ */
+function bewegungSchreiben(id, status, jetzt = new Date()) {
+  const pfad = resolve(".claude", BEWEGUNGEN_DATEI);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
+  } catch (e) {
+    process.stderr.write(`Hinweis: Bewegung nicht protokolliert (${pfad}): ${e.message}\n`);
+  }
+}
+
 async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
   if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
@@ -2648,8 +2607,10 @@ async function issueMove(tracker, args) {
   }
   await tracker.moveIssue(id, toStatus);
   // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
-  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden.
+  // ohne Vorgang und wuerde dem Melder einen Abschnitt erfinden. Fuer das
+  // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
+  bewegungSchreiben(id, toStatus);
   out({ ok: true, id, status: toStatus });
 }
 
@@ -2768,26 +2729,12 @@ async function issueComment(tracker, args) {
 //
 // Ein leerer Body ist ein harter Fehler statt eines stillen No-ops — ein
 // versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
-async function issueUpdate(tracker, config, args) {
+async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
   const neu = leseTextQuelle(args.body, args["body-file"], "body");
-  // Read before write (Issue #303, seit Plan #638 nur noch fuer den Titel): Ohne den
-  // Titel laesst sich die Praefix-Ausnahme der Spec-Wirkung nicht anwenden. Scheitert
-  // das Lesen, endet der Aufruf hier — ein Schreibzugriff auf halbem Wissen waere genau
-  // der Bypass, den die Leitplanke schliessen soll.
-  const { title } = await tracker.getIssue(id);
-  // Die Spec-Wirkung wird auch beim Schreiben geprueft (Issue #526): Genau ueber
-  // `update` schreibt `/issue-review` den geschaerften Body zurueck — auch nachts —,
-  // und eine Leitplanke, die nur beim Anlegen greift, hat dort ihre offene Tuer.
-  //
-  // NACH getIssue und VOR updateIssue: Der Lesezugriff ist zulaessig, der
-  // Schreibzugriff nicht. `update` traegt bewusst keinen Titel, und erst getIssue
-  // liefert ihn fuer die Praefix-Ausnahme — ohne diese Reihenfolge wiese der
-  // Adapter jedes `[Plan]`-Dokument ab, das der Nacht-Review zurueckschreibt.
-  specWirkungSicherstellen(config, neu, title);
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
-  // er kommt. Das `getIssue` davor bleibt fuer den Titel.
+  // er kommt.
   await tracker.updateIssue(id, { body: neu });
   out({ ok: true, id });
 }
@@ -2935,17 +2882,11 @@ function pruefePlan(kopf, abschnitte, alleZeilen) {
   return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "Plan-Review:")];
 }
 
-/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt, Spec-Wirkung nur davor. */
+/** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt. */
 function pruefeI1Lage(abschnitte) {
   const meldungen = [];
-  const index = (name) => abschnitte.findIndex((a) => a.titel === name);
-  const abh = index("abhaengigkeiten");
+  const abh = abschnitte.findIndex((a) => a.titel === "abhaengigkeiten");
   if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push("'## Abhaengigkeiten' ist nicht der letzte Abschnitt");
-  const spec = index("spec-wirkung");
-  const akz = index("akzeptanzkriterium");
-  if (spec >= 0 && !(akz >= 0 && abh >= 0 && akz < spec && spec < abh)) {
-    meldungen.push("'## Spec-Wirkung' gehoert zwischen '## Akzeptanzkriterium' und '## Abhaengigkeiten'");
-  }
   return meldungen;
 }
 
@@ -3059,13 +3000,13 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, config, args);
+    case "create":  return issueCreate(tracker, args);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);
     case "activity": return issueActivity(tracker, config, args);
     case "move":    return issueMove(tracker, args);
-    case "update":  return issueUpdate(tracker, config, args);
+    case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, args);
@@ -3263,6 +3204,7 @@ function aufloesenAutor(alle, autor) {
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
 
  */
+// SYNC: dieselbe Wahl bildet kit/einstellungen.mjs (waehleReviewer) fuer die Oberflaeche nach.
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
@@ -3652,6 +3594,9 @@ const NACHTLAUF_TITEL_MAX = 300;
 const NACHTLAUF_AUSZUG_MAX = 4000;
 const NACHTLAUF_COMMIT_MAX = 40;
 const NACHTLAUF_EINHEITEN_MAX = 200;
+// Die Gegenstelle kuerzt `noWorkReason` nicht selbst und weist es ab, wenn es laenger
+// ist (Issue #744) — die Kuerzung passiert deshalb hier.
+const NACHTLAUF_NOWORKREASON_MAX = 300;
 
 const NACHTLAUF_MODUS = { implementierung: "IMPLEMENTATION", kette: "CHAIN" };
 
@@ -3708,23 +3653,94 @@ function nachtlaufFarbe(einheit) {
   return ["RED", "UNEXPECTED_STATE"];
 }
 
+/** Eine endliche Zahl oder `null` — die Waehrung aller gemeldeten Kennzahlen. */
+function nachtlaufZahl(x) {
+  return typeof x === "number" && Number.isFinite(x) ? x : null;
+}
+
 /**
  * Die Mengen im Vertragsformat, `null`, wenn nichts gemessen wurde. Eingabemenge ist alles
  * Verarbeitete — eigene Eingabe plus beide Zwischenspeicher-Mengen —, der Zwischenspeicher-
  * Anteil nur das daraus Gelesene. So ergibt das Beispiel aus Issue #669 die dort genannten
  * 97,8 Prozent.
+ *
+ * Seit Issue #808 kommen Modellzeit und Zuege aus den `kennzahlen` dazu — sie stehen nicht
+ * im `verbrauch`, dessen Feldliste (VERBRAUCH_FELDER in night.mjs) unveraendert bleibt.
  */
-function nachtlaufUsage(v) {
-  if (!v) return null;
-  const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
-  const eingaben = [v.eingabeTokens, v.cacheErzeugtTokens, v.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
+function nachtlaufUsage(v, kennzahlen = null) {
+  const zahl = nachtlaufZahl;
+  const eingaben = [v?.eingabeTokens, v?.cacheErzeugtTokens, v?.cacheGelesenTokens].map(zahl).filter((x) => x !== null);
   const usage = {
-    costUsd: zahl(v.kostenUsd),
+    costUsd: zahl(v?.kostenUsd),
     inputTokens: eingaben.length ? eingaben.reduce((a, b) => a + b, 0) : null,
-    outputTokens: zahl(v.ausgabeTokens),
-    cachedInputTokens: zahl(v.cacheGelesenTokens),
+    outputTokens: zahl(v?.ausgabeTokens),
+    cachedInputTokens: zahl(v?.cacheGelesenTokens),
+    modelDurationMs: zahl(kennzahlen?.apiDauerMs),
+    turns: zahl(kennzahlen?.zuege),
   };
   return Object.values(usage).every((x) => x === null) ? null : usage;
+}
+
+/**
+ * Modellzeit und Zuege einer Einheit: die eigenen Kennzahlen, je Feld — traegt die Einheit
+ * keins, die Summe ueber ihre Stufen, wie `zuegeDerEinheit` (kanban-kit,
+ * nightRunErgebnisstand.ts) es im Browser tut. Ein Feld ohne jede Meldung bleibt `null`,
+ * eine leere Summe stuende sonst als 0 da, wo nichts gemessen wurde.
+ */
+function nachtlaufKennzahlen(einheit) {
+  const summe = {};
+  for (const feld of ["apiDauerMs", "zuege"]) {
+    const eigen = nachtlaufZahl(einheit.kennzahlen?.[feld]);
+    if (eigen !== null) { summe[feld] = eigen; continue; }
+    const gemeldet = Object.values(einheit.stufen ?? {}).map((s) => nachtlaufZahl(s?.kennzahlen?.[feld])).filter((x) => x !== null);
+    summe[feld] = gemeldet.length ? gemeldet.reduce((a, b) => a + b, 0) : null;
+  }
+  return summe;
+}
+
+// Die vier Stufen, die eine Meldung je Ketten-Vorgang fuehrt (Issue #808, E17), in der
+// Reihenfolge der Kette. `umsetzung` bleibt draussen: Der Vertrag nimmt hoechstens vier
+// Stufen an, ein fuenfter Eintrag liesse die ganze Meldung scheitern — ihr Verbrauch
+// bleibt im `usage` des Vorgangs und damit in jeder Gesamtsumme enthalten.
+const NACHTLAUF_STUFEN = ["plan", "review", "pakete", "abdeckung"];
+
+/** Die Stufen einer Ketten-Einheit fuer die Meldung; `null` ohne Stufen (Implementierung). */
+function nachtlaufStages(einheit) {
+  const stufen = einheit.stufen;
+  if (!stufen || typeof stufen !== "object") return null;
+  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage]).map((stage) => ({
+    stage,
+    durationMs: nachtlaufZahl(stufen[stage].dauerMs),
+    // Die Stufe fuehrt Mengen und Kennzahlen in EINEM Objekt (leseKennzahlen nutzt
+    // dieselben Feldnamen wie der Verbrauch) — es bedient beide Parameter.
+    usage: nachtlaufUsage(stufen[stage].kennzahlen, stufen[stage].kennzahlen),
+  }));
+  return stages.length ? stages : null;
+}
+
+// Die Budget-Felder, die die Fusszeile der Laeufe-Seite zeigt (Issue #808, E4) — nur auf
+// sie wird Budget und Herkunft zugeschnitten. KETTE_BUDGET_DEFAULTS (night.mjs) fuehrt
+// mehr; ungefiltert entstuende "aus Voreinstellungen" mit lauter Feldern, die niemand sieht.
+const NACHTLAUF_BUDGET_FELDER = ["planMin", "reviewMin", "paketeMin", "abdeckungMin", "kostenUsd"];
+
+/**
+ * Das Budget des Laufs samt Herkunft fuer die Meldung; `null`, wenn der Stand keins fuehrt
+ * (nur die Kette traegt eins). Ist nach dem Zuschnitt kein Default-Feld uebrig, heisst die
+ * Herkunft CONFIGURED ohne Aufzaehlung — eine leere Liste saehe aus wie eine Aussage.
+ */
+function nachtlaufBudget(stand) {
+  const b = stand?.budget;
+  if (!b || typeof b !== "object") return null;
+  const budget = {};
+  for (const feld of NACHTLAUF_BUDGET_FELDER) {
+    const wert = nachtlaufZahl(b[feld]);
+    if (wert !== null) budget[feld] = wert;
+  }
+  const defaultFields = (Array.isArray(stand.budgetAusDefault) ? stand.budgetAusDefault : [])
+    .filter((feld) => NACHTLAUF_BUDGET_FELDER.includes(feld));
+  budget.origin = defaultFields.length ? "DEFAULTED" : "CONFIGURED";
+  if (defaultFields.length) budget.defaultFields = defaultFields;
+  return budget;
 }
 
 function nachtlaufDauer(einheit) {
@@ -3734,19 +3750,47 @@ function nachtlaufDauer(einheit) {
 }
 
 /**
+ * Eine Einheit, der ihr Ausgang noch fehlt (Issue #794).
+ *
+ * `unbekannt` ist der Platzhalter, den `night.mjs` beim Anlegen einer Einheit setzt; ein
+ * ganz fehlendes Feld zaehlt genauso. Beides heisst dasselbe: Hier steht noch kein
+ * Ergebnis.
+ */
+function nachtlaufOhneAusgang(einheit) {
+  const ausgang = einheit?.ausgang;
+  return ausgang === undefined || ausgang === null || ausgang === "" || ausgang === "unbekannt";
+}
+
+/**
  * Uebersetzt einen Ergebnisstand in die Meldung fuer `POST /api/kanban/night-runs`.
  * Reine Funktion; `jetzt` bestimmt die Dauer seit dem Start, weil der Stand fortschreibend
  * und damit vor seinem Ende gemeldet wird.
+ *
+ * Solange der Lauf laeuft, gehen nur Einheiten mit Ausgang mit (Issue #794): Eine Kette
+ * legt ihre Einheit beim Start an und traegt den Ausgang erst hinter der letzten Stufe
+ * ein — in der ganzen Planungsphase stuende der Fachplan sonst als rotes Paket in der
+ * Auswertung, obwohl nur noch nichts entschieden ist. Ein eigener Zustand "laeuft" waere
+ * eine Vertragsaenderung ohne Nutzen: Der Lauf selbst gilt bei der Gegenstelle ohnehin
+ * als laufend, solange er nicht abgeschlossen ist.
+ *
+ * NACH dem Abschluss bleibt dieselbe Einheit sichtbar: Dort ist der fehlende Ausgang
+ * kein Zwischenstand mehr, sondern der Befund, dass sie nie zu ihrem Ergebnis kam — und
+ * genau dafuer haelt `nachtlaufFarbe` den harten Abbruch bereit.
  */
 export function nachtlaufMeldung(stand, jetzt = new Date()) {
   const mode = NACHTLAUF_MODUS[stand?.art];
   if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  const laeuft = stand.abschluss === null || stand.abschluss === undefined;
   const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
     .filter((e) => /^\d+$/.test(String(e?.id)))
+    // Vor dem Kappen auf NACHTLAUF_EINHEITEN_MAX, damit eine laufende Einheit den Platz
+    // nicht einer belegt, die ihr Ergebnis schon hat.
+    .filter((e) => !(laeuft && nachtlaufOhneAusgang(e)))
     .slice(0, NACHTLAUF_EINHEITEN_MAX)
     .map((e) => {
       const [state, errorClass] = nachtlaufFarbe(e);
       const grund = typeof e.grund === "string" && e.grund !== "" ? e.grund : null;
+      const stages = nachtlaufStages(e);
       return {
         cardNumber: Number(e.id),
         // @NotBlank im Vertrag: Ein leerer Titel faellt auf die Nummer zurueck.
@@ -3756,10 +3800,17 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
         durationMs: nachtlaufDauer(e),
         commitHash: typeof e.commit === "string" ? e.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
         excerpt: grund === null ? null : grund.slice(0, NACHTLAUF_AUSZUG_MAX),
-        usage: nachtlaufUsage(e.verbrauch),
+        usage: nachtlaufUsage(e.verbrauch, nachtlaufKennzahlen(e)),
+        // Nur, wo der Stand Stufen fuehrt (Issue #808) — ein Implementierungs-Paket
+        // meldet das Feld gar nicht erst, wie noWorkReason am Lauf-Kopf.
+        ...(stages !== null ? { stages } : {}),
       };
     });
   const grau = items.filter((i) => i.state === "GREY").length;
+  const noWorkReason = typeof stand.noWorkReason === "string" && stand.noWorkReason !== ""
+    ? stand.noWorkReason.slice(0, NACHTLAUF_NOWORKREASON_MAX)
+    : null;
+  const budget = nachtlaufBudget(stand);
   return {
     startedAt: stand.start,
     kind: NACHTLAUF_ART,
@@ -3771,6 +3822,12 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     complete: stand.complete === true,
     usage: nachtlaufUsage(stand.verbrauch),
     items,
+    // Nur bei einem Lauf ohne Arbeit gesetzt (Issue #744) — die Gegenstelle setzt den
+    // gruenen Ersatztext sonst nur bei null Arbeitspaketen; ihn immer mitzuschicken
+    // liesse zwei Stellen ueber dieselbe Frage entscheiden.
+    ...(noWorkReason !== null ? { noWorkReason } : {}),
+    // Nur, wo der Stand ein Budget fuehrt (Issue #808) — heute allein die Kette.
+    ...(budget !== null ? { budget } : {}),
   };
 }
 
@@ -3815,11 +3872,10 @@ async function dispatchNightrun(command, args) {
 // `ToolboxIssueTracker._fetch` und `agentModelHeader`. Eine Nachbardatei muesste sie
 // entweder nachbauen (zwei Wege zum selben Board, die auseinanderlaufen) oder ihre
 // Freigabe erzwingen (der interne Adapter wird oeffentlicher Vertrag). Dazu kommt:
-// Die Aussagen board-11 bis board-15 gehoeren laut `spec.bereiche` zum Bereich
-// 'board', und ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im
-// Installer — Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt
-// trotzdem daneben (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein
-// Code, und genau deshalb hat sie eine eigene Datei verdient.
+// Ein neues Kit-Werkzeug braucht Blob, Stempel und eine Zeile im Installer —
+// Aufwand, den das Paket nicht verlangt. Die Preistabelle liegt trotzdem daneben
+// (kit/preise.mjs): Sie ist Pflegedaten mit eigenem Stand, kein Code, und genau
+// deshalb hat sie eine eigene Datei verdient.
 //
 // Der Vertrag ist derselbe wie beim Nachtlauf (`POST /api/kanban/night-runs`,
 // mannewolff/kanban-kit#1012), nur mit `kind`/`mode` INTERACTIVE und dem
@@ -3830,11 +3886,19 @@ const SITZUNG_ZUSTAND = "GREEN";
 const SITZUNG_DROSSEL_MS = 5 * 60 * 1000;
 const SITZUNG_STAND_DATEI = "sitzung-meldung.json";
 
-// Die Preistabelle als Nachbardatei, nach demselben Muster wie spec.mjs oben:
-// bedingtes `await import`, damit board.mjs auch als allein kopierte Datei laeuft.
-// Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben keinen Betrag.
-// Das ist genau das Verhalten, das board-15 fuer ein unbekanntes Modell verlangt,
-// und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
+// Das Verzeichnis, in dem board.mjs seine Nachbardateien sucht — heute allein
+// kit/preise.mjs. BOARD_NACHBAR_DIR ist ein reiner Test-Hook (wie
+// NIGHT_NACHBAR_DIR in night.mjs): Ohne ihn ist der Fallback-Zweig nur mit einer
+// Kopie im Temp-Verzeichnis erreichbar, deren Treffer die Coverage nicht auf
+// kit/board.mjs abbildet. Bewusst nicht KIT_ROOT: Das verlegt die Suche in ein
+// fremdes Projekt — eine Nachbardatei gehoert zu dieser Datei, nicht zum cwd.
+const NACHBAR_DIR = process.env.BOARD_NACHBAR_DIR ? resolve(process.env.BOARD_NACHBAR_DIR) : __dirname;
+
+// Die Preistabelle als Nachbardatei: bedingtes `await import`, damit board.mjs
+// auch als allein kopierte Datei laeuft (dieselbe Bauart wie die Fallbacks in
+// night.mjs). Fehlt sie, kennt der Melder keinen Preis — und meldet dann eben
+// keinen Betrag. Das ist genau das Verhalten, das board-15 fuer ein unbekanntes
+// Modell verlangt, und deshalb braucht dieser Weg keinen zweiten Fehlerpfad.
 const NACHBAR_PREISE = join(NACHBAR_DIR, "preise.mjs");
 const { preisFuer } = existsSync(NACHBAR_PREISE)
   ? await import(pathToFileURL(NACHBAR_PREISE).href)

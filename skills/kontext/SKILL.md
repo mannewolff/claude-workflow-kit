@@ -51,7 +51,7 @@ node .claude/kit/board.mjs kontext paths
 Relevante Felder im JSON:
 - `parentNote`: absolute Datei der Dach-Notiz — nur gesetzt wenn `parentProject` konfiguriert ist, sonst `null`
 - `projectNote`: absolute Datei der Notiz dieses Repos
-- `project`, `parentProject`: für die Kopfzeile in Schritt 7
+- `project`, `parentProject`: für die Kopfzeile in Schritt 6
 
 Lesereihenfolge: **`parentNote` zuerst** (sofern nicht `null`), **`projectNote` danach**. Die gemeinsame Klammer bildet den Rahmen, in den der Service-Kontext gehört — umgekehrt gelesen steht die Service-Sicht ohne System-Kontext da.
 
@@ -96,27 +96,7 @@ ueber eine Faehigkeit, die es dort nie geben wird.
 Wenn der Adapter bei den uebrigen Aufrufen einen Fehler zurueckgibt: Schritt
 ueberspringen, kein harter Abbruch.
 
-### 6. Zustand des Spec-Index prüfen (beide Modi)
-
-Lies `.claude/workflow.config.json` im Projektverzeichnis. Trägt sie einen Top-Level-Block `spec`, wird geprüft, ob `specs/INDEX.md` fehlt oder veraltet ist; trifft eines zu, erscheint in Schritt 7 die Hinweiszeile, sonst nichts. Der Inhalt des Index wird nicht gelesen.
-
-**Das ist die Workflow-Config, nicht `kontext.config.json`.** Dieser Skill liest sonst ausschließlich seine eigene Config; der Schalter für Spec-Driven Development wohnt aber in der Workflow-Config, die alle anderen Skills lesen. Gemergt wird nichts: Es zählt allein, ob der Block im Projektverzeichnis vorhanden ist.
-
-**Veralteten Index erkennen.** Veraltet ist der Index, wenn eine Bereichsdatei jünger ist als `specs/INDEX.md`. Gemessen wird mit:
-
-```bash
-find specs -type f -name '*.md' -not -path 'specs/vorhaben/*' -not -name INDEX.md -newer specs/INDEX.md
-```
-
-Nicht leere Ausgabe heißt veraltet. Ein still falscher Index ist schlechter als keiner — deshalb ist diese Meldung der wichtigere Teil des Schritts. Sie nennt nur ein Kommando; ausgeführt wird es hier nicht.
-
-**`specs/vorhaben/` zählt nicht mit.** Die Notizen dort entstehen weiterhin beim Planen — `/techplan` legt sie als wartende Datei unter `.claude/` ab, und der nächste `push main` hebt sie nach `specs/vorhaben/` auf. Sie stehen nicht im Index; ohne die Ausnahme meldete `/kontext` nach jedem Push mit einer aufgehobenen Notiz einen Index als veraltet, der stimmt. Ein Fehlalarm nach `git pull` bleibt möglich (alle Dateien bekommen den Checkout-Zeitpunkt) und ist hinnehmbar: Die Meldung schlägt ein Kommando vor und hält nichts auf.
-
-**Fehlt nur die Index-Datei** — Block gesetzt, `specs/` vorhanden, `specs/INDEX.md` nicht —, gilt dasselbe wie beim veralteten Index: In Schritt 7 erscheint die Hinweiszeile.
-
-Fehlt dagegen die Config, der `spec`-Block oder der Ordner `specs/`, entfällt der Schritt **leise**, wie die übrigen optionalen Schritte — nichts wird gemeldet, und in Schritt 7 steht dazu keine Zeile.
-
-### 7. Zusammenfassung ausgeben
+### 6. Zusammenfassung ausgeben
 
 Kompakter Session-Start-Stand.
 
@@ -129,9 +109,6 @@ Kompakter Session-Start-Stand.
 - #N [KUERZEL] Titel — done/total
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
-
-> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
-(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Letzte Entscheidungen / Zuletzt aktualisiert
 (aus der Projektnotiz — nur Modus A; nur der jüngste dokumentierte Tag)
@@ -149,9 +126,6 @@ Kompakter Session-Start-Stand.
 - #N [KUERZEL] Titel — done/total
 - ...
 (aus `issue epics`; Abschnitt weglassen, wenn der Tracker keine kennt)
-
-> Index veraltet — neu bauen mit: node .claude/kit/spec.mjs index
-(nur wenn `specs/INDEX.md` fehlt oder veraltet ist; sonst steht hier nichts)
 
 ### Systemweiter Stand ({parentProject})
 (aus der Dach-Notiz — Abschnitt weglassen wenn sie fehlt)

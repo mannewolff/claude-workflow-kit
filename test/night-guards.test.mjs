@@ -97,6 +97,27 @@ test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn dur
   }
 });
 
+// Eine gefuellte Liste aus lauter Push- und Merge-Pruefungen ist fuer die Nacht
+// dasselbe wie gar keine: Diese Eintraege laufen erst in /push-main und
+// /merge-production, die Umsetzung eines Arbeitspakets haette kein Gate. Haengt der
+// Guard an der Listenlaenge, geht genau dieser Lauf durch (Plan #753, E14).
+test("[night-48] Vorflug: ohne Pruefung der Paketstufe stoppt der Lauf mit diesem Grund, --no-checks-ok laesst ihn durch", NUR_POSIX, () => {
+  const buildChecks = [{ cmd: "true", stufe: "push" }, { cmd: "true", stufe: "merge" }];
+  const dir = setupProjekt("night-guard-stufe-", { buildChecks });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 1, "eine Liste aus lauter Push-Pruefungen ist nachts kein Gate");
+    assert.match(res.stderr, /Paketstufe/,
+      "die Meldung nennt die fehlende Paketstufe nicht als Grund");
+    assert.match(res.stderr, /--no-checks-ok/, "der Override wird nicht genannt");
+
+    const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(ok.status, 0, `mit --no-checks-ok haette der Lauf durchgehen muessen: ${ok.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Vorflug: --yolo warnt vor umgangenen Permission-Checks", NUR_POSIX, () => {
   const dir = setupProjekt("night-guard-yolo-");
   try {
@@ -164,6 +185,20 @@ test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", NUR_POSI
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /Ready ist leer — nichts zu tun/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Der Dry-Run legt nie einen Ergebnisstand an (Issue #486) — auch nicht seit Issue #744
+// den Grund vermerkt, ihn dort trotzdem am Lauf-Kopf zu vermerken: Es gibt fuer den
+// Dry-Run keinen Lauf-Kopf, der ihn tragen koennte.
+test("[night-44] Dry-Run: leeres Ready legt weiterhin keinen Ergebnisstand an", NUR_POSIX, () => {
+  const dir = setupProjekt("night-guard-dryempty-stand-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

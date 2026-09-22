@@ -1,6 +1,6 @@
-// Versionskennung der Kit-Dateien mit --version (Issue #170, spec.mjs mit #440).
+// Versionskennung der Kit-Dateien mit --version (Issue #170).
 //
-// board.mjs, night.mjs und spec.mjs werden in Konsumenten-Projekte kopiert. Ohne
+// board.mjs und night.mjs werden in Konsumenten-Projekte kopiert. Ohne
 // Versionskennung kann man einer installierten Kopie nicht ansehen, aus welchem
 // Kit-Stand sie stammt — und damit auch nicht, ob ein Auffrischen noetig ist.
 //
@@ -39,7 +39,7 @@ function isoliertAufrufen(datei, cliArgs) {
 // Die Dateien, die --version kennen. checks.mjs traegt zwar denselben Stempel,
 // hat aber bewusst kein --version-Flag; es gehoert deshalb nicht in diese Liste.
 // einstellungen.mjs (Issue #679) ist Download statt Installation, traegt aber denselben Stempel.
-const MIT_VERSION_FLAG = ["board.mjs", "night.mjs", "spec.mjs", "einstellungen.mjs"];
+const MIT_VERSION_FLAG = ["board.mjs", "night.mjs", "einstellungen.mjs"];
 
 for (const datei of MIT_VERSION_FLAG) {
   test(`${datei}: --version gibt die Kit-Version aus, ohne weiteren Repo-Kontext`, () => {

@@ -38,9 +38,9 @@ const MIT_HALT = ["implement-next", "implement-ready"];
 const OHNE_HALT = ["implement-test", "implement-done"];
 
 const FETTMARKE = "**Entscheiden statt fragen.**";
-const ENDMARKE = "**Aussage-ID in den Testnamen";
+const ENDMARKE = "### 4. Pruefungen vor dem Commit";
 
-/** Der Halt-Abschnitt von der Fettmarke bis zur Marke des Aussage-ID-Blocks. */
+/** Der Halt-Abschnitt von der Fettmarke bis zur Ueberschrift des naechsten Schritts. */
 function haltAbschnitt(name) {
   const text = quelle(name);
   const anfang = text.indexOf(FETTMARKE);
@@ -63,7 +63,7 @@ test("[skills-6] der Halt-Abschnitt steht in implement-next und implement-ready 
   }
 });
 
-test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor dem Aussage-ID-Block", () => {
+test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor Schritt 4", () => {
   for (const name of MIT_HALT) {
     const text = quelle(name);
     const schritt = text.indexOf("### 3. Implementieren");
@@ -75,11 +75,47 @@ test("[skills-6] der Halt-Abschnitt steht in Schritt 3, vor dem Aussage-ID-Block
       naechster < 0 || marke < naechster,
       `in ${name} steht der Abschnitt hinter Schritt 3`,
     );
-    // Der Regelblock zur Aussage-ID bleibt unberuehrt: Der Halt endet davor.
+    // Schritt 4 bleibt unberuehrt: Der Halt endet davor.
     assert.ok(
       marke < text.indexOf(ENDMARKE),
-      `in ${name} steht der Abschnitt hinter dem Aussage-ID-Block`,
+      `in ${name} steht der Abschnitt hinter Schritt 4`,
     );
+  }
+});
+
+// --- Der Ablauf gilt ohne Ausnahme -------------------------------------------
+
+// Eine unbeaufsichtigte Session fand die Regel fuer ihren Halt im persoenlichen
+// Gedaechtnis des Menschen statt im Skill und klaerte „im Gespraech", wo niemand
+// sass (Issue #770). Das Gedaechtnis wird in jede Session geladen, auch in die
+// unbeaufsichtigte; der Vorrang gehoert darum in den Skill selbst.
+
+/** Die vier Aussagen, die der Absatz vor dem Halt-Ablauf tragen muss. */
+const VORRANG_AUSSAGEN = [
+  [/gilt ohne Ausnahme/, "dass der Ablauf ohne Ausnahme gilt"],
+  [/in jeder Betriebsart/, "dass er in jeder Betriebsart gilt"],
+  [/Vorrang[\s\S]{0,400}Ged(?:ae|ä)chtnis/, "der Vorrang vor dem persoenlichen Gedaechtnis"],
+  [/Frage steht am Board/, "dass die Frage am Board steht"],
+];
+
+test("[skills-35] der Halt-Ablauf gilt ohne Ausnahme und hat Vorrang vor dem Gedaechtnis", () => {
+  for (const name of MIT_HALT) {
+    const abschnitt = haltAbschnitt(name);
+    for (const [muster, was] of VORRANG_AUSSAGEN) {
+      assert.match(abschnitt, muster, `${name}: ${was} fehlt`);
+    }
+  }
+});
+
+test("[skills-35] der Vorrang-Absatz steht vor der nummerierten Liste, nicht dahinter", () => {
+  for (const name of MIT_HALT) {
+    const abschnitt = haltAbschnitt(name);
+    const liste = abschnitt.search(/^1\. Eigene uncommittete Aenderungen/m);
+    assert.ok(liste >= 0, `${name}: die nummerierte Liste des Halt-Ablaufs fehlt`);
+    for (const [muster, was] of VORRANG_AUSSAGEN) {
+      const treffer = abschnitt.search(muster);
+      assert.ok(treffer >= 0 && treffer < liste, `${name}: ${was} steht nicht vor der Liste`);
+    }
   }
 });
 

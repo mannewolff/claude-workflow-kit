@@ -16,7 +16,7 @@ import {
 
 const PLAN_MIT_NOTIZ = `${PLAN_ANLEGEN}; printf "notiz" > .claude/vorhaben-wartend-plan-1.md`;
 
-test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, Worktree entfernt, Notiz zurueck", NUR_POSIX, () => {
+test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, Worktree entfernt, keine Notiz geholt", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_MIT_NOTIZ, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -40,6 +40,7 @@ test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, W
     assert.equal(lauf.label, "kit:night");
     assert.equal(lauf.budget.kostenUsd, 50);
     assert.equal("kennzahlenHinweis" in lauf, false, "die Kette fordert den Strom immer an");
+    assert.equal("noWorkReason" in lauf, false, "eine Kette mit Arbeit traegt keinen Grund ohne Arbeit (Issue #744)");
     assert.equal(lauf.abschluss, "regulaer");
     const einheit = lauf.einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig");
@@ -59,9 +60,10 @@ test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, W
       assert.ok(basename(s.cwd).startsWith(`kette-${basename(dir)}-${F}-`), `${s.stufe} lief nicht im Worktree: ${s.cwd}`);
       assert.equal(s.modell, "claude-opus-5", "KIT_AGENT_MODEL fehlt in der Session");
     }
-    // Worktree weg, Notiz da.
+    // Worktree weg. Eine Datei, die eine Stufe im Worktree unter `.claude/vorhaben-wartend-*`
+    // hinterlaesst, holt der Runner seit dem Rueckbau von SDD nicht mehr zurueck (Issue #829).
     assert.ok(!readdirSync(tmpdir()).some((n) => n.startsWith(`kette-${basename(dir)}-`)), "der Worktree liegt noch");
-    assert.ok(existsSync(join(dir, ".claude", "vorhaben-wartend-plan-1.md")), "die Vorhaben-Notiz kam nicht zurueck");
+    assert.ok(!existsSync(join(dir, ".claude", "vorhaben-wartend-plan-1.md")), "der Runner holte noch eine Vorhaben-Notiz zurueck");
     assert.match(res.stdout, /Nacht-Kette beendet: 1 fertig, 0 angehalten, 0 abgebrochen/);
   });
 });
