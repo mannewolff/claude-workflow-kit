@@ -821,12 +821,13 @@ export const TEILE = [
   { kennung: "m6", titel: "Nacht-Kette", thema: "Nachtbetrieb", reihenfolge: 1, redaktor: "nachtkette", pfade: ["night.kette"] },
   { kennung: "m8", titel: "Aufwand", thema: "Nachtbetrieb", reihenfolge: 2, redaktor: "aufwand", pfade: ["aufwand"] },
   { kennung: "m9", titel: "Wirksamkeit", thema: "Nachtbetrieb", reihenfolge: 3, redaktor: "wirksamkeit", pfade: ["wirksamkeit"] },
+  { kennung: "m11", titel: "Aufgabenstufen", thema: "Nachtbetrieb", reihenfolge: 4, redaktor: "stufen", pfade: ["night.stufen"] },
   { kennung: "m7", titel: null, thema: null, reihenfolge: 5, redaktor: "gruppe", pfade: ["triggers", "columns", "github", "toolbox", "local"] },
   {
     kennung: "wert", titel: null, thema: null, reihenfolge: 6, redaktor: "wert",
     pfade: ["codeHost", "issueTracker", "provider", "mutationCommand", "formatFixCommand", "mainBranch", "productionBranch", "reviewScope", "reviewModel", "reviewCommand", "toolbox.tokenFile"],
   },
-  { kennung: "text", titel: null, thema: null, reihenfolge: 9, redaktor: "text", pfade: ["night.modelle", "night.stufen", "night.stufenRegel"] },
+  { kennung: "text", titel: null, thema: null, reihenfolge: 9, redaktor: "text", pfade: ["night.modelle", "night.stufenRegel"] },
 ];
 
 const TEIL_TEXT = TEILE.find((t) => t.kennung === "text");
@@ -2595,6 +2596,7 @@ const REDAKTOREN = {
   pruefstufen: redaktorPruefstufen,
   pruefkommandos: redaktorPruefkommandos,
   nachtkette: redaktorNachtKette,
+  stufen: redaktorStufen,
   aufwand: redaktorAufwand,
   wirksamkeit: redaktorWirksamkeit,
   befunde: redaktorBefunde,
@@ -3647,6 +3649,212 @@ function redaktorNachtKette(teil) {
   teil.aufVorschau = neuZeichnen;
   neuZeichnen();
   kasten.append(behaelter);
+  vorschauAnfordern(teil);
+  return kasten;
+}
+`,
+
+  // ------------------------------------------------------------
+  // M11 Aufgabenstufen (Issue #847, Plan #843 E7)
+  // ------------------------------------------------------------
+  //
+  // Je Stufe eine Wahl statt eines Textblocks in Dateischreibweise — derselbe Weg wie bei M6
+  // und M8, mit demselben Grund. Dazu kommt hier ein zweiter: Seit Issue #845 trägt eine Stufe
+  // mit `modell` auch die Gründlichkeit, und ein Feld aus fünf erlaubten Werten ist in einem
+  // JSON-Block nicht zumutbar zu pflegen (Fachplan #837, AK 3).
+  //
+  // Die drei Stufen und die fünf Gründlichkeiten sind kein zweites Literal: Sie kommen aus dem
+  // eingebetteten Schema und aus `EFFORT_WERTE` desselben Moduls, als JSON in die Seite
+  // gerechnet — derselbe Weg wie `ROLLEN_KATALOG_BROWSER` in M3.
+  redaktorStufen: `
+const AUFGABENSTUFEN_BROWSER = ${JSON.stringify(
+    Object.keys(SCHEMA.properties.night.properties.stufen.properties).map((s) => [s, s.charAt(0).toUpperCase() + s.slice(1)]),
+  )};
+const EFFORT_BROWSER = ${JSON.stringify(EFFORT_WERTE)};
+const STUFEN_ARTEN = [["", "Keine"], ["modell", "Modell"], ["kommando", "Kommando"]];
+` + String.raw`
+const istStufenEintrag = function (wert) { return wert !== null && typeof wert === "object" && !Array.isArray(wert); };
+
+/** Der night.stufen-Block der Arbeitskopie, oder ein leerer ohne eigene Einstellung. */
+function aufgabenStufenVon(teil) {
+  const wert = wertVon(teil, "night.stufen");
+  return istStufenEintrag(wert) ? wert : {};
+}
+
+/** Der Eintrag einer Stufe, unangetastet — oder null, wenn die Stufe keinen hat. */
+function aufgabenStufe(teil, stufe) {
+  const eintrag = aufgabenStufenVon(teil)[stufe];
+  return istStufenEintrag(eintrag) ? eintrag : null;
+}
+
+/**
+ * Die Art einer Stufe fuer die Anzeige. Ein Bestand mit beiden Feldern oder mit keinem ist ein
+ * Konfigurationsfehler: Er wird hier nur fuer die Darstellung geglaettet — gespeichert wird
+ * nichts, und den Mangel nennt weiter der Befund der Pruefung an der Zeile (wie in M3).
+ */
+function stufenArt(eintrag) {
+  if (!eintrag) return "";
+  if (typeof eintrag.modell === "string") return "modell";
+  if (typeof eintrag.kommando === "string") return "kommando";
+  return "";
+}
+
+/** Die Modellnamen aus night.modelle — die einzige Wahl fuer eine Stufe mit Modell. */
+function nachtModelle() {
+  const e = eintragImZustand("night.modelle");
+  const liste = e && Array.isArray(e.gilt) ? e.gilt : [];
+  return liste.filter(function (n) { return typeof n === "string" && n !== ""; });
+}
+
+/**
+ * Setzt oder entfernt den Eintrag einer Stufe. Eine leere Stufe schreibt keinen Eintrag, und
+ * was der Mensch nicht bearbeitet hat, geht unveraendert mit.
+ */
+function aufgabenStufeSetzen(teil, stufe, eintrag, neuZeichnen) {
+  const kopie = Object.assign({}, aufgabenStufenVon(teil));
+  if (eintrag === null) delete kopie[stufe];
+  else kopie[stufe] = eintrag;
+  setzeWert(teil, "night.stufen", kopie);
+  if (neuZeichnen) neuZeichnen();
+}
+
+/**
+ * Wechselt die Art einer Stufe. Die neue Art schreibt nur ihre eigenen Felder: effort und
+ * modell fallen beim Wechsel zu Kommando weg, statt als Altlast im Eintrag stehen zu bleiben
+ * — neben kommando waere effort ein Konfigurationsfehler (Issue #845).
+ */
+function stufenArtWaehlen(teil, stufe, art, neuZeichnen) {
+  if (art === "") { aufgabenStufeSetzen(teil, stufe, null, neuZeichnen); return; }
+  const alt = aufgabenStufe(teil, stufe) || {};
+  if (art === "modell") {
+    const modelle = nachtModelle();
+    aufgabenStufeSetzen(teil, stufe, { modell: typeof alt.modell === "string" ? alt.modell : (modelle[0] || "") }, neuZeichnen);
+    return;
+  }
+  const neu = { kommando: typeof alt.kommando === "string" ? alt.kommando : "" };
+  if (typeof alt.name === "string") neu.name = alt.name;
+  aufgabenStufeSetzen(teil, stufe, neu, neuZeichnen);
+}
+
+/**
+ * Aendert ein Feld einer Stufe formtreu. Ein leer gewaehltes effort oder ein leerer Name
+ * verschwindet — so schreibt "Voreinstellung" kein Feld. Das Feld kommando bleibt auch leer stehen:
+ * Es traegt die Art der Stufe, und das Feld zu loeschen liesse den Block beim naechsten
+ * Zeichnen zuklappen, waehrend der Mensch noch tippt.
+ */
+function stufenFeldAendern(teil, stufe, feld, wert, neuZeichnen) {
+  const neu = Object.assign({}, aufgabenStufe(teil, stufe) || {});
+  if (wert === "" && feld !== "kommando") delete neu[feld];
+  else neu[feld] = wert;
+  aufgabenStufeSetzen(teil, stufe, neu, neuZeichnen);
+}
+
+/** Die Modellwahl einer Stufe; ein Etikett davor sagt, was gewaehlt wird. */
+function stufenModellWahl(teil, stufe, eintrag) {
+  const sel = el("select");
+  const gewaehlt = typeof eintrag.modell === "string" ? eintrag.modell : "";
+  const modelle = nachtModelle();
+  // Kriterium 4a sinngemaess: Ein Bestandsmodell, das night.modelle nicht kennt, bleibt
+  // waehlbar, statt die Anzeige still auf das erste Modell springen zu lassen. Benannt wird
+  // es vom Befund der Pruefung an dieser Zeile.
+  const namen = gewaehlt !== "" && modelle.indexOf(gewaehlt) < 0 ? [gewaehlt].concat(modelle) : modelle;
+  for (const name of namen) {
+    const o = el("option", "", name);
+    if (name === gewaehlt) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener("change", function () { stufenFeldAendern(teil, stufe, "modell", sel.value); });
+  return sel;
+}
+
+/** Die Wahl der Gruendlichkeit; die leere Wahl schreibt kein Feld effort (Issue #845). */
+function stufenGruendlichkeitWahl(teil, stufe, eintrag) {
+  const sel = el("select");
+  const gewaehlt = typeof eintrag.effort === "string" ? eintrag.effort : "";
+  const leer = el("option", "", "Voreinstellung");
+  leer.value = "";
+  if (gewaehlt === "") leer.selected = true;
+  sel.append(leer);
+  for (const wert of EFFORT_BROWSER) {
+    const o = el("option", "", wert);
+    if (wert === gewaehlt) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener("change", function () { stufenFeldAendern(teil, stufe, "effort", sel.value); });
+  return sel;
+}
+
+/** Ein Textfeld einer Kommando-Stufe; getippt wird ohne Neuaufbau, sonst floehe der Fokus. */
+function stufenTextfeld(teil, stufe, feld, platzhalter) {
+  const eingang = el("input");
+  eingang.type = "text";
+  const wert = aufgabenStufe(teil, stufe) || {};
+  eingang.value = typeof wert[feld] === "string" ? wert[feld] : "";
+  eingang.placeholder = platzhalter;
+  eingang.addEventListener("input", function () { stufenFeldAendern(teil, stufe, feld, eingang.value); });
+  return eingang;
+}
+
+/** Was hinter der Wahl der Art steht: nichts, Modell und Gruendlichkeit, oder Kommando und Name. */
+function stufenFelder(teil, stufe, eintrag, art) {
+  if (art === "") return [el("span", "leer", "— keine eigene Wahl; der Nachtlauf weicht zur nächststärkeren Stufe aus")];
+  if (art === "modell") {
+    return [
+      el("span", "etikett", "Modell"), stufenModellWahl(teil, stufe, eintrag),
+      el("span", "etikett", "Gründlichkeit"), stufenGruendlichkeitWahl(teil, stufe, eintrag),
+    ];
+  }
+  return [
+    el("span", "etikett", "Kommando"), stufenTextfeld(teil, stufe, "kommando", "mein-runner --flag"),
+    el("span", "etikett", "Name"), stufenTextfeld(teil, stufe, "name", "Selbstauskunft des Programms"),
+  ];
+}
+
+/** Ein Block je Stufe: die Wahl der Art und die Felder, die zu ihr gehoeren. */
+function stufenBlock(teil, stufe, titel, neuZeichnen) {
+  const eintrag = aufgabenStufe(teil, stufe);
+  const art = stufenArt(eintrag);
+  const ohneModelle = nachtModelle().length === 0;
+  const d = el("div", "stufe");
+  const kopf = el("div");
+  kopf.style.display = "flex";
+  kopf.style.alignItems = "center";
+  kopf.style.gap = "8px";
+  kopf.append(el("h4", "", titel), el("span", "feldpfad mono", stufe));
+  d.append(kopf);
+
+  // Die Stufe nennt ihren Pfad: Ein Befund zu .modell, .effort oder zur Stufe selbst findet
+  // ueber das Praefix diese Zeile.
+  const g = zeilenGruppe("night.stufen." + stufe, "");
+  g.zeile.style.display = "block";
+  const wahl = el("div", "wahl wahl-klein");
+  for (const paar of STUFEN_ARTEN) {
+    const b = el("button", "", paar[1]);
+    b.setAttribute("aria-selected", String(art === paar[0]));
+    // Ohne Modellliste gaebe die Wahl "Modell" einen Eintrag, den niemand speichern kann.
+    if (paar[0] === "modell" && ohneModelle) b.disabled = true;
+    b.addEventListener("click", function () { stufenArtWaehlen(teil, stufe, paar[0], neuZeichnen); });
+    wahl.append(b);
+  }
+  g.zeile.append(wahl, ...stufenFelder(teil, stufe, eintrag || {}, art));
+  if (ohneModelle) g.zeile.append(el("span", "nutzung", "night.modelle nennt kein Modell — ohne Liste gibt es nichts zu wählen"));
+  d.append(g.gruppe);
+  return d;
+}
+
+function redaktorStufen(teil) {
+  const kasten = el("div", "stapel");
+  kasten.append(el("p", "erklaerung", "Womit der Nachtlauf ein Arbeitspaket der jeweiligen Stufe umsetzt. Die Gründlichkeit geht als --effort an die Claude-CLI; „Voreinstellung“ überlässt sie ihr. Neben einem fremden Kommando gibt es keine Gründlichkeit — die kann das Kit einem fremden Programm nicht setzen."));
+  const box = el("div", "stufen");
+  const neuZeichnen = function () {
+    box.replaceChildren();
+    for (const paar of AUFGABENSTUFEN_BROWSER) box.append(stufenBlock(teil, paar[0], paar[1], neuZeichnen));
+    // Der Neuaufbau wirft die verteilten Befunde mit weg — sie gehoeren danach wieder an ihre Zeile.
+    befundeVerteilen(teil);
+  };
+  teil.aufVorschau = neuZeichnen;
+  neuZeichnen();
+  kasten.append(box);
   vorschauAnfordern(teil);
   return kasten;
 }
