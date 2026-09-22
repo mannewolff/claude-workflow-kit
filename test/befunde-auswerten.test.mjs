@@ -122,6 +122,32 @@ test("[befunde-auswerten] der Bericht weist die Stufe code getrennt aus, nicht a
   });
 });
 
+// AK 10 der Quelle #768 verlangt die Zahl der uebernommenen Code-Funde auf gruenem
+// Stand „getrennt nach Art": Eine Gesamtzahl sagte nicht, welcher Mangel der Maschine
+// entgeht — und genau danach fragt das Kriterium.
+test("[befunde-auswerten] die Code-Zahlen stehen auch je Art, nicht nur ueber alle", () => {
+  const zeilen = [
+    zeile({ stufe: "code", art: "korrektheit", vergleichsstand: "gruen" }),
+    zeile({ stufe: "code", art: "korrektheit", vergleichsstand: "gruen" }),
+    zeile({ stufe: "code", art: "test", vergleichsstand: "nicht-vergleichbar" }),
+    zeile({ stufe: "plan", art: "test" }),
+  ];
+  mitProjekt({ zeilen }, (dir) => {
+    const stand = auswerten(dir);
+
+    assert.deepEqual(stand.arten.find((a) => a.art === "korrektheit").code, { gruen: 2, nichtVergleichbar: 0 });
+    assert.deepEqual(stand.arten.find((a) => a.art === "test").code, { gruen: 0, nichtVergleichbar: 1 });
+    assert.deepEqual(stand.arten.find((a) => a.art === "luecke").code, { gruen: 0, nichtVergleichbar: 0 });
+    // Die Gesamtzahl ist die Summe der Teile — zwei Zaehlweisen koennten auseinanderlaufen.
+    assert.equal(stand.code.gruen, stand.arten.reduce((s, a) => s + a.code.gruen, 0));
+    assert.equal(stand.code.nichtVergleichbar, stand.arten.reduce((s, a) => s + a.code.nichtVergleichbar, 0));
+
+    const kopf = abschnitt(bericht(dir), "## Arten").split("\n").find((z) => z.startsWith("| Art"));
+    assert.match(kopf, /code gruen/, "die Tabelle hat keine Spalte fuer den gruenen Vergleichsstand");
+    assert.match(kopf, /code nicht-vergleichbar/, "die Tabelle hat keine Spalte fuer den nicht vergleichbaren Stand");
+  });
+});
+
 test("[befunde-auswerten] je Art stehen Vorkommen und Verteilung ueber die Stufen im Bericht", () => {
   const zeilen = [
     zeile({ stufe: "fachlich", art: "luecke" }),

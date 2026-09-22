@@ -1045,6 +1045,10 @@ function stufenText(stufen) {
  * Pflichtpruefungen gruen waren, sagt etwas ueber die Luecke der Maschine — ein Fund
  * ohne vergleichbaren Stand sagt darueber nichts. Zusammengezaehlt saehen beide aus
  * wie das erste.
+ *
+ * Dieselbe Funktion je Art und ueber alle: AK 10 verlangt die Zahl „getrennt nach Art",
+ * und der Gesamtstand ist die Summe derselben Zaehlung ueber alle Eintraege. Eine
+ * zweite Zaehlweise fuer die Gesamtzahl koennte von der Summe ihrer Teile abweichen.
  */
 function codeZaehlung(eintraege) {
   const code = eintraege.filter((e) => e.stufe === "code");
@@ -1069,10 +1073,11 @@ function berichtText(stand) {
     "",
     "## Arten",
     "",
-    `| Art | Vorkommen | ${BUCHEN_STUFEN.join(" | ")} | ueber Nullpunkt | Schwelle erreicht | Vorschlag |`,
-    `| --- | --- | ${BUCHEN_STUFEN.map(() => "---").join(" | ")} | --- | --- | --- |`,
+    `| Art | Vorkommen | ${BUCHEN_STUFEN.join(" | ")} | code gruen | code nicht-vergleichbar | ueber Nullpunkt | Schwelle erreicht | Vorschlag |`,
+    `| --- | --- | ${BUCHEN_STUFEN.map(() => "---").join(" | ")} | --- | --- | --- | --- | --- |`,
     ...stand.arten.map((a) => [
       "", `\`${a.art}\``, a.vorkommen, ...BUCHEN_STUFEN.map((s) => a.stufen[s] ?? 0),
+      a.code.gruen, a.code.nichtVergleichbar,
       a.ueberNullpunkt, a.erreicht ? "ja" : "nein", vorschlagText(a.vorschlag), "",
     ].join(" | ").trim()),
     "",
@@ -1172,6 +1177,10 @@ export function auswerten() {
       art,
       vorkommen: eigene.length,
       stufen: stufenVerteilung(eigene),
+      // Je Art, nicht nur ueber alle: AK 10 der Quelle #768 verlangt die Zahl der
+      // uebernommenen Code-Funde auf gruenem Stand „getrennt nach Art" — eine
+      // Gesamtzahl sagte nicht, welcher Mangel der Maschine entgeht.
+      code: codeZaehlung(eigene),
       nullpunkt,
       ueberNullpunkt,
       erreicht: ueberNullpunkt >= schwelle,
