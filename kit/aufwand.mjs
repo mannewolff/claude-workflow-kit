@@ -121,7 +121,7 @@ function zahl(wert) {
  * **nicht** `localeCompare` — dessen Reihenfolge haengt an der Locale der Maschine, und
  * zwei Laeufe muessen ueberall dieselbe Liste ergeben.
  *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs und kit/spec.mjs. Die drei sind
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs und kit/wirksamkeit.mjs. Die drei sind
  * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440); geteilte
  * Logik wird dupliziert und hier markiert.
  */

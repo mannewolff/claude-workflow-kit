@@ -2,8 +2,7 @@
 //
 // Die Kette arbeitet ausserhalb des Repos, unter dem Temp-Verzeichnis: Im Repo laege der
 // Worktree als untracked Verzeichnis im `git status` der Umsetzungsnacht. `.claude/` ist
-// nicht versioniert; der Runner spiegelt es hinein — ohne `night-run-*` — und holt
-// wartende Vorhaben-Notizen zurueck, bevor er den Worktree entfernt. Liegengebliebene
+// nicht versioniert; der Runner spiegelt es hinein — ohne `night-run-*`. Liegengebliebene
 // Worktrees eines Absturzes raeumt der naechste Start auf.
 
 import { test } from "node:test";
@@ -12,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
-import { worktreeAnlegen, notizenZurueck, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
 
 function git(cwd, ...a) {
   const res = spawnSync("git", a, { cwd, encoding: "utf-8" });
@@ -111,19 +110,6 @@ test("[night-68] ein Unterverzeichnis mit dem Namen eines Berichts kommt mit", (
 
     assert.ok(existsSync(join(pfad, ".claude", "kit", "night-run-hilfen", "x.mjs")),
       "nur der Name direkt unter .claude/ entscheidet, nicht der Name irgendwo im Pfad");
-  });
-});
-
-test("[night-17] notizenZurueck kopiert wartende Vorhaben-Notizen in die Hauptkopie", () => {
-  mitRepo((dir, angelegt) => {
-    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "635", stempel: "s1" });
-    angelegt.push(pfad);
-    writeFileSync(join(pfad, ".claude", "vorhaben-wartend-plan-9.md"), "notiz\n");
-    writeFileSync(join(pfad, ".claude", "anderes.md"), "nicht\n");
-    assert.deepEqual(notizenZurueck(pfad, dir), ["vorhaben-wartend-plan-9.md"]);
-    assert.equal(readFileSync(join(dir, ".claude", "vorhaben-wartend-plan-9.md"), "utf-8"), "notiz\n");
-    assert.ok(!existsSync(join(dir, ".claude", "anderes.md")), "nur Notizen kommen zurueck");
-    assert.deepEqual(notizenZurueck(join(dir, "gibt-es-nicht"), dir), [], "ohne .claude gibt es nichts zu kopieren");
   });
 });
 

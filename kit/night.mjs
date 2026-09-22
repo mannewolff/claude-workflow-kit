@@ -1098,19 +1098,18 @@ export function gitResteAusnahmen(cfg = config) {
   // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
   // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
   ausnahmen.push(".claude/night-run-*");
-  // Eine wartende Vorhaben-Notiz (Issue #546) entsteht beim Planen und wird erst
-  // beim naechsten `push main` nach specs/vorhaben/ aufgehoben: Vorhaben-Zustand ist
-  // kein Code-Zustand. Wie beim Protokoll darueber steht der Ausschluss ausdruecklich
-  // hier, obwohl `.gitignore` den Pfad meist deckt — der Installer laesst eine
-  // vorhandene eigene `.claude`-Regel unangetastet, also gibt es Projekte ohne den
-  // Block, und dort hielte die erste geplante Notiz den Lauf an.
+  // Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
+  // Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen unter
+  // `.claude/vorhaben-wartend-*` ab. Heute entsteht keine mehr, aber in Zielprojekten kann
+  // noch eine liegen. Ohne den `.claude/*`-Block in `.gitignore` (der Installer laesst eine
+  // eigene `.claude`-Regel unangetastet) hielte sie den Lauf sonst hart an.
   ausnahmen.push(".claude/vorhaben-wartend-*");
   // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
   // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
   ausnahmen.push(".claude/night-bericht-*");
   // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
   // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
-  // die Vorhaben-Notiz darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
+  // das Protokoll darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
   // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
   // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
   // ersten Paket als unsauber.
@@ -1218,7 +1217,7 @@ function lastCommitHash(cwd = process.cwd()) {
 //
 // Die Datei liegt unter `.claude/` und ist damit in jedem Projekt mit dem `.claude/*`-Block
 // des Installers per `.gitignore` gedeckt — in den uebrigen deckt sie der Ausschluss in
-// `gitReste()`, wie bei Protokoll, Vorhaben-Notiz und wartendem Bericht. Beendet ein harter
+// `gitReste()`, wie bei Protokoll und wartendem Bericht. Beendet ein harter
 // Stopp den Prozess an einem `finally` vorbei, bleibt sie liegen; der naechste Lauf erkennt
 // sie als verwaist.
 
@@ -1328,14 +1327,14 @@ function gitIm(repoRoot, gitArgs) {
  * in der Hauptkopie.
  *
  * ANNAHME (E12): Bewegungen und Ausfuehrungen, die IM Worktree entstuenden, gingen mit
- * ihm verloren — der Spiegel geht nur in eine Richtung, und `notizenZurueck` holt allein
- * Vorhaben-Notizen. Heute trifft das nichts: Die Umsetzungsstufe baut den Worktree
+ * ihm verloren — der Spiegel geht nur in eine Richtung, und nichts holt sie zurueck.
+ * Heute trifft das nichts: Die Umsetzungsstufe baut den Worktree
  * zuerst ab und arbeitet in der Hauptkopie, und die erzeugenden Stufen bewegen nichts
  * nach In review und fahren keine Pruefungen — im Worktree entsteht also gar nichts,
  * was zu protokollieren waere. Bricht diese Annahme (arbeitet eine Stufe kuenftig am
  * Board oder faehrt Pruefungen im Worktree), bricht die Erhebung still: Die Auswertung
  * saehe die Bewegungen und Ausfuehrungen jener Stufe nie und meldete darum zu wenig,
- * ohne dass etwas rot wird. Dann muessen die beiden Protokolle wie die Notizen
+ * ohne dass etwas rot wird. Dann muessen die beiden Protokolle aus dem Worktree
  * zurueckgeholt werden.
  */
 function claudeSpiegeln(repoRoot, pfad) {
@@ -1377,22 +1376,6 @@ export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
   }
   claudeSpiegeln(repoRoot, pfad);
   return pfad;
-}
-
-/**
- * Kopiert wartende Vorhaben-Notizen aus dem Worktree in die Hauptkopie.
- *
- * `/techplan` legt sie unter `.claude/vorhaben-wartend-*.md` ab, und der naechste
- * `push main` hebt sie aus der Hauptkopie auf — im Worktree gingen sie mit ihm verloren.
- * Liefert die Namen der kopierten Dateien.
- */
-export function notizenZurueck(pfad, repoRoot) {
-  const quelle = join(pfad, ".claude");
-  if (!existsSync(quelle)) return [];
-  const notizen = readdirSync(quelle).filter((name) => /^vorhaben-wartend-.*\.md$/.test(name));
-  if (notizen.length > 0) mkdirSync(join(repoRoot, ".claude"), { recursive: true });
-  for (const name of notizen) cpSync(join(quelle, name), join(repoRoot, ".claude", name), { force: true });
-  return notizen;
 }
 
 /** Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt. */
@@ -4301,8 +4284,6 @@ async function stufePlan(kette) {
   // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
   const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F);
   summe(s);
-  const notizen = notizenZurueck(kette.wt, kette.repoRoot);
-  for (const n of notizen) log(`  Vorhaben-Notiz aus dem Worktree in die Hauptkopie geholt: .claude/${n}`);
   if (s.ausgang !== "fertig") return s;
 
   // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue

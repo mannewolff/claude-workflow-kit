@@ -71,8 +71,7 @@ const AUSFUEHRUNGEN_DATEI = "ausfuehrungen.tsv";
 // eine Zeile je gegluecktem `issue move`: Zeitpunkt, Kartennummer, Status.
 const BEWEGUNGEN_DATEI = "bewegungen.tsv";
 
-// SYNC: derselbe Pfad wie BOARD_KOMMANDO in kit/spec.mjs — die Auswertung ruft die
-// installierte Kopie des Adapters auf, nie die Quelle.
+// Die Auswertung ruft die installierte Kopie des Adapters auf, nie die Quelle.
 const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
 
 // SYNC: COLUMN_DEFAULTS aus kit/board.mjs — die Anzeigenamen der Spalten, gegen die
@@ -161,7 +160,7 @@ function zahl(wert) {
  * **nicht** `localeCompare` — dessen Reihenfolge haengt an der Locale der Maschine,
  * und zwei Laeufe muessen ueberall dieselbe Liste ergeben.
  *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/spec.mjs und kit/aufwand.mjs
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs und kit/aufwand.mjs
  * (#440: eigenstaendige Single-File-Tools, geteilte Logik wird dupliziert und markiert).
  */
 function vergleicheText(a, b) {
@@ -479,8 +478,7 @@ function zielVon(detail, zuordnung) {
 /**
  * Der Aktivitaetsverlauf aller Kandidaten ueber genau EINEN Kindprozess (E13):
  * `issue activity --ids` holt die Kartenliste des Boards einmal statt je Karte —
- * gegen eine API, die drosselt. Muster wie `verlaufLesen` in kit/spec.mjs, aber mit
- * umgekehrter Fehlerhaltung: Hier ist ein Fehlschlag ein VERMERK, kein Abbruch (E9) —
+ * gegen eine API, die drosselt. Ein Fehlschlag ist ein VERMERK, kein Abbruch (E9) —
  * auf dem Spiel steht eine Kennzahl, nicht ein Gate.
  */
 function verlaeufeHolen(root, ids) {

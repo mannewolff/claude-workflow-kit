@@ -94,16 +94,15 @@ const SUMMARY_DATEI = ".claude/checks-summary.json";
 // Konstanten werden dupliziert und hier markiert.
 const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
 
-// Wartende Vorhaben-Notizen (Issue #546, Plan #545): `spec.mjs vorhaben` legt seine
-// Notiz hier ab, `push main` hebt sie nach `specs/vorhaben/` auf. Bis dahin liegt
-// sie im Arbeitsbaum — Vorhaben-Zustand, kein Code-Zustand, also keine geaenderte
-// Datei dieses Arbeitspakets.
+// Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
+// Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen hier
+// ab. Heute entsteht keine mehr, aber in Zielprojekten kann noch eine liegen — kein
+// Code-Zustand, also keine geaenderte Datei eines Arbeitspakets.
 //
 // Der Ausschluss steht ausdruecklich im Code, obwohl `.gitignore` den Pfad meist
-// schon deckt (Plan #545, A2): Der Installer laesst eine vorhandene eigene
-// `.claude`-Regel unangetastet, also gibt es Projekte ohne den Block. Dort waere
-// die Notiz sonst sichtbar und wuerde eine Pruefung ausloesen, zu der sie nicht
-// gehoert.
+// schon deckt: Der Installer laesst eine vorhandene eigene `.claude`-Regel
+// unangetastet, also gibt es Projekte ohne den Block. Dort waere die Notiz sonst
+// sichtbar und wuerde eine Pruefung ausloesen, zu der sie nicht gehoert.
 //
 // Praefix, kein Teilstring: Genau diese Menge nimmt `:(exclude).claude/vorhaben-wartend-*`
 // in `gitClean()` von night.mjs aus. Ein Teilstring-Match traefe zusaetzlich
@@ -129,10 +128,10 @@ export function zusammenfassungPfad(root = process.cwd()) {
  * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
  * Bericht und in der Zusammenfassung.
  *
- * SYNC: dieselbe Funktion steckt in kit/spec.mjs — Aenderungen dort nachziehen.
- * kit/checks.mjs und kit/spec.mjs sind bewusst eigenstaendige Single-File-Tools
- * ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert und hier
- * markiert.
+ * SYNC: dieselbe Funktion steckt in kit/aufwand.mjs und kit/wirksamkeit.mjs —
+ * Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
+ * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert
+ * und hier markiert.
  *
  * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
  */
@@ -255,7 +254,6 @@ function pruefeGuete(checks) {
 
 // --- Muster ----------------------------------------------------------------
 
-// SYNC: strukturgleich in kit/spec.mjs — Aenderungen dort nachziehen.
 const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
 
 /**
