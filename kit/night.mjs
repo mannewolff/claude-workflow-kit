@@ -696,7 +696,8 @@ function einheitAnlegen(id, titel, modellStand = null) {
   // Dry-Run haengt es an nichts und wird nie geschrieben.
   //
   // `modell`, `modellHerkunft` und `modellGrund` stehen direkt nach `titel` (Issue #665),
-  // dahinter `stufe` und `stufeVerwendet` (Issue #711). Die Feldreihenfolge ist der Vertrag
+  // dahinter `stufe` und `stufeVerwendet` (Issue #711) und `effort` (Issue #846, die
+  // Gruendlichkeit der verwendeten Stufe). Die Feldreihenfolge ist der Vertrag
   // mit den Auswertungen: Die fuenf alten Namen behalten ihre Plaetze, die neuen kommen
   // hinten an. `schemaFassung` bleibt 1, weil nur Felder hinzukommen. Ohne uebergebenen
   // Stand — die Kette, ein Gate-Rueckfall — tragen sie `null` statt zu fehlen: Ein fehlendes
@@ -713,6 +714,7 @@ function einheitAnlegen(id, titel, modellStand = null) {
     modellGrund: modellStand?.grund ?? null,
     stufe: modellStand?.stufe ?? null,
     stufeVerwendet: modellStand?.stufeVerwendet ?? null,
+    effort: modellStand?.effort ?? null,
     // Die Lauf-Art je Einheit (Issue #669): Die auswertende Seite ordnet ihr den
     // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
     art: LAUF?.art ?? null,
@@ -2448,8 +2450,8 @@ export function aufgabenStufe(body) {
 const alsText = (wert) => (typeof wert === "string" && wert.trim() !== "" ? wert : null);
 
 /**
- * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name }`
- * (Issue #709).
+ * `night.stufen` als normalisierte Abbildung Stufe -> `{ modell, kommando, name, effort }`
+ * (Issue #709, erweitert um #846).
  *
  * Leere Stufen werden weggeworfen: Was weder `modell` noch `kommando` traegt, ist keine
  * Stufe, sondern eine Luecke — und eine Luecke soll zum Ausweichen nach oben fuehren und
@@ -2470,7 +2472,10 @@ export function stufenEinstellung(config) {
       const modell = alsText(eintrag.modell);
       const kommando = alsText(eintrag.kommando);
       if (!modell && !kommando) continue;
-      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name) };
+      // `effort` gehoert zum Eintrag und nicht zum Paket (Issue #846): Modell und
+      // Gruendlichkeit kommen als Paar aus EINER Stufe, damit ein Ausweichen nach oben
+      // nicht das Modell der einen mit der Gruendlichkeit der anderen mischt.
+      stufen[stufe] = { modell, kommando, name: alsText(eintrag.name), effort: alsText(eintrag.effort) };
     }
   }
   return { aktiv: Object.keys(stufen).length > 0, stufen };
@@ -2583,7 +2588,9 @@ const gruendeFassen = (...teile) => {
  *   4. Sonst das Modell des Laufs.
  *
  * Rueckgabe: `{ modell, herkunft, grund, stufe, stufeVerwendet, kommando, stufenName,
- * startbar }`. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
+ * effort, startbar }`. `effort` ist die Gruendlichkeit der verwendeten Stufe (Issue #846)
+ * und `null`, wo die Stufe das Modell nicht gestellt hat — bei `herkunft` `karte` und
+ * `lauf` — sowie im Kommando-Zweig. `startbar: false` heisst, dass die Stufe des Pakets auf keiner erreichbaren
  * Ebene startet — dann darf **keine** Session beginnen (Kriterium 10), und der Aufrufer
  * verbucht das Paket als Fehlschlag. `herkunft` kennt `karte`, `stufe` und `lauf`.
  *
@@ -2595,7 +2602,7 @@ const gruendeFassen = (...teile) => {
 export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
   const { modell: ausKarte, grund: modellGrund } = empfohlenesModell(body, erlaubteModelle);
   const { stufe, grund: stufenGrund } = aufgabenStufe(body);
-  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, startbar: true };
+  const rahmen = { stufe, stufeVerwendet: null, kommando: null, stufenName: null, effort: null, startbar: true };
 
   if (ausKarte) {
     // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
@@ -2622,6 +2629,11 @@ export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
     stufeVerwendet,
     kommando: eintrag.kommando,
     stufenName: eintrag.name,
+    // Die Gruendlichkeit der WIRKLICH verwendeten Stufe (Issue #846) — dieselbe Stufe,
+    // die auch das Modell stellt. Im Kommando-Zweig bleibt sie null: Dort startet ein
+    // fremdes Programm, das `--effort` nicht kennt; das Schema verbietet das Feld dort
+    // ohnehin, und diese Zeile verlaesst sich nicht darauf.
+    effort: eintrag.kommando ? null : (eintrag.effort ?? null),
     modell: eintrag.modell ?? selbstauskunft,
     herkunft: "stufe",
     grund: gruendeFassen(grund),
@@ -2901,8 +2913,11 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
  *
  * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
  * darum in jedem der drei Wege.
+ *
+ * Exportiert fuer die Tests (Issue #846): `NIGHT_CLAUDE_CMD` ersetzt den ganzen Aufruf,
+ * eine Fake-Session sieht die gebaute Kommandozeile also nie.
  */
-function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
+export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
   if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
 
@@ -2921,9 +2936,13 @@ function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
   // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
   const werkzeugArgs = opts.vordergrundCheck ? ["--disallowedTools", "Monitor"] : [];
+  // Die Gruendlichkeit der Stufe (Issue #846). Nur hier, und nur wenn gesetzt: Ohne das
+  // Flag gilt die Voreinstellung der CLI, und eine Stufe ohne `effort` faehrt damit
+  // zeichengleich zu vorher.
+  const effortArgs = alsText(opts.effort) ? ["--effort", opts.effort] : [];
   return {
     cmd: "claude",
-    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs],
+    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs, ...effortArgs],
   };
 }
 
@@ -4750,6 +4769,7 @@ function paketeAbschliessen(stand, gezogen) {
       const einheit = LAUF?.einheiten.findLast((e) => e.id === String(id));
       stand.umgesetzt.push({
         id, stufe: einheit?.stufe ?? null, stufeVerwendet: einheit?.stufeVerwendet ?? null, modell: einheit?.modell ?? null,
+        effort: einheit?.effort ?? null,
       });
       continue;
     }
@@ -5083,11 +5103,15 @@ function berichtUmsetzungMitGrund(pakete, id, grund) {
 function berichtUmsetzungStufe(eintrag) {
   const stufe = eintrag && typeof eintrag === "object" ? eintrag.stufe : null;
   if (!stufe) return "ohne Stufe";
-  const { stufeVerwendet, modell } = eintrag;
+  const { stufeVerwendet, modell, effort } = eintrag;
   const stufeText = stufeVerwendet && stufeVerwendet !== stufe
     ? `Aufgabenstufe ${stufe}, ueber Stufe ${stufeVerwendet}`
     : `Aufgabenstufe ${stufe}`;
-  return modell ? `${stufeText}, Modell ${modell}` : stufeText;
+  // Die Gruendlichkeit hinten und nur, wenn gesetzt (Issue #846) — dieselbe Regel wie in
+  // `rundenHinweis` und im Dry-Run; ein Eintrag aus einem aelteren Ergebnisstand kennt
+  // das Feld nicht und erscheint darum wie bisher.
+  const effortText = effort ? `, Gruendlichkeit ${effort}` : "";
+  return modell ? `${stufeText}, Modell ${modell}${effortText}` : `${stufeText}${effortText}`;
 }
 
 function berichtUmsetzungEintrag(pakete, eintrag) {
@@ -5580,14 +5604,18 @@ export async function laufeKette(args) {
  * bzw. `, Stufe leicht nicht belegt, Modell <x> (Stufe mittel)`). Herkunft "karte" und
  * "lauf" bleiben wortgleich mit der Zeile von vor der Stufen-Einstellung.
  */
-function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund }) {
+function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund, effort }) {
   if (herkunft === "karte") return `, Modell ${modell} (Karte)`;
   if (herkunft === "lauf") {
     const nachsatz = grund ? ` — ${grund}` : "";
     return `, Modell ${modell} (Lauf)${nachsatz}`;
   }
   const stufeText = stufeVerwendet === stufe ? `Stufe ${stufe}` : `Stufe ${stufe} nicht belegt`;
-  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})`;
+  // Die Gruendlichkeit steht hinten und nur, wenn sie gesetzt ist (Issue #846): Wer vor
+  // der Nacht prueft, WOMIT ein Paket liefe, prueft auch, wie gruendlich — ohne sie bleibt
+  // die Zeile zeichengleich mit der von vor dieser Aenderung.
+  const effortText = effort ? `, Gruendlichkeit ${effort}` : "";
+  return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})${effortText}`;
 }
 
 function dryRunBefund(issue, ctx, assumedDone) {
@@ -6291,18 +6319,23 @@ function stufenFelderAuffrischen() {
 }
 
 /**
- * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711).
+ * Die Hinweiszeile einer Runde zur Modellwahl, oder `null` (Issue #665, erweitert um #711
+ * und #846).
  *
  * Sie erscheint nur, wenn es etwas zu sagen gibt — eine Stufe im Spiel oder ein Grund.
  * Ein Paket ohne beides protokolliert wie bisher nichts: Eine Zeile je Paket, die nur
  * "Modell des Laufs" wiederholt, machte die interessanten Zeilen unsichtbar.
  */
-function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet }) {
+function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet, effort }) {
   if (!stufe && !grund) return null;
   const teile = [];
   if (stufe) teile.push(`Aufgabenstufe ${stufe}`);
   teile.push(modell ? `Modell ${modell} (${herkunft})` : `kein Modell (${herkunft})`);
   if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(`ueber Stufe ${stufeVerwendet}`);
+  // Nur wenn gesetzt (Issue #846): Ohne Gruendlichkeit bleibt die Zeile wortgleich mit
+  // der von vorher — eine Stufe ohne `effort` faehrt mit der Voreinstellung der CLI, und
+  // das ist keine Auskunft, die eine eigene Angabe verdient.
+  if (effort) teile.push(`Gruendlichkeit ${effort}`);
   return grund ? `${teile.join(", ")} — ${grund}` : teile.join(", ");
 }
 
@@ -6390,9 +6423,12 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // Womit die Session startet (Issue #711): Modellname oder die Kommandozeile der Stufe.
   // Dasselbe Buendel geht spaeter an die Salvage-Session desselben Pakets — sie prueft den
   // Zwischenstand der regulaeren Runde und muss dafuer auf demselben Weg laufen.
+  // `effort` gehoert ins selbe Buendel (Issue #846): Es ist die Gruendlichkeit der Stufe,
+  // die auch das Modell gestellt hat, und die Salvage-Session desselben Pakets soll auf
+  // demselben Weg laufen — mit demselben Modell und derselben Gruendlichkeit.
   const sessionWahl = modellStand.kommando
     ? { model: modellStand.modell, kommando: modellStand.kommando, stufenName: modellStand.stufenName, aufgabenstufe: modellStand.stufe }
-    : { model: modellStand.modell };
+    : { model: modellStand.modell, effort: modellStand.effort };
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
   // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
