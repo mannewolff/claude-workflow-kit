@@ -284,6 +284,20 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 
 **Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
 
+### Die langsamsten Testdateien finden
+
+Die Testsuite läuft in jedem Arbeitspaket, in jedem `checks.mjs run`, im Commit-Gate und in der CI — jede eingesparte Sekunde wirkt also überall. Der Testrunner von Node fährt die **Dateien parallel**, die Tests **innerhalb** einer Datei nacheinander: Nach unten begrenzt darum die langsamste Datei die Wandzeit der ganzen Suite, und eine Datei deutlich über dem Rest gehört thematisch geteilt (Issue #836).
+
+Welche das sind, sagt ein Lauf mit dem JUnit-Reporter. Er trägt an jedem `<testcase>` die Attribute `file` und `time`; **je `file` summiert** ergibt das die Zeit der Datei:
+
+```bash
+node --test --test-reporter=junit > /tmp/testzeiten.xml
+```
+
+Die Wandzeit selbst steht als `duration_ms` am Ende eines gewöhnlichen `node --test`. Weil sie von Lauf zu Lauf schwankt, ist ein Vergleich vor und nach einer Änderung erst mit **drei Läufen je Seite und dem Median** belastbar.
+
+Die Zahlen gelten für die Maschine, auf der gemessen wurde, und veralten mit jedem neuen Test. Wer die Liste braucht, erhebt sie neu, statt eine ältere fortzuschreiben.
+
 ### Gütemessung und Marke: `guete`
 
 Grüne Tests sagen, dass die Tests durchlaufen — nicht, dass sie etwas bemerken würden. **Eine** Prüfung der Liste darf ein Projekt deshalb als **Gütemessung** benennen: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der vereinbarten Marke hält das Veröffentlichen an. Getragen wird die Benennung von einem `guete`-Block mit `muster` und `marke`:
