@@ -240,7 +240,7 @@ Form 1 und Form 3 verhalten sich gleich und bedeuten trotzdem Verschiedenes: **v
 
 Beide Vertauschungen gehen schief, und beide sähen im Bericht korrekt aus. Ein `merge-base`-Anker **vor dem Commit** sammelte fremde Arbeitspakete ein: Ein roter Check spräche dann über Änderungen, mit denen das laufende Paket nichts zu tun hat — nachts würde der Fehlschlag dem falschen Issue zugeschrieben.
 
-Ein `HEAD`-Anker **vor dem Push** sähe umgekehrt auf sauberem Arbeitsbaum gar nichts: Das Kommando meldete `leeresPaket` und ließe jede Prüfung aus, während der Bericht das als vollständigen Lauf auswiese. Deshalb steht in jedem Skill genau ein Anker, und er steht dort begründet.
+Ein `HEAD`-Anker **vor dem Push** spräche umgekehrt über das falsche Stück: Was dort läuft, entscheidet der Anker zwar nicht mehr — die [Veröffentlichungsstufen fahren den vollen Umfang](#gestaffelte-prüfungen-stufe) —, wohl aber, welchen Stand die Zusammenfassung bezeugt. `basis`, `geaendert` und die Blob-Hashes beschrieben dann das letzte Arbeitspaket statt des Batches, der gleich hinausgeht, und gegen genau diese Hashes prüft das Commit-Gate den Index. Deshalb steht in jedem Skill genau ein Anker, und er steht dort begründet.
 
 **Im Zweifel läuft alles. Nicht abschaltbar.** Drei Wege führen zum vollen Umfang: eine geänderte Datei, die sich **keinem Bereich** zuordnen lässt; eine **nicht zugeordnete Prüfung**, die ohnehin immer läuft; und ein **leerer oder nicht auflösbarer Anker**. Ein leerer zählt dabei wie ein nicht auflösbarer, nie wie ein fehlender — ein fehlender ergäbe den Default `HEAD` und auf committetem Stand gar keine Prüfung. Einen Schalter, der die Regel abstellt, gibt es nicht: Eine Auswahl, die falsch ausfällt, nimmt Prüfung weg, und dieser Fehler geht in die Richtung, in der er niemandem auffällt.
 
@@ -274,7 +274,9 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 | `push` | vor dem Veröffentlichen auf `main` | `/push-main` |
 | `merge` | vor der Freigabe nach `production` | `/merge-production` |
 
-**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Wer die Freigabestufe fährt, bekommt außerdem den vollen Umfang: Dort wird keine Prüfung mehr nach Bereichen ausgewählt.
+**Die Stufen sind kumulativ.** `push` fährt die Paketstufe mit, `merge` fährt beide mit — vor der Freigabe laufen also **alle drei**. Keine Prüfung entfällt damit aus dem Prozess; sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt.
+
+**Die beiden Veröffentlichungsstufen fahren den vollen Umfang.** `push` und `merge` fahren **jede fällige** Prüfung — auch bei unberührten Bereichen und auch bei leerem Paket. Dort wird der Stand gemessen, der hinausgeht, und der besteht aus mehr als dem letzten Arbeitspaket; eine Auslassung zeigte auf den falschen Vergleich. Die Eingrenzung nach Bereichen gehört an die Paketstufe, wo sie über ein Arbeitspaket spricht. Die Kumulation bleibt davon unberührt: Was später dran ist, bleibt auch hier aus.
 
 **Ein fehlendes Feld bedeutet `paket`.** Die bloße String-Form und ein Objekt ohne `stufe` tragen die Paketstufe, und damit bleibt jede Bestandskonfiguration unverändert in ihrem Verhalten. Wer die Staffelung nicht will, schreibt nichts hin.
 
@@ -727,7 +729,7 @@ Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du
 
 Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
 
-**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Dieser Lauf kann spürbar länger dauern als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
+**Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Und zwar **jede** dieser Prüfungen: Vor dem Push wird keine mehr nach Bereichen ausgewählt, und ein leeres Paket lässt hier nichts aus. Dieser Lauf dauert spürbar länger als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
 
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 

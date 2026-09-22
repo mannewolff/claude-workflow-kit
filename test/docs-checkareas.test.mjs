@@ -108,6 +108,11 @@ test("die Doku ordnet jedem Anker seinen Ort zu", () => {
 
 // Ohne die Fehlbilder liest sich die Ankerwahl wie Geschmackssache. Sie ist keine:
 // Beide Vertauschungen fuehren zu einem Bericht, der korrekt aussieht.
+//
+// Vor dem Push geht es seit Issue #849 nicht mehr um die Auswahl — die
+// Veroeffentlichungsstufen fahren ohnehin alles —, sondern um den NACHWEIS: Ein
+// HEAD-Anker laesst die Zusammenfassung ueber das letzte Arbeitspaket sprechen
+// statt ueber den Batch, und gegen deren Hashes prueft das Commit-Gate den Index.
 test("die Doku benennt beide Fehlbilder der vertauschten Anker", () => {
   const abschnitt = bereichsAbschnitt();
 
@@ -115,11 +120,13 @@ test("die Doku benennt beide Fehlbilder der vertauschten Anker", () => {
   assert.ok(falschVorCommit,
     "das Fehlbild 'merge-base vor dem Commit sammelt fremde Pakete ein' fehlt");
 
-  const falschVorPush = absatzMit(abschnitt, /`HEAD`/, /(vor dem Push|beim Push)/i, /leeresPaket/);
+  const falschVorPush = absatzMit(abschnitt, /`HEAD`/, /(vor dem Push|beim Push)/i, /Hashes/i);
   assert.ok(falschVorPush,
-    "das Fehlbild 'HEAD vor dem Push meldet leeresPaket' fehlt");
-  assert.match(falschVorPush, /(ließe|liesse|lässt|laesst)[\s\S]{0,80}aus|keine (einzige )?Prüfung/i,
-    "es steht nicht, dass dabei jede Pruefung ausgelassen wuerde");
+    "das Fehlbild 'HEAD vor dem Push bezeugt den falschen Stand' fehlt");
+  assert.match(falschVorPush, /(bezeugt|Nachweis)/i,
+    "es steht nicht, dass der Anker den bezeugten Stand bestimmt");
+  assert.match(falschVorPush, /Batch/i,
+    "es steht nicht, dass der Nachweis dann nicht ueber den Batch spricht");
 });
 
 // --- Punkt 5: die Zweifelsregel -------------------------------------------

@@ -126,17 +126,21 @@ node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD orig
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
 
-**Dieser Skill fährt die Push-Stufe.** Damit laufen zusätzlich zu den Prüfungen der
-Paketstufe alle, die ihr Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat.
-Der Lauf nennt die **zusätzlichen Prüfungen vorab** in einer eigenen Zeile (`Stufe push:
-zusaetzlich zur Paketstufe laeuft …`) — er kann darum spürbar **länger dauern** als der
+**Dieser Skill fährt die Push-Stufe, und die fährt den vollen Umfang.** Es laufen
+zusätzlich zu den Prüfungen der Paketstufe alle, die ihr Projekt für den Zeitpunkt des
+Veröffentlichens vorgesehen hat — und zwar **jede von ihnen**, auch bei unberührten
+Bereichen und auch dann, wenn seit dem Anker nichts geändert wurde. Vor dem Push wird der
+Stand gemessen, der hinausgeht, und der besteht aus mehr als dem letzten Arbeitspaket. Der
+Lauf nennt die **zusätzlichen Prüfungen vorab** in einer eigenen Zeile (`Stufe push:
+zusaetzlich zur Paketstufe laeuft …`) — er wird darum spürbar **länger dauern** als der
 Lauf je Arbeitspaket in `/implement-next`. Das ist der vorgesehene Zeitpunkt und kein
 Grund, ihn abzukürzen.
 
-**Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
-`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
-`leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md`
-liefe damit vor dem Push durch eine leere Prüfung.
+**Der Anker ist der Batch, nicht `HEAD`.** Er entscheidet nicht mehr, **was** läuft — an
+dieser Stufe läuft ohnehin alles —, sondern welchen Stand die Zusammenfassung **bezeugt**:
+`basis`, `geaendert` und die Blob-Hashes, gegen die das Commit-Gate den Index prüft. Ohne
+`--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als Basis, und der Nachweis spräche
+dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
 
 - **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals den
   Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren (siehe die

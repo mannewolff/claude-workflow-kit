@@ -80,9 +80,11 @@ test("[skills-20] beide Release-Skills fahren genau einen Prueflauf, und zwar mi
     const laeufe = [...text.matchAll(LAUF)];
     assert.equal(laeufe.length, 1, `${wo}: genau ein 'checks.mjs run' erwartet, gefunden ${laeufe.length}`);
 
-    // Der Anker ist der Batch, nicht HEAD. Ohne ihn naehme `planen` HEAD als Basis; ist
-    // seit HEAD nichts geaendert, meldete es `leeresPaket` und liesse JEDE Pruefung aus —
-    // ein Projekt ohne RELEASING.md liefe damit vor dem Push durch eine leere Pruefung.
+    // Der Anker ist der Batch, nicht HEAD. Er entscheidet seit Issue #849 nicht mehr,
+    // WAS laeuft — die Veroeffentlichungsstufen fahren den vollen Umfang —, wohl aber,
+    // welchen Stand die Zusammenfassung bezeugt: `basis`, `geaendert` und die Hashes,
+    // gegen die das Commit-Gate den Index prueft. Ohne ihn naehme `planen` HEAD als
+    // Basis, und der Nachweis spraeche ueber das letzte Stueck statt ueber den Batch.
     const zeile = text.slice(laeufe[0].index).split("\n")[0];
     assert.match(zeile, /--since/, `${wo}: der Lauf traegt keinen Anker: ${zeile}`);
     assert.match(zeile, /git merge-base/, `${wo}: der Anker ist nicht der Batch-Anker: ${zeile}`);

@@ -89,14 +89,18 @@ brauchte seinen eigenen Lauf; bis zu vier bei `push main`. Jetzt entstehen erst 
 Dateien des Wegs, dann misst ein Lauf den fertigen Stand, dann traegt ein Commit ihn und
 seinen Nachweis.
 
-Dieser eine Lauf traegt den **Batch-Anker** — `--since` mit dem `git merge-base` gegen
-`origin/<mainBranch>`; die Kommandozeile steht im Skill. Nicht den ankerlosen Aufruf:
-Ohne `--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als
-Basis; ist seit `HEAD` nichts geaendert, meldet es `leeresPaket` und laesst **jede**
-Pruefung mit Exit 0 aus. Ein Projekt ohne `RELEASING.md` liefe damit
-vor dem Push durch eine leere Pruefung, waehrend frueher der volle `buildChecks`-Katalog
-lief. Der Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, also genau
-der Batch, der gleich hinausgeht.
+Dieser eine Lauf faehrt die **Push-Stufe**, und die faehrt den **vollen Umfang**: jede
+faellige Pruefung, auch bei unberuehrten Bereichen und auch bei leerem Paket. Vor dem
+Veroeffentlichen wird der Stand gemessen, der hinausgeht.
+
+Der Lauf traegt trotzdem den **Batch-Anker** — `--since` mit dem `git merge-base` gegen
+`origin/<mainBranch>`; die Kommandozeile steht im Skill. Nicht den ankerlosen Aufruf: Der
+Anker entscheidet zwar nicht mehr, WAS laeuft, wohl aber, welchen Stand die
+Zusammenfassung **bezeugt** — `basis`, `geaendert` und die Blob-Hashes, gegen die das
+Commit-Gate den Index prueft. Ohne `--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als
+Basis, und der Nachweis spraeche dann ueber das letzte Stueck statt ueber den Batch. Der
+Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, also genau der Batch,
+der gleich hinausgeht.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
 `KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`
