@@ -7,6 +7,14 @@
  * genau diese Auswahl aus und hinterlaesst das Ergebnis als Zusammenfassung, aus
  * der der Nacht-Runner liest.
  *
+ * Die Zusammenfassung BEGLEITET den Lauf (Issue #857): geschrieben vor dem ersten
+ * Kommando, erneut vor jedem weiteren, ein letztes Mal am Ende — und nur diese
+ * letzte Fassung traegt `abgeschlossen: true`. Daraus folgt, was ein Abbruch
+ * hinterlaesst: einen Stand, in dem das Kommando, waehrend dessen der Lauf starb,
+ * noch `nicht gestartet` ist. Der Lauf ist dann nie ganz gruen, und das ist dieselbe
+ * sichere Richtung wie ueberall hier — ein gestorbener Pruefer gilt als
+ * beanstandend, nicht als ungemessen.
+ *
  * Warum ein Kommando und keine Regel im Skilltext: Die Sessions dieses Projekts
  * haben dreimal belegt, dass eine Regel im Prompt nicht wirkt, wenn sie unter
  * Druck steht (Issue #267, 2026-08-12, Issue #410). Eine Auswahl, die falsch
@@ -161,6 +169,11 @@ plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
 run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       ab (Exit ungleich 0) und schreibt die Zusammenfassung nach
       ${SUMMARY_DATEI}.
+      Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
+      Kommando und wird vor jedem weiteren ueberschrieben; das laufende
+      Kommando steht darin noch auf 'nicht gestartet'. Erst die letzte Fassung
+      traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
+      Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -788,6 +801,19 @@ function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
   }
 }
 
+/**
+ * Die Summe der gemessenen Dauern — `null`, wenn nichts gemessen wurde.
+ *
+ * Steht als eigene Funktion, seit die Zusammenfassung mehrfach im Lauf geschrieben
+ * wird (Issue #857): Jede Fassung traegt den Stand, den sie bezeugt, und "nichts
+ * gemessen" ist kein Nullbetrag — weder beim leeren Paket noch vor dem ersten
+ * Kommando.
+ */
+function dauerGesamt(laufen) {
+  const gemessen = laufen.filter((e) => e.dauerMs !== null);
+  return gemessen.length > 0 ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0) : null;
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -853,8 +879,31 @@ function ausfuehren(args) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
   let guete = null;
+
+  // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
+  // vor dem ersten Kommando und wird vor jedem weiteren ueberschrieben, statt erst am
+  // Ende zu entstehen.
+  //
+  // Der Grund ist der Abbruch. Ein Lauf, der an der Uhr, durch ein Signal oder mit der
+  // Session endet, hinterliess vorher keine Datei — und eine fehlende Datei ist fuer
+  // den Nacht-Runner "ungeprueft", also ungemessen statt beanstandet. Oder es blieb
+  // eine aeltere liegen, die wie das Ergebnis dieses Laufs aussah. Jetzt liegt in jedem
+  // Moment eine Fassung, und jede, die ein Abbruch hinterlassen kann, traegt mindestens
+  // einen Eintrag `nicht gestartet` (Fachplan #769, AK 3 und 4).
+  //
+  // VOR dem Kommando und nicht danach, weil Gate (.githooks/gate.mjs) und Runner
+  // (`lesePruefung` in night.mjs) allein `ergebnis !== "gruen"` auswerten und
+  // `abgeschlossen` nicht sehen: Das laufende Kommando muss in der Datei noch
+  // ungruen stehen, sonst saehe ein Abbruch mittendrin gruen aus.
+  const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
+    ...auswahl, laufen, zeitpunkt, hashes, abgeschlossen,
+    dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
+  });
+  schreibeStand(false);
+
   for (const eintrag of laufen) {
     if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
+    schreibeStand(false);
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
     const start = process.hrtime.bigint();
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
@@ -879,21 +928,15 @@ function ausfuehren(args) {
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
 
-  // null statt 0, wenn kein Kommando gemessen wurde (leeres Paket, voller
-  // Umfang ohne Lauf gibt es hier nicht) — "nichts gemessen" ist kein
-  // Nullbetrag.
-  const gemessen = laufen.filter((e) => e.dauerMs !== null);
-  const dauerGesamtMs = gemessen.length > 0
-    ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0)
-    : null;
-
-  // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
-  // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat —
-  // dann aber immer, auch beim gruenen Lauf (Issue #763).
-  const pfad = schreibeZusammenfassung({
-    ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs, ...(guete ? { guete } : {}),
-  });
+  // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
+  // zu Ende gefahren. Auch bei rotem Abbruch geschrieben — und beim leeren Paket
+  // ebenso: "keine Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein
+  // Loch. Rot und abgeschlossen sind Verschiedenes: Das eine sagt, wie die Pruefung
+  // ausging, das andere, ob sie ihr Ende erreicht hat.
+  //
+  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat — dann
+  // aber immer, auch beim gruenen Lauf (Issue #763).
+  const pfad = schreibeStand(true);
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }

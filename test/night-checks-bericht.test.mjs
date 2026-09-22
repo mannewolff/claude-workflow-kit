@@ -201,6 +201,30 @@ test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Sessio
   });
 });
 
+test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", NUR_POSIX, () => {
+  // Die gewollte Verschiebung aus Issue #857 (Fachplan #769, AK 4): Bis dahin schrieb
+  // checks.mjs seine Zusammenfassung erst nach der Schleife — ein Lauf, der dazwischen
+  // starb, hinterliess keine Datei und die Session galt als "ungeprueft", also als
+  // ungemessen. Seitdem liegt eine unabgeschlossene Fassung mit "nicht gestartet", und
+  // der Runner sieht, was er sehen soll: eine Pruefung, die nicht durchkam.
+  //
+  // `kill -9 $PPID` toetet aus dem Pruefkommando heraus dessen Elternprozess, also
+  // checks.mjs selbst — derselbe Tod wie durch die Uhr oder das Ende der Session.
+  // Die Session-Shell lebt weiter und committet, die Runde saehe sonst erfolgreich aus.
+  const buildChecks = [{ cmd: "kill -9 $PPID", areas: ["kit"] }, FRONTEND_CHECK];
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_PRUEFUNG });
+
+    const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /rot/.test(z));
+    assert.ok(zeile, `Issue #${id} erscheint nicht als rot:\n${res.stdout}`);
+    assert.doesNotMatch(zeile, /ungeprueft/,
+      "eine hinterlassene Zwischenfassung ist etwas anderes als eine fehlende Datei");
+    assert.match(zeile, /nicht gestartet/, `das unfertige Kommando fehlt in der Zeile: ${zeile}`);
+  }, { buildChecks });
+});
+
 // --- Der Bericht als Ganzes ---
 
 test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", NUR_POSIX, () => {
