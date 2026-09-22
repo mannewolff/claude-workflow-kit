@@ -15,9 +15,9 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve, join } from "node:path";
+import { resolve, join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 
 // Kein __dirname mehr: Seit Issue #499 liest der Installer keine Datei neben sich
@@ -482,6 +482,34 @@ function aktiverHookVorhanden() {
 }
 
 /**
+ * Loest Symlinks so weit auf, wie der Pfad existiert.
+ *
+ * Reines `realpathSync` genuegt nicht: Die Lage wird bestimmt, BEVOR `.githooks`
+ * geschrieben ist — bei einer Erstinstallation gibt es das Verzeichnis noch nicht.
+ * Dann wird der Elternpfad aufgeloest und der letzte Name angehaengt. Ohne diese
+ * Aufloesung auf beiden Seiten verglichen man Schreibweisen statt Verzeichnisse:
+ * Auf macOS zeigt schon `/tmp` auf `/private/tmp`.
+ */
+function aufgeloest(pfad) {
+  try { return realpathSync(pfad); } catch { /* existiert (noch) nicht */ }
+  try { return join(realpathSync(dirname(pfad)), basename(pfad)); } catch { return pfad; }
+}
+
+/**
+ * Zeigt `wert` auf das `.githooks` DIESES Repos — gleich, wie er geschrieben ist?
+ *
+ * Absolut, mit `./` davor oder ueber einen Symlink: Es bleibt das eigene Gate, und
+ * der Installer darf es nicht fuer einen fremden Hook-Manager halten. Verglichen
+ * werden die aufgeloesten Verzeichnisse, nicht der Wortlaut; ein `.githooks` an
+ * einem anderen Ort faellt dabei heraus.
+ */
+function zeigtAufEigenesGithooks(wert) {
+  const wurzel = gitAntwort("rev-parse", "--show-toplevel");
+  if (!wurzel) return false;
+  return aufgeloest(resolve(wurzel, wert)) === aufgeloest(join(wurzel, ".githooks"));
+}
+
+/**
  * Was mit `core.hooksPath` geschehen soll — entschieden VOR der Frage.
  *
  * Gelesen wird der EFFEKTIVE Wert (ohne `--local`): Ein global gesetzter hooksPath
@@ -493,6 +521,7 @@ function hooksPathLage(scope) {
   if (!imGitRepo()) return { art: "entfaellt", grund: "kein Git-Repo oder git nicht gefunden" };
   const wert = gitAntwort("config", "--get", "core.hooksPath");
   if (wert === ".githooks") return { art: "schon gesetzt" };
+  if (wert && zeigtAufEigenesGithooks(wert)) return { art: "schon gesetzt" };
   if (wert) return { art: "belegt", wert };
   if (aktiverHookVorhanden()) return { art: "belegt", wert: "eine aktive Datei im Hooks-Verzeichnis" };
   return { art: "frei" };
