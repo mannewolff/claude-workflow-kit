@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.0.1] - 2026-09-22
+- Wiederholung, Idempotenz-Schluessel und drei Rueckmeldungen in board.mjs (#834)
+- Installer erkennt das eigene Commit-Gate auch bei absolutem core.hooksPath (#833)
+- befunde auswerten: Code-Zahlen auch je Art (#806)
+- befunde auswerten und befund: Bericht, Lauf-Abschluss und dritter Block in /push-main (#806)
+- Buchung verdrahten: /issue-review Schritt 6 und /push-main vor dem Commit (#805)
+- befunde vorschlag: Idee am Board, Vorschlagsstand und Ablehnung (#804)
+- Nacht-Kette: befundeZurueck als Rueckweg aus dem Worktree (#803)
+- befunde buchen: Protokoll .claude/befunde.tsv und Vergleichsstand der Code-Stufe (#802)
+- Fundblock in den Prompts von /issue-review und /review (#801)
+- Einstellungen: optionaler Block befunde mit der Schwelle (#800)
+
 ## [3.0.0] - 2026-09-22
 - Worktree-Spiegel ohne Pfadvergleich, damit er unter Windows filtert (#832)
 
