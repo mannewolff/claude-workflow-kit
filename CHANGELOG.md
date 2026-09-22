@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.1.1] - 2026-09-22
+- Pruefnachweis gilt nur zum Commit des Pakets (#865)
+- Bytegleichheits-Test gegen .claude/CLAUDE-workflow.md entfaellt (#864)
+- checks.mjs uebernimmt sein Ergebnis auf unveraendertem Stand (#863)
+- Aufstellung docs/regeln-im-werkzeug.md: welche Regel von /local-check wohin wanderte (#861)
+- Bedien-Regeln verlassen den Text von /local-check (#860)
+- Salvage-Vorpruefung kennt die Fehlermerkmale wie checks.mjs (#859)
+- checks.mjs prueft die Ausgabe selbst auf Fehlermerkmale (#858)
+- checks.mjs: Die Pruef-Zusammenfassung begleitet den Lauf (#857)
+- Massstab 'Regel im Text oder Regel im Werkzeug' in der Prozessvorlage (#856)
+- Konfiguration, Aufwand für die Implementierung im Nachtbetrieb eingestellt
+
 ## [3.1.0] - 2026-09-22
 - Blob von checks.mjs in install.mjs nachgezogen (#850)
 - Eingrenzung im Kit: sechs Teile, drei Testaufrufe und ein Schutztest (#850)
