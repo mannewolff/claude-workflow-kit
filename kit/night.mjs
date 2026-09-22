@@ -208,6 +208,14 @@ const WIRKSAMKEIT_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "wirksamkeit.mjs")
   : join(__dirname, "wirksamkeit.mjs");
 
+// Und dasselbe fuer die Befunde (Issue #804): Nach dem Rueckweg aus dem Worktree ruft
+// die Kette `befunde.mjs vorschlag --art <a>` je zurueckgegebener Mangel-Art. Auch das
+// ist ein Kindprozess und kein Import — das Kommando schreibt ueber board.mjs ans Board
+// und loest seine Pfade gegen das Projekt auf, in dem der Runner arbeitet.
+const BEFUNDE_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "befunde.mjs")
+  : join(__dirname, "befunde.mjs");
+
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
 // bewusst kein `false`: Ein stilles `false` liesse ein Plandokument als
@@ -1473,9 +1481,8 @@ function befundeZeilen(pfad) {
  * Anhaengen (E20, Fund B1 der Plan-Pruefung): Der Worktree zaehlt ab null — stehen zwei
  * Vorkommen in der Hauptkopie und kommt das dritte in der Kette, sah `buchen` dort den
  * Stand 1 und schwieg. Zurueck kommen nur die BERUEHRTEN Arten, die die Schwelle
- * (oberhalb ihres Nullpunkts, wie bei `buchen`) erreichen; der Aufrufer protokolliert
- * sie. `befunde vorschlag` wird hier bewusst nicht gerufen — das Kommando gibt es noch
- * nicht, es kommt mit einem eigenen Paket.
+ * (oberhalb ihres Nullpunkts, wie bei `buchen`) erreichen; der Aufrufer macht daraus je
+ * Art einen Vorschlag (Issue #804).
  *
  * Fehlt die Datei im Worktree, bleibt die Hauptkopie unberuehrt. Ein gescheitertes
  * Anhaengen ist ein Hinweis im Protokoll und haelt den Abbau nicht auf — das Protokoll
@@ -1502,14 +1509,53 @@ export function befundeZurueck(pfad, repoRoot) {
 }
 
 /**
+ * Ruft `befunde.mjs vorschlag --art <a>` fuer eine Mangel-Art an der Schwelle
+ * (Issue #804, night-70) und protokolliert das Ergebnis in genau einer Zeile.
+ *
+ * KEIN GATE, wie bei den Auswertungen (E9): Ein Fehlschlag — fehlendes Werkzeug,
+ * unerreichbares Board, unlesbare Zustandsdatei — ist eine Protokollzeile und haelt den
+ * Abbau des Worktrees nicht auf. Auf dem Spiel steht ein Vorschlag, den ein Mensch
+ * ohnehin erst bewerten muss; der Abbau dagegen raeumt einen Worktree weg, dessen
+ * Liegenbleiben den naechsten Lauf stoert.
+ */
+function befundeVorschlagen(repoRoot, art) {
+  try {
+    if (!existsSync(BEFUNDE_PATH)) throw new Error(`${BEFUNDE_PATH} liegt nicht vor`);
+    const res = spawnSync(process.execPath, [BEFUNDE_PATH, "vorschlag", "--art", art], {
+      encoding: "utf-8", cwd: repoRoot, maxBuffer: BOARD_MAX_BUFFER,
+    });
+    if (res.error) throw new Error(`liess sich nicht starten: ${res.error.message}`);
+    let stand;
+    try {
+      stand = JSON.parse(res.stdout);
+    } catch (err) {
+      throw new Error(`Ausgabe nicht lesbar: ${err.message}`);
+    }
+    if (res.status !== 0 || stand?.ok !== true) throw new Error(stand?.fehler || `Exit ${res.status}`);
+    const kennung = stand.karte === null ? `Pool-Idee ${stand.ideaId}` : `Karte ${stand.karte}`;
+    if (stand.angelegt) log(`  Vorschlag fuer '${art}' angelegt: ${kennung} — ${stand.titel}`);
+    else if (stand.ergaenzt) log(`  Vorschlag fuer '${art}' ergaenzt: Karte ${stand.karte}, Stand ${stand.zaehlerstand}.`);
+    else log(`  Kein Vorschlag fuer '${art}': ${stand.grund}`);
+  } catch (err) {
+    log(`Vorschlag fuer '${art}' fehlgeschlagen: ${err.message} — der Abbau geht weiter.`);
+  }
+}
+
+/**
  * Der Rueckweg unmittelbar vor einem Worktree-Abbau der Kette — an BEIDEN Abbaustellen
  * gerufen: vor der Stufe umsetzung und im finally am Kettenende. Das Nullen von
  * `kette.wt` nach dem ersten Abbau verhindert den zweiten Lauf und damit doppeltes
  * Anhaengen; die Arten an der Schwelle stehen als eine Zeile im Protokoll.
+ *
+ * Je zurueckgegebener Art folgt ein `befunde.mjs vorschlag --art <a>` (Issue #804):
+ * Hier — am Anlass — und nicht erst beim naechsten `push main`, weil ein zweiter Ort
+ * ein zweiter Zeitpunkt waere, zu dem dieselbe Zahl anders herauskommen kann (E9).
  */
 function kettenBefundeZurueck(kette) {
   const arten = befundeZurueck(kette.wt, kette.repoRoot);
-  if (arten.length > 0) log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
+  if (arten.length === 0) return;
+  log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
+  for (const art of arten) befundeVorschlagen(kette.repoRoot, art);
 }
 
 /**

@@ -15,6 +15,13 @@
  * ermittelt es zusaetzlich den Vergleichsstand: ob die maschinellen Pflichtpruefungen
  * auf demselben Stand gruen waren (AK 10, Plan #797 E12).
  *
+ * `vorschlag --art <a>` (Issue #804) legt am Board eine Idee an, sobald die Art oberhalb
+ * ihres Nullpunkts die Schwelle erreicht — und ergaenzt einen bereits offenen Vorschlag,
+ * statt einen zweiten anzulegen (AK 8). `vorschlag --abgelehnt <a>` vermerkt die
+ * Ablehnung und setzt den Nullpunkt auf den aktuellen Zaehlerstand (AK 9). Der Vorschlag
+ * ist eine BEOBACHTUNG, keine Entscheidung: Ob daraus eine maschinelle Pruefung wird,
+ * entscheidet der Mensch; ohne sein Zutun entsteht keine.
+ *
  * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU AN wirksamkeit.mjs (Plan #797, E1):
  * `wirksamkeit.mjs` misst die Pflichtpruefungen aus `ausfuehrungen.tsv` und
  * `bewegungen.tsv`; Funde von Modellen sind eine andere Quelle und ein anderer
@@ -49,14 +56,16 @@
  *
  * Aufruf im Projekt-Root:  node .claude/kit/befunde.mjs arten
  *                          node .claude/kit/befunde.mjs pruefen --datei <pfad>
+ *                          node .claude/kit/befunde.mjs vorschlag --art <art>
  *
  * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek — das Kit liefert
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
  */
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
@@ -83,6 +92,16 @@ const nachbarFehlt = () => {
 const { blobHashes, zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : { blobHashes: nachbarFehlt, zusammenfassungPfad: nachbarFehlt };
+
+// Der Board-Adapter als KINDPROZESS, nicht als Import (Issue #804): `vorschlag` schreibt
+// ans Board, und board.mjs ist ein CLI mit eigener Config-Aufloesung und eigenem
+// Auth-Weg. KIT_ROOT ist derselbe Test-Hook wie in kit/night.mjs (Issue #189) — nur so
+// laeuft in den Tests das ECHTE kit/befunde.mjs gegen einen Stub-Adapter, statt eine
+// Kopie im Temp-Verzeichnis zu messen. Ohne die Variable ist es der Nachbar, in `kit/`
+// wie in `.claude/kit/`.
+const BOARD_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
+  : join(dirname(fileURLToPath(import.meta.url)), "board.mjs");
 
 /**
  * Die zwoelf Mangel-Arten. Grob statt feinmaschig (Nicht-Ziel des Fachkonzepts): Sie
@@ -153,11 +172,20 @@ const ANGABEN = {
   art: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
 };
 
+// Die drei Dateien, mit denen dieses Werkzeug arbeitet. Hier oben und nicht bei
+// `buchen`, weil der Hilfetext sie nennt und ein `const` unterhalb von ihm beim Laden
+// in die temporale Totzone liefe.
+const PROTOKOLL_DATEI = ".claude/befunde.tsv";
+const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
+const CONFIG_DATEI = ".claude/workflow.config.json";
+
 const HELP = `befunde.mjs (claude-workflow-kit v${KIT_VERSION}) — Form und Arten der Funde
 
   node befunde.mjs arten
   node befunde.mjs pruefen --datei <pfad>
   node befunde.mjs buchen --datei <pfad> --stufe <fachlich|plan|issue|code> --karte <n>
+  node befunde.mjs vorschlag --art <art>
+  node befunde.mjs vorschlag --abgelehnt <art>
 
 arten    Gibt die ${ARTEN.length} Mangel-Arten mit je einem erklaerenden Satz aus. Diese Liste
          ist der einzige Wortlaut im Kit; ein Projekt ergaenzt keine eigenen Arten.
@@ -173,11 +201,19 @@ buchen   Schreibt je Fund mit 'Gegenprobe: … — geprueft, bestaetigt' UND
          Schwelle (Config-Block befunde.schwelle, Vorgabe ${SCHWELLE_VORGABE}) erreicht ist. Bei
          --stufe code steht in der letzten Spalte der Vergleichsstand der
          Pflichtpruefungen ('gruen' oder 'nicht-vergleichbar'), sonst '-'.
+vorschlag
+         --art <art> legt am Board eine Idee an, sobald die Art oberhalb ihres
+         Nullpunkts die Schwelle erreicht; ein bereits offener Vorschlag wird
+         ergaenzt statt gedoppelt. Unterhalb der Schwelle entsteht nichts, und das
+         ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
+         Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
+         Der Vermerk steht in ${VORSCHLAEGE_DATEI}; ein gescheiterter
+         Board-Aufruf laesst ihn unveraendert und endet ungleich 0.
 
   --version   Kit-Stand dieser Datei.
   --help, -h  Diese Uebersicht.
 
-Die Ausgabe beider Kommandos ist immer JSON auf stdout — auch im Leerfall und auch bei
+Die Ausgabe aller Kommandos ist immer JSON auf stdout — auch im Leerfall und auch bei
 einem abgewiesenen Aufruf.
 `;
 
@@ -363,10 +399,6 @@ export function arten() {
 }
 
 // --- Buchen (Issue #802) -----------------------------------------------------
-
-const PROTOKOLL_DATEI = ".claude/befunde.tsv";
-const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
-const CONFIG_DATEI = ".claude/workflow.config.json";
 
 // SYNC: dasselbe Praefix steht in kit/checks.mjs (WARTEND_PRAEFIX, Issue #546) —
 // Aenderungen dort nachziehen. Die wartenden Vorhaben-Notizen fallen dort aus
@@ -648,6 +680,274 @@ export function buchen({ datei, stufe, karte }) {
   };
 }
 
+// --- Vorschlag (Issue #804) --------------------------------------------------
+
+/**
+ * Der Satz, der in jeder Idee und jeder Ergaenzung steht (AK 8 der fachlichen Quelle
+ * #768). Er ist die Leitplanke gegen den naheliegenden Kurzschluss, eine Art sei eine
+ * Pruefung: Drei Funde der Art `luecke` koennen drei verschiedene Luecken sein.
+ */
+const STREUUNG_SATZ = "Nicht alle Funde dieser Art sind mit derselben Pruefung zu fangen.";
+
+/**
+ * Die Autorschaft der Idee. Kein Modellname, denn keines hat sie geschrieben: Der Body
+ * entsteht aus Protokollzeilen, ohne dass ein Modell den Text erzeugt. Die
+ * Autor-Modell-Leitplanke in board.mjs (Issue #266) verlangt eine Zeile; eine erfundene
+ * Modellangabe waere eine gefaelschte Autorschaft, der Werkzeugname ist die wahre.
+ */
+const AUTOR = "kit/befunde.mjs";
+
+/** Der Titel der Idee zu einer Art; `sonstiges` fragt nach der Liste, nicht nach einer Pruefung. */
+function vorschlagTitel(art) {
+  return art === "sonstiges"
+    ? "[Idee] Liste der Mangel-Arten erweitern?"
+    : `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`;
+}
+
+/** Die Vorkommen einer Art aus den Protokollzeilen, in Protokollreihenfolge. */
+function vorkommenFuer(zeilen, art) {
+  const treffer = [];
+  for (const zeile of zeilen) {
+    const s = zeile.split("\t");
+    if (s.length < 7 || s[4] !== art) continue;
+    treffer.push({ zeitpunkt: s[0], stufe: s[1], karte: s[2], rolle: s[3], schweregrad: s[5] });
+  }
+  return treffer;
+}
+
+/** Die Vorkommen als Markdown-Tabelle — je Zeile ein Fund mit seinen fuenf Angaben. */
+function vorkommenTabelle(vorkommen) {
+  return [
+    "| Zeitpunkt | Stufe | Karte | Rolle | Schweregrad |",
+    "| --- | --- | --- | --- | --- |",
+    ...vorkommen.map((v) => `| ${v.zeitpunkt} | ${v.stufe} | ${v.karte} | ${v.rolle} | ${v.schweregrad} |`),
+  ].join("\n");
+}
+
+/**
+ * Der Body der Idee. Die zugrunde liegenden Funde sind die OBERHALB des Nullpunkts:
+ * Was vor einer Ablehnung lag, hat der Mensch bereits gesehen und verworfen — es noch
+ * einmal aufzuzaehlen truege die abgeraeumte Frage zurueck in die neue Idee.
+ */
+function ideeBody(art, vorkommen, { zaehlerstand, nullpunkt, schwelle }) {
+  const frage = art === "sonstiges"
+    ? `Die Auffang-Art \`sonstiges\` hat die Schwelle ${schwelle} erreicht. Das ist ein Hinweis darauf, dass die Liste der Mangel-Arten einen Fall nicht benennt, den die Reviewer regelmaessig finden — nicht darauf, dass eine Pruefung fehlt.`
+    : `Die Mangel-Art \`${art}\` hat die Schwelle ${schwelle} erreicht. Lohnt sich daraus eine maschinelle Pruefung, die solche Funde kuenftig faengt, bevor ein Modell sie melden muss?`;
+  return [
+    "## Kontext",
+    "",
+    `Autor-Modell: ${AUTOR}`,
+    "",
+    frage,
+    "",
+    `Stand im Protokoll \`${PROTOKOLL_DATEI}\`: ${zaehlerstand} Vorkommen, Nullpunkt ${nullpunkt}, Schwelle ${schwelle}.`,
+    "",
+    "Dieser Vorschlag ist eine Beobachtung, keine Entscheidung: Ob daraus eine Pruefung wird, entscheidet ein Mensch. Ohne sein Zutun entsteht keine.",
+    "",
+    STREUUNG_SATZ,
+    "",
+    "## Die zugrunde liegenden Funde",
+    "",
+    vorkommenTabelle(vorkommen),
+    "",
+    "## Weg nach vorn",
+    "",
+    `Diese Idee ist keine Aufgabe. Wer sie aufgreift, fuehrt sie ueber \`/techplan #<n>\` und \`/issues\` in Arbeitspakete; wer sie verwirft, ruft \`node .claude/kit/befunde.mjs vorschlag --abgelehnt ${art}\` — dann zaehlt die Art ab dem heutigen Stand neu.`,
+    "",
+  ].join("\n");
+}
+
+/** Der Kommentar, mit dem ein offener Vorschlag um die seither gebuchten Funde waechst. */
+function ergaenzungText(art, neue, { zaehlerstand, vorher }) {
+  return [
+    `## Weitere Funde der Mangel-Art \`${art}\``,
+    "",
+    `Seit dem Stand dieses Vorschlags (${vorher}) sind ${neue.length} Vorkommen dazugekommen — Stand jetzt ${zaehlerstand}.`,
+    "",
+    vorkommenTabelle(neue),
+    "",
+    STREUUNG_SATZ,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Ruft den Board-Adapter und liefert seine JSON-Antwort; jeder Fehlschlag wirft.
+ *
+ * Werfend und nicht meldend, weil der Aufrufer danach die Zustandsdatei schreibt: Ein
+ * Fehlschlag, der als Wert zurueckkaeme, muesste an jeder Aufrufstelle einzeln
+ * abgefangen werden — und die eine vergessene Stelle hinterliesse einen Vermerk ohne
+ * Karte (die Zusage aus der Aufgabe: kein halb vermerkter Vorschlag).
+ */
+function boardLauf(args) {
+  if (!existsSync(BOARD_PATH)) fail(`board.mjs liegt nicht neben befunde.mjs (${BOARD_PATH}) — 'vorschlag' schreibt ueber den Board-Adapter.`);
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: process.cwd(), encoding: "utf-8" });
+  if (res.error) fail(`board.mjs liess sich nicht starten: ${res.error.message}`);
+  if (res.status !== 0) {
+    const grund = (res.stderr || res.stdout || "").trim().split("\n")[0] || `Exit ${res.status}`;
+    fail(`board.mjs ${args.slice(0, 2).join(" ")} schlug fehl: ${grund}`);
+  }
+  try {
+    return JSON.parse(res.stdout);
+  } catch (err) {
+    fail(`board.mjs ${args.slice(0, 2).join(" ")} lieferte kein JSON: ${err.message}`);
+  }
+}
+
+/**
+ * Fuehrt `fn` mit dem Pfad einer Datei aus, die den Text traegt, und raeumt sie danach weg.
+ *
+ * AUSSERHALB des Projektverzeichnisses (Issue #270, #584): Der Nacht-Runner stoppt hart,
+ * wenn eine erfolgreiche Runde unkommittete Reste hinterlaesst — eine Hilfsdatei im
+ * Arbeitsbaum waere genau so ein Rest. Und als Datei statt als Argument, weil ein Body
+ * mit dreissig Fundzeilen jede Kommandozeilen-Grenze reisst.
+ */
+function mitTextdatei(name, text, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "kit-befunde-"));
+  try {
+    const pfad = join(dir, name);
+    writeFileSync(pfad, text, "utf-8");
+    return fn(pfad);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Der Pfad der Zustandsdatei im aktuellen Projekt. */
+function vorschlaegePfad() {
+  return join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/"));
+}
+
+/**
+ * Die vermerkten Vorschlaege. Eine fehlende Datei ist der Regelfall und liefert `{}`;
+ * eine UNLESBARE wirft dagegen. Sie stillschweigend als leer zu behandeln hiesse, sie
+ * beim naechsten Schreiben zu ueberschreiben — mit ihr gingen die Nullpunkte aller
+ * anderen Arten verloren, und abgelehnte Vorschlaege kaemen von selbst wieder.
+ */
+function vorschlaegeLesen() {
+  let roh;
+  try {
+    roh = readFileSync(vorschlaegePfad(), "utf-8");
+  } catch (err) {
+    if (err.code === "ENOENT") return {};
+    return fail(`Zustandsdatei nicht lesbar: ${VORSCHLAEGE_DATEI} (${err.code || err.message}).`);
+  }
+  let daten;
+  try {
+    daten = JSON.parse(roh);
+  } catch (err) {
+    return fail(`Zustandsdatei nicht lesbar: ${VORSCHLAEGE_DATEI} (${err.message}). Von Hand richten — ein Ueberschreiben verloere die Nullpunkte aller Arten.`);
+  }
+  if (daten === null || typeof daten !== "object" || Array.isArray(daten)) {
+    return fail(`Zustandsdatei ${VORSCHLAEGE_DATEI} traegt kein Objekt.`);
+  }
+  return daten;
+}
+
+function vorschlaegeSchreiben(daten) {
+  const pfad = vorschlaegePfad();
+  mkdirSync(dirname(pfad), { recursive: true });
+  writeFileSync(pfad, `${JSON.stringify(daten, null, 2)}\n`, "utf-8");
+}
+
+/** Der vermerkte Eintrag einer Art in seiner vollen Form; fehlende Felder gefuellt. */
+function eintragVon(daten, art) {
+  const roh = daten[art];
+  if (roh === null || typeof roh !== "object") return null;
+  return {
+    karte: typeof roh.karte === "string" ? roh.karte : null,
+    ideaId: typeof roh.ideaId === "string" ? roh.ideaId : null,
+    stand: roh.stand === "abgelehnt" ? "abgelehnt" : "offen",
+    zaehlerstand: Number.isInteger(roh.zaehlerstand) ? roh.zaehlerstand : 0,
+    nullpunkt: Number.isInteger(roh.nullpunkt) && roh.nullpunkt >= 0 ? roh.nullpunkt : 0,
+  };
+}
+
+/** Die Kennung, die `issue create` geliefert hat — Nummer oder Pool-Idee (board.mjs Z. 1499). */
+function kennungVon(antwort) {
+  const karte = antwort?.id == null ? null : String(antwort.id);
+  const ideaId = antwort?.ideaId == null ? null : String(antwort.ideaId);
+  if (karte === null && ideaId === null) {
+    fail(`board.mjs issue create lieferte weder 'id' noch 'ideaId': ${JSON.stringify(antwort)}`);
+  }
+  return { karte, ideaId };
+}
+
+/**
+ * Legt den Vorschlag an oder ergaenzt ihn (`--art`), beziehungsweise vermerkt seine
+ * Ablehnung (`--abgelehnt`).
+ *
+ * DIE REIHENFOLGE IST DIE ZUSAGE: erst lesen, dann das Board rufen, erst danach
+ * schreiben. Scheitert der Board-Aufruf, wirft `boardLauf` — die Zustandsdatei ist zu
+ * diesem Zeitpunkt noch unberuehrt, und es entsteht kein Vermerk ohne Karte.
+ */
+export function vorschlag({ art, abgelehnt }) {
+  const zielArt = art ?? abgelehnt;
+  const daten = vorschlaegeLesen();
+  const alt = eintragVon(daten, zielArt);
+  const zeilen = protokollZeilen(join(process.cwd(), ...PROTOKOLL_DATEI.split("/")));
+  const vorkommen = vorkommenFuer(zeilen, zielArt);
+  const zaehlerstand = vorkommen.length;
+
+  if (abgelehnt !== null) {
+    // Ein Handgriff ohne Board-Aufruf (Plan #797, E11): Ob eine Idee als abgelehnt
+    // gilt, laesst sich am Board nicht je Tracker gleich erkennen — `github` und
+    // `gitlab` kennen den Ideen-Pool gar nicht. Auch ohne vermerkten Vorschlag wird der
+    // Nullpunkt gesetzt: Wer ablehnt, will ab hier Ruhe, nicht eine Fehlermeldung.
+    const eintrag = {
+      karte: alt?.karte ?? null,
+      ideaId: alt?.ideaId ?? null,
+      stand: "abgelehnt",
+      zaehlerstand: alt?.zaehlerstand ?? zaehlerstand,
+      nullpunkt: zaehlerstand,
+    };
+    vorschlaegeSchreiben({ ...daten, [zielArt]: eintrag });
+    return { ok: true, art: zielArt, ...eintrag, vorschlaege: VORSCHLAEGE_DATEI };
+  }
+
+  const nullpunkt = alt?.nullpunkt ?? 0;
+  const schwelle = schwelleLesen();
+  const erreicht = zaehlerstand - nullpunkt >= schwelle;
+  const basis = {
+    ok: true, art: zielArt, zaehlerstand, nullpunkt, schwelle, erreicht,
+    angelegt: false, ergaenzt: false,
+    karte: alt?.karte ?? null, ideaId: alt?.ideaId ?? null,
+    vorschlaege: VORSCHLAEGE_DATEI,
+  };
+
+  if (!erreicht) {
+    // Kein Fehler, sondern der Normalfall zwischen zwei Schwellentreffern.
+    return { ...basis, grund: `${zaehlerstand} Vorkommen ueber dem Nullpunkt ${nullpunkt} erreichen die Schwelle ${schwelle} nicht.` };
+  }
+
+  if (alt !== null && alt.stand === "offen") {
+    if (alt.karte === null) {
+      // Eine Pool-Idee traegt nur eine `ideaId` und keine adressierbare Nummer — bis ein
+      // Mensch sie einplant, laesst sie sich nicht kommentieren. Gemeldet statt gedoppelt:
+      // Eine zweite Idee waere genau das, was AK 8 ausschliesst.
+      return { ...basis, grund: `Die Pool-Idee ${alt.ideaId} traegt noch keine adressierbare Nummer — sie laesst sich erst ergaenzen, wenn ein Mensch sie einplant.` };
+    }
+    const neue = vorkommen.slice(alt.zaehlerstand);
+    const text = ergaenzungText(zielArt, neue, { zaehlerstand, vorher: alt.zaehlerstand });
+    mitTextdatei(`${zielArt}-ergaenzung.md`, text, (pfad) =>
+      boardLauf(["issue", "comment", alt.karte, "--text-file", pfad]));
+    vorschlaegeSchreiben({ ...daten, [zielArt]: { ...alt, zaehlerstand } });
+    return { ...basis, ergaenzt: true, zaehlerstand };
+  }
+
+  // Neu — entweder gab es nie einen Vorschlag, oder der abgelehnte hat oberhalb seines
+  // Nullpunkts erneut die Schwelle erreicht. Der Nullpunkt der Ablehnung BLEIBT stehen:
+  // Er ist die Grenze, ab der gezaehlt wird, und nicht der Stand dieser Anlage.
+  const titel = vorschlagTitel(zielArt);
+  const body = ideeBody(zielArt, vorkommen.slice(nullpunkt), { zaehlerstand, nullpunkt, schwelle });
+  const antwort = mitTextdatei(`${zielArt}-idee.md`, body, (pfad) =>
+    boardLauf(["issue", "create", "--title", titel, "--body-file", pfad, "--author-model", AUTOR]));
+  const { karte, ideaId } = kennungVon(antwort);
+  const eintrag = { karte, ideaId, stand: "offen", zaehlerstand, nullpunkt };
+  vorschlaegeSchreiben({ ...daten, [zielArt]: eintrag });
+  return { ...basis, angelegt: true, titel, karte, ideaId };
+}
+
 // --- CLI ---------------------------------------------------------------------
 
 function parsePruefenArgs(rest) {
@@ -677,6 +977,30 @@ function parseBuchenArgs(rest) {
   }
   if (!BUCHEN_STUFEN.includes(werte.stufe)) {
     fail(`Unbekannte Stufe: '${werte.stufe}'. Erwartet: ${BUCHEN_STUFEN.join(", ")}.`);
+  }
+  return werte;
+}
+
+function parseVorschlagArgs(rest) {
+  const werte = { art: null, abgelehnt: null };
+  const optionen = { "--art": "art", "--abgelehnt": "abgelehnt" };
+  for (let i = 0; i < rest.length; i += 1) {
+    const feld = optionen[rest[i]];
+    if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
+    werte[feld] = rest[i + 1];
+    if (!werte[feld]) fail(`${rest[i]} erwartet eine Mangel-Art.`);
+    i += 1;
+  }
+  // Beide zugleich sind zwei gegenlaeufige Auftraege; welcher gewinnt, waere geraten.
+  if (werte.art !== null && werte.abgelehnt !== null) {
+    fail("'vorschlag' nimmt --art ODER --abgelehnt, nicht beides.");
+  }
+  if (werte.art === null && werte.abgelehnt === null) {
+    fail("'vorschlag' braucht --art <art> oder --abgelehnt <art>.");
+  }
+  const zielArt = werte.art ?? werte.abgelehnt;
+  if (!ARTEN_NAMEN.has(zielArt)) {
+    fail(`Unbekannte Art: '${zielArt}'. Gueltig sind die Namen aus 'befunde arten'.`);
   }
   return werte;
 }
@@ -719,14 +1043,17 @@ function main() {
   if (command === "buchen") {
     return alsJson(() => buchen(parseBuchenArgs(rest)));
   }
+  if (command === "vorschlag") {
+    return alsJson(() => vorschlag(parseVorschlagArgs(rest)));
+  }
 
   // Auch der Aufruf ohne Kommando ist ein Fehler mit JSON-Ausgabe: Wer dieses Werkzeug
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
   process.stderr.write(HELP);
   return alsJson(() => fail(command === undefined
-    ? `Kein Kommando. Erwartet: ${["arten", "pruefen", "buchen"].join(", ")}.`
-    : `Unbekannter Befehl: '${command}'. Erwartet: arten, pruefen oder buchen.`));
+    ? `Kein Kommando. Erwartet: ${["arten", "pruefen", "buchen", "vorschlag"].join(", ")}.`
+    : `Unbekannter Befehl: '${command}'. Erwartet: arten, pruefen, buchen oder vorschlag.`));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
