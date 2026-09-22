@@ -298,6 +298,22 @@ Den Fall gibt es wirklich: Eine Maven-Kette, deren letztes Glied den Rückgabewe
 
 **Und wenn die grüne Ausgabe legitim `[ERROR]` enthält?** Dann gehört das ans Kommando, nicht an die Prüfung. Zwei Wege: das Werkzeug leiser stellen (Log-Level, ein `--quiet`, ein anderer Reporter), oder `cmd` auf ein eigenes Projekt-Skript zeigen lassen, das die bekannte harmlose Zeile herausfiltert und den **Rückgabewert unverändert** weitergibt. Beides bleibt im Projekt sichtbar und betrifft nur das eine Kommando, das es betrifft.
 
+### Unveränderter Stand: das Ergebnis wird übernommen
+
+`checks.mjs run` fährt seine Kommandos nur, wenn es etwas Neues zu messen gibt. Hat sich der Stand seit dem letzten Lauf **nicht geändert**, läuft keines — das Kommando übernimmt dessen Ergebnis und meldet:
+
+```
+Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). Neu pruefen mit --frisch.
+```
+
+**Unverändert heißt:** derselbe Anker (`basis`), dieselbe Stufe, dieselbe Liste geänderter Dateien mit denselben Blob-Hashes und dieselbe Prüfkonfiguration (`buildChecks` und `checkAreas`, als `configHash` in der Zusammenfassung). Dazu muss die vorige Zusammenfassung **abgeschlossen** sein. Weicht auch nur eine dieser Angaben ab, fehlt die Datei oder ist sie unlesbar, läuft alles wie bisher. Ein Zeitfenster gibt es bewusst nicht: Gültig macht ein Ergebnis sein Inhalt, nicht die Uhr.
+
+**Auch ein rotes Ergebnis wird übernommen**, samt Exitcode; die Meldung nennt dann das rote Kommando (`Ergebnis uebernommen (rot: mvn verify)`). Derselbe Stand liefert dasselbe Rot — ein zweiter Lauf kostete dieselben Minuten für dieselbe Antwort. Wer einen wackligen Test vermutet, erzwingt den echten Lauf mit `--frisch`.
+
+**Der Nachweis bleibt frisch.** Ein übernommener Lauf schreibt die Zusammenfassung neu, mit neuem `zeitpunkt` und dem Feld `uebernommen` (dem Zeitpunkt des letzten echten Laufs). Das [Commit-Gate](#das-commit-gate) bekommt damit einen gültigen Nachweis für genau diesen Stand. Ins Ausführungsprotokoll `.claude/ausfuehrungen.tsv` kommt **keine** Zeile: Ein übernommenes Ergebnis ist keine Ausführung und kostet keine Zeit.
+
+**Warum das im Werkzeug steht.** Die Nacht-Läufe zeigten Sessions, die denselben grünen `run` drei- bis neunmal je Arbeitspaket starteten — meist ohne Änderung dazwischen, oft nur, um die Ausgabe anders zu filtern. Die Regel „schreib die Ausgabe einmal in eine Datei und lies daraus" steht seit Langem im Skilltext und wirkte nicht. Nach dem Maßstab „Regel im Text oder Regel im Werkzeug" gehört sie damit hierher.
+
 ### Die langsamsten Testdateien finden
 
 Die Testsuite läuft in jedem Arbeitspaket, in jedem `checks.mjs run`, im Commit-Gate und in der CI — jede eingesparte Sekunde wirkt also überall. Der Testrunner von Node fährt die **Dateien parallel**, die Tests **innerhalb** einer Datei nacheinander: Nach unten begrenzt darum die langsamste Datei die Wandzeit der ganzen Suite, und eine Datei deutlich über dem Rest gehört thematisch geteilt (Issue #836).

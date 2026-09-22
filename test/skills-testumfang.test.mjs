@@ -31,12 +31,12 @@ const SKILLS = ["implement-next", "implement-ready", "implement-done", "implemen
 
 const ANKER = "**Nur die Tests des Pakets laufen lassen.**";
 
-// Der Block ab dem Anker bis zur naechsten Leerzeile nach Punkt 4.
+// Der Block ab dem Anker bis zur naechsten Leerzeile nach Punkt 5.
 function regelblock(text) {
   const start = text.indexOf(ANKER);
   assert.notEqual(start, -1, `der Anker ${ANKER} fehlt`);
-  const ende = text.indexOf("\n\n", text.indexOf("\n4.", start));
-  assert.notEqual(ende, -1, "der Regelblock endet nicht nach Punkt 4");
+  const ende = text.indexOf("\n\n", text.indexOf("\n5.", start));
+  assert.notEqual(ende, -1, "der Regelblock endet nicht nach Punkt 5");
   return text.slice(start, ende);
 }
 
@@ -69,31 +69,42 @@ for (const { name, text } of SKILLS) {
       "Punkt 2 nennt den einen vollen Lauf `checks.mjs run` nicht");
   });
 
-  // Punkt 3: Der teuerste beobachtete Fehler war der zweite Lauf fuer einen
-  // anderen Ausgabefilter. Die Ablage folgt der Transportregel — Platzhalter
-  // `<tmpdir>`, nicht die Variable: Ein Variablen-Redirect wird unbeaufsichtigt
-  // als 'path is runtime-determined' abgewiesen (skills-9/skills-10, geprueft
-  // in `test/skills-transport.test.mjs`).
-  test(`${name}: Punkt 3 schreibt die Ausgabe einmal in eine Datei ausserhalb des Projekts`, () => {
+  // Punkt 3: Der teuerste beobachtete Fehler war der zweite Lauf auf
+  // unveraendertem Stand. Seit Issue #863 verhindert ihn das Werkzeug selbst —
+  // der Skill NENNT die Wiederverwendung nur noch, statt eine Bedienregel dagegen
+  // aufzustellen. Genannt werden muss sie trotzdem: Wer sie nicht kennt, deutet
+  // die Meldung als uebersprungene Pruefung.
+  test(`${name}: Punkt 3 nennt die Wiederverwendung auf unveraendertem Stand`, () => {
     const block = regelblock(text);
-    assert.match(block, /^3\..*<tmpdir>/m,
-      "Punkt 3 nennt den Platzhalter `<tmpdir>` nicht");
-    assert.doesNotMatch(block, /\$TMPDIR|\$\{TMPDIR\}/,
-      "Punkt 3 nennt die Variable statt des Platzhalters — der Redirect waere unbeaufsichtigt abgewiesen");
-    assert.match(block, /^3\..*(zweiter|Zweiter) Lauf/m,
-      "Punkt 3 schliesst den zweiten Lauf fuer einen anderen Filter nicht aus");
+    assert.match(block, /^3\..*unver(ä|ae)ndertem Stand/m,
+      "Punkt 3 nennt den unveraenderten Stand nicht");
+    assert.match(block, /^3\..*--frisch/m,
+      "Punkt 3 nennt den Schalter `--frisch` nicht, mit dem der echte Lauf erzwungen wird");
   });
 
-  // Punkt 4: Nach rot wird gezielt nachgebessert, nicht die ganze Suite
-  // wiederholt — sonst faellt die eingesparte Zeit hinten wieder an.
-  test(`${name}: Punkt 4 regelt den Weg nach einem roten Lauf`, () => {
+  // Punkt 4: Die Ablage aus Issue #835 — jetzt als Hinweis, nicht mehr als
+  // Vorgabe. Sie folgt weiter der Transportregel: Platzhalter `<tmpdir>`, nicht
+  // die Variable, denn ein Variablen-Redirect wird unbeaufsichtigt als 'path is
+  // runtime-determined' abgewiesen (skills-9/skills-10, geprueft in
+  // `test/skills-transport.test.mjs`).
+  test(`${name}: Punkt 4 haelt die Datei-Ablage als Hinweis bereit`, () => {
     const block = regelblock(text);
-    assert.match(block, /^4\..*rot/m,
-      "Punkt 4 nennt den roten Lauf nicht");
-    assert.match(block, /^4\..*fehlschlagenden Tests gezielt/m,
-      "Punkt 4 verlangt nicht, zuerst die fehlschlagenden Tests gezielt laufen zu lassen");
-    assert.match(block, /^4\..*erst dann erneut/m,
-      "Punkt 4 sagt nicht, dass `checks.mjs run` erst nach Gruen erneut startet");
+    assert.match(block, /^4\..*<tmpdir>/m,
+      "Punkt 4 nennt den Platzhalter `<tmpdir>` nicht");
+    assert.doesNotMatch(block, /\$TMPDIR|\$\{TMPDIR\}/,
+      "Punkt 4 nennt die Variable statt des Platzhalters — der Redirect waere unbeaufsichtigt abgewiesen");
+  });
+
+  // Punkt 5: Nach rot wird gezielt nachgebessert, nicht die ganze Suite
+  // wiederholt — sonst faellt die eingesparte Zeit hinten wieder an.
+  test(`${name}: Punkt 5 regelt den Weg nach einem roten Lauf`, () => {
+    const block = regelblock(text);
+    assert.match(block, /^5\..*rot/m,
+      "Punkt 5 nennt den roten Lauf nicht");
+    assert.match(block, /^5\..*fehlschlagenden Tests gezielt/m,
+      "Punkt 5 verlangt nicht, zuerst die fehlschlagenden Tests gezielt laufen zu lassen");
+    assert.match(block, /^5\..*erst dann erneut/m,
+      "Punkt 5 sagt nicht, dass `checks.mjs run` erst nach Gruen erneut startet");
   });
 }
 

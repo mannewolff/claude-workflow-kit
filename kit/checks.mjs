@@ -34,6 +34,19 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
+ * `run` UEBERNIMMT sein eigenes Ergebnis, wenn sich der Stand seit dem letzten Lauf
+ * nicht geaendert hat (Issue #863): gleicher Anker, gleiche Stufe, dieselbe
+ * Dateiliste mit denselben Blob-Hashes, dieselbe Config — und eine abgeschlossene
+ * Zusammenfassung. Dann laeuft kein Kommando, und `run` schreibt denselben Befund
+ * mit frischem Zeitpunkt erneut, damit das Commit-Gate seinen Nachweis behaelt.
+ * `--frisch` erzwingt den echten Lauf. Das ist keine Bequemlichkeit, sondern
+ * dieselbe Erfahrung wie oben: Die Regel „Ausgabe einmal in eine Datei, daraus
+ * lesen" (Issue #835) steht seit Langem im Skilltext, und die Sessions starteten
+ * denselben gruenen Lauf trotzdem drei- bis neunmal je Paket. Ein Ergebnis
+ * wiederzuverwenden nimmt dabei keine Pruefung weg: Derselbe Inhalt liefert
+ * dasselbe Urteil, und schon ein einziges abweichendes Byte faellt zurueck in den
+ * vollen Weg.
+ *
  * In dieselbe Richtung irrt die MERKMAL-PRUEFUNG von `run` (Issue #858): Es liest
  * nicht nur den Rueckgabewert, sondern prueft die Ausgabe jedes Kommandos auf eine
  * feste Liste allgemeiner Fehlermerkmale (`FEHLERMERKMALE`). Ein
@@ -54,7 +67,7 @@
  * — und der besteht aus mehr als dem letzten Arbeitspaket.
  *
  * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--frisch]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -70,6 +83,7 @@ import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkd
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
@@ -186,7 +200,7 @@ const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--frisch]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -204,6 +218,11 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Kommando steht darin noch auf 'nicht gestartet'. Erst die letzte Fassung
       traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
       Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
+      Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
+      gleiche Stufe, dieselben Dateien mit denselben Blob-Hashes, dieselbe
+      Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
+      vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
+      mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -213,6 +232,9 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
                   Veroeffentlichungsstufen (push, merge) fahren jede faellige
                   Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
+  --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
+                  Kommandos wirklich fahren — etwa beim Verdacht auf einen
+                  wackligen Test.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
@@ -883,6 +905,118 @@ function schreibeZusammenfassung(daten) {
 }
 
 /**
+ * Der Fingerabdruck der Pruefkonfiguration (Issue #863).
+ *
+ * Er steht in der Zusammenfassung, weil sich ohne ihn die Gleichheit der Config
+ * nicht feststellen laesst: Eine Config aendert nicht zwangslaeufig den
+ * Arbeitsbaum — im Kit-Repo ist sie versioniert, in anderen Projekten liegt sie
+ * hinter der Ignore-Regel und erschiene dann in `geaendert` gar nicht. Ein
+ * uebernommenes Ergebnis bezoege sich dort auf eine Auswahl, die es nicht mehr
+ * gibt.
+ *
+ * Gehasht werden die NORMALISIERTEN Eintraege und die Bereiche, also genau das,
+ * woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
+ * von der String-Form zu `{ cmd }` — der nichts bedeutet — keinen Lauf erzwingt.
+ * Alles uebrige in der Config (Trigger, Modelle, Pfade) bleibt draussen: Es
+ * aendert an den Pruefungen nichts.
+ */
+function configFingerabdruck() {
+  const config = ladeConfig();
+  const inhalt = JSON.stringify({
+    buildChecks: (config.buildChecks ?? []).map((c) => normalisiere(c)),
+    checkAreas: config.checkAreas ?? {},
+  });
+  return createHash("sha256").update(inhalt).digest("hex");
+}
+
+function listenGleich(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((wert, i) => wert === b[i]);
+}
+
+function hashesGleich(a, b) {
+  if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false;
+  const alt = Object.keys(a);
+  const neu = Object.keys(b);
+  return alt.length === neu.length && neu.every((pfad) => Object.hasOwn(a, pfad) && a[pfad] === b[pfad]);
+}
+
+/**
+ * Die Zusammenfassung des letzten Laufs, WENN sie denselben Stand bezeugt wie der
+ * jetzige — sonst `null` (Issue #863).
+ *
+ * Derselbe Stand heisst: derselbe Anker, dieselbe Stufe, dieselbe Dateiliste mit
+ * denselben Blob-Hashes und dieselbe Config. Die Liste steht neben den Hashes,
+ * obwohl deren Schluessel sie wiederholen — eine Datei, die ohne Aenderung aus
+ * `geaendert` verschwindet, gibt es nicht, und ein Vergleich, der sich auf diese
+ * Ableitung verlaesst, muesste sie bei jeder kuenftigen Aenderung an
+ * `geaenderteDateien` neu belegen.
+ *
+ * Bewusst KEIN Zeitfenster („juenger als n Minuten"): Nur der Inhalt macht ein
+ * Ergebnis gueltig, nicht die Uhr. Und bewusst nur eine ABGESCHLOSSENE
+ * Zusammenfassung — die eines abgebrochenen Laufs bezeugt keinen fertigen Stand,
+ * sie ist gerade der Nachweis, dass eine Pruefung ihr Ende nicht erreicht hat.
+ *
+ * Jeder Zweifel faellt auf `null` zurueck und damit in den vollen Weg: fehlende
+ * Datei, kaputtes JSON, fehlendes Feld, ein Stand aus einer aelteren Fassung ohne
+ * `configHash`. Das ist dieselbe Richtung, in die dieses Kommando ueberall irrt —
+ * lieber einmal zu viel pruefen.
+ */
+function frueheresErgebnis(auswahl, hashes, configHash) {
+  let alt;
+  try {
+    alt = JSON.parse(readFileSync(zusammenfassungPfad(), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (alt === null || typeof alt !== "object") return null;
+  if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return null;
+  if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return null;
+  if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
+  if (typeof alt.zeitpunkt !== "string") return null;
+  if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
+  if (!hashesGleich(alt.hashes, hashes)) return null;
+  return alt;
+}
+
+/**
+ * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
+ * des Originals zurueck (Issue #863).
+ *
+ * Die Datei entsteht NEU, obwohl sie inhaltlich gleich bliebe: Das Commit-Gate
+ * verlangt einen Nachweis fuer genau den Stand, der committet wird, und eine
+ * liegengebliebene Datei waere kein Nachweis dieses Aufrufs. `uebernommen` traegt
+ * dabei den Zeitpunkt des ECHTEN Laufs und wird ueber mehrere Uebernahmen hinweg
+ * weitergereicht — er sagt, wann zuletzt wirklich geprueft wurde, und genau das
+ * will lesen, wer der Datei misstraut.
+ *
+ * Rot wird ebenso uebernommen wie gruen: Derselbe Stand liefert dasselbe Rot, und
+ * ein erneuter Lauf kostete dieselben Minuten fuer dieselbe Antwort. Ungruen zaehlt
+ * dabei wie ueberall hier alles, was nicht `gruen` ist — auch ein `nicht
+ * gestartet` nach rotem Abbruch.
+ */
+function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
+  const ungruen = frueher.laufen.find((e) => e.ergebnis !== "gruen") ?? null;
+  const original = typeof frueher.uebernommen === "string" ? frueher.uebernommen : frueher.zeitpunkt;
+  const pfad = schreibeZusammenfassung({
+    ...auswahl,
+    laufen: frueher.laufen,
+    zeitpunkt,
+    hashes,
+    configHash,
+    abgeschlossen: true,
+    dauerGesamtMs: frueher.dauerGesamtMs ?? null,
+    ...(frueher.guete ? { guete: frueher.guete } : {}),
+    uebernommen: original,
+  });
+  const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
+  process.stdout.write(
+    `Stand unveraendert seit ${original}: Ergebnis uebernommen (${befund}). Neu pruefen mit --frisch.\n`,
+  );
+  process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
+  return ungruen === null ? 0 : 1;
+}
+
+/**
  * Das Urteil ueber ein gelaufenes Kommando — aus drei Quellen, in dieser
  * Reihenfolge: Rueckgabewert, Fehlermerkmal in der Ausgabe (Issue #858) und, wo
  * das Projekt eine Messung benannt hat, die Guete. Die Zeilen, die zum Befund
@@ -950,6 +1084,7 @@ function ausfuehren(args) {
   // Lauf und der andere aus der Sitzung, bezeugten sie Verschiedenes.
   const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
+  const configHash = configFingerabdruck();
 
   // Die Ankuendigung steht im Kommando und nicht in den Skills (Issue #758): Eine
   // Regel im Prompt wirkt nicht unter Druck — dieselbe Begruendung, aus der
@@ -967,6 +1102,13 @@ function ausfuehren(args) {
   for (const e of auswahl.ausgelassen) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
   }
+
+  // Nach den Auslassungen und vor dem ersten Kommando (Issue #863): Was nicht
+  // laeuft, steht auch im uebernommenen Bericht — sonst saehe ein uebernommener
+  // Lauf aus wie ein verkuerzter. Hier und nicht vor `blobHashes`, weil der
+  // Vergleich genau diese Hashes braucht.
+  const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
+  if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
 
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
@@ -988,7 +1130,7 @@ function ausfuehren(args) {
   // `abgeschlossen` nicht sehen: Das laufende Kommando muss in der Datei noch
   // ungruen stehen, sonst saehe ein Abbruch mittendrin gruen aus.
   const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
-    ...auswahl, laufen, zeitpunkt, hashes, abgeschlossen,
+    ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
   });
   schreibeStand(false);
@@ -1048,6 +1190,10 @@ function parseArgs(rest) {
       }
       args.stufe = wert;
       i += 1;
+    } else if (rest[i] === "--frisch") {
+      // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
+      // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
+      args.frisch = true;
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }
