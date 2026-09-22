@@ -14,7 +14,9 @@ import assert from "node:assert/strict";
 import { existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 
-import { mitRepo, git, run, plan, zusammenfassung, datei } from "./helpers/checks-repo.mjs";
+import { pathToFileURL } from "node:url";
+
+import { CHECKS, mitRepo, git, run, plan, zusammenfassung, datei } from "./helpers/checks-repo.mjs";
 
 const LEISE = { buildChecks: ["node -e \"process.exit(0)\""] };
 
@@ -107,6 +109,26 @@ test("[checks-1] plan gibt kein Feld hashes aus", () => {
     datei(dir, "a.txt", "A\n");
     const p = plan(dir);
     assert.equal("hashes" in p, false, "hashes gehoert nur in die Zusammenfassung von run");
+  });
+});
+
+test("[checks-8] blobHashes ist exportiert und liefert denselben Hash wie git hash-object", async () => {
+  const { blobHashes } = await import(pathToFileURL(CHECKS).href);
+  assert.equal(typeof blobHashes, "function", "kit/befunde.mjs importiert blobHashes als Nachbardatei (Issue #802)");
+  mitRepo({ config: LEISE }, (dir) => {
+    datei(dir, "a.txt", "Stand fuer den Vergleich\n");
+    const vorher = process.cwd();
+    // blobHashes arbeitet wie run auf process.cwd() — fuer den direkten Aufruf
+    // wird deshalb ins Wegwerf-Repo gewechselt.
+    process.chdir(dir);
+    try {
+      assert.deepEqual(blobHashes(["a.txt", "fehlt.txt"]), {
+        "a.txt": git(dir, "hash-object", "a.txt"),
+        "fehlt.txt": null,
+      });
+    } finally {
+      process.chdir(vorher);
+    }
   });
 });
 

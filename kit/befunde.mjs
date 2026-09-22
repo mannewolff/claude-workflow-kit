@@ -7,6 +7,14 @@
  * Befunde-Text und meldet je Fund, welche der drei Pflichtangaben aus dem Abschnitt
  * „Befunde der Modell-Pruefungen" (templates/CLAUDE-workflow.md) fehlt.
  *
+ * `buchen --datei <f> --stufe <s> --karte <n>` (Issue #802) schreibt je Fund mit
+ * bestaetigter Gegenprobe UND Uebernahmevermerk eine Zeile nach `.claude/befunde.tsv`
+ * — anhaengend, nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und
+ * ob die Schwelle erreicht ist. Nicht gepruefte, unvollstaendige und abgelehnte Funde
+ * sind keine Vorkommen (AK 7 der fachlichen Quelle #768). Fuer die Stufe `code`
+ * ermittelt es zusaetzlich den Vergleichsstand: ob die maschinellen Pflichtpruefungen
+ * auf demselben Stand gruen waren (AK 10, Plan #797 E12).
+ *
  * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU AN wirksamkeit.mjs (Plan #797, E1):
  * `wirksamkeit.mjs` misst die Pflichtpruefungen aus `ausfuehrungen.tsv` und
  * `bewegungen.tsv`; Funde von Modellen sind eine andere Quelle und ein anderer
@@ -46,13 +54,35 @@
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
  */
 
-import { readFileSync, realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "3.0.0";
+
+// Blob-Hash und Ort der Pruef-Zusammenfassung kommen aus checks.mjs und werden NICHT
+// nachgebaut (Issue #802, Plan #797 E13): Zwei Implementierungen derselben Frage
+// weichen irgendwann ab, und der Vergleichsstand saehe dann einen Unterschied, den es
+// nicht gibt. Aufgeloest als Nachbardatei mit dynamischem Import, wie night.mjs es
+// fuer `zusammenfassungPfad` tut (Issue #498) — die Kit-Werkzeuge sind bewusst
+// eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), und die
+// Nachbar-Aufloesung mit Fallback ist die Form, in der sie sich trotzdem etwas teilen.
+//
+// Bedingt und mit WERFENDEM Ersatz: `arten`, `pruefen` und `buchen` unterhalb der
+// Code-Stufe laufen auch ohne Nachbarn weiter (Portabilitaets-Zusage), erst der
+// Vergleichsstand braucht ihn — und meldet den fehlenden Nachbarn dann als Fehler,
+// statt still einen falschen Hash zu liefern.
+const NACHBAR_CHECKS = join(dirname(fileURLToPath(import.meta.url)), "checks.mjs");
+const nachbarFehlt = () => {
+  throw new BefundeError(`checks.mjs liegt nicht neben befunde.mjs (${NACHBAR_CHECKS}) — 'buchen --stufe code' braucht blobHashes und den Ort der Pruef-Zusammenfassung aus dem Nachbarn.`);
+};
+const { blobHashes, zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
+  ? await import(pathToFileURL(NACHBAR_CHECKS).href)
+  : { blobHashes: nachbarFehlt, zusammenfassungPfad: nachbarFehlt };
 
 /**
  * Die zwoelf Mangel-Arten. Grob statt feinmaschig (Nicht-Ziel des Fachkonzepts): Sie
@@ -111,6 +141,12 @@ const ART_RE = /^Art\s*:\s*(.*)$/;
 // 'geprüft, bestätigt' schreiben — eine Meldung darueber waere eine falsche Meldung.
 const STAND_RE = /[—–-]\s*(geprueft|geprüft)\s*,\s*(bestaetigt|bestätigt)\s*\.?\s*$|[—–-]\s*nicht\s+(geprueft|geprüft)\s*\.?\s*$/i;
 
+const BUCHEN_STUFEN = ["fachlich", "plan", "issue", "code"];
+
+// Vorgabe des Config-Blocks `befunde.schwelle` (Issue #800): Ab so vielen Vorkommen
+// einer Art oberhalb ihres Nullpunkts meldet `buchen` die Schwelle als erreicht.
+const SCHWELLE_VORGABE = 3;
+
 const ANGABEN = {
   gegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt oder nennt vor ihrem Stand keine Beobachtung.",
   stand: "Der Stand der Gegenprobe fehlt — erwartet wird '— geprueft, bestaetigt' oder '— nicht geprueft' am Zeilenende.",
@@ -121,6 +157,7 @@ const HELP = `befunde.mjs (claude-workflow-kit v${KIT_VERSION}) — Form und Art
 
   node befunde.mjs arten
   node befunde.mjs pruefen --datei <pfad>
+  node befunde.mjs buchen --datei <pfad> --stufe <fachlich|plan|issue|code> --karte <n>
 
 arten    Gibt die ${ARTEN.length} Mangel-Arten mit je einem erklaerenden Satz aus. Diese Liste
          ist der einzige Wortlaut im Kit; ein Projekt ergaenzt keine eigenen Arten.
@@ -130,6 +167,12 @@ pruefen  Liest einen Befunde-Text, erkennt die Fundbloecke an ihrer Schweregrad-
          Exit 0 auch bei lauter unvollstaendigen Funden — aus der Form wird kein Gate.
          Ungleich 0 wird nur ein Aufruf, der nicht geht: fehlendes --datei, fehlende
          oder unlesbare Datei.
+buchen   Schreibt je Fund mit 'Gegenprobe: … — geprueft, bestaetigt' UND
+         'Uebernahme: uebernommen' eine Zeile nach .claude/befunde.tsv — anhaengend,
+         nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und ob die
+         Schwelle (Config-Block befunde.schwelle, Vorgabe ${SCHWELLE_VORGABE}) erreicht ist. Bei
+         --stufe code steht in der letzten Spalte der Vergleichsstand der
+         Pflichtpruefungen ('gruen' oder 'nicht-vergleichbar'), sonst '-'.
 
   --version   Kit-Stand dieser Datei.
   --help, -h  Diese Uebersicht.
@@ -319,6 +362,292 @@ export function arten() {
   return { ok: true, anzahl: ARTEN.length, arten: ARTEN };
 }
 
+// --- Buchen (Issue #802) -----------------------------------------------------
+
+const PROTOKOLL_DATEI = ".claude/befunde.tsv";
+const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
+const CONFIG_DATEI = ".claude/workflow.config.json";
+
+// SYNC: dasselbe Praefix steht in kit/checks.mjs (WARTEND_PRAEFIX, Issue #546) —
+// Aenderungen dort nachziehen. Die wartenden Vorhaben-Notizen fallen dort aus
+// `geaendert` heraus und stehen darum nie in `hashes`; zaehlte der Vergleichsstand
+// sie hier mit, waere jeder Lauf mit liegender Notiz faelschlich nicht-vergleichbar.
+const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
+
+// Der Uebernahmevermerk der einarbeitenden Session, je Fundblock eine Zeile. Die
+// Umlautfassung gilt mit, aus demselben Grund wie bei STAND_RE.
+const UEBERNAHME_RE = /^(?:Uebernahme|Übernahme)\s*:\s*(.*)$/;
+
+// Die Kennzeichnung aus E6 (Plan #797): Ein so markierter Fund ist kein Vorkommen,
+// auch wenn seine uebrigen Angaben vollstaendig aussehen.
+const UNVOLLSTAENDIG_RE = /^Angaben\s*:\s*unvollst(?:ae|ä)ndig/i;
+
+// Der Reviewer-Kopf, wie /issue-review Schritt 5 ihn schreibt:
+// '### Reviewer <n>: <rolle>, <modell>'. Die Rolle ist der Teil vor dem Komma; das
+// Modell dahinter wird bewusst nicht gelesen — keine Spalte traegt es (E15).
+const REVIEWER_RE = /^Reviewer\s+\d+\s*:\s*([^,]+),/;
+
+/** Der Uebernahmevermerk eines Funds: 'uebernommen', 'abgelehnt' oder null. */
+function uebernahmeVon(fund) {
+  for (const zeile of fund.zeilen) {
+    const treffer = UEBERNAHME_RE.exec(zeile);
+    if (treffer === null) continue;
+    const wert = treffer[1].replace(/^[\s*_]+/, "").toLowerCase();
+    if (wert.startsWith("uebernommen") || wert.startsWith("übernommen")) return "uebernommen";
+    if (wert.startsWith("abgelehnt")) return "abgelehnt";
+    return null;
+  }
+  return null;
+}
+
+/** Ob die Gegenprobe eines Funds den Stand 'geprueft, bestaetigt' traegt. */
+function gegenprobeBestaetigt(fund) {
+  const zeilen = [fund.titel, ...fund.zeilen];
+  const gegenprobe = zeilen.map((z) => GEGENPROBE_RE.exec(z)).find((t) => t !== null);
+  if (!gegenprobe) return false;
+  const stand = STAND_RE.exec(gegenprobe[1]);
+  // Gruppe 2 ist das bestaetigt-Wort; der 'nicht geprueft'-Ast fuellt Gruppe 3.
+  return stand !== null && stand[2] !== undefined;
+}
+
+/** Die Reviewer-Koepfe eines Texts mit ihrer Zeilennummer, in Textreihenfolge. */
+function reviewerKoepfe(text) {
+  const koepfe = [];
+  for (const [i, zeile] of text.split("\n").entries()) {
+    const treffer = REVIEWER_RE.exec(kern(zeile));
+    if (treffer !== null) koepfe.push({ zeile: i + 1, rolle: treffer[1].trim() });
+  }
+  return koepfe;
+}
+
+/** Die Rolle eines Funds: der letzte Reviewer-Kopf davor, sonst der Stufen-Fallback. */
+function rolleFuer(fundZeile, koepfe, stufe) {
+  let rolle = stufe === "code" ? "code-review" : "unbekannt";
+  for (const kopf of koepfe) {
+    if (kopf.zeile >= fundZeile) break;
+    rolle = kopf.rolle;
+  }
+  return rolle;
+}
+
+/** Die vorhandenen Protokollzeilen; eine fehlende oder unlesbare Datei zaehlt als keine. */
+function protokollZeilen(pfad) {
+  try {
+    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      process.stderr.write(`Hinweis: Protokoll nicht lesbar (${pfad}): ${err.message}\n`);
+    }
+    return [];
+  }
+}
+
+/** Zaehlerstand je Art aus den Protokollzeilen (Spalte 5); fehlerhafte Zeilen zaehlen nicht. */
+function zaehleArten(zeilen) {
+  const zaehler = new Map();
+  for (const zeile of zeilen) {
+    const spalten = zeile.split("\t");
+    if (spalten.length < 7) continue;
+    zaehler.set(spalten[4], (zaehler.get(spalten[4]) ?? 0) + 1);
+  }
+  return zaehler;
+}
+
+/**
+ * Die Schwelle aus `.claude/workflow.config.json`, Block `befunde` (Issue #800).
+ * Teamweit und ohne persoenliche Abweichung — die local-Datei wird darum gar nicht
+ * erst gelesen. Fehlt der Block, das Feld oder die Datei, gilt die Vorgabe; ein
+ * unbrauchbarer Wert ebenso, die Konfigurationspruefung der Einstellungen meldet ihn.
+ */
+function schwelleLesen() {
+  try {
+    const config = JSON.parse(readFileSync(join(process.cwd(), ...CONFIG_DATEI.split("/")), "utf-8"));
+    const wert = config?.befunde?.schwelle;
+    if (Number.isInteger(wert) && wert > 0) return wert;
+  } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }
+  return SCHWELLE_VORGABE;
+}
+
+/**
+ * Der Nullpunkt je Art aus `.claude/befunde-vorschlaege.json` (Plan #797, E11):
+ * Eine Ablehnung setzt ihn auf den damaligen Zaehlerstand, und erst oberhalb davon
+ * zaehlt die Schwelle wieder. Fehlt die Datei, die Art oder das Feld, ist er null.
+ */
+function nullpunktFuer(art) {
+  try {
+    const daten = JSON.parse(readFileSync(join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/")), "utf-8"));
+    const wert = daten?.[art]?.nullpunkt;
+    if (Number.isInteger(wert) && wert >= 0) return wert;
+  } catch { /* keine Vorschlagsdatei ist der Regelfall — Nullpunkt null. */ }
+  return 0;
+}
+
+function gitLauf(...args) {
+  return spawnSync("git", args, { cwd: process.cwd(), encoding: "utf-8" });
+}
+
+/**
+ * Was heute — zum Zeitpunkt der Buchung — gegenueber der Basis des Prueflaufs
+ * geaendert ist. Die Richtung ist die des Commit-Gates (gate-1): Gedeckt sein muss
+ * der heutige Stand, nicht der von damals; eine nach dem Lauf erstmals geaenderte
+ * Datei stuende in `hashes` gar nicht und muss hier auftauchen, um durchzufallen.
+ *
+ * SYNC: der Nachbau von `geaenderteDateien`/`diffPfade`/`untracktePfade` in
+ * kit/checks.mjs — Aenderungen dort nachziehen. Nur `blobHashes` ist exportiert
+ * (checks-8); die Aenderungsermittlung wird nach dem Muster #440 dupliziert und
+ * hier markiert, statt die Schnittstelle des Nachbarn weiter zu verbreitern.
+ */
+/** Die Pfade aus `git diff --name-status -z` — R- und C-Zeilen tragen zwei. */
+function* diffPfade(roh) {
+  const felder = roh.split("\0");
+  let i = 0;
+  while (i < felder.length) {
+    const status = felder[i];
+    i += 1;
+    if (!status) continue;
+    const anzahl = status.startsWith("R") || status.startsWith("C") ? 2 : 1;
+    for (let n = 0; n < anzahl && i < felder.length; n += 1, i += 1) {
+      if (felder[i]) yield felder[i];
+    }
+  }
+}
+
+function heuteGeaendert(basis) {
+  if (typeof basis !== "string" || basis === "") fail("die Zusammenfassung nennt keine Basis");
+  const dateien = new Set();
+
+  const diff = gitLauf("diff", "--name-status", "-z", basis);
+  if (diff.status !== 0) fail(`git diff gegen '${basis}' schlug fehl: ${(diff.stderr || "").trim()}`);
+  for (const pfad of diffPfade(diff.stdout)) dateien.add(pfad);
+
+  const status = gitLauf("status", "--porcelain", "-z", "--untracked-files=all");
+  if (status.status !== 0) fail(`git status schlug fehl: ${(status.stderr || "").trim()}`);
+  for (const eintrag of status.stdout.split("\0")) {
+    if (eintrag.startsWith("?? ")) dateien.add(eintrag.slice(3));
+  }
+
+  return [...dateien]
+    .map((p) => p.replaceAll("\\", "/"))
+    .filter((p) => !p.startsWith(WARTEND_PRAEFIX));
+}
+
+/**
+ * Der Vergleichsstand der Code-Stufe (Plan #797, E12): `gruen`, wenn jeder Eintrag
+ * unter `laufen` gruen ist, `leeresPaket` falsch ist und jede heute geaenderte Datei
+ * einen Eintrag unter `hashes` mit passendem Hash hat — sonst `nicht-vergleichbar`,
+ * auch bei fehlender oder unlesbarer Zusammenfassung. Eine AUSLASSUNG macht den
+ * Stand nie unvergleichbar: W3 des Regeltextes zaehlt den unberuehrten Bereich zur
+ * vollstaendigen Pflichtpruefung, und die faellige Stufe bestimmt den Umfang —
+ * waere die Stufen-Auslassung ein Makel, gaelte jeder Code-Review vor dem Push als
+ * unvergleichbar und AK 10 liefe leer.
+ *
+ * KEIN Textvergleich auf `grund` (E12, Fund W4 der Plan-Pruefung): `grund` ist in
+ * checks.mjs freier Text und braeche bei jeder Umformulierung still; `leeresPaket`
+ * ist dagegen ein Boolean der Zusammenfassung.
+ *
+ * Der Aufruf von `zusammenfassungPfad` steht VOR dem try: Sein werfender Ersatz
+ * meldet den fehlenden Nachbarn als Fehler des Aufrufs — jeder Fehler DANACH ist
+ * dagegen nur ein nicht vergleichbarer Stand, keine Abweisung.
+ */
+function vergleichsstandCode() {
+  const pfad = zusammenfassungPfad();
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    return "nicht-vergleichbar";
+  }
+  if (daten === null || typeof daten !== "object" || !Array.isArray(daten.laufen)
+    || daten.hashes === null || typeof daten.hashes !== "object") return "nicht-vergleichbar";
+  // Ausdruecklich `=== false`: Ein fehlendes Feld ist ein altes Format, kein Nein.
+  if (daten.leeresPaket !== false) return "nicht-vergleichbar";
+  if (daten.laufen.some((e) => e === null || typeof e !== "object" || e.ergebnis !== "gruen")) return "nicht-vergleichbar";
+  try {
+    const geaendert = heuteGeaendert(daten.basis);
+    const aktuell = blobHashes(geaendert);
+    for (const p of geaendert) {
+      if (!(p in daten.hashes) || daten.hashes[p] !== aktuell[p]) return "nicht-vergleichbar";
+    }
+  } catch {
+    return "nicht-vergleichbar";
+  }
+  return "gruen";
+}
+
+/** Ein Spaltenwert des Protokolls — Tab und Zeilenumbruch koennen keine tragen. */
+function spalte(wert) {
+  return wert.replaceAll(/[\t\n\r]/g, " ").trim();
+}
+
+export function buchen({ datei, stufe, karte }) {
+  let text;
+  try {
+    text = readFileSync(datei, "utf-8");
+  } catch (err) {
+    fail(`Datei nicht lesbar: ${datei} (${err.code || err.message}).`);
+  }
+
+  // Vor dem Schreiben ermittelt: Ein fehlender Nachbar weist den Aufruf ab,
+  // BEVOR eine Zeile entsteht.
+  const vergleichsstand = stufe === "code" ? vergleichsstandCode() : "-";
+
+  const koepfe = reviewerKoepfe(text);
+  const buchbar = fundeLesen(text).flatMap((fund) => {
+    const { fehlt, art } = fehlendeAngaben(fund);
+    const zaehlt = fehlt.length === 0
+      && gegenprobeBestaetigt(fund)
+      && uebernahmeVon(fund) === "uebernommen"
+      && !fund.zeilen.some((z) => UNVOLLSTAENDIG_RE.test(z));
+    return zaehlt ? [{ fund, art }] : [];
+  });
+
+  const pfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const bestand = zaehleArten(protokollZeilen(pfad));
+
+  const zeitpunkt = new Date().toISOString();
+  const zeilen = buchbar.map(({ fund, art }) => [
+    zeitpunkt, spalte(stufe), spalte(karte),
+    spalte(rolleFuer(fund.zeile, koepfe, stufe)),
+    spalte(art), fund.marke, vergleichsstand,
+  ].join("\t"));
+
+  // Anhaengend, nie leerend (E7) — und im Leerfall gar nicht erst angelegt. Ein
+  // gescheitertes Schreiben bleibt ein Hinweis auf stderr, der die Ausgabe nicht
+  // veraendert: Das Protokoll ist Buchhaltung, keine Bedingung (Muster checks-7).
+  if (zeilen.length > 0) {
+    try {
+      mkdirSync(dirname(pfad), { recursive: true });
+      appendFileSync(pfad, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
+    } catch (err) {
+      process.stderr.write(`Hinweis: Buchung nicht protokolliert (${pfad}): ${err.message}\n`);
+    }
+  }
+
+  const beruehrt = new Map();
+  for (const { art } of buchbar) {
+    beruehrt.set(art, (beruehrt.get(art) ?? 0) + 1);
+  }
+
+  const schwelle = schwelleLesen();
+  return {
+    ok: true,
+    datei,
+    stufe,
+    karte,
+    vergleichsstand,
+    geschrieben: zeilen.length,
+    protokoll: PROTOKOLL_DATEI,
+    schwelle,
+    arten: [...beruehrt.keys()].sort().map((art) => {
+      const stand = (bestand.get(art) ?? 0) + beruehrt.get(art);
+      const nullpunkt = nullpunktFuer(art);
+      // `>=` oberhalb des Nullpunkts (E20), nicht `==`: Ein uebersprungener Stand
+      // verloere den Treffer sonst dauerhaft.
+      return { art, stand, nullpunkt, erreicht: stand - nullpunkt >= schwelle };
+    }),
+  };
+}
+
 // --- CLI ---------------------------------------------------------------------
 
 function parsePruefenArgs(rest) {
@@ -331,6 +660,25 @@ function parsePruefenArgs(rest) {
   }
   if (datei === null) fail("'pruefen' braucht --datei <pfad>.");
   return datei;
+}
+
+function parseBuchenArgs(rest) {
+  const werte = { datei: null, stufe: null, karte: null };
+  const optionen = { "--datei": "datei", "--stufe": "stufe", "--karte": "karte" };
+  for (let i = 0; i < rest.length; i += 1) {
+    const feld = optionen[rest[i]];
+    if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
+    werte[feld] = rest[i + 1];
+    if (!werte[feld]) fail(`${rest[i]} erwartet einen Wert.`);
+    i += 1;
+  }
+  if (werte.datei === null || werte.stufe === null || werte.karte === null) {
+    fail("'buchen' braucht --datei <pfad>, --stufe <stufe> und --karte <n>.");
+  }
+  if (!BUCHEN_STUFEN.includes(werte.stufe)) {
+    fail(`Unbekannte Stufe: '${werte.stufe}'. Erwartet: ${BUCHEN_STUFEN.join(", ")}.`);
+  }
+  return werte;
 }
 
 /** Immer JSON auf stdout — auch hier, wo der Aufruf abgewiesen wird. */
@@ -368,14 +716,17 @@ function main() {
   if (command === "pruefen") {
     return alsJson(() => pruefen(parsePruefenArgs(rest)));
   }
+  if (command === "buchen") {
+    return alsJson(() => buchen(parseBuchenArgs(rest)));
+  }
 
   // Auch der Aufruf ohne Kommando ist ein Fehler mit JSON-Ausgabe: Wer dieses Werkzeug
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
   process.stderr.write(HELP);
   return alsJson(() => fail(command === undefined
-    ? `Kein Kommando. Erwartet: ${["arten", "pruefen"].join(" oder ")}.`
-    : `Unbekannter Befehl: '${command}'. Erwartet: arten oder pruefen.`));
+    ? `Kein Kommando. Erwartet: ${["arten", "pruefen", "buchen"].join(", ")}.`
+    : `Unbekannter Befehl: '${command}'. Erwartet: arten, pruefen oder buchen.`));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

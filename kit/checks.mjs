@@ -588,8 +588,12 @@ function kommandoAusfuehren(cmd, env) {
  * die Pfade und nicht den Inhalt, damit gits Filterkette (`autocrlf`, `clean`)
  * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
  * dem Gate zeigt.
+ *
+ * Exportiert, damit befunde.mjs denselben Blob-Hash ermitteln kann, statt die
+ * Frage ein zweites Mal zu implementieren (Issue #802) — derselbe Grund, aus dem
+ * `zusammenfassungPfad` fuer night.mjs exportiert ist (Issue #428).
  */
-function blobHashes(pfade) {
+export function blobHashes(pfade) {
   const hashes = {};
   const vorhanden = [];
   for (const pfad of pfade) {
