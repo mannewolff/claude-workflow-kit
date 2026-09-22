@@ -2,6 +2,18 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.0.2] - 2026-09-22
+- Blob von checks.mjs in install.mjs nachgezogen (#850)
+- Eingrenzung im Kit: sechs Teile, drei Testaufrufe und ein Schutztest (#850)
+- Die Push-Stufe faehrt wie die Merge-Stufe den vollen Umfang (#849)
+- Aufwandsbericht je Aufgabenstufe und Gruendlichkeit (#848)
+- Aufgabenstufen als Auswahl je Stufe statt JSON-Text (#847)
+- Gruendlichkeit der Stufe als --effort an die Session (#846)
+- Gruendlichkeit je Aufgabenstufe als Feld effort (#845)
+- Die fuenf langsamsten Testdateien thematisch geteilt (#836)
+- Kurzes Wiederholbudget fuer Prozess-Tests per KIT_TOOLBOX_BUDGET_MS (#842)
+- Volle Testsuite nur einmal ueber checks.mjs run (#835)
+
 ## [3.0.1] - 2026-09-22
 - Wiederholung, Idempotenz-Schluessel und drei Rueckmeldungen in board.mjs (#834)
 - Installer erkennt das eigene Commit-Gate auch bei absolutem core.hooksPath (#833)

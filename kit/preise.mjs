@@ -28,7 +28,7 @@
  * Preise in US-Dollar je 1.000.000 Token.
  */
 
-export const KIT_VERSION = "3.0.1";
+export const KIT_VERSION = "3.0.2";
 
 /** Der Tag, an dem die Tabelle zuletzt gegen die Quelle gehalten wurde. */
 export const PREISE_STAND = "2026-09-18";
