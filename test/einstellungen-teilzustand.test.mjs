@@ -69,7 +69,7 @@ test("[einstellungen-19] jede angeforderte Vorschau eines Teils wird geholt", as
       .filter((a) => a.pfad.endsWith("/vorschau"))
       .map((a) => a.body.teil)
       .sort();
-    assert.deepEqual(teile, ["m2", "m3"], "die Anforderung eines Teils verdraengte die eines anderen");
+    assert.deepEqual(teile, ["m10", "m2", "m3"], "die Anforderung eines Teils verdraengte die eines anderen");
   });
 });
 
