@@ -1655,6 +1655,51 @@ Vier Fälle, damit klar ist, was wann passiert:
 
 Wird direkt angelegt — also im Regelfall —, kommt aber nur eine `ideaId` zurück, bricht `issue create` **ab** statt `pending` zu melden: Sonst sähe der Aufruf erfolgreich aus, während die Karte keine Nummer hat. Die Meldung nennt `ideaStored: true` als Weg in den Pool-Modus. Ältere Backends (Original-Toolbox, kanban-kit vor 1.5) verhalten sich unverändert; GitHub- und GitLab-Tracker sind von alldem nicht betroffen.
 
+#### Wiederholung, Idempotenz-Schlüssel und die drei Rückmeldungen
+
+Ein Nachtlauf schickt Hunderte Board-Befehle in Folge. Das Board begrenzt sie seit kanban-kit 2.5 je Person und weist mit `429`, `Retry-After` (Sekunden) und dem Problem-Detail `type: urn:manban:overload` ab. Ohne Gegenstück im Adapter bricht der Lauf an irgendeiner Stelle ab und hinterlässt eine halb bearbeitete Kette.
+
+Deshalb hat jeder Toolbox-Aufruf eine **Zeitgrenze je Versuch** (10 Sekunden), eine **Wiederholschleife** mit wachsender Wartezeit und Streuung und ein **Gesamtbudget**: 30 Sekunden interaktiv, 120 Sekunden bei gesetztem `KIT_AGENT_MODEL` — dasselbe Signal wie beim Header `X-Agent-Model`. Nachts sitzt niemand daneben, den zwei Minuten stören; interaktiv ist eine halbe Minute die Grenze des Erträglichen. `Retry-After` schlägt die eigene Staffel: Der Server weiß besser, wann sein Fenster wieder offen ist.
+
+**Wiederholt wird nur, wo es gefahrlos ist:**
+
+| Fall | Wiederholung | Warum |
+|---|---|---|
+| `429` mit `type: urn:manban:overload` | ja, bei jeder Methode | Eine Abweisung hat nichts ausgeführt |
+| `429` ohne diesen `type` | nein | Sagt nichts über den Ausgang |
+| `5xx` bei `GET`, `PUT`, `DELETE` | ja | Folgenlos bzw. bei Wiederholung dasselbe Ergebnis |
+| `5xx` bei `POST` **mit** `Idempotency-Key` | ja | Derselbe Schlüssel führt die Wirkung höchstens einmal aus |
+| `5xx` bei `POST` **ohne** Schlüssel | nein | Sonst doppelte sich eine Nachtlauf-Meldung nach einem `502` des Proxys |
+| Zeitablauf, Verbindungsabbruch | ja | Der wahrscheinliche Fehlermodus unter Volllast |
+| Verbindung abgelehnt (`ECONNREFUSED`, `ENOTFOUND`) | nein | Nachweislich ging kein Aufruf hinaus |
+| `401` | nie | Ein widerrufener Token wird durch Warten nicht gültig |
+| jeder andere Status (`403`, `404`, `409` …) | nein | Sofort gemeldet |
+
+Jeder Wiederholversuch schreibt eine Zeile auf stderr (`board: POST /api/kanban/items — Versuch 2 endete mit HTTP 503, erneut in 1000 ms (Frist 120 s)`). Wer einem Nachtlauf zusieht, kann so Warten von Hängen unterscheiden. Der gelungene Aufruf meldet nichts — eine Zeile je Board-Befehl ertränkte genau dieses Signal.
+
+**Die drei Rückmeldungen.** Jeder abgebrochene Aufruf sagt, was mit seiner Wirkung ist:
+
+- **ausgeführt** — der Server hat mit `2xx` geantwortet.
+- **nicht ausgeführt** — eine beantwortete Ablehnung (`4xx`) oder nachweislich kein hinausgegangener Aufruf. Wiederholen ist gefahrlos.
+- **Ausgang unklar** — ein schreibender Aufruf ging hinaus und blieb ohne verwertbare Antwort (Zeitablauf, Verbindungsabbruch oder `5xx`), und das Budget ist erschöpft. Die Wirkung kann eingetreten sein.
+
+Der dritte Wert ist mit Absicht kein Sonderfall des zweiten: Ein Zeitablauf, der als „nicht ausgeführt“ gemeldet wird, verleitet zu genau der Wiederholung, die einen Abschlussbericht ein zweites Mal ans Board hängt.
+
+**Der Schlüssel kommt von außen zurück.** `POST /api/kanban/items` und `POST /api/kanban/items/{id}/comments` — die beiden Endpunkte, die ihn serverseitig auswerten — tragen einen `Idempotency-Key`. Er entsteht je Auftrag und bleibt über alle Versuche gleich. Die Meldung bei „Ausgang unklar“ nennt ihn samt dem vollständigen Kommando für die Wiederholung:
+
+```
+Toolbox-API-Fehler: HTTP 502
+Ausgang unklar: POST /api/kanban/items/700/comments ging hinaus, blieb aber ohne
+verwertbare Antwort — die Wirkung kann eingetreten sein. Schluessel: 5f2c-…-91ab.
+Mit genau diesem Schluessel wiederholen — derselbe Schluessel fuehrt die Wirkung
+hoechstens einmal aus:
+  node .claude/kit/board.mjs issue comment 7 --text-file /tmp/7-bericht.md --idempotency-key 5f2c-…-91ab
+```
+
+Ein nur prozessinterner Schlüssel machte jede Wiederholung von Hand zu einem neuen Auftrag. Deshalb nehmen `issue create` und `issue comment` ihn über **`--idempotency-key <wert>`** wieder entgegen. Ohne den Schalter bleibt das Verhalten unverändert. Ein Aufruf ohne Schlüssel — `/labels`, `/night-runs` — sagt das in der Meldung ausdrücklich und verweist aufs Nachsehen am Board.
+
+**Andere Backends.** Für Server ohne den Überlast-`type` ändert sich nichts: `429` ohne `urn:manban:overload` wird nicht wiederholt, und der Header `Idempotency-Key` wird dort ignoriert. Bei den Trackern `github`, `gitlab` und `local` nimmt `--idempotency-key` der Aufruf folgenlos an.
+
 ## Aktualisieren und mehrere Projekte
 
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).

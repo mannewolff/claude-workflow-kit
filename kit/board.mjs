@@ -27,6 +27,8 @@
  *       '-' liest von stdin, gut fuer kurze Texte. Fuer lange (Review-Befunde) ist
  *       '--text-file' der Weg: eine stueckweise per Shell erzeugte Datei ausserhalb
  *       des Projektverzeichnisses (Issue #584).
+ *       '--idempotency-key <wert>' wiederholt 'issue create' und 'issue comment'
+ *       gefahrlos, wenn der Ausgang unklar blieb (Issue #834).
  *   node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
@@ -49,6 +51,7 @@ import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -86,9 +89,13 @@ const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
                              [--author-model <modell>] [--derived-from <nummer>]
+                             [--idempotency-key <wert>]
       --derived-from traegt die Kartennummer des naechsten Vorfahren ins Board
       (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
+      --idempotency-key wiederholt einen Aufruf, dessen Ausgang unklar blieb, ohne
+      ihn ein zweites Mal auszufuehren (Issue #834). Ohne den Schalter entsteht der
+      Schluessel je Auftrag selbst; die Fehlermeldung nennt ihn samt Kommando.
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
   node board.mjs issue activity --ids <n,n,...>
@@ -98,7 +105,9 @@ Nutzung:
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
+                             [--idempotency-key <wert>]
       '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
+      --idempotency-key wie bei 'issue create' (Issue #834).
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -218,8 +227,39 @@ export function normalizeRepoName(raw) {
 
 // --- Fehlerbehandlung ---
 
-// Erwartete Fehler aus den Adaptern: abfangbar, im CLI-Layer als "Fehler: ..." ausgegeben
-class BoardError extends Error {}
+/**
+ * Die drei Rueckmeldungen eines Board-Aufrufs (Issue #834). Sie beantworten die
+ * einzige Frage, die nach einem Fehlschlag zaehlt: Darf ich es nochmal schicken?
+ *
+ *  - `ausgefuehrt`      — der Server hat mit 2xx geantwortet.
+ *  - `nicht-ausgefuehrt`— eine beantwortete Ablehnung (4xx), oder es ging
+ *                         nachweislich kein Aufruf hinaus (Verbindung abgelehnt).
+ *                         Wiederholen ist gefahrlos.
+ *  - `ausgang-unklar`   — ein schreibender Aufruf ging hinaus, die Antwort blieb
+ *                         aus oder war ein Serverfehler. Die Wirkung kann
+ *                         eingetreten sein. Nur mit demselben Idempotenz-
+ *                         Schluessel wiederholen.
+ *
+ * Warum der dritte Wert eigenstaendig ist: Ein Zeitablauf als "nicht ausgefuehrt"
+ * zu melden verleitet zu genau der Wiederholung, die einen Kommentar doppelt
+ * anlegt.
+ */
+export const RUECKMELDUNG = {
+  AUSGEFUEHRT: "ausgefuehrt",
+  NICHT_AUSGEFUEHRT: "nicht-ausgefuehrt",
+  AUSGANG_UNKLAR: "ausgang-unklar",
+};
+
+// Erwartete Fehler aus den Adaptern: abfangbar, im CLI-Layer als "Fehler: ..." ausgegeben.
+// `rueckmeldung` ist die Auskunft ueber die Wirkung (siehe RUECKMELDUNG); der Default
+// gilt fuer jeden lokal erzeugten Fehler — eine Validierung, die abbricht, hat nichts
+// ausgefuehrt.
+export class BoardError extends Error {
+  constructor(message, rueckmeldung = RUECKMELDUNG.NICHT_AUSGEFUEHRT) {
+    super(message);
+    this.rueckmeldung = rueckmeldung;
+  }
+}
 
 function fail(msg) {
   process.stderr.write(`Fehler: ${msg}\n`);
@@ -1516,6 +1556,137 @@ export function agentModelHeader(env = process.env) {
   return model ? { "X-Agent-Model": model } : {};
 }
 
+// ============================================================
+// Wiederholung gegen Ueberlast (Issue #834)
+// ============================================================
+//
+// ACHTUNG, ZWILLING: Dieselbe Logik traegt `cli/tbx.mjs` im Projekt kanban-kit
+// (dort Issue #1005). Die beiden Fassungen sind bewusst wortgleich kommentiert,
+// damit eine spaetere Aenderung nicht nur eine Haelfte trifft — wer hier die
+// Staffel, die Wiederholregeln oder die drei Rueckmeldungen anfasst, aendert
+// die Schwesterfassung mit. Geteilter Code ist es nicht: board.mjs bleibt eine
+// eigenstaendig kopierbare Einzeldatei ohne Fremdabhaengigkeiten.
+//
+// Der Anlass: Das Board begrenzt seit kanban-kit 2.5 die Befehle je Person und
+// weist mit `429`, `Retry-After` und dem Problem-Detail `type: urn:manban:overload`
+// ab. Ein Nachtlauf schickt Hunderte Befehle in Folge; ohne Wiederholung bricht
+// er irgendwo ab und hinterlaesst eine halb bearbeitete Kette.
+
+/** Das Problem-Detail, an dem eine Ueberlast-Abweisung erkennbar ist. */
+export const TOOLBOX_UEBERLAST_TYPE = "urn:manban:overload";
+
+/** Zeitgrenze je Einzelversuch. Drei volle Haenger passen so ins Tagesbudget. */
+const TOOLBOX_VERSUCH_MS = 10_000;
+const TOOLBOX_BUDGET_INTERAKTIV_MS = 30_000;
+const TOOLBOX_BUDGET_NACHT_MS = 120_000;
+const TOOLBOX_WARTE_BASIS_MS = 500;
+const TOOLBOX_WARTE_MAX_MS = 8_000;
+const TOOLBOX_WARTE_MIN_MS = 100;
+/** Anteil der Wartezeit, der zufaellig obendrauf kommt (Streuung gegen Gleichtakt). */
+const TOOLBOX_STREUUNG = 0.25;
+
+/**
+ * Netzfehler-Codes, bei denen nachweislich kein Aufruf hinausging. Sie sind keine
+ * Wiederholung wert: Ein abgeschalteter Server oder ein unbekannter Name wird
+ * innerhalb des Budgets nicht wieder da sein, und der Aufruf hat sicher nichts
+ * bewirkt — deshalb "nicht ausgefuehrt" statt "Ausgang unklar".
+ */
+const NETZ_ENDGUELTIG = new Set(["ECONNREFUSED", "ENOTFOUND", "ERR_INVALID_URL", "EPROTO", "CERT_HAS_EXPIRED"]);
+
+/**
+ * Das Gesamtbudget einer Wiederholschleife. Dasselbe Signal wie agentModelHeader:
+ * Ist KIT_AGENT_MODEL gesetzt, laeuft der Aufruf unbeaufsichtigt im Nachtbetrieb
+ * und darf laenger auf ein ueberlastetes Board warten — dort sitzt niemand, den
+ * zwei Minuten stoeren. Interaktiv ist eine halbe Minute die Grenze des Ertraeglichen.
+ */
+export function toolboxBudgetMs(env = process.env) {
+  return (env.KIT_AGENT_MODEL || "").trim() ? TOOLBOX_BUDGET_NACHT_MS : TOOLBOX_BUDGET_INTERAKTIV_MS;
+}
+
+/**
+ * Ordnet einen fetch-Wurf ein: `zeitablauf` (die eigene Zeitgrenze hat abgebrochen),
+ * `endgueltig` (kein Aufruf ging hinaus) oder `abbruch` (die Verbindung brach
+ * unterwegs ab — der Aufruf kann angekommen sein).
+ */
+export function netzfehlerArt(e) {
+  if (e?.name === "TimeoutError" || e?.name === "AbortError") return "zeitablauf";
+  const code = e?.cause?.code ?? e?.code ?? "";
+  return NETZ_ENDGUELTIG.has(code) ? "endgueltig" : "abbruch";
+}
+
+/**
+ * Darf dieser Fehlschlag wiederholt werden? Die Regel in einem Satz: alles, was
+ * entweder nichts ausgefuehrt hat (Abweisung wegen Ueberlast) oder gefahrlos
+ * zweimal laufen darf (lesend, ersetzend, oder mit Idempotenz-Schluessel).
+ *
+ *  - `429` nur mit dem Ueberlast-`type`, dann aber bei JEDER Methode: Eine
+ *    Abweisung hat die Wirkung nicht ausgefuehrt. Ein fremdes `429` ohne diesen
+ *    `type` sagt nichts ueber den Ausgang und bleibt unwiederholt.
+ *  - `5xx` bei `GET` (folgenlos), `PUT`/`DELETE` (dasselbe Ergebnis bei
+ *    Wiederholung) und bei `POST` nur MIT Schluessel. Ein `POST` ohne Schluessel
+ *    — `/labels`, `/night-runs` — wuerde sich sonst nach einem 502 des
+ *    vorgeschalteten Proxys doppeln.
+ *  - `401` nie: ein widerrufener Token wird durch Warten nicht gueltig.
+ */
+export function darfWiederholen({ method, status = null, typ = null, hatSchluessel = false, netz = null }) {
+  if (netz) return netz !== "endgueltig";
+  if (status === 429) return typ === TOOLBOX_UEBERLAST_TYPE;
+  if (status === null || status < 500) return false;
+  const m = (method || "GET").toUpperCase();
+  if (m === "POST") return hatSchluessel;
+  return true;
+}
+
+/**
+ * Die Rueckmeldung zu einem abgeschlossenen Versuch (siehe RUECKMELDUNG).
+ * Entscheidend ist, ob der Aufruf etwas veraendert haben KANN: Nur ein
+ * schreibender Aufruf, der hinausging und ohne Antwort blieb, ist unklar.
+ */
+export function rueckmeldungFuer({ ok = false, status = null, netz = null, method = "GET" }) {
+  if (ok) return RUECKMELDUNG.AUSGEFUEHRT;
+  const schreibend = (method || "GET").toUpperCase() !== "GET";
+  if (!schreibend) return RUECKMELDUNG.NICHT_AUSGEFUEHRT;
+  if (netz) return netz === "endgueltig" ? RUECKMELDUNG.NICHT_AUSGEFUEHRT : RUECKMELDUNG.AUSGANG_UNKLAR;
+  return status >= 500 ? RUECKMELDUNG.AUSGANG_UNKLAR : RUECKMELDUNG.NICHT_AUSGEFUEHRT;
+}
+
+/**
+ * Wartezeit vor dem naechsten Versuch: verdoppelnd bis zur Deckelung, mit
+ * Streuung nach oben. `Retry-After` (Sekunden) schlaegt die eigene Staffel — der
+ * Server weiss besser, wann sein Fenster wieder offen ist. Die Untergrenze
+ * verhindert eine Schleife ohne Fortschritt bei `Retry-After: 0`.
+ */
+export function wartezeitMs(versuch, retryAfterSek = null, zufall = Math.random) {
+  const roh = Number(retryAfterSek);
+  const basis = retryAfterSek !== null && retryAfterSek !== undefined && Number.isFinite(roh) && roh >= 0
+    ? roh * 1000
+    : Math.min(TOOLBOX_WARTE_BASIS_MS * 2 ** (versuch - 1), TOOLBOX_WARTE_MAX_MS);
+  return Math.max(TOOLBOX_WARTE_MIN_MS, Math.round(basis + basis * TOOLBOX_STREUUNG * zufall()));
+}
+
+/** Shell-sicheres Zitat fuer das Wiederholkommando — nur, wo noetig. */
+function zitiere(arg) {
+  if (/^[\w@%+=:,./-]+$/.test(arg)) return arg;
+  const maskiert = String(arg).replaceAll("'", String.raw`'\''`);
+  return `'${maskiert}'`;
+}
+
+/**
+ * Baut das Kommando, mit dem sich ein unklar ausgegangener Aufruf gefahrlos
+ * wiederholen laesst: derselbe Aufruf, derselbe Schluessel. Ein bereits
+ * uebergebener `--idempotency-key` wird ersetzt statt gedoppelt.
+ */
+export function wiederholKommando(schluessel, argv = process.argv) {
+  const args = [];
+  const roh = argv.slice(2);
+  for (let i = 0; i < roh.length; i++) {
+    if (roh[i] === "--idempotency-key") { i++; continue; }
+    args.push(roh[i]);
+  }
+  if (schluessel) args.push("--idempotency-key", schluessel);
+  return ["node", argv[1] ?? "board.mjs", ...args].map(zitiere).join(" ");
+}
+
 /**
  * Issue-Tracker gegen das eigene Toolbox-Kanban-Board. Zwei-Achsen-Modell (#368): der Code liegt
  * weiter auf GitHub (codeHost bleibt github), nur der Issue-Tracker ist das Board.
@@ -1528,8 +1699,20 @@ export function agentModelHeader(env = process.env) {
  * number vs. DB-id: Der Workflow adressiert Issues ueber die Board-Anzeigenummer (#N). Move/Comment
  * brauchen die DB-id aus der Item-Response; sie wird intern per Board-Fetch aufgeloest.
  */
-class ToolboxIssueTracker {
-  constructor(config) { this._cfg = config; }
+export class ToolboxIssueTracker {
+  /**
+   * `uhr` haelt alles, was die Wiederholschleife aus der Umwelt braucht (Issue #834):
+   * Zeitquelle, Schlafen, Zufall und die Meldespur. Injizierbar, damit die Tests die
+   * Schleife ohne echtes Warten durchlaufen — eine Schleife, die real bis zu zwei
+   * Minuten braucht, waere sonst nur durch Warten belegbar und bliebe ungeprueft.
+   */
+  constructor(config, uhr = {}) {
+    this._cfg = config;
+    this._jetzt = uhr.jetzt ?? Date.now;
+    this._schlaf = uhr.schlaf ?? sleep;
+    this._zufall = uhr.zufall ?? Math.random;
+    this._melde = uhr.melde ?? ((zeile) => process.stderr.write(`${zeile}\n`));
+  }
 
   _auth() {
     const dir = process.env.TBX_CONFIG_DIR || join(homedir(), ".config", "toolbox-cli");
@@ -1553,33 +1736,103 @@ class ToolboxIssueTracker {
     try { return JSON.parse(readFileSync(path, "utf-8")); } catch { return null; }
   }
 
+  /**
+   * Der eine Weg ans Board — mit Zeitgrenze, Wiederholung und Idempotenz-Schluessel
+   * (Issue #834). Die Regeln stehen ueber den reinen Funktionen darueber
+   * (darfWiederholen, rueckmeldungFuer, wartezeitMs); hier steht nur ihre Reihenfolge.
+   *
+   * `options.idempotencyKey` traegt den Schluessel fuer die beiden Endpunkte, die ihn
+   * serverseitig auswerten. Er entsteht je Auftrag und bleibt ueber ALLE Versuche
+   * gleich — sonst waere jede Wiederholung ein neuer Auftrag, und genau das soll der
+   * Schluessel verhindern.
+   */
   async _fetch(path, options = {}) {
     const { host, token } = this._auth();
-    let res;
-    try {
-      res = await fetch(`${host}${path}`, {
-        ...options,
-        headers: { ...options.headers, "X-Kanban-Token": token, ...agentModelHeader() },
-      });
-    } catch (e) {
-      throw new BoardError(`Toolbox-API nicht erreichbar (${host}): ${e.message}`);
-    }
-    if (res.status === 401) {
-      throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
-    }
-    if (!res.ok) {
-      // Der Status bleibt stehen, auch wenn der Server eine eigene Meldung schickt
-      // (Issue #460): Fuer den Aufrufer ist der Unterschied zwischen 404 und 500
-      // die Diagnose — "Route gibt es nicht" gegen "Route ist kaputt". Frueher
-      // ersetzte body.message den Status und nahm sie mit.
-      let msg = `HTTP ${res.status}`;
+    const { idempotencyKey, ...rest } = options;
+    const method = (rest.method || "GET").toUpperCase();
+    const headers = { ...rest.headers, "X-Kanban-Token": token, ...agentModelHeader() };
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    const budget = toolboxBudgetMs();
+    const frist = this._jetzt() + budget;
+
+    for (let versuch = 1; ; versuch++) {
+      let res = null;
+      let wurf = null;
       try {
-        const body = await res.json();
-        if (body?.message) msg = `${msg}: ${body.message}`;
-      } catch { /* kein JSON-Body */ }
-      throw new BoardError(`Toolbox-API-Fehler: ${msg}`);
+        res = await fetch(`${host}${path}`, { ...rest, headers, signal: AbortSignal.timeout(TOOLBOX_VERSUCH_MS) });
+      } catch (e) {
+        wurf = e;
+      }
+      if (res?.ok) return res;
+      // Die 401-Sonderbehandlung steht vor allem anderen und wird nie wiederholt:
+      // Ein widerrufener Token wird durch Warten nicht gueltig, und die Meldung
+      // nennt den einzigen Ausweg.
+      if (res?.status === 401) {
+        throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
+      }
+
+      const status = res?.status ?? null;
+      const netz = wurf ? netzfehlerArt(wurf) : null;
+      const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);
+      const warte = wartezeitMs(versuch, retryAfter, this._zufall);
+      const nochmal = darfWiederholen({ method, status, typ, hatSchluessel: Boolean(idempotencyKey), netz })
+        && this._jetzt() + warte <= frist;
+      if (!nochmal) throw this._fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host });
+
+      // Eine Zeile je Wiederholung, nicht je Aufruf: Wer einem Nachtlauf zusieht,
+      // soll Warten von Haengen unterscheiden koennen. Eine Zeile auch im
+      // Erfolgsfall ertraenkte genau dieses Signal.
+      this._melde(
+        `board: ${method} ${path} — Versuch ${versuch} endete mit ${grund}, erneut in ${warte} ms `
+        + `(Frist ${Math.round(budget / 1000)} s)`
+      );
+      await this._schlaf(warte);
     }
-    return res;
+  }
+
+  /** Der Fehler am Ende der Schleife — mit Rueckmeldung und, wo noetig, dem Weg zurueck. */
+  _fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host }) {
+    const rueckmeldung = rueckmeldungFuer({ status, netz, method });
+    const basis = wurf
+      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}`
+      : `Toolbox-API-Fehler: ${grund}`;
+    if (rueckmeldung !== RUECKMELDUNG.AUSGANG_UNKLAR) return new BoardError(basis, rueckmeldung);
+    return new BoardError(`${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`, rueckmeldung);
+  }
+
+  /**
+   * Liest die Lage eines fehlgeschlagenen Versuchs aus: Klartext-Grund, Problem-`type`
+   * und `Retry-After`. Der Rumpf wird genau einmal gelesen — ein zweiter Zugriff auf
+   * denselben Stream liefert nichts mehr.
+   *
+   * Der Status bleibt im Grund stehen, auch wenn der Server eine eigene Meldung
+   * schickt (Issue #460): Fuer den Aufrufer ist der Unterschied zwischen 404 und 500
+   * die Diagnose — "Route gibt es nicht" gegen "Route ist kaputt".
+   */
+  async _fehlerlage(res, wurf) {
+    if (!res) return { grund: `Netzfehler (${wurf.name}: ${wurf.message})`, typ: null, retryAfter: null };
+    let grund = `HTTP ${res.status}`;
+    let typ = null;
+    try {
+      const body = await res.json();
+      if (body?.message) grund = `${grund}: ${body.message}`;
+      if (typeof body?.type === "string") typ = body.type;
+    } catch { /* kein JSON-Body */ }
+    const roh = res.headers?.get?.("retry-after");
+    const sek = roh === null || roh === undefined || roh === "" ? null : Number(roh);
+    return { grund, typ, retryAfter: Number.isFinite(sek) ? sek : null };
+  }
+
+  /** Der Zusatz zur Meldung "Ausgang unklar": was passiert sein kann und wie es weitergeht. */
+  _unklarHinweis(method, path, schluessel) {
+    const kopf = `Ausgang unklar: ${method} ${path} ging hinaus, blieb aber ohne verwertbare Antwort — `
+      + "die Wirkung kann eingetreten sein.";
+    if (!schluessel) {
+      return `${kopf} Der Aufruf lief ohne Idempotenz-Schluessel; eine blinde Wiederholung `
+        + "kann ihn ein zweites Mal ausfuehren. Erst am Board nachsehen.";
+    }
+    return `${kopf} Schluessel: ${schluessel}. Mit genau diesem Schluessel wiederholen — derselbe `
+      + `Schluessel fuehrt die Wirkung hoechstens einmal aus:\n  ${wiederholKommando(schluessel)}`;
   }
 
   _toColumn(status) {
@@ -1611,7 +1864,7 @@ class ToolboxIssueTracker {
     return item;
   }
 
-  async createIssue({ title, body, derivedFrom }) {
+  async createIssue({ title, body, derivedFrom, idempotencyKey }) {
     const { host } = this._auth();
     // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
     // Board-Nummer. Das ist die Vorgabe (Issue #313); der Ideen-Speicher
@@ -1643,10 +1896,15 @@ class ToolboxIssueTracker {
     // die im wichtigsten Fall nicht greift, waere schlechter als die benannte
     // Luecke — sie steht in docs/dokumentation.md.
     if (derivedFrom !== undefined) payload.derivedFrom = derivedFrom;
+    // Einer der beiden Endpunkte, die den Idempotenz-Schluessel auswerten (Issue #834).
+    // Ohne Vorgabe von aussen entsteht er hier, einmal je Auftrag: Alle Versuche
+    // desselben _fetch tragen ihn, eine spaetere Wiederholung von Hand bekommt ihn
+    // ueber `--idempotency-key` aus der Fehlermeldung.
     const res = await this._fetch("/api/kanban/items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      idempotencyKey: idempotencyKey || randomUUID(),
     });
     const created = await res.json();
     const result = interpretToolboxCreateResponse(created);
@@ -1817,13 +2075,16 @@ class ToolboxIssueTracker {
     });
   }
 
-  async commentIssue(number, text) {
+  async commentIssue(number, text, idempotencyKey) {
     const num = Number(number);
     const item = this._resolveByNumber(await this._boardItems(), num);
+    // Der zweite Endpunkt mit Idempotenz-Schluessel (Issue #834) — und der, bei dem
+    // eine Doppelung am meisten weh tut: ein zweimal angelegter Abschlussbericht.
     await this._fetch(`/api/kanban/items/${item.id}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ body: text }),
+      idempotencyKey: idempotencyKey || randomUUID(),
     });
   }
 
@@ -2449,6 +2710,18 @@ function derivedFromOption(wert) {
   return nummer;
 }
 
+/**
+ * Der Schluessel von aussen (Issue #834). Derselbe eigene Zweig fuer `true` wie bei
+ * derivedFromOption: Ein nacktes `--idempotency-key` wuerde sonst als der String
+ * "true" ans Board gehen — ein Schluessel, den jeder Aufruf teilt, und damit das
+ * Gegenteil dessen, was er soll.
+ */
+function idempotenzOption(wert) {
+  if (wert === undefined) return undefined;
+  if (wert === true || String(wert).trim() === "") fail("--idempotency-key braucht einen Wert.");
+  return String(wert).trim();
+}
+
 async function issueCreate(tracker, args) {
   if (!args.title) fail("--title ist erforderlich");
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
@@ -2458,6 +2731,7 @@ async function issueCreate(tracker, args) {
   // Vor jeder Body-Aufloesung und damit vor jedem Netzaufruf: Ein Tippfehler in der
   // Nummer soll keine Karte anlegen und keine Datei lesen.
   const derivedFrom = derivedFromOption(args["derived-from"]);
+  const idempotencyKey = idempotenzOption(args["idempotency-key"]);
   const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
   const felder = {
     title: args.title,
@@ -2473,6 +2747,8 @@ async function issueCreate(tracker, args) {
   // Nur setzen, wenn angegeben: Ein Schluessel mit `undefined` waere im Adapter nicht
   // vom bewussten Weglassen zu unterscheiden.
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
+  // Nur toolbox wertet den Schluessel aus; die uebrigen Tracker ignorieren das Feld.
+  if (idempotencyKey !== undefined) felder.idempotencyKey = idempotencyKey;
   out(await tracker.createIssue(felder));
 }
 
@@ -2719,7 +2995,10 @@ export function leseTextQuelle(direkt, dateiPfad, flagName) {
 async function issueComment(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
-  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"));
+  // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
+  // lesen und schon gar nichts ans Board schicken.
+  const idempotencyKey = idempotenzOption(args["idempotency-key"]);
+  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"), idempotencyKey);
   out({ ok: true, id });
 }
 
