@@ -15,6 +15,11 @@
  * ermittelt es zusaetzlich den Vergleichsstand: ob die maschinellen Pflichtpruefungen
  * auf demselben Stand gruen waren (AK 10, Plan #797 E12).
  *
+ * `auswerten` (Issue #806) liest Protokoll und Vorschlagsstand und schreibt den Bericht
+ * nach `.claude/befunde.md` (fuer Menschen) und `.claude/befunde.json` (fuer die
+ * Ausgabestellen); `befund` gibt allein den Befundblock aus diesem Stand als Text aus —
+ * dieselbe Teilung von Messen und Anzeigen wie bei `aufwand.mjs` und `wirksamkeit.mjs`.
+ *
  * `vorschlag --art <a>` (Issue #804) legt am Board eine Idee an, sobald die Art oberhalb
  * ihres Nullpunkts die Schwelle erreicht — und ergaenzt einen bereits offenen Vorschlag,
  * statt einen zweiten anzulegen (AK 8). `vorschlag --abgelehnt <a>` vermerkt die
@@ -57,6 +62,8 @@
  * Aufruf im Projekt-Root:  node .claude/kit/befunde.mjs arten
  *                          node .claude/kit/befunde.mjs pruefen --datei <pfad>
  *                          node .claude/kit/befunde.mjs vorschlag --art <art>
+ *                          node .claude/kit/befunde.mjs auswerten
+ *                          node .claude/kit/befunde.mjs befund
  *
  * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek — das Kit liefert
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
@@ -162,6 +169,10 @@ const STAND_RE = /[—–-]\s*(geprueft|geprüft)\s*,\s*(bestaetigt|bestätigt)\
 
 const BUCHEN_STUFEN = ["fachlich", "plan", "issue", "code"];
 
+// Die Kommandos dieses Werkzeugs, in der Reihenfolge des Hilfetexts — die eine Liste,
+// aus der die Fehlermeldung des unbekannten Befehls entsteht.
+const KOMMANDOS = ["arten", "pruefen", "buchen", "vorschlag", "auswerten", "befund"];
+
 // Vorgabe des Config-Blocks `befunde.schwelle` (Issue #800): Ab so vielen Vorkommen
 // einer Art oberhalb ihres Nullpunkts meldet `buchen` die Schwelle als erreicht.
 const SCHWELLE_VORGABE = 3;
@@ -172,12 +183,16 @@ const ANGABEN = {
   art: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
 };
 
-// Die drei Dateien, mit denen dieses Werkzeug arbeitet. Hier oben und nicht bei
+// Die Dateien, mit denen dieses Werkzeug arbeitet. Hier oben und nicht bei
 // `buchen`, weil der Hilfetext sie nennt und ein `const` unterhalb von ihm beim Laden
 // in die temporale Totzone liefe.
 const PROTOKOLL_DATEI = ".claude/befunde.tsv";
 const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
 const CONFIG_DATEI = ".claude/workflow.config.json";
+// Die beiden Ergebnisse von `auswerten` (Issue #806), im Muster von wirksamkeit.mjs:
+// der Bericht fuer Menschen, der Stand fuer die Ausgabestellen.
+const BERICHT_DATEI = ".claude/befunde.md";
+const STAND_DATEI = ".claude/befunde.json";
 
 const HELP = `befunde.mjs (claude-workflow-kit v${KIT_VERSION}) — Form und Arten der Funde
 
@@ -186,6 +201,8 @@ const HELP = `befunde.mjs (claude-workflow-kit v${KIT_VERSION}) — Form und Art
   node befunde.mjs buchen --datei <pfad> --stufe <fachlich|plan|issue|code> --karte <n>
   node befunde.mjs vorschlag --art <art>
   node befunde.mjs vorschlag --abgelehnt <art>
+  node befunde.mjs auswerten
+  node befunde.mjs befund
 
 arten    Gibt die ${ARTEN.length} Mangel-Arten mit je einem erklaerenden Satz aus. Diese Liste
          ist der einzige Wortlaut im Kit; ein Projekt ergaenzt keine eigenen Arten.
@@ -209,12 +226,24 @@ vorschlag
          Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
          Der Vermerk steht in ${VORSCHLAEGE_DATEI}; ein gescheiterter
          Board-Aufruf laesst ihn unveraendert und endet ungleich 0.
+auswerten
+         Liest ${PROTOKOLL_DATEI} und ${VORSCHLAEGE_DATEI} und
+         schreibt ${BERICHT_DATEI} sowie ${STAND_DATEI}: je Art
+         die Zahl der Vorkommen, die Verteilung ueber die Stufen und den Stand eines
+         Vorschlags, dazu die Stufe 'code' getrennt nach gruenem und nicht
+         vergleichbarem Vergleichsstand. Beide Dateien entstehen vollstaendig, auch
+         wenn nichts auffaellt.
+befund   Gibt den Befundblock aus ${STAND_DATEI} als Text aus. Liegt kein
+         Befund vor, fehlt die Datei oder ist sie leer oder unlesbar, bleibt die
+         Ausgabe leer. Exit immer 0 — der Befund ist kein Gate.
 
   --version   Kit-Stand dieser Datei.
   --help, -h  Diese Uebersicht.
 
-Die Ausgabe aller Kommandos ist immer JSON auf stdout — auch im Leerfall und auch bei
-einem abgewiesenen Aufruf.
+Die Ausgabe aller Kommandos ist JSON auf stdout — auch im Leerfall und auch bei einem
+abgewiesenen Aufruf. Einzige Ausnahme ist 'befund': Was dort auf stdout steht, reicht
+eine Ausgabestelle unveraendert weiter, und eine Fehlermeldung haette darin nichts zu
+suchen.
 `;
 
 class BefundeError extends Error {}
@@ -948,6 +977,248 @@ export function vorschlag({ art, abgelehnt }) {
   return { ...basis, angelegt: true, titel, karte, ideaId };
 }
 
+// --- Auswerten und Befund (Issue #806) ---------------------------------------
+
+/**
+ * Die Protokollzeilen als Datensaetze.
+ *
+ * Eine zu kurze Zeile wird GEZAEHLT und nicht gedeutet — dieselbe Linie wie in
+ * `zaehleArten`: Eine Zeile, deren Spalten nicht aufgehen, ist keine halbe Buchung,
+ * und ein stillschweigend ergaenztes Feld erfaende eine Angabe, die nie gebucht wurde.
+ */
+function protokollLesen(zeilen) {
+  const eintraege = [];
+  let fehlerhafteZeilen = 0;
+  for (const zeile of zeilen) {
+    const s = zeile.split("\t");
+    if (s.length < 7) {
+      fehlerhafteZeilen += 1;
+      continue;
+    }
+    eintraege.push({ zeitpunkt: s[0], stufe: s[1], karte: s[2], rolle: s[3], art: s[4], schweregrad: s[5], vergleichsstand: s[6] });
+  }
+  return { eintraege, fehlerhafteZeilen };
+}
+
+/**
+ * Die Arten des Berichts: die zwoelf der Liste in ihrer festen Reihenfolge, dahinter
+ * jede im Protokoll vorgefundene fremde Art.
+ *
+ * Alle zwoelf, auch mit null Vorkommen (die Zusage „beide Dateien entstehen
+ * vollstaendig"): Ein Bericht, der nur die getroffenen Arten fuehrt, saehe bei einer
+ * Art genauso aus wie ein Bericht ueber die ganze Liste. Und die fremde Art wird
+ * angehaengt statt verschluckt — sie kann nur aus einer aelteren oder fremden Buchung
+ * stammen, und wegzulassen hiesse, ein Vorkommen verschwinden zu lassen.
+ */
+function artenReihenfolge(eintraege) {
+  const fremde = [...new Set(eintraege.map((e) => e.art).filter((a) => !ARTEN_NAMEN.has(a)))].sort();
+  return [...ARTEN.map((a) => a.name), ...fremde];
+}
+
+/** Die Verteilung der Eintraege ueber die Stufen; die vier bekannten stehen immer da. */
+function stufenVerteilung(eintraege) {
+  const verteilung = Object.fromEntries(BUCHEN_STUFEN.map((s) => [s, 0]));
+  for (const e of eintraege) {
+    verteilung[e.stufe] = (verteilung[e.stufe] ?? 0) + 1;
+  }
+  return verteilung;
+}
+
+/** Der Vorschlag als ein Satzteil: Stand und, wenn vorhanden, wo er liegt. */
+function vorschlagText(vorschlag) {
+  if (vorschlag === null) return "kein Vorschlag vermerkt";
+  if (vorschlag.karte !== null) return `Vorschlag ${vorschlag.stand} (#${vorschlag.karte})`;
+  if (vorschlag.ideaId !== null) return `Vorschlag ${vorschlag.stand} (Idee ${vorschlag.ideaId})`;
+  return `Vorschlag ${vorschlag.stand}`;
+}
+
+/** Die Stufenverteilung als Aufzaehlung der getroffenen Stufen. */
+function stufenText(stufen) {
+  const teile = Object.entries(stufen).filter(([, n]) => n > 0).map(([s, n]) => `${s} ${n}`);
+  return teile.length === 0 ? "" : ` (${teile.join(", ")})`;
+}
+
+/**
+ * Die Zaehlung der Code-Stufe, GETRENNT nach Vergleichsstand (AK 10 der Quelle #768).
+ *
+ * Zwei Zahlen und ausdruecklich nicht ihre Summe: Ein Fund auf einem Stand, dessen
+ * Pflichtpruefungen gruen waren, sagt etwas ueber die Luecke der Maschine — ein Fund
+ * ohne vergleichbaren Stand sagt darueber nichts. Zusammengezaehlt saehen beide aus
+ * wie das erste.
+ */
+function codeZaehlung(eintraege) {
+  const code = eintraege.filter((e) => e.stufe === "code");
+  return {
+    gruen: code.filter((e) => e.vergleichsstand === "gruen").length,
+    nichtVergleichbar: code.filter((e) => e.vergleichsstand === "nicht-vergleichbar").length,
+  };
+}
+
+/** Der Berichtstext fuer Menschen — `.claude/befunde.md`. */
+function berichtText(stand) {
+  const kopfzeilen = [
+    `# Befunde der Modell-Pruefungen`,
+    "",
+    `Auswertung vom ${stand.erzeugtAm} (claude-workflow-kit v${stand.kitVersion}).`,
+    "",
+    stand.protokoll.vorhanden
+      ? `Protokoll \`${stand.protokoll.datei}\`: ${stand.protokoll.zeilen} Zeilen, davon ${stand.protokoll.fehlerhafteZeilen} unlesbar.`
+      : `Protokoll \`${stand.protokoll.datei}\` liegt nicht vor — in diesem Projekt hat noch keine Modell-Pruefung gebucht.`,
+    "",
+    `Schwelle: ${stand.schwelle} Vorkommen oberhalb des Nullpunkts einer Art.`,
+    "",
+    "## Arten",
+    "",
+    `| Art | Vorkommen | ${BUCHEN_STUFEN.join(" | ")} | ueber Nullpunkt | Schwelle erreicht | Vorschlag |`,
+    `| --- | --- | ${BUCHEN_STUFEN.map(() => "---").join(" | ")} | --- | --- | --- |`,
+    ...stand.arten.map((a) => [
+      "", `\`${a.art}\``, a.vorkommen, ...BUCHEN_STUFEN.map((s) => a.stufen[s] ?? 0),
+      a.ueberNullpunkt, a.erreicht ? "ja" : "nein", vorschlagText(a.vorschlag), "",
+    ].join(" | ").trim()),
+    "",
+    "## Stufe code",
+    "",
+    stand.code.gruen + stand.code.nichtVergleichbar === 0
+      ? "Kein uebernommener Fund der Stufe `code` steht im Protokoll."
+      : `Uebernommene Funde der Stufe \`code\` auf einem Stand mit gruenen Pflichtpruefungen: ${stand.code.gruen}. `
+        + `Als \`nicht-vergleichbar\` ausgewiesen: ${stand.code.nichtVergleichbar}.`,
+    "",
+    "## Befund",
+    "",
+  ];
+  const befundzeilen = stand.befund.length === 0
+    ? ["Keine Art traegt ein Vorkommen."]
+    : stand.befund.map((b) => `- ${b.text}`);
+  return [...kopfzeilen, ...befundzeilen, ""].join("\n");
+}
+
+/**
+ * Der Befundblock als Text — mit Datum der Auswertung in der Kopfzeile.
+ *
+ * Ohne Befund eine LEERE Zeichenkette, nicht eine mit Kopfzeile: Die Kopfzeile allein
+ * waere schon der beruhigende Satz, den das Schweigen bei Unauffaelligkeit ausschliesst
+ * (dieselbe Zusage wie `befundText` in kit/aufwand.mjs und kit/wirksamkeit.mjs).
+ */
+export function befundText(stand) {
+  const befund = Array.isArray(stand?.befund) ? stand.befund : [];
+  if (befund.length === 0) return "";
+  const arten = befund.filter((b) => b.art !== null).length;
+  const vorkommen = befund.reduce((summe, b) => summe + (b.vorkommen ?? 0), 0);
+  const kopf = `Befunde der Modell-Pruefungen — Auswertung vom ${stand.erzeugtAm}: `
+    + `${vorkommen} Vorkommen in ${arten} ${arten === 1 ? "Art" : "Arten"}, Schwelle ${stand.schwelle ?? "?"}.`;
+  return [kopf, ...befund.map((b) => `- ${b.text}`)].join("\n") + "\n";
+}
+
+/**
+ * Der Befund: je Art mit mindestens einem Vorkommen eine Zeile, dahinter die Zeile
+ * zur Code-Stufe, sobald dort etwas gebucht ist.
+ *
+ * Nicht erst ab der Schwelle (anders als beim Vorschlag): Im Protokoll steht nur, was
+ * gegengeprueft, bestaetigt und uebernommen wurde — jede Zeile ist ein belegter
+ * Mangel, den eine Maschine nicht gefunden hat. Die Schwelle steuert, wann daraus eine
+ * Idee am Board wird, nicht, ab wann der Mensch die Zahl sehen darf.
+ */
+function befundBestimmen(arten, code, schwelle) {
+  const befund = arten.filter((a) => a.vorkommen > 0).map((a) => {
+    const schwellenteil = a.erreicht ? `, Schwelle ${schwelle} erreicht` : "";
+    return {
+      art: a.art,
+      vorkommen: a.vorkommen,
+      text: `\`${a.art}\`: ${a.vorkommen} Vorkommen${stufenText(a.stufen)}${schwellenteil}`
+        + ` — ${vorschlagText(a.vorschlag)}.`,
+    };
+  });
+  if (befund.length > 0 && code.gruen + code.nichtVergleichbar > 0) {
+    befund.push({
+      art: null,
+      vorkommen: 0,
+      text: `Stufe \`code\`: ${code.gruen} auf einem Stand mit gruenen Pflichtpruefungen, `
+        + `${code.nichtVergleichbar} als \`nicht-vergleichbar\` ausgewiesen.`,
+    });
+  }
+  return befund;
+}
+
+function schreibeDatei(datei, inhalt) {
+  const pfad = join(process.cwd(), ...datei.split("/"));
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(pfad, inhalt, "utf-8");
+  } catch (err) {
+    fail(`${datei} konnte nicht geschrieben werden: ${err.message}`);
+  }
+}
+
+/**
+ * Die Auswertung. Rueckgabe ist der vollstaendige Stand — dieselbe Struktur, die nach
+ * `.claude/befunde.json` geht und auf stdout steht: eine Form, nicht zwei.
+ */
+export function auswerten() {
+  const protokollPfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const zeilen = protokollZeilen(protokollPfad);
+  const { eintraege, fehlerhafteZeilen } = protokollLesen(zeilen);
+  const vorschlaege = vorschlaegeLesen();
+  const schwelle = schwelleLesen();
+
+  const arten = artenReihenfolge(eintraege).map((art) => {
+    const eigene = eintraege.filter((e) => e.art === art);
+    // Aus demselben Eintrag wie der Nullpunkt, nicht ueber `nullpunktFuer`: Der liest
+    // die Zustandsdatei bei jedem Aufruf neu, und hier ist sie schon gelesen.
+    const eintrag = eintragVon(vorschlaege, art);
+    const nullpunkt = eintrag?.nullpunkt ?? 0;
+    const vorschlag = eintrag === null ? null : { stand: eintrag.stand, karte: eintrag.karte, ideaId: eintrag.ideaId };
+    const ueberNullpunkt = Math.max(0, eigene.length - nullpunkt);
+    return {
+      art,
+      vorkommen: eigene.length,
+      stufen: stufenVerteilung(eigene),
+      nullpunkt,
+      ueberNullpunkt,
+      erreicht: ueberNullpunkt >= schwelle,
+      vorschlag,
+    };
+  });
+  const code = codeZaehlung(eintraege);
+
+  const ergebnis = {
+    ok: true,
+    erzeugtAm: new Date().toISOString(),
+    kitVersion: KIT_VERSION,
+    protokoll: {
+      datei: PROTOKOLL_DATEI,
+      vorhanden: existsSync(protokollPfad),
+      zeilen: zeilen.length,
+      fehlerhafteZeilen,
+    },
+    schwelle,
+    arten,
+    code,
+    // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
+    // alten Stand — ein ausgelassenes Feld liesse den Befund von gestern stehen.
+    befund: befundBestimmen(arten, code, schwelle),
+    bericht: BERICHT_DATEI,
+  };
+
+  schreibeDatei(BERICHT_DATEI, berichtText(ergebnis));
+  schreibeDatei(STAND_DATEI, JSON.stringify(ergebnis, null, 2) + "\n");
+  return ergebnis;
+}
+
+/**
+ * Der Befund als Text. Nie ein Fehler: Eine fehlende, leere oder unlesbare Datei ist
+ * dasselbe wie kein Befund — es soll dann nichts dastehen und nichts aufgehalten
+ * werden. Das gilt ausdruecklich auch fuer ein Projekt ohne Modell-Pruefungen (AK 12
+ * der Quelle #768): Ohne Protokoll entsteht kein Befund, und niemand muss dafuer einen
+ * Schalter umlegen.
+ */
+export function befund() {
+  try {
+    return befundText(JSON.parse(readFileSync(join(process.cwd(), ...STAND_DATEI.split("/")), "utf-8")));
+  } catch {
+    return "";
+  }
+}
+
 // --- CLI ---------------------------------------------------------------------
 
 function parsePruefenArgs(rest) {
@@ -1046,14 +1317,29 @@ function main() {
   if (command === "vorschlag") {
     return alsJson(() => vorschlag(parseVorschlagArgs(rest)));
   }
+  if (command === "auswerten") {
+    return alsJson(() => {
+      if (rest.length > 0) fail(`'auswerten' nimmt keine Argumente, bekam '${rest[0]}'.`);
+      return auswerten();
+    });
+  }
+  if (command === "befund") {
+    // Hier gilt das Gegenteil der JSON-Regel: Was auf stdout steht, reicht eine
+    // Ausgabestelle unveraendert weiter. Ein abgewiesener Aufruf schreibt deshalb nach
+    // stderr und laesst stdout leer — sonst stuende eine Fehlermeldung dort, wo ein
+    // Befund hingehoert (wie in kit/wirksamkeit.mjs).
+    if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
+    process.stdout.write(befund());
+    return 0;
+  }
 
   // Auch der Aufruf ohne Kommando ist ein Fehler mit JSON-Ausgabe: Wer dieses Werkzeug
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
   process.stderr.write(HELP);
   return alsJson(() => fail(command === undefined
-    ? `Kein Kommando. Erwartet: ${["arten", "pruefen", "buchen", "vorschlag"].join(", ")}.`
-    : `Unbekannter Befehl: '${command}'. Erwartet: arten, pruefen, buchen oder vorschlag.`));
+    ? `Kein Kommando. Erwartet: ${KOMMANDOS.join(", ")}.`
+    : `Unbekannter Befehl: '${command}'. Erwartet: ${KOMMANDOS.slice(0, -1).join(", ")} oder ${KOMMANDOS.at(-1)}.`));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

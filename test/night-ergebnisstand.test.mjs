@@ -267,10 +267,10 @@ test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als n
     const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
     assert.equal(stand.noWorkReason, "Ready ist leer — nichts zu tun.");
     // Ans Ende des Lauf-Kopfes: hinter alle Felder, die beim Start entstehen. Seit
-    // Issue #752 folgt `aufwand` noch darauf und seit Issue #790 `wirksamkeit` — beide
-    // entstehen erst beim Abschluss, und die Reihenfolge der Schemafassung 1 haengt neue
-    // Felder hinten an.
-    const AUSWERTUNGEN = ["aufwand", "wirksamkeit"];
+    // Issue #752 folgt `aufwand` noch darauf, seit Issue #790 `wirksamkeit` und seit
+    // Issue #806 `befunde` — alle drei entstehen erst beim Abschluss, und die Reihenfolge
+    // der Schemafassung 1 haengt neue Felder hinten an.
+    const AUSWERTUNGEN = ["aufwand", "wirksamkeit", "befunde"];
     const schluessel = Object.keys(stand).filter((k) => !AUSWERTUNGEN.includes(k));
     assert.equal(schluessel.at(-1), "noWorkReason", "das Feld gehoert ans Ende des Lauf-Kopfes");
     for (const feld of AUSWERTUNGEN) {

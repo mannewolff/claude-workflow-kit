@@ -51,12 +51,26 @@ Für ihn gelten **dieselben Regeln**: Ausgabe unverändert zeigen, und er liest 
 welche Pflichtprüfung sich verdient hat, was sie kostet — und welche in ihrem Fenster nie
 beanstandet hat. Auch er ist kein Gate.
 
+Unmittelbar danach der dritte Befund:
+
+```bash
+node .claude/kit/befunde.mjs befund
+```
+
+Auch für ihn gelten **dieselben Regeln**, und er liest allein `.claude/befunde.json`. Er
+sagt, welche Mangel-Art die Modell-Prüfungen wie oft gefunden haben und ob daraus schon
+ein Vorschlag entstanden ist. Hier steht er, weil `/retro` nur alle ein bis zwei Wochen
+läuft und die Zahl damit zu spät trüge. In einem Projekt **ohne Modell-Prüfungen** gibt es
+kein Protokoll, der Befund bleibt leer, und das wird nicht kommentiert — die Abwesenheit
+der Prüfung entscheidet das bereits, dafür braucht es keinen Schalter.
+
 Eine **leere Ausgabe** heißt: kein Befund. Sie wird nicht kommentiert — kein „alles
 unauffällig", keine leere Überschrift. Ein **Fehlschlag** des Kommandos wird in **einer
 Zeile** vermerkt, und er hält nichts auf. Beides gilt **je Befund**: Ein leerer oder
-gescheiterter Aufwands-Befund sagt nichts über den Wirksamkeits-Befund und umgekehrt.
-Beide brauchen die Config nicht; sie lesen allein `.claude/aufwand.json` beziehungsweise
-`.claude/wirksamkeit.json`. Fehlt die Datei, ist die Ausgabe leer und der Exit-Code 0.
+gescheiterter Aufwands-Befund sagt nichts über die beiden anderen, und umgekehrt genauso.
+Alle drei brauchen die Config nicht; sie lesen allein `.claude/aufwand.json`,
+`.claude/wirksamkeit.json` beziehungsweise `.claude/befunde.json`. Fehlt die Datei, ist die
+Ausgabe leer und der Exit-Code 0.
 
 Dieser Block trägt bewusst **keine Nummer** und zählt in keiner Fortschrittszeile mit: Eine
 Nummer verschöbe jede folgende Schrittzahl um eins und machte sämtliche Querverweise auf
@@ -225,9 +239,10 @@ Hinweis auf nächsten Schritt:
 - Kein Push auf `production` oder andere Branches
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
-- Kein Halt wegen des Aufwands- oder des Wirksamkeits-Befunds: Beide sind **kein Gate**,
-  weder ihr Inhalt noch ihr Fehlschlag hält das Veröffentlichen auf. Sie sagen, was
-  auffällt — was daraus folgt, entscheidet der Mensch.
+- Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
+  Modell-Prüfungen: Alle drei sind **kein Gate**, weder ihr Inhalt noch ihr Fehlschlag
+  hält das Veröffentlichen auf. Sie sagen, was auffällt — was daraus folgt, entscheidet
+  der Mensch.
 - Kein Halt wegen der Buchung der Code-Review-Befunde: Auch sie ist kein Gate, und sie
   bucht nichts ohne Übernahmevermerk — entschieden hat der Mensch, bevor eingearbeitet
   wurde.

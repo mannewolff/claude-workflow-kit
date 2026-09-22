@@ -156,6 +156,7 @@ const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
 const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
 const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "wirksamkeit.mjs");
+const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -208,10 +209,11 @@ const WIRKSAMKEIT_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "wirksamkeit.mjs")
   : join(__dirname, "wirksamkeit.mjs");
 
-// Und dasselbe fuer die Befunde (Issue #804): Nach dem Rueckweg aus dem Worktree ruft
-// die Kette `befunde.mjs vorschlag --art <a>` je zurueckgegebener Mangel-Art. Auch das
-// ist ein Kindprozess und kein Import — das Kommando schreibt ueber board.mjs ans Board
-// und loest seine Pfade gegen das Projekt auf, in dem der Runner arbeitet.
+// Und dasselbe fuer die Befunde (Issue #804, #806): Nach dem Rueckweg aus dem Worktree
+// ruft die Kette `befunde.mjs vorschlag --art <a>` je zurueckgegebener Mangel-Art, und
+// der Lauf-Abschluss ruft `befunde.mjs auswerten`. Beides ist ein Kindprozess und kein
+// Import — die Kommandos schreiben ueber board.mjs ans Board beziehungsweise nach
+// `.claude/` und loesen ihre Pfade gegen das Projekt auf, in dem der Runner arbeitet.
 const BEFUNDE_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "befunde.mjs")
   : join(__dirname, "befunde.mjs");
@@ -286,6 +288,17 @@ const wirksamkeitBefundTextFallback = () => {
 const { befundText: wirksamkeitBefundText } = existsSync(NACHBAR_WIRKSAMKEIT)
   ? await import(pathToFileURL(NACHBAR_WIRKSAMKEIT).href)
   : { befundText: wirksamkeitBefundTextFallback };
+
+// Und dieselbe Trennung ein drittes Mal fuer die Befunde der Modell-Pruefungen (Issue
+// #806): Auch ihr Befundblock erscheint an zwei Stellen — im Laufprotokoll hier und im
+// Kopf von `/push-main` —, und auch hier faengt befundeAuswerten() den Wurf des Ersatzes
+// ab und macht daraus die eine Protokollzeile, die ein Fehlschlag sein darf.
+const befundeBefundTextFallback = () => {
+  throw new Error(`befunde.mjs liegt nicht neben night.mjs (${NACHBAR_BEFUNDE})`);
+};
+const { befundText: befundeBefundText } = existsSync(NACHBAR_BEFUNDE)
+  ? await import(pathToFileURL(NACHBAR_BEFUNDE).href)
+  : { befundText: befundeBefundTextFallback };
 
 // Nur fuer Tests; der Runner nutzt die Bindungen direkt, nicht ueber dieses Objekt.
 // Ohne den Export ist der Identitaetsnachweis nicht fuehrbar — ob im Regelbetrieb die
@@ -793,6 +806,20 @@ function wirksamkeitAuswerten() {
   auswertungLaufen(WIRKSAMKEIT_PATH, "wirksamkeit", "Wirksamkeits-Auswertung", wirksamkeitBefundText);
 }
 
+/**
+ * Ruft die Befunde-Auswertung und legt ihr Ergebnis am Lauf-Kopf ab (Issue #806).
+ *
+ * Die dritte Schwester der beiden darueber, ueber dieselbe geteilte Funktion und mit
+ * derselben Zusage: Jeder Fehlschlag ist genau eine Protokollzeile und nie ein `fail()`.
+ * Ihr Befundblock geht als EIGENER Block hinter den der Wirksamkeit; ohne Befund bleibt
+ * das Protokoll an dieser Stelle stumm — und ohne `.claude/befunde.tsv` ist genau das
+ * der Regelfall (AK 12 der Quelle #768): Ein Projekt ohne Modell-Pruefungen sieht nichts
+ * und braucht dafuer keinen Schalter.
+ */
+function befundeAuswerten() {
+  auswertungLaufen(BEFUNDE_PATH, "befunde", "Befunde-Auswertung", befundeBefundText);
+}
+
 // Das Zeitlimit beider Auswertungen (Issue #824, night-67). Ohne Limit haengt der
 // ganze Abschluss an ihnen: `kit/wirksamkeit.mjs` ruft fuer die Ruecklaeuferquote
 // `board.mjs issue activity` und damit das Netz — bleibt der Aufruf stehen, erreichte
@@ -865,11 +892,11 @@ function auswertungLaufen(pfad, feld, bezeichnung, textform) {
  * geht — ginge als unvollstaendig ein. Wer diese Reihenfolge spaeter aendert, nimmt dem
  * Block seine Aussage.
  *
- * BEIDE Auswertungen stehen zwischen den zwei Schreibvorgaengen (Issue #790): erst der
- * Aufwand, dann die Wirksamkeit, dann das zweite Schreiben. Ein Schreibvorgang dazwischen
- * waere nicht falsch, aber ueberfluessig; entscheidend ist, dass der geschriebene Stand
- * am Ende BEIDE Ergebnisse traegt. Die Folge der beiden Aufrufe ist die Folge ihrer
- * Bloecke im Protokoll — der Wirksamkeits-Block steht hinter dem des Aufwands.
+ * ALLE DREI Auswertungen stehen zwischen den zwei Schreibvorgaengen (Issue #790, #806):
+ * erst der Aufwand, dann die Wirksamkeit, dann die Befunde, dann das zweite Schreiben.
+ * Ein Schreibvorgang dazwischen waere nicht falsch, aber ueberfluessig; entscheidend ist,
+ * dass der geschriebene Stand am Ende ALLE DREI Ergebnisse traegt. Die Folge der Aufrufe
+ * ist die Folge ihrer Bloecke im Protokoll — Aufwand, Wirksamkeit, Befunde.
  *
  * Und erst danach `laufMelden()`: Eingeliefert wird der Stand einschliesslich seiner
  * Auswertung, nicht der Stand davor.
@@ -885,6 +912,7 @@ function laufAbschliessen(abschluss) {
   schreibeErgebnisstand();
   aufwandAuswerten();
   wirksamkeitAuswerten();
+  befundeAuswerten();
   schreibeErgebnisstand();
   laufMelden();
 }

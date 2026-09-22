@@ -81,7 +81,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss. Fuer `gitReste()`
   // sind sie ohnehin ausgeschlossen — der Session-Fake der Umsetzung committet aber mit
   // einem rohen `git add -A`, das diese Ausschluesse nicht kennt.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\nissues/\nhelfer/\n");
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\n.claude/befunde.md\n.claude/befunde.json\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
