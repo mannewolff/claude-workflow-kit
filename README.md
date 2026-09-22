@@ -72,7 +72,7 @@ Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der 
 
 ## Spec-Driven Development
 
-Ein Projekt kann unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens fuehren. Wer plant, liest sie statt Produktionscode und bekommt gesagt, wo sie schweigt; wer ein Arbeitspaket schneidet, sagt, was es an ihr aendert; wer pusht, wird aufgehalten, wenn beides nicht zusammenpasst. Der Schalter ist ein Block in der Config, die Entscheidung ist nicht zurueckzunehmen, und sie setzt `issueTracker: toolbox` oder `local` voraus — GitHub und GitLab fuehren keinen Aktivitaetsverlauf, an dem der Stichtag haengt. Ein Projekt ohne diesen Block merkt von alldem nichts. Das Kapitel „Spec-Driven Development" in [`docs/dokumentation.md`](docs/dokumentation.md) hat die Einzelheiten — hier bewusst kein zweiter vollstaendiger Text.
+Ist entfallen (Plan #825). Ein Projekt, das noch einen `spec`-Block fuehrt, laeuft unveraendert weiter; Block und `specs/` koennen entfernt werden. Einzelheiten im Kapitel „Spec-Driven Development" in [`docs/dokumentation.md`](docs/dokumentation.md).
 
 ## Dokumentation
 

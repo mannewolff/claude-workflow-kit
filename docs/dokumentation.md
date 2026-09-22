@@ -67,7 +67,7 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **7. Review-Modell** und **8. Review-Kommando.** Wer den Code-Review in Schritt 7 fährt — **genau eines von beiden**. Ein Modell (Standard `claude-opus-4-8`) läuft als Subagent; ein Kommando startet ein fremdes Werkzeug und bekommt den Prompt über stdin. Beides zu setzen wird abgewiesen, keines von beidem auch: Sonst liefe Schritt 7 ins Leere. Das gilt für die **Antworten**. Stehen dagegen beide Felder schon **in der Datei**, weist der Installer nicht ab, sondern löst den Widerspruch auf: Er schlägt das vorhandene Kommando vor und sagt vorher, dass das Modell dabei entfällt. Umgekehrt geht es, indem du das Kommando mit `-` leerst und ein Modell einträgst.
 
-**9. Spec-Driven Development (nur projektlokal).** Ob das Projekt unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führt — siehe [Spec-Driven Development](#spec-driven-development). Die Frage erscheint nur bei `issueTracker: toolbox` oder `local` und nur, wenn noch kein `spec`-Block in der Config steht. **Die Entscheidung ist nicht zurückzunehmen**; der Installer sagt das vor der Antwort.
+**9. Commit-Gate (nur projektlokal).** Ob der Installer das Commit-Gate einhängt, also `git config core.hooksPath .githooks` setzt — siehe [Das Commit-Gate](#das-commit-gate). Die Frage erscheint nur, wenn weder ein anderer `core.hooksPath` wirksam ist noch eine aktive Datei im Hooks-Verzeichnis liegt; Standard ist nein.
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
@@ -164,7 +164,6 @@ Die Dateinamen der always-Dateien (Index.md, Profil.md) konfigurierst du selbst 
 
 ## Die Config-Datei
 
-Der Block `spec` ist hier nicht aufgeführt — er steht bei [Spec-Driven Development](#spec-driven-development).
 
 Die `.claude/workflow.config.json` ist die einzige projektlokale Stelle. Alle Skills lesen ausschließlich aus dieser Datei (nirgendwo sonst werden Projektparameter hart kodiert).
 
@@ -578,7 +577,6 @@ Wer das Kit einführt, kann mit den neun Schritten anfangen und die Werkzeuge sp
 
 ### /kontext
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill `specs/INDEX.md` nicht, sondern meldet nur, wenn der Index fehlt oder veraltet ist.
 
 **Werkzeug neben dem Prozess, Session-Start.**
 
@@ -606,14 +604,13 @@ Vier Eigenschaften unterscheiden ihn von `/techplan`:
 
 - **Er fragt, bevor er anlegt.** Der Skill benennt die Bahn in einem Satz und wartet auf ein Wort von dir. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`, also im Nachtbetrieb) endet er an dieser Stelle und legt **nichts** an: Eine Bahnwahl, die sich selbst bestätigt, ist keine Wahl mehr. Deshalb kann nachts kein `[Task]` entstehen — `/techplan` hält ein Bahn-3-Urteil stattdessen als Plan fest.
 - **Er nimmt nur zwei Quellen.** Den Chat oder eine `[Idee]` (`/task #N`). Ein `[Fachlich]`- oder `[Plan]`-Dokument lehnt er ab, ohne etwas anzulegen: Dort ist der volle Weg bereits begonnen, und ein `[Task]` daneben wäre eine zweite Wahrheit darüber, was gebaut wird. Entstand der Task aus einer Idee, bleibt an ihr ein Kommentar `Fortsetzung: Issue #T` zurück.
-- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile. Und keine [Vorhaben-Notiz](#spec-driven-development): Die hängt am Planen und am Plandokument — genau das spart dieser Weg ein.
+- **Er hat keinen Vorfahren.** Kein `--derived-from`, keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.
 - **Er entscheidet, statt zu fragen.** Was beim Schreiben des Pakets unklar ist und nicht in der Stopp-Klasse aus `CLAUDE-workflow.md` steht, entscheidet der Skill selbst und hält es als `Entscheidung:`-Zeile im Kontext fest. Nur eine Frage aus der Stopp-Klasse geht an dich.
 
-**Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue` und braucht bei gesetztem `spec`-Block seinen `## Spec-Wirkung`-Abschnitt. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
+**Ein `[Task]` ist ein Arbeitspaket, kein Dokument.** Er wird implementiert und nach Ready gezogen wie ein Paket ohne Präfix, fällt bei der Prüfung in die Stufe `issue`. Das unterscheidet ihn von `[Fachlich]`, `[Plan]` und `[Idee]`, die nie implementiert werden.
 
 ### /techplan
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), liest der Skill zuerst die Spezifikation und weist aus, wo sie schweigt.
 
 **Schritt 2, nach der Anforderung (Schritt 1), vor der Implementierung.**
 
@@ -625,7 +622,6 @@ Eine Ausnahme gibt es: Sobald du den Plan freigibst, legt der Skill bei Bahn 2 d
 
 ### /issues
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), kommt ein fünfter Abschnitt `## Spec-Wirkung` dazu — ohne ihn legt der Adapter das Issue nicht an. Ausgenommen sind Dokumente mit einem der Präfixe `[Fachlich]`, `[Plan]` und `[Idee]`: Sie werden nie implementiert und können an der Spezifikation nichts ändern (Issue #464).
 
 **Schritt 3, nach der Plan-Freigabe.**
 
@@ -699,7 +695,6 @@ Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (i
 
 ### /push-main
 
-Fährt das Projekt [Spec-Driven Development](#spec-driven-development), läuft vor den Pflicht-Checks zusätzlich die Fortschreibung der Spezifikation, und das Spec-Gate kann den Push aufhalten.
 
 **Schritt 8, nach dem Review, auf dein explizites Kommando.**
 
@@ -1031,7 +1026,7 @@ Dieser Ausgang ist von den beiden benachbarten zu unterscheiden, und genau dafü
 
 Ein Halt ist **kein Fehlschlag**: Die Session hat richtig gehandelt, indem sie nicht geraten hat. Deshalb steht er im Ergebnisstand als eigener Zähler neben `erfolg`, `zurueckgestellt` und `fehlschlag` — wer die wartenden Entscheidungen morgens in der Rückstellungszahl suchen müsste, fände sie nicht. Der Weg nach vorn führt über `/fachplan #T`: Der Skill nimmt den angehaltenen Task samt Entscheidungskommentar als Eingang und macht eine fachliche Anforderung daraus. Das `kit:klaeren` nimmt dabei ausschließlich der Mensch ab.
 
-**Eine wartende Vorhaben-Notiz ist kein Rest.** Legt eine Nacht-Session mit `/techplan` eine Notiz ab, entsteht sie als `.claude/vorhaben-wartend-<k>.md` — im ignorierten `.claude/`, also außerhalb dessen, was der Rest-Guard misst. Sie liegt am Morgen noch da und gehört dorthin: Abgeholt wird sie erst beim nächsten `push main`, und der ist ein menschlicher Stop-Punkt. Läge die Notiz stattdessen unter `specs/`, wäre jeder nächtliche Plan ein unsauberer Working Tree und damit ein harter Stopp.
+**Eine alte Vorhaben-Notiz ist kein Rest.** Bis zum Rückbau von Spec-Driven Development legte `/techplan` wartende Notizen als `.claude/vorhaben-wartend-<k>.md` ab. Heute entsteht keine mehr; wo noch eine liegt, wertet der Rest-Guard sie nicht als Rest — auch in einem Projekt, dessen `.gitignore` `.claude/` nicht deckt. Die Datei kann gelöscht werden.
 
 **Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, führt er deshalb die `buildChecks` selbst aus — und zwar die Prüfungen der **Paketstufe**, diese aber **ohne bereichsbezogene Auswahl**. Das ist kein Versehen: Die beiden Auswahlen beantworten verschiedene Fragen. Nach einem sauberen Arbeitspaket lautet die Frage „hat diese Arbeit etwas kaputtgemacht?", und dafür genügen die berührten Bereiche. Beim Retten lautet sie „ist dieser unklare Zwischenstand überhaupt brauchbar?" — niemand weiß dann, was die abgebrochene Session angefasst hat, also wird über alle Bereiche gefragt. Die Stufe bleibt davon unberührt: Auch beim Retten geht es um ein Arbeitspaket, und Prüfungen mit `stufe` `push` oder `merge` sind erst beim Veröffentlichen fällig — liefen sie hier mit, wartete jeder Rettungsversuch auf sie. Sind die Checks grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch führen zum harten Stopp, jeweils mit eigener Log-Zeile. Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
 
@@ -1099,7 +1094,7 @@ Flags: `--max <N>` zählt hier **Ketten** (Default 3); `--model <id>` und `--ver
 
 **Bedingungen:** Ein Kandidat trägt das Label, hat den Titel `[Fachlich]`, steht im **Backlog** und trägt kein `kit:klaeren` — dort wartet eine Antwort, die vorher im Fachplan stehen muss. Was das Label trägt, aber nicht laufen darf, steht mit Grund als `uebersprungen` im Ergebnisstand, und das Label bleibt. Vor der ersten Kette läuft der **Reviewer-Vorflug** wie früher: eine eigene Vorflug-Session prüft die Reviewer und den Tracker in der Umgebung der Sessions, nicht im Runner (siehe Allowlist unten). Scheitert er, bekommt jeder Kandidat den Kommentar `Kette nicht gestartet: <Grund>`, behält sein Label, und der Lauf endet hart — die Geste ist nicht verbraucht, denn es lief nichts. Anders als die Umsetzungsnacht verlangt die Kette **keinen sauberen Arbeitsbaum und keine leere In-progress-Spalte**: Sie arbeitet in einem eigenen Worktree und läuft neben einer Umsetzungsnacht.
 
-**Der Worktree.** Jede Kette bekommt einen `git worktree` unter dem Temp-Verzeichnis (`kette-<repo>-<F>-<stempel>`), in den der Runner `.claude/` der Hauptkopie spiegelt — Kit-Kopie, Skills, Settings, Token —, ohne die Protokolle. Beim lokalen Tracker zeigt die Config im Worktree auf das `issues`-Verzeichnis der Hauptkopie, damit die Karten dort entstehen. Nach der Kette wird der Worktree entfernt; wartende Vorhaben-Notizen holt der Runner vorher in die Hauptkopie, und liegengebliebene Worktrees räumt der nächste Start.
+**Der Worktree.** Jede Kette bekommt einen `git worktree` unter dem Temp-Verzeichnis (`kette-<repo>-<F>-<stempel>`), in den der Runner `.claude/` der Hauptkopie spiegelt — Kit-Kopie, Skills, Settings, Token —, ohne die Protokolle. Beim lokalen Tracker zeigt die Config im Worktree auf das `issues`-Verzeichnis der Hauptkopie, damit die Karten dort entstehen. Nach der Kette wird der Worktree entfernt, und liegengebliebene Worktrees räumt der nächste Start.
 
 **Der Ablauf je Stufe**, jede mit eigener Session im Worktree und gesetztem `KIT_AGENT_MODEL`:
 
@@ -1321,107 +1316,9 @@ Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetz
 
 ## Spec-Driven Development
 
-Ein Projekt kann unter `specs/` eine Spezifikation seines fachlichen Soll-Verhaltens führen. Wer plant, liest sie statt Produktionscode — und bekommt ausdrücklich gesagt, wo sie schweigt. Wer ein Arbeitspaket schneidet, sagt, was es an ihr ändert. Wer pusht, sieht vorher den Diff und wird aufgehalten, wenn Paket und Beschreibung nicht zusammenpassen.
+Spec-Driven Development ist seit Kit-Version **vX.Y.Z** (beim Release eintragen) entfallen (Plan #825). Das Kit führt keine Spezifikation unter `specs/` mehr: keine `## Spec-Wirkung` an Arbeitspaketen, keine Aussage-IDs in Testnamen, keine Fortschreibung und kein Gate beim Push, keine Vorhaben-Notizen. `/push-main` hat dadurch sieben Schritte statt neun.
 
-**Ein Projekt ohne diesen Block merkt davon nichts.** Keine zusätzliche Frage im Ablauf, keine Warnung, kein verändertes Verhalten in irgendeinem Skill — ohne den `spec`-Block bleibt alles unverändert.
-
-### Der Schalter
-
-Eingeschaltet wird über den Block `spec` in `.claude/workflow.config.json`. **Das Vorhandensein des Blocks ist der Schalter** — es gibt bewusst kein Feld `enabled`. Ein Bool hätte einen Aus-Zustand, und den soll es nicht geben.
-
-```json
-"spec": {
-  "seit": "2026-09-03",
-  "bereiche": {
-    "board": ["kit/board.mjs"],
-    "installer": ["install.mjs", "tools/sync-blobs.mjs"]
-  },
-  "testGlobs": ["test/*.test.mjs"],
-  "testPattern": "\\[<ID>\\]"
-}
-```
-
-`seit` ist der Zeitpunkt: Nur Pakete mit einem Anlagedatum ab diesem Tag wertet das Gate. Alles davor bleibt unberührt — es wird nichts nachgetragen.
-
-`bereiche` bildet Bereichsnamen auf Code-Globs ab. **Diesen Schnitt macht ein Mensch.** Kein Werkzeug schlägt ihn vor: Die Bereiche aus dem vorhandenen Code abzuleiten hieße, das Soll aus dem Ist zu rechnen — genau das, was dieses Verfahren vermeiden soll.
-
-`testPattern` und `testGlobs` sagen, wo das Gate den Verweis auf eine Aussage sucht (Standard: `\[<ID>\]`).
-
-Der Installer fragt danach — projektlokal, und nur wenn noch kein Block da ist. Ist er vorhanden, entfällt die Frage: Ein „Nein" dürfte ihn sonst entfernen.
-
-### Es gibt keinen Weg zurück
-
-Die Entscheidung ist nicht zurückzunehmen, und der Installer sagt das vor der Antwort. Ehrlich dazu gehört, was das heißt: **Das Kit bietet keinen Weg zurück an** — es gibt kein Kommando, keine Frage, keine Option dafür. Ein Mensch kann den Block natürlich von Hand aus der Config löschen; niemand hindert ihn daran. Zugesichert ist nur, dass das Werkzeug es nicht anbietet, und mehr wäre auch nicht ehrlich zuzusichern.
-
-### Nicht auf jedem Tracker
-
-Spec-Driven Development setzt auf einem Board mit Aktivitätsverlauf auf: Das Anlagedatum eines Pakets, an dem `seit` hängt, kommt von dort. **Bei `issueTracker: github` und `gitlab` weist `spec.mjs` deshalb jeden Lauf ab** — dort gibt es weder Verlauf noch Suche über Aussagen. Möglich sind `toolbox` und `local`. Die Einschränkung fällt sofort auf und nicht erst beim ersten Push: Der Installer stellt die Frage bei diesen Trackern gar nicht.
-
-### Wie die Beschreibung aussieht
-
-Eine Datei je Bereich, benannt nach ihm:
-
-```
-specs/
-  INDEX.md              eine Zeile je Bereich, erzeugt von `spec.mjs index`
-  board.md              die Aussagen des Bereichs `board`
-  vorhaben/VER.md       je Vorhaben: wurde Produktionscode gelesen?
-```
-
-Die Vorhaben-Notiz nimmt einen Umweg: Beim Planen entsteht sie als **wartende** Datei `.claude/vorhaben-wartend-VER.md`, und erst der nächste Push hebt sie nach `specs/vorhaben/` auf. Der Grund ist der Zeitpunkt — geplant wird mitten in einer Session, oft unbeaufsichtigt, und eine ungefragte Änderung unter `specs/` wäre dort ein unsauberer Working Tree.
-
-Eine Aussage ist eine Zeile mit ID und Text. Gestrichene Aussagen wandern unter `## Entfallen` ans Dateiende — mit Datum und der Nummer des Pakets, das sie gestrichen hat:
-
-```markdown
-- board-1 — issue activity gibt den Aktivitätsverlauf einer Karte aus.
-- board-2 — issue get liefert die Labels als Namen-Array.
-
-## Entfallen
-
-- board-3 — Der Adapter liest das Anlagedatum aus der Karte. (entfallen 2026-09-02, Paket #460)
-```
-
-**Gestrichene Aussagen bleiben unter `## Entfallen` stehen, und ihre Nummern werden nie wieder vergeben.** Der Grund ist die Rückverfolgbarkeit: Ein Test, ein Commit oder ein altes Paket kann Jahre später auf `board-3` verweisen. Würde die Nummer neu vergeben, zeigte der Verweis auf etwas anderes — eine stillschweigende Umdeutung, die niemand bemerkt. So zeigt er auf das ausdrücklich Gestrichene, samt Datum und Anlass.
-
-### Was ein Arbeitspaket sagt
-
-Bei eingeschaltetem Projekt trägt jedes Arbeitspaket einen fünften Abschnitt `## Spec-Wirkung`, zwischen `## Akzeptanzkriterium` und `## Abhängigkeiten`. Die Pflicht gilt für Arbeitspakete — ein Titel mit `[Fachlich]`, `[Plan]` oder `[Idee]` wird auch ohne den Abschnitt angelegt, weil aus ihm nie ein Commit entsteht. Wer ihn dort freiwillig schreibt, wird an derselben Grammatik gemessen. Er besteht ausschließlich aus Zeilen dieser vier Formen:
-
-```
-NEU       <BEREICH> <ID> — <Aussage>
-GEAENDERT <ID> — <neuer Aussage-Text>
-ENTFAELLT <ID> — <Grund>
-KEINE     — <Begruendung>
-```
-
-Vor dem Freitext steht der Gedankenstrich `—`, nicht der Bindestrich. `KEINE` steht allein und braucht eine Begründung: „keine Wirkung" ist eine Aussage, kein Weglassen.
-
-Der Adapter lehnt ein Paket ohne diesen Abschnitt ab — nicht als Bitte im Skill-Text, sondern beim Anlegen. Eine Bitte ist die Leitplanke, die unter Druck übersprungen wird.
-
-### Das Gate beim Push
-
-`/push-main` bekommt bei eingeschaltetem Projekt einen zusätzlichen Schritt, und seine Lage ist nicht beliebig:
-
-1. **Vorschau, vier Teile.** `spec.mjs apply --dry-run` zeigt, was sich an der Beschreibung ändern würde; `spec.mjs vorhaben-sichern --dry-run`, welche wartenden Vorhaben-Notizen aufgehoben würden. Dazu zwei Blicke mit `git`: was unter `specs/vorhaben/` schon liegt, und was unter `specs/` schon gestaged war. Beide sind nötig, weil die `apply`-Vorschau gegen den Stand auf der Platte rechnet und einen Rest aus einem früheren roten Lauf nicht als Änderung meldet.
-2. **Zustimmung.** Ohne sie wird nicht gepusht. Sie deckt alles Gezeigte ab; eine zweite Rückfrage gibt es nicht.
-3. **`apply`, Aufheben und Commit** — **vor** den Pflicht-Checks. `apply` schreibt Dateien, die in denselben Push gehen; liefen die Checks vorher, prüften sie einen Stand, der nicht der gepushte ist. In den Commit gehen genau drei Mengen: `specs/vorhaben/`, die Dateien aus diesem `apply`-Lauf und was unter `specs/` schon gestaged war — alles andere bleibt liegen, damit der Commit keine handgeführte Änderung einsammelt, die niemand angefordert hat.
-4. **Pflicht-Checks, dann `check`** auf dem Batch, wie er gepusht wird. Ein Befund hält den Push auf.
-
-Ein Fehlschlag beim Aufheben hält den Ablauf **nicht** auf: Die Notiz bleibt an ihrem wartenden Ort, wird benannt, und der nächste Push holt es nach. Der Commit-Betreff trägt dabei nie ein Suffix mit einer Paketnummer — daran und nur daran erkennt das Werkzeug ein Arbeitspaket, und dieser Commit ist keines.
-
-Geprüft wird zweierlei: dass jede Wirkungsangabe in der Beschreibung angekommen ist, und dass jede neue oder geänderte Aussage von mindestens einem Test referenziert wird. **Gewertet werden nur Pakete ab `seit`** — der Bestand bleibt außen vor.
-
-### Die Kommandos
-
-| Kommando | Was es tut |
-|---|---|
-| `node .claude/kit/spec.mjs index` | Schreibt `specs/INDEX.md` neu: je Bereich die Zahl der gültigen und der entfallenen Aussagen. |
-| `node .claude/kit/spec.mjs show` | Gibt die Aussage zu einer ID aus, mit Bereich und Status. |
-| `node .claude/kit/spec.mjs check` | Prüft die Spec-Wirkung — `--paket` die Form einer Paketdatei, `--anker` als Gate den ganzen Batch. |
-| `node .claude/kit/spec.mjs luecken` | Meldet je Bereich, wozu die Beschreibung schweigt — auch wenn die Liste leer ist. |
-| `node .claude/kit/spec.mjs vorhaben` | Legt die Notiz an, ob für ein Vorhaben Produktionscode gelesen wurde. |
-| `node .claude/kit/spec.mjs vorhaben-sichern` | Hebt die wartenden Vorhaben-Notizen nach `specs/vorhaben/` auf — immer mit einer JSON-Antwort, auch wenn keine wartet. |
-| `node .claude/kit/spec.mjs apply` | Schreibt die Beschreibung aus den Wirkungsangaben fort. |
+**Ein Projekt, das noch einen `spec`-Block führt, läuft unverändert weiter.** Kein Werkzeug wertet den Block mehr aus. Der Installer übernimmt ihn bei einem Update und sagt einmal, dass er entfernt werden kann; die Einstellungs-Oberfläche meldet ihn als unbekanntes Feld und lässt das Speichern zu. Block, Verzeichnis `specs/` und eine liegengebliebene `.claude/vorhaben-wartend-*.md` können gelöscht werden. `[ID]`-Präfixe in Testnamen stören nicht und dürfen stehen bleiben.
 
 ## Team-Config und persönliche Abweichungen
 
