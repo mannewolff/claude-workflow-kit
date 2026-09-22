@@ -2,6 +2,25 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [2.0.7] - 2026-09-22
+- SDD-Rueckbau 5: Doku und specs/ entfernen (#831)
+- SDD-Rueckbau 3: Nacht-Runner ohne Vorhaben-Notizen, SYNC-Kommentare (#829)
+- SDD-Rueckbau 4: Einstellungs-Oberflaeche und Schema ohne spec-Block (#830)
+- SDD-Rueckbau 2: spec.mjs, Gate in board.mjs und Installer entfernen (#828)
+- Regeltext und Skills ohne Spec-Driven Development (#827)
+- Kleinkram aus dem Review: Spiegel-Filter, Zeitlimit, Schema-Grenzen, Doku-Abgleich (#824)
+- Funde in Listen erkennen, leere Gegenprobe melden (#823)
+- Ausfuehrungsprotokoll maskieren, Fenster ohne Stack-Grenze und mit Obergrenze (#822)
+- Aufwands-Auswertung rechnet nur mit gemessenen Werten (#821)
+- Zeiten je Einheit: offene Schuebe nicht als 0, Salvage summiert (#820)
+- Warte-Erkennung: abgeschlossene Hintergrundarbeit und Go-Test richtig einordnen (#819)
+- Salvage-Prompt prueft Sauberkeit mit den Ausnahmen von gitReste() (#818)
+- Ungueltige Prozentwerte rot, Salvage wertet die Marke (#817)
+- Umbenennen auf belegten Namen abweisen, Reviewer-Pflichtfelder pruefen (#816)
+- Pruefstufen-Redaktor: fehlerhafter Bestand, Katalogrollen, Befunde an der Zeile (#815)
+- Einstellungs-Oberflaeche haelt Entwuerfe, Vorschau-Timer und Eingabefelder je Teil (#814)
+- Nacht-Runner meldet Budgets, Herkunft, Stufen, Modellzeit und Zuege ans Board (#808)
+
 ## [2.0.6] - 2026-09-21
 - Spec-ID auf night-63 umgestellt, night-52 vergab v2.0.3 (#772)
 - Kennzahlen einer Stufe mit Korrekturrunden summieren (#807)
