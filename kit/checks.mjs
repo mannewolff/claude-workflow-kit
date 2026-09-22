@@ -34,6 +34,13 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
+ * In dieselbe Richtung irrt die MERKMAL-PRUEFUNG von `run` (Issue #858): Es liest
+ * nicht nur den Rueckgabewert, sondern prueft die Ausgabe jedes Kommandos auf eine
+ * feste Liste allgemeiner Fehlermerkmale (`FEHLERMERKMALE`). Ein
+ * Treffer laesst die Pruefung fehlschlagen, auch bei Rueckgabewert 0 — und ein
+ * falsches Rot ist hier die sichere Richtung: Es kostet eine Nachfrage, waehrend
+ * ein falsches Gruen ein gescheitertes Paket nach In review traegt.
+ *
  * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
  * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
  * sind kumulativ — `push` faehrt `paket` mit, `merge` alle drei —, ein Eintrag
@@ -158,6 +165,24 @@ export function vergleicheText(a, b) {
 // uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
 const STUFEN = ["paket", "push", "merge"];
 
+/**
+ * Die allgemeinen Fehlermerkmale (Issue #858, Fachplan #769, AK 2): Merkmale, an
+ * denen eine Ausgabe ihr Scheitern selbst ausweist, auch wenn der Rueckgabewert 0
+ * ist. Genau der Fall kommt vor — eine Maven-Kette, deren letztes Glied den
+ * Rueckgabewert verschluckt, meldet `BUILD FAILURE` in der Ausgabe und endet mit 0.
+ *
+ * Die Liste ist FEST und hat kein Config-Feld (Plan #810, E3). Ein Feld waere die
+ * Einladung, sie in dem Projekt zu leeren, in dem sie gerade stoert — also an genau
+ * der Stelle, an der sie gebraucht wird. Ein Projekt, dessen gruene Ausgabe legitim
+ * eines der Merkmale traegt, filtert es in seinem `cmd` selbst heraus (die Doku
+ * nennt den Weg): eine Entscheidung, die im Projekt sichtbar bleibt, statt die
+ * Pruefung fuer alle abzuschalten.
+ *
+ * Steht hier oben und nicht bei `fehlermerkmal`, weil `HELP` die Liste nennt — ein
+ * `const` weiter unten waere dort noch nicht initialisiert.
+ */
+const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>]
@@ -169,6 +194,11 @@ plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
 run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       ab (Exit ungleich 0) und schreibt die Zusammenfassung nach
       ${SUMMARY_DATEI}.
+      Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
+      feste Liste allgemeiner Fehlermerkmale (${FEHLERMERKMALE.join(", ")}). Ein
+      Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
+      Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
+      Das Kommando irrt nur in eine Richtung, mehr pruefen.
       Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
       Kommando und wird vor jedem weiteren ueberschrieben; das laufende
       Kommando steht darin noch auf 'nicht gestartet'. Erst die letzte Fassung
@@ -602,6 +632,22 @@ function kommandoAusfuehren(cmd, env) {
 }
 
 /**
+ * Das erste getroffene Merkmal der festen Liste oder `null`.
+ *
+ * Exportiert, damit die Gegenprobe an echten Maven-Logs
+ * (`test/checks-fehlermerkmal.test.mjs`, Fixtures unter `test/fixtures/`) DIESE
+ * Funktion trifft und keine Kopie: Eine zweite Fassung im Test bescheinigte ab der
+ * ersten Abweichung eine Pruefung, die das ausfuehrende Kommando nicht macht —
+ * derselbe Grund wie bei `globZuRegex` und `blobHashes`.
+ *
+ * Erst getroffen heisst: erstes Merkmal der LISTE, nicht der Ausgabe. Welches von
+ * zwei Merkmalen weiter oben in einem Log steht, sagt ueber die Ursache nichts.
+ */
+export function fehlermerkmal(ausgabe) {
+  return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
+}
+
+/**
  * Blob-Hash je Pfad — der Nachweis, gegen den das Commit-Gate den Index prueft.
  *
  * Zwei Entscheidungen stecken hier drin, beide aus Issue #469:
@@ -714,11 +760,17 @@ export function gueteAuswerten(guete, ausgabe) {
  * Ein rotes Kommando wird nicht ausgewertet: Seine Ausgabe ist der Stand eines
  * Abbruchs, und ein darin zufaellig gefundener Anteil bescheinigte eine
  * Messung, die es nicht gab.
+ *
+ * WARUM der Lauf rot war, weiss der Aufrufer und nicht diese Funktion — der
+ * Rueckgabewert oder ein Fehlermerkmal in der Ausgabe (Issue #858). Deshalb kommt
+ * `grund` von dort: Ein hier festverdrahteter Satz behauptete bei einem Kommando
+ * mit Rueckgabewert 0 das Falsche, und der Grund steht in der Zusammenfassung,
+ * aus der der Nacht-Runner liest.
  */
-function gueteErgebnis(eintrag, gruen, ausgabe) {
+function gueteErgebnis(eintrag, gruen, ausgabe, grund) {
   const auswertung = gruen
     ? gueteAuswerten(eintrag.guete, ausgabe)
-    : { anteil: null, erfuellt: false, grund: "kein Anteil erhoben — das Kommando selbst war rot" };
+    : { anteil: null, erfuellt: false, grund };
   return {
     cmd: eintrag.cmd,
     anteil: auswertung.anteil,
@@ -828,6 +880,43 @@ function schreibeZusammenfassung(daten) {
 }
 
 /**
+ * Das Urteil ueber ein gelaufenes Kommando — aus drei Quellen, in dieser
+ * Reihenfolge: Rueckgabewert, Fehlermerkmal in der Ausgabe (Issue #858) und, wo
+ * das Projekt eine Messung benannt hat, die Guete. Die Zeilen, die zum Befund
+ * gehoeren, schreibt die Funktion selbst.
+ *
+ * Die MERKMAL-PRUEFUNG steht VOR dem guete-Zweig (Plan #810, E4): Eine Ausgabe,
+ * die ihr Scheitern selbst ausweist, ist kein Messstand — ein darin gefundener
+ * Anteil bescheinigte eine Messung, die es nicht gab. Das Ergebnis bleibt `rot`,
+ * es gibt keinen dritten Ergebniswert (E5): Gate und Runner lesen
+ * `ergebnis !== "gruen"`, und ein neuer Wert brauchte an jeder dieser Stellen
+ * eine zweite Bahn.
+ *
+ * Eigene Funktion und nicht in der Schleife von `ausfuehren`, damit die Schleife
+ * ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei Urteile in
+ * einer Verzweigungskette traegt.
+ */
+function bewerten(eintrag, gruen, ausgabe) {
+  const merkmal = fehlermerkmal(ausgabe);
+  if (merkmal !== null) {
+    eintrag.fehlermerkmal = merkmal;
+    process.stdout.write(`Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n`);
+  }
+  const bestanden = gruen && merkmal === null;
+  if (!eintrag.guete) return { bestanden, guete: null };
+
+  // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke oder
+  // ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder rote
+  // Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
+  const grund = merkmal === null
+    ? "kein Anteil erhoben — das Kommando selbst war rot"
+    : `kein Anteil erhoben — Fehlermerkmal '${merkmal}' in der Ausgabe`;
+  const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
+  process.stdout.write(`${gueteZeile(guete)}\n`);
+  return { bestanden: bestanden && guete.erfuellt, guete };
+}
+
+/**
  * Fuehrt die Auswahl aus `planen` aus und gibt den Exit-Code zurueck.
  *
  * Der Rueckgabewert je gelaufenem Kommando steht in der Zusammenfassung: `gruen`,
@@ -909,22 +998,15 @@ function ausfuehren(args) {
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     process.stdout.write(ausgabe);
-    // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke
-    // oder ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder
-    // rote Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
-    let bestanden = gruen;
-    if (eintrag.guete) {
-      guete = gueteErgebnis(eintrag, gruen, ausgabe);
-      process.stdout.write(`${gueteZeile(guete)}\n`);
-      bestanden = gruen && guete.erfuellt;
-    }
-    eintrag.ergebnis = bestanden ? "gruen" : "rot";
+    const bewertung = bewerten(eintrag, gruen, ausgabe);
+    guete = bewertung.guete ?? guete;
+    eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
     // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
     // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
     ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
-    rot = !bestanden;
+    rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
 

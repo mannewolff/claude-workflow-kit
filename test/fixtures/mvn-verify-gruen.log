@@ -1,0 +1,56 @@
+2026-09-16T07:51:59.284+02:00  INFO 66653 --- [manban] [           main] o.s.b.a.w.s.WelcomePageHandlerMapping    : Adding welcome page: class path resource [static/index.html]
+2026-09-16T07:51:59.330+02:00  INFO 66653 --- [manban] [           main] o.s.b.t.m.w.SpringBootMockServletContext : Initializing Spring TestDispatcherServlet ''
+2026-09-16T07:51:59.330+02:00  INFO 66653 --- [manban] [           main] o.s.t.web.servlet.TestDispatcherServlet  : Initializing Servlet ''
+2026-09-16T07:51:59.331+02:00  INFO 66653 --- [manban] [           main] o.s.t.web.servlet.TestDispatcherServlet  : Completed initialization in 1 ms
+2026-09-16T07:51:59.336+02:00  INFO 66653 --- [manban] [           main] o.m.m.a.AuthRateLimitIT$MitEngererGrenze : Started AuthRateLimitIT.MitEngererGrenze in 0.416 seconds (process running for 7.743)
+2026-09-16T07:51:59.424+02:00  WARN 66653 --- [manban] [           main] o.m.m.ratelimit.application.RateLimiter  : Zählbremse: Herkunft 198.51.100.10 für Vorgang LOGIN gesperrt, Dauer PT15M
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.512 s -- in org.mwolff.manban.auth.AuthRateLimitIT$MitEngererGrenze
+[INFO] Tests run: 0, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.629 s -- in org.mwolff.manban.auth.AuthRateLimitIT
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] 
+[INFO] --- jacoco:0.8.15:report (jacoco-report) @ manban ---
+[INFO] Skipping JaCoCo execution because property jacoco.skip is set.
+[INFO] 
+[INFO] --- spotless:2.44.5:check (spotless-check) @ manban ---
+[INFO] Spotless.Java is keeping 615 files clean - 0 needs changes to be clean, 0 were already clean, 615 were skipped because caching determined they were already clean
+[INFO] 
+[INFO] --- failsafe:3.5.6:verify (default) @ manban ---
+[INFO] 
+[INFO] --- jacoco:0.8.15:check (jacoco-check) @ manban ---
+[INFO] Skipping JaCoCo execution because property jacoco.skip is set.
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ manban ---
+[INFO] 
+[INFO] >>> pmd:3.28.0:check (pmd-check) > :pmd @ manban >>>
+[INFO] 
+[INFO] --- pmd:3.28.0:pmd (pmd) @ manban ---
+[INFO] Skipping org.apache.maven.plugins:maven-pmd-plugin:3.28.0:pmd report goal
+[INFO] 
+[INFO] <<< pmd:3.28.0:check (pmd-check) < :pmd @ manban <<<
+[INFO] 
+[INFO] 
+[INFO] --- pmd:3.28.0:check (pmd-check) @ manban ---
+[INFO] Skipping PMD execution
+[INFO] 
+[INFO] >>> spotbugs:4.10.2.0:check (spotbugs-check) > :spotbugs @ manban >>>
+[INFO] 
+[INFO] --- spotbugs:4.10.2.0:spotbugs (spotbugs) @ manban ---
+[INFO] Spotbugs plugin skipped
+[INFO] Skipping com.github.spotbugs:spotbugs-maven-plugin:4.10.2.0:spotbugs report goal
+[INFO] 
+[INFO] <<< spotbugs:4.10.2.0:check (spotbugs-check) < :spotbugs @ manban <<<
+[INFO] 
+[INFO] 
+[INFO] --- spotbugs:4.10.2.0:check (spotbugs-check) @ manban ---
+[INFO] Spotbugs plugin skipped
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  16.285 s
+[INFO] Finished at: 2026-09-16T07:52:00+02:00
+[INFO] ------------------------------------------------------------------------
+

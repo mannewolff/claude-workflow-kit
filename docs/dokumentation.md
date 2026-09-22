@@ -288,6 +288,16 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 
 **Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
 
+### Fehlermerkmale in der Ausgabe
+
+`checks.mjs run` liest nicht nur den **Rückgabewert** eines Prüfkommandos, sondern auch seine **Ausgabe**. Trägt sie eines der Merkmale `[ERROR]` oder `BUILD FAILURE`, gilt die Prüfung als **rot** — auch dann, wenn das Kommando mit 0 endete. Der Lauf bricht ab wie bei jedem roten Check, die Ausgabe nennt das getroffene Merkmal, und die Zusammenfassung trägt es am Eintrag als Feld `fehlermerkmal`.
+
+Den Fall gibt es wirklich: Eine Maven-Kette, deren letztes Glied den Rückgabewert verschluckt, meldet `BUILD FAILURE` in der Ausgabe und endet mit 0. Bis hierher stand die Regel „prüfe die Ausgabe zusätzlich auf allgemeine Fehlermerkmale" im Text von `/local-check` — also an einer Stelle, die unter Druck übergangen wird. Jetzt trägt sie das Werkzeug — nach dem Maßstab „Regel im Text oder Regel im Werkzeug" aus `CLAUDE-workflow.md`.
+
+**Die Liste ist fest, und es gibt kein Config-Feld dafür.** Ein Feld wäre die Einladung, die Prüfung in dem Projekt zu leeren, in dem sie gerade störte — also an genau der Stelle, an der sie gebraucht wird. Sie irrt nur in eine Richtung: mehr prüfen. Ein falsches Rot kostet eine Nachfrage, ein falsches Grün trägt ein gescheitertes Paket nach *In review*.
+
+**Und wenn die grüne Ausgabe legitim `[ERROR]` enthält?** Dann gehört das ans Kommando, nicht an die Prüfung. Zwei Wege: das Werkzeug leiser stellen (Log-Level, ein `--quiet`, ein anderer Reporter), oder `cmd` auf ein eigenes Projekt-Skript zeigen lassen, das die bekannte harmlose Zeile herausfiltert und den **Rückgabewert unverändert** weitergibt. Beides bleibt im Projekt sichtbar und betrifft nur das eine Kommando, das es betrifft.
+
 ### Die langsamsten Testdateien finden
 
 Die Testsuite läuft in jedem Arbeitspaket, in jedem `checks.mjs run`, im Commit-Gate und in der CI — jede eingesparte Sekunde wirkt also überall. Der Testrunner von Node fährt die **Dateien parallel**, die Tests **innerhalb** einer Datei nacheinander: Nach unten begrenzt darum die langsamste Datei die Wandzeit der ganzen Suite, und eine Datei deutlich über dem Rest gehört thematisch geteilt (Issue #836).
