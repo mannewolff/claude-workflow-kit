@@ -643,6 +643,9 @@ function kommandoAusfuehren(cmd, env) {
  * Erst getroffen heisst: erstes Merkmal der LISTE, nicht der Ausgabe. Welches von
  * zwei Merkmalen weiter oben in einem Log steht, sagt ueber die Ursache nichts.
  */
+// SYNC: dieselbe Pruefung traegt kit/night.mjs (fehlermerkmal samt FEHLERMERKMALE)
+// fuer die Salvage-Vorpruefung des Runners; test/guete-wertung-sync.test.mjs haelt
+// beide an derselben Fallliste gegeneinander.
 export function fehlermerkmal(ausgabe) {
   return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
 }

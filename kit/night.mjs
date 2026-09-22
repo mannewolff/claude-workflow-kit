@@ -3316,6 +3316,66 @@ export function gueteAuswerten(guete, ausgabe) {
   return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };
 }
 
+/**
+ * Die Merkmal-Pruefung, wie sie checks.mjs fuehrt (Issue #859).
+ *
+ * Derselbe Grund wie bei `gueteAuswerten` darueber, nur eine Stufe frueher: Ein
+ * Kommando kann mit Rueckgabewert 0 enden und trotzdem gescheitert sein — eine
+ * Maven-Kette, deren letztes Glied den Rueckgabewert verschluckt, weist ihr
+ * Scheitern nur in der Ausgabe aus. Las die Vorpruefung nur den Exit-Code, galt
+ * ihr genau dieser Stand als gruen, waehrend `checks.mjs` ihn rot faerbt: Die
+ * Salvage-Session bekaeme "Checks extern verifiziert gruen" zu hoeren und schoebe
+ * das Paket nach In review, wo `/push-main` es wieder anhaelt.
+ *
+ * Liste und Funktion sind eine Kopie, kein Import: Die Kit-Werkzeuge sind
+ * eigenstaendige Single-File-Tools, und night.mjs kennt checks.mjs nur als
+ * Kindprozess.
+ */
+// SYNC: Original ist kit/checks.mjs (FEHLERMERKMALE, fehlermerkmal); gleich
+// gehalten von test/guete-wertung-sync.test.mjs an derselben Fallliste.
+const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
+
+export function fehlermerkmal(ausgabe) {
+  return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
+}
+
+/**
+ * Das Urteil ueber ein gelaufenes Kommando samt der Zeilen, die zum Befund gehoeren —
+ * aus denselben drei Quellen und in derselben Reihenfolge wie `bewerten` in
+ * kit/checks.mjs: Rueckgabewert, Fehlermerkmal, Guetemessung.
+ *
+ * Eigene Funktion und nicht in der Schleife von `runBuildChecksSync`, damit die
+ * Schleife ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei
+ * Urteile in einer Verzweigungskette traegt — auch das wie in checks.mjs.
+ */
+function bewerteLaufSync(eintrag, gruen, ausgabe) {
+  if (!gruen) return { bestanden: false, zeilen: "" };
+
+  // Das Fehlermerkmal steht VOR dem guete-Zweig, wie in checks.mjs (Plan #810,
+  // E4): Eine Ausgabe, die ihr Scheitern selbst ausweist, ist kein Messstand —
+  // ein darin gefundener Anteil bescheinigte eine Messung, die es nicht gab.
+  // Die Meldung nennt das Merkmal, denn die letzten Zeilen der Ausgabe sind
+  // alles, was Protokoll und Sichtung am Morgen vom Befund zu sehen bekommen.
+  const merkmal = fehlermerkmal(ausgabe);
+  if (merkmal !== null) {
+    return { bestanden: false, zeilen: `Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n` };
+  }
+
+  // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
+  // Grund wie in checks.mjs: Die Ausgabe eines Abbruchs ist der Stand eines Abbruchs,
+  // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
+  // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
+  // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
+  const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
+  if (!guete) return { bestanden: true, zeilen: "" };
+
+  const auswertung = gueteAuswerten(guete, ausgabe);
+  const zeilen = auswertung.anteil === null
+    ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
+    : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
+  return { bestanden: auswertung.erfuellt, zeilen };
+}
+
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
@@ -3324,24 +3384,13 @@ function runBuildChecksSync(cfg) {
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
     output += `$ ${cmd}\n${ausgabe}`;
+
+    const { bestanden, zeilen } = bewerteLaufSync(eintrag, res.status === 0, ausgabe);
+    output += zeilen;
     // Das rote Kommando namentlich (Issue #668): Ohne es nennt die Stopp-Meldung nur,
     // DASS die Checks rot waren. Im Protokoll zu #900 fehlte deshalb jede Spur davon,
     // welcher der vier Checks versagt hat — und die Ursache liess sich nicht pruefen.
-    if (res.status !== 0) return { ok: false, output, rotesKommando: cmd };
-
-    // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
-    // Grund wie in checks.mjs: Die Ausgabe eines Abbruchs ist der Stand eines Abbruchs,
-    // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
-    // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
-    // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
-    const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
-    if (guete) {
-      const auswertung = gueteAuswerten(guete, ausgabe);
-      output += auswertung.anteil === null
-        ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
-        : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
-      if (!auswertung.erfuellt) return { ok: false, output, rotesKommando: cmd };
-    }
+    if (!bestanden) return { ok: false, output, rotesKommando: cmd };
   }
   return { ok: true, output, rotesKommando: null };
 }
