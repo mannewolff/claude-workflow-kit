@@ -47,10 +47,19 @@ for (const { name, text } of SKILLS) {
   // Den Anker uebergibt der Skill nie selbst: `implement-*` prueft vor dem Commit
   // (Default `HEAD`), `/local-check` vor dem Push (merge-base). Ein hier
   // eingetragenes `--since` machte daraus zwei Rechenwege.
+  //
+  // Gemeint sind die Kommandozeilen, nicht jede Erwaehnung: Seit Issue #835
+  // nennt die Regel zum Testumfang `checks.mjs run` auch im Fliesstext, und
+  // eine Prosa-Zeile traegt nie ein `--since`.
   test(`${name}: der Aufruf uebergibt kein --since`, () => {
-    const zeile = text.split("\n").find((z) => z.includes("checks.mjs run"));
-    assert.doesNotMatch(zeile, /--since/,
-      "der Skill uebergibt einen eigenen Anker — den bestimmt das Kommando");
+    const zeilen = text
+      .split("\n")
+      .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
+    assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
+    for (const zeile of zeilen) {
+      assert.doesNotMatch(zeile, /--since/,
+        "der Skill uebergibt einen eigenen Anker — den bestimmt das Kommando");
+    }
   });
 
   // Kriterium 11 aus Issue #420, erste der beiden Stellen. Nur die Laeufe zu

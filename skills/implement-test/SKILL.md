@@ -48,6 +48,15 @@ Lies alle Abschnitte des Issues. Die Tests entstehen gegen das Issue, nicht gege
 - Keine Produktionslogik. Kein Stub, keine Mock-Implementierung, die den Test schon grün macht.
 - Bestehende Test-Muster und -Helfer des Projekts wiederverwenden.
 
+**Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
+
+1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`.
+2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run` vor dem Commit.
+3. Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus. Ein zweiter Lauf nur für einen anderen Filter entfällt.
+4. Ist `checks.mjs run` rot, laufen danach zuerst die fehlschlagenden Tests gezielt. `checks.mjs run` startet erst dann erneut, wenn sie grün sind.
+
+Das rote Laufenlassen der neuen Tests aus Schritt 4 ist genau so ein gezielter Lauf: nur die geschriebene Testdatei, nicht die Suite. Den vollen Lauf holt `/implement-done` vor dem Commit nach.
+
 ### 5. Kein Commit
 
 Die roten Tests bleiben unstaged im Working Tree. Das ist der Stopp-Punkt — der nächste Schritt (`/implement-done`) committet Tests und Implementierung gemeinsam.
