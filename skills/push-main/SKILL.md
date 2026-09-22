@@ -143,9 +143,9 @@ dieser Stufe läuft ohnehin alles —, sondern welchen Stand die Zusammenfassung
 dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
 
 - **Im Vordergrund ausführen** und die Exit-Codes ehrlich auswerten — niemals den
-  Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren (siehe die
-  Exit-Code-Guidance im `local-check`-Skill). Zusätzlich generisch auf `[ERROR]` bzw.
-  `BUILD FAILURE` im Output prüfen.
+  Exit-Code durch ein nachgestelltes `echo` oder eine Umleitung maskieren. Den
+  Rückgabewert jedes Prüfkommandos und die allgemeinen Fehlermerkmale in seiner
+  Ausgabe liest `checks.mjs run` selbst; ein Treffer färbt die Prüfung rot.
 - **Ein roter Lauf hält alles an:** kein Commit, kein Push. Klare Meldung, **welcher**
   Check mit welchem Fehler fehlschlug. Der Bump aus Schritt 3 bleibt dabei stehen; er ist
   seit Issue #656 idempotent und steigt beim nächsten Anlauf nicht erneut.
