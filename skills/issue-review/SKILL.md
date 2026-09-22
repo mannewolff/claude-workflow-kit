@@ -176,10 +176,16 @@ Kein Fund ist auch ein Ergebnis: Marker schreiben, Kommentar mit „keine Funde"
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md
 ```
 
+Dann die Buchung: Je Fundblock ergänzt die Session im Befunde-Text die Zeile `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` — dieselbe Entscheidung, die der Kommentar in Prosa trägt —, schreibt den Text nach der Transportregel als `<tmpdir>/<id>-buchung.md` und bucht ihn mit der Stufe des Laufs aus Schritt 1b; für **jede** Art, die `buchen` unter `arten` als `erreicht` meldet, folgt ein Vorschlag. **Kein Gate:** Ein Fehlschlag von `buchen` oder `vorschlag` steht in **einer Zeile** und hält weder Lauf noch Label auf — das Protokoll ist Buchhaltung, keine Bedingung. Wird der Lauf mit `kit:klaeren` geparkt, **wird nicht gebucht**: Dort hat niemand über die Funde entschieden, und ein Fund ohne Übernahmevermerk gehört nicht ins Protokoll.
+```bash
+node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe <fachlich|plan|issue> --karte <id>
+node .claude/kit/befunde.mjs vorschlag --art <a>
+```
+
 Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
 
 ### 7. Abschluss
-Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
+Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
 
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.

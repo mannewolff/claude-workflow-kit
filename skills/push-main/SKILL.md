@@ -139,6 +139,34 @@ prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 3 hat
 früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
 Commit ab.
 
+**Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
+Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
+von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
+`Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der
+Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
+
+```bash
+node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+```
+
+Für **jede** Art, die das Kommando unter `arten` als `erreicht` meldet, ein Aufruf:
+
+```bash
+node .claude/kit/befunde.mjs vorschlag --art <a>
+```
+
+**Hier und nicht früher.** Der Vergleichsstand der Code-Stufe fragt, ob jede heute geänderte
+Datei von `.claude/checks-summary.json` gedeckt ist. Vor Schritt 4 trüge die Zusammenfassung
+den Stand **vor** der Einarbeitung, und jede dabei geänderte Datei machte den Stand
+`nicht-vergleichbar`, obwohl die Pflichtprüfungen gleich darauf grün laufen. Nach dem
+Prüflauf liegt eine Zusammenfassung über genau den Stand vor, auf dem gebucht wird.
+
+Liegen keine Code-Review-Befunde vor, entfällt dieser Block **ohne Vermerk**. **Kein Gate:**
+Ein Fehlschlag von `buchen` oder `vorschlag` wird in **einer Zeile** vermerkt und hält
+Commit und Push nicht auf. Wie der Befund-Block vor Schritt 1 trägt dieser Block **keine
+Nummer** und zählt in keiner Fortschrittszeile mit.
+
 ### 5. Der eine Commit
 
 > `Schritt 5 von 7 — Commit (laeuft)`
@@ -200,3 +228,6 @@ Hinweis auf nächsten Schritt:
 - Kein Halt wegen des Aufwands- oder des Wirksamkeits-Befunds: Beide sind **kein Gate**,
   weder ihr Inhalt noch ihr Fehlschlag hält das Veröffentlichen auf. Sie sagen, was
   auffällt — was daraus folgt, entscheidet der Mensch.
+- Kein Halt wegen der Buchung der Code-Review-Befunde: Auch sie ist kein Gate, und sie
+  bucht nichts ohne Übernahmevermerk — entschieden hat der Mensch, bevor eingearbeitet
+  wurde.
