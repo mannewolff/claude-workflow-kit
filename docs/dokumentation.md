@@ -1316,7 +1316,7 @@ Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetz
 
 ## Spec-Driven Development
 
-Spec-Driven Development ist seit Kit-Version **vX.Y.Z** (beim Release eintragen) entfallen (Plan #825). Das Kit führt keine Spezifikation unter `specs/` mehr: keine `## Spec-Wirkung` an Arbeitspaketen, keine Aussage-IDs in Testnamen, keine Fortschreibung und kein Gate beim Push, keine Vorhaben-Notizen. `/push-main` hat dadurch sieben Schritte statt neun.
+Spec-Driven Development ist seit Kit-Version **v3.0.0** entfallen (Plan #825). Das Kit führt keine Spezifikation unter `specs/` mehr: keine `## Spec-Wirkung` an Arbeitspaketen, keine Aussage-IDs in Testnamen, keine Fortschreibung und kein Gate beim Push, keine Vorhaben-Notizen. `/push-main` hat dadurch sieben Schritte statt neun.
 
 **Ein Projekt, das noch einen `spec`-Block führt, läuft unverändert weiter.** Kein Werkzeug wertet den Block mehr aus. Der Installer übernimmt ihn bei einem Update und sagt einmal, dass er entfernt werden kann; die Einstellungs-Oberfläche meldet ihn als unbekanntes Feld und lässt das Speichern zu. Block, Verzeichnis `specs/` und eine liegengebliebene `.claude/vorhaben-wartend-*.md` können gelöscht werden. `[ID]`-Präfixe in Testnamen stören nicht und dürfen stehen bleiben.
 
