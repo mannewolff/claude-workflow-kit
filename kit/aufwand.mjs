@@ -4,7 +4,8 @@
  *
  * Macht aus den Ergebnisstaenden der unbeaufsichtigten Laeufe eine Aussage darueber, wo
  * die Zeit und das Geld eines Prozesslaufs hingehen: `auswerten` liest sie, aggregiert
- * Zeit, Pruefungen, Umfang und Kosten und schreibt `.claude/aufwand.md` (fuer Menschen)
+ * Zeit, Pruefungen, Umfang, Kosten und den Aufwand je Aufgabenstufe (Issue #848)
+ * und schreibt `.claude/aufwand.md` (fuer Menschen)
  * und `.claude/aufwand.json` (fuer die zwei Ausgabestellen). `befund` gibt allein den
  * Befundblock als Text aus.
  *
@@ -86,8 +87,9 @@ const HELP = `aufwand.mjs (claude-workflow-kit v${KIT_VERSION}) — Aufwand des 
   node aufwand.mjs befund
 
 auswerten  Liest die juengsten Ergebnisstaende aus ${CLAUDE_DIR}/, aggregiert Zeit,
-           Pruefungen, Umfang und Kosten und schreibt ${CLAUDE_DIR}/${BERICHT_DATEI}
-           sowie ${CLAUDE_DIR}/${STAND_DATEI}. Die Ausgabe auf stdout ist immer JSON —
+           Pruefungen, Umfang, Kosten und den Aufwand je Aufgabenstufe und schreibt
+           ${CLAUDE_DIR}/${BERICHT_DATEI} sowie
+           ${CLAUDE_DIR}/${STAND_DATEI}. Die Ausgabe auf stdout ist immer JSON —
            auch im Leerfall und auch bei einem abgewiesenen Aufruf.
 befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, mit dem
            Zeitpunkt der Auswertung als erster Zeile. Liegt kein Befund vor, fehlt die
@@ -338,6 +340,10 @@ function sammlerAnlegen() {
     ohneTeilung: { einheiten: 0, tokens: 0 },
     ohneMengen: { einheiten: 0 },
     ohnePreissatz: { einheiten: 0, modelle: new Set() },
+    // Je Paar aus Aufgabenstufe und Gruendlichkeit ein Sammler (Issue #848). Eine Map und
+    // keine feste Liste: Welche Stufen und welche `effort`-Werte ein Projekt fuehrt, steht
+    // in seiner Config und nicht hier.
+    jeStufe: new Map(),
     unvollstaendig: [],
     einheitenGesamt: 0,
   };
@@ -489,6 +495,110 @@ function kostenErfassen(s, einheit, stempel) {
   }
 }
 
+// --- Aufgabenstufe und Gruendlichkeit ----------------------------------------
+//
+// Der Fachplan #837 verlangt, dass sich jede Aufgabenstufe vor und nach einer Umstellung
+// der Gruendlichkeit vergleichen laesst, ohne eigenen Vergleichslauf (AK 5). Die Staende
+// tragen dafuer seit Issue #711 `stufeVerwendet` und seit Issue #846 `effort` je Einheit.
+
+/**
+ * Ob eine Einheit in die Stufen-Auswertung geht: ein Arbeitspaket, fuer das wirklich eine
+ * Session lief.
+ *
+ * `art: "implementierung"` schliesst die Ketten-Einheiten aus (Fachplan, Technik, Plan,
+ * Zuschnitt) — sie setzen kein Paket um, und ihre Dauer gehoerte keiner Aufgabenstufe.
+ * Das FELD `endStatus` schliesst die Einheiten ohne Session aus: `uebersprungen`,
+ * `liegengeblieben` und `zurueckgestellt` legt der Runner an, bevor eine Session startet,
+ * und sie tragen weder Endstatus noch Pruefstand. Als Nacharbeit gezaehlt waeren sie
+ * allesamt eine — die Quote saehe katastrophal aus und maesse nur, wie oft ein Gate hielt.
+ */
+function mitSession(einheit) {
+  return einheit?.art === "implementierung" && einheit?.endStatus !== undefined && einheit?.endStatus !== null;
+}
+
+/**
+ * Nacharbeit: eine gezaehlte Einheit, die nicht sauber in In review gelandet ist ODER
+ * deren Pruefstand rot war.
+ *
+ * Beides zusammen und nicht nur der Endstatus: Eine Session kann festschreiben und
+ * verschieben und dabei einen roten Pflichtcheck hinterlassen haben — "Nachpruefung rot"
+ * aus dem Fachplan meint genau diesen Zustand, den `lesePruefung` in night.mjs schreibt.
+ */
+function istNacharbeit(einheit) {
+  return einheit.endStatus !== "in_review" || einheit.pruefung?.zustand === "rot";
+}
+
+/** Der leere Sammler eines Paares — ein Ort, an dem steht, was je Stufe gezaehlt wird. */
+function stufenSammler(stufe, effort) {
+  return {
+    stufe,
+    effort,
+    einheiten: { anzahl: 0, laeufe: new Set() },
+    dauer: reihe(),
+    kosten: reihe(),
+    rot: { anzahl: 0, laeufe: new Set() },
+    nacharbeit: { anzahl: 0, laeufe: new Set() },
+  };
+}
+
+/**
+ * Eine Einheit in ihr Paar aus Stufe und Gruendlichkeit.
+ *
+ * Ein fehlendes `effort` und ein `effort: null` sind derselbe Fall und landen zusammen:
+ * Beide heissen, dass die Session mit der Voreinstellung der CLI fuhr — einmal, weil der
+ * Stand aelter ist als Issue #846, einmal, weil die Stufe keine Gruendlichkeit setzt.
+ * Zwei Zeilen daraus zu machen teilte dieselbe Messung in zwei zu kleine Haelften.
+ *
+ * Die Dauer kommt aus `einheit.dauerMs` und nicht aus `zeiten.dauerMs`: Das ist die
+ * Rundendauer, die der Runner selbst misst — sie liegt fuer jede Einheit mit Session vor,
+ * waehrend `zeiten` aus der Zusammenfassung der Session stammt und fehlen kann.
+ */
+function stufeErfassen(s, einheit, stempel) {
+  if (!mitSession(einheit)) return;
+  const stufe = typeof einheit.stufeVerwendet === "string" ? einheit.stufeVerwendet : null;
+  const effort = typeof einheit.effort === "string" ? einheit.effort : null;
+  const schluessel = `${stufe ?? ""} ${effort ?? ""}`;
+  const g = s.jeStufe.get(schluessel) ?? stufenSammler(stufe, effort);
+  g.einheiten.anzahl += 1;
+  g.einheiten.laeufe.add(stempel);
+  messen(g.dauer, einheit.dauerMs, stempel);
+  messen(g.kosten, einheit.verbrauch?.kostenUsd, stempel);
+  if (einheit.pruefung?.zustand === "rot") {
+    g.rot.anzahl += 1;
+    g.rot.laeufe.add(stempel);
+  }
+  if (istNacharbeit(einheit)) {
+    g.nacharbeit.anzahl += 1;
+    g.nacharbeit.laeufe.add(stempel);
+  }
+  s.jeStufe.set(schluessel, g);
+}
+
+/**
+ * Die Zeilen je Stufe als Ergebnis, in fester Reihenfolge: nach Stufe, dann nach
+ * Gruendlichkeit — und "ohne Stufe" am Ende.
+ *
+ * Ans Ende, weil die Zeile keine Aufgabenstufe vergleicht, sondern die Reste sammelt:
+ * Staende vor Issue #711 und Karten, deren Modell nicht ueber eine Stufe kam. Zwischen
+ * den Stufen stuende sie als vierte Stufe da.
+ */
+function stufenErgebnis(s) {
+  return [...s.jeStufe.values()]
+    .sort((a, b) => {
+      if ((a.stufe === null) !== (b.stufe === null)) return a.stufe === null ? 1 : -1;
+      return vergleicheText(a.stufe ?? "", b.stufe ?? "") || vergleicheText(a.effort ?? "", b.effort ?? "");
+    })
+    .map((g) => ({
+      stufe: g.stufe,
+      effort: g.effort,
+      einheiten: { wert: g.einheiten.anzahl, laeufe: g.einheiten.laeufe.size },
+      dauerMs: fertig(g.dauer),
+      kostenUsd: fertig(g.kosten, { geld: true }),
+      rotePruefstaende: { wert: g.rot.anzahl, laeufe: g.rot.laeufe.size },
+      nacharbeit: { wert: g.nacharbeit.anzahl, laeufe: g.nacharbeit.laeufe.size },
+    }));
+}
+
 /**
  * Warum ein Lauf als unvollstaendig gilt. Er wird deshalb NICHT verworfen — er geht mit
  * dem ein, was er traegt: Verworfen saehen die Summen vollstaendig aus und waeren zu
@@ -514,6 +624,7 @@ function standErfassen(s, { stempel, daten }) {
     if (pruefungErfassen(s, einheit, stempel)) mitPruefstand += 1;
     kostenErfassen(s, einheit, stempel);
     wartendErfassen(s, einheit, stempel);
+    stufeErfassen(s, einheit, stempel);
   }
   // Was zu keiner Karte gehoert (Vorflug, Kette) — nur der Runner kennt diesen Rest.
   messen(s.kosten.nichtZuordenbar, daten?.verbrauchOhneEinheit?.kostenUsd, stempel);
@@ -582,6 +693,7 @@ function aggregieren(staende) {
     eingrenzung: { gegriffen: s.eingrenzung.faelle, gemessen: s.eingrenzung.gemessen },
     unvollstaendig: s.unvollstaendig,
     kosten: kostenErgebnis(s),
+    jeStufe: stufenErgebnis(s),
   };
 }
 
@@ -765,6 +877,7 @@ export function berichtText(e) {
     ...berichtPruefungen(e),
     ...berichtUmfang(e),
     ...berichtKosten(e),
+    ...berichtStufen(e),
     ...berichtBefund(e),
     ...berichtFuss(e),
   ].join("\n");
@@ -873,6 +986,73 @@ function berichtKosten(e) {
     zeilen.push(`| ${name} | ${geld(feld.wert)} | ${laufText(feld.laeufe)} |`);
   }
   zeilen.push("", kostenHinweise(e).join("\n"), "");
+  return zeilen;
+}
+
+/**
+ * Ein Zaehler mit seiner Traglast — dieselbe Form wie `kennzahl`, nur fuer gezaehlte
+ * Faelle statt gemessener Werte.
+ *
+ * Bei 0 steht die Null ALLEIN: Ein Fall, der nicht eintrat, hat keine tragenden Laeufe,
+ * und "ohne einen einzigen Lauf" daneben laese sich als "nicht gemessen" — das Gegenteil
+ * der Aussage.
+ */
+function zaehlzelle(feld) {
+  return feld.wert === 0 ? "0" : `${feld.wert} (${laufText(feld.laeufe)})`;
+}
+
+/**
+ * Ein Messwert mit seiner Traglast. Ein nicht gemessener Wert steht ALLEIN da: Die
+ * Traglast eines Werts, den es nicht gibt, ist keine Auskunft, sondern eine Dopplung.
+ */
+function messzelle(feld, formatieren) {
+  return feld.wert === null ? NICHT_GEMESSEN : kennzahl(feld, formatieren);
+}
+
+/**
+ * Aufwand je Aufgabenstufe und Gruendlichkeit (Issue #848).
+ *
+ * Der Abschnitt macht die Frage des Fachplans ohne Vergleichslauf beantwortbar: Was kostet
+ * eine Stufe an Zeit und Geld, und wie oft muss danach nachgearbeitet werden. Gezaehlt
+ * werden nur Einheiten mit gestarteter Session (siehe `mitSession`); die Kosten sind die
+ * je Einheit GEMELDETEN Betraege, nicht die gerechnete Teilung aus dem Abschnitt "Kosten"
+ * — sie liegen ohne Preistabelle und ohne Token-Mengen vor.
+ */
+function berichtStufen(e) {
+  if (e.jeStufe.length === 0) {
+    return [
+      "## Nach Aufgabenstufe", "",
+      "Keine Einheit mit gestarteter Session in den einbezogenen Staenden — es gibt nichts zu vergleichen.", "",
+    ];
+  }
+  const zeilen = [
+    "## Nach Aufgabenstufe", "",
+    "| Stufe | Gruendlichkeit | Einheiten | Dauer | Kosten | Rote Pruefstaende | Nacharbeit |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
+    ...e.jeStufe.map((z) => "| " + [
+      z.stufe ?? "ohne Stufe",
+      z.effort ?? "Voreinstellung",
+      zaehlzelle(z.einheiten),
+      messzelle(z.dauerMs, dauer),
+      messzelle(z.kostenUsd, geld),
+      zaehlzelle(z.rotePruefstaende),
+      zaehlzelle(z.nacharbeit),
+    ].join(" | ") + " |"),
+    "",
+  ];
+  // Die Definition steht unter der Tabelle und nicht in der Dokumentation allein: Wer die
+  // Spalte liest, muss wissen, was sie zaehlt — sonst haelt er jede zurueckgestellte Karte
+  // fuer Nacharbeit oder umgekehrt jede rote Pruefung fuer erledigt.
+  zeilen.push(
+    "Als Nacharbeit zaehlt eine Einheit, deren Endstatus nicht `in_review` ist oder deren Pruefstand rot war. "
+    + "Gezaehlt werden nur Arbeitspakete mit gestarteter Session; Einheiten ohne Session (uebersprungen, "
+    + "liegengeblieben, zurueckgestellt) und die Einheiten der Kette bleiben aussen vor. Die Kosten sind die je "
+    + "Einheit gemeldeten Betraege, nicht die gerechnete Teilung aus dem Abschnitt Kosten.",
+    ""
+  );
+  if (e.jeStufe.some((z) => z.stufe === null)) {
+    zeilen.push("Einheiten ohne Aufgabenstufe: Modell von der Karte oder vom Lauf, Staende vor #711.", "");
+  }
   return zeilen;
 }
 
@@ -1019,6 +1199,9 @@ export function auswerten(root, { laeufe: grenzeArg } = {}) {
     umfang: a.umfang,
     eingrenzung: a.eingrenzung,
     kosten: a.kosten,
+    // Haengt hinten an den Aggregaten (Issue #848): Die bestehenden Bloecke behalten Namen
+    // und Platz — sie sind der Vertrag mit den beiden Ausgabestellen.
+    jeStufe: a.jeStufe,
     schwellen: einstellungen.schwellen,
     nichtBestimmbar,
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
