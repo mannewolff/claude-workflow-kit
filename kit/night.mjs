@@ -1150,6 +1150,17 @@ export function gitResteAusnahmen(cfg = config) {
   ausnahmen.push(".claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
   ausnahmen.push(".claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
   ausnahmen.push(".claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
+  // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
+  // an: das Protokoll `befunde.tsv` (`befunde buchen` schreibt es, `befundeZurueck` holt
+  // es aus dem Worktree zurueck), die Nullpunkte `befunde-vorschlaege.json` und die
+  // Berichte `befunde.md` und `befunde.json`. Buchhaltung, kein Code-Zustand — und aus
+  // demselben Grund ausgeschlossen wie die vier Dateien der Wirksamkeits-Auswertung
+  // darueber: Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne
+  // den `.claude/*`-Block nach der ersten Buchung hart.
+  ausnahmen.push(".claude/befunde.tsv"); // SYNC: kit/befunde.mjs schreibt sie
+  ausnahmen.push(".claude/befunde-vorschlaege.json"); // SYNC: kit/befunde.mjs liest sie
+  ausnahmen.push(".claude/befunde.md");
+  ausnahmen.push(".claude/befunde.json");
   return ausnahmen;
 }
 
@@ -1326,6 +1337,13 @@ function gitIm(repoRoot, gitArgs) {
  * `bewegungen.tsv`, `ausfuehrungen.tsv`, `wirksamkeit.md` und `wirksamkeit.json` bleiben
  * in der Hauptkopie.
  *
+ * Auch die vier Dateien der Befunde (Plan #797; Issue #803) bleiben zurueck —
+ * `befunde.tsv`, `befunde-vorschlaege.json`, `befunde.md` und `befunde.json`. Fuer
+ * `befunde.tsv` kommt zum Grund der anderen ein zweiter dazu: Der Rueckweg
+ * `befundeZurueck` HAENGT die im Worktree gebuchten Zeilen an die Hauptkopie AN.
+ * Truege der Spiegel die Hauptkopie hinein, kaeme beim Abbau jede alte Zeile doppelt
+ * zurueck; so enthaelt die Datei im Worktree ausschliesslich die Buchungen dieser Kette.
+ *
  * ANNAHME (E12): Bewegungen und Ausfuehrungen, die IM Worktree entstuenden, gingen mit
  * ihm verloren — der Spiegel geht nur in eine Richtung, und nichts holt sie zurueck.
  * Heute trifft das nichts: Die Umsetzungsstufe baut den Worktree
@@ -1335,7 +1353,9 @@ function gitIm(repoRoot, gitArgs) {
  * Board oder faehrt Pruefungen im Worktree), bricht die Erhebung still: Die Auswertung
  * saehe die Bewegungen und Ausfuehrungen jener Stufe nie und meldete darum zu wenig,
  * ohne dass etwas rot wird. Dann muessen die beiden Protokolle aus dem Worktree
- * zurueckgeholt werden.
+ * zurueckgeholt werden. Fuer die Befunde gilt das seit Issue #803 nicht mehr:
+ * `befundeZurueck` holt `befunde.tsv` an beiden Abbaustellen der Kette zurueck — dort
+ * fallen die meisten Buchungen an, denn /issue-review laeuft im Worktree.
  */
 /**
  * Ob ein Eintrag direkt unter `.claude/` in der Hauptkopie zurueckbleibt: die Protokolle
@@ -1347,6 +1367,8 @@ function bleibtInHauptkopie(name) {
   return name.startsWith("night-run-")
     || name.startsWith("aufwand.")
     || name.startsWith("wirksamkeit.")
+    || name.startsWith("befunde.")
+    || name === "befunde-vorschlaege.json"
     || name === "bewegungen.tsv"
     || name === "ausfuehrungen.tsv";
 }
@@ -1389,6 +1411,105 @@ export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
 export function worktreeEntfernen(pfad, repoRoot) {
   gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
   rmSync(pfad, { recursive: true, force: true });
+}
+
+/**
+ * Die Schwelle aus dem Config-Block `befunde` der Hauptkopie (Issue #800).
+ * SYNC: `schwelleLesen` in kit/befunde.mjs — dieselbe Regel samt Vorgabe 3, dupliziert
+ * nach dem Muster #440 und mit `repoRoot` statt `process.cwd()`, denn der Runner steht
+ * beim Abbau nicht zwingend in der Hauptkopie.
+ */
+function befundeSchwelle(repoRoot) {
+  try {
+    const cfg = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    const wert = cfg?.befunde?.schwelle;
+    if (Number.isInteger(wert) && wert > 0) return wert;
+  } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }
+  return 3;
+}
+
+/**
+ * Der Nullpunkt je Art aus `befunde-vorschlaege.json` der Hauptkopie (Plan #797, E11).
+ * SYNC: `nullpunktFuer` in kit/befunde.mjs — dupliziert wie die Schwelle darueber.
+ */
+function befundeNullpunkt(repoRoot, art) {
+  try {
+    const daten = JSON.parse(readFileSync(join(repoRoot, ".claude", "befunde-vorschlaege.json"), "utf-8"));
+    const wert = daten?.[art]?.nullpunkt;
+    if (Number.isInteger(wert) && wert >= 0) return wert;
+  } catch { /* keine Vorschlagsdatei ist der Regelfall — Nullpunkt null. */ }
+  return 0;
+}
+
+/** Der Zaehlerstand je Art (Spalte 5) aus Protokollzeilen; fehlerhafte Zeilen zaehlen nicht.
+ *  SYNC: `zaehleArten` in kit/befunde.mjs. */
+function befundeArtenZaehlen(zeilen) {
+  const zaehler = new Map();
+  for (const zeile of zeilen) {
+    const spalten = zeile.split("\t");
+    if (spalten.length < 7) continue;
+    zaehler.set(spalten[4], (zaehler.get(spalten[4]) ?? 0) + 1);
+  }
+  return zaehler;
+}
+
+/** Die Zeilen einer `befunde.tsv`; eine fehlende oder unlesbare Datei zaehlt als keine. */
+function befundeZeilen(pfad) {
+  try {
+    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Holt die im Worktree gebuchten Befunde in die Hauptkopie zurueck (Issue #803, night-69).
+ *
+ * ANHAENGEND, nie kopierend (Plan #797, E8): Der Spiegel traegt `befunde.tsv` gar nicht
+ * erst in den Worktree, die Datei dort enthaelt also ausschliesslich die Buchungen dieser
+ * Kette — und Kopieren ueberschriebe die Hauptkopie und loeschte jede fruehere Zeile.
+ *
+ * Die Schwelle prueft der Rueckweg selbst, am GESAMTSTAND der Hauptkopie nach dem
+ * Anhaengen (E20, Fund B1 der Plan-Pruefung): Der Worktree zaehlt ab null — stehen zwei
+ * Vorkommen in der Hauptkopie und kommt das dritte in der Kette, sah `buchen` dort den
+ * Stand 1 und schwieg. Zurueck kommen nur die BERUEHRTEN Arten, die die Schwelle
+ * (oberhalb ihres Nullpunkts, wie bei `buchen`) erreichen; der Aufrufer protokolliert
+ * sie. `befunde vorschlag` wird hier bewusst nicht gerufen — das Kommando gibt es noch
+ * nicht, es kommt mit einem eigenen Paket.
+ *
+ * Fehlt die Datei im Worktree, bleibt die Hauptkopie unberuehrt. Ein gescheitertes
+ * Anhaengen ist ein Hinweis im Protokoll und haelt den Abbau nicht auf — das Protokoll
+ * ist Buchhaltung, keine Bedingung (Muster checks-7).
+ */
+export function befundeZurueck(pfad, repoRoot) {
+  const zeilen = befundeZeilen(join(pfad, ".claude", "befunde.tsv"));
+  if (zeilen.length === 0) return [];
+
+  const ziel = join(repoRoot, ".claude", "befunde.tsv");
+  try {
+    mkdirSync(dirname(ziel), { recursive: true });
+    appendFileSync(ziel, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
+  } catch (e) {
+    log(`Hinweis: Befunde aus dem Worktree nicht zurueckgeholt (${ziel}): ${e.message} — der Abbau geht weiter.`);
+    return [];
+  }
+
+  const beruehrt = befundeArtenZaehlen(zeilen);
+  const stand = befundeArtenZaehlen(befundeZeilen(ziel));
+  const schwelle = befundeSchwelle(repoRoot);
+  return [...beruehrt.keys()].sort()
+    .filter((art) => (stand.get(art) ?? 0) - befundeNullpunkt(repoRoot, art) >= schwelle);
+}
+
+/**
+ * Der Rueckweg unmittelbar vor einem Worktree-Abbau der Kette — an BEIDEN Abbaustellen
+ * gerufen: vor der Stufe umsetzung und im finally am Kettenende. Das Nullen von
+ * `kette.wt` nach dem ersten Abbau verhindert den zweiten Lauf und damit doppeltes
+ * Anhaengen; die Arten an der Schwelle stehen als eine Zeile im Protokoll.
+ */
+function kettenBefundeZurueck(kette) {
+  const arten = befundeZurueck(kette.wt, kette.repoRoot);
+  if (arten.length > 0) log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
 }
 
 /**
@@ -4693,6 +4814,7 @@ async function stufeUmsetzung(kette, paketIds) {
 
   try {
     if (kette.wt) {
+      kettenBefundeZurueck(kette);
       worktreeEntfernen(kette.wt, kette.repoRoot);
       kette.wt = null;
       log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
@@ -5286,7 +5408,10 @@ async function laufeEineKette(kandidat, nummer, args) {
     // Worktrees.
     einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
   } finally {
-    if (kette.wt) worktreeEntfernen(kette.wt, kette.repoRoot);
+    if (kette.wt) {
+      kettenBefundeZurueck(kette);
+      worktreeEntfernen(kette.wt, kette.repoRoot);
+    }
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);

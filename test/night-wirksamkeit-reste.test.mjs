@@ -32,6 +32,16 @@ const NIGHT = join(repoRoot, "kit", "night.mjs");
 /** Die vier Dateien, die die Wirksamkeits-Auswertung unter `.claude/` anlegt. */
 const VIER = ["wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"];
 
+// Die vier Dateien der Befunde der Modell-Pruefungen (Plan #797; Issue #803) — im
+// Rest-Guard und im Spiegel aus demselben Grund gleichbehandelt: Protokoll- und
+// Auswertungszustand, kein Code-Zustand. `befunde.tsv` bleibt zudem deshalb aus dem
+// Worktree, weil der Rueckweg `befundeZurueck` ANHAENGT — truege der Spiegel die
+// Hauptkopie hinein, kaeme jede alte Zeile doppelt zurueck.
+const BEFUNDE = ["befunde.tsv", "befunde-vorschlaege.json", "befunde.md", "befunde.json"];
+
+/** Alle acht Dateien, die night-59 vom Rest-Guard und vom Spiegel ausnimmt. */
+const ACHT = [...VIER, ...BEFUNDE];
+
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
 }
@@ -82,16 +92,17 @@ function mitProjekt(fn) {
   }
 }
 
-test("[night-59] gitReste wertet die vier Dateien der Wirksamkeits-Auswertung nicht als Rest", NUR_POSIX, () => {
+test("[night-59] gitReste wertet die acht Dateien von Wirksamkeits-Auswertung und Befunden nicht als Rest", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
     const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(erstes.id), "ready");
     board(dir, "issue", "move", String(zweites.id), "ready");
 
-    // Der Session-Fake legt genau die vier Dateien an — wie die Auswertung im echten Lauf.
+    // Der Session-Fake legt genau die acht Dateien an — wie Auswertung und Buchung im
+    // echten Lauf.
     const sessionLog = join(dir, "sessions.log");
-    const anlegen = VIER.map((n) => `echo x > .claude/${n}`).join(" && ");
+    const anlegen = ACHT.map((n) => `echo x > .claude/${n}`).join(" && ");
     const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`
       + ` && ${anlegen}`;
@@ -107,7 +118,7 @@ test("[night-59] gitReste wertet die vier Dateien der Wirksamkeits-Auswertung ni
     assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
 
     // Und die Dateien liegen wirklich da — der Test misst nicht ihre Abwesenheit.
-    for (const n of VIER) assert.ok(existsSync(join(dir, ".claude", n)), `.claude/${n} fehlt im Arbeitsbaum`);
+    for (const n of ACHT) assert.ok(existsSync(join(dir, ".claude", n)), `.claude/${n} fehlt im Arbeitsbaum`);
     assert.notEqual(git(dir, "status", "--porcelain").trim(), "",
       "git selbst muss die Dateien sehen — sonst pruefte der Test die .gitignore statt des Ausschlusses");
   });
@@ -115,7 +126,7 @@ test("[night-59] gitReste wertet die vier Dateien der Wirksamkeits-Auswertung ni
 
 // --- Der Worktree-Spiegel (night-17) -----------------------------------------
 
-/** Ein Repo mit Commit und einem `.claude/` voller Lokalzustand, inklusive der vier Dateien. */
+/** Ein Repo mit Commit und einem `.claude/` voller Lokalzustand, inklusive der acht Dateien. */
 function setupWorktreeRepo() {
   const dir = mkdtempSync(join(tmpdir(), "night-wirksamkeit-spiegel-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
@@ -128,16 +139,16 @@ function setupWorktreeRepo() {
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "setup");
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), "// kopie\n");
-  for (const n of VIER) writeFileSync(join(dir, ".claude", n), `stand ${n}\n`);
+  for (const n of ACHT) writeFileSync(join(dir, ".claude", n), `stand ${n}\n`);
   return dir;
 }
 
-test("[night-59] der Worktree-Spiegel laesst die vier Dateien in der Hauptkopie zurueck", () => {
+test("[night-59] der Worktree-Spiegel laesst die acht Dateien in der Hauptkopie zurueck", () => {
   const dir = setupWorktreeRepo();
   let pfad = null;
   try {
     pfad = worktreeAnlegen({ repoRoot: dir, issueId: "784", stempel: "2026-09-21-010203" });
-    for (const n of VIER) {
+    for (const n of ACHT) {
       assert.ok(!existsSync(join(pfad, ".claude", n)), `.claude/${n} darf nicht in den Worktree`);
       assert.equal(readFileSync(join(dir, ".claude", n), "utf-8"), `stand ${n}\n`,
         `.claude/${n} muss in der Hauptkopie stehen bleiben`);

@@ -71,13 +71,14 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // die Zusammenfassung im ignorierten `.claude/`. Ohne die beiden Zeilen saehe die
   // Umsetzungsstufe die Hauptkopie schon vor dem ersten Paket als unsauber.
   //
-  // Der Umsetzungs-Lock (Issue #696), die Wegmarken (Issue #733) und das
-  // Bewegungsprotokoll (Issue #786) stehen aus demselben Grund hier: Im Betrieb deckt
+  // Der Umsetzungs-Lock (Issue #696), die Wegmarken (Issue #733), das
+  // Bewegungsprotokoll (Issue #786) und das Befunde-Protokoll (Issue #803) stehen aus
+  // demselben Grund hier: Im Betrieb deckt
   // sie der `.claude/*`-Block, den der Installer schreibt; das Fixture fuehrt die
   // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss. Fuer `gitReste()`
-  // sind sie ohnehin ausgeschlossen — die Probe der Umsetzungsstufe liest aber ein rohes
-  // `git status`, das diese Ausschluesse nicht kennt.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\nissues/\nhelfer/\n");
+  // sind sie ohnehin ausgeschlossen — der Session-Fake der Umsetzung committet aber mit
+  // einem rohen `git add -A`, das diese Ausschluesse nicht kennt.
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
