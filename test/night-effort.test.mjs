@@ -95,7 +95,17 @@ test("[night-42] beim Modell des Laufs ist die Gruendlichkeit null", () => {
   assert.equal(ohneEinstellung.effort, null);
 });
 
-test("[night-42] eine Kommando-Stufe traegt keine Gruendlichkeit", () => {
+// Eine Kommando-Stufe gilt unter Windows als nicht startbar (E17 aus Plan #707): Der
+// Kommando-Zweig braucht eine POSIX-Shell, die es dort nicht gibt. Das ist gewolltes
+// Produktverhalten und keine Luecke der Testumgebung — die Lage laesst sich dort also
+// nicht herstellen, und `paketWahl` weicht auf die naechste Stufe aus. Der Grund steht
+// im Skip-Text, damit ein ausgenommener Test nicht wie ein bestandener aussieht
+// (Muster aus Issue #197, gefunden ueber den roten Windows-Job in Issue #873).
+const NUR_POSIX_KOMMANDOSTUFE = process.platform === "win32"
+  ? { skip: "Windows: eine Kommando-Stufe gilt dort als nicht startbar (E17), es gibt keine POSIX-Shell. Siehe Issue #197." }
+  : {};
+
+test("[night-42] eine Kommando-Stufe traegt keine Gruendlichkeit", NUR_POSIX_KOMMANDOSTUFE, () => {
   // Das Schema verbietet effort neben kommando (Issue #845). Die Wahl verlaesst sich
   // nicht darauf: Ein fremdes Programm kennt das Flag nicht, und `sessionStart` setzt es
   // im Kommando-Zweig ohnehin nie.

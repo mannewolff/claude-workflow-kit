@@ -33,6 +33,39 @@ async function warteAuf(bedingung, meldung) {
   assert.fail(meldung);
 }
 
+/** Die pid des haengenden Pruefkommandos, sobald es sie hinterlassen hat. */
+function kommandoPid(dir) {
+  try {
+    const roh = readFileSync(join(dir, "laeuft.txt"), "utf-8").trim();
+    return /^\d+$/.test(roh) ? Number(roh) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Beendet das Pruefkommando, das den Kill des Laufs ueberlebt hat, und wartet auf
+ * sein Ende. Keine Assertion: Die Funktion laeuft im `finally` und darf das Ergebnis
+ * des Tests nicht ueberschreiben — auch ein Prozess, der sich nicht beenden laesst,
+ * soll das Aufraeumen noch versuchen lassen.
+ */
+async function beendeKommando(pid) {
+  if (!pid) return;
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    return; // schon weg
+  }
+  for (let versuch = 0; versuch < 100; versuch += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return; // gestorben
+    }
+    await warte(20);
+  }
+}
+
 // Ein Pruefkommando, das die Zusammenfassung waehrend seines eigenen Laufs
 // wegkopiert. Als Node-Skript statt `cp`, damit das Kommando unter Windows
 // dieselbe Zeile ist — `checks.mjs` faehrt es ueber die Shell der Plattform.
@@ -144,11 +177,13 @@ test("[checks-8] ein vollstaendiger Lauf endet mit abgeschlossen: true — auch 
 
 test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst einen ungruenen Stand", async () => {
   // Ein Kommando, das seinen Start meldet und dann haengt: So trifft der Test den
-  // Lauf sicher mitten darin und nicht davor oder danach.
+  // Lauf sicher mitten darin und nicht davor oder danach. Gemeldet wird die eigene
+  // pid und nicht bloss "ja": Der Kill trifft den Lauf, nicht dessen Kind — das
+  // haengende Kommando ueberlebt ihn und muss eigens beendet werden (Issue #873).
   const LANGSAM = [
     "// Generiert von test/checks-lauf-abbruch.test.mjs — kein Produktivcode.",
     'import { writeFileSync } from "node:fs";',
-    'writeFileSync("laeuft.txt", "ja");',
+    'writeFileSync("laeuft.txt", String(process.pid));',
     "setTimeout(() => {}, 15000);",
     "",
   ].join("\n");
@@ -159,6 +194,7 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
   // Nicht `mitRepo`: Das Aufraeumen ist dort synchron, dieser Fall wartet auf den
   // Tod eines Kindprozesses.
   const dir = repoAnlegen({ config });
+  let kind = null;
   try {
     datei(dir, "werkzeug/langsam.mjs", LANGSAM);
     datei(dir, "src/a.txt");
@@ -166,7 +202,8 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
     const proc = spawn(process.execPath, [CHECKS, "run"], { cwd: dir });
     proc.stdout.resume();
     proc.stderr.resume();
-    await warteAuf(() => existsSync(join(dir, "laeuft.txt")), "das erste Pruefkommando lief nicht an");
+    await warteAuf(() => kommandoPid(dir) !== null, "das erste Pruefkommando lief nicht an");
+    kind = kommandoPid(dir);
     proc.kill("SIGKILL");
     await new Promise((fertig) => proc.on("exit", fertig));
 
@@ -179,7 +216,12 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
     assert.equal(typeof fassung.hashes, "object");
     assert.notEqual(fassung.hashes, null);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // Erst der Prozess, dann das Verzeichnis: Unter Windows haelt das ueberlebende
+    // Kommando sein Arbeitsverzeichnis offen, und rmSync scheitert mit EBUSY. Die
+    // Wiederholungen decken den Rest ab — die Shell dazwischen gibt das Verzeichnis
+    // erst kurz nach ihrem Kind frei (Issue #873).
+    await beendeKommando(kind);
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

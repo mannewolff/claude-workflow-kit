@@ -17,7 +17,8 @@
 import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve, join, dirname, basename } from "node:path";
+import { resolve, join, dirname, basename, win32 as pfadWin32, posix as pfadPosix } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
 // Kein __dirname mehr: Seit Issue #499 liest der Installer keine Datei neben sich
@@ -489,10 +490,34 @@ function aktiverHookVorhanden() {
  * Dann wird der Elternpfad aufgeloest und der letzte Name angehaengt. Ohne diese
  * Aufloesung auf beiden Seiten verglichen man Schreibweisen statt Verzeichnisse:
  * Auf macOS zeigt schon `/tmp` auf `/private/tmp`.
+ *
+ * `realpathSync.native` und nicht `realpathSync`: Nur die native Variante loest unter
+ * Windows die 8.3-Kurznamen auf (`RUNNER~1` -> `runneradmin`). git meldet den langen
+ * Namen, ein Pfad aus der Umgebung traegt oft den kurzen — ohne diese Aufloesung
+ * standen zwei Schreibweisen desselben Verzeichnisses nebeneinander (Issue #873).
  */
 function aufgeloest(pfad) {
-  try { return realpathSync(pfad); } catch { /* existiert (noch) nicht */ }
-  try { return join(realpathSync(dirname(pfad)), basename(pfad)); } catch { return pfad; }
+  try { return realpathSync.native(pfad); } catch { /* existiert (noch) nicht */ }
+  try { return join(realpathSync.native(dirname(pfad)), basename(pfad)); } catch { return pfad; }
+}
+
+/**
+ * Meinen `a` und `b` dasselbe Verzeichnis — nach den Regeln von `plattform`?
+ *
+ * Unter Windows sind `/` und `\` derselbe Trenner und Gross-/Kleinschreibung ist kein
+ * Unterschied: git liefert `D:/a/repo`, `join` baut `D:\a\repo`, und der
+ * Laufwerksbuchstabe kommt mal so, mal so. Ein Zeichenkettenvergleich hielt das
+ * eigene Gate dort fuer einen fremden Hook-Manager (Issue #873). Unter POSIX gehoert
+ * die Schreibweise dagegen zum Namen — dort wird nur normalisiert.
+ *
+ * Die Plattform ist ein Parameter und keine Abfrage im Rumpf: So ist die
+ * Windows-Regel auf jedem Host pruefbar und nicht nur dort, wo sie wirkt.
+ */
+export function pfadeGleich(a, b, plattform = process.platform) {
+  if (plattform === "win32") {
+    return pfadWin32.resolve(a).toLowerCase() === pfadWin32.resolve(b).toLowerCase();
+  }
+  return pfadPosix.resolve(a) === pfadPosix.resolve(b);
 }
 
 /**
@@ -506,7 +531,7 @@ function aufgeloest(pfad) {
 function zeigtAufEigenesGithooks(wert) {
   const wurzel = gitAntwort("rev-parse", "--show-toplevel");
   if (!wurzel) return false;
-  return aufgeloest(resolve(wurzel, wert)) === aufgeloest(join(wurzel, ".githooks"));
+  return pfadeGleich(aufgeloest(resolve(wurzel, wert)), aufgeloest(join(wurzel, ".githooks")));
 }
 
 /**
@@ -1070,9 +1095,20 @@ async function main() {
   console.log(`heruebernehmen und an die eigenen Modelle anpassen. Ohne ihn tut der Skill nichts.\n`);
 }
 
-try {
-  await main();
-} catch (err) {
-  console.error("\nFehler:", err.message);
-  process.exit(1);
+// Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
+// realpathSync statt resolve: Node loest fuer import.meta.url Symlinks auf (macOS:
+// /var -> /private/var), ein nur normalisierter argv[1] wuerde dann nie matchen (#146).
+let runAsCli = false;
+if (process.argv[1]) {
+  try {
+    runAsCli = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
+}
+if (runAsCli) {
+  try {
+    await main();
+  } catch (err) {
+    console.error("\nFehler:", err.message);
+    process.exit(1);
+  }
 }
