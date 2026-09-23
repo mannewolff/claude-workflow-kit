@@ -1,8 +1,10 @@
-// E2E fuer das --verbose-Flag des Nacht-Runners (Issue #154).
-// Mit --verbose liest der Runner den stream-json-Output der Session live und
-// schreibt kompakte Ereigniszeilen (Tool-Aufrufe, Text-Snippets) mit in Log
-// und Konsole. Ohne Flag bleibt das Log beim heutigen Format (nur Start/Ende
-// plus finaler Session-Output-Block). Der Umbau von spawnSync auf async spawn
+// E2E fuer das --verbose-Flag des Nacht-Runners (Issue #154, Vorbelegung seit #867).
+// Der Runner liest den stream-json-Output der Session live und schreibt kompakte
+// Ereigniszeilen (Tool-Aufrufe, Text-Snippets) mit in Log und Konsole — das ist
+// seit Issue #867 der Normalfall, auch ohne jedes Flag. Erst `--verbose no` bringt
+// das Log zurueck auf das alte Format (nur Start/Ende plus finaler Session-Output-
+// Block); `--verbose` allein bleibt zulaessig und wirkungslos.
+// Der Umbau von spawnSync auf async spawn
 // wird zusaetzlich am Timeout-Pfad abgesichert (eigener Timer killt die Runde).
 // Laeuft komplett lokal: issueTracker "local", Session-Fake via NIGHT_CLAUDE_CMD.
 
@@ -70,7 +72,73 @@ function streamFake() {
   ].join(" && ");
 }
 
-test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-Log", NUR_POSIX, () => {
+test("ohne jedes Flag zeigt der Lauf kompakte Ereigniszeilen — das Verlaufsprotokoll ist der Normalfall", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const issue = board(dir, "issue", "create", "--title", "Normalfall-Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(issue.id), "ready");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
+      { NIGHT_CLAUDE_CMD: streamFake() });
+
+    assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Bash: mvn -q verify`), "Tool-Aufruf-Zeile fehlt");
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Claude: Tests gruen`), "Text-Snippet-Zeile fehlt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--verbose yes schaltet ausdruecklich an", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const issue = board(dir, "issue", "create", "--title", "Laut-Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(issue.id), "ready");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "yes"],
+      { NIGHT_CLAUDE_CMD: streamFake() });
+
+    assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, new RegExp(`#${issue.id} > Bash: mvn -q verify`), "Tool-Aufruf-Zeile fehlt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Ein Wert, den es nicht gibt, ist ein Tippfehler — und ein Tippfehler darf nicht
+// stillschweigend zur Vorbelegung zurueckfallen: Wer `--verbose nein` schreibt, will
+// abschalten und bekaeme sonst das Gegenteil.
+test("ein unbekannter Wert bricht ab und nennt beide Schreibweisen", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "vielleicht"],
+      { NIGHT_CLAUDE_CMD: "true" });
+
+    assert.notEqual(res.status, 0, "ein unbekannter Wert haette abbrechen muessen");
+    const ausgabe = `${res.stderr}${res.stdout}`;
+    assert.match(ausgabe, /\bno\b/, "die Meldung muss `no` nennen");
+    assert.match(ausgabe, /\byes\b/, "die Meldung muss `yes` nennen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// `--verbose` darf den naechsten Eintrag nur dann verbrauchen, wenn er ein Wert ist.
+// Ein Flag ist keiner — sonst verschluckte `--verbose --max 5` das `--max`.
+test("--verbose --max 5 laesst --max seine Wirkung", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run", "--verbose", "--max", "5"],
+      { NIGHT_CLAUDE_CMD: "true" });
+
+    assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /max 5 Sessions/, "--max wurde von --verbose verschluckt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--verbose ohne Wert bleibt zulaessig und wirkungslos (Rueckwaertskompatibilitaet)", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Verbose-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -87,17 +155,17 @@ test("--verbose zeigt kompakte Ereigniszeilen (Tool-Aufruf + Text) im Konsolen-L
   }
 });
 
-test("ohne --verbose bleibt das Log beim heutigen Format (keine Ereigniszeilen)", NUR_POSIX, () => {
+test("--verbose no bleibt beim alten Format (keine Ereigniszeilen)", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "no"],
       { NIGHT_CLAUDE_CMD: streamFake() });
 
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
-    assert.doesNotMatch(res.stdout, /> Bash:/, "ohne --verbose duerften keine Ereigniszeilen erscheinen");
+    assert.doesNotMatch(res.stdout, /> Bash:/, "mit --verbose no duerften keine Ereigniszeilen erscheinen");
     assert.match(res.stdout, /Erfolg/, "die erfolgreiche Runde wird weiterhin gemeldet");
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -122,18 +122,21 @@ test("[night-50] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobac
   }
 });
 
-test("[night-50] ohne --verbose bleibt das Tagesprotokoll frei von Stream-Ereignissen", NUR_POSIX, () => {
+// Seit Issue #867 ist das Verlaufsprotokoll die Vorbelegung; abgeschaltet wird mit
+// `--verbose no`. Geprueft wird derselbe Punkt wie zuvor, nur unter der neuen Geste:
+// Der Strom wird auch dann angefordert und gemessen, wenn nichts davon ausgegeben wird.
+test("[night-50] mit --verbose no bleibt das Tagesprotokoll frei von Stream-Ereignissen", NUR_POSIX, () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: streamFake() });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "no"], { NIGHT_CLAUDE_CMD: streamFake() });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     const ereignis = new RegExp(`#${issue.id} > `);
-    assert.doesNotMatch(res.stdout, ereignis, "ohne --verbose duerfen keine Ereigniszeilen auf der Konsole stehen");
-    assert.doesNotMatch(protokoll(dir), ereignis, "ohne --verbose duerfen keine Ereigniszeilen im Tagesprotokoll stehen");
+    assert.doesNotMatch(res.stdout, ereignis, "mit --verbose no duerfen keine Ereigniszeilen auf der Konsole stehen");
+    assert.doesNotMatch(protokoll(dir), ereignis, "mit --verbose no duerfen keine Ereigniszeilen im Tagesprotokoll stehen");
     assert.match(res.stdout, /Erfolg/, "die erfolgreiche Runde wird weiterhin gemeldet");
   } finally {
     rmSync(dir, { recursive: true, force: true });

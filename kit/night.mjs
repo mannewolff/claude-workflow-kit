@@ -36,8 +36,11 @@
  *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
  *                      kit:nightrun); --label none schaltet den Filter ab (altes
  *                      Verhalten: striktes ready[0])
- *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
- *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
+ *   --verbose [no|yes] Live-Verlaufsprotokoll: liest den stream-json-Output der
+ *                      Session und loggt Tool-Aufrufe und Text-Snippets mit. Das
+ *                      ist der Normalfall und braucht kein Flag; --verbose no
+ *                      schaltet es ab, --verbose allein ist der Vorgabewert und
+ *                      damit wirkungslos
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -352,8 +355,11 @@ Flags:
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
-  --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
-                     der laufenden Session mitloggen (via stream-json)
+  --verbose [no|yes] Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
+                     der laufenden Session mitloggen (via stream-json). An,
+                     ohne dass es ein Flag braucht; --verbose no schaltet es
+                     ab, --verbose yes ausdruecklich an, --verbose ohne Wert
+                     ist der Vorgabewert und damit wirkungslos
   --version          Kit-Stand dieser Datei
   --help, -h         diese Uebersicht
 
@@ -417,8 +423,32 @@ const SCHALTER_FLAGS = {
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",
-  "--verbose": "verbose",
 };
+
+// --verbose ist seit Issue #867 ein Flag mit OPTIONALEM Wert: Das Live-Verlaufsprotokoll
+// ist die Vorbelegung, `--verbose no` schaltet es ab, `--verbose yes` ausdruecklich an,
+// `--verbose` allein bleibt zulaessig und wirkungslos. Gelesen werden genau diese beiden
+// Schreibweisen — eine Synonymliste (off/false/0/1) vergroesserte die Oberflaeche, ohne
+// dass man sich die eine Schreibweise aus der Hilfe falsch merken koennte.
+const VERBOSE_WERTE = { no: false, yes: true };
+
+/**
+ * Liest den optionalen Wert von --verbose aus `argv` ab Position `i+1`.
+ *
+ * Der naechste Eintrag zaehlt nur dann als Wert, wenn er nicht mit `-` beginnt; sonst
+ * bleibt er unangetastet. Darum steht --verbose NICHT in WERT_FLAGS: Jene Tabelle
+ * verschlingt den naechsten Eintrag bedingungslos, und `--verbose --max 5` verloere
+ * damit sein `--max`. Gibt den neuen Stand von `i` zurueck (verbraucht oder nicht).
+ */
+function liesVerbose(args, argv, i) {
+  const naechster = argv[i + 1];
+  if (naechster === undefined || naechster.startsWith("-")) return i;
+  if (!Object.hasOwn(VERBOSE_WERTE, naechster)) {
+    fail(`--verbose kennt nur die Werte no und yes (gelesen: ${naechster}) — ohne Wert bleibt es beim Vorgabewert yes.`);
+  }
+  args.verbose = VERBOSE_WERTE[naechster];
+  return i + 1;
+}
 
 // Die Flags der beiden entfallenen Betriebsarten (Plan #638, A1). Sie bleiben dem Parser
 // bekannt, damit die Meldung sagt, WAS es nicht mehr gibt: Ein "unbekanntes Argument"
@@ -435,12 +465,16 @@ function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
-  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
+  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
     if (Object.hasOwn(SOFORT_FLAGS, a)) {
       SOFORT_FLAGS[a]();
+      continue;
+    }
+    if (a === "--verbose") {
+      i = liesVerbose(args, argv, i);
       continue;
     }
     if (Object.hasOwn(WERT_FLAGS, a)) {
@@ -6617,7 +6651,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     : { model: modellStand.modell, effort: modellStand.effort };
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
-  // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
+  // macht, in genau den Laeufen unsichtbar, die mit `--verbose no` fahren. `vordergrundCheck`
   // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
   // Implementierungs-Runde.
   const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, ...sessionWahl });
