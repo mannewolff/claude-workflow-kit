@@ -6035,6 +6035,13 @@ async function versucheSalvage(top, args, sessionWahl) {
     // prueft deren Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde
     // Arbeit nach anderem Massstab, und die Wahl galt der Karte, nicht der Betriebsart —
     // darum geht bei einer Kommando-Stufe auch die Kommandozeile mit.
+    // Der Strom wie in der regulaeren Runde und in der Kette (Issue #871): `sessionStart`
+    // haengt `--output-format stream-json` nur bei `args.verbose || opts.stream` an, und
+    // `runProcess` misst unter derselben Bedingung. Ohne das Feld lief die Rettung unter
+    // `--verbose no` ohne Strom, und ihre Kennzahlen fehlten im Verbrauch der Einheit —
+    // entgegen der Zusage in docs/dokumentation.md, dass weder die Datei noch die
+    // Kennzahlen an einem Flag haengen.
+    stream: true,
     ...sessionWahl,
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
