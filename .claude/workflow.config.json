@@ -58,19 +58,19 @@
     },
     "modelle": [
       "claude-fable-5",
-      "claude-opus-5.5",
+      "claude-opus-5-5",
       "claude-sonnet-5"
     ],
     "stufen": {
       "schwer": {
-        "modell": "claude-opus-5.5"
+        "modell": "claude-opus-5-5"
       },
       "mittel": {
-        "modell": "claude-opus-5.5",
+        "modell": "claude-opus-5-5",
         "effort": "medium"
       },
       "leicht": {
-        "modell": "claude-opus-5.5",
+        "modell": "claude-opus-5-5",
         "effort": "low"
       }
     }
@@ -81,7 +81,7 @@
       {
         "name": "opus",
         "kind": "claude",
-        "model": "claude-opus-5.5"
+        "model": "claude-opus-5-5"
       },
       {
         "name": "sonnet",
