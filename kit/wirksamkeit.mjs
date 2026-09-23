@@ -55,7 +55,7 @@ import { fileURLToPath } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.1.2";
+const KIT_VERSION = "3.1.3";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "wirksamkeit.json";

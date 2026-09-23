@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.1.3] - 2026-09-23
+- Der Windows-Job der CI wird wieder gruen (#873)
+- Die drei String-Sortierungen tragen eine Vergleichsfunktion (#872)
+- Salvage-Session faehrt auch bei --verbose no ueber den Strom (#871)
+
 ## [3.1.2] - 2026-09-23
 - Live-Verlaufsprotokoll des Nacht-Runners ist der Normalfall (#867)
 - ..
