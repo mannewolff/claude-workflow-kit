@@ -327,6 +327,26 @@ const DEFAULT_MAX_SESSIONS = 10;
 const DEFAULT_MAX_KETTEN = 3;
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und
+ * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
+ * geteilte Logik wird dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 // --- Argumente ---
 
 function printHelp() {
@@ -1568,7 +1588,7 @@ export function befundeZurueck(pfad, repoRoot) {
   const beruehrt = befundeArtenZaehlen(zeilen);
   const stand = befundeArtenZaehlen(befundeZeilen(ziel));
   const schwelle = befundeSchwelle(repoRoot);
-  return [...beruehrt.keys()].sort()
+  return [...beruehrt.keys()].sort(vergleicheText)
     .filter((art) => (stand.get(art) ?? 0) - befundeNullpunkt(repoRoot, art) >= schwelle);
 }
 

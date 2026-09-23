@@ -381,6 +381,27 @@ function fehlendeAngaben(fund) {
   return { fehlt, art: gefundeneArt };
 }
 
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — die Artnamen stehen im Bericht und in der
+ * Ausgabe von `buchen`.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/night.mjs und
+ * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
+ * geteilte Logik wird dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 /** Die Meldung zu einer fehlenden Angabe; bei der Art nennt sie den vorgefundenen Namen. */
 function meldung(angabe, gefundeneArt) {
   if (angabe === "art" && gefundeneArt) {
@@ -699,7 +720,7 @@ export function buchen({ datei, stufe, karte }) {
     geschrieben: zeilen.length,
     protokoll: PROTOKOLL_DATEI,
     schwelle,
-    arten: [...beruehrt.keys()].sort().map((art) => {
+    arten: [...beruehrt.keys()].sort(vergleicheText).map((art) => {
       const stand = (bestand.get(art) ?? 0) + beruehrt.get(art);
       const nullpunkt = nullpunktFuer(art);
       // `>=` oberhalb des Nullpunkts (E20), nicht `==`: Ein uebersprungener Stand
@@ -1011,7 +1032,7 @@ function protokollLesen(zeilen) {
  * stammen, und wegzulassen hiesse, ein Vorkommen verschwinden zu lassen.
  */
 function artenReihenfolge(eintraege) {
-  const fremde = [...new Set(eintraege.map((e) => e.art).filter((a) => !ARTEN_NAMEN.has(a)))].sort();
+  const fremde = [...new Set(eintraege.map((e) => e.art).filter((a) => !ARTEN_NAMEN.has(a)))].sort(vergleicheText);
   return [...ARTEN.map((a) => a.name), ...fremde];
 }
 
