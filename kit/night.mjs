@@ -36,8 +36,11 @@
  *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
  *                      kit:nightrun); --label none schaltet den Filter ab (altes
  *                      Verhalten: striktes ready[0])
- *   --verbose          Live-Verlaufsprotokoll: liest den stream-json-Output der
- *                      Session und loggt Tool-Aufrufe und Text-Snippets mit
+ *   --verbose [no|yes] Live-Verlaufsprotokoll: liest den stream-json-Output der
+ *                      Session und loggt Tool-Aufrufe und Text-Snippets mit. Das
+ *                      ist der Normalfall und braucht kein Flag; --verbose no
+ *                      schaltet es ab, --verbose allein ist der Vorgabewert und
+ *                      damit wirkungslos
  *   --version          Kit-Stand dieser Datei (greift vor allen Checks)
  *   --help, -h         Usage-Uebersicht (greift vor allen Checks, keine Config noetig)
  *
@@ -315,7 +318,7 @@ export const nachbarn = {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.1.0";
+const KIT_VERSION = "3.2.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const DEFAULT_MAX_SESSIONS = 10;
@@ -323,6 +326,26 @@ const DEFAULT_MAX_SESSIONS = 10;
 // Ausgangsdokumente je Nacht.
 const DEFAULT_MAX_KETTEN = 3;
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
+
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und
+ * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
+ * geteilte Logik wird dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
 
 // --- Argumente ---
 
@@ -352,8 +375,11 @@ Flags:
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
                      Filter ab (altes Verhalten: striktes erstes Ready-Issue)
-  --verbose          Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
-                     der laufenden Session mitloggen (via stream-json)
+  --verbose [no|yes] Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
+                     der laufenden Session mitloggen (via stream-json). An,
+                     ohne dass es ein Flag braucht; --verbose no schaltet es
+                     ab, --verbose yes ausdruecklich an, --verbose ohne Wert
+                     ist der Vorgabewert und damit wirkungslos
   --version          Kit-Stand dieser Datei
   --help, -h         diese Uebersicht
 
@@ -417,8 +443,32 @@ const SCHALTER_FLAGS = {
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",
-  "--verbose": "verbose",
 };
+
+// --verbose ist seit Issue #867 ein Flag mit OPTIONALEM Wert: Das Live-Verlaufsprotokoll
+// ist die Vorbelegung, `--verbose no` schaltet es ab, `--verbose yes` ausdruecklich an,
+// `--verbose` allein bleibt zulaessig und wirkungslos. Gelesen werden genau diese beiden
+// Schreibweisen — eine Synonymliste (off/false/0/1) vergroesserte die Oberflaeche, ohne
+// dass man sich die eine Schreibweise aus der Hilfe falsch merken koennte.
+const VERBOSE_WERTE = { no: false, yes: true };
+
+/**
+ * Liest den optionalen Wert von --verbose aus `argv` ab Position `i+1`.
+ *
+ * Der naechste Eintrag zaehlt nur dann als Wert, wenn er nicht mit `-` beginnt; sonst
+ * bleibt er unangetastet. Darum steht --verbose NICHT in WERT_FLAGS: Jene Tabelle
+ * verschlingt den naechsten Eintrag bedingungslos, und `--verbose --max 5` verloere
+ * damit sein `--max`. Gibt den neuen Stand von `i` zurueck (verbraucht oder nicht).
+ */
+function liesVerbose(args, argv, i) {
+  const naechster = argv[i + 1];
+  if (naechster === undefined || naechster.startsWith("-")) return i;
+  if (!Object.hasOwn(VERBOSE_WERTE, naechster)) {
+    fail(`--verbose kennt nur die Werte no und yes (gelesen: ${naechster}) — ohne Wert bleibt es beim Vorgabewert yes.`);
+  }
+  args.verbose = VERBOSE_WERTE[naechster];
+  return i + 1;
+}
 
 // Die Flags der beiden entfallenen Betriebsarten (Plan #638, A1). Sie bleiben dem Parser
 // bekannt, damit die Meldung sagt, WAS es nicht mehr gibt: Ein "unbekanntes Argument"
@@ -435,12 +485,16 @@ function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
-  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: false, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
+  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
     if (Object.hasOwn(SOFORT_FLAGS, a)) {
       SOFORT_FLAGS[a]();
+      continue;
+    }
+    if (a === "--verbose") {
+      i = liesVerbose(args, argv, i);
       continue;
     }
     if (Object.hasOwn(WERT_FLAGS, a)) {
@@ -1534,7 +1588,7 @@ export function befundeZurueck(pfad, repoRoot) {
   const beruehrt = befundeArtenZaehlen(zeilen);
   const stand = befundeArtenZaehlen(befundeZeilen(ziel));
   const schwelle = befundeSchwelle(repoRoot);
-  return [...beruehrt.keys()].sort()
+  return [...beruehrt.keys()].sort(vergleicheText)
     .filter((art) => (stand.get(art) ?? 0) - befundeNullpunkt(repoRoot, art) >= schwelle);
 }
 
@@ -3090,7 +3144,11 @@ function lesePruefung(issueId) {
     // verfehlter Marke ist bereits der rote Lauf, und eine zweite Beurteilung an dieser
     // Stelle waere ein zweites Gate fuer dieselbe Entscheidung.
     const guete = daten.guete && typeof daten.guete === "object" ? { guete: daten.guete } : {};
-    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder, ...guete };
+    // `roh` ist das Durchreichen der gelesenen Datei an `bewertePruefung` und kommt dort
+    // wieder weg (Issue #865): Der Abgleich mit dem Commit braucht `hashes` und
+    // `abgeschlossen`, der Pruefstand der Einheit soll sie nicht tragen — er ist der
+    // Vertrag mit den Auswertungen, und zwei Blob-Listen je Nacht sind kein Bericht.
+    if (daten.leeresPaket) return { id: String(issueId), zustand: "leeresPaket", ...umfangFelder, ...guete, roh: daten };
     const laufen = daten.laufen ?? [];
     // Ein nicht gruener Eintrag ist etwas anderes als eine fehlende Datei: Dort ist
     // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
@@ -3105,6 +3163,7 @@ function lesePruefung(issueId) {
       ausgelassen: daten.ausgelassen ?? [],
       ...umfangFelder,
       ...guete,
+      roh: daten,
     };
   } catch (err) {
     // Eine unlesbare Datei ist keine Pruefung. Sie bekommt aber ihren eigenen Grund:
@@ -3113,12 +3172,139 @@ function lesePruefung(issueId) {
   }
 }
 
+// --- Gehoert der Nachweis zum Commit des Pakets? (Issue #865) ---
+//
+// Die Zusammenfassung traegt keinen Vermerk darueber, welchen Stand sie gemessen hat —
+// sie ist schlicht die letzte, die eine Session hinterlassen hat. Lauf #118 zeigte, was
+// daraus folgt: Nach einem gruen geprueften Commit startete die Session eine weitere
+// Pruefung und brach sie ab; deren Zwischenfassung ("nicht gestartet") stand danach in
+// der Datei, und der Runner meldete ein sauberes Paket als "Nachweis rot".
+//
+// Die Frage ist dieselbe, die das Commit-Gate (.githooks/gate.mjs) vor jedem Commit
+// stellt, nur gegen den Commit statt gegen den Index: Traegt die Zusammenfassung fuer
+// JEDE Datei, die der Commit aendert, genau den Blob, der dort gelandet ist?
+//
+// Die Richtung ist mit Bedacht die des Gates (Commit -> Nachweis) und nicht die
+// umgekehrte: Eine Zusammenfassung enthaelt regelmaessig mehr, als der Commit aufnimmt
+// — der Board-Move nach In progress aendert beim lokalen Tracker issues/<id>.md, und
+// die Session committet die Datei nicht. Gegen diese Beifaenge zu pruefen, hiesse den
+// Nachweis in jedem Lauf dieses Repos als fremd zu verwerfen.
+
+const NACHPRUEF_GRUND = "Nachpruefung des Commits (Nachweis war fremd)";
+
+/** Die Pfade samt Status, die ein Commit aendert. `null`, wenn git nicht antwortet. */
+function commitEintraege(commit) {
+  // `--root`, damit auch ein erster Commit ohne Eltern Eintraege liefert; `-z` und
+  // `--no-renames` aus denselben Gruenden wie im Gate (quotePath, R-Zeilen mit zwei Pfaden).
+  const res = spawnSync("git", ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "--no-renames", "--root", commit],
+    { encoding: "utf-8", cwd: process.cwd() });
+  if (res.status !== 0) return null;
+  const felder = res.stdout.split("\0");
+  const eintraege = [];
+  for (let i = 0; i + 1 < felder.length; i += 2) {
+    if (felder[i]) eintraege.push({ status: felder[i], pfad: felder[i + 1] });
+  }
+  return eintraege;
+}
+
+/** Der Blob eines Pfads im Commit, oder `null`, wenn er dort nicht liegt. */
+function blobImCommit(commit, pfad) {
+  const res = spawnSync("git", ["rev-parse", `${commit}:${pfad}`], { encoding: "utf-8", cwd: process.cwd() });
+  return res.status === 0 ? res.stdout.trim() : null;
+}
+
+/**
+ * Passt die Zusammenfassung `daten` zum Commit `commit`? Mit dem Grund, wenn nicht —
+ * er nennt die erste abweichende Stelle und geht so, wie er ist, in Log und Bericht.
+ *
+ * Zwei Faelle heissen "nicht beurteilbar" und gelten darum als passend: eine
+ * Zusammenfassung ohne `hashes` (Format vor Issue #469) und ein git-Aufruf, der
+ * scheitert. Ein Nachweis, den dieser Abgleich nicht lesen kann, soll denselben Weg
+ * gehen wie vor diesem Paket — nicht einen strengeren.
+ */
+function nachweisPasstZuCommit(daten, commit) {
+  if (!daten || daten.hashes === null || typeof daten.hashes !== "object") return { passt: true, grund: null };
+  // `abgeschlossen: false` heisst: Diese Fassung hat ein Abbruch hinterlassen (Issue
+  // #857). Sie kann nie der Nachweis eines Commits sein, unabhaengig von den Blobs.
+  if (daten.abgeschlossen === false) return { passt: false, grund: "die Pruefung wurde abgebrochen" };
+  const eintraege = commitEintraege(commit);
+  if (eintraege === null) return { passt: true, grund: null };
+  for (const { status, pfad } of eintraege) {
+    if (!(pfad in daten.hashes)) return { passt: false, grund: `${pfad} ist darin nicht geprueft` };
+    // Bei einer Loeschung genuegt, dass der Pfad geprueft wurde — einen Blob gibt es
+    // im Commit nicht mehr, und die Zusammenfassung fuehrt ihn mit `null`.
+    if (status.startsWith("D")) continue;
+    if (daten.hashes[pfad] !== blobImCommit(commit, pfad)) {
+      return { passt: false, grund: `${pfad} wurde in einer anderen Fassung geprueft` };
+    }
+  }
+  return { passt: true, grund: null };
+}
+
+/** Der Pruefstand der Nachpruefung: die Paketstufe, bis einschliesslich des roten Kommandos. */
+function nachpruefLaufen(cfg, nach) {
+  const laufen = [];
+  for (const eintrag of paketstufenChecks(cfg)) {
+    const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
+    const rot = !nach.ok && cmd === nach.rotesKommando;
+    laufen.push({ cmd, grund: NACHPRUEF_GRUND, ergebnis: rot ? "rot" : "gruen" });
+    if (rot) break;
+  }
+  return laufen;
+}
+
+/**
+ * Der Pruefstand einer Session, gegen den Commit des Pakets gehalten (Issue #865).
+ *
+ * Ohne Commit — die Runde hat nichts abgeliefert — bleibt alles, wie `lesePruefung` es
+ * gelesen hat: Es gibt keinen Stand, zu dem der Nachweis gehoeren muesste.
+ *
+ * Passt er nicht, faehrt der Runner die Paketstufe selbst nach, statt den Fall nur zu
+ * melden. Ein Morgen mit "unklar" zwingt den Menschen zu genau der Pruefung, die der
+ * Runner nachts billiger hat.
+ */
+function bewertePruefung(issueId, commit, cfg) {
+  const { roh, ...pruefung } = lesePruefung(issueId);
+  if (!commit || !roh) return pruefung;
+  const abgleich = nachweisPasstZuCommit(roh, commit);
+  if (abgleich.passt) return pruefung;
+
+  log(`  Der Pruefnachweis gehoert nicht zum Commit ${commit} (${abgleich.grund}) — die Pflicht-Checks werden nachgefahren.`);
+  const nach = runBuildChecksSync(cfg);
+  const ausgang = nach.ok ? "gruen" : `rot — ${nach.rotesKommando}`;
+  log(`  Nachpruefung ${ausgang}.`);
+  return {
+    ...pruefung,
+    zustand: nach.ok ? "nachgeprueft" : "rot",
+    ...(nach.ok ? {} : { rotesKommando: nach.rotesKommando, rotesErgebnis: "rot" }),
+    // Der Umfang ist der der Nachpruefung, nicht der des fremden Nachweises: Sie faehrt
+    // die Paketstufe ohne Bereichsauswahl, wie der Salvage.
+    laufen: nachpruefLaufen(cfg, nach),
+    ausgelassen: [],
+    vollerUmfang: true,
+    leeresPaket: false,
+    basis: commit,
+    bereiche: null,
+    dauerGesamtMs: null,
+    // Ganz hinten (Issue #776): Neue Felder haengen an, die bestehenden behalten Namen
+    // und Reihenfolge.
+    nachweisFremd: true,
+    nachweisGrund: abgleich.grund,
+  };
+}
+
 function pruefListe(eintraege, leerText) {
   return eintraege.length === 0 ? leerText : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
 }
 
 /** Eine Zeile je Session — auch die ohne Pruefung, sonst saehe sie aus wie keine. */
 function pruefZeile(p) {
+  // Der fremde Nachweis zuerst (Issue #865): Was hier zaehlt, ist nicht das Ergebnis der
+  // Session, sondern das der Nachpruefung — und der Grund, aus dem sie noetig war.
+  if (p.nachweisFremd) {
+    const ergebnis = p.zustand === "rot" ? `Nachpruefung rot — ${p.rotesKommando} endete rot` : "Nachpruefung gruen";
+    return `  Issue #${p.id}: ${p.zustand} — Nachweis gehoerte nicht zum Commit (${p.nachweisGrund}), ${ergebnis}.`;
+  }
   if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
   if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
   if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
@@ -3151,10 +3337,15 @@ function pruefZeilen(p) {
 function pruefSummenzeile(pruefungen) {
   const zaehle = (zustand) => pruefungen.filter((p) => p.zustand === zustand).length;
   const geprueft = pruefungen.filter((p) => p.zustand === "geprueft");
+  // Die Nachpruefung zaehlt mit (Issue #865): Sie ist gelaufen, ihre Kommandos stehen im
+  // Pruefstand, und "0 Pruefung(en) gelaufen" waere nach einem nachgefahrenen Lauf falsch.
+  // Die Session-Zahl davor bleibt getrennt — `nachgeprueft` hat dort seine eigene Stelle.
+  const mitLaeufen = pruefungen.filter((p) => p.zustand === "geprueft" || p.zustand === "nachgeprueft");
   const summe = (feld, filter = () => true) =>
-    geprueft.reduce((n, p) => n + p[feld].filter(filter).length, 0);
+    mitLaeufen.reduce((n, p) => n + p[feld].filter(filter).length, 0);
   const rot = summe("laufen", (e) => e.ergebnis === "rot");
   return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
+    + `${zaehle("nachgeprueft")} nachgeprueft, `
     + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft, `
     + `${zaehle("rot")} rot; `
     + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
@@ -3316,6 +3507,66 @@ export function gueteAuswerten(guete, ausgabe) {
   return { anteil, erfuellt, grund: erfuellt ? "genuegt" : "unter der Marke" };
 }
 
+/**
+ * Die Merkmal-Pruefung, wie sie checks.mjs fuehrt (Issue #859).
+ *
+ * Derselbe Grund wie bei `gueteAuswerten` darueber, nur eine Stufe frueher: Ein
+ * Kommando kann mit Rueckgabewert 0 enden und trotzdem gescheitert sein — eine
+ * Maven-Kette, deren letztes Glied den Rueckgabewert verschluckt, weist ihr
+ * Scheitern nur in der Ausgabe aus. Las die Vorpruefung nur den Exit-Code, galt
+ * ihr genau dieser Stand als gruen, waehrend `checks.mjs` ihn rot faerbt: Die
+ * Salvage-Session bekaeme "Checks extern verifiziert gruen" zu hoeren und schoebe
+ * das Paket nach In review, wo `/push-main` es wieder anhaelt.
+ *
+ * Liste und Funktion sind eine Kopie, kein Import: Die Kit-Werkzeuge sind
+ * eigenstaendige Single-File-Tools, und night.mjs kennt checks.mjs nur als
+ * Kindprozess.
+ */
+// SYNC: Original ist kit/checks.mjs (FEHLERMERKMALE, fehlermerkmal); gleich
+// gehalten von test/guete-wertung-sync.test.mjs an derselben Fallliste.
+const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
+
+export function fehlermerkmal(ausgabe) {
+  return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
+}
+
+/**
+ * Das Urteil ueber ein gelaufenes Kommando samt der Zeilen, die zum Befund gehoeren —
+ * aus denselben drei Quellen und in derselben Reihenfolge wie `bewerten` in
+ * kit/checks.mjs: Rueckgabewert, Fehlermerkmal, Guetemessung.
+ *
+ * Eigene Funktion und nicht in der Schleife von `runBuildChecksSync`, damit die
+ * Schleife ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei
+ * Urteile in einer Verzweigungskette traegt — auch das wie in checks.mjs.
+ */
+function bewerteLaufSync(eintrag, gruen, ausgabe) {
+  if (!gruen) return { bestanden: false, zeilen: "" };
+
+  // Das Fehlermerkmal steht VOR dem guete-Zweig, wie in checks.mjs (Plan #810,
+  // E4): Eine Ausgabe, die ihr Scheitern selbst ausweist, ist kein Messstand —
+  // ein darin gefundener Anteil bescheinigte eine Messung, die es nicht gab.
+  // Die Meldung nennt das Merkmal, denn die letzten Zeilen der Ausgabe sind
+  // alles, was Protokoll und Sichtung am Morgen vom Befund zu sehen bekommen.
+  const merkmal = fehlermerkmal(ausgabe);
+  if (merkmal !== null) {
+    return { bestanden: false, zeilen: `Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n` };
+  }
+
+  // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
+  // Grund wie in checks.mjs: Die Ausgabe eines Abbruchs ist der Stand eines Abbruchs,
+  // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
+  // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
+  // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
+  const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
+  if (!guete) return { bestanden: true, zeilen: "" };
+
+  const auswertung = gueteAuswerten(guete, ausgabe);
+  const zeilen = auswertung.anteil === null
+    ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
+    : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
+  return { bestanden: auswertung.erfuellt, zeilen };
+}
+
 function runBuildChecksSync(cfg) {
   const env = checkEnv();
   let output = "";
@@ -3324,24 +3575,13 @@ function runBuildChecksSync(cfg) {
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
     const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
     output += `$ ${cmd}\n${ausgabe}`;
+
+    const { bestanden, zeilen } = bewerteLaufSync(eintrag, res.status === 0, ausgabe);
+    output += zeilen;
     // Das rote Kommando namentlich (Issue #668): Ohne es nennt die Stopp-Meldung nur,
     // DASS die Checks rot waren. Im Protokoll zu #900 fehlte deshalb jede Spur davon,
     // welcher der vier Checks versagt hat — und die Ursache liess sich nicht pruefen.
-    if (res.status !== 0) return { ok: false, output, rotesKommando: cmd };
-
-    // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
-    // Grund wie in checks.mjs: Die Ausgabe eines Abbruchs ist der Stand eines Abbruchs,
-    // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
-    // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
-    // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
-    const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
-    if (guete) {
-      const auswertung = gueteAuswerten(guete, ausgabe);
-      output += auswertung.anteil === null
-        ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
-        : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
-      if (!auswertung.erfuellt) return { ok: false, output, rotesKommando: cmd };
-    }
+    if (!bestanden) return { ok: false, output, rotesKommando: cmd };
   }
   return { ok: true, output, rotesKommando: null };
 }
@@ -5815,6 +6055,13 @@ async function versucheSalvage(top, args, sessionWahl) {
     // prueft deren Zwischenstand gegen das Issue. Ein anderes Modell beurteilte fremde
     // Arbeit nach anderem Massstab, und die Wahl galt der Karte, nicht der Betriebsart —
     // darum geht bei einer Kommando-Stufe auch die Kommandozeile mit.
+    // Der Strom wie in der regulaeren Runde und in der Kette (Issue #871): `sessionStart`
+    // haengt `--output-format stream-json` nur bei `args.verbose || opts.stream` an, und
+    // `runProcess` misst unter derselben Bedingung. Ohne das Feld lief die Rettung unter
+    // `--verbose no` ohne Strom, und ihre Kennzahlen fehlten im Verbrauch der Einheit —
+    // entgegen der Zusage in docs/dokumentation.md, dass weder die Datei noch die
+    // Kennzahlen an einem Flag haengen.
+    stream: true,
     ...sessionWahl,
     extraEnv: { NIGHT_SALVAGE: "1" },
   });
@@ -6431,14 +6678,19 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     : { model: modellStand.modell, effort: modellStand.effort };
   // `stream` und `vordergrundCheck` seit Issue #668. Der Strom traegt `stop_reason`, an
   // dem der Grund-Praefix haengt — ohne ihn waere der Fall, den dieses Paket erkennbar
-  // macht, in genau den Laeufen unsichtbar, die ohne --verbose fahren. `vordergrundCheck`
+  // macht, in genau den Laeufen unsichtbar, die mit `--verbose no` fahren. `vordergrundCheck`
   // sperrt `Monitor` und hebt die Bash-Zeitlimits; beides gilt nur fuer die
   // Implementierungs-Runde.
   const res = await runSession(top.id, args, { stream: true, vordergrundCheck: true, ...sessionWahl });
   // Einmal lesen und durchreichen (Issue #471): Die Salvage-Session, die in
   // werteRunde laufen kann, wuerde die Datei sonst ueberschreiben, und der
   // zweite Lesevorgang bewertete ihren Lauf statt den der regulaeren Session.
-  const pruefung = lesePruefung(top.id);
+  //
+  // Der Commit dieser Session, sofort nach ihr (Issue #865): Er ist der Stand, zu dem
+  // der Nachweis gehoeren muss. `commitNachher` weiter unten taugt dafuer nicht — es
+  // steht hinter werteRunde und kann der Commit einer Salvage-Session sein.
+  const commitDerSession = lastCommitHash();
+  const pruefung = bewertePruefung(top.id, commitDerSession === commitVorher ? null : commitDerSession, config);
   pruefungen.push(pruefung);
   // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
   // Textzeile (Issue #488): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.

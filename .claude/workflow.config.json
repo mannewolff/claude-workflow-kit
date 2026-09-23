@@ -63,13 +63,15 @@
     ],
     "stufen": {
       "schwer": {
-        "modell": "claude-fable-5"
+        "modell": "claude-opus-5"
       },
       "mittel": {
-        "modell": "claude-opus-5"
+        "modell": "claude-opus-5",
+        "effort": "medium"
       },
       "leicht": {
-        "modell": "claude-opus-5"
+        "modell": "claude-opus-5",
+        "effort": "low"
       }
     }
   },

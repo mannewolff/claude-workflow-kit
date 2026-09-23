@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -139,12 +139,14 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander"]) {
     assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
   }
-  // Die Kopie unter .claude/ ist Installer-Ausgabe und nicht versioniert — in CI existiert
-  // sie nicht (wie in docs-pruefstufen.test.mjs). Lokal muss sie bytegleich sein.
-  if (existsSync(join(repoRoot, ".claude", "CLAUDE-workflow.md"))) {
-    assert.equal(VORLAGE, lies(".claude", "CLAUDE-workflow.md"), "die Kopie unter .claude/ ist nicht bytegleich");
-  }
 });
+
+// Kein Drift-Test mehr zwischen Vorlage und Kopie (wie in docs-lebenszyklus.test.mjs):
+// Die Kopie unter .claude/ ist Installer-Ausgabe und liegt nicht im Repo. Ein Vergleich
+// hier waere lokal rot, bis jemand den Installer laeuft — und zwaenge eine Session, unter
+// .claude/ zu schreiben, was CLAUDE.md verbietet. Dass der Installer die Vorlage bytegleich
+// ausliefert, prueft install-flow.test.mjs ([installer-7]); dass der Blob in install.mjs
+// zur Quelle passt, `node tools/sync-blobs.mjs --check`.
 
 test("der /techplan-Skill nennt den Runner-Aufruf --kette", () => {
   assert.match(SKILL, /node \.claude\/kit\/night\.mjs --kette/);

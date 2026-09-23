@@ -86,7 +86,11 @@ test("[checks-7] zwei run-Runden einer Sitzung ergeben zwei Zeilensaetze — gen
     datei(dir, "src/a.txt");
 
     run(dir);
-    run(dir);
+    // `--frisch`, weil der Stand zwischen den Runden derselbe ist: Ohne den
+    // Schalter uebernaehme die zweite Runde das Ergebnis der ersten (Issue #863)
+    // und waere keine Ausfuehrung mehr. Gemeint ist hier die echte zweite Runde,
+    // wie sie nach einem Fix entsteht.
+    run(dir, "--frisch");
 
     assert.equal(ausfuehrungen(dir).length, 2, "die zweite Runde haengt an, statt die erste zu ersetzen");
     assert.equal(zusammenfassung(dir).laufen.length, 1, "die Zusammenfassung kennt nur die letzte Runde");
@@ -120,7 +124,10 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
   mitRepo({ config }, (dir) => {
     datei(dir, "src/a.txt");
 
-    const ohneFehler = run(dir);
+    // Beide Laeufe mit `--frisch`: Der Stand ist zwischen ihnen derselbe, und ein
+    // uebernommenes Ergebnis ruehrte das Protokoll gar nicht erst an (Issue #863) —
+    // der Fall, um den es hier geht, entstuende nie.
+    const ohneFehler = run(dir, "--frisch");
     assert.equal(ohneFehler.status, 0, ohneFehler.stderr);
     assert.equal(ohneFehler.stderr, "", "Vorbedingung: der ungestoerte Lauf schweigt auf stderr");
 
@@ -129,7 +136,7 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
     rmSync(ausfuehrungenPfad(dir), { force: true });
     mkdirSync(ausfuehrungenPfad(dir), { recursive: true });
 
-    const mitFehler = run(dir);
+    const mitFehler = run(dir, "--frisch");
 
     assert.equal(mitFehler.status, ohneFehler.status, "der Exit-Code bleibt derselbe");
     assert.equal(mitFehler.stdout, ohneFehler.stdout, "die stdout-Ausgabe bleibt unveraendert");
@@ -153,8 +160,8 @@ test("[checks-7] checks.mjs plan schreibt keine Zeile", () => {
 
 test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und leeres Paket", () => {
   const FELDER = [
-    "ausgelassen", "basis", "bereiche", "dauerGesamtMs", "geaendert",
-    "hashes", "laufen", "leeresPaket", "stufe", "vollerUmfang", "zeitpunkt",
+    "abgeschlossen", "ausgelassen", "basis", "bereiche", "configHash", "dauerGesamtMs",
+    "geaendert", "hashes", "laufen", "leeresPaket", "stufe", "vollerUmfang", "zeitpunkt",
   ];
   const faelle = [
     { name: "gruen", cmd: "echo eins", leer: false },

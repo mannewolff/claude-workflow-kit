@@ -7,6 +7,14 @@
  * genau diese Auswahl aus und hinterlaesst das Ergebnis als Zusammenfassung, aus
  * der der Nacht-Runner liest.
  *
+ * Die Zusammenfassung BEGLEITET den Lauf (Issue #857): geschrieben vor dem ersten
+ * Kommando, erneut vor jedem weiteren, ein letztes Mal am Ende — und nur diese
+ * letzte Fassung traegt `abgeschlossen: true`. Daraus folgt, was ein Abbruch
+ * hinterlaesst: einen Stand, in dem das Kommando, waehrend dessen der Lauf starb,
+ * noch `nicht gestartet` ist. Der Lauf ist dann nie ganz gruen, und das ist dieselbe
+ * sichere Richtung wie ueberall hier — ein gestorbener Pruefer gilt als
+ * beanstandend, nicht als ungemessen.
+ *
  * Warum ein Kommando und keine Regel im Skilltext: Die Sessions dieses Projekts
  * haben dreimal belegt, dass eine Regel im Prompt nicht wirkt, wenn sie unter
  * Druck steht (Issue #267, 2026-08-12, Issue #410). Eine Auswahl, die falsch
@@ -26,6 +34,26 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
+ * `run` UEBERNIMMT sein eigenes Ergebnis, wenn sich der Stand seit dem letzten Lauf
+ * nicht geaendert hat (Issue #863): gleicher Anker, gleiche Stufe, dieselbe
+ * Dateiliste mit denselben Blob-Hashes, dieselbe Config — und eine abgeschlossene
+ * Zusammenfassung. Dann laeuft kein Kommando, und `run` schreibt denselben Befund
+ * mit frischem Zeitpunkt erneut, damit das Commit-Gate seinen Nachweis behaelt.
+ * `--frisch` erzwingt den echten Lauf. Das ist keine Bequemlichkeit, sondern
+ * dieselbe Erfahrung wie oben: Die Regel „Ausgabe einmal in eine Datei, daraus
+ * lesen" (Issue #835) steht seit Langem im Skilltext, und die Sessions starteten
+ * denselben gruenen Lauf trotzdem drei- bis neunmal je Paket. Ein Ergebnis
+ * wiederzuverwenden nimmt dabei keine Pruefung weg: Derselbe Inhalt liefert
+ * dasselbe Urteil, und schon ein einziges abweichendes Byte faellt zurueck in den
+ * vollen Weg.
+ *
+ * In dieselbe Richtung irrt die MERKMAL-PRUEFUNG von `run` (Issue #858): Es liest
+ * nicht nur den Rueckgabewert, sondern prueft die Ausgabe jedes Kommandos auf eine
+ * feste Liste allgemeiner Fehlermerkmale (`FEHLERMERKMALE`). Ein
+ * Treffer laesst die Pruefung fehlschlagen, auch bei Rueckgabewert 0 — und ein
+ * falsches Rot ist hier die sichere Richtung: Es kostet eine Nachfrage, waehrend
+ * ein falsches Gruen ein gescheitertes Paket nach In review traegt.
+ *
  * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
  * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
  * sind kumulativ — `push` faehrt `paket` mit, `merge` alle drei —, ein Eintrag
@@ -39,7 +67,7 @@
  * — und der besteht aus mehr als dem letzten Arbeitspaket.
  *
  * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--frisch]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -55,11 +83,12 @@ import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkd
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.1.0";
+const KIT_VERSION = "3.2.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -133,8 +162,8 @@ export function zusammenfassungPfad(root = process.cwd()) {
  * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
  * Bericht und in der Zusammenfassung.
  *
- * SYNC: dieselbe Funktion steckt in kit/aufwand.mjs und kit/wirksamkeit.mjs —
- * Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
+ * SYNC: dieselbe Funktion steckt in kit/befunde.mjs, kit/night.mjs und
+ * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
  * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert
  * und hier markiert.
  *
@@ -150,10 +179,28 @@ export function vergleicheText(a, b) {
 // uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
 const STUFEN = ["paket", "push", "merge"];
 
+/**
+ * Die allgemeinen Fehlermerkmale (Issue #858, Fachplan #769, AK 2): Merkmale, an
+ * denen eine Ausgabe ihr Scheitern selbst ausweist, auch wenn der Rueckgabewert 0
+ * ist. Genau der Fall kommt vor — eine Maven-Kette, deren letztes Glied den
+ * Rueckgabewert verschluckt, meldet `BUILD FAILURE` in der Ausgabe und endet mit 0.
+ *
+ * Die Liste ist FEST und hat kein Config-Feld (Plan #810, E3). Ein Feld waere die
+ * Einladung, sie in dem Projekt zu leeren, in dem sie gerade stoert — also an genau
+ * der Stelle, an der sie gebraucht wird. Ein Projekt, dessen gruene Ausgabe legitim
+ * eines der Merkmale traegt, filtert es in seinem `cmd` selbst heraus (die Doku
+ * nennt den Weg): eine Entscheidung, die im Projekt sichtbar bleibt, statt die
+ * Pruefung fuer alle abzuschalten.
+ *
+ * Steht hier oben und nicht bei `fehlermerkmal`, weil `HELP` die Liste nennt — ein
+ * `const` weiter unten waere dort noch nicht initialisiert.
+ */
+const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--frisch]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -161,6 +208,21 @@ plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
 run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       ab (Exit ungleich 0) und schreibt die Zusammenfassung nach
       ${SUMMARY_DATEI}.
+      Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
+      feste Liste allgemeiner Fehlermerkmale (${FEHLERMERKMALE.join(", ")}). Ein
+      Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
+      Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
+      Das Kommando irrt nur in eine Richtung, mehr pruefen.
+      Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
+      Kommando und wird vor jedem weiteren ueberschrieben; das laufende
+      Kommando steht darin noch auf 'nicht gestartet'. Erst die letzte Fassung
+      traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
+      Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
+      Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
+      gleiche Stufe, dieselben Dateien mit denselben Blob-Hashes, dieselbe
+      Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
+      vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
+      mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -170,6 +232,9 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
                   Veroeffentlichungsstufen (push, merge) fahren jede faellige
                   Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
+  --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
+                  Kommandos wirklich fahren — etwa beim Verdacht auf einen
+                  wackligen Test.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
@@ -589,6 +654,25 @@ function kommandoAusfuehren(cmd, env) {
 }
 
 /**
+ * Das erste getroffene Merkmal der festen Liste oder `null`.
+ *
+ * Exportiert, damit die Gegenprobe an echten Maven-Logs
+ * (`test/checks-fehlermerkmal.test.mjs`, Fixtures unter `test/fixtures/`) DIESE
+ * Funktion trifft und keine Kopie: Eine zweite Fassung im Test bescheinigte ab der
+ * ersten Abweichung eine Pruefung, die das ausfuehrende Kommando nicht macht —
+ * derselbe Grund wie bei `globZuRegex` und `blobHashes`.
+ *
+ * Erst getroffen heisst: erstes Merkmal der LISTE, nicht der Ausgabe. Welches von
+ * zwei Merkmalen weiter oben in einem Log steht, sagt ueber die Ursache nichts.
+ */
+// SYNC: dieselbe Pruefung traegt kit/night.mjs (fehlermerkmal samt FEHLERMERKMALE)
+// fuer die Salvage-Vorpruefung des Runners; test/guete-wertung-sync.test.mjs haelt
+// beide an derselben Fallliste gegeneinander.
+export function fehlermerkmal(ausgabe) {
+  return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
+}
+
+/**
  * Blob-Hash je Pfad — der Nachweis, gegen den das Commit-Gate den Index prueft.
  *
  * Zwei Entscheidungen stecken hier drin, beide aus Issue #469:
@@ -701,11 +785,17 @@ export function gueteAuswerten(guete, ausgabe) {
  * Ein rotes Kommando wird nicht ausgewertet: Seine Ausgabe ist der Stand eines
  * Abbruchs, und ein darin zufaellig gefundener Anteil bescheinigte eine
  * Messung, die es nicht gab.
+ *
+ * WARUM der Lauf rot war, weiss der Aufrufer und nicht diese Funktion — der
+ * Rueckgabewert oder ein Fehlermerkmal in der Ausgabe (Issue #858). Deshalb kommt
+ * `grund` von dort: Ein hier festverdrahteter Satz behauptete bei einem Kommando
+ * mit Rueckgabewert 0 das Falsche, und der Grund steht in der Zusammenfassung,
+ * aus der der Nacht-Runner liest.
  */
-function gueteErgebnis(eintrag, gruen, ausgabe) {
+function gueteErgebnis(eintrag, gruen, ausgabe, grund) {
   const auswertung = gruen
     ? gueteAuswerten(eintrag.guete, ausgabe)
-    : { anteil: null, erfuellt: false, grund: "kein Anteil erhoben — das Kommando selbst war rot" };
+    : { anteil: null, erfuellt: false, grund };
   return {
     cmd: eintrag.cmd,
     anteil: auswertung.anteil,
@@ -788,6 +878,19 @@ function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
   }
 }
 
+/**
+ * Die Summe der gemessenen Dauern — `null`, wenn nichts gemessen wurde.
+ *
+ * Steht als eigene Funktion, seit die Zusammenfassung mehrfach im Lauf geschrieben
+ * wird (Issue #857): Jede Fassung traegt den Stand, den sie bezeugt, und "nichts
+ * gemessen" ist kein Nullbetrag — weder beim leeren Paket noch vor dem ersten
+ * Kommando.
+ */
+function dauerGesamt(laufen) {
+  const gemessen = laufen.filter((e) => e.dauerMs !== null);
+  return gemessen.length > 0 ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0) : null;
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -799,6 +902,155 @@ function schreibeZusammenfassung(daten) {
     fail(`Zusammenfassung konnte nicht geschrieben werden (${pfad}): ${err.message}`);
   }
   return pfad;
+}
+
+/**
+ * Der Fingerabdruck der Pruefkonfiguration (Issue #863).
+ *
+ * Er steht in der Zusammenfassung, weil sich ohne ihn die Gleichheit der Config
+ * nicht feststellen laesst: Eine Config aendert nicht zwangslaeufig den
+ * Arbeitsbaum — im Kit-Repo ist sie versioniert, in anderen Projekten liegt sie
+ * hinter der Ignore-Regel und erschiene dann in `geaendert` gar nicht. Ein
+ * uebernommenes Ergebnis bezoege sich dort auf eine Auswahl, die es nicht mehr
+ * gibt.
+ *
+ * Gehasht werden die NORMALISIERTEN Eintraege und die Bereiche, also genau das,
+ * woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
+ * von der String-Form zu `{ cmd }` — der nichts bedeutet — keinen Lauf erzwingt.
+ * Alles uebrige in der Config (Trigger, Modelle, Pfade) bleibt draussen: Es
+ * aendert an den Pruefungen nichts.
+ */
+function configFingerabdruck() {
+  const config = ladeConfig();
+  const inhalt = JSON.stringify({
+    buildChecks: (config.buildChecks ?? []).map((c) => normalisiere(c)),
+    checkAreas: config.checkAreas ?? {},
+  });
+  return createHash("sha256").update(inhalt).digest("hex");
+}
+
+function listenGleich(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((wert, i) => wert === b[i]);
+}
+
+function hashesGleich(a, b) {
+  if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false;
+  const alt = Object.keys(a);
+  const neu = Object.keys(b);
+  return alt.length === neu.length && neu.every((pfad) => Object.hasOwn(a, pfad) && a[pfad] === b[pfad]);
+}
+
+/**
+ * Die Zusammenfassung des letzten Laufs, WENN sie denselben Stand bezeugt wie der
+ * jetzige — sonst `null` (Issue #863).
+ *
+ * Derselbe Stand heisst: derselbe Anker, dieselbe Stufe, dieselbe Dateiliste mit
+ * denselben Blob-Hashes und dieselbe Config. Die Liste steht neben den Hashes,
+ * obwohl deren Schluessel sie wiederholen — eine Datei, die ohne Aenderung aus
+ * `geaendert` verschwindet, gibt es nicht, und ein Vergleich, der sich auf diese
+ * Ableitung verlaesst, muesste sie bei jeder kuenftigen Aenderung an
+ * `geaenderteDateien` neu belegen.
+ *
+ * Bewusst KEIN Zeitfenster („juenger als n Minuten"): Nur der Inhalt macht ein
+ * Ergebnis gueltig, nicht die Uhr. Und bewusst nur eine ABGESCHLOSSENE
+ * Zusammenfassung — die eines abgebrochenen Laufs bezeugt keinen fertigen Stand,
+ * sie ist gerade der Nachweis, dass eine Pruefung ihr Ende nicht erreicht hat.
+ *
+ * Jeder Zweifel faellt auf `null` zurueck und damit in den vollen Weg: fehlende
+ * Datei, kaputtes JSON, fehlendes Feld, ein Stand aus einer aelteren Fassung ohne
+ * `configHash`. Das ist dieselbe Richtung, in die dieses Kommando ueberall irrt —
+ * lieber einmal zu viel pruefen.
+ */
+function frueheresErgebnis(auswahl, hashes, configHash) {
+  let alt;
+  try {
+    alt = JSON.parse(readFileSync(zusammenfassungPfad(), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (alt === null || typeof alt !== "object") return null;
+  if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return null;
+  if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return null;
+  if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
+  if (typeof alt.zeitpunkt !== "string") return null;
+  if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
+  if (!hashesGleich(alt.hashes, hashes)) return null;
+  return alt;
+}
+
+/**
+ * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
+ * des Originals zurueck (Issue #863).
+ *
+ * Die Datei entsteht NEU, obwohl sie inhaltlich gleich bliebe: Das Commit-Gate
+ * verlangt einen Nachweis fuer genau den Stand, der committet wird, und eine
+ * liegengebliebene Datei waere kein Nachweis dieses Aufrufs. `uebernommen` traegt
+ * dabei den Zeitpunkt des ECHTEN Laufs und wird ueber mehrere Uebernahmen hinweg
+ * weitergereicht — er sagt, wann zuletzt wirklich geprueft wurde, und genau das
+ * will lesen, wer der Datei misstraut.
+ *
+ * Rot wird ebenso uebernommen wie gruen: Derselbe Stand liefert dasselbe Rot, und
+ * ein erneuter Lauf kostete dieselben Minuten fuer dieselbe Antwort. Ungruen zaehlt
+ * dabei wie ueberall hier alles, was nicht `gruen` ist — auch ein `nicht
+ * gestartet` nach rotem Abbruch.
+ */
+function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
+  const ungruen = frueher.laufen.find((e) => e.ergebnis !== "gruen") ?? null;
+  const original = typeof frueher.uebernommen === "string" ? frueher.uebernommen : frueher.zeitpunkt;
+  const pfad = schreibeZusammenfassung({
+    ...auswahl,
+    laufen: frueher.laufen,
+    zeitpunkt,
+    hashes,
+    configHash,
+    abgeschlossen: true,
+    dauerGesamtMs: frueher.dauerGesamtMs ?? null,
+    ...(frueher.guete ? { guete: frueher.guete } : {}),
+    uebernommen: original,
+  });
+  const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
+  process.stdout.write(
+    `Stand unveraendert seit ${original}: Ergebnis uebernommen (${befund}). Neu pruefen mit --frisch.\n`,
+  );
+  process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
+  return ungruen === null ? 0 : 1;
+}
+
+/**
+ * Das Urteil ueber ein gelaufenes Kommando — aus drei Quellen, in dieser
+ * Reihenfolge: Rueckgabewert, Fehlermerkmal in der Ausgabe (Issue #858) und, wo
+ * das Projekt eine Messung benannt hat, die Guete. Die Zeilen, die zum Befund
+ * gehoeren, schreibt die Funktion selbst.
+ *
+ * Die MERKMAL-PRUEFUNG steht VOR dem guete-Zweig (Plan #810, E4): Eine Ausgabe,
+ * die ihr Scheitern selbst ausweist, ist kein Messstand — ein darin gefundener
+ * Anteil bescheinigte eine Messung, die es nicht gab. Das Ergebnis bleibt `rot`,
+ * es gibt keinen dritten Ergebniswert (E5): Gate und Runner lesen
+ * `ergebnis !== "gruen"`, und ein neuer Wert brauchte an jeder dieser Stellen
+ * eine zweite Bahn.
+ *
+ * Eigene Funktion und nicht in der Schleife von `ausfuehren`, damit die Schleife
+ * ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei Urteile in
+ * einer Verzweigungskette traegt.
+ */
+function bewerten(eintrag, gruen, ausgabe) {
+  const merkmal = fehlermerkmal(ausgabe);
+  if (merkmal !== null) {
+    eintrag.fehlermerkmal = merkmal;
+    process.stdout.write(`Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n`);
+  }
+  const bestanden = gruen && merkmal === null;
+  if (!eintrag.guete) return { bestanden, guete: null };
+
+  // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke oder
+  // ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder rote
+  // Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
+  const grund = merkmal === null
+    ? "kein Anteil erhoben — das Kommando selbst war rot"
+    : `kein Anteil erhoben — Fehlermerkmal '${merkmal}' in der Ausgabe`;
+  const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
+  process.stdout.write(`${gueteZeile(guete)}\n`);
+  return { bestanden: bestanden && guete.erfuellt, guete };
 }
 
 /**
@@ -832,6 +1084,7 @@ function ausfuehren(args) {
   // Lauf und der andere aus der Sitzung, bezeugten sie Verschiedenes.
   const zeitpunkt = new Date().toISOString();
   const hashes = blobHashes(auswahl.geaendert);
+  const configHash = configFingerabdruck();
 
   // Die Ankuendigung steht im Kommando und nicht in den Skills (Issue #758): Eine
   // Regel im Prompt wirkt nicht unter Druck — dieselbe Begruendung, aus der
@@ -850,50 +1103,67 @@ function ausfuehren(args) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
   }
 
+  // Nach den Auslassungen und vor dem ersten Kommando (Issue #863): Was nicht
+  // laeuft, steht auch im uebernommenen Bericht — sonst saehe ein uebernommener
+  // Lauf aus wie ein verkuerzter. Hier und nicht vor `blobHashes`, weil der
+  // Vergleich genau diese Hashes braucht.
+  const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
+  if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
+
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
   let guete = null;
+
+  // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
+  // vor dem ersten Kommando und wird vor jedem weiteren ueberschrieben, statt erst am
+  // Ende zu entstehen.
+  //
+  // Der Grund ist der Abbruch. Ein Lauf, der an der Uhr, durch ein Signal oder mit der
+  // Session endet, hinterliess vorher keine Datei — und eine fehlende Datei ist fuer
+  // den Nacht-Runner "ungeprueft", also ungemessen statt beanstandet. Oder es blieb
+  // eine aeltere liegen, die wie das Ergebnis dieses Laufs aussah. Jetzt liegt in jedem
+  // Moment eine Fassung, und jede, die ein Abbruch hinterlassen kann, traegt mindestens
+  // einen Eintrag `nicht gestartet` (Fachplan #769, AK 3 und 4).
+  //
+  // VOR dem Kommando und nicht danach, weil Gate (.githooks/gate.mjs) und Runner
+  // (`lesePruefung` in night.mjs) allein `ergebnis !== "gruen"` auswerten und
+  // `abgeschlossen` nicht sehen: Das laufende Kommando muss in der Datei noch
+  // ungruen stehen, sonst saehe ein Abbruch mittendrin gruen aus.
+  const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
+    ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
+    dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
+  });
+  schreibeStand(false);
+
   for (const eintrag of laufen) {
     if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
+    schreibeStand(false);
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
     const start = process.hrtime.bigint();
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     process.stdout.write(ausgabe);
-    // Die Guetemessung faerbt ihr eigenes Kommando: Ein Anteil unter der Marke
-    // oder ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder
-    // rote Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
-    let bestanden = gruen;
-    if (eintrag.guete) {
-      guete = gueteErgebnis(eintrag, gruen, ausgabe);
-      process.stdout.write(`${gueteZeile(guete)}\n`);
-      bestanden = gruen && guete.erfuellt;
-    }
-    eintrag.ergebnis = bestanden ? "gruen" : "rot";
+    const bewertung = bewerten(eintrag, gruen, ausgabe);
+    guete = bewertung.guete ?? guete;
+    eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
     process.stdout.write(`-> ${eintrag.ergebnis}\n`);
     // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
     // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
     ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
-    rot = !bestanden;
+    rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
 
-  // null statt 0, wenn kein Kommando gemessen wurde (leeres Paket, voller
-  // Umfang ohne Lauf gibt es hier nicht) — "nichts gemessen" ist kein
-  // Nullbetrag.
-  const gemessen = laufen.filter((e) => e.dauerMs !== null);
-  const dauerGesamtMs = gemessen.length > 0
-    ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0)
-    : null;
-
-  // Auch bei rotem Abbruch geschrieben — und beim leeren Paket ebenso: "keine
-  // Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch.
-  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat —
-  // dann aber immer, auch beim gruenen Lauf (Issue #763).
-  const pfad = schreibeZusammenfassung({
-    ...auswahl, laufen, zeitpunkt, hashes, dauerGesamtMs, ...(guete ? { guete } : {}),
-  });
+  // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
+  // zu Ende gefahren. Auch bei rotem Abbruch geschrieben — und beim leeren Paket
+  // ebenso: "keine Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein
+  // Loch. Rot und abgeschlossen sind Verschiedenes: Das eine sagt, wie die Pruefung
+  // ausging, das andere, ob sie ihr Ende erreicht hat.
+  //
+  // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat — dann
+  // aber immer, auch beim gruenen Lauf (Issue #763).
+  const pfad = schreibeStand(true);
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
@@ -920,6 +1190,10 @@ function parseArgs(rest) {
       }
       args.stufe = wert;
       i += 1;
+    } else if (rest[i] === "--frisch") {
+      // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
+      // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
+      args.frisch = true;
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }

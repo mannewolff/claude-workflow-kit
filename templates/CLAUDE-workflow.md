@@ -95,6 +95,22 @@ Nur eine Frage aus dieser Klasse haelt an, und jeder Halt traegt genau eine Frag
 
 ---
 
+## Regel im Text oder Regel im Werkzeug
+
+Jede Regel einer mitgelieferten Anweisung ist von einer von zwei Arten. Die Art entscheidet, wo sie hingehoert.
+
+**Bedienvorgabe.** Sie sagt, wie ein Werkzeug zu bedienen ist. Ihre Befolgung ist an Ausgabe oder Ergebnis ablesbar, und ein Werkzeug koennte sie an der Stelle des Lesers ausfuehren. Beispiel: den echten Rueckgabewert des Pruefkommandos lesen, nicht den einer Kette, die der Leser um den Aufruf baut. Eine Bedienvorgabe gehoert ins Werkzeug — im Text ist sie eine Bitte, die jede Session neu befolgen muss.
+
+**Urteilsregel.** Sie verlangt eine Entscheidung oder Haltung im Einzelfall. Beispiel: liegt der Coverage-Report unter dem vereinbarten Ziel, das als Signal ausweisen statt es still durchzuwinken. Eine Urteilsregel bleibt im Text — ein Werkzeug koennte sie nur erraten.
+
+**Gemischte Regeln werden zerlegt, nicht gerundet.** Die Zeitrahmen-Regel der lokalen Pruefung traegt beides: „ein Abbruch an der Uhr erscheint als Fehlschlag" ist eine Bedienvorgabe und erzwingbar — das Werkzeug hinterlaesst dann eine unabgeschlossene, ungruene Zusammenfassung. „Setze einen grosszuegigen Zeitrahmen" ist eine Urteilsregel und bleibt im Text, weil ein Werkzeug sich nicht mehr Zeit geben kann, als sein Aufrufer einraeumt.
+
+**Die Art sagt nichts ueber die Ueberfuehrbarkeit.** Eine Bedienvorgabe wird nicht zur Urteilsregel, nur weil ein Werkzeug sie nur teilweise sicherstellen kann. Der ueberfuehrbare Teil wandert, der Rest bleibt benannt im Text — und bleibt eine Bedienvorgabe.
+
+Der Massstab gilt fuer alle mitgelieferten Anweisungen, auch fuer die, die heute unveraendert bleiben: Er ist die Quelle, gegen die eine Anweisung gelesen wird, nicht nur eine Notiz zu der einen, die gerade umgestellt wird.
+
+---
+
 ## Mitteilungen des Menschen
 
 **Was eine Mitteilung ist.** Eine Aussage des Menschen ueber einen Sachverhalt — kein Auftrag. Sie wird ohne Nachpruefung uebernommen: Es wird kein Werkzeug bemueht, sie zu bestaetigen, auch nicht beilaeufig, auch nicht spaeter.

@@ -1,0 +1,30 @@
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+WARNING: A Java agent has been loaded dynamically (/Users/manfredwolff/.m2/repository/net/bytebuddy/byte-buddy-agent/1.17.8/byte-buddy-agent-1.17.8.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+-> rot
+
+Zusammenfassung: /Users/manfredwolff/ki-projects/kanban-kit/.claude/checks-summary.json","is_error":false}]},"parent_tool_use_id":null,"session_id":"7be8f653-1e90-4cbe-8463-24e1e00bf893","uuid":"d04a9638-6382-4170-8f3a-9152cc3639dd","timestamp":"2026-09-17T08:17:50.812Z","tool_use_result":{"stdout":"[INFO] Loading execution data file /Users/manfredwolff/ki-projects/kanban-kit/target/jacoco.exec
+[INFO] Analyzed bundle 'manban' with 319 classes
+[INFO] All coverage checks have been met.
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-check) @ manban ---
+[INFO] Beginne Prüfung...
+[ERROR] /Users/manfredwolff/ki-projects/kanban-kit/src/test/java/org/mwolff/manban/card/application/CardCycleTimeServiceTest.java:218:8: Die Abkürzung im Bezeichner 'implementation_sumsSingleProgressStayOfADoneCard' darf höchstens aus '1' Großbuchstaben bestehen. [AbbreviationAsWordInName]
+[ERROR] /Users/manfredwolff/ki-projects/kanban-kit/src/test/java/org/mwolff/manban/card/application/CardCycleTimeServiceTest.java:284:8: Die Abkürzung im Bezeichner 'implementation_isNull_whenNoDoneCardVisitedAProgressColumn' darf höchstens aus '1' Großbuchstaben bestehen. [AbbreviationAsWordInName]
+Prüfung beendet.
+[INFO] There are 2 errors reported by Checkstyle 10.21.4 with config/checkstyle/checkstyle.xml ruleset.
+[ERROR] src/test/java/org/mwolff/manban/card/application/CardCycleTimeServiceTest.java:[218,8] (naming) AbbreviationAsWordInName: Die Abkürzung im Bezeichner 'implementation_sumsSingleProgressStayOfADoneCard' darf höchstens aus '1' Großbuchstaben bestehen.
+[ERROR] src/test/java/org/mwolff/manban/card/application/CardCycleTimeServiceTest.java:[284,8] (naming) AbbreviationAsWordInName: Die Abkürzung im Bezeichner 'implementation_isNull_whenNoDoneCardVisitedAProgressColumn' darf höchstens aus '1' Großbuchstaben bestehen.
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  02:14 min
+[INFO] Finished at: 2026-09-17T10:17:50+02:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check (checkstyle-check) on project manban: You have 2 Checkstyle violations. -> [Help 1]

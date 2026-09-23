@@ -55,7 +55,7 @@ import { fileURLToPath } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.1.0";
+const KIT_VERSION = "3.2.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "wirksamkeit.json";
@@ -160,7 +160,7 @@ function zahl(wert) {
  * **nicht** `localeCompare` — dessen Reihenfolge haengt an der Locale der Maschine,
  * und zwei Laeufe muessen ueberall dieselbe Liste ergeben.
  *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs und kit/aufwand.mjs
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und kit/night.mjs
  * (#440: eigenstaendige Single-File-Tools, geteilte Logik wird dupliziert und markiert).
  */
 function vergleicheText(a, b) {
