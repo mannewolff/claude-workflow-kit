@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.1.2] - 2026-09-23
+- Live-Verlaufsprotokoll des Nacht-Runners ist der Normalfall (#867)
+- ..
+- ..
+- Kleine Änderungen an der Konfiguration
+- Kleine Änderungen an der Konfiguration
+- claude 5.5 eingefügt
+
 ## [3.1.1] - 2026-09-22
 - Pruefnachweis gilt nur zum Commit des Pakets (#865)
 - Bytegleichheits-Test gegen .claude/CLAUDE-workflow.md entfaellt (#864)
