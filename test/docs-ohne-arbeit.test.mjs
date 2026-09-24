@@ -36,8 +36,8 @@ const FALLSAETZE = [
   ["kein Routing-Label", "Karten in Ready traegt das Label"],
   ["alle zurueckgestellt", "wurden am Gate zurueckgestellt"],
   ["Umsetzung belegt", "Die Umsetzung ist belegt:"],
-  ["Kette ohne Label", "Keine Kette zu fahren: kein Fachplan traegt das Label"],
-  ["Kette uebersprungen", "Fachplaene mit dem Label"],
+  ["Kette ohne Label", "Keine Kette zu fahren: keine Karte traegt das Label"],
+  ["Kette uebersprungen", "gekennzeichneten Karten mit dem Label"],
   ["Rueckfall", "Kein Grund ermittelbar"],
 ];
 

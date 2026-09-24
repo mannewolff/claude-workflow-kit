@@ -84,7 +84,7 @@ test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es 
     assert.equal(einheit.ausgang, "abgebrochen");
     const text = fachplanText(dir, F);
     assert.match(text, /### Ausgang\n\nabgebrochen — kein Plan entstanden/);
-    assert.match(text, /### Stufen\n\n- Variante: A\n- Plan: keiner entstanden\.\n- Pakete: keine\./);
+    assert.match(text, new RegExp(`### Stufen\\n\\n- Auftrag: fachliche Anforderung #${F}\\n- Variante: A\\n- Plan: keiner entstanden\\.\\n- Pakete: keine\\.`));
     assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\./);
     assert.match(text, /### Abgelehnte Befunde\n\n- keine Einarbeitung gefunden/);
     assert.match(text, /### Abdeckung gegen den Fachplan\n\nKeine Abdeckung: die Kette hat die Stufe abdeckung nicht erreicht\./);

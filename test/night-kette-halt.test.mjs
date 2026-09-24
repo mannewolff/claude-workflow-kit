@@ -32,7 +32,10 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
     assert.match(text, /## Kette angehalten/);
     assert.match(text, /Ist der neue Endpunkt eine Schnittstelle/);
     assert.match(text, /Stufe plan, Dokument #0002/);
-    assert.match(text, /kit:klaeren abnehmen und das Label kit:night neu setzen/);
+    // Der Weg nach vorn fuehrt ueber den Plan, nicht ueber den Fachplan (Issue #896);
+    // der Wortlaut selbst steht in night-kette-halt-planauftrag.test.mjs auf der Probe.
+    assert.match(text, /kit:klaeren an Plan #0002 abnehmen/);
+    assert.match(text, /das Label kit:night an Plan #0002 setzen/);
 
     const plan = board(dir, "issue", "get", "0002");
     assert.equal(plan.status, "backlog", "der Plan bleibt als Entwurf stehen");

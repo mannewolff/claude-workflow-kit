@@ -40,11 +40,11 @@ test("[night-45] jeder Fall liefert einen Satz, der den Fall benennt und seine N
   );
   assert.equal(
     grundOhneArbeit("ketteKeinLabel", { label: "kit:night" }),
-    "Keine Kette zu fahren: kein Fachplan traegt das Label 'kit:night'.",
+    "Keine Kette zu fahren: keine Karte traegt das Label 'kit:night'.",
   );
   assert.equal(
     grundOhneArbeit("ketteAlleUebersprungen", { anzahl: 2, label: "kit:night" }),
-    "Keine Kette zu fahren: alle 2 Fachplaene mit dem Label 'kit:night' wurden uebersprungen, weil eine Voraussetzung fehlt.",
+    "Keine Kette zu fahren: alle 2 gekennzeichneten Karten mit dem Label 'kit:night' wurden uebersprungen, weil eine Voraussetzung fehlt.",
   );
 });
 
@@ -58,6 +58,15 @@ test("[night-45] beide Kettensaetze beginnen mit dem gemeinsamen Praefix", () =>
   for (const fall of ["ketteKeinLabel", "ketteAlleUebersprungen"]) {
     const satz = grundOhneArbeit(fall, { anzahl: 2, label: "kit:night" });
     assert.ok(satz.startsWith("Keine Kette zu fahren:"), `${fall} beginnt anders: ${satz}`);
+  }
+});
+
+// Seit Issue #895 beauftragt auch ein Plandokument eine Kette. Ein Satz, der nur von
+// Fachplaenen spricht, liesse den Morgen das Kennzeichen an der falschen Karte suchen.
+test("[night-896] kein Kettensatz spricht noch allein von Fachplaenen", () => {
+  for (const fall of ["ketteKeinLabel", "ketteAlleUebersprungen"]) {
+    const satz = grundOhneArbeit(fall, { anzahl: 1, label: "kit:night" });
+    assert.doesNotMatch(satz, /Fachplan|Fachplaene/, `${fall} nennt nur den Fachplan: ${satz}`);
   }
 });
 

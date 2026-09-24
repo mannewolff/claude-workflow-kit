@@ -65,7 +65,9 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["den Halt-Kommentar", `\`${KETTE_HALT_ANKER}\``],
     ["den Anker des Berichts", `\`${BERICHT_ANKER} <stempel>\``],
     ["den Config-Block", "`night.kette`"],
-    ["den Rueckweg", "von vorn"],
+    // Der Rueckweg fuehrt seit Issue #896 ueber den Plan, nicht mehr 'von vorn' ueber
+    // einen neuen: Die naechste Kette uebernimmt das angehaltene Dokument als Auftrag.
+    ["den Rueckweg", "Plan-Auftrag"],
     ["die ueberholten Plaene", "Ueberholt durch Plan"],
     ["die wartenden Berichte", ".claude/night-bericht-"],
     ["den Kommentar bei gescheitertem Vorflug", "Kette nicht gestartet"],

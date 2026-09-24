@@ -769,10 +769,13 @@ export function grundOhneArbeit(fall, daten) {
         + "geleert, es blieb nichts zu tun.";
     case "umsetzungBelegt":
       return `Die Umsetzung ist belegt: ${ohneArbeitName(d.grund)} — der Lauf endet ohne Paket.`;
+    // Karte statt Fachplan seit Issue #896: Auftrag der Kette ist die fachliche
+    // Anforderung ODER das Plandokument, und ein Satz, der nur den Fachplan kennt,
+    // liesse den Morgen das Kennzeichen an der falschen Karte suchen.
     case "ketteKeinLabel":
-      return `Keine Kette zu fahren: kein Fachplan traegt das Label '${ohneArbeitName(d.label)}'.`;
+      return `Keine Kette zu fahren: keine Karte traegt das Label '${ohneArbeitName(d.label)}'.`;
     case "ketteAlleUebersprungen":
-      return `Keine Kette zu fahren: alle ${d.anzahl} Fachplaene mit dem Label '${ohneArbeitName(d.label)}' `
+      return `Keine Kette zu fahren: alle ${d.anzahl} gekennzeichneten Karten mit dem Label '${ohneArbeitName(d.label)}' `
         + "wurden uebersprungen, weil eine Voraussetzung fehlt.";
     default:
       return OHNE_ARBEIT_UNBEKANNT;
@@ -2030,6 +2033,10 @@ const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 // den Gruenden, damit dort keine zweite Schreibweise entsteht.
 const OFFENE_FRAGEN_NAME = "Offene Fragen";
 const OFFENE_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s*$/i;
+// Der Abschnitt, in den eine Antwort auf eine Stopp-Frage gehoert. Er steht in den
+// Gruenden von `planAusschluss` und im Weg nach vorn des Halt-Kommentars (Issue #896) —
+// zwei Schreibweisen desselben Abschnitts liessen den Menschen den falschen suchen.
+const ENTSCHEIDUNGEN_NAME = "Architektonische Entscheidungen";
 
 /**
  * Die Zeilen eines Markdown-Abschnitts — `null`, wenn die Ueberschrift fehlt.
@@ -4718,7 +4725,7 @@ export function planAusschluss(issue, kettenLabel, karten) {
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab`;
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
-    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## Architektonische Entscheidungen' des Plans, danach traegt '## Offene Fragen' wieder '- Keine.' — ein Satz in der fachlichen Anforderung genuegt nicht`;
+    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' des Plans, danach traegt '## ${OFFENE_FRAGEN_NAME}' wieder '${KEINE_STOPP_FRAGEN}' — ein Satz in der fachlichen Anforderung genuegt nicht`;
   }
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
@@ -5376,7 +5383,7 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * Pakete stehen als nicht begonnen im Bericht), bei einem gehaltenen Umsetzungs-Lock
  * (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen Hauptkopie vor dem
  * ersten Paket (Issue #878, derselbe Rueckfall), `angehalten` bei mindestens einem
- * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
+ * angehaltenen Paket — aber ohne `haltAmAuftrag` (E17) —, `abgebrochen` nur beim harten
  * Stopp.
  */
 async function stufeUmsetzung(kette, paketIds) {
@@ -5489,12 +5496,59 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
 }
 
 /**
- * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar am Fachplan und
- * kit:klaeren dort. Der Plan bleibt als Entwurf stehen; die naechste Kette beginnt von
- * vorn. Das Label abnehmen darf nur der Mensch — dieselbe Regel wie im Implementierungslauf.
+ * Der Weg nach vorn im Halt-Kommentar: die Schritte, nach denen der Plan am naechsten
+ * Abend als Plan-Auftrag wieder anlaeuft (Issue #896).
+ *
+ * Der Ort der Entscheidung ist seit Issue #895 der Plan, nicht die fachliche Anforderung:
+ * Die naechste Kette uebernimmt das Dokument und faehrt von der Stufe `pakete` an weiter,
+ * statt von vorn zu beginnen. Die Schritte nennen darum genau die Form, die
+ * `planAusschluss` wieder durchlaesst.
+ *
+ * Der frueher hier stehende Satz "Antwort bitte in den Fachplan schreiben" fuehrte an
+ * diesem Weg vorbei — und der naheliegende Griff, die Antwort unter die Frage zu setzen,
+ * war der teuerste: `stoppFragenGrund` liest die erste nichtleere Zeile unter `## Offene
+ * Fragen` und liesse den Plan allein bei `- Keine.` durch. Der Antworttext selbst waere
+ * am naechsten Abend der Ausschlussgrund gewesen.
+ *
+ * `/issue-review` entfaellt beim Plan-Auftrag: Dort traegt der Plan sein
+ * `review:fertig` schon, sonst haette `planAusschluss` ihn nie als Auftrag durchgelassen.
  */
-function haltAmFachplan(kette, ergebnis) {
-  const pfad = join(tmpdir(), `night-halt-${process.pid}-${kette.F}-${LAUF_STEMPEL ?? Date.now()}.md`);
+function haltWegNachVorn(kette, planId) {
+  const P = `Plan #${planId}`;
+  const schritte = [
+    `1. Die Antwort als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' von ${P} schreiben.`,
+    `2. '## ${OFFENE_FRAGEN_NAME}' von ${P} wieder auf '${KEINE_STOPP_FRAGEN}' setzen (ein Zusatz dahinter ist erlaubt).`
+      + " Die Antwort gehoert NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
+  ];
+  if (kette.art !== "plan") schritte.push(`3. /issue-review #${planId} laufen lassen.`);
+  schritte.push(
+    `${schritte.length + 1}. ${KLAEREN_LABEL} an ${P} abnehmen — und an der fachlichen Anforderung #${kette.F}, wenn es dort noch haengt.`,
+    `${schritte.length + 2}. Zuletzt das Label ${kette.budget.label} an ${P} setzen.`,
+  );
+  return [
+    `Die Entscheidung gehoert in ${P}, nicht in die fachliche Anforderung #${kette.F}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:`,
+    "",
+    ...schritte,
+    "",
+    "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
+  ];
+}
+
+/**
+ * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar an der gekennzeichneten
+ * Karte und kit:klaeren dort. Der Plan bleibt als Entwurf stehen. Das Label abnehmen darf
+ * nur der Mensch — dieselbe Regel wie im Implementierungslauf.
+ *
+ * Adressat ist die Karte, die das Kennzeichen trug (Issue #896), nicht die Wurzel: Beim
+ * Plan-Auftrag ist das der Plan selbst, und ein `kit:klaeren` an der fachlichen
+ * Anforderung sperrte dort eine Karte, die diese Nacht nichts beauftragt hat.
+ */
+function haltAmAuftrag(kette, ergebnis) {
+  const ziel = String(kette.karte.id);
+  // Bei jedem `angehalten` steht der Plan schon fest: Die Stufe `plan` setzt ihre Nummer,
+  // bevor sie an einer Stopp-Frage halten kann, und der Plan-Auftrag bringt sie mit.
+  const planId = kette.stufen.plan?.id ?? ergebnis.dokId;
+  const pfad = join(tmpdir(), `night-halt-${process.pid}-${ziel}-${LAUF_STEMPEL ?? Date.now()}.md`);
   const text = [
     KETTE_HALT_ANKER,
     "",
@@ -5502,13 +5556,13 @@ function haltAmFachplan(kette, ergebnis) {
     "",
     ergebnis.frage,
     "",
-    `Plan und bis dahin geschnittene Pakete bleiben als Entwurf stehen. Antwort bitte in den Fachplan schreiben, ${KLAEREN_LABEL} abnehmen und das Label ${kette.budget.label} neu setzen — die naechste Kette beginnt von vorn.`,
+    ...haltWegNachVorn(kette, planId),
     "",
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
-    board("issue", "comment", kette.F, "--text-file", pfad);
-    board("issue", "label", "add", kette.F, KLAEREN_LABEL);
+    board("issue", "comment", ziel, "--text-file", pfad);
+    board("issue", "label", "add", ziel, KLAEREN_LABEL);
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -5642,25 +5696,47 @@ function berichtUmsetzung(einheit, pakete) {
   ];
 }
 
+/**
+ * Die erste Zeile der Stufen: welcher Auftrag diese Kette war (Issue #896) — `null`, wenn
+ * die Einheit keine der beiden Arten ausweist.
+ *
+ * Ohne sie waere dem Bericht nicht anzusehen, was der Mensch abends gezeichnet hat: Beim
+ * Plan-Auftrag traegt die Einheit die Nummer des Plans, beim Fachplan-Auftrag die der
+ * Anforderung — dieselbe Zahl an derselben Stelle, zwei verschiedene Gesten.
+ */
+function berichtAuftragZeile(einheit) {
+  if (einheit.auftrag === "plan") return `- Auftrag: Plan #${einheit.stufen?.plan?.id} (fachliche Quelle #${einheit.fachplan})`;
+  return einheit.id ? `- Auftrag: fachliche Anforderung #${einheit.id}` : null;
+}
+
+/**
+ * Die Planzeile der Stufen — je nachdem, ob der Plan in dieser Nacht entstanden ist.
+ *
+ * Eine uebernommene Stufe hat keine Dauer, keine Kosten und keine Korrekturrunden:
+ * `Dauer 0.0 min` behauptete eine Messung, die es nicht gab (Issue #896).
+ */
+function berichtPlanZeile(stufen, plan) {
+  const p = stufen.plan;
+  const pruefer = planReviewWert(plan?.body) ?? "keiner";
+  const titel = plan?.title ? ` (${plan.title})` : "";
+  if (p.uebernommen) return `- Plan #${p.id}${titel}: als Auftrag uebernommen, nicht neu geschrieben, Pruefer ${pruefer}.`;
+  const kosten = p.kennzahlen?.kostenUsd;
+  const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
+  return `- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, `
+    + `Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`;
+}
+
 function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
-  const p = stufen.plan;
-  const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
-  if (p?.id) {
-    const pruefer = planReviewWert(plan?.body) ?? "keiner";
-    const kosten = p.kennzahlen?.kostenUsd;
-    const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
-    const titel = plan?.title ? ` (${plan.title})` : "";
-    zeilen.push(`- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`);
-  } else {
-    zeilen.push("- Plan: keiner entstanden.");
-  }
+  const auftrag = berichtAuftragZeile(einheit);
+  const zeilen = [...(auftrag ? [auftrag] : []), `- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
+  zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : "- Plan: keiner entstanden.");
   const ids = stufen.pakete?.ids ?? [];
   zeilen.push(ids.length > 0
     ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.`
     : "- Pakete: keine.");
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
-  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${stufen.plan?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
   return zeilen;
 }
 
@@ -5726,7 +5802,7 @@ export function berichtBauen(einheit, {
     `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
     `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
     "");
-  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
+  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar an der gekennzeichneten Karte", "");
   if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
     z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
@@ -5736,27 +5812,33 @@ export function berichtBauen(einheit, {
 }
 
 /**
- * Schreibt den Bericht als Kommentar an den Fachplan (A11) — ueber eine Datei ausserhalb
- * des Projekts, nie als Argument. Nimmt der Tracker ihn nicht an, wartet er als
- * `.claude/night-bericht-<F>-<stempel>.md` in der Hauptkopie. Rueckgabe ist der Wert
- * fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad. Kein `fail`: Ein
- * toter Tracker beim letzten Schritt darf die Kette nicht als Absturz enden lassen.
+ * Schreibt den Bericht als Kommentar an die gekennzeichnete Karte (A11; Issue #896) —
+ * ueber eine Datei ausserhalb des Projekts, nie als Argument. Nimmt der Tracker ihn nicht
+ * an, wartet er als `.claude/night-bericht-<zielId>-<stempel>.md` in der Hauptkopie.
+ * Rueckgabe ist der Wert fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad.
+ * Kein `fail`: Ein toter Tracker beim letzten Schritt darf die Kette nicht als Absturz
+ * enden lassen.
+ *
+ * `zielId` ist die Nummer der Karte, die das Kennzeichen trug — beim Plan-Auftrag der
+ * Plan. Der Bericht gehoert dorthin, wo der Mensch morgens nachsieht: an die Karte, die
+ * er abends gezeichnet hat. `berichteNachtragen` liest die Nummer weiter aus dem
+ * Dateinamen und bleibt davon unberuehrt.
  */
-export function berichtSchreiben(F, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
-  const name = `${BERICHT_DATEI_PRAEFIX}${F}-${stempel ?? Date.now()}.md`;
+export function berichtSchreiben(zielId, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
+  const name = `${BERICHT_DATEI_PRAEFIX}${zielId}-${stempel ?? Date.now()}.md`;
   // Mit der Prozess-Id: Zwei Runner in derselben Sekunde teilten sich sonst die Zwischendatei.
   const pfad = join(tmpdir(), `${process.pid}-${name}`);
   writeFileSync(pfad, text, "utf-8");
   try {
-    const res = boardRoh("issue", "comment", String(F), "--text-file", pfad);
+    const res = boardRoh("issue", "comment", String(zielId), "--text-file", pfad);
     if (res.status === 0) {
-      log(`  Nachtbericht als Kommentar an #${F} veroeffentlicht.`);
+      log(`  Nachtbericht als Kommentar an #${zielId} veroeffentlicht.`);
       return "veroeffentlicht";
     }
     const wartend = join(".claude", name);
     mkdirSync(join(repoRoot, ".claude"), { recursive: true });
     writeFileSync(join(repoRoot, wartend), text, "utf-8");
-    log(`  Nachtbericht konnte nicht an #${F} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
+    log(`  Nachtbericht konnte nicht an #${zielId} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
     return wartend;
   } finally {
     rmSync(pfad, { force: true });
@@ -5847,7 +5929,7 @@ function pruefungFehltKommentieren(u) {
  */
 function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
   if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
-  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jede fachliche Anforderung abgelehnt.`);
+  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jeder Auftrag abgelehnt.`);
   log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
 }
 
@@ -6018,9 +6100,9 @@ async function laufeEineKette(auftrag, nummer, args) {
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
     // `ohneHaltAmFachplan` setzt allein die Stufe umsetzung (E17): Dort traegt das
-    // angehaltene PAKET bereits kit:klaeren, und ein zweites am Fachplan schloesse ihn
-    // aus der naechsten Kette aus.
-    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmFachplan(kette, ergebnis);
+    // angehaltene PAKET bereits kit:klaeren, und ein zweites an der gekennzeichneten Karte
+    // schloesse sie aus der naechsten Kette aus. Der Feldname bleibt der von E17.
+    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmAuftrag(kette, ergebnis);
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
       ? aeltereUeberholen(kette, aeltere, neuerPlan)
@@ -6047,9 +6129,9 @@ async function laufeEineKette(auftrag, nummer, args) {
       kostenUnbekannt: kette.kosten.kostenUnbekannt,
     });
     // Der Bericht ist der letzte Schritt jeder Kette, bei jedem Ausgang (A10) — nach dem
-    // Halt-Kommentar, damit er am Fachplan hinter der Frage steht, und vor dem Abbau des
-    // Worktrees.
-    einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
+    // Halt-Kommentar, damit er hinter der Frage steht, und vor dem Abbau des Worktrees.
+    // Adressat ist die gekennzeichnete Karte, wie beim Halt (Issue #896).
+    einheitErgaenzen(einheit, { bericht: berichtSchreiben(String(karte.id), berichtFuerKette(kette, einheit, ergebnis)) });
   } finally {
     if (kette.wt) {
       kettenBefundeZurueck(kette);
@@ -6066,7 +6148,7 @@ function warneVorAltenLabels(issues) {
   for (const issue of issues) {
     for (const alt of ALTE_ROUTING_LABELS) {
       if ((issue.labels || []).includes(alt)) {
-        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' am Fachplan.`);
+        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' an der fachlichen Anforderung oder am Plandokument.`);
       }
     }
   }

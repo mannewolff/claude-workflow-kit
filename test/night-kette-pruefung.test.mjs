@@ -101,7 +101,7 @@ test("[night-44] eine Kette ohne Kandidaten vermerkt den Fall der uebersprungene
     assert.equal(res.status, 0, res.stderr);
     assert.equal(
       stand(dir).noWorkReason,
-      "Keine Kette zu fahren: alle 1 Fachplaene mit dem Label 'kit:night' wurden uebersprungen, "
+      "Keine Kette zu fahren: alle 1 gekennzeichneten Karten mit dem Label 'kit:night' wurden uebersprungen, "
       + "weil eine Voraussetzung fehlt.",
     );
   });

@@ -10,6 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
@@ -70,6 +71,17 @@ test("[night-895] ein gekennzeichneter, gepruefter Plan laeuft als Auftrag: nur 
     assert.match(prompt, /#0003, #0004/);
 
     assert.match(res.stdout, new RegExp(`Kette 1/\\d+: Plan #${M} \\(fachliche Quelle #${F}\\) — \\[Plan\\]`));
+
+    // Der Nachtbericht steht an der gekennzeichneten Karte, und die uebernommene Stufe
+    // wird nicht abgerechnet (Issue #896).
+    assert.equal(einheit.bericht, "veroeffentlicht");
+    assert.match(res.stdout, new RegExp(`Nachtbericht als Kommentar an #${M} veroeffentlicht`));
+    const bericht = readFileSync(join(dir, "issues", `${M}.md`), "utf-8");
+    assert.match(bericht, new RegExp(`### Stufen\\n\\n- Auftrag: Plan #${M} \\(fachliche Quelle #${F}\\)\\n- Variante: A\\n`));
+    assert.match(bericht, /als Auftrag uebernommen, nicht neu geschrieben, Pruefer keiner\./);
+    assert.doesNotMatch(bericht, /Dauer 0\.0 min/, "die uebernommene Stufe behauptet eine Messung");
+    assert.ok(!readFileSync(join(dir, "issues", `${F}.md`), "utf-8").includes("## Nachtbericht, Kette"),
+      "der Bericht gehoert an die gekennzeichnete Karte, nicht an die Wurzel");
   });
 });
 
