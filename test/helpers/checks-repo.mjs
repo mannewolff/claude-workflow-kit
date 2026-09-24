@@ -12,6 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync 
 import { delimiter, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { setTimeout as schlafen } from "node:timers/promises";
 import assert from "node:assert/strict";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -148,6 +149,57 @@ export function repoAnlegen({ config = {}, configText = null, ohneConfig = false
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "setup");
   return dir;
+}
+
+/** Die Fehlercodes, die Windows liefert, solange noch ein Handle auf dem Verzeichnis liegt. */
+const BELEGT = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
+
+/**
+ * Beendet unter Windows den ganzen Prozessbaum eines Laufs (Issue #874).
+ *
+ * `checks.mjs` startet seine Pruefkommandos mit `shell: true`; unter Windows steht
+ * damit eine `cmd.exe` zwischen Lauf und Kommando. Ein SIGKILL auf den Lauf beendet
+ * dort keinen Prozessbaum — die Shell ueberlebt als Waise und haelt das
+ * Arbeitsverzeichnis offen. `taskkill /T /F` raeumt sie mit ab.
+ *
+ * Fehler sind kein Testfehler: Der Prozess kann laengst weg sein, und die Funktion
+ * laeuft im `finally`, wo sie das Ergebnis des Tests nicht ueberschreiben darf.
+ * Rueckgabe: ob ein Aufruf abgesetzt wurde — allein zur Pruefbarkeit.
+ */
+export function prozessbaumBeenden(pid, { plattform = process.platform, kill = spawnSync } = {}) {
+  if (plattform !== "win32" || !pid) return false;
+  try {
+    kill("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+  } catch {
+    // schon weg
+  }
+  return true;
+}
+
+/**
+ * Entfernt ein Wegwerf-Verzeichnis und wartet dabei ab, bis Windows es freigibt
+ * (Issue #874). Die Wiederholungen von `rmSync` selbst sind der erste Weg; gibt die
+ * ueberlebende Shell das Verzeichnis erst spaeter frei, setzt die Schleife mit
+ * wachsendem Abstand nach, hoechstens bis `grenzeMs`. Ein Fehler, der nicht von
+ * einem offenen Handle kommt, wird sofort weitergeworfen — er verginge nicht von
+ * selbst. `rm`, `warten` und `uhr` dienen allein der Pruefbarkeit.
+ */
+export async function repoEntfernenHartnaeckig(
+  dir,
+  { rm = rmSync, grenzeMs = 10_000, warten = schlafen, uhr = Date.now } = {},
+) {
+  const ende = uhr() + grenzeMs;
+  let abstand = 100;
+  for (;;) {
+    try {
+      rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+      return;
+    } catch (fehler) {
+      if (!BELEGT.has(fehler?.code) || uhr() >= ende) throw fehler;
+      await warten(abstand);
+      abstand = Math.min(abstand * 2, 1000);
+    }
+  }
 }
 
 export function mitRepo(optionen, fn) {
