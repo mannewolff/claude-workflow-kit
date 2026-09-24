@@ -724,9 +724,8 @@ export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus 
 
 // Die Gruende eines Laufs ohne Arbeitspaket (Issue #744) — derselbe Wortlaut steht im
 // Textprotokoll und am Lauf-Kopf (`LAUF.noWorkReason`), damit beide nie auseinanderlaufen.
-// `READY_LEER_GRUND` bleibt, solange `readyLeerGrundVermerken` es noch liest; es entfaellt
-// mit dem Paket, das jene Funktion entfernt.
-const READY_LEER_GRUND = "Ready ist leer — nichts zu tun.";
+// Sie stehen alle als Literal in `grundOhneArbeit` (Issue #887): Eine Konstante daneben
+// waere eine zweite Stelle, an der ein Satz dieser Familie zu suchen ist.
 
 /** Auf so viele Zeichen gehen variable Namen (Label, Lock-Grund) gekuerzt in den Satz. */
 const OHNE_ARBEIT_NAME_MAX = 80;
@@ -762,7 +761,7 @@ export function grundOhneArbeit(fall, daten) {
   const d = daten || {};
   switch (fall) {
     case "readyLeer":
-      return READY_LEER_GRUND;
+      return "Ready ist leer — nichts zu tun.";
     case "keinLabel":
       return `Keine der ${d.anzahl} Karten in Ready traegt das Label '${ohneArbeitName(d.label)}' — nichts zu tun.`;
     case "alleZurueckgestellt":
@@ -783,7 +782,7 @@ export function grundOhneArbeit(fall, daten) {
 /**
  * Bildet den Satz, schreibt ihn ins Textprotokoll und an den Lauf-Kopf.
  *
- * Am Ende der Umstellung die einzige Stelle, die `noWorkReason` setzt: Protokoll und
+ * Seit Issue #887 die einzige Stelle, die `noWorkReason` setzt: Protokoll und
  * Lauf-Kopf bekommen denselben Wortlaut, weil sie ihn aus demselben Aufruf beziehen.
  */
 function vermerkeOhneArbeit(fall, daten) {
@@ -6871,13 +6870,36 @@ function lockVorErsterSession() {
 }
 
 /**
- * Vermerkt den Grund, wenn die Umsetzungsschleife mit leerem Ready endet, ohne bis
- * hierher ein einziges Paket gezogen zu haben (Issue #744). Ein Lauf mit Arbeit endet
- * an dieser Stelle ebenso, aber ohne noWorkReason — sonst entschiede diese Stelle
- * dieselbe Frage wie processedCount noch einmal.
+ * Der Fall eines Laufs, dem Ready ausgegangen ist (Issue #887).
+ *
+ * Eine leere Spalte, die dieser Lauf selbst geraeumt hat, ist keine leere Spalte:
+ * "Ready ist leer" schickte den Morgen dann in die falsche Richtung.
  */
-function readyLeerGrundVermerken(lauf) {
-  if (lauf.sessions === 0 && LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
+function fallLeeresReady(lauf) {
+  return lauf.zaehler.deferred > 0
+    ? { fall: "alleZurueckgestellt", daten: { anzahl: lauf.zaehler.deferred } }
+    : { fall: "readyLeer", daten: {} };
+}
+
+/**
+ * Vermerkt am Lauf, was ein nicht genommener Umsetzungs-Lock bedeutet (Issue #887).
+ *
+ * Die beiden Arten stehen fuer Verschiedenes (Issue #886): Ein belegter Lock ist ein
+ * ruhiger Lauf neben einem anderen und endet ohne Paket; ein Schreibfehler ist eine
+ * Stoerung der Umgebung und gehoert als harter Stopp gemeldet, nicht als ruhige Nacht
+ * weggeschrieben. Der Schreibfehler geht denselben Weg wie der Vorflug-Guard: Hier ist
+ * kein Paket gezogen, der Grund gehoert deshalb an den Lauf und nicht an eine Einheit.
+ *
+ * Die Schleife ruft das und bricht danach ab — sie bricht also nicht ohne Auskunft ab.
+ */
+function lockFehlschlagVermerken(lauf) {
+  if (lauf.lock.art === "schreibfehler") {
+    merkeHartenStopp("umgebung", lauf.lock.grund);
+    hefteStoppGrundAnLauf();
+    lauf.hardStop = true;
+    return;
+  }
+  lauf.ohneArbeit = { fall: "umsetzungBelegt", daten: { grund: lauf.lock.grund } };
 }
 
 /**
@@ -6885,6 +6907,12 @@ function readyLeerGrundVermerken(lauf) {
  *
  * Fuehrt ihren Zustand in `lauf`, nicht ueber Rueckgaben: Bricht sie mit `break` ab — und
  * das tun vier harte Stopps —, muss der Aufrufer trotzdem wissen, wie weit sie kam.
+ *
+ * Kein `break` ohne Auskunft (Fachliche Quelle #880): Jedes Ende ohne Paket merkt sich
+ * seinen Fall auf `lauf.ohneArbeit`, ausgewertet wird er EINMAL nach der Schleife. Dass
+ * die Faelle hier nur gemerkt und nicht schon vermerkt werden, ist der Punkt: Ob der
+ * Lauf ueberhaupt ohne Arbeit blieb, weiss erst der Aufrufer — und vier Stellen, die
+ * dieselbe Frage beantworten, laufen auseinander.
  */
 async function implementierungsSchleife(args, ctx, lauf) {
   let iterations = 0;
@@ -6892,7 +6920,7 @@ async function implementierungsSchleife(args, ctx, lauf) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) {
-      readyLeerGrundVermerken(lauf);
+      lauf.ohneArbeit = fallLeeresReady(lauf);
       break;
     }
     warnWennLabelNirgendsVorkommt(ctx, ready);
@@ -6900,7 +6928,10 @@ async function implementierungsSchleife(args, ctx, lauf) {
     // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
     // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.
     const top = ctx.labelFilter === null ? ready[0] : ready.find(ctx.hasLabel);
-    if (!top) break;
+    if (!top) {
+      lauf.ohneArbeit = { fall: "keinLabel", daten: { label: ctx.labelFilter, anzahl: ready.length } };
+      break;
+    }
 
     const gate = pruefeIssueGates(top);
     if (gate) {
@@ -6912,7 +6943,10 @@ async function implementierungsSchleife(args, ctx, lauf) {
     // Erst hier, nicht beim Eintritt: Ein Lauf, der an leerem Ready, am Routing-Label oder
     // an lauter Gates endet, setzt keine Umsetzung in Gang und darf keine Kette abhalten.
     lauf.lock ??= lockVorErsterSession();
-    if (!lauf.lock.ok) break;
+    if (!lauf.lock.ok) {
+      lockFehlschlagVermerken(lauf);
+      break;
+    }
 
     lauf.sessions++;
     log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
@@ -6947,6 +6981,9 @@ export async function laufeImplementierung(args, ctx) {
     zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 },
     // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
     salvageAttempted: new Set(),
+    // Der Fall, an dem die Schleife ohne Paket endete (Issue #887) — gemerkt in der
+    // Schleife, ausgewertet danach.
+    ohneArbeit: null,
     // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
     // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
     pruefungen: [],
@@ -6961,6 +6998,15 @@ export async function laufeImplementierung(args, ctx) {
     if (lauf.lock?.ok) lauf.lock.freigeben();
   }
   const { sessions, hardStop } = lauf;
+
+  // Die eine Stelle, die "gab es Arbeit?" beantwortet (Issue #887). Ein harter Stopp ist
+  // kein Lauf ohne Arbeit, sondern eine Stoerung: Er traegt seinen `fehlerText`, und ein
+  // `noWorkReason` daneben liesse ihn wie eine ruhige Nacht aussehen. Fehlt der Fall,
+  // sagt der Rueckfall ausdruecklich, dass hier eine Lage unbenannt geblieben ist.
+  if (sessions === 0 && !hardStop) {
+    const { fall, daten } = lauf.ohneArbeit ?? { fall: null, daten: {} };
+    vermerkeOhneArbeit(fall, daten);
+  }
 
   // Der Abschluss gehoert hierher und nicht in main(): Der Dry-Run beendet den Prozess
   // selbst und kaeme an einer Stelle in main() nie an.
