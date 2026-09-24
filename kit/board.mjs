@@ -4010,7 +4010,10 @@ const NACHTLAUF_STUFEN = ["plan", "review", "pakete", "abdeckung"];
 function nachtlaufStages(einheit) {
   const stufen = einheit.stufen;
   if (!stufen || typeof stufen !== "object") return null;
-  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage]).map((stage) => ({
+  // Eine uebernommene Stufe (Plan-Auftrag, Issue #895) ist nie gelaufen: Sie traegt nur
+  // die Plannummer. Gemeldet ergaebe sie `durationMs: 0` mit leerem `usage` — eine
+  // Messung, die es nicht gab. Darum bleibt sie draussen, wie im Nachtbericht.
+  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage] && stufen[stage].uebernommen !== true).map((stage) => ({
     stage,
     durationMs: nachtlaufZahl(stufen[stage].dauerMs),
     // Die Stufe fuehrt Mengen und Kennzahlen in EINEM Objekt (leseKennzahlen nutzt

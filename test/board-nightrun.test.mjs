@@ -343,6 +343,28 @@ test("[board-20] je Vorgang genau die vier gemeldeten Stufen mit Dauer und Verbr
   assert.deepEqual(stages[0].usage, { costUsd: 1, inputTokens: 80, outputTokens: 20, cachedInputTokens: 40, modelDurationMs: 5, turns: 1 });
 });
 
+test("[board-20] eine uebernommene Plan-Stufe bleibt aus der Meldung draussen", () => {
+  const m = nachtlaufMeldung(stand("kette", [{
+    id: "5", titel: "F", ausgang: "fertig",
+    stufen: {
+      plan: { nummer: "890", uebernommen: true },
+      pakete: { dauerMs: 70, kennzahlen: K(1, 5, 1) },
+      abdeckung: { dauerMs: 30, kennzahlen: K(1, 5, 1) },
+    },
+  }]), JETZT);
+  const stages = m.items[0].stages;
+  assert.deepEqual(stages.map((s) => s.stage), ["pakete", "abdeckung"]);
+  assert.deepEqual(stages.map((s) => s.durationMs), [70, 30]);
+});
+
+test("[board-20] eine regulaer gelaufene Plan-Stufe wird weiterhin gemeldet", () => {
+  const m = nachtlaufMeldung(stand("kette", [{
+    id: "5", titel: "F", ausgang: "fertig",
+    stufen: { plan: { dauerMs: 100, kennzahlen: K(1, 5, 1) } },
+  }]), JETZT);
+  assert.deepEqual(m.items[0].stages.map((s) => s.stage), ["plan"]);
+});
+
 test("[board-20] ohne stufen fehlt stages am Arbeitspaket", () => {
   const m = nachtlaufMeldung(stand("implementierung", [{ id: "7", titel: "T", ausgang: "erfolg", pruefung: { zustand: "geprueft" } }]), JETZT);
   assert.ok(!("stages" in m.items[0]), "ein Implementierungs-Paket hat keine Stufen zu melden");
