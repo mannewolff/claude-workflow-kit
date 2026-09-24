@@ -4758,6 +4758,64 @@ export function planAusschluss(issue, kettenLabel, karten) {
   return null;
 }
 
+/**
+ * Der Hinweis auf das Nicht-Ziel der fachlichen Anforderung #899: Der Prueflauf gilt
+ * allein fachlichen Anforderungen. Er steht an jeder gekennzeichneten Karte, die keine
+ * ist — am Plandokument wie am Arbeitspaket.
+ */
+const PRUEFLAUF_NICHT_FACHLICH = "der Prueflauf gilt allein fachlichen Anforderungen (Nicht-Ziel 'Plandokumente und Arbeitspakete')";
+
+/**
+ * Der Grund, aus dem eine gekennzeichnete Karte nicht geprueft wird — `null`, wenn sie
+ * geprueft wird (Fachplan #899, Plan #904, Issue #906).
+ *
+ * Bewusst OHNE Spaltenbedingung, anders als `kettenAusschluss`: Ein
+ * `[Fachlich]`-Dokument geht nie nach Ready, und die Geste des Menschen gilt der Karte,
+ * nicht ihrem Ort. Die Reihenfolge folgt derselben Regel wie dort — der spezifischere
+ * Grund gewinnt: erst das fehlende Kennzeichen (ohne die Geste steht die Karte hier gar
+ * nicht zur Debatte), dann die Art der Karte (E6: ein Plandokument gehoert nie hierher,
+ * auch nicht nach einer Antwort), zuletzt `kit:klaeren` — wer die wartende Frage
+ * beantwortet, kommt weiter.
+ */
+export function pruefLaufAusschluss(issue, label) {
+  if (!(issue?.labels || []).includes(label)) return `traegt das Kennzeichen ${label} nicht`;
+  const titel = issue?.title ?? "";
+  if (!isFachlich(titel)) {
+    const art = isPlan(titel) ? "traegt [Plan]" : "traegt kein [Fachlich]";
+    return `${art} — ${PRUEFLAUF_NICHT_FACHLICH}`;
+  }
+  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — eine Entscheidung wartet auf einen Menschen, eine zweite Pruefung beantwortet sie nicht`;
+  return null;
+}
+
+/**
+ * Waehlt die Karten eines Prueflaufs aus allen Karten (Plan #904, E6, E9).
+ *
+ * Reine Funktion ueber `issue list` OHNE Status-Filter, nach dem Muster von
+ * `waehleKettenKandidaten`: Was das Kennzeichen traegt, aber nicht geprueft wird, geht mit
+ * Grund nach `uebersprungen` und behaelt sein Kennzeichen — abgenommen wird es erst im
+ * Lauf, unmittelbar vor der Session. Kandidaten sind rohe Issues; eine Auftragsart wie bei
+ * der Kette gibt es nicht, es laeuft nur eine.
+ *
+ * `max` darf `null` sein (E9: kein Zahlendeckel, begrenzt wird ueber die Budgets); dann
+ * werden alle Kandidaten geliefert. Ab `max` bleiben sie liegen — das ist kein Ausschluss
+ * und steht darum in `liegengeblieben`, nicht in `uebersprungen`.
+ */
+export function waehlePruefLaufKandidaten(issues, label, max) {
+  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+  const kandidaten = [];
+  const uebersprungen = [];
+  const liegengeblieben = [];
+  const deckel = Number.isFinite(max) ? max : Infinity;
+  for (const issue of alle) {
+    const grund = pruefLaufAusschluss(issue, label);
+    if (grund !== null) uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
+    else if (kandidaten.length >= deckel) liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
+    else kandidaten.push(issue);
+  }
+  return { kandidaten, uebersprungen, liegengeblieben };
+}
+
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
 const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
 
