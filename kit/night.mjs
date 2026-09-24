@@ -724,8 +724,73 @@ export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus 
 
 // Die Gruende eines Laufs ohne Arbeitspaket (Issue #744) — derselbe Wortlaut steht im
 // Textprotokoll und am Lauf-Kopf (`LAUF.noWorkReason`), damit beide nie auseinanderlaufen.
-const KETTE_LEER_GRUND = "Keine Kette zu fahren — nichts zu tun.";
+// `READY_LEER_GRUND` bleibt, solange `readyLeerGrundVermerken` es noch liest; es entfaellt
+// mit dem Paket, das jene Funktion entfernt.
 const READY_LEER_GRUND = "Ready ist leer — nichts zu tun.";
+
+/** Auf so viele Zeichen gehen variable Namen (Label, Lock-Grund) gekuerzt in den Satz. */
+const OHNE_ARBEIT_NAME_MAX = 80;
+
+/**
+ * Der Rueckfall, wenn ein Lauf ohne Session endete, ohne dass ein benannter Fall zutraf
+ * (Fachliche Quelle #880).
+ *
+ * Er sagt ausdruecklich, dass hier ein Fall fehlt: Ein leeres Feld liesse offen, ob der
+ * Lauf nichts zu sagen hatte oder ob eine Lage unbenannt geblieben ist.
+ */
+export const OHNE_ARBEIT_UNBEKANNT = "Kein Grund ermittelbar — der Lauf endete ohne eine Session, ohne dass ein "
+  + "benannter Fall zutraf. Der Weg steht im Textprotokoll daneben; bitte melden.";
+
+/** Kuerzt einen variablen Namen, damit der Satz am Lauf-Kopf nicht gekappt wird. */
+function ohneArbeitName(wert) {
+  const text = String(wert ?? "");
+  return text.length > OHNE_ARBEIT_NAME_MAX ? `${text.slice(0, OHNE_ARBEIT_NAME_MAX - 1)}…` : text;
+}
+
+/**
+ * Der eine Satz zu einem Lauf ohne Arbeitspaket — rein, ohne Zustand (Issue #885).
+ *
+ * An EINER Stelle statt an dreien: Jede weitere Fundstelle waere eine weitere
+ * Gelegenheit, die Saetze auseinanderlaufen zu lassen. Jeder Satz benennt seinen Fall
+ * und traegt die beteiligten Namen und Zahlen mit, damit er ohne das Textprotokoll
+ * daneben zu lesen ist.
+ *
+ * Die beiden Kettensaetze teilen das Praefix `Keine Kette zu fahren:` — daran haengen
+ * die Matcher der Ketten-Tests, die den Fall selbst nicht unterscheiden.
+ */
+export function grundOhneArbeit(fall, daten) {
+  const d = daten || {};
+  switch (fall) {
+    case "readyLeer":
+      return READY_LEER_GRUND;
+    case "keinLabel":
+      return `Keine der ${d.anzahl} Karten in Ready traegt das Label '${ohneArbeitName(d.label)}' — nichts zu tun.`;
+    case "alleZurueckgestellt":
+      return `Alle ${d.anzahl} Karten in Ready wurden am Gate zurueckgestellt — der Lauf hat Ready selbst `
+        + "geleert, es blieb nichts zu tun.";
+    case "umsetzungBelegt":
+      return `Die Umsetzung ist belegt: ${ohneArbeitName(d.grund)} — der Lauf endet ohne Paket.`;
+    case "ketteKeinLabel":
+      return `Keine Kette zu fahren: kein Fachplan traegt das Label '${ohneArbeitName(d.label)}'.`;
+    case "ketteAlleUebersprungen":
+      return `Keine Kette zu fahren: alle ${d.anzahl} Fachplaene mit dem Label '${ohneArbeitName(d.label)}' `
+        + "wurden uebersprungen, weil eine Voraussetzung fehlt.";
+    default:
+      return OHNE_ARBEIT_UNBEKANNT;
+  }
+}
+
+/**
+ * Bildet den Satz, schreibt ihn ins Textprotokoll und an den Lauf-Kopf.
+ *
+ * Am Ende der Umstellung die einzige Stelle, die `noWorkReason` setzt: Protokoll und
+ * Lauf-Kopf bekommen denselben Wortlaut, weil sie ihn aus demselben Aufruf beziehen.
+ */
+function vermerkeOhneArbeit(fall, daten) {
+  const satz = grundOhneArbeit(fall, daten);
+  log(satz);
+  if (LAUF) LAUF.noWorkReason = satz;
+}
 
 /**
  * Das Sicherheitsnetz fuer einen harten Stopp ohne Grund — der Text, oder `null`
@@ -5859,8 +5924,11 @@ export async function laufeKette(args) {
   await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
-    log(KETTE_LEER_GRUND);
-    if (LAUF) LAUF.noWorkReason = KETTE_LEER_GRUND;
+    if (uebersprungen.length > 0) {
+      vermerkeOhneArbeit("ketteAlleUebersprungen", { anzahl: uebersprungen.length, label: budget.label });
+    } else {
+      vermerkeOhneArbeit("ketteKeinLabel", { label: budget.label });
+    }
     laufAbschliessen("regulaer");
     process.exit(0);
   }
@@ -5981,8 +6049,7 @@ export function laufeDryRun(args, ctx) {
   ctx = { ...ctx, laufModell: args.model };
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) {
-    log(READY_LEER_GRUND);
-    if (LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
+    vermerkeOhneArbeit("readyLeer", {});
     process.exit(0);
   }
   warnWennLabelNirgendsVorkommt(ctx, ready);

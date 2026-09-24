@@ -90,15 +90,20 @@ test("[night-19] im Lauf behaelt die ungepruefte Karte ihr Kettenlabel und steht
   });
 });
 
-// Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Eine
-// Kette ohne Kandidaten endet regulaer, und "Keine Kette zu fahren" steht wortgleich am
-// Lauf-Kopf, nicht nur im Textprotokoll.
-test("[night-44] eine Kette ohne Kandidaten vermerkt 'Keine Kette zu fahren' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
+// Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744), und
+// seit Issue #885 benennt der Satz den Fall: Die Karte dieser Lage traegt das
+// Kettenlabel, geht aber ungeprueft ueber `kettenAusschluss` nach `uebersprungen` —
+// also der Fall `ketteAlleUebersprungen`, nicht das fehlende Label.
+test("[night-44] eine Kette ohne Kandidaten vermerkt den Fall der uebersprungenen Karten als noWorkReason", NUR_POSIX, () => {
   mitProjekt((dir) => {
     fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
     const res = run(dir, ["--kette"], umgebung(dir));
     assert.equal(res.status, 0, res.stderr);
-    assert.equal(stand(dir).noWorkReason, "Keine Kette zu fahren — nichts zu tun.");
+    assert.equal(
+      stand(dir).noWorkReason,
+      "Keine Kette zu fahren: alle 1 Fachplaene mit dem Label 'kit:night' wurden uebersprungen, "
+      + "weil eine Voraussetzung fehlt.",
+    );
   });
 });
 
