@@ -26,10 +26,34 @@ function codebloecke(sprache = null) {
 // Die Schranke haelt den Skill knapp; sie ist keine feste Zahl. Sie stieg von 160 auf
 // 200, als der Fundblock dazukam: Er steht in jedem der vier Rollen-Prompts woertlich
 // (nicht als Verweis, damit ein Reviewer ihn im eigenen Prompt liest) und kostet damit
-// rund 35 Zeilen. Wer den Skill ohne solchen Anlass ueber 200 Zeilen treibt, kuerzt.
-test("[skills-13] der Skill bleibt unter 200 Zeilen", () => {
+// rund 35 Zeilen. Sie stieg von 200 auf 205 fuer die Formregel zum Stand der Gegenprobe:
+// Sie steht an einer Stelle statt in vier Prompts und spart einen Nachforderungs-Umlauf.
+// Wer den Skill ohne solchen Anlass ueber 205 Zeilen treibt, kuerzt.
+test("[skills-13] der Skill bleibt unter 205 Zeilen", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 200, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 200`);
+  assert.ok(zeilen < 205, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 205`);
+});
+
+// Die Form des Stands (Issue #915): Sechs von sieben Gegenproben eines Laufs waren
+// formfremd, weil der Skill die Form nur in der Angabenliste zeigte. Der Wortlaut steht
+// an einer Stelle — nicht in den vier Rollen-Prompts, die sonst auseinanderdriften.
+test("[skills-13] der Skill nennt die Form des Stands als verbindlich, an einer Stelle", () => {
+  const a = SKILL.indexOf("**Die Form des Stands wird mitgegeben.**");
+  assert.ok(a > 0, "der Absatz zur Form des Stands fehlt");
+  assert.ok(a > SKILL.indexOf("### 4. Reviewer starten") && a < SKILL.indexOf("**Rolle `pruefbarkeit`**"),
+    "der Absatz steht nicht im Abschnitt 'Reviewer starten' vor den Rollen");
+  const absatz = SKILL.slice(a, SKILL.indexOf("\n\n**Rolle", a));
+  assert.match(absatz, /am Zeilenende/);
+  assert.match(absatz, /`— geprueft, bestaetigt`/);
+  assert.match(absatz, /`— nicht geprueft`/);
+  assert.match(absatz, /abgewiesen/, "der Absatz sagt nicht, dass Varianten abgewiesen werden");
+  assert.match(absatz, /eigener Satz davor/, "der Absatz verweist die Begruendung nicht vor den Strich");
+  assert.match(absatz, /^Beispiel: `Gegenprobe: .+ — geprueft, bestaetigt`$/m, "das Beispiel in tragender Form fehlt");
+  assert.match(absatz, /[Ww]ie die Artenliste/, "der Absatz sagt nicht, dass die Session ihn mitgibt");
+  // Die vier Rollen-Prompts bleiben unveraendert: kein zweiter Ort fuer denselben Wortlaut.
+  for (const p of codebloecke().filter((b) => b.includes("{{ISSUE_BODY}}"))) {
+    assert.doesNotMatch(p, /Zeilenende/, "ein Rollen-Prompt wiederholt die Formregel");
+  }
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {

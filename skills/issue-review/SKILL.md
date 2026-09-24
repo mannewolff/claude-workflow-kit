@@ -53,6 +53,10 @@ Jeder Reviewer bekommt denselben unveränderten Body und seine Rolle: `kind: cla
 
 **Die Artenliste wird nicht abgeschrieben.** Vor dem Start füllt die Session `{{ARTEN}}` in jedem Prompt aus der Ausgabe von `node .claude/kit/befunde.mjs arten` — je Art eine Zeile aus Name und erklärendem Satz —, genau wie `{{ISSUE_BODY}}` und `{{QUELLE_BODY}}`. Zwei Orte für denselben Wortlaut driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt.
 
+**Die Form des Stands wird mitgegeben.** Wie die Artenliste gehört auch diese Regel in jeden Prompt, den die Session füllt: Die Gegenprobe-Zeile schließt am Zeilenende wörtlich mit `— geprueft, bestaetigt` oder `— nicht geprueft` (Umlaute erlaubt). Varianten wie „— geprueft, es gibt keine" oder „— geprueft, nicht haltbar" werden von der Formprüfung abgewiesen; die Begründung gehört als eigener Satz davor, nicht hinter den Strich.
+
+Beispiel: `Gegenprobe: Ein Satz X im Body hätte den Fund widerlegt; es gibt keinen. — geprueft, bestaetigt`
+
 Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:fertig`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
 
 **Rolle `pruefbarkeit`** (Stufe `issue`):

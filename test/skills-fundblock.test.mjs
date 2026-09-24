@@ -51,10 +51,15 @@ test("[skills-37] fuenf Prompts tragen den Fundblock", () => {
 
 test("[skills-37] jede Zeichenkette des Blocks trifft genau fuenfmal ueber beide Skills", () => {
   const beide = ISSUE_REVIEW + REVIEW;
-  for (const zeichenkette of ["Gegenprobe:", "Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht"]) {
+  for (const zeichenkette of ["Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht"]) {
     assert.equal(beide.split(zeichenkette).length - 1, 5,
       `'${zeichenkette}' steht nicht genau fuenfmal — fuenf Prompts, fuenf Treffer`);
   }
+  // 'Gegenprobe:' steht einmal mehr: im Beispiel der Formregel von `/issue-review`, das
+  // zeigt, wie eine tragende Zeile aussieht. Ein sechster Ort ist die Grenze — was
+  // darueber hinausgeht, waere wieder ein Wortlaut an mehreren Stellen.
+  assert.equal(beide.split("Gegenprobe:").length - 1, 6,
+    "'Gegenprobe:' steht nicht fuenfmal in den Prompts plus einmal im Beispiel der Formregel");
   // Der Platzhalter steht je Skill einmal mehr: im Absatz, der sagt, woraus er gefuellt wird.
   assert.equal(beide.split("{{ARTEN}}").length - 1, 7,
     "'{{ARTEN}}' steht nicht fuenfmal in den Prompts plus einmal je Fuell-Absatz");
