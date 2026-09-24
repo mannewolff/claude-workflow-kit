@@ -1436,10 +1436,16 @@ function prozessLaeuft(pid) {
 /**
  * Nimmt den Umsetzungs-Lock in der Hauptkopie.
  *
- * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, grund }`. Ein
- * Schreibfehler zaehlt wie ein vorgefundener Lock und laesst die Umsetzung aus: Ein Lock,
- * der bei Schreibfehlern uebergangen wird, ist keiner — und die Kette faellt in diesem Fall
- * auf Variante A zurueck, was ein vorgesehener Ausgang ist.
+ * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, art, grund }`. Beide
+ * Arten des Fehlschlags lassen die Umsetzung aus — ein Lock, der bei Schreibfehlern
+ * uebergangen wird, ist keiner —, sie stehen aber fuer Verschiedenes und sind darum an `art`
+ * zu unterscheiden statt am Wortlaut des Grundes: `"belegt"` ist der vorgefundene Lock eines
+ * laufenden Laufs, `"schreibfehler"` der Lock, der sich nicht schreiben liess.
+ *
+ * Die beiden Aufrufer sind darauf verschieden angewiesen: Die Umsetzungsnacht (6861)
+ * unterscheidet die Arten — belegt ist fuer sie ein ruhiger Lauf, ein Schreibfehler eine
+ * Stoerung der Umgebung. Die Kettenstufe (5257) liest `art` nicht und faellt bei beiden
+ * Arten auf Variante A zurueck, was fuer sie ein vorgesehener Ausgang ist.
  *
  * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
  */
@@ -1447,14 +1453,14 @@ export function umsetzungLockNehmen(repoRoot) {
   const pfad = join(repoRoot, UMSETZUNG_LOCK);
   const pid = lockPid(pfad);
   if (pid !== null && prozessLaeuft(pid)) {
-    return { ok: false, grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+    return { ok: false, art: "belegt", grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
   }
   const verwaist = existsSync(pfad);
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     writeFileSync(pfad, `${process.pid}\n`, "utf-8");
   } catch (e) {
-    return { ok: false, grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+    return { ok: false, art: "schreibfehler", grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
   }
   return {
     ok: true,

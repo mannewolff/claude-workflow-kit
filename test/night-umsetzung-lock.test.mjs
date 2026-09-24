@@ -132,6 +132,32 @@ test("[night-35] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie o
   });
 });
 
+test("[night-35] belegt und Schreibfehler sind an `art` zu unterscheiden, nicht am Wortlaut des Grundes", () => {
+  // Der Wortlaut eines Grundes ist Prosa und wird umformuliert; haengt die Einstufung
+  // einer ganzen Nacht daran, kippt sie bei der naechsten Umformulierung still.
+  mitOrdner((dir) => {
+    lockSchreiben(dir, `${process.pid}\n`);
+    const belegt = umsetzungLockNehmen(dir);
+    assert.equal(belegt.ok, false);
+    assert.equal(belegt.art, "belegt");
+    assert.match(belegt.grund, new RegExp(String(process.pid)));
+  });
+  mitOrdner((dir) => {
+    mkdirSync(lockPfad(dir), { recursive: true });
+    const fehler = umsetzungLockNehmen(dir);
+    assert.equal(fehler.ok, false);
+    assert.equal(fehler.art, "schreibfehler");
+    assert.match(fehler.grund, /schreiben/);
+  });
+  mitOrdner((dir) => {
+    const erfolg = umsetzungLockNehmen(dir);
+    assert.equal(erfolg.ok, true, erfolg.grund);
+    assert.equal(erfolg.hinweis, null);
+    assert.equal(typeof erfolg.freigeben, "function");
+    erfolg.freigeben();
+  });
+});
+
 test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits deckt ihn", () => {
   const res = spawnSync("git", ["check-ignore", "-q", UMSETZUNG_LOCK], { cwd: repoRoot, encoding: "utf-8" });
   assert.equal(res.status, 0, `${UMSETZUNG_LOCK} ist im Kit nicht ignoriert — gitClean() saehe ihn als Rest`);
