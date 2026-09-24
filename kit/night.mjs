@@ -318,7 +318,7 @@ export const nachbarn = {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.2.0";
+const KIT_VERSION = "3.2.1";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const DEFAULT_MAX_SESSIONS = 10;
