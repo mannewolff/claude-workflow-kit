@@ -34,8 +34,13 @@ test("die gestrichenen Abschnitte sind weg", () => {
   }
 });
 
+// Seit Issue #898 kommt ein drittes Vorkommen dazu: Der Nachtbetrieb-Block nennt die
+// Pruefung als Bedingung beider Auftragsarten der Kette. Die Leitplanke bleibt scharf —
+// genau drei, zwei davon im Absatz zu /issue-review, das dritte im Nachtbetrieb-Block.
 test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
-  assert.equal(VORLAGE.split("review:fertig").length, 3, "review:fertig steht nicht genau zweimal");
+  assert.equal(VORLAGE.split("review:fertig").length, 4, "review:fertig steht nicht genau dreimal");
+  const nachtbetrieb = VORLAGE.slice(VORLAGE.indexOf("## Nachtbetrieb (optional)")).split(/\n## /)[0];
+  assert.equal(nachtbetrieb.split("review:fertig").length, 2, "der Nachtbetrieb-Block nennt review:fertig nicht genau einmal");
   const zeilen = VORLAGE.split("\n");
   const start = zeilen.findIndex((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
   assert.ok(start >= 0, "der Absatz zu /issue-review fehlt");
@@ -46,7 +51,8 @@ test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzu
   assert.match(absatz, /`review:fertig` als sichtbare Spur am Board/);
   assert.match(absatz, /je Board einmal angelegt/);
   assert.match(absatz, /Nacht-Kette verlangt diese Spur aber als Voraussetzung/);
-  assert.match(absatz, /wird uebersprungen, auch wenn er das Kettenlabel traegt/);
+  assert.match(absatz, /wird uebersprungen, auch wenn sie das Kettenlabel traegt/);
+  assert.match(absatz, /fuer die fachliche Anforderung wie fuer das Plandokument/);
 });
 
 test("die bleibenden Abschnitte stehen je einmal", () => {

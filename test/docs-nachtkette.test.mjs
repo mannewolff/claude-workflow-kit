@@ -24,6 +24,7 @@ import {
   KETTE_HALT_ANKER,
   REVIEW_FERTIG_LABEL,
   KETTE_UNGEPRUEFT_ANKER,
+  grundOhneArbeit,
 } from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -113,6 +114,77 @@ test("der Abschnitt sagt, dass Kette und Umsetzung nebeneinander laufen, und nen
   assert.match(abschnitt, /night-umsetzung\.lock/);
 });
 
+// Seit Issue #898 kennt die Doku zwei Auftragsarten. Wer morgens einen Plan kennzeichnen
+// will, muss die Bedingungen und die beiden Kollisionsregeln lesen koennen, ohne den
+// Runner zu lesen — sonst kennzeichnet er eine Karte, die stillschweigend weicht.
+const PLAN_AUFTRAG = "Ein fertiger Plan als Auftrag";
+
+test("der Abschnitt fuehrt den Plan als zweite Auftragsart mit Geste, Bedingungen und entfallenden Stufen", () => {
+  const abschnitt = dokuAbschnitt(ABSCHNITT);
+  assert.ok(abschnitt.includes(`#### ${PLAN_AUFTRAG}`), `der Unterabschnitt '${PLAN_AUFTRAG}' fehlt`);
+  const unter = abschnitt.slice(abschnitt.indexOf(`#### ${PLAN_AUFTRAG}`)).split(/\n#### /)[0];
+  const erwartet = [
+    ["die Geste am Plan", "`[Plan]`"],
+    ["die Spalte der Kandidaten", "Backlog"],
+    ["die erkennbare fachliche Herkunft", "Fachliche Quelle: Issue #"],
+    ["die wartende Entscheidung als Ausschluss", "`kit:klaeren`"],
+    ["die Pruefung als Bedingung", `\`${REVIEW_FERTIG_LABEL}\``],
+    ["die entfallende Stufe plan", "`plan`"],
+    ["die entfallende Stufe review", "`review`"],
+    ["die Stufe, mit der der Lauf beginnt", "`pakete`"],
+    ["die Variante am Plan", "Variante B"],
+  ];
+  for (const [was, anker] of erwartet) {
+    assert.ok(unter.includes(anker), `der Unterabschnitt nennt ${was} ('${anker}') nicht`);
+  }
+});
+
+test("die Pruefung als Voraussetzung gilt beiden Auftragsarten", () => {
+  const abschnitt = dokuAbschnitt(ABSCHNITT);
+  const absatz = abschnitt.split(/\n\n/).find((a) => a.startsWith("**Die Pruefung als Voraussetzung.**"));
+  assert.ok(absatz, "der Absatz zur Pruefung als Voraussetzung fehlt");
+  assert.match(absatz, /Plandokument|Plan-Auftrag|gekennzeichnete Karte/,
+    "der Absatz nennt nur die fachliche Anforderung, nicht beide Auftragsarten");
+});
+
+test("der Unterabschnitt nennt beide Kollisionsregeln", () => {
+  const abschnitt = dokuAbschnitt(ABSCHNITT);
+  const unter = abschnitt.slice(abschnitt.indexOf(`#### ${PLAN_AUFTRAG}`)).split(/\n#### /)[0];
+  const absaetze = unter.split(/\n\n/);
+  const weicht = absaetze.find((a) => /weicht/.test(a) && /Anforderung/.test(a) && /Plan/.test(a));
+  assert.ok(weicht, "keine Regel sagt, dass die fachliche Anforderung dem gekennzeichneten Plan weicht");
+  const juengere = absaetze.find((a) => /j(ü|ue)ngere/.test(a) && /Wurzel|selben fachlichen/.test(a));
+  assert.ok(juengere, "keine Regel sagt, dass von zwei Plaenen derselben Wurzel der juengere laeuft");
+});
+
+// Der Rueckweg aus `angehalten` fuehrt seit Issue #896 ueber den Plan und muendet in
+// genau diese zweite Auftragsart. Geprueft werden die Schritte, die man nicht raten kann.
+test("der Rueckweg aus dem Halt nennt seine Schritte und muendet im Plan-Auftrag", () => {
+  const abschnitt = dokuAbschnitt(ABSCHNITT);
+  const absatz = abschnitt.split(/\n\n/).find((a) => a.startsWith("**Der Rückweg nach `angehalten`.**"));
+  assert.ok(absatz, "der Absatz zum Rueckweg fehlt");
+  for (const [was, anker] of [
+    ["die Entscheidung im Plan", "## Architektonische Entscheidungen"],
+    ["den Sollwert der offenen Fragen", "`- Keine.`"],
+    ["die erneute Pruefung", "/issue-review"],
+    ["das Abnehmen des Labels", "`kit:klaeren`"],
+    ["das Kettenlabel am Plan", "an den Plan"],
+    ["die Auftragsart der naechsten Kette", "Plan-Auftrag"],
+  ]) {
+    assert.ok(absatz.includes(anker), `der Rueckweg nennt ${was} ('${anker}') nicht`);
+  }
+});
+
+// Ein Satz, den die Doku woertlich zitiert, muss der Satz des Programms sein — sonst
+// sucht der Morgen einen Wortlaut, den der Runner nie schreibt.
+test("der zitierte Satz ohne Arbeit entspricht dem Satz aus grundOhneArbeit", () => {
+  const satz = grundOhneArbeit("ketteAlleUebersprungen", { anzahl: 1, label: "kit:night" });
+  // Ohne Zahl und Labelnamen: Die Doku fuehrt dort ihre Platzhalter `<N>` und `<name>`.
+  const festerTeil = satz.slice(satz.indexOf("gekennzeichneten"), satz.indexOf(" '"));
+  assert.ok(DOKU.includes(festerTeil), `die Doku zitiert den Satz ohne Arbeit nicht (${festerTeil})`);
+  assert.ok(!DOKU.includes("Fachplaene mit dem Label"), "die Doku fuehrt noch den ueberholten Satz mit 'Fachplaene'");
+});
+
 test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   assert.ok(abschnitt.includes("#### Allowlist für fremde Reviewer"));
@@ -138,7 +210,9 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander"]) {
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander",
+    // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
+    "`[Plan]`", "Plan-Auftrag"]) {
     assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
   }
 });

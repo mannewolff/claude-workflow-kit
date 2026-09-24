@@ -139,6 +139,9 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
   assert.match(SKILL, /am Board nicht definiert/);
   assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:fertig` ist Spur, keine Freigabe\./);
   assert.match(SKILL, /Nacht-Kette verlangt dieses Label als Voraussetzung/);
+  // Seit Issue #898 nimmt die Kette zwei Auftragsarten an; das Label ist fuer beide
+  // Voraussetzung, und der Satz muss auch das Plandokument nennen.
+  assert.match(SKILL, /Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung oder ein Plandokument aufnimmt/);
   assert.match(SKILL, /Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen/);
 });
 

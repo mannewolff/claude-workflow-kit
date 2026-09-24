@@ -454,17 +454,17 @@
       "properties": {
         "kette": {
           "type": "object",
-          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
+          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
           "properties": {
             "label": {
               "type": "string",
               "default": "kit:night",
-              "description": "Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
+              "description": "Das Kennzeichen an der fachlichen Anforderung oder am Plandokument, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
             },
             "varianteBLabel": {
               "type": "string",
               "default": "kit:durchziehen",
-              "description": "Das Kennzeichen, das einen Fachplan für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
+              "description": "Das Kennzeichen, das die gekennzeichnete Karte für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
             },
             "planMin": {
               "type": "number",

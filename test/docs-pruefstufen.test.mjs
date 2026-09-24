@@ -48,8 +48,12 @@ test("die Vorlage nennt alle drei Titel-Praefixe", () => {
 
 test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   for (const [name, text] of beide) {
-    const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a));
-    assert.ok(absatz, `${name}: kein Absatz zu [Plan] und Ready`);
+    // Gesucht ist der Absatz ueber das Plandokument, nicht jeder, der `[Plan]` und
+    // "Ready" nennt: Seit Issue #898 tut das auch der Nachtbetrieb-Block, weil die
+    // Kette ein Plandokument als Auftrag annimmt. Der Weg nach vorn (`/issues #N`)
+    // steht nur im gemeinten Absatz und kennzeichnet ihn eindeutig.
+    const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a) && /\/issues #N/.test(a));
+    assert.ok(absatz, `${name}: kein Absatz zu [Plan], Ready und /issues #N`);
     assert.match(absatz, /nie implementiert|nicht implementiert/i, `${name}: 'nie implementiert' fehlt`);
     assert.match(absatz, /\/issues #N/, `${name}: der Weg ueber /issues #N fehlt`);
   }
