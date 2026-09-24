@@ -1789,20 +1789,44 @@ export function hasReviewMarker(body) {
 // Werts ist die von AUTOR_MODELL_ZEILE: vom ersten bis zum letzten Nicht-Leerzeichen.
 export const PLAN_REVIEW_ZEILE = /^Plan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
 
-/** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
-export function planReviewWert(body) {
-  // `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
-  // `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+/**
+ * Der Wert eines Marker-Ausdrucks im Body — sonst `null`.
+ *
+ * `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
+ * `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+ */
+function markerWert(body, ausdruck) {
   for (const zeile of String(body ?? "").split("\n")) {
-    const treffer = PLAN_REVIEW_ZEILE.exec(zeile.trimStart());
+    const treffer = ausdruck.exec(zeile.trimStart());
     if (treffer !== null) return treffer[1];
   }
   return null;
 }
 
+/** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
+export function planReviewWert(body) {
+  return markerWert(body, PLAN_REVIEW_ZEILE);
+}
+
 /** Ob der Body eines Plans den Plan-Review-Marker mit einem Wert traegt. */
 export function hatPlanReviewMarker(body) {
   return planReviewWert(body) !== null;
+}
+
+// Der Pruefer-Vermerk an der fachlichen Anforderung, den /issue-review dort hinterlaesst
+// (Fachplan #899, Plan #904, Issue #907). Gebaut wie PLAN_REVIEW_ZEILE, weil er dasselbe
+// leistet — nur an der anderen Kartenart. Den Namen kennt `kit/board.mjs` bereits als
+// Gate F11 der fachlichen Anforderung.
+export const FACHPLAN_REVIEW_ZEILE = /^Fachplan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
+
+/** Der Pruefer aus der Zeile 'Fachplan-Review: <pruefer>' — sonst `null`. */
+export function fachplanReviewWert(body) {
+  return markerWert(body, FACHPLAN_REVIEW_ZEILE);
+}
+
+/** Ob der Body einer fachlichen Anforderung den Fachplan-Review-Marker mit Wert traegt. */
+export function hatFachplanReviewMarker(body) {
+  return fachplanReviewWert(body) !== null;
 }
 
 /**
@@ -4814,6 +4838,90 @@ export function waehlePruefLaufKandidaten(issues, label, max) {
     else kandidaten.push(issue);
   }
   return { kandidaten, uebersprungen, liegengeblieben };
+}
+
+/** Die ersten Zeilen der beiden Kommentare, die eine Pruefung an der Karte hinterlaesst. */
+export const PRUEFLAUF_BEFUNDE_ANKER = "## Fachplan-Review, Runde 1";
+export const PRUEFLAUF_EINARBEITUNG_ANKER = "## Einarbeitung, Runde 1";
+
+/** Der zuletzt erreichte Schritt einer abgebrochenen Pruefung (E13) aus ihren neuen Spuren. */
+function pruefLaufSchritt(neue) {
+  if (neue.some((k) => k.includes(PRUEFLAUF_EINARBEITUNG_ANKER))) return "eingearbeitet";
+  if (neue.some((k) => k.includes(PRUEFLAUF_BEFUNDE_ANKER))) return "befunde";
+  return "gestartet";
+}
+
+/**
+ * Das Ergebnis einer Prueflauf-Session am Unterschied der Board-Spuren (Plan #904, E16).
+ *
+ * Reine Funktion: Gelesen wird der UNTERSCHIED zwischen Vorher- und Nachher-Stand, nie der
+ * Nachher-Stand allein. Eine erneut gepruefte Karte traegt Marker, `review:fertig` und den
+ * Befunde-Kommentar schon aus dem Vorlauf; ohne die Beschraenkung auf neue Spuren meldete
+ * die Erkennung "geprueft" fuer eine Pruefung, die nie lief.
+ *
+ * Marker und Label darf der Nachher-Stand trotzdem allein beantworten: Beides hat der Lauf
+ * unmittelbar vor der Session selbst abgeraeumt (E16), es kann also nur aus ihr stammen.
+ * Der Vorher-Stand dient allein dem Kommentar-Vergleich; seine Labels werden nicht gelesen.
+ *
+ * Drei Ausgaenge: `geprueft`, `klaeren` mit der wartenden Frage, sonst `unvollstaendig` mit
+ * dem zuletzt erreichten Schritt.
+ */
+export function pruefLaufErgebnis(vorher, nachher) {
+  if (hatFachplanReviewMarker(nachher?.body) && hatReviewFertigLabel(nachher)) {
+    return { ausgang: "geprueft" };
+  }
+  const neue = neueKommentare(vorher, nachher);
+  if (hatKlaerenLabel(nachher)) {
+    const frage = neue.at(-1) ?? `siehe den letzten Kommentar an #${nachher?.id}`;
+    return { ausgang: "klaeren", frage };
+  }
+  return { ausgang: "unvollstaendig", schritt: pruefLaufSchritt(neue) };
+}
+
+/**
+ * Der Anker des Vermerks, den ein Abbruch des Prueflaufs an der fachlichen Anforderung
+ * hinterlaesst (Plan #904, E14).
+ *
+ * Ein EIGENER Anker, nicht der `REVIEW_REST_ANKER` der Nacht-Kette: Der spricht von Kette,
+ * Plan und Plan-Review-Marker und gehoert der Kette.
+ */
+export const PRUEFLAUF_REST_ANKER = "## Pruefung unvollstaendig";
+
+/**
+ * Der Vermerk an der Karte, wenn die Pruefung abbricht, nachdem sie Spuren hinterlassen hat
+ * (Plan #904) — `true`, wenn er geschrieben wurde.
+ *
+ * Dieselbe Luecke wie bei `reviewRestVermerken`: Die Pruefung ist bezahlt, ihre Befunde
+ * stehen am Board, der Body traegt keinen Marker. Wer die Karte spaeter sichtet, sieht eine
+ * ungepruefte und prueft erneut.
+ *
+ * `spuren` sind die neuen Kommentare der Session. Eine WARTENDE Sitzung bekommt nur ihren
+ * `wartendVermerk`, nicht zusaetzlich diesen Anker — ihr eigener Kommentar ist kurz zuvor an
+ * die Karte gegangen (Issue #778), und zwei Kommentare fuer einen Abbruch sagen nichts, was
+ * einer nicht sagt. Bleibt danach keine Spur, gibt es nichts zu vermerken.
+ */
+export function pruefLaufRestVermerken(id, grund, schritt, spuren = []) {
+  const fremde = (spuren || []).filter((k) => !String(k).includes(WARTEND_ANKER));
+  if (fremde.length === 0) return false;
+  const pfad = join(tmpdir(), `night-prueflauf-rest-${process.pid}-${id}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [
+    PRUEFLAUF_REST_ANKER,
+    "",
+    `Prueflauf ${LAUF_STEMPEL ?? "ohne Stempel"}: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an dieser Karte.`,
+    "",
+    `Sie ist unvollstaendig geblieben — der Lauf endete davor (${grund}) —, zuletzt erreichter Schritt: ${schritt}. Der Body traegt deshalb keinen Fachplan-Review-Marker, obwohl geprueft wurde.`,
+    "",
+    `Weg nach vorn: /issue-review #${id} von Hand fahren.`,
+    "",
+  ].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    board("issue", "comment", String(id), "--text-file", pfad);
+    log(`  Pruefung #${id} abgebrochen (${schritt}) — Vermerk '${PRUEFLAUF_REST_ANKER}' an #${id} geschrieben.`);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+  return true;
 }
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
