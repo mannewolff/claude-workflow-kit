@@ -1489,9 +1489,15 @@ export function umsetzungLockNehmen(repoRoot) {
 // Runner spiegelt deshalb `.claude/` der Hauptkopie hinein — ohne `night-run-*`, denn
 // Log und Ergebnisstand bleiben in der Hauptkopie.
 
-/** Der Ordnername eines Kette-Worktrees; der Praefix dient dem Aufraeumen beim Start. */
-function worktreePraefix(repoRoot) {
-  return `kette-${basename(resolve(repoRoot))}-`;
+/**
+ * Der Ordnername eines Worktrees; der Praefix dient dem Aufraeumen beim Start.
+ *
+ * `praefix` trennt die Laeufe, die nebeneinander stehen koennen: die Nacht-Kette
+ * (`kette`, der Vorgabewert) und der Prueflauf am Tag (`pruefung`). Ohne diese
+ * Trennung entfernte ein Prueflauf beim Start den Worktree einer laufenden Kette.
+ */
+function worktreePraefix(repoRoot, praefix = "kette") {
+  return `${praefix}-${basename(resolve(repoRoot))}-`;
 }
 
 function gitIm(repoRoot, gitArgs) {
@@ -1573,8 +1579,8 @@ function claudeSpiegeln(repoRoot, pfad) {
  * `abgebrochen` wird, entscheidet der Aufrufer — ein stiller Rueckfall auf die Hauptkopie
  * hiesse, dass die Kette manchmal neben der Umsetzung im selben Baum liefe.
  */
-export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
-  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot)}${issueId}-${stempel}`);
+export function worktreeAnlegen({ repoRoot, issueId, stempel, praefix = "kette" }) {
+  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot, praefix)}${issueId}-${stempel}`);
   const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, "HEAD"]);
   if (res.status !== 0) {
     throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
@@ -1732,10 +1738,14 @@ function kettenBefundeZurueck(kette) {
  * Ein harter Absturz laesst den Ordner unter dem Temp-Verzeichnis und den Eintrag in
  * `git worktree list` zurueck; beide muessen weg, sonst legt der naechste Lauf einen
  * zweiten Worktree neben einen toten. Liefert die entfernten Pfade.
+ *
+ * Geraeumt wird nur der eigene Praefix (`kette` als Vorgabe, `pruefung` fuer den
+ * Prueflauf am Tag): Ein Lauf, der jeden Praefix abraeumte, zerstoerte den Worktree
+ * des jeweils anderen, der gerade daneben laeuft.
  */
-export function worktreesAufraeumen(repoRoot) {
+export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
   gitIm(repoRoot, ["worktree", "prune"]);
-  const praefix = worktreePraefix(repoRoot);
+  const praefix = worktreePraefix(repoRoot, praefixName);
   const entfernt = [];
   for (const name of readdirSync(tmpdir())) {
     if (!name.startsWith(praefix)) continue;
