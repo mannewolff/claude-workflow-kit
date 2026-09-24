@@ -3111,6 +3111,27 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
  * Exportiert fuer die Tests (Issue #846): `NIGHT_CLAUDE_CMD` ersetzt den ganzen Aufruf,
  * eine Fake-Session sieht die gebaute Kommandozeile also nie.
  */
+/**
+ * Die Reserve zwischen dem Zeitlimit eines einzelnen Bash-Befehls und dem der Runde:
+ * genug Zeit, damit eine Session nach dem Tod ihres Befehls noch melden, kommentieren und
+ * die Karte bewegen kann (Issue #902).
+ */
+export const BASH_RESERVE_MS = 10 * 60 * 1000;
+
+/**
+ * Das Bash-Zeitlimit der Session aus dem Rundenzeitlimit (Issue #902).
+ *
+ * Die Reserve ist das Kleinere aus `BASH_RESERVE_MS` und 20 Prozent der Runde — ein fester
+ * Bruchteil naehme dem Befehl bei einer Stunde Runde die halbe Runde und machte Issue #668
+ * wieder kaputt, der Anteil haelt die kleinen Werte aus `NIGHT_TIMEOUT_MS` in den Tests
+ * positiv. Mindestens eine Millisekunde, damit das Ergebnis stets unter dem Rundenzeitlimit
+ * liegt und selbst positiv bleibt.
+ */
+export function bashZeitlimit(timeoutMs) {
+  const reserve = Math.max(1, Math.min(BASH_RESERVE_MS, Math.floor(timeoutMs * 0.2)));
+  return Math.max(1, timeoutMs - reserve);
+}
+
 export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
   if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
@@ -3191,10 +3212,16 @@ export async function runSession(issueId, args, opts = {}) {
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
       // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
       // Testcontainers liegt darueber; die Session staerbe an der Uhr statt am Code.
-      // Das Rundenzeitlimit ist die richtige Obergrenze: Was laenger braucht, als die
-      // Runde hat, ist ohnehin verloren.
+      // Die Obergrenze des Befehls liegt aber UNTER der der Runde (Issue #902): Stirbt der
+      // Befehl an einer Grenze darunter, lebt die Session weiter, sieht den Fehler und kann
+      // melden, kommentieren und die Karte bewegen. Stirbt er zeitgleich mit der Runde,
+      // geht beides verloren. Die Reserve ist so bemessen, dass der volle Pruefstand aus
+      // #668 weiter hineinpasst — siehe `bashZeitlimit`.
       ...(opts.vordergrundCheck
-        ? { BASH_MAX_TIMEOUT_MS: String(timeoutMs), BASH_DEFAULT_TIMEOUT_MS: String(timeoutMs) }
+        ? (() => {
+            const grenze = String(bashZeitlimit(timeoutMs));
+            return { BASH_MAX_TIMEOUT_MS: grenze, BASH_DEFAULT_TIMEOUT_MS: grenze };
+          })()
         : {}),
       ...opts.extraEnv,
     },

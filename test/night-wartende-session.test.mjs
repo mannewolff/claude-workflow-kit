@@ -8,8 +8,10 @@
 //
 // Fuenf Dinge werden hier festgehalten:
 //   night-25 — der Runner sperrt der Session das Werkzeug, mit dem sie wartend enden kann,
-//              hebt ihr Bash-Zeitlimit auf das Rundenzeitlimit und misst erst, wenn kein
-//              Prozess ihrer Gruppe mehr laeuft.
+//              hebt ihr Bash-Zeitlimit knapp unter das Rundenzeitlimit und misst erst, wenn
+//              kein Prozess ihrer Gruppe mehr laeuft.
+//   night-91 — die Reserve zwischen beiden Grenzen, damit die Session den Tod ihres
+//              Befehls ueberlebt und ihn melden kann (Issue #902).
 //   night-24 — endet sie dennoch ohne Commit, sagt das Protokoll WARUM, unterscheidbar
 //              von Zeitlimit, Abbruch und rotem Pflichtcheck.
 //   night-52 — am Schlusstext erkennt der Runner, ob die Sitzung auf eine SELBST
@@ -33,7 +35,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { wartendeSession, wartendVermerk, rundenGrund, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
+import { wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
 // gleichen Namens (`setupProjekt`, `board`, `run`, `stand`, `NUR_POSIX`) schon gehoeren.
@@ -127,14 +129,34 @@ test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit ge
     assert.ok(i >= 0, `--disallowedTools fehlt: ${args.join(" ")}`);
     assert.equal(args[i + 1], "Monitor", "gesperrt wird genau das Monitor-Werkzeug");
 
-    // Das Rundenzeitlimit ist die Obergrenze: Was laenger braucht, als die Runde hat,
-    // ist ohnehin verloren. 40 Minuten sind 2.400.000 ms.
+    // Die Obergrenze des Befehls liegt UNTER der der Runde (Issue #902), damit die Session
+    // den Tod des Befehls ueberlebt und ihn melden kann. 40 Minuten sind 2.400.000 ms,
+    // davon 20 Prozent Reserve (480.000 ms, unter der festen von zehn Minuten).
     const umgebung = readFileSync(envLog, "utf-8");
-    assert.match(umgebung, /MAX=2400000/, `BASH_MAX_TIMEOUT_MS falsch oder leer: ${umgebung}`);
-    assert.match(umgebung, /DEFAULT=2400000/, `BASH_DEFAULT_TIMEOUT_MS falsch oder leer: ${umgebung}`);
+    assert.match(umgebung, /MAX=1920000/, `BASH_MAX_TIMEOUT_MS falsch oder leer: ${umgebung}`);
+    assert.match(umgebung, /DEFAULT=1920000/, `BASH_DEFAULT_TIMEOUT_MS falsch oder leer: ${umgebung}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     if (binDir) rmSync(binDir, { recursive: true, force: true });
+  }
+});
+
+// --- night-91: die Reserve zwischen Bash-Limit und Rundenzeitlimit (Issue #902) ---
+
+test("[night-91] das Bash-Limit laesst der Session eine Reserve zum Melden", () => {
+  // Eine Stunde Runde: die feste Reserve von zehn Minuten greift, weil sie unter den
+  // 20 Prozent (12 Minuten) liegt.
+  assert.equal(bashZeitlimit(60 * 60 * 1000), 50 * 60 * 1000);
+  // Eine Minute Runde: jetzt greift der Anteil, sonst bliebe nichts uebrig.
+  assert.equal(bashZeitlimit(60 * 1000), 48 * 1000);
+  assert.equal(BASH_RESERVE_MS, 10 * 60 * 1000);
+});
+
+test("[night-91] das Bash-Limit bleibt positiv und stets unter dem Rundenzeitlimit", () => {
+  for (const timeoutMs of [2, 5, 100, 1000, 60 * 1000, 40 * 60 * 1000, 60 * 60 * 1000]) {
+    const grenze = bashZeitlimit(timeoutMs);
+    assert.ok(grenze >= 1, `nicht positiv bei ${timeoutMs}: ${grenze}`);
+    assert.ok(grenze < timeoutMs, `nicht unter dem Rundenzeitlimit bei ${timeoutMs}: ${grenze}`);
   }
 });
 
