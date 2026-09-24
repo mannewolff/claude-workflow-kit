@@ -2065,6 +2065,37 @@ export function stoppFragenGrund(body) {
   return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
 }
 
+// Wie eine fachliche Anforderung sagt, dass keine Frage mehr offen ist: die erste
+// nichtleere Zeile beginnt mit "Keine" — ein fuehrender Listenstrich davor und ein
+// beliebiger Zusatz dahinter sind erlaubt. Bewusst laxer als `KEINE_STOPP_FRAGEN`:
+// `/fachplan` schreibt keine Listenform vor, und die vorhandenen Anforderungen tragen
+// dort Fliesstext ("Keine. Die vier Fragen hat der PO entschieden …").
+const KEINE_PO_FRAGEN = /^(?:[-*+]\s+)?Keine/;
+
+/**
+ * Traegt eine fachliche Anforderung offene Fragen an den PO (Issue #916)? — `null`, wenn
+ * nicht.
+ *
+ * Eigene Funktion neben `stoppFragenGrund` und mit eigener Ueberschrift-Konstante: Die
+ * beiden Faelle unterscheiden sich in Ueberschrift, erlaubter Schreibweise und Wirkung
+ * (Halt mitten in der Kette gegen Ausschluss vor dem Start). Ein gemeinsamer Parameter
+ * verbaende zwei Regeln, die getrennt wandern koennen.
+ *
+ * Ein FEHLENDER Abschnitt laeuft, anders als beim Plandokument: Ob eine fachliche
+ * Anforderung ihren Pflichtabschnitt traegt, prueft Gate F7 in board.mjs; die Kette misst
+ * sie nicht ein zweites Mal daran.
+ */
+export function offeneFragenGrund(body) {
+  const abschnitt = abschnittLesen(body, PO_FRAGEN_UEBERSCHRIFT);
+  if (abschnitt === null) return null;
+  // Nur Zeilen ausserhalb eines Fence, aus demselben Grund wie bei `stoppFragenGrund`:
+  // Eine im Codeblock gezeigte Beispielfrage ist keine offene Frage.
+  const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
+  if (erste === undefined) return null;
+  if (KEINE_PO_FRAGEN.test(erste.trim())) return null;
+  return `offene Frage an den PO: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+}
+
 // --- Das Erfolgssignal der Erzeugung (Issue #520) ---
 
 // Welche Herkunftszeile ein erzeugtes Dokument seiner Quelle traegt: Ein Plandokument
@@ -2155,6 +2186,11 @@ const OFFENE_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s*$/i;
 // Gruenden von `planAusschluss` und im Weg nach vorn des Halt-Kommentars (Issue #896) —
 // zwei Schreibweisen desselben Abschnitts liessen den Menschen den falschen suchen.
 const ENTSCHEIDUNGEN_NAME = "Architektonische Entscheidungen";
+// Der Pflichtabschnitt einer fachlichen Anforderung (Gate F7), gelesen von
+// `offeneFragenGrund`. Eigene Konstante neben `OFFENE_FRAGEN_NAME`: Die Ueberschrift
+// lautet anders, und die beiden Regeln koennen getrennt wandern.
+const PO_FRAGEN_NAME = "Offene Fragen an den PO";
+const PO_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s+an\s+den\s+PO\s*$/i;
 
 /**
  * Die Zeilen eines Markdown-Abschnitts — `null`, wenn die Ueberschrift fehlt.
@@ -4904,9 +4940,10 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  *
  * Die Reihenfolge ist die Antwort: Erst die Spalte (E4: ausserhalb von Backlog ist ein
  * Versehen), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
- * Fachplan stehen), zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht
- * hinter `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund
- * behaelt: Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
+ * Fachplan stehen), dann die fehlende Pruefung (Fachplan #702), zuletzt die offenen
+ * Fragen an den PO (Issue #916). Die Pruefung steht hinter `kit:klaeren`, damit ein
+ * Fachplan mit offener Frage den spezifischeren Grund behaelt: Wer die Frage beantwortet,
+ * kommt weiter, wer nur pruefen laesst, nicht.
  *
  * Die Praefix-Probe steht seit Issue #895 NICHT mehr hier, sondern in
  * `waehleKettenKandidaten`: Dort entscheidet sie ueber die Auftragsart, und eine Karte
@@ -4917,6 +4954,14 @@ function kettenAusschluss(issue, kettenLabel) {
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
+  // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
+  // laufen liess, soll das zuerst erfahren; die Fragen sind der naechste Schritt danach.
+  // `review:fertig` bezeugt die Pruefung durch fremde Modelle — die Reviewer duerfen die
+  // PO-Fragen ausdruecklich nicht beantworten, also sagt das Label darueber nichts.
+  const poFrage = offeneFragenGrund(issue?.body || "");
+  if (poFrage !== null) {
+    return `${poFrage}; die Fragen im Body beantworten und '## ${PO_FRAGEN_NAME}' auf 'Keine' setzen`;
+  }
   return null;
 }
 
