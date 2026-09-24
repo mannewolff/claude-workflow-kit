@@ -5781,9 +5781,9 @@ export function berichtBauen(einheit, {
   z.push("### Entscheidungen der Nacht", "");
   if (entscheidungen.length === 0) z.push("- Keine.");
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
-  z.push("");
 
   z.push(
+    "",
     "### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "",
     "### Abdeckung gegen den Fachplan", "",
   );

@@ -558,10 +558,6 @@ export function arten() {
 // sie hier mit, waere jeder Lauf mit liegender Notiz faelschlich nicht-vergleichbar.
 const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
 
-// Der Uebernahmevermerk der einarbeitenden Session, je Fundblock eine Zeile. Die
-// Umlautfassung gilt mit, aus demselben Grund wie bei STAND_RE.
-const UEBERNAHME_RE = /^(?:Uebernahme|Übernahme)\s*:\s*(.*)$/;
-
 // Die Kennzeichnung aus E6 (Plan #797): Ein so markierter Fund ist kein Vorkommen,
 // auch wenn seine uebrigen Angaben vollstaendig aussehen.
 const UNVOLLSTAENDIG_RE = /^Angaben\s*:\s*unvollst(?:ae|ä)ndig/i;
