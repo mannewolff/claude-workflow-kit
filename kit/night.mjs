@@ -1700,6 +1700,35 @@ export function hasReviewMarker(body) {
   return (body || "").split("\n").some((zeile) => REVIEW_MARKER_ZEILE.test(zeile.trimStart()));
 }
 
+// Der Pruefer-Vermerk am Plan, den /issue-review dort hinterlaesst.
+//
+// Derselbe Ausdruck trug bisher an drei Stellen dieselbe Arbeit — zweimal als blosse
+// Marker-Probe (`\s*\S`), einmal als Wert-Auslese (`\s*(.+?)\s*$`) —, und die beiden
+// Fassungen waren sich uneinig: 'Plan-Review:   ' war der einen ein Wert, der anderen
+// keiner. Jetzt liest eine Funktion den Wert, und die Marker-Probe fragt sie.
+//
+// Der Ausdruck sieht nur noch die getrimmte Zeile: Das fuehrende `\s*` hinter `^` mit
+// m-Flag war der SonarQube-Fund (S8786, Issue #877) — derselbe, den Issue #496 fuer
+// REVIEW_MARKER_ZEILE behoben hat, und er wird auf demselben Weg behoben. Die Form des
+// Werts ist die von AUTOR_MODELL_ZEILE: vom ersten bis zum letzten Nicht-Leerzeichen.
+export const PLAN_REVIEW_ZEILE = /^Plan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
+
+/** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
+export function planReviewWert(body) {
+  // `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
+  // `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+  for (const zeile of String(body ?? "").split("\n")) {
+    const treffer = PLAN_REVIEW_ZEILE.exec(zeile.trimStart());
+    if (treffer !== null) return treffer[1];
+  }
+  return null;
+}
+
+/** Ob der Body eines Plans den Plan-Review-Marker mit einem Wert traegt. */
+export function hatPlanReviewMarker(body) {
+  return planReviewWert(body) !== null;
+}
+
 /**
  * Der Freigabe-Befund eines Ready-Issues fuer das Gate `requiredBeforeReady` (#304,
  * gekuerzt in Plan #638, A17).
@@ -4865,7 +4894,7 @@ async function stufeReview(kette, planId) {
   if (s.ausgang !== "fertig") {
     // Auch beim Abbruch wird nachgesehen, was in der bezahlten Zeit entstanden ist.
     const rest = board("issue", "get", planId);
-    stand.marker = /^\s*Plan-Review:\s*\S/m.test(rest.body || "");
+    stand.marker = hatPlanReviewMarker(rest.body);
     // Der eigene Vermerk der wartenden Sitzung zaehlt hier nicht (Issue #778): Er ist in
     // genau diesem Zweig kurz zuvor an den Plan gegangen, und ohne den Ausschluss
     // behauptete die Spur daneben, es lägen Reviewer-Befunde am Dokument.
@@ -4875,7 +4904,7 @@ async function stufeReview(kette, planId) {
   }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   const nachher = board("issue", "get", planId);
-  stand.marker = /^\s*Plan-Review:\s*\S/m.test(nachher.body || "");
+  stand.marker = hatPlanReviewMarker(nachher.body);
   if (hatKlaerenLabel(nachher)) {
     const neue = neueKommentare(vorher, nachher);
     return { ausgang: "angehalten", grund: `Stopp-Frage aus dem Review von #${planId}`, dokId: planId, frage: neue.at(-1) ?? `siehe den letzten Kommentar an #${planId}` };
@@ -5395,7 +5424,7 @@ function berichtStufen(einheit, plan, pakete) {
   const p = stufen.plan;
   const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
   if (p?.id) {
-    const pruefer = /^\s*Plan-Review:\s*(.+?)\s*$/m.exec(String(plan?.body || ""))?.[1] ?? "keiner";
+    const pruefer = planReviewWert(plan?.body) ?? "keiner";
     const kosten = p.kennzahlen?.kostenUsd;
     const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
     const titel = plan?.title ? ` (${plan.title})` : "";

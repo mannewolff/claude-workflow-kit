@@ -817,6 +817,30 @@ function anteilSchreibkosten(a, schwellen) {
 
 const NICHT_GEMESSEN = "nicht gemessen";
 
+// Nur eine reine Ziffernfolge wird gruppiert. `toFixed` liefert bei nicht endlichen
+// Zahlen 'Infinity' und 'NaN'; der alte Ausdruck fand dort keine Stelle und liess den
+// Text stehen, und 'Inf.ini.ty' waere eine neue, falsche Ausgabe. Der Anker macht den
+// Ausdruck selbst linear: `^` ohne m-Flag laesst genau eine Startposition zu.
+const NUR_ZIFFERN = /^\d+$/;
+
+/**
+ * Eine Ziffernfolge mit Punkten als Tausendertrenner.
+ *
+ * Gezaehlt statt gesucht (Issue #877): Im alten `\B(?=(\d{3})+$)` probierte die Engine an
+ * JEDER Position jede Aufteilung des Rests in Dreiergruppen durch — 32.000 Ziffern
+ * brauchten so 390 ms. Von hinten in Dreierschritten zu schneiden kostet einen Durchlauf.
+ *
+ * SYNC: dieselbe Funktion steht in kit/wirksamkeit.mjs (#440).
+ */
+export function tausenderPunkte(ziffern) {
+  if (!NUR_ZIFFERN.test(ziffern)) return ziffern;
+  const gruppen = [];
+  for (let ende = ziffern.length; ende > 0; ende -= 3) {
+    gruppen.unshift(ziffern.slice(Math.max(0, ende - 3), ende));
+  }
+  return gruppen.join(".");
+}
+
 /**
  * Deutsche Zahlform: Komma als Dezimaltrenner, Punkt als Tausendertrenner.
  *
@@ -824,12 +848,12 @@ const NICHT_GEMESSEN = "nicht gemessen";
  * Maschine, und derselbe Bericht soll ueberall dieselben Zahlen zeigen — dieselbe
  * Begruendung, aus der `vergleicheText` in checks.mjs kein `localeCompare` nimmt.
  */
-function zahlform(wert, stellen) {
+export function zahlform(wert, stellen) {
   const fest = wert.toFixed(stellen);
   const [ganz, bruch] = fest.split(".");
   const vorzeichen = ganz.startsWith("-") ? "-" : "";
   const ziffern = vorzeichen ? ganz.slice(1) : ganz;
-  const gruppiert = ziffern.replaceAll(/\B(?=(\d{3})+$)/g, ".");
+  const gruppiert = tausenderPunkte(ziffern);
   return bruch ? `${vorzeichen}${gruppiert},${bruch}` : `${vorzeichen}${gruppiert}`;
 }
 

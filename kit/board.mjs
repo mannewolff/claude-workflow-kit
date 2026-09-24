@@ -3043,6 +3043,14 @@ const CHECK_FORM_ABSCHNITTE = {
   issue: ["kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"],
 };
 
+// Die Kopfzeile eines `##`-Abschnitts; Gruppe 1 ist ihr Titel.
+//
+// Der Titel laeuft greedy bis zum Zeilenende, und dahinter steht nichts mehr, was
+// scheitern koennte: Das alte `(.+?)[ \t]*$` war ein S8786-Fund (Issue #877), weil das
+// lazy Stueck und der Leerraum-Lauf dieselben Zeichen akzeptierten. Den Leerraum am Ende
+// stutzt ohnehin `normUeberschrift` — im Ausdruck stand er doppelt.
+export const ABSCHNITT_ZEILE = /^##[ \t]+([^\n]+)/;
+
 /** Ueberschriften vergleichbar machen: Umlaute zaehlen in beiden Schreibweisen. */
 function normUeberschrift(text) {
   return String(text).trim().toLowerCase()
@@ -3064,7 +3072,7 @@ function zerlegeAbschnitte(body) {
   let aktuell = null;
   for (const zeile of normalisiereZeilenenden(body).split("\n")) {
     if (imFence(zeile)) continue;
-    const m = /^##[ \t]+(.+?)[ \t]*$/.exec(zeile);
+    const m = ABSCHNITT_ZEILE.exec(zeile);
     if (m) {
       aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
       abschnitte.push(aktuell);
