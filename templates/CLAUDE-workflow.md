@@ -139,6 +139,12 @@ Erkannt wird eine Mitteilung am Inhalt; wer eindeutig sein will, schreibt „Mit
 
 ---
 
+## Der Prueflauf (optional)
+
+Der Prueflauf (`node .claude/kit/night.mjs --pruefen`) laesst mehrere fachliche Anforderungen nacheinander pruefen, ohne dass jemand zusieht — am Tag, neben dem arbeitenden Menschen und neben einer Nacht-Kette. Die Geste ist das Label `kit:pruefen` (Feld `pruefLauf.label`) an der `[Fachlich]`-Karte; der Lauf verbraucht es unmittelbar vor ihrer Session, jedes Setzen autorisiert genau eine Pruefung. Je Karte laeuft eine Session `/issue-review #N`, alle in einem Worktree je Lauf. Drei Ausgaenge: `geprueft` (Fachplan-Review-Marker im Body und `review:fertig` an der Karte), wartende Entscheidung (`kit:klaeren` und die Frage als Kommentar; der Text der Anforderung bleibt unveraendert) und unvollstaendig (der Kommentar `## Pruefung unvollstaendig` mit Grund und erreichtem Schritt, weil die Pruefung bezahlt ist und ihr Ergebnis den Body nie erreicht hat). Eine gekennzeichnete Karte ohne `[Fachlich]`-Praefix und eine mit `kit:klaeren` wird mit Grund uebersprungen und behaelt ihr Kennzeichen; `kit:klaeren` nimmt der Lauf nie ab — das darf allein ein Mensch. Er bewegt keine Karte, aendert nichts an der Pruefung selbst, beantwortet keine Frage, die einem Menschen gehoert, und hinterlaesst im Projekt keine Aenderung. Budgets — Minuten je Pruefung, Kosten je Lauf — stehen im Wurzelblock `pruefLauf` der `workflow.config.json`, nicht unter `night`: Der Lauf gehoert dem Tag. Verhaeltnis zur Nacht-Kette: Er stellt deren Voraussetzung her, indem er die Karte geprueft zuruecklaesst; das Kettenlabel bleibt die Geste des Menschen. Details: Kapitel „Der Prueflauf" in der Kit-Dokumentation.
+
+---
+
 ## Nachtbetrieb (optional)
 
 Der Nacht-Runner (`node .claude/kit/night.mjs`) arbeitet die Ready-Spalte unbeaufsichtigt ab: pro Issue mit dem Routing-Label `kit:nightrun` eine frische Headless-Session mit `/implement-next #N`. Erfolg wird am Board gemessen (Issue in In review); Fehlschlaege wandern kommentiert ins Backlog, bei unsauberem Working Tree stoppt der Lauf hart. Nachts wird committet, nie gepusht — Review, Test und `push main` passieren morgens durch den Menschen.

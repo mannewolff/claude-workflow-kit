@@ -35,12 +35,16 @@ test("die gestrichenen Abschnitte sind weg", () => {
 });
 
 // Seit Issue #898 kommt ein drittes Vorkommen dazu: Der Nachtbetrieb-Block nennt die
-// Pruefung als Bedingung beider Auftragsarten der Kette. Die Leitplanke bleibt scharf —
-// genau drei, zwei davon im Absatz zu /issue-review, das dritte im Nachtbetrieb-Block.
+// Pruefung als Bedingung beider Auftragsarten der Kette. Seit Issue #910 ein viertes: Der
+// Prueflauf-Block nennt sie als die Spur, die eine geprueft hinterlassene Karte traegt —
+// dort entsteht sie. Die Leitplanke bleibt scharf — genau vier, zwei davon im Absatz zu
+// /issue-review, das dritte im Nachtbetrieb-Block, das vierte im Prueflauf-Block.
 test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
-  assert.equal(VORLAGE.split("review:fertig").length, 4, "review:fertig steht nicht genau dreimal");
+  assert.equal(VORLAGE.split("review:fertig").length, 5, "review:fertig steht nicht genau viermal");
   const nachtbetrieb = VORLAGE.slice(VORLAGE.indexOf("## Nachtbetrieb (optional)")).split(/\n## /)[0];
   assert.equal(nachtbetrieb.split("review:fertig").length, 2, "der Nachtbetrieb-Block nennt review:fertig nicht genau einmal");
+  const prueflauf = VORLAGE.slice(VORLAGE.indexOf("## Der Prueflauf (optional)")).split(/\n## /)[0];
+  assert.equal(prueflauf.split("review:fertig").length, 2, "der Prueflauf-Block nennt review:fertig nicht genau einmal");
   const zeilen = VORLAGE.split("\n");
   const start = zeilen.findIndex((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
   assert.ok(start >= 0, "der Absatz zu /issue-review fehlt");

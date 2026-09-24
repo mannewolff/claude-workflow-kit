@@ -953,9 +953,63 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 
 Ohne PO ist die Schleife unsichtbar: `/techplan` direkt aufzurufen bleibt der Normalweg.
 
+## Der Prüflauf
+
+**Ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt.** Die Prüfung tagsüber ist ein Gespräch: Jeder Fund will besprochen, jede Frage der Stopp-Klasse beantwortet werden. Der Prüflauf nimmt genau das ab — Anforderungen kennzeichnen, Lauf starten, später nachsehen. Je Karte läuft eine Session `/issue-review #N`, ohne dass zwischendurch jemand antwortet; danach steht an jeder Karte, woran man ist: geprüft und bereit, oder es wartet eine Entscheidung. Alles, was außerhalb der Stopp-Klasse liegt, hat die Prüfung entschieden und im Dokument festgehalten. **Diese Sortierung ist der Gewinn.**
+
+Der Lauf gehört dem **Tag** und steht darum in einem eigenen Kapitel, nicht unter [Nachtbetrieb](#nachtbetrieb): Er läuft neben dem arbeitenden Menschen und neben einer Nacht-Kette, und er fällt weder auf einen unsauberen Arbeitsbaum noch auf ein Paket in In progress herein. Zur Nacht-Kette steht er in genau einem Verhältnis: Er **stellt deren Voraussetzung her** — eine geprüft hinterlassene Karte trägt das `review:fertig`, das die Kette verlangt. Das **Kettenlabel** bleibt die Geste des Menschen; der Prüflauf setzt es nie.
+
+**Die Geste:** das Label `kit:pruefen` an der fachlichen Anforderung (Labelname aus `pruefLauf.label`, siehe [Alle Einstellungen](#prueflauf); am Board einmal anzulegen). Der Lauf **verbraucht es** unmittelbar vor der Session dieser Karte — jedes Setzen autorisiert genau eine Prüfung; ein Abbruch führt zu einem Vermerk mit Grund und einer neuen Geste, nicht zur stillen Wiederholung. Mit dem Kennzeichen nimmt er auch ein `review:fertig` aus einem Vorlauf ab: Nur so beantwortet der Stand nach der Session die Frage nach **dieser** Prüfung und nicht die nach einer früheren. `kit:klaeren` nimmt er **nie** ab — das darf nur ein Mensch, sonst gäbe sich ein Lauf seine eigene Freigabe.
+
+**Start:**
+
+```bash
+node .claude/kit/night.mjs --pruefen
+```
+
+Eine **Vorschau hat der Lauf nicht** — `--pruefen --dry-run` wird abgewiesen, und `/issue-review --dry-run` zeigt ohnehin Dokumente und Reviewer. Was laufen wird, steht in der Kandidatenliste, die der Lauf vor der ersten Session protokolliert. `--label` gilt hier nicht (das Kennzeichen kommt aus der Config), `--kette` und `--pruefen` zusammen ebenso wenig: Das sind zwei Läufe mit eigenen Budgets, Labels und Worktrees. `--max N` ist erlaubt, aber **nicht nötig** — begrenzt wird der Lauf über seine Budgets, nicht über eine Zahl; ohne `--max` gibt es keinen Zahlendeckel.
+
+**Die Kandidaten:** jede Karte, die das Kennzeichen trägt und den Titel `[Fachlich]` hat. **Ohne Spaltenbedingung**, anders als bei der Nacht-Kette: Ein fachliches Dokument geht nie nach Ready, und die Geste gilt der Karte, nicht ihrem Ort. Was das Kennzeichen trägt, aber nicht geprüft wird, steht mit Grund als `uebersprungen` in der Liste und **behält sein Kennzeichen**: ein `[Plan]`-Dokument oder ein Arbeitspaket (der Prüflauf gilt allein fachlichen Anforderungen) und eine Karte mit `kit:klaeren` (dort wartet eine Frage auf einen Menschen, und eine zweite Prüfung beantwortet sie nicht). Karten über einem gesetzten `--max` gelten als `liegengeblieben` — das ist kein Ausschluss. Trägt keine einzige Karte das Kennzeichen, sagt der Lauf das und nennt die vorhandenen Labels. Vor der ersten Prüfung läuft der **Reviewer-Vorflug** wie bei der Kette: Scheitert er, bekommt jeder Kandidat den Kommentar `Pruefung nicht gestartet` mit Grund und behält sein Kennzeichen — es lief nichts.
+
+**Der Worktree:** einer je **Lauf**, nicht je Karte (`pruefung-…` unter dem Temp-Verzeichnis, eigener Präfix neben dem der Kette). Die Sessions lesen und schreiben am Board, nicht im Arbeitsbaum; ein Worktree je Karte kostete Zeit für eine Trennung ohne Gegenstand. Nach dem Lauf wird er entfernt, einen liegengebliebenen räumt der nächste Start — und zwar nur einen mit **seinem** Präfix, damit eine gleichzeitig laufende Nacht-Kette ihren behält.
+
+**Je Karte:** Der Lauf bildet unmittelbar vor der Session den Fingerabdruck der gelesenen **Fassung** (zwölf Hexstellen aus dem Kartentext) und nennt ihn in Kandidatenliste, Protokoll und Ergebnis. Damit steht hinterher fest, *was* geprüft wurde: Wer den Text während der Prüfung ändert, sieht am Fingerabdruck, dass die Prüfung eine andere Fassung gelesen hat. Das Ergebnis liest der Lauf am **Unterschied** der Board-Spuren vor und nach der Session, nie am Stand danach allein — eine erneut geprüfte Karte trägt Marker und Befunde schon aus dem Vorlauf. Ein Abbruch beendet nur diese Karte; die nächste kommt dran.
+
+**Drei Ergebnisse, jedes mit seiner Spur am Board:**
+
+| Ergebnis | Spur an der Karte | was als Nächstes dran ist |
+|---|---|---|
+| geprüft | Fachplan-Review-Marker im Body und das Label `review:fertig`, Befunde und Einarbeitung als Kommentare | nichts — die Karte erfüllt die Aufnahmevoraussetzung der Nacht-Kette |
+| wartende Entscheidung | `kit:klaeren` und die Frage als Kommentar; der Text der Anforderung bleibt **unverändert** | die Frage beantworten und `kit:klaeren` abnehmen — beides von Hand |
+| unvollständig | der Kommentar `## Pruefung unvollstaendig` mit Grund, erreichtem Schritt (`gestartet`, `befunde`, `eingearbeitet`) und dem Weg nach vorn | `/issue-review #N` von Hand fahren |
+
+Der dritte Ausgang ist eigens ausgewiesen und keines der beiden ersten: Die Prüfung ist dann bezahlt, ihre Befunde stehen am Board, aber der Body trägt keinen Marker — ohne den Vermerk sähe die Karte später wie eine unberührte aus. Eine Session, die eine lange Arbeit angestoßen hat und darauf wartend endete, bekommt stattdessen nur den Vermerk `## Nachtlauf: wartende Sitzung`; zwei Kommentare für einen Abbruch sagen nichts, was einer nicht sagt.
+
+**Budgets** stehen im Wurzelblock `pruefLauf` der `.claude/workflow.config.json` — nicht unter `night`, denn der Lauf gehört dem Tag. Fehlt der Block oder ein Feld darin, gelten diese Startwerte:
+
+```json
+{
+  "pruefLauf": {
+    "label": "kit:pruefen",
+    "pruefungMin": 25,
+    "kostenUsd": 25
+  }
+}
+```
+
+`pruefungMin` ist das Zeitbudget **je Prüfer-Session**; es liegt über dem der Plan-Stufe der Kette, weil die fachliche Stufe zwei Reviewer fährt. `kostenUsd` ist das Kostenbudget **je Lauf**, summiert über alle Sessions und geprüft **nach** jeder Session, nie mittendrin — eine halb gelesene Prüfung wäre der teurere Fehler. Ist es erschöpft, gelten die restlichen Karten als übersprungen und behalten ihr Kennzeichen.
+
+**Die Ergebnisliste steht auf der Konsole** (und im Protokoll `.claude/night-run-<datum>.log`), weil der Lauf dem Tag gehört: Wer ihn startet, sieht sein Ergebnis. Je Karte eine Zeile mit Nummer, Titel, Ergebnis und Fassung — bei einer wartenden Entscheidung dazu die Frage, bei einem Abbruch der erreichte Schritt —, darunter eine Summenzeile über die fünf Ausgänge. Der [Ergebnisstand als JSON](#nachtbetrieb) entsteht wie bei jedem unbeaufsichtigten Lauf, mit einer Einheit je Karte samt Ausgang, Fassung, Dauer und Kennzahlen.
+
+**Was der Lauf nicht tut.** Er bewegt **keine Karte** zwischen Spalten, zieht nichts nach Ready, setzt kein Kettenlabel und nimmt kein `kit:klaeren` ab. Er ändert auch nichts an der Prüfung selbst: Wer prüft, in welcher Rolle und mit welchen Fragen, bleibt, wie es ist — es ist dieselbe Prüfung wie von Hand, nur ohne das Gespräch. Und er beantwortet keine Frage, die einem Menschen gehört; er sortiert.
+
+**Die Grenze der Unberührtheit.** Der Lauf hinterlässt im Projekt keine Änderung — der Stand des Arbeitsverzeichnisses ist vor und nach dem Lauf derselbe, auch wenn jemand währenddessen darin arbeitet. Eine Ausnahme gehört dazu, und sie ist keine: Beim Tracker `local` liegt das Board **im Repo**, und die Config im Worktree zeigt auf `issues/` der Hauptkopie, damit die Sessions dort schreiben. Diese Karten ändern sich also — das ist das **Ergebnis und kein Rest**. Unberührt bleibt alles außerhalb des Boards.
+
+**Danach:** Eine geprüft hinterlassene Karte erfüllt die Aufnahmevoraussetzung der Nacht-Kette — das **GO bleibt deins**: Das Kettenlabel setzt weiterhin ein Mensch. Liegt das Ergebnis vor der nächtlichen Auswahl vor, läuft die Kette am selben Abend, sonst beim nächsten Mal.
+
 ## Nachtbetrieb
 
-Der Nachtbetrieb kennt **zwei Betriebsarten**: die **Umsetzungsnacht**, die dieser Abschnitt beschreibt, und die **Nacht-Kette** (siehe [Zweiter Modus](#zweiter-modus-die-nacht-kette)), die aus einem Fachplan den geprüften Plan und die Arbeitspakete macht, ohne zu bauen. Die Umsetzungsnacht arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
+Der Nachtbetrieb kennt **zwei Betriebsarten**: die **Umsetzungsnacht**, die dieser Abschnitt beschreibt, und die **Nacht-Kette** (siehe [Zweiter Modus](#zweiter-modus-die-nacht-kette)), die aus einem Fachplan den geprüften Plan und die Arbeitspakete macht, ohne zu bauen. Beides ist die Nacht; der [Prüflauf](#der-prüflauf), der fachliche Anforderungen prüfen lässt, gehört dem Tag und steht in seinem eigenen Kapitel. Die Umsetzungsnacht arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
 **Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Drei Sorten Issue überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Fachlich]`-Titel, [PO-Schleife](#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idee]`-Titel) und **Plandokumente** (`[Plan]`-Titel). Eine rohe Idee ohne `/techplan`-Zyklus ist kein implementierbares Issue; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus.
 
