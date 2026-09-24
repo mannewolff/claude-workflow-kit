@@ -282,7 +282,7 @@ function protokollLesen(root) {
     if (roh === "") continue;
     const teile = roh.split("\t");
     const zeitMs = Date.parse(teile[0]);
-    const dauerMs = teile.length === 4 ? Number(teile[3]) : NaN;
+    const dauerMs = teile.length === 4 ? Number(teile[3]) : Number.NaN;
     if (teile.length !== 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
       fehlerhaft += 1;
       continue;

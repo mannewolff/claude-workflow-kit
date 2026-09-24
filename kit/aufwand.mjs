@@ -718,13 +718,25 @@ function fertigDauer(r) {
  * Anteile werden ueber die GEMESSENEN Werte gerechnet, nicht ueber alle Laeufe — sonst
  * verduennte ein Lauf ohne Messwerte einen echten Befund weg.
  */
+/**
+ * Eine Schwelle, die sich nicht bestimmen liess — der Gegenpart zum Befund-Objekt.
+ *
+ * Eigenes Objekt statt des blossen Namens als Zeichenkette (Sonar S3800): Eine Pruefung
+ * gibt so immer denselben Typ zurueck, und `schwellenPruefen` unterscheidet die beiden
+ * Faelle an einem Feld statt an `typeof`.
+ */
+function nichtBestimmbareSchwelle(name) {
+  return { schwelle: name, bestimmbar: false };
+}
+
 function schwellenPruefen(a, schwellen) {
   const befund = [];
   const nichtBestimmbar = [];
   for (const pruefe of [anteilPruefung, anteilEingrenzung, anteilWerkzeug, anteilSchreibkosten]) {
     const ergebnis = pruefe(a, schwellen);
     if (ergebnis === null) continue;
-    (typeof ergebnis === "string" ? nichtBestimmbar : befund).push(ergebnis);
+    if (ergebnis.bestimmbar === false) nichtBestimmbar.push(ergebnis.schwelle);
+    else befund.push(ergebnis);
   }
   return { befund, nichtBestimmbar };
 }
@@ -734,10 +746,10 @@ function schwellenPruefen(a, schwellen) {
  * "ueber der Haelfte", nicht "ab der Haelfte". Sonst faellt ein sauber halbiertes
  * Verhaeltnis jedes Mal auf.
  *
- * `null`: geprueft und unauffaellig. Der Name als Zeichenkette: nicht bestimmbar.
+ * `null`: geprueft und unauffaellig. `{ schwelle, bestimmbar: false }`: nicht bestimmbar.
  */
 function anteilBefund(name, zaehler, nenner, grenze, laeufe, text) {
-  if (nenner === null || nenner <= 0 || zaehler === null) return name;
+  if (nenner === null || nenner <= 0 || zaehler === null) return nichtBestimmbareSchwelle(name);
   const anteil = zaehler / nenner;
   return anteil > grenze ? { schwelle: name, wert: anteil, grenze, laeufe, text: text(anteil) } : null;
 }
@@ -746,7 +758,7 @@ function anteilBefund(name, zaehler, nenner, grenze, laeufe, text) {
 function anteilPruefung(a, schwellen) {
   const gesamt = a.pruefungen.gesamtMs.wert;
   const groesste = a.pruefungen.kommandos.find((k) => k.dauerMs !== null);
-  if (!groesste) return "pruefungAnteil";
+  if (!groesste) return nichtBestimmbareSchwelle("pruefungAnteil");
   const laeufe = a.pruefungen.gesamtMs.laeufe;
   return anteilBefund("pruefungAnteil", groesste.dauerMs, gesamt, schwellen.pruefungAnteil, laeufe,
     (anteil) => `Die Pruefung '${groesste.cmd}' verbraucht ${prozent(anteil)} der gemessenen Pruefzeit `
@@ -763,7 +775,7 @@ function anteilPruefung(a, schwellen) {
  * volle Auswahl lief, und als Beleg genommen liessen sie den Befund ausbleiben.
  */
 function anteilEingrenzung(a, schwellen) {
-  if (a.eingrenzung.gemessen === 0) return "eingrenzungOhneWirkung";
+  if (a.eingrenzung.gemessen === 0) return nichtBestimmbareSchwelle("eingrenzungOhneWirkung");
   if (!schwellen.eingrenzungOhneWirkung || a.eingrenzung.gegriffen > 0) return null;
   return {
     schwelle: "eingrenzungOhneWirkung",

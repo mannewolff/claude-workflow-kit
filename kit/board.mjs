@@ -3064,7 +3064,7 @@ function zerlegeAbschnitte(body) {
   let aktuell = null;
   for (const zeile of normalisiereZeilenenden(body).split("\n")) {
     if (imFence(zeile)) continue;
-    const m = zeile.match(/^##[ \t]+(.+?)[ \t]*$/);
+    const m = /^##[ \t]+(.+?)[ \t]*$/.exec(zeile);
     if (m) {
       aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
       abschnitte.push(aktuell);
@@ -3085,10 +3085,10 @@ function istLeer(zeilen) {
 
 /** `Autor-Modell: <wert>` (bzw. eine andere Kennzeichnungszeile) mit nicht leerem Wert. */
 function hatKennzeichnung(zeilen, name) {
-  const muster = new RegExp(`^${name}:[ \\t]*(\\S.*)?$`);
+  const muster = new RegExp(String.raw`^${name}:[ \t]*(\S.*)?$`);
   return zeilen.some((z) => {
-    const m = z.trim().match(muster);
-    return Boolean(m && m[1] && m[1].trim() !== "");
+    const m = muster.exec(z.trim());
+    return Boolean(m?.[1] && m[1].trim() !== "");
   });
 }
 
@@ -4013,7 +4013,7 @@ function nachtlaufStages(einheit) {
 // Die Budget-Felder, die die Fusszeile der Laeufe-Seite zeigt (Issue #808, E4) — nur auf
 // sie wird Budget und Herkunft zugeschnitten. KETTE_BUDGET_DEFAULTS (night.mjs) fuehrt
 // mehr; ungefiltert entstuende "aus Voreinstellungen" mit lauter Feldern, die niemand sieht.
-const NACHTLAUF_BUDGET_FELDER = ["planMin", "reviewMin", "paketeMin", "abdeckungMin", "kostenUsd"];
+const NACHTLAUF_BUDGET_FELDER = new Set(["planMin", "reviewMin", "paketeMin", "abdeckungMin", "kostenUsd"]);
 
 /**
  * Das Budget des Laufs samt Herkunft fuer die Meldung; `null`, wenn der Stand keins fuehrt
@@ -4029,7 +4029,7 @@ function nachtlaufBudget(stand) {
     if (wert !== null) budget[feld] = wert;
   }
   const defaultFields = (Array.isArray(stand.budgetAusDefault) ? stand.budgetAusDefault : [])
-    .filter((feld) => NACHTLAUF_BUDGET_FELDER.includes(feld));
+    .filter((feld) => NACHTLAUF_BUDGET_FELDER.has(feld));
   budget.origin = defaultFields.length ? "DEFAULTED" : "CONFIGURED";
   if (defaultFields.length) budget.defaultFields = defaultFields;
   return budget;
@@ -4146,12 +4146,9 @@ async function nightrunMelden(args) {
 }
 
 async function dispatchNightrun(command, args) {
-  switch (command) {
-    case "melden": return nightrunMelden(args);
-    default:
-      process.stdout.write(HELP);
-      fail(`Unbekannter nightrun-Befehl: '${command}'`);
-  }
+  if (command === "melden") return nightrunMelden(args);
+  process.stdout.write(HELP);
+  fail(`Unbekannter nightrun-Befehl: '${command}'`);
 }
 
 // ============================================================
@@ -4449,9 +4446,9 @@ function sitzungSchweigt(grund) {
 function sitzungStandLesen(start) {
   try {
     const stand = JSON.parse(readFileSync(resolve(".claude", SITZUNG_STAND_DATEI), "utf-8"));
-    return stand?.sitzung === start ? Date.parse(stand.zuletzt) : NaN;
+    return stand?.sitzung === start ? Date.parse(stand.zuletzt) : Number.NaN;
   } catch {
-    return NaN;
+    return Number.NaN;
   }
 }
 
@@ -4554,12 +4551,9 @@ async function sitzungMelden(args) {
 }
 
 async function dispatchSitzung(command, args) {
-  switch (command) {
-    case "melden": return sitzungMelden(args);
-    default:
-      process.stdout.write(HELP);
-      fail(`Unbekannter sitzung-Befehl: '${command}'`);
-  }
+  if (command === "melden") return sitzungMelden(args);
+  process.stdout.write(HELP);
+  fail(`Unbekannter sitzung-Befehl: '${command}'`);
 }
 
 async function dispatchKontext(command, args) {

@@ -133,7 +133,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
-import { join, dirname, resolve, basename, relative } from "node:path";
+import { join, dirname, resolve, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir, homedir } from "node:os";
 
@@ -481,31 +481,41 @@ function entfallenesFlag(a) {
   fail(`${a} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --kette${zusatz}.`);
 }
 
+/**
+ * Liest das Argument an Position `i` und gibt die Position des naechsten zurueck.
+ *
+ * Wie weit der Cursor rueckt, weiss nur die Regel selbst: ein Schalter um eins, ein
+ * Flag mit Wert um zwei, `--verbose` um eins oder zwei — je nachdem, ob ein Wert
+ * dasteht. Genau darum steht das Weiterruecken hier und nicht im Kopf einer
+ * for-Schleife, deren Zaehler der Rumpf dann verschieben muesste.
+ */
+function liesArgument(args, argv, i) {
+  const a = argv[i];
+  if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
+  if (Object.hasOwn(SOFORT_FLAGS, a)) {
+    SOFORT_FLAGS[a]();
+    return i + 1;
+  }
+  if (a === "--verbose") return liesVerbose(args, argv, i) + 1;
+  if (Object.hasOwn(WERT_FLAGS, a)) {
+    WERT_FLAGS[a](args, argv[i + 1]);
+    return i + 2;
+  }
+  if (Object.hasOwn(SCHALTER_FLAGS, a)) {
+    args[SCHALTER_FLAGS[a]] = true;
+    return i + 1;
+  }
+  fail(`Unbekanntes Argument: ${a} — siehe --help`);
+}
+
 function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
   const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
-    if (Object.hasOwn(SOFORT_FLAGS, a)) {
-      SOFORT_FLAGS[a]();
-      continue;
-    }
-    if (a === "--verbose") {
-      i = liesVerbose(args, argv, i);
-      continue;
-    }
-    if (Object.hasOwn(WERT_FLAGS, a)) {
-      WERT_FLAGS[a](args, argv[++i]);
-      continue;
-    }
-    if (Object.hasOwn(SCHALTER_FLAGS, a)) {
-      args[SCHALTER_FLAGS[a]] = true;
-      continue;
-    }
-    fail(`Unbekanntes Argument: ${a} — siehe --help`);
+  let i = 0;
+  while (i < argv.length) {
+    i = liesArgument(args, argv, i);
   }
   pruefeArgs(args);
   return args;
@@ -1178,82 +1188,80 @@ function boardRoh(...cliArgs) {
  * Funktion wird aus der Hauptschleife heraus gerufen, aber auch fuer sich getestet.
  */
 export function gitResteAusnahmen(cfg = config) {
-  const ausnahmen = [];
-  // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
-  // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
-  if (cfg?.issueTracker === "local") {
-    ausnahmen.push(cfg.local?.issuesDir || "issues");
-  }
-  // Das Nacht-Protokoll (Textdatei und Ergebnisstand, Issue #486) entsteht waehrend
-  // des Laufs im Arbeitsbaum: Protokoll-Zustand ist kein Code-Zustand. Anders als die
-  // issuesDir-Ausnahme gilt diese unabhaengig vom Tracker — der Runner legt seine
-  // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
-  // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
-  ausnahmen.push(".claude/night-run-*");
-  // Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
-  // Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen unter
-  // `.claude/vorhaben-wartend-*` ab. Heute entsteht keine mehr, aber in Zielprojekten kann
-  // noch eine liegen. Ohne den `.claude/*`-Block in `.gitignore` (der Installer laesst eine
-  // eigene `.claude`-Regel unangetastet) hielte sie den Lauf sonst hart an.
-  ausnahmen.push(".claude/vorhaben-wartend-*");
-  // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
-  // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
-  ausnahmen.push(".claude/night-bericht-*");
-  // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
-  // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
-  // das Protokoll darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
-  // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
-  // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
-  // ersten Paket als unsauber.
-  ausnahmen.push(UMSETZUNG_LOCK);
-  // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
-  // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
-  // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
-  // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
-  // `.claude/*`-Block nach der ersten erfolgreichen Runde hart. Damit waere die Wegmarke
-  // eine Bedingung der Arbeit statt ihrer Buchhaltung.
-  // SYNC: derselbe Pfad steckt als WEGMARKEN_DATEI in kit/board.mjs, das ihn schreibt;
-  // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
-  // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
-  ausnahmen.push(".claude/wegmarken.tsv");
-  // Die Aufwands-Auswertung (Issue #752) entsteht am Ende JEDES Laufs im Arbeitsbaum —
-  // `.claude/aufwand.md` fuer Menschen, `.claude/aufwand.json` fuer die zwei
-  // Ausgabestellen. Protokoll-Zustand, kein Code-Zustand, und aus demselben Grund
-  // ausgeschlossen wie `night-run-*` darueber: Ohne den Ausschluss stoppte der Rest-Guard
-  // (#152) im naechsten Lauf nach der ersten erfolgreichen Runde hart, sobald `.gitignore`
-  // den `.claude/*`-Block nicht fuehrt. Die Messung machte dann die Arbeit unmoeglich,
-  // die sie misst.
-  ausnahmen.push(".claude/aufwand.*");
-  // Die Wirksamkeits-Auswertung (Plan #782, E12) legt vier weitere Dateien im Arbeitsbaum
-  // an: die Protokolle `bewegungen.tsv` und `ausfuehrungen.tsv`, die in JEDEM Lauf
-  // mitschreiben, und die beiden Berichte `wirksamkeit.md` (fuer Menschen) und
-  // `wirksamkeit.json` (fuer die Weiterverarbeitung). Erhebung und Auswertung, kein
-  // Code-Zustand — und aus demselben Grund ausgeschlossen wie `aufwand.*` darueber:
-  // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt, dessen
-  // `.gitignore` den `.claude/*`-Block nicht fuehrt, nach der ersten erfolgreichen Runde
-  // hart. Die Messung machte dann die Arbeit unmoeglich, die sie misst. Dieses Repo
-  // fuehrt den Block und ist darum nicht selbst betroffen; ein frisch installiertes
-  // Projekt ohne ihn waere es.
-  // SYNC: die schreibenden Stellen liegen anderswo — `bewegungen.tsv` in kit/board.mjs,
-  // `ausfuehrungen.tsv` in kit/checks.mjs, `wirksamkeit.md` und `wirksamkeit.json` in
-  // kit/wirksamkeit.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
-  // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
-  ausnahmen.push(".claude/bewegungen.tsv"); // SYNC: kit/board.mjs schreibt sie
-  ausnahmen.push(".claude/ausfuehrungen.tsv"); // SYNC: kit/checks.mjs schreibt sie
-  ausnahmen.push(".claude/wirksamkeit.md"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
-  ausnahmen.push(".claude/wirksamkeit.json"); // SYNC: kit/wirksamkeit.mjs schreibt ihn
-  // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
-  // an: das Protokoll `befunde.tsv` (`befunde buchen` schreibt es, `befundeZurueck` holt
-  // es aus dem Worktree zurueck), die Nullpunkte `befunde-vorschlaege.json` und die
-  // Berichte `befunde.md` und `befunde.json`. Buchhaltung, kein Code-Zustand — und aus
-  // demselben Grund ausgeschlossen wie die vier Dateien der Wirksamkeits-Auswertung
-  // darueber: Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne
-  // den `.claude/*`-Block nach der ersten Buchung hart.
-  ausnahmen.push(".claude/befunde.tsv"); // SYNC: kit/befunde.mjs schreibt sie
-  ausnahmen.push(".claude/befunde-vorschlaege.json"); // SYNC: kit/befunde.mjs liest sie
-  ausnahmen.push(".claude/befunde.md");
-  ausnahmen.push(".claude/befunde.json");
-  return ausnahmen;
+  return [
+    // Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter issuesDir —
+    // Board-Zustand ist kein Code-Zustand und zaehlt nicht als dirty.
+    ...(cfg?.issueTracker === "local" ? [cfg.local?.issuesDir || "issues"] : []),
+    // Das Nacht-Protokoll (Textdatei und Ergebnisstand, Issue #486) entsteht waehrend
+    // des Laufs im Arbeitsbaum: Protokoll-Zustand ist kein Code-Zustand. Anders als die
+    // issuesDir-Ausnahme gilt diese unabhaengig vom Tracker — der Runner legt seine
+    // Dateien in jedem Projekt an, und ohne die Ausnahme stoppte der Rest-Guard (#152)
+    // nach jeder erfolgreichen Runde hart, sobald .gitignore .claude/* nicht fuehrt.
+    ".claude/night-run-*",
+    // Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
+    // Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen unter
+    // `.claude/vorhaben-wartend-*` ab. Heute entsteht keine mehr, aber in Zielprojekten kann
+    // noch eine liegen. Ohne den `.claude/*`-Block in `.gitignore` (der Installer laesst eine
+    // eigene `.claude`-Regel unangetastet) hielte sie den Lauf sonst hart an.
+    ".claude/vorhaben-wartend-*",
+    // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
+    // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
+    ".claude/night-bericht-*",
+    // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
+    // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
+    // das Protokoll darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der
+    // Rest-Guard (#152) in jedem Projekt ohne den `.claude/*`-Block nach der ersten
+    // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
+    // ersten Paket als unsauber.
+    UMSETZUNG_LOCK,
+    // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
+    // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
+    // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
+    // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
+    // `.claude/*`-Block nach der ersten erfolgreichen Runde hart. Damit waere die Wegmarke
+    // eine Bedingung der Arbeit statt ihrer Buchhaltung.
+    // SYNC: derselbe Pfad steckt als WEGMARKEN_DATEI in kit/board.mjs, das ihn schreibt;
+    // die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools ohne gemeinsames
+    // Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
+    ".claude/wegmarken.tsv",
+    // Die Aufwands-Auswertung (Issue #752) entsteht am Ende JEDES Laufs im Arbeitsbaum —
+    // `.claude/aufwand.md` fuer Menschen, `.claude/aufwand.json` fuer die zwei
+    // Ausgabestellen. Protokoll-Zustand, kein Code-Zustand, und aus demselben Grund
+    // ausgeschlossen wie `night-run-*` darueber: Ohne den Ausschluss stoppte der Rest-Guard
+    // (#152) im naechsten Lauf nach der ersten erfolgreichen Runde hart, sobald `.gitignore`
+    // den `.claude/*`-Block nicht fuehrt. Die Messung machte dann die Arbeit unmoeglich,
+    // die sie misst.
+    ".claude/aufwand.*",
+    // Die Wirksamkeits-Auswertung (Plan #782, E12) legt vier weitere Dateien im Arbeitsbaum
+    // an: die Protokolle `bewegungen.tsv` und `ausfuehrungen.tsv`, die in JEDEM Lauf
+    // mitschreiben, und die beiden Berichte `wirksamkeit.md` (fuer Menschen) und
+    // `wirksamkeit.json` (fuer die Weiterverarbeitung). Erhebung und Auswertung, kein
+    // Code-Zustand — und aus demselben Grund ausgeschlossen wie `aufwand.*` darueber:
+    // Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt, dessen
+    // `.gitignore` den `.claude/*`-Block nicht fuehrt, nach der ersten erfolgreichen Runde
+    // hart. Die Messung machte dann die Arbeit unmoeglich, die sie misst. Dieses Repo
+    // fuehrt den Block und ist darum nicht selbst betroffen; ein frisch installiertes
+    // Projekt ohne ihn waere es.
+    // SYNC: die schreibenden Stellen liegen anderswo — `bewegungen.tsv` in kit/board.mjs,
+    // `ausfuehrungen.tsv` in kit/checks.mjs, `wirksamkeit.md` und `wirksamkeit.json` in
+    // kit/wirksamkeit.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
+    // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
+    ".claude/bewegungen.tsv", // SYNC: kit/board.mjs schreibt sie
+    ".claude/ausfuehrungen.tsv", // SYNC: kit/checks.mjs schreibt sie
+    ".claude/wirksamkeit.md", // SYNC: kit/wirksamkeit.mjs schreibt ihn
+    ".claude/wirksamkeit.json", // SYNC: kit/wirksamkeit.mjs schreibt ihn
+    // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
+    // an: das Protokoll `befunde.tsv` (`befunde buchen` schreibt es, `befundeZurueck` holt
+    // es aus dem Worktree zurueck), die Nullpunkte `befunde-vorschlaege.json` und die
+    // Berichte `befunde.md` und `befunde.json`. Buchhaltung, kein Code-Zustand — und aus
+    // demselben Grund ausgeschlossen wie die vier Dateien der Wirksamkeits-Auswertung
+    // darueber: Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne
+    // den `.claude/*`-Block nach der ersten Buchung hart.
+    ".claude/befunde.tsv", // SYNC: kit/befunde.mjs schreibt sie
+    ".claude/befunde-vorschlaege.json", // SYNC: kit/befunde.mjs liest sie
+    ".claude/befunde.md",
+    ".claude/befunde.json",
+  ];
 }
 
 /**
@@ -2299,7 +2307,10 @@ function verbrauchErfassen(issueId, kennzahlen) {
   if (!LAUF || !kennzahlen) return;
   verbrauchAddieren(LAUF.verbrauch, kennzahlen);
   const einheit = issueId === null ? null : LAUF.einheiten.findLast((e) => e.id === String(issueId));
-  if (einheit) verbrauchAddieren(einheit.verbrauch ??= verbrauchLeer(), kennzahlen);
+  if (einheit) {
+    einheit.verbrauch ??= verbrauchLeer();
+    verbrauchAddieren(einheit.verbrauch, kennzahlen);
+  }
   LAUF.verbrauchOhneEinheit = verbrauchOhneEinheit(LAUF);
   schreibeErgebnisstand();
 }
@@ -2448,7 +2459,7 @@ export function empfohlenesModell(body, erlaubte) {
   const liste = Array.isArray(erlaubte) ? erlaubte : [];
   if (liste.length === 0) return { modell: null, grund: null };
 
-  const treffer = String(body ?? "").match(EMPFOHLENES_MODELL_ZEILE);
+  const treffer = EMPFOHLENES_MODELL_ZEILE.exec(String(body ?? ""));
   if (!treffer) return { modell: null, grund: null };
 
   const name = treffer[1];
@@ -2491,7 +2502,7 @@ const STUFEN_ORDNUNG = ["leicht", "mittel", "schwer"];
  * der Normalfall und kein Befund. Bestandspakete tragen die Zeile nicht (Plan #707, E12).
  */
 export function aufgabenStufe(body) {
-  const treffer = String(body ?? "").match(AUFGABENSTUFE_ZEILE);
+  const treffer = AUFGABENSTUFE_ZEILE.exec(String(body ?? ""));
   if (!treffer) return { stufe: null, grund: null };
 
   const wert = treffer[1];
@@ -2538,7 +2549,7 @@ export function stufenEinstellung(config) {
 // Fuehrende Zuweisungen einer Kommandozeile (`OLLAMA_HOST=… PORT=9 mein-runner …`) sind
 // Umgebung und nicht das Programm. Wer sie mitsucht, sucht nach einem Programm namens
 // `OLLAMA_HOST=…` und weicht still nach oben aus, obwohl das Programm daliegt (E8).
-const ZUWEISUNG = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const ZUWEISUNG = /^[A-Za-z_]\w*=/;
 
 /**
  * Laesst sich diese Stufe starten (Issue #709, Plan #707, E8)?
@@ -2712,8 +2723,8 @@ export function frischeStufenFelder(configPfad, stand) {
   try {
     const frisch = ladeConfigMitOverrides(configPfad);
     return { stufen: frisch?.night?.stufen, stufenRegel: frisch?.night?.stufenRegel, grund: null };
-  } catch (fehler) {
-    return vomStart(`die Einstellung liess sich nicht frisch lesen (${fehler.message}) — es gilt der Stand des Laufbeginns.`);
+  } catch (err) {
+    return vomStart(`die Einstellung liess sich nicht frisch lesen (${err.message}) — es gilt der Stand des Laufbeginns.`);
   }
 }
 
@@ -5164,7 +5175,7 @@ async function stufeUmsetzung(kette, paketIds) {
       return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
     }
 
-    let ergebnis = { ausgang: "fertig" };
+    let ergebnis;
     try {
       ergebnis = await umsetzungSchleife(kette, paketIds, lauf);
     } finally {
@@ -5384,7 +5395,7 @@ function berichtStufen(einheit, plan, pakete) {
   const p = stufen.plan;
   const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
   if (p?.id) {
-    const pruefer = String(plan?.body || "").match(/^\s*Plan-Review:\s*(.+?)\s*$/m)?.[1] ?? "keiner";
+    const pruefer = /^\s*Plan-Review:\s*(.+?)\s*$/m.exec(String(plan?.body || ""))?.[1] ?? "keiner";
     const kosten = p.kennzahlen?.kostenUsd;
     const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
     const titel = plan?.title ? ` (${plan.title})` : "";
@@ -5432,8 +5443,10 @@ export function berichtBauen(einheit, {
 } = {}) {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
-  z.push("### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "");
-  z.push("### Stufen", "", ...berichtStufen(einheit, plan, pakete), "");
+  z.push(
+    "### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "",
+    "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
+  );
   if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete));
 
   const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
@@ -5442,9 +5455,10 @@ export function berichtBauen(einheit, {
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
   z.push("");
 
-  z.push("### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "");
-
-  z.push("### Abdeckung gegen den Fachplan", "");
+  z.push(
+    "### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "",
+    "### Abdeckung gegen den Fachplan", "",
+  );
   if (abdeckung?.text) z.push(abdeckung.text);
   else z.push(`Keine Abdeckung: ${abdeckung?.grund ?? "die Kette hat die Stufe abdeckung nicht erreicht"}.`);
   if (einheit.abdeckungSchrieb) z.push("", "Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen sollte.");
@@ -6440,7 +6454,12 @@ export function istHalt(vorher, nachher) {
   return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
 }
 
-async function werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl) {
+/**
+ * Wertet eine gelaufene Runde aus. Die Angaben kommen als EIN Objekt statt als acht
+ * Parameter (Sonar S107): Die einzige Aufrufstelle uebergibt ohnehin die Felder einer
+ * Runde, und benannt gelesen kann keine zwei von ihnen die Reihenfolge vertauschen.
+ */
+async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl }) {
   const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   if (nowInReview) {
     log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
@@ -6697,7 +6716,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const dauerMs = Date.now() - started;
   const minutes = (dauerMs / 60000).toFixed(1);
 
-  const ausgang = await werteRunde(top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl);
+  const ausgang = await werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl });
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);

@@ -322,7 +322,7 @@ function fundeLesen(text) {
       continue;
     }
     if (marke !== null && KOPFZEILE_RE.test(ohneListenmarke(roh))) {
-      if (offen !== null && offen.nurUeberschrift) funde.pop();
+      if (offen?.nurUeberschrift) funde.pop();
       beginne(marke, text_, i + 1);
       continue;
     }
@@ -489,7 +489,7 @@ function gegenprobeBestaetigt(fund) {
   if (!gegenprobe) return false;
   const stand = STAND_RE.exec(gegenprobe[1]);
   // Gruppe 2 ist das bestaetigt-Wort; der 'nicht geprueft'-Ast fuellt Gruppe 3.
-  return stand !== null && stand[2] !== undefined;
+  return stand?.[2] !== undefined;
 }
 
 /** Die Reviewer-Koepfe eines Texts mit ihrer Zeilennummer, in Textreihenfolge. */
