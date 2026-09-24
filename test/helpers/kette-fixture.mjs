@@ -15,7 +15,10 @@ import { tmpdir } from "node:os";
 // Die Konstanten aus dem Runner selbst, nicht abgeschrieben: Der Fake der
 // Umsetzungs-Session soll genau das Label setzen und genau den Satz schreiben, an
 // denen der Runner den Halt erkennt (wie in night-angehalten.test.mjs).
-import { HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL } from "../../kit/night.mjs";
+import {
+  HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL,
+  PRUEFLAUF_BEFUNDE_ANKER, PRUEFLAUF_EINARBEITUNG_ANKER,
+} from "../../kit/night.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -100,7 +103,16 @@ export function mitProjekt(fn, kette = {}, praefix, configZusatz) {
   }
 }
 
-const FACHPLAN_BODY = "## Ziel\n\nEin Anliegen.\n\nAutor-Modell: claude-opus-5\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n";
+/**
+ * Der Body einer fachlichen Anforderung. `marker` setzt die Zeile `Fachplan-Review:` in den
+ * Kopf — so sieht eine Karte aus, die schon eine Pruefung hinter sich hat (Plan #904, E16).
+ */
+export function fachplanBody({ marker = null } = {}) {
+  const kopf = marker ? `Autor-Modell: claude-opus-5\n${marker}` : "Autor-Modell: claude-opus-5";
+  return `## Ziel\n\nEin Anliegen.\n\n${kopf}\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n`;
+}
+
+const FACHPLAN_BODY = fachplanBody();
 
 /**
  * Ein [Fachlich]-Issue im Backlog, wahlweise mit Label. Liefert die Nummer (lokal: 0001 …).
@@ -108,9 +120,12 @@ const FACHPLAN_BODY = "## Ziel\n\nEin Anliegen.\n\nAutor-Modell: claude-opus-5\n
  * `review:fertig` haengt per Default mit dran: Die Kette nimmt seit Issue #718 nur
  * gepruefte Anforderungen auf, und ohne das Label liefe in keinem Ablauf-Test mehr eine
  * Kette an. `geprueft: false` ist der Weg fuer die Ablehnungsfaelle.
+ *
+ * `body` weicht vom Standardrumpf ab — gebraucht fuer die Karte, die den
+ * Fachplan-Review-Marker schon aus einem Vorlauf traegt.
  */
-export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night", geprueft = true) {
-  const issue = board(dir, "issue", "create", "--title", titel, "--body", FACHPLAN_BODY);
+export function fachplan(dir, titel = "[Fachlich] Ein Anliegen", label = "kit:night", geprueft = true, body = FACHPLAN_BODY) {
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", body);
   if (label) board(dir, "issue", "label", "add", String(issue.id), label);
   if (geprueft) board(dir, "issue", "label", "add", String(issue.id), REVIEW_FERTIG_LABEL);
   return String(issue.id);
@@ -267,6 +282,58 @@ export const ABDECKUNG_SCHREIBT = String.raw`node .claude/kit/board.mjs issue co
 
 /** Ein Vorflug ohne Befund-Block: die Vorflug-Session gilt als nicht auswertbar, der Lauf stoppt hart. */
 export const VORFLUG_KAPUTT = "echo 'kein Befund'";
+
+// --- Bausteine des Prueflaufs am Tag (Fachplan #899, Plan #904; Issue #909) ---
+//
+// Der Prueflauf fuehrt je Karte genau eine Session, und die nennt der Runner in
+// NIGHT_KETTE_STUFE als `pruefung`. Weil alle Karten dieselbe Stufe sehen, verzweigen die
+// Tests darunter mit `jePaket` auf NIGHT_ISSUE_ID — je Karte ein anderer Ausgang.
+
+/** Der Marker, den eine gelaufene Pruefung im Kopf der fachlichen Anforderung hinterlaesst. */
+export const FACHPLAN_MARKER = "Fachplan-Review: opus, gpt-astra (2026-09-24, Prueflauf)";
+
+/** Der Befunde-Kommentar einer Pruefung — mit dem Anker, an dem der Runner den Schritt erkennt. */
+const PRUEFUNG_BEFUNDE_TEXT = `${PRUEFLAUF_BEFUNDE_ANKER}\n\n- Fund 1 (opus, WICHTIG): Die Zielgruppe bleibt offen.`;
+
+/** Der Einarbeitungs-Kommentar einer Pruefung — der zweite Anker desselben Ablaufs. */
+const PRUEFUNG_EINARBEITUNG_TEXT = `${PRUEFLAUF_EINARBEITUNG_ANKER}\n\n- Fund 1 (opus, WICHTIG): übernommen.`;
+
+/** Die Frage, mit der eine Pruefung an einer Entscheidung der Stopp-Klasse anhaelt. */
+export const PRUEFUNG_FRAGE = "Halt: Welche der beiden Zielgruppen gilt?";
+
+const BOARD = "node .claude/kit/board.mjs";
+
+/**
+ * Die Fake-Zeile einer vollstaendigen Pruefung: Marker in den Kopf, beide Kommentare,
+ * `review:fertig` dran.
+ *
+ * Der Body wird ganz neu geschrieben statt ergaenzt — mit `--body-file`, weil der Marker
+ * eine eigene Zeile braucht. Er geht VOR den Kommentaren raus: Der lokale Tracker haengt
+ * Kommentare an denselben Body, und ein spaeteres `issue update` naehme sie wieder mit.
+ */
+export const PRUEFUNG_GEPRUEFT = [
+  `printf '%s' "$PRUEFUNG_BODY" > "$KETTE_LOG.pruef-$NIGHT_ISSUE_ID.md"`,
+  `${BOARD} issue update "$NIGHT_ISSUE_ID" --body-file "$KETTE_LOG.pruef-$NIGHT_ISSUE_ID.md" >/dev/null`,
+  `${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "${PRUEFUNG_BEFUNDE_TEXT}" >/dev/null`,
+  `${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "${PRUEFUNG_EINARBEITUNG_TEXT}" >/dev/null`,
+  `${BOARD} issue label add "$NIGHT_ISSUE_ID" ${REVIEW_FERTIG_LABEL} >/dev/null`,
+].join("; ");
+
+/** Die Fake-Zeile einer Pruefung, die mit einer Entscheidung der Stopp-Klasse anhaelt. */
+export const PRUEFUNG_HALT = [
+  `${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "${PRUEFUNG_BEFUNDE_TEXT}" >/dev/null`,
+  `${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "${PRUEFUNG_FRAGE}" >/dev/null`,
+  `${BOARD} issue label add "$NIGHT_ISSUE_ID" ${KLAEREN_LABEL} >/dev/null`,
+].join("; ");
+
+/** Die Fake-Zeile einer Pruefung, die ihre Befunde hinterlaesst und dann nicht weiterkommt. */
+export const PRUEFUNG_BEFUNDE = `${BOARD} issue comment "$NIGHT_ISSUE_ID" --text "${PRUEFUNG_BEFUNDE_TEXT}" >/dev/null`;
+
+/** Umgebung fuer einen Prueflauf: Fake mit dem Pruef-Zweig, Body mit Marker, Protokoll. */
+export function pruefUmgebung(dir, { jeKarte = {}, kosten } = {}) {
+  const env = umgebung(dir, { stufen: { pruefung: jePaket(jeKarte) }, kosten });
+  return { ...env, PRUEFUNG_BODY: fachplanBody({ marker: FACHPLAN_MARKER }) };
+}
 
 // --- Bausteine der Stufe umsetzung (Plan #691; Issue #695) ---
 

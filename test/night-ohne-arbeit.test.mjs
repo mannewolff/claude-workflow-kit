@@ -22,6 +22,8 @@ const FAELLE_LANG = [
   ["umsetzungBelegt", { grund: LANGER_NAME }],
   ["ketteKeinLabel", { label: LANGER_NAME }],
   ["ketteAlleUebersprungen", { anzahl: 999999, label: LANGER_NAME }],
+  ["pruefLaufKeinLabel", { label: LANGER_NAME }],
+  ["pruefLaufAlleUebersprungen", { anzahl: 999999, label: LANGER_NAME }],
 ];
 
 test("[night-45] jeder Fall liefert einen Satz, der den Fall benennt und seine Namen und Zahlen traegt", () => {
@@ -46,6 +48,24 @@ test("[night-45] jeder Fall liefert einen Satz, der den Fall benennt und seine N
     grundOhneArbeit("ketteAlleUebersprungen", { anzahl: 2, label: "kit:night" }),
     "Keine Kette zu fahren: alle 2 gekennzeichneten Karten mit dem Label 'kit:night' wurden uebersprungen, weil eine Voraussetzung fehlt.",
   );
+  assert.equal(
+    grundOhneArbeit("pruefLaufKeinLabel", { label: "kit:pruefen" }),
+    "Nichts zu pruefen: keine Karte traegt das Label 'kit:pruefen'.",
+  );
+  assert.equal(
+    grundOhneArbeit("pruefLaufAlleUebersprungen", { anzahl: 2, label: "kit:pruefen" }),
+    "Nichts zu pruefen: alle 2 gekennzeichneten Karten mit dem Label 'kit:pruefen' wurden uebersprungen, "
+      + "weil sie keine fachliche Anforderung sind oder eine Entscheidung wartet.",
+  );
+});
+
+// Dieselbe Zusage wie fuer die Kettensaetze (Issue #909): ein Praefix, an das sich ein
+// Matcher haengen kann, der den Fall selbst nicht unterscheidet.
+test("[night-909] beide Pruefsaetze beginnen mit dem gemeinsamen Praefix", () => {
+  for (const fall of ["pruefLaufKeinLabel", "pruefLaufAlleUebersprungen"]) {
+    const satz = grundOhneArbeit(fall, { anzahl: 2, label: "kit:pruefen" });
+    assert.ok(satz.startsWith("Nichts zu pruefen:"), `${fall} beginnt anders: ${satz}`);
+  }
 });
 
 test("[night-45] ein unbekannter Fallname liefert wortgleich den Rueckfall-Satz", () => {
