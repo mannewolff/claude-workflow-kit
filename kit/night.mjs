@@ -2000,6 +2000,26 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
   return zeile.test(issue?.body || "");
 }
 
+/**
+ * Die fachliche Wurzel eines Plandokuments (Fachplan #883, Plan #890) — `null` ohne sie.
+ *
+ * Dieselbe Zeilenform wie in `stammtAusErzeugung`, nur ohne vorgegebene Nummer: Dort
+ * wird gefragt „traegt dieses Dokument Quelle #N?", hier „welche Quelle traegt es?".
+ * Der Feldname kommt aus `HERKUNFT_FELD.plan`, damit die Schreibweise nicht an zwei
+ * Stellen gepflegt wird.
+ *
+ * Die Nummer geht UNVERAENDERT zurueck, ohne fuehrende Nullen zu streichen: Der lokale
+ * Tracker nummeriert `0001`, und eine normalisierte `1` traefe dort keine Karte. Wer
+ * vergleicht, vergleicht zeichengleich.
+ */
+export function fachlicheQuelleVon(body) {
+  const zeile = new RegExp(
+    String.raw`^[^\S\n]*${HERKUNFT_FELD.plan}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`,
+    "m",
+  );
+  return zeile.exec(String(body ?? ""))?.[1] ?? null;
+}
+
 // --- Abhaengigkeiten ---
 
 const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
@@ -4665,6 +4685,37 @@ function kettenAusschluss(issue, kettenLabel) {
   if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+  if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
+  return null;
+}
+
+/**
+ * Der Grund, aus dem ein gekennzeichneter Plan nicht laeuft — `null`, wenn er laeuft
+ * (Fachplan #883, Plan #890, E6).
+ *
+ * Die Reihenfolge folgt derselben Regel wie die von `kettenAusschluss`: Der
+ * spezifischere Grund gewinnt, damit die Karte morgens den Satz traegt, der den
+ * naechsten Schritt nennt. Erst die Spalte (ausserhalb von Backlog ist ein Versehen),
+ * dann die fachliche Herkunft (ohne sie hat die Kette nichts, wogegen sie die Pakete
+ * halten koennte), dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die
+ * offene Frage im Plan, zuletzt die fehlende Pruefung. Die beiden letzten stehen in
+ * dieser Folge, weil wer die Frage beantwortet weiterkommt, wer nur pruefen laesst
+ * nicht.
+ *
+ * `karten` ist die Liste aus `issue list`: Die Herkunftsnummer muss eine Karte DIESES
+ * Boards treffen, zeichengleich — siehe `fachlicheQuelleVon`.
+ */
+export function planAusschluss(issue, kettenLabel, karten) {
+  if (issue?.status !== "backlog") return `steht in ${issue?.status ?? "unbekannt"}, nicht in Backlog`;
+  const quelle = fachlicheQuelleVon(issue?.body || "");
+  if (quelle === null || !(karten || []).some((k) => String(k?.id) === quelle)) {
+    return `die fachliche Herkunft ist nicht erkennbar — die Zeile '${HERKUNFT_FELD.plan}: Issue #N' fehlt im Plan oder nennt keine Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)`;
+  }
+  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab`;
+  const frage = stoppFragenGrund(issue?.body || "");
+  if (frage !== null) {
+    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## Architektonische Entscheidungen' des Plans, danach traegt '## Offene Fragen' wieder '- Keine.' — ein Satz in der fachlichen Anforderung genuegt nicht`;
+  }
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
 }
