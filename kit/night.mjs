@@ -4672,17 +4672,21 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
 }
 
 /**
- * Der Grund, aus dem eine gekennzeichnete Karte nicht laeuft — `null`, wenn sie laeuft.
+ * Der Grund, aus dem eine gekennzeichnete fachliche Anforderung nicht laeuft — `null`,
+ * wenn sie laeuft.
  *
- * Die Reihenfolge ist die Antwort: Erst das Praefix (das Kennzeichen gilt nur am
- * Fachplan), dann die Spalte (E4: ausserhalb von Backlog ist ein Versehen), dann
- * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen),
- * zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht hinter
- * `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund behaelt:
- * Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
+ * Die Reihenfolge ist die Antwort: Erst die Spalte (E4: ausserhalb von Backlog ist ein
+ * Versehen), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
+ * Fachplan stehen), zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht
+ * hinter `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund
+ * behaelt: Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
+ *
+ * Die Praefix-Probe steht seit Issue #895 NICHT mehr hier, sondern in
+ * `waehleKettenKandidaten`: Dort entscheidet sie ueber die Auftragsart, und eine Karte
+ * ohne beide Praefixe bekommt dort ihren Grund. Zwei Praefix-Proben — eine je Art —
+ * liefen bei der ersten Aenderung auseinander.
  */
 function kettenAusschluss(issue, kettenLabel) {
-  if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
@@ -4720,30 +4724,110 @@ export function planAusschluss(issue, kettenLabel, karten) {
   return null;
 }
 
+/** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
+const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
+
+/** Die Auftragsart am Titel-Praefix — `null`, wenn die Karte keine der beiden traegt. */
+function auftragsartVon(titel) {
+  if (isPlan(titel)) return "plan";
+  if (isFachlich(titel)) return "fachplan";
+  return null;
+}
+
 /**
- * Waehlt die Ketten einer Nacht aus allen Karten (Plan #638, A2, A13, E4, W5).
+ * Der Auftrag zu einer Karte: Wurzel und Plannummer stehen je Art woanders.
+ *
+ * Beim Fachplan-Auftrag ist die Karte selbst die Wurzel und es gibt keinen Plan; beim
+ * Plan-Auftrag kommt die Wurzel aus der Herkunftszeile — dass sie dort steht und eine
+ * Karte des Boards trifft, hat `planAusschluss` schon geprueft.
+ */
+function auftragAus(issue, art) {
+  return art === "plan"
+    ? { karte: issue, art, F: fachlicheQuelleVon(issue.body || ""), planId: String(issue.id) }
+    : { karte: issue, art, F: String(issue.id), planId: null };
+}
+
+/**
+ * Der Grund, aus dem ein Auftrag einer anderen Karte weicht — `null`, wenn er bleibt
+ * (Issue #895).
+ *
+ * Beide Kollisionen haengen am selben Wert: dem juengsten gekennzeichneten Plan zur
+ * Wurzel des Auftrags. Eine Anforderung weicht ihm immer, ein Plan nur einem juengeren
+ * als er selbst.
+ */
+function kollisionsGrund(auftrag, juengster) {
+  if (juengster === null) return null;
+  if (auftrag.art === "fachplan") {
+    return `zu dieser Anforderung ist Plan #${juengster.id} gekennzeichnet — er laeuft an ihrer Stelle, ein zweiter Plan entstuende sonst daneben`;
+  }
+  if (juengster.id !== auftrag.planId) {
+    return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
+  }
+  return null;
+}
+
+/**
+ * Waehlt die Ketten einer Nacht aus allen Karten (Plan #638, A2, A13, E4, W5; zwei
+ * Auftragsarten seit Fachplan #883, Plan #890, Issue #895).
  *
  * Reine Funktion ueber `issue list` OHNE Status-Filter: Was das Label traegt, aber nicht
  * laufen darf, geht mit Grund in `uebersprungen` — im Ergebnisstand sichtbar, das Label
  * bleibt stehen. Kandidaten laufen in Listenreihenfolge; ab `max` bleiben sie liegen.
+ *
+ * Ein Kandidat ist seit #895 kein rohes Issue mehr, sondern ein Auftrag
+ * `{ karte, art, F, planId }`: `art` kommt aus dem Titel-Praefix, `F` ist immer die
+ * fachliche Wurzel (beim Plan-Auftrag aus `fachlicheQuelleVon`, sonst die Karte selbst),
+ * `planId` nur beim Plan-Auftrag. Die Kette braucht beide Nummern — die gekennzeichnete
+ * Karte fuer Label und Einheit, die Wurzel fuer Abdeckung und Bericht.
+ *
+ * Die Kollisionen stehen zwischen Ausschluss und `max` (Kriterium 10 der fachlichen
+ * Quelle): Eine Karte, die einer anderen weicht, soll keinen der knappen Plaetze
+ * verbrauchen. Massgeblich fuer beide Regeln ist die Menge der GEKENNZEICHNETEN Plaene,
+ * nicht die der laufenden — das Kennzeichen hat der Mensch gesetzt, und eine Anforderung
+ * soll auch dann nicht ersatzweise neu geplant werden, wenn der Plan daneben an einer
+ * eigenen Voraussetzung scheitert.
  */
 export function waehleKettenKandidaten(issues, label, max) {
-  const kandidaten = [];
-  const uebersprungen = [];
-  const liegengeblieben = [];
-  for (const issue of issues || []) {
-    if (!(issue?.labels || []).includes(label)) continue;
-    const grund = kettenAusschluss(issue, label);
-    if (grund !== null) {
-      uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
+  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+  const gruende = new Map();
+  const auftraege = [];
+
+  // Jeder gekennzeichnete Plan mit erkennbarer Wurzel, unabhaengig von seinem Ausschluss.
+  const gekennzeichnetePlaene = alle
+    .filter((i) => isPlan(i?.title ?? ""))
+    .map((i) => ({ id: String(i.id), F: fachlicheQuelleVon(i?.body || "") }))
+    .filter((p) => p.F !== null);
+  /** Der juengste gekennzeichnete Plan zu einer Wurzel — `null`, wenn es keinen gibt. */
+  const juengsterPlanZu = (F) => gekennzeichnetePlaene
+    .filter((p) => p.F === F)
+    .sort((a, b) => Number(b.id) - Number(a.id))[0] ?? null;
+
+  for (const issue of alle) {
+    const art = auftragsartVon(issue?.title ?? "");
+    if (art === null) {
+      gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
       continue;
     }
-    if (kandidaten.length >= max) {
-      liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
-      continue;
-    }
-    kandidaten.push(issue);
+    const grund = art === "plan" ? planAusschluss(issue, label, issues || []) : kettenAusschluss(issue, label);
+    if (grund === null) auftraege.push(auftragAus(issue, art));
+    else gruende.set(String(issue.id), grund);
   }
+
+  const kandidaten = [];
+  const liegengeblieben = [];
+  for (const auftrag of auftraege) {
+    const id = String(auftrag.karte.id);
+    const kollision = kollisionsGrund(auftrag, juengsterPlanZu(auftrag.F));
+    if (kollision !== null) gruende.set(id, kollision);
+    else if (kandidaten.length >= max) liegengeblieben.push({ id, title: auftrag.karte.title ?? "" });
+    else kandidaten.push(auftrag);
+  }
+
+  // `uebersprungen` in Board-Reihenfolge, nicht in der Reihenfolge der beiden Durchgaenge:
+  // Wer morgens das Protokoll liest, liest es neben dem Board.
+  const uebersprungen = alle
+    .filter((i) => gruende.has(String(i.id)))
+    .map((i) => ({ id: String(i.id), title: i.title ?? "", grund: gruende.get(String(i.id)) }));
   return { kandidaten, uebersprungen, liegengeblieben };
 }
 
@@ -5847,13 +5931,25 @@ async function mitMeldung(stufe) {
  * `umsetzung` nicht: Sie meldet ueber `laufeRunde` schon nach jedem fertigen Paket.
  */
 async function stufenDerKette(kette) {
-  const plan = await mitMeldung(() => stufePlan(kette));
-  if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-  const review = await mitMeldung(() => stufeReview(kette, plan.id));
-  if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-  const pakete = await mitMeldung(() => stufePakete(kette, plan.id));
+  let planId;
+  if (kette.art === "plan") {
+    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage.
+    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete, laeuft die Stufe
+    // trotzdem unveraendert und zaehlt nur die neu entstandenen Karten — ein
+    // hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
+    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
+    // verhindern.
+    planId = kette.stufen.plan.id;
+  } else {
+    const plan = await mitMeldung(() => stufePlan(kette));
+    if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
+    const review = await mitMeldung(() => stufeReview(kette, plan.id));
+    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
+    planId = plan.id;
+  }
+  const pakete = await mitMeldung(() => stufePakete(kette, planId));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, plan.id, pakete.ids));
+  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, planId, pakete.ids));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
   if (kette.variante !== "B") return { ausgang: "fertig" };
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
@@ -5864,30 +5960,52 @@ async function stufenDerKette(kette) {
 }
 
 /**
- * Eine Kette zu einem Fachplan: Label verbrauchen, Worktree, Stufen, Einheit.
+ * Der Auftakt einer Kette: Protokollzeile, verbrauchtes Kennzeichen, Ausgangslage.
+ *
+ * Rueckgabe sind die aelteren Plaene zur Wurzel, die nach einem NEUEN Plan den
+ * Ueberholt-Kommentar bekommen (A8). Beim Plan-Auftrag ist die Liste leer und die Stufe
+ * `plan` stattdessen vorbelegt: Es entsteht kein neuer Plan, und der uebernommene ist
+ * keiner, der einen anderen ueberholte — er ist der, den der Mensch gewaehlt hat.
+ */
+function ketteBeginnen(kette, auftrag, nummer, args) {
+  const karte = auftrag.karte;
+  log(auftrag.art === "plan"
+    ? `Kette ${nummer}/${args.max}: Plan #${auftrag.planId} (fachliche Quelle #${kette.F}) — ${karte.title}`
+    : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
+  // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
+  // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
+  board("issue", "label", "remove", String(karte.id), kette.budget.label);
+  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+
+  if (auftrag.art === "plan") {
+    kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
+    log(`  Plan #${auftrag.planId} uebernommen — die Stufen plan und review entfallen.`);
+    return [];
+  }
+  // VOR der Plan-Stufe gesammelt: Danach stuende der neue Plan mit in der Liste.
+  return board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, kette.F, "plan"))
+    .map((i) => String(i.id));
+}
+
+/**
+ * Eine Kette zu einem Auftrag: Label verbrauchen, Worktree, Stufen, Einheit.
  *
  * Rueckgabe ist der Ausgang der Kette. Der Worktree wird in jedem Fall entfernt — auch
  * nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt der naechste Start.
  */
-async function laufeEineKette(kandidat, nummer, args) {
-  const F = String(kandidat.id);
-  const einheit = einheitAnlegen(F, kandidat.title);
+async function laufeEineKette(auftrag, nummer, args) {
+  const karte = auftrag.karte;
+  const F = String(auftrag.F);
+  const einheit = einheitAnlegen(String(karte.id), karte.title);
   const kette = {
-    F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
+    F, art: auftrag.art, karte, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
-    variante: varianteVon(kandidat, KETTE_BUDGET),
+    // Die Variante steht an der gekennzeichneten Karte, nicht an der Wurzel: Wer den
+    // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
+    variante: varianteVon(karte, KETTE_BUDGET),
   };
-  log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
-  // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
-  // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  board("issue", "label", "remove", F, kette.budget.label);
-  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
-
-  // Aeltere Plaene zum selben Fachplan, VOR der Plan-Stufe gesammelt: Nach einem neuen
-  // Plan bekommen sie den Ueberholt-Kommentar (A8).
-  const aeltere = board("issue", "list")
-    .filter((i) => stammtAusErzeugung(i, F, "plan"))
-    .map((i) => String(i.id));
+  const aeltere = ketteBeginnen(kette, auftrag, nummer, args);
 
   let ergebnis;
   try {
@@ -5910,6 +6028,11 @@ async function laufeEineKette(kandidat, nummer, args) {
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
       ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      // Die Auftragsart und — nur beim Plan-Auftrag — die fachliche Wurzel (Issue #895):
+      // Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne `fachplan`
+      // waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat.
+      auftrag: kette.art,
+      ...(kette.art === "plan" ? { fachplan: kette.F } : {}),
       variante: kette.variante,
       stufen: kette.stufen,
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
@@ -5963,7 +6086,10 @@ export async function laufeKette(args) {
   }
   const alle = board("issue", "list");
   warneVorAltenLabels(alle);
-  const { kandidaten, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
+  const { kandidaten: auftraege, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
+  // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
+  // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
+  const kandidaten = auftraege.map((a) => a.karte);
   uebersprungeneVerbuchen(uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
@@ -5991,16 +6117,19 @@ export async function laufeKette(args) {
 
   if (args.dryRun) {
     log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
-    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1} (Variante ${varianteVon(k, budget)})`));
-    log(`Dry-Run beendet: ${kandidaten.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
+    auftraege.forEach((a, i) => {
+      const art = a.art === "plan" ? `Plan-Auftrag, fachliche Quelle #${a.F}, ` : "";
+      log(`  #${a.karte.id} ${a.karte.title} -> Kette ${i + 1} (${art}Variante ${varianteVon(a.karte, budget)})`);
+    });
+    log(`Dry-Run beendet: ${auftraege.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
     process.exit(0);
   }
 
   const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
   let nummer = 0;
-  for (const kandidat of kandidaten) {
+  for (const auftrag of auftraege) {
     nummer++;
-    const ausgang = await laufeEineKette(kandidat, nummer, args);
+    const ausgang = await laufeEineKette(auftrag, nummer, args);
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);

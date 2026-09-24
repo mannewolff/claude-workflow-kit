@@ -139,6 +139,23 @@ export function planBody({ offeneFragen = "- Keine.", ohneVerifizierung = false 
 }
 
 /**
+ * Ein startbereites [Plan]-Dokument im Backlog, wie es der Mensch fuer einen
+ * Plan-Auftrag kennzeichnet (Fachplan #883, Plan #890; Issue #895).
+ *
+ * `F` ist die Nummer der fachlichen Anforderung: Sie ersetzt `__F__` in der
+ * Herkunftszeile des Bodys und muss als Karte am Board liegen, sonst lehnt
+ * `planAusschluss` den Plan ab. Wie `fachplan` haengt `review:fertig` per Default mit
+ * dran — ohne das Label liefe kein Plan-Auftrag an.
+ */
+export function planauftrag(dir, F, { titel = "[Plan] Ein fertiger Weg", label = "kit:night", geprueft = true, body } = {}) {
+  const text = (body ?? planBody()).replaceAll("__F__", String(F));
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", text);
+  if (label) board(dir, "issue", "label", "add", String(issue.id), label);
+  if (geprueft) board(dir, "issue", "label", "add", String(issue.id), REVIEW_FERTIG_LABEL);
+  return String(issue.id);
+}
+
+/**
  * Der Session-Fake als POSIX-Shell. `stufen` bildet die Stufe auf Shell-Zeilen ab; was
  * nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
  * KIT_AGENT_MODEL in `$KETTE_LOG` und liefert ein result-Ereignis mit `$KETTE_KOSTEN`.

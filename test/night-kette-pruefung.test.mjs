@@ -27,7 +27,7 @@ test("[night-19] ohne review:fertig geht der Fachplan mit Grund und naechstem Sc
     { id: "2", title: "[Fachlich] Ungeprueft", status: "backlog", labels: ["kit:night"] },
   ];
   const r = waehleKettenKandidaten(karten, "kit:night", 5);
-  assert.deepEqual(r.kandidaten.map((k) => k.id), ["1"], "die gepruefte Karte laeuft, die ungepruefte nicht");
+  assert.deepEqual(r.kandidaten.map((a) => a.karte.id), ["1"], "die gepruefte Karte laeuft, die ungepruefte nicht");
   assert.deepEqual(r.uebersprungen.map((u) => u.id), ["2"]);
   const grund = r.uebersprungen[0].grund;
   assert.ok(grund.startsWith(UNGEPRUEFT_PRAEFIX), `der Grund beginnt nicht mit dem festen Praefix: ${grund}`);

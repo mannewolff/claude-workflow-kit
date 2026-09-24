@@ -1,10 +1,11 @@
 // Die beiden Proben, an denen der Runner einen startbereiten Plan erkennt
 // (Fachplan #883, Plan #890; Issue #893).
 //
-// Dieses Paket baut allein die reinen Funktionen: `fachlicheQuelleVon` liest die
-// fachliche Wurzel aus dem Body eines Plandokuments, `planAusschluss` sagt, warum ein
-// gekennzeichneter Plan nicht laeuft. Verdrahtet ist noch nichts — `waehleKettenKandidaten`
-// ueberspringt eine `[Plan]`-Karte unveraendert mit dem bisherigen Grund.
+// Hier stehen die reinen Funktionen: `fachlicheQuelleVon` liest die fachliche Wurzel
+// aus dem Body eines Plandokuments, `planAusschluss` sagt, warum ein gekennzeichneter
+// Plan nicht laeuft. Verdrahtet sind sie seit Issue #895 — was `waehleKettenKandidaten`
+// daraus macht, steht in `night-kette-planauftrag.test.mjs` und
+// `night-kette-kollision.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -137,12 +138,19 @@ test("[night-893] treffen mehrere Gruende zu, gewinnt der spezifischere", () => 
   assert.equal(planAusschluss(ausserhalb, "kit:night", KARTEN), "steht in in_review, nicht in Backlog");
 });
 
-// --- Noch ist nichts verdrahtet ---
+// --- Was die Auswahl daraus macht (Issue #895) ---
 
-test("[night-893] waehleKettenKandidaten ueberspringt eine [Plan]-Karte mit dem bisherigen Grund", () => {
-  const karten = [plan({ id: "890" })];
+test("[night-895] waehleKettenKandidaten nimmt einen startbereiten Plan als Plan-Auftrag an", () => {
+  const karten = [...KARTEN, plan({ id: "890" })];
   const r = waehleKettenKandidaten(karten, "kit:night", 5);
-  assert.equal(r.kandidaten.length, 0, "dieses Paket verdrahtet die Erkennung nicht");
-  assert.deepEqual(r.uebersprungen.map((u) => u.id), ["890"]);
-  assert.equal(r.uebersprungen[0].grund, "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan");
+  assert.deepEqual(r.uebersprungen, []);
+  assert.deepEqual(r.kandidaten.map((a) => [a.karte.id, a.art, a.F, a.planId]), [["890", "plan", "883", "890"]]);
+});
+
+test("[night-895] ein abgelehnter Plan geht mit dem Grund aus planAusschluss nach uebersprungen", () => {
+  const abgelehnt = plan({ id: "890", status: "ready" });
+  const r = waehleKettenKandidaten([...KARTEN, abgelehnt], "kit:night", 5);
+  assert.deepEqual(r.kandidaten, []);
+  assert.deepEqual(r.uebersprungen.map((u) => [u.id, u.grund]),
+    [["890", planAusschluss(abgelehnt, "kit:night", KARTEN)]]);
 });

@@ -84,7 +84,9 @@ test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden ueberspr
     assert.equal(lauf.einheiten.find((e) => e.id === offen).ausgang, "uebersprungen");
     assert.match(grund(offen), /traegt kit:klaeren/);
     assert.match(grund(falsch), /steht in ready, nicht in Backlog/);
-    assert.match(grund(String(fremd.id)), /kein fachliches Issue/);
+    // Der Plan traegt keine Herkunftszeile: Seit Issue #895 lehnt ihn `planAusschluss`
+    // als Plan-Auftrag ab, nicht mehr die Praefix-Probe des Fachplan-Auftrags.
+    assert.match(grund(String(fremd.id)), /die fachliche Herkunft ist nicht erkennbar/);
     assert.match(res.stdout, /Keine Kette zu fahren/);
     assert.equal(board(dir, "issue", "list").filter((i) => /^\[Plan\] Ein Weg/.test(i.title)).length, 0, "keine Session darf gelaufen sein");
   });
