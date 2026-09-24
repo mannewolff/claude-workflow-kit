@@ -1,31 +1,31 @@
 {
   "codeHost": "github",
   "issueTracker": "toolbox",
-"buildChecks": [
-  {
-    "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
-    "areas": ["nachtrunner", "board", "pruefungen"]
-  },
-  {
-    "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/install-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/cli-*.test.mjs\"",
-    "areas": ["einstellungen", "installer"]
-  },
-  {
-    "cmd": "node --test \"test/skills-*.test.mjs\" \"test/docs-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
-    "areas": ["skills-doku"]
-  },
-  "node tools/sync-blobs.mjs --check",
-  "npx eslint kit tools test install.mjs .githooks"
-],
-"checkAreas": {
-  "nachtrunner": ["kit/night.mjs", "kit/board.mjs", "kit/checks.mjs", "kit/aufwand.mjs", "kit/wirksamkeit.mjs", "kit/befunde.mjs", "kit/preise.mjs", "test/night-*.test.mjs"],
-  "board": ["kit/board.mjs", "kit/board-ui.mjs", "kit/preise.mjs", "tools/migrate-issues.mjs", "test/board-*.test.mjs", "test/migrate-*.test.mjs"],
-  "pruefungen": ["kit/checks.mjs", "kit/aufwand.mjs", "kit/wirksamkeit.mjs", "kit/befunde.mjs", "kit/preise.mjs", ".githooks/**", "templates/**", "test/checks-*.test.mjs", "test/gate*.test.mjs", "test/aufwand-*.test.mjs", "test/wirksamkeit-*.test.mjs", "test/befunde-*.test.mjs", "test/guete-*.test.mjs"],
-  "einstellungen": ["kit/einstellungen.mjs", "templates/workflow.config.schema.json", "test/einstellungen-*.test.mjs", "test/config-*.test.mjs"],
-  "installer": ["install.mjs", "tools/**", ".githooks/**", "kit/**", "test/install-*.test.mjs", "test/sync-*.test.mjs", "test/tools-*.test.mjs", "test/changelog*.test.mjs", "test/derived-*.test.mjs", "test/copy-*.test.mjs", "test/kit-*.test.mjs", "test/cli-*.test.mjs"],
-  "skills-doku": ["skills/**", "docs/**", "templates/**", "RELEASING.md", "CLAUDE.md", "README.md", "kit/**", "test/skills-*.test.mjs", "test/docs-*.test.mjs", "test/workflow-*.test.mjs", "test/push-*.test.mjs", "test/mitteilung-*.test.mjs", "test/vergleiche-*.test.mjs"]
-},
-
+  "buildChecks": [
+    {
+      "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
+      "areas": [
+        "nachtrunner",
+        "board",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/install-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "areas": [
+        "einstellungen",
+        "installer"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/docs-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "areas": [
+        "skills-doku"
+      ]
+    },
+    "node tools/sync-blobs.mjs --check",
+    "npx eslint kit tools test install.mjs .githooks"
+  ],
   "mutationCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
@@ -44,6 +44,76 @@
     "in_progress": "In progress",
     "in_review": "In review",
     "done": "Done"
+  },
+  "checkAreas": {
+    "nachtrunner": [
+      "kit/night.mjs",
+      "kit/board.mjs",
+      "kit/checks.mjs",
+      "kit/aufwand.mjs",
+      "kit/wirksamkeit.mjs",
+      "kit/befunde.mjs",
+      "kit/preise.mjs",
+      "test/night-*.test.mjs"
+    ],
+    "board": [
+      "kit/board.mjs",
+      "kit/board-ui.mjs",
+      "kit/preise.mjs",
+      "tools/migrate-issues.mjs",
+      "test/board-*.test.mjs",
+      "test/migrate-*.test.mjs"
+    ],
+    "pruefungen": [
+      "kit/checks.mjs",
+      "kit/aufwand.mjs",
+      "kit/wirksamkeit.mjs",
+      "kit/befunde.mjs",
+      "kit/preise.mjs",
+      ".githooks/**",
+      "templates/**",
+      "test/checks-*.test.mjs",
+      "test/gate*.test.mjs",
+      "test/aufwand-*.test.mjs",
+      "test/wirksamkeit-*.test.mjs",
+      "test/befunde-*.test.mjs",
+      "test/guete-*.test.mjs"
+    ],
+    "einstellungen": [
+      "kit/einstellungen.mjs",
+      "templates/workflow.config.schema.json",
+      "test/einstellungen-*.test.mjs",
+      "test/config-*.test.mjs"
+    ],
+    "installer": [
+      "install.mjs",
+      "tools/**",
+      ".githooks/**",
+      "kit/**",
+      "test/install-*.test.mjs",
+      "test/sync-*.test.mjs",
+      "test/tools-*.test.mjs",
+      "test/changelog*.test.mjs",
+      "test/derived-*.test.mjs",
+      "test/copy-*.test.mjs",
+      "test/kit-*.test.mjs",
+      "test/cli-*.test.mjs"
+    ],
+    "skills-doku": [
+      "skills/**",
+      "docs/**",
+      "templates/**",
+      "RELEASING.md",
+      "CLAUDE.md",
+      "README.md",
+      "kit/**",
+      "test/skills-*.test.mjs",
+      "test/docs-*.test.mjs",
+      "test/workflow-*.test.mjs",
+      "test/push-*.test.mjs",
+      "test/mitteilung-*.test.mjs",
+      "test/vergleiche-*.test.mjs"
+    ]
   },
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "night": {
