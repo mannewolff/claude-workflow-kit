@@ -84,7 +84,7 @@ test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab u
   });
 });
 
-test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Kette bricht ab", NUR_POSIX, () => {
+test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Stufe faellt regulaer aus", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Die Abdeckungs-Session laesst einen Rest in der Hauptkopie liegen — sie laeuft im
@@ -95,10 +95,16 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /nicht sauber/);
-    assert.match(einheit.grund, /rest\.md/);
+    // Kein Fehler, sondern ein Zustand, den der Mensch bereinigt (Issue #878): derselbe
+    // Ausgang wie beim gehaltenen Umsetzungs-Lock, der Grund steht an den Paketen.
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
+    for (const paket of stufe.nichtBegonnen) {
+      assert.match(paket.grund, /nicht sauber/);
+      assert.match(paket.grund, /rest\.md/);
+    }
+    assert.match(res.stdout, /Stufe umsetzung ausgelassen: die Hauptkopie ist vor dem ersten Paket nicht sauber/);
+    assert.match(res.stdout, /Rueckfall auf Variante A/);
     assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0, "es lief eine Umsetzungs-Session");
     stehenInBacklog(dir, einheit.stufen.pakete.ids);
     keinRestInArbeit(dir);

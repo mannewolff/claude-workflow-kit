@@ -4487,7 +4487,15 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = 
   // Tut sie es doch, ist die Lage unklar und der Lauf endet hier — dieselbe Leitplanke
   // wie nach einer Review-Session (Issue #152), und sie gilt auch im Dry-Run: Ein
   // veraenderter Working Tree ist kein Befund, sondern ein Unfall.
-  const reste = gitReste();
+  //
+  // Ausgenommen ist die Kette (Issue #878): Sie misst hier nicht, ob der Vorflug etwas
+  // veraendert hat, sondern nur, ob die Hauptkopie ueberhaupt Reste traegt — und die
+  // traegt sie erwartbar, weil die Kette neben einer Umsetzungsnacht laeuft (Plan #638,
+  // A3; aus demselben Grund laesst sie `zustandsVorflug()` aus). Ein Vorher-nachher-
+  // Vergleich waere kein Ausweg: Ein parallel schreibender Lauf haelt ihn nicht an. Der
+  // Zustand der Hauptkopie ist der Kette darum ganz egal; nur ihre Stufe `umsetzung`
+  // prueft ihn, weil erst sie dort baut.
+  const reste = args.kette ? [] : gitReste();
   if (reste.length > 0) {
     const satz = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.";
     log(`  ${satz}`);
@@ -5157,10 +5165,11 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
  *
  * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
- * Pakete stehen als nicht begonnen im Bericht) und bei einem gehaltenen Umsetzungs-Lock
- * (Issue #696, der Rueckfall auf Variante A), `angehalten` bei mindestens einem
+ * Pakete stehen als nicht begonnen im Bericht), bei einem gehaltenen Umsetzungs-Lock
+ * (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen Hauptkopie vor dem
+ * ersten Paket (Issue #878, derselbe Rueckfall), `angehalten` bei mindestens einem
  * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
- * Stopp und bei einer unsauberen Hauptkopie vor dem ersten Paket.
+ * Stopp.
  */
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
@@ -5197,11 +5206,17 @@ async function stufeUmsetzung(kette, paketIds) {
 
     // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
     // Rest-Guard und Dirty-Guard in `werteRunde`.
+    //
+    // Ausgang `fertig` wie beim gehaltenen Lock darueber (Issue #878): Eine unsaubere
+    // Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein Mensch
+    // bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute nacht
+    // nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
     if (!gitClean(kette.repoRoot)) {
       const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
       paketeNichtBegonnen(stand, paketIds, grund);
       stand.dauerMs = Date.now() - stufeStart;
-      return { ausgang: "abgebrochen", grund: `Stufe umsetzung: ${grund}` };
+      log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog. Bitte bereinigen und die Pakete selbst nach Ready ziehen.`);
+      return { ausgang: "fertig" };
     }
 
     let ergebnis;
