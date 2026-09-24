@@ -58,6 +58,16 @@ export const SCHLUESSELWOERTER = [
 ];
 
 const istObjekt = (w) => w !== null && typeof w === "object" && !Array.isArray(w);
+/**
+ * Der Wert als Objekt — alles andere (auch `null` und Listen) wird zum leeren Objekt.
+ *
+ * Steht als Funktionsdeklaration da und wiederholt die Bedingung aus `istObjekt`, weil sie
+ * ueber `GRUPPEN_QUELLE` per `toString()` ins Browser-Skript wandert: Dort gibt es kein
+ * `istObjekt`, und eine Arrow-Konstante brauchte ihre Deklaration mit.
+ */
+function objektOder(w) {
+  return w !== null && typeof w === "object" && !Array.isArray(w) ? w : {};
+}
 
 function typName(wert) {
   if (wert === null) return "null";
@@ -98,7 +108,7 @@ function pruefeZahl(wert, schema, pfad, out) {
 /** Die Prüfungen, die sich auf einen einzelnen Wert beziehen; `false` bei falschem Typ. */
 function pruefeSkalar(wert, schema, pfad, out) {
   if (schema.type !== undefined && !passtTyp(wert, schema.type)) {
-    out.push(befund(pfad, `muss vom Typ ${[].concat(schema.type).join(" oder ")} sein, ist ${typName(wert)}`));
+    out.push(befund(pfad, `muss vom Typ ${[schema.type].flat().join(" oder ")} sein, ist ${typName(wert)}`));
     return false;
   }
   if (Array.isArray(schema.enum) && !schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(wert))) {
@@ -514,7 +524,7 @@ function namensliste(liste, neuerName, weg) {
   let nameWeg = false;
   for (const name of Array.isArray(liste) ? liste : []) {
     if (weg[name] === true) nameWeg = true;
-    else bleibt.push(Object.prototype.hasOwnProperty.call(neuerName, name) ? neuerName[name] : name);
+    else bleibt.push(Object.hasOwn(neuerName, name) ? neuerName[name] : name);
   }
   return { bleibt: bleibt, nameWeg: nameWeg };
 }
@@ -537,7 +547,7 @@ function namensliste(liste, neuerName, weg) {
  */
 export function schluesselUmbenennen(objekt, alt, neu) {
   const bisher = objekt !== null && typeof objekt === "object" && !Array.isArray(objekt) ? objekt : {};
-  const hat = function (name) { return Object.prototype.hasOwnProperty.call(bisher, name); };
+  const hat = function (name) { return Object.hasOwn(bisher, name); };
   if (!hat(alt)) return { ok: false, grund: "„" + alt + "“ gibt es nicht mehr", objekt: bisher };
   if (neu !== alt && hat(neu)) {
     return { ok: false, grund: "„" + neu + "“ gibt es schon — der bisherige Eintrag würde dabei wegfallen", objekt: bisher };
@@ -566,7 +576,7 @@ export function paarungsFolgen(pairs, umbenannt, entfernt) {
   for (const u of umbenannt || []) neuerName[u.von] = u.nach;
   const weg = {};
   for (const name of entfernt || []) weg[name] = true;
-  const benannt = function (name) { return Object.prototype.hasOwnProperty.call(neuerName, name) ? neuerName[name] : name; };
+  const benannt = function (name) { return Object.hasOwn(neuerName, name) ? neuerName[name] : name; };
   const neu = {};
   const betroffen = [];
   for (const autor of Object.keys(alt)) {
@@ -634,7 +644,7 @@ export function checkSetzen(eintrag, aenderung) {
   const areas = a.areas === undefined ? form.areas : a.areas;
   if (typeof eintrag === "string" && laufart === "offen") return cmd === eintrag ? eintrag : cmd;
   const alt = eintrag !== null && typeof eintrag === "object" && !Array.isArray(eintrag) ? eintrag : { cmd: form.cmd };
-  const neu = Object.assign({}, alt);
+  const neu = { ...alt };
   neu.cmd = cmd;
   if (laufart === "immer") {
     delete neu.areas;
@@ -712,16 +722,15 @@ const CHECK_QUELLE = [checkForm, checkSetzen, bereichsFolgen].map((f) => f.toStr
  * weicht dessen Zeile danach ab — der alte Wert steht dort eingefroren.
  */
 export function gruppenZeilen(pfad, schema, werte, ausgelassen) {
-  const objekt = function (w) { return w !== null && typeof w === "object" && !Array.isArray(w) ? w : {}; };
   const w = werte || {};
-  const eigen = objekt(schema && schema.properties);
-  const t = objekt(w.team);
-  const p = objekt(w.persoenlich);
-  const g = objekt(w.gilt);
+  const eigen = objektOder(schema?.properties);
+  const t = objektOder(w.team);
+  const p = objektOder(w.persoenlich);
+  const g = objektOder(w.gilt);
   const weg = ausgelassen || [];
   const namen = [];
   for (const feld of Object.keys(eigen).concat(Object.keys(t), Object.keys(p), Object.keys(g))) {
-    if (namen.indexOf(feld) < 0 && weg.indexOf(feld) < 0) namen.push(feld);
+    if (!namen.includes(feld) && !weg.includes(feld)) namen.push(feld);
   }
   return namen.map(function (feld) {
     return {
@@ -749,9 +758,8 @@ export function gruppenZeilen(pfad, schema, werte, ausgelassen) {
  * das Zurücksetzen der letzten Abweichung den Eintrag ganz aus der persönlichen Datei nimmt.
  */
 export function gruppeSetzen(team, basis, feld, wert) {
-  const objekt = function (w) { return w !== null && typeof w === "object" && !Array.isArray(w) ? w : {}; };
-  const t = objekt(team);
-  const neu = Object.assign({}, objekt(basis));
+  const t = objektOder(team);
+  const neu = { ...objektOder(basis) };
   if (wert === undefined || wert === "") {
     if (t[feld] === undefined) delete neu[feld];
     else neu[feld] = t[feld];
@@ -764,7 +772,7 @@ export function gruppeSetzen(team, basis, feld, wert) {
 }
 
 /** Die Fassung, die Modul und Browser-Skript teilen — siehe `SEITEN_BAUSTEINE.gruppen`. */
-const GRUPPEN_QUELLE = [gruppenZeilen, gruppeSetzen].map((f) => f.toString()).join("\n\n");
+const GRUPPEN_QUELLE = [objektOder, gruppenZeilen, gruppeSetzen].map((f) => f.toString()).join("\n\n");
 
 // ============================================================
 // Themen (Plan #674 E14)
@@ -1174,7 +1182,7 @@ export function schreibeJson(alt, neu) {
     out.push({ start: wurzel.start, ende: wurzel.ende, text: JSON.stringify(neu, null, einheit) });
   }
   let text = alt;
-  for (const e of out.sort((a, b) => b.start - a.start || b.ende - a.ende)) {
+  for (const e of out.toSorted((a, b) => b.start - a.start || b.ende - a.ende)) {
     text = text.slice(0, e.start) + e.text + text.slice(e.ende);
   }
   return text;
@@ -1300,7 +1308,8 @@ export function projektZustand(projekt, { home, eigenerStand }) {
     if (!instanz) {
       instanz = { kennung: teil.kennung, titel: teil.titel, redaktor: teil.redaktor, reihenfolge: teil.reihenfolge, eintraege: [] };
       instanzen.set(schluessel, instanz);
-      (zustand.themen[thema] ??= []).push(instanz);
+      zustand.themen[thema] ??= [];
+      zustand.themen[thema].push(instanz);
     }
     // reviewStufen hat keinen Schema-`default` fuer den ganzen Block — der Vorgabewert kommt
     // hier von REVIEW_STUFEN_VORGABE, der Bestandsvorgabe einer Config ohne diesen Block.
@@ -1723,7 +1732,7 @@ function schriftCss() {
   ).join("\n");
 }
 
-const SEITEN_CSS = String.raw`
+const SEITEN_CSS = `
 /* Schriften: IBM Plex Sans, IBM Plex Mono, Archivo — SIL Open Font License 1.1, Texte unter assets/fonts im claude-workflow-kit. */
 :root {
   --grund: #E7E9ED;
@@ -1936,7 +1945,7 @@ const WIRKSAMKEIT_FELDER = [
  * Reihenfolge; `start` steht zuletzt und ist der einzige Baustein, der etwas ausfuehrt.
  */
 export const SEITEN_BAUSTEINE = {
-  grundgeruest: String.raw`
+  grundgeruest: `
 "use strict";
 const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
 const THEMEN_FOLGE = ["Prüfungen", "Board", "Review", "Nachtbetrieb", "Release", "Unbekannt"];
@@ -2042,7 +2051,7 @@ function zeichne() {
   // Gezeichnet wird aus der Arbeitskopie, nicht aus dem geladenen Zustand: Ein Teil sammelt
   // seine Änderungen, bis der Mensch speichert oder verwirft. Ohne sie wäre jede offene
   // Änderung nach dem nächsten Neuzeichnen weg, und der Fuß hätte nichts zu zählen.
-  entwurf: String.raw`
+  entwurf: `
 let entwuerfe = {};
 
 const gleichwertig = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
@@ -2149,7 +2158,7 @@ function auftragVon(teil) {
   // Die Prüfung liegt im Modul hinter POST …/vorschau (Plan #721 E1). Der Browser fragt sie
   // entprellt an — beim Tippen soll nicht je Anschlag ein Lauf entstehen — und verteilt die
   // Befunde an die Zeilen, die ihren Pfad nennen.
-  vorschau: String.raw`
+  vorschau: `
 const VORSCHAU_MS = 250;
 let vorschauTimer = {};
 
@@ -2589,7 +2598,7 @@ function eingabe(schema, wert) {
   // dem es gehört. Die Redaktoren der sieben Teile des Entwurfs sind vollständig; was keinen
   // eigenen nennt, fällt auf `redaktorEntsteht` zurück und steht dort lesbar da — kein Teil
   // des Entwurfs benutzt ihn noch, ein künftiger Redaktor hätte damit aber seinen Platzhalter.
-  platte: String.raw`
+  platte: `
 const REDAKTOREN = {
   reviewer: redaktorReviewer,
   paarungen: redaktorPaarungen,
@@ -2648,7 +2657,7 @@ function platte(teil) {
   // Eine Zeile je Reviewer, die Rangnummer zeigt die Auswahlreihenfolge. Umbenennen und
   // Entfernen tragen ihre Folgen in `issueReview.pairs` — den Folgepfad dieses Teils. Beides
   // steht damit in derselben Arbeitskopie und wird mit ihr gespeichert oder verworfen.
-  redaktorReviewer: String.raw`
+  redaktorReviewer: `
 const REVIEWER_ARTEN = ["claude", "command"];
 
 /** Die Reviewer-Liste dieses Teils, immer frisch aus der Arbeitskopie. */
@@ -2831,7 +2840,7 @@ function redaktorReviewer(teil) {
   // Je Autor mit eigener Paarung eine Zeile. Die Wirkung daneben ist keine Einstellung,
   // sondern die Antwort der Vorschau auf den Stand der Arbeitskopie — deshalb haengt der
   // Redaktor sich an `aufVorschau` und fordert schon beim Zeichnen einmal an.
-  redaktorPaarungen: String.raw`
+  redaktorPaarungen: `
 const PAAR_STUFEN = [["fachlich", "Fachplan"], ["plan", "Plan"], ["issue", "Arbeitspaket"]];
 
 /** Die Paarungen dieses Teils, immer frisch aus der Arbeitskopie. */
@@ -3034,7 +3043,7 @@ function redaktorPaarungen(teil) {
   // `ROLLEN_KATALOG` desselben Moduls, als JSON in die Seite gerechnet.
   redaktorPruefstufen: `
 const ROLLEN_KATALOG_BROWSER = ${JSON.stringify(ROLLEN_KATALOG)};
-` + String.raw`
+` + `
 const istStufenObjekt = function (wert) { return wert !== null && typeof wert === "object" && !Array.isArray(wert); };
 
 /** Der reviewStufen-Block der Arbeitskopie, oder null ohne eigene Einstellung. */
@@ -3225,7 +3234,7 @@ function redaktorPruefstufen(teil) {
   // desselben Moduls, als JSON in die Seite gerechnet.
   redaktorPruefkommandos: `
 const LAUFART_TEXTE = ${JSON.stringify(LAUFARTEN)};
-` + String.raw`
+` + `
 /** Die Kommandos dieses Teils, immer frisch aus der Arbeitskopie. */
 function checksVon(teil) {
   const wert = wertVon(teil, "buildChecks");
@@ -3536,7 +3545,7 @@ function redaktorPruefkommandos(teil) {
 const KETTE_VORGABEN_BROWSER = ${JSON.stringify(Object.fromEntries(
     Object.keys(SCHEMA.properties.night.properties.kette.properties).map((feld) => [feld, vorgabeAus(`night.kette.${feld}`)]),
   ))};
-` + String.raw`
+` + `
 function ketteVorgabe(feld) { return KETTE_VORGABEN_BROWSER[feld]; }
 
 const KETTE_TEXTFELDER = [["label", "Kennzeichen: Kette starten"], ["varianteBLabel", "Kennzeichen: Variante B (mit Umsetzung)"]];
@@ -3672,7 +3681,7 @@ const AUFGABENSTUFEN_BROWSER = ${JSON.stringify(
   )};
 const EFFORT_BROWSER = ${JSON.stringify(EFFORT_WERTE)};
 const STUFEN_ARTEN = [["", "Keine"], ["modell", "Modell"], ["kommando", "Kommando"]];
-` + String.raw`
+` + `
 const istStufenEintrag = function (wert) { return wert !== null && typeof wert === "object" && !Array.isArray(wert); };
 
 /** Der night.stufen-Block der Arbeitskopie, oder ein leerer ohne eigene Einstellung. */
@@ -3875,7 +3884,7 @@ const AUFWAND_VORGABEN_BROWSER = ${JSON.stringify({
     werkzeugAnteil: vorgabeAus("aufwand.schwellen.werkzeugAnteil"),
     schreibkostenAnteil: vorgabeAus("aufwand.schwellen.schreibkostenAnteil"),
   })};
-` + String.raw`
+` + `
 function aufwandVorgabe(feld) { return AUFWAND_VORGABEN_BROWSER[feld]; }
 
 const AUFWAND_ANTEILE = [
@@ -3972,7 +3981,7 @@ const WIRKSAMKEIT_VORGABEN_BROWSER = ${JSON.stringify(
     Object.fromEntries(WIRKSAMKEIT_FELDER.map(([feld]) => [feld, vorgabeAus(`wirksamkeit.${feld}`)])),
   )};
 const WIRKSAMKEIT_FELDER = ${JSON.stringify(WIRKSAMKEIT_FELDER)};
-` + String.raw`
+` + `
 function wirksamkeitVorgabe(feld) { return WIRKSAMKEIT_VORGABEN_BROWSER[feld]; }
 
 /** Das wirksamkeit-Objekt der Arbeitskopie, oder ein leeres ohne eigene Einstellung. */
@@ -4036,7 +4045,7 @@ function redaktorWirksamkeit(teil) {
   // der Vorschau verwechselt wird, die `befundeVerteilen` an die Zeilen haengt.
   redaktorBefunde: `
 const BEFUNDE_SCHWELLE_VORGABE = ${JSON.stringify(vorgabeAus("befunde.schwelle"))};
-` + String.raw`
+` + `
 /** Das befunde-Objekt der Arbeitskopie, oder ein leeres ohne eigene Einstellung. */
 function befundeBlockVon(teil) {
   const wert = wertVon(teil, "befunde");
@@ -4106,7 +4115,7 @@ ${GRUPPEN_QUELLE}
   // Ein Teil speichert immer nur eine Ebene. Deshalb folgt die Ebene dem Feld, in das der
   // Mensch schreibt, und der Wechsel bleibt aus, solange auf der anderen Ebene etwas offen ist
   // — eine Aenderung, die der Fuss nicht mehr zaehlt, ginge beim Speichern still verloren.
-  redaktorGruppe: String.raw`
+  redaktorGruppe: `
 /** Der Stand der Gruppe je Ebene: Arbeitskopie vor geladenem Stand. */
 function gruppeStand(teil, eintrag) {
   const kopie = arbeitskopie(teil);
@@ -4243,7 +4252,7 @@ function redaktorGruppe(teil) {
 `,
 
   // Ein einfacher Wert: ein Feld, passend zum Schema.
-  redaktorWert: String.raw`
+  redaktorWert: `
 function redaktorWert(teil) {
   const eintrag = teil.eintraege[0];
   const kasten = el("div", "stapel");
@@ -4271,7 +4280,7 @@ function redaktorWert(teil) {
 `,
 
   // Der Rückfall: die Anzeige in Dateischreibweise für `night.modelle` und unbekannte Felder.
-  redaktorText: String.raw`
+  redaktorText: `
 function redaktorText(teil) {
   const eintrag = teil.eintraege[0];
   const kasten = el("div", "stapel");
@@ -4283,7 +4292,7 @@ function redaktorText(teil) {
 `,
 
   // Ein Teil, dessen Redaktor noch aussteht: lesbar, aber ohne Eingabe.
-  redaktorEntsteht: String.raw`
+  redaktorEntsteht: `
 function redaktorEntsteht(teil) {
   const kasten = el("div", "stapel");
   const t = el("div", "tabelle");
@@ -4301,7 +4310,7 @@ function redaktorEntsteht(teil) {
   // ------------------------------------------------------------
   // Rückfragen und Speichern eines Teils
   // ------------------------------------------------------------
-  rueckfrage: String.raw`
+  rueckfrage: `
 function dialog(titel, zeilen, knoepfe) {
   const d = document.getElementById("dialog");
   d.replaceChildren(el("h2", "", titel));
@@ -4353,7 +4362,7 @@ async function sende(auftrag, teil, bestaetigt) {
 }
 `,
 
-  start: String.raw`
+  start: `
 ladeProjekte();
 `,
 };
