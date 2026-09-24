@@ -378,6 +378,8 @@ Die erfasste Zahl gilt als Prozentwert, wie die `marke` — eine Einheit, keine 
 
 **Ohne die Benennung bleibt ein Projekt unberührt:** keine Messung, keine Marke, kein Halt. Wer nichts hinschreibt, merkt von der Gütemessung nichts — auch nicht mit gesetztem `mutationCommand`.
 
+**Die Messung gehört an ihre Stufe, nicht in ein Akzeptanzkriterium.** Ein Arbeitspaket, das den Mutationslauf als Kriterium in die Karte schreibt, fährt ihn einmal je Paket statt einmal je Veröffentlichung — und kostet damit die Rundenzeit, die dem Paket fehlt; ein solcher Vollauf hat eine Nacht-Runde exakt ins Rundenzeitlimit gefahren, samt verlorener Schlussmeldung. `issue check-form` weist ein Paket deshalb ab, dessen `## Akzeptanzkriterium` `mutationCommand` oder das Kommando des `guete`-Eintrags nennt (Gate I6); der richtige Ort ist ein `buildChecks`-Eintrag mit `stufe: push`.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.

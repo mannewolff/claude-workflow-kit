@@ -114,7 +114,7 @@ Nutzung:
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I5. Die Stufe
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I6. Die Stufe
       kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
@@ -3216,7 +3216,39 @@ function pruefeVorlage(kontext, akzeptanz) {
   return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
 }
 
-function pruefeIssue(abschnitte) {
+/**
+ * Die Kommandos, die eine Guetemessung starten: `mutationCommand` und das `cmd` des
+ * `buildChecks`-Eintrags mit `guete`-Block, beide aus der Konfiguration des Projekts.
+ *
+ * Bewusst keine eingebaute Namensliste (`stryker`, `pitest`, …): Die veraltet und trifft
+ * fremde Werkzeuge nicht, die Konfiguration weiss es genau. Ein Projekt ohne beide Felder
+ * liefert eine leere Liste — dort weist I6 nichts ab.
+ */
+function guetekommandos(config) {
+  const checks = Array.isArray(config?.buildChecks) ? config.buildChecks : [];
+  const ausChecks = checks.filter((c) => c && typeof c === "object" && c.guete).map((c) => c.cmd);
+  return [config?.mutationCommand, ...ausChecks]
+    .map((cmd) => (typeof cmd === "string" ? cmd.trim().replaceAll(/\s+/g, " ") : ""))
+    .filter((cmd) => cmd !== "");
+}
+
+/**
+ * I6: Das Akzeptanzkriterium ruft keine Guetemessung auf (Issue #901).
+ *
+ * Eine Mutationspruefung laeuft einmal je Veroeffentlichung an ihrer Stufe, nicht einmal
+ * je Paket. Als Zeile in der Karte kostet sie die Zeit, die dem Paket fehlt: Ein Vollauf
+ * hat eine Nacht-Runde exakt ins Rundenzeitlimit gefahren, samt verlorener Schlussmeldung.
+ */
+function pruefeGuetemessung(akzeptanz, config) {
+  if (!akzeptanz) return [];
+  const text = akzeptanz.zeilen.join(" ").replaceAll(/\s+/g, " ");
+  return guetekommandos(config).filter((cmd) => text.includes(cmd)).map((cmd) => ({
+    gate: "I6",
+    meldung: `'## Akzeptanzkriterium' ruft die Guetemessung '${cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket`,
+  }));
+}
+
+function pruefeIssue(abschnitte, config) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
     .map((meldung) => ({ gate: "I1", meldung }));
@@ -3225,6 +3257,7 @@ function pruefeIssue(abschnitte) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
   verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
+  verstoesse.push(...pruefeGuetemessung(finde("akzeptanzkriterium"), config));
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }
@@ -3234,19 +3267,21 @@ function pruefeIssue(abschnitte) {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I5 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * Arbeitspaket: I1 bis I6 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
  * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
- * Vorlage ein Bildschirmfoto im Akzeptanzkriterium. Die
- * `[Urteil]`-Gates bleiben beim Reviewer.
+ * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
+ * Akzeptanzkriterium. Die `[Urteil]`-Gates bleiben beim Reviewer.
+ *
+ * `config` braucht nur I6 — fuer die Guetekommandos des Projekts.
  */
-export function pruefeForm(body, title) {
+export function pruefeForm(body, title, config = {}) {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
   if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
   else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
-  else verstoesse = pruefeIssue(abschnitte);
+  else verstoesse = pruefeIssue(abschnitte, config);
   return { ok: verstoesse.length === 0, stufe, verstoesse };
 }
 
@@ -3281,14 +3316,14 @@ async function checkFormVomBoard(tracker, id) {
   }
 }
 
-async function issueCheckForm(tracker, args) {
+async function issueCheckForm(tracker, config, args) {
   const id = args._[0];
   const hatDatei = args["body-file"] !== undefined;
   if (id !== undefined && hatDatei) checkFormAbweisen(`Kartennummer und --body-file zugleich uebergeben. ${CHECK_FORM_WEGE}.`);
   if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
 
   const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
-  const ergebnis = pruefeForm(body, title);
+  const ergebnis = pruefeForm(body, title, config);
   out(ergebnis);
   if (!ergebnis.ok) process.exit(1);
 }
@@ -3306,7 +3341,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
-    case "check-form": return issueCheckForm(tracker, args);
+    case "check-form": return issueCheckForm(tracker, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);

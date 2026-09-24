@@ -58,6 +58,8 @@ Keine. (oder: Issue #N muss vorher fertig sein)
 
 **Keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.** Ein `[Task]` hat keinen Vorfahren; die Idee ist der Anlass, nicht der Vorfahr.
 
+**Guetemess-Konvention:** Der Abschnitt `## Akzeptanzkriterium` ruft **keine Guetemessung** auf — kein `mutationCommand` und kein Kommando eines `buildChecks`-Eintrags mit `guete`-Block. Eine Mutationspruefung laeuft einmal je Veroeffentlichung an ihrer Stufe, nicht einmal je Paket: In der Runde kostet sie Zeit, die dem Paket fehlt, und ein Vollauf sprengt das Rundenzeitlimit. Wo die Guete fuer ein Paket zaehlt, steht sie als Marke in der Konfiguration, nicht als Zeile in der Karte. `issue check-form` weist ein Paket ab, dessen Akzeptanzkriterium eines dieser Kommandos nennt (I6).
+
 ### 4. Anlegen
 
 Nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": Der Body entsteht stueckweise per Shell ausserhalb des Projektverzeichnisses, jedes Stueck hoechstens 6.000 Zeichen und ein **eigener** Werkzeugaufruf mit woertlichem Pfad, dann geht er in einem Aufruf ans Board:

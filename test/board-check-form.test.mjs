@@ -72,14 +72,18 @@ Keine.
 `;
 
 /** Ein Fixture-Projekt fuer die Dauer eines Tests, danach restlos weg. */
-function mitProjekt(fn) {
-  const dir = setupProjekt(CONFIG, "board-check-form-");
+function mitProjektConfig(config, fn) {
+  const dir = setupProjekt(config, "board-check-form-");
   mkdirSync(join(dir, "eingaben"), { recursive: true });
   try {
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function mitProjekt(fn) {
+  return mitProjektConfig(CONFIG, fn);
 }
 
 /** Der Datei-Weg: liefert Exit-Code und geparste stdout-Ausgabe. */
@@ -293,6 +297,72 @@ test("[board-8] I5 greift nicht ohne Vorlage-Zeile und nicht bei einer Anregung"
     assert.equal(anregung.json.ok, true, JSON.stringify(anregung.json));
     const imCodeblock = dateiWeg(dir, PAKET.replace("## Kontext\n", "## Kontext\n```\nVorlage: docs/x.html — verbindlich\n```\n"), "[Task] x");
     assert.equal(imCodeblock.json.ok, true, "eine Zeile im Codeblock zaehlt nicht");
+  });
+});
+
+// --- I6: keine Guetemessung im Akzeptanzkriterium (Issue #901) ----------------
+
+const MUTATION_CMD = "npm --prefix frontend run test:mutation";
+const MIT_MUTATION = { ...CONFIG, mutationCommand: MUTATION_CMD };
+const MIT_GUETE = {
+  ...CONFIG,
+  buildChecks: [
+    "node --test",
+    { cmd: "npx stryker run", stufe: "push", guete: { muster: String.raw`score: ([\d.]+)`, marke: 0.6 } },
+  ],
+};
+
+/** Das Kriterium des Vorfalls: der Mutationslauf als Zeile in der Karte. */
+function mitKriterium(cmd) {
+  return PAKET.replace("## Akzeptanzkriterium\n", `## Akzeptanzkriterium\n- \`${cmd}\` laeuft und die Mutationskennzahl faellt nicht.\n`);
+}
+
+test("[board-8] I6: das konfigurierte mutationCommand im Akzeptanzkriterium wird abgewiesen", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const r = dateiWeg(dir, mitKriterium(MUTATION_CMD), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.match(meldung, /stufe: push/, meldung);
+  });
+});
+
+test("[board-8] I6: auch das Kommando des guete-Eintrags wird abgewiesen", () => {
+  mitProjektConfig(MIT_GUETE, (dir) => {
+    const r = dateiWeg(dir, mitKriterium("npx stryker run"), "[Task] x");
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: dasselbe Paket ohne die Zeile bleibt gruen", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const r = dateiWeg(dir, PAKET, "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: ohne mutationCommand und ohne guete weist nichts ab", () => {
+  mitProjekt((dir) => {
+    const r = dateiWeg(dir, mitKriterium(MUTATION_CMD), "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6 greift nur im Akzeptanzkriterium, nicht in ## Aufgabe", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const inAufgabe = PAKET.replace("## Aufgabe\n", `## Aufgabe\nDie Marke von \`${MUTATION_CMD}\` steigt auf 0,7.\n`);
+    const r = dateiWeg(dir, inAufgabe, "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6 betrifft die Stufen fachlich und plan nicht", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const fachlich = dateiWeg(dir, FACHLICH.replace("- Der Nutzer sieht es.", `- \`${MUTATION_CMD}\` laeuft.`), "[Fachlich] x");
+    assert.equal(fachlich.json.ok, true, JSON.stringify(fachlich.json));
+    const plan = dateiWeg(dir, PLAN.replace("- node --test", `- ${MUTATION_CMD}`), "[Plan] x");
+    assert.equal(plan.json.ok, true, JSON.stringify(plan.json));
   });
 });
 
