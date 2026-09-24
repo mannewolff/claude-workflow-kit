@@ -57,6 +57,11 @@
       "claude-sonnet-5"
     ]
   },
+  "pruefLauf": {
+    "label": "kit:pruefen",
+    "pruefungMin": 25,
+    "kostenUsd": 25
+  },
   "issueReview": {
     "requiredBeforeReady": false,
     "reviewers": [

@@ -564,11 +564,12 @@ test("[einstellungen-9] M7 merkt das Entfernen der letzten Abweichung in der Arb
 
 test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfelder mit eigenem Teil aus", () => {
   const m7 = TEILE.find((t) => t.kennung === "m7");
-  assert.deepEqual(m7.pfade, ["triggers", "columns", "github", "toolbox", "local"]);
+  // pruefLauf kam mit Issue #905 dazu: drei einfache Felder, genau das, wofuer M7 da ist.
+  assert.deepEqual(m7.pfade, ["triggers", "columns", "github", "toolbox", "local", "pruefLauf"]);
   assert.equal(m7.folgen, undefined);
   // toolbox.tokenFile hat eine eigene Eingabe — in der Gruppe stuende es ohne persoenliche
   // Abweichung ein zweites Mal da.
-  assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [] });
+  assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [], pruefLauf: [] });
   const felder = gruppenZeilen("toolbox", SCHEMA.properties.toolbox, { team: { host: "https://x", tokenFile: ".t" } }, GRUPPEN_AUSNAHMEN.toolbox);
   assert.deepEqual(felder.map((z) => z.feld), ["host", "ideaStored"]);
 });

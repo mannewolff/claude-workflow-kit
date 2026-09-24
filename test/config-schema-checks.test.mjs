@@ -61,6 +61,9 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.deepEqual(pruefe({ type: "number", minimum: 0, maximum: 100 }, 80), [], "in den Grenzen");
   assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, 120).length, 1, "ueber der Obergrenze");
   assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, -1).length, 1, "unter der Untergrenze");
+  assert.deepEqual(pruefe({ type: "number", exclusiveMinimum: 0 }, 0.5), [], "ueber der echten Untergrenze");
+  assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, 0).length, 1, "auf der echten Untergrenze");
+  assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, -1).length, 1, "unter der echten Untergrenze");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -518,6 +521,70 @@ test("aufwand.schwellen: 80 und -0.1 werden je Feld abgewiesen, 0, 0,5 und 1 geh
     for (const gut of [0, 0.5, 1]) {
       assert.deepEqual(pruefe(schwellenSchema, { [feld]: gut }), [], `${feld}=${gut}`);
     }
+  }
+});
+
+// --- Der Prueflauf: Label, Zeit- und Kostendeckel (Issue #905) ----------------
+//
+// Der Lauf gehoert dem Tag und steht deshalb in einem eigenen Wurzelblock und nicht
+// unter `night` (Plan #904, E5). Ohne den Block laedt er kein Budget; er ist zugleich
+// die Quelle der Einstellungs-Dokumentation.
+
+test("pruefLauf: der Block steht in der Wurzel und ist geschlossen", () => {
+  const block = schema.properties.pruefLauf;
+  assert.ok(block, "der Wurzelblock 'pruefLauf' fehlt im Schema");
+  assert.equal(block.type, "object", "der Block ist kein Objekt");
+  assert.equal(block.additionalProperties, false, "der Block ist nicht geschlossen");
+  assert.deepEqual(Object.keys(block.properties).sort(), ["kostenUsd", "label", "pruefungMin"]);
+});
+
+test("pruefLauf: die drei Vorgabewerte stehen am Feld", () => {
+  const felder = schema.properties.pruefLauf.properties;
+  assert.equal(felder.label.type, "string", "label ist keine Zeichenkette");
+  assert.equal(felder.label.default, "kit:pruefen", "die Vorgabe 'kit:pruefen' fehlt am Label");
+  assert.equal(felder.pruefungMin.type, "number", "pruefungMin ist keine Zahl");
+  assert.equal(felder.pruefungMin.default, 25, "die Vorgabe 25 fehlt an pruefungMin");
+  assert.equal(felder.pruefungMin.exclusiveMinimum, 0, "die Untergrenze fehlt an pruefungMin");
+  assert.equal(felder.kostenUsd.type, "number", "kostenUsd ist keine Zahl");
+  assert.equal(felder.kostenUsd.default, 25, "die Vorgabe 25 fehlt an kostenUsd");
+  assert.equal(felder.kostenUsd.exclusiveMinimum, 0, "die Untergrenze fehlt an kostenUsd");
+});
+
+test("pruefLauf: eine Config mit dem Block ist gueltig, eine ohne ihn auch", () => {
+  const mit = { ...beispielConfig, pruefLauf: { label: "kit:pruefen", pruefungMin: 25, kostenUsd: 25 } };
+  assert.deepEqual(pruefe(schema, mit), []);
+  const { pruefLauf, ...ohne } = beispielConfig;
+  assert.deepEqual(pruefe(schema, ohne), [], "eine Bestandsconfig ohne den Block faellt durch");
+});
+
+test("pruefLauf: ein unbekanntes Feld und eine Zeit von null fallen durch", () => {
+  // Der eigentliche Zweck der Grenzen: Ein Zeitbudget von null liesse jede Session
+  // sofort ablaufen, und der Lauf meldete lauter unvollstaendige Pruefungen.
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { erfunden: 1 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { pruefungMin: 0 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { kostenUsd: -1 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { label: 5 } }), []);
+});
+
+test("pruefLauf: die Blockbeschreibung nennt den Tag und endet auf die Teamweit-Formel", () => {
+  // JSON kennt keine Kommentare — dass der Lauf dem Tag gehoert und nicht der Nacht,
+  // liest nur hier, wer sich fragt, warum der Block nicht unter night steht.
+  const text = schema.properties.pruefLauf.description;
+  assert.ok(text, "der Block hat keine description");
+  assert.match(text, /Tag/, "dass der Lauf dem Tag gehoert, steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel",
+  );
+});
+
+test("pruefLauf: die ausgelieferte Vorlage traegt den Block mit den Vorgabewerten", () => {
+  // Die Vorlage ist zum Abschreiben gedacht — wer den Lauf einrichtet, sieht die drei
+  // Deckel dort, ohne die Doku zu lesen.
+  const felder = schema.properties.pruefLauf.properties;
+  assert.ok(beispielConfig.pruefLauf, "templates/workflow.config.json fuehrt pruefLauf nicht");
+  for (const [name, knoten] of Object.entries(felder)) {
+    assert.equal(beispielConfig.pruefLauf[name], knoten.default, `${name} weicht vom Vorgabewert ab`);
   }
 });
 

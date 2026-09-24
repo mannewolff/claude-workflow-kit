@@ -4,8 +4,9 @@
 // Geprueft wird damit statt mit ajv (entschieden am 2026-09-01): Das Repo fuehrt
 // heute keinen Schema-Validator, und das Kit liefert seine Werkzeuge bewusst
 // abhaengigkeitsfrei aus. Der Validator kennt nur die Schluesselwoerter, die dieses
-// Schema braucht — type, oneOf, required, not, pattern, enum, minimum, maximum,
-// minItems, minProperties, additionalProperties, properties, items. Alles andere
+// Schema braucht — type, oneOf, required, not, pattern, enum, minimum,
+// exclusiveMinimum, maximum, minItems, minProperties, additionalProperties,
+// properties, items. Alles andere
 // (minLength, uniqueItems) ignoriert er; er ist damit nachsichtiger als ein echter Validator,
 // aber fuer die belegten Aussagen genau scharf genug: Jede negative Aussage haengt
 // an einem der unterstuetzten Schluesselwoerter.
@@ -42,13 +43,18 @@ function pruefeArray(teilschema, wert, pfad) {
   return fehler;
 }
 
-/** minimum und maximum. Seit Issue #762: Die Marke der Guetemessung ist eine Zahl
- *  von 0 bis 100, und die Aussage 'eine Marke von 120 wird abgewiesen' haengt
- *  allein an den Grenzen. */
+/** minimum, exclusiveMinimum und maximum. Seit Issue #762: Die Marke der Guetemessung
+ *  ist eine Zahl von 0 bis 100, und die Aussage 'eine Marke von 120 wird abgewiesen'
+ *  haengt allein an den Grenzen. Seit Issue #905 auch exclusiveMinimum — die Zeit- und
+ *  Kostendeckel des Prueflaufs sind echt groesser als null, und ohne das Schluesselwort
+ *  ginge ein Zeitbudget von 0 durch, das jede Session sofort ablaufen liesse. */
 function pruefeZahl(teilschema, wert, pfad) {
   const fehler = [];
   if (typeof teilschema.minimum === "number" && wert < teilschema.minimum) {
     fehler.push(`${pfad}: ${wert} liegt unter dem Mindestwert ${teilschema.minimum}`);
+  }
+  if (typeof teilschema.exclusiveMinimum === "number" && wert <= teilschema.exclusiveMinimum) {
+    fehler.push(`${pfad}: ${wert} liegt nicht ueber ${teilschema.exclusiveMinimum}`);
   }
   if (typeof teilschema.maximum === "number" && wert > teilschema.maximum) {
     fehler.push(`${pfad}: ${wert} liegt ueber dem Hoechstwert ${teilschema.maximum}`);

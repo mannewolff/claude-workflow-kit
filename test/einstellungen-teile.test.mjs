@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { SCHEMA, TEILE, projektZustand, teilFuer, vorgabeAus } from "../kit/einstellungen.mjs";
+import { SCHEMA, TEILE, THEMEN, projektZustand, teilFuer, vorgabeAus } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const WURZELN = Object.keys(SCHEMA.properties).filter((f) => f !== "version");
@@ -150,6 +150,25 @@ test("[einstellungen-9] jedes Feld unter night.kette traegt eine vorgabe, die de
   for (const feld of felder) {
     const knoten = SCHEMA.properties.night.properties.kette.properties[feld];
     assert.equal(vorgabeAus(`night.kette.${feld}`), knoten.default, feld);
+  }
+});
+
+// Der Prueflauf-Block (Issue #905, Plan #904 E5): drei einfache Felder, deshalb kein
+// eigener Redaktor, sondern ein Pfad im generischen Gruppen-Teil `m7`. Das Thema ist
+// Review — der Lauf dient der Pruefung, und THEMEN_FOLGE kennt kein Thema fuer den Tag.
+test("[einstellungen-9] pruefLauf gehoert zum Gruppen-Teil m7 im Thema Review", () => {
+  assert.equal(THEMEN.pruefLauf, "Review");
+  const teil = teilFuer("pruefLauf");
+  assert.equal(teil.kennung, "m7", "pruefLauf haengt nicht am Gruppen-Teil");
+  assert.equal(teil.redaktor, "gruppe", "pruefLauf bekommt keinen eigenen Redaktor");
+  assert.notEqual(teil.kennung, "text", "pruefLauf zeigt die Dateischreibweise");
+});
+
+test("[einstellungen-9] jedes Feld unter pruefLauf traegt die Vorgabe aus dem Schema", () => {
+  const felder = Object.entries(SCHEMA.properties.pruefLauf.properties);
+  assert.equal(felder.length, 3, "pruefLauf fuehrt nicht drei Felder");
+  for (const [feld, knoten] of felder) {
+    assert.equal(vorgabeAus(`pruefLauf.${feld}`), knoten.default, feld);
   }
 });
 

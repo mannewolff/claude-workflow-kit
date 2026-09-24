@@ -568,6 +568,14 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
 
+### `pruefLauf`
+
+Der Prüflauf: ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt, ohne dass jemand zusieht. Er steht in einem eigenen Block und nicht unter night, weil er dem Tag gehört; unter night behauptete der Name das Gegenteil. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `pruefLauf.label` — Das Kennzeichen an der fachlichen Anforderung, die der Lauf prüfen lässt. Jedes Setzen autorisiert genau eine Prüfung; der Lauf nimmt es unmittelbar vor der Session dieser Karte ab.
+- `pruefLauf.pruefungMin` — Zeitbudget der Prüfer-Session je Karte in Minuten. Es liegt über dem der Plan-Stufe, weil die fachliche Stufe zwei Reviewer fährt.
+- `pruefLauf.kostenUsd` — Kostenbudget je Lauf in US-Dollar, summiert über alle Sessions des Laufs; geprüft nach jeder Session, nie mittendrin. Ist es erschöpft, gelten die restlichen Karten als übersprungen und behalten ihr Kennzeichen.
+
 ### `aufwand`
 
 Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Der Befund ist kein Gate, er hält keinen Lauf und kein Veröffentlichen auf. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben, damit ein bestehendes Projekt die Auswertung ohne weitere Einrichtung bekommt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
