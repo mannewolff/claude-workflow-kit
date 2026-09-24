@@ -11,17 +11,20 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 #    Installer-Bestandteil mehr, sie wird nur zum Download ausgeliefert (#176).
 #    Sie liegt zwar unter kit/, ist aber von diesem Guard nicht abgedeckt.
 #
-# Zweck: verhindert, dass ein Merge nach production einen veralteten oder
-# kaputten install.mjs auf docs.mwolff.org deployt. Lokal laufen dieselben
-# Kommandos als buildChecks (Gate in /local-check und /push-main); die
-# Doppelung ist gewollt — lokal fängt vor dem Push, CI bleibt Sicherheitsnetz
-# für PRs und Fremd-Pushes (#137).
+# Zweck: verhindert, dass ein veralteter oder kaputter install.mjs auf main landet
+# und von dort auf docs.mwolff.org deployt wird. main ist dafür das einzige Tor:
+# production entsteht ausschließlich per PR aus main (siehe RELEASING.md), und was
+# auf main grün war, geht unverändert dorthin — ein Lauf auf production prüfte
+# denselben Stand ein drittes Mal (#891). Lokal laufen dieselben Kommandos als
+# buildChecks (Gate in /local-check und /push-main); diese Doppelung bleibt gewollt
+# — lokal fängt vor dem Push, CI bleibt Sicherheitsnetz für PRs und Fremd-Pushes
+# (#137).
 
 on:
   push:
-    branches: [main, production]
+    branches: [main]
   pull_request:
-    branches: [main, production]
+    branches: [main]
 
 jobs:
   check:
@@ -30,11 +33,15 @@ jobs:
     # ausschliesslich Ubuntu lief. fail-fast ist aus, damit ein plattformspezifischer
     # Fehler nicht den jeweils anderen Job mit abbricht — sonst sieht man nicht, ob
     # etwas ueberall oder nur auf einer Plattform kaputt ist.
+    # Windows haengt nur am Push: Dort landet ein Stand zum ersten Mal auf main, und
+    # genau dieser Moment braucht die zweite Plattform. Der PR-Lauf prueft denselben
+    # Stand, den der Push gleich danach nochmals faehrt — eine zweite Plattform
+    # brachte dort nichts als Wartezeit (#891).
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: ${{ github.event_name == 'push' && fromJSON('["ubuntu-latest","windows-latest"]') || fromJSON('["ubuntu-latest"]') }}
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v5
