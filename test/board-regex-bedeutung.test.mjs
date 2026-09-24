@@ -17,6 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  ABSCHNITT_ZEILE,
   AUTOR_MODELL_ZEILE,
   FENCE_ZEILE,
   autorModellSicherstellen,
@@ -62,6 +63,42 @@ test("FENCE_ZEILE: Treffer, Nicht-Treffer und die Einrueckungsgrenze", () => {
   assert.equal(FENCE_ZEILE.exec("   ```")[1], "```", "bis zu drei Leerzeichen sind erlaubt");
   assert.equal(FENCE_ZEILE.exec("    ```"), null, "vier Leerzeichen sind Code, kein Fence");
   assert.equal(FENCE_ZEILE.exec("``"), null, "zwei Zeichen reichen nicht");
+});
+
+// --- 4b. board.mjs: ABSCHNITT_ZEILE (Issue #877) ---
+//
+// Die Kopfzeile eines `##`-Abschnitts in `zerlegeAbschnitte`. Gemeldet als S8786, weil
+// das lazy `(.+?)` und das folgende `[ \t]*$` dieselben Zeichen akzeptierten. Der Titel
+// geht anschliessend ohnehin durch `normUeberschrift`, das trimmt — der hintere
+// Leerraum-Lauf im Ausdruck war also doppelt gemoppelt und wird gestrichen.
+
+test("ABSCHNITT_ZEILE: Treffer, Titel und Nicht-Treffer", () => {
+  assert.equal(ABSCHNITT_ZEILE.exec("## Kontext")[1], "Kontext");
+  assert.equal(ABSCHNITT_ZEILE.exec("##\tKontext")[1], "Kontext", "ein Tab trennt auch");
+  assert.equal(ABSCHNITT_ZEILE.exec("## Fachliche Akzeptanzkriterien")[1], "Fachliche Akzeptanzkriterien");
+  // Kein Treffer: ohne Trenner, mit drei Rauten, mit Text davor.
+  assert.equal(ABSCHNITT_ZEILE.exec("##Kontext"), null);
+  assert.equal(ABSCHNITT_ZEILE.exec("### Kontext"), null, "`###` ist keine Abschnittsgrenze");
+  assert.equal(ABSCHNITT_ZEILE.exec("# Kontext"), null);
+  assert.equal(ABSCHNITT_ZEILE.exec(" ## Kontext"), null, "kein Leerraum davor");
+  assert.equal(ABSCHNITT_ZEILE.exec("Text ## Kontext"), null);
+  assert.equal(ABSCHNITT_ZEILE.exec("## "), null, "ohne Titel kein Abschnitt");
+});
+
+test("ABSCHNITT_ZEILE: der Titel traegt keinen Leerraum an den Raendern", () => {
+  // Was der Ausdruck an Leerraum stehen laesst, raeumt `normUeberschrift` ab — deshalb
+  // steht hier `.trim()` daneben: Die Zerlegung darf sich aendern, das Ergebnis der
+  // Kette nicht.
+  const paare = [
+    ["##   Kontext", "Kontext"],
+    ["## Kontext  ", "Kontext"],
+    ["##   Kontext   ", "Kontext"],
+    ["## Kontext\t", "Kontext"],
+    ["## Geplante Aenderungen  ", "Geplante Aenderungen"],
+  ];
+  for (const [zeile, titel] of paare) {
+    assert.equal(ABSCHNITT_ZEILE.exec(zeile)[1].trim(), titel, `Zeile ${JSON.stringify(zeile)}`);
+  }
 });
 
 // --- 5. board.mjs: der Trim-Replace in setzeAutorModell ---
@@ -203,6 +240,10 @@ function dauer(fn) {
 const WORST_CASE = [
   ["AUTOR_MODELL_ZEILE", AUTOR_MODELL_ZEILE, (n) => `Autor-Modell: x${" ".repeat(n)}\n`],
   ["FENCE_ZEILE", FENCE_ZEILE, (n) => `   ${"`".repeat(n)}\n`],
+  // Issue #877: Der Titel passt, dann Leerraum, dann ein Umbruch, ueber den weder `.`
+  // noch `[ \t]` hinwegkommt — `$` scheitert, und beide Laeufe probierten jede Grenze
+  // zwischen sich durch.
+  ["ABSCHNITT_ZEILE", ABSCHNITT_ZEILE, (n) => `## Kontext${" ".repeat(n)}\nx`],
   // Der Leerraum steht hinter dem Doppelpunkt, nicht mehr davor: Seit Issue #496
   // kennt der Ausdruck keinen fuehrenden Leerraum, eine Zeile mit Einrueckung
   // scheiterte sofort und maesse nichts.

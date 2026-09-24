@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -78,6 +78,29 @@ test("[night-19] ein Issue in In progress haelt die Kette nicht auf — sie laeu
     assert.equal(res.status, 0, res.stderr);
     assert.doesNotMatch(res.stderr, /Crash-Rest/);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
+  });
+});
+
+test("[night-19] eine unsaubere Hauptkopie haelt die Kette nicht auf (Issue #878)", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    // Der Rest, den eine parallel laufende Umsetzungsnacht in der Hauptkopie liegen hat.
+    // Er steht schon vor dem Start da — die Kette misst ihn gar nicht erst.
+    writeFileSync(join(dir, "unfertig.md"), "ein Rest aus einem anderen Lauf\n");
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.doesNotMatch(res.stdout, /HARTER STOPP/, "die Kette stoppte wegen des fremden Rests hart");
+
+    const lauf = stand(dir);
+    assert.equal(lauf.abschluss, "regulaer");
+    assert.equal("fehlerklasse" in lauf, false, "der Lauf traegt eine Fehlerklasse");
+    const einheit = lauf.einheiten.find((e) => e.id === F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.deepEqual(einheit.stufen.pakete.ids, ["0003", "0004"], "die Pakete entstanden nicht");
+
+    // Unter Variante A fasst die Kette die Hauptkopie nicht an: Der fremde Rest liegt noch.
+    assert.equal(existsSync(join(dir, "unfertig.md")), true, "die Kette hat den fremden Rest angefasst");
   });
 });
 

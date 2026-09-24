@@ -55,7 +55,7 @@ import { fileURLToPath } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.2.0";
+const KIT_VERSION = "3.3.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "wirksamkeit.json";
@@ -282,7 +282,7 @@ function protokollLesen(root) {
     if (roh === "") continue;
     const teile = roh.split("\t");
     const zeitMs = Date.parse(teile[0]);
-    const dauerMs = teile.length === 4 ? Number(teile[3]) : NaN;
+    const dauerMs = teile.length === 4 ? Number(teile[3]) : Number.NaN;
     if (teile.length !== 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
       fehlerhaft += 1;
       continue;
@@ -649,12 +649,36 @@ function ruecklaufBefund(r, einstellungen) {
  *
  * SYNC: dieselben Textformen (`zahlform`, `dauer`) stehen in kit/aufwand.mjs (#440).
  */
-function zahlform(wert, stellen) {
+// Nur eine reine Ziffernfolge wird gruppiert. `toFixed` liefert bei nicht endlichen
+// Zahlen 'Infinity' und 'NaN'; der alte Ausdruck fand dort keine Stelle und liess den
+// Text stehen, und 'Inf.ini.ty' waere eine neue, falsche Ausgabe. Der Anker macht den
+// Ausdruck selbst linear: `^` ohne m-Flag laesst genau eine Startposition zu.
+const NUR_ZIFFERN = /^\d+$/;
+
+/**
+ * Eine Ziffernfolge mit Punkten als Tausendertrenner.
+ *
+ * Gezaehlt statt gesucht (Issue #877): Im alten `\B(?=(\d{3})+$)` probierte die Engine an
+ * JEDER Position jede Aufteilung des Rests in Dreiergruppen durch — 32.000 Ziffern
+ * brauchten so 390 ms. Von hinten in Dreierschritten zu schneiden kostet einen Durchlauf.
+ *
+ * SYNC: dieselbe Funktion steht in kit/aufwand.mjs (#440).
+ */
+export function tausenderPunkte(ziffern) {
+  if (!NUR_ZIFFERN.test(ziffern)) return ziffern;
+  const gruppen = [];
+  for (let ende = ziffern.length; ende > 0; ende -= 3) {
+    gruppen.unshift(ziffern.slice(Math.max(0, ende - 3), ende));
+  }
+  return gruppen.join(".");
+}
+
+export function zahlform(wert, stellen) {
   const fest = wert.toFixed(stellen);
   const [ganz, bruch] = fest.split(".");
   const vorzeichen = ganz.startsWith("-") ? "-" : "";
   const ziffern = vorzeichen ? ganz.slice(1) : ganz;
-  const gruppiert = ziffern.replaceAll(/\B(?=(\d{3})+$)/g, ".");
+  const gruppiert = tausenderPunkte(ziffern);
   return bruch ? `${vorzeichen}${gruppiert},${bruch}` : `${vorzeichen}${gruppiert}`;
 }
 

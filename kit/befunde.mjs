@@ -78,7 +78,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.2.0";
+const KIT_VERSION = "3.3.0";
 
 // Blob-Hash und Ort der Pruef-Zusammenfassung kommen aus checks.mjs und werden NICHT
 // nachgebaut (Issue #802, Plan #797 E13): Zwei Implementierungen derselben Frage
@@ -139,7 +139,18 @@ const MARKEN = ["KRITISCH", "BLOCKER", "WICHTIG", "HINWEIS"];
 // Listenpunkt, Zitatzeichen. Abgezogen wird sie, damit '#### BLOCKER' und
 // '**KRITISCH — Titel**' dieselbe Marke ergeben.
 const DEKO_VORN_RE = /^[\s>#*_]+/;
-const DEKO_HINTEN_RE = /[\s*_#]+$/;
+// Hinten steht ein Ausdruck fuer EIN Zeichen, nicht fuer den Lauf: `/[\s*_#]+$/` war ein
+// S8786-Fund (Issue #877), weil der Lauf und das Zeilenende einander ueberlappten — eine
+// lange Leerraum-Schleppe liess die Engine jede Aufteilung durchprobieren. Vorn stellt
+// sich die Frage nicht: Dort ankert `^` den Lauf an genau einer Stelle.
+const DEKO_HINTEN_ZEICHEN = /[\s*_#]/;
+
+/** Der Text ohne Markdown-Dekoration am Ende. */
+export function ohneDekoHinten(text) {
+  let ende = text.length;
+  while (ende > 0 && DEKO_HINTEN_ZEICHEN.test(text[ende - 1])) ende -= 1;
+  return text.slice(0, ende);
+}
 
 // Die Aufzaehlungsmarke am Zeilenanfang: Bindestrich, Plus, Stern oder Nummer mit Punkt
 // oder Klammer. Sie faellt vor jeder Erkennung weg, damit '- **WICHTIG — Titel**' und
@@ -156,16 +167,94 @@ const KOPFZEILE_RE = /^\*\*.+\*\*$/;
 
 const MARKE_RE = new RegExp(`^(${MARKEN.join("|")})(?![A-Za-zÄÖÜäöü])`);
 
-// Die Pflichtzeilen eines Funds. `^Gegenprobe\s*:` trifft bewusst nicht auf
-// 'Gegenprobe am Bestand:' — die Form verlangt genau diese Zeile, und eine
-// grosszuegigere Erkennung liesse die Altform als erfuellt erscheinen.
-const GEGENPROBE_RE = /^Gegenprobe\s*:\s*(.*)$/;
-const ART_RE = /^Art\s*:\s*(.*)$/;
+/**
+ * Der Wert einer Angabenzeile 'Kopf: Wert' — `null`, wenn die Zeile nicht mit genau
+ * einem der Koepfe und einem Doppelpunkt beginnt.
+ *
+ * Der Wert traegt keinen fuehrenden Leerraum mehr, seinen nachlaufenden aber schon:
+ * genau das, was die alten Ausdruecke `^Kopf\s*:\s*(.*)$` lieferten. Das Stutzen hinten
+ * machen die Aufrufer (`artName`, `trim`).
+ *
+ * In zwei Schritten statt in einem Ausdruck (S8786, Issue #877): Dort ueberlappten sich
+ * `\s*` und `(.*)` hinter dem Doppelpunkt — dieselbe Form, die Issue #403 fuer
+ * PRUEFUNG_ZEILE auseinandergenommen hat. Erst den Doppelpunkt suchen, dann die beiden
+ * Teile lesen; keiner der Schritte kann zuruecksetzen.
+ *
+ * 'Gegenprobe am Bestand:' ist weiterhin kein Treffer — die Form verlangt genau die eine
+ * Zeile, und eine grosszuegigere Erkennung liesse die Altform als erfuellt erscheinen.
+ */
+export function angabenWert(zeile, ...koepfe) {
+  const trenner = zeile.indexOf(":");
+  if (trenner === -1) return null;
+  // `trimEnd()` steht fuer das `\s*` vor dem Doppelpunkt, `trimStart()` fuer das dahinter
+  // — beide raeumen dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+  if (!koepfe.includes(zeile.slice(0, trenner).trimEnd())) return null;
+  return zeile.slice(trenner + 1).trimStart();
+}
 
-// Der Stand am Ende der Gegenprobe-Zeile. Die Umlautfassung gilt mit: Der Regeltext
-// schreibt das Kit-uebliche ASCII, aber die Funde kommen von Modellen, die
-// 'geprüft, bestätigt' schreiben — eine Meldung darueber waere eine falsche Meldung.
-const STAND_RE = /[—–-]\s*(geprueft|geprüft)\s*,\s*(bestaetigt|bestätigt)\s*\.?\s*$|[—–-]\s*nicht\s+(geprueft|geprüft)\s*\.?\s*$/i;
+// Die drei Striche, mit denen ein Stand beginnen darf: Geviert-, Halbgeviert- und
+// Bindestrich.
+const STAND_STRICHE = "—–-";
+
+// Die Umlautfassung gilt jeweils mit: Der Regeltext schreibt das Kit-uebliche ASCII, aber
+// die Funde kommen von Modellen, die 'geprüft, bestätigt' schreiben — eine Meldung
+// darueber waere eine falsche Meldung.
+const GEPRUEFT = new Set(["geprueft", "geprüft"]);
+const BESTAETIGT = new Set(["bestaetigt", "bestätigt"]);
+
+/** Der Text ohne Leerraum an den Raendern und ohne einen einzelnen Schlusspunkt. */
+function ohneSchlusspunkt(text) {
+  const knapp = text.trim();
+  return knapp.endsWith(".") ? knapp.slice(0, -1).trimEnd() : knapp;
+}
+
+/**
+ * Ob der Text hinter einem Strich genau einer der beiden Staende ist — und welcher.
+ *
+ * `null` heisst: kein Stand. Sonst `true` fuer 'geprueft, bestaetigt' und `false` fuer
+ * 'nicht geprueft'.
+ */
+function standArt(text) {
+  const kern = ohneSchlusspunkt(text).toLowerCase();
+  const komma = kern.indexOf(",");
+  if (komma === -1) {
+    // Der zweite Ast: 'nicht geprueft'. Das Leerzeichen zwischen den Woertern ist
+    // Pflicht — 'nichtgeprueft' war auch dem alten `nicht\s+` kein Treffer.
+    if (!kern.startsWith("nicht")) return null;
+    const dahinter = kern.slice("nicht".length);
+    if (dahinter.trimStart() === dahinter) return null;
+    return GEPRUEFT.has(dahinter.trim()) ? false : null;
+  }
+  const istGeprueftBestaetigt = GEPRUEFT.has(kern.slice(0, komma).trim())
+    && BESTAETIGT.has(kern.slice(komma + 1).trim());
+  return istGeprueftBestaetigt ? true : null;
+}
+
+/**
+ * Der Stand am Ende eines Gegenprobe-Texts: die Position des Strichs, ab dem er steht,
+ * und ob er 'bestaetigt' lautet — `null`, wenn der Text keinen Stand traegt.
+ *
+ * In zwei Schritten statt in einem Ausdruck (Issue #877): Der alte `STAND_RE` war der
+ * einzige Fund, den SonarQube doppelt meldete — als super-linear (S8786), weil sich
+ * `\s*\.?\s*$` am Ende selbst ueberlappte, und als zu komplex (S5843, 31 statt der
+ * erlaubten 20), weil zwei Alternativen mit je fuenf Leerraum-Laeufen nebeneinander
+ * standen. Jetzt sucht der erste Schritt den Strich, der zweite liest den Text dahinter.
+ *
+ * Gesucht wird der Strich, hinter dem der Stand steht — nicht der erste Strich
+ * ueberhaupt: 'Ein zweiter Ort in skills/ — kein Treffer. — geprueft, bestaetigt' traegt
+ * beide, und geteilt wird am Stand.
+ *
+ * Es ist der LETZTE Strich, und das ist dieselbe Stelle, die der alte Ausdruck fand:
+ * Ein Stand reicht bis zum Zeilenende und traegt selbst keinen Strich, also gibt es
+ * hoechstens einen, hinter dem einer steht. Ueber alle Striche zu laufen und je einen
+ * Rest abzuschneiden waere quadratisch gewesen — der Fehler, den dieses Paket behebt.
+ */
+export function standVon(rest) {
+  const index = Math.max(...[...STAND_STRICHE].map((s) => rest.lastIndexOf(s)));
+  if (index === -1) return null;
+  const art = standArt(rest.slice(index + 1));
+  return art === null ? null : { index, bestaetigt: art };
+}
 
 const BUCHEN_STUFEN = ["fachlich", "plan", "issue", "code"];
 
@@ -270,7 +359,7 @@ function kern(zeile) {
     if (kuerzer === vorn) break;
     vorn = kuerzer;
   }
-  return vorn.replace(DEKO_HINTEN_RE, "");
+  return ohneDekoHinten(vorn);
 }
 
 /** Die Schweregrad-Marke, mit der eine Zeile beginnt — null, wenn keine. */
@@ -322,7 +411,7 @@ function fundeLesen(text) {
       continue;
     }
     if (marke !== null && KOPFZEILE_RE.test(ohneListenmarke(roh))) {
-      if (offen !== null && offen.nurUeberschrift) funde.pop();
+      if (offen?.nurUeberschrift) funde.pop();
       beginne(marke, text_, i + 1);
       continue;
     }
@@ -343,21 +432,34 @@ function fundeLesen(text) {
  * 'Ein zweiter Ort in skills/ — kein Treffer. — geprueft, bestaetigt' traegt beides.
  */
 function gegenprobeTeile(rest) {
-  const stand = STAND_RE.exec(rest);
+  const stand = standVon(rest);
   return {
     beobachtung: (stand === null ? rest : rest.slice(0, stand.index)).trim(),
     hatStand: stand !== null,
   };
 }
 
+/**
+ * Der Wert der ersten Zeile, die eine Angabe mit einem dieser Koepfe traegt — sonst
+ * `null`. Auf `null` statt auf Wahrheit geprueft: Ein leerer Wert ist eine vorhandene
+ * Angabe, und `!wert` haette ihn mit der fehlenden Zeile verwechselt.
+ */
+function ersterAngabenWert(zeilen, ...koepfe) {
+  for (const zeile of zeilen) {
+    const wert = angabenWert(zeile, ...koepfe);
+    if (wert !== null) return wert;
+  }
+  return null;
+}
+
 /** Welche der drei Pflichtangaben einem Fund fehlen, in fester Reihenfolge. */
 function fehlendeAngaben(fund) {
   const zeilen = [fund.titel, ...fund.zeilen];
-  const gegenprobe = zeilen.map((z) => GEGENPROBE_RE.exec(z)).find((t) => t !== null);
-  const art = zeilen.map((z) => ART_RE.exec(z)).find((t) => t !== null);
+  const gegenprobe = ersterAngabenWert(zeilen, "Gegenprobe");
+  const art = ersterAngabenWert(zeilen, "Art");
 
   const fehlt = [];
-  if (!gegenprobe) {
+  if (gegenprobe === null) {
     // Ohne die Zeile fehlt auch ihr Stand — beides sind eigene Angaben, und ein
     // stillschweigend unterschlagener Stand liesse den Fund vollstaendiger aussehen.
     fehlt.push("gegenprobe", "stand");
@@ -365,16 +467,16 @@ function fehlendeAngaben(fund) {
     // Der Stand allein ist keine Gegenprobe: 'Gegenprobe: — nicht geprueft' nennt nicht
     // „die Beobachtung, die ihn widerlegen wuerde" (templates/CLAUDE-workflow.md), und
     // als vollstaendig gezaehlt saehe das Werkzeug einen Beleg, wo keiner steht.
-    const { beobachtung, hatStand } = gegenprobeTeile(gegenprobe[1]);
+    const { beobachtung, hatStand } = gegenprobeTeile(gegenprobe);
     if (beobachtung === "") fehlt.push("gegenprobe");
     if (!hatStand) fehlt.push("stand");
   }
 
   let gefundeneArt = null;
-  if (!art) {
+  if (art === null) {
     fehlt.push("art");
   } else {
-    gefundeneArt = artName(art[1]);
+    gefundeneArt = artName(art);
     if (!ARTEN_NAMEN.has(gefundeneArt)) fehlt.push("art");
   }
 
@@ -467,14 +569,33 @@ const UNVOLLSTAENDIG_RE = /^Angaben\s*:\s*unvollst(?:ae|ä)ndig/i;
 // Der Reviewer-Kopf, wie /issue-review Schritt 5 ihn schreibt:
 // '### Reviewer <n>: <rolle>, <modell>'. Die Rolle ist der Teil vor dem Komma; das
 // Modell dahinter wird bewusst nicht gelesen — keine Spalte traegt es (E15).
-const REVIEWER_RE = /^Reviewer\s+\d+\s*:\s*([^,]+),/;
+// Der Kopf bis zum Doppelpunkt: das Wort, dann die Nummer. Die beiden Laeufe darin
+// akzeptieren Verschiedenes und koennen einander darum nicht in die Quere kommen.
+const REVIEWER_KOPF_RE = /^Reviewer[^\S\n]+\d+$/;
+
+/**
+ * Die Rolle aus einem Reviewer-Kopf — `null`, wenn die Zeile keiner ist.
+ *
+ * In zwei Schritten statt in einem Ausdruck (S8786, Issue #877): In
+ * `^Reviewer\s+\d+\s*:\s*([^,]+),` ueberlappten sich `\s*` und `[^,]+` hinter dem
+ * Doppelpunkt — ein Leerzeichen ist kein Komma —, sodass eine Zeile ohne Komma jede
+ * Aufteilung durchprobierte.
+ */
+export function reviewerRolle(zeile) {
+  const trenner = zeile.indexOf(":");
+  if (trenner === -1) return null;
+  if (!REVIEWER_KOPF_RE.test(zeile.slice(0, trenner).trimEnd())) return null;
+  const rest = zeile.slice(trenner + 1);
+  const komma = rest.indexOf(",");
+  return komma === -1 ? null : rest.slice(0, komma).trim();
+}
 
 /** Der Uebernahmevermerk eines Funds: 'uebernommen', 'abgelehnt' oder null. */
 function uebernahmeVon(fund) {
   for (const zeile of fund.zeilen) {
-    const treffer = UEBERNAHME_RE.exec(zeile);
-    if (treffer === null) continue;
-    const wert = treffer[1].replace(/^[\s*_]+/, "").toLowerCase();
+    const roh = angabenWert(zeile, "Uebernahme", "Übernahme");
+    if (roh === null) continue;
+    const wert = roh.replace(/^[\s*_]+/, "").toLowerCase();
     if (wert.startsWith("uebernommen") || wert.startsWith("übernommen")) return "uebernommen";
     if (wert.startsWith("abgelehnt")) return "abgelehnt";
     return null;
@@ -485,19 +606,17 @@ function uebernahmeVon(fund) {
 /** Ob die Gegenprobe eines Funds den Stand 'geprueft, bestaetigt' traegt. */
 function gegenprobeBestaetigt(fund) {
   const zeilen = [fund.titel, ...fund.zeilen];
-  const gegenprobe = zeilen.map((z) => GEGENPROBE_RE.exec(z)).find((t) => t !== null);
-  if (!gegenprobe) return false;
-  const stand = STAND_RE.exec(gegenprobe[1]);
-  // Gruppe 2 ist das bestaetigt-Wort; der 'nicht geprueft'-Ast fuellt Gruppe 3.
-  return stand !== null && stand[2] !== undefined;
+  const gegenprobe = ersterAngabenWert(zeilen, "Gegenprobe");
+  if (gegenprobe === null) return false;
+  return standVon(gegenprobe)?.bestaetigt === true;
 }
 
 /** Die Reviewer-Koepfe eines Texts mit ihrer Zeilennummer, in Textreihenfolge. */
 function reviewerKoepfe(text) {
   const koepfe = [];
   for (const [i, zeile] of text.split("\n").entries()) {
-    const treffer = REVIEWER_RE.exec(kern(zeile));
-    if (treffer !== null) koepfe.push({ zeile: i + 1, rolle: treffer[1].trim() });
+    const rolle = reviewerRolle(kern(zeile));
+    if (rolle !== null) koepfe.push({ zeile: i + 1, rolle });
   }
   return koepfe;
 }
