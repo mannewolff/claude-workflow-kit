@@ -29,6 +29,7 @@ import {
   NUR_POSIX, NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
+import { nachtlaufMeldung } from "../kit/board.mjs";
 
 
 test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes Feld, dazu erzeugtVon", NUR_POSIX, () => {
@@ -143,6 +144,29 @@ test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream
   } finally {
     rmSync(dir, { recursive: true, force: true });
     if (binDir) rmSync(binDir, { recursive: true, force: true });
+  }
+});
+
+// Eine erreichte Grenze ist kein Abbruch (Issue #881): Ein Lauf, der nach --max Paketen
+// planmaessig endet, schliesst regulaer ab und meldet ans Board keinen abortReason. Der
+// Grund gehoert allein dem harten Stopp — stuende er auch hier, saehe jede volle Nacht
+// wie eine Stoerung aus.
+test("[night-2] ein am --max beendeter Lauf schliesst regulaer ab und meldet keinen abortReason", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-max-");
+  try {
+    readyIssue(dir, "Einziges Paket der Nacht");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const s = stand(dir);
+    assert.equal(s.abschluss, "regulaer");
+    assert.equal(s.einheiten.length, 1, "ein leerer Lauf belegte die Aussage nicht");
+    const m = nachtlaufMeldung(s);
+    assert.equal(m.complete, true);
+    assert.ok(!("abortReason" in m), "eine erreichte Grenze ist kein Abbruchgrund");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

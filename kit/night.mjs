@@ -1058,7 +1058,10 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     abschluss: null,
     // Ab hier Issue #669, hinter abschluss, weil die Folge stufe → einheiten Vertrag ist.
     // `complete` ist `false`, solange der Lauf laeuft, und `true` nur am regulaeren Ende: Ein
-    // harter Stopp laesst es stehen, damit die Nacht am Board nicht als ganze erscheint.
+    // harter Stopp laesst es in der DATEI auf `false` stehen — der Lauf kam nie durch.
+    // Die MELDUNG ans Board sagt seit Issue #881 etwas anderes: Sie leitet `complete` aus
+    // `abschluss` ab und traegt den harten Stopp als abgeschlossen samt `abortReason`,
+    // damit er dort nicht ewig unter den aktiven Laeufen steht.
     complete: false,
     // Der Verbrauch des ganzen Laufs, einschliesslich der Sessions ohne Karte, und der Teil
     // davon, der zu keiner Einheit gehoert.

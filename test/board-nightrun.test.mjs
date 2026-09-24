@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { nachtlaufMeldung } from "../kit/board.mjs";
+import { nachtlaufMeldung, nachtlaufAbbruchGrund } from "../kit/board.mjs";
 import { verbrauchLeer } from "../kit/night.mjs";
 import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
@@ -32,8 +32,96 @@ test("[night-31] Kopf: Modus, Start, Dauer, complete und der Lauf-Verbrauch im V
   // 8.883.160 von 9.086.306 sind die 97,8 Prozent aus dem Issue.
   assert.deepEqual(m.usage, { costUsd: 8.032575, inputTokens: 9086306, outputTokens: 62411, cachedInputTokens: 8883160, modelDurationMs: null, turns: null });
   assert.equal(nachtlaufMeldung(stand("kette", []), JETZT).mode, "CHAIN");
-  assert.equal(nachtlaufMeldung(stand("kette", [], { complete: false }), JETZT).complete, false);
+  // Ein Lauf ohne Abschluss laeuft noch — wie LAEUFT weiter unten. `complete` haengt seit
+  // Issue #881 am Abschluss, nicht mehr am gleichnamigen Feld des Standes.
+  assert.equal(nachtlaufMeldung(stand("kette", [], { abschluss: null, complete: false }), JETZT).complete, false);
   assert.equal(nachtlaufMeldung(stand("kette", [], { verbrauch: V(null, null, null, null, null) }), JETZT).usage, null, "nichts gemessen heisst null, nicht 0");
+});
+
+// Der harte Stopp des Runners (Issue #881). Bis hierher meldete ihn niemand: Der Lauf
+// blieb am Board als unabgeschlossen stehen und stand weiter unter den aktiven Laeufen,
+// obwohl er lange tot war. Seit kanban-kit v2.7.0 nimmt die Gegenstelle `abortReason`
+// entgegen und wertet den Lauf damit als Stoerung — die Meldung traegt ihn deshalb als
+// abgeschlossen (`complete: true`) samt Grund.
+//
+// Die geschriebene Datei bleibt davon unberuehrt: Dort steht weiterhin `complete: false`.
+// Die Quelle der Aussage ist seit diesem Paket `abschluss`.
+
+// Die Laengengrenze des Vertrags fuer Auszuege (NightRunLimits.EXCERPT_MAX); in
+// board.mjs traegt sie NACHTLAUF_AUSZUG_MAX, hier steht sie als Erwartung.
+const AUSZUG_MAX = 4000;
+
+const HART = (extra = {}) => ({ abschluss: "harterStopp", complete: false, ...extra });
+
+test("[board-21] ein hart gestoppter Lauf gilt als abgeschlossen und traegt seinen Grund", () => {
+  const m = nachtlaufMeldung(stand("implementierung", [], HART({ fehlerText: "Working Tree unsauber vor dem Start" })), JETZT);
+  assert.equal(m.complete, true, "am Board ist der Lauf vorbei, auch wenn er hart endete");
+  assert.equal(m.abortReason, "Working Tree unsauber vor dem Start");
+});
+
+test("[board-21] ein regulaer beendeter Lauf meldet kein abortReason", () => {
+  const m = nachtlaufMeldung(stand("implementierung", []), JETZT);
+  assert.equal(m.complete, true);
+  assert.ok(!("abortReason" in m), "ohne Abbruch darf das Feld gar nicht erst auftauchen");
+});
+
+test("[board-21] ein laufender Lauf meldet weder complete noch abortReason", () => {
+  const m = nachtlaufMeldung(stand("kette", [], { abschluss: null, complete: false }), JETZT);
+  assert.equal(m.complete, false);
+  assert.ok(!("abortReason" in m));
+});
+
+// Die Kaskade aus E3: Der Grund steht je nach Stopp-Pfad an einer anderen Stelle. Das
+// Sicherheitsnetz aus Issue #558 laesst `fehlerText` genau dann leer, wenn die betroffene
+// Einheit ihn traegt — ohne den zweiten Schritt bliebe der Grund dort liegen.
+test("[board-21] der Grund kommt aus fehlerText, sonst von der fehlerEinheit, sonst aus der Fehlerklasse", () => {
+  const mitEinheit = [{ id: "7", titel: "T", ausgang: "harterStopp", grund: "Session ohne In-review-Ergebnis" }];
+  const gruende = [
+    HART({ fehlerText: "Vorflug: Working Tree unsauber", fehlerEinheit: "7", einheiten: mitEinheit }),
+    HART({ fehlerText: "", fehlerEinheit: "7", einheiten: mitEinheit }),
+    HART({ fehlerText: "", fehlerEinheit: 7, einheiten: mitEinheit }),
+    HART({ fehlerText: "", fehlerklasse: "harterStopp" }),
+    HART({ fehlerText: "", fehlerEinheit: "9", einheiten: mitEinheit }),
+    HART({}),
+  ].map((s) => nachtlaufMeldung({ ...stand("implementierung", s.einheiten ?? []), ...s }, JETZT).abortReason);
+  assert.deepEqual(gruende, [
+    "Vorflug: Working Tree unsauber",
+    "Session ohne In-review-Ergebnis",
+    "Session ohne In-review-Ergebnis",
+    "Harter Stopp (harterStopp)",
+    "Harter Stopp",
+    "Harter Stopp",
+  ]);
+});
+
+test("[board-21] ein zu langer Grund wird auf die Laenge des Vertrags gekuerzt", () => {
+  const lang = "y".repeat(AUSZUG_MAX + 500);
+  const m = nachtlaufMeldung(stand("implementierung", [], HART({ fehlerText: lang })), JETZT);
+  assert.equal(m.abortReason.length, AUSZUG_MAX);
+  assert.equal(m.abortReason, "y".repeat(AUSZUG_MAX));
+});
+
+// `nachtlaufAbbruchGrund` ist eine reine Funktion wie `nachtlaufBudget`: Sie liest den
+// Stand und schreibt nichts hinein. Ein tief eingefrorener Eingabestand macht jeden
+// Schreibversuch zum Fehler, zwei Aufrufe belegen, dass nichts zwischen ihnen haengen
+// bleibt. Fuer die uebrigen nachtlauf*-Hilfen gibt es keinen solchen Test — dieser ist
+// der erste.
+function tiefEinfrieren(wert) {
+  if (wert === null || typeof wert !== "object" || Object.isFrozen(wert)) return wert;
+  Object.freeze(wert);
+  for (const v of Object.values(wert)) tiefEinfrieren(v);
+  return wert;
+}
+
+test("[board-21] nachtlaufAbbruchGrund ist rein: eingefrorener Stand, zweimal dasselbe Ergebnis", () => {
+  const eingefroren = tiefEinfrieren(stand("implementierung", [
+    { id: "7", titel: "T", ausgang: "harterStopp", grund: "Session ohne In-review-Ergebnis" },
+  ], HART({ fehlerText: "", fehlerEinheit: "7" })));
+  const erst = nachtlaufAbbruchGrund(eingefroren);
+  const zweit = nachtlaufAbbruchGrund(eingefroren);
+  assert.equal(erst, "Session ohne In-review-Ergebnis");
+  assert.equal(zweit, erst);
+  assert.equal(nachtlaufAbbruchGrund(tiefEinfrieren(stand("kette", []))), null, "ohne harten Stopp gibt es keinen Grund");
 });
 
 // Ein Lauf ohne Arbeitspaket vermerkt seinen Grund am Lauf-Kopf (Issue #744); die
