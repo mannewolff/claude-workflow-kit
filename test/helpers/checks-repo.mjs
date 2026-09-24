@@ -202,6 +202,25 @@ export async function repoEntfernenHartnaeckig(
   }
 }
 
+/**
+ * Dasselbe Entfernen, aber es kippt kein Testergebnis (Issue #892). Gibt die
+ * ueberlebende `cmd.exe` das Verzeichnis auch bis zur Obergrenze nicht frei, wird der
+ * Fehler notiert statt geworfen: Ein Wegwerf-Verzeichnis, das unter Windows belegt
+ * bleibt, ist kein Befund ueber das Kit — die Zusicherungen des Tests sind da laengst
+ * durchgelaufen, und das Aufraeumen im `finally` darf ihr Ergebnis nicht ueberschreiben.
+ * Fehler, die nicht von einem offenen Handle kommen, fliegen unveraendert weiter; sonst
+ * verbaerge die Toleranz auch einen falschen Pfad. `notiz` nimmt den Satz entgegen —
+ * im Test `t.diagnostic`, damit er im TAP-Protokoll beim richtigen Test steht.
+ */
+export async function repoEntfernenTolerant(dir, { notiz = null, ...rest } = {}) {
+  try {
+    await repoEntfernenHartnaeckig(dir, rest);
+  } catch (fehler) {
+    if (!BELEGT.has(fehler?.code)) throw fehler;
+    notiz?.(`Wegwerf-Verzeichnis ${dir} blieb belegt (${fehler.code}) — nicht entfernt, kein Testfehler.`);
+  }
+}
+
 export function mitRepo(optionen, fn) {
   const dir = repoAnlegen(optionen);
   try {

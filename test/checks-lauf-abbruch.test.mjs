@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { setTimeout as warte } from "node:timers/promises";
 import {
   mitRepo, repoAnlegen, run, zusammenfassung, datei, gate, gateEinbauen, git, CHECKS,
-  prozessbaumBeenden, repoEntfernenHartnaeckig,
+  prozessbaumBeenden, repoEntfernenHartnaeckig, repoEntfernenTolerant,
 } from "./helpers/checks-repo.mjs";
 
 const CHECK_AREAS = { kern: ["src/**"] };
@@ -176,7 +176,7 @@ test("[checks-8] ein vollstaendiger Lauf endet mit abgeschlossen: true — auch 
   }
 });
 
-test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst einen ungruenen Stand", async () => {
+test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst einen ungruenen Stand", async (t) => {
   // Ein Kommando, das seinen Start meldet und dann haengt: So trifft der Test den
   // Lauf sicher mitten darin und nicht davor oder danach. Gemeldet wird die eigene
   // pid und nicht bloss "ja": Der Kill trifft den Lauf, nicht dessen Kind — das
@@ -224,12 +224,14 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
     // `beendeKommando` trifft ueber die pid aus `laeuft.txt` nur das node-Kommando;
     // die `cmd.exe`, die `checks.mjs` wegen `shell: true` dazwischenstellt, kennt es
     // nie — SIGKILL beendet unter Windows keinen Prozessbaum. `prozessbaumBeenden`
-    // holt sie ueber `taskkill /T` nach, und `repoEntfernenHartnaeckig` wartet den
-    // Rest ab: Die Shell gibt das Verzeichnis erst kurz nach ihrem Kind frei
-    // (Issue #873, #874).
+    // holt sie ueber `taskkill /T` nach, und die Wiederholungen des Entfernens warten
+    // den Rest ab: Die Shell gibt das Verzeichnis erst kurz nach ihrem Kind frei
+    // (Issue #873, #874). Bleibt es trotzdem belegt, wird das notiert und nicht
+    // geworfen — die Zusicherungen oben sind durch, und das Aufraeumen eines
+    // Wegwerf-Verzeichnisses darf ihr Ergebnis nicht kippen (Issue #892).
     await beendeKommando(kind);
     prozessbaumBeenden(proc?.pid);
-    await repoEntfernenHartnaeckig(dir);
+    await repoEntfernenTolerant(dir, { notiz: (satz) => t.diagnostic(satz) });
   }
 });
 
@@ -272,7 +274,7 @@ test("[checks-8] repoEntfernenHartnaeckig wiederholt, bis das Loeschen gelingt",
 
   assert.equal(optionen.length, 3, "nach zwei EBUSY muss ein dritter Versuch folgen");
   assert.deepEqual(optionen[0], { recursive: true, force: true, maxRetries: 20, retryDelay: 250 },
-    "die Wiederholungen von rmSync selbst bleiben der erste Weg");
+    "die Wiederholungen des Entfernens selbst bleiben der erste Weg");
   assert.equal(pausen.length, 2, "zwischen den Versuchen wird gewartet");
   assert.ok(pausen[1] > pausen[0], `der Abstand waechst nicht: ${JSON.stringify(pausen)}`);
 });
@@ -302,6 +304,42 @@ test("[checks-8] repoEntfernenHartnaeckig wirft fremde Fehler sofort weiter", as
 
   await assert.rejects(() => repoEntfernenHartnaeckig("/weg", { rm }), { code: "EACCES" });
   assert.equal(versuche, 1, "ein fremder Fehler wird nicht wiederholt — er verginge nicht von selbst");
+});
+
+test("[checks-8] repoEntfernenTolerant notiert EBUSY statt zu werfen", async () => {
+  const optionen = [];
+  let jetzt = 0;
+  const rm = (pfad, opts) => {
+    optionen.push(opts);
+    throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${pfad}'`), { code: "EBUSY" });
+  };
+  const notizen = [];
+
+  await repoEntfernenTolerant("/weg", {
+    notiz: (satz) => notizen.push(satz),
+    rm,
+    grenzeMs: 10_000,
+    uhr: () => jetzt,
+    warten: async (ms) => { jetzt += ms; },
+  });
+
+  assert.equal(notizen.length, 1, "der geschluckte Fehler wird genau einmal notiert");
+  assert.match(notizen[0], /EBUSY/, `die Notiz nennt den Fehlercode nicht: ${notizen[0]}`);
+  assert.match(notizen[0], /\/weg/, `die Notiz nennt den Pfad nicht: ${notizen[0]}`);
+  assert.deepEqual(optionen[0], { recursive: true, force: true, maxRetries: 20, retryDelay: 250 },
+    "die Wiederholungen des Entfernens selbst bleiben der erste Weg — die Toleranz ist nur das Netz dahinter");
+});
+
+test("[checks-8] repoEntfernenTolerant wirft fremde Fehler weiter", async () => {
+  const rm = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+  const notizen = [];
+
+  await assert.rejects(
+    () => repoEntfernenTolerant("/weg", { notiz: (satz) => notizen.push(satz), rm }),
+    { code: "EACCES" },
+    "ein Fehler, der nicht von einem offenen Handle kommt, wird nicht verschwiegen",
+  );
+  assert.equal(notizen.length, 0, "nur ein belegtes Verzeichnis wird notiert");
 });
 
 test("[checks-8] das Commit-Gate weist eine Zwischenfassung als 'nicht gestartet' ab, nicht als altes Format", () => {
