@@ -248,6 +248,22 @@ Ein `HEAD`-Anker **vor dem Push** spräche umgekehrt über das falsche Stück: W
 
 Landen häufig Änderungen im Zweifelsfall, ist das ein Befund über die **Zuordnung**, nicht über die Regel: Dann fehlt ein Bereich, oder ein Muster ist zu eng. Die Zuordnung gehört dann verbessert, nicht die Regel aufgeweicht — die Zeit, die eine aufgeweichte Regel spart, zahlt der erste Fehler zurück, den niemand gesucht hat.
 
+**Die eine Ausnahme: `ohnePruefung`.** Zu manchen Dateien gibt es wirklich nichts zu prüfen — ein Release-Protokoll etwa, dessen Inhalt kein Test liest. Sie träfen kein Muster und zögen damit den vollen Umfang nach sich, obwohl niemand ihn braucht. Für sie gibt es eine dritte Antwort, und sie muss sich begründen:
+
+```json
+{
+  "ohnePruefung": [
+    { "muster": "CHANGELOG.md", "grund": "Release-Protokoll; keine Prüfung liest seinen Inhalt" }
+  ]
+}
+```
+
+Eine Datei, die ein solches Muster trifft, zählt weder als berührt noch als unzugeordnet: Sie löst keine Prüfung aus und keinen vollen Umfang. Dafür steht sie in jedem Lauf im Bericht — `ohne Pruefung: CHANGELOG.md — Release-Protokoll; …`, **vor** den Auslassungen. Der Grund ist Pflicht: Eine Ausnahme von „im Zweifel läuft alles" ist nur erträglich, wenn beim nächsten Leser steht, warum sie gilt. Ein Bereichsname könnte das nicht tragen.
+
+**`checkAreas` hat Vorrang.** Trifft eine Datei beide Musterarten, gilt sie als berührt und löst ihre Bereichsprüfungen aus; die Freistellung bleibt für sie wirkungslos. Die Auswahl darf nur in eine Richtung irren, nämlich zu mehr Prüfung — andersherum machte ein zu weit geratenes `ohnePruefung`-Muster einen ganzen Bereich still ab, und ein Bereich, der nicht mehr läuft, fällt an nichts auf außer an der Zeit.
+
+**Am Nachweis ändert sich nichts.** Die Datei bleibt in `geaendert` und unter den Blob-Hashes der Zusammenfassung. Das ist keine Nebensache: Gegen genau diese Hashes prüft das [Commit-Gate](#das-commit-gate) den Index, und ein Index-Eintrag ohne Hash gilt ihm als ungeprüft. Fiele die freigestellte Datei aus dem Nachweis, ließe das Gate keinen Commit mehr durch, der sie mitbringt. `ohnePruefung` ändert die Zuordnung, nicht den Nachweis.
+
 **Ohne `checkAreas` ändert sich nichts.** Ein Projekt ohne diesen Block bekommt das Verhalten von vorher, unverändert: Jeder Eintrag ist die String-Form, also nicht zugeordnet, also laufen alle Prüfungen wie bisher. Die Umstellung nimmt niemandem still Prüfung weg — wer die Auswahl will, konfiguriert sie.
 
 **`mutationCommand` bleibt außen vor.** Es steht nicht in `buildChecks` und ist damit **nicht Teil der Auswahl**: Es läuft unverändert immer und direkt, unabhängig davon, welche Bereiche der Anker findet.
@@ -441,6 +457,13 @@ Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = k
 ### `checkAreas`
 
 Benannte Bereiche des Projekts: Schlüssel ist der Bereichsname, Wert eine Liste von Pfadmustern. Auf diese Namen zeigt "areas" in der Objektform eines buildChecks-Eintrags. Im Zusammenspiel der drei Formen: ein bloßer Kommandostring läuft immer (nicht zugeordnet), { "cmd", "areas" } läuft nur, wenn eines der hier hinterlegten Muster berührt ist, { "cmd", "always": true } läuft entschieden immer — String und always:true verhalten sich gleich, bedeuten aber Verschiedenes (vergessen gegen entschieden). Ein Bereich ohne Muster erfasst nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `ohnePruefung`
+
+Dateien, zu denen es ausdrücklich nichts zu prüfen gibt — die dritte Antwort neben "berührt einen Bereich" und "trifft kein Muster, also voller Umfang". Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung seinen Inhalt liest; ohne Grund kein Eintrag, denn eine Ausnahme von der Regel "im Zweifel läuft alles" ist nur erträglich, wenn sie sich begründet. checkAreas hat Vorrang: Trifft eine Datei beide Musterarten, gilt sie als berührt und löst ihre Bereichsprüfungen aus — die Auswahl darf nur in Richtung mehr Prüfung irren. Die Datei bleibt im Nachweis der Zusammenfassung — in der Liste der geänderten Dateien und unter ihren Blob-Hashes — und geht darum unverändert durch das Commit-Gate. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `ohnePruefung[].muster` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner.
+- `ohnePruefung[].grund` — Warum keine Prüfung den Inhalt dieser Datei liest. Steht in jedem Lauf im Bericht und ist Pflicht — ein Bereichsname könnte ihn nicht tragen.
 
 ### `mutationCommand`
 

@@ -83,7 +83,9 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m1").pfade, ["issueReview.requiredBeforeReady", "issueReview.reviewers"]);
   assert.deepEqual(teilNach("m2").pfade, ["issueReview.pairs"]);
   assert.deepEqual(teilNach("m3").pfade, ["reviewStufen"]);
-  assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas"]);
+  // `ohnePruefung` steht neben den Bereichen, weil es dieselbe Frage beantwortet
+  // (Issue #934): was eine geaenderte Datei ausloest — hier eben nichts.
+  assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
   assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin"]);

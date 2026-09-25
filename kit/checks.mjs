@@ -394,19 +394,40 @@ export function bereicheVorbereiten(checkAreas) {
  * anderen: Der Grund-Text ist Text fuer Menschen und wird woertlich gelesen, die
  * Liste sind Daten. Wer die Liste aus dem Satz parsen muesste, haette beim ersten
  * Umformulieren des Satzes eine stille Fehlmessung.
+ *
+ * Die dritte Antwort ist `ohnePruefung` (Issue #934, Plan #930, E1): eine Datei,
+ * zu der es ausdruecklich nichts zu pruefen gibt. Sie zaehlt weder als beruehrt
+ * noch als unzugeordnet und traegt ihren Grund mit sich — die Ausnahme von der
+ * Regel „im Zweifel laeuft alles" ist nur ertraeglich, wenn sie sich begruendet.
  */
-function zuordnen(dateien, bereichsdefinition) {
+function zuordnen(dateien, bereichsdefinition, freistellungen = []) {
   const beruehrt = new Set();
   const ohneZuordnung = [];
+  const ohnePruefung = [];
   for (const pfad of dateien) {
     const treffer = bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
-    if (treffer.length === 0) {
-      ohneZuordnung.push(pfad);
+    // HIER wirkt der Vorrang aus Plan #930, E3: Trifft eine Datei beide Musterarten,
+    // gewinnt `checkAreas`, und die Freistellung bleibt fuer sie wirkungslos. Die
+    // Auswahl darf nur in eine Richtung irren, naemlich zu mehr Pruefung. Andersherum
+    // machte ein zu weit geratenes `ohnePruefung`-Muster einen ganzen Bereich still ab
+    // — und ein Bereich, der nicht mehr laeuft, faellt an nichts auf ausser an der Zeit.
+    if (treffer.length > 0) {
+      for (const bereich of treffer) beruehrt.add(bereich.name);
       continue;
     }
-    for (const bereich of treffer) beruehrt.add(bereich.name);
+    const frei = freistellungen.find((f) => f.regex.test(pfad));
+    if (frei) {
+      ohnePruefung.push({ pfad, grund: frei.grund });
+      continue;
+    }
+    ohneZuordnung.push(pfad);
   }
-  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung };
+  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung };
+}
+
+/** Die pruefungsfreien Eintraege aus der Config als fertige Regexe samt Grund (Issue #934). */
+function freistellungenVorbereiten(ohnePruefung) {
+  return (ohnePruefung ?? []).map((e) => ({ regex: globZuRegex(e.muster), grund: e.grund }));
 }
 
 // --- Aenderungen -----------------------------------------------------------
@@ -542,10 +563,11 @@ function verteilen(checks, stufe, entscheiden) {
  * `ohneZuordnung` hat die Vorgabe `[]` und wird nie aus etwas anderem erschlossen
  * (Issue #922): Ein voller Umfang wegen eines nicht aufloesbaren Ankers kennt gar
  * keine Dateiliste — dort stuende sonst ein erfundener Eintrag, und der Beobachter
- * zaehlte eine Luecke, die es nicht gibt.
+ * zaehlte eine Luecke, die es nicht gibt. `ohnePruefung` steht aus demselben Grund
+ * mit derselben Vorgabe daneben (Issue #934).
  */
-function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], laufen = [],
-  ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null }) {
+function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
+  laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null }) {
   // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
   // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
   // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
@@ -553,7 +575,7 @@ function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = []
   // Unterschied — die Wiederverwendung darf ein eingegrenztes Ergebnis nicht fuer einen
   // vollen Lauf ausgeben (frueheresErgebnis), und das Commit-Gate darf auf ihm nicht
   // committen lassen (.githooks/gate.mjs).
-  return { basis, stufe, geaendert, bereiche, ohneZuordnung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl };
+  return { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl };
 }
 
 function planen(args) {
@@ -588,7 +610,11 @@ function planen(args) {
   }
 
   const geaendert = geaenderteDateien(basis);
-  const { beruehrt, ohneMuster, ohneZuordnung } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
+  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung } = zuordnen(
+    geaendert,
+    bereicheVorbereiten(checkAreas),
+    freistellungenVorbereiten(config.ohnePruefung),
+  );
   const bereiche = [...beruehrt].sort(vergleicheText);
 
   // Der BEREICHSLAUF (Issue #922, Plan #917, E3): Nicht der Diff sagt, welche
@@ -609,7 +635,7 @@ function planen(args) {
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, bereichWahl,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
         return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
@@ -637,7 +663,7 @@ function planen(args) {
   if (stufe === "push" || stufe === "merge") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
     });
   }
@@ -653,13 +679,13 @@ function planen(args) {
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, vollerUmfang: true,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche, ohneZuordnung,
+    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung,
     ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
   });
 }
@@ -987,8 +1013,8 @@ function schreibeZusammenfassung(daten) {
  * uebernommenes Ergebnis bezoege sich dort auf eine Auswahl, die es nicht mehr
  * gibt.
  *
- * Gehasht werden die NORMALISIERTEN Eintraege und die Bereiche, also genau das,
- * woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
+ * Gehasht werden die NORMALISIERTEN Eintraege, die Bereiche und die pruefungsfreien
+ * Muster (Issue #934), also genau das, woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
  * von der String-Form zu `{ cmd }` — der nichts bedeutet — keinen Lauf erzwingt.
  * Alles uebrige in der Config (Trigger, Modelle, Pfade) bleibt draussen: Es
  * aendert an den Pruefungen nichts.
@@ -998,6 +1024,7 @@ function configFingerabdruck() {
   const inhalt = JSON.stringify({
     buildChecks: (config.buildChecks ?? []).map((c) => normalisiere(c)),
     checkAreas: config.checkAreas ?? {},
+    ohnePruefung: config.ohnePruefung ?? [],
   });
   return createHash("sha256").update(inhalt).digest("hex");
 }
@@ -1188,6 +1215,14 @@ function ausfuehren(args) {
     const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
     const liste = hinzu.length > 0 ? hinzu.join(", ") : "keine weitere Pruefung";
     process.stdout.write(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
+  }
+
+  // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
+  // geprueft wird, ist die einzige Ausnahme von der Regel „im Zweifel laeuft alles".
+  // Sie muss in jedem Lauf dastehen, samt Grund — eine stille Ausnahme waere genau
+  // die Sorte Auslassung, die niemandem auffaellt.
+  for (const e of auswahl.ohnePruefung) {
+    process.stdout.write(`ohne Pruefung: ${e.pfad} — ${e.grund}\n`);
   }
 
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.

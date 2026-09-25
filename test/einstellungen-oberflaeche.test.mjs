@@ -432,9 +432,11 @@ test("[einstellungen-13] M4 zeichnet die Bereiche mit Mustern, Nutzung und der R
   assert.match(stueck, /setzeWert\(teil, "checkAreas"/, "die Bereiche landen nicht in der Arbeitskopie von M4");
 });
 
-test("[einstellungen-13] M4 bearbeitet beide Pfade in einem Teil und braucht keinen Folgepfad", () => {
+test("[einstellungen-13] M4 bearbeitet seine Pfade in einem Teil und braucht keinen Folgepfad", () => {
   const m4 = TEILE.find((t) => t.kennung === "m4");
-  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas"]);
+  // `ohnePruefung` kam mit Issue #934 dazu: dieselbe Frage wie die Bereiche — was eine
+  // geaenderte Datei ausloest —, deshalb derselbe Teil.
+  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung"]);
   assert.equal(m4.folgen, undefined, "M4 nennt einen Folgepfad, obwohl es beide Pfade selbst bearbeitet");
   const pfade = new Set(aenderungsliste(
     { buildChecks: [{ cmd: "eslint", areas: ["alt"] }], checkAreas: { alt: ["x"] } },

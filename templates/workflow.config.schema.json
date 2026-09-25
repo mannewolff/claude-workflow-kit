@@ -129,6 +129,31 @@
         }
       }
     },
+    "ohnePruefung": {
+      "type": "array",
+      "description": "Dateien, zu denen es ausdrücklich nichts zu prüfen gibt — die dritte Antwort neben \"berührt einen Bereich\" und \"trifft kein Muster, also voller Umfang\". Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung seinen Inhalt liest; ohne Grund kein Eintrag, denn eine Ausnahme von der Regel \"im Zweifel läuft alles\" ist nur erträglich, wenn sie sich begründet. checkAreas hat Vorrang: Trifft eine Datei beide Musterarten, gilt sie als berührt und löst ihre Bereichsprüfungen aus — die Auswahl darf nur in Richtung mehr Prüfung irren. Die Datei bleibt im Nachweis der Zusammenfassung — in der Liste der geänderten Dateien und unter ihren Blob-Hashes — und geht darum unverändert durch das Commit-Gate. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "muster": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pfadmuster wie in checkAreas: \"*\" innerhalb eines Segments, \"**\" über Segmentgrenzen hinweg, \"/\" als Trenner."
+          },
+          "grund": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Warum keine Prüfung den Inhalt dieser Datei liest. Steht in jedem Lauf im Bericht und ist Pflicht — ein Bereichsname könnte ihn nicht tragen."
+          }
+        },
+        "required": [
+          "muster",
+          "grund"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "mutationCommand": {
       "type": "string",
       "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
