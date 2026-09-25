@@ -4901,8 +4901,18 @@ export const KETTE_HALT_ANKER = "## Kette angehalten";
 const ALTE_ROUTING_LABELS = ["kit:nightreview", "kit:nightplan", "kit:nightissues"];
 // Unter dieser Restzeit startet keine Session mehr: Eine Minute reicht fuer keinen Plan.
 const KETTE_MINDEST_REST_MS = 60 * 1000;
-// Die drei Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2).
-const KETTE_AUSGAENGE = ["fertig", "angehalten", "abgebrochen"];
+// Die Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2; erweitert um
+// `unvollstaendig`, Issue #862). `unvollstaendig` steht zwischen `fertig` und den beiden
+// Stoerungen: Die Kette lief durch, hat aber etwas Bestelltes nicht getan. Sie haelt
+// niemanden auf — anders als `angehalten` wartet keine Frage auf einen Menschen —, und
+// sie ist kein Fehler — anders als `abgebrochen` ist nichts schiefgegangen.
+const KETTE_AUSGAENGE = ["fertig", "unvollstaendig", "angehalten", "abgebrochen"];
+
+/**
+ * Der Anfang des Grundes, den eine Kette traegt, deren bestellte Umsetzung ausblieb
+ * (Issue #862) — woertlich aus dem Arbeitspaket. Exportiert fuer die Tests.
+ */
+export const UMSETZUNG_AUSGELASSEN_PRAEFIX = "Umsetzung ausgelassen: ";
 // Woran der Runner den Halt von /issues erkennt: der Kommentar, den der Skill
 // unbeaufsichtigt an den Plan schreibt, wenn er kein Paket anlegt (skills-14).
 export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
@@ -5803,12 +5813,33 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
  *
  * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
- * Pakete stehen als nicht begonnen im Bericht), bei einem gehaltenen Umsetzungs-Lock
- * (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen Hauptkopie vor dem
- * ersten Paket (Issue #878, derselbe Rueckfall), `angehalten` bei mindestens einem
- * angehaltenen Paket — aber ohne `haltAmAuftrag` (E17) —, `abgebrochen` nur beim harten
- * Stopp.
+ * Pakete stehen als nicht begonnen im Bericht), `unvollstaendig` bei einem gehaltenen
+ * Umsetzungs-Lock (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen
+ * Hauptkopie vor dem ersten Paket (Issue #878, derselbe Rueckfall) — beide liefen gar
+ * nicht erst an, siehe `umsetzungAusgelassen` (Issue #862) —, `angehalten` bei mindestens
+ * einem angehaltenen Paket — aber ohne `haltAmAuftrag` (E17) —, `abgebrochen` nur beim
+ * harten Stopp.
  */
+/**
+ * Die Stufe umsetzung hat ihre Arbeit ausgelassen (Issue #862) — der gemeinsame Ausgang
+ * der beiden Rueckfaelle auf Variante A: gehaltener Lock und unsaubere Hauptkopie.
+ *
+ * Beide sind aus Sicht des Menschen derselbe Befund: Er hat abends "zieh die Pakete gleich
+ * durch" bestellt, und die Bestellung wurde nicht ausgefuehrt. Sie auseinanderzuziehen
+ * ergaebe zwei Wahrheiten ueber eine Lage; was sie unterscheidet, steht im `grund`.
+ *
+ * `stand.ausgelassen` ist der Befund fuer den Bericht — nur daran, nicht an einer leeren
+ * `umgesetzt`-Liste, ist "gar nicht erst gelaufen" von "gelaufen und nichts geschafft" zu
+ * unterscheiden.
+ */
+function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz = "") {
+  paketeNichtBegonnen(stand, paketIds, grund);
+  stand.ausgelassen = grund;
+  stand.dauerMs = Date.now() - stufeStart;
+  log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.${zusatz}`);
+  return { ausgang: "unvollstaendig", grund: `${UMSETZUNG_AUSGELASSEN_PRAEFIX}${grund}` };
+}
+
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
   const stufeStart = Date.now();
@@ -5825,12 +5856,7 @@ async function stufeUmsetzung(kette, paketIds) {
   // Hauptkopie, in der gerade ein anderer Lauf baut, ist erwartbar unsauber: Der Lock ist
   // dafuer die genauere Auskunft als "nicht sauber" und der freundlichere Ausgang.
   const lock = umsetzungLockNehmen(kette.repoRoot);
-  if (!lock.ok) {
-    paketeNichtBegonnen(stand, paketIds, lock.grund);
-    stand.dauerMs = Date.now() - stufeStart;
-    log(`  Stufe umsetzung ausgelassen: ${lock.grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.`);
-    return { ausgang: "fertig" };
-  }
+  if (!lock.ok) return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, lock.grund);
   if (lock.hinweis) log(`  ${lock.hinweis}`);
 
   try {
@@ -5845,16 +5871,14 @@ async function stufeUmsetzung(kette, paketIds) {
     // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
     // Rest-Guard und Dirty-Guard in `werteRunde`.
     //
-    // Ausgang `fertig` wie beim gehaltenen Lock darueber (Issue #878): Eine unsaubere
-    // Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein Mensch
-    // bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute nacht
-    // nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
+    // Ausgang `unvollstaendig` wie beim gehaltenen Lock darueber (Issue #878, #862): Eine
+    // unsaubere Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein
+    // Mensch bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute
+    // nacht nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
     if (!gitClean(kette.repoRoot)) {
       const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
-      paketeNichtBegonnen(stand, paketIds, grund);
-      stand.dauerMs = Date.now() - stufeStart;
-      log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog. Bitte bereinigen und die Pakete selbst nach Ready ziehen.`);
-      return { ausgang: "fertig" };
+      return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund,
+        " Bitte bereinigen und die Pakete selbst nach Ready ziehen.");
     }
 
     let ergebnis;
@@ -6112,6 +6136,11 @@ function berichtUmsetzung(einheit, pakete) {
     : "keine";
   return [
     "### Umsetzung", "",
+    // Die Auslassung zuerst und als eigene Zeile (Issue #862): Sie sagt, dass die
+    // bestellte Umsetzung gar nicht erst anlief, was sie verhindert hat und wo die Pakete
+    // danach liegen. Aus den drei Listen darunter waere das nur zu erschliessen — und wer
+    // erschliessen muss, sieht nicht nach.
+    ...(stand.ausgelassen ? [`- ausgelassen: ${stand.ausgelassen} — die Pakete bleiben in Backlog.`] : []),
     `- umgesetzt: ${umgesetztText}`,
     `- angehalten: ${liste(stand.angehalten ?? [])}`,
     `- nicht begonnen: ${nichtBegonnenText}`,
@@ -6637,7 +6666,7 @@ export async function laufeKette(args) {
     const ausgang = await laufeEineKette(auftrag, nummer, args);
     zaehler[ausgang]++;
   }
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);

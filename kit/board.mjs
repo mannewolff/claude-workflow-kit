@@ -3958,6 +3958,12 @@ const NACHTLAUF_FEST = {
   unbekannt: ["RED", "HARD_ABORT"],
   harterStopp: ["RED", "HARD_ABORT"],
   angehalten: ["RED", "AWAITING_DECISION"],
+  // Der Vorgang lief durch und hat etwas Bestelltes nicht getan (Issue #862): die Kette,
+  // deren Umsetzung an einer belegten Sperre ausblieb, und die Pruefung, deren Ergebnis
+  // den Body nie erreichte. GELB, weil GRUEN das Fehlende verschwiege und ROT aus einem
+  // vorgesehenen Ausgang eine Stoerung machte; ohne Fehlerklasse, weil keine der
+  // vorhandenen ihn trifft — den Grund traegt der `excerpt` der Einheit.
+  unvollstaendig: ["YELLOW", null],
   fertig: ["GREEN", null],
 };
 

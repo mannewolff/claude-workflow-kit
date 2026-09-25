@@ -203,6 +203,22 @@ test("[night-31] Kette: fertig, angehalten und die drei Abbrueche", () => {
   ]);
 });
 
+// Eine Kette, die ihre bestellte Umsetzung nicht ausfuehren konnte (Issue #862), und eine
+// Pruefung, deren Ergebnis den Body nie erreichte — beide tragen den Ausgang
+// `unvollstaendig`. GELB und ohne Fehlerklasse: Der Vorgang lief und hat etwas
+// hinterlassen, nur nicht alles. GRUEN verschwiege das Fehlende, ROT machte aus einem
+// vorgesehenen Ausgang eine Stoerung, und `UNEXPECTED_STATE` — die Farbe bis hierher —
+// nannte einen Zustand unerwartet, den das Kit selbst erzeugt. Den Grund traegt der
+// `excerpt` der Einheit.
+test("[night-862] unvollstaendig ist gelb und ohne Fehlerklasse, in beiden Lauf-Arten", () => {
+  const e = { id: "5", titel: "F", ausgang: "unvollstaendig", grund: "Umsetzung ausgelassen: eine andere Umsetzung haelt den Lock (Prozess 4711)" };
+  for (const art of ["kette", "implementierung"]) {
+    const item = nachtlaufMeldung(stand(art, [e]), JETZT).items[0];
+    assert.deepEqual([item.state, item.errorClass], ["YELLOW", null], `Lauf-Art ${art}`);
+    assert.match(item.excerpt, /Umsetzung ausgelassen/, `Lauf-Art ${art}: der Grund fehlt im Auszug`);
+  }
+});
+
 // Eine Einheit, der ihr Ausgang noch fehlt, ist ein laufender Vorgang und kein Befund
 // (Issue #794). `einheitAnlegen` traegt bis zum Ergebnis den Platzhalter "unbekannt" ein;
 // waehrend der Planungsphase einer Kette stuende der Fachplan damit als rotes Paket in

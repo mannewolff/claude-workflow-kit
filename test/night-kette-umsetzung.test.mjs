@@ -96,8 +96,10 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
 
     const { einheit, stufe } = umsetzung(dir, F);
     // Kein Fehler, sondern ein Zustand, den der Mensch bereinigt (Issue #878): derselbe
-    // Ausgang wie beim gehaltenen Umsetzungs-Lock, der Grund steht an den Paketen.
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    // Ausgang wie beim gehaltenen Umsetzungs-Lock, der Grund steht an den Paketen. Seit
+    // Issue #862 ist dieser Ausgang `unvollstaendig` statt `fertig` — die Bestellung wurde
+    // nicht ausgefuehrt, und das darf am Morgen nicht wie ein gelungener Lauf aussehen.
+    assert.equal(einheit.ausgang, "unvollstaendig", einheit.grund);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
     for (const paket of stufe.nichtBegonnen) {
       assert.match(paket.grund, /nicht sauber/);

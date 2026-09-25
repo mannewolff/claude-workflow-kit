@@ -165,7 +165,12 @@ test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits 
 
 // --- Die Kette unter Variante B ---
 
-test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleibt fertig, kein Paket wird gezogen", NUR_POSIX, () => {
+// Der Ausgang ist seit Issue #862 `unvollstaendig` statt `fertig`: Die Sperre selbst
+// bleibt richtig — zwei Umsetzungen in einem Checkout gehen nicht —, aber eine Nacht, die
+// ihre bestellte Umsetzung nicht ausgefuehrt hat, darf am Morgen nicht als gelungen
+// dastehen. Was die Stufe tut, aendert das nicht: Sie laesst aus und faellt auf Variante A
+// zurueck. Die Zusicherungen darunter sind deshalb unveraendert.
+test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet unvollstaendig, kein Paket wird gezogen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${process.pid}\n`);
@@ -174,7 +179,7 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleib
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(einheit.ausgang, "unvollstaendig", einheit.grund);
     const stufe = einheit.stufen.umsetzung;
     assert.deepEqual(stufe.umgesetzt, []);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);

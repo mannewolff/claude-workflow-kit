@@ -60,6 +60,9 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["die Spalte der Kandidaten", "Backlog"],
     ["den Ausschluss durch eine offene Entscheidung", "`kit:klaeren`"],
     ["den Ausgang fertig", "`fertig`"],
+    // Issue #862: Eine Kette, deren bestellte Umsetzung ausblieb, ist weder gelungen noch
+    // gescheitert. Wer den gelben Vorgang morgens am Brett sieht, sucht hier nach dem Wort.
+    ["den Ausgang unvollstaendig", "`unvollstaendig`"],
     ["den Ausgang angehalten", "`angehalten`"],
     ["den Ausgang abgebrochen", "`abgebrochen`"],
     ["das Flag des Modus", "--kette"],
