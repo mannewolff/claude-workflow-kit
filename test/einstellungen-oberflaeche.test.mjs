@@ -501,9 +501,22 @@ test("M6 aendert night.kette formtreu ueber ketteAendern, nicht als neues Objekt
   assert.match(stueck, /setzeWert\(teil, "night\.kette"/, "die Aenderung landet nicht in der Arbeitskopie von M6");
 });
 
-test("M6 bearbeitet nur night.kette und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
+// Die Zielmarke steht neben night.kette (Issue #923, Plan #917 E4) und wird darum als
+// eigener Pfad gesetzt — nicht ueber ketteAendern, das nur den Block darunter schreibt.
+test("M6 bietet die Zielmarke night.zielUmsetzungMin mit der Vorgabe aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(
+    stueck.includes(`const ZIEL_UMSETZUNG_VORGABE = ${JSON.stringify(vorgabeAus("night.zielUmsetzungMin"))};`),
+    "die Vorgabe der Zielmarke im Browser-Skript weicht vom Schema ab oder fehlt",
+  );
+  assert.match(stueck, /setzeWert\(teil, "night\.zielUmsetzungMin"/, "die Zielmarke landet nicht in der Arbeitskopie");
+  assert.match(stueck, /wertVon\(teil, "night\.zielUmsetzungMin"\)/, "die Zielmarke wird nicht aus der Arbeitskopie gelesen");
+  assert.match(stueck, /zeilenGruppe\("night\.zielUmsetzungMin"/, "die Zielmarke hat keine eigene Zeile");
+});
+
+test("M6 bearbeitet night.kette samt Zielmarke und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
 });

@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { SCHEMA, TEILE, THEMEN, projektZustand, teilFuer, vorgabeAus } from "../kit/einstellungen.mjs";
+import { SCHEMA, TEILE, THEMEN, ebenen, projektZustand, teilFuer, vorgabeAus } from "../kit/einstellungen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const WURZELN = Object.keys(SCHEMA.properties).filter((f) => f !== "version");
@@ -86,7 +86,7 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
-  assert.deepEqual(teilNach("m6").pfade, ["night.kette"]);
+  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin"]);
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 
@@ -151,6 +151,25 @@ test("[einstellungen-9] jedes Feld unter night.kette traegt eine vorgabe, die de
     const knoten = SCHEMA.properties.night.properties.kette.properties[feld];
     assert.equal(vorgabeAus(`night.kette.${feld}`), knoten.default, feld);
   }
+});
+
+// Die Zielmarke (Issue #923, Plan #917 E4): Sie gilt fuer die Kette UND fuer die
+// Umsetzungsnacht, steht darum neben `night.kette` und nicht darin — bearbeitet wird sie
+// trotzdem im Nacht-Teil m6, weil dort die Budgets der Umsetzung stehen. Fehlt sie in einer
+// Konfiguration, gilt die Vorgabe aus dem Schema; das ist die Stelle, die der Bericht liest.
+test("[einstellungen-9] night.zielUmsetzungMin gehoert zu m6 und traegt die Vorgabe 10", () => {
+  assert.equal(teilFuer("night.zielUmsetzungMin").kennung, "m6");
+  assert.equal(SCHEMA.properties.night.properties.zielUmsetzungMin.type, "integer");
+  assert.equal(vorgabeAus("night.zielUmsetzungMin"), 10);
+});
+
+test("[einstellungen-9] ohne eigenen Eintrag steht die Zielmarke mit der Vorgabe 10 da", () => {
+  const stand = ebenen({ night: { kette: { planMin: 20 } } }, null);
+  const eintrag = stand["night.zielUmsetzungMin"];
+  assert.ok(eintrag, "die Zielmarke steht nicht unter den Einstellungen");
+  assert.equal(eintrag.team, undefined, "die Konfiguration traegt das Feld gar nicht");
+  assert.equal(eintrag.gilt, undefined, "ohne Eintrag gilt kein eigener Wert");
+  assert.equal(vorgabeAus("night.zielUmsetzungMin"), 10, "dann greift die Vorgabe aus dem Schema");
 });
 
 // Der Prueflauf-Block (Issue #905, Plan #904 E5): drei einfache Felder, deshalb kein

@@ -567,6 +567,7 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
+- `night.zielUmsetzungMin` — Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Die Marke gilt für die Umsetzungsstufe der Kette und für die Umsetzungsnacht, darum steht sie neben night.kette und nicht darin. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe.
 
 ### `pruefLauf`
 
