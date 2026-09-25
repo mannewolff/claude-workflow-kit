@@ -2407,6 +2407,142 @@ export function werkzeugZeitBeobachter() {
   };
 }
 
+// --- Prueflaeufe am Session-Strom (Issue #924) ---
+
+/**
+ * Das erste Programm einer Kommandozeile, ohne Pfad (Issue #924).
+ *
+ * Vorangestellte Umgebungszuweisungen (`NODE_OPTIONS=… node …`) werden uebersprungen:
+ * Sie sind keine Programme, und ein Aufruf mit Zuweisung ist derselbe Lauf wie einer
+ * ohne. Alles Weitere bleibt absichtlich einfach — gefragt ist das erste Wort, nicht
+ * eine Shell-Grammatik im Runner.
+ */
+function erstesProgramm(kommando) {
+  for (const wort of String(kommando ?? "").trim().split(/\s+/)) {
+    if (wort === "") continue;
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(wort)) continue;
+    const ohnePfad = wort.split(/[/\\]/).pop();
+    return ohnePfad || null;
+  }
+  return null;
+}
+
+/** Vergleichsform einer Kommandozeile: getrimmt, Whitespace auf ein Leerzeichen. */
+function kommandoNormal(kommando) {
+  return String(kommando ?? "").trim().replaceAll(/\s+/g, " ");
+}
+
+/**
+ * Wie ein Bash-Aufruf zu zaehlen ist (Plan #917, E2/E3/E9) — oder gar nicht.
+ *
+ *   "voll"      woertlich ein `buildChecks`-Kommando: die vollstaendige Gruppe waehrend
+ *               der Arbeit, und genau das ist der Verstoss, den dieser Zaehler sichtbar macht.
+ *   "bereich"   `checks.mjs run --bereich <name>`: der sanktionierte Gruppenlauf (E3).
+ *               Er zaehlt eigens, damit er nicht unter die Verstoesse geraet.
+ *   "gezielt"   dasselbe Programm wie ein `buildChecks`-Kommando, aber anderer Umfang.
+ *   null        kein Prueflauf der Arbeit — auch `checks.mjs run` ohne `--bereich`:
+ *               Das ist der Abschlussversuch, und der steht sonst in zwei Zahlen (E9).
+ *
+ * Der Aufrufweg entscheidet, nicht die Absicht: `checks.mjs` wird am Kommando erkannt,
+ * nicht am Programmabgleich — in einem Projekt mit `mvn verify` als Pruefgruppe traegt
+ * der Bereichslauf ein anderes Programm als jede konfigurierte Gruppe.
+ */
+function prueflaufArt(kommando, programme, woertlich) {
+  const text = kommandoNormal(kommando);
+  if (text === "") return null;
+  const worte = text.split(" ");
+  const idx = worte.findIndex((w) => w.replaceAll(/["']/g, "").endsWith("checks.mjs"));
+  if (idx >= 0 && worte[idx + 1] === "run") {
+    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : null;
+  }
+  if (woertlich.has(text)) return "voll";
+  const programm = erstesProgramm(text);
+  return programm && programme.has(programm) ? "gezielt" : null;
+}
+
+/**
+ * Beobachtet denselben `stream-json`-Strom wie `werkzeugZeitBeobachter` und zaehlt, was
+ * eine Session waehrend ihrer Arbeit an Prueflaeufen startet (Plan #917, E1).
+ *
+ * Ein eigener Beobachter neben der Uhr, kein Ausbau von ihr: Jener liest bewusst keinen
+ * Inhalt — "so hat er nur eine Uhr" (Plan #745, E1/E2) —, dieser hier MUSS deuten, um
+ * einen Prueflauf von einem `git status` zu unterscheiden. Beide Aufgaben in einem
+ * Beobachter haetten die Entscheidung von damals stillschweigend aufgehoben.
+ *
+ * Gezaehlt wird je AUFRUF, nicht je Schub: Zwei nebeneinander gestartete Testlaeufe sind
+ * zwei Laeufe. Die Zuordnung geht ueber `tool_use.id` zu `tool_result.tool_use_id`; ein
+ * Aufruf ohne Ergebnis (abgeschnittener Strom) zaehlt als gestartet, seine Spanne geht
+ * nicht ein — sie waere eine Schaetzung, die sich als Messung ausgibt.
+ *
+ * `buildChecks` kommt aus der Konfiguration, in beiden Eintragsformen (String oder Objekt
+ * mit `cmd`, E2): Sie ist die einzige Stelle, die weiss, was "vollstaendig" heisst.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
+ * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs }`.
+ * Abschlusszahlen und Zielmarke rechnet der Bericht, nicht dieser Zaehler (E7).
+ */
+export function prueflaufBeobachter(buildChecks) {
+  const kommandos = (Array.isArray(buildChecks) ? buildChecks : [])
+    .map((eintrag) => (typeof eintrag === "string" ? eintrag : eintrag?.cmd))
+    .map(kommandoNormal)
+    .filter((cmd) => cmd !== "");
+  const woertlich = new Set(kommandos);
+  const programme = new Set(kommandos.map(erstesProgramm).filter(Boolean));
+
+  let anzahl = 0;
+  let volle = 0;
+  let volleNoetig = 0;
+  let dauerMs = 0;
+  // Die noch laufenden Prueflaeufe: tool_use.id -> Ankunft des Aufrufs. Nur Prueflaeufe
+  // stehen darin — jeder andere Aufruf ist fuer diesen Beobachter nicht vorhanden.
+  const offen = new Map();
+
+  const parse = (roh) => {
+    if (roh && typeof roh === "object") return roh;
+    if (typeof roh !== "string") return null;
+    const trimmed = roh.trim();
+    if (!trimmed.startsWith("{")) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  };
+
+  // Ein gestarteter Aufruf: gezaehlt wird beim tool_use, denn gemessen wird, was die
+  // Session STARTET. Die Spanne kommt spaeter dazu, wenn sein Ergebnis eintrifft.
+  const aufrufGesehen = (block, ts) => {
+    if (block?.type !== "tool_use" || block.name !== "Bash") return;
+    if (typeof block.id !== "string" || block.id === "") return;
+    const art = prueflaufArt(block.input?.command, programme, woertlich);
+    if (!art) return;
+    anzahl += 1;
+    if (art === "voll") volle += 1;
+    else if (art === "bereich") volleNoetig += 1;
+    offen.set(block.id, ts);
+  };
+
+  const ergebnisGesehen = (block, ts) => {
+    if (block?.type !== "tool_result") return;
+    const start = offen.get(block.tool_use_id);
+    if (start === undefined) return;
+    offen.delete(block.tool_use_id);
+    dauerMs += ts - start;
+  };
+
+  return {
+    zeile(roh, ts) {
+      const obj = parse(roh);
+      if (!obj || !Array.isArray(obj.message?.content)) return;
+      const behandle = obj.type === "assistant" ? aufrufGesehen : ergebnisGesehen;
+      for (const block of obj.message.content) behandle(block, ts);
+    },
+    ergebnis() {
+      return { anzahl, volle, volleNoetig, dauerMs };
+    },
+  };
+}
+
 // --- Session-Kennzahlen (Issue #487) ---
 
 // Ein Feld gilt nur als gelesen, wenn es eine endliche Zahl ist — auch die 0. Alles
@@ -2665,6 +2801,45 @@ function zeitenErfassen(issueId, dauerMs, kennzahlen, werkzeug) {
   if (!einheit) return;
   const zeiten = zeitenBauen(dauerMs, kennzahlen, werkzeug);
   einheit.zeiten = einheit.zeiten ? zeitenAddieren(einheit.zeiten, zeiten) : zeiten;
+  schreibeErgebnisstand();
+}
+
+/** Die Felder der Prueflaeufe einer Arbeit, in dieser Reihenfolge im Ergebnisstand. */
+const PRUEFLAUF_FELDER = ["anzahl", "volle", "volleNoetig", "dauerMs"];
+
+/**
+ * Addiert die Prueflaeufe zweier Sessions derselben Einheit feldweise (Issue #924).
+ *
+ * Dieselbe Rechnung wie `zeitenAddieren` und aus demselben Grund: Die Einheit ist die
+ * Karte, nicht die Session — was an einem Paket gepruft wurde, gehoert zusammen, ob es
+ * die regulaere Runde war oder die Rettung danach. Reine Funktion, `ziel` bleibt
+ * unangetastet. Gespeichert wird allein die Messung; Abschlusszahlen und Zielmarke
+ * rechnet der Bericht (Plan #917, E7).
+ */
+export function prueflaeufeAddieren(ziel, zuwachs) {
+  const arbeit = {};
+  for (const feld of PRUEFLAUF_FELDER) {
+    arbeit[feld] = (endlicheZahl(ziel?.arbeit?.[feld]) ?? 0) + (endlicheZahl(zuwachs?.arbeit?.[feld]) ?? 0);
+  }
+  return { arbeit };
+}
+
+/**
+ * Schreibt die Prueflaeufe einer Session auf die juengste Einheit der Karte — an
+ * derselben Stelle und mit demselben `findLast`-Ziel wie `zeitenErfassen`.
+ *
+ * `prueflaeufe` steht NEBEN `zeiten`, nicht darin: Die Zeiten sind eine Messung, die
+ * Prueflaeufe eine Deutung des Stroms (Plan #917, E1). `zeitenBauen` bleibt unberuehrt.
+ *
+ * Eine Session ohne Strom (`mess === null`) traegt nichts bei und laesst das Feld, wie
+ * es ist. Hat keine Session der Einheit gemessen, fehlt es ganz — "nicht gemessen", und
+ * nicht die Behauptung, es sei nichts gepruft worden.
+ */
+function prueflaeufeErfassen(issueId, mess) {
+  if (!LAUF || issueId === null || !mess) return;
+  const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (!einheit) return;
+  einheit.prueflaeufe = prueflaeufeAddieren(einheit.prueflaeufe, { arbeit: mess });
   schreibeErgebnisstand();
 }
 
@@ -3112,6 +3287,10 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // nichts zu messen, und `werkzeugzeit: null` sagt genau das — ein Ergebnis mit Nullen
     // waere die Behauptung, eine Session habe kein Werkzeug benutzt.
     const werkzeugzeit = useStream ? werkzeugZeitBeobachter() : null;
+    // Derselbe Strom, dieselbe Bedingung, zweiter Beobachter (Issue #924, Plan #917, E1).
+    // Die Pruefgruppen kommen aus der geladenen Config; ohne sie zaehlt nur noch der
+    // Bereichslauf, den der Aufrufweg allein ausweist.
+    const prueflaufZaehler = useStream ? prueflaufBeobachter(config?.buildChecks) : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
     const gestartet = Date.now();
@@ -3123,7 +3302,11 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // An genau einer Stelle angehaengt, damit auch die Zeitlimit- und Fehlerpfade das
       // Gemessene mitbringen: Gerade eine abgebrochene Session ist die, bei der die
       // Werkzeugzeit erklaert, woran die Runde haengengeblieben ist.
-      resolve({ ...result, werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null });
+      resolve({
+        ...result,
+        werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null,
+        prueflaeufe: prueflaufZaehler ? prueflaufZaehler.ergebnis() : null,
+      });
     };
 
     // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
@@ -3177,6 +3360,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         while ((idx = buf.indexOf("\n")) >= 0) {
           const zeile = buf.slice(0, idx);
           werkzeugzeit.zeile(zeile, ts);
+          prueflaufZaehler.zeile(zeile, ts);
           // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
           // gemessen wird immer, sobald der Strom angefordert ist.
           if (verbose) emitVerbose(issueId, zeile);
@@ -3194,7 +3378,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // beim Zeitlimit die abgeschnittene. Auch sie geht erst in die Messung, dann in die
       // Ausgabe.
       if (useStream && buf.trim()) {
-        werkzeugzeit.zeile(buf, Date.now());
+        const ts = Date.now();
+        werkzeugzeit.zeile(buf, ts);
+        prueflaufZaehler.zeile(buf, ts);
         if (verbose) emitVerbose(issueId, buf);
       }
       const error = timedOut
@@ -3402,6 +3588,7 @@ export async function runSession(issueId, args, opts = {}) {
   const kennzahlen = leseKennzahlen(res.stdout);
   verbrauchErfassen(issueId, kennzahlen);
   zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
+  prueflaeufeErfassen(issueId, res.prueflaeufe);
   return res;
 }
 
