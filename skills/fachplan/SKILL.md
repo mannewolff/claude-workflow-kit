@@ -34,7 +34,7 @@ Woran erkennt der PO, dass es das ist? Konkret und aus Nutzersicht prüfbar.
 Was gehört ausdrücklich nicht dazu? (Scope-Grenze)
 
 ## Offene Fragen an den PO
-Was muss im Groomen geklärt werden?
+Was muss im Groomen geklärt werden? Sind alle Fragen beantwortet, steht hier als **erste** Zeile ein Vermerk, der mit „Keine“ beginnt (siehe „Grooming findet im Body statt“).
 ```
 
 **Strikt technikfrei:** keine Dateien, keine Architektur, keine Implementierungsdetails. Der Maßstab: Ein PO ohne Code-Kenntnis versteht jede Zeile.
@@ -93,7 +93,7 @@ Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
 ## Grooming findet im Body statt, nie in Kommentaren
 **Verbindlich:** Alles, worauf sich ein späterer Plan stützen muss, gehört in den **Body** des Issues — Antworten des PO ebenso wie Ergänzungen der KI. Kommentare sind für Verlauf und Diskussion, nicht für Entscheidungen. Der Body ist der **verhandelte Stand**, Kommentare sind **Verlauf**; wer eine Entscheidung nur kommentiert, zwingt jede spätere Session, sie aus einer Diskussion zu rekonstruieren. `board.mjs issue get` liefert die Kommentare zwar mit, aber das ändert die Regel nicht: Was gilt, steht im Body.
 
-**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar.
+**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Sind damit alle Fragen beantwortet, bekommt der Abschnitt als erste Zeile einen Vermerk, der mit „Keine“ beginnt** — etwa „Keine. Die 3 Fragen hat der PO am 2026-09-24 entschieden, die Antworten stehen unter der jeweiligen Frage." Fragen und Antworten bleiben darunter stehen; sie sind der verhandelte Stand, auf den sich der Plan stützt (F8). Der Grund: Der Nacht-Runner liest allein die **erste** nichtleere Zeile des Abschnitts und hält die Anforderung an, solange dort eine Frage steht — beantwortete Fragen ohne diesen Vermerk erkennt er nicht. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar.
 
 So kommt der ergänzte Body ins Board, wieder über eine Datei **außerhalb des Projektverzeichnisses**:
 ```bash

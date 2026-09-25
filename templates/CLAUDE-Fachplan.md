@@ -115,6 +115,13 @@ ein leeres `## Ziel` laesst den Plan raten.
 Was darin steht, ist frei: konkrete Fragen, dokumentierte Antworten des PO, ein Vermerk,
 dass keine offen sind — oder nichts.
 
+**Fuer den Nacht-Runner zaehlt allein die erste nichtleere Zeile des Abschnitts.** Nur ein
+Vermerk dort, der mit „Keine" beginnt, gibt die Anforderung frei; steht dort eine Frage,
+haelt er die Karte zurueck — auch dann, wenn jede Frage darunter beantwortet ist. Sind alle
+Fragen beantwortet, gehoert dieser Vermerk also an den Anfang, die Fragen mit ihren
+Antworten bleiben darunter stehen. Das ist kein Testgegenstand dieses Gates, sondern die
+Regel, gegen die der Abschnitt geschrieben wird.
+
 *Warum Gate:* Der Abschnitt ist der Ort, an dem die PO-Schleife stattfindet. Fehlt er
 ganz, gibt es ihn nicht.
 
@@ -125,7 +132,9 @@ Gate macht, haelt Anforderungen an einer Formulierung auf.
 ## F8 — Was gilt, steht im Body; Kommentare sind Verlauf `[Urteil]`
 
 Antworten des PO gehoeren hinter die jeweilige Frage **in den Body**, nicht in einen
-Kommentar.
+Kommentar. Ist damit jede Frage beantwortet, gehoert zusaetzlich der „Keine"-Vermerk aus F7
+in die erste Zeile des Abschnitts — sonst gilt die Anforderung fuer den Nacht-Runner
+weiter als ungeklaert.
 
 **Nur mit den Kommentaren pruefbar.** `board.mjs issue get` liefert sie mit; wer sie nicht
 gelesen hat, kann F8 nicht bewerten. Die Rollen-Prompts, die nur den Body uebergeben,

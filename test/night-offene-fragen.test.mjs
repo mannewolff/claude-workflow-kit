@@ -74,6 +74,30 @@ test("[night-916] eine gepruefte Anforderung mit offener Frage geht mit Grund in
   assert.match(grund, /Keine/);
 });
 
+// Der Normalfall des Groomens (Issue #921, Vorfall kanban-kit #1195): Der PO beantwortet
+// jede Frage an ihrem Ort. Der Runner liest nur die erste nichtleere Zeile des Abschnitts
+// und sieht dort weiter eine Frage — erst der vorangestellte „Keine"-Vermerk gibt die
+// Anforderung frei. Fragen und Antworten bleiben darunter stehen.
+const BEANTWORTETE_FRAGEN = [
+  "1. Wohin fuehrt der Knopf?",
+  "   Antwort PO (2026-09-24): auf die Uebersicht.",
+  "2. Wer darf ihn sehen?",
+  "   Antwort PO (2026-09-24): jeder angemeldete Nutzer.",
+];
+
+test("[night-921] beantwortete Fragen ohne 'Keine'-Vermerk gelten weiter als offen", () => {
+  const abschnitt = ["## Offene Fragen an den PO", "", ...BEANTWORTETE_FRAGEN, ""];
+  assert.equal(offeneFragenGrund(zusammen(ZIEL, abschnitt, SCHLUSS)),
+    "offene Frage an den PO: 1. Wohin fuehrt der Knopf?");
+});
+
+test("[night-921] der vorangestellte 'Keine'-Vermerk gibt frei, Fragen und Antworten bleiben stehen", () => {
+  const abschnitt = ["## Offene Fragen an den PO", "",
+    "Keine. Die 2 Fragen hat der PO am 2026-09-24 entschieden, die Antworten stehen unter der jeweiligen Frage.",
+    "", ...BEANTWORTETE_FRAGEN, ""];
+  assert.equal(offeneFragenGrund(zusammen(ZIEL, abschnitt, SCHLUSS)), null);
+});
+
 test("[night-916] die fehlende Pruefung gewinnt ueber die offene Frage", () => {
   const offen = zusammen(ZIEL, ["## Offene Fragen an den PO", "", "1. Wer nimmt das Label ab?", ""], SCHLUSS);
   const karten = [{ id: "3", title: "[Fachlich] Ungeprueft", status: "backlog", labels: ["kit:night"], body: offen }];
