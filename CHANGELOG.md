@@ -2,6 +2,32 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.1] - 2026-09-25
+- Die Kette nimmt keine Anforderung mit offenen Fragen auf (#916)
+- Der Reviewer-Prompt nennt die Form der Gegenprobe (#915)
+- Der Prueflauf bekommt sein Kapitel in Prozesstext und Dokumentation (#910)
+- Der Prueflauf laeuft: node .claude/kit/night.mjs --pruefen (#909)
+- Jeder Lauf raeumt nur Worktrees seines eigenen Praefixes ab (#908)
+- Der Prueflauf erkennt sein Ergebnis am Unterschied der Board-Spuren (#907)
+- Der Prueflauf waehlt seine Kandidaten (#906)
+- Der Prueflauf bekommt den Einstellungsblock pruefLauf (#905)
+- Das Bash-Limit der Nacht-Session bleibt unter dem Rundenzeitlimit (#902)
+- Ein Akzeptanzkriterium verlangt keinen Mutationslauf (#901)
+- Das Aufraeumen des Wegwerf-Repos kippt den Windows-Lauf nicht mehr (#892)
+- Der CI-Guard laeuft nur noch am Tor main (#891)
+- Die letzten zwei Sonar-Befunde verschwinden (#879)
+- checks-8 raeumt unter Windows den Prozessbaum ab (#874)
+- Prozessdoku und Skills nennen den Plan als zweite Auftragsart (#898)
+- Die Leitstandsmeldung laesst die uebernommene Plan-Stufe aus (#897)
+- Halt und Bericht der Kette gehen an die gekennzeichnete Karte (#896)
+- Die Nacht-Kette nimmt einen gekennzeichneten Plan als Auftrag an (#895)
+- Der Runner erkennt einen startbereiten Plan an zwei reinen Proben (#893)
+- Die Doku nennt alle Faelle eines Laufs ohne Arbeit (#888)
+- Die Umsetzungsnacht nennt ihren Fall statt zu schweigen (#887)
+- Der Umsetzungs-Lock unterscheidet belegt von Schreibfehler (#886)
+- Der Lauf bildet seine Gruende ohne Arbeit an einer Stelle (#885)
+- Der Runner meldet seinen harten Stopp mit Grund (#881)
+
 ## [3.3.0] - 2026-09-24
 - Die Kette laeuft neben einer unsauberen Hauptkopie (#878)
 - ..
