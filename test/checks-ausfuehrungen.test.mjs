@@ -161,7 +161,8 @@ test("[checks-7] checks.mjs plan schreibt keine Zeile", () => {
 test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und leeres Paket", () => {
   const FELDER = [
     "abgeschlossen", "ausgelassen", "basis", "bereiche", "configHash", "dauerGesamtMs",
-    "geaendert", "hashes", "laufen", "leeresPaket", "stufe", "vollerUmfang", "zeitpunkt",
+    "geaendert", "hashes", "laufen", "leeresPaket", "ohneZuordnung", "stufe", "vollerUmfang",
+    "zeitpunkt",
   ];
   const faelle = [
     { name: "gruen", cmd: "echo eins", leer: false },

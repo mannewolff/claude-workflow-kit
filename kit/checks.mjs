@@ -66,8 +66,16 @@
  * unberuehrten Bereichen (Plan #843, E9). Gemessen wird der Stand, der hinausgeht
  * — und der besteht aus mehr als dem letzten Arbeitspaket.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--frisch]
+ * `--bereich <name>` faehrt die Pruefgruppen genau eines `checkAreas`-Bereichs
+ * (Issue #922, Plan #917, E3). Es ist der vorgesehene Weg, wenn fuer die
+ * geaenderte Datei nur die vollstaendige Gruppe existiert — dann ist der
+ * Gruppenlauf kein Verstoss gegen die Zehn-Minuten-Marke, sondern der Fall, fuer
+ * den das Flag da ist. Ohne es waere derselbe Lauf von Hand am Kommando vorbei
+ * gefahren, und aus den Daten liesse sich Notwendigkeit nicht von Umgehung
+ * trennen.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--frisch]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -199,8 +207,8 @@ const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
 
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>] [--stufe <stufe>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--frisch]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--frisch]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -232,6 +240,15 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
                   Veroeffentlichungsstufen (push, merge) fahren jede faellige
                   Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
+  --bereich <n>   Faehrt die Pruefgruppen genau eines checkAreas-Bereichs, statt
+                  die beruehrten aus den geaenderten Dateien zu bestimmen. Der
+                  vorgesehene Weg, wenn fuer die geaenderte Datei nur die
+                  vollstaendige Gruppe existiert — ein so begruendeter
+                  Gruppenlauf ist kein Verstoss gegen die Zehn-Minuten-Marke,
+                  sondern sein sanktionierter Fall. Ein unbekannter Name bricht
+                  ab und nennt die konfigurierten Bereiche. Kombinierbar mit
+                  --since, --stufe und --frisch: '--bereich' sagt, OB eine
+                  Pruefung betroffen ist, '--stufe' weiter, WANN sie dran ist.
   --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
                   wackligen Test.
@@ -370,19 +387,26 @@ export function bereicheVorbereiten(checkAreas) {
  * Ordnet jede geaenderte Datei ihren Bereichen zu. Die erste Datei, die kein
  * einziges Muster trifft, wird als `ohneMuster` gemeldet — sie loest den vollen
  * Umfang aus und gehoert in den Grund, sonst weiss niemand, welches Muster fehlt.
+ *
+ * Daneben steht `ohneZuordnung` mit ALLEN solchen Dateien (Issue #922, Plan
+ * #917, E8): Der Beobachter fragt, welche Dateien kein Muster finden — nicht,
+ * welche es als erste tat. Beides nebeneinander und nicht das eine aus dem
+ * anderen: Der Grund-Text ist Text fuer Menschen und wird woertlich gelesen, die
+ * Liste sind Daten. Wer die Liste aus dem Satz parsen muesste, haette beim ersten
+ * Umformulieren des Satzes eine stille Fehlmessung.
  */
 function zuordnen(dateien, bereichsdefinition) {
   const beruehrt = new Set();
-  let ohneMuster = null;
+  const ohneZuordnung = [];
   for (const pfad of dateien) {
     const treffer = bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
     if (treffer.length === 0) {
-      ohneMuster ??= pfad;
+      ohneZuordnung.push(pfad);
       continue;
     }
     for (const bereich of treffer) beruehrt.add(bereich.name);
   }
-  return { beruehrt, ohneMuster };
+  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung };
 }
 
 // --- Aenderungen -----------------------------------------------------------
@@ -514,9 +538,15 @@ function verteilen(checks, stufe, entscheiden) {
   return { laufen, ausgelassen };
 }
 
-function bauen({ basis, stufe, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
-  vollerUmfang = false, leeresPaket = false }) {
-  return { basis, stufe, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
+/**
+ * `ohneZuordnung` hat die Vorgabe `[]` und wird nie aus etwas anderem erschlossen
+ * (Issue #922): Ein voller Umfang wegen eines nicht aufloesbaren Ankers kennt gar
+ * keine Dateiliste — dort stuende sonst ein erfundener Eintrag, und der Beobachter
+ * zaehlte eine Luecke, die es nicht gibt.
+ */
+function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], laufen = [],
+  ausgelassen = [], vollerUmfang = false, leeresPaket = false }) {
+  return { basis, stufe, geaendert, bereiche, ohneZuordnung, laufen, ausgelassen, vollerUmfang, leeresPaket };
 }
 
 function planen(args) {
@@ -525,6 +555,16 @@ function planen(args) {
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
   pruefeGuete(checks);
+
+  // Derselbe Weg wie beim vertippten Bereichsnamen einer Pruefung: Abbruch statt
+  // stiller Wahl. Ein Tippfehler im Flag liefe sonst auf einen Bereich, den keine
+  // Pruefung kennt — es liefe nichts ausser `always`, und der Aufrufer hielte die
+  // Gruppe fuer gefahren.
+  const bereichWahl = args.bereich ?? null;
+  if (bereichWahl !== null && !Object.hasOwn(checkAreas, bereichWahl)) {
+    const namen = Object.keys(checkAreas);
+    fail(`Unbekannter Bereich '${bereichWahl}'. Konfiguriert in checkAreas: ${namen.length > 0 ? namen.join(", ") : "keiner"}.`);
+  }
 
   const stufe = args.stufe ?? STUFEN[0];
   const refText = args.since ?? "HEAD";
@@ -541,8 +581,34 @@ function planen(args) {
   }
 
   const geaendert = geaenderteDateien(basis);
-  const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
+  const { beruehrt, ohneMuster, ohneZuordnung } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
   const bereiche = [...beruehrt].sort(vergleicheText);
+
+  // Der BEREICHSLAUF (Issue #922, Plan #917, E3): Nicht der Diff sagt, welche
+  // Bereiche beruehrt sind, sondern der Aufrufer. Das ist der sanktionierte Weg
+  // fuer den Fall, dass fuer die geaenderte Datei nur die vollstaendige Gruppe
+  // existiert — ohne ihn liefe dieselbe Gruppe von Hand am Kommando vorbei, und
+  // niemand koennte Verstoss und Notwendigkeit auseinanderhalten.
+  //
+  // Die Wahl steht VOR den Sonderwegen darunter (Veroeffentlichungsstufe, leeres
+  // Paket, Datei ohne Muster): Jeder von ihnen wuerde die Eingrenzung wieder
+  // aufheben, um die es beim Aufruf gerade ging. Nicht davor steht der
+  // Zweifelsfall des nicht aufloesbaren Ankers — dort ist gar nichts bekannt, und
+  // dieses Kommando irrt in diese Richtung nie.
+  //
+  // Die STUFENACHSE bleibt unberuehrt: `--bereich` beantwortet, OB eine Pruefung
+  // betroffen ist, `--stufe` weiter, WANN sie an der Reihe ist. Der Grund traegt
+  // das Praefix, damit im Bericht steht, warum die Auswahl so ausfiel.
+  if (bereichWahl !== null) {
+    const gewaehlt = new Set([bereichWahl]);
+    return bauen({
+      basis, stufe, geaendert, bereiche, ohneZuordnung,
+      ...verteilen(checks, stufe, (check) => {
+        const ergebnis = entscheidung(check, gewaehlt);
+        return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
+      }),
+    });
+  }
 
   // Die Veroeffentlichungsstufen faehren jede faellige Pruefung (Plan #753, E12;
   // fuer die Push-Stufe Plan #843, E9 nach Fachplan #837, AK 11): Ihr Ergebnis
@@ -564,7 +630,7 @@ function planen(args) {
   if (stufe === "push" || stufe === "merge") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche,
+      basis, stufe, geaendert, bereiche, ohneZuordnung,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
     });
   }
@@ -580,13 +646,13 @@ function planen(args) {
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({
-      basis, stufe, geaendert, bereiche, vollerUmfang: true,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, vollerUmfang: true,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche,
+    basis, stufe, geaendert, bereiche, ohneZuordnung,
     ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
   });
 }
@@ -1189,6 +1255,12 @@ function parseArgs(rest) {
         fail(`Unbekannte Stufe '${wert}'. Erwartet: ${STUFEN.join(", ")}.`);
       }
       args.stufe = wert;
+      i += 1;
+    } else if (rest[i] === "--bereich") {
+      // Der fehlende Wert zaehlt wie ein falscher (wie bei `--stufe`): Die
+      // Pruefung gegen `checkAreas` steht in `planen`, wo die Config liegt, und
+      // der leere Name faellt dort mit derselben nennenden Meldung durch.
+      args.bereich = rest[i + 1] ?? "";
       i += 1;
     } else if (rest[i] === "--frisch") {
       // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
