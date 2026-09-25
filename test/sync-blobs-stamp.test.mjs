@@ -29,7 +29,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // aufwand.mjs mit Issue #750, wirksamkeit.mjs mit Issue #787, befunde.mjs mit
 // Issue #799), faellt hier genau eine Stelle an statt drei ueber die Datei
 // verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -72,6 +72,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const AUFWAND_MJS_B64 = "";`,
     `const WIRKSAMKEIT_MJS_B64 = "";`,
     `const BEFUNDE_MJS_B64 = "";`,
+    `const WORKTREE_MJS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));

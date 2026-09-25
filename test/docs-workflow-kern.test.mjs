@@ -13,16 +13,19 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +16 fuer den Abschnitt
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +2 fuer die Regel, dass
+// Schritt 8 und 9 in einem eigenen Worktree laufen (Issue #929: eine Entscheidung Mannes,
+// nachdem zwei Release-Laeufe die Nacht-Kette eines Projekts abgerissen haben). Davor +16
+// fuer den Abschnitt
 // "Regel im Text oder Regel im Werkzeug" (Issue #856, Plan #810/E7: zuerst der Massstab,
 // dann die Werkzeuge, dann die Skills). Davor +14 fuer den Abschnitt
 // "Befunde der Modell-Pruefungen" (Issue #798, Plan #797/E19: zuerst der Regeltext, dann
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 394 Zeilen", () => {
+test("die Vorlage bleibt unter 396 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 394, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 394`);
+  assert.ok(zeilen <= 396, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 396`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {

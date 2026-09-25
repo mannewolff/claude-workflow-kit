@@ -61,9 +61,11 @@ Der **vollständige** SHA aus `git rev-parse` geht an die Achse:
 node .claude/kit/board.mjs code ci-status --commit <sha>
 ```
 
-Weicht `git rev-parse HEAD` davon ab — uncommittete oder ungepushte Commits —, stoppt der
-Skill ohne CI-Abfrage und ohne PR: Die CI kennt diesen Stand nicht, ihr Urteil gälte einem
-anderen.
+**Gemessen wird `origin/<mainBranch>`, nicht der lokale Stand.** Bis Issue #929 stoppte der
+Skill, wenn `git rev-parse HEAD` davon abwich. Die Regel ist entfallen, weil der Release
+seit #929 in einem eigenen Worktree auf `origin/<mainBranch>` entsteht: Der Haupt-Tree wird
+gar nicht mehr gemessen, und ein lokaler, noch nicht gepushter Commit geht darum auch nicht
+mit hinaus. Die CI urteilt weiter über genau den Stand, der veröffentlicht wird.
 
 Das Ergebnis entscheidet:
 
@@ -78,15 +80,56 @@ auf `origin/<mainBranch>` zurück, während das Bump-Kommando nicht idempotent i
 nächste Anlauf erneut bumpte. Der Stand von `push main` trägt zudem die eigentliche
 Änderung; der Release-Commit nur Stempel und Changelog.
 
-### 4. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
+### 4. Worktree auf `origin/<mainBranch>` anlegen
 
-> `Schritt 4 von 9 — Release-Dateien erzeugen (laeuft)`
+> `Schritt 4 von 12 — Worktree (laeuft)`
+
+**Alles, was dieser Lauf erzeugt, prüft, committet und pusht, entsteht in einem eigenen
+Worktree — nicht im Haupt-Working-Tree.** Dort kann gleichzeitig die Umsetzungsstufe des
+Nacht-Runners bauen (Variante B). Am 2026-09-25 riss genau das in kanban-kit zweimal
+dieselbe Kette ab: Der Runner fand die Release-Dateien als unkommittierte Reste und stoppte
+hart. Dazu kommt, dass fremde, halbfertige Dateien im Haupt-Tree — etwa ein noch roter
+TDD-Test — den Release-Prüflauf verfälschen würden.
+
+```bash
+node .claude/kit/worktree.mjs anlegen --praefix release --ref origin/<mainBranch>
+cd <pfad>
+```
+
+**Der Ref ist `origin/<mainBranch>`, nicht das lokale `HEAD`:** Veröffentlicht wird, was
+gepusht ist. Ein lokaler Commit, den niemand gepusht hat, darf nicht über den Release-Push
+mit hinausgehen. Deshalb entfällt in Schritt 3 auch die alte Stopp-Regel — es gibt nichts
+mehr abzugleichen. Kein Rebase: Der Worktree steht schon auf dem veröffentlichten Stand.
+
+Das Kommando räumt liegengebliebene Release-Worktrees ab, spiegelt `.claude/` hinein
+(Kit-Kopie, Config, Token) und gibt den Pfad als JSON aus. Die Worktrees der Nacht
+(`kette`, `pruefung`) bleiben unberührt.
+
+**Alle Kommandos der Schritte 5 bis 7 laufen in diesem Worktree.** Der `cd`-Aufruf steht
+deshalb als **eigenes** Kommando: Das Arbeitsverzeichnis bleibt für die folgenden Aufrufe
+erhalten. Vor Schritt 7 wird das einmal mit `pwd` nachgesehen — ein Commit im falschen Baum
+ist genau der Fehler, den dieser Schritt beseitigt.
+
+**Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
+gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
+(`node_modules`, `.venv`, `vendor/`), fehlen sie dort und werden vor dem Prüflauf mit dem
+Installationskommando des Projekts angelegt (`npm ci`, `uv sync`, …). **Nicht** aus der
+Hauptkopie herüberkopieren oder verlinken: Ein geteiltes Bauverzeichnis ist genau die
+Vermischung, die dieser Weg beendet — im Vorfall teilten sich zwei `mvn verify` dasselbe
+`target/`. Caches **außerhalb** des Projektverzeichnisses (`~/.m2`, npm-Cache) gelten
+weiter und brauchen nichts. Lässt sich die Installation nicht herstellen, endet der Lauf
+**ohne Commit, ohne Push und ohne PR** mit diesem Grund: Ein Check, der an fehlenden
+Abhängigkeiten scheitert, wird nie als grüner Lauf gemeldet und nie ausgelassen.
+
+### 5. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
+
+> `Schritt 5 von 12 — Release-Dateien erzeugen (laeuft)`
 
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
   Schritte aus — **bis zum ersten festschreibenden Schritt**, also typischerweise Bump,
-  Stempel und Changelog. Nicht committen: Das kommt aus Schritt 6.
-- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
+  Stempel und Changelog. Nicht committen: Das kommt aus Schritt 7.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 6.
 
 **Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
 veröffentlicht (`git commit`, `git push`, `git tag`, ein Release-Kommando). Alles davor
@@ -96,11 +139,11 @@ Abschlussbericht.
 
 Der Skill selbst kennt keine projektspezifische Versions- oder Changelog-Logik; diese
 lebt ausschließlich in der `RELEASING.md` des jeweiligen Repos. Ein Tag entsteht hier
-**nicht** — siehe Schritt 7.
+**nicht** — siehe Schritt 9.
 
-### 5. Der eine Prüflauf (Gate — vor Commit, Push und PR)
+### 6. Der eine Prüflauf (Gate — vor Commit, Push und PR)
 
-> `Schritt 5 von 9 — Prueflauf (laeuft)`
+> `Schritt 6 von 12 — Prueflauf (laeuft)`
 
 **Vor dem einen Commit dieses Wegs steht der eine Prüflauf.** Der Nachweis gehört zum
 Commit: Bump, Stempel und Changelog erzeugen Dateien, die kein früherer Lauf gesehen haben
@@ -122,44 +165,81 @@ für den das Ergebnis gilt; eine bereichsbezogene Auswahl misst hier zu wenig.
 `leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus — ein Release liefe dann durch
 eine leere Prüfung.
 
-Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 4 bleibt
-stehen; er ist seit Issue #656 idempotent und steigt beim nächsten Anlauf nicht erneut.
+Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 5 bleibt im
+Worktree stehen, und der Worktree wird trotzdem **abgebaut** (Schritt 8) — der Bump ist seit
+Issue #656 idempotent, ein neuer Anlauf erzeugt ihn wieder.
 
-### 6. Der eine Commit
+### 7. Der eine Commit
 
-> `Schritt 6 von 9 — Commit (laeuft)`
+> `Schritt 7 von 12 — Commit (laeuft)`
+
+**Im Worktree** — einmal `pwd` davor, siehe Schritt 4.
 
 ```bash
-git add <die Dateien aus Schritt 4>
+git add <die Dateien aus Schritt 5>
 git commit -m "chore: vX.Y.Z"
 ```
 
-Committet wird auf `mainBranch`, damit die Dateien im PR nach `production` enthalten sind,
-und nur bei tatsächlichem staged Diff. Hat Schritt 4 nichts erzeugt, gibt es keinen
-Release-Commit — das gehört in den Abschlussbericht und bedeutet, dass Schritt 7 nichts zu
-taggen hat.
+Der Commit geht auf den Stand von `origin/<mainBranch>`, damit die Dateien im PR nach
+`production` enthalten sind, und entsteht nur bei tatsächlichem staged Diff. Hat Schritt 5
+nichts erzeugt, gibt es keinen Release-Commit — das gehört in den Abschlussbericht und
+bedeutet, dass Schritt 9 nichts zu taggen hat.
 
-**Merke dir den Hash dieses Commits.** Schritt 7 braucht ihn, und er ist danach nicht mehr
-sicher rekonstruierbar:
+**Merke dir den Hash dieses Commits.** Schritt 9 braucht ihn, und er ist danach nicht mehr
+sicher rekonstruierbar — vor allem nicht nach dem Abbau des Worktrees:
 
 ```bash
 git rev-parse --short HEAD
 ```
 
 **Die Nachweiszeile.** Nenne im Abschlussbericht zu diesem Commit den Hash, das Ergebnis
-des deckenden Laufs aus Schritt 5 und dessen `zeitpunkt` aus der Prüf-Zusammenfassung
+des deckenden Laufs aus Schritt 6 und dessen `zeitpunkt` aus der Prüf-Zusammenfassung
 (`.claude/checks-summary.json`, Issue #655) — der Zeitpunkt sagt, ob der Nachweis zu
-diesem Stand gehört oder von einem früheren Lauf stammt.
+diesem Stand gehört oder von einem früheren Lauf stammt. Gelesen wird die Zusammenfassung
+des **Worktrees**; dort lief die Prüfung.
 
-Danach pushen:
+Danach pushen — der Worktree steht auf einem losgelösten `HEAD`:
 
 ```bash
-git push origin <mainBranch>
+git push origin HEAD:<mainBranch>
 ```
 
-### 7. Tag-Kommando ausgeben — der Tag wird nicht gesetzt
+**Kein `--force`.** Der Worktree setzte auf `origin/<mainBranch>` auf, der Push ist damit
+ein Fast-Forward. Wird er abgewiesen, ist `origin` zwischenzeitlich weitergelaufen — dann
+endet der Lauf ohne PR mit dieser Meldung, und der Mensch entscheidet.
 
-> `Schritt 7 von 9 — Tag-Kommando (laeuft)`
+### 8. Rückweg, Nachziehen, Worktree abbauen
+
+> `Schritt 8 von 12 — Rueckweg und Abbau (laeuft)`
+
+Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf oder einem abgewiesenen
+Push — ein liegengebliebener Worktree ist genau der Rest, den dieser Weg beseitigt.
+
+```bash
+node .claude/kit/worktree.mjs rueckweg <pfad>
+node .claude/kit/worktree.mjs nachziehen-pruefen
+node .claude/kit/worktree.mjs entfernen <pfad>
+```
+
+`rueckweg` ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des Worktrees (sie
+bezeugt den frisch gemessenen Stand) und hängt Ausführungsprotokoll
+(`.claude/ausfuehrungen.tsv`) und Befunde (`.claude/befunde.tsv`) an.
+
+`nachziehen-pruefen` entscheidet über das lokale `<mainBranch>`, das nach dem Push aus dem
+Worktree hinter `origin` zurückliegt:
+
+- **`nachziehen: true`** — in der Hauptkopie `git fetch origin <mainBranch>` und
+  `git rebase origin/<mainBranch>`.
+- **`nachziehen: false`** — **nicht** nachziehen. Der Skill nennt den `grund` und gibt die
+  beiden Kommandos als kopierbare Zeile aus. Ein Rebase unter einer laufenden Umsetzung
+  verschöbe ihr den Boden, und in einem schmutzigen Baum hielte er ohnehin an.
+
+Der Pfad des Worktrees, sein Abbau und der Ausgang des Nachziehens gehören in den
+Abschlussbericht — ebenso, dass der Haupt-Working-Tree unberührt geblieben ist.
+
+### 9. Tag-Kommando ausgeben — der Tag wird nicht gesetzt
+
+> `Schritt 9 von 12 — Tag-Kommando (laeuft)`
 
 **Der Skill setzt und pusht keinen Tag.** Ein Tag markiert ein Release, und
 Releases setzt der Mensch — dieselbe Linie wie bei den drei Stop-Punkten.
@@ -171,7 +251,7 @@ eigenen Code-Block am Ende des Laufs:
 git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
 ```
 
-`<hash>` ist der `chore: vX.Y.Z`-Commit aus Schritt 6 — der Skill kennt ihn, weil
+`<hash>` ist der `chore: vX.Y.Z`-Commit aus Schritt 7 — der Skill kennt ihn, weil
 er ihn selbst erzeugt hat. **Nicht `HEAD` einsetzen und nicht raten:** Nach dem
 Release-Commit können weitere Commits folgen, und der Tag zeigt dann auf den
 falschen Stand.
@@ -183,16 +263,16 @@ Der Grund für die Kommandozeile statt einer Bitte: Wer nach jedem Release Hash
 und Syntax selbst zusammensuchen muss, lässt es irgendwann bleiben. Genau das ist
 sechsmal in Folge passiert (Issue #244).
 
-Hat Schritt 6 keinen Release-Commit erzeugt — keine `RELEASING.md`, kein Bump —,
+Hat Schritt 7 keinen Release-Commit erzeugt — keine `RELEASING.md`, kein Bump —,
 gibt es nichts zu taggen. Das gehört **in den Abschlussbericht**, nicht in ein
 stilles Überspringen.
 
 **Beim `push main`-Trigger entsteht kein Tag.** Dort entstehen interne
 Patch-Stände, die niemand veröffentlicht; ein Tag je Patch wäre Lärm.
 
-### 8. PR bzw. MR erstellen
+### 10. PR bzw. MR erstellen
 
-> `Schritt 8 von 9 — PR erstellen (laeuft)`
+> `Schritt 10 von 12 — PR erstellen (laeuft)`
 
 ```bash
 node .claude/kit/board.mjs code pr \
@@ -203,9 +283,9 @@ node .claude/kit/board.mjs code pr \
 
 Der Adapter erstellt den PR/MR provider-unabhaengig. Bei `codeHost: local` gibt er einen gefuehrten Merge-Dialog aus.
 
-### 9. GitHub-Release-Kommando ausgeben — erst nach dem Tag ausführbar
+### 11. GitHub-Release-Kommando ausgeben — erst nach dem Tag ausführbar
 
-Am Ende dieses Laufs existiert der Tag **noch nicht**: Schritt 7 hat nur die
+Am Ende dieses Laufs existiert der Tag **noch nicht**: Schritt 9 hat nur die
 Kommandozeile ausgegeben, gesetzt hat ihn niemand. Ein Release kann in diesem
 Lauf deshalb nicht entstehen — das ist keine Ausnahme, sondern der Normalfall.
 
@@ -225,10 +305,10 @@ Release-Kommando. Das gehört **in den Abschlussbericht** — dass ein Schritt n
 greift, muss man lesen können, sonst sieht ein Lauf ohne Release aus wie ein Lauf
 mit Release.
 
-### 10. PR/MR-URL und die beiden Kommandos zurückgeben
+### 12. PR/MR-URL und die beiden Kommandos zurückgeben
 
-Gib die URL aus dem Adapter-Output aus, gefolgt von den Kommandos aus Schritt 7
-und 9 in **einem** Code-Block. Der Merge ist Mannes Aufgabe — Claude merged nicht,
+Gib die URL aus dem Adapter-Output aus, gefolgt von den Kommandos aus Schritt 9
+und 11 in **einem** Code-Block. Der Merge ist Mannes Aufgabe — Claude merged nicht,
 und den Tag setzt er ebenfalls selbst.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir.
@@ -247,8 +327,14 @@ und den Tag setzt er ebenfalls selbst.
 - Kein Force-Merge oder Bypass von Branch-Protection-Regeln
 - **Kein PR bei roter CI** — und ein Exit-Code 1 der Achse `code ci-status` zählt
   wie `rot` (Schritt 3)
-- **Kein Commit, kein Push und kein PR bei rotem Prüflauf** (Schritt 5)
+- **Kein Commit, kein Push und kein PR bei rotem Prüflauf** (Schritt 6)
+- Kein Erzeugen, Prüfen oder Committen im Haupt-Working-Tree — das läuft ausschließlich im
+  Worktree aus Schritt 4, und der setzt auf `origin/<mainBranch>` auf: Ein lokaler, nicht
+  gepushter Commit geht mit diesem Release nicht hinaus
+- Kein zurückgelassener Worktree, auch nicht nach einem roten Lauf (Schritt 8)
+- Kein Rebase des lokalen `<mainBranch>`, während eine Sperre des Nacht-Runners liegt oder
+  der Haupt-Tree schmutzig ist (Schritt 8)
 - Kein zweiter Commit und kein `--amend` auf diesem Weg
 - **Kein Setzen und kein Pushen von Tags** — der Skill gibt nur die Kommandozeile
-  aus, den Tag setzt der Mensch (Schritt 7)
+  aus, den Tag setzt der Mensch (Schritt 9)
 - Kein Force-Push von Tags, kein Überschreiben bestehender Tags

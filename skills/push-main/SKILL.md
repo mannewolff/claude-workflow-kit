@@ -22,7 +22,7 @@ Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Mensc
 ## Ablauf
 
 **Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
-Der volle Lauf fährt **sieben** Schritte, die Zeilen lauten dann `Schritt k von 7`. Das `n`
+Der volle Lauf fährt **neun** Schritte, die Zeilen lauten dann `Schritt k von 9`. Das `n`
 ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `RELEASING.md`
 sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
 ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
@@ -74,7 +74,7 @@ Ausgabe leer und der Exit-Code 0.
 
 Dieser Block trägt bewusst **keine Nummer** und zählt in keiner Fortschrittszeile mit: Eine
 Nummer verschöbe jede folgende Schrittzahl um eins und machte sämtliche Querverweise auf
-„Schritt 3" und „Schritt 5" falsch. Die Fortschrittszeilen der sieben Schritte bleiben
+„Schritt 4" und „Schritt 6" falsch. Die Fortschrittszeilen der neun Schritte bleiben
 davon unberührt.
 
 ### 1. Config lesen
@@ -94,15 +94,65 @@ git log origin/main..HEAD --oneline
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
 
-### 3. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
+### 3. Worktree anlegen und mit `origin` zusammenführen
 
-> `Schritt 3 von 7 — Release-Dateien erzeugen (laeuft)`
+> `Schritt 3 von 9 — Worktree (laeuft)`
+
+**Alles, was dieser Lauf erzeugt, prüft, committet und pusht, entsteht in einem eigenen
+Worktree — nicht im Haupt-Working-Tree.** Dort kann gleichzeitig die Umsetzungsstufe des
+Nacht-Runners bauen (Variante B). Am 2026-09-25 riss genau das in kanban-kit zweimal
+dieselbe Kette ab: Der Runner fand die Release-Dateien als unkommittierte Reste und stoppte
+hart. Dazu kommt, dass fremde, halbfertige Dateien im Haupt-Tree — etwa ein noch roter
+TDD-Test — den Release-Prüflauf verfälschen würden.
+
+```bash
+node .claude/kit/worktree.mjs anlegen --praefix release --ref <mainBranch>
+```
+
+Das Kommando räumt liegengebliebene Release-Worktrees ab, legt den neuen außerhalb des
+Repos an, spiegelt `.claude/` hinein (Kit-Kopie, Config, Token) und gibt den Pfad als JSON
+aus. Die Worktrees der Nacht (`kette`, `pruefung`) bleiben unberührt.
+
+Der Worktree setzt auf dem **lokalen** `<mainBranch>` auf — dem Batch, der hinausgehen
+soll — und wird dort mit dem veröffentlichten Stand zusammengeführt:
+
+```bash
+cd <pfad>
+git fetch origin <mainBranch>
+git rebase origin/<mainBranch>
+```
+
+Das Rebase ist nötig, weil ein früherer Worktree-Release seinen Commit nur auf `origin`
+gelegt hat; ohne es liefe der Push ins `non-fast-forward`. Schon übernommene Commits
+überspringt das Rebase von selbst. **Ein Konflikt hält an:** kein Prüflauf, kein Commit,
+kein Push. Der Skill meldet die Konfliktdateien, entfernt den Worktree (Schritt 8) und
+endet — das Zusammenführen ist Handarbeit des Menschen.
+
+**Alle Kommandos der Schritte 4 bis 7 laufen in diesem Worktree.** Der `cd`-Aufruf oben
+steht deshalb als **eigenes** Kommando: Das Arbeitsverzeichnis bleibt für die folgenden
+Aufrufe erhalten. Vor Schritt 6 wird das einmal mit `pwd` nachgesehen — ein Commit im
+falschen Baum ist genau der Fehler, den dieser Schritt beseitigt.
+
+**Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
+gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
+(`node_modules`, `.venv`, `vendor/`), fehlen sie dort und werden vor dem Prüflauf mit dem
+Installationskommando des Projekts angelegt (`npm ci`, `uv sync`, …). **Nicht** aus der
+Hauptkopie herüberkopieren oder verlinken: Ein geteiltes Bauverzeichnis ist genau die
+Vermischung, die dieser Weg beendet — im Vorfall teilten sich zwei `mvn verify` dasselbe
+`target/`. Caches **außerhalb** des Projektverzeichnisses (`~/.m2`, npm-Cache) gelten
+weiter und brauchen nichts. Lässt sich die Installation nicht herstellen, endet der Lauf
+**ohne Commit und ohne Push** mit diesem Grund: Ein Check, der an fehlenden Abhängigkeiten
+scheitert, wird nie als grüner Lauf gemeldet und nie ausgelassen.
+
+### 4. Release-Dateien erzeugen (falls `RELEASING.md` existiert)
+
+> `Schritt 4 von 9 — Release-Dateien erzeugen (laeuft)`
 
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen Schritte aus —
   **bis zum ersten festschreibenden Schritt**, also typischerweise Bump, Stempel und
-  Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 4 und 5.
-- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 4.
+  Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 5 und 6.
+- **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
 **Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
 veröffentlicht (`git commit`, `git push`, `git tag`, ein Release-Kommando). Alles davor
@@ -113,12 +163,12 @@ Commit aus und sagt das im Abschlussbericht.
 Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik; diese lebt
 ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 
-### 4. Der eine Prüflauf (Gate — vor Commit und Push)
+### 5. Der eine Prüflauf (Gate — vor Commit und Push)
 
-> `Schritt 4 von 7 — Prueflauf (laeuft)`
+> `Schritt 5 von 9 — Prueflauf (laeuft)`
 
-Jetzt liegen alle Dateien des Wegs auf der Platte: die Release-Dateien aus Schritt 3.
-Genau diesen Stand misst **ein** Lauf:
+Jetzt liegen alle Dateien des Wegs auf der Platte: die Release-Dateien aus Schritt 4 — **im
+Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 
 ```bash
 node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"
@@ -147,13 +197,15 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   Rückgabewert jedes Prüfkommandos und die allgemeinen Fehlermerkmale in seiner
   Ausgabe liest `checks.mjs run` selbst; ein Treffer färbt die Prüfung rot.
 - **Ein roter Lauf hält alles an:** kein Commit, kein Push. Klare Meldung, **welcher**
-  Check mit welchem Fehler fehlschlug. Der Bump aus Schritt 3 bleibt dabei stehen; er ist
-  seit Issue #656 idempotent und steigt beim nächsten Anlauf nicht erneut.
+  Check mit welchem Fehler fehlschlug. Der Worktree wird trotzdem **abgebaut** (Schritt 8),
+  und der Bericht sagt das: Der Bump ist seit Issue #656 idempotent, ein neuer Anlauf
+  erzeugt ihn wieder — ein stehengebliebener Worktree wäre genau der Rest, den dieser Weg
+  beseitigt.
 - Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
-  Schritt 5 (kein Abbruch).
+  Schritt 6 (kein Abbruch).
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
-prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 3 hat kein
+prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein
 früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
 Commit ab.
 
@@ -168,14 +220,13 @@ Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
 ```
 
-Für **jede** Art, die das Kommando unter `arten` als `erreicht` meldet, ein Aufruf:
-
-```bash
-node .claude/kit/befunde.mjs vorschlag --art <a>
-```
+**Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs
+liest — und die liegt dort. Die Buchung kommt in Schritt 8 in die Hauptkopie zurück, und
+**erst dort** entsteht je Art ein Vorschlag: Die Schwelle zählt den Gesamtstand des
+Projekts, und der steht in der Hauptkopie.
 
 **Hier und nicht früher.** Der Vergleichsstand der Code-Stufe fragt, ob jede heute geänderte
-Datei von `.claude/checks-summary.json` gedeckt ist. Vor Schritt 4 trüge die Zusammenfassung
+Datei von `.claude/checks-summary.json` gedeckt ist. Vor Schritt 5 trüge die Zusammenfassung
 den Stand **vor** der Einarbeitung, und jede dabei geänderte Datei machte den Stand
 `nicht-vergleichbar`, obwohl die Pflichtprüfungen gleich darauf grün laufen. Nach dem
 Prüflauf liegt eine Zusammenfassung über genau den Stand vor, auf dem gebucht wird.
@@ -185,16 +236,18 @@ Ein Fehlschlag von `buchen` oder `vorschlag` wird in **einer Zeile** vermerkt un
 Commit und Push nicht auf. Wie der Befund-Block vor Schritt 1 trägt dieser Block **keine
 Nummer** und zählt in keiner Fortschrittszeile mit.
 
-### 5. Der eine Commit
+### 6. Der eine Commit
 
-> `Schritt 5 von 7 — Commit (laeuft)`
+> `Schritt 6 von 9 — Commit (laeuft)`
+
+**Im Worktree** — einmal `pwd` davor, siehe Schritt 3.
 
 ```bash
-git add <die Dateien aus Schritt 3>
+git add <die Dateien aus Schritt 4>
 git commit -m "<Betreff nach der Regel unten>"
 ```
 
-**Betreff.** Hat Schritt 3 Release-Dateien erzeugt: `chore: vX.Y.Z` mit der Kennung aus
+**Betreff.** Hat Schritt 4 Release-Dateien erzeugt: `chore: vX.Y.Z` mit der Kennung aus
 dem Bump.
 
 **Nie ein Suffix `(Issue #N)` am Betreffende.** Daran und nur daran liest
@@ -202,19 +255,67 @@ dem Bump.
 erscheint weiterhin im Changelog, dann ohne Paketreferenz; das ist gewollt. Aus demselben
 Grund stehen in der Botschaft **keine** `#N`-Referenzen auf Nicht-Pakete.
 
-Committet wird nur bei tatsächlichem staged Diff. Ist aus Schritt 3 nichts entstanden,
-gibt es nichts festzuschreiben; der Ablauf geht ohne Commit weiter zu Schritt 6, und der
+Committet wird nur bei tatsächlichem staged Diff. Ist aus Schritt 4 nichts entstanden,
+gibt es nichts festzuschreiben; der Ablauf geht ohne Commit weiter zu Schritt 7, und der
 Push fährt allein die Commits aus Schritt 2.
 
-### 6. Pushen
+### 7. Pushen
 
-> `Schritt 6 von 7 — Push (laeuft)`
+> `Schritt 7 von 9 — Push (laeuft)`
+
+Aus dem Worktree, der auf einem losgelösten `HEAD` steht:
 
 ```bash
-git push origin <mainBranch>
+git push origin HEAD:<mainBranch>
 ```
 
-### 7. Bestätigung
+**Kein `--force`, auch nicht nach dem Rebase.** Der Push ist nach Schritt 3 ein
+Fast-Forward; wird er abgewiesen, ist `origin` zwischenzeitlich weitergelaufen — dann endet
+der Lauf mit dieser Meldung, und der Mensch entscheidet.
+
+### 8. Rückweg, Nachziehen, Worktree abbauen
+
+> `Schritt 8 von 9 — Rueckweg und Abbau (laeuft)`
+
+Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf, einem Rebase-Konflikt
+oder einem abgewiesenen Push — ein liegengebliebener Worktree ist genau der Rest, den
+dieser Weg beseitigt.
+
+Erst das, was in der Hauptkopie weiterzählt:
+
+```bash
+node .claude/kit/worktree.mjs rueckweg <pfad>
+```
+
+Das Kommando ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des Worktrees
+(sie bezeugt den frisch gemessenen Stand), hängt das Ausführungsprotokoll
+(`.claude/ausfuehrungen.tsv`) und die Befunde (`.claude/befunde.tsv`) an und nennt in
+`befundeArten` die Arten, die damit die Schwelle erreichen. Für **jede** davon ein Aufruf:
+
+```bash
+node .claude/kit/befunde.mjs vorschlag --art <a>
+```
+
+Dann das lokale `<mainBranch>`, das nach dem Push aus dem Worktree hinter `origin`
+zurückliegt:
+
+```bash
+node .claude/kit/worktree.mjs nachziehen-pruefen
+```
+
+- **`nachziehen: true`** — in der Hauptkopie `git fetch origin <mainBranch>` und
+  `git rebase origin/<mainBranch>`.
+- **`nachziehen: false`** — **nicht** nachziehen. Der Skill nennt den `grund` und gibt die
+  beiden Kommandos als kopierbare Zeile aus. Ein Rebase unter einer laufenden Umsetzung
+  verschöbe ihr den Boden, und in einem schmutzigen Baum hielte er ohnehin an.
+
+Zuletzt der Abbau:
+
+```bash
+node .claude/kit/worktree.mjs entfernen <pfad>
+```
+
+### 9. Bestätigung
 
 Melde den neuen Stand auf `origin/<mainBranch>` mit dem letzten Commit-Hash.
 
@@ -226,9 +327,15 @@ Issue #655):
 <hash> — gedeckt von: node --test, node tools/sync-blobs.mjs --check (gruen, 2026-09-16 08:14)
 ```
 
+Gelesen wird die Zusammenfassung des **Worktrees** — dort lief die Prüfung. Nach Schritt 8
+liegt sie in der Hauptkopie und sagt dasselbe; vor dem Abbau ist der Worktree die Quelle.
 Der Zeitpunkt ist der Punkt: Er sagt, ob der Nachweis zu diesem Stand gehört oder von
-einem früheren Lauf stammt. Hat Schritt 5 keinen Commit erzeugt, gehört auch **das** in
+einem früheren Lauf stammt. Hat Schritt 6 keinen Commit erzeugt, gehört auch **das** in
 den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
+
+**In den Bericht gehören außerdem:** der Pfad des Worktrees und sein Abbau, ob das lokale
+`<mainBranch>` nachgezogen wurde oder mit welchem Grund nicht, und dass der
+Haupt-Working-Tree unberührt geblieben ist.
 
 **CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
 
@@ -237,7 +344,12 @@ Hinweis auf nächsten Schritt:
 
 ## Was dieser Skill nicht tut
 
-- Kein Commit und kein Push bei einem roten Prüflauf (Schritt 4)
+- Kein Commit und kein Push bei einem roten Prüflauf (Schritt 5)
+- Kein Erzeugen, Prüfen oder Committen im Haupt-Working-Tree — das läuft ausschließlich im
+  Worktree aus Schritt 3
+- Kein zurückgelassener Worktree, auch nicht nach einem roten Lauf (Schritt 8)
+- Kein Rebase des lokalen `<mainBranch>`, während eine Sperre des Nacht-Runners liegt oder
+  der Haupt-Tree schmutzig ist (Schritt 8)
 - Kein zweiter Commit und kein `--amend` auf diesem Weg
 - Keine Force-Pushes
 - Kein Push auf `production` oder andere Branches

@@ -1441,8 +1441,8 @@ export function salvageSauberkeitsKommando(ausnahmen = gitResteAusnahmen()) {
   return `git status --porcelain ${teile.join(" ")}`;
 }
 
-function gitReste(cwd = process.cwd()) {
-  const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec()], { encoding: "utf-8", cwd });
+function gitReste(cwd = process.cwd(), cfg = config) {
+  const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec(gitResteAusnahmen(cfg))], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
 }
@@ -1561,6 +1561,55 @@ export function umsetzungLockNehmen(repoRoot) {
   };
 }
 
+/**
+ * Die Sperren, an denen ein Lauf des Runners in der Hauptkopie erkennbar ist (Issue #929).
+ *
+ * Heute ist es eine: `.claude/night-umsetzung.lock`. Sie deckt beide Faelle, die die
+ * Release-Skills auseinanderhalten muessen — die Umsetzungsnacht nimmt sie, und die
+ * Umsetzungsstufe der Kette nimmt unter Variante B dieselbe Datei (6170), weil sie in der
+ * Hauptkopie baut. Eine Liste statt einer Konstante, damit eine zweite Sperre hier
+ * eingetragen wird und nicht an der Pruefung vorbei entsteht.
+ */
+export const RUNNER_SPERREN = [UMSETZUNG_LOCK];
+
+/** Die Config der Hauptkopie, so weit sie ohne Lauf-Kontext lesbar ist (Muster #800). */
+function configVonPlatte(repoRoot) {
+  try {
+    return JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+  } catch {
+    return null; // keine oder unlesbare Config ist ein normaler Zustand
+  }
+}
+
+/**
+ * Darf das lokale `<mainBranch>` der Hauptkopie jetzt nachgezogen werden (Issue #929)?
+ *
+ * Die Release-Skills arbeiten seit #929 in einem eigenen Worktree und pushen von dort;
+ * das lokale `<mainBranch>` bleibt dabei zurueck. Nachgezogen wird es nur, wenn niemand
+ * sonst in der Hauptkopie arbeitet: Ein `git rebase` unter einer laufenden Umsetzung
+ * verschoebe ihr den Boden, und ein schmutziger Baum bringt den Rebase zum Halten.
+ *
+ * Gemessen wird mit den Mitteln, die es schon gibt — die Prozess-Id-Logik des
+ * Umsetzungs-Locks und `gitReste()` mit denselben Ausnahmen wie der Rest-Guard. Zwei
+ * eigene Messungen desselben Zustands liefen auseinander (dieselbe Begruendung wie #818).
+ *
+ * Rueckgabe: `{ nachziehen, grund }`. `grund` ist bei `true` null, sonst der Satz, den
+ * der Skill in seinen Bericht uebernimmt.
+ */
+export function nachziehenPruefen(repoRoot = process.cwd()) {
+  for (const sperre of RUNNER_SPERREN) {
+    const pid = lockPid(join(repoRoot, sperre));
+    if (pid !== null && prozessLaeuft(pid)) {
+      return { nachziehen: false, grund: `${sperre} wird gehalten (Prozess ${pid}) — in der Hauptkopie arbeitet ein Lauf des Runners` };
+    }
+  }
+  const reste = gitReste(repoRoot, configVonPlatte(repoRoot));
+  if (reste.length > 0) {
+    return { nachziehen: false, grund: `die Hauptkopie traegt unkommittierte Aenderungen: ${reste.join(", ")}` };
+  }
+  return { nachziehen: true, grund: null };
+}
+
 // --- Worktree je Kette (Plan #638, A3) ---
 //
 // Die Nacht-Kette arbeitet in einem eigenen Worktree ausserhalb des Repos: Im Repo laege
@@ -1659,13 +1708,19 @@ function claudeSpiegeln(repoRoot, pfad) {
  * Scheitert `git worktree add`, wirft die Funktion mit der git-Meldung; ob daraus ein
  * `abgebrochen` wird, entscheidet der Aufrufer — ein stiller Rueckfall auf die Hauptkopie
  * hiesse, dass die Kette manchmal neben der Umsetzung im selben Baum liefe.
+ *
+ * `ref` ist der Stand, auf dem der Worktree aufsetzt (Issue #929). Die Kette und der
+ * Prueflauf nehmen den Vorgabewert `HEAD` — sie messen die Arbeit dieser Maschine. Die
+ * Release-Skills setzen ihn ausdruecklich: `/merge-production` auf `origin/<mainBranch>`,
+ * weil veroeffentlicht wird, was gepusht ist. Immer `--detach`: Ein Branch, der in der
+ * Hauptkopie ausgecheckt ist, liesse sich in einem zweiten Worktree gar nicht auschecken.
  */
-export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette" }) {
+export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette", ref = "HEAD" }) {
   // Ohne Kartennummer bleibt das Segment ganz weg (Plan #904, E11): Der Prueflauf legt
   // EINEN Worktree je Lauf an, und ein leeres Segment behauptete eine fehlende Nummer.
   const nummer = issueId === null ? "" : `${issueId}-`;
   const pfad = join(tmpdir(), `${worktreePraefix(repoRoot, praefix)}${nummer}${stempel}`);
-  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, "HEAD"]);
+  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, ref]);
   if (res.status !== 0) {
     throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
   }

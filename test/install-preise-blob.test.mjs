@@ -32,8 +32,8 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 // Alle Nachbardateien in einem Lauf: Ein zweiter Installer-Lauf kostete Sekunden und
 // belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu, wirksamkeit.mjs mit #787,
-// befunde.mjs mit #799.
-const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
+// befunde.mjs mit #799, worktree.mjs mit #929.
+const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
 const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
