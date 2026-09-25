@@ -7,8 +7,11 @@
       "areas": [
         "board",
         "installer",
+        "konfiguration",
         "nachtrunner",
-        "pruefungen"
+        "preise",
+        "pruefungen",
+        "skills-doku"
       ]
     },
     {
@@ -19,7 +22,8 @@
         "installer",
         "konfiguration",
         "nachtrunner",
-        "pruefungen"
+        "pruefungen",
+        "skills-doku"
       ]
     },
     {
@@ -27,7 +31,6 @@
       "areas": [
         "board",
         "installer",
-        "nachtrunner",
         "pruefungen"
       ]
     },
@@ -37,8 +40,11 @@
         "board",
         "einstellungen",
         "installer",
+        "konfiguration",
         "nachtrunner",
+        "preise",
         "pruefungen",
+        "skills-doku",
         "worktree"
       ]
     },
@@ -47,6 +53,7 @@
       "areas": [
         "einstellungen",
         "installer",
+        "konfiguration",
         "nachtrunner",
         "pruefungen",
         "skills-doku"
@@ -57,6 +64,7 @@
       "areas": [
         "board",
         "installer",
+        "konfiguration",
         "nachtrunner",
         "pruefungen",
         "skills-doku",
@@ -88,12 +96,6 @@
   "checkAreas": {
     "nachtrunner": [
       "kit/night.mjs",
-      "kit/board.mjs",
-      "kit/checks.mjs",
-      "kit/aufwand.mjs",
-      "kit/wirksamkeit.mjs",
-      "kit/befunde.mjs",
-      "kit/preise.mjs",
       "test/night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
       "test/helpers/kette-fixture.mjs",
@@ -102,7 +104,6 @@
     "board": [
       "kit/board.mjs",
       "kit/board-ui.mjs",
-      "kit/preise.mjs",
       "tools/migrate-issues.mjs",
       "test/board-*.test.mjs",
       "test/migrate-*.test.mjs",
@@ -114,7 +115,6 @@
       "kit/aufwand.mjs",
       "kit/wirksamkeit.mjs",
       "kit/befunde.mjs",
-      "kit/preise.mjs",
       ".githooks/**",
       "templates/**",
       "test/checks-*.test.mjs",
@@ -178,6 +178,9 @@
     ],
     "konfiguration": [
       ".claude/workflow.config.json"
+    ],
+    "preise": [
+      "kit/preise.mjs"
     ]
   },
   "ohnePruefung": [

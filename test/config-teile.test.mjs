@@ -157,7 +157,7 @@ test("keine Datei steht zugleich in ohnePruefung und in einem Teil", () => {
   );
 });
 
-test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie ausloest", () => {
+test("jede gemessene Kopplung hat ein Kommando, das sie ausloest", () => {
   // Die Invariante aus E4 (Issue #933, Plan #930). Sie sagt, was die gefallene
   // Zahl der Aufrufe nie sagen konnte:
   //
@@ -170,8 +170,12 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
   // der ein Fehler niemandem auffaellt. Die Zahl der Aufrufe war dafuer nur ein
   // Stellvertreter; die Deckung ist die Sache selbst.
   //
-  // Zunaechst nur fuer `kit/` und `tools/`: Dort legt Issue #933 den Schnitt neu.
-  // Auf alle versionierten Quelldateien weitet Issue #936 sie aus.
+  // Seit Issue #936 gilt sie fuer ALLE versionierten Quelldateien und nicht mehr
+  // nur fuer `kit/` und `tools/`. Die Einschraenkung war die Uebergangsstufe von
+  // Issue #933, und sie hatte dieselbe Schwaeche wie die Zahl der Aufrufe vor ihr:
+  // Ausserhalb der beiden Verzeichnisse — `templates/`, `skills/`, `docs/`,
+  // `.githooks/`, `test/helpers/`, die Wurzeldateien — durfte ein Bereich seine
+  // Testgruppe verfehlen, ohne dass es auffiel.
   const tabelle = verflechtungErheben({ repoRoot });
   assert.ok(tabelle.size > 0, "die Verflechtungserhebung lieferte keine Zeile");
 
@@ -186,7 +190,6 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
   // Die drei Schritte stehen als eigene Funktionen da, nicht als drei ineinander
   // geschachtelte Schleifen: Der Linter zaehlt die Verschachtelung, und die Namen
   // sagen ohnehin besser, was der Schritt bedeutet.
-  const geschnitten = (quelle) => quelle.startsWith("kit/") || quelle.startsWith("tools/");
   const bereicheVon = (quelle) => bereiche.filter((b) => b.regexe.some((r) => r.test(quelle)));
   const gedeckt = (bereich, testdatei) => kommandos.some(
     (k) => k.areas.has(bereich.name) && k.regexe.some((r) => r.test(testdatei)),
@@ -194,7 +197,7 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
 
   const luecken = new Set();
   for (const [testdatei, quellen] of tabelle) {
-    for (const quelle of quellen.filter(geschnitten)) {
+    for (const quelle of quellen) {
       for (const bereich of bereicheVon(quelle)) {
         if (!gedeckt(bereich, testdatei)) luecken.add(`${bereich.name}: ${quelle} braucht ${testdatei}`);
       }
