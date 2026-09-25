@@ -7869,6 +7869,17 @@ function nachweisMangel(pruefung) {
 const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
 
 /**
+ * Der Grund, aus dem eine Runde ohne jede Board-Aenderung endet (Issue #927).
+ *
+ * Eine EIGENE Konstante neben `DEFERRED_GRUND`, nicht dessen zweite Verwendung: Die
+ * Faelle sind verschieden — dort wurde ein Zustand gelesen und war nicht `in_review`,
+ * hier ist er unbekannt —, und ihr Text ist das Einzige, woran der Morgen sie
+ * unterscheidet. Ein nicht lesbarer Zustand ist keine Aussage ueber die Spalte, also
+ * folgt ihm auch keine Rueckstellung.
+ */
+const ZUSTAND_UNLESBAR_GRUND = "Zustand der Karte war nicht lesbar — Karte und Commit bleiben unangetastet, Lauf geht mit dem naechsten Issue weiter.";
+
+/**
  * Uebersetzt den Rueckgabewert von werteRunde in die Felder der Einheit (Issue #488).
  *
  * Die Woerter der Zaehler (`deferred`, `hardStop`) und das Vokabular des
@@ -7926,35 +7937,22 @@ export function istHalt(vorher, nachher) {
  * Runde, und benannt gelesen kann keine zwei von ihnen die Reihenfolge vertauschen.
  */
 async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl }) {
-  const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
-  if (nowInReview) {
-    log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
-    // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
-    // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
-    // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
-    // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
-    const reste = gitReste();
-    if (reste.length > 0) {
-      const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
-      log(`  ${satz}`);
-      merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
-      return "hardStop";
-    }
-    // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
-    // In-review-Pfad. Stuende er weiter oben, griffe er auch fuer eine Karte in
-    // Ready — und weil die Karte dabei liegen bleibt, zoege die naechste Iteration
-    // dasselbe Issue erneut, bis MAX_ITERATIONS erschoepft ist. Dazu bekaeme ein
-    // gescheiterter CLI-Start (Infrastruktur-Guard, #149) den Kommentar "keine
-    // Pruefung gefahren", und der Dirty-Guard waere umgangen.
-    const mangel = nachweisMangel(pruefung);
-    if (mangel) {
-      log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
-      board("issue", "comment", String(top.id),
-        "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
-      return "fehlschlag";
-    }
-    return "erfolg";
+  // Der Zustand kommt vom Einzelabruf an der Karte, nicht aus der Sammelliste
+  // `issue list --status in_review` (Issue #927): Im Lauf night-run-2026-09-25-061517
+  // fuehrte die Liste eine Karte nicht, die nachweislich in In review stand — die
+  // Session hatte sie dorthin gezogen, gruen geprueft und committet —, und der Runner
+  // stellte ein fertiges Paket zurueck. `leseKarte` fragt dort, wo die Antwort
+  // eindeutig ist; denselben Weg geht der Ketten-Pfad in `paketeAbschliessen`.
+  const kartenStatus = leseKarte(top.id)?.status ?? null;
+  // Unbekannter Zustand: KEINE Board-Mutation. Aus fehlendem Wissen eine
+  // Rueckstellung zu machen ist genau der Fehlgriff, den dieses Paket behebt. Der
+  // Ausgang ist `fehlschlag` — das Wort des Laufs fuer "Karte bleibt, Commit bleibt,
+  // weiter"; WARUM sie bleibt, sagt allein diese Log-Zeile.
+  if (kartenStatus === null) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} — ${ZUSTAND_UNLESBAR_GRUND}`);
+    return "fehlschlag";
   }
+  if (kartenStatus === "in_review") return werteInReview(top, minutes, pruefung);
 
   // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
   // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
@@ -7985,6 +7983,42 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
   }
 
   return stelleRundeZurueck(top, res, minutes);
+}
+
+/**
+ * Der Erfolgspfad: Die Karte steht in In review (Issue #404, herausgezogen in #927).
+ *
+ * Steht getrennt von `werteRunde`, seit dort mit dem unlesbaren Zustand eine dritte
+ * Verzweigung hinzukam: Die Auswertung liest sich sonst als eine Folge von Guards, in
+ * deren erstem Zweig zwei weitere Guards stecken.
+ */
+function werteInReview(top, minutes, pruefung) {
+  log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+  // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
+  // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
+  // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
+  // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
+  const reste = gitReste();
+  if (reste.length > 0) {
+    const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
+    log(`  ${satz}`);
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
+    return "hardStop";
+  }
+  // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
+  // In-review-Pfad. Stuende er weiter oben, griffe er auch fuer eine Karte in
+  // Ready — und weil die Karte dabei liegen bleibt, zoege die naechste Iteration
+  // dasselbe Issue erneut, bis MAX_ITERATIONS erschoepft ist. Dazu bekaeme ein
+  // gescheiterter CLI-Start (Infrastruktur-Guard, #149) den Kommentar "keine
+  // Pruefung gefahren", und der Dirty-Guard waere umgangen.
+  const mangel = nachweisMangel(pruefung);
+  if (mangel) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
+    board("issue", "comment", String(top.id),
+      "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
+    return "fehlschlag";
+  }
+  return "erfolg";
 }
 
 /**
