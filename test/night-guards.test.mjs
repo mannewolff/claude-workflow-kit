@@ -259,7 +259,7 @@ test("Kaskade: unerfuellte Abhaengigkeit wandert kommentiert ins Backlog, erfuel
 // Ohne den Test-Hook baut runSession die echte Kommandozeile. Ein Fake-claude im
 // PATH macht sie pruefbar, ohne je eine Sitzung zu starten: Es protokolliert seine
 // Argumente. So ist belegt, dass Prompt, Modell und Permission-Modus ankommen — und
-// dass --yolo tatsaechlich --dangerously-skip-permissions setzt statt acceptEdits.
+// dass --yolo tatsaechlich --dangerously-skip-permissions setzt statt des auto mode.
 function binMitClaude(dir, claudeScript) {
   const binDir = join(dir, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -292,7 +292,10 @@ test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Mo
     const zeile = readFileSync(argLog, "utf-8").trim();
     assert.match(zeile, new RegExp(`-p /implement-next #${id}`), "das Issue muss verbindlich uebergeben werden");
     assert.match(zeile, /--model claude-test-modell/);
-    assert.match(zeile, /--permission-mode acceptEdits/);
+    // Seit Issue #940 der auto mode samt abgelehnter Rueckfragen — die beiden Flags
+    // gehoeren zusammen, darum beide geprueft.
+    assert.match(zeile, /--permission-mode auto/);
+    assert.match(zeile, /--permission-prompts none/);
     // Bis Issue #668 stand hier das Gegenteil ("ohne --verbose kein Stream-Format"). Der
     // Implementierungslauf fordert den Strom jetzt immer an: An `stop_reason` haengt der
     // Grund einer Runde ohne Ergebnis, und der darf nicht am Konsolenflag haengen.

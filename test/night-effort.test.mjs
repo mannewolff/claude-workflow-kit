@@ -130,7 +130,7 @@ test("[night-42] sessionStart haengt --effort an, wenn eine Gruendlichkeit geset
 
 test("[night-42] ohne Gruendlichkeit bleibt die Kommandozeile wortgleich mit der von vorher", () => {
   assert.deepEqual(start({}).cmdArgs, [
-    "-p", "/implement-next #1", "--model", "claude-sonnet-5", "--permission-mode", "acceptEdits",
+    "-p", "/implement-next #1", "--model", "claude-sonnet-5", "--permission-mode", "auto", "--permission-prompts", "none",
   ]);
 });
 

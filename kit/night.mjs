@@ -31,7 +31,7 @@
  *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
- *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+ *   --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
  *   --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
  *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
  *                      kit:nightrun); --label none schaltet den Filter ab (altes
@@ -380,7 +380,7 @@ Flags:
   --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
-  --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+  --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
   --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
@@ -3514,6 +3514,35 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
 // denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
 // eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
 //
+/**
+ * Die Permission-Argumente einer Nacht-Session (Issue #940).
+ *
+ * `auto` statt des frueheren Modus, der Edits pauschal annahm: Dort greift eine eingebaute
+ * Sperre fuer sensible Dateien, die ein `permissions.allow`-Eintrag NICHT aufhebt — Paket
+ * #933 scheiterte
+ * zweimal daran, dass die Session `.claude/workflow.config.json` nicht schreiben durfte,
+ * obwohl der Eintrag stand und derselbe Zugriff interaktiv im auto mode durchlief. Im auto
+ * mode entscheidet ein Klassifikator, und damit wirkt die Allowlist auch nachts.
+ *
+ * `--permission-prompts none` gehoert zwingend dazu: Was der Klassifikator nicht entscheiden
+ * kann, wird zur Rueckfrage. Die Vorgabe `host` schickte sie an einen SDK-Host, den der
+ * Runner nicht hat — die Session hinge bis zum Rundenzeitlimit. `none` lehnt stattdessen ab
+ * ("anything that would prompt is denied automatically; the permission mode still decides
+ * everything else"): aus einem stillen Haenger wird eine klare Ablehnung, die der Morgen
+ * im Protokoll sieht.
+ *
+ * Der Yolo-Zweig bleibt unberuehrt und setzt KEINEN Modus: `--dangerously-skip-permissions`
+ * schaltet alle Checks ab, ein Modus daneben waere eine zweite Aussage ueber dieselbe Sache.
+ *
+ * Eine Funktion fuer beide Aufrufstellen — Session-Start und Vorflug. Zwei Orte fuer dieselbe
+ * Entscheidung driften auseinander; genau diese Doppelung machte die Umstellung erst zu einer
+ * Aenderung an zwei Stellen.
+ */
+export function permissionArgs(yolo) {
+  if (yolo) return ["--dangerously-skip-permissions"];
+  return ["--permission-mode", "auto", "--permission-prompts", "none"];
+}
+
 // Seit Plan #638 dazu: `cwd` (der Worktree der Kette, A4), `stream` (fordert den
 // stream-json-Strom unabhaengig von --verbose an, A5 — das Kostenbudget darf nicht am
 // Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
@@ -3585,9 +3614,7 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
   if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
   if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
 
-  const permArgs = args.yolo
-    ? ["--dangerously-skip-permissions"]
-    : ["--permission-mode", "acceptEdits"];
+  const permArgs = permissionArgs(args.yolo);
   const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
   // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
   // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
@@ -4762,7 +4789,7 @@ async function runVorflugSession(args, prompt) {
     cmd = "sh";
     cmdArgs = ["-c", testCmd];
   } else {
-    const permArgs = args.yolo ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"];
+    const permArgs = permissionArgs(args.yolo);
     cmd = "claude";
     // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
     // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
