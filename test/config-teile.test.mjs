@@ -98,20 +98,62 @@ test("jede versionierte Testdatei wird von einem der Aufrufe erfasst", () => {
   );
 });
 
+/**
+ * Die Freistellungen der Config als Regexe — dieselbe Glob-Aufloesung wie bei den
+ * Bereichen, aus `kit/checks.mjs` geholt und nicht nachgebaut.
+ */
+const freistellungen = (config.ohnePruefung ?? []).map((eintrag) => ({
+  muster: eintrag.muster,
+  regex: globZuRegex(eintrag.muster),
+}));
+
 test("jede versionierte Quelldatei liegt in mindestens einem Teil", () => {
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
   assert.ok(bereiche.length > 0, ".claude/workflow.config.json traegt keine checkAreas");
 
+  // Seit Issue #935 (Plan #930, E8/E9/E10) stehen `test/helpers/**` und die
+  // Markdown-Dateien der Wurzel mit in der Menge: Sie waren bisher der groesste
+  // Posten unter den Dateien, die bei jeder Aenderung den vollen Umfang zogen —
+  // und eine Menge, die sie auslaesst, bescheinigt eine Deckung, die es nicht gibt.
   const dateien = versionierte(
     "kit", "tools", "skills", "docs", "templates", ".githooks", "install.mjs", "RELEASING.md",
+    ":(glob)test/helpers/**", ":(glob)*.md",
   );
-  const ohneTeil = dateien.filter(
-    (pfad) => !bereiche.some((bereich) => bereich.regexe.some((regex) => regex.test(pfad))),
-  );
+
+  // Eine Datei ist zugeordnet, wenn sie ein `checkAreas`-Muster ODER ein
+  // `ohnePruefung`-Muster trifft. Die Freistellung ist die dritte Antwort auf
+  // dieselbe Frage (Issue #934) — sie hier nicht zu zaehlen hiesse, die
+  // begruendete Antwort „nichts zu pruefen" als Luecke auszuweisen.
+  const zugeordnet = (pfad) => bereiche.some((b) => b.regexe.some((r) => r.test(pfad)))
+    || freistellungen.some((f) => f.regex.test(pfad));
+
   assert.deepEqual(
-    ohneTeil,
+    dateien.filter((pfad) => !zugeordnet(pfad)),
     [],
     "Quelldateien ohne Teil — jede Aenderung an ihnen loest den vollen Umfang aus",
+  );
+});
+
+test("keine Datei steht zugleich in ohnePruefung und in einem Teil", () => {
+  // `checkAreas` hat Vorrang (Issue #934): Trifft eine Datei beide Musterarten,
+  // gilt sie als beruehrt und die Freistellung bleibt wirkungslos. Ein solches
+  // Paar ist deshalb kein Fehler im Lauf, sondern eine Luege in der Config —
+  // der Grund verspricht „hier ist nichts zu pruefen", und geprueft wird doch.
+  assert.ok(freistellungen.length > 0, ".claude/workflow.config.json traegt kein ohnePruefung");
+  const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
+
+  const doppelt = [];
+  for (const pfad of versionierte(".")) {
+    const frei = freistellungen.find((f) => f.regex.test(pfad));
+    if (!frei) continue;
+    const teil = bereiche.find((b) => b.regexe.some((r) => r.test(pfad)));
+    if (teil) doppelt.push(`${pfad}: ohnePruefung '${frei.muster}' und Teil '${teil.name}'`);
+  }
+
+  assert.deepEqual(
+    doppelt.sort(),
+    [],
+    "Dateien in beiden Musterlisten — die Freistellung bliebe dort wirkungslos",
   );
 });
 

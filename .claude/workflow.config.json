@@ -17,6 +17,7 @@
         "board",
         "einstellungen",
         "installer",
+        "konfiguration",
         "nachtrunner",
         "pruefungen"
       ]
@@ -93,7 +94,10 @@
       "kit/wirksamkeit.mjs",
       "kit/befunde.mjs",
       "kit/preise.mjs",
-      "test/night-*.test.mjs"
+      "test/night-*.test.mjs",
+      "test/helpers/ergebnisstand-fixture.mjs",
+      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-umsetzung-fixture.mjs"
     ],
     "board": [
       "kit/board.mjs",
@@ -101,7 +105,9 @@
       "kit/preise.mjs",
       "tools/migrate-issues.mjs",
       "test/board-*.test.mjs",
-      "test/migrate-*.test.mjs"
+      "test/migrate-*.test.mjs",
+      "startboard.sh",
+      "test/helpers/board-*.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",
@@ -116,13 +122,21 @@
       "test/aufwand-*.test.mjs",
       "test/wirksamkeit-*.test.mjs",
       "test/befunde-*.test.mjs",
-      "test/guete-*.test.mjs"
+      "test/guete-*.test.mjs",
+      "eslint.config.mjs",
+      "test/helpers/aufwand-fixture.mjs",
+      "test/helpers/checks-repo.mjs",
+      "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "einstellungen": [
       "kit/einstellungen.mjs",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
-      "test/config-*.test.mjs"
+      "test/config-*.test.mjs",
+      "assets/fonts/*.woff2",
+      "test/helpers/einstellungen-fixture.mjs",
+      "test/helpers/mini-validator.mjs",
+      "test/helpers/oberflaeche-vm.mjs"
     ],
     "worktree": [
       "kit/worktree.mjs"
@@ -138,7 +152,11 @@
       "test/derived-*.test.mjs",
       "test/copy-*.test.mjs",
       "test/kit-*.test.mjs",
-      "test/cli-*.test.mjs"
+      "test/cli-*.test.mjs",
+      ".gitignore",
+      "package.json",
+      "package-lock.json",
+      "test/helpers/board-fixture.mjs"
     ],
     "skills-doku": [
       "skills/**",
@@ -152,9 +170,58 @@
       "test/workflow-*.test.mjs",
       "test/push-*.test.mjs",
       "test/mitteilung-*.test.mjs",
-      "test/vergleiche-*.test.mjs"
+      "test/vergleiche-*.test.mjs",
+      ".github/workflows/**",
+      "docs-site/**",
+      "package.json",
+      "test/helpers/board-fixture.mjs"
+    ],
+    "konfiguration": [
+      ".claude/workflow.config.json"
     ]
   },
+  "ohnePruefung": [
+    {
+      "muster": "CHANGELOG.md",
+      "grund": "Release-Protokoll; keine Pruefung liest seinen Inhalt — die Changelog-Tests legen sich ihr eigenes Protokoll in einem Wegwerfprojekt an."
+    },
+    {
+      "muster": "LICENSE",
+      "grund": "Lizenztext; keine Pruefung liest ihn."
+    },
+    {
+      "muster": ".gitattributes",
+      "grund": "Git-Attribute fuer die Ablage; keine Pruefung liest sie."
+    },
+    {
+      "muster": ".claude/launch.json",
+      "grund": "Startvorgaben der Oberflaeche; keine Pruefung liest sie."
+    },
+    {
+      "muster": "sonar-project.properties",
+      "grund": "Konfiguration des externen Analysedienstes; keine Pruefung dieses Repositories liest sie."
+    },
+    {
+      "muster": "assets/fonts/OFL-*.txt",
+      "grund": "Lizenztexte der Schriften; gemessen werden die woff2-Dateien, nicht ihre Lizenz."
+    },
+    {
+      "muster": "assets/fonts/README.md",
+      "grund": "Herkunftsnotiz zu den Schriftdateien; keine Pruefung liest sie."
+    },
+    {
+      "muster": "konzept-rollen-als-agenten.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    },
+    {
+      "muster": "prozess-pruefstand.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    },
+    {
+      "muster": "prozess-pruefstand-nachtlauf.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    }
+  ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "night": {
     "kette": {
