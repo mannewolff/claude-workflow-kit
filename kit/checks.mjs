@@ -1045,6 +1045,19 @@ function frueheresErgebnis(auswahl, hashes, configHash) {
 }
 
 /**
+ * Der Satzteil, an dem eine Uebernahme in der Ausgabe erkennbar ist (Issue #926).
+ *
+ * Er steht als Konstante, weil ihn ein zweiter Leser braucht: Der Prueflauf-Zaehler des
+ * Nacht-Runners sieht vom Abschlussversuch nur den Bash-Aufruf und seine Ausgabe, und ein
+ * uebernommener Lauf soll dort als Versuch OHNE Dauer zaehlen — `uebernehmen` reicht die
+ * Werte des frueheren Laufs weiter, eine Spanne waere geerbt und nicht gemessen.
+ */
+// SYNC: dieselbe Marke steht in kit/night.mjs als UEBERNAHME_MARKE; der Abgleich ist ein
+// Test in test/night-prueflaeufe.test.mjs. Ein Import waere die bessere Kopplung, aber
+// night.mjs laeuft in Projekten, die checks.mjs nicht mitinstalliert haben muessen.
+export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
+
+/**
  * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
  * des Originals zurueck (Issue #863).
  *
@@ -1076,7 +1089,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   process.stdout.write(
-    `Stand unveraendert seit ${original}: Ergebnis uebernommen (${befund}). Neu pruefen mit --frisch.\n`,
+    `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
   );
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return ungruen === null ? 0 : 1;

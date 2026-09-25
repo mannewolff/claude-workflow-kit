@@ -17,7 +17,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { prueflaufBeobachter, prueflaeufeAddieren, runSession } from "../kit/night.mjs";
+import {
+  prueflaufBeobachter, prueflaeufeAddieren, prueflaufZeilen, berichtBauen, runSession,
+  UEBERNAHME_MARKE,
+} from "../kit/night.mjs";
+import { UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE } from "../kit/checks.mjs";
 
 // Die buildChecks dieses Repos in Kurzform: zwei Gruppen als String, eine als Objekt mit
 // `cmd` — beide Formen muss der Beobachter lesen (E2).
@@ -36,10 +40,10 @@ function bashAufrufe(...paare) {
 }
 
 /** Ein `user`-Ereignis mit einem `tool_result` zur gegebenen Id. */
-function toolResult(id) {
+function toolResult(id, inhalt = "ok") {
   return JSON.stringify({
     type: "user",
-    message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
+    message: { content: [{ type: "tool_result", tool_use_id: id, content: inhalt }] },
   });
 }
 
@@ -110,6 +114,72 @@ test("[night-924] ein checks.mjs run ohne --bereich ist der Abschlussversuch und
   assert.equal(erg.volle, 0);
   assert.equal(erg.volleNoetig, 0);
   assert.equal(erg.dauerMs, 0);
+});
+
+// ============================================================
+// Abschlussversuche — der eigene Block neben der Arbeit (Issue #926, E9)
+// ============================================================
+
+test("[night-926] der Abschlussversuch zaehlt in seinem eigenen Block, mit seiner Spanne", () => {
+  const erg = einAufruf("node .claude/kit/checks.mjs run");
+  assert.deepEqual(erg.abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.equal(erg.anzahl, 0, "er bleibt aus der Arbeit heraus — dort zaehlte er doppelt");
+});
+
+test("[night-926] auch --frisch ist ein Abschlussversuch, ein --bereich-Lauf keiner", () => {
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --frisch").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --bereich board").abschluss, { anzahl: 0, dauerMs: 0 });
+});
+
+test("[night-926] zwei Abschlussversuche einer Session addieren Zahl und Spannen", () => {
+  const erg = beobachte([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],
+    [toolResult("t1"), 1400],
+    [bashAufrufe(["t2", "node .claude/kit/checks.mjs run"]), 2000],
+    [toolResult("t2"), 2100],
+  ]);
+  assert.deepEqual(erg.abschluss, { anzahl: 2, dauerMs: 500 });
+});
+
+test("[night-926] ein uebernommener Abschlusslauf zaehlt als Versuch ohne Dauer", () => {
+  const erg = einAufruf("node .claude/kit/checks.mjs run");
+  assert.equal(erg.abschluss.dauerMs, 100, "der frische Lauf traegt seine Spanne — Gegenprobe");
+  const uebernommen = beobachte([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],
+    [toolResult("t1", `Stand unveraendert seit 2026-09-24T22:00:00.000Z: ${UEBERNAHME_MARKE} (gruen). Neu pruefen mit --frisch.`), 1100],
+  ]);
+  assert.deepEqual(uebernommen.abschluss, { anzahl: 1, dauerMs: 0 },
+    "uebernehmen() reicht die Werte des frueheren Laufs weiter — die Spanne waere nicht gemessen, sondern geerbt");
+});
+
+test("[night-926] die Uebernahme-Marke des Beobachters ist die des Kommandos", () => {
+  assert.equal(UEBERNAHME_MARKE, CHECKS_UEBERNAHME_MARKE,
+    "zwei Fassungen desselben Satzes, und der Beobachter erkennt die Uebernahme nicht mehr");
+});
+
+test("[night-926] die Marke in einer Blockform des tool_result wird ebenso gelesen", () => {
+  const erg = beobachte([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],
+    [JSON.stringify({
+      type: "user",
+      message: {
+        content: [{
+          type: "tool_result",
+          tool_use_id: "t1",
+          content: [{ type: "text", text: `Stand unveraendert seit gestern: ${UEBERNAHME_MARKE} (gruen).` }],
+        }],
+      },
+    }), 1100],
+  ]);
+  assert.deepEqual(erg.abschluss, { anzahl: 1, dauerMs: 0 });
+});
+
+test("[night-926] ein Arbeitslauf mit der Marke im Ergebnis behaelt seine Spanne", () => {
+  const erg = beobachte([
+    [bashAufrufe(["t1", "node --test test/a.test.mjs"]), 1000],
+    [toolResult("t1", `... ${UEBERNAHME_MARKE} ...`), 1300],
+  ]);
+  assert.equal(erg.dauerMs, 300, "die Regel gilt fuer den Abschlussversuch, nicht fuer jeden Lauf");
 });
 
 test("[night-924] auch checks.mjs run --frisch bleibt Abschlussversuch, mit --bereich bleibt es der Gruppenlauf", () => {
@@ -186,7 +256,7 @@ test("[night-924] unlesbare Zeilen, fehlendes Kommando und fehlende Id werden to
 
 test("[night-924] ohne buildChecks zaehlt der Beobachter keine Arbeit, aber weiter den Bereichslauf", () => {
   assert.deepEqual(beobachte([[bashAufrufe(["t1", "mvn verify"]), 1000], [toolResult("t1"), 1100]], []),
-    { anzahl: 0, volle: 0, volleNoetig: 0, dauerMs: 0 });
+    { anzahl: 0, volle: 0, volleNoetig: 0, dauerMs: 0, abschluss: { anzahl: 0, dauerMs: 0 } });
   const bereich = einAufruf("node .claude/kit/checks.mjs run --bereich board", []);
   assert.equal(bereich.volleNoetig, 1, "der Bereichslauf ist per Aufrufweg erkennbar, nicht ueber die Programme");
 });
@@ -196,7 +266,105 @@ test("[night-924] der Beobachter nimmt eine bereits geparste Zeile entgegen und 
   b.zeile(JSON.parse(bashAufrufe(["t1", GRUPPE_A])), 1000);
   b.zeile(JSON.parse(toolResult("t1")), 1100);
   assert.deepEqual(b.ergebnis(), b.ergebnis());
-  assert.deepEqual(b.ergebnis(), { anzahl: 1, volle: 1, volleNoetig: 0, dauerMs: 100 });
+  assert.deepEqual(b.ergebnis(), { anzahl: 1, volle: 1, volleNoetig: 0, dauerMs: 100, abschluss: { anzahl: 0, dauerMs: 0 } });
+});
+
+// ============================================================
+// prueflaufZeilen — die Zahlen im Bericht (Issue #926, Plan #917, E6/E8)
+// ============================================================
+
+/** Eine Paket-Einheit des Ergebnisstands, so weit der Bericht sie braucht. */
+function paketEinheit(id, minuten, prueflaeufe = { arbeit: { anzahl: 3, volle: 0, volleNoetig: 1, dauerMs: 60_000 }, abschluss: { anzahl: 1, dauerMs: 120_000 } }, pruefungZusatz = {}) {
+  return {
+    id: String(id),
+    dauerMs: minuten * 60_000,
+    pruefung: { id: String(id), zustand: "geprueft", laufen: [], ausgelassen: [], ...pruefungZusatz },
+    prueflaeufe,
+  };
+}
+
+const DREI_PAKETE = [paketEinheit(101, 8), paketEinheit(102, 12), paketEinheit(103, 43)];
+
+test("[night-926] gemischte Dauern ergeben die Summenzeile gegen die Zielmarke", () => {
+  const zeilen = prueflaufZeilen(DREI_PAKETE, 10);
+  assert.ok(zeilen.some((z) => z === "- 1 von 3 Paketen unter 10 Minuten."), `Summenzeile fehlt: ${zeilen.join(" | ")}`);
+});
+
+test("[night-926] je Paket eine Zeile mit Dauer, Prueflaeufen, volle und volleNoetig", () => {
+  const zeilen = prueflaufZeilen([paketEinheit(101, 8)], 10);
+  const zeile = zeilen.find((z) => z.includes("#101"));
+  assert.ok(zeile, `keine Zeile fuer das Paket: ${zeilen.join(" | ")}`);
+  assert.match(zeile, /Dauer 8\.0 min/);
+  assert.match(zeile, /Prueflaeufe 3/);
+  assert.match(zeile, /volle 0/);
+  assert.match(zeile, /Gruppenlaeufe 1/);
+  assert.match(zeile, /Abschlussversuche 1/);
+});
+
+test("[night-926] eine Einheit ohne pruefung zaehlt nicht mit — sie hat keine Runde durchlaufen", () => {
+  const ohneSession = { id: "104", dauerMs: 60_000, ausgang: "uebersprungen" };
+  const zeilen = prueflaufZeilen([...DREI_PAKETE, ohneSession], 10);
+  assert.ok(zeilen.some((z) => z === "- 1 von 3 Paketen unter 10 Minuten."), zeilen.join(" | "));
+  assert.ok(!zeilen.some((z) => z.includes("#104")), "die Einheit ohne Session gehoert nicht in die Liste");
+});
+
+test("[night-926] eine Einheit mit pruefung: null (ohne Session gescheitert) zaehlt nicht mit", () => {
+  const zeilen = prueflaufZeilen([paketEinheit(101, 8), { id: "105", dauerMs: 1000, pruefung: null }], 10);
+  assert.ok(zeilen.some((z) => z === "- 1 von 1 Paketen unter 10 Minuten."), zeilen.join(" | "));
+});
+
+test("[night-926] ohne Zielmarke wird mit 10 Minuten gerechnet", () => {
+  assert.ok(prueflaufZeilen(DREI_PAKETE).some((z) => z === "- 1 von 3 Paketen unter 10 Minuten."),
+    "fehlt night.zielUmsetzungMin, gilt die Vorgabe des Schemas");
+  assert.ok(prueflaufZeilen(DREI_PAKETE, 45).some((z) => z === "- 3 von 3 Paketen unter 45 Minuten."),
+    "eine gesetzte Marke gilt");
+});
+
+test("[night-926] genau auf der Marke gilt als erreicht", () => {
+  assert.ok(prueflaufZeilen([paketEinheit(101, 10)], 10).some((z) => z === "- 1 von 1 Paketen unter 10 Minuten."));
+});
+
+test("[night-926] prueflaeufe null sagt 'nicht gemessen' und nennt keine Null", () => {
+  const zeile = prueflaufZeilen([paketEinheit(101, 8, null)], 10).find((z) => z.includes("#101"));
+  assert.match(zeile, /nicht gemessen/);
+  assert.ok(!/Prueflaeufe 0/.test(zeile), `eine Null behauptete eine Messung: ${zeile}`);
+  assert.ok(!/Abschlussversuche 0/.test(zeile), `dasselbe fuer die Abschlussversuche: ${zeile}`);
+  assert.match(zeile, /Dauer 8\.0 min/, "die Dauer ist gemessen und bleibt stehen");
+});
+
+test("[night-926] jede Datei ohne Zuordnung steht mit Namen im Bericht", () => {
+  const einheit = paketEinheit(101, 8, undefined, { ohneZuordnung: ["kit/neu.mjs", "docs/neu.md"] });
+  const zeilen = prueflaufZeilen([einheit], 10);
+  const text = zeilen.join("\n");
+  assert.match(text, /kit\/neu\.mjs/);
+  assert.match(text, /docs\/neu\.md/);
+  assert.ok(zeilen.some((z) => z === "- 1 von 1 Paketen unter 10 Minuten."),
+    "die Luecke in der Zuordnung faerbt nichts rot — der Abschluss bleibt unberuehrt");
+});
+
+test("[night-926] ohne gemessenes Paket sagt der Block das und rechnet nichts", () => {
+  const zeilen = prueflaufZeilen([], 10);
+  assert.ok(!zeilen.some((z) => /von 0 Paketen/.test(z)), `keine Rechnung ohne Paket: ${zeilen.join(" | ")}`);
+  assert.match(zeilen.join("\n"), /keine Umsetzung gemessen/);
+});
+
+test("[night-926] der Umsetzungs-Abschnitt des Nachtberichts nennt dieselben Zeilen", () => {
+  const einheit = {
+    id: "900", ausgang: "fertig", variante: "B",
+    stufen: { plan: { id: "917" }, pakete: { ids: ["101"] }, umsetzung: { umgesetzt: [{ id: "101" }], angehalten: [], zurueckgestellt: [], nichtBegonnen: [] } },
+  };
+  const text = berichtBauen(einheit, { einheiten: DREI_PAKETE, zielUmsetzungMin: 10, stempel: "s", start: 0, jetzt: 0 });
+  const umsetzung = text.split("### Umsetzung")[1].split("###")[0];
+  assert.match(umsetzung, /- 1 von 3 Paketen unter 10 Minuten\./, `Summenzeile fehlt unter ### Umsetzung: ${umsetzung}`);
+  assert.match(umsetzung, /#101:.*Dauer 8\.0 min/);
+  assert.match(umsetzung, /#103:.*Dauer 43\.0 min/);
+});
+
+test("[night-926] ohne uebergebene Einheiten bleibt der Umsetzungs-Abschnitt bei seiner Auskunft", () => {
+  const einheit = { id: "900", ausgang: "fertig", variante: "B", stufen: { umsetzung: { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen: [] } } };
+  const text = berichtBauen(einheit, { stempel: "s", start: 0, jetzt: 0 });
+  const umsetzung = text.split("### Umsetzung")[1].split("###")[0];
+  assert.match(umsetzung, /keine Umsetzung gemessen/);
 });
 
 // ============================================================
@@ -204,20 +372,32 @@ test("[night-924] der Beobachter nimmt eine bereits geparste Zeile entgegen und 
 // ============================================================
 
 test("[night-924] zwei Sessions derselben Einheit addieren ihre Prueflaeufe feldweise", () => {
-  const runde = { arbeit: { anzahl: 12, volle: 4, volleNoetig: 1, dauerMs: 1_980_000 } };
-  const salvage = { arbeit: { anzahl: 2, volle: 1, volleNoetig: 0, dauerMs: 60_000 } };
+  const runde = { arbeit: { anzahl: 12, volle: 4, volleNoetig: 1, dauerMs: 1_980_000 }, abschluss: { anzahl: 2, dauerMs: 900_000 } };
+  const salvage = { arbeit: { anzahl: 2, volle: 1, volleNoetig: 0, dauerMs: 60_000 }, abschluss: { anzahl: 1, dauerMs: 0 } };
   assert.deepEqual(prueflaeufeAddieren(runde, salvage), {
     arbeit: { anzahl: 14, volle: 5, volleNoetig: 1, dauerMs: 2_040_000 },
+    abschluss: { anzahl: 3, dauerMs: 900_000 },
   });
 });
 
-test("[night-924] die Summe enthaelt keine Abschlusszahl und keine Zielmarke (Plan #917, E7)", () => {
+test("[night-926] eine Session ohne Abschlussblock addiert sich zu einer mit ihm", () => {
+  assert.deepEqual(prueflaeufeAddieren(
+    { arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 } },
+    { arbeit: { anzahl: 0, volle: 0, volleNoetig: 0, dauerMs: 0 }, abschluss: { anzahl: 1, dauerMs: 50 } },
+  ), {
+    arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 },
+    abschluss: { anzahl: 1, dauerMs: 50 },
+  });
+});
+
+test("[night-924] die Summe traegt nur die Messung, keine Rechnung daraus (Plan #917, E7)", () => {
   const summe = prueflaeufeAddieren(
-    { arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 } },
-    { arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 } },
+    { arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 }, abschluss: { anzahl: 1, dauerMs: 5 } },
+    { arbeit: { anzahl: 1, volle: 0, volleNoetig: 0, dauerMs: 10 }, abschluss: { anzahl: 1, dauerMs: 5 } },
   );
-  assert.deepEqual(Object.keys(summe), ["arbeit"]);
+  assert.deepEqual(Object.keys(summe), ["arbeit", "abschluss"], "keine Zielmarke, kein Anteil, keine Laeufe je Abschluss");
   assert.deepEqual(Object.keys(summe.arbeit).sort(), ["anzahl", "dauerMs", "volle", "volleNoetig"]);
+  assert.deepEqual(Object.keys(summe.abschluss).sort(), ["anzahl", "dauerMs"]);
 });
 
 // ============================================================
@@ -275,7 +455,9 @@ function einheit(dir, id) {
 const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null';
 const ARBEIT_UND_COMMIT = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "work-$NIGHT_ISSUE_ID.txt"'
   + ' && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"';
-const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}'`
+// `ohneZuordnung` steht mit drin (Issue #926, E8): Die Datei ohne Bereichsmuster ist der
+// einzige Weg, den Durchgriff von der Zusammenfassung bis in den Bericht E2E zu belegen.
+const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[],"ohneZuordnung":["fremd.txt"]}'`
   + " > .claude/checks-summary.json";
 
 /** Ein Bash-Aufruf im Strom der Fake-Session: tool_use, kurze Pause, tool_result. */
@@ -310,6 +492,13 @@ test("[night-924] nach einer Session mit Prueflaeufen traegt die Einheit pruefla
     assert.equal(e.prueflaeufe.arbeit.volleNoetig, 0);
     assert.ok(e.prueflaeufe.arbeit.dauerMs > 0, `die Spannen haetten gemessen sein muessen: ${e.prueflaeufe.arbeit.dauerMs}`);
     assert.equal(e.zeiten.prueflaeufe, undefined, "die Zeiten bleiben unveraendert (zeitenBauen)");
+
+    // Der zweite Berichtsort (Issue #926, E6): Die Umsetzungsnacht berichtet ueber
+    // `pruefBericht` auf Konsole und ins Protokoll — genau dort lief der Anlassfall.
+    assert.match(res.stdout, /Prueflaeufe und Zielmarke:/, res.stdout);
+    assert.match(res.stdout, new RegExp(`#${id}:.*Prueflaeufe 2`), res.stdout);
+    assert.match(res.stdout, /- 1 von 1 Paketen unter 10 Minuten\./, res.stdout);
+    assert.match(res.stdout, /ohne Zuordnung: fremd\.txt/, res.stdout);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

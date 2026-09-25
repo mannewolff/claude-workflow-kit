@@ -2433,6 +2433,31 @@ function kommandoNormal(kommando) {
 }
 
 /**
+ * Der Satzteil, an dem `checks.mjs run` eine Uebernahme meldet (Issue #926).
+ *
+ * Der Zaehler sieht vom Abschlussversuch nur den Aufruf und seine Ausgabe — dass ein Lauf
+ * uebernommen wurde, steht in der Zusammenfassung, aber die liest er nicht: Sie traegt
+ * immer nur den letzten Lauf einer Session, und gefragt ist jeder einzelne Versuch.
+ */
+// SYNC: dieselbe Marke steht in kit/checks.mjs als UEBERNAHME_MARKE und wird dort in die
+// Ausgabe geschrieben; ein Test in test/night-prueflaeufe.test.mjs haelt beide zusammen.
+export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
+
+/**
+ * Der Text eines `tool_result` — als String oder als Bloecke mit `text`.
+ *
+ * Beide Formen kommen im Strom vor, je nachdem, was das Werkzeug zurueckgibt. Was sich
+ * nicht lesen laesst, ist ein leerer Text und keine Ausnahme: Der Zaehler faellt dann auf
+ * die gemessene Spanne zurueck, und das ist die vorsichtigere Auskunft.
+ */
+function ergebnisText(block) {
+  const inhalt = block?.content;
+  if (typeof inhalt === "string") return inhalt;
+  if (!Array.isArray(inhalt)) return "";
+  return inhalt.map((teil) => (typeof teil?.text === "string" ? teil.text : "")).join("\n");
+}
+
+/**
  * Wie ein Bash-Aufruf zu zaehlen ist (Plan #917, E2/E3/E9) — oder gar nicht.
  *
  *   "voll"      woertlich ein `buildChecks`-Kommando: die vollstaendige Gruppe waehrend
@@ -2440,8 +2465,9 @@ function kommandoNormal(kommando) {
  *   "bereich"   `checks.mjs run --bereich <name>`: der sanktionierte Gruppenlauf (E3).
  *               Er zaehlt eigens, damit er nicht unter die Verstoesse geraet.
  *   "gezielt"   dasselbe Programm wie ein `buildChecks`-Kommando, aber anderer Umfang.
- *   null        kein Prueflauf der Arbeit — auch `checks.mjs run` ohne `--bereich`:
- *               Das ist der Abschlussversuch, und der steht sonst in zwei Zahlen (E9).
+ *   "abschluss" `checks.mjs run` ohne `--bereich`: der Abschlussversuch (E9). Er zaehlt in
+ *               seinem EIGENEN Block und nie in der Arbeit — dort stuende er zweimal.
+ *   null        kein Prueflauf.
  *
  * Der Aufrufweg entscheidet, nicht die Absicht: `checks.mjs` wird am Kommando erkannt,
  * nicht am Programmabgleich — in einem Projekt mit `mvn verify` als Pruefgruppe traegt
@@ -2453,7 +2479,7 @@ function prueflaufArt(kommando, programme, woertlich) {
   const worte = text.split(" ");
   const idx = worte.findIndex((w) => w.replaceAll(/["']/g, "").endsWith("checks.mjs"));
   if (idx >= 0 && worte[idx + 1] === "run") {
-    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : null;
+    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : "abschluss";
   }
   if (woertlich.has(text)) return "voll";
   const programm = erstesProgramm(text);
@@ -2478,8 +2504,11 @@ function prueflaufArt(kommando, programme, woertlich) {
  * mit `cmd`, E2): Sie ist die einzige Stelle, die weiss, was "vollstaendig" heisst.
  *
  * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
- * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs }`.
- * Abschlusszahlen und Zielmarke rechnet der Bericht, nicht dieser Zaehler (E7).
+ * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs, abschluss }`.
+ * `abschluss` (Issue #926, E9) zaehlt die Abschlussversuche — `checks.mjs run` ohne
+ * `--bereich` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
+ * stuende derselbe Lauf zweimal. Was aus beidem FOLGT — Laeufe je Abschluss, Anteil an der
+ * Laufzeit, Abstand zur Zielmarke — rechnet der Bericht, nicht dieser Zaehler (E7).
  */
 export function prueflaufBeobachter(buildChecks) {
   const kommandos = (Array.isArray(buildChecks) ? buildChecks : [])
@@ -2493,8 +2522,11 @@ export function prueflaufBeobachter(buildChecks) {
   let volle = 0;
   let volleNoetig = 0;
   let dauerMs = 0;
-  // Die noch laufenden Prueflaeufe: tool_use.id -> Ankunft des Aufrufs. Nur Prueflaeufe
-  // stehen darin — jeder andere Aufruf ist fuer diesen Beobachter nicht vorhanden.
+  let abschlussAnzahl = 0;
+  let abschlussDauerMs = 0;
+  // Die noch laufenden Prueflaeufe: tool_use.id -> { start, abschluss }. Nur Prueflaeufe
+  // stehen darin — jeder andere Aufruf ist fuer diesen Beobachter nicht vorhanden. Die Art
+  // gehoert dazu, weil erst das Ergebnis eines Abschlussversuchs zeigt, ob er wirklich lief.
   const offen = new Map();
 
   const parse = (roh) => {
@@ -2516,18 +2548,31 @@ export function prueflaufBeobachter(buildChecks) {
     if (typeof block.id !== "string" || block.id === "") return;
     const art = prueflaufArt(block.input?.command, programme, woertlich);
     if (!art) return;
+    if (art === "abschluss") {
+      abschlussAnzahl += 1;
+      offen.set(block.id, { start: ts, abschluss: true });
+      return;
+    }
     anzahl += 1;
     if (art === "voll") volle += 1;
     else if (art === "bereich") volleNoetig += 1;
-    offen.set(block.id, ts);
+    offen.set(block.id, { start: ts, abschluss: false });
   };
 
   const ergebnisGesehen = (block, ts) => {
     if (block?.type !== "tool_result") return;
-    const start = offen.get(block.tool_use_id);
-    if (start === undefined) return;
+    const lauf = offen.get(block.tool_use_id);
+    if (lauf === undefined) return;
     offen.delete(block.tool_use_id);
-    dauerMs += ts - start;
+    if (!lauf.abschluss) {
+      dauerMs += ts - lauf.start;
+      return;
+    }
+    // Ein uebernommener Abschlusslauf hat nichts ausgefuehrt (Issue #926): `uebernehmen`
+    // reicht die Werte des frueheren Laufs weiter, die Spanne dieses Aufrufs waere die
+    // Dauer eines Dateischreibens und gaebe sich als Pruefdauer aus. Der Versuch zaehlt,
+    // die Dauer nicht — dieselbe Regel wie beim Aufruf ohne Ergebnis.
+    if (!ergebnisText(block).includes(UEBERNAHME_MARKE)) abschlussDauerMs += ts - lauf.start;
   };
 
   return {
@@ -2538,7 +2583,7 @@ export function prueflaufBeobachter(buildChecks) {
       for (const block of obj.message.content) behandle(block, ts);
     },
     ergebnis() {
-      return { anzahl, volle, volleNoetig, dauerMs };
+      return { anzahl, volle, volleNoetig, dauerMs, abschluss: { anzahl: abschlussAnzahl, dauerMs: abschlussDauerMs } };
     },
   };
 }
@@ -2807,6 +2852,9 @@ function zeitenErfassen(issueId, dauerMs, kennzahlen, werkzeug) {
 /** Die Felder der Prueflaeufe einer Arbeit, in dieser Reihenfolge im Ergebnisstand. */
 const PRUEFLAUF_FELDER = ["anzahl", "volle", "volleNoetig", "dauerMs"];
 
+/** Die Felder des Abschlussblocks (Issue #926) — ein Versuch hat keine Umfangsfrage. */
+const ABSCHLUSS_FELDER = ["anzahl", "dauerMs"];
+
 /**
  * Addiert die Prueflaeufe zweier Sessions derselben Einheit feldweise (Issue #924).
  *
@@ -2817,11 +2865,14 @@ const PRUEFLAUF_FELDER = ["anzahl", "volle", "volleNoetig", "dauerMs"];
  * rechnet der Bericht (Plan #917, E7).
  */
 export function prueflaeufeAddieren(ziel, zuwachs) {
-  const arbeit = {};
-  for (const feld of PRUEFLAUF_FELDER) {
-    arbeit[feld] = (endlicheZahl(ziel?.arbeit?.[feld]) ?? 0) + (endlicheZahl(zuwachs?.arbeit?.[feld]) ?? 0);
-  }
-  return { arbeit };
+  const summe = (block, felder) => {
+    const werte = {};
+    for (const feld of felder) {
+      werte[feld] = (endlicheZahl(ziel?.[block]?.[feld]) ?? 0) + (endlicheZahl(zuwachs?.[block]?.[feld]) ?? 0);
+    }
+    return werte;
+  };
+  return { arbeit: summe("arbeit", PRUEFLAUF_FELDER), abschluss: summe("abschluss", ABSCHLUSS_FELDER) };
 }
 
 /**
@@ -2839,7 +2890,10 @@ function prueflaeufeErfassen(issueId, mess) {
   if (!LAUF || issueId === null || !mess) return;
   const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
   if (!einheit) return;
-  einheit.prueflaeufe = prueflaeufeAddieren(einheit.prueflaeufe, { arbeit: mess });
+  // Der Beobachter liefert die Arbeitsfelder flach und den Abschluss als Block; im
+  // Ergebnisstand stehen beide als eigene Bloecke nebeneinander (Issue #926).
+  const { abschluss, ...arbeit } = mess;
+  einheit.prueflaeufe = prueflaeufeAddieren(einheit.prueflaeufe, { arbeit, abschluss });
   schreibeErgebnisstand();
 }
 
@@ -3645,6 +3699,12 @@ function lesePruefung(issueId) {
       basis: typeof daten.basis === "string" ? daten.basis : null,
       bereiche: Array.isArray(daten.bereiche) ? daten.bereiche : null,
       dauerGesamtMs: endlicheZahl(daten.dauerGesamtMs),
+      // Die Dateien ohne Bereichsmuster (Issue #926, Plan #917, E8): Sie sind in der
+      // Auswahl gelandet, ohne dass ein Bereich sie kennt — ein Loch in der Zuordnung, das
+      // der Bericht namentlich nennt. Ein fehlendes Feld ist `null` und nicht `[]`: Ein
+      // Stand aus der Zeit vor Issue #922 weiss darueber nichts, und eine leere Liste
+      // behauptete, es habe keine Luecke gegeben.
+      ohneZuordnung: Array.isArray(daten.ohneZuordnung) ? daten.ohneZuordnung : null,
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf
@@ -3864,9 +3924,74 @@ function pruefSummenzeile(pruefungen) {
  * Kriterium 11 aus Issue #420 verlangt die Auslassungen an zwei Stellen — am
  * Arbeitspaket (Abschlussbericht, Issue #426) und hier.
  */
-function pruefBericht(pruefungen) {
-  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen."];
-  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen)];
+function pruefBericht(pruefungen, einheiten = [], zielMin = undefined) {
+  const zahlen = prueflaufZeilen(einheiten, zielMin);
+  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen.", ...zahlen];
+  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen), ...zahlen];
+}
+
+// --- Prueflaeufe und Zielmarke im Bericht (Issue #926, Plan #917, E6-E9) ---
+
+/**
+ * Die Zielmarke einer Umsetzung in Minuten — aus der Konfiguration, sonst die Vorgabe.
+ *
+ * Abschalten ist nicht vorgesehen: Fehlt `night.zielUmsetzungMin`, gilt die Vorgabe des
+ * Schemas. Eine Marke, die sich wegkonfigurieren laesst, waere eine Messung, die genau
+ * dort verschwindet, wo sie unangenehm wird.
+ */
+// SYNC: dieselbe Vorgabe steht im Schema von kit/einstellungen.mjs (night.zielUmsetzungMin).
+const ZIEL_UMSETZUNG_VORGABE_MIN = 10;
+
+function zielUmsetzungMin(wert) {
+  const zahl = endlicheZahl(wert);
+  return zahl !== null && zahl > 0 ? zahl : ZIEL_UMSETZUNG_VORGABE_MIN;
+}
+
+/** Die Zahlenzeile eines Pakets: gemessene Dauer, dazu die Prueflaeufe — oder deren Fehlen. */
+function prueflaufPaketZeile(einheit) {
+  const kopf = `- Issue #${einheit.id}: Dauer ${minutenText(einheit.dauerMs)} min`;
+  const arbeit = einheit.prueflaeufe?.arbeit;
+  // "nicht gemessen" und keine Null (E9): Eine 0 hiesse, die Session habe nichts geprueft —
+  // hier ist nur niemand dabei gewesen (Stufe ohne Strom).
+  if (!arbeit) return `${kopf}, Prueflaeufe nicht gemessen`;
+  const abschluss = einheit.prueflaeufe?.abschluss;
+  const abschlussText = abschluss ? `, Abschlussversuche ${abschluss.anzahl ?? 0}` : "";
+  return `${kopf}, Prueflaeufe ${arbeit.anzahl ?? 0} (volle ${arbeit.volle ?? 0}, `
+    + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}`;
+}
+
+/**
+ * Die Prueflaeufe je Paket und die Summe gegen die Zielmarke — derselbe Block in BEIDEN
+ * Berichten (E6): im `pruefBericht` der Umsetzungsnacht und unter `### Umsetzung` des
+ * Kettenberichts. Der Anlassfall — ein Paket von 43 Minuten — lief in einer
+ * Umsetzungsnacht; stuende die Zahl nur im Kettenbericht, blieb genau dieser Lauf
+ * unbeobachtet.
+ *
+ * Gezaehlt werden die Einheiten, die eine Implementierungs-Runde durchlaufen haben —
+ * erkennbar an ihrem `pruefung`. Die Fachplan-Einheit der Kette und die Einheiten ohne
+ * Session (zurueckgestellt, uebersprungen, ohne startbare Stufe) tragen keines und bleiben
+ * draussen: Sie haben keine Umsetzung, deren Dauer sich an einer Marke messen liesse.
+ *
+ * Gerechnet wird mit `einheit.dauerMs`, der Rundendauer einschliesslich aller Pruefungen
+ * und Korrekturen (Konvention aus `kit/aufwand.mjs`) — nicht mit `zeiten.dauerMs`.
+ * Gerechnet wird hier und nicht in der Datei (E7): Zwei Rechnungen ueber dieselbe Messung
+ * driften auseinander.
+ */
+export function prueflaufZeilen(einheiten, ziel = undefined) {
+  const marke = zielUmsetzungMin(ziel);
+  const pakete = (Array.isArray(einheiten) ? einheiten : []).filter((e) => e?.pruefung);
+  if (pakete.length === 0) return ["Prueflaeufe und Zielmarke: keine Umsetzung gemessen."];
+  const zeilen = ["Prueflaeufe und Zielmarke:"];
+  for (const e of pakete) {
+    zeilen.push(prueflaufPaketZeile(e));
+    // Jede Datei mit Namen (E8): Eine Zahl sagte nicht, wo das Loch ist. Der Abschluss
+    // bleibt davon unberuehrt — die Luecke ist ein Befund, kein rotes Ergebnis.
+    const ohne = e.pruefung?.ohneZuordnung ?? [];
+    if (ohne.length > 0) zeilen.push(`- Issue #${e.id}: ohne Zuordnung: ${ohne.join(", ")}`);
+  }
+  const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
+  zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);
+  return zeilen;
 }
 
 // --- Salvage (Issue #167) ---
@@ -6075,7 +6200,7 @@ async function stufeUmsetzung(kette, paketIds) {
       // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
       paketeAbschliessen(stand, lauf.gezogen);
       stand.dauerMs = Date.now() - stufeStart;
-      for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+      for (const zeile of pruefBericht(lauf.pruefungen, LAUF?.einheiten ?? [], config?.night?.zielUmsetzungMin)) log(`  ${zeile}`);
     }
     if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
       // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
@@ -6310,7 +6435,7 @@ function berichtUmsetzungEintrag(pakete, eintrag) {
   return `${paketBezeichnung(pakete, id)} (${berichtUmsetzungStufe(eintrag)})`;
 }
 
-function berichtUmsetzung(einheit, pakete) {
+function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
   const stand = einheit.stufen?.umsetzung ?? {};
   const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
   const umgesetzt = stand.umgesetzt ?? [];
@@ -6331,6 +6456,10 @@ function berichtUmsetzung(einheit, pakete) {
     `- umgesetzt: ${umgesetztText}`,
     `- angehalten: ${liste(stand.angehalten ?? [])}`,
     `- nicht begonnen: ${nichtBegonnenText}`,
+    // Die Prueflaeufe und die Zielmarke (Issue #926, E6) — derselbe Block, den die
+    // Umsetzungsnacht ins Protokoll schreibt. Beide Berichtsorte nennen dieselben Zahlen,
+    // damit keiner von beiden der Ort ist, an dem eine Messung fehlt.
+    ...prueflaufZeilen(einheiten, ziel),
     "",
   ];
 }
@@ -6407,6 +6536,9 @@ function berichtEntscheidungen(stufen, plan, pakete) {
 
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
+  // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
+  // Prueflaeufe daraus, und als Argumente bleibt er eine reine Funktion ueber Fixtures.
+  einheiten = [], zielUmsetzungMin: ziel = undefined,
 } = {}) {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
@@ -6414,7 +6546,7 @@ export function berichtBauen(einheit, {
     "### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
-  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete));
+  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));
 
   const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
   z.push("### Entscheidungen der Nacht", "");
@@ -6611,6 +6743,9 @@ function berichtFuerKette(kette, einheit, ergebnis) {
     plan, pakete, einarbeitung: plan ? einarbeitungVon(plan) : null,
     abdeckung: a ? { text: a.text, grund: a.grund } : null,
     budget: kette.budget, start: kette.start, stempel: LAUF_STEMPEL, frage: ergebnis.frage ?? null,
+    // Die Paket-Einheiten dieses Laufs (Issue #926): Aus ihnen rechnet der Bericht die
+    // Prueflaeufe und die Zielmarke; die Ketten-Einheit selbst traegt sie nicht.
+    einheiten: LAUF?.einheiten ?? [], zielUmsetzungMin: config?.night?.zielUmsetzungMin,
   });
 }
 
@@ -8246,7 +8381,7 @@ async function main() {
   // Label-Tests matchen die Zeile bis dorthin, und ein Einschub davor haette sie
   // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
   log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
-  for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
+  for (const zeile of pruefBericht(ergebnis.pruefungen, LAUF?.einheiten ?? [], config?.night?.zielUmsetzungMin)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);
 }
