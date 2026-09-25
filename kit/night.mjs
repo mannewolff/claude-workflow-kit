@@ -6733,6 +6733,20 @@ function leseKarte(id) {
   return res.status === 0 && res.json ? res.json : null;
 }
 
+/**
+ * Die Paket-Einheiten genau dieser Kette, in der Reihenfolge des Laufs (Issue #926).
+ *
+ * `LAUF.einheiten` fuehrt jede Einheit des Nachtlaufs — auch die frueherer Ketten und
+ * die Ketten-Einheiten selbst. Fuer den Bericht einer Karte zaehlen allein die Pakete,
+ * die diese Kette bestellt hat.
+ */
+export function ketteEinheiten(kette, alle = undefined) {
+  const ids = new Set((kette?.stufen?.pakete?.ids ?? []).map((id) => String(id)));
+  if (ids.size === 0) return [];
+  const quelle = alle ?? LAUF?.einheiten ?? [];
+  return quelle.filter((e) => ids.has(String(e?.id)));
+}
+
 /** Sammelt Plan, Pakete, Einarbeitung und Abdeckung der Kette und baut den Bericht. */
 function berichtFuerKette(kette, einheit, ergebnis) {
   const planId = kette.stufen.plan?.id;
@@ -6743,9 +6757,13 @@ function berichtFuerKette(kette, einheit, ergebnis) {
     plan, pakete, einarbeitung: plan ? einarbeitungVon(plan) : null,
     abdeckung: a ? { text: a.text, grund: a.grund } : null,
     budget: kette.budget, start: kette.start, stempel: LAUF_STEMPEL, frage: ergebnis.frage ?? null,
-    // Die Paket-Einheiten dieses Laufs (Issue #926): Aus ihnen rechnet der Bericht die
-    // Prueflaeufe und die Zielmarke; die Ketten-Einheit selbst traegt sie nicht.
-    einheiten: LAUF?.einheiten ?? [], zielUmsetzungMin: config?.night?.zielUmsetzungMin,
+    // Die Paket-Einheiten DIESER Kette (Issue #926, eingegrenzt im Code-Review): Aus
+    // ihnen rechnet der Bericht die Prueflaeufe und die Zielmarke; die Ketten-Einheit
+    // selbst traegt sie nicht. Die Eingrenzung auf `kette.stufen.pakete.ids` ist noetig,
+    // weil `LAUF.einheiten` ALLE Einheiten des Nachtlaufs fuehrt: Ab der zweiten Kette
+    // eines Laufs stuenden sonst fremde Pakete im Kommentar dieser Karte, und die Zeile
+    // "N von M" zaehlte sie mit.
+    einheiten: ketteEinheiten(kette), zielUmsetzungMin: config?.night?.zielUmsetzungMin,
   });
 }
 
@@ -8159,12 +8177,17 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const commitDerSession = lastCommitHash();
   const pruefung = bewertePruefung(top.id, commitDerSession === commitVorher ? null : commitDerSession, config);
   pruefungen.push(pruefung);
-  // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
-  // Textzeile (Issue #488): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.
-  const dauerMs = Date.now() - started;
-  const minutes = (dauerMs / 60000).toFixed(1);
+  // Die gerundete Minutenangabe fuer die Textzeilen der Auswertung: Sie benennt die
+  // Dauer der Implementierungs-Session und wird deshalb VOR werteRunde bestimmt.
+  const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
   const ausgang = await werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl });
+  // Die Rohdifferenz fuer den Ergebnisstand, NACH werteRunde (Issue #488, korrigiert im
+  // Code-Review zu #924): In werteRunde kann eine Salvage-Session laufen, samt ihrer
+  // Vorpruefungen. Vor dem Aufruf gemessen fehlte diese Zeit, und ein Paket mit langer
+  // Rettung erschiene faelschlich unter der Zielmarke — die Quelle verlangt die Dauer
+  // "bis zum bestandenen Abschluss, einschliesslich aller Pruefungen und Korrekturen".
+  const dauerMs = Date.now() - started;
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);

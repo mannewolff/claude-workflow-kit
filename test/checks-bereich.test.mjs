@@ -16,7 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { mitRepo, plan, run, checks, datei, kommandos, eintrag } from "./helpers/checks-repo.mjs";
+import { mitRepo, plan, run, checks, datei, kommandos, eintrag, zusammenfassung } from "./helpers/checks-repo.mjs";
 
 const CONFIG = {
   buildChecks: [
@@ -152,5 +152,75 @@ test("--bereich laesst --since unberuehrt: der Anker bestimmt weiter die Dateili
 
     assert.deepEqual(ergebnis.geaendert, ["frontend/src/App.tsx"]);
     assert.deepEqual(kommandos(ergebnis.laufen), ["mvn verify"]);
+  });
+});
+
+// --- Der Bereichslauf als Teilnachweis (Code-Review zu #922) ---
+//
+// Eigene Kommandos statt der CONFIG oben: Die Faelle hier fahren `run` wirklich, und
+// `npm run build` / `mvn verify` gibt es im Wegwerf-Repo nicht — sie liefen rot und
+// pruefeten am Gegenstand vorbei.
+const CONFIG_LAUF = {
+  buildChecks: [
+    { cmd: "node -e \"process.exit(0)\" # frontend", areas: ["frontend"] },
+    { cmd: "node -e \"process.exit(0)\" # backend", areas: ["backend"] },
+  ],
+  checkAreas: {
+    frontend: ["frontend/**"],
+    backend: ["backend/**"],
+  },
+};
+//
+// Zwei Loecher, die der Review aufgedeckt hat. Beide entstehen daraus, dass ein
+// `--bereich`-Lauf zwar WENIGER Pruefungen faehrt, `geaendert` und `hashes` aber
+// weiterhin aus dem Anker bestimmt — er sah damit aus wie ein vollstaendiger Lauf.
+
+test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs nicht", () => {
+  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+    datei(dir, "backend/src/Main.java");
+
+    // Erst eingegrenzt: nur die Frontend-Pruefung laeuft.
+    const eingegrenzt = run(dir, "--bereich", "frontend");
+    assert.equal(eingegrenzt.status, 0, `${eingegrenzt.stdout}${eingegrenzt.stderr}`);
+    assert.equal(zusammenfassung(dir).bereichWahl, "frontend");
+
+    // Dann uneingeschraenkt auf demselben Stand: Ohne den Vergleich der Eingrenzung
+    // uebernaehme dieser Lauf das Ergebnis oben — Basis, Stufe, Dateien und Hashes
+    // sind identisch —, und die faellige Backend-Pruefung liefe nie.
+    const voll = run(dir);
+    assert.doesNotMatch(voll.stdout, /Ergebnis uebernommen/, "der volle Lauf darf nicht uebernehmen");
+    const nachher = zusammenfassung(dir);
+    assert.equal(nachher.bereichWahl, null, "ohne --bereich traegt die Zusammenfassung null");
+    assert.ok(
+      kommandos(nachher.laufen).some((c) => c.includes("# backend")),
+      `die Backend-Pruefung muss laufen, lief: ${kommandos(nachher.laufen).join(", ")}`,
+    );
+  });
+});
+
+test("zwei Bereichslaeufe auf verschiedene Bereiche uebernehmen einander nicht", () => {
+  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+    datei(dir, "backend/src/Main.java");
+
+    run(dir, "--bereich", "frontend");
+    const zweiter = run(dir, "--bereich", "backend");
+
+    assert.doesNotMatch(zweiter.stdout, /Ergebnis uebernommen/);
+    assert.equal(zusammenfassung(dir).bereichWahl, "backend");
+  });
+});
+
+test("derselbe Bereichslauf auf unveraendertem Stand uebernimmt weiterhin", () => {
+  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    run(dir, "--bereich", "frontend");
+    const zweiter = run(dir, "--bereich", "frontend");
+
+    // Die Wiederverwendung selbst bleibt unangetastet: Gleiche Eingrenzung, gleicher
+    // Stand, gleiches Ergebnis (Issue #863).
+    assert.match(zweiter.stdout, /Ergebnis uebernommen/);
   });
 });

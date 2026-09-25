@@ -227,3 +227,43 @@ test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Bo
       `die Sauberkeitspruefung steht hinter dem Board-Zug — genau die Reihenfolge, die #248 gekostet hat:\n${prompt}`);
   });
 });
+
+// ============================================================
+// Die Rundendauer enthaelt den Salvage (Code-Review zu #924)
+// ============================================================
+//
+// `einheit.dauerMs` wurde in `laufeRunde` VOR `werteRunde` festgehalten — und die
+// Salvage-Session laeuft INNERHALB von `werteRunde`. Ihre Zeit fehlte damit in der
+// Rundendauer, und ein Paket mit langer Rettung erschien unter der Zielmarke.
+// Fachliches Kriterium 1 von #913 verlangt die Dauer "bis zum bestandenen Abschluss,
+// einschliesslich aller Pruefungen und Korrekturen".
+
+/** Die Einheit einer Karte aus dem einzigen Ergebnisstand des Laufs. */
+function einheitDerKarte(dir, id) {
+  const dateien = readdirSync(join(dir, ".claude"))
+    .filter((n) => /^night-run-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(n)).sort();
+  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+  const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+  const einheit = stand.einheiten.find((e) => String(e.id) === String(id));
+  assert.ok(einheit, `keine Einheit fuer Issue #${id}: ${JSON.stringify(stand.einheiten)}`);
+  return einheit;
+}
+
+test("[night-27] die Rundendauer schliesst die Salvage-Session ein", NUR_POSIX, () => {
+  mitProjekt("night-salvage-dauer-", (dir) => {
+    const id = readyIssue(dir);
+    // Die regulaere Session endet unsauber (Datei ohne Commit) — das fuehrt in
+    // werteRunde in den Dirty-Zweig und damit in den Salvage. Der Salvage-Fake
+    // braucht zwei Sekunden, committet und zieht die Karte.
+    const SALVAGE = `  sleep 2 && ${COMMIT} && ${MOVE_IN_REVIEW}`;
+    const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake(SALVAGE) });
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+
+    const einheit = einheitDerKarte(dir, id);
+    assert.ok(
+      einheit.dauerMs >= 2000,
+      `die Rundendauer muss die zwei Sekunden Salvage enthalten, war ${einheit.dauerMs} ms`,
+    );
+    assert.ok(inReview(dir, id), "die Salvage-Session hat die Karte nach In review gezogen");
+  });
+});

@@ -247,3 +247,52 @@ test("[gate-1] gate.mjs und der Hook liegen unter .githooks/", () => {
   assert.ok(existsSync(GATE), "gate.mjs fehlt");
   assert.ok(existsSync(HOOK), "pre-commit fehlt");
 });
+
+// --- Der Bereichslauf deckt keinen Commit (Code-Review zu #922) ---
+//
+// `--bereich` grenzt die gefahrenen Pruefungen ein, bestimmt `geaendert` und `hashes`
+// aber weiterhin aus dem Anker. Ohne eigenen Zweig traegt damit JEDE geaenderte Datei
+// einen Hash, und das Gate liesse den Commit durch — auch fuer Bereiche, deren
+// Pruefungen nie liefen. Der eingegrenzte Lauf bleibt richtig; er ist nur kein
+// Abschlussnachweis.
+
+const ZWEI_BEREICHE = {
+  buildChecks: [
+    { cmd: "node -e \"process.exit(0)\" # frontend", areas: ["frontend"] },
+    { cmd: "node -e \"process.exit(0)\" # backend", areas: ["backend"] },
+  ],
+  checkAreas: { frontend: ["frontend/**"], backend: ["backend/**"] },
+};
+
+test("[gate-1] ein Bereichslauf deckt den Commit nicht, auch wenn er gruen ist", () => {
+  mitRepo({ config: ZWEI_BEREICHE }, (dir) => {
+    gateEinbauen(dir);
+    datei(dir, "frontend/App.tsx");
+    datei(dir, "backend/Main.java");
+
+    const lauf = run(dir, "--bereich", "frontend");
+    assert.equal(lauf.status, 0, `der Bereichslauf selbst muss gruen sein: ${lauf.stdout}${lauf.stderr}`);
+
+    git(dir, "add", "frontend/App.tsx", "backend/Main.java");
+    const res = gate(dir, "pre-commit");
+
+    assert.notEqual(res.status, 0, "das Gate muss einen Teilnachweis abweisen");
+    assert.match(`${res.stdout}${res.stderr}`, /eingegrenzt auf den Bereich 'frontend'/);
+  });
+});
+
+test("[gate-1] nach dem uneingeschraenkten Lauf nimmt das Gate denselben Stand an", () => {
+  mitRepo({ config: ZWEI_BEREICHE }, (dir) => {
+    gateEinbauen(dir);
+    datei(dir, "frontend/App.tsx");
+    datei(dir, "backend/Main.java");
+
+    run(dir, "--bereich", "frontend");
+    run(dir);
+
+    git(dir, "add", "frontend/App.tsx", "backend/Main.java");
+    const res = gate(dir, "pre-commit");
+
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+  });
+});

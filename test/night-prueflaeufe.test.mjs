@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 
 import {
   prueflaufBeobachter, prueflaeufeAddieren, prueflaufZeilen, berichtBauen, runSession,
-  UEBERNAHME_MARKE,
+  ketteEinheiten, UEBERNAHME_MARKE,
 } from "../kit/night.mjs";
 import { UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE } from "../kit/checks.mjs";
 
@@ -521,4 +521,44 @@ test("[night-924] eine Stufe ohne Strom liefert prueflaeufe: null — nicht geme
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- Der Bericht einer Kette nennt nur ihre eigenen Pakete (Code-Review zu #926) ---
+//
+// `LAUF.einheiten` fuehrt JEDE Einheit des Nachtlaufs. Ab der zweiten Kette eines Laufs
+// stuenden ohne Eingrenzung fremde Pakete im Kommentar dieser Karte, und die Zeile
+// "N von M" zaehlte sie mit — der Bericht einer Karte behauptete Arbeit, die zu einer
+// anderen gehoert.
+
+test("[night-926] ketteEinheiten liefert nur die Pakete dieser Kette", () => {
+  const alle = [paketEinheit(101, 8), paketEinheit(201, 12), paketEinheit(202, 43)];
+  const kette = { stufen: { pakete: { ids: ["201", "202"] } } };
+
+  const eigene = ketteEinheiten(kette, alle);
+
+  assert.deepEqual(eigene.map((e) => e.id), ["201", "202"]);
+});
+
+test("[night-926] ketteEinheiten vergleicht Nummern unabhaengig vom Typ", () => {
+  const alle = [paketEinheit(201, 12)];
+  const kette = { stufen: { pakete: { ids: [201] } } };
+
+  assert.deepEqual(ketteEinheiten(kette, alle).map((e) => e.id), ["201"]);
+});
+
+test("[night-926] eine Kette ohne Pakete liefert keine Einheiten", () => {
+  const alle = [paketEinheit(101, 8)];
+
+  assert.deepEqual(ketteEinheiten({ stufen: {} }, alle), []);
+  assert.deepEqual(ketteEinheiten(null, alle), []);
+});
+
+test("[night-926] die Summenzeile zaehlt nur die Pakete dieser Kette", () => {
+  const alle = [paketEinheit(101, 43), paketEinheit(201, 8)];
+  const kette = { stufen: { pakete: { ids: ["201"] } } };
+
+  const zeilen = prueflaufZeilen(ketteEinheiten(kette, alle), 10);
+
+  assert.ok(zeilen.some((z) => z.includes("1 von 1 Paketen unter 10 Minuten")), zeilen.join("\n"));
+  assert.ok(!zeilen.some((z) => z.includes("#101")), `fremdes Paket im Bericht: ${zeilen.join("\n")}`);
 });

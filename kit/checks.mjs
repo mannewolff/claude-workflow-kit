@@ -545,8 +545,15 @@ function verteilen(checks, stufe, entscheiden) {
  * zaehlte eine Luecke, die es nicht gibt.
  */
 function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], laufen = [],
-  ausgelassen = [], vollerUmfang = false, leeresPaket = false }) {
-  return { basis, stufe, geaendert, bereiche, ohneZuordnung, laufen, ausgelassen, vollerUmfang, leeresPaket };
+  ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null }) {
+  // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
+  // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
+  // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
+  // dem Anker und saehe darum aus wie ein vollstaendiger Lauf. Zwei Leser brauchen den
+  // Unterschied — die Wiederverwendung darf ein eingegrenztes Ergebnis nicht fuer einen
+  // vollen Lauf ausgeben (frueheresErgebnis), und das Commit-Gate darf auf ihm nicht
+  // committen lassen (.githooks/gate.mjs).
+  return { basis, stufe, geaendert, bereiche, ohneZuordnung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl };
 }
 
 function planen(args) {
@@ -602,7 +609,7 @@ function planen(args) {
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, bereichWahl,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
         return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
@@ -1037,6 +1044,12 @@ function frueheresErgebnis(auswahl, hashes, configHash) {
   if (alt === null || typeof alt !== "object") return null;
   if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return null;
   if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return null;
+  // Die Eingrenzung gehoert in den Vergleich (Issue #922, Code-Review): Ohne sie
+  // uebernimmt ein uneingeschraenkter Lauf das Ergebnis eines vorangegangenen
+  // `--bereich`-Laufs, weil Basis, Stufe, Dateien und Hashes identisch sind — die
+  // faelligen Pruefungen der uebrigen Bereiche liefen dann nie. `?? null` liest eine
+  // Zusammenfassung aus einer Fassung vor diesem Feld als uneingeschraenkt.
+  if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return null;
   if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
   if (typeof alt.zeitpunkt !== "string") return null;
   if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
