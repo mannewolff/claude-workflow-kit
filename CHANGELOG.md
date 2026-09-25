@@ -2,6 +2,15 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.2] - 2026-09-25
+- Die Befunde aus dem Code-Review des Batches sind eingearbeitet
+- Beide Berichte weisen Prueflaeufe und Zielmarke aus (#926)
+- Die Umsetzungs-Skills nennen den sanktionierten Gruppenlauf (#925)
+- Der Runner zaehlt die Prueflaeufe einer Umsetzung (#924)
+- Die Zielmarke fuer eine Umsetzung steht in der Konfiguration (#923)
+- Die Pruefung sammelt alle Dateien ohne Zuordnung und kennt den Bereichslauf (#922)
+- Eine Kette ohne ausgefuehrte Umsetzung heisst nicht gelungen (#862)
+
 ## [3.3.1] - 2026-09-25
 - Die Kette nimmt keine Anforderung mit offenen Fragen auf (#916)
 - Der Reviewer-Prompt nennt die Form der Gegenprobe (#915)
