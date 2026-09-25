@@ -5,22 +5,61 @@
     {
       "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
       "areas": [
-        "nachtrunner",
         "board",
+        "installer",
+        "nachtrunner",
         "pruefungen"
       ]
     },
     {
-      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/install-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
       "areas": [
+        "board",
         "einstellungen",
-        "installer"
+        "installer",
+        "nachtrunner",
+        "pruefungen"
       ]
     },
     {
-      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/docs-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test \"test/cli-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\"",
       "areas": [
+        "board",
+        "installer",
+        "nachtrunner",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\"",
+      "areas": [
+        "board",
+        "einstellungen",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/docs-*.test.mjs\"",
+      "areas": [
+        "einstellungen",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
         "skills-doku"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "areas": [
+        "board",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
+        "skills-doku",
+        "worktree"
       ]
     },
     "node tools/sync-blobs.mjs --check",
@@ -85,11 +124,13 @@
       "test/einstellungen-*.test.mjs",
       "test/config-*.test.mjs"
     ],
+    "worktree": [
+      "kit/worktree.mjs"
+    ],
     "installer": [
       "install.mjs",
       "tools/**",
       ".githooks/**",
-      "kit/**",
       "test/install-*.test.mjs",
       "test/sync-*.test.mjs",
       "test/tools-*.test.mjs",
@@ -106,7 +147,6 @@
       "RELEASING.md",
       "CLAUDE.md",
       "README.md",
-      "kit/**",
       "test/skills-*.test.mjs",
       "test/docs-*.test.mjs",
       "test/workflow-*.test.mjs",
