@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -56,7 +56,7 @@ function setupProjekt(buildChecks, extraConfig = {}) {
     local: { issuesDir: "issues" },
     ...extraConfig,
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nfixcount.log\n");
+  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nfixcount.log\nchecklauf.log\n");
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -337,57 +337,40 @@ test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief ge
   }
 });
 
-// --- Die Guetemessung in der Vorpruefung (Issue #817) ---
+// --- Die Guetemessung in der Vorpruefung (Issue #817, seit Issue #950 ausgelassen) ---
 //
-// Bis hierher las die Vorpruefung nur den Exit-Code. Ein Mutationstest mit
-// Exit 0 und 84 % gegen Marke 90 galt damit als gruen, die Salvage-Session bekam
-// "Checks extern verifiziert gruen" zu hoeren, und das Paket landete mit
-// verfehlter Marke in In review — waehrend checks.mjs denselben Lauf rot faerbt.
-// checks-6 und die Workflow-Doku kennen dafuer nur eine Antwort: derselbe Halt
-// wie bei einer roten Pflichtpruefung.
+// Issue #817 liess die Vorpruefung die Guetemessung mitwerten: Ein Mutationstest mit
+// Exit 0 und 84 % gegen Marke 90 galt bis dahin als gruen, obwohl checks.mjs denselben
+// Lauf rot faerbt.
+//
+// Seit Issue #946 laesst der Abschluss einer Karte die Guetemessung aus — ihr Anteil
+// entsteht aus der vollstaendigen Testmenge, und ein Anteil aus einem verkuerzten Lauf
+// waere eine andere Groesse mit demselben Namen. Die Vorpruefung des Salvage faehrt den
+// Umfang genau dieses Abschlusses (Issue #950, Plan #944, E14) und laesst die Messung
+// darum ebenfalls aus: Eine Vorpruefung, die STRENGER waere als der Abschluss, den sie
+// nachvollzieht, waere der zweite Weg ueber denselben Vorgang.
+//
+// Die Marke ist damit nicht aufgegeben, sondern verschoben: Vor dem Veroeffentlichen
+// laeuft die Messung immer, an der Push-Stufe sogar bei leerem Paket (Issue #763).
 
 /** Ein Eintrag mit Guetemessung: Exit 0, gemessene 84 %, Marke `marke`. */
 function gueteCheck(marke) {
   return {
-    cmd: `node -e "console.log('Killed 5 (84%)')"`,
+    cmd: `node -e "console.log('Killed 5 (84%)')" && echo guete >> checklauf.log`,
     guete: { muster: String.raw`\((\d+)%\)`, marke },
   };
 }
 
-test("[night-65] Salvage: Exit 0 unter der Marke ist rot — kein Salvage-Versuch", NUR_POSIX, () => {
-  const dir = setupProjekt([gueteCheck(90)]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-    board(dir, "issue", "move", String(zweites.id), "ready");
+/** Wie oft die Guetemessung gelaufen ist. */
+function gueteLaeufe(dir) {
+  const p = join(dir, "checklauf.log");
+  return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean).length : 0;
+}
 
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /Salvage nicht moeglich/,
-      "die verfehlte Marke haette den Salvage verhindern muessen");
-    assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
-      "unter der Marke darf keine Salvage-Session starten");
-    assert.match(res.stdout, /84 % erreicht, Marke 90 %/,
-      "die Ausgabe nennt den gemessenen Anteil und die Marke nicht");
-    assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/, "die Fehlschlag-Meldung fehlt");
-
-    // Nur die regulaere Session lief, das zweite Issue blieb liegen.
-    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.equal(inReview.length, 0, "mit verfehlter Marke darf nichts nach In review wandern");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("[night-65] Salvage: eine erreichte Marke laesst die Vorpruefung gruen", NUR_POSIX, () => {
-  const dir = setupProjekt([gueteCheck(80)]);
+test("[night-950] Salvage: eine verfehlte Marke haelt die Vorpruefung nicht auf — sie gehoert nicht zum Abschlussumfang", NUR_POSIX, () => {
+  // Der Eintrag "true" daneben ist das Gate des Abschlusses: Ohne ihn startet der Lauf
+  // gar nicht (Start-Guard, Issue #950).
+  const dir = setupProjekt([gueteCheck(90), "true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(erstes.id), "ready");
@@ -396,37 +379,41 @@ test("[night-65] Salvage: eine erreichte Marke laesst die Vorpruefung gruen", NU
     const fake = fakeSession(sessionLog,
       `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
       + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "bei erreichter Marke fehlt die Salvage-Startzeile");
+      "die ausgelassene Messung haette den Salvage nicht aufhalten duerfen");
+    assert.doesNotMatch(res.stdout, /84 % erreicht/,
+      "eine ausgelassene Messung darf keinen Anteil melden — sie hat nicht gemessen");
+    assert.equal(gueteLaeufe(dir), 0, "das Kommando der Guetemessung ist in der Vorpruefung gelaufen");
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)), "Issue haette in In review landen muessen");
+    assert.ok(inReview.includes(String(erstes.id)), "das gerettete Issue haette in In review landen muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("[night-65] Salvage: ein nicht auswertbares Ergebnis ist rot, auch bei Exit 0", NUR_POSIX, () => {
+test("[night-950] Salvage: auch ein nicht auswertbares Ergebnis ist kein Halt mehr — es wird nicht gemessen", NUR_POSIX, () => {
   const dir = setupProjekt([{
-    cmd: `node -e "console.log('BUILD SUCCESS')"`,
+    cmd: `node -e "console.log('BUILD SUCCESS')" && echo guete >> checklauf.log`,
     guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
-  }]);
+  }, "true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(erstes.id), "ready");
 
     const sessionLog = join(dir, "sessions.log");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fakeSession(sessionLog, "true") });
+    const fake = fakeSession(sessionLog,
+      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /Salvage nicht moeglich/, "ein fehlender Messwert darf nicht als gruen gelten");
-    assert.match(res.stdout, /kein auswertbares Ergebnis/, "der Grund fehlt in der Ausgabe");
-    assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
-      "ohne Messwert darf keine Salvage-Session starten");
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /kein auswertbares Ergebnis/,
+      "wo nicht gemessen wird, darf auch kein fehlender Messwert gemeldet werden");
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
+    assert.equal(gueteLaeufe(dir), 0, "das Kommando der Guetemessung ist in der Vorpruefung gelaufen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

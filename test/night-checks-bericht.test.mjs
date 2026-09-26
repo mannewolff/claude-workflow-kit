@@ -259,18 +259,26 @@ test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeil
 
 // --- Salvage: die Paketstufe, ohne bereichsbezogene Auswahl ---
 
-test("[night-48] Salvage faehrt die Paketstufe: ohne Bereichsauswahl, aber ohne spaetere Stufen", NUR_POSIX, () => {
+test("[night-48] Salvage faehrt den Abschlussumfang: ohne Bereichsauswahl, aber ohne spaetere Stufen", NUR_POSIX, () => {
   // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
-  // exportiert. Alle drei Pruefungen protokollieren ihre Ausfuehrung; die Session
-  // fasst nur den Bereich 'kit' an.
+  // exportiert. Alle Pruefungen protokollieren ihre Ausfuehrung; die Session fasst nur
+  // den Bereich 'kit' an.
   //
-  // Beide Aussagen in einem Lauf: Die BEREICHSauswahl bleibt aus (der unberuehrte
+  // Drei Aussagen in einem Lauf: Die BEREICHSauswahl bleibt aus (der unberuehrte
   // Bereich 'frontend' laeuft trotzdem, Entscheidung A6 des Plans #421), die
-  // STUFENauswahl greift (der Push-Eintrag laeuft nicht, Plan #753, E13).
+  // STUFENauswahl greift (der Push-Eintrag laeuft nicht, Plan #753, E13), und der
+  // Salvage faehrt den Umfang des Abschlusses, den er nachvollzieht — ohne
+  // `nichtBeimAbschluss` und ohne Guetemessung (Issue #950, Plan #944, E14).
   const buildChecks = [
     { cmd: "echo kit >> checklauf.log", areas: ["kit"] },
     { cmd: "echo frontend >> checklauf.log", areas: ["frontend"] },
     { cmd: "echo push >> checklauf.log", stufe: "push" },
+    { cmd: "echo spaet >> checklauf.log", areas: ["kit"], nichtBeimAbschluss: "zusammenspiel" },
+    {
+      cmd: "echo guete >> checklauf.log",
+      areas: ["kit"],
+      guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
+    },
   ];
   mitProjekt((dir) => {
     const id = readyIssue(dir);
@@ -291,7 +299,7 @@ test("[night-48] Salvage faehrt die Paketstufe: ohne Bereichsauswahl, aber ohne 
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
     const laeufe = readFileSync(join(dir, "checklauf.log"), "utf-8").trim().split("\n");
     assert.deepEqual(laeufe, ["kit", "frontend"],
-      `beide Paketstufen-Pruefungen haetten laufen muessen und nur sie, tatsaechlich: ${laeufe.join(", ")}`);
+      `nur die beiden Pruefungen des Abschlussumfangs haetten laufen duerfen, tatsaechlich: ${laeufe.join(", ")}`);
     assert.ok(board(dir, "issue", "list", "--status", "in_review").some((i) => String(i.id) === id),
       "das gerettete Issue haette in In review landen muessen");
   }, { buildChecks });

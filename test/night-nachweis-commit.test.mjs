@@ -39,7 +39,7 @@ const KIT_CHECK = {
 // Der Bereich 'board' ist bewusst keinem Check zugeordnet: Board-Moves sind beim
 // lokalen Tracker Dateiaenderungen unter issues/, und eine Datei ohne Muster loeste
 // in checks.mjs den vollen Umfang aus.
-const CHECK_AREAS = { kit: ["kit/**"], board: ["issues/**"] };
+const CHECK_AREAS = { kit: ["kit/**"], frontend: ["frontend/**"], board: ["issues/**"] };
 
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, {
@@ -54,7 +54,7 @@ function board(cwd, ...cliArgs) {
   return JSON.parse(res.stdout);
 }
 
-function setupProjekt() {
+function setupProjekt(buildChecks = [KIT_CHECK]) {
   const dir = mkdtempSync(join(tmpdir(), "night-nachweis-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
@@ -62,12 +62,12 @@ function setupProjekt() {
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
-    buildChecks: [KIT_CHECK],
+    buildChecks,
     checkAreas: CHECK_AREAS,
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"),
-    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\n.probe\n.rot\n");
+    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.rot\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
@@ -87,8 +87,8 @@ function readyIssue(dir, titel = "Ein Issue") {
   return String(issue.id);
 }
 
-function mitProjekt(fn) {
-  const dir = setupProjekt();
+function mitProjekt(fn, buildChecks) {
+  const dir = setupProjekt(buildChecks);
   try {
     fn(dir);
   } finally {
@@ -212,4 +212,44 @@ test("[night-865] eine Loeschung im Commit wird als geprueft erkannt und loest k
     assert.equal(e.pruefung.nachweisFremd, undefined, "eine geloeschte Datei ist kein fremder Nachweis");
     assert.equal(checklaeufe(dir), 1, "der Pflichtcheck haette genau einmal laufen duerfen (keine Nachpruefung)");
   });
+});
+
+// Der Umfang der Nachpruefung (Issue #950, Plan #944, E14).
+//
+// Die Nachpruefung vollzieht den Abschluss der Karte nach, den sie nicht glauben kann —
+// also faehrt sie genau dessen Umfang. Eine Nachpruefung, die MEHR faehrt, waere ein
+// zweiter Weg ueber denselben Vorgang, und sie kostete nachts gerade die teuerste
+// Gruppe: die, die wegen ihrer Laufzeit vom Abschluss ausgenommen wurde.
+//
+// Die beiden ausgelassenen Eintraege liegen im Bereich 'frontend', den die Session nicht
+// anfasst — so kann ihre Protokolldatei nur von der Nachpruefung stammen, und ihr Fehlen
+// belegt die Auslassung ohne Quelltext-Grep (verifyChecksForSalvage und nachpruefLaufen
+// sind nicht exportiert).
+const SPAETER_CHECK = { cmd: "echo spaet >> spaet.log", areas: ["frontend"], nichtBeimAbschluss: "zusammenspiel" };
+const GUETE_CHECK = {
+  cmd: "echo 'Killed 42 (84%)' >> guete.log",
+  areas: ["frontend"],
+  guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
+};
+
+test("[night-950] die Nachpruefung laesst nichtBeimAbschluss und Guetemessung aus — der Abschlussumfang", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    const fake = [ARBEIT, CHECKS_RUN, COMMIT, ABGEBROCHENE_PROBE, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    const e = einheit(dir, id);
+    assert.equal(e.pruefung.nachweisFremd, true, "ohne Nachpruefung sagt dieser Test nichts");
+    assert.equal(e.pruefung.zustand, "nachgeprueft", `Pruefstand: ${JSON.stringify(e.pruefung)}`);
+
+    const gefahren = e.pruefung.laufen.map((l) => l.cmd);
+    assert.deepEqual(gefahren, [KIT_CHECK.cmd],
+      `die Nachpruefung haette nur den Abschlussumfang fahren duerfen, tatsaechlich: ${gefahren.join(" | ")}`);
+    assert.ok(!existsSync(join(dir, "spaet.log")),
+      "die Pruefung mit nichtBeimAbschluss ist in der Nachpruefung gelaufen");
+    assert.ok(!existsSync(join(dir, "guete.log")),
+      "die Guetemessung ist in der Nachpruefung gelaufen — ihr Anteil braucht die vollstaendige Testmenge");
+    assert.equal(checklaeufe(dir), 2, "der Abschluss-Check haette genau einmal zusaetzlich laufen muessen");
+  }, [KIT_CHECK, SPAETER_CHECK, GUETE_CHECK]);
 });

@@ -3891,7 +3891,11 @@ function nachweisPasstZuCommit(daten, commit) {
   return { passt: true, grund: null };
 }
 
-/** Der Pruefstand der Nachpruefung: die Paketstufe, bis einschliesslich des roten Kommandos. */
+/**
+ * Der Pruefstand der Nachpruefung: der Abschlussumfang, bis einschliesslich des roten
+ * Kommandos. Was `paketstufenChecks` auslaesst, erscheint auch hier nicht — die
+ * Nachpruefung vollzieht den Abschluss nach und faehrt nie mehr als er (Plan #944, E14).
+ */
 function nachpruefLaufen(cfg, nach) {
   const laufen = [];
   for (const eintrag of paketstufenChecks(cfg)) {
@@ -3928,7 +3932,7 @@ function bewertePruefung(issueId, commit, cfg) {
     zustand: nach.ok ? "nachgeprueft" : "rot",
     ...(nach.ok ? {} : { rotesKommando: nach.rotesKommando, rotesErgebnis: "rot" }),
     // Der Umfang ist der der Nachpruefung, nicht der des fremden Nachweises: Sie faehrt
-    // die Paketstufe ohne Bereichsauswahl, wie der Salvage.
+    // den Abschlussumfang ohne Bereichsauswahl, wie der Salvage.
     laufen: nachpruefLaufen(cfg, nach),
     ausgelassen: [],
     vollerUmfang: true,
@@ -4120,22 +4124,39 @@ function checkEnv() {
 }
 
 /**
- * Die Eintraege aus `buildChecks`, die die Paketstufe tragen (Plan #753, E13/E14).
+ * Die Eintraege aus `buildChecks`, die der ABSCHLUSS eines Arbeitspakets faehrt
+ * (Plan #753, E13/E14; Plan #944, E14).
  *
- * Ein Eintrag ohne `stufe` gehoert zur Paketstufe — die String-Form, das Objekt
- * ohne `stufe` und `stufe: "paket"` bedeuten dasselbe. Das ist derselbe Default
- * wie in checks.mjs, und er haelt jede bestehende Config bei ihrem Verhalten.
+ * Erste Bedingung, die Paketstufe: Ein Eintrag ohne `stufe` gehoert dazu — die
+ * String-Form, das Objekt ohne `stufe` und `stufe: "paket"` bedeuten dasselbe. Das ist
+ * derselbe Default wie in checks.mjs, und er haelt jede bestehende Config bei ihrem
+ * Verhalten. Eintraege der Stufe `push` oder `merge` sind erst beim Veroeffentlichen
+ * faellig.
  *
- * Der Nacht-Runner braucht sie an zwei Stellen: fuer die Salvage-Vorpruefung
- * (welche Kommandos laufen) und fuer den Start-Guard (gibt es ueberhaupt ein
- * Gate). Beide meinen die Paketstufe, denn beide urteilen ueber ein Arbeitspaket.
+ * Zweite Bedingung, die beiden Gruppen, die ein Abschlusslauf auslaesst (Issue #946,
+ * Plan #944, E3/E4): jeder Eintrag mit `nichtBeimAbschluss` und jeder mit `guete`-Block.
+ * Der eine traegt den Abschluss einer einzelnen Karte nicht, der andere gewinnt seinen
+ * Anteil aus der vollstaendigen Testmenge — aus einem verkuerzten Lauf waere es nicht
+ * dieselbe Zahl, sondern eine andere Groesse mit demselben Namen.
+ *
+ * Der Nacht-Runner liest daraus an drei Stellen, und alle drei meinen denselben Umfang:
+ *   - die NACHPRUEFUNG (`nachpruefLaufen` / `bewertePruefung`) und die
+ *     SALVAGE-VORPRUEFUNG (`runBuildChecksSync`) vollziehen einen Abschluss nach, den
+ *     sie nicht glauben koennen. Faehren sie MEHR als er, waere das ein zweiter Weg ueber
+ *     denselben Vorgang — und er kostete nachts gerade die teuerste Gruppe, also dort,
+ *     wo die Zeit am knappsten ist (PO-Antwort 3 des Fachplans #938).
+ *   - der START-GUARD fragt, ob die naechtliche Umsetzung ueberhaupt ein Gate hat.
+ *     Zaehlte er Eintraege mit, die der Abschluss nie faehrt, liesse er eine Config
+ *     durch, in der sie keines hat.
  */
 // SYNC: derselbe Default steht in kit/checks.mjs (normalisiere) und wird in
-// kit/einstellungen.mjs geprueft.
+// kit/einstellungen.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
+// (`verteilen` im Abschlusslauf) und dieselbe Bedingung `pruefeAbschlussGate`.
 function paketstufenChecks(cfg) {
   return (cfg.buildChecks || []).filter((eintrag) => {
-    const stufe = typeof eintrag === "string" ? undefined : eintrag.stufe;
-    return (stufe ?? "paket") === "paket";
+    if (typeof eintrag === "string") return true;
+    if ((eintrag.stufe ?? "paket") !== "paket") return false;
+    return !eintrag.nichtBeimAbschluss && !eintrag.guete;
   });
 }
 
@@ -4173,6 +4194,13 @@ function paketstufenChecks(cfg) {
 // Paketstufe. Eintraege mit `stufe` push oder merge sind erst beim Veroeffentlichen
 // faellig; liefen sie hier mit, wartete jeder Rettungsversuch auf Pruefungen, die
 // ihn nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
+//
+// Aus demselben Grund bleiben `nichtBeimAbschluss` und die Guetemessung aussen vor
+// (Plan #944, E14): Die Vorpruefung vollzieht den Abschluss nach, den die Session nicht
+// zustande gebracht hat. Faehre sie mehr als er, waere sie STRENGER als das Gate, das
+// sie ersetzt — und sie kostete gerade die Gruppe, die wegen ihrer Laufzeit vom Abschluss
+// ausgenommen wurde. Die Marke ist damit nicht aufgegeben, sondern verschoben: Vor dem
+// Veroeffentlichen laeuft die Messung immer.
 //
 // Die Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
 // meinen hier alle dasselbe — nur Kommando, Stufe und Guetemessung zaehlen.
@@ -4272,6 +4300,12 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
   // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
   // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
   // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
+  //
+  // Seit Plan #944, E14 erreicht `runBuildChecksSync` kein Eintrag mit `guete` mehr:
+  // `paketstufenChecks` laesst ihn als Teil des Abschlussumfangs aus. Der Zweig bleibt,
+  // weil er die einzige Stelle ist, die `gueteAuswerten` hier ueberhaupt anwendet — und
+  // `gueteAuswerten` bleibt, weil test/guete-wertung-sync.test.mjs sie an die Fassung in
+  // checks.mjs bindet. Wer den Umfang je wieder weitet, hat die Wertung schon.
   const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
   if (!guete) return { bestanden: true, zeilen: "" };
 
@@ -5132,14 +5166,20 @@ export function vorbereiten(args) {
   // Nachts ohne Gate zu implementieren ist riskant; ein Lauf, der nichts baut, hebt die
   // Pflicht ueber `noChecksOk` auf (so machen es die Folgepakete fuer die Kette).
   //
-  // Gezaehlt wird die Paketstufe und nicht die Listenlaenge (Plan #753, E14): Eine
-  // gefuellte Liste aus lauter Push-Pruefungen liefe hier sonst durch, obwohl die
-  // Umsetzung eines Arbeitspakets damit kein einziges Gate haette — genau der
-  // Zustand, den dieser Guard verhindern soll. Die Meldung nennt deshalb den Grund
-  // und nicht nur "leer": Wer drei Eintraege in seiner Config sieht, sucht bei einem
-  // blossen "ist leer" an der falschen Stelle.
+  // Gezaehlt wird, was der ABSCHLUSS einer Karte faehrt, und nicht die Listenlaenge
+  // (Plan #753, E14; Plan #944, E14): Eine gefuellte Liste aus lauter Push-Pruefungen
+  // liefe hier sonst durch, ebenso eine, in der jeder Paketstufen-Eintrag
+  // `nichtBeimAbschluss` oder eine Guetemessung traegt — obwohl die Umsetzung eines
+  // Arbeitspakets damit kein einziges Gate haette, genau der Zustand, den dieser Guard
+  // verhindern soll. Die Meldung nennt deshalb alle drei Gruende und nicht nur "leer":
+  // Wer drei Eintraege in seiner Config sieht, sucht bei einem blossen "ist leer" an der
+  // falschen Stelle.
+  //
+  // Dies ist der Halt, dem kit/einstellungen.mjs dieselbe Bedingung als WARNUNG vor dem
+  // Speichern gegenueberstellt (Issue #949): Die Config bleibt speicherbar, nachts
+  // implementiert wird auf ihr nicht.
   if (paketstufenChecks(config).length === 0 && !args.noChecksOk) {
-    fail("buildChecks in workflow.config.json ist leer an der Paketstufe — keine Pruefung traegt die Stufe 'paket', und damit hat die Umsetzung nachts kein Gate. Eintraege mit stufe 'push' oder 'merge' laufen erst beim Veroeffentlichen. Override: --no-checks-ok", "zustand");
+    fail("buildChecks in workflow.config.json traegt keine Pruefung, die beim Abschluss eines Arbeitspakets laeuft — damit hat die Umsetzung nachts kein Gate. Gezaehlt wird die Paketstufe ohne 'nichtBeimAbschluss' und ohne 'guete'-Block: Eintraege mit stufe 'push' oder 'merge' laufen erst beim Veroeffentlichen, Eintraege mit 'nichtBeimAbschluss' ebenso, und eine Guetemessung braucht die vollstaendige Testmenge. Override: --no-checks-ok", "zustand");
   }
   // Nach den bestehenden Vorfluegen (Issue #712): eine Warnzeile je nicht erreichbarer
   // Stufe, ohne den Lauf aufzuhalten.

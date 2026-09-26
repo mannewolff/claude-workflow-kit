@@ -87,7 +87,9 @@ test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn dur
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 1, "ohne Gate darf nachts nicht implementiert werden");
-    assert.match(res.stderr, /buildChecks .* ist leer[\s\S]*--no-checks-ok/);
+    // Dieselbe Meldung wie fuer jede andere Config ohne Gate (Issue #950): Die leere
+    // Liste ist kein eigener Befund, sondern ihr Grenzfall.
+    assert.match(res.stderr, /buildChecks [\s\S]*keine Pruefung, die beim Abschluss[\s\S]*--no-checks-ok/);
 
     // Mit dem Override laeuft derselbe Stand durch (Ready ist leer -> nichts zu tun).
     const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
@@ -113,6 +115,48 @@ test("[night-48] Vorflug: ohne Pruefung der Paketstufe stoppt der Lauf mit diese
 
     const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(ok.status, 0, `mit --no-checks-ok haette der Lauf durchgehen muessen: ${ok.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Dieselbe Falle eine Ebene tiefer (Issue #950, Plan #944, E14): Die Eintraege TRAGEN
+// hier die Paketstufe, laufen beim Abschluss einer Karte aber nicht — der eine wegen
+// `nichtBeimAbschluss`, der andere, weil eine Guetemessung die vollstaendige Testmenge
+// braucht. Zaehlte der Guard sie mit, ginge eine Config durch, in der die naechtliche
+// Umsetzung kein einziges Gate hat.
+test("[night-950] Vorflug: traegt jeder Paketstufen-Eintrag nichtBeimAbschluss oder guete, stoppt der Lauf", NUR_POSIX, () => {
+  const buildChecks = [
+    { cmd: "true", nichtBeimAbschluss: "zusammenspiel" },
+    { cmd: "true", guete: { muster: String.raw`\((\d+)%\)`, marke: 80 } },
+  ];
+  const dir = setupProjekt("night-guard-abschluss-", { buildChecks });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 1, "ohne Pruefung, die beim Abschluss laeuft, darf nachts nicht implementiert werden");
+    assert.match(res.stderr, /Paketstufe/, "die Meldung nennt die Paketstufe nicht");
+    assert.match(res.stderr, /nichtBeimAbschluss/, "die Meldung nennt die Achse nicht als Grund");
+    assert.match(res.stderr, /guete/, "die Meldung nennt die Guetemessung nicht als Grund");
+    assert.match(res.stderr, /--no-checks-ok/, "der Override wird nicht genannt");
+
+    const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(ok.status, 0, `mit --no-checks-ok haette der Lauf durchgehen muessen: ${ok.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Gegenprobe: Ein einziger Eintrag, der beim Abschluss laeuft, genuegt — die beiden
+// ausgelassenen daneben aendern daran nichts.
+test("[night-950] Vorflug: ein Paketstufen-Eintrag ohne beides ist das Gate, der Lauf startet", NUR_POSIX, () => {
+  const buildChecks = [
+    { cmd: "true", nichtBeimAbschluss: "volleTestmenge" },
+    "true",
+  ];
+  const dir = setupProjekt("night-guard-abschluss-ok-", { buildChecks });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `der Lauf haette starten muessen: ${res.stderr}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

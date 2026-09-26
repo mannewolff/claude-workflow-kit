@@ -131,6 +131,20 @@ test("[night-926] auch --frisch ist ein Abschlussversuch, ein --bereich-Lauf kei
   assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --bereich board").abschluss, { anzahl: 0, dauerMs: 0 });
 });
 
+// Die Zuordnung darf nicht daran kippen, dass der Abschlusslauf jetzt einen eigenen
+// Schalter traegt (Issue #950, Plan #944): `--abschluss` ist genau der Lauf, den dieser
+// Block zaehlen soll, und die Nummer der Karte dahinter aendert daran nichts. Ohne
+// diesen Test wuerde eine spaetere Verschaerfung der Erkennung ("nur `run` ohne weitere
+// Worte") den Abschlussversuch unbemerkt aus der Zaehlung nehmen.
+test("[night-950] --abschluss bleibt ein Abschlussversuch, mit und ohne Kartennummer", () => {
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss 950").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.equal(einAufruf("node .claude/kit/checks.mjs run --abschluss 950").anzahl, 0,
+    "der Abschlussversuch darf auch mit Schalter nicht in der Arbeit stehen");
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss 950 --bereich board").abschluss,
+    { anzahl: 0, dauerMs: 0 }, "ein Bereichslauf bleibt ein Bereichslauf, auch neben --abschluss");
+});
+
 test("[night-926] zwei Abschlussversuche einer Session addieren Zahl und Spannen", () => {
   const erg = beobachte([
     [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],

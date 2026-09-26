@@ -37,9 +37,15 @@ const NUR_POSIX = process.platform === "win32"
 const MISST_84 = `node -e "console.log('Killed 42 (84%)')"`;
 const MUSTER = String.raw`\((\d+)%\)`;
 
+// Das Gate des Abschlusses: ein Paketstufen-Eintrag, der weder eine Guetemessung noch
+// `nichtBeimAbschluss` traegt. Ohne ihn startet der Nacht-Runner nicht (Issue #950), und
+// er steht in BEIDEN Konfigurationen, damit sie bis auf das guete-Feld gleich bleiben —
+// der dritte Test vergleicht sie.
+const GATE = { cmd: "true", always: true };
+
 /** Dasselbe Kommando einmal als Guetemessung und einmal als gewoehnliche Pruefung. */
-const MIT_GUETE = [{ cmd: MISST_84, always: true, guete: { muster: MUSTER, marke: 80 } }];
-const OHNE_GUETE = [{ cmd: MISST_84, always: true }];
+const MIT_GUETE = [{ cmd: MISST_84, always: true, guete: { muster: MUSTER, marke: 80 } }, GATE];
+const OHNE_GUETE = [{ cmd: MISST_84, always: true }, GATE];
 
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, {
