@@ -304,6 +304,65 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 
 **Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
 
+### Abschluss und Veröffentlichen: `nichtBeimAbschluss`
+
+Die Staffelung oben verschiebt eine **ganze Prüfung** an einen späteren Zeitpunkt. Manchmal ist die Prüfung aber am Zeitpunkt richtig und nur ihr *Umfang* zu groß: Die Modultests eines Arbeitspakets sagen, ob dieses Paket trägt — die Integrationstests sagen, ob die Teile zusammenpassen, und das ist beim Abschluss einer einzelnen Karte noch keine Frage. Ein `buildChecks`-Eintrag der Paketstufe kann deshalb sagen, **warum** er den Abschluss einer einzelnen Karte nicht tragen muss:
+
+```json
+{
+  "buildChecks": [
+    { "cmd": "mvn -q test", "areas": ["backend"] },
+    {
+      "cmd": "mvn -q verify -DskipUnitTests",
+      "areas": ["backend"],
+      "nichtBeimAbschluss": "zusammenspiel"
+    },
+    {
+      "cmd": "mvn -q verify jacoco:check",
+      "areas": ["backend"],
+      "nichtBeimAbschluss": "volleTestmenge"
+    }
+  ]
+}
+```
+
+Die Modultests (surefire) laufen beim Abschluss jeder Karte. Die Integrationstests (failsafe) und die Abdeckungsschwelle (jacoco) laufen erst beim Veröffentlichen — die einen, weil sie das Zusammenspiel mehrerer Teile prüfen, die anderen, weil eine Abdeckungszahl über einem halben Stand nichts aussagt.
+
+| Wert | Bedeutung |
+| --- | --- |
+| `zusammenspiel` | Die Prüfung prüft das Zusammenspiel mehrerer Teile. |
+| `volleTestmenge` | Die Prüfung gewinnt ihren Befund nur aus der vollständigen Testmenge. |
+
+**Nur der Abschlusslauf lässt aus.** Die Achse wirkt allein, wenn der Aufruf `--abschluss <kartennummer>` trägt — den setzen die implement-Skills beim Abschluss genau einer Karte, und nur sie. `/local-check`, das Commit-Gate, die Nachprüfung des Nacht-Runners und jeder Lauf von Hand fahren die Prüfung mit. Die Kartennummer ist Pflicht, weil die [mittlere Prüfzeit je Karte](#was-die-verkleinerung-einbringt-die-mittlere-prüfzeit-je-karte) sie braucht.
+
+**Verschoben, nicht erlassen.** Jede so ausgelassene Prüfung läuft **vor dem Veröffentlichen** in `/push-main`, dort im vollen Umfang. Im Bericht des Abschlusslaufs steht sie als Auslassung mit ihrem Grund — kein Mangel, sondern ihr Zeitpunkt.
+
+**Nur an der Stufe `paket` sinnvoll.** An `push` oder `merge` läuft die Prüfung beim Abschluss ohnehin nicht; die Kombination weist `checks.mjs` beim Start ab, statt still das eine gegen das andere zu wählen. Ebenso abgewiesen wird eine Konfiguration, in der **jeder** Eintrag der Paketstufe die Achse oder einen `guete`-Block trägt: Dann hätte der Abschluss einer Karte kein Gate mehr.
+
+**Ein fehlendes Feld bedeutet unverändertes Verhalten.** Wer nichts hinschreibt, merkt von der Achse nichts — und wer seine Tests nicht nach Art getrennt aufrufbar hat, bekommt weiterhin den bisherigen Umfang. Die Achse gilt teamweit; ein abweichender Wert in `workflow.config.local.json` bleibt unwirksam.
+
+### Wer war es? Die Verursachersuche
+
+Weil der Abschluss einer Karte weniger prüft, schlägt eine verschobene Prüfung erst vor dem Push an — also zu einem Zeitpunkt, an dem mehrere fertige Karten übereinanderliegen. Damit niemand die Ursache von Hand sucht, nennt ein **roter Lauf mit `--stufe push`** von sich aus die Karten, deren Änderung die fehlschlagende Prüfung berührt:
+
+```
+Verursacher (mvn -q verify -DskipUnitTests): Issue #902 (a1b2c3d), Issue #901 (e4f5a6b)
+```
+
+Gesucht wird im Fenster `<Anker>..HEAD` — der Anker ist der `--since`-Wert, den `/push-main` als `git merge-base HEAD origin/<mainBranch>` übergibt. Die Kartennummer liest der Lauf aus der **Commit-Botschaft**: `(Issue #<n>)` im Betreff, wie die implement-Skills ihn schreiben, ergänzend `Refs #<n>` im Rumpf; der Betreff gewinnt. Ein Blick aufs Board findet bewusst nicht statt — `checks.mjs` läuft im Commit-Gate und in jeder Session und kommt ohne Netz aus. Der Preis ist der Commit ohne erkennbare Nummer: Er erscheint als `Commit ohne Karte <sha>` und verschwindet nicht.
+
+Berührt wird großzügig bestimmt, in derselben Richtung wie die Auswahl des Prüflaufs selbst: Eine Prüfung ohne `areas` gilt als von jeder Karte berührt, und eine Karte mit einer Datei ohne Bereichsmuster als Verdächtige für jede Prüfung. Bei Mehrdeutigkeit stehen **alle** Kandidaten da. Findet sich keine Karte oder lässt sich der Anker nicht auflösen, steht dort ein **Satz** statt einer Liste — „keine gefunden" und „nicht bestimmbar" sind Verschiedenes. Die Freigabestufe (`--stufe merge`) sucht nicht: Dort ist die Basis `HEAD` selbst, und das Fenster wäre leer.
+
+**Die Reparatur ist eine neue Karte.** Die genannte Karte wandert nicht aus *In review* zurück — sie ist fertig und geprüft, gefunden wurde etwas am Zusammenspiel. Die Verursacherliste ist eine Spur, kein Urteil.
+
+### Was die Verkleinerung einbringt: die mittlere Prüfzeit je Karte
+
+Ob der kleinere Abschlussumfang etwas bringt, sagt die Wirksamkeits-Auswertung (`node .claude/kit/wirksamkeit.mjs auswerten`). Ihr Bericht `.claude/wirksamkeit.md` trägt dafür einen eigenen Block **„Mittlere Prüfzeit je Karte"**: die gemessene Zeit je Karte, gerechnet über alle **Abschlussläufe** dieser Karte, daneben der Vergleichswert, den dieselben Läufe ohne die Auslassungen gekostet hätten, und je ausgelassener Prüfung eine Zeile, was sie beim Veröffentlichen im Mittel kostete.
+
+Die Bezugsgröße ist die **Karte**, nicht der Lauf — eine Karte, die dreimal abschließt, zählt einmal mit der Summe ihrer Läufe. Und es zählen **nur Abschlussläufe**: Prüfzeiten während der Arbeit und beim Veröffentlichen bleiben draußen. Fehlt die Grundlage — keine Abschlusszeile mit Kartennummer im Fenster, oder eine ausgelassene Prüfung, die beim Veröffentlichen nie lief —, steht dort „nicht gemessen" und keine 0.
+
+Wie der übrige Bericht ist der Block eine Auskunft: Er hält nichts auf und ist **kein Gate**.
+
 ### Fehlermerkmale in der Ausgabe
 
 `checks.mjs run` liest nicht nur den **Rückgabewert** eines Prüfkommandos, sondern auch seine **Ausgabe**. Trägt sie eines der Merkmale `[ERROR]` oder `BUILD FAILURE`, gilt die Prüfung als **rot** — auch dann, wenn das Kommando mit 0 endete. Der Lauf bricht ab wie bei jedem roten Check, die Ausgabe nennt das getroffene Merkmal, und die Zusammenfassung trägt es am Eintrag als Feld `fehlermerkmal`.
