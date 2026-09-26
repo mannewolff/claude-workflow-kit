@@ -224,6 +224,61 @@ test("guete: die Pflichtfelder und die Grenzen stehen am Feld im Schema", () => 
   assert.equal(feld.properties.marke.maximum, 100, "die Obergrenze 100 fehlt");
 });
 
+// --- Die vierte Achse: nichtBeimAbschluss (Issue #949) ---
+//
+// Sie sagt nicht, OB und nicht, WANN eine Pruefung laeuft, sondern WARUM sie den
+// Abschluss eines einzelnen Arbeitspakets nicht tragen muss. Eine geschlossene
+// Werteliste und kein Freitext: Der Wert steht im Auslassungsgrund und wird gelesen.
+
+test("nichtBeimAbschluss: die beiden Werte sind gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "zusammenspiel" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "volleTestmenge" }), []);
+});
+
+test("nichtBeimAbschluss: ein Wert ausserhalb der Liste ist ungueltig", () => {
+  // Der eigentliche Zweck des enum. Ein 'abends' liesse die Pruefung beim Abschluss
+  // still weiterlaufen — oder, schlimmer, still ausfallen.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "abends" }), []);
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: true }), []);
+});
+
+test("nichtBeimAbschluss: die Achse steht neben areas, always und stufe", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", areas: ["backend"], nichtBeimAbschluss: "zusammenspiel" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", always: true, stufe: "paket", nichtBeimAbschluss: "volleTestmenge" }), []);
+});
+
+test("nichtBeimAbschluss: ein Eintrag ohne die Achse bleibt gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: fehlendes Feld = unveraendertes Verhalten.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test", stufe: "push" }), []);
+});
+
+test("nichtBeimAbschluss: das enum steht am Feld im Schema", () => {
+  const feld = eintragSchema.oneOf.find((z) => z.type === "object")?.properties?.nichtBeimAbschluss;
+  assert.ok(feld, "das Feld 'nichtBeimAbschluss' fehlt in der Objektform von buildChecks");
+  assert.deepEqual(feld.enum, ["zusammenspiel", "volleTestmenge"], "die beiden Werte stimmen nicht");
+  assert.equal(feld.type, "string", "das Feld ist kein String");
+});
+
+test("nichtBeimAbschluss: die Beschreibung nennt --abschluss, das fehlende Feld und die Teamweit-Formel", () => {
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.nichtBeimAbschluss.description;
+  assert.ok(text, "das Feld hat keine description");
+  assert.match(text, /--abschluss/, "der Schalter steht nicht in der Beschreibung");
+  assert.match(text, /fehlendes Feld/i, "was ein fehlendes Feld bedeutet, steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel"
+  );
+});
+
+test("nichtBeimAbschluss: die Beschreibung des Eintrags zaehlt die Achse mit auf", () => {
+  // Die Aufzaehlung der Achsen ist der einzige Ort, an dem ein Leser der Config
+  // erfaehrt, dass es sie gibt — eine unvollstaendige Aufzaehlung ist schlimmer
+  // als keine.
+  assert.match(eintragSchema.description, /nichtBeimAbschluss/,
+    "die Beschreibung des Eintrags nennt die vierte Achse nicht");
+});
+
 test("guete: die Beschreibung nennt den einen Eintrag, die Stufengrenze und die Teamweit-Formel", () => {
   // JSON kennt keine Kommentare — wer die Config vor sich hat, liest die drei
   // Regeln nur hier. Sie stehen im Block und nicht am Feld marke: Es sind
