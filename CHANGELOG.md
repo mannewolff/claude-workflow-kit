@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.4] - 2026-09-26
+- Prozesstext und Doku beschreiben den Abschlussumfang (#953)
+- Die implement-Skills rufen den Prueflauf mit --abschluss (#952)
+- Die Wirksamkeit weist die mittlere Pruefzeit je Karte aus (#951)
+- Der Nacht-Runner faehrt denselben Abschlussumfang (#950)
+- Die Einstellungen kennen die Achse nichtBeimAbschluss (#949)
+- Das Ausfuehrungsprotokoll fuehrt Anlass, Lauf und Karte (#948)
+- Der rote Prueflauf vor dem Push nennt die Verursacher (#947)
+- Der Abschlusslauf laesst Pruefungen mit nichtBeimAbschluss aus (#946)
+
 ## [3.3.3] - 2026-09-26
 - Die Verflechtung unterscheidet Geruest von Kopplung (#943)
 - Die Invariante deckt wieder nur kit/ und tools/ (#937)
