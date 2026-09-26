@@ -81,6 +81,15 @@
  * `--abschluss [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
  * bleibt sie aus, samt Guetemessung, und vor dem Veroeffentlichen laeuft beides wieder.
  *
+ * Haelt der Lauf an der PUSH-STUFE an, nennt er zu jeder roten Pruefung die Karten, die
+ * sie beruehrt haben (Issue #947, AK 4 des Fachplans #938) — gelesen aus den Commits
+ * `<basis>..HEAD`, mit der Kartennummer aus der Commit-Botschaft und ohne Board und ohne
+ * Netz (E6). Der Anker ist der `--since`-Wert des Laufs, den `/push-main` schon heute als
+ * `git merge-base HEAD origin/<mainBranch>` uebergibt (E5). Nur an dieser Stufe: An der
+ * Freigabe ist die Basis `HEAD` selbst, und `<basis>..HEAD` waere leer. Die Suche ist
+ * Buchhaltung ueber einen bereits gefallenen Befund — ihr eigenes Scheitern steht als
+ * Grund an der Stelle der Karten und aendert am Ausgang des Laufs nichts.
+ *
  * Auch hier ist die Richtung einseitig: Wer `--abschluss` VERGISST, prueft mehr. Darum
  * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
@@ -252,6 +261,15 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
       vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
       mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
+      An der Stufe 'push' nennt ein roter Lauf die VERURSACHER: die Karten, deren
+      Commits seit dem Anker einen Bereich der roten Pruefung beruehrt haben,
+      gelesen aus '(Issue #<n>)' im Betreff und 'Refs #<n>' im Rumpf. Ein Commit
+      ohne erkennbare Nummer erscheint mit seiner Kurz-SHA, eine Pruefung ohne
+      Bereichszuordnung gilt als von jeder Karte beruehrt. Beruehrt keine Karte
+      die Pruefung, steht das als Satz da und nicht als leere Liste; laesst sich
+      der Anker nicht aufloesen oder scheitert ein git-Aufruf, steht der Grund an
+      derselben Stelle. Die Suche erklaert einen gefallenen Befund und aendert am
+      Ausgang des Laufs nichts.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -1251,6 +1269,10 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
     abgeschlossen: true,
     dauerGesamtMs: frueher.dauerGesamtMs ?? null,
     ...(frueher.guete ? { guete: frueher.guete } : {}),
+    // Die Verursacher werden mitgereicht wie die Guete (Issue #947): Derselbe Stand hat
+    // dieselben Karten hinter sich, und ein uebernommener roter Lauf ohne das Feld sahe
+    // aus, als waere die Frage nie gestellt worden.
+    ...(frueher.verursacher ? { verursacher: frueher.verursacher } : {}),
     uebernommen: original,
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
@@ -1296,6 +1318,180 @@ function bewerten(eintrag, gruen, ausgabe) {
   const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
   process.stdout.write(`${gueteZeile(guete)}\n`);
   return { bestanden: bestanden && guete.erfuellt, guete };
+}
+
+// --- Verursachersuche (Issue #947) -----------------------------------------
+
+/**
+ * Trennzeichen fuer die Ausgabe von `git log`. Zwei Steuerzeichen und kein Text:
+ * Betreff und Rumpf einer Commit-Botschaft sind frei geschriebene Prosa, und jedes
+ * druckbare Trennzeichen kaeme darin irgendwann selbst vor. Der Rumpf traegt eigene
+ * Zeilenumbrueche — deshalb braucht es neben dem Feldtrenner einen Satztrenner.
+ */
+const LOG_FELD = "\x1f";
+const LOG_SATZ = "\x1e";
+
+/** Der Grund eines gescheiterten git-Aufrufs; ein stummes Scheitern nennt seinen Rueckgabewert. */
+function gitGrund(res) {
+  const text = (res.stderr || "").trim();
+  return text !== "" ? text : `Rueckgabewert ${res.status}`;
+}
+
+/**
+ * Die Kartennummer einer Commit-Botschaft oder `null` (Plan #944, E6).
+ *
+ * Zwei Muster, in dieser Reihenfolge: `(Issue #<n>)` im Betreff, wie der
+ * implement-Skill ihn schreibt, und ergaenzend `Refs #<n>` im Rumpf. Der Betreff
+ * gewinnt — er ist die Zeile, die den Commit benennt, waehrend ein `Refs` im Rumpf
+ * auch auf ein Nachbar-Issue zeigen kann.
+ *
+ * Bewusst KEIN Blick aufs Board (E6): `checks.mjs` laeuft im Commit-Gate und in jeder
+ * Session und kommt ohne Board und ohne Netz aus. Der Preis ist der Commit ohne
+ * erkennbare Nummer — und der verschwindet nicht, sondern erscheint mit seiner Kurz-SHA.
+ */
+function kartennummerAusBotschaft(betreff, rumpf) {
+  const imBetreff = /\(Issue #(\d+)\)/.exec(betreff);
+  if (imBetreff !== null) return imBetreff[1];
+  const imRumpf = /(?:^|\s)Refs #(\d+)/.exec(rumpf);
+  return imRumpf === null ? null : imRumpf[1];
+}
+
+/** Die Commits des Fensters `<basis>..HEAD`, juengster zuerst — oder ein Grund, warum nicht. */
+function commitsSeit(basis) {
+  const res = git("log", `--format=%h${LOG_FELD}%s${LOG_FELD}%b${LOG_SATZ}`, `${basis}..HEAD`);
+  if (res.status !== 0) return { fehler: `git log ${basis}..HEAD schlug fehl: ${gitGrund(res)}` };
+  const commits = [];
+  for (const satz of res.stdout.split(LOG_SATZ)) {
+    if (satz.trim() === "") continue;
+    const [sha, betreff, rumpf = ""] = satz.replace(/^\n+/, "").split(LOG_FELD);
+    commits.push({ sha, karte: kartennummerAusBotschaft(betreff, rumpf) });
+  }
+  return { commits };
+}
+
+/**
+ * Die Dateien eines Commits. `-z` statt der zitierten Vorgabeform, damit ein Pfad mit
+ * Umlaut oder Leerzeichen roh ankommt und sein Muster findet.
+ *
+ * Ein Merge-Commit listet hier nichts (der Diff haette zwei Eltern) und beruehrt damit
+ * keinen Bereich. Das ist hingenommen: Ein Merge traegt keine Kartennummer, und die
+ * Aenderungen, die er zusammenfuehrt, stehen als eigene Commits im Fenster.
+ */
+function dateienDesCommits(sha) {
+  const res = git("show", "--name-only", "--format=", "-z", sha);
+  if (res.status !== 0) return { fehler: `git show ${sha} schlug fehl: ${gitGrund(res)}` };
+  const dateien = res.stdout
+    .split("\0")
+    .filter((pfad) => pfad !== "")
+    .map((pfad) => pfad.replaceAll("\\", "/"));
+  return { dateien };
+}
+
+/**
+ * Fasst die Commits des Fensters zu Karten zusammen: eine Gruppe je Kartennummer, und
+ * ein Commit ohne Nummer bildet seine eigene. Die Reihenfolge ist die von `git log` —
+ * juengster zuerst, weil der letzte Stand der naechstliegende Verdacht ist.
+ */
+function kartenGruppen(basis) {
+  const log = commitsSeit(basis);
+  if (log.fehler !== undefined) return { fehler: log.fehler };
+  const gruppen = [];
+  const nachKarte = new Map();
+  for (const { sha, karte } of log.commits) {
+    let gruppe = karte === null ? undefined : nachKarte.get(karte);
+    if (gruppe === undefined) {
+      gruppe = { karte, shas: [], dateien: new Set() };
+      gruppen.push(gruppe);
+      if (karte !== null) nachKarte.set(karte, gruppe);
+    }
+    gruppe.shas.push(sha);
+    const stand = dateienDesCommits(sha);
+    if (stand.fehler !== undefined) return { fehler: stand.fehler };
+    for (const pfad of stand.dateien) gruppe.dateien.add(pfad);
+  }
+  return { gruppen };
+}
+
+/**
+ * Ob eine Karte als Verursacherin der roten Pruefung gilt (Plan #944, E7).
+ *
+ * Grosszuegig, in derselben Richtung wie der Prueflauf selbst: Eine Pruefung ohne
+ * Bereichszuordnung ist von jeder Aenderung betroffen — das ist die Bedeutung der Form —,
+ * und eine Karte mit einer Datei ohne Muster loest im Prueflauf den vollen Umfang aus,
+ * gilt hier also fuer jede rote Pruefung als beruehrt. Keine Karte zu nennen behauptete,
+ * es gebe keinen Verdaechtigen; AK 4 verlangt bei Mehrdeutigkeit ausdruecklich alle.
+ */
+function gruppeTrifft(check, gruppe) {
+  if (gruppe.ohneMuster !== null) return true;
+  if (check.always || !check.areas) return true;
+  return check.areas.some((name) => gruppe.beruehrt.has(name));
+}
+
+/**
+ * Die Karten, die eine rote Pruefung des Push-Laufs beruehrt haben (Issue #947, AK 4
+ * des Fachplans #938).
+ *
+ * Nur bei `--stufe push`, und nur zu einem roten Befund:
+ *   - Der Anker ist der `--since`-Wert des Laufs, den `/push-main` schon heute als
+ *     `git merge-base HEAD origin/<mainBranch>` uebergibt (E5). Eine eigene Marke im
+ *     Projekt waere dieselbe Wahrheit an einem zweiten Ort und liefe auseinander.
+ *   - Die Freigabestufe hat keinen solchen Anker (E5): `/merge-production` legt den
+ *     Worktree auf `origin/<mainBranch>`, die Basis ist `HEAD` selbst, und
+ *     `<basis>..HEAD` waere leer. Dort brauchte die Suche `origin/<productionBranch>`,
+ *     und das ist eine andere Frage als diese.
+ *   - Ohne roten Befund gibt es nichts zu erklaeren.
+ *
+ * Je roter Pruefung steht entweder eine nichtleere Kartenliste oder ein `hinweis` —
+ * nie eine leere Liste: "keine gefunden" und "nicht bestimmbar" sind Verschiedenes, und
+ * eine leere Liste liesse sich als beides lesen.
+ *
+ * Bei `vollerUmfang` laeuft die Suche nicht (E7): An der Push-Stufe entsteht das Feld
+ * allein aus einem nicht aufloesbaren Anker, und dann hat `<basis>..HEAD` keinen linken
+ * Rand — es gibt keine Menge "seit dem Anker", aus der alle genannt werden koennten.
+ * `auswahl.basis` traegt in diesem Fall den `refText` des Aufrufs.
+ *
+ * Die Config wird hier erneut gelesen, weil die Eintraege der Zusammenfassung ihre
+ * `areas` nicht tragen — derselbe Weg wie in `configFingerabdruck`. Findet sich zu einem
+ * Kommando kein Eintrag, gilt es als nicht zugeordnet und damit als von jeder Karte
+ * beruehrt: die sichere Richtung, mehr nennen.
+ */
+function verursacherKarten(auswahl, roteEintraege) {
+  if (auswahl.stufe !== "push" || roteEintraege.length === 0) return null;
+  const alle = (hinweis) => roteEintraege.map((e) => ({ cmd: e.cmd, hinweis }));
+  if (auswahl.vollerUmfang) {
+    return alle(`Verursacher nicht bestimmbar: Anker '${auswahl.basis}' laesst sich nicht aufloesen`);
+  }
+
+  const ermittelt = kartenGruppen(auswahl.basis);
+  if (ermittelt.fehler !== undefined) return alle(`Verursacher nicht bestimmbar: ${ermittelt.fehler}`);
+
+  const config = ladeConfig();
+  const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
+  const bereichsdefinition = bereicheVorbereiten(config.checkAreas ?? {});
+  const freistellungen = freistellungenVorbereiten(config.ohnePruefung);
+  const gruppen = ermittelt.gruppen.map((gruppe) => ({
+    karte: gruppe.karte,
+    shas: gruppe.shas,
+    ...zuordnen([...gruppe.dateien], bereichsdefinition, freistellungen),
+  }));
+
+  return roteEintraege.map((e) => {
+    const check = checks.find((c) => c.cmd === e.cmd) ?? {};
+    const karten = gruppen
+      .filter((gruppe) => gruppeTrifft(check, gruppe))
+      .map((gruppe) => ({ karte: gruppe.karte, shas: gruppe.shas }));
+    return karten.length > 0
+      ? { cmd: e.cmd, karten }
+      : { cmd: e.cmd, hinweis: `Keine abgeschlossene Karte seit ${auswahl.basis} beruehrt diese Pruefung.` };
+  });
+}
+
+/** Die Verursacher einer roten Pruefung als eine Zeile fuer Menschen. */
+function verursacherText(eintrag) {
+  if (eintrag.hinweis !== undefined) return eintrag.hinweis;
+  return eintrag.karten
+    .map((k) => (k.karte === null ? `Commit ohne Karte ${k.shas.join(", ")}` : `Issue #${k.karte} (${k.shas.join(", ")})`))
+    .join(", ");
 }
 
 /**
@@ -1366,6 +1562,10 @@ function ausfuehren(args) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   let rot = false;
   let guete = null;
+  // Die Verursacher stehen erst am Ende fest (Issue #947): Vor dem roten Befund gibt es
+  // nichts zu erklaeren, und `schreibeStand` liest die Variable, statt sie zu bekommen —
+  // so traegt jede Fassung der Zusammenfassung den Stand, den sie bezeugt.
+  let verursacher = null;
 
   // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
   // vor dem ersten Kommando und wird vor jedem weiteren ueberschrieben, statt erst am
@@ -1385,6 +1585,7 @@ function ausfuehren(args) {
   const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
+    ...(verursacher ? { verursacher } : {}),
   });
   schreibeStand(false);
 
@@ -1407,6 +1608,15 @@ function ausfuehren(args) {
     rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
+
+  // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
+  // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
+  // dann nicht, wenn ein git-Aufruf dabei scheitert. Dieselbe Haltung wie beim
+  // Ausfuehrungsprotokoll: Buchhaltung, keine Bedingung.
+  verursacher = verursacherKarten(auswahl, laufen.filter((e) => e.ergebnis === "rot"));
+  for (const e of verursacher ?? []) {
+    process.stdout.write(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
+  }
 
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
   // zu Ende gefahren. Auch bei rotem Abbruch geschrieben — und beim leeren Paket
