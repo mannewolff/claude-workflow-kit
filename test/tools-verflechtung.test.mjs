@@ -100,3 +100,72 @@ test("[931] der direkte Aufruf gibt die Tabelle aus", () => {
   assert.match(res.stdout, /test\/board-.*\.test\.mjs/, "die Ausgabe nennt keine Testdatei");
   assert.match(res.stdout, /kit\/board\.mjs/, "die Ausgabe nennt keine Quelldatei");
 });
+
+// --- Geruest statt Kopplung (Issue #943, Plan #930) ---
+//
+// Die Erhebung zaehlt jede Erwaehnung eines Quellpfads als Kopplung. Fuer die
+// Deckungsfrage der E4-Invariante irrt das in die sichere Richtung; fuer die Auswahl
+// nicht mehr: Die Nacht- und Pruef-Tests legen in ihren Wegwerf-Repositories eine
+// `.gitignore`, eine `README.md` und eine `workflow.config.json` an, ohne an ihnen etwas
+// zu pruefen. Wer das nicht unterscheiden kann, erzwingt breite `areas` — und eine
+// Auswahl, die alles zieht, waehlt nichts aus.
+//
+// Die Muster gelten gegen den Quellpfad, nicht gegen die Testdatei. Ausgeschlossen wird
+// damit, was als Geruest ERWAEHNT wird, nicht wer es erwaehnt: Eine Liste, die je
+// Testdatei entschiede, waere eine zweite Verflechtungstabelle neben der ersten.
+
+test("[943] ohne Musterliste bleibt die Tabelle die von heute", () => {
+  // Die Zeilenzahl gegen `git ls-files` statt gegen eine feste Zahl: Eine Zahl, die bei
+  // jeder neuen Testdatei mitgezogen wird, prueft nichts.
+  const versionierteTests = spawnSync("git", ["ls-files", "-z", "--", ":(glob)test/**/*.test.mjs"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+  }).stdout.split("\0").filter((p) => p.length > 0);
+  assert.equal(tabelle.size, versionierteTests.length, "die Erhebung deckt nicht jede versionierte Testdatei");
+
+  const leereListe = verflechtungErheben({ repoRoot, nurGeruest: [] });
+  assert.equal(leereListe.size, tabelle.size);
+  for (const [testdatei, quellen] of tabelle) {
+    assert.deepEqual(leereListe.get(testdatei), quellen, testdatei);
+  }
+
+  // Die drei benannten Eintraege sind die drei Belege aus Issue #943: ohne Liste zaehlen
+  // sie weiter als Kopplung, und genau das ist der unveraenderte Stand.
+  const nacht = tabelle.get("test/night-abschlussblock.test.mjs");
+  assert.ok(nacht, "test/night-abschlussblock.test.mjs fehlt in der Tabelle");
+  assert.ok(nacht.includes(".gitignore"), `.gitignore fehlt: ${nacht.join(", ")}`);
+  assert.ok(nacht.includes("README.md"), `README.md fehlt: ${nacht.join(", ")}`);
+  const einstellungen = tabelle.get("test/einstellungen-teile.test.mjs");
+  assert.ok(einstellungen.includes(".claude/workflow.config.json"), einstellungen.join(", "));
+});
+
+test("[943] ein Muster nimmt seinen Quellpfad aus jeder Zeile und laesst jede andere Zeile stehen", () => {
+  // `.gitignore` ist der groesste Posten des Bestands: 108 Testdateien nennen den Pfad,
+  // die allermeisten, weil sie sich eine eigene in einem Wegwerf-Repo anlegen. Hier steht
+  // er als Probe, nicht als Eintrag der Config — welche Muster das Projekt wirklich
+  // fuehrt, entscheidet die Messung in `.claude/workflow.config.json`.
+  const ohne = verflechtungErheben({ repoRoot, nurGeruest: [".gitignore"] });
+  assert.equal(ohne.size, tabelle.size, "die Zahl der Zeilen darf sich nicht aendern");
+
+  let betroffen = 0;
+  for (const [testdatei, quellen] of tabelle) {
+    const erwartet = quellen.filter((q) => q !== ".gitignore");
+    if (erwartet.length !== quellen.length) betroffen += 1;
+    assert.deepEqual(ohne.get(testdatei), erwartet, testdatei);
+  }
+  assert.ok(betroffen > 1, `nur ${betroffen} Zeile(n) betroffen — die Probe belegt nichts`);
+});
+
+test("[943] die Muster lesen sich wie die der Bereiche", () => {
+  // Dieselbe Glob-Aufloesung wie `checkAreas` und `ohnePruefung`, aus `kit/checks.mjs`
+  // geholt und nicht nachgebaut: Zwei Fassungen derselben Frage weichen ab dem ersten
+  // Sonderfall voneinander ab, und die Erhebung saehe dann etwas anderes als die Auswahl.
+  const ohneSkills = verflechtungErheben({ repoRoot, nurGeruest: ["skills/**"] });
+  const vorher = [...tabelle.values()].flat().filter((q) => q.startsWith("skills/"));
+  assert.ok(vorher.length > 0, "der Bestand kennt keine Kopplung an skills/ — die Probe belegt nichts");
+  assert.deepEqual(
+    [...ohneSkills.values()].flat().filter((q) => q.startsWith("skills/")),
+    [],
+    "das Muster skills/** hat nicht ueber die Segmentgrenze hinweg gegriffen",
+  );
+});

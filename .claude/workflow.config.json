@@ -217,6 +217,16 @@
       "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
     }
   ],
+  "nurGeruest": [
+    {
+      "muster": "package.json",
+      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/install-settings-hooks.test.mjs, test/install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
+    },
+    {
+      "muster": "CLAUDE.md",
+      "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
+    }
+  ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "night": {
     "kette": {

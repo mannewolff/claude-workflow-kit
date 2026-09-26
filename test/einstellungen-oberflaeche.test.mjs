@@ -435,8 +435,9 @@ test("[einstellungen-13] M4 zeichnet die Bereiche mit Mustern, Nutzung und der R
 test("[einstellungen-13] M4 bearbeitet seine Pfade in einem Teil und braucht keinen Folgepfad", () => {
   const m4 = TEILE.find((t) => t.kennung === "m4");
   // `ohnePruefung` kam mit Issue #934 dazu: dieselbe Frage wie die Bereiche — was eine
-  // geaenderte Datei ausloest —, deshalb derselbe Teil.
-  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung"]);
+  // geaenderte Datei ausloest —, deshalb derselbe Teil. `nurGeruest` (Issue #943) steht
+  // aus demselben Grund dort: Es entscheidet mit, welche Kopplung die Auswahl sieht.
+  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest"]);
   assert.equal(m4.folgen, undefined, "M4 nennt einen Folgepfad, obwohl es beide Pfade selbst bearbeitet");
   const pfade = new Set(aenderungsliste(
     { buildChecks: [{ cmd: "eslint", areas: ["alt"] }], checkAreas: { alt: ["x"] } },

@@ -465,6 +465,13 @@ Dateien, zu denen es ausdrücklich nichts zu prüfen gibt — die dritte Antwort
 - `ohnePruefung[].muster` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner.
 - `ohnePruefung[].grund` — Warum keine Prüfung den Inhalt dieser Datei liest. Steht in jedem Lauf im Bericht und ist Pflicht — ein Bereichsname könnte ihn nicht tragen.
 
+### `nurGeruest`
+
+Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Die Verflechtungserhebung (tools/verflechtung.mjs) zählt jede Erwähnung eines Quellpfads im Text einer Testdatei als Kopplung; für die Deckungsprüfung irrt das in die sichere Richtung, für die Auswahl der Prüfkommandos nicht mehr: Ein Test, der sich in einem Wegwerf-Repository eine eigene .gitignore oder package.json schreibt, ist damit nicht an die gleichnamige Datei dieses Projekts gekoppelt. Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung diesen Pfad liest; ohne Grund kein Eintrag. Das Muster gilt gegen den Quellpfad und damit für alle Testdateien zugleich: Was auch nur eine einzige Testdatei wirklich prüft, gehört nicht hierher — es einzutragen machte die Deckungsprüfung an dieser Stelle blind, und zwar still. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `nurGeruest[].muster` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner.
+- `nurGeruest[].grund` — Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Pflicht, und belegt statt behauptet: Die Stelle, an der nachgesehen wurde, gehört dazu.
+
 ### `mutationCommand`
 
 Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.

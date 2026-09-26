@@ -154,6 +154,31 @@
       },
       "default": []
     },
+    "nurGeruest": {
+      "type": "array",
+      "description": "Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Die Verflechtungserhebung (tools/verflechtung.mjs) zählt jede Erwähnung eines Quellpfads im Text einer Testdatei als Kopplung; für die Deckungsprüfung irrt das in die sichere Richtung, für die Auswahl der Prüfkommandos nicht mehr: Ein Test, der sich in einem Wegwerf-Repository eine eigene .gitignore oder package.json schreibt, ist damit nicht an die gleichnamige Datei dieses Projekts gekoppelt. Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung diesen Pfad liest; ohne Grund kein Eintrag. Das Muster gilt gegen den Quellpfad und damit für alle Testdateien zugleich: Was auch nur eine einzige Testdatei wirklich prüft, gehört nicht hierher — es einzutragen machte die Deckungsprüfung an dieser Stelle blind, und zwar still. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "muster": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pfadmuster wie in checkAreas: \"*\" innerhalb eines Segments, \"**\" über Segmentgrenzen hinweg, \"/\" als Trenner."
+          },
+          "grund": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Pflicht, und belegt statt behauptet: Die Stelle, an der nachgesehen wurde, gehört dazu."
+          }
+        },
+        "required": [
+          "muster",
+          "grund"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "mutationCommand": {
       "type": "string",
       "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",

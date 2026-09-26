@@ -107,6 +107,17 @@ const freistellungen = (config.ohnePruefung ?? []).map((eintrag) => ({
   regex: globZuRegex(eintrag.muster),
 }));
 
+/**
+ * Die Geruest-Liste der Config (Issue #943, Plan #930): Pfade, die Testdateien nur
+ * anlegen, ohne an ihnen etwas zu pruefen. Ihre Erwaehnung belegt keine Kopplung.
+ *
+ * Die Invariante weiter unten liest dieselbe Liste wie jede kuenftige
+ * areas-Berechnung — sonst pruefte sie eine andere Verflechtung als die, nach der
+ * ausgewaehlt wird, und diese Zweiteilung ist genau das, was die Liste verhindert.
+ */
+const geruestMuster = (config.nurGeruest ?? []).map((eintrag) => eintrag.muster);
+const geruestRegexe = geruestMuster.map((muster) => globZuRegex(muster));
+
 test("jede versionierte Quelldatei liegt in mindestens einem Teil", () => {
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
   assert.ok(bereiche.length > 0, ".claude/workflow.config.json traegt keine checkAreas");
@@ -179,12 +190,16 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
   // 83 s statt 3 s (Referenzmessung R4 an Issue #937).
   //
   // Der Zielkonflikt ist nicht hier zu loesen: Invariante scharf heisst `areas`
-  // breit heisst Auswahl wirkungslos. Erst wenn die Erhebung Geruest von Kopplung
-  // unterscheidet (Issue #943), laesst sich beides zugleich haben. Bis dahin bleibt
-  // die Luecke ausserhalb der beiden Verzeichnisse bewusst offen — sie war es vor
-  // Issue #936 auch, und sie kostet nichts, waehrend die Ausweitung 80 Sekunden je
-  // Doku-Aenderung kostete.
-  const tabelle = verflechtungErheben({ repoRoot });
+  // breit heisst Auswahl wirkungslos. Seit Issue #943 kann die Erhebung Geruest von
+  // Kopplung unterscheiden, und sie misst hier mit derselben Liste, nach der auch
+  // ausgewaehlt wird. Die Liste allein macht die Ausweitung aber noch nicht moeglich:
+  // Ein Muster gilt gegen den Quellpfad, also fuer ALLE Zeilen — und `.gitignore`,
+  // `README.md` und `.claude/workflow.config.json` werden je von mindestens einer
+  // Testdatei wirklich geprueft (Messung an Issue #943). Sie aufzunehmen machte die
+  // Invariante dort blind. Die Luecke ausserhalb der beiden Verzeichnisse bleibt
+  // deshalb offen; sie war es vor Issue #936 auch, und sie kostet nichts, waehrend die
+  // Ausweitung 80 Sekunden je Doku-Aenderung kostete.
+  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
   assert.ok(tabelle.size > 0, "die Verflechtungserhebung lieferte keine Zeile");
 
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
@@ -218,4 +233,36 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
     [],
     "Bereiche, deren Aenderung eine Testdatei nicht ausloest, die die Quelle laedt — still gruen",
   );
+});
+
+test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
+  assert.ok(geruestMuster.length > 0, ".claude/workflow.config.json traegt kein nurGeruest");
+
+  const mitListe = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const uebrig = [];
+  for (const [testdatei, quellen] of mitListe) {
+    for (const quelle of quellen.filter((q) => geruestRegexe.some((r) => r.test(q)))) {
+      uebrig.push(`${testdatei}: ${quelle}`);
+    }
+  }
+  assert.deepEqual(uebrig.sort(), [], "Geruest zaehlt weiter als Kopplung — die Liste greift nicht");
+
+  // Und die Gegenrichtung: Ohne die Liste steht mindestens ein Eintrag noch in der
+  // Tabelle. Ein Muster, das nie etwas trifft, waere kein Schutz, sondern Zierat — und
+  // niemand merkte, wenn es beim naechsten Umbau seine Wirkung verloere.
+  const roh = verflechtungErheben({ repoRoot });
+  assert.ok(
+    [...roh.values()].some((quellen) => quellen.some((q) => geruestRegexe.some((r) => r.test(q)))),
+    `kein Muster aus nurGeruest kommt in der rohen Erhebung vor: ${geruestMuster.join(", ")}`,
+  );
+});
+
+test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
+  // Dieselbe Pflicht wie bei `ohnePruefung` (Issue #934): Eine Ausnahme von der Regel
+  // „jede Erwaehnung zaehlt" ist nur ertraeglich, wenn sie sich begruendet — und der
+  // Grund steht dort, wo der Eintrag steht, nicht in einer Commit-Botschaft.
+  for (const eintrag of config.nurGeruest ?? []) {
+    assert.ok(eintrag.muster?.length > 0, `Eintrag ohne Muster: ${JSON.stringify(eintrag)}`);
+    assert.ok(eintrag.grund?.length > 0, `${eintrag.muster} nennt keinen Grund`);
+  }
 });

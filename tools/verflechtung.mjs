@@ -19,11 +19,16 @@
  *      saehe die wichtigste Kopplung des Repos nicht.
  *
  * Eine Erwaehnung faelschlich als Kopplung zu zaehlen irrt in die sichere
- * Richtung und ist gewollt: Die Auswahl darf nur zu mehr Pruefung irren, nie zu
- * weniger. Deshalb bleibt auch ein kurzer Wurzelpfad (`README.md`,
- * `package.json`) in der Quellmenge, obwohl ihn fast jeder Test in einem
- * Wegwerfprojekt nennt — wer ihn herausnaehme, entschiede damit ueber den
- * Schnitt, und das ist nicht Sache der Erhebung.
+ * Richtung: Die Auswahl darf nur zu mehr Pruefung irren, nie zu weniger. Fuer die
+ * Deckungsfrage ist das richtig, fuer die Auswahl wurde es teuer — ein Wurzelpfad
+ * wie `README.md`, den fast jeder Test in seinem Wegwerfprojekt anlegt, zwang die
+ * `areas` der Nacht-Gruppe auf `skills-doku` (Issue #937).
+ *
+ * Deshalb nimmt die Erhebung seit Issue #943 eine Liste von Geruest-Mustern
+ * entgegen (`nurGeruest`). Sie wird uebergeben und nicht hier verdrahtet: Welche
+ * Dateien ein Projekt als Geruest anlegt, weiss der Aufrufer, und das Kit laeuft
+ * auch in fremden Projekten. Ohne Liste bleibt es beim konservativen Verhalten von
+ * vorher — wer nichts uebergibt, entscheidet nichts.
  *
  * Die Kette laeuft ausdruecklich NICHT von Quelle zu Quelle weiter. Diese
  * Richtung traegt der Plan ueber die `areas`-Liste je Pruefkommando: Laedt
@@ -39,6 +44,8 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { globZuRegex } from "../kit/checks.mjs";
 
 const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -142,13 +149,23 @@ function quellenZu(testdatei, ctx) {
  * Die Verflechtungstabelle: je versionierter Testdatei die sortierte Liste der
  * Quelldateien, die sie laedt.
  *
- * @param {{ repoRoot?: string }} [optionen]
+ * `nurGeruest` sind Pfadmuster in der Schreibweise von `checkAreas` — dieselbe
+ * Aufloesung aus `kit/checks.mjs`, nicht eine zweite hier. Ein getroffener
+ * Quellpfad faellt vor der Erhebung aus der Quellmenge und erscheint damit in
+ * KEINER Zeile: Das Muster gilt gegen den Quellpfad, nicht gegen die Testdatei.
+ * Ausgeschlossen wird, was als Geruest erwaehnt wird, nicht wer es erwaehnt — eine
+ * Liste je Testdatei waere eine zweite Verflechtungstabelle neben der ersten.
+ *
+ * @param {{ repoRoot?: string, nurGeruest?: string[] }} [optionen]
  * @returns {Map<string, string[]>} Testpfad → Quellpfade, beide repo-relativ
  */
-export function verflechtungErheben({ repoRoot = KIT_ROOT } = {}) {
+export function verflechtungErheben({ repoRoot = KIT_ROOT, nurGeruest = [] } = {}) {
   const alle = versionierte(repoRoot);
   const testdateien = alle.filter((p) => /^test\/.*\.test\.mjs$/.test(p)).sort();
-  const quellmenge = new Set(alle.filter((p) => !p.startsWith("test/")));
+  const geruest = nurGeruest.map((muster) => globZuRegex(muster));
+  const quellmenge = new Set(alle.filter(
+    (p) => !p.startsWith("test/") && !geruest.some((regex) => regex.test(p)),
+  ));
 
   const zwischenspeicher = new Map();
   const textVon = (datei) => {

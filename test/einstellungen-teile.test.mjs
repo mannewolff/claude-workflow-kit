@@ -84,8 +84,10 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m2").pfade, ["issueReview.pairs"]);
   assert.deepEqual(teilNach("m3").pfade, ["reviewStufen"]);
   // `ohnePruefung` steht neben den Bereichen, weil es dieselbe Frage beantwortet
-  // (Issue #934): was eine geaenderte Datei ausloest — hier eben nichts.
-  assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung"]);
+  // (Issue #934): was eine geaenderte Datei ausloest — hier eben nichts. `nurGeruest`
+  // (Issue #943) steht aus demselben Grund dort: Es entscheidet mit, welche Kopplung
+  // die Auswahl ueberhaupt sieht.
+  assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
   assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin"]);
