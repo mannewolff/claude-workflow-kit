@@ -7,11 +7,9 @@
       "areas": [
         "board",
         "installer",
-        "konfiguration",
         "nachtrunner",
         "preise",
-        "pruefungen",
-        "skills-doku"
+        "pruefungen"
       ]
     },
     {
@@ -20,10 +18,8 @@
         "board",
         "einstellungen",
         "installer",
-        "konfiguration",
         "nachtrunner",
-        "pruefungen",
-        "skills-doku"
+        "pruefungen"
       ]
     },
     {
@@ -40,11 +36,9 @@
         "board",
         "einstellungen",
         "installer",
-        "konfiguration",
         "nachtrunner",
         "preise",
         "pruefungen",
-        "skills-doku",
         "worktree"
       ]
     },
@@ -53,7 +47,6 @@
       "areas": [
         "einstellungen",
         "installer",
-        "konfiguration",
         "nachtrunner",
         "pruefungen",
         "skills-doku"
@@ -64,7 +57,6 @@
       "areas": [
         "board",
         "installer",
-        "konfiguration",
         "nachtrunner",
         "pruefungen",
         "skills-doku",
