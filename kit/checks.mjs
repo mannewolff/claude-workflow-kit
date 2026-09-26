@@ -1092,24 +1092,40 @@ function kommandoMaskieren(cmd) {
 /**
  * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
  *
- * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer. Ein Kommando
- * mit dem Ergebnis `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als
- * Zeile gezaehlt senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht
- * lief.
+ * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer — und dahinter
+ * Anlass, Laufkennung und Karte (Issue #948). Ein Kommando mit dem Ergebnis
+ * `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als Zeile gezaehlt
+ * senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht lief.
  *
  * Angehaengt, nie geleert — sonst saehe die Auswertung nur die letzte Runde, und genau
  * die zweite Runde nach einem Fix ist der Fall, um den es geht.
+ *
+ * Die drei hinteren Spalten stehen HINTEN und nicht in einer zweiten Protokolldatei
+ * (Issue #948, E9): Jedes bestehende Protokoll bleibt lesbar, weil die vier vorderen
+ * Spalten Stellung und Bedeutung behalten und eine aeltere Zeile die hinteren einfach
+ * nicht traegt. Beim Lesen sind darum alle drei optional.
+ *
+ * Warum sie ueberhaupt gebraucht werden: Ein Abschlusslauf schreibt mehrere Zeilen.
+ * Ohne die Laufkennung — fuer alle Zeilen EINES `run`-Aufrufs dieselbe — liesse sich
+ * "je Lauf" nicht von "je Kommando" trennen, und der Nenner jeder Kennzahl je Karte
+ * waere falsch. Die leere `karte` ist kein Nullwert, sondern "nicht gemessen": Eine
+ * Zeile ohne Nummer geht in keine Rechnung je Karte ein.
  *
  * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
  * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
  * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
-function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, jetzt = new Date()) {
   const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
+  const { anlass, lauf, karte } = herkunft;
   try {
     mkdirSync(dirname(pfad), { recursive: true });
-    appendFileSync(pfad, `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
+    appendFileSync(
+      pfad,
+      `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\t${anlass}\t${lauf}\t${karte}\n`,
+      "utf-8",
+    );
   } catch (err) {
     process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
   }
@@ -1560,6 +1576,22 @@ function ausfuehren(args) {
   if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
 
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
+
+  // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und
+  // an jede Zeile gegeben, damit alle Zeilen EINES `run`-Aufrufs dieselbe Laufkennung
+  // tragen — daran haengt die Trennung von "je Lauf" und "je Kommando".
+  //
+  // Der Anlass kommt aus der Auswahl und nicht aus den rohen Argumenten: `--abschluss`
+  // schlaegt die Stufe, weil ein Abschlusslauf genau der Lauf ist, der Pruefungen
+  // auslaesst — und ohne den Schalter ist die Stufe der Anlass (`paket`, `push`, `merge`).
+  // Die Laufkennung ist derselbe `zeitpunkt`, den die Zusammenfassung traegt; ein zweiter,
+  // eigener Zeitstempel bezeugte einen anderen Moment als sie.
+  const herkunft = {
+    anlass: auswahl.abschluss ? "abschluss" : auswahl.stufe,
+    lauf: zeitpunkt,
+    karte: args.karte ?? "",
+  };
+
   let rot = false;
   let guete = null;
   // Die Verursacher stehen erst am Ende fest (Issue #947): Vor dem roten Befund gibt es
@@ -1604,7 +1636,7 @@ function ausfuehren(args) {
     // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
     // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
-    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft);
     rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);

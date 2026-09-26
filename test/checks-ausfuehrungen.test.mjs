@@ -22,10 +22,16 @@ import {
 
 const ZEITSTEMPEL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
-/** Eine Protokollzeile in ihre vier Spalten zerlegt. */
+/**
+ * Eine Protokollzeile in ihre Spalten zerlegt (Issue #948).
+ *
+ * Die drei hinteren Spalten `anlass`, `lauf` und `karte` stehen HINTEN, damit eine
+ * aeltere Zeile ohne sie unveraendert lesbar bleibt: Die vier vorderen behalten
+ * Stellung und Bedeutung, und die fehlenden hinteren kommen als `undefined` zurueck.
+ */
 function spalten(zeile) {
-  const [zeit, cmd, ergebnis, dauerMs] = zeile.split("\t");
-  return { zeit, cmd, ergebnis, dauerMs };
+  const [zeit, cmd, ergebnis, dauerMs, anlass, lauf, karte] = zeile.split("\t");
+  return { zeit, cmd, ergebnis, dauerMs, anlass, lauf, karte };
 }
 
 test("[checks-7] ein Lauf haengt je ausgefuehrtem Kommando eine Zeile aus Zeit, Kommando, Ergebnis und Dauer an", () => {
@@ -188,4 +194,101 @@ test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und 
       );
     });
   }
+});
+
+// Anlass, Lauf und Karte (Issue #948, Plan #944).
+//
+// Die drei Spalten entscheiden darueber, ob sich mit dem Protokoll ueberhaupt rechnen
+// laesst. Der `anlass` trennt den Abschluss einer Karte von einem Paket-, Push- oder
+// Merge-Lauf; die Laufkennung trennt "je Lauf" von "je Kommando" — ein Abschlusslauf
+// schreibt mehrere Zeilen, und ohne sie waere der Nenner falsch; die `karte` bindet den
+// Lauf an das Arbeitspaket, das er abschliesst.
+//
+// Geprueft wird an der Wirkung, also an den geschriebenen Zeilen: Die Werte kommen aus
+// Auswahl und Aufruf, und genau diese Zuordnung soll nicht unbemerkt kippen.
+
+const DREI_CMD = {
+  buildChecks: [
+    { cmd: "echo eins", always: true },
+    { cmd: "echo zwei", always: true },
+  ],
+  checkAreas: { kern: ["src/**"] },
+};
+
+test("[checks-7] ein Abschlusslauf mit Kartennummer traegt anlass, Laufkennung und Karte", () => {
+  mitRepo({ config: DREI_CMD }, (dir) => {
+    datei(dir, "src/a.txt");
+
+    const res = run(dir, "--abschluss", "948");
+
+    assert.equal(res.status, 0, res.stderr);
+    const zeilen = ausfuehrungen(dir).map(spalten);
+    assert.equal(zeilen.length, 2, "Vorbedingung: zwei ausgefuehrte Kommandos");
+    for (const z of zeilen) {
+      assert.equal(z.anlass, "abschluss", "der Schalter am Aufruf bestimmt den Anlass");
+      assert.equal(z.karte, "948", "die Nummer hinter --abschluss steht als Karte");
+    }
+    // Dieselbe Kennung fuer alle Zeilen EINES run-Aufrufs — sonst liesse sich
+    // "je Lauf" nicht von "je Kommando" trennen.
+    assert.equal(zeilen[0].lauf, zeilen[1].lauf, "alle Zeilen eines Laufs tragen dieselbe Kennung");
+    assert.equal(
+      zeilen[0].lauf, zusammenfassung(dir).zeitpunkt,
+      "die Laufkennung ist der Zeitpunkt der Zusammenfassung, also der Stand, der in die Pruefung ging",
+    );
+  });
+});
+
+test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte leer", () => {
+  mitRepo({ config: DREI_CMD }, (dir) => {
+    datei(dir, "src/a.txt");
+
+    const res = run(dir, "--abschluss");
+
+    assert.equal(res.status, 0, res.stderr);
+    const zeilen = ausfuehrungen(dir).map(spalten);
+    for (const z of zeilen) {
+      assert.equal(z.anlass, "abschluss", "der Schalter wirkt auch ohne Nummer");
+      // Leer und nicht 0 oder '-': "nicht gemessen" ist hier wie ueberall kein Nullwert.
+      assert.equal(z.karte, "", "ohne Nummer bleibt die Spalte leer");
+    }
+    assert.match(zeilen[0].lauf, ZEITSTEMPEL, "die Laufkennung steht trotzdem");
+  });
+});
+
+test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", () => {
+  for (const [cliArgs, anlass] of [[[], "paket"], [["--stufe", "push"], "push"], [["--stufe", "merge"], "merge"]]) {
+    mitRepo({ config: DREI_CMD }, (dir) => {
+      datei(dir, "src/a.txt");
+
+      const res = run(dir, ...cliArgs);
+
+      assert.equal(res.status, 0, res.stderr);
+      const zeilen = ausfuehrungen(dir).map(spalten);
+      assert.ok(zeilen.length > 0, `Vorbedingung im Fall '${anlass}': es lief etwas`);
+      for (const z of zeilen) {
+        assert.equal(z.anlass, anlass, `Anlass im Fall '${anlass}'`);
+        assert.equal(z.karte, "", "ohne --abschluss gibt es keine Karte");
+      }
+      assert.equal(zeilen[0].lauf, zusammenfassung(dir).zeitpunkt, `Laufkennung im Fall '${anlass}'`);
+    });
+  }
+});
+
+test("[checks-7] ein Protokoll mit alten Zeilen ohne die drei Spalten bleibt lesbar", () => {
+  mitRepo({ config: DREI_CMD }, (dir) => {
+    datei(dir, "src/a.txt");
+    // Eine Zeile, wie sie vor Issue #948 entstand: vier Spalten, nichts dahinter.
+    const alt = "2026-01-01T00:00:00.000Z\techo frueher\tgruen\t7";
+    writeFileSync(ausfuehrungenPfad(dir), `${alt}\n`, "utf-8");
+
+    run(dir, "--abschluss", "948");
+
+    const zeilen = ausfuehrungen(dir);
+    assert.equal(zeilen[0], alt, "die alte Zeile bleibt Zeichen fuer Zeichen stehen");
+    const frueher = spalten(zeilen[0]);
+    assert.equal(frueher.cmd, "echo frueher", "ihre vier Spalten behalten Stellung und Bedeutung");
+    assert.equal(frueher.dauerMs, "7");
+    assert.equal(frueher.anlass, undefined, "die drei neuen Spalten sind beim Lesen optional");
+    assert.equal(spalten(zeilen[1]).anlass, "abschluss", "die neue Zeile daneben traegt sie");
+  });
 });

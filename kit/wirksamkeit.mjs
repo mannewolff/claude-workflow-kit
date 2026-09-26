@@ -262,6 +262,11 @@ function kommandoLesen(feld) {
  * Ergebnis, Dauer — durch Tabs getrennt, wie `ausfuehrungSchreiben` in kit/checks.mjs
  * sie anhaengt. Das Kommando steht dort maskiert und wird zurueckgewandelt.
  *
+ * Vier Spalten sind das MINDESTE, nicht die genaue Zahl (Issue #948): Dahinter stehen
+ * Anlass, Laufkennung und Karte, und weitere koennen folgen. Eine Zeile mit den hinteren
+ * Spalten ist keine fehlerhafte Zeile — als solche gezaehlt saehe jedes neue Protokoll
+ * kaputt aus. Was in ihnen steht, wertet dieses Werkzeug noch nicht aus (Issue #951).
+ *
  * Eine unlesbare oder fehlerhafte Zeile wird uebersprungen und GEZAEHLT, nicht zum
  * Abbruch: Das Protokoll waechst ueber Monate, und eine halbe Zeile am Dateiende darf
  * keine Auswertung kosten. Dass sie gezaehlt wird, steht im Bericht — sonst saehe ein
@@ -282,8 +287,8 @@ function protokollLesen(root) {
     if (roh === "") continue;
     const teile = roh.split("\t");
     const zeitMs = Date.parse(teile[0]);
-    const dauerMs = teile.length === 4 ? Number(teile[3]) : Number.NaN;
-    if (teile.length !== 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
+    const dauerMs = teile.length >= 4 ? Number(teile[3]) : Number.NaN;
+    if (teile.length < 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
       fehlerhaft += 1;
       continue;
     }
