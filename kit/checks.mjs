@@ -74,8 +74,20 @@
  * gefahren, und aus den Daten liesse sich Notwendigkeit nicht von Umgehung
  * trennen.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--frisch]
+ * Die vierte Achse ist `nichtBeimAbschluss` (Issue #946, Plan #944): Sie sagt, dass
+ * eine Pruefung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss, weil
+ * sie nur das Zusammenspiel prueft (`zusammenspiel`) oder ihren Befund aus der
+ * vollstaendigen Testmenge gewinnt (`volleTestmenge`). Gewirkt wird sie allein durch
+ * `--abschluss [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
+ * bleibt sie aus, samt Guetemessung, und vor dem Veroeffentlichen laeuft beides wieder.
+ *
+ * Auch hier ist die Richtung einseitig: Wer `--abschluss` VERGISST, prueft mehr. Darum
+ * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
+ * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
+ * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -187,6 +199,15 @@ export function vergleicheText(a, b) {
 // uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
 const STUFEN = ["paket", "push", "merge"];
 
+// Die Werte der vierten Achse `nichtBeimAbschluss` (Issue #946, Plan #944). Sie ist
+// keine zweite Stufe: Die Stufe sagt, WANN eine Pruefung faellig ist, diese Achse sagt,
+// WARUM sie den Abschluss eines einzelnen Arbeitspakets nicht tragen muss — weil sie nur
+// das Zusammenspiel prueft oder ihren Befund aus der vollstaendigen Testmenge gewinnt.
+// Eine geschlossene Werteliste und kein Freitext: Der Wert steht im Auslassungsgrund und
+// wird damit gelesen; ein Freitext waere an jeder Stelle anders formuliert, und die
+// Auswertung koennte die Gruppen nicht zaehlen.
+const NICHT_BEIM_ABSCHLUSS = ["zusammenspiel", "volleTestmenge"];
+
 /**
  * Die allgemeinen Fehlermerkmale (Issue #858, Fachplan #769, AK 2): Merkmale, an
  * denen eine Ausgabe ihr Scheitern selbst ausweist, auch wenn der Rueckgabewert 0
@@ -207,8 +228,8 @@ const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
 
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--frisch]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -249,13 +270,26 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   ab und nennt die konfigurierten Bereiche. Kombinierbar mit
                   --since, --stufe und --frisch: '--bereich' sagt, OB eine
                   Pruefung betroffen ist, '--stufe' weiter, WANN sie dran ist.
+  --abschluss [n] Dieser Lauf schliesst genau ein Arbeitspaket ab. Dann bleibt
+                  jede Pruefung mit 'nichtBeimAbschluss' aus und die
+                  Guetemessung ebenso — beide mit Grund in der Liste der
+                  Auslassungen, und beide laufen vor dem Veroeffentlichen
+                  wieder mit. Die Kartennummer ist optional und dient der
+                  Auswertung je Karte; ein Wert, der keine Nummer ist, bricht
+                  ab. Nicht zusammen mit --stufe push|merge (dort laeuft
+                  gerade, was der Abschluss auslaesst) und nicht zusammen mit
+                  --bereich (zwei Eingrenzungen in einem Lauf). Gesetzt wird
+                  der Schalter allein vom Abschluss einer Karte: Wer ihn
+                  vergisst, prueft mehr.
   --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
                   wackligen Test.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
-(Kommandostring, { cmd, areas }, { cmd, always } oder { cmd, stufe }) und
+(Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
+und 'nichtBeimAbschluss': ${NICHT_BEIM_ABSCHLUSS.join(" | ")} — die Pruefung
+zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus) und
 'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
 Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 'frontend/**'.
@@ -296,7 +330,17 @@ function ladeConfig() {
  */
 function normalisiere(check) {
   const objekt = typeof check === "string" ? { cmd: check } : check;
-  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0] };
+  // Ein unbekannter Wert bricht ab wie eine unbekannte Stufe (Issue #946): Er bliebe
+  // sonst wirkungslos, die Pruefung liefe beim Abschluss weiter mit, und der Autor der
+  // Config haette den Gegenteil-Effekt bestellt, ohne es zu merken. Hier und nicht in
+  // einer eigenen Regel darunter, weil der Wert genau hier durch die eine Bahn geht,
+  // durch die auch die fehlende Stufe geht.
+  const nichtBeimAbschluss = objekt.nichtBeimAbschluss ?? null;
+  if (nichtBeimAbschluss !== null && !NICHT_BEIM_ABSCHLUSS.includes(nichtBeimAbschluss)) {
+    const genannt = typeof nichtBeimAbschluss === "string" ? `'${nichtBeimAbschluss}'` : JSON.stringify(nichtBeimAbschluss);
+    fail(`Unbekannter Wert ${genannt} fuer nichtBeimAbschluss bei Pruefung '${objekt.cmd}'. Erwartet: ${NICHT_BEIM_ABSCHLUSS.join(", ")}.`);
+  }
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss };
 }
 
 /**
@@ -337,6 +381,52 @@ function pruefeGuete(checks) {
   if (traeger[0]?.stufe === "merge") {
     fail(`Die Guetemessung '${traeger[0].cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: paket oder push.`);
   }
+}
+
+/**
+ * Die Achse `nichtBeimAbschluss` gehoert an die Paketstufe (Issue #946, Plan #944).
+ *
+ * An einem Eintrag der Stufe `push` oder `merge` sagt sie nichts: Dort laeuft die
+ * Pruefung beim Abschluss ohnehin nicht, die Stufe hat es schon entschieden. Ein Feld,
+ * das nichts bewirkt, ist entweder ein Irrtum ueber die Achse oder ein Rest — beides
+ * faellt hier auf und nicht erst dem naechsten Leser der Config. Derselbe Weg wie beim
+ * unbekannten Bereichsnamen: Abbruch statt stiller Wirkungslosigkeit.
+ *
+ * Diese Regel gilt UNBEDINGT, weil sie eine Aussage ueber die Config selbst ist — anders
+ * als `pruefeAbschlussGate`, das eine Aussage ueber den Abschlusslauf trifft.
+ */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #949).
+function pruefeNichtBeimAbschlussStufe(checks) {
+  for (const check of checks) {
+    if (!check.nichtBeimAbschluss) continue;
+    if (check.stufe === STUFEN[0]) continue;
+    fail(`Die Pruefung '${check.cmd}' traegt nichtBeimAbschluss und stufe '${check.stufe}' — dort laeuft sie beim Abschluss ohnehin nicht. Die Achse gilt fuer die Stufe '${STUFEN[0]}'.`);
+  }
+}
+
+/**
+ * Das Gate des Abschlusses (Issue #946, Plan #944, E4): Ein Abschlusslauf laesst die
+ * Guetemessung und jede Pruefung mit `nichtBeimAbschluss` aus. Traegt JEDER Eintrag der
+ * Paketstufe eines von beiden, bleibt nichts uebrig — der Lauf waere gruen, weil er nichts
+ * gefahren hat, und ein leeres Gate faellt an nichts auf.
+ *
+ * Geprueft wird NUR im Abschlusslauf, nicht bei jedem Aufruf. Dieselbe Config bleibt fuer
+ * jeden anderen Lauf gueltig, und sie ist es auch: Ohne den Schalter laufen beide
+ * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem `/local-check` oder einem Commit
+ * von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
+ * schliesst die einseitige Richtung des Plans aus: Wer den Schalter nicht setzt, prueft mehr.
+ *
+ * Eine Config OHNE Paketstufen-Eintrag faellt hier nicht durch: Sie hatte nie ein Gate,
+ * die neue Achse aendert daran nichts, und der Zustand hat seine eigene Meldung im
+ * Start-Guard des Nacht-Runners.
+ */
+// SYNC: als Warnung vor dem Speichern in kit/einstellungen.mjs (Issue #949), als Halt im
+// Start-Guard von kit/night.mjs (Issue #950).
+function pruefeAbschlussGate(checks) {
+  const paketstufe = checks.filter((check) => check.stufe === STUFEN[0]);
+  if (paketstufe.length === 0) return;
+  if (paketstufe.some((check) => !check.nichtBeimAbschluss && !check.guete)) return;
+  fail(`Kein Eintrag der Stufe '${STUFEN[0]}' laeuft beim Abschluss: jeder traegt nichtBeimAbschluss oder einen guete-Block. Damit hat der Abschluss eines Arbeitspakets kein Gate.`);
 }
 
 // --- Muster ----------------------------------------------------------------
@@ -538,8 +628,21 @@ function entscheidung(check, beruehrt) {
  * Arbeitspaket gemessen, kein Veroeffentlichungsstand. Der Eintrag behaelt
  * seinen `guete`-Block, damit `ausfuehren` die Auswertung nicht ein zweites Mal
  * aus der Config lesen muss.
+ *
+ * Der ABSCHLUSSLAUF (Issue #946, Plan #944) laesst zwei Gruppen aus, und beide stehen an
+ * genau bemessener Stelle:
+ *   - Die GUETEMESSUNG (E3) faellt unbedingt weg, auch wenn keine Testpruefung wegfiel:
+ *     Ihr Anteil entsteht aus der vollstaendigen Testmenge, und ein Anteil aus einem
+ *     verkuerzten Lauf waere nicht dieselbe Zahl, sondern eine andere Groesse mit
+ *     demselben Namen. Der Zweig steht UNTER dem Zweig fuer die Veroeffentlichungsstufen:
+ *     Dort laeuft sie weiter immer, und `--abschluss` kommt dort ohnehin nicht vor.
+ *   - `nichtBeimAbschluss` faellt weg, und zwar VOR der Bereichsauswahl: Sonst stuende im
+ *     Grund "Bereich unberuehrt", obwohl die Pruefung auch im beruehrten Bereich nicht
+ *     gelaufen waere — dieselbe Falle, die schon die Stufenauswahl nach oben gezogen hat.
+ *     Unter der Stufenauswahl dagegen bleibt er: Wer ohnehin nicht dran ist, braucht keinen
+ *     zweiten Grund.
  */
-function verteilen(checks, stufe, entscheiden) {
+function verteilen(checks, stufe, entscheiden, abschluss = false) {
   const laufen = [];
   const ausgelassen = [];
   const gefahren = STUFEN.indexOf(stufe);
@@ -547,10 +650,14 @@ function verteilen(checks, stufe, entscheiden) {
     let ergebnis;
     if (check.guete && stufe !== STUFEN[0]) {
       ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
-    } else if (STUFEN.indexOf(check.stufe) <= gefahren) {
-      ergebnis = entscheiden(check);
-    } else {
+    } else if (check.guete && abschluss) {
+      ergebnis = { laeuft: false, grund: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge" };
+    } else if (STUFEN.indexOf(check.stufe) > gefahren) {
       ergebnis = { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+    } else if (check.nichtBeimAbschluss && abschluss) {
+      ergebnis = { laeuft: false, grund: `Abschlusslauf: ${check.nichtBeimAbschluss}, laeuft beim Veroeffentlichen` };
+    } else {
+      ergebnis = entscheiden(check);
     }
     const eintrag = { cmd: check.cmd, stufe: check.stufe, grund: ergebnis.grund };
     if (check.guete) eintrag.guete = check.guete;
@@ -567,7 +674,8 @@ function verteilen(checks, stufe, entscheiden) {
  * mit derselben Vorgabe daneben (Issue #934).
  */
 function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
-  laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null }) {
+  laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null,
+  abschluss = false }) {
   // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
   // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
   // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
@@ -575,7 +683,12 @@ function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = []
   // Unterschied — die Wiederverwendung darf ein eingegrenztes Ergebnis nicht fuer einen
   // vollen Lauf ausgeben (frueheresErgebnis), und das Commit-Gate darf auf ihm nicht
   // committen lassen (.githooks/gate.mjs).
-  return { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl };
+  //
+  // `abschluss` steht aus demselben Grund daneben (Issue #946): Ein Abschlusslauf laesst
+  // Pruefungen aus und saehe ohne das Feld aus wie ein vollstaendiger. Zwei Leser brauchen
+  // es — die Wiederverwendung (`frueheresErgebnis`) und die Auswertung, die je Karte
+  // rechnet.
+  return { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl, abschluss };
 }
 
 function planen(args) {
@@ -584,6 +697,13 @@ function planen(args) {
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
   pruefeGuete(checks);
+  pruefeNichtBeimAbschlussStufe(checks);
+
+  // Der Abschlusslauf (Issue #946): Er schliesst genau ein Arbeitspaket ab und ist der
+  // einzige Lauf, der die Zusammenspiel-Pruefungen auslassen darf. Sein Gate wird hier
+  // geprueft und nur hier — die Begruendung steht an `pruefeAbschlussGate`.
+  const abschluss = args.abschluss === true;
+  if (abschluss) pruefeAbschlussGate(checks);
 
   // Derselbe Weg wie beim vertippten Bereichsnamen einer Pruefung: Abbruch statt
   // stiller Wahl. Ein Tippfehler im Flag liefe sonst auf einen Bereich, den keine
@@ -604,8 +724,8 @@ function planen(args) {
     // nicht gewusst.
     const grund = `voller Umfang: Anker '${refText}' laesst sich nicht aufloesen`;
     return bauen({
-      basis: refText, stufe, vollerUmfang: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis: refText, stufe, vollerUmfang: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
@@ -635,11 +755,11 @@ function planen(args) {
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
         return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
-      }),
+      }, abschluss),
     });
   }
 
@@ -663,30 +783,30 @@ function planen(args) {
   if (stufe === "push" || stufe === "merge") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   if (geaendert.length === 0) {
     const grund = `leeres Paket: keine Aenderung seit ${basis}`;
     return bauen({
-      basis, stufe, leeresPaket: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: false, grund })),
+      basis, stufe, leeresPaket: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: false, grund }), abschluss),
     });
   }
 
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung,
-    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
+    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt), abschluss),
   });
 }
 
@@ -1077,6 +1197,12 @@ function frueheresErgebnis(auswahl, hashes, configHash) {
   // faelligen Pruefungen der uebrigen Bereiche liefen dann nie. `?? null` liest eine
   // Zusammenfassung aus einer Fassung vor diesem Feld als uneingeschraenkt.
   if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return null;
+  // Aus demselben Grund die Abschlussmarke (Issue #946): Ein Abschlusslauf faehrt eine
+  // kleinere Auswahl, bei gleicher Basis, gleicher Stufe, gleichen Dateien und gleichen
+  // Hashes. Ohne diesen Vergleich uebernaehme er die Kommandoliste des vollen Laufs — und
+  // umgekehrt liesse der volle Lauf die verschobenen Pruefungen fuer immer aus. `?? false`
+  // liest eine Zusammenfassung aus einer Fassung vor diesem Feld als vollen Lauf.
+  if ((alt.abschluss ?? false) !== (auswahl.abschluss ?? false)) return null;
   if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
   if (typeof alt.zeitpunkt !== "string") return null;
   if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
@@ -1297,6 +1423,45 @@ function ausfuehren(args) {
 
 // --- CLI -------------------------------------------------------------------
 
+/**
+ * Die optionale Kartennummer hinter `--abschluss` oder `null` (Issue #946).
+ *
+ * Sie ist OPTIONAL: Der Schalter wirkt auch ohne sie, und ein Aufruf ohne Nummer soll
+ * nicht daran scheitern, dass die Auswertung je Karte ihn nicht zuordnen kann. Ein Wert,
+ * der keine Nummer ist, ist dagegen ein Fehler — er waere entweder ein vertipptes Flag
+ * oder eine Nummer, die niemand je zuordnet. Ein folgendes `--…` ist das naechste Flag
+ * und keine fehlende Nummer.
+ */
+function kartennummer(wert) {
+  if (wert === undefined || wert.startsWith("--")) return null;
+  if (!/^\d+$/.test(wert)) {
+    fail(`'${wert}' ist keine Kartennummer fuer --abschluss. Erwartet: eine Nummer oder nichts.`);
+  }
+  return wert;
+}
+
+/**
+ * Die Kombinationen, die `--abschluss` ausschliesst (Issue #946) — geprueft NACH der
+ * Schleife, damit die Meldung nicht an der Stellung der Flags haengt. Beides ist ein
+ * Fehler und keine stille Wahl:
+ *   - `--abschluss` mit einer Veroeffentlichungsstufe waere zweierlei zugleich (AK 3).
+ *     Der Abschluss misst ein Arbeitspaket, `push` und `merge` messen den Stand, der
+ *     hinausgeht — und dort laeuft gerade das, was der Abschluss auslaesst.
+ *   - `--abschluss` mit `--bereich` waere eine doppelte Eingrenzung (E13): Der
+ *     Bereichslauf ist der begruendete Gruppenlauf mitten in der Arbeit, nicht der
+ *     Abschluss einer Karte. Zusammen liesse sich aus dem Lauf nicht mehr ablesen,
+ *     welche der beiden Verkuerzungen eine Pruefung weggelassen hat.
+ */
+function pruefeKombinationen(args) {
+  if (args.abschluss !== true) return;
+  if (args.stufe === "push" || args.stufe === "merge") {
+    fail(`--abschluss und --stufe '${args.stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '${STUFEN[0]}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --abschluss.`);
+  }
+  if (args.bereich !== undefined) {
+    fail("--abschluss und --bereich zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --abschluss an ihr Ende.");
+  }
+}
+
 function parseArgs(rest) {
   const args = {};
   for (let i = 0; i < rest.length; i += 1) {
@@ -1323,6 +1488,15 @@ function parseArgs(rest) {
       // der leere Name faellt dort mit derselben nennenden Meldung durch.
       args.bereich = rest[i + 1] ?? "";
       i += 1;
+    } else if (rest[i] === "--abschluss") {
+      // Dieser Lauf schliesst genau ein Arbeitspaket ab (Issue #946). Die Kartennummer
+      // liest `kartennummer`, samt ihrer Begruendung.
+      args.abschluss = true;
+      const karte = kartennummer(rest[i + 1]);
+      if (karte !== null) {
+        args.karte = karte;
+        i += 1;
+      }
     } else if (rest[i] === "--frisch") {
       // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
       // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
@@ -1331,6 +1505,7 @@ function parseArgs(rest) {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }
   }
+  pruefeKombinationen(args);
   return args;
 }
 
