@@ -33,10 +33,19 @@ export function vorTagen(n) {
 
 /**
  * Eine Protokollzeile, wie `ausfuehrungSchreiben` in kit/checks.mjs sie anhaengt:
- * Zeitpunkt, Kommando, Ergebnis, Dauer — durch Tabs getrennt.
+ * Zeitpunkt, Kommando, Ergebnis, Dauer — durch Tabs getrennt, dahinter Anlass,
+ * Laufkennung und Karte (Issue #948).
+ *
+ * Die hinteren drei Spalten stehen nur da, wenn der Aufrufer eine davon nennt: So
+ * bleibt `zeile({})` die ALTE Vierspalten-Form aus der Zeit vor Issue #948 — genau
+ * die Zeile, die eine Auswertung im Bestand vorfindet und die in der Kennzahl je
+ * Karte nicht mitzaehlt (Issue #951).
  */
-export function zeile({ tage = 1, zeit, cmd = "node --test", ergebnis = "gruen", dauerMs = 1000 }) {
-  return `${zeit ?? vorTagen(tage)}\t${cmd}\t${ergebnis}\t${dauerMs}`;
+export function zeile({ tage = 1, zeit, cmd = "node --test", ergebnis = "gruen", dauerMs = 1000, anlass, lauf, karte }) {
+  const stempel = zeit ?? vorTagen(tage);
+  const vorn = `${stempel}\t${cmd}\t${ergebnis}\t${dauerMs}`;
+  if (anlass === undefined && lauf === undefined && karte === undefined) return vorn;
+  return `${vorn}\t${anlass ?? "paket"}\t${lauf ?? stempel}\t${karte ?? ""}`;
 }
 
 /**

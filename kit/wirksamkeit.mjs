@@ -15,6 +15,12 @@
  * Aktivitaetsverlauf der Karten — der einzige Board-Zugriff des Werkzeugs, und jeder
  * seiner Fehlschlaege ist ein Vermerk im Bericht, kein Abbruch (E9).
  *
+ * MITTLERE PRUEFZEIT JE KARTE (Issue #951, Plan #944, E8): die Zeit der Abschlusslaeufe
+ * einer Karte, und daneben der Vergleichswert — dieselbe Zeit plus die mittlere Dauer
+ * jeder beim Abschluss ausgelassenen Pruefung aus demselben Fenster. Die Einheit ist die
+ * KARTE, nicht der Lauf: Ein Paket wird mehrfach abgeschlossen, und die Wiederholung
+ * gehoert in den Zaehler.
+ *
  * ZAEHLWEISE DER QUOTE (Fund 8): Der Nenner zaehlt KARTEN mit mindestens einem
  * Eintritt nach "In review" im Fenster, der Zaehler zaehlt RUECKLAUFBEWEGUNGEN im
  * Fenster — die Quote kann ueber 100 % liegen und wird nicht gekappt.
@@ -108,6 +114,18 @@ const TAG_MS = 24 * 60 * 60 * 1000;
 // Kennzahl zu verschieben.
 const ERGEBNISSE = new Set(["gruen", "rot"]);
 
+// Der Platzhalter fuer eine fehlende oder leere Herkunftsspalte (Issue #951). Bewusst
+// ein Wert und nicht `null`: Er steht so in der Zeile, laesst sich zaehlen und kann in
+// keiner Kennzahl versehentlich als gemessene 0 gelten.
+const UNBEKANNT = "unbekannt";
+
+// SYNC: `herkunft` in kit/checks.mjs setzt diese Anlaesse (Issue #948) — `abschluss`
+// fuer einen Lauf mit `--abschluss`, sonst die gefahrene Stufe. Der Abschluss einer
+// Karte ist der Zaehler der Kennzahl je Karte, die Veroeffentlichungslaeufe liefern die
+// Dauer der beim Abschluss ausgelassenen Pruefungen (Issue #951, Plan #944, E8).
+const ANLASS_ABSCHLUSS = "abschluss";
+const ANLAESSE_VEROEFFENTLICHUNG = new Set(["push", "merge"]);
+
 // SYNC: `kommandoMaskieren` in kit/checks.mjs setzt diese Maskierungen (Issue #822).
 // Jedes andere Zeichen hinter einem Backslash bleibt, was es ist — eine alte, vor der
 // Maskierung geschriebene Zeile liest sich damit unveraendert.
@@ -119,7 +137,9 @@ const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamk
   node wirksamkeit.mjs befund
 
 auswerten  Liest ${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}, aggregiert je Pruefkommando
-           Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, ermittelt
+           Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, rechnet die
+           mittlere Pruefzeit je Karte aus den Abschlusslaeufen samt Vergleichswert,
+           ermittelt
            die Ruecklaeuferquote (Kandidaten aus ${CLAUDE_DIR}/${BEWEGUNGEN_DATEI},
            Verlauf ueber board.mjs issue activity) und schreibt
            ${CLAUDE_DIR}/${BERICHT_DATEI} sowie ${CLAUDE_DIR}/${STAND_DATEI}. Die
@@ -137,7 +157,8 @@ befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, m
   --help, -h        Diese Uebersicht.
 
 Gelesen wird ${CLAUDE_DIR}/${CONFIG_DATEI} im Arbeitsverzeichnis: 'buildChecks' (fuer
-die Menge der vorgeschriebenen Pruefungen), 'columns' und 'issueTracker' (fuer die
+die Menge der vorgeschriebenen Pruefungen und ihr 'nichtBeimAbschluss' fuer den
+Vergleichswert der Pruefzeit je Karte), 'columns' und 'issueTracker' (fuer die
 Ruecklaeuferquote) und der optionale Block 'wirksamkeit' mit 'fensterTage',
 'nieBeanstandetAbAusfuehrungen', 'kandidatenMax' (Vorgabe ${VORGABE_KANDIDATEN_MAX}),
 'quoteSchwelle' (Vorgabe ${VORGABE_QUOTE_SCHWELLE}) und 'quoteAbPaketen' (Vorgabe
@@ -190,6 +211,7 @@ function ladeEinstellungen(root) {
     spalten: SPALTEN_VORGABE,
     issueTracker: null,
     buildCmds: [],
+    abschlussAusgelassen: [],
     configGelesen: null,
   };
   if (!existsSync(pfad)) return vorgabe;
@@ -199,13 +221,7 @@ function ladeEinstellungen(root) {
   } catch (err) {
     return { ...vorgabe, configGelesen: `nicht lesbar (${err.message})` };
   }
-  // Die drei Formen eines buildChecks-Eintrags (String, { cmd, areas }, { cmd, ... })
-  // interessieren hier nur als Kommando: die Menge der vorgeschriebenen Pruefungen (E3).
-  const buildCmds = [];
-  for (const eintrag of Array.isArray(config?.buildChecks) ? config.buildChecks : []) {
-    const cmd = typeof eintrag === "string" ? eintrag : eintrag?.cmd;
-    if (typeof cmd === "string" && cmd.length > 0) buildCmds.push(cmd);
-  }
+  const { buildCmds, abschlussAusgelassen } = pruefungenAusConfig(config);
   const block = config?.wirksamkeit && typeof config.wirksamkeit === "object" ? config.wirksamkeit : {};
   return {
     fensterTage: ganzzahl(block.fensterTage) ?? VORGABE_FENSTER_TAGE,
@@ -216,8 +232,33 @@ function ladeEinstellungen(root) {
     spalten: config?.columns && typeof config.columns === "object" ? config.columns : SPALTEN_VORGABE,
     issueTracker: typeof config?.issueTracker === "string" ? config.issueTracker : null,
     buildCmds,
+    abschlussAusgelassen,
     configGelesen: null,
   };
+}
+
+/**
+ * Die Pruefungen aus der Config in den zwei Formen, die dieses Werkzeug braucht: die
+ * Kommandos der vorgeschriebenen Pruefungen (E3) und die, die der Abschluss einer Karte
+ * auslaesst (Issue #946) — ihre Dauer ist der Aufschlag des Vergleichswerts (E8).
+ *
+ * Die drei Formen eines buildChecks-Eintrags (String, { cmd, areas }, { cmd, ... })
+ * interessieren hier nur als Kommando und als `nichtBeimAbschluss`. Ohne Stufenfilter —
+ * checks.mjs weist eine Config ab, die `nichtBeimAbschluss` mit `push` oder `merge`
+ * paart, und ein zweiter Filter hier waere eine zweite Wahrheit ueber dieselbe Regel.
+ */
+function pruefungenAusConfig(config) {
+  const buildCmds = [];
+  const abschlussAusgelassen = [];
+  for (const eintrag of Array.isArray(config?.buildChecks) ? config.buildChecks : []) {
+    const objekt = typeof eintrag === "string" ? { cmd: eintrag } : eintrag;
+    const cmd = objekt?.cmd;
+    if (typeof cmd !== "string" || cmd.length === 0) continue;
+    buildCmds.push(cmd);
+    const grund = objekt.nichtBeimAbschluss;
+    if (typeof grund === "string" && grund.length > 0) abschlussAusgelassen.push({ cmd, grund });
+  }
+  return { buildCmds, abschlussAusgelassen };
 }
 
 /** Eine ganze Zahl groesser null oder `null` — ein unbrauchbarer Wert faellt auf die Vorgabe zurueck. */
@@ -265,7 +306,13 @@ function kommandoLesen(feld) {
  * Vier Spalten sind das MINDESTE, nicht die genaue Zahl (Issue #948): Dahinter stehen
  * Anlass, Laufkennung und Karte, und weitere koennen folgen. Eine Zeile mit den hinteren
  * Spalten ist keine fehlerhafte Zeile — als solche gezaehlt saehe jedes neue Protokoll
- * kaputt aus. Was in ihnen steht, wertet dieses Werkzeug noch nicht aus (Issue #951).
+ * kaputt aus.
+ *
+ * FEHLT eine der hinteren Spalten oder ist sie leer, steht `unbekannt` (Issue #951) —
+ * fuer alle drei derselbe Wert: Eine Zeile aus der Zeit vor Issue #948 traegt keinen
+ * Anlass, und ein Lauf ohne `--abschluss <nummer>` keine Karte. Eine Vorgabe wie
+ * `paket` an dieser Stelle waere geraten und ginge als gemessene Groesse in eine
+ * Kennzahl ein; `unbekannt` faellt aus jeder Kennzahl heraus, die eine Karte braucht.
  *
  * Eine unlesbare oder fehlerhafte Zeile wird uebersprungen und GEZAEHLT, nicht zum
  * Abbruch: Das Protokoll waechst ueber Monate, und eine halbe Zeile am Dateiende darf
@@ -292,9 +339,23 @@ function protokollLesen(root) {
       fehlerhaft += 1;
       continue;
     }
-    zeilen.push({ zeitMs, tag: teile[0].slice(0, 10), cmd: kommandoLesen(teile[1]), ergebnis: teile[2], dauerMs });
+    zeilen.push({
+      zeitMs,
+      tag: teile[0].slice(0, 10),
+      cmd: kommandoLesen(teile[1]),
+      ergebnis: teile[2],
+      dauerMs,
+      anlass: herkunftsfeld(teile[4]),
+      lauf: herkunftsfeld(teile[5]),
+      karte: herkunftsfeld(teile[6]),
+    });
   }
   return { vorhanden: true, zeilen, fehlerhaft };
+}
+
+/** Eine der hinteren Protokollspalten — fehlend oder leer heisst `unbekannt`. */
+function herkunftsfeld(feld) {
+  return typeof feld === "string" && feld !== "" ? feld : UNBEKANNT;
 }
 
 // --- Aggregation -------------------------------------------------------------
@@ -423,6 +484,68 @@ function befundBestimmen(pruefungen, nieBeanstandetAb) {
     });
   }
   return befund;
+}
+
+// --- Mittlere Pruefzeit je Karte (Issue #951, Plan #944, E8) -----------------
+
+/**
+ * Die mittlere Pruefzeit je Karte und ihr Vergleichswert.
+ *
+ * DIE EINHEIT IST DIE KARTE, nicht der Lauf: Der Fachplan begruendet die Zahl mit
+ * "zwischen zwei und sechzehn Mal je Karte" — die Wiederholung gehoert in den Zaehler,
+ * nicht aus ihm heraus. Eine Karte, die dreimal abgeschlossen wurde, traegt die Summe
+ * ihrer drei Laeufe und zaehlt einmal im Nenner.
+ *
+ * GEZAEHLT wird allein der Abschlusslauf (`anlass` = `abschluss`) mit Kartennummer.
+ * Eine Zeile ohne Nummer geht nicht ein, und ohne eine einzige steht `null` —
+ * ausdruecklich NICHT ein Mittel je Lauf, das eine andere Groesse waere und sich
+ * daneben wie derselbe Wert laese.
+ *
+ * DER VERGLEICHSWERT entsteht aus DENSELBEN Laeufen desselben Fensters: gemessene Zeit
+ * plus die mittlere Dauer jeder beim Abschluss ausgelassenen Pruefung aus den
+ * Veroeffentlichungslaeufen. Ein einmal vor der Umstellung gemessener Wert waere nach
+ * der ersten Aenderung an einem Pruefkommando falsch. Lief eine ausgelassene Pruefung
+ * im Fenster nie, bleibt der Vergleichswert `null` — ein Wert ohne ihren Aufschlag
+ * waere zu klein und saehe dennoch aus wie gemessen (dieselbe Regel wie ueberall hier).
+ */
+function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
+  const jeKarte = new Map();
+  const laeufe = new Set();
+  const dauern = new Map(ausgelassenChecks.map((c) => [c.cmd, { summe: 0, ausfuehrungen: 0 }]));
+
+  for (const z of zeilen) {
+    if (!imFenster(z.zeitMs, fenster)) continue;
+    if (z.anlass === ANLASS_ABSCHLUSS) {
+      if (z.karte === UNBEKANNT) continue;
+      jeKarte.set(z.karte, (jeKarte.get(z.karte) ?? 0) + z.dauerMs);
+      laeufe.add(`${z.karte}\t${z.lauf}`);
+      continue;
+    }
+    const gesammelt = ANLAESSE_VEROEFFENTLICHUNG.has(z.anlass) ? dauern.get(z.cmd) : undefined;
+    if (gesammelt === undefined) continue;
+    gesammelt.summe += z.dauerMs;
+    gesammelt.ausfuehrungen += 1;
+  }
+
+  const ausgelassen = ausgelassenChecks.map(({ cmd, grund }) => {
+    const { summe, ausfuehrungen } = dauern.get(cmd);
+    return { cmd, grund, ausfuehrungen, mittelMs: ausfuehrungen > 0 ? summe / ausfuehrungen : null };
+  });
+  const karten = jeKarte.size;
+  const gemessenMs = karten > 0 ? [...jeKarte.values()].reduce((summe, ms) => summe + ms, 0) : null;
+  const mittelMs = karten > 0 ? gemessenMs / karten : null;
+  const fehlendeDauer = ausgelassen.some((a) => a.mittelMs === null);
+
+  return {
+    karten,
+    laeufe: laeufe.size,
+    gemessenMs,
+    mittelMs,
+    vergleichMs: mittelMs === null || fehlendeDauer
+      ? null
+      : ausgelassen.reduce((summe, a) => summe + a.mittelMs, mittelMs),
+    ausgelassen,
+  };
 }
 
 // --- Ruecklaeuferquote (Issue #788) ------------------------------------------
@@ -717,6 +840,11 @@ function ausfuehrungsText(n) {
   return n === 1 ? "ein einziges Mal" : `${n}-mal`;
 }
 
+/** Eine Zahl mit ihrem Wort — Einzahl bei genau einem, sonst die genannte Mehrzahl. */
+function anzahlText(n, einzahl, mehrzahl) {
+  return `${n} ${n === 1 ? einzahl : mehrzahl}`;
+}
+
 function lauftagText(n) {
   if (n === 0) return "an keinem Lauftag";
   return n === 1 ? "an einem einzigen Lauftag" : `an ${n} Lauftagen`;
@@ -736,6 +864,7 @@ export function berichtText(e) {
   return [
     ...berichtKopf(e),
     ...berichtPruefungen(e),
+    ...berichtAbschlusszeit(e),
     ...berichtRuecklauf(e),
     ...berichtBefund(e),
     // Die Messgrenze aus E17 steht in JEDEM Bericht, auch im Leerfall: Wer die Datei
@@ -794,6 +923,50 @@ function berichtPruefungen(e) {
   }
   if (zeilen.at(-1) !== "") zeilen.push("");
   return zeilen;
+}
+
+/**
+ * Der Abschnitt zur mittleren Pruefzeit je Karte (Issue #951, AK 6): beide Werte
+ * NEBENEINANDER, dazu die Traglast — die Zahl der tragenden Karten und ihrer
+ * Abschlusslaeufe — und die Messgrenze. Ohne die Messgrenze laese sich die Zahl als
+ * gesamte Pruefzeit einer Karte; sie ist die Zeit ihrer Abschlusslaeufe.
+ */
+function berichtAbschlusszeit(e) {
+  const a = e.abschlusszeit;
+  const zeilen = ["## Mittlere Pruefzeit je Karte", ""];
+  if (a.karten === 0) {
+    zeilen.push(
+      "Keine Abschlusszeile mit Kartennummer im Fenster — die mittlere Pruefzeit je Karte ist nicht gemessen. "
+      + "Ein Mittel je Lauf steht hier ausdruecklich nicht: Das waere eine andere Groesse.",
+    );
+  } else {
+    const karten = anzahlText(a.karten, "Karte", "Karten");
+    const laeufe = anzahlText(a.laeufe, "Abschlusslauf", "Abschlusslaeufen");
+    zeilen.push(
+      `Gemessen ${dauer(a.mittelMs)} je Karte, zum Vergleich ohne die Auslassungen des Abschlusses `
+      + `${dauer(a.vergleichMs)} — getragen von ${karten} und ${laeufe}.`,
+    );
+  }
+  zeilen.push(...abschlusszeitVermerke(a), "");
+  // Die Messgrenze der Zahl (AK 6): Sie steht in JEDEM Fall da, auch im Leerfall.
+  zeilen.push(
+    "Messgrenze dieser Zahl: Nur Abschlusslaeufe zaehlen — Pruefzeiten waehrend der Arbeit und beim "
+    + "Veroeffentlichen zaehlen nicht mit.",
+    "",
+  );
+  return zeilen;
+}
+
+/** Die Vermerke zur Traglast des Vergleichswerts: je ausgelassener Pruefung eine Zeile. */
+function abschlusszeitVermerke(a) {
+  if (a.ausgelassen.length === 0) {
+    return ["Keine Pruefung traegt 'nichtBeimAbschluss' — der Vergleichswert ist die gemessene Zeit."];
+  }
+  return a.ausgelassen.map((p) => (p.mittelMs === null
+    ? `Die beim Abschluss ausgelassene Pruefung \`${p.cmd}\` (${p.grund}) lief im Fenster nie beim `
+      + "Veroeffentlichen — ihre Dauer ist nicht gemessen, und darum bleibt der Vergleichswert offen."
+    : `Die beim Abschluss ausgelassene Pruefung \`${p.cmd}\` (${p.grund}) kostete beim Veroeffentlichen `
+      + `im Mittel ${dauer(p.mittelMs)} (${ausfuehrungsText(p.ausfuehrungen)} gelaufen).`));
 }
 
 /**
@@ -925,6 +1098,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
   const protokoll = protokollLesen(root);
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster);
+  const abschlusszeit = abschlusszeitErmitteln(protokoll.zeilen, fenster, einstellungen.abschlussAusgelassen);
   const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs);
   const befund = [
     ...befundBestimmen(pruefungen, einstellungen.nieBeanstandetAb),
@@ -946,6 +1120,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
       ...zeilenbilanz(protokoll, fenster),
     },
     pruefungen,
+    abschlusszeit,
     ruecklauf,
     schwellen: {
       fensterTage,
