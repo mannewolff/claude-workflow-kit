@@ -42,7 +42,7 @@ import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.3.2";
+const KIT_VERSION = "3.3.3";
 
 const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fuer die Release-Skills
 

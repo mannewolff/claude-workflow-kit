@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.3] - 2026-09-26
+- Die Verflechtung unterscheidet Geruest von Kopplung (#943)
+- Die Invariante deckt wieder nur kit/ und tools/ (#937)
+- Die Doku nennt neun Teile und kein kit/** mehr (#937)
+- Die Bereiche werden Quell-Einheiten, die Invariante deckt alles (#936)
+- Die Dateien ohne Zuordnung bekommen eine (#935)
+- Die pruefungsfreie Zuordnung ohnePruefung (#934)
+- Die Nacht-Sessions laufen im auto mode (#940)
+- Kein Bereich beansprucht mehr das ganze Werkzeugverzeichnis (#933)
+- Die Verflechtung von Test und Quelle wird erhoben (#931)
+- push main und merge production laufen im eigenen Worktree (#929)
+- Der Umsetzungspfad liest den Kartenzustand an der Karte (#927)
+- Beantwortete PO-Fragen brauchen die Keine-Zeile (#921)
+
 ## [3.3.2] - 2026-09-25
 - Die Befunde aus dem Code-Review des Batches sind eingearbeitet
 - Beide Berichte weisen Prueflaeufe und Zielmarke aus (#926)

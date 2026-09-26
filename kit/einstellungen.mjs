@@ -27,7 +27,7 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Wird von tools/sync-blobs.mjs gestempelt — nie von Hand setzen (Issue #171).
-const KIT_VERSION = "3.3.2";
+const KIT_VERSION = "3.3.3";
 
 // Das Schema aus templates/workflow.config.schema.json, eingebettet von tools/sync-blobs.mjs
 // (Plan #674 E2). Base64 wie die Blobs in install.mjs: Der Text darf Anführungszeichen,
