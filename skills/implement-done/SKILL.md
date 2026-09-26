@@ -36,7 +36,7 @@ Lies alle Abschnitte des Issues erneut. Das Akzeptanzkriterium ist der Maßstab 
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 
 1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --bereich <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
-2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run` vor dem Commit.
+2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --abschluss <kartennummer>` vor dem Commit.
 3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--frisch` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
 5. Ist `checks.mjs run` rot, laufen danach zuerst die fehlschlagenden Tests gezielt. `checks.mjs run` startet erst dann erneut, wenn sie grün sind.
@@ -44,7 +44,7 @@ Lies alle Abschnitte des Issues erneut. Das Akzeptanzkriterium ist der Maßstab 
 ### 3. Pruefungen vor dem Commit
 
 ```bash
-node .claude/kit/checks.mjs run
+node .claude/kit/checks.mjs run --abschluss <kartennummer>
 ```
 
 Das Kommando waehlt die betroffenen `buildChecks` aus und fuehrt genau sie aus.
@@ -60,12 +60,22 @@ eine Pruefung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in d
 Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht sie wie
 jede andere Auslassung.
 
+**`--abschluss <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
+solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
+Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
+ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die
+**Kartennummer** ist die des Issues, das dieser Lauf abschliesst — ohne sie koennte die
+Wirksamkeit ihre Kennzahl je Karte nicht rechnen (Issue #951).
+
 Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
 
 Das Kommando nennt in seiner Ausgabe die **gelaufenen und die ausgelassenen**
 Pruefungen, jeweils mit Grund. Beides gehoert in den Abschlussbericht (Schritt 5):
 Nur die Laeufe zu nennen genuegt nicht — dann muesste man die Auslassungen indirekt
-erschliessen, und ein verkuerzter Lauf saehe aus wie ein vollstaendiger. Meldet das
+erschliessen, und ein verkuerzter Lauf saehe aus wie ein vollstaendiger. Die
+Auslassungen werden **mit ihrem Grund** aus der Ausgabe uebernommen, wortgetreu und nicht
+zu "ausgelassen" verkuerzt — erst der Grund sagt, ob eine Pruefung an ihrem Zeitpunkt
+wartet oder ausfiel. Meldet das
 Kommando `leeresPaket`, steht das ausdruecklich als "keine Pruefung, weil nichts
 veraendert wurde" im Bericht, nicht als leere Liste.
 

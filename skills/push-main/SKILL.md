@@ -197,7 +197,13 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   Rückgabewert jedes Prüfkommandos und die allgemeinen Fehlermerkmale in seiner
   Ausgabe liest `checks.mjs run` selbst; ein Treffer färbt die Prüfung rot.
 - **Ein roter Lauf hält alles an:** kein Commit, kein Push. Klare Meldung, **welcher**
-  Check mit welchem Fehler fehlschlug. Der Worktree wird trotzdem **abgebaut** (Schritt 8),
+  Check mit welchem Fehler fehlschlug. Der Lauf nennt dazu je roter Prüfung die
+  **Verursacher-Karten** in einer eigenen Zeile (`Verursacher (<cmd>): …`) — die Karten,
+  deren Commits seit dem Anker die Dateien dieser Prüfung berührt haben. Übernimm die
+  Zeilen unverändert in den Bericht. Die Reparatur ist eine **neue Karte**: Die
+  verursachende Karte wandert **nicht aus „In review" zurück** — sie ist abgeschlossen
+  und wartet auf den Test des Menschen, und ein Rückzug verlöre genau diesen Stand.
+  Genannt wird sie, damit die neue Karte weiß, wo sie ansetzt. Der Worktree wird trotzdem **abgebaut** (Schritt 8),
   und der Bericht sagt das: Der Bump ist seit Issue #656 idempotent, ein neuer Anlauf
   erzeugt ihn wieder — ein stehengebliebener Worktree wäre genau der Rest, den dieser Weg
   beseitigt.

@@ -108,3 +108,61 @@ test("implement-done: die Regel zu manuellen Pruefpunkten steht ausserhalb des B
       "der Absatz steht in einem Kommando-Block statt als Prosa");
   }
 });
+
+// --- Abschlusslauf je Karte (Issue #952) ------------------------------------
+//
+// Die Mechanik aus Issue #946 wirkt erst, wenn der Abschluss einer Karte den
+// Schalter setzt. Gesetzt wird er allein von den implement-Skills — `/local-check`
+// misst den Stand mehrerer Pakete gegen den Merge-Base und bleibt aussen vor (E12).
+
+const ABSCHLUSS_SKILLS = ["implement-next", "implement-ready", "implement-done", "implement-test"];
+
+function skillText(name) {
+  return readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
+}
+
+for (const name of ABSCHLUSS_SKILLS) {
+  test(`${name}: der Pruefaufruf vor dem Commit traegt --abschluss <kartennummer>`, () => {
+    const text = skillText(name);
+    assert.match(text, /checks\.mjs run --abschluss <kartennummer>/,
+      "der Abschlusslauf nennt die Kartennummer nicht — dann rechnet die Kennzahl je Karte nicht");
+  });
+
+  test(`${name}: der Skill begruendet den Abschlusslauf`, () => {
+    const text = skillText(name);
+    assert.match(text, /Abschluss genau einer Karte/i,
+      "es fehlt der Satz, warum hier `--abschluss` gesetzt wird");
+  });
+}
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Bericht uebernimmt die Auslassungen mit ihrem Grund`, () => {
+    const text = skillText(name);
+    assert.match(text, /Auslassungen? .{0,80}mit (ihrem|dem) Grund/i,
+      "der Abschnitt zum Abschlussbericht sagt nicht, dass die Gruende uebernommen werden");
+  });
+}
+
+test("local-check: der Pruefaufruf setzt kein --abschluss", () => {
+  const text = skillText("local-check");
+  const zeilen = text
+    .split("\n")
+    .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
+  assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
+  for (const zeile of zeilen) {
+    assert.doesNotMatch(zeile, /--abschluss/,
+      "`/local-check` misst mehrere Pakete gegen den Merge-Base — das ist kein Kartenabschluss");
+  }
+  assert.match(text, /kein `--abschluss`/,
+    "es fehlt der Satz, warum hier kein `--abschluss` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
+});
+
+test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte", () => {
+  const text = skillText("push-main");
+  assert.match(text, /Verursacher/,
+    "der rote Zweig sagt nicht, dass der Lauf die verursachenden Karten nennt");
+  assert.match(text, /neue Karte/i,
+    "der rote Zweig sagt nicht, dass die Reparatur eine neue Karte ist");
+  assert.match(text, /nicht aus .In review. zur(ü|ue)ck/i,
+    "es fehlt, dass die verursachende Karte nicht aus In review zurueckwandert");
+});

@@ -51,12 +51,13 @@ Lies alle Abschnitte des Issues. Die Tests entstehen gegen das Issue, nicht gege
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 
 1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --bereich <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
-2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run` vor dem Commit.
+2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --abschluss <kartennummer>` vor dem Commit.
 3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--frisch` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
 5. Ist `checks.mjs run` rot, laufen danach zuerst die fehlschlagenden Tests gezielt. `checks.mjs run` startet erst dann erneut, wenn sie grün sind.
 
-Das rote Laufenlassen der neuen Tests aus Schritt 4 ist genau so ein gezielter Lauf: nur die geschriebene Testdatei, nicht die Suite. Den vollen Lauf holt `/implement-done` vor dem Commit nach.
+Das rote Laufenlassen der neuen Tests aus Schritt 4 ist genau so ein gezielter Lauf: nur die geschriebene Testdatei, nicht die Suite. Den vollen Lauf holt `/implement-done` vor dem Commit nach. Er traegt dort `--abschluss <kartennummer>`, weil er der
+Abschluss genau einer Karte ist; dieser Skill schliesst nichts ab und faehrt ihn nicht.
 
 ### 5. Kein Commit
 
