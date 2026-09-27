@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.5] - 2026-09-27
+- Die Salvage-Vorpruefung schreibt den Nachweis, den das Commit-Gate liest (#919)
+- I6 erkennt Mutations-Vollläufe auch über Projekt-Treiber und aufhebende Entscheidungen (#942)
+- Die Verflechtungserhebung sieht den Arbeitsstand, nicht nur den Commit (#957)
+- Der Linter faengt .sort() ohne Vergleich, bevor Sonar es tut (#956)
+- Der Worktree-Abbau gelingt auch aus dem Worktree heraus (#955)
+
 ## [3.3.4] - 2026-09-26
 - Prozesstext und Doku beschreiben den Abschlussumfang (#953)
 - Die implement-Skills rufen den Prueflauf mit --abschluss (#952)
