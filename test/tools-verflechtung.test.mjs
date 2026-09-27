@@ -12,16 +12,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { verflechtungErheben } from "../tools/verflechtung.mjs";
+import { mitRepo, datei, git } from "./helpers/checks-repo.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const tabelle = verflechtungErheben({ repoRoot });
 
-test("[931] die Erhebung liefert eine nicht leere Tabelle ueber versionierte Testdateien", () => {
+test("[931] die Erhebung liefert eine nicht leere Tabelle ueber die Testdateien des Arbeitsstands", () => {
   assert.ok(tabelle.size > 0, "die Verflechtungstabelle ist leer");
   for (const [testdatei, quellen] of tabelle) {
     assert.match(testdatei, /^test\/.*\.test\.mjs$/, `kein Testpfad: ${testdatei}`);
@@ -70,11 +73,21 @@ test("[931] die Kette laeuft durch test/helpers hindurch", () => {
   const ueberHelfer = [...tabelle.entries()].filter(([, quellen]) => quellen.length > 0);
   assert.ok(ueberHelfer.length > 0, "keine einzige Kopplung erhoben");
 
+  // Die Kandidaten kommen aus dem echten Import und nicht aus dem Namenspraefix
+  // `test/checks-` (Issue #957). Das Praefix ist die Zuordnungskonvention der
+  // Pruefkommandos, nicht eine Aussage darueber, wen dieser Helfer laedt:
+  // `test/checks-lint-sortordnung.test.mjs` traegt es und prueft die
+  // eslint-Leitplanke, nicht `kit/checks.mjs`. Ueber das Praefix gewaehlt,
+  // beanstandete die Invariante genau diese Datei — und zwar erst nach ihrem
+  // Commit, weil die Erhebung den Arbeitsstand vorher nicht sah.
   const helfer = "test/helpers/checks-repo.mjs";
-  const nutzer = [...tabelle.keys()].filter((p) => p.startsWith("test/checks-"));
+  const helferImport = /(?:from|import)\s*\(?\s*["'][^"']*helpers\/checks-repo\.mjs["']/;
+  const nutzer = [...tabelle.keys()].filter(
+    (p) => helferImport.test(readFileSync(join(repoRoot, p), "utf-8")),
+  );
   assert.ok(nutzer.length > 0, `keine Nutzer von ${helfer} in der Tabelle`);
   const ohneChecks = nutzer.filter((p) => !tabelle.get(p).includes("kit/checks.mjs"));
-  assert.deepEqual(ohneChecks, [], "checks-Tests ohne Kopplung an kit/checks.mjs");
+  assert.deepEqual(ohneChecks, [], `Nutzer von ${helfer} ohne Kopplung an kit/checks.mjs`);
 });
 
 test("[931] eine Quelldatei erscheint nie als eigene Quelle und nie doppelt", () => {
@@ -117,11 +130,21 @@ test("[931] der direkte Aufruf gibt die Tabelle aus", () => {
 test("[943] ohne Musterliste bleibt die Tabelle die von heute", () => {
   // Die Zeilenzahl gegen `git ls-files` statt gegen eine feste Zahl: Eine Zahl, die bei
   // jeder neuen Testdatei mitgezogen wird, prueft nichts.
-  const versionierteTests = spawnSync("git", ["ls-files", "-z", "--", ":(glob)test/**/*.test.mjs"], {
-    cwd: repoRoot,
-    encoding: "utf-8",
-  }).stdout.split("\0").filter((p) => p.length > 0);
-  assert.equal(tabelle.size, versionierteTests.length, "die Erhebung deckt nicht jede versionierte Testdatei");
+  //
+  // Gezaehlt wird derselbe Arbeitsstand, den die Erhebung seit Issue #957 sieht:
+  // versioniert UND uncommittet neu angelegt. Nur die versionierten zu zaehlen machte
+  // diesen Test in genau dem Lauf rot, der eine neue Testdatei mitbringt — also in
+  // jedem Paket, das eine anlegt.
+  const testDateienVon = (...args) => spawnSync(
+    "git",
+    ["ls-files", "-z", ...args, "--", ":(glob)test/**/*.test.mjs"],
+    { cwd: repoRoot, encoding: "utf-8" },
+  ).stdout.split("\0").filter((p) => p.length > 0);
+  const imArbeitsstand = new Set([
+    ...testDateienVon(),
+    ...testDateienVon("--others", "--exclude-standard"),
+  ]);
+  assert.equal(tabelle.size, imArbeitsstand.size, "die Erhebung deckt nicht jede Testdatei des Arbeitsstands");
 
   const leereListe = verflechtungErheben({ repoRoot, nurGeruest: [] });
   assert.equal(leereListe.size, tabelle.size);
@@ -196,4 +219,73 @@ test("[956] die Ordnung unterscheidet sich belegbar von localeCompare", () => {
   const codepoint = [...alle].sort((a, b) => (a < b ? -1 : Number(a > b)));
   const locale = [...alle].sort((a, b) => a.localeCompare(b));
   assert.notDeepEqual(codepoint, locale, "beide Ordnungen sind hier gleich — der Schutztest oben belegt nichts");
+});
+
+// --- Der Arbeitsstand, nicht nur der Commit (Issue #957) ---
+//
+// Der Prueflauf eines Arbeitspakets steht VOR dem Commit. Sah die Erhebung nur
+// `git ls-files`, war eine in diesem Paket neu angelegte Testdatei fuer jede
+// Invariante unsichtbar, die auf ihr aufsitzt — sichtbar wurde sie erst im Lauf der
+// naechsten Karte, und der Fund gehoerte dann der falschen. Belegter Vorfall:
+// Karte 956 legte `test/checks-lint-sortordnung.test.mjs` an, ihr Paketlauf war
+// gruen, und `push main` scheiterte danach an der E4-Invariante.
+//
+// Geprueft wird hier im Wegwerf-Repo und nicht am Bestand: Ob eine UNCOMMITTETE
+// Datei mitzaehlt, laesst sich an einem Repo, das sauber sein soll, nicht zeigen.
+
+test("[957] die Erhebung traegt die committete und die uncommittete Testdatei", () => {
+  mitRepo({}, (dir) => {
+    datei(dir, "kit/quelle.mjs", "export const eins = 1;\n");
+    datei(dir, "test/committet.test.mjs", 'import { eins } from "../kit/quelle.mjs";\nconsole.log(eins);\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "erste Testdatei");
+
+    datei(dir, "test/uncommittet.test.mjs", 'import { eins } from "../kit/quelle.mjs";\nconsole.log(eins);\n');
+
+    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    assert.deepEqual(
+      tabelleDort.get("test/committet.test.mjs"),
+      ["kit/quelle.mjs"],
+      "die committete Testdatei fehlt oder traegt die Kopplung nicht",
+    );
+    assert.deepEqual(
+      tabelleDort.get("test/uncommittet.test.mjs"),
+      ["kit/quelle.mjs"],
+      "die uncommittete Neuanlage fehlt in der Erhebung — der Paketlauf saehe sie nicht",
+    );
+  });
+});
+
+test("[957] eine ignorierte Neuanlage bleibt draussen", () => {
+  // `--exclude-standard` ist nicht Beiwerk: Ohne es zaehlten `node_modules/` und
+  // jeder lokale Zustand unter `.claude/` als Arbeitsstand mit, und die Quellmenge
+  // waere voll von Dateien, die kein Pruefkommando je liest.
+  mitRepo({}, (dir) => {
+    datei(dir, "kit/quelle.mjs", "export const eins = 1;\n");
+    datei(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\ntest/ignoriert.test.mjs\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "quelle");
+
+    datei(dir, "test/ignoriert.test.mjs", 'import "../kit/quelle.mjs";\n');
+    datei(dir, "test/gesehen.test.mjs", 'import "../kit/quelle.mjs";\n');
+
+    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    assert.ok(tabelleDort.has("test/gesehen.test.mjs"), "die nicht ignorierte Neuanlage fehlt");
+    assert.ok(
+      !tabelleDort.has("test/ignoriert.test.mjs"),
+      `ignorierter Pfad in der Tabelle: ${[...tabelleDort.keys()].join(", ")}`,
+    );
+  });
+});
+
+test("[957] ausserhalb eines Repositories wirft die Erhebung weiterhin", () => {
+  // Der Fehlerpfad ist die Begruendung der Funktion: Eine Erhebung von null saehe
+  // wie „keine Kopplung" aus, und jede Invariante darauf waere still gruen. Der
+  // zweite git-Aufruf darf daran nichts aendern — leer ist bei ihm der Normalfall.
+  const draussen = mkdtempSync(join(tmpdir(), "verflechtung-ohne-repo-"));
+  try {
+    assert.throws(() => verflechtungErheben({ repoRoot: draussen }), /git ls-files/);
+  } finally {
+    rmSync(draussen, { recursive: true, force: true });
+  }
 });

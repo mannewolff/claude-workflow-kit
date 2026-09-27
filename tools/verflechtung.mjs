@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * verflechtung.mjs — erhebt je versionierter Testdatei die Menge der
+ * verflechtung.mjs — erhebt je Testdatei des Arbeitsstands die Menge der
  * Quelldateien, die sie laedt (Issue #931, Plan #930, E5).
  *
  * Der Plan stellt die bereichsbezogene Auswahl der Pruefungen um. Jeder Schnitt
@@ -54,19 +54,35 @@ function posix(pfad) {
   return pfad.split("\\").join("/");
 }
 
-/**
- * Die versionierten Dateien des Repositories.
- *
- * Eine leere Antwort ist ein Fehler und kein leerer Fall: Sie entstuende bei
- * einem Aufruf ausserhalb des Repos — und die Erhebung meldete dann eine
- * Verflechtung von null, die wie „keine Kopplung" aussieht.
- */
-function versionierte(repoRoot) {
-  const res = spawnSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf-8" });
+/** Eine Liste von Pfaden aus `git ls-files`, in der Schreibweise der Config. */
+function lsFiles(repoRoot, args) {
+  const res = spawnSync("git", ["ls-files", "-z", ...args], { cwd: repoRoot, encoding: "utf-8" });
   if (res.status !== 0) {
     throw new Error(`git ls-files schlug fehl: ${(res.stderr || "").trim()}`);
   }
-  const dateien = res.stdout.split("\0").filter((p) => p.length > 0).map(posix);
+  return res.stdout.split("\0").filter((p) => p.length > 0).map(posix);
+}
+
+/**
+ * Die Dateien des Arbeitsstands: versioniert und uncommittet neu angelegt.
+ *
+ * Der Prueflauf eines Arbeitspakets steht VOR dem Commit (Issue #957). Nur
+ * `git ls-files` zu lesen liess jede in diesem Paket neu angelegte Testdatei
+ * unsichtbar bleiben — sichtbar wurde sie erst im Lauf der naechsten Karte, und
+ * der Fund gehoerte dann der falschen. Die uncommitteten Neuanlagen kommen
+ * deshalb dazu, und zwar ohne die ignorierten (`--exclude-standard`): sonst
+ * zaehlten `node_modules/` und der lokale Zustand unter `.claude/` als Kopplung.
+ *
+ * Eine insgesamt leere Antwort ist ein Fehler und kein leerer Fall: Sie entstuende
+ * bei einem Aufruf ausserhalb des Repos — und die Erhebung meldete dann eine
+ * Verflechtung von null, die wie „keine Kopplung" aussieht. Eine leere zweite
+ * Liste allein ist dagegen der Normalfall: ein sauberer Arbeitsbaum.
+ */
+function imArbeitsstand(repoRoot) {
+  const dateien = [...new Set([
+    ...lsFiles(repoRoot, []),
+    ...lsFiles(repoRoot, ["--others", "--exclude-standard"]),
+  ])].sort(vergleicheText);
   if (dateien.length === 0) throw new Error(`git ls-files fand nichts unter ${repoRoot}`);
   return dateien;
 }
@@ -149,8 +165,8 @@ function quellenZu(testdatei, ctx) {
 }
 
 /**
- * Die Verflechtungstabelle: je versionierter Testdatei die sortierte Liste der
- * Quelldateien, die sie laedt.
+ * Die Verflechtungstabelle: je Testdatei des Arbeitsstands die sortierte Liste der
+ * Quelldateien, die sie laedt — versioniert wie uncommittet neu angelegt (#957).
  *
  * `nurGeruest` sind Pfadmuster in der Schreibweise von `checkAreas` — dieselbe
  * Aufloesung aus `kit/checks.mjs`, nicht eine zweite hier. Ein getroffener
@@ -163,7 +179,7 @@ function quellenZu(testdatei, ctx) {
  * @returns {Map<string, string[]>} Testpfad → Quellpfade, beide repo-relativ
  */
 export function verflechtungErheben({ repoRoot = KIT_ROOT, nurGeruest = [] } = {}) {
-  const alle = versionierte(repoRoot);
+  const alle = imArbeitsstand(repoRoot);
   const testdateien = alle.filter((p) => /^test\/.*\.test\.mjs$/.test(p)).sort(vergleicheText);
   const geruest = nurGeruest.map((muster) => globZuRegex(muster));
   const quellmenge = new Set(alle.filter(
