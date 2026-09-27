@@ -6775,7 +6775,10 @@ export function berichtSchreiben(zielId, text, { stempel = LAUF_STEMPEL, repoRoo
 export function berichteNachtragen(repoRoot = process.cwd()) {
   const ordner = join(repoRoot, ".claude");
   if (!existsSync(ordner)) return [];
-  const dateien = readdirSync(ordner).filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort();
+  // Codepoint-Ordnung wie bisher (Issue #956, S2871): Die Berichte tragen den
+  // Zeitstempel im Namen, aufsteigend nach Dateiname ist aufsteigend nach Zeit.
+  const dateien = readdirSync(ordner)
+    .filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort(vergleicheText);
   const nachgetragen = [];
   for (const name of dateien) {
     const F = name.slice(BERICHT_DATEI_PRAEFIX.length).split("-")[0];

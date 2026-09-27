@@ -55,14 +55,46 @@ export default [
       // die es fuer reine .mjs-Dateien ohne TS-Projekt nicht gibt. eslint-plugin-sonarjs
       // fuehrt sie nicht. Ihre fuenf Fundstellen sind von Hand behoben (Issue #399).
       //
-      // S2871 (.sort() ohne Vergleichsfunktion) und S4043 (sort im Rueckgabe-
-      // ausdruck) haben hier aus demselben Grund KEIN Pendant: Beide Regeln aus
-      // eslint-plugin-sonarjs geben ohne Parser-Services ein leeres Regelobjekt
-      // zurueck (cjs/S2871/rule.js:52, cjs/S4043/rule.js:41) und melden fuer
-      // reine .mjs-Dateien nichts. Die benannte Vergleichsfunktion
-      // `vergleicheText` in kit/checks.mjs ist deshalb Konvention, keine
-      // Leitplanke — ein neuer `.sort()`-Aufruf faellt erst beim naechsten
-      // SonarCloud-Lauf auf (Issue #493).
+      // S4043 (sort im Rueckgabeausdruck) hat hier aus demselben Grund KEIN
+      // Pendant: Die Regel aus eslint-plugin-sonarjs gibt ohne Parser-Services ein
+      // leeres Regelobjekt zurueck (cjs/S4043/rule.js:41) und meldet fuer reine
+      // .mjs-Dateien nichts.
+      //
+      // Fuer S2871 (.sort() ohne Vergleichsfunktion) galt dasselbe, und die Folge
+      // stand hier frueher als hingenommener blinder Fleck: `vergleicheText` sei
+      // Konvention, keine Leitplanke. Das hat nicht gehalten — `main` stand am
+      // 2026-09-24 an S2871 rot (Issue #872/#873), die Stellen wurden von Hand
+      // behoben, und im September stand das Gate mit sechs neuen Stellen wieder
+      // rot (Issue #956). Eine Fundklasse, die zweimal wiederkehrt, gehoert in den
+      // Linter. Die Leitplanke steht deshalb unten als syntaktische Regel — nicht
+      // als `sonarjs/no-alphabetical-sort`, die auch aktiviert stumm bleibt.
+    },
+  },
+  {
+    // S2871: `.sort()` / `.toSorted()` ohne Vergleichsfunktion (Issue #956).
+    //
+    // Eigener Block, weil sein Geltungsbereich ein anderer ist: genau
+    // `sonar.sources` (kit, tools, install.mjs) — die Menge, fuer die das Quality
+    // Gate rot wird. test/ und .githooks/ bleiben aussen vor. Die Testsuite traegt
+    // Dutzende `.sort()`-Aufrufe ueber Schluesselnamen und Dateilisten, an denen
+    // kein Gate haengt; sie mitzufangen hiesse, beim ersten Lauf hunderte Funde zu
+    // melden — und ein solcher Linter wird abgeschaltet statt befolgt (dieselbe
+    // Begruendung, mit der dieser Config die `recommended`-Sets meidet).
+    //
+    // Syntaktisch statt typbasiert: Ohne Typinformationen laesst sich nicht
+    // entscheiden, ob der Empfaenger ein Array ist. Die Regel nimmt deshalb in
+    // Kauf, ein `.sort()` an einem Nicht-Array zu melden — das gibt es hier nicht,
+    // und der falsche Alarm waere billig, das uebersehene Gate teuer.
+    files: ["kit/**/*.mjs", "tools/**/*.mjs", "install.mjs"],
+    rules: {
+      "no-restricted-syntax": ["error", {
+        selector:
+          'CallExpression[arguments.length=0][callee.type="MemberExpression"][callee.computed=false]'
+          + ':matches([callee.property.name="sort"], [callee.property.name="toSorted"])',
+        message:
+          "S2871: sort()/toSorted() ohne Vergleichsfunktion sortiert nach der "
+          + "String-Darstellung. Vergleich angeben — fuer Text `vergleicheText`.",
+      }],
     },
   },
 ];

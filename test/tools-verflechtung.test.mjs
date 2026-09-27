@@ -169,3 +169,31 @@ test("[943] die Muster lesen sich wie die der Bereiche", () => {
     "das Muster skills/** hat nicht ueber die Segmentgrenze hinweg gegriffen",
   );
 });
+
+test("[956] Testdateien und Quellpfade kommen in Codepoint-Ordnung", () => {
+  // Die Erhebung sortierte Testdateien und Quellpfade mit einem blossen `.sort()`.
+  // Die Leitplanke gegen S2871 (eslint.config.mjs, Issue #956) verlangt dort eine
+  // Vergleichsfunktion, und die Wahl ist nicht gleichgueltig: `localeCompare`
+  // ordnet Sonderzeichen anders — `.claude/…`, `.githooks/…` und `kit/…` stehen
+  // damit in anderer Reihenfolge als nach Codepoints. Die Verflechtungstabelle
+  // geht in die bereichsbezogene Auswahl der Pruefungen ein; verdrehte Ordnung
+  // liefe still weiter und faellt erst auf, wenn ein Bereich seine Gruppe
+  // verfehlt. Festgeschrieben wird deshalb die bisherige Ordnung.
+  const codepoint = (a, b) => (a < b ? -1 : Number(a > b));
+
+  const testdateien = [...tabelle.keys()];
+  assert.deepEqual(testdateien, [...testdateien].sort(codepoint), "Testdateien nicht in Codepoint-Ordnung");
+
+  for (const [testdatei, quellen] of tabelle) {
+    assert.deepEqual(quellen, [...quellen].sort(codepoint), `Quellen zu ${testdatei} nicht in Codepoint-Ordnung`);
+  }
+});
+
+test("[956] die Ordnung unterscheidet sich belegbar von localeCompare", () => {
+  // Ohne diesen Nachweis waere der Test darueber zahnlos: Waeren beide Ordnungen
+  // hier zufaellig gleich, bliebe ein Wechsel auf `localeCompare` unbemerkt.
+  const alle = [...new Set([...tabelle.values()].flat())];
+  const codepoint = [...alle].sort((a, b) => (a < b ? -1 : Number(a > b)));
+  const locale = [...alle].sort((a, b) => a.localeCompare(b));
+  assert.notDeepEqual(codepoint, locale, "beide Ordnungen sind hier gleich — der Schutztest oben belegt nichts");
+});

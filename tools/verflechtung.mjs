@@ -45,7 +45,7 @@ import { spawnSync } from "node:child_process";
 import { resolve, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { globZuRegex } from "../kit/checks.mjs";
+import { globZuRegex, vergleicheText } from "../kit/checks.mjs";
 
 const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -142,7 +142,10 @@ function quellenZu(testdatei, ctx) {
     for (const pfad of erwaehnte(text, ctx.quellmenge)) quellen.add(pfad);
   }
 
-  return [...quellen].sort();
+  // Codepoint-Ordnung, nicht die der Locale: Die Tabelle geht in die
+  // bereichsbezogene Auswahl der Pruefungen ein und muss auf jeder Maschine
+  // dieselbe sein (Issue #956, S2871).
+  return [...quellen].sort(vergleicheText);
 }
 
 /**
@@ -161,7 +164,7 @@ function quellenZu(testdatei, ctx) {
  */
 export function verflechtungErheben({ repoRoot = KIT_ROOT, nurGeruest = [] } = {}) {
   const alle = versionierte(repoRoot);
-  const testdateien = alle.filter((p) => /^test\/.*\.test\.mjs$/.test(p)).sort();
+  const testdateien = alle.filter((p) => /^test\/.*\.test\.mjs$/.test(p)).sort(vergleicheText);
   const geruest = nurGeruest.map((muster) => globZuRegex(muster));
   const quellmenge = new Set(alle.filter(
     (p) => !p.startsWith("test/") && !geruest.some((regex) => regex.test(p)),

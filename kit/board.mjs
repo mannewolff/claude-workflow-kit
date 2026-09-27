@@ -1266,7 +1266,14 @@ class LocalIssueTracker {
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
       .filter((f) => f.endsWith(".md"))
-      .sort(); // aufsteigend nach Dateiname = aufsteigend nach id
+      // aufsteigend nach Dateiname = aufsteigend nach id — die Namen sind auf vier
+      // Stellen genullt (padId), Codepoint-Ordnung ist damit Zahlenordnung. Der
+      // Vergleich steht ausgeschrieben statt als argumentloses Sortieren (Issue #956,
+      // S2871) und liegt hier statt als benannte Funktion, weil board.mjs ein
+      // eigenstaendiges Single-File-Werkzeug ist (#440) und dies seine einzige
+      // Stelle. `localeCompare` waere hier falsch: Es haengt an der Locale der
+      // Maschine, und die Kartenreihenfolge ist die Abarbeitungsreihenfolge.
+      .sort((a, b) => (a < b ? -1 : Number(a > b)));
   }
 
   _filePath(id) {
