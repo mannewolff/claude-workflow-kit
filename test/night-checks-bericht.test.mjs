@@ -257,18 +257,25 @@ test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeil
   });
 });
 
-// --- Salvage: die Paketstufe, ohne bereichsbezogene Auswahl ---
+// --- Salvage: der Umfang, den auch das Commit-Gate bezeugt ---
 
-test("[night-48] Salvage faehrt den Abschlussumfang: ohne Bereichsauswahl, aber ohne spaetere Stufen", NUR_POSIX, () => {
+test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", NUR_POSIX, () => {
   // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
   // exportiert. Alle Pruefungen protokollieren ihre Ausfuehrung; die Session fasst nur
   // den Bereich 'kit' an.
   //
-  // Drei Aussagen in einem Lauf: Die BEREICHSauswahl bleibt aus (der unberuehrte
-  // Bereich 'frontend' laeuft trotzdem, Entscheidung A6 des Plans #421), die
-  // STUFENauswahl greift (der Push-Eintrag laeuft nicht, Plan #753, E13), und der
-  // Salvage faehrt den Umfang des Abschlusses, den er nachvollzieht — ohne
-  // `nichtBeimAbschluss` und ohne Guetemessung (Issue #950, Plan #944, E14).
+  // Drei Aussagen in einem Lauf: Die BEREICHSauswahl greift jetzt (der unberuehrte
+  // Bereich 'frontend' laeuft nicht mehr mit), die STUFENauswahl ebenso (der
+  // Push-Eintrag laeuft nicht, Plan #753, E13), und der Salvage faehrt den Umfang des
+  // Abschlusses, den er nachvollzieht — ohne `nichtBeimAbschluss` und ohne Guetemessung
+  // (Issue #950, Plan #944, E14).
+  //
+  // Die Bereichsauswahl ist die Aenderung aus Issue #919 und hebt Entscheidung A6 des
+  // Plans #421 auf (bis dahin: [night-48], 'ohne Bereichsauswahl'). Die Vorpruefung geht
+  // seitdem ueber `checks.mjs run`, weil nur dieser Lauf den Nachweis hinterlaesst, den
+  // das Commit-Gate liest — und mit dem Weg kommt dessen Auswahl. Eine eigene, weitere
+  // Auswahl waere wieder eine zweite Wahrheit ueber 'gruen', und genau daran scheiterte
+  // die Rettung im Vorfall vom 2026-09-24.
   const buildChecks = [
     { cmd: "echo kit >> checklauf.log", areas: ["kit"] },
     { cmd: "echo frontend >> checklauf.log", areas: ["frontend"] },
@@ -298,8 +305,8 @@ test("[night-48] Salvage faehrt den Abschlussumfang: ohne Bereichsauswahl, aber 
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
     const laeufe = readFileSync(join(dir, "checklauf.log"), "utf-8").trim().split("\n");
-    assert.deepEqual(laeufe, ["kit", "frontend"],
-      `nur die beiden Pruefungen des Abschlussumfangs haetten laufen duerfen, tatsaechlich: ${laeufe.join(", ")}`);
+    assert.deepEqual(laeufe, ["kit"],
+      `nur die Pruefung des beruehrten Bereichs haette laufen duerfen, tatsaechlich: ${laeufe.join(", ")}`);
     assert.ok(board(dir, "issue", "list", "--status", "in_review").some((i) => String(i.id) === id),
       "das gerettete Issue haette in In review landen muessen");
   }, { buildChecks });

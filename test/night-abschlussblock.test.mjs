@@ -103,6 +103,10 @@ function setupProjekt(praefix, { aufwandStub = stubMitErgebnis(ERGEBNIS_MIT_BEFU
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
+  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
+  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), aufwandStub);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,

@@ -54,8 +54,9 @@
  * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
  * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
  * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
- * Runner deshalb die buildChecks der Paketstufe selbst (nicht mutationCommand —
- * das ist ein nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
+ * Runner deshalb die Pflicht-Pruefungen selbst — mit `checks.mjs run --abschluss <id>
+ * --frisch` im Zielprojekt (Issue #919), damit der Nachweis entsteht, den das
+ * Commit-Gate liest. Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
  * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
  * Board zu bewegen. Rote Checks -> harter Stopp. Endet die Session nicht mit
@@ -221,6 +222,15 @@ const WIRKSAMKEIT_PATH = process.env.KIT_ROOT
 const BEFUNDE_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "befunde.mjs")
   : join(__dirname, "befunde.mjs");
+
+// Und dasselbe noch einmal fuer die Pruefungen (Issue #919): Die Vorpruefung des Salvage
+// faehrt sie als Kindprozess `checks.mjs run` im Zielprojekt, damit dort der Nachweis
+// entsteht, den das Commit-Gate liest. NACHBAR_CHECKS daneben bleibt, was es war — der
+// Import fuer `zusammenfassungPfad`; dieselbe Doppelung wie beim Board, einmal als CLI
+// und einmal als Funktion.
+const CHECKS_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "checks.mjs")
+  : join(__dirname, "checks.mjs");
 
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
@@ -394,8 +404,8 @@ Flags:
   --help, -h         diese Uebersicht
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
-Working Tree, fuehrt der Runner die buildChecks der Paketstufe selbst aus — ohne
-bereichsbezogene Auswahl, denn was die Runde angefasst hat, weiss niemand. Sind sie gruen, bekommt
+Working Tree, prueft der Runner selbst nach — mit "checks.mjs run --abschluss <id>
+--frisch", also demselben Lauf, dessen Nachweis das Commit-Gate liest. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
 zu verschieben (Zeitlimit 10 min). Das Kommando dazu steht im Prompt der Session und
@@ -1399,6 +1409,13 @@ export function gitResteAusnahmen(cfg = config) {
     // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
     ".claude/bewegungen.tsv", // SYNC: kit/board.mjs schreibt sie
     ".claude/ausfuehrungen.tsv", // SYNC: kit/checks.mjs schreibt sie
+    // Der Pruef-Nachweis, aus demselben Grund und mit demselben Schadensbild (Issue #919):
+    // Seit die Salvage-Vorpruefung ueber `checks.mjs run` geht, legt der RUNNER die Datei
+    // selbst an. In einem Projekt ohne den `.claude/*`-Block zaehlte sie danach als
+    // liegengebliebene Arbeit, und die geglueckte Rettung endete als "SALVAGE
+    // WIDERSPRUECHLICH" — der Nachweis der Pruefung machte die Rettung unmoeglich, die er
+    // belegt. Nachweis einer Pruefung, kein Code-Zustand.
+    ".claude/checks-summary.json", // SYNC: kit/checks.mjs schreibt ihn (SUMMARY_DATEI)
     ".claude/wirksamkeit.md", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     ".claude/wirksamkeit.json", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
@@ -3961,7 +3978,7 @@ function bewertePruefung(issueId, commit, cfg) {
     zustand: nach.ok ? "nachgeprueft" : "rot",
     ...(nach.ok ? {} : { rotesKommando: nach.rotesKommando, rotesErgebnis: "rot" }),
     // Der Umfang ist der der Nachpruefung, nicht der des fremden Nachweises: Sie faehrt
-    // den Abschlussumfang ohne Bereichsauswahl, wie der Salvage.
+    // den Abschlussumfang ohne Bereichsauswahl.
     laufen: nachpruefLaufen(cfg, nach),
     ausgelassen: [],
     vollerUmfang: true,
@@ -4210,24 +4227,26 @@ function paketstufenChecks(cfg) {
 // PATH-Aufloesung bewusst (S4036, Issue #183).
 //
 // KEINE bereichsbezogene Auswahl, absichtlich (Entscheidung A6 des Plans #421,
-// Issue #428): auch nicht ueber checks.mjs. Wer das spaeter als Luecke liest,
-// dreht die Frage um, die diese Pruefung beantwortet. Nach einem sauberen
-// Arbeitspaket lautet sie "hat diese Arbeit etwas kaputtgemacht?" — dort genuegen
-// die beruehrten Bereiche. Beim Retten lautet sie "ist dieser unklare
-// Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne Ergebnis ist genau
-// die, deren Absicht niemand kennt: Was sie angefasst hat, sagt kein Anker
-// verlaesslich.
+// Issue #428). Wer das spaeter als Luecke liest, dreht die Frage um, die diese
+// Pruefung beantwortet: Sie wird gestellt, wenn ein Nachweis nicht zum Commit
+// gehoert — dann ist unklar, welchen Stand er gemessen hat, und ein Anker fuer die
+// beruehrten Bereiche ist es erst recht nicht.
+//
+// Fuer die SALVAGE-VORPRUEFUNG gilt das seit Issue #919 nicht mehr: Sie geht ueber
+// `checks.mjs run` (siehe `runChecksCliSync`) und damit ueber dessen Auswahl. Der
+// Grund steht dort — sie muss denselben Nachweis hinterlassen, den das Commit-Gate
+// liest, und zwei Wege zu "gruen" sind genau das, was den Vorfall ausgeloest hat.
 //
 // Die STUFENauswahl beantwortet eine andere Frage und greift deshalb sehr wohl
 // (Plan #753, E13): "ist dieser Zwischenstand brauchbar?" ist die Frage der
 // Paketstufe. Eintraege mit `stufe` push oder merge sind erst beim Veroeffentlichen
-// faellig; liefen sie hier mit, wartete jeder Rettungsversuch auf Pruefungen, die
-// ihn nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
+// faellig; liefen sie hier mit, wartete jede Nachpruefung auf Pruefungen, die sie
+// nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
 //
 // Aus demselben Grund bleiben `nichtBeimAbschluss` und die Guetemessung aussen vor
-// (Plan #944, E14): Die Vorpruefung vollzieht den Abschluss nach, den die Session nicht
-// zustande gebracht hat. Faehre sie mehr als er, waere sie STRENGER als das Gate, das
-// sie ersetzt — und sie kostete gerade die Gruppe, die wegen ihrer Laufzeit vom Abschluss
+// (Plan #944, E14): Die Nachpruefung vollzieht den Abschluss nach, den die Session nicht
+// belegt hat. Faehre sie mehr als er, waere sie STRENGER als das Gate, das sie ersetzt —
+// und sie kostete gerade die Gruppe, die wegen ihrer Laufzeit vom Abschluss
 // ausgenommen wurde. Die Marke ist damit nicht aufgegeben, sondern verschoben: Vor dem
 // Veroeffentlichen laeuft die Messung immer.
 //
@@ -4364,6 +4383,51 @@ function runBuildChecksSync(cfg) {
   return { ok: true, output, rotesKommando: null };
 }
 
+// Die Ausgabe eines Pruefkommandos kann sehr lang werden (ein `mvn verify` mit
+// Testausgaben), und hier faellt die aller faelligen Kommandos in EINEM Kindprozess an.
+// Laeuft der Puffer ueber, toetet Node den Prozess mit ENOBUFS — die Vorpruefung saehe
+// rot, wo nichts rot war, und die Rettung fiele aus. Derselbe grosszuegige Wert wie
+// beim Board (BOARD_MAX_BUFFER) und aus demselben Grund.
+const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
+
+/**
+ * Die Pflicht-Pruefungen ueber `checks.mjs run` des Zielprojekts (Issue #919).
+ *
+ * WARUM nicht mehr direkt (`runBuildChecksSync`), obwohl derselbe Umfang herauskaeme:
+ * Der Runner mass gruen an einer Stelle, die das Commit-Gate nicht liest. Beobachtet in
+ * kanban-kit am 2026-09-24: Die Session lief rot, der Runner fuhr die buildChecks danach
+ * selbst und fand sie gruen, und die Salvage-Session konnte trotzdem nicht committen —
+ * in `.claude/checks-summary.json` stand noch das rote Ergebnis der Session, die
+ * Blob-Hashes darin passten exakt zum Baum. In dieser Lage kann die Rettung nie
+ * gelingen. `checks.mjs run` schreibt denselben Nachweis, den `.githooks/gate.mjs`
+ * liest; damit gibt es eine Wahrheit ueber "gruen" statt zweier.
+ *
+ * `--frisch` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
+ * Kommando das Ergebnis der Session, wenn sich seither nichts geaendert hat — also
+ * genau ihr rotes, das der Runner gerade anzweifelt.
+ *
+ * `--abschluss <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
+ * Paketstufe ohne `nichtBeimAbschluss` und ohne Guetemessung (Plan #944, E14). Der
+ * Salvage IST der Abschluss dieser Karte — ohne die Nummer koennte die Wirksamkeit
+ * ihre Kennzahl je Karte nicht rechnen (Issue #951).
+ *
+ * Das rote Kommando kommt aus dem Nachweis und nicht aus der Ausgabe: Die Datei sagt
+ * es als Feld, ein Textmuster ueber der Ausgabe waere ein zweiter Rechenweg.
+ */
+function runChecksCliSync(karte) {
+  if (!existsSync(CHECKS_PATH)) {
+    return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
+  }
+  const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
+  const res = spawnSync(process.execPath, cliArgs, {
+    cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), maxBuffer: CHECKS_MAX_BUFFER,
+  });
+  const output = `$ node ${cliArgs.join(" ")}\n${res.stdout || ""}${res.stderr || ""}`;
+  if (res.status === 0) return { ok: true, output, rotesKommando: null };
+  const nachweis = lesePruefung(karte);
+  return { ok: false, output, rotesKommando: nachweis.rotesKommando ?? null };
+}
+
 // Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
 //
 // Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
@@ -4373,19 +4437,23 @@ function runBuildChecksSync(cfg) {
 // laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
 // Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
-function verifyChecksForSalvage(cfg) {
-  const first = runBuildChecksSync(cfg);
+//
+// Beide Durchgaenge gehen ueber `checks.mjs run --frisch` (Issue #919): Der zweite ist
+// der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
+// bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
+function verifyChecksForSalvage(cfg, karte) {
+  const first = runChecksCliSync(karte);
   if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
 
   const fixCmd = (cfg.formatFixCommand || "").trim();
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
-  // Wie oben: fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
+  // fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
   // (Issue #199). PATH-Aufloesung bewusst (S4036, Issue #183).
   spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
 
-  const second = runBuildChecksSync(cfg);
+  const second = runChecksCliSync(karte);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
   log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
   return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
@@ -4405,6 +4473,8 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
+    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --abschluss ${issueId} --frisch"; der Nachweis`,
+    `liegt in .claude/checks-summary.json, und das Commit-Gate liest genau ihn.`,
     `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
     ``,
     `Im Working Tree liegen unkommittete Aenderungen zu Issue #${issueId}. Deine einzige Aufgabe:`,
@@ -4433,7 +4503,12 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
       `Formatierungsaenderungen gehoeren MIT in denselben Commit und in den Abschlussbericht.`,
     ] : []),
     ``,
-    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe:`,
+    // Woher die Zeilen stammen, steht dabei (Issue #919): Im Vorfall vom 2026-09-24
+    // zitierte der Prompt die Ausgabe eines EINZELNEN Kommandos, das der Abschluss des
+    // Pakets gar nicht faehrt — die Session hielt die Gruen-Annahme darum zu Recht fuer
+    // falsch und verweigerte den Commit. Jetzt ist es die Ausgabe desselben Laufs, der
+    // den Nachweis geschrieben hat, samt seiner Auslassungen.
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --abschluss ${issueId} --frisch):`,
     tail,
   ].join("\n");
 }
@@ -7670,7 +7745,7 @@ export function pruefeIssueGates(top) {
  * einzige Spur, die die Salvage-Session sicher hinterlaesst.
  */
 async function versucheSalvage(top, args, sessionWahl) {
-  const checks = verifyChecksForSalvage(config);
+  const checks = verifyChecksForSalvage(config, top.id);
   if (!checks.ok) {
     // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
     // Urteil nannte. Wer morgens sichtet, braucht den Befund — die letzten Zeilen sind
