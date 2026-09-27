@@ -3224,35 +3224,89 @@ function pruefeVorlage(kontext, akzeptanz) {
 }
 
 /**
- * Die Kommandos, die eine Guetemessung starten: `mutationCommand` und das `cmd` des
- * `buildChecks`-Eintrags mit `guete`-Block, beide aus der Konfiguration des Projekts.
+ * Die Kommandos, die eine Guetemessung starten: `mutationCommand`, das `cmd` des
+ * `buildChecks`-Eintrags mit `guete`-Block und die Liste `guetekommandos`, alle drei
+ * aus der Konfiguration des Projekts.
  *
  * Bewusst keine eingebaute Namensliste (`stryker`, `pitest`, …): Die veraltet und trifft
- * fremde Werkzeuge nicht, die Konfiguration weiss es genau. Ein Projekt ohne beide Felder
- * liefert eine leere Liste — dort weist I6 nichts ab.
+ * fremde Werkzeuge nicht, die Konfiguration weiss es genau. Ein Projekt ohne alle drei
+ * Felder liefert eine leere Liste — dort weist I6 nichts ab.
+ *
+ * `guetekommandos` ist der Weg fuer einen Treiber, den die Config noch nicht als Pruefung
+ * fuehren kann, weil ihn erst ein kommendes Paket baut (Issue #942): Das Projekt nennt sein
+ * Kommando-Praefix, und I6 greift schon, bevor der Treiber existiert.
  */
 function guetekommandos(config) {
   const checks = Array.isArray(config?.buildChecks) ? config.buildChecks : [];
   const ausChecks = checks.filter((c) => c && typeof c === "object" && c.guete).map((c) => c.cmd);
-  return [config?.mutationCommand, ...ausChecks]
+  const benannt = Array.isArray(config?.guetekommandos) ? config.guetekommandos : [];
+  return [config?.mutationCommand, ...ausChecks, ...benannt]
     .map((cmd) => (typeof cmd === "string" ? cmd.trim().replaceAll(/\s+/g, " ") : ""))
     .filter((cmd) => cmd !== "");
 }
 
+// Der Anker des Blocks, der den Session-Abschluss nicht blockiert (Issue #215).
+// `###` ist keine Abschnittsgrenze, der Block steht also in den Zeilen des
+// Akzeptanzkriteriums — I6 liest nur, was davor steht.
+const MANUELLE_PRUEFUNG_ZEILE = /^###[ \t]+manuelle[ \t]+pr(ü|ue)fung/i;
+
+// Eine Entscheidungszeile im Kontext, die die Guetemess-Konvention aufhebt: Sie handelt
+// von einem Vollauf oder einer Guetemessung und beantwortet das mit `Gewaehlt: ja`.
+const ENTSCHEIDUNG_ZEILE = /^Entscheidung:/;
+const GUETE_BEZUG = /vollauf|g(ü|ue)temessung|mutationspruefung|mutationspr(ü|ue)fung/i;
+
+// Die Antwort ist das erste Wort nach dem **ersten** `Gewaehlt:` der Zeile — nicht irgendein
+// `Gewaehlt: ja` im Text. Ein Paket, das diese Regel selbst baut, zitiert den Wortlaut naemlich
+// in seinem eigenen Kontext, und die Regel wies sich prompt selbst ab.
+const GEWAEHLT_ANTWORT = /gew(ä|ae)hlt:[ \t]*(\S+)/i;
+
+/** Beantwortet die Entscheidungszeile ihre Frage mit `ja`? */
+function mitJaEntschieden(zeile) {
+  const treffer = GEWAEHLT_ANTWORT.exec(zeile);
+  return treffer !== null && /^ja\b/i.test(treffer[2]);
+}
+
+/** Die Zeilen des Akzeptanzkriteriums bis zum Block `### Manuelle Pruefung`. */
+function maschinelleKriterien(zeilen) {
+  const ab = zeilen.findIndex((z) => MANUELLE_PRUEFUNG_ZEILE.test(z.trim()));
+  return ab === -1 ? zeilen : zeilen.slice(0, ab);
+}
+
 /**
- * I6: Das Akzeptanzkriterium ruft keine Guetemessung auf (Issue #901).
+ * I6: Das Akzeptanzkriterium ruft keine Guetemessung auf (Issue #901), und keine
+ * Entscheidung im Kontext hebt diese Konvention auf (Issue #942).
  *
  * Eine Mutationspruefung laeuft einmal je Veroeffentlichung an ihrer Stufe, nicht einmal
  * je Paket. Als Zeile in der Karte kostet sie die Zeit, die dem Paket fehlt: Ein Vollauf
  * hat eine Nacht-Runde exakt ins Rundenzeitlimit gefahren, samt verlorener Schlussmeldung.
+ *
+ * Die zweite Haelfte faengt den Fall, in dem der Planer die Regel selbst aushebelt — in
+ * kanban-kit #1215 stand die Ausnahme als `Entscheidung:`-Zeile im Kontext, und der Code
+ * des Pakets war fertig, als die Runde an den drei Vollaeufen starb.
+ *
+ * Der Block `### Manuelle Pruefung` zaehlt nicht mit: Dort gehoert der Nachweis hin, dass
+ * ein neuer Treiber wirklich durchlaeuft, denn er blockiert den Abschluss nicht.
  */
-function pruefeGuetemessung(akzeptanz, config) {
-  if (!akzeptanz) return [];
-  const text = akzeptanz.zeilen.join(" ").replaceAll(/\s+/g, " ");
-  return guetekommandos(config).filter((cmd) => text.includes(cmd)).map((cmd) => ({
-    gate: "I6",
-    meldung: `'## Akzeptanzkriterium' ruft die Guetemessung '${cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket`,
-  }));
+function pruefeGuetemessung(akzeptanz, kontext, config) {
+  const verstoesse = [];
+  if (akzeptanz) {
+    const text = maschinelleKriterien(akzeptanz.zeilen).join(" ").replaceAll(/\s+/g, " ");
+    for (const cmd of guetekommandos(config).filter((c) => text.includes(c))) {
+      verstoesse.push({
+        gate: "I6",
+        meldung: `'## Akzeptanzkriterium' ruft die Guetemessung '${cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket`,
+      });
+    }
+  }
+  for (const zeile of zeilenMitPraefix(kontext?.zeilen ?? [], ENTSCHEIDUNG_ZEILE)) {
+    const z = zeile.trim();
+    if (!GUETE_BEZUG.test(z) || !mitJaEntschieden(z)) continue;
+    verstoesse.push({
+      gate: "I6",
+      meldung: `'${z}' hebt die Guetemess-Konvention auf — sie gilt ohne Ausnahme, auch fuer ein Paket, das den Mess-Treiber selbst baut. Dass ein Vollauf durchlaeuft, steht unter '### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)'`,
+    });
+  }
+  return verstoesse;
 }
 
 function pruefeIssue(abschnitte, config) {
@@ -3264,7 +3318,7 @@ function pruefeIssue(abschnitte, config) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
   verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
-  verstoesse.push(...pruefeGuetemessung(finde("akzeptanzkriterium"), config));
+  verstoesse.push(...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config));
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }
@@ -3277,7 +3331,8 @@ function pruefeIssue(abschnitte, config) {
  * Arbeitspaket: I1 bis I6 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
  * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
  * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
- * Akzeptanzkriterium. Die `[Urteil]`-Gates bleiben beim Reviewer.
+ * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt.
+ * Die `[Urteil]`-Gates bleiben beim Reviewer.
  *
  * `config` braucht nur I6 — fuer die Guetekommandos des Projekts.
  */

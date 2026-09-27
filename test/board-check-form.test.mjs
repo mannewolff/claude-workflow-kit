@@ -366,6 +366,104 @@ test("[board-8] I6 betrifft die Stufen fachlich und plan nicht", () => {
   });
 });
 
+// --- I6 erweitert: Projekt-Treiber und aufhebende Entscheidung (Issue #942) ----
+//
+// Der Vorfall: Ein Paket baut seinen Mutations-Treiber selbst, also kennt die
+// Konfiguration ihn beim Schneiden noch nicht — I6 schwieg, drei Vollaeufe standen
+// im Kriterium, und die Nacht-Runde endete als wartende Sitzung. Zwei Zugaenge
+// dagegen: das Config-Feld `guetekommandos` fuer Treiber, die es noch nicht gibt,
+// und der Blick in den Kontext auf eine Entscheidung, die die Konvention aufhebt.
+
+const TREIBER = "node scripts/mutationspruefung.mjs vollauf";
+const MIT_GUETEKOMMANDOS = { ...CONFIG, guetekommandos: [TREIBER] };
+
+/** Der Block, der den Session-Abschluss nicht blockiert (Issue #215). */
+function mitManuellerPruefung(cmd) {
+  return PAKET.replace(
+    "## Abhängigkeiten\n",
+    `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)\n- \`${cmd} frontend\` laeuft einmal durch.\n\n## Abhängigkeiten\n`,
+  );
+}
+
+/** Der Wortlaut aus kanban-kit #1215, Zeile im `## Kontext`. */
+const AUFHEBENDE_ZEILE =
+  "Entscheidung: Verlangt das Akzeptanzkriterium dieses Pakets einen echten Vollauf "
+  + "beider Seiten, obwohl eine Gütemessung sonst nicht ins Paket gehört? Gewählt: ja";
+
+function mitKontextzeile(zeile) {
+  return PAKET.replace("## Kontext\n", `## Kontext\n${zeile}\n`);
+}
+
+test("[board-8] I6: ein Kommando aus guetekommandos im Akzeptanzkriterium wird abgewiesen", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const r = dateiWeg(dir, mitKriterium(`${TREIBER} frontend`), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.ok(meldung.includes(TREIBER), meldung);
+  });
+});
+
+test("[board-8] I6: dasselbe Kommando unter '### Manuelle Pruefung' bleibt gruen", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const r = dateiWeg(dir, mitManuellerPruefung(TREIBER), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: der manuelle Block hebt einen Treffer im Kriterium nicht auf", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const beides = mitManuellerPruefung(TREIBER).replace(
+      "## Akzeptanzkriterium\n",
+      `## Akzeptanzkriterium\n- \`${TREIBER} backend\` laeuft und die Kennzahl faellt nicht.\n`,
+    );
+    const r = dateiWeg(dir, beides, "[Task] x");
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: eine Entscheidung, die die Guetemess-Konvention aufhebt, wird abgewiesen", () => {
+  mitProjekt((dir) => {
+    const r = dateiWeg(dir, mitKontextzeile(AUFHEBENDE_ZEILE), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.match(meldung, /Manuelle Pruefung/, meldung);
+  });
+});
+
+test("[board-8] I6: dieselbe Frage mit 'Gewählt: nein' bleibt gruen", () => {
+  mitProjekt((dir) => {
+    const nein = AUFHEBENDE_ZEILE.replace("Gewählt: ja", "Gewählt: nein. Grund: die Konvention gilt ohne Ausnahme.");
+    const r = dateiWeg(dir, mitKontextzeile(nein), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: eine Entscheidung ohne Guetemess-Bezug bleibt gruen", () => {
+  mitProjekt((dir) => {
+    const andere = "Entscheidung: Legen wir das Feld optional an? Gewählt: ja. Verworfen: pflicht. Grund: rueckwaertskompatibel. Rückbau: trivial.";
+    const r = dateiWeg(dir, mitKontextzeile(andere), "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: ein zitiertes 'Gewählt: ja' im Text weist nicht ab", () => {
+  // Der Selbstbiss: Das Paket, das diese Regel baut, zitiert ihren Wortlaut im eigenen
+  // Kontext — und wurde von ihr abgewiesen. Es zaehlt die erste Antwort, nicht jedes Zitat.
+  mitProjekt((dir) => {
+    const zitat =
+      "Entscheidung: Wie erkennt I6 einen Treiber, den die Config noch nicht kennt? "
+      + "Gewählt: ein optionales Config-Feld, erkannt an „Gütemessung“/„Vollauf“ zusammen mit „Gewählt: ja“. "
+      + "Verworfen: eine eingebaute Namensliste. Grund: sie veraltet. Rückbau: eine Datei.";
+    const r = dateiWeg(dir, mitKontextzeile(zitat), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
 // --- Leseregeln: Fence und Umlaute --------------------------------------------
 
 test("[board-5] Fence-Regel: eine Ueberschrift im Codeblock zaehlt weder als Treffer noch als Verstoss", () => {

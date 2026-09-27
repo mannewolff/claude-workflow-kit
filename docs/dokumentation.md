@@ -536,6 +536,10 @@ Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Test
 
 Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 
+### `guetekommandos`
+
+Weitere Kommandos bzw. Kommando-Präfixe, die eine Gütemessung starten (optional). Gate I6 von "issue check-form" weist ein Arbeitspaket ab, dessen Akzeptanzkriterium eines davon nennt — zusätzlich zu "mutationCommand" und dem Kommando eines buildChecks-Eintrags mit "guete"-Block. Der Weg für einen Mess-Treiber, den das Projekt erst baut: Er kann noch keine Prüfung sein, sein Präfix steht aber schon hier, und ein Vollauf wandert damit nicht ins Akzeptanzkriterium eines Pakets. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
 ### `formatFixCommand`
 
 Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
