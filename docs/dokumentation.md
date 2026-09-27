@@ -389,6 +389,33 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Warum das im Werkzeug steht.** Die Nacht-Läufe zeigten Sessions, die denselben grünen `run` drei- bis neunmal je Arbeitspaket starteten — meist ohne Änderung dazwischen, oft nur, um die Ausgabe anders zu filtern. Die Regel „schreib die Ausgabe einmal in eine Datei und lies daraus" steht seit Langem im Skilltext und wirkte nicht. Nach dem Maßstab „Regel im Text oder Regel im Werkzeug" gehört sie damit hierher.
 
+### Ein Prüflauf je Maschine: die Sperre
+
+`checks.mjs run` nimmt vor seinem ersten Kommando eine **maschinenweite Sperre** und gibt sie nach dem letzten wieder frei — auch bei rotem Ergebnis und auch, wenn der Lauf mit einer Ausnahme endet. Zwei Läufe auf derselben Maschine fahren ihre Prüfungen damit **nacheinander**.
+
+**Der Anlass** war ein Abend mit zwei Nacht-Runnern auf einem Rechner (2026-09-24). Beide fuhren gleichzeitig ihre Prüfungen; die Suite des einen startet Hunderte Kindprozesse, die Load Average stieg auf 348, und `test:coverage` des anderen Projekts riss mit wechselnden Tests sein Zeitlimit. Beide Läufe wurden rot, ohne dass eine Änderung schuld war. Ein Zeitlimit im Projekt fängt das nicht ab: Die Ursache liegt außerhalb.
+
+**Wo sie liegt.** Im Temp-Verzeichnis des Nutzers, unter festem Namen, **unabhängig vom Projekt** — der Anlass sind zwei *Projekte* auf einer Maschine, und eine Datei im Repository sähe das andere Projekt nie. `node .claude/kit/checks.mjs --help` nennt den Pfad, den dein Lauf gerade benutzt. Die Umgebungsvariable **`KIT_CHECKS_LOCK`** setzt ihn um; ein leerer Wert zählt wie nicht gesetzt.
+
+**Was sie tut, wenn sie belegt ist:**
+
+| Vorgefunden | Was geschieht | Protokollzeile |
+|---|---|---|
+| ein **laufender** Prozess hält sie | es wird gewartet | `Sperre … haelt Prozess <pid> — es wird gewartet` |
+| ihr Halter **lebt nicht mehr** | sie wird abgeräumt, der Lauf beginnt sofort | `Sperre … war verwaist (Prozess <pid> laeuft nicht) — abgeraeumt` |
+| sie ist **unlesbar** (leer, kaputt) | ebenso abgeräumt | `Sperre … war unlesbar — abgeraeumt` |
+| die **Obergrenze** ist abgelaufen | der Lauf fährt **trotzdem**, ohne Sperre | `Sperre … nach <ms> ms noch belegt (Prozess <pid>) — der Lauf faehrt ohne Sperre` |
+
+Verwaist wird über die **Prozess-Id** erkannt und nicht über eine Verfallsfrist: Ein Prüflauf darf länger dauern als jede Schätzung, und ein zu kurzer Verfall gäbe genau die Gleichzeitigkeit frei, die die Sperre verhindern soll. `EPERM` beim Nachsehen heißt „der Prozess lebt und gehört einem anderen Nutzer" — das ist keine verwaiste Sperre.
+
+**Die Obergrenze liegt bei 20 Minuten** und ist über **`KIT_CHECKS_LOCK_TIMEOUT_MS`** zu setzen (Millisekunden; alles, was keine positive Zahl ist, fällt auf die Vorgabe zurück). Nach ihrem Ablauf läuft der Prüflauf **trotzdem** und sagt es in einer Zeile. Das ist Absicht und keine Lücke: **Die Sperre ist Vorsorge gegen Last, kein Korrektheitsgate.** Unbegrenzt zu warten liefe in das Rundenzeitlimit des Nacht-Runners, und der Lauf zählte dann als Fehlschlag der Karte statt als Wartezeit; rot zu melden wäre ein Fehlschlag, der nicht am Code liegt. Der Schaden einer Kollision ist ein roter Lauf — der Schaden eines verweigerten Laufs ist ein roter Lauf *ohne Ergebnis*.
+
+**Ein übernommenes Ergebnis wartet nie.** Hat sich der Stand nicht geändert (siehe [Unveränderter Stand](#unveränderter-stand-das-ergebnis-wird-übernommen)), fährt der Lauf kein Kommando und erzeugt keine Last — er nimmt die Sperre darum gar nicht erst.
+
+**Freigegeben wird nur die eigene Sperre:** Die Datei muss beim Loslassen noch die eigene Prozess-Id tragen. Sonst löschte ein Lauf, der nach Ablauf der Obergrenze ohne Sperre weiterfuhr, die Sperre dessen, der sie inzwischen rechtmäßig hält.
+
+**Für die eigene Testsuite ist der Pfad Pflicht, nicht Bequemlichkeit.** `node --test` fährt die Testdateien **parallel**, und viele davon starten `checks.mjs run` echt. Ohne eigenen Pfad nähmen sie alle dieselbe Sperre — die Suite liefe Datei für Datei statt parallel und arbeitete damit gegen das Ziel, die Prüfzeit zu senken. Im Kit setzt `test/helpers/checks-sperre.mjs` darum je Testprozess einen eigenen Pfad in einem Wegwerf-Verzeichnis; ein Test prüft, dass keine Testdatei diesen Helfer vergisst.
+
 ### Die langsamsten Testdateien finden
 
 Die Testsuite läuft in jedem Arbeitspaket, in jedem `checks.mjs run`, im Commit-Gate und in der CI — jede eingesparte Sekunde wirkt also überall. Der Testrunner von Node fährt die **Dateien parallel**, die Tests **innerhalb** einer Datei nacheinander: Nach unten begrenzt darum die langsamste Datei die Wandzeit der ganzen Suite, und eine Datei deutlich über dem Rest gehört thematisch geteilt (Issue #836).

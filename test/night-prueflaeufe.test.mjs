@@ -23,6 +23,11 @@ import {
 } from "../kit/night.mjs";
 import { UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE } from "../kit/checks.mjs";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 // Die buildChecks dieses Repos in Kurzform: zwei Gruppen als String, eine als Objekt mit
 // `cmd` — beide Formen muss der Beobachter lesen (E2).
 const GRUPPE_A = 'node --test "test/night-*.test.mjs" "test/board-*.test.mjs"';

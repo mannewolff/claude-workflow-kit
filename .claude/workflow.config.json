@@ -118,6 +118,7 @@
       "eslint.config.mjs",
       "test/helpers/aufwand-fixture.mjs",
       "test/helpers/checks-repo.mjs",
+      "test/helpers/checks-sperre.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "einstellungen": [

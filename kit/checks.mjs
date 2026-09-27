@@ -34,6 +34,12 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
+ * EIN Prueflauf je Maschine (Issue #958): `run` nimmt vor dem ersten Kommando eine
+ * maschinenweite Sperre und gibt sie nach dem letzten frei — auf jedem Weg heraus,
+ * auch dem der Ausnahme. Zwei Runner auf einem Rechner fahren damit nacheinander
+ * statt gleichzeitig. Sie ist Vorsorge gegen Last und kein Gate: Nach Ablauf einer
+ * Obergrenze laeuft der Prueflauf trotzdem. Alles dazu bei `mitSperre`.
+ *
  * `run` UEBERNIMMT sein eigenes Ergebnis, wenn sich der Stand seit dem letzten Lauf
  * nicht geaendert hat (Issue #863): gleicher Anker, gleiche Stufe, dieselbe
  * Dateiliste mit denselben Blob-Hashes, dieselbe Config — und eine abgeschlossene
@@ -108,8 +114,9 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync, linkSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -235,6 +242,30 @@ const NICHT_BEIM_ABSCHLUSS = ["zusammenspiel", "volleTestmenge"];
  */
 const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
 
+// Die Namen und Vorgaben der maschinenweiten Sperre (Issue #958). Der Mechanismus
+// selbst steht unten bei `mitSperre`; hier oben stehen nur diese Werte, und zwar aus
+// demselben Grund wie FEHLERMERKMALE: `HELP` nennt sie, und ein `const` weiter unten
+// waere dort noch nicht initialisiert.
+
+/** Der Name der Umgebungsvariablen fuer den Sperrpfad. */
+export const SPERRE_ENV = "KIT_CHECKS_LOCK";
+
+/** Der Name der Umgebungsvariablen fuer die Obergrenze der Wartezeit. */
+export const SPERRE_GRENZE_ENV = "KIT_CHECKS_LOCK_TIMEOUT_MS";
+
+const SPERRE_DATEI = "kit-checks-run.lock";
+
+// Zwanzig Minuten. Die Zehn-Minuten-Marke dieses Projekts gilt fuer den Prueflauf
+// EINES Arbeitspakets; zwei Laeufe nacheinander sind damit die Groessenordnung, auf
+// die zu warten sich lohnt. Darueber ist die Annahme "der andere Lauf ist bald
+// fertig" nicht mehr tragfaehig, und Weiterlaufen kostet weniger als Weiterwarten.
+const SPERRE_GRENZE_VORGABE_MS = 20 * 60 * 1000;
+
+// Halbe Sekunde zwischen zwei Blicken auf die Sperre. Kurz genug, dass die Wartezeit
+// gegenueber einem Prueflauf nicht ins Gewicht faellt, lang genug, dass das Warten
+// selbst keine Last erzeugt — was der ganze Zweck ist.
+const SPERRE_ABSTAND_MS = 500;
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
@@ -270,6 +301,18 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       der Anker nicht aufloesen oder scheitert ein git-Aufruf, steht der Grund an
       derselben Stelle. Die Suche erklaert einen gefallenen Befund und aendert am
       Ausgang des Laufs nichts.
+      EIN Prueflauf je Maschine: Vor dem ersten Kommando nimmt 'run' eine
+      maschinenweite SPERRE (${sperrPfad()}) und gibt sie nach dem
+      letzten wieder frei, auch bei rotem Ergebnis und bei einem Abbruch.
+      Haelt sie ein laufender Prozess, wird gewartet; ist ihr Halter tot, wird
+      sie abgeraeumt — beides mit Protokollzeile. Sie ist Vorsorge gegen Last
+      und kein Gate: Nach ${SPERRE_GRENZE_VORGABE_MS} ms laeuft der Prueflauf
+      trotzdem und sagt es. Ein uebernommenes Ergebnis wartet nie, es faehrt
+      kein Kommando. Beides ist ueber die Umgebung zu setzen:
+      ${SPERRE_ENV} den Pfad (leer = Vorgabe),
+      ${SPERRE_GRENZE_ENV} die Obergrenze in Millisekunden. Die eigene
+      Testsuite braucht den Pfad, damit ihre parallelen Dateien sich nicht
+      gegenseitig serialisieren.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -1524,6 +1567,245 @@ function verursacherText(eintrag) {
  * Nicht-Ziel "Keine inhaltliche Deutung der Aufrufe" ausschliesst. `checks.mjs`
  * kennt seine Kommandos dagegen beim Namen.
  */
+// --- Die Sperre: ein Prueflauf je Maschine (Issue #958) ---
+//
+// Anlass (kanban-kit, 2026-09-24, Lauf `night-run-2026-09-24-125914`): Zwei Runner
+// fuhren auf EINER Maschine ihre Pruefungen gleichzeitig. Die Testsuite des Kits
+// startet Hunderte Kindprozesse; die Load Average stieg auf 348, und `test:coverage`
+// des anderen Projekts riss mit wechselnden Tests sein Zeitlimit. Die Pruefungen
+// wurden rot, ohne dass die Aenderung schuld war — kein Zeitlimit im Zielprojekt
+// faengt das ab, weil die Ursache ausserhalb des Projekts liegt.
+//
+// Die Sperre liegt MASCHINENWEIT im Temp-Verzeichnis des Nutzers und ausdruecklich
+// nicht im Repository: Der Anlass sind zwei PROJEKTE auf einer Maschine, und eine
+// repo-lokale Datei saehe das andere Projekt nie.
+//
+// Sie ist VORSORGE GEGEN LAST und kein Korrektheitsgate. Daraus folgt jeder ihrer
+// Ausgaenge — und vor allem der letzte: Nach Ablauf der Obergrenze laeuft der
+// Prueflauf TROTZDEM, mit einer Protokollzeile, die das sagt. Unbegrenzt zu warten
+// liefe in das Rundenzeitlimit des Nacht-Runners, und der Lauf zaehlte dann als
+// Fehlschlag der Karte statt als Wartezeit; rot zu melden waere ein Fehlschlag, der
+// nicht am Code liegt. Der Schaden einer Kollision ist ein roter Lauf, der Schaden
+// eines verweigerten Laufs ein roter Lauf ohne Ergebnis. Aus demselben Grund laeuft
+// der Lauf auch dann weiter, wenn sich die Sperre nicht SCHREIBEN laesst.
+//
+// `lockPid` und `prozessLaeuft` stehen hier als eigene Fassung, nach dem Vorbild von
+// `kit/night.mjs` (Umsetzungs-Lock): checks.mjs importiert bewusst nichts aus dem Kit
+// — es wird als CHECKS_MJS_B64 in install.mjs gebacken und muss als Einzeldatei
+// laufen (#440).
+
+/**
+ * Der Sperrpfad: die Umgebungsvariable, sonst die Vorgabe im Temp-Verzeichnis.
+ *
+ * Ein leerer oder nur aus Leerraum bestehender Wert zaehlt wie nicht gesetzt — er
+ * entsteht aus einer fehlgeschlagenen Substitution und schaltete die Sperre sonst
+ * still ab. Dieselbe Haltung wie beim leeren `--since`: im Zweifel die Vorgabe.
+ *
+ * `env` ist ein Parameter und kein Zugriff auf `process.env`, damit der Test beide
+ * Faelle ohne Eingriff in die Prozessumgebung pruefen kann.
+ */
+export function sperrPfad(env = process.env) {
+  const wert = (env[SPERRE_ENV] ?? "").trim();
+  return wert === "" ? join(tmpdir(), SPERRE_DATEI) : wert;
+}
+
+/**
+ * Die Obergrenze der Wartezeit in Millisekunden. Alles, was keine positive Zahl ist
+ * — Text, 0, negativ —, faellt auf die Vorgabe zurueck: Eine Null waere keine
+ * Obergrenze, sondern eine abgeschaltete Sperre.
+ */
+export function sperrGrenzeMs(env = process.env) {
+  const zahl = Number((env[SPERRE_GRENZE_ENV] ?? "").trim());
+  return Number.isFinite(zahl) && zahl > 0 ? zahl : SPERRE_GRENZE_VORGABE_MS;
+}
+
+/**
+ * Die Prozess-Id aus einer Sperrdatei — `null`, wenn es sie nicht gibt, sie nicht
+ * lesbar ist oder nicht als positive ganze Zahl dasteht. Alle drei zaehlen als
+ * verwaist: Eine Sperre, deren Halter nicht benennbar ist, kann niemanden abhalten.
+ *
+ * `0` ist ausdruecklich keine gueltige Id — `process.kill(0, 0)` zielte auf die
+ * eigene Prozessgruppe und meldete damit fuer jede kaputte Datei einen lebenden
+ * Halter.
+ */
+function lockPid(pfad) {
+  try {
+    const pid = Number(readFileSync(pfad, "utf-8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Laeuft der Prozess mit dieser Id noch? `ESRCH` heisst nein; `EPERM` heisst, es gibt
+ * ihn und er gehoert einem anderen Nutzer — das ist keine verwaiste Sperre.
+ */
+function prozessLaeuft(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== "ESRCH";
+  }
+}
+
+/**
+ * Wartet synchron. `Atomics.wait` und kein `spawnSync("sleep")`: Der Zweck des
+ * Wartens ist, die Maschine zu entlasten — ein Kindprozess je halbe Sekunde arbeitete
+ * dagegen. `ausfuehren` ist synchron, ein `await` steht hier also nicht zur Wahl.
+ */
+function schlafeSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Nimmt die Sperre, fuehrt `fn` aus und gibt sie frei — die Freigabe im `finally`
+ * und damit auf JEDEM Weg heraus: gruen, rot, Ausnahme. Eine Freigabe am Ende des
+ * Erfolgspfads liesse die Datei bei jedem roten Lauf liegen, und danach haengt jeder
+ * weitere Lauf auf dieser Maschine: der Runner, `/local-check` und `push main`.
+ *
+ * Gibt zurueck, was `fn` zurueckgibt. Die Sperre aendert am Ausgang des Laufs nichts.
+ *
+ * Freigegeben wird nur die EIGENE Sperre — die Datei muss beim Loslassen noch die
+ * eigene pid tragen. Sonst loeschte ein Lauf, der nach Ablauf der Obergrenze ohne
+ * Sperre weiterfuhr, die Sperre dessen, der sie inzwischen rechtmaessig haelt.
+ *
+ * `pfad`, `grenzeMs`, `melde`, `abstandMs`, `uhr` und `schlafe` sind Parameter allein
+ * der Pruefbarkeit; im Betrieb kommen alle aus der Umgebung.
+ */
+export function mitSperre(fn, {
+  pfad = sperrPfad(),
+  grenzeMs = sperrGrenzeMs(),
+  melde = (satz) => process.stdout.write(satz),
+  abstandMs = SPERRE_ABSTAND_MS,
+  uhr = Date.now,
+  schlafe = schlafeSync,
+} = {}) {
+  const gehalten = sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe });
+  try {
+    return fn();
+  } finally {
+    if (gehalten) sperreFreigeben(pfad, melde);
+  }
+}
+
+/**
+ * Wartet, bis die Sperre frei ist, und nimmt sie. Rueckgabe: ob sie gehalten wird —
+ * `false` heisst, der Lauf faehrt ohne sie (Obergrenze abgelaufen oder Schreibfehler)
+ * und darf sie darum hinterher nicht entfernen.
+ */
+function sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe }) {
+  const beginn = uhr();
+  let gemeldet = false;
+  for (;;) {
+    const pid = lockPid(pfad);
+    if (pid !== null && prozessLaeuft(pid)) {
+      const wartend = aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet });
+      if (!wartend.weiter) return false;
+      gemeldet = wartend.gemeldet;
+      continue;
+    }
+    if (!verwaisteSperreAbraeumen({ pfad, pid, melde })) return false;
+    const ergebnis = sperreAnlegen({ pfad, melde });
+    if (ergebnis !== "rennen-verloren") return ergebnis === "genommen";
+  }
+}
+
+/**
+ * Ein lebender Halter liegt auf der Sperre. Rueckgabe `{ weiter, gemeldet }`:
+ * `weiter: false` heisst, die Obergrenze ist abgelaufen und der Lauf faehrt ohne
+ * Sperre; sonst wurde geschlafen und die naechste Runde ist dran.
+ *
+ * `gemeldet` wandert durch, weil nur die ERSTE Wartezeile ausgegeben wird: Eine Zeile
+ * je halbe Sekunde ersaeufte die Ausgabe des Laufs, um die es dem Leser geht.
+ */
+function aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet }) {
+  const gewartet = uhr() - beginn;
+  if (gewartet >= grenzeMs) {
+    melde(`Sperre ${pfad} nach ${gewartet} ms noch belegt (Prozess ${pid}) — der Lauf faehrt ohne Sperre.\n`);
+    return { weiter: false, gemeldet };
+  }
+  if (!gemeldet) {
+    melde(`Sperre ${pfad} haelt Prozess ${pid} — es wird gewartet (Obergrenze ${grenzeMs} ms).\n`);
+  }
+  schlafe(abstandMs);
+  return { weiter: true, gemeldet: true };
+}
+
+/**
+ * Kein lebender Halter. Liegt die Datei trotzdem, ist sie verwaist oder kaputt —
+ * beides wird abgeraeumt, und beides steht im Protokoll: Eine still entfernte Sperre
+ * waere von einer nie vorhandenen nicht zu unterscheiden.
+ *
+ * Rueckgabe: ob der Weg frei ist. `false` heisst, die Datei liegt noch und liess sich
+ * nicht entfernen — dann faehrt der Lauf ohne Sperre.
+ */
+function verwaisteSperreAbraeumen({ pfad, pid, melde }) {
+  if (!existsSync(pfad)) return true;
+  const grund = pid === null ? "unlesbar" : `verwaist (Prozess ${pid} laeuft nicht)`;
+  try {
+    unlinkSync(pfad);
+    melde(`Sperre ${pfad} war ${grund} — abgeraeumt.\n`);
+    return true;
+  } catch (e) {
+    // Weg ist weg: Hat ein anderer Lauf sie zwischen existsSync und unlinkSync
+    // abgeraeumt, ist das Ziel erreicht und kein Fehler.
+    if (!existsSync(pfad)) return true;
+    melde(`Sperre ${pfad} war ${grund}, liess sich aber nicht abraeumen (${e.code ?? e.message}) — der Lauf faehrt ohne Sperre.\n`);
+    return false;
+  }
+}
+
+/**
+ * Legt die Sperre an. Rueckgabe: `"genommen"`, `"rennen-verloren"` (ein anderer Lauf
+ * war schneller, die naechste Runde sieht neu nach) oder `"fehler"` (der Lauf faehrt
+ * ohne Sperre).
+ *
+ * Erst vollstaendig schreiben, dann atomar verlinken. Ein `writeFileSync(pfad, …,
+ * { flag: "wx" })` waere EIN Schritt zu wenig: Zwischen dem Anlegen der Datei und dem
+ * Schreiben ihres Inhalts ist sie LEER, und ein zweiter Lauf, der genau dann
+ * hineinsieht, haelt sie fuer unlesbar und raeumt sie ab — beide fahren gleichzeitig
+ * los. Genau dieses Rennen trat in den Tests dieses Pakets ein.
+ *
+ * `linkSync` legt den Namen mit dem Inhalt in einem Zug an und scheitert mit EEXIST,
+ * wenn er schon belegt ist. Damit entscheidet das Dateisystem das Rennen zwischen zwei
+ * Laeufen, die gleichzeitig eine freie Sperre vorfinden. Die Hilfsdatei traegt die
+ * eigene pid im Namen, liegt im Verzeichnis der Sperre (Hardlinks gehen nicht ueber
+ * Dateisystemgrenzen) und wird in jedem Fall entfernt — der verlinkte Name behaelt
+ * den Inhalt.
+ */
+function sperreAnlegen({ pfad, melde }) {
+  const hilfsdatei = `${pfad}.${process.pid}`;
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(hilfsdatei, `${process.pid}\n`, "utf-8");
+    linkSync(hilfsdatei, pfad);
+    return "genommen";
+  } catch (e) {
+    if (e.code === "EEXIST") return "rennen-verloren";
+    melde(`Sperre ${pfad} liess sich nicht schreiben (${e.code ?? e.message}) — der Lauf faehrt ohne Sperre.\n`);
+    return "fehler";
+  } finally {
+    try {
+      unlinkSync(hilfsdatei);
+    } catch { /* nie angelegt oder schon weg */ }
+  }
+}
+
+/**
+ * Gibt die eigene Sperre frei. Ein Fehler dabei bleibt eine Protokollzeile: Die
+ * Freigabe steht im `finally` und darf das Ergebnis des Laufs nicht ueberschreiben.
+ */
+function sperreFreigeben(pfad, melde) {
+  try {
+    if (lockPid(pfad) !== process.pid) return;
+    unlinkSync(pfad);
+  } catch (e) {
+    melde(`Sperre ${pfad} liess sich nicht freigeben (${e.code ?? e.message}) — der naechste Lauf raeumt sie als verwaist ab.\n`);
+  }
+}
+
 function ausfuehren(args) {
   const auswahl = planen(args);
   const env = { ...process.env, ...settingsEnv() };
@@ -1575,6 +1857,21 @@ function ausfuehren(args) {
   const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
   if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
 
+  // Ab hier laufen Kommandos, und erst ab hier gilt die Sperre (Issue #958): Ein
+  // uebernommenes Ergebnis fuehrt keines aus und erzeugt keine Last — es muss auf
+  // nichts warten. Der Schnitt zwischen `ausfuehren` und `kommandosFahren` liegt
+  // genau darum hier und nicht weiter oben.
+  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }));
+}
+
+/**
+ * Faehrt die ausgewaehlten Kommandos und hinterlaesst den Bericht. Rueckgabe: der
+ * Exitcode des Laufs.
+ *
+ * Eigene Funktion allein, damit `mitSperre` sie als Ganzes umschliessen kann — die
+ * Sperre muss auf jedem Weg heraus freigegeben werden, auch auf dem der Ausnahme.
+ */
+function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
 
   // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und

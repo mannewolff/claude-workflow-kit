@@ -14,6 +14,13 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { setTimeout as schlafen } from "node:timers/promises";
 import assert from "node:assert/strict";
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Jeder Lauf ueber diesen Helfer
+// faehrt das echte kit/checks.mjs und nahm sonst dieselbe maschinenweite Sperre wie
+// jede andere Testdatei — die Suite liefe Datei fuer Datei statt parallel. Der
+// Import steht HIER und nicht in jeder Testdatei, weil jeder Aufruf durch diesen
+// Helfer geht und `process.env` prozessweit gilt, also auch fuer spawn-Aufrufe, die
+// an ihm vorbeigehen.
+import "./checks-sperre.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 

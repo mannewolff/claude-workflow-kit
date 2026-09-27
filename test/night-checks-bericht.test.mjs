@@ -20,6 +20,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).

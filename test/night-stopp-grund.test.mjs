@@ -30,6 +30,11 @@ import { tmpdir } from "node:os";
 
 import { sicherheitsnetzGrund, ERSATZ_GRUND, ANKER_FEHLT } from "../kit/night.mjs";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");

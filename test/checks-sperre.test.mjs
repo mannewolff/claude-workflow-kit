@@ -1,0 +1,318 @@
+// Gleichzeitige Prueflaeufe auf einer Maschine laufen nacheinander (Issue #958).
+//
+// Anlass (kanban-kit, 2026-09-24, Lauf `night-run-2026-09-24-125914`): Zwei Runner
+// fuhren auf einer Maschine ihre Pruefungen gleichzeitig. Die Testsuite des Kits
+// startet Hunderte `night.mjs`-Prozesse; die Load Average stieg auf 348, und
+// `test:coverage` des anderen Projekts riss mit wechselnden Tests sein Zeitlimit.
+// Die Pruefungen wurden rot, ohne dass die Aenderung schuld war.
+//
+// Die Sperre ist VORSORGE GEGEN LAST und kein Korrektheitsgate. Daraus folgt jeder
+// ihrer Ausgaenge: Ein belegter Lock laesst warten, ein verwaister wird abgeraeumt,
+// und nach Ablauf der Obergrenze laeuft der Prueflauf trotzdem — mit Protokollzeile.
+// Rot zu melden waere ein Fehlschlag, der nicht am Code liegt; unbegrenzt zu warten
+// liefe in das Rundenzeitlimit des Runners, und der Lauf zaehlte als Fehlschlag der
+// Karte statt als Wartezeit.
+//
+// Die Tests fahren zwei ECHTE Laeufe in ZWEI Wegwerf-Projekten mit EINER Sperre —
+// so wie der Anlass es zeigte. Zwei Laeufe in einem Projekt pruefte eine
+// projektlokale Sperre mit; genau die ist verworfen.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { mitSperre, SPERRE_ENV, SPERRE_GRENZE_ENV, sperrPfad, sperrGrenzeMs } from "../kit/checks.mjs";
+import { repoAnlegen, datei, run, CHECKS, repoEntfernenTolerant } from "./helpers/checks-repo.mjs";
+import "./helpers/checks-sperre.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Die Dauer des Pruefkommandos. Lang genug, dass ein zweiter Lauf seine Auswahl
+ * (mehrere git-Aufrufe) fertig hat und die Sperre noch vorfindet — sonst pruefte der
+ * erste Test nicht die Serialisierung, sondern zwei Laeufe, die sich nie begegneten.
+ * Kurz genug, dass diese Datei nicht zur langsamsten der Suite wird.
+ */
+const FENSTER_MS = 400;
+
+/**
+ * Ein Pruefkommando, das sein Ausfuehrungsfenster protokolliert. Es SCHLAEFT, statt
+ * einen Kern zu belegen: Die Frage dieses Tests ist, ob sich die Fenster
+ * ueberschneiden, und dafuer zaehlt allein, wie lange das Kommando die Sperre haelt.
+ * Ein Busy-Loop belegte in einer CPU-gebundenen Suite echte Wandzeit — er arbeitete
+ * gegen genau das Ziel, zu dem dieses Paket angetreten ist.
+ */
+const FENSTER = [
+  "// Generiert von test/checks-sperre.test.mjs (Issue #958) — kein Produktivcode.",
+  "import { appendFileSync } from 'node:fs';",
+  "const pfad = process.env.FENSTER_DATEI;",
+  "appendFileSync(pfad, `start ${Date.now()}\\n`);",
+  `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${FENSTER_MS});`,
+  "appendFileSync(pfad, `ende ${Date.now()}\\n`);",
+  "",
+].join("\n");
+
+/** Ein Wegwerf-Projekt, dessen einziger Check sein Fenster protokolliert. */
+function fensterProjekt(fensterDatei) {
+  const dir = repoAnlegen({
+    config: { buildChecks: [{ cmd: "node werkzeug/fenster.mjs", always: true }], checkAreas: { kern: ["src/**"] } },
+  });
+  datei(dir, "werkzeug/fenster.mjs", FENSTER);
+  datei(dir, "src/a.txt");
+  return { dir, fensterDatei };
+}
+
+/** Die beiden Zeitpunkte aus einer Fensterdatei. */
+function fenster(pfad) {
+  const zeilen = readFileSync(pfad, "utf-8").trim().split("\n");
+  const wert = (marke) => {
+    const treffer = zeilen.find((z) => z.startsWith(`${marke} `));
+    assert.ok(treffer, `in ${pfad} fehlt die Zeile '${marke}': ${zeilen.join(" | ")}`);
+    return Number(treffer.split(" ")[1]);
+  };
+  return { start: wert("start"), ende: wert("ende") };
+}
+
+/** Ein Lauf im Hintergrund, mit eigener Fensterdatei und der uebergebenen Sperre. */
+function starteLauf({ dir, fensterDatei }, sperre, weitereEnv = {}) {
+  const proc = spawn(process.execPath, [CHECKS, "run"], {
+    cwd: dir,
+    env: { ...process.env, [SPERRE_ENV]: sperre, FENSTER_DATEI: fensterDatei, ...weitereEnv },
+  });
+  let ausgabe = "";
+  proc.stdout.on("data", (stueck) => { ausgabe += stueck; });
+  proc.stderr.on("data", (stueck) => { ausgabe += stueck; });
+  const fertig = new Promise((aufloesen) => proc.on("exit", (code) => aufloesen(code)));
+  return { proc, pid: proc.pid, fertig, ausgabe: () => ausgabe };
+}
+
+/** Eine Prozess-Id, die es sicher nicht mehr gibt: die eines beendeten Kindprozesses. */
+function totePid() {
+  const res = spawnSync(process.execPath, ["-e", ""], { encoding: "utf-8" });
+  assert.equal(res.status, 0, "der Wegwerf-Prozess fuer die tote pid lief nicht");
+  assert.ok(res.pid > 0, "kein pid vom Wegwerf-Prozess");
+  return res.pid;
+}
+
+test("[checks-958-1] zwei gleichzeitige Laeufe in zwei Projekten laufen nacheinander, der zweite nennt die pid des ersten", async (t) => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "gemeinsam.lock");
+  const a = fensterProjekt(join(ablage, "a.txt"));
+  const b = fensterProjekt(join(ablage, "b.txt"));
+  try {
+    // Wirklich gleichzeitig gestartet, nicht gestaffelt: Wer die Sperre zuerst
+    // bekommt, entscheidet das Rennen — die Zusicherungen lesen es hinterher aus den
+    // Fenstern ab, statt es vorzugeben. Ein gestaffelter Start pruefte eine
+    // Reihenfolge, die der Test selbst gesetzt hat.
+    const laufA = starteLauf(a, sperre);
+    const laufB = starteLauf(b, sperre);
+    const [codeA, codeB] = await Promise.all([laufA.fertig, laufB.fertig]);
+    assert.equal(codeA, 0, `Lauf A ging nicht gruen aus: ${laufA.ausgabe()}`);
+    assert.equal(codeB, 0, `Lauf B ging nicht gruen aus: ${laufB.ausgabe()}`);
+
+    const fA = fenster(a.fensterDatei);
+    const fB = fenster(b.fensterDatei);
+    const [erster, zweiter] = fA.start <= fB.start ? [
+      { name: "A", f: fA, lauf: laufA }, { name: "B", f: fB, lauf: laufB },
+    ] : [
+      { name: "B", f: fB, lauf: laufB }, { name: "A", f: fA, lauf: laufA },
+    ];
+    assert.ok(erster.f.ende <= zweiter.f.start,
+      `die Ausfuehrungsfenster ueberschneiden sich: ${erster.name} ${JSON.stringify(erster.f)}, `
+      + `${zweiter.name} ${JSON.stringify(zweiter.f)}\n--- A (pid ${laufA.pid}) ---\n${laufA.ausgabe()}`
+      + `\n--- B (pid ${laufB.pid}) ---\n${laufB.ausgabe()}`);
+
+    const ausgabe = zweiter.lauf.ausgabe();
+    assert.match(ausgabe, /es wird gewartet/,
+      `der zweite Lauf muss das Warten protokollieren: ${ausgabe}`);
+    assert.match(ausgabe, new RegExp(`Prozess ${erster.lauf.pid}\\b`),
+      `die Wartezeile muss die pid des ersten Laufs (${erster.lauf.pid}) nennen: ${ausgabe}`);
+    assert.doesNotMatch(erster.lauf.ausgabe(), /es wird gewartet/,
+      `der erste Lauf hat auf nichts gewartet: ${erster.lauf.ausgabe()}`);
+
+    assert.equal(existsSync(sperre), false, "nach beiden Laeufen darf keine Sperrdatei liegen");
+  } finally {
+    await repoEntfernenTolerant(a.dir, { notiz: (satz) => t.diagnostic(satz) });
+    await repoEntfernenTolerant(b.dir, { notiz: (satz) => t.diagnostic(satz) });
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-2] eine Sperre mit toter pid wird abgeraeumt, der Lauf wartet nicht", async (t) => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "verwaist.lock");
+  const a = fensterProjekt(join(ablage, "a.txt"));
+  const tot = totePid();
+  writeFileSync(sperre, `${tot}\n`, "utf-8");
+  try {
+    const lauf = starteLauf(a, sperre);
+    const code = await lauf.fertig;
+    const ausgabe = lauf.ausgabe();
+    assert.equal(code, 0, `der Lauf muss gruen durchlaufen: ${ausgabe}`);
+    assert.match(ausgabe, new RegExp(`verwaist \\(Prozess ${tot} laeuft nicht\\)`),
+      `das Abraeumen gehoert ins Protokoll, samt pid: ${ausgabe}`);
+    assert.doesNotMatch(ausgabe, /es wird gewartet/,
+      `auf einen toten Halter wird nicht gewartet: ${ausgabe}`);
+    assert.ok(existsSync(a.fensterDatei), "das Pruefkommando lief nicht");
+    assert.equal(existsSync(sperre), false, "der Lauf muss seine eigene Sperre wieder freigeben");
+  } finally {
+    await repoEntfernenTolerant(a.dir, { notiz: (satz) => t.diagnostic(satz) });
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-3] nach einem roten Kommando liegt keine Sperrdatei mehr", async (t) => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "rot.lock");
+  const dir = repoAnlegen({
+    config: { buildChecks: [{ cmd: "exit 1", always: true }], checkAreas: { kern: ["src/**"] } },
+  });
+  try {
+    datei(dir, "src/a.txt");
+    const res = run(dir, "--frisch");
+    assert.notEqual(res.status, 0, "ein rotes Kommando muss den Lauf rot faerben");
+    assert.equal(existsSync(sperre), false,
+      "auch der rote Lauf gibt seine Sperre frei — sonst blockiert er jeden naechsten");
+  } finally {
+    await repoEntfernenTolerant(dir, { notiz: (satz) => t.diagnostic(satz) });
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-4] mitSperre gibt auch bei einer Ausnahme frei und wirft sie weiter", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "ausnahme.lock");
+  try {
+    assert.throws(
+      () => mitSperre(() => { throw new Error("mitten im Lauf"); }, { pfad: sperre, melde: () => {} }),
+      /mitten im Lauf/,
+    );
+    assert.equal(existsSync(sperre), false,
+      "die Ausnahme darf die Sperre nicht liegenlassen — sonst haengt danach jeder Lauf");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-5] mitSperre haelt die Sperre waehrend des Laufs und gibt den Rueckgabewert durch", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "gehalten.lock");
+  try {
+    const ergebnis = mitSperre(() => {
+      assert.ok(existsSync(sperre), "waehrend des Laufs muss die Sperrdatei liegen");
+      assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.pid),
+        "in der Sperrdatei steht die eigene pid");
+      return 42;
+    }, { pfad: sperre, melde: () => {} });
+    assert.equal(ergebnis, 42);
+    assert.equal(existsSync(sperre), false);
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-6] nach Ablauf der Obergrenze laeuft der Lauf trotzdem und protokolliert es", async (t) => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-958-"));
+  const sperre = join(ablage, "belegt.lock");
+  const a = fensterProjekt(join(ablage, "a.txt"));
+  // Die eigene pid des Testprozesses: ein Halter, der waehrend des ganzen Tests
+  // nachweislich LEBT. Eine erfundene pid koennte zufaellig frei sein, und der Lauf
+  // raeumte sie als verwaist ab — dann pruefte der Test den falschen Ausgang.
+  writeFileSync(sperre, `${process.pid}\n`, "utf-8");
+  try {
+    const lauf = starteLauf(a, sperre, { [SPERRE_GRENZE_ENV]: "300" });
+    const code = await lauf.fertig;
+    const ausgabe = lauf.ausgabe();
+    assert.equal(code, 0, `der Lauf muss trotz belegter Sperre gruen durchlaufen: ${ausgabe}`);
+    assert.match(ausgabe, /es wird gewartet/, `zuerst wird gewartet: ${ausgabe}`);
+    assert.match(ausgabe, /noch belegt .*faehrt ohne Sperre/,
+      `der Ablauf der Obergrenze gehoert ins Protokoll: ${ausgabe}`);
+    assert.ok(existsSync(a.fensterDatei), "das Pruefkommando lief nicht");
+    assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.pid),
+      "ein Lauf ohne Sperre darf die fremde Sperre nicht entfernen");
+  } finally {
+    await repoEntfernenTolerant(a.dir, { notiz: (satz) => t.diagnostic(satz) });
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-7] die Vorgaben: Pfad im Temp-Verzeichnis, Obergrenze als Zahl, beide ueberschreibbar", () => {
+  const ohne = { ...process.env };
+  delete ohne[SPERRE_ENV];
+  delete ohne[SPERRE_GRENZE_ENV];
+  assert.equal(sperrPfad(ohne), join(tmpdir(), "kit-checks-run.lock"));
+  assert.ok(sperrGrenzeMs(ohne) > 0, "die Obergrenze braucht eine Vorgabe");
+
+  assert.equal(sperrPfad({ ...ohne, [SPERRE_ENV]: "/wo/anders.lock" }), "/wo/anders.lock");
+  assert.equal(sperrGrenzeMs({ ...ohne, [SPERRE_GRENZE_ENV]: "1234" }), 1234);
+  // Unbrauchbare Werte fallen auf die Vorgabe zurueck: Ein leerer Pfad oder eine
+  // Null-Grenze schaltete die Sperre still ab — die unsichere Richtung.
+  assert.equal(sperrPfad({ ...ohne, [SPERRE_ENV]: "  " }), join(tmpdir(), "kit-checks-run.lock"));
+  assert.equal(sperrGrenzeMs({ ...ohne, [SPERRE_GRENZE_ENV]: "keine Zahl" }), sperrGrenzeMs(ohne));
+  assert.equal(sperrGrenzeMs({ ...ohne, [SPERRE_GRENZE_ENV]: "0" }), sperrGrenzeMs(ohne));
+});
+
+test("[checks-958-8] --help nennt die Sperre und die Namen beider Umgebungsvariablen", () => {
+  const res = spawnSync(process.execPath, [CHECKS, "--help"], { encoding: "utf-8" });
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /sperre/i, "--help muss die Sperre nennen");
+  assert.match(res.stdout, /faehrt der Prueflauf trotzdem|laeuft der Prueflauf\s+trotzdem/,
+    "--help muss sagen, dass der Lauf nach der Obergrenze trotzdem faehrt");
+  assert.ok(res.stdout.includes(SPERRE_ENV), `--help muss ${SPERRE_ENV} nennen`);
+  assert.ok(res.stdout.includes(SPERRE_GRENZE_ENV), `--help muss ${SPERRE_GRENZE_ENV} nennen`);
+});
+
+// Die Testdateien, die `checks.mjs` nennen, es aber NICHT als `run` fahren — jede mit
+// ihrem Grund. Eine Ausnahme mit Namen und Grund ist der einzige ehrliche Weg: Ein
+// Muster, das "faehrt run" aus dem Quelltext erraet, wuerde entweder diese sieben
+// mitziehen (Laerm, den bald niemand liest) oder eine echte Fundstelle uebersehen.
+const OHNE_LAUF = new Map([
+  ["install-checks-blob.test.mjs", "faehrt nur --help, kein run"],
+  ["night-checks-fehlt.test.mjs", "prueft gerade das FEHLEN von checks.mjs"],
+  ["night-nachbarn-identitaet.test.mjs", "importiert checks.mjs als Modul"],
+  ["skills-regeln-im-werkzeug.test.mjs", "liest den Quelltext"],
+  ["sync-blobs-skills.test.mjs", "vergleicht Blobs"],
+  ["sync-blobs-stamp.test.mjs", "vergleicht Blobs"],
+  ["tools-cli.test.mjs", "vergleicht Blobs"],
+]);
+
+test("[checks-958-9] jede Testdatei, die checks.mjs faehrt, setzt einen eigenen Sperrpfad", () => {
+  // Die Invariante hinter Aufgabe 3, und sie gehoert geprueft statt nur hergestellt:
+  // Eine spaeter hinzugefuegte Testdatei, die das echte checks.mjs faehrt, ohne den
+  // Helfer zu ziehen, serialisiert die Suite wieder — und niemand saehe es, ausser
+  // dass die Suite langsamer wird. Der Test nennt die Datei.
+  const testDir = join(repoRoot, "test");
+  const dateien = readdirSync(testDir).filter((n) => n.endsWith(".test.mjs"));
+  const fehlend = [];
+  const ueberfluessig = [];
+  for (const name of dateien) {
+    const text = readFileSync(join(testDir, name), "utf-8");
+    // Weit gefasst: jede Datei, die das echte kit/checks.mjs ueberhaupt anfasst. Wer
+    // es anfasst, ohne es zu fahren, steht in OHNE_LAUF — mit Grund.
+    if (!/"checks\.mjs"/.test(text)) continue;
+    if (OHNE_LAUF.has(name)) continue;
+    // Der Wegwerf-Helfer zieht den Sperrpfad selbst; sonst braucht die Datei ihn direkt.
+    const deckt = text.includes("helpers/checks-repo.mjs")
+      || text.includes("helpers/checks-sperre.mjs");
+    if (!deckt) fehlend.push(name);
+  }
+  assert.deepEqual(fehlend, [],
+    `diese Testdateien fahren checks.mjs, ohne einen eigenen Sperrpfad zu setzen — `
+    + `'import "./helpers/checks-sperre.mjs";' ergaenzen (oder mit Grund in OHNE_LAUF `
+    + `aufnehmen): ${fehlend.join(", ")}`);
+
+  // Die Gegenprobe: Eine Ausnahme, deren Datei es nicht mehr gibt oder die checks.mjs
+  // nicht mehr nennt, ist eine Erlaubnis ohne Gegenstand — sie deckte spaeter die
+  // falsche Datei.
+  for (const [name, grund] of OHNE_LAUF) {
+    const pfad = join(testDir, name);
+    if (!dateien.includes(name) || !/"checks\.mjs"/.test(readFileSync(pfad, "utf-8"))) {
+      ueberfluessig.push(`${name} (${grund})`);
+    }
+  }
+  assert.deepEqual(ueberfluessig, [],
+    `diese Ausnahmen in OHNE_LAUF haben keinen Gegenstand mehr: ${ueberfluessig.join(", ")}`);
+});
