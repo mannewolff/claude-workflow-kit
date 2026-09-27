@@ -16,9 +16,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -167,6 +167,76 @@ test("[release-1] entfernen zielt auch aus dem Worktree heraus auf den Worktree"
     assert.equal(status, 0, `entfernen schlug fehl: ${JSON.stringify(stand)}`);
     assert.ok(!existsSync(pfad));
     assert.doesNotMatch(git(dir, "worktree", "list"), /release-/);
+  });
+});
+
+// --- Das Arbeitsverzeichnis beim Abbau (Issue #955) -------------------------
+//
+// `worktreeEntfernen` loescht mit `rmSync` — auf Windows scheitert das mit EBUSY, solange
+// der eigene Prozess IM zu loeschenden Verzeichnis steht. Genau das ist der Regelfall der
+// Release-Skills: Sie arbeiten im Worktree und bauen ihn von dort ab. Die Funktion
+// verlaesst darum vorher ihr Arbeitsverzeichnis — aber nur in diesem Fall.
+
+/** Ruft `worktreeEntfernen` in einem Kindprozess und liefert dessen cwd NACH dem Lauf. */
+function entfernenMitCwd(cwd, pfad, root) {
+  const quelle = pathToFileURL(join(repoRoot, "kit", "night.mjs")).href;
+  const code = `import { worktreeEntfernen } from ${JSON.stringify(quelle)};\n`
+    + `worktreeEntfernen(${JSON.stringify(pfad)}, ${JSON.stringify(root)});\n`
+    + `process.stdout.write(process.cwd());\n`;
+  const res = spawnSync(process.execPath, ["--input-type=module", "-e", code], { cwd, encoding: "utf-8" });
+  assert.equal(res.status, 0, `worktreeEntfernen schlug fehl: ${res.stdout}${res.stderr}`);
+  // Nicht aufloesen: `process.cwd()` ist schon aufgeloest, und nach dem Loeschen liesse
+  // sich ein cwd im entfernten Worktree gar nicht mehr aufloesen.
+  return res.stdout.trim();
+}
+
+/** Aufgeloester Pfad — macOS meldet fuer $TMPDIR `/var/...`, der Prozess `/private/var/...`. */
+function echterPfad(pfad) {
+  return realpathSync(pfad);
+}
+
+test("[release-1] entfernen verlaesst das Arbeitsverzeichnis, wenn es im Worktree liegt", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    angelegt.push(pfad);
+
+    // Der Prozess steht IM Worktree — auf Windows sperrt das das Loeschen.
+    const nachher = entfernenMitCwd(pfad, pfad, dir);
+
+    assert.equal(nachher, echterPfad(dir), "der Abbau haette nach repoRoot wechseln muessen");
+    assert.ok(!existsSync(pfad));
+  });
+});
+
+test("[release-1] entfernen von ausserhalb wechselt das Arbeitsverzeichnis nicht", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    angelegt.push(pfad);
+    const daneben = mkdtempSync(join(tmpdir(), "daneben-"));
+    angelegt.push(daneben);
+
+    const nachher = entfernenMitCwd(daneben, pfad, dir);
+
+    assert.equal(nachher, echterPfad(daneben), "wer von aussen aufraeumt, behaelt sein cwd");
+    assert.ok(!existsSync(pfad));
+  });
+});
+
+test("[release-1] ein Pfad, der nur als Zeichenkette ein Praefix ist, gilt nicht als innerhalb", () => {
+  mitRepo((dir, angelegt) => {
+    // `release-…-a` und `release-…-abc`: ein Zeichenkettenvergleich hielte das zweite
+    // Verzeichnis fuer einen Teil des ersten und wechselte das cwd unnoetig heraus.
+    const kurz = join(tmpdir(), `release-${basename(dir)}-a`);
+    const lang = join(tmpdir(), `release-${basename(dir)}-abc`);
+    git(dir, "worktree", "add", "--detach", kurz);
+    git(dir, "worktree", "add", "--detach", lang);
+    angelegt.push(kurz, lang);
+
+    const nachher = entfernenMitCwd(lang, kurz, dir);
+
+    assert.equal(nachher, echterPfad(lang), "das cwd lag NEBEN dem entfernten Worktree, nicht darin");
+    assert.ok(!existsSync(kurz));
+    assert.ok(existsSync(lang), "der Nachbar-Worktree ist mitgerissen worden");
   });
 });
 

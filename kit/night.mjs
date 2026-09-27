@@ -133,7 +133,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
-import { join, dirname, resolve, basename } from "node:path";
+import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir, homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -1728,8 +1728,37 @@ export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "
   return pfad;
 }
 
-/** Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt. */
+/**
+ * Liegt das Arbeitsverzeichnis des Prozesses innerhalb von `pfad` (Issue #955)?
+ *
+ * Ueber aufgeloeste, normalisierte Pfade — nicht ueber einen Zeichenkettenvergleich, der
+ * `…/release-abc` fuer einen Teil von `…/release-a` hielte. Laesst sich eine der beiden
+ * Seiten nicht aufloesen, lautet die Antwort nein: Dann ist kein Wechsel begruendet.
+ */
+function cwdLiegtIn(pfad) {
+  let ziel, cwd;
+  try {
+    ziel = realpathSync(pfad);
+    cwd = realpathSync(process.cwd());
+  } catch {
+    return false;
+  }
+  const rel = relative(ziel, cwd);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt.
+ *
+ * Steht das Arbeitsverzeichnis des Prozesses IM Worktree, wechselt die Funktion zuerst
+ * hinaus nach `repoRoot` (Issue #955): Genau so rufen die Release-Skills den Abbau, und
+ * Windows sperrt das Loeschen eines Verzeichnisses, in dem ein Prozess steht (EBUSY) —
+ * POSIX erlaubt es, die CI auf `windows-latest` stand daran rot. `repoRoot` ist immer
+ * vorhanden und der Ort, an dem der Worktree-Eintrag gefuehrt wird. Der Wechsel geschieht
+ * NUR in diesem Fall: Wer von aussen aufraeumt, soll sein cwd nicht wechseln sehen.
+ */
 export function worktreeEntfernen(pfad, repoRoot) {
+  if (cwdLiegtIn(pfad)) process.chdir(repoRoot);
   gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
   rmSync(pfad, { recursive: true, force: true });
 }

@@ -22,6 +22,10 @@ import {
   mitRepo, run, zusammenfassung, datei, git, fakeGitOhne, checksMitFakeGit,
 } from "./helpers/checks-repo.mjs";
 
+const NUR_POSIX = process.platform === "win32"
+  ? { skip: "Windows: das Fake-git liegt als sh-Wrapper im PATH und ist dort nicht ausfuehrbar." }
+  : {};
+
 const BEREICHE = { frontend: ["frontend/**"], backend: ["backend/**"] };
 
 /** Eine rote Pruefung, an `backend` gebunden — an der Push-Stufe laeuft sie in jedem Fall. */
@@ -253,7 +257,7 @@ test("ein gruener Push-Lauf nennt keine Verursacher", () => {
   });
 });
 
-test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grund", () => {
+test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grund", NUR_POSIX, () => {
   mitRepo({ config: ROT_BACKEND }, (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
