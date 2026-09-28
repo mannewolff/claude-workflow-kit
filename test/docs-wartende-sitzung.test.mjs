@@ -115,3 +115,30 @@ test("[skills-34] beide Implementierungs-Skills melden einen Vermerk der wartend
     );
   }
 });
+
+// Der zweite Teil derselben Leitplanke (Issue #983): Wer wartet, prueft nicht nur, ob das
+// Ergebnis da ist, sondern auch, ob es den Lauf noch gibt. `local-check` ist die Quelle des
+// Absatzes, die beiden implement-Skills tragen ihn als Listenpunkt — der Anlass trat
+// unbeaufsichtigt auf, und dort liest die Sitzung implement-next, nicht local-check.
+const LEITPLANKE_STELLEN = [
+  ["local-check", lies("skills", "local-check", "SKILL.md")],
+  ...SKILLS,
+];
+
+test("[skills-35] die Leitplanke verlangt an allen drei Stellen die Pruefung, ob der Lauf noch existiert", () => {
+  for (const [name, text] of LEITPLANKE_STELLEN) {
+    const absatz = text
+      .split(/\n\n/)
+      .find((a) => /[Kk]eine Session endet mit laufender eigener Arbeit/.test(a) && /existiert/.test(a));
+    assert.ok(absatz, `${name}: kein Absatz der Leitplanke nennt die Existenz des Laufs`);
+
+    for (const [was, muster] of [
+      ["die Pruefung, ob der Lauf noch existiert", /noch existiert/],
+      ["die Warteschleife als Fundstelle", /Warteschleife/],
+      ["den toten Lauf als Fehlschlag", /Fehlschlag/],
+      ["die Abgrenzung zum Zeitablauf", /Zeitablauf/],
+    ]) {
+      assert.match(absatz, muster, `${name}: die Leitplanke nennt ${was} nicht`);
+    }
+  }
+});
