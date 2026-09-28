@@ -155,6 +155,8 @@ Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`
 
 **Keine Session endet mit laufender eigener Arbeit.** Eine unbeaufsichtigte Sitzung beendet ihre Arbeit nicht, solange eine von ihr angestossene lange Arbeit laeuft — sie wartet auf das Ergebnis oder bricht die lange Arbeit ab und meldet den Abbruch als Fehlschlag. Hintergrundarbeit bleibt dabei ausdruecklich erlaubt; unzulaessig ist allein das Aufhoeren, waehrend sie noch laeuft. Tut eine Sitzung es doch, benennt der Runner den Fall mit eigenem Grund, zaehlt ihn als eigene Groesse und haengt einen Vermerk `## Nachtlauf: wartende Sitzung` an das Arbeitspaket; erledigt ist das Paket damit nicht.
 
+**Ein Zeitabbruch ist gekennzeichnet und behauptet keine Ursache.** Endet eine Sitzung an der Sitzungszeitgrenze (`--timeout-min`, Vorgabe 60 Minuten — ausdruecklich nicht am Stufenbudget `night.kette.umsetzungMin`, das nur zwischen zwei Sessions greift), haengt der Runner einen Vermerk `## Nachtlauf: Zeitgrenze erreicht` an das Arbeitspaket und die Einheit im Ergebnisstand traegt `zeitlimitBeendet`. Der Vermerk nennt die Grenze, den zuletzt gemeldeten Stand und eine Empfehlung an den Menschen — keine Vorgabe. Das ist kein inhaltlicher Fehlschlag: Die Sitzung wurde an der Uhr abgebrochen, nicht an ihrer Arbeit, und woran die Zeit ausging, folgt aus dem Abbruch nicht.
+
 ---
 
 ## Aufwand des Prozesses
@@ -162,6 +164,8 @@ Die zweite Betriebsart ist die Nacht-Kette (`node .claude/kit/night.mjs --kette`
 Jeder unbeaufsichtigte Lauf schreibt seine Auswertung nach `.claude/aufwand.md`; sie liegt dort vollstaendig, auch wenn nichts auffaellt. Ein Befund erscheint unaufgefordert an genau zwei Stellen: im Abschlussblock des Laufprotokolls `.claude/night-run-<datum>.log` und zu Beginn von `/push-main`. Der Befund haelt nirgends etwas auf und ist kein Gate.
 
 Drei Begriffe tragen die Auswertung: **Nachdenken** ist die Zeit, in der das Modell arbeitet; **Werkzeugarbeit** ist die Zeit, in der etwas anderes fuer den Lauf arbeitet; eine **Pruefung** ist ein Eintrag aus `buildChecks`, mehrfache Ausfuehrungen desselben Eintrags werden zusammengefasst. Zeit, die sich keiner Seite zuordnen laesst, ist ein dritter, eigener Posten.
+
+Ein eigener Block weist die **Zielmarke der Umsetzung** aus: wie viele Umsetzungen ueber der Marke des jeweiligen Laufs liegen und um wie viel, gemittelt ueber die Ueberschreitungen. Zeitabbrueche stehen darin getrennt und gehen in kein Mittel ein — ihre Fertigstellungsdauer ist unbekannt.
 
 Laufzahl und Schwellen stehen optional im Config-Block `aufwand`; fehlt er, gelten die eingebauten Vorgaben.
 

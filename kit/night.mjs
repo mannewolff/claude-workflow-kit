@@ -8004,8 +8004,10 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
 // Sie beantworten die Frage, die der bisherige Text offenliess: nicht WAS der Runner
 // vorgefunden hat — "nicht in In review UND Working Tree dirty" —, sondern WARUM. Die
 // naechsten Schritte sind je Fall verschieden: Ein `end_turn` ohne Commit ist eine
-// Session, die auf etwas gewartet hat; ein Zeitlimit ist ein zu grosses Paket; ein
-// `is_error` ist ein Abbruch; ein roter Pflichtcheck ist Arbeit am Code.
+// Session, die auf etwas gewartet hat; ein Zeitlimit heisst, dass die Zeit ausging —
+// warum, folgt nicht aus dem Abbruch und steht allenfalls im Vermerk unter
+// `ZEITLIMIT_ANKER` am Arbeitspaket; ein `is_error` ist ein Abbruch; ein roter
+// Pflichtcheck ist Arbeit am Code.
 const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
 const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
 const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
