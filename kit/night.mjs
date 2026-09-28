@@ -2446,6 +2446,36 @@ function emitVerbose(issueId, line) {
  * Unlesbare Zeilen werden tolerant uebersprungen, wie in `leseKennzahlen()` — eine
  * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
  */
+/**
+ * Liest eine Zeile des Session-Stroms und gibt das Ereignis zurueck — oder `null`,
+ * wenn die Zeile keines ist (Issue #960).
+ *
+ * Ein bereits geparstes Objekt wird durchgereicht: Die Beobachter bekommen ihre Zeile
+ * teils schon gelesen, und ein zweites `JSON.parse` darauf wuerde werfen.
+ *
+ * Billiger Vorfilter auf `{`: Ein Stream-Ereignis ist immer ein JSON-Objekt. Das haelt
+ * `JSON.parse` von jeder Fliesstext-Zeile fern — und die Beobachter sitzen im
+ * stdout-Handler jeder Session.
+ *
+ * Eine unlesbare Zeile ergibt `null`, statt zu werfen: Eine Kennzahl darf einen
+ * laufenden Nachtlauf nicht zu Fall bringen.
+ *
+ * Exportiert, damit ein Test genau diese Funktion trifft und keine Kopie, die ab der
+ * ersten Abweichung etwas anderes bescheinigt — Muster `globZuRegex` in
+ * `kit/checks.mjs`.
+ */
+export function leseStromereignis(roh) {
+  if (roh && typeof roh === "object") return roh;
+  if (typeof roh !== "string") return null;
+  const trimmed = roh.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
 export function werkzeugZeitBeobachter() {
   let werkzeugMs = 0;
   let schuebe = 0;
@@ -2455,24 +2485,9 @@ export function werkzeugZeitBeobachter() {
   // Aufrufe, mit der er begonnen hat.
   let offen = null;
 
-  const parse = (roh) => {
-    if (roh && typeof roh === "object") return roh;
-    if (typeof roh !== "string") return null;
-    const trimmed = roh.trim();
-    // Billiger Vorfilter wie in leseKennzahlen: Ein Stream-Ereignis ist immer ein
-    // JSON-Objekt. Das haelt JSON.parse von jeder Fliesstext-Zeile fern — und der
-    // Beobachter sitzt im stdout-Handler jeder Session.
-    if (!trimmed.startsWith("{")) return null;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  };
-
   return {
     zeile(roh, ts) {
-      const obj = parse(roh);
+      const obj = leseStromereignis(roh);
       if (!obj || !Array.isArray(obj.message?.content)) return;
 
       if (obj.type === "assistant") {
@@ -2630,18 +2645,6 @@ export function prueflaufBeobachter(buildChecks) {
   // gehoert dazu, weil erst das Ergebnis eines Abschlussversuchs zeigt, ob er wirklich lief.
   const offen = new Map();
 
-  const parse = (roh) => {
-    if (roh && typeof roh === "object") return roh;
-    if (typeof roh !== "string") return null;
-    const trimmed = roh.trim();
-    if (!trimmed.startsWith("{")) return null;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  };
-
   // Ein gestarteter Aufruf: gezaehlt wird beim tool_use, denn gemessen wird, was die
   // Session STARTET. Die Spanne kommt spaeter dazu, wenn sein Ergebnis eintrifft.
   const aufrufGesehen = (block, ts) => {
@@ -2678,7 +2681,7 @@ export function prueflaufBeobachter(buildChecks) {
 
   return {
     zeile(roh, ts) {
-      const obj = parse(roh);
+      const obj = leseStromereignis(roh);
       if (!obj || !Array.isArray(obj.message?.content)) return;
       const behandle = obj.type === "assistant" ? aufrufGesehen : ergebnisGesehen;
       for (const block of obj.message.content) behandle(block, ts);
@@ -2746,16 +2749,10 @@ function nurBoolean(wert) {
 export function leseKennzahlen(stdout) {
   let letzte = null;
   for (const zeile of String(stdout ?? "").split(/\r\n|\r|\n/)) {
-    const trimmed = zeile.trim();
-    // Billiger Vorfilter: Ein Stream-Ereignis ist immer ein JSON-Objekt. Das haelt
-    // JSON.parse von jeder Fliesstext-Zeile fern.
-    if (!trimmed.startsWith("{")) continue;
-    let obj;
-    try {
-      obj = JSON.parse(trimmed);
-    } catch {
-      continue; // unlesbare Zeile tolerant ueberspringen, wie in emitVerbose
-    }
+    // Vorfilter, Trimmen und das tolerante Ueberspringen einer unlesbaren Zeile
+    // stehen in `leseStromereignis`. Hier kommen ausschliesslich Strings aus dem
+    // `split` an — das Durchreichen eines bereits geparsten Objekts greift also nie.
+    const obj = leseStromereignis(zeile);
     if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
   }
   if (!letzte) return null;
