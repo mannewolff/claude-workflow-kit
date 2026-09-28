@@ -245,7 +245,7 @@ test("[skills-7] kein Aufrufbeispiel traegt das Flag --derived-from", () => {
 test("[skills-7] ein `[Task]`, der einen Befund ablehnt, hat die Regel als Kriterium", () => {
   assert.match(
     SKILL,
-    /versionierte[n]? Unterdrueckungsregel|versionierte Unterdr(?:ue|ü)ckungsregel/,
+    /versionierten? Unterdrueckungsregel|versionierte Unterdr(?:ue|ü)ckungsregel/,
     "das Akzeptanzkriterium (die versionierte Unterdrueckungsregel) fehlt",
   );
   assert.match(

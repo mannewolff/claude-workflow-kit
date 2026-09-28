@@ -110,7 +110,7 @@ test("ein Absatz nennt die Grenze der Unberuehrtheit beim Tracker local", () => 
 
 test("der dokumentierte Aufruf entspricht dem Programm: --help kennt --pruefen", () => {
   const hilfe = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], { encoding: "utf-8" });
-  assert.match(hilfe, /^\s+--pruefen\s/m, "night.mjs --help nennt --pruefen nicht");
+  assert.match(hilfe, /^[ \t]+--pruefen\s/m, "night.mjs --help nennt --pruefen nicht");
 });
 
 test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Verhaeltnis zur Kette", () => {

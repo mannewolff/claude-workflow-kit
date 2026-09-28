@@ -38,11 +38,11 @@ test("[skills-37] fuenf Prompts tragen den Fundblock", () => {
   assert.equal(ROLLEN_PROMPTS.length, 4, `es sind ${ROLLEN_PROMPTS.length} Rollen-Prompts statt vier`);
   assert.ok(CODE_PROMPT, "der Review-Prompt mit {{REVIEW_MATERIAL}} fehlt");
   for (const p of ALLE_PROMPTS) {
-    assert.match(p, /^-?\s*Gegenprobe:/m, "ein Prompt verlangt keine Gegenprobe-Zeile");
+    assert.match(p, /^-?[ \t]*Gegenprobe:/m, "ein Prompt verlangt keine Gegenprobe-Zeile");
     assert.match(p, /widerlegen würde/, "ein Prompt sagt nicht, was die Gegenprobe ist");
     assert.match(p, /geprüft, bestätigt/, "ein Prompt nennt den bestaetigten Stand nicht");
     assert.match(p, /nicht geprüft/, "ein Prompt nennt den ungeprueften Stand nicht");
-    assert.match(p, /^-?\s*Art:/m, "ein Prompt verlangt keine Art-Zeile");
+    assert.match(p, /^-?[ \t]*Art:/m, "ein Prompt verlangt keine Art-Zeile");
     assert.match(p, /\{\{ARTEN\}\}/, "ein Prompt setzt die Artenliste nicht ueber den Platzhalter ein");
     assert.match(p, /eigene Gegenprobe widerlegt hat, meldest du nicht/,
       "ein Prompt sagt nicht, dass ein widerlegter Fund nicht gemeldet wird");

@@ -195,7 +195,7 @@ test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", (
 
 test("der dokumentierte Aufruf entspricht dem Programm: --help kennt --kette", () => {
   const hilfe = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], { encoding: "utf-8" });
-  assert.match(hilfe, /^\s+--kette\s/m, "night.mjs --help nennt --kette nicht");
+  assert.match(hilfe, /^[ \t]+--kette\s/m, "night.mjs --help nennt --kette nicht");
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   assert.ok(abschnitt.includes("node .claude/kit/night.mjs --kette"), "der Aufruf steht nicht in der Doku");
 });

@@ -148,7 +148,7 @@ test("derived-from-report: ein unerwarteter Fehler wird nicht als Nutzerfehler v
 
   assert.notEqual(res.status, 0, "ein unerwarteter Fehler darf nicht mit Exit 0 enden");
   assert.match(res.stderr, /TypeError/, "der Fehlertyp muss sichtbar bleiben");
-  assert.match(res.stderr, /\n\s+at /, "ein unerwarteter Fehler behaelt seinen Stacktrace");
+  assert.match(res.stderr, /\n[ \t]+at /, "ein unerwarteter Fehler behaelt seinen Stacktrace");
   assert.doesNotMatch(res.stderr, /^Fehler: /m, "er darf nicht als gemeldeter Nutzerfehler erscheinen");
 });
 
@@ -205,7 +205,7 @@ test("migrate-issues: ein gesperrtes Zielverzeichnis meldet Klartext statt Stack
 
     assert.equal(res.status, 1, "ein unbeschreibbares Ziel muss mit Exit 1 enden");
     assert.match(res.stderr, /Zieldatei konnte nicht geschrieben werden:/);
-    assert.doesNotMatch(res.stderr, /\n\s+at /, "ein Umgebungsfehler braucht keinen Stacktrace");
+    assert.doesNotMatch(res.stderr, /\n[ \t]+at /, "ein Umgebungsfehler braucht keinen Stacktrace");
 
     chmodSync(out, 0o700);
     assert.deepEqual(readdirSync(out), [],

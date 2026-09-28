@@ -54,15 +54,15 @@ test("kaputtes JSON: Exit 1, Meldung auf stderr, nirgends ein Stacktrace", () =>
   assert.match(r.stderr, /kein gueltiges JSON/);
   // Eine sprechende Meldung PLUS Stacktrace bestuende eine Pruefung nur auf stdout —
   // deshalb beide Stroeme.
-  assert.doesNotMatch(r.stdout, /\n\s+at /, "kein Stacktrace auf stdout");
-  assert.doesNotMatch(r.stderr, /\n\s+at /, "kein Stacktrace auf stderr");
+  assert.doesNotMatch(r.stdout, /\n[ \t]+at /, "kein Stacktrace auf stdout");
+  assert.doesNotMatch(r.stderr, /\n[ \t]+at /, "kein Stacktrace auf stderr");
 });
 
 test("JSON-Objekt statt Array: Exit 1 mit sprechender Meldung", () => {
   const r = lauf('{"id":"1"}');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /Array/);
-  assert.doesNotMatch(r.stderr, /\n\s+at /);
+  assert.doesNotMatch(r.stderr, /\n[ \t]+at /);
 });
 
 test("leeres Array ist kein Fehler", () => {

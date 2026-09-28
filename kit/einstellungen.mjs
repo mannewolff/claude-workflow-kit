@@ -4527,12 +4527,16 @@ Nutzung:
 /** Liest Ordner und Port; ein fehlerhafter Port ist ein Abbruch mit Meldung. */
 export function leseArgumente(argv) {
   const out = { ordner: process.cwd(), port: 0, version: false, hilfe: false };
-  for (let i = 0; i < argv.length; i++) {
+  let i = 0;
+  while (i < argv.length) {
     const a = argv[i];
     if (a === "--version") out.version = true;
     else if (a === "--help" || a === "-h") out.hilfe = true;
-    else if (a === "--port") out.port = Number(argv[++i]);
-    else out.ordner = a;
+    else if (a === "--port") {
+      out.port = Number(argv[i + 1]);
+      i += 1;  // der Wert gehoert zur Option
+    } else out.ordner = a;
+    i += 1;
   }
   if (!Number.isInteger(out.port) || out.port < 0 || out.port > 65535) out.fehler = "--port braucht eine Zahl zwischen 0 und 65535";
   return out;

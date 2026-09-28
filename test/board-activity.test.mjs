@@ -32,7 +32,10 @@ function karte(number, spalte = "BACKLOG") {
 
 function gruppiert(karten) {
   const g = {};
-  for (const k of karten) (g[k.column] ||= []).push(k);
+  for (const k of karten) {
+    g[k.column] ||= [];
+    g[k.column].push(k);
+  }
   return g;
 }
 

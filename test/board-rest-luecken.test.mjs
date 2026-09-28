@@ -35,7 +35,10 @@ async function mitToolbox(fn, { karten = [karte(7)], antwort = null, config = {}
     }
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       const g = {};
-      for (const k of karten) (g[k.column] ||= []).push(k);
+      for (const k of karten) {
+        g[k.column] ||= [];
+        g[k.column].push(k);
+      }
       return { status: 200, json: g };
     }
     if (req.method === "POST" && req.url === "/api/kanban/items") {

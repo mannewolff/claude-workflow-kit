@@ -1271,14 +1271,15 @@ export function befund(root) {
 
 function parseAuswertenArgs(rest) {
   const args = {};
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     if (rest[i] !== "--laeufe") fail(`Unbekanntes Argument: '${rest[i]}'`);
     const wert = Number(rest[i + 1]);
     if (!Number.isInteger(wert) || wert <= 0) {
       fail(`--laeufe erwartet eine ganze Zahl groesser null, bekam '${rest[i + 1] ?? ""}'.`);
     }
     args.laeufe = wert;
-    i += 1;
+    i += 2;  // Option und ihr Wert
   }
   return args;
 }

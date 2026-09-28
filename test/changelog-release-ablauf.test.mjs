@@ -32,7 +32,15 @@ function wegwerfRepo() {
   return dir;
 }
 
-function commit(dir, betreff, inhalt = String(Math.random())) {
+let commitLaufnummer = 0;
+
+/** Ein Inhalt, den es so noch nicht gab — jeder Commit braucht eine Aenderung. */
+function naechsterInhalt() {
+  commitLaufnummer += 1;
+  return `inhalt-${commitLaufnummer}`;
+}
+
+function commit(dir, betreff, inhalt = naechsterInhalt()) {
   writeFileSync(join(dir, "datei.txt"), inhalt + "\n");
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", betreff);

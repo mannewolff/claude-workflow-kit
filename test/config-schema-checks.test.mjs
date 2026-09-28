@@ -509,7 +509,10 @@ function alleProperties(knoten, pfad = "", out = []) {
 
 /** Alle description-Texte des Schemas, einschliesslich Wurzel und items. */
 function alleBeschreibungen(knoten, out = []) {
-  if (Array.isArray(knoten)) { for (const k of knoten) alleBeschreibungen(k, out); return out; }
+  if (Array.isArray(knoten)) {
+    for (const k of knoten) alleBeschreibungen(k, out);
+    return out;
+  }
   if (!istObjekt(knoten)) return out;
   if (typeof knoten.description === "string") out.push(knoten.description);
   for (const [schluessel, wert] of Object.entries(knoten)) {

@@ -450,20 +450,22 @@ function loadConfig() {
 
 function parseArgs(argv) {
   const result = { _: [] };
-  for (let i = 0; i < argv.length; i++) {
+  let i = 0;
+  while (i < argv.length) {
     const a = argv[i];
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
-        i++;
+        i += 1;  // der Wert gehoert zur Option
       } else {
         result[key] = true;
       }
     } else {
       result._.push(a);
     }
+    i += 1;
   }
   return result;
 }
@@ -1201,7 +1203,7 @@ function parseFrontmatter(content) {
     // Fuehrende Leerzeichen nach dem Doppelpunkt uebernimmt das nachgelagerte .trim();
     // deshalb hier bewusst kein \s* (vermeidet ueberlappende Zeichenklassen/Backtracking).
     const m = line.match(/^(\w+):(.*)$/);
-    if (m) meta[m[1]] = m[2].trim().replaceAll(/^["']|["']$/g, "");
+    if (m) meta[m[1]] = m[2].trim().replaceAll(/(?:^["'])|(?:["']$)/g, "");
   }
   return { meta, body: match[2] };
 }
@@ -1696,9 +1698,11 @@ function zitiere(arg) {
 export function wiederholKommando(schluessel, argv = process.argv) {
   const args = [];
   const roh = argv.slice(2);
-  for (let i = 0; i < roh.length; i++) {
-    if (roh[i] === "--idempotency-key") { i++; continue; }
+  let i = 0;
+  while (i < roh.length) {
+    if (roh[i] === "--idempotency-key") { i += 2; continue; }  // Option und ihr Wert
     args.push(roh[i]);
+    i += 1;
   }
   if (schluessel) args.push("--idempotency-key", schluessel);
   return ["node", argv[1] ?? "board.mjs", ...args].map(zitiere).join(" ");

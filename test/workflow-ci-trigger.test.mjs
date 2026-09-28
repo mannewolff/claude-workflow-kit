@@ -37,8 +37,8 @@ test("[ci-trigger] blob-sync-check triggert weder auf Push noch auf PR nach prod
 
 test("[ci-trigger] blob-sync-check triggert auf main, bei Push und bei Pull Request", () => {
   const block = onBlock(lies("blob-sync-check.yml"));
-  assert.match(block, /push:\s*\n\s*branches: \[main\]/);
-  assert.match(block, /pull_request:\s*\n\s*branches: \[main\]/);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main\]/);
+  assert.match(block, /pull_request:[ \t]*\n[ \t]*branches: \[main\]/);
 });
 
 test("[ci-trigger] die Matrix haengt Windows an den Push", () => {
@@ -52,6 +52,6 @@ test("[ci-trigger] die Matrix haengt Windows an den Push", () => {
 
 test("[ci-trigger] sonarqube triggert unveraendert nur auf main", () => {
   const block = onBlock(lies("sonarqube.yml"));
-  assert.match(block, /push:\s*\n\s*branches: \[main\]/);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main\]/);
   assert.ok(!block.includes("production"), `production steht im on-Block:\n${block}`);
 });

@@ -241,7 +241,7 @@ test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
     assert.match(res.stdout, new RegExp(`#${issue.id} > Glob: \\{"zahl":7\\}`),
       "ein nicht-textliches Argument muss als JSON erscheinen");
     // Und nichts davon erzeugt eine leere oder kaputte Ereigniszeile.
-    assert.doesNotMatch(res.stdout, /> undefined|> null|> \s*$/m,
+    assert.doesNotMatch(res.stdout, /(?:> undefined)|(?:> null)|(?:> \s*$)/m,
       "aus einer unverstandenen Zeile wurde ein Ereignis gebaut");
   } finally {
     rmSync(dir, { recursive: true, force: true });

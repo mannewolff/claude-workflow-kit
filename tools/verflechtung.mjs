@@ -90,7 +90,7 @@ function imArbeitsstand(repoRoot) {
 /** Die relativen Import-Ziele einer Datei — `from "…"`, `import("…")`, `export … from "…"`. */
 function importZiele(text) {
   const ziele = [];
-  for (const treffer of text.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+  for (const treffer of text.matchAll(/(?:from|import)[\s(]*["']([^"']+)["']/g)) {
     const ziel = treffer[1];
     if (ziel.startsWith("./") || ziel.startsWith("../")) ziele.push(ziel);
   }

@@ -2003,7 +2003,8 @@ function pruefeKombinationen(args) {
 
 function parseArgs(rest) {
   const args = {};
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     if (rest[i] === "--since") {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
@@ -2043,6 +2044,7 @@ function parseArgs(rest) {
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }
+    i += 1;
   }
   pruefeKombinationen(args);
   return args;

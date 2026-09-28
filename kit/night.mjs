@@ -2536,7 +2536,7 @@ export function werkzeugZeitBeobachter() {
 function erstesProgramm(kommando) {
   for (const wort of String(kommando ?? "").trim().split(/\s+/)) {
     if (wort === "") continue;
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(wort)) continue;
+    if (/^[A-Za-z_]\w*=/.test(wort)) continue;
     const ohnePfad = wort.split(/[/\\]/).pop();
     return ohnePfad || null;
   }
@@ -3480,24 +3480,29 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       ? Number(process.env.NIGHT_KILL_GRACE_MS)
       : 5000;
 
-    timers.push(setTimeout(() => {
+    // Das Zeitlimit laeuft in drei Stufen, je durch die Nachfrist getrennt. Sie
+    // stehen nebeneinander statt ineinander, weil jede fuer sich lesbar ist:
+    // freundlich beenden, hart nachsetzen, und wenn auch das close-Event ausbleibt,
+    // selbst aufloesen. Ein Nachtlauf darf unter keinen Umstaenden unbegrenzt warten.
+    const selbstAufloesen = () => done({
+      status: null,
+      signal: "SIGKILL",
+      error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
+      stdout,
+      stderr,
+    });
+    // Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal, haengender I/O),
+    // wird nachgesetzt.
+    const hartNachsetzen = () => {
+      killTree("SIGKILL");
+      timers.push(setTimeout(selbstAufloesen, killGraceMs));
+    };
+    const zeitlimitErreicht = () => {
       timedOut = true;
       killTree("SIGTERM");
-      // Harte Obergrenze: Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal,
-      // haengender I/O), wird nachgesetzt — und wenn auch das close-Event ausbleibt,
-      // loest der Runner selbst auf. Ein Nachtlauf darf unter keinen Umstaenden
-      // unbegrenzt warten.
-      timers.push(setTimeout(() => {
-        killTree("SIGKILL");
-        timers.push(setTimeout(() => done({
-          status: null,
-          signal: "SIGKILL",
-          error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
-          stdout,
-          stderr,
-        }), killGraceMs));
-      }, killGraceMs));
-    }, timeoutMs));
+      timers.push(setTimeout(hartNachsetzen, killGraceMs));
+    };
+    timers.push(setTimeout(zeitlimitErreicht, timeoutMs));
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();

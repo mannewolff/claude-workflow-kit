@@ -281,14 +281,16 @@ function bruchzahl(wert) {
  */
 function kommandoLesen(feld) {
   let text = "";
-  for (let i = 0; i < feld.length; i += 1) {
+  let i = 0;
+  while (i < feld.length) {
     const ersatz = feld[i] === "\\" ? MASKIERUNGEN.get(feld[i + 1]) : undefined;
     if (ersatz === undefined) {
       text += feld[i];
+      i += 1;
       continue;
     }
     text += ersatz;
-    i += 1;
+    i += 2;  // Backslash und maskiertes Zeichen
   }
   return text;
 }
@@ -1153,14 +1155,15 @@ export function befund(root) {
 
 function parseAuswertenArgs(rest) {
   const args = {};
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     if (rest[i] !== "--fenster") fail(`Unbekanntes Argument: '${rest[i]}'`);
     const wert = Number(rest[i + 1]);
     if (!Number.isInteger(wert) || wert <= 0) {
       fail(`--fenster erwartet eine ganze Zahl groesser null, bekam '${rest[i + 1] ?? ""}'.`);
     }
     args.fenster = wert;
-    i += 1;
+    i += 2;  // Option und ihr Wert
   }
   return args;
 }

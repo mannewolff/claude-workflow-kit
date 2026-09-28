@@ -115,8 +115,8 @@ test("[einstellungen-7] das helle Schema des Entwurfs bleibt unveraendert", asyn
   // Der Rahmen bringt Klassen, kein neues Erscheinungsbild: Jede Farbe, die er benutzt, ist
   // eine der Variablen, die schon vorher galten.
   const css = html.slice(html.indexOf("<style"), html.indexOf("</style>"));
-  const neueVariablen = [...css.matchAll(/^\s*(--[a-z-]+):/gm)].map((m) => m[1]);
-  const imEntwurf = new Set([...ENTWURF.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]));
+  const neueVariablen = [...css.matchAll(/^[ \t]*(--[a-z][a-z-]*):/gm)].map((m) => m[1]);
+  const imEntwurf = new Set([...ENTWURF.matchAll(/(--[a-z][a-z-]*):/g)].map((m) => m[1]));
   for (const name of neueVariablen) assert.ok(imEntwurf.has(name), `${name} kennt der Entwurf nicht`);
 });
 

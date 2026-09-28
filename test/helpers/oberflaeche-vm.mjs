@@ -169,7 +169,10 @@ class Element {
     this.selectionEnd = ende;
   }
 
-  addEventListener(typ, fn) { (this.hoerer[typ] ??= []).push(fn); }
+  addEventListener(typ, fn) {
+    this.hoerer[typ] ??= [];
+    this.hoerer[typ].push(fn);
+  }
 
   ausloesen(typ, eigenschaften = {}) {
     for (const fn of this.hoerer[typ] ?? []) fn({ type: typ, target: this, preventDefault() {}, ...eigenschaften });
@@ -272,6 +275,11 @@ export async function oberflaecheStarten({ basis, token }) {
     do {
       await new Promise((weiter) => setImmediate(weiter));
       if (++runden > 10_000) throw new Error("ruhe(): offene Anfragen kommen nicht zur Ruhe");
+      // `offen` zaehlen die Antwort-Callbacks waehrend des `await` herunter, nicht
+      // der Schleifenrumpf — genau darauf wartet `ruhe()`. Die Regel sieht nur den
+      // Rumpf und kann das nicht wissen. Der `runden`-Zaehler darueber bricht nach
+      // 10.000 Durchlaeufen ab, eine echte Endlosschleife ist ausgeschlossen.
+      // eslint-disable-next-line sonarjs/no-infinite-loop
     } while (offen > 0);
     for (let i = 0; i < 5; i++) await new Promise((weiter) => setImmediate(weiter));
   };

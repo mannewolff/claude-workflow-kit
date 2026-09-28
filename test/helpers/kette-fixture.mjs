@@ -94,8 +94,8 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   return dir;
 }
 
-export function mitProjekt(fn, kette = {}, praefix, configZusatz) {
-  const dir = setupProjekt(kette, praefix, configZusatz);
+export function mitProjekt(fn, kette, praefix, configZusatz) {
+  const dir = setupProjekt(kette ?? {}, praefix, configZusatz);
   try {
     fn(dir);
   } finally {

@@ -4,12 +4,38 @@
 // Die Ausweitung auf die `recommended`-Sets geht in gemessenen Schritten, nicht auf
 // einmal: Ein Linter, der beim ersten Lauf hunderte fremder Funde meldet, wird
 // abgeschaltet statt befolgt. Schritt 1 ist `js.configs.recommended` — gemessen
-// 38 Funde in zwei Regeln (Issue #400). `sonarjs/recommended` (154) und
-// `unicorn/recommended` (8082) sind eigene Karten.
+// 38 Funde in zwei Regeln (Issue #400). Schritt 2 ist `sonarjs/recommended`
+// (Issue #965): gemessen 134 Funde in 16 Regeln, nachdem Schritt 1 die
+// unbenutzten Bindungen und toten Zuweisungen bereits abgeraeumt hatte. Sein
+// Gewinn ist der Zeitpunkt — das Set deckt sich weithin mit dem, was SonarCloud
+// ohnehin meldet, und meldet es vor dem Push statt danach.
+// `unicorn/recommended` (8082) ist eine eigene Karte.
 import js from "@eslint/js";
 import globals from "globals";
 import unicorn from "eslint-plugin-unicorn";
 import sonarjs from "eslint-plugin-sonarjs";
+
+// Zwei der 328 Regeln des `sonarjs/recommended`-Sets laden in dieser
+// Versionskombination ueberhaupt nicht: `sonarjs/no-empty-function` und
+// `sonarjs/no-unused-expressions` werfen beim Laden `TypeError: Cannot read
+// properties of undefined` (`reading 'allow'` bzw. `reading 'allowShortCircuit'`).
+// Beide sind Wrapper um typescript-eslint-Regeln, die ihrerseits ESLint-Kernregeln
+// umhuellen; eslint 9.39.5 reicht `context.options[0]` anders durch als
+// eslint-plugin-sonarjs 2.0.4 es erwartet. Ohne diese Ausnahme bricht jeder Lauf ab
+// — das Set waere hier nicht einschaltbar.
+//
+// Die Alternative waere, eslint oder eslint-plugin-sonarjs anzuheben. Das geschieht
+// bewusst NICHT in diesem Schritt: Ein Versionssprung aendert die Fundmenge aller
+// Regeln gleichzeitig, und danach waere nicht mehr trennbar, was das Einschalten des
+// Sets und was das Update gekostet hat. Faellt die Ausnahme beim naechsten Update weg,
+// gehoeren beide Zeilen hier geloescht.
+const sonarjsRecommendedOhneDefekte = Object.fromEntries(
+  Object.entries(sonarjs.configs.recommended.rules).filter(
+    ([regel]) =>
+      regel !== "sonarjs/no-empty-function" &&
+      regel !== "sonarjs/no-unused-expressions",
+  ),
+);
 
 export default [
   {
@@ -39,6 +65,23 @@ export default [
     plugins: { unicorn, sonarjs },
     rules: {
       ...js.configs.recommended.rules,
+      ...sonarjsRecommendedOhneDefekte,
+      // S4036 / S4721: Sonar-**Hotspots**, keine Fehlerbefunde — „Make sure the PATH
+      // used to find this command includes only what you intend" bzw. „Make sure that
+      // executing this OS command is safe here". Sie treffen die Bauart des Werkzeugs:
+      // Das Kit ruft `git`, `node` und `npx` bewusst ueber den PATH auf, weil es in
+      // fremden Repositorys mit fremden Node-Installationen laeuft — ein absoluter Pfad
+      // waere hier der Fehler, nicht die Loesung. 76 gleichlautende Ausnahmen an den
+      // Fundstellen sagen nichts, was dieser eine Satz nicht besser sagt.
+      "sonarjs/no-os-command-from-path": "off",       // S4036
+      "sonarjs/os-command": "off",                    // S4721
+      // Dieselbe Fundklasse wie das `no-unused-vars` des ESLint-Kerns, das unten
+      // mit den Konventionen dieses Projekts konfiguriert ist (fuehrender
+      // Unterstrich, `ignoreRestSiblings`). Die Sonar-Variante kennt diese Optionen
+      // nicht und meldete deshalb genau die Stellen, die der Kern bewusst durchlaesst
+      // — zwei Regeln auf eine Fundklasse mit gegenlaeufigen Einstellungen. Es bleibt
+      // bei der konfigurierten.
+      "sonarjs/sonar-no-unused-vars": "off",          // S1481, Doppel zu no-unused-vars
       // Eine unbenutzte Bindung, die Absicht ist, wird gekennzeichnet statt die Regel
       // abgeschaltet: fuehrender Unterstrich. Das gilt fuer Parameter, fuer
       // Destrukturierungs-Reste und fuer gefangene Fehler, die nicht gelesen werden.

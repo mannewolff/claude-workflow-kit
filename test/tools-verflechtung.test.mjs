@@ -81,7 +81,7 @@ test("[931] die Kette laeuft durch test/helpers hindurch", () => {
   // beanstandete die Invariante genau diese Datei — und zwar erst nach ihrem
   // Commit, weil die Erhebung den Arbeitsstand vorher nicht sah.
   const helfer = "test/helpers/checks-repo.mjs";
-  const helferImport = /(?:from|import)\s*\(?\s*["'][^"']*helpers\/checks-repo\.mjs["']/;
+  const helferImport = /(?:from|import)[\s(]*["'][^"']*helpers\/checks-repo\.mjs["']/;
   const nutzer = [...tabelle.keys()].filter(
     (p) => helferImport.test(readFileSync(join(repoRoot, p), "utf-8")),
   );

@@ -27,9 +27,11 @@ test("[night-30] der Rest ist Lauf-Summe minus Summe der Einheiten und groesser 
   const lauf = { verbrauch: verbrauchLeer(), einheiten: [{ id: "7" }, { id: "8" }, { id: "9", verbrauch: verbrauchLeer() }] };
   // Zwei Sessions an Karten, eine ohne (etwa der Vorflug).
   verbrauchAddieren(lauf.verbrauch, SESSION);
-  verbrauchAddieren(lauf.einheiten[0].verbrauch = verbrauchLeer(), SESSION);
+  lauf.einheiten[0].verbrauch = verbrauchLeer();
+  verbrauchAddieren(lauf.einheiten[0].verbrauch, SESSION);
   verbrauchAddieren(lauf.verbrauch, SESSION);
-  verbrauchAddieren(lauf.einheiten[1].verbrauch = verbrauchLeer(), SESSION);
+  lauf.einheiten[1].verbrauch = verbrauchLeer();
+  verbrauchAddieren(lauf.einheiten[1].verbrauch, SESSION);
   verbrauchAddieren(lauf.verbrauch, { kostenUsd: 0.1, eingabeTokens: 5, ausgabeTokens: 6, cacheErzeugtTokens: 7, cacheGelesenTokens: 8 });
   const rest = verbrauchOhneEinheit(lauf);
   assert.deepEqual(rest, { kostenUsd: 0.1, eingabeTokens: 5, ausgabeTokens: 6, cacheErzeugtTokens: 7, cacheGelesenTokens: 8 });

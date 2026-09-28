@@ -36,7 +36,10 @@ async function mitToolbox(labelAntwort, fn) {
   const { server, host } = await starteServer((req) => {
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       const g = {};
-      for (const k of karten) (g[k.column] ||= []).push(k);
+      for (const k of karten) {
+        g[k.column] ||= [];
+        g[k.column].push(k);
+      }
       return { status: 200, json: g };
     }
     if (/^\/api\/kanban\/items\/\d+\/labels/.test(req.url)) return labelAntwort;
