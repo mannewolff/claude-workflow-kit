@@ -55,7 +55,7 @@ Wie verifiziert wird: konkret, messbar oder ausfuehrbar.
 Keine. (oder: Issue #N muss vorher fertig sein)
 ```
 
-`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts.
+`## Abhängigkeiten` als **letzter** Abschnitt — `parseDeps` in `kit/night.mjs` setzt das voraus. `Autor-Modell:` entsteht aus `KIT_AGENT_MODEL`, sonst aus der Selbstauskunft der Session, sonst woertlich `unbekannt`; die Zeile fehlt nie. Ist `night.stufen` aktiv, traegt der Kontext-Abschnitt zusaetzlich `Aufgabenstufe: <schwer|mittel|leicht>` und `Stufengrund: <ein Satz>` nach der Regel aus `/issues`, Abschnitt 4 — der Wortlaut steht dort, nicht hier noch einmal; ohne aktive Einstellung aendert sich am Skill nichts. Und wie jedes Arbeitspaket traegt der Kontext-Abschnitt die Zeile `Sitzungsumfang: passt | reisst — <ein Satz>` nach derselben Regel aus `/issues`, Abschnitt 2: zwei Werte und ein Satz, keine geschaetzte Minutenzahl und keine dritte Zwischenstufe, Massstab die Zeitgrenze einer Sitzung aus `--timeout-min` und ausdruecklich nicht gemeint `night.kette.umsetzungMin`, das Budget der ganzen Stufe — vor demselben GO steht derselbe Leser.
 
 **Keine `Plan:`- und keine `Fachliche Quelle:`-Zeile.** Ein `[Task]` hat keinen Vorfahren; die Idee ist der Anlass, nicht der Vorfahr.
 
