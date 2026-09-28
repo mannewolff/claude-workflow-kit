@@ -2,6 +2,22 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.7] - 2026-09-28
+- Vorflug probt Reviewer ohne Pipe, damit excludedCommands wieder greift (#986)
+- Doku und Prozessvorlage beschreiben den Zeitabbruch ohne Ursachenbehauptung (#982)
+- Die implement-Skills melden Fortschritt und kennen den zweiten Vermerk-Anker (#981)
+- Der Kettenbericht nennt die Pakete ueber der Sitzungszeitgrenze (#980)
+- Jedes Arbeitspaket sagt beim Zerlegen, ob es in eine Sitzung passt (#979)
+- Die Auswertung zeigt, wie viele Umsetzungen die Zielmarke reissen (#978)
+- Ein Zeitabbruch steht mit Stand und Empfehlung an der Karte (#977)
+- Der Zeitabbruch-Vermerk entsteht als reine Funktion mit dem wirksamen Zeitlimit (#976)
+- Der Nachtlauf liest die Fortschrittszeilen einer Sitzung live aus ihrem Strom (#975)
+- Eine Karte, die nur ein Mensch erledigen kann, startet keine Session (#984)
+- Wer auf einen Hintergrundlauf wartet, erkennt einen toten Lauf (#983)
+- Jede Lint-Regel nennt ihre Fundklasse und ihren Anlass (#970)
+- Die Prozessbeschreibung verweist auf die Lint-Konfiguration (#971)
+- Der Kopf der Lint-Konfiguration sagt, wann eine Fundklasse zur Regel wird (#969)
+
 ## [3.3.6] - 2026-09-28
 - Der zweite Schritt des Linters laeuft mit (#965)
 - Die Basisregeln des Linters laufen mit (#400)
