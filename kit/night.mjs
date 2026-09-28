@@ -2695,6 +2695,66 @@ export function prueflaufBeobachter(buildChecks) {
   };
 }
 
+// --- Fortschrittszeilen am Session-Strom (Issue #975, Plan #974) ---
+
+// Der Anker, mit dem eine Sitzung ihren eigenen Stand meldet. Ihn zu schreiben ist Auftrag
+// des implement-next-Skills (Issue #981) — kein Werkzeug kann fuer die Sitzung ueber ihren
+// Stand sprechen.
+const FORTSCHRITT_ANKER = "FORTSCHRITT:";
+
+// Je Zeile derselbe Platz wie bei jeder anderen Zeile, die aus einem Strom in einen Text
+// geht (`flatten`): Ein halber Satz je Punkt des Akzeptanzkriteriums passt darin.
+const FORTSCHRITT_ZEILE_MAX = 200;
+
+// Mehr als zehn Zeilen machen den Vermerk unlesbar. Behalten werden die JUENGSTEN: Gefragt
+// ist der Stand, den die Sitzung zuletzt erreicht hat, nicht ihr Anfang. Dass gekuerzt
+// wurde, bleibt an `gesehen` ablesbar — sonst saehe eine gekappte Liste wie die ganze aus.
+const FORTSCHRITT_ZEILEN_MAX = 10;
+
+/**
+ * Beobachtet denselben `stream-json`-Strom wie `werkzeugZeitBeobachter` und
+ * `prueflaufBeobachter` und sammelt, was die Sitzung unterwegs ueber ihren eigenen Stand
+ * gesagt hat (Plan #974, E1).
+ *
+ * Der Anlass ist das Zeitlimit: Dort wird die Sitzung samt Prozessgruppe gekillt, ein
+ * `result`-Ereignis kommt nie an, und `leseErgebnisText` liefert `null`. Der Schlusstext
+ * fehlt also genau im Fall, fuer den er gebraucht wuerde — was bleibt, ist allein das
+ * live Mitgelesene.
+ *
+ * Ein dritter Beobachter neben den beiden bestehenden, aus deren Grund: Jeder liest den
+ * Strom fuer genau eine Frage. Eine unlesbare Zeile wird uebersprungen, wie dort — eine
+ * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt, `ergebnis()` liefert
+ * jederzeit `{ zeilen, gesehen }`. Wer diese Ausgabe liest, entsteht in den Folgepaketen.
+ */
+export function fortschrittBeobachter() {
+  const zeilen = [];
+  let gesehen = 0;
+
+  return {
+    zeile(roh) {
+      const obj = leseStromereignis(roh);
+      if (!obj || obj.type !== "assistant" || !Array.isArray(obj.message?.content)) return;
+      for (const block of obj.message.content) {
+        if (block?.type !== "text" || typeof block.text !== "string") continue;
+        for (const zeile of block.text.split("\n")) {
+          const getrimmt = zeile.trim();
+          if (!getrimmt.startsWith(FORTSCHRITT_ANKER)) continue;
+          gesehen += 1;
+          zeilen.push(flatten(getrimmt, FORTSCHRITT_ZEILE_MAX));
+          if (zeilen.length > FORTSCHRITT_ZEILEN_MAX) zeilen.shift();
+        }
+      }
+    },
+    ergebnis() {
+      // Eine Kopie: `ergebnis()` darf mehrfach abgerufen werden, und ein Aufrufer, der die
+      // Liste weiterreicht, darf den Zustand des Beobachters nicht in der Hand halten.
+      return { zeilen: [...zeilen], gesehen };
+    },
+  };
+}
+
 // --- Session-Kennzahlen (Issue #487) ---
 
 // Ein Feld gilt nur als gelesen, wenn es eine endliche Zahl ist — auch die 0. Alles
@@ -3399,7 +3459,7 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
 // --verbose. Waeren sie weiterhin derselbe Schalter, gaebe es nur zwei gleich falsche
 // Stellungen — die Werkzeugzeit in jedem normalen Nachtlauf dauerhaft "nicht gemessen",
 // oder jedes Stream-Ereignis jeder Session in Konsole und Tagesprotokoll.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -3446,6 +3506,13 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // Die Pruefgruppen kommen aus der geladenen Config; ohne sie zaehlt nur noch der
     // Bereichslauf, den der Aufrufweg allein ausweist.
     const prueflaufZaehler = useStream ? prueflaufBeobachter(config?.buildChecks) : null;
+    // Derselbe Strom, dritter Beobachter (Issue #975) — mit einer Bedingung mehr: Die
+    // Kommando-Stufe startet ein fremdes Programm ohne `--output-format stream-json`.
+    // `useStream` ist dort trotzdem wahr, und der Beobachter lieferte `{ zeilen: [],
+    // gesehen: 0 }`; am spaeteren Vermerk stuende dann "keine Auskunft der Sitzung",
+    // obwohl gar nicht beobachtet werden konnte. `null` sagt "nicht beobachtet", dieselbe
+    // Unterscheidung wie "nicht gemessen" gegen 0.
+    const fortschritt = useStream && !kommandoStufe ? fortschrittBeobachter() : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
     const gestartet = Date.now();
@@ -3461,6 +3528,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         ...result,
         werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null,
         prueflaeufe: prueflaufZaehler ? prueflaufZaehler.ergebnis() : null,
+        fortschritt: fortschritt ? fortschritt.ergebnis() : null,
       });
     };
 
@@ -3521,6 +3589,8 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
           const zeile = buf.slice(0, idx);
           werkzeugzeit.zeile(zeile, ts);
           prueflaufZaehler.zeile(zeile, ts);
+          // Kein Beobachter in der Kommando-Stufe (Issue #975) — dort bleibt das Feld null.
+          fortschritt?.zeile(zeile, ts);
           // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
           // gemessen wird immer, sobald der Strom angefordert ist.
           if (verbose) emitVerbose(issueId, zeile);
@@ -3541,6 +3611,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         const ts = Date.now();
         werkzeugzeit.zeile(buf, ts);
         prueflaufZaehler.zeile(buf, ts);
+        fortschritt?.zeile(buf, ts);
         if (verbose) emitVerbose(issueId, buf);
       }
       const error = timedOut
@@ -3723,6 +3794,10 @@ export async function runSession(issueId, args, opts = {}) {
     // der Strom jedes normalen Nachtlaufs unausgewertet als Block in `res.stdout`.
     // `verbose` daneben steuert nur noch die Ausgabe der Ereignisse.
     issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd,
+    // Die Kommando-Stufe beobachtet ihren Fortschritt nicht (Issue #975): Ihr Programm
+    // kennt das Strom-Format nicht, und ein leeres Ergebnis waere eine Aussage ueber eine
+    // Sitzung, die nie beobachtet wurde.
+    kommandoStufe: Boolean(kommando),
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
     // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
     // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
