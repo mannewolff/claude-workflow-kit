@@ -306,15 +306,16 @@ Abhaengigkeits-Konvention: exakt "Keine." oder explizite Referenzen der Form `Is
 
 Herkunfts-Konvention: `issue create --derived-from <nummer>` traegt die Kartennummer des naechsten Vorfahren zusaetzlich als Feld ans Board — `/fachplan` nie (Wurzel), `/task` nie (kein Vorfahr), `/techplan` auf das fachliche Issue, `/issues` auf das Plandokument. Die Body-Zeilen `Plan:` und `Fachliche Quelle:` bleiben daneben stehen: Ein Projektwechsel loescht das Feld, der Text ueberlebt ihn. Nur beim Anlegen wirksam, Nachtragen gibt es nicht.
 
-### Drei Titel-Praefixe, drei Sonderfaelle
+### Vier Titel-Praefixe, vier Sonderfaelle
 
-Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei Praefixe kennzeichnen Dokumente, die **nie implementiert und nie nach Ready gezogen** werden; implement-Skills und Nacht-Runner stellen sie mechanisch kommentiert ins Backlog zurueck, ohne eine Session zu starten.
+Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier Praefixe kennzeichnen Karten, die **keine Session umsetzt**; implement-Skills und Nacht-Runner stellen sie mechanisch kommentiert ins Backlog zurueck, ohne eine Session zu starten. Die ersten drei sind Dokumente und gehen nie nach Ready; `[Mensch]` ist ein Arbeitspaket, das nur ein Mensch erledigen kann.
 
 | Praefix | Was es ist | Weg nach vorn |
 |---------|-----------|---------------|
 | `[Fachlich]` | fachliche Anforderung aus `/fachplan`, Story-Format | mit dem PO groomen, dann `/techplan #N` |
 | `[Plan]` | Plandokument aus `/techplan`, verbindliches Plan-Format | `/issues #N` zerlegt es in Arbeitspakete |
 | `[Idee]` | rohe Idee, noch kein Dokument | Abwaegung noetig: `/fachplan #N` — sonst `/task #N` |
+| `[Mensch]` | Arbeitspaket, dessen Aufgabe ausserhalb des Repositories liegt | der Mensch handelt und zieht die Karte selbst weiter |
 
 **Plandokumente** (`[Plan]`) halten den freigegebenen Stand fest, statt ihn umzusetzen. Ein Plan beschreibt einen Weg, er ist keine Aufgabe: Er wird **nie implementiert**, geht **nie nach Ready** und wird zuerst mit `/issues #N` in Arbeitspakete zerlegt. Sein Format ist verbindlich — genau diese sechs Ueberschriften in dieser Reihenfolge:
 
@@ -331,7 +332,9 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei 
 
 **Ideen** (`[Idee]`) sind eine rohe Anforderung, kein implementierbares Issue — sie haben genau zwei Wege nach vorn, und welcher gilt, haengt an einer Frage: Verlangt die Idee eine Abwaegung, ist `/fachplan #N` der Weg und macht aus ihr eine fachliche Anforderung; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, wird sie per `/task #N` genau ein Arbeitspaket. Den Fall entscheidet der Mensch mit dem Aufruf — ein Skill, der ihn sich selbst beantwortet, traefe die Entscheidung, die er abgeben soll. Der Weg direkt in einen technischen Plan gilt nicht — er wuerde die Stelle ueberspringen, an der ueber das Ziel entschieden wird. Ohne das Gate wuerde eine Session eine Idee in Ready zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irrefuehrend.
 
-**`[Task]` ist das einzige Praefix, das ein Arbeitspaket kennzeichnet**; es wird implementiert und nach Ready gezogen wie ein Paket ohne Praefix. Die drei Praefixe der Tabelle oben bezeichnen Dokumente, die nie implementiert werden — `[Task]` gehoert ausdruecklich nicht dazu, und es in dieselbe Liste aufzunehmen kehrte seinen Zweck um.
+**Menschenschritte** (`[Mensch]`) sind Arbeitspakete im Vier-Abschnitt-Format, aber ihre Aufgabe liegt ausserhalb des Repositories: eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe. Kein Zug einer Sitzung erledigt sie, deshalb startet keine. Bei der Formpruefung fallen sie in die Stufe `issue` wie jedes andere Paket. Der Rueckgabe-Kommentar sagt ausdruecklich, dass die Karte **wartet** und nicht gescheitert ist — im Backlog sieht sie sonst aus wie ein gescheitertes Paket, und wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat. Ohne das Gate startete der Runner eine Session, die den Fall richtig erkennt und nichts tut; er kann diese richtige Untaetigkeit nicht von einem Fehlschlag unterscheiden.
+
+**`[Task]` ist das einzige Praefix, das ein implementierbares Arbeitspaket kennzeichnet**; es wird implementiert und nach Ready gezogen wie ein Paket ohne Praefix. Die vier Praefixe der Tabelle oben bezeichnen Karten, die keine Session umsetzt — `[Task]` gehoert ausdruecklich nicht dazu, und es in dieselbe Liste aufzunehmen kehrte seinen Zweck um. Auch `[Mensch]` ist ein Arbeitspaket, aber eines, das seine Aufgabe nicht im Repository hat; `[Task]` bleibt das einzige Praefix, dessen Paket eine Sitzung baut.
 
 ---
 

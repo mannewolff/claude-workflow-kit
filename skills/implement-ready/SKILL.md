@@ -43,6 +43,14 @@ Idee — mit Abwaegung erst /fachplan #N, ohne Abwaegung /task #N, wird nicht im
 Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
 
+**Menschenschritte überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Mensch]` — ihre Aufgabe liegt ausserhalb des Repositories (eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe), und kein Zug einer Sitzung erledigt sie. Auch sie wandert mit diesem Kommentar zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:
+
+```
+Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.
+```
+
+Der Kommentar sagt ausdruecklich, dass die Karte **wartet** und nicht gescheitert ist: Im Backlog sieht sie sonst aus wie ein gescheitertes Paket, und wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat. Nach seiner Handlung zieht der Mensch sie selbst weiter.
+
 **Gezeichnete Issues ueberspringen (Leitplanke):** Ein Issue mit dem Label
 `kit:klaeren` traegt eine offene Entscheidung, auf die ein Mensch antworten muss.
 Es wandert mit diesem Kommentar zurueck nach Backlog, der Lauf geht weiter:
@@ -244,7 +252,7 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel), Plandokumente (`[Plan]`-Titel) und Menschenschritte (`[Mensch]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete der gekennzeichneten Karte selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch an der gekennzeichneten Karte gegeben — an der fachlichen Anforderung oder am Plandokument —, als er sie fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete einer Karte, die frueher unter Variante B lief.
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test

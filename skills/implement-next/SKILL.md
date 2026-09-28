@@ -33,7 +33,7 @@ Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb de
 
 **Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
-**Fachliche Issues, Ideen und Plandokumente überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Anforderung, noch kein Arbeitspaket) oder `[Plan]` (Plandokument aus einem technischen Plan — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
+**Fachliche Issues, Ideen, Plandokumente und Menschenschritte überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Anforderung, noch kein Arbeitspaket), `[Plan]` (Plandokument aus einem technischen Plan — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden) oder `[Mensch]` (ein Schritt, den nur ein Mensch tun kann), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
 
 ```
 Fachliches Issue — wird nicht implementiert, bitte per /techplan #N in technische Issues ueberfuehren.
@@ -48,6 +48,12 @@ Die Idee hat zwei Wege nach vorn, und welcher gilt, entscheidet der Mensch mit d
 ```
 Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
+
+```
+Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.
+```
+
+Ein `[Mensch]`-Paket ist ein Arbeitspaket, aber seine Aufgabe liegt ausserhalb des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe. Kein Zug einer Sitzung erledigt sie. Der Kommentar sagt darum ausdruecklich, dass die Karte **wartet** und nicht gescheitert ist: Im Backlog sieht sie sonst aus wie ein gescheitertes Paket, und wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat. Nach seiner Handlung zieht der Mensch sie selbst weiter.
 
 **Gezeichnete Issues ueberspringen (Leitplanke):** Ein Issue mit dem Label
 `kit:klaeren` traegt eine offene Entscheidung, auf die ein Mensch antworten muss.
@@ -252,7 +258,7 @@ Die fachliche Quelle kommt aus der Zeile `Fachliche Quelle: Issue #N` des Plans 
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel), Plandokumente (`[Plan]`-Titel) und Menschenschritte (`[Mensch]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete der gekennzeichneten Karte selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch an der gekennzeichneten Karte gegeben — an der fachlichen Anforderung oder am Plandokument —, als er sie fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete einer Karte, die frueher unter Variante B lief.
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test

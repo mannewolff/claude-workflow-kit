@@ -2584,8 +2584,9 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 // ============================================================
 
 /**
- * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
- * (PO-Schleife), `[Plan]` (Plandokument aus /techplan) und `[Idee]` (rohe Idee).
+ * Die vier Titel-Praefixe der Karten, die keine Sitzung umsetzt: `[Fachlich]`
+ * (PO-Schleife), `[Plan]` (Plandokument aus /techplan), `[Idee]` (rohe Idee) und
+ * `[Mensch]` (ein Schritt, den nur ein Mensch tun kann).
  *
  * Hier und nur hier. Bis Issue #464 lag die Form doppelt im Bestand — als
  * `isFachlich`/`isIdee`/`isPlan` in kit/night.mjs und als `PLAN_PRAEFIX` in
@@ -2600,7 +2601,14 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
  * er nicht von einem Fehlschlag unterscheiden kann (#192, beobachtet an zwei Tagen
  * mit kanban-kit#494). `[Plan]` beschreibt einen Weg und ist keine Aufgabe; ohne
  * Gate kaeme er als normales Arbeitspaket durch, wuerde implementiert, und am Board
- * saehe das wie ein Erfolg aus (#276).
+ * saehe das wie ein Erfolg aus (#276). `[Mensch]` kennzeichnet eine Aufgabe ausserhalb
+ * des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine
+ * Freigabe: Eine Sitzung erkennt den Fall zwar und tut nichts, aber der Runner kann diese
+ * richtige Untaetigkeit nicht von einem Fehlschlag unterscheiden, und die Karte wandert
+ * aus Ready ins Backlog, wo sie wie ein gescheitertes Paket aussieht (#984, beobachtet an
+ * kanban-kit#1256). Anders als die drei davor ist `[Mensch]` ein Arbeitspaket und kein
+ * Dokument: Es faellt bei der Formpruefung in die Stufe `issue`, nur umsetzen kann es
+ * niemand ausser dem Menschen.
  *
  * `\s*` und `i` wie im Nacht-Runner, damit die Erkennung zeichengleich bleibt:
  * fuehrender Leerraum erlaubt, Gross- und Kleinschreibung gleichgueltig, das
@@ -2610,6 +2618,7 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 export const FACHLICH_PRAEFIX = /^\s*\[fachlich\]/i;
 export const PLAN_PRAEFIX = /^\s*\[plan\]/i;
 export const IDEE_PRAEFIX = /^\s*\[idee\]/i;
+export const MENSCH_PRAEFIX = /^\s*\[mensch\]/i;
 
 export function istFachlich(title) {
   return FACHLICH_PRAEFIX.test(title || "");
@@ -2621,6 +2630,10 @@ export function istPlan(title) {
 
 export function istIdee(title) {
   return IDEE_PRAEFIX.test(title || "");
+}
+
+export function istMensch(title) {
+  return MENSCH_PRAEFIX.test(title || "");
 }
 
 // ============================================================

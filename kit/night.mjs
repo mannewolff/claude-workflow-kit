@@ -249,12 +249,14 @@ const {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  istMensch: isMensch,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
       istFachlich: praefixFallback("[Fachlich]"),
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
+      istMensch: praefixFallback("[Mensch]"),
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -323,6 +325,7 @@ export const nachbarn = {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  istMensch: isMensch,
   zusammenfassungPfad,
 };
 
@@ -7570,12 +7573,22 @@ function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund, e
   return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})${effortText}`;
 }
 
+// Die vier Titel-Praefixe, deren Karte keine Session umsetzt, mit dem Wort, das der Dry-Run
+// dafuer nennt. Als Tabelle und nicht als vier `if`-Zeilen: Der Dry-Run muss dieselbe Auskunft
+// geben wie `pruefeIssueGates` im echten Lauf, und eine Liste an einer Stelle laeuft mit der
+// Reihenfolge dort nicht auseinander (Issue #984).
+const DRY_RUN_PRAEFIXE = [
+  [isFachlich, "fachliches Issue"],
+  [isIdee, "Idee"],
+  [isPlan, "Plan-Dokument"],
+  [isMensch, "Menschenschritt"],
+];
+
 function dryRunBefund(issue, ctx, assumedDone) {
   const aus = (grund) => ({ grund, vermerk: "" });
   if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
-  if (isFachlich(issue.title)) return aus("wuerde ins Backlog (fachliches Issue, wird nicht implementiert)");
-  if (isIdee(issue.title)) return aus("wuerde ins Backlog (Idee, wird nicht implementiert)");
-  if (isPlan(issue.title)) return aus("wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)");
+  const praefix = DRY_RUN_PRAEFIXE.find(([passt]) => passt(issue.title));
+  if (praefix) return aus(`wuerde ins Backlog (${praefix[1]}, wird nicht implementiert)`);
   if (hatKlaerenLabel(issue)) return aus("wuerde ins Backlog (kit:klaeren, offene Entscheidung)");
 
   const full = board("issue", "get", String(issue.id));
@@ -7658,14 +7671,14 @@ export function laufeDryRun(args, ctx) {
 }
 
 /**
- * Die sechs Gruende, aus denen ein Ready-Issue nicht implementiert wird (Issue #404).
+ * Die sieben Gruende, aus denen ein Ready-Issue nicht implementiert wird (Issue #404, #984).
  *
  * Rueckgabe: `null`, wenn das Issue drankommt — sonst `{ log, kommentar }` mit der
  * Protokollzeile und dem Text, der am Board haengen bleibt. Der Aufrufer verschiebt
  * das Issue danach ins Backlog; welcher Grund gilt, entscheidet allein diese
  * Funktion.
  *
- * Der volle Body wird erst geholt, wenn die vier Titel- und Label-Gates durch sind.
+ * Der volle Body wird erst geholt, wenn die fuenf Titel- und Label-Gates durch sind.
  * Ihn vorher zu laden waere ein Board-Aufruf je Issue, das ohnehin ausscheidet.
  */
 export function pruefeIssueGates(top) {
@@ -7685,6 +7698,16 @@ export function pruefeIssueGates(top) {
     return {
       log: `#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`,
       kommentar: `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`,
+    };
+  }
+  // Der Menschenschritt (Issue #984): Die Aufgabe liegt ausserhalb des Repositories, kein Zug
+  // einer Sitzung erledigt sie. Der Kommentar sagt ausdruecklich, dass die Karte wartet und
+  // nicht gescheitert ist — sonst sieht sie im Backlog aus wie ein gescheitertes Paket, und
+  // wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat.
+  if (isMensch(top.title)) {
+    return {
+      log: `#${top.id} uebersprungen: Menschenschritt ([Mensch]), wird nicht implementiert.`,
+      kommentar: `Nachtlauf: Menschenschritt — die Karte wartet auf einen Menschen und ist nicht gescheitert; keine Sitzung kann sie erledigen. Nach der Handlung zieht der Mensch sie selbst weiter.`,
     };
   }
   // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).

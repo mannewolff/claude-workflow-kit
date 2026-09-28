@@ -53,6 +53,10 @@ test("[night-6] ohne board.mjs wirft der Ersatz fuer istIdee", () => {
   assert.throws(() => night.nachbarn.istIdee("[Idee] Etwas"), /das Praefix \[Idee\] ist nicht erkennbar/);
 });
 
+test("[night-6] ohne board.mjs wirft der Ersatz fuer istMensch", () => {
+  assert.throws(() => night.nachbarn.istMensch("[Mensch] Etwas"), /das Praefix \[Mensch\] ist nicht erkennbar/);
+});
+
 test("[night-16] ohne board.mjs braucht reviewFreigabe den Nachbarn nicht: ohne Marker ungeprueft", () => {
   // Seit Plan #638 (A17) liest das Gate nur den Marker; eine Pruefvorgabe-Zeile wird
   // nicht mehr geparst und kann darum auch ohne Nachbarn nichts werfen.
