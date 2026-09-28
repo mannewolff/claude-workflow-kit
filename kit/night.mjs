@@ -6722,6 +6722,48 @@ function entscheidungenAusKommentaren(paket) {
   return eintraege;
 }
 
+const SITZUNGSUMFANG_KOPF = "Sitzungsumfang:";
+
+/**
+ * Der Wert der Zeile `Sitzungsumfang: passt | reisst — <ein Satz>` aus dem `## Kontext`
+ * eines Pakets (Konvention aus Issue #979): `"reisst"`, `"passt"` oder `null`, wenn die
+ * Karte die Zeile nicht traegt. Zwei Werte und kein dritter — eine Zwischenstufe naehme
+ * der Einschaetzung ihre einzige Aussage, und `null` heisst darum "nicht eingeschaetzt",
+ * nicht "passt".
+ */
+function sitzungsumfangVon(body) {
+  const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
+  if (!abschnitt) return null;
+  for (let i = 0; i < abschnitt.zeilen.length; i++) {
+    if (!abschnitt.ausserhalb[i]) continue;
+    const zeile = abschnitt.zeilen[i].trim();
+    if (!zeile.toLowerCase().startsWith(SITZUNGSUMFANG_KOPF.toLowerCase())) continue;
+    const wert = zeile.slice(SITZUNGSUMFANG_KOPF.length).trim();
+    if (/^rei(?:ss|ß)t\b/i.test(wert)) return "reisst";
+    if (/^passt\b/i.test(wert)) return "passt";
+  }
+  return null;
+}
+
+/**
+ * Die letzte Zeile des Stufen-Blocks: welche Pakete voraussichtlich ueber der
+ * Sitzungszeitgrenze liegen (Issue #980, Kriterium 1 des Fachplans #963).
+ *
+ * Ohne sie steht die Einschaetzung nur im `## Kontext` der Karten, und wer morgens den
+ * Kettenbericht liest, muesste jede einzelne oeffnen. Genannt werden die Pakete mit
+ * `reisst`; ein Paket ohne die Zeile erscheint als "nicht eingeschaetzt", weil ein
+ * fehlendes Urteil kein gutes ist.
+ */
+function berichtSitzungsumfangZeile(ids, pakete) {
+  const teile = [];
+  for (const id of ids) {
+    const wert = sitzungsumfangVon(pakete.find((k) => String(k.id) === String(id))?.body);
+    if (wert === "reisst") teile.push(`#${id}`);
+    else if (wert === null) teile.push(`#${id} nicht eingeschätzt`);
+  }
+  return `- Voraussichtlich über der Sitzungszeitgrenze: ${teile.length > 0 ? teile.join(", ") : "keine"}`;
+}
+
 /** `#<id> <Titel>` fuer den Bericht — nur `#<id>`, wenn die Karte ihren Titel nicht mitbringt. */
 function paketBezeichnung(pakete, id) {
   const titel = pakete.find((k) => String(k.id) === String(id))?.title;
@@ -6837,6 +6879,9 @@ function berichtStufen(einheit, plan, pakete) {
     : "- Pakete: keine.");
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
   if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${stufen.plan?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  // Als letzte Zeile des Blocks (Issue #980): `test/night-kette-bericht.test.mjs` fixiert
+  // die Folge bis einschliesslich `- Pakete: …`, und hinten angehaengt bleibt sie gueltig.
+  zeilen.push(berichtSitzungsumfangZeile(ids, pakete));
   return zeilen;
 }
 

@@ -148,3 +148,60 @@ test("[night-21] berichtBauen nummeriert Entscheidungen aus Plan und Paketen, ne
   assert.match(berichtBauen({ ausgang: "fertig" }, { stempel: "s" }), /- keine Einarbeitung gefunden/);
   assert.match(berichtBauen({ ausgang: "fertig" }, { stempel: "s", einarbeitung: "## Einarbeitung, Runde 1\n\n- alles übernommen." }), /- keine abgelehnten Befunde/);
 });
+
+// Die Pakete ueber der Sitzungszeitgrenze im Bericht (Issue #980, Plan #974, fachlich #963).
+//
+// Die Einschaetzung aus Issue #979 steht im `## Kontext` jedes Pakets. Wer morgens den
+// Kettenbericht liest, muesste sonst jede Karte oeffnen, um die Pakete zu finden, die
+// voraussichtlich ueber der Sitzungszeitgrenze liegen.
+
+function stufenBlock(text) {
+  return text.split("### Stufen\n\n")[1].split("\n\n")[0].split("\n");
+}
+
+function berichtMitPaketen(pakete) {
+  const ids = pakete.map((k) => k.id);
+  const einheit = { id: "7", ausgang: "fertig", stufen: { plan: { id: "12" }, pakete: { ids, korrekturrunden: 0 } } };
+  return berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body: "" }, pakete, stempel: "s" });
+}
+
+function paket(id, kontextZeile) {
+  return { id, title: `P${id}`, body: `## Kontext\n\nPlan: Issue #12\n${kontextZeile}\n\n## Aufgabe\n\nx\n` };
+}
+
+test("[night-980] die Zeile nennt die Pakete mit `reisst` und laesst die mit `passt` aus", () => {
+  const text = berichtMitPaketen([
+    paket("13", "Sitzungsumfang: reisst — vier Dateien und ein Migrationsschritt."),
+    paket("14", "Sitzungsumfang: passt — eine Berichtszeile."),
+  ]);
+  const zeilen = stufenBlock(text);
+  assert.equal(zeilen.at(-1), "- Voraussichtlich über der Sitzungszeitgrenze: #13");
+  assert.match(zeilen.at(-2), /^- Pakete \(2, /, "die neue Zeile steht nach `- Pakete: …`");
+});
+
+test("[night-980] ein Paket ohne die Zeile erscheint als nicht eingeschaetzt", () => {
+  const text = berichtMitPaketen([
+    paket("13", "Aufgabenstufe: leicht"),
+    paket("14", "Sitzungsumfang: reisst — gross."),
+    paket("15", "Sitzungsumfang: passt — klein."),
+  ]);
+  assert.equal(stufenBlock(text).at(-1), "- Voraussichtlich über der Sitzungszeitgrenze: #13 nicht eingeschätzt, #14");
+});
+
+test("[night-980] ohne einen einzigen Fall steht `keine` — auch ganz ohne Pakete", () => {
+  assert.equal(stufenBlock(berichtMitPaketen([paket("13", "Sitzungsumfang: passt — klein.")])).at(-1),
+    "- Voraussichtlich über der Sitzungszeitgrenze: keine");
+  assert.equal(stufenBlock(berichtBauen({ ausgang: "fertig" }, { stempel: "s" })).at(-1),
+    "- Voraussichtlich über der Sitzungszeitgrenze: keine");
+});
+
+test("[night-980] die Zeile steht als letzte des Stufen-Blocks, auch hinter `Nicht zuordenbar`", () => {
+  const pakete = [paket("13", "Sitzungsumfang: reisst — gross.")];
+  const einheit = {
+    id: "7", ausgang: "fertig",
+    stufen: { plan: { id: "12" }, pakete: { ids: ["13"], nichtZuordenbar: ["99"], korrekturrunden: 0 } },
+  };
+  const zeilen = stufenBlock(berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body: "" }, pakete, stempel: "s" }));
+  assert.equal(zeilen.at(-1), "- Voraussichtlich über der Sitzungszeitgrenze: #13");
+  assert.match(zeilen.at(-2), /^- Nicht zuordenbar /);
+});
