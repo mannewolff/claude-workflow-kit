@@ -3851,6 +3851,14 @@ export async function runSession(issueId, args, opts = {}) {
   verbrauchErfassen(issueId, kennzahlen);
   zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
   prueflaeufeErfassen(issueId, res.prueflaeufe);
+  // Das wirksame Zeitlimit dieser Runde (Issue #976). Es wird hier oben gerechnet — aus
+  // `NIGHT_TIMEOUT_MS`, `opts.timeoutMs` oder `args.timeoutMin` — und war bisher nach der
+  // Rueckkehr nicht mehr zu erfahren. Der Zeitabbruch-Vermerk nennt die Grenze aber, und
+  // `args.timeoutMin` waere dort die falsche: Ein Lauf unter `NIGHT_TIMEOUT_MS` oder eine
+  // Salvage-Session mit eigenem `opts.timeoutMs` schrieben damit eine Zahl an die Karte,
+  // an der nichts gemessen wurde. Angehaengt wie `werkzeugzeit`, also ohne die uebrigen
+  // Felder von `runProcess` zu beruehren.
+  res.timeoutMs = timeoutMs;
   return res;
 }
 
@@ -8052,6 +8060,96 @@ export function wartendVermerk(schlusstext, pfade = []) {
   if (Array.isArray(pfade) && pfade.length > 0) {
     // `resteText` kuerzt ab dem elften Eintrag auf Anzahl und die ersten zehn — dieselbe
     // Darstellung wie in jedem anderen Grund des Runners (night-11).
+    teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
+  }
+
+  return `${teile.join("\n")}\n`;
+}
+
+/**
+ * Der Anker des Zeitabbruch-Vermerks am Arbeitspaket (Plan #974, Issue #976).
+ *
+ * Neben `WARTEND_ANKER` und aus demselben Grund woertlich: Die implement-Skills weisen die
+ * naechste Sitzung an, einen Vermerk unter diesem Anker zu melden, statt stillschweigend
+ * auf halbem Weg weiterzumachen. Zwei Fassungen waeren zwei Anker, und einer fuehrte ins
+ * Leere.
+ */
+export const ZEITLIMIT_ANKER = "## Nachtlauf: Zeitgrenze erreicht";
+
+/**
+ * Die Grenze in Minuten fuer den Vermerkstext (Issue #976).
+ *
+ * Fehlt sie, steht das da — eine erfundene Zahl an der Karte waere schlimmer als keine,
+ * und "unbekannt" ist dieselbe Regel wie "nicht gemessen" statt 0. Nicht ganze Werte
+ * behalten eine Nachkommastelle: Unter `NIGHT_TIMEOUT_MS` sind Grenzen unter einer Minute
+ * ueblich, und "0 Minuten" waere falsch.
+ */
+function grenzeText(grenzeMin) {
+  if (typeof grenzeMin !== "number" || !Number.isFinite(grenzeMin)) return "Grenze nicht bekannt";
+  return `${Number.isInteger(grenzeMin) ? grenzeMin : grenzeMin.toFixed(1)} Minuten`;
+}
+
+/**
+ * Der Vermerk, den ein Zeitabbruch am Arbeitspaket hinterlaesst (Plan #974, Issue #976).
+ *
+ * Reine Funktion wie `wartendVermerk`: die wirksame Grenze, das Ergebnis des
+ * `fortschrittBeobachter` und die Pfade aus `gitReste()` hinein, Text heraus. Wer ihn an
+ * die Karte schreibt, entsteht im Folgepaket.
+ *
+ * `fortschritt` traegt drei unterscheidbare Zustaende, und alle drei stehen verschieden im
+ * Text: `null` heisst "nicht beobachtet" (kein Strom — die Kommando-Stufe, ein Lauf ohne
+ * `stream`), eine leere Liste heisst "nichts gemeldet", und eine gefuellte traegt den
+ * Stand. Die beiden ersten zusammenzufassen waere dieselbe Luege wie eine 0 fuer einen
+ * fehlenden Messwert.
+ *
+ * Der Schlusstext fehlt hier strukturell: Am Zeitlimit wird die Sitzung samt Prozessgruppe
+ * gekillt, ein `result`-Ereignis kommt nie an, und `leseErgebnisText` liefert `null`. Was
+ * die Sitzung unterwegs gesagt hat, ist alles, was bleibt.
+ *
+ * Exportiert fuer die Tests und die Verdrahtung des Folgepakets.
+ */
+export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
+  const zeilen = Array.isArray(fortschritt?.zeilen) ? fortschritt.zeilen : null;
+
+  const stand = [];
+  if (zeilen === null) {
+    stand.push("Fortschritt nicht beobachtet (kein Strom) — ueber den Stand dieser Sitzung liegt nichts vor.");
+  } else if (zeilen.length === 0) {
+    stand.push("keine Auskunft der Sitzung — sie hat bis zum Abbruch keine Fortschrittszeile gemeldet.");
+  } else {
+    stand.push(...zeilen);
+    const gesehen = fortschritt.gesehen;
+    if (typeof gesehen === "number" && gesehen > zeilen.length) {
+      // Ohne diesen Satz saehe eine gekappte Liste wie die ganze aus.
+      stand.push("", `(${gesehen} Fortschrittszeilen gemeldet, die juengsten ${zeilen.length} stehen hier.)`);
+    }
+  }
+
+  const teile = [
+    ZEITLIMIT_ANKER,
+    "",
+    `${GRUND_ZEITLIMIT} — die Grenze dieser Runde: ${grenzeText(grenzeMin)}.`,
+    "Das ist kein inhaltlicher Fehlschlag: Die Sitzung wurde an der Uhr abgebrochen, nicht an ihrer Arbeit.",
+    "",
+    "### Stand nach eigener Auskunft der Sitzung",
+    "",
+    ...stand,
+    "",
+    "### Naechster Schritt (Mensch)",
+    "",
+    "Empfehlung (keine Vorgabe): dieses Paket in Teile schneiden, die je in eine Sitzung passen.",
+    "Ob geteilt wird und wie, entscheidet ein Mensch — hier steht keine Aufgabe, sondern ein Vorschlag.",
+    "",
+    // Kriterium 5 des Fachplans: Der Abbruch ist ein Befund ueber die Uhr und keiner ueber
+    // das Paket. Wer ihn als "zu gross geschnitten" liest, hat die Ursache geraten.
+    "Aus dem Abbruch folgt keine Aussage ueber seine Ursache: Dass die Zeit ausging, sagt nicht,",
+    "ob das Paket zu gross geschnitten war, ob die Sitzung sich verlaufen hat oder ob ein einzelner",
+    "Lauf ungewoehnlich lange gebraucht hat.",
+  ];
+
+  if (Array.isArray(pfade) && pfade.length > 0) {
+    // Wie bei `wartendVermerk`: ohne Pfade entfaellt der Abschnitt ersatzlos, statt "keine"
+    // zu melden — und `resteText` kuerzt lange Listen wie in jedem anderen Grund des Runners.
     teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
   }
 
