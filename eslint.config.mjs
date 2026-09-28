@@ -1,15 +1,52 @@
 // Leitplanke gegen die Stilfunde, die SonarCloud in kit/, tools/ und install.mjs
 // meldet (Issue #399), plus die Basisregeln von ESLint selbst (Issue #400).
 //
-// Die Ausweitung auf die `recommended`-Sets geht in gemessenen Schritten, nicht auf
-// einmal: Ein Linter, der beim ersten Lauf hunderte fremder Funde meldet, wird
-// abgeschaltet statt befolgt. Schritt 1 ist `js.configs.recommended` — gemessen
-// 38 Funde in zwei Regeln (Issue #400). Schritt 2 ist `sonarjs/recommended`
-// (Issue #965): gemessen 134 Funde in 16 Regeln, nachdem Schritt 1 die
-// unbenutzten Bindungen und toten Zuweisungen bereits abgeraeumt hatte. Sein
-// Gewinn ist der Zeitpunkt — das Set deckt sich weithin mit dem, was SonarCloud
-// ohnehin meldet, und meldet es vor dem Push statt danach.
-// `unicorn/recommended` (8082) ist eine eigene Karte.
+// ---------------------------------------------------------------------------
+// 1. Wann eine Fundklasse hierher gehoert
+// ---------------------------------------------------------------------------
+// Dieselbe Fundklasse hat das Quality Gate mindestens zweimal rot gestellt, oder
+// sie ist nach einer Handbehebung erneut aufgetreten. Ist das erreicht, loest es
+// eine Aufnahmepruefung aus — nicht die Aufnahme: Ob eine Regel den Fund
+// ueberhaupt faengt, was sie sonst noch meldet und was der Bestand kostet, steht
+// erst nach der Pruefung fest. Andere Anlaesse entscheidet der Mensch im
+// Einzelfall.
+//
+// ---------------------------------------------------------------------------
+// 2. Welchen Weg die Aufnahme nimmt
+// ---------------------------------------------------------------------------
+// Sie wird als Arbeitspaket vorgeschlagen und ist erst nach der Freigabe des
+// Menschen wirksam. Eine Regel ist eine Leitplanke und aendert das Gate, an dem
+// jede Sitzung gemessen wird — wer sie im Vorbeigehen einschaltet, aendert den
+// Massstab fuer alle folgenden Laeufe.
+//
+// ---------------------------------------------------------------------------
+// 3. Was mit den Bestandsfunden geschieht
+// ---------------------------------------------------------------------------
+// Drei Wege, je Aufnahme genau einer und begruendet: die Funde beheben, sie
+// ausnehmen, oder den Geltungsbereich der Regel enger ziehen — wie bei S2871,
+// dessen Block unten genau `sonar.sources` abdeckt statt des ganzen Lint-Bereichs.
+//
+// ---------------------------------------------------------------------------
+// 4. Warum kein weiteres `recommended`-Set
+// ---------------------------------------------------------------------------
+// Die Ausweitung ging in gemessenen Schritten, nicht auf einmal: Ein Linter, der
+// beim ersten Lauf hunderte fremder Funde meldet, wird abgeschaltet statt
+// befolgt. Schritt 1 ist `js.configs.recommended` — gemessen 38 Funde in zwei
+// Regeln (Issue #400). Schritt 2 ist `sonarjs/recommended` (Issue #965): gemessen
+// 134 Funde in 16 Regeln, nachdem Schritt 1 die unbenutzten Bindungen und toten
+// Zuweisungen bereits abgeraeumt hatte. Sein Gewinn ist der Zeitpunkt — das Set
+// deckt sich weithin mit dem, was SonarCloud ohnehin meldet, und meldet es vor
+// dem Push statt danach.
+//
+// Ein drittes Set kommt nicht dazu. Gemessen am 2026-09-28 fuer
+// `unicorn/recommended`: 8082 Funde in 31 Regeln, davon 1547 automatisch
+// behebbar. 4805 stammen aus `prevent-abbreviations`, 1507 aus `no-null`, 976 aus
+// `text-encoding-identifier-case`, 794 aus den uebrigen 28 Regeln zusammen. Drei
+// Regeln tragen damit 90 Prozent der Funde, und alle drei befinden ueber das
+// Aussehen des Bestands statt ueber einen Fehler — bei der Kodierung fuehrt der
+// Bestand die von der Regel verworfene Schreibweise mit 997 zu 5, die Regel
+// wuerde also die Mehrheit umbenennen. Einzelne Regeln aus `unicorn` stehen
+// weiterhin unten, jede mit ihrer Fundklasse und ihrem Anlass.
 import js from "@eslint/js";
 import globals from "globals";
 import unicorn from "eslint-plugin-unicorn";
