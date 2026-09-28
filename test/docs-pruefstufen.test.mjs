@@ -13,7 +13,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -178,13 +177,6 @@ test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
 // enthaelt davon sechs, und vier sind korrekt (Stufentabelle, Freigabe-Regel,
 // Auswahlregel, Gate-Hinweis). Ein pauschaler Filter waere nur gruen zu bekommen,
 // indem man richtigen Text beschaedigt.
-
-/** Ein `###`-Abschnitt aus der Doku, bis zur naechsten Ueberschrift gleicher Ebene. */
-function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n### /)[0];
-}
 
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   // Die Vorlage nennt die Marker-Orte seit Issue #633 nicht mehr; sie stehen in Doku und Skill.

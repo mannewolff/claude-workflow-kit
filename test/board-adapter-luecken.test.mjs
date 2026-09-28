@@ -14,7 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { setupProjekt, runBoard, board, fakeCli } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, fakeCli } from "./helpers/board-fixture.mjs";
 
 const NUR_POSIX = process.platform === "win32"
   ? { skip: "Windows: Das Fake-CLI ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197." }

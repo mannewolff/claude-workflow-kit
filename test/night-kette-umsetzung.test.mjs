@@ -115,7 +115,7 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
 
 test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", NUR_POSIX, () => {
   mitProjekt((dir) => {
-    const F = fachplanB(dir);
+    fachplanB(dir);
     // Eine Karte, die der Mensch selbst nach Ready gezogen hat — sie gehoert zu keinem
     // Plan dieser Kette und darf von der Rueckstellpflicht nicht angefasst werden.
     const fremd = String(board(dir, "issue", "create", "--title", "Von Hand gezogen", "--body", "## Abhängigkeiten\n\nKeine.\n").id);

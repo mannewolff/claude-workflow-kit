@@ -175,29 +175,6 @@ const ARBEIT_UND_COMMIT = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "
 const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}'`
   + " > .claude/checks-summary.json";
 
-/**
- * Die Fake-Session eines Erzeugungslaufs — sie unterscheidet die beiden Phasen am Auftrag.
- *
- * `/issues #Quelle` legt ein Arbeitspaket an (Phase 1), `/issue-review #Dokument`
- * fuehrt aus, was `pruefTeil` vorgibt (Phase 2).
- */
-function erzeugeFake(erzeugeTeil, pruefTeil) {
-  return `case "$NIGHT_PROMPT" in
-  /issue-review*) ${pruefTeil} ;;
-  *) ${erzeugeTeil} ;;
-esac`;
-}
-
-const PAKET_ANLEGEN = `node ${BOARD_IM_FAKE} issue create --title "Paket A" `
-  + `--body "## Kontext\n\nPlan: Issue #$NIGHT_ISSUE_ID\n" > /dev/null`;
-
-/** Die Kartennummer des erzeugten Dokuments — sie unterscheidet sich von der Quelle. */
-function dokumentId(dir) {
-  const dok = board(dir, "issue", "list").find((i) => !String(i.title).startsWith("[Plan]"));
-  assert.ok(dok, "die Erzeugungs-Session hat kein Dokument angelegt");
-  return String(dok.id);
-}
-
 // --- Weg 1: der Rest-Guard nach erfolgreicher Runde ---
 
 test("[night-4] [night-11] der Rest-Guard hinterlegt seinen Protokollsatz und die liegengebliebene Datei", NUR_POSIX, () => {

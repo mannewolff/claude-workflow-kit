@@ -1,7 +1,13 @@
 // Leitplanke gegen die Stilfunde, die SonarCloud in kit/, tools/ und install.mjs
-// meldet (Issue #399). Bewusst NICHT die `recommended`-Sets: Ein Linter, der beim
-// ersten Lauf hunderte fremder Funde meldet, wird abgeschaltet statt befolgt. Die
-// Ausweitung ist ein eigener Schritt.
+// meldet (Issue #399), plus die Basisregeln von ESLint selbst (Issue #400).
+//
+// Die Ausweitung auf die `recommended`-Sets geht in gemessenen Schritten, nicht auf
+// einmal: Ein Linter, der beim ersten Lauf hunderte fremder Funde meldet, wird
+// abgeschaltet statt befolgt. Schritt 1 ist `js.configs.recommended` — gemessen
+// 38 Funde in zwei Regeln (Issue #400). `sonarjs/recommended` (154) und
+// `unicorn/recommended` (8082) sind eigene Karten.
+import js from "@eslint/js";
+import globals from "globals";
 import unicorn from "eslint-plugin-unicorn";
 import sonarjs from "eslint-plugin-sonarjs";
 
@@ -22,9 +28,32 @@ export default [
   },
   {
     files: ["kit/**/*.mjs", "tools/**/*.mjs", "test/**/*.mjs", "install.mjs", ".githooks/**/*.mjs"],
-    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+    // Die Node-Globals gehoeren zum `recommended`-Set und nicht daneben: Ohne sie
+    // meldet `no-undef` jedes `process`, `console` und `Buffer` als Fund (gemessen
+    // 1167 Stellen) — das Set waere so nicht benutzbar.
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
     plugins: { unicorn, sonarjs },
     rules: {
+      ...js.configs.recommended.rules,
+      // Eine unbenutzte Bindung, die Absicht ist, wird gekennzeichnet statt die Regel
+      // abgeschaltet: fuehrender Unterstrich. Das gilt fuer Parameter, fuer
+      // Destrukturierungs-Reste und fuer gefangene Fehler, die nicht gelesen werden.
+      "no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+        // `const { feld, ...ohneFeld } = vorlage` laesst ein Feld absichtlich weg —
+        // das Weglassen IST der Zweck, und `feld` wird dabei nie gelesen. Die Regel
+        // hat dafuer eine eigene Option; sie steht im Default des Sets auf `true` und
+        // bleibt es hier. Unterstriche waeren an diesen Stellen der falsche Weg: Sie
+        // benennen ein Feld um, das aus der Vorlage kommt und so heissen muss.
+        ignoreRestSiblings: true,
+      }],
       // Zuordnung Sonar-Regel -> ESLint-Regel, je Fundklasse aus Issue #399:
       "unicorn/prefer-string-raw": "error",            // S7780
       "sonarjs/no-nested-template-literals": "error",  // S4624

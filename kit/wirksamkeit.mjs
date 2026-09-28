@@ -171,11 +171,6 @@ function fail(nachricht) {
   throw new WirksamkeitError(nachricht);
 }
 
-/** Eine Zahl oder `null` — dieselbe Regel wie `zahl` in kit/aufwand.mjs. */
-function zahl(wert) {
-  return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
-}
-
 /**
  * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt. Bewusst
  * **nicht** `localeCompare` — dessen Reihenfolge haengt an der Locale der Maschine,

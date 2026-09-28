@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -245,8 +245,6 @@ test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX
 // ============================================================
 // Der Review-Modus und seine Auskuenfte
 // ============================================================
-
-const VORFLUG_OK = 'cat <<\'EOF\'\n<<<VORFLUG\n{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}\nVORFLUG>>>\nEOF';
 
 test("scheitert board.mjs wortlos, nennt die Meldung wenigstens das Kommando", () => {
   // Weder stdout noch stderr: Der dritte Rueckfall greift, und die Meldung besteht

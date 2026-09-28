@@ -53,7 +53,7 @@ test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, 
 
 test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
-    const F = fachplanB(dir);
+    fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
     // Der Test-Hook wirft zwischen `issue move ready` und der Session des ersten Pakets —
     // die Stelle, an der ein Wurf das Paket in Ready zuruecklassen wuerde.

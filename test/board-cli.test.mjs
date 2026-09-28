@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { setupProjekt, schreibeConfig, runBoard, board } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 

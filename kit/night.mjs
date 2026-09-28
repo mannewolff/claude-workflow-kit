@@ -237,7 +237,7 @@ const CHECKS_PATH = process.env.KIT_ROOT
 // bewusst kein `false`: Ein stilles `false` liesse ein Plandokument als
 // Arbeitspaket durch — der Runner implementierte es, und am Board saehe das wie
 // ein Erfolg aus. Genau davor schuetzen die Praefixe.
-const praefixFallback = (was) => (title) => {
+const praefixFallback = (was) => (_title) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
 };
 // Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
@@ -269,7 +269,7 @@ const {
 //
 // NACHBAR_CHECKS steht oben neben NACHBAR_BOARD: Beide Nachbarn kommen aus demselben
 // Verzeichnis, und beide folgen NIGHT_NACHBAR_DIR.
-const zusammenfassungPfadFallback = (root) => {
+const zusammenfassungPfadFallback = (_root) => {
   throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
 };
 const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
