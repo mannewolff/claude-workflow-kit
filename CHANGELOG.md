@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.6] - 2026-09-28
+- Der zweite Schritt des Linters laeuft mit (#965)
+- Die Basisregeln des Linters laufen mit (#400)
+- Der frische Worktree stellt seine Abhaengigkeiten selbst her (#964)
+- Eine Idee hat genau zwei Wege, und sie stehen ueberall gleich (#962)
+- Ein Stromereignis wird an einer Stelle gelesen, nicht an drei (#960)
+- Gleichzeitige Prueflaeufe auf einer Maschine laufen nacheinander (#958)
+
 ## [3.3.5] - 2026-09-27
 - Die Salvage-Vorpruefung schreibt den Nachweis, den das Commit-Gate liest (#919)
 - I6 erkennt Mutations-Vollläufe auch über Projekt-Treiber und aufhebende Entscheidungen (#942)
