@@ -27,6 +27,11 @@ const SKILLS = [
 // Umschreibung findet der Leser am Board nicht wieder.
 const ANKER = "## Nachtlauf: wartende Sitzung";
 
+// Der zweite Anker (Issue #977, #981): Ein Lauf, den die Sitzungszeitgrenze beendet hat,
+// hinterlaesst denselben Hinweis unter eigener Ueberschrift. Der Hinweis in Schritt 2 gilt
+// fuer beide — ohne den zweiten uebersieht die naechste Sitzung genau diesen Vermerk.
+const ANKER_ZEITGRENZE = "## Nachtlauf: Zeitgrenze erreicht";
+
 // Die Zeile, an der die neue Leitplanke haengt: die vorhandene Regel zum im Hintergrund
 // gestarteten Pflichtcheck, die sie verallgemeinert.
 const HINTERGRUND_CHECK = "ich melde mich, sobald der Lauf durch ist";
@@ -106,6 +111,10 @@ test("[skills-34] beide Implementierungs-Skills melden einen Vermerk der wartend
 
     const absatz = lesen.split(/\n\n/).find((a) => a.includes(ANKER));
     assert.ok(absatz, `${name}: kein Absatz in Schritt 2 nennt den Anker '${ANKER}'`);
+    assert.ok(
+      absatz.includes(ANKER_ZEITGRENZE),
+      `${name}: derselbe Absatz nennt den zweiten Anker '${ANKER_ZEITGRENZE}' nicht`
+    );
     assert.match(absatz, /Kein Halt/, `${name}: der Vermerk-Absatz sagt nicht, dass nichts anhaelt`);
     assert.match(absatz, /Ruecksprache|Rückfrage/, `${name}: der Vermerk-Absatz schliesst die Ruecksprache nicht aus`);
     assert.match(
