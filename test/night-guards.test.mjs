@@ -411,7 +411,10 @@ test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", NU
     // Timeout zaehlt als issue-spezifisch, nicht als Infrastruktur: Das Issue wandert
     // mit Kommentar ins Backlog und der Lauf endet reguler.
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id} nicht in In review`));
+    // `.*` zwischen Nummer und Zustand seit Issue #977: Vor dem Zustand steht jetzt der
+    // Grund der Runde — hier also der Zeitabbruch. Gemessen wird an dieser Stelle das
+    // Nachsetzen des Kills, nicht der Wortlaut der Zeile.
+    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id}.* nicht in In review`));
     assert.doesNotMatch(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/,
       "ein Timeout ist kein Infrastruktur-Fehler");
   } finally {
@@ -437,7 +440,7 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
     });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id} nicht in In review`),
+    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id}.* nicht in In review`),
       "der Runner muss das Zeitlimit selbst aufloesen, statt auf das close-Event zu warten");
   } finally {
     rmSync(dir, { recursive: true, force: true });

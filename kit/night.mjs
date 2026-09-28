@@ -649,6 +649,17 @@ let STOPP_GRUND = "";
 // Runde den Befund ihrer Vorgaengerin erbt.
 let WARTEND_BEENDET = false;
 
+// Ist die Sitzung der laufenden Runde am Zeitlimit abgebrochen worden (Issue #977)?
+// Derselbe Modul-Merker nach demselben Muster wie WARTEND_BEENDET darueber und aus
+// demselben Grund: Der Befund faellt in den drei Auswertungswegen, gebraucht wird er beim
+// Fuellen der Einheit — und deren Rueckgabewerte bleiben die Zaehlwoerter. Vor jeder
+// Session zurueckgesetzt, damit keine Runde den Befund ihrer Vorgaengerin erbt.
+//
+// Gesetzt wird er allein in den Zweigen OHNE In-review-Ergebnis: Eine vom Salvage
+// gerettete Karte ist fertig und soll in keiner Auswertung als Zeitabbruch zaehlen
+// (Plan #974, E8).
+let ZEITLIMIT_BEENDET = false;
+
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
 // Muster wie LOG_FILE darueber, und aus demselben Grund: gitReste() braucht sie, wird
 // aber aus der Hauptschleife heraus aufgerufen. Seit das Hauptprogramm in main()
@@ -7852,7 +7863,7 @@ export function pruefeIssueGates(top) {
  * Der Arbeitsbaum ist vor der regulaeren Runde sauber, ein neuer Commit ist damit die
  * einzige Spur, die die Salvage-Session sicher hinterlaesst.
  */
-async function versucheSalvage(top, args, sessionWahl) {
+async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
   const checks = verifyChecksForSalvage(config, top.id);
   if (!checks.ok) {
     // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
@@ -7886,8 +7897,19 @@ async function versucheSalvage(top, args, sessionWahl) {
   const reste = gitReste();
   if (salvaged && reste.length === 0) {
     log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    // EIN Satz zum Zeitabbruch der regulaeren Runde, nicht der volle Vermerk (Plan #974,
+    // E11): Kein Stand-Abschnitt und keine Empfehlung — an einer fertigen Karte ist nichts
+    // zu teilen, und wer den Abbruch morgens einordnen will, braucht hier nur die Auskunft,
+    // dass die Uhr und nicht die Arbeit die regulaere Runde beendet hat. `ZEITLIMIT_BEENDET`
+    // bleibt aus demselben Grund ungesetzt (E8).
+    //
+    // Der Befund muss durchgereicht werden: `behandleDirtyRunde` kehrt bei `erfolg` sofort
+    // zurueck und erreicht seinen eigenen `rundenGrund`-Aufruf nie.
+    const zeitlimitSatz = rundenGrund(res, pruefung) === GRUND_ZEITLIMIT
+      ? ` Die regulaere Runde endete am Zeitlimit — ${GRUND_ZEITLIMIT}, die Grenze dieser Runde: ${grenzeText(grenzeMinuten(res))}.`
+      : "";
     board("issue", "comment", String(top.id), "--text",
-      "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
+      `Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.${zeitlimitSatz}`);
     return "erfolg";
   }
   // Der Grund traegt den Protokollsatz woertlich. Wo der Satz die Reste bereits nennt,
@@ -8090,6 +8112,22 @@ function grenzeText(grenzeMin) {
 }
 
 /**
+ * Die wirksame Grenze dieser Runde in Minuten — oder `null` (Issue #977).
+ *
+ * Aus `res.timeoutMs`, das `runSession` seit Issue #976 fuehrt, und NICHT aus
+ * `args.timeoutMin`: Gerechnet hat die Runde mit dem einen Wert, den `runSession`
+ * bestimmt hat — `NIGHT_TIMEOUT_MS`, `opts.timeoutMs` oder das Flag. Eine zweite
+ * Herleitung aus dem Flag laege an genau den Stellen daneben, an denen es darauf ankommt.
+ *
+ * Fehlt das Feld, bleibt es bei `null`; `grenzeText` macht daraus "Grenze nicht bekannt"
+ * statt einer erfundenen Zahl.
+ */
+function grenzeMinuten(res) {
+  const ms = res?.timeoutMs;
+  return typeof ms === "number" && Number.isFinite(ms) ? ms / 60000 : null;
+}
+
+/**
  * Der Vermerk, den ein Zeitabbruch am Arbeitspaket hinterlaesst (Plan #974, Issue #976).
  *
  * Reine Funktion wie `wartendVermerk`: die wirksame Grenze, das Ergebnis des
@@ -8184,6 +8222,47 @@ export function rundenGrund(res, pruefung) {
 }
 
 /**
+ * Der Vermerk zu einem Grund — oder `null`, wenn dieser Grund keinen traegt (Issue #977).
+ *
+ * Zwei der Gruende haben einen eigenen Text am Paket: die wartende Sitzung (Plan #773) und
+ * der Zeitabbruch (Plan #974). Sie hier zusammenzuführen hat einen Grund: Beide Zweige der
+ * Auswertung — Rueckstellung bei sauberem Baum und Fehlschlag bei unsauberem — treffen
+ * dieselbe Wahl, und zwei Fassungen davon liefen auseinander. Der Aufrufer entscheidet
+ * allein, WIE er den Vermerk setzt: als ganzen Kommentar oder angehaengt an seinen eigenen.
+ *
+ * `pfade` reicht durch: Im Rueckstellungszweig ist der Baum sauber und die Liste leer, im
+ * Fehlschlag-Zweig traegt sie die Reste. Beide Vermerke lassen den Abschnitt bei leerer
+ * Liste ersatzlos weg.
+ */
+/**
+ * Der Grund, der eine Rueckstellung bei SAUBEREM Baum benennt — oder `null` (Issue #977).
+ *
+ * Nur zwei der Gruende erscheinen hier: die wartende Sitzung und der Zeitabbruch. Die
+ * uebrigen (is_error, roter Pflichtcheck, regulaeres Ende) bleiben stumm — in diesem Zweig
+ * ist der Baum sauber, und der bisherige Rueckstellungstext war fuer sie nie falsch.
+ *
+ * Die Wartend-Erkennung bleibt bei `wartendeSession` und wechselt NICHT zu `rundenGrund`:
+ * Die beiden sind nicht deckungsgleich — `rundenGrund` liefert `GRUND_WARTEND` nur bei
+ * `stopReason === "end_turn"` —, und ein stiller Wechsel aenderte das Verhalten von
+ * night-55. `rundenGrund` wird allein fuer den Zeitlimit-Fall befragt.
+ *
+ * Die Reihenfolge entscheidet nichts, sie macht nur sichtbar, dass beides zugleich nicht
+ * eintreten kann: Am Zeitlimit wird die Sitzung samt Prozessgruppe gekillt,
+ * `leseErgebnisText` liefert `null`, und ohne Schlusstext ist `wartendeSession` nie wahr.
+ */
+function rueckstellungsGrund(res, pruefung) {
+  if (wartendeSession(leseErgebnisText(res?.stdout))) return GRUND_WARTEND;
+  if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) return GRUND_ZEITLIMIT;
+  return null;
+}
+
+function rundenVermerk(grund, res, pfade = []) {
+  if (grund === GRUND_WARTEND) return wartendVermerk(leseErgebnisText(res?.stdout), pfade);
+  if (grund === GRUND_ZEITLIMIT) return zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, pfade);
+  return null;
+}
+
+/**
  * Der vierte harte Stopp: die Runde hat nichts abgeschlossen und den Baum
  * veraendert (Issue #404).
  *
@@ -8220,7 +8299,7 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
-    const salvage = await versucheSalvage(top, args, sessionWahl);
+    const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") {
@@ -8233,6 +8312,20 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
         // was der Salvage vorfand.
         merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${STOPP_GRUND}`);
         board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, gitReste()));
+      } else if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) {
+        // Derselbe eigene Griff wie fuer die wartende Sitzung darueber, und aus demselben
+        // Grund (Issue #977): Dieser Zweig kehrt zurueck, bevor der Fehlschlag-Zweig unten
+        // mit `rundenGrund` erreicht ist — ohne ihn entstuende der Befund nur fuer die
+        // Haelfte der Faelle. Der Stopp-Grund bleibt unangetastet: Der night-27-Satz
+        // benennt, was morgens im Arbeitsverzeichnis liegt, der Zeitabbruch steht im
+        // Vermerk und am Feld `zeitlimitBeendet` der Einheit.
+        //
+        // `else if`, nicht ein zweites `if`: Zeitlimit und wartend schliessen einander aus
+        // (am Zeitlimit kommt kein `result`-Ereignis an, `leseErgebnisText` liefert `null`),
+        // und zwei Vermerke zu derselben Runde waeren zwei Wahrheiten ueber sie.
+        ZEITLIMIT_BEENDET = true;
+        board("issue", "comment", String(top.id), "--text",
+          zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, gitReste()));
       }
       return "hardStop";
     }
@@ -8246,14 +8339,17 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // Befunds, ohne Zeitlimit, Abbruch und roten Pflichtcheck davor.
   const wartend = grund === GRUND_WARTEND;
   if (wartend) WARTEND_BEENDET = true;
+  // Derselbe Griff fuer den Zeitabbruch (Issue #977): Der Grund steht schon heute im Text,
+  // neu sind Auskunft, Empfehlung und Ursachen-Vorbehalt des Vermerks.
+  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
   const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
   log(`  ${satz}`);
   const kommentar = `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`;
   // Der Vermerk ERWEITERT den Kommentar, anders als im Rueckstellungsfall: Dort ist er
   // die ganze Botschaft, hier steht der harte Stopp davor — mit den Pfaden aus
   // `gitReste()`, denn der Baum ist unsauber.
-  board("issue", "comment", String(top.id), "--text",
-    wartend ? `${kommentar}\n\n${wartendVermerk(leseErgebnisText(res?.stdout), gitReste())}` : kommentar);
+  const vermerk = rundenVermerk(grund, res, gitReste());
+  board("issue", "comment", String(top.id), "--text", vermerk ? `${kommentar}\n\n${vermerk}` : kommentar);
   merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }
@@ -8327,6 +8423,19 @@ const ZUSTAND_UNLESBAR_GRUND = "Zustand der Karte war nicht lesbar — Karte und
  */
 function wartendFelder() {
   return WARTEND_BEENDET ? { wartendBeendet: true } : {};
+}
+
+/**
+ * Das Feld `zeitlimitBeendet` fuer die Einheit — oder gar keines (Issue #977).
+ *
+ * Dieselbe Anlage wie `wartendFelder` darueber und aus demselben Grund: Ohne den Fall
+ * bleibt das Feld WEG statt `false` zu tragen. Ein `false` behauptete eine Messung, die es
+ * nicht gab, und eine Zaehlung ueber mehrere Naechte kaeme auf dieselbe Zahl, egal ob
+ * gemessen wurde oder nicht. Die Auswertung der Zielmarke (Issue #978) liest genau dieses
+ * Feld, um Zeitabbrueche aus ihren Mittelwerten herauszuhalten.
+ */
+function zeitlimitFelder() {
+  return ZEITLIMIT_BEENDET ? { zeitlimitBeendet: true } : {};
 }
 
 function ausgangsFelder(ausgang) {
@@ -8409,7 +8518,7 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
     return "angehalten";
   }
 
-  return stelleRundeZurueck(top, res, minutes);
+  return stelleRundeZurueck(top, res, minutes, pruefung);
 }
 
 /**
@@ -8461,19 +8570,19 @@ function werteInReview(top, minutes, pruefung) {
  * Arbeitsverzeichnisses, und der ist hier sauber. Anders ist nur, was der Morgen liest —
  * ein Text, der den Fall benennt, statt eine geordnete Rueckstellung zu behaupten.
  */
-function stelleRundeZurueck(top, res, minutes) {
-  const schlusstext = leseErgebnisText(res?.stdout);
-  const wartend = wartendeSession(schlusstext);
-  if (wartend) WARTEND_BEENDET = true;
+function stelleRundeZurueck(top, res, minutes, pruefung) {
+  const grund = rueckstellungsGrund(res, pruefung);
+  if (grund === GRUND_WARTEND) WARTEND_BEENDET = true;
+  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
   // Der Grund steht VOR dem Zustand — dieselbe Ordnung wie im Dirty-Zweig (Issue #668):
   // erst warum die Runde nichts abgeschlossen hat, dann was der Runner vorgefunden hat.
-  const grundTeil = wartend ? ` — ${GRUND_WARTEND};` : "";
+  const grundTeil = grund ? ` — ${grund};` : "";
   log(`  Fehlschlag nach ${minutes} min: Issue #${top.id}${grundTeil} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
-  // Der Vermerk IST der Kommentar: Er traegt GRUND_WARTEND bereits im Wortlaut, und ein
+  // Der Vermerk IST der Kommentar: Er traegt seinen Grund bereits im Wortlaut, und ein
   // vorangestelltes zweites Mal waere dieselbe Aussage doppelt. Ohne Pfade — in diesem
   // Zweig ist der Baum sauber, und eine Meldung ueber nichts ist keine.
-  board("issue", "comment", String(top.id),
-    "--text", wartend ? wartendVermerk(schlusstext) : `Nachtlauf: ${DEFERRED_GRUND}`);
+  const vermerk = rundenVermerk(grund, res);
+  board("issue", "comment", String(top.id), "--text", vermerk ?? `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
   return "deferred";
 }
@@ -8581,6 +8690,8 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // einen Runde. Ohne das Zuruecksetzen truege die naechste Einheit den Befund der
   // vorigen — und im Ergebnisstand stuende eine Runde als wartend, die es nie war.
   WARTEND_BEENDET = false;
+  // Und der Merker des Zeitabbruchs, aus demselben Grund (Issue #977).
+  ZEITLIMIT_BEENDET = false;
   // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
   // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
@@ -8665,6 +8776,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     // Ganz hinten (Issue #776): Neue Felder haengen an, die bestehenden behalten Namen und
     // Reihenfolge — sie sind der Vertrag mit den Auswertungen.
     ...wartendFelder(),
+    ...zeitlimitFelder(),
   });
   return ausgang;
 }
