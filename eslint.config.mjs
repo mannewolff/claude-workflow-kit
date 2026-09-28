@@ -122,6 +122,7 @@ export default [
       // Eine unbenutzte Bindung, die Absicht ist, wird gekennzeichnet statt die Regel
       // abgeschaltet: fuehrender Unterstrich. Das gilt fuer Parameter, fuer
       // Destrukturierungs-Reste und fuer gefangene Fehler, die nicht gelesen werden.
+      // S1481 — dieselbe Fundklasse wie die abgeschaltete Sonar-Variante darueber, Issue #400.
       "no-unused-vars": ["error", {
         argsIgnorePattern: "^_",
         varsIgnorePattern: "^_",
@@ -135,15 +136,15 @@ export default [
         ignoreRestSiblings: true,
       }],
       // Zuordnung Sonar-Regel -> ESLint-Regel, je Fundklasse aus Issue #399:
-      "unicorn/prefer-string-raw": "error",            // S7780
-      "sonarjs/no-nested-template-literals": "error",  // S4624
-      "unicorn/no-useless-fallback-in-spread": "error",// S7744
-      "sonarjs/no-nested-conditional": "error",        // S3358
-      "unicorn/prefer-set-has": "error",               // S7776
-      "unicorn/prefer-at": "error",                    // S7755
-      "unicorn/prefer-string-replace-all": "error",    // S7781
-      "unicorn/prefer-default-parameters": "error",    // S7760
-      "unicorn/prefer-array-find": ["error", { checkFromLast: true }], // S7750
+      "unicorn/prefer-string-raw": "error",            // S7780, Issue #399
+      "sonarjs/no-nested-template-literals": "error",  // S4624, Issue #399
+      "unicorn/no-useless-fallback-in-spread": "error",// S7744, Issue #399
+      "sonarjs/no-nested-conditional": "error",        // S3358, Issue #399
+      "unicorn/prefer-set-has": "error",               // S7776, Issue #399
+      "unicorn/prefer-at": "error",                    // S7755, Issue #399
+      "unicorn/prefer-string-replace-all": "error",    // S7781, Issue #399
+      "unicorn/prefer-default-parameters": "error",    // S7760, Issue #399
+      "unicorn/prefer-array-find": ["error", { checkFromLast: true }], // S7750, Issue #399
       // S3776 (kognitive Komplexitaet, Issue #404). Dieselbe Metrik wie SonarCloud:
       // die Regel ist SonarSources eigene S3776-Implementierung, die Schwelle 15 ist
       // die dort eingestellte. Ohne sie waere das Kernziel erst beim naechsten
@@ -196,6 +197,7 @@ export default [
     // und der falsche Alarm waere billig, das uebersehene Gate teuer.
     files: ["kit/**/*.mjs", "tools/**/*.mjs", "install.mjs"],
     rules: {
+      // S2871, Issue #956
       "no-restricted-syntax": ["error", {
         selector:
           'CallExpression[arguments.length=0][callee.type="MemberExpression"][callee.computed=false]'
