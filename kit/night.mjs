@@ -4865,6 +4865,15 @@ export function varianteVon(issue, budget) {
 // `verfuegbar: true` und saegte damit denselben Ast an, nur eine Ebene tiefer und
 // schwerer zu erkennen. Die Session startet das Reviewer-Kommando deshalb selbst,
 // direkt und mit dem Prompt ueber stdin — so, wie es die Review-Rolle spaeter auch tut.
+//
+// Eine Ausnahme davon (Issue #986): Den Probe-Prompt bekommt das Kommando als Argument,
+// nicht ueber stdin. Seit Claude Code 2.1.277 nimmt `sandbox.excludedCommands` einen
+// zusammengesetzten Befehl nur noch aus der Sandbox, wenn JEDER Teil zu einem Eintrag
+// passt. `codex *` steht dort, `printf` nicht: Die fruehere Pipe `printf … | <command>` lief
+// ganz in der Sandbox, codex scheiterte, und der Vorflug meldete Reviewer als fehlend,
+// deren echte Reviews laengst liefen. Eine Umleitung `<command> < <datei>` hebt die
+// Ausnahme ebenso auf (gemessen unter 2.1.283). Nur die Zeile ohne Pipe und ohne
+// Umleitung laesst den Eintrag des Reviewers allein greifen.
 
 // Modell und Zeitlimit der Vorflug-Session sind bewusst unabhaengig von --model und
 // --timeout-min. Wuerde der Vorflug beides erben, kostete jedes `--review --dry-run` eine
@@ -4880,7 +4889,7 @@ const VORFLUG_START = "<<<VORFLUG";
 const VORFLUG_ENDE = "VORFLUG>>>";
 
 // Ein Prompt, der nichts verlangt (wie in board.mjs): Die Probe soll feststellen, ob der
-// Reviewer laeuft — nicht, was er kann.
+// Reviewer laeuft — nicht, was er kann. Er steht als letztes Argument an der Zeile.
 const VORFLUG_PROBE_PROMPT = "Antworte nur mit dem Wort OK.";
 
 // Der Stempel, an dem der Gate-Code erkennt, dass ein Befund aus der richtigen Umgebung
@@ -4921,9 +4930,10 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     );
   } else {
     zeilen.push(
-      `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
+      `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, genau so wie es dasteht,`,
+      `mit dem Prompt als letztem Argument. Baue die Zeile nicht um — keine Pipe, keine Umleitung:`,
       ``,
-      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer-Name fuer den Befund: ${r.name}`),
+      ...kommandoReviewers.map((r) => `  ${r.command} '${VORFLUG_PROBE_PROMPT}'   # Reviewer-Name fuer den Befund: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
