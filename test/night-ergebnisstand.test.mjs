@@ -72,6 +72,11 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
     // Ein bedingungslos gesetzter Hinweis zerstoerte die Unterscheidung, die er tragen
     // soll: Mit --verbose sind die Kennzahlen erreichbar, es fehlt nichts zu erklaeren.
     assert.ok(!("kennzahlenHinweis" in stand), "mit --verbose fehlt das Feld ganz, es ist nicht null");
+    // Die Zielmarke dieses Laufs (Issue #978): Ohne `night.zielUmsetzungMin` in der
+    // Config steht die Vorgabe des Schemas am Kopf — nicht null und nicht gar nichts.
+    // Eine Auswertung ueber mehrere Naechte misst gegen genau diesen Wert; fehlte er,
+    // muesste sie die Marke von heute auf den Lauf von gestern anwenden.
+    assert.equal(stand.zielUmsetzungMin, 10, "der Lauf-Kopf traegt die Vorgabe der Zielmarke");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -104,6 +109,33 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis
       schluessel[schluessel.indexOf("stufe") + 1],
       "einheiten",
       `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Die Marke, mit der DIESER Lauf gerechnet hat, gehoert an seinen Kopf (Issue #978): Sie
+// kann zwischen zwei Naechten eine andere gewesen sein, und eine Auswertung, die sie aus
+// der heutigen Config naehme, bewertete den Lauf von gestern gegen eine Vorgabe, die
+// damals nicht galt.
+test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-zielmarke-", { zielUmsetzungMin: 7 });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const dateien = staende(dir);
+    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+    assert.equal(stand.zielUmsetzungMin, 7, "die Marke der Config steht am Lauf-Kopf");
+
+    // Hinten angehaengt: Die Feldreihenfolge der Schemafassung 1 ist der Vertrag mit den
+    // Auswertungen, ein neues Feld verschiebt keines der bestehenden.
+    const schluessel = Object.keys(stand);
+    assert.ok(
+      schluessel.indexOf("zielUmsetzungMin") > schluessel.indexOf("verbrauchOhneEinheit"),
+      `zielUmsetzungMin steht nicht hinter den Feldern des Lauf-Starts: ${schluessel.join(", ")}`,
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

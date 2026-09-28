@@ -344,6 +344,14 @@ function sammlerAnlegen() {
     // keine feste Liste: Welche Stufen und welche `effort`-Werte ein Projekt fuehrt, steht
     // in seiner Config und nicht hier.
     jeStufe: new Map(),
+    // Die Umsetzungen gegen die Zielmarke des jeweiligen Laufs (Issue #978). `marken`
+    // sammelt, wogegen gemessen wurde: Zwei Naechte koennen verschiedene Marken getragen
+    // haben, und eine einzelne Zahl im Bericht behauptete sonst eine gemeinsame Vorgabe.
+    zielmarke: {
+      versuche: 0, ueber: 0, ueberschreitung: reihe(), maxMs: null,
+      zeitabbrueche: 0, laeufe: new Set(),
+      ohneMarke: { einheiten: 0, laeufe: new Set() }, marken: new Set(),
+    },
     unvollstaendig: [],
     einheitenGesamt: 0,
   };
@@ -414,6 +422,85 @@ function wartendErfassen(s, einheit, stempel) {
   if (einheit?.wartendBeendet !== true) return;
   s.wartendBeendet.einheiten += 1;
   s.wartendBeendet.laeufe.add(stempel);
+}
+
+/**
+ * Die Umsetzungen gegen die Zielmarke (Issue #978, Plan #974).
+ *
+ * Gewertet wird eine Einheit mit `pruefung` — dieselbe Filterregel wie
+ * `pruefungErfassen`: je VERSUCH und nicht je Paket. Ein Paket in zwei Anlaeufen zaehlt
+ * zweimal, und gerade der zweite Anlauf ist der teure. Einheiten ohne Session (zurueck-
+ * gestellt, uebersprungen) und die Fachplan-Einheit der Kette haben keine Umsetzung,
+ * deren Dauer sich an einer Marke messen liesse.
+ *
+ * DIE MARKE KOMMT AUS DEM LAUF-KOPF (E7) und wird hier nur noch angewandt. Fehlt sie dem
+ * Stand — jeder Stand vor Issue #978 —, zaehlt die Einheit in `ohneMarke` und in keine
+ * Reihe: Die heutige Vorgabe auf einen alten Lauf anzuwenden hiesse, ihn an etwas zu
+ * messen, das damals nicht galt.
+ *
+ * EIN ZEITABBRUCH IST KEINE MESSUNG (E8): Wie lange die Umsetzung gebraucht HAETTE, weiss
+ * niemand — die Session wurde am Zeitlimit gekillt. Sie zaehlt allein als Zeitabbruch,
+ * in keinen Versuch und in keine Reihe. Als Ueberschreitung gefuehrt verschoebe sie das
+ * Mittel um einen Wert, den keine Messung traegt.
+ *
+ * Gerechnet wird mit `einheit.dauerMs`, der Rundendauer einschliesslich aller Pruefungen
+ * und Korrekturen — dieselbe Groesse, gegen die `prueflaufZeilen` in night.mjs die Marke
+ * haelt. Zwei verschiedene Dauern fuer dieselbe Aussage liefen auseinander.
+ */
+function zielmarkeErfassen(s, einheit, stempel, marke) {
+  if (!einheit?.pruefung) return;
+  const z = s.zielmarke;
+  if (einheit.zeitlimitBeendet === true) {
+    z.zeitabbrueche += 1;
+    z.laeufe.add(stempel);
+    return;
+  }
+  if (marke === null) {
+    z.ohneMarke.einheiten += 1;
+    z.ohneMarke.laeufe.add(stempel);
+    return;
+  }
+  z.marken.add(marke);
+  z.laeufe.add(stempel);
+  z.versuche += 1;
+  const dauerMs = zahl(einheit.dauerMs);
+  // Eine nicht gemessene Dauer erzeugt keine Ueberschreitung — und auch keine Null: Sie
+  // gilt weder als eingehalten noch als gerissen, die Reihe bleibt ohne sie.
+  if (dauerMs === null) return;
+  const ueberschreitung = dauerMs - marke * 60000;
+  if (ueberschreitung <= 0) return;
+  z.ueber += 1;
+  messen(z.ueberschreitung, ueberschreitung, stempel);
+  z.maxMs = Math.max(z.maxMs ?? 0, ueberschreitung);
+}
+
+/** Die Zielmarke eines Stands: die Zahl aus seinem Kopf, sonst `null` — nie geraten. */
+function markeDesStands(daten) {
+  const marke = zahl(daten?.zielUmsetzungMin);
+  return marke !== null && marke > 0 ? marke : null;
+}
+
+/**
+ * Der Kennzahlblock zur Zielmarke als Ergebnis.
+ *
+ * Gemittelt wird ueber die UEBERSCHREITUNGEN und nicht ueber alle Versuche: Die Frage
+ * lautet, wie weit die Pakete darueber liegen, die die Marke reissen. Wer die
+ * eingehaltenen mitmittelte, bekaeme eine Zahl, die mit mehr guten Paketen kleiner wird,
+ * obwohl kein einziges schlechtes besser geworden ist.
+ */
+function zielmarkeErgebnis(s) {
+  const z = s.zielmarke;
+  const summe = z.ueberschreitung.summe;
+  return {
+    versuche: z.versuche,
+    ueber: z.ueber,
+    ueberschreitungMittelMs: summe === null || z.ueber === 0 ? null : Math.round(summe / z.ueber),
+    ueberschreitungMaxMs: z.maxMs,
+    zeitabbrueche: z.zeitabbrueche,
+    laeufe: z.laeufe.size,
+    ohneMarke: { einheiten: z.ohneMarke.einheiten, laeufe: z.ohneMarke.laeufe.size },
+    marken: [...z.marken].sort((a, b) => a - b),
+  };
 }
 
 /**
@@ -619,12 +706,16 @@ function standErfassen(s, { stempel, daten }) {
   s.einheitenGesamt += einheiten.length;
   let mitZeiten = 0;
   let mitPruefstand = 0;
+  // Die Marke dieses Stands, einmal je Stand gelesen und an jede seiner Einheiten
+  // gereicht (E7): Sie gehoert dem Lauf, nicht der Einheit.
+  const marke = markeDesStands(daten);
   for (const einheit of einheiten) {
     if (zeitErfassen(s, einheit, stempel)) mitZeiten += 1;
     if (pruefungErfassen(s, einheit, stempel)) mitPruefstand += 1;
     kostenErfassen(s, einheit, stempel);
     wartendErfassen(s, einheit, stempel);
     stufeErfassen(s, einheit, stempel);
+    zielmarkeErfassen(s, einheit, stempel, marke);
   }
   // Was zu keiner Karte gehoert (Vorflug, Kette) — nur der Runner kennt diesen Rest.
   messen(s.kosten.nichtZuordenbar, daten?.verbrauchOhneEinheit?.kostenUsd, stempel);
@@ -694,6 +785,7 @@ function aggregieren(staende) {
     unvollstaendig: s.unvollstaendig,
     kosten: kostenErgebnis(s),
     jeStufe: stufenErgebnis(s),
+    zielmarke: zielmarkeErgebnis(s),
   };
 }
 
@@ -914,6 +1006,7 @@ export function berichtText(e) {
     ...berichtUmfang(e),
     ...berichtKosten(e),
     ...berichtStufen(e),
+    ...berichtZielmarke(e),
     ...berichtBefund(e),
     ...berichtFuss(e),
   ].join("\n");
@@ -1092,6 +1185,66 @@ function berichtStufen(e) {
   return zeilen;
 }
 
+/** Wogegen gemessen wurde — mehrere Marken bleiben mehrere (E7). */
+function markenText(marken) {
+  if (marken.length === 0) return "keine Marke";
+  if (marken.length === 1) return `${marken[0]} Minuten`;
+  return `die Marken ${marken.join(", ")} Minuten der einzelnen Staende`;
+}
+
+/** Die Zeitabbrueche in Worten — getrennt von jeder Messung (E8). */
+function zeitabbruchZeile(anzahl) {
+  const kopf = anzahl === 1
+    ? "Eine Umsetzung wurde am Zeitlimit beendet und steht getrennt"
+    : `${anzahl} Umsetzungen wurden am Zeitlimit beendet und stehen getrennt`;
+  const schluss = anzahl === 1
+    ? "Ihre Fertigstellungsdauer ist unbekannt, sie geht in keinen Mittelwert ein."
+    : "Ihre Fertigstellungsdauer ist unbekannt, sie gehen in keinen Mittelwert ein.";
+  return `${kopf}: ${schluss} Eine Schaetzung als Messung auszuweisen waere falsch.`;
+}
+
+/**
+ * Die Umsetzungen gegen die Zielmarke (Issue #978).
+ *
+ * Der Block sagt, was gezaehlt wurde, und nichts darueber, warum (E10): Ein Satz ueber zu
+ * grosse Pakete waere eine Ursachenaussage, und aus einer gerissenen Marke folgt keine.
+ * Ohne jede Grundlage steht "nicht gemessen" und keine 0 — dieselbe Regel, die durch die
+ * ganze Auswertung laeuft.
+ */
+function berichtZielmarke(e) {
+  const z = e.zielmarke;
+  const zeilen = ["## Zielmarke der Umsetzung", ""];
+  if (z.versuche === 0 && z.zeitabbrueche === 0 && z.ohneMarke.einheiten === 0) {
+    zeilen.push(
+      "Die Einhaltung der Zielmarke ist nicht gemessen: Kein einbezogener Stand traegt eine Umsetzung, "
+      + "die sich an einer Marke halten liesse.", ""
+    );
+    return zeilen;
+  }
+  if (z.versuche === 0) {
+    zeilen.push("Keine Umsetzung liess sich gegen eine Zielmarke halten.", "");
+  } else {
+    zeilen.push(
+      `Von ${z.versuche} gemessenen Umsetzungen (${laufText(z.laeufe)}) liegen ${z.ueber} von ${z.versuche} `
+      + `ueber der Zielmarke. Die Ueberschreitung betraegt im Mittel ${dauer(z.ueberschreitungMittelMs)} und `
+      + `im Maximum ${dauer(z.ueberschreitungMaxMs)}; gemittelt wird ueber die Ueberschreitungen, nicht ueber `
+      + `alle Versuche. Gemessen wurde gegen ${markenText(z.marken)} — die Marke jedes Stands stammt aus seinem `
+      + "eigenen Lauf-Kopf und nicht aus der heutigen Konfiguration.",
+      ""
+    );
+  }
+  if (z.zeitabbrueche > 0) zeilen.push(zeitabbruchZeile(z.zeitabbrueche), "");
+  if (z.ohneMarke.einheiten > 0) {
+    zeilen.push(
+      `${z.ohneMarke.einheiten} Umsetzungen (${laufText(z.ohneMarke.laeufe)}) stammen aus Staenden ohne Zielmarke `
+      + "am Lauf-Kopf; sie gehen in keine dieser Zahlen ein. Die heutige Vorgabe auf sie anzuwenden hiesse, sie an "
+      + "etwas zu messen, das in ihrer Nacht nicht galt.",
+      ""
+    );
+  }
+  return zeilen;
+}
+
 function berichtBefund(e) {
   const zeilen = ["## Befund", ""];
   if (e.befund.length === 0) zeilen.push("Keine der vier Schwellen ist ueberschritten.", "");
@@ -1238,6 +1391,9 @@ export function auswerten(root, { laeufe: grenzeArg } = {}) {
     // Haengt hinten an den Aggregaten (Issue #848): Die bestehenden Bloecke behalten Namen
     // und Platz — sie sind der Vertrag mit den beiden Ausgabestellen.
     jeStufe: a.jeStufe,
+    // Ebenso hinten angehaengt (Issue #978): Die Zielmarke ist eine neue Kennzahl, kein
+    // Umbau der bestehenden Bloecke.
+    zielmarke: a.zielmarke,
     schwellen: einstellungen.schwellen,
     nichtBestimmbar,
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den

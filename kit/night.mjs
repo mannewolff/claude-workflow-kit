@@ -1239,6 +1239,13 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // davon, der zu keiner Einheit gehoert.
     verbrauch: verbrauchLeer(),
     verbrauchOhneEinheit: verbrauchLeer(),
+    // Die Zielmarke, mit der DIESER Lauf gerechnet hat (Issue #978) — hinten angehaengt,
+    // wie jedes neue Feld der Schemafassung 1. Sie steht hier und nicht erst in der
+    // Auswertung, weil sie zwischen zwei Naechten eine andere gewesen sein kann: Wer
+    // spaeter die Config laese, bewertete den Lauf von gestern gegen die Vorgabe von
+    // heute. Der Wert ist der aufgeloeste — die Vorgabe des Schemas, wo die Config
+    // schweigt —, damit an keiner Stelle ein zweites Mal aufgeloest werden muss.
+    zielUmsetzungMin: zielUmsetzungMin(config?.night?.zielUmsetzungMin),
   };
 }
 
