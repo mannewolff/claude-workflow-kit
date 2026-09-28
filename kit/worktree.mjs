@@ -46,7 +46,8 @@ const KIT_VERSION = "3.3.5";
 
 const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fuer die Release-Skills
 
-  anlegen [--praefix <p>] [--ref <ref>] [--issue <n>]   Worktree auf <ref> (Vorgabe HEAD)
+  anlegen [--praefix <p>] [--ref <ref>] [--issue <n>]   Worktree auf <ref> (Vorgabe HEAD),
+                                                        danach das installCommand der Config
   entfernen <pfad>                                      Worktree abbauen
   nachziehen-pruefen                                    Darf das lokale main rebased werden?
   rueckweg <pfad>                                       Zusammenfassung, Ausfuehrungen, Befunde zurueck
@@ -90,6 +91,56 @@ function stempel() {
   return new Date().toISOString().replaceAll(/[:.]/g, "-");
 }
 
+/**
+ * Das Installationskommando der Hauptkopie — der Weg zu den Abhaengigkeiten (Issue #964).
+ *
+ * Gelesen wird NUR die geteilte `workflow.config.json`: Das Feld gilt teamweit, genau wie
+ * `formatFixCommand`, und eine persoenliche Datei darf es nicht abweichend setzen. Keine
+ * oder unlesbare Config ist ein normaler Zustand und heisst "nichts tun" — dieselbe Regel
+ * wie in `configVonPlatte` (night.mjs).
+ */
+function installKommando(repoRoot) {
+  try {
+    const cfg = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    return (cfg.installCommand || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Stellt die Abhaengigkeiten IM Worktree her (Issue #964).
+ *
+ * Ein frischer Worktree traegt nur Versioniertes plus das gespiegelte `.claude/` — weder
+ * `node_modules` noch `.venv` oder `vendor/`. Bis #964 stand nur als Text in zwei Skills,
+ * dass sie herzustellen sind; am 2026-09-27 brach darum in einem Worktree ein Test nach
+ * 43 ms mit ERR_MODULE_NOT_FOUND ab und die Messung war still zu niedrig. Der Schaden ist
+ * nicht der rote Lauf, sondern der falsche Messwert — deshalb steht die Vorgabe jetzt hier
+ * und nicht mehr nur im Text.
+ *
+ * Das Kommando kommt aus der Config und braucht deshalb die Shell der Plattform — derselbe
+ * Weg, den `night.mjs` fuer `buildChecks` und `formatFixCommand` nimmt (Issue #199). Seine
+ * Ausgabe geht VOR der JSON-Zeile auf stdout: Sie ist bei einem Fehlschlag die Diagnose,
+ * und die letzte Zeile bleibt JSON.
+ *
+ * Ein roter Lauf laesst keinen halbfertigen Worktree zurueck — genau aus dem entstand der
+ * stille Fehlmesswert.
+ */
+function installiereIn(pfad, repoRoot) {
+  const kommando = installKommando(repoRoot);
+  if (!kommando) return null;
+
+  // PATH-Aufloesung bewusst, wie bei den uebrigen Config-Kommandos (S4036, Issue #183).
+  const res = spawnSync(kommando, { cwd: pfad, encoding: "utf-8", shell: true });
+  const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
+  if (ausgabe.trim() !== "") process.stdout.write(ausgabe.endsWith("\n") ? ausgabe : `${ausgabe}\n`);
+  if (res.status === 0) return kommando;
+
+  worktreeEntfernen(pfad, repoRoot);
+  const code = res.status === null ? `Signal ${res.signal}` : `Exit-Code ${res.status}`;
+  throw new Error(`installCommand '${kommando}' endete mit ${code} — der Worktree wurde wieder abgebaut`);
+}
+
 function anlegen(repoRoot, cliArgs) {
   const praefix = flagWert(cliArgs, "--praefix") ?? "release";
   const ref = flagWert(cliArgs, "--ref") ?? "HEAD";
@@ -99,7 +150,8 @@ function anlegen(repoRoot, cliArgs) {
   // NUR der uebergebene Praefix — `kette` und `pruefung` koennen gerade laufen.
   const aufgeraeumt = worktreesAufraeumen(repoRoot, praefix);
   const pfad = worktreeAnlegen({ repoRoot, issueId, stempel: stempel(), praefix, ref });
-  return { ok: true, pfad, ref, praefix, aufgeraeumt };
+  const installation = installiereIn(pfad, repoRoot);
+  return { ok: true, pfad, ref, praefix, aufgeraeumt, installation };
 }
 
 function entfernen(repoRoot, cliArgs) {

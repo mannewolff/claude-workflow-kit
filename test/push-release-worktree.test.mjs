@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -360,6 +360,9 @@ test("[release-4] worktree.mjs wird gestempelt und ausgeliefert", () => {
     const absatz = text.split("\n\n").find((a) => a.includes("Abhängigkeiten im frischen Worktree"));
     assert.ok(absatz, `${skill} sagt nichts zu den Abhaengigkeiten im Worktree`);
     assert.match(absatz, /nie als grüner Lauf gemeldet/, `${skill} laesst die fehlende Installation als gruen durchgehen`);
+    // Seit #964 faehrt das Werkzeug die Installation selbst, sofern das Feld gesetzt ist.
+    // Ohne diesen Satz stuende die Bedienvorgabe ein zweites Mal als Bitte im Text.
+    assert.match(absatz, /installCommand/, `${skill} nennt das Config-Feld nicht`);
   }
 });
 
@@ -370,4 +373,83 @@ test("[release-4] die Praefixe der Nacht bleiben unberuehrt liegen", () => {
   const quelle = readFileSync(WERKZEUG, "utf-8");
   assert.doesNotMatch(quelle, /worktreesAufraeumen\(\s*repoRoot\s*\)/,
     "ohne zweites Argument raeumt worktreesAufraeumen den Praefix kette ab");
+});
+
+// --- Abhaengigkeiten im Worktree (Issue #964) -------------------------------
+//
+// Ein frischer Worktree traegt nur Versioniertes plus das gespiegelte `.claude/` — kein
+// `node_modules`, kein `.venv`, kein `vendor/`. Dass sie herzustellen sind, stand bis #964
+// nur als Text in zwei Skills. Der Schaden daraus ist belegt (2026-09-27): In einem
+// Worktree ohne `node_modules` brach `test/checks-lint-sortordnung.test.mjs` nach 43 ms
+// mit ERR_MODULE_NOT_FOUND ab, die Messung war still zu niedrig. Seither faehrt das
+// Werkzeug das `installCommand` der Config selbst.
+
+/** Schreibt Felder in die `workflow.config.json` der Hauptkopie. */
+function configErgaenzen(dir, felder) {
+  const pfad = join(dir, ".claude", "workflow.config.json");
+  const cfg = JSON.parse(readFileSync(pfad, "utf-8"));
+  writeFileSync(pfad, `${JSON.stringify({ ...cfg, ...felder })}\n`);
+}
+
+/** Ein Kommando, das eine Marker-Datei im Arbeitsverzeichnis schreibt — auf sh wie auf cmd.exe. */
+const MARKER_KOMMANDO = `"${process.execPath}" -e "require('fs').writeFileSync('installiert.marker','x')"`;
+
+test("[release-964] ein gesetztes installCommand laeuft IM Worktree", () => {
+  mitRepo((dir, angelegt) => {
+    configErgaenzen(dir, { installCommand: MARKER_KOMMANDO });
+
+    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    assert.equal(status, 0, `anlegen schlug fehl: ${JSON.stringify(stand)}`);
+    angelegt.push(stand.pfad);
+
+    assert.ok(existsSync(join(stand.pfad, "installiert.marker")), "das installCommand lief nicht im Worktree");
+    assert.ok(!existsSync(join(dir, "installiert.marker")), "das installCommand lief in der Hauptkopie");
+    assert.equal(stand.installation, MARKER_KOMMANDO, "das Ergebnis steht nicht im JSON der letzten Zeile");
+  });
+});
+
+test("[release-964] ein leeres installCommand aendert nichts", () => {
+  mitRepo((dir, angelegt) => {
+    configErgaenzen(dir, { installCommand: "" });
+
+    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    assert.equal(status, 0);
+    angelegt.push(stand.pfad);
+
+    // `installation: null` ist der Nachweis, dass kein Kindprozess lief: Das Feld traegt
+    // das Kommando genau dann, wenn es gefahren wurde.
+    assert.equal(stand.installation, null, "ein leeres Feld hat einen Lauf ausgeloest");
+    assert.equal(stand.ok, true);
+    assert.equal(stand.praefix, "release");
+    assert.ok(existsSync(join(stand.pfad, "VERSION")), "der Worktree steht nicht");
+  });
+});
+
+test("[release-964] ein fehlendes installCommand aendert nichts", () => {
+  mitRepo((dir, angelegt) => {
+    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    assert.equal(status, 0);
+    angelegt.push(stand.pfad);
+
+    assert.equal(stand.installation, null, "ein fehlendes Feld hat einen Lauf ausgeloest");
+    assert.equal(stand.ok, true);
+    assert.equal(stand.ref, "HEAD");
+  });
+});
+
+test("[release-964] ein rotes installCommand raeumt den Worktree wieder ab", () => {
+  mitRepo((dir) => {
+    configErgaenzen(dir, { installCommand: `"${process.execPath}" -e "process.exit(3)"` });
+
+    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    assert.equal(status, 1, `anlegen haette scheitern muessen: ${JSON.stringify(stand)}`);
+    assert.equal(stand.ok, false);
+    assert.match(stand.fehler, /process\.exit\(3\)/, "der Fehler nennt das Kommando nicht");
+    assert.match(stand.fehler, /\b3\b/, "der Fehler nennt den Exit-Code nicht");
+
+    // Ein halbfertiger Worktree ist genau der Zustand, aus dem der stille Fehlmesswert kam.
+    assert.doesNotMatch(git(dir, "worktree", "list"), /release-/, "der Eintrag steht noch in git worktree list");
+    const reste = readdirSync(tmpdir()).filter((n) => n.startsWith(`release-${basename(dir)}-`));
+    assert.deepEqual(reste, [], `der Worktree-Ordner liegt noch: ${reste.join(", ")}`);
+  });
 });

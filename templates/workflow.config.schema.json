@@ -206,6 +206,11 @@
       "description": "Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
+    "installCommand": {
+      "type": "string",
+      "description": "Kommando, das die Abhängigkeiten des Projekts im Projektverzeichnis herstellt (z.B. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). 'worktree.mjs anlegen' führt es nach dem Anlegen im frischen Worktree aus — der trägt nur Versioniertes und hat weder node_modules noch .venv oder vendor/, und ein Pflichtcheck, der daran scheitert, liefert still einen falschen Messwert. Endet es mit einem Fehler, wird der Worktree wieder abgebaut. Leer-String oder fehlendes Feld = keine Installation, dann trägt der Aufrufer die Verantwortung dafür. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": ""
+    },
     "mainBranch": {
       "type": "string",
       "minLength": 1,

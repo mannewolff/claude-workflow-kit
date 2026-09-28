@@ -135,8 +135,11 @@ falschen Baum ist genau der Fehler, den dieser Schritt beseitigt.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
 gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
-(`node_modules`, `.venv`, `vendor/`), fehlen sie dort und werden vor dem Prüflauf mit dem
-Installationskommando des Projekts angelegt (`npm ci`, `uv sync`, …). **Nicht** aus der
+(`node_modules`, `.venv`, `vendor/`), fehlen sie dort. Ist `installCommand` in der Config
+gesetzt, stellt `worktree.mjs anlegen` sie bereits selbst her — das Feld nennt das
+Installationskommando des Projekts (`npm ci`, `uv sync`, …), und ein roter Lauf baut den
+Worktree wieder ab. Ohne gesetztes Feld bleibt es am Aufrufer: Dann werden sie vor dem
+Prüflauf von Hand angelegt. **Nicht** aus der
 Hauptkopie herüberkopieren oder verlinken: Ein geteiltes Bauverzeichnis ist genau die
 Vermischung, die dieser Weg beendet — im Vorfall teilten sich zwei `mvn verify` dasselbe
 `target/`. Caches **außerhalb** des Projektverzeichnisses (`~/.m2`, npm-Cache) gelten

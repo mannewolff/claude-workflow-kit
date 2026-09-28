@@ -651,3 +651,25 @@ test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte"
   assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");
   assert.doesNotMatch(text, /Anteil der Arbeitspakete/, "die falsche Zaehlweise steht noch in der Beschreibung");
 });
+
+// --- installCommand: die Abhaengigkeiten des frischen Worktrees (Issue #964) ---
+//
+// `worktree.mjs anlegen` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
+// wie formatFixCommand und gilt wie dieses teamweit; ein Nicht-String waere eine
+// Einstellung, an der das Anlegen jedes Worktrees stillschweigend scheiterte.
+
+test("installCommand: eine Kommandozeile ist gueltig", () => {
+  assert.deepEqual(pruefe(schema.properties.installCommand, "npm ci"), []);
+  assert.deepEqual(pruefe(schema.properties.installCommand, ""), [], "der Leer-String heisst 'nichts tun'");
+});
+
+test("installCommand: ein Nicht-String ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(schema.properties.installCommand, ["npm", "ci"]), []);
+  assert.notDeepEqual(pruefe(schema.properties.installCommand, true), []);
+});
+
+test("installCommand: die Beschreibung sagt, was ein fehlendes Feld bedeutet", () => {
+  const text = schema.properties.installCommand.description;
+  assert.match(text, /teamweit/, "die Beschreibung nennt die Geltung nicht");
+  assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
+});
