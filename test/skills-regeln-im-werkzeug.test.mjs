@@ -370,3 +370,48 @@ test("push-main wertet den Rueckgabewert weiter aus, ohne eigene Merkmal-Liste",
     "der Ersatzsatz fehlt: `checks.mjs run` liest Rueckgabewert und Fehlermerkmale selbst",
   );
 });
+
+// Teil Verweis auf die Lint-Konfiguration (Issue #971, Plan #968/E3, E8;
+// Fachliche Quelle #966/AK 4).
+//
+// Die Vorlage verweist mit einem Satz dorthin, wo Verfahren und Set-Entscheidung
+// stehen — sie wiederholt sie nicht. Zugleich darf keine mitgelieferte Anweisung
+// und nicht die Nutzerdoku noch ein `recommended`-Set empfehlen: Die Messung vom
+// 2026-09-28 hat diese Empfehlung widerlegt, und zwei widersprechende Texte im
+// selben Repo sind genau die Drift, die der Verweis verhindern soll.
+
+test("der Massstab verweist fuer die Lint-Konfiguration auf ihren eigenen Kopf", () => {
+  const text = abschnitt();
+  assert.ok(
+    /geh(ö|oe)rt in den Kopf der Lint-Konfiguration/.test(text),
+    "der Verweissatz auf den Kopf der Lint-Konfiguration fehlt",
+  );
+  // Der Verweis ist eine Regel, keine Aussage ueber den Bestand dieses Repos:
+  // die Vorlage geht per install.mjs in fremde Projekte.
+  assert.ok(
+    !/eslint\.config/.test(text),
+    "der Abschnitt nennt einen Dateinamen — die Vorlage gilt auch fuer Projekte ohne diese Datei",
+  );
+  assert.ok(
+    !/Sonar/i.test(text),
+    "der Abschnitt nennt einen Sonar-Bezug — er gehoert in die Lint-Konfiguration, nicht hierher",
+  );
+  // Die Begruendung wird nicht wiederholt (Plan #968, Fund 5).
+  assert.ok(
+    !/8082/.test(text),
+    "der Abschnitt wiederholt eine Messzahl — die Begruendung steht in der Lint-Konfiguration",
+  );
+});
+
+test("weder ein Skill noch die Nutzerdoku empfiehlt noch ein `recommended`-Set", () => {
+  for (const { name, text } of alleSkills()) {
+    assert.ok(
+      !/recommended/i.test(text),
+      `skills/${name}/SKILL.md empfiehlt noch ein \`recommended\`-Set`,
+    );
+  }
+  assert.ok(
+    !/recommended/i.test(DOKUMENTATION),
+    "docs/dokumentation.md empfiehlt noch ein `recommended`-Set",
+  );
+});

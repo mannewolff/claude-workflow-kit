@@ -13,7 +13,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +4 fuer die vierte Achse
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +2 fuer den Verweis auf
+// den Kopf der Lint-Konfiguration (Issue #971, Plan #968/E3: die Vorlage verweist, das
+// Verfahren steht bei den Regeln). Davor +4 fuer die vierte Achse
 // der Pflichtchecks und den Kennzahlblock der Wirksamkeit (Issue #953, Plan #944: der
 // verkleinerte Abschlussumfang traegt nur mit seinen beiden Zusicherungen). Davor +2 fuer
 // die Regel, dass
@@ -26,9 +28,9 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 400 Zeilen", () => {
+test("die Vorlage bleibt unter 402 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 400, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 400`);
+  assert.ok(zeilen <= 402, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 402`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {

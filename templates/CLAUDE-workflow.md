@@ -109,6 +109,8 @@ Jede Regel einer mitgelieferten Anweisung ist von einer von zwei Arten. Die Art 
 
 Der Massstab gilt fuer alle mitgelieferten Anweisungen, auch fuer die, die heute unveraendert bleiben: Er ist die Quelle, gegen die eine Anweisung gelesen wird, nicht nur eine Notiz zu der einen, die gerade umgestellt wird.
 
+**Die Lint-Konfiguration begruendet sich selbst.** Wann eine wiederkehrende Fundklasse zur Leitplanke wird, wie ihre Aufnahme laeuft und wie ueber ganze `recommended`-Sets entschieden ist, gehoert in den Kopf der Lint-Konfiguration des Projekts, neben die Regeln selbst — nicht hierher.
+
 ---
 
 ## Mitteilungen des Menschen
