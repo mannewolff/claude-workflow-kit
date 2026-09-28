@@ -31,10 +31,10 @@ Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (o
 Fachliches Issue — wird nicht implementiert, bitte per /techplan #N in technische Issues ueberfuehren.
 ```
 
-**Ideen überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Idee]` — eine rohe Idee ohne `/techplan`-Zyklus ist kein implementierbares Issue. Auch sie wandert mit diesem Kommentar zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:
+**Ideen überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Idee]` — eine rohe Idee ist eine Anforderung, kein Arbeitspaket. Sie hat zwei Wege nach vorn: Verlangt sie eine Abwaegung, `/fachplan #N`; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, `/task #N`. Welcher gilt, entscheidet der Mensch mit dem Aufruf, deshalb nennt der Kommentar beide. Auch sie wandert damit zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:
 
 ```
-Idee — braucht erst /techplan #N + /issues, wird nicht implementiert.
+Idee — mit Abwaegung erst /fachplan #N, ohne Abwaegung /task #N, wird nicht implementiert.
 ```
 
 **Plandokumente überspringen (Leitplanke):** Genauso Issues mit dem Titel-Präfix `[Plan]` — ein Plandokument aus `/techplan` beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden. Auch es wandert mit diesem Kommentar zurück nach Backlog, der Lauf geht mit dem nächsten Issue weiter:

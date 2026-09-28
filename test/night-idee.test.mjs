@@ -76,10 +76,14 @@ test("Nachtlauf: [Idee]-Issue wird kommentiert uebersprungen, normales Issue lae
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
-    // Idee: zurueck im Backlog, mit Kommentar, der auf /techplan + /issues verweist.
+    // Idee: zurueck im Backlog, mit Kommentar, der beide Wege nennt — mit Abwaegung
+    // /fachplan, ohne Abwaegung /task (Issue #962). Der frueher genannte Weg direkt
+    // nach /techplan gilt nicht mehr.
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(String(idee.id)), "[Idee]-Issue liegt nicht im Backlog");
-    assert.match(issuesDirText(dir), /Idee.*\/techplan.*\/issues.*nicht implementiert/s);
+    const kommentare = issuesDirText(dir);
+    assert.match(kommentare, /Idee.*\/fachplan.*\/task.*nicht implementiert/s);
+    assert.doesNotMatch(kommentare, /Idee[^\n]*techplan/, "der Kommentar schickt die Idee noch nach /techplan");
 
     // Normales Issue lief, und zwar als einzige Session.
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));

@@ -18,7 +18,8 @@ Bahn 3: oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Dieser Skill **ers
 
 ### 1. Anforderung aufnehmen
 
-Zwei Eingaenge, und nur zwei: der Chat (`/task <Anforderung>`) oder eine `[Idee]` (`/task #N`; Body **und** Kommentare lesen). Jede andere Nummer lehnt der Skill mit einer Meldung ab und legt nichts an; die Meldung nennt das Praefix. Traegt `#N` `[Fachlich]` oder `[Plan]`, ist dort der volle Weg bereits begonnen — der Weg nach vorn ist `/techplan #N` bzw. `/issues #N`.
+Zwei Eingaenge, und nur zwei: der Chat (`/task <Anforderung>`) oder eine `[Idee]` (`/task #N`; Body **und** Kommentare lesen). `/task` ist die Bahn ohne Abwaegungsbedarf, und die Idee hat zwei Wege: Verlangt sie eine Abwaegung, ist `/fachplan #N` der Weg; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, `/task #N`. Welcher Fall vorliegt, entscheidet der Mensch mit dem Aufruf — der Skill weist eine Idee mit Abwaegung **nicht** ab, weil er das nicht entscheiden kann; die Abgrenzung steht hier, damit sie beim Aufruf bekannt ist.
+Jede andere Nummer lehnt der Skill mit einer Meldung ab und legt nichts an; die Meldung nennt das Praefix. Traegt `#N` `[Fachlich]` oder `[Plan]`, ist dort der volle Weg bereits begonnen — der Weg nach vorn ist `/techplan #N` bzw. `/issues #N`.
 
 ### 2. Bestand lesen
 

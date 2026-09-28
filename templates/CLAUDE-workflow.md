@@ -312,7 +312,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei 
 |---------|-----------|---------------|
 | `[Fachlich]` | fachliche Anforderung aus `/fachplan`, Story-Format | mit dem PO groomen, dann `/techplan #N` |
 | `[Plan]` | Plandokument aus `/techplan`, verbindliches Plan-Format | `/issues #N` zerlegt es in Arbeitspakete |
-| `[Idee]` | rohe Idee, noch kein Dokument | erst `/techplan`, dann `/issues` |
+| `[Idee]` | rohe Idee, noch kein Dokument | Abwaegung noetig: `/fachplan #N` — sonst `/task #N` |
 
 **Plandokumente** (`[Plan]`) halten den freigegebenen Stand fest, statt ihn umzusetzen. Ein Plan beschreibt einen Weg, er ist keine Aufgabe: Er wird **nie implementiert**, geht **nie nach Ready** und wird zuerst mit `/issues #N` in Arbeitspakete zerlegt. Sein Format ist verbindlich — genau diese sechs Ueberschriften in dieser Reihenfolge:
 
@@ -327,7 +327,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Drei 
 
 **Done setzt ausschliesslich der Mensch** — auch hier. Ein Plandokument darf bis zum Abschluss seiner Arbeitspakete als Klammer in **In review** offen bleiben, damit der Zusammenhang waehrend der Umsetzung sichtbar ist; ebenso gut kann es direkt nach Done gehen. Beides ist zulaessig, kein Skill bewegt es von selbst.
 
-**Ideen** (`[Idee]`) sind ohne `/techplan`-Zyklus kein implementierbares Issue. Ohne das Gate wuerde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irrefuehrend.
+**Ideen** (`[Idee]`) sind eine rohe Anforderung, kein implementierbares Issue — sie haben genau zwei Wege nach vorn, und welcher gilt, haengt an einer Frage: Verlangt die Idee eine Abwaegung, ist `/fachplan #N` der Weg und macht aus ihr eine fachliche Anforderung; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, wird sie per `/task #N` genau ein Arbeitspaket. Den Fall entscheidet der Mensch mit dem Aufruf — ein Skill, der ihn sich selbst beantwortet, traefe die Entscheidung, die er abgeben soll. Der Weg direkt in einen technischen Plan gilt nicht — er wuerde die Stelle ueberspringen, an der ueber das Ziel entschieden wird. Ohne das Gate wuerde eine Session eine Idee in Ready zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irrefuehrend.
 
 **`[Task]` ist das einzige Praefix, das ein Arbeitspaket kennzeichnet**; es wird implementiert und nach Ready gezogen wie ein Paket ohne Praefix. Die drei Praefixe der Tabelle oben bezeichnen Dokumente, die nie implementiert werden — `[Task]` gehoert ausdruecklich nicht dazu, und es in dieselbe Liste aufzunehmen kehrte seinen Zweck um.
 

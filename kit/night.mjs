@@ -83,7 +83,7 @@
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
  * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146),
- * `[Idee]` (rohe Idee ohne /techplan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
+ * `[Idee]` (rohe Anforderung, noch kein Arbeitspaket, #192) und `[Plan]` (Plandokument, muss erst
  * per /issues in Arbeitspakete zerlegt werden, #276).
  *
  * Seit Stufe 2 des Prozess-Umbaus (Plan #638) kennt diese Datei zwei Betriebsarten: die
@@ -7673,7 +7673,7 @@ export function pruefeIssueGates(top) {
   if (isIdee(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Idee — braucht erst /techplan #${top.id} + /issues, wird nachts nicht implementiert.`,
+      kommentar: `Nachtlauf: Idee — mit Abwaegung erst /fachplan #${top.id}, ohne Abwaegung /task #${top.id}, wird nachts nicht implementiert.`,
     };
   }
   if (isPlan(top.title)) {
