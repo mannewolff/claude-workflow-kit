@@ -1289,6 +1289,23 @@ Ein Kommando außerhalb der Allowlist wird im Headless-Betrieb sofort abgelehnt;
 }
 ```
 
+**Kit-Skripte mit Board-Zugriff.** Auch das Kit braucht Einträge in `sandbox.excludedCommands`, und zwar für jedes Skript, das das Board erreicht — direkt oder über einen Unterprozess. Ein Unterprozess erbt die Sandbox: `node .claude/kit/befunde.mjs vorschlag` startet `board.mjs` per `spawnSync`, und dieses `board.mjs` hat kein Netz, solange `befunde.mjs` selbst nicht in der Liste steht — der Eintrag für `board.mjs` allein genügt nicht. Dasselbe gilt für `wirksamkeit.mjs`. Dazu kommt der Reviewer-Befehl:
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "excludedCommands": [
+      "node .claude/kit/board.mjs*",
+      "node .claude/kit/night.mjs*",
+      "node .claude/kit/befunde.mjs*",
+      "node .claude/kit/wirksamkeit.mjs*",
+      "codex *"
+    ]
+  }
+}
+```
+
 Fehlt dem Check darüber hinaus eine **Umgebungsvariable** (z. B. `DOCKER_HOST`, damit Testcontainers den Socket findet), setz sie im `env`-Block der `settings.json` — **nicht** als Kommando-Präfix. Ein `env DOCKER_HOST=… mvn …` fällt nämlich aus beiden Mustern heraus: Das erste Token ist dann `env`, nicht `mvn`, also greifen weder die Allow-Rule `Bash(mvn:*)` noch `excludedCommands: ["mvn *"]`. Im `env`-Block gilt die Variable für jede Session, und `mvn` erbt sie ohne Präfix:
 
 ```json
@@ -1303,7 +1320,7 @@ Das Setup-Rezept für den Nachtbetrieb hat also drei Schichten, die alle passen 
 
 **Pipe und Umleitung heben die Ausnahme auf (ab Claude Code 2.1.277).** Eine zusammengesetzte Zeile nimmt Claude Code nur noch aus der Sandbox, wenn **jeder** Teil zu einem Eintrag in `excludedCommands` passt. `node .claude/kit/board.mjs issue-review check 2>&1 | head -40` läuft darum komplett in der Sandbox, weil `head` in keiner Liste steht — samt dem codex, das `board.mjs` startet, und ohne Netz. Dasselbe gilt für eine Umleitung in oder aus einer Datei (`codex exec … < prompt.txt`, `… > liste.json`), auch wenn sonst nichts in der Zeile steht. Nur `2>&1` (und jedes andere Umlenken auf einen Deskriptor wie `>&2`) lässt die Ausnahme stehen, gemessen unter 2.1.283.
 
-Der Installer trägt dagegen einen **`PreToolUse`-Hook** mit Matcher `Bash` in den `hooks`-Block der Projekt-`settings.json` ein: `node .claude/kit/board.mjs hook bash-pruefen`. Er liest die Muster aus `sandbox.excludedCommands` und `sandbox.network.excludedCommands` von `.claude/settings.json` und `.claude/settings.local.json` und weist eine Bash-Zeile ab (Exit 2, Begründung an die Session), wenn ein Teil davon zu einem Muster passt und die Zeile zugleich
+Der Installer trägt dagegen einen **`PreToolUse`-Hook** mit Matcher `Bash` in den `hooks`-Block der Projekt-`settings.json` ein: `node .claude/kit/board.mjs hook bash-pruefen`. Er liest die Muster aus `sandbox.excludedCommands` und — nur aus Rücksicht auf ältere Settings, Claude Code selbst kennt den Schlüssel nicht — `sandbox.network.excludedCommands` von `.claude/settings.json` und `.claude/settings.local.json` und weist eine Bash-Zeile ab (Exit 2, Begründung an die Session), wenn ein Teil davon zu einem Muster passt und die Zeile zugleich
 
 - in oder aus einer Datei umleitet (`<`, `>`, `>>`, `&>`, Here-Doc), oder
 - eine Pipe oder einen weiteren Befehl (`|`, `&&`, `||`, `;`, Zeilenumbruch) enthält, dessen Teile nicht alle passen.
@@ -1575,7 +1592,7 @@ Die Einträge stehen in der **Projekt**-Datei und nicht in den Nutzer-Einstellun
 
 Der Installer **ergänzt** die Datei, er ersetzt sie nicht: `env`, `sandbox`, `permissions` und fremde Hook-Einträge bleiben stehen, und ein zweiter Lauf ändert nichts mehr. Ist `settings.json` kein lesbares JSON-Objekt, fasst er sie nicht an und nennt die beiden Einträge zum Nachtragen von Hand — was er nicht lesen kann, kann er auch nicht erhalten.
 
-**Bleibt der Melder stumm,** obwohl Token und Tracker stimmen, lohnt ein Blick auf die Sandbox: Läuft sie im Projekt, braucht der Aufruf eine Netz-Freigabe — `node .claude/kit/board.mjs*` in `sandbox.network.excludedCommands` derselben Datei. Ohne sie kommt der Melder bis zur Einlieferung und scheitert dort mit `nicht-eingeliefert`; die Sitzung stört das nicht, nur der Verbrauch fehlt.
+**Bleibt der Melder stumm,** obwohl Token und Tracker stimmen, lohnt ein Blick auf die Sandbox: Läuft sie im Projekt, braucht der Aufruf eine Netz-Freigabe — `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` derselben Datei (siehe „Kit-Skripte mit Board-Zugriff"). Ohne sie kommt der Melder bis zur Einlieferung und scheitert dort mit `nicht-eingeliefert`; die Sitzung stört das nicht, nur der Verbrauch fehlt. `sandbox.network.excludedCommands` ist kein Schlüssel von Claude Code und wird stillschweigend ignoriert.
 
 **Abschalten.** Den jeweiligen Eintrag aus dem `hooks`-Block in `.claude/settings.json` löschen: beide für ganz, nur den unter `Stop` für „nur am Sitzungsende". Die Datei ist nicht versioniert, die Entscheidung gilt also für deine Maschine. Ein späterer Installer-Lauf trägt den gelöschten Eintrag wieder ein — wer den Melder dauerhaft stillstellen will, nimmt ihm die Voraussetzung statt den Hook: Ohne projektgebundenes Token im Arbeitsverzeichnis und bei jedem `issueTracker` außer `toolbox` schweigt er von selbst und sagt das auch (`kein-token`, `kein-board`).
 
