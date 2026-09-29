@@ -239,6 +239,7 @@
       "kostenUsd": 50,
       "korrekturrunden": 2
     },
+    "modell": "claude-opus-5-5",
     "modelle": [
       "claude-fable-5",
       "claude-sonnet-5",
