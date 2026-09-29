@@ -291,3 +291,40 @@ if (regel.stdout != null) {
 if (regel.stderr != null) process.stderr.write(regel.stderr);
 process.exit(regel.exit ?? 0);
 `;
+
+/**
+ * Antwortfunktion fuer `starteServer`: eine Toolbox mit Kommentar-Routen (Issue #1021).
+ *
+ * Die Kommentare liegen im uebergebenen Objekt `kommentare` (interne Karten-ID ->
+ * Liste) und werden von PATCH wirklich veraendert — so laesst sich pruefen, dass genau
+ * der gemeinte Kommentar ersetzt wird und die Zahl gleich bleibt. `patchRoute: false`
+ * stellt eine aeltere Instanz ohne Bearbeiten-Route nach (405), `leseRoute: false`
+ * eine, deren Lese-Route scheitert (500).
+ */
+export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, leseRoute = true }) {
+  return (req, koerper) => {
+    if (req.url === "/api/kanban/items" && req.method === "GET") {
+      const gruppen = {};
+      for (const k of karten) {
+        gruppen[k.column] ||= [];
+        gruppen[k.column].push(k);
+      }
+      return { status: 200, json: gruppen };
+    }
+    const treffer = req.url.match(/^\/api\/kanban\/items\/(\d+)\/comments(?:\/([^/]+))?$/);
+    if (!treffer) return null;
+    const [, itemId, kommentarId] = treffer;
+    const liste = (kommentare[itemId] ||= []);
+    if (!kommentarId && req.method === "GET") {
+      return leseRoute ? { status: 200, json: liste } : { status: 500, json: { message: "Kommentare kaputt" } };
+    }
+    if (kommentarId && req.method === "PATCH") {
+      if (!patchRoute) return { status: 405, json: { message: "Method Not Allowed" } };
+      const eintrag = liste.find((c) => String(c.id) === kommentarId);
+      if (!eintrag) return { status: 404, json: { message: "Kommentar nicht gefunden" } };
+      eintrag.body = JSON.parse(koerper).body;
+      return { status: 200, json: eintrag };
+    }
+    return null;
+  };
+}

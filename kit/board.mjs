@@ -882,6 +882,23 @@ class GitHubIssueTracker {
     exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
   }
 
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Ein Fehler von gh wirft. Hier
+  // war schon `getIssue` streng — die eigene Methode gibt es, damit alle vier
+  // Adapter dieselbe Schnittstelle haben.
+  async kommentareStreng(id) {
+    const repo = this._repo();
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "comments"]);
+    return normalizeComments(data.comments);
+  }
+
+  // `kommentarId` ist die numerische REST-ID aus normalizeComments, nicht die
+  // Knoten-ID. Der Pfad steht vor den Flags, weil gh nur so ihn als Positions-
+  // argument liest.
+  async ersetzeKommentar(id, kommentarId, text) {
+    const repo = this._repo();
+    exec("gh", ["api", `repos/${repo}/issues/comments/${kommentarId}`, "-X", "PATCH", "-f", `body=${text}`]);
+  }
+
   async updateIssue(id, { body }) {
     const repo = this._repo();
     exec("gh", ["issue", "edit", String(id), "--repo", repo, "--body", body]);
@@ -1049,7 +1066,7 @@ class GitLabIssueTracker {
   // Titel/Body/Status sind die Hauptsache. Deshalb leeres Array statt Abbruch.
   _notes(id) {
     try {
-      return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
+      return this._notesStreng(id);
     } catch (e) {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
@@ -1135,6 +1152,20 @@ class GitLabIssueTracker {
     // Analogie naheliegt. glab liest ein vorangestelltes 'create' als zusaetzliches
     // Argument und bricht mit "Accepts 1 arg(s), received 2" ab.
     exec("glab", ["issue", "note", String(id), "--message", text]);
+  }
+
+  _notesStreng(id) {
+    return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
+  }
+
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_notes` wirft ein
+  // Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht anlegen.
+  async kommentareStreng(id) {
+    return this._notesStreng(id);
+  }
+
+  async ersetzeKommentar(id, kommentarId, text) {
+    exec("glab", ["api", `projects/:id/issues/${id}/notes/${kommentarId}`, "-X", "PUT", "-f", `body=${text}`]);
   }
 
   async updateIssue(id, { body }) {
@@ -1423,6 +1454,50 @@ class LocalIssueTracker {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
     writeFileSync(p, raw + comment, "utf-8");
+  }
+
+  /**
+   * Die angehaengten `**Kommentar**`-Bloecke einer Karte (Issue #1021).
+   *
+   * Der lokale Tracker fuehrt Kommentare nicht getrennt, `commentIssue` haengt sie an
+   * die Datei. Die ID ist darum die laufende Nummer des Blocks, ab 1 — sie aendert
+   * sich nicht, weil Bloecke nur angehaengt und nie entfernt werden. Jeder Block
+   * reicht bis zum naechsten Blockkopf oder zum Dateiende.
+   */
+  _kommentarBloecke(raw) {
+    const kopf = /\n\n---\n\*\*Kommentar\*\* \(([^)\n]*)\)\n\n/g;
+    const koepfe = [...raw.matchAll(kopf)];
+    return koepfe.map((m, i) => ({
+      id: String(i + 1),
+      createdAt: m[1],
+      start: m.index + m[0].length,
+      ende: i + 1 < koepfe.length ? koepfe[i + 1].index : raw.length,
+    }));
+  }
+
+  async kommentareStreng(id) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    return this._kommentarBloecke(raw).map((b) => ({
+      author: "", body: raw.slice(b.start, b.ende), createdAt: b.createdAt, id: b.id,
+    }));
+  }
+
+  // Ersetzt den Text eines Blocks; Blockkopf, alles davor und alles danach bleiben
+  // Byte fuer Byte. Traegt der neue Text eine `Bericht-Lauf:`-Zeile, muss der Block
+  // dieselbe tragen — sonst waere es der Bericht eines anderen Laufs.
+  async ersetzeKommentar(id, kommentarId, text) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    const block = this._kommentarBloecke(raw).find((b) => b.id === String(kommentarId));
+    if (!block) throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} nicht gefunden.`);
+    const lauf = text.match(/^Bericht-Lauf:.*$/m)?.[0];
+    if (lauf && !raw.slice(block.start, block.ende).split("\n").includes(lauf)) {
+      throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} traegt nicht die Zeile '${lauf}' — kein Ersetzen.`);
+    }
+    writeFileSync(p, raw.slice(0, block.start) + text + raw.slice(block.ende), "utf-8");
   }
 
   async updateIssue(id, { body }) {
@@ -2013,8 +2088,7 @@ export class ToolboxIssueTracker {
   // Deshalb leeres Array statt Abbruch, mit Hinweis auf stderr.
   async _comments(itemId) {
     try {
-      const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
-      return normalizeComments(await res.json());
+      return await this._kommentareLesen(itemId);
     } catch (e) {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
@@ -2138,6 +2212,40 @@ export class ToolboxIssueTracker {
       body: JSON.stringify({ body: text }),
       idempotencyKey: idempotencyKey || randomUUID(),
     });
+  }
+
+  async _kommentareLesen(itemId) {
+    const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
+    return normalizeComments(await res.json());
+  }
+
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_comments` wirft
+  // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
+  // anlegen.
+  async kommentareStreng(number) {
+    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    return this._kommentareLesen(item.id);
+  }
+
+  // Die Route ist juenger als der Lesepfad. Eine Instanz ohne sie antwortet mit
+  // 404/405; die Meldung nennt dann die Route, damit klar ist, dass die Instanz und
+  // nicht der Kommentar fehlt.
+  async ersetzeKommentar(number, kommentarId, text) {
+    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    const pfad = `/api/kanban/items/${item.id}/comments/${kommentarId}`;
+    try {
+      await this._fetch(pfad, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: text }),
+      });
+    } catch (e) {
+      const status = e.message.match(/HTTP (40[45])\b/)?.[1];
+      if (!status) throw e;
+      throw new BoardError(
+        `Die Toolbox-Instanz kennt die Route PATCH ${pfad} nicht (HTTP ${status}) — Kommentare lassen sich dort nicht ersetzen.`
+      );
+    }
   }
 
   async updateIssue(number, { body }) {
@@ -2273,8 +2381,19 @@ export function normalizeComments(rawComments) {
         : String(c.author ?? ""),
       body: String(c.body ?? ""),
       createdAt: String(c.createdAt ?? c.created_at ?? ""),
+      id: kommentarIdAus(c),
     }))
     .filter((c) => c.body !== "");
+}
+
+// Die ID, unter der ein Kommentar sich ersetzen laesst (Issue #1021, Plan #1015 E10),
+// als String oder null. GitHub liefert in `id` die GraphQL-Knoten-ID (`IC_…`), die
+// REST-Route zum Bearbeiten will aber die Zahl aus dem `url`-Anker
+// `#issuecomment-<n>`. Traegt ein Kommentar ein `url`, gilt deshalb nur dieser Anker
+// — nie die Knoten-ID, auch nicht als Rueckfall.
+function kommentarIdAus(c) {
+  if (typeof c.url === "string") return c.url.match(/#issuecomment-(\d+)/)?.[1] ?? null;
+  return c.id === undefined || c.id === null ? null : String(c.id);
 }
 
 // Normalisiert das Anlagedatum eines Issues auf den Kalendertag `JJJJ-MM-TT`
@@ -2319,7 +2438,7 @@ function labelToStatus(labelNames, config, state) {
 // Adapter-Auswahl
 // ============================================================
 
-function resolveTracker(config) {
+export function resolveTracker(config) {
   switch (config.issueTracker) {
     case "github": return new GitHubIssueTracker(config);
     case "gitlab": return new GitLabIssueTracker(config);

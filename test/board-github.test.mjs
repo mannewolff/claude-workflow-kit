@@ -27,7 +27,7 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
       body: "Der Body",
       status: null, // Board-Status steht nicht im Issue-Objekt
       labels: [], // Antwort ohne Label-Feld -> leeres Array (Issue #312)
-      comments: [{ author: "mannewolff", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
+      comments: [{ author: "mannewolff", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z", id: null }],
       created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
     });
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /issue view 42 --repo besitzer\/mein-repo --json number,title,body,state,comments/);

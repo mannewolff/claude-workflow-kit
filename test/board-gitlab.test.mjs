@@ -74,7 +74,7 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
       body: "Die Beschreibung",
       status: "ready",
       labels: ["Ready"], // seit Issue #312 auch bei get
-      comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z" }],
+      comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z", id: null }],
       created: "2026-08-14", // Anlagedatum aus created_at (Issue #457)
     });
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /api projects\/:id\/issues\/42\/notes/);
