@@ -270,6 +270,17 @@ const SPERRE_GRENZE_VORGABE_MS = 20 * 60 * 1000;
 // selbst keine Last erzeugt — was der ganze Zweck ist.
 const SPERRE_ABSTAND_MS = 500;
 
+// Die Obergrenze der Dauer EINER Pruefung (Issue #1003, Plan #1001, E3, E4). Bewusst
+// kein Config-Feld: Die Grenze ist eine Aussage des Kits darueber, wie lange eine
+// Pruefung im Abschluss eines Pakets dauern darf, und keine Vorliebe des Projekts. Sie
+// vermerkt nur und faerbt nie rot — eine langsame, aber gruene Pruefung ist ein
+// Zuschnittsproblem der Konfiguration und kein Fehler der Karte.
+export const PRUEFDAUER_OBERGRENZE_MS = 30_000;
+
+// Allein fuer Tests: Ein Test, der dreissig Sekunden schlaeft, um die Grenze zu
+// reissen, verlaengerte die Suite, deren Laufzeit die Grenze gerade begrenzen soll.
+export const OBERGRENZE_ENV = "KIT_CHECKS_PRUEFDAUER_OBERGRENZE_MS";
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
@@ -296,6 +307,13 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
       vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
       mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
+      Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
+      ('gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>' und
+      'ausgelassen: <Kommando> → <Grund>'), auch beim uebernommenen Lauf; das
+      Feld 'berichtszeilen' der Zusammenfassung traegt dasselbe. Dauert eine
+      Pruefung laenger als ${PRUEFDAUER_OBERGRENZE_MS} ms, vermerkt ihre Zeile
+      die Ueberschreitung (Feld 'ueberObergrenzeMs'); rot wird der Lauf davon
+      nicht.
       An der Stufe 'push' nennt ein roter Lauf die VERURSACHER: die Karten, deren
       Commits seit dem Anker einen Bereich der roten Pruefung beruehrt haben,
       gelesen aus '(Issue #<n>)' im Betreff und 'Refs #<n>' im Rumpf. Ein Commit
@@ -543,7 +561,8 @@ export function bereicheVorbereiten(checkAreas) {
 /**
  * Ordnet jede geaenderte Datei ihren Bereichen zu. Die erste Datei, die kein
  * einziges Muster trifft, wird als `ohneMuster` gemeldet — sie loest den vollen
- * Umfang aus und gehoert in den Grund, sonst weiss niemand, welches Muster fehlt.
+ * Umfang aus. Der Grund nennt seit Issue #1003 alle solchen Dateien
+ * (`ohneMusterGrund`), sonst weiss niemand, welche Muster fehlen.
  *
  * Daneben steht `ohneZuordnung` mit ALLEN solchen Dateien (Issue #922, Plan
  * #917, E8): Der Beobachter fragt, welche Dateien kein Muster finden — nicht,
@@ -580,6 +599,23 @@ function zuordnen(dateien, bereichsdefinition, freistellungen = []) {
     ohneZuordnung.push(pfad);
   }
   return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung };
+}
+
+/** Wie viele unzugeordnete Dateien der Grund des vollen Umfangs hoechstens beim Namen nennt. */
+const GRUND_DATEIEN_HOECHSTENS = 10;
+
+/**
+ * Der Grund des vollen Umfangs wegen unzugeordneter Dateien (Issue #1003, Plan #1001,
+ * E2). Er nennt ALLE solchen Dateien, nicht nur die erste: Wer den Bericht liest, soll
+ * jedes fehlende Muster sehen und nicht eines nach dem anderen ueber mehrere Laeufe
+ * entdecken. Ab der elften Datei steht nur noch die Zahl — ein Grund, der ueber den
+ * Bildschirm laeuft, liest niemand; die volle Liste steht in `ohneZuordnung`.
+ */
+function ohneMusterGrund(ohneZuordnung) {
+  const genannt = ohneZuordnung.slice(0, GRUND_DATEIEN_HOECHSTENS).map((pfad) => `'${pfad}'`).join(", ");
+  const weitere = ohneZuordnung.length - GRUND_DATEIEN_HOECHSTENS;
+  const liste = weitere > 0 ? `${genannt} und ${weitere} weitere` : genannt;
+  return `voller Umfang: ${liste} ${ohneZuordnung.length === 1 ? "trifft" : "treffen"} kein Muster`;
 }
 
 /** Die pruefungsfreien Eintraege aus der Config als fertige Regexe samt Grund (Issue #934). */
@@ -870,7 +906,7 @@ function planen(args) {
   }
 
   if (ohneMuster !== null) {
-    const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
+    const grund = ohneMusterGrund(ohneZuordnung);
     return bauen({
       basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
@@ -904,7 +940,7 @@ function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, oh
   const zweifel = !leer && ohneMuster !== null;
   const paketstufe = (check) => {
     if (leer) return { laeuft: false, grund: `leeres Paket: keine Aenderung seit ${basis}` };
-    if (zweifel) return { laeuft: true, grund: `voller Umfang: '${ohneMuster}' trifft kein Muster` };
+    if (zweifel) return { laeuft: true, grund: ohneMusterGrund(ohneZuordnung) };
     return entscheidung(check, beruehrt);
   };
   return bauen({
@@ -1233,6 +1269,64 @@ function dauerGesamt(laufen) {
   return gemessen.length > 0 ? gemessen.reduce((summe, e) => summe + e.dauerMs, 0) : null;
 }
 
+/**
+ * Die wirksame Obergrenze: die Konstante, im Test herabgesetzt ueber die
+ * Umgebungsvariable. Alles, was keine positive Zahl ist, faellt auf die Konstante
+ * zurueck — dieselbe Haltung wie bei `sperrGrenzeMs`.
+ */
+function pruefdauerObergrenzeMs(env = process.env) {
+  const zahl = Number((env[OBERGRENZE_ENV] ?? "").trim());
+  return Number.isFinite(zahl) && zahl > 0 ? zahl : PRUEFDAUER_OBERGRENZE_MS;
+}
+
+/** Sekunden mit hoechstens einer Nachkommastelle, ohne abschliessende Null. */
+function sekunden(ms) {
+  return String(Math.round(ms / 100) / 10);
+}
+
+/** Die Dauer einer Berichtszeile (Issue #1003). "Nicht gemessen" ist kein Nullbetrag. */
+export function dauerText(dauerMs) {
+  return typeof dauerMs === "number" ? `${sekunden(dauerMs)} s` : "Dauer nicht gemessen";
+}
+
+/**
+ * Der Zusatz einer Berichtszeile, deren Pruefung die Obergrenze gerissen hat — sonst
+ * der leere Text (Issue #1003, E3). Genau an der Grenze ist nichts ueberschritten.
+ */
+export function obergrenzeZusatz(dauerMs, grenzeMs = PRUEFDAUER_OBERGRENZE_MS) {
+  if (typeof dauerMs !== "number" || dauerMs <= grenzeMs) return "";
+  return ` — Obergrenze ${sekunden(grenzeMs)} s um ${sekunden(dauerMs - grenzeMs)} s ueberschritten`;
+}
+
+/**
+ * Die fertigen Zeilen fuer den Abschlussbericht (Issue #1003, Plan #1001, E1, E12).
+ *
+ * Das Kommando bildet sie selbst, damit die Skills sie WORTGETREU uebernehmen koennen:
+ * Eine Zeile, die erst die Session aus Einzelfeldern zusammensetzt, verliert unter
+ * Druck zuerst Dauer und Grund — genau das, was der Bericht bisher verlor.
+ *
+ * Ein nicht gestartetes Kommando (nach einem roten) steht als `gelaufen` mit seinem
+ * Ergebnis: Es war ausgewaehlt, und ein Bericht, der es verschwiege, saehe aus wie
+ * ein vollstaendiger Lauf. `uebernommen` haengt den Vermerk an die Dauer — sie ist die
+ * des Ursprungslaufs und in diesem Aufruf nicht gemessen.
+ */
+function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
+  const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
+  const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
+  for (const e of laufen) {
+    const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
+    zeilen.push(
+      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}`,
+    );
+  }
+  for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
+  return zeilen;
+}
+
+function berichtsblockSchreiben(zeilen) {
+  process.stdout.write(["", "Fuer den Abschlussbericht:", ...zeilen, ""].join("\n"));
+}
+
 function schreibeZusammenfassung(daten) {
   const pfad = zusammenfassungPfad();
   try {
@@ -1365,6 +1459,10 @@ export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
 function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
   const ungruen = frueher.laufen.find((e) => e.ergebnis !== "gruen") ?? null;
   const original = typeof frueher.uebernommen === "string" ? frueher.uebernommen : frueher.zeitpunkt;
+  // Die Zeilen tragen die Dauer des URSPRUNGSLAUFS aus der frueheren Zusammenfassung
+  // (Issue #1003, E12): Auch ein uebernommener Lauf gehoert in den Bericht, und ohne
+  // Block muesste die Session ihn aus Einzelfeldern nachbauen.
+  const zeilen = berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() });
   const pfad = schreibeZusammenfassung({
     ...auswahl,
     laufen: frueher.laufen,
@@ -1379,11 +1477,13 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
     // aus, als waere die Frage nie gestellt worden.
     ...(frueher.verursacher ? { verursacher: frueher.verursacher } : {}),
     uebernommen: original,
+    berichtszeilen: zeilen,
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   process.stdout.write(
     `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
   );
+  berichtsblockSchreiben(zeilen);
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return ungruen === null ? 0 : 1;
 }
@@ -1942,6 +2042,7 @@ function ausfuehren(args) {
  */
 function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
+  const grenzeMs = pruefdauerObergrenzeMs();
 
   // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und
   // an jede Zeile gegeben, damit alle Zeilen EINES `run`-Aufrufs dieselbe Laufkennung
@@ -1984,6 +2085,7 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
     ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
     ...(verursacher ? { verursacher } : {}),
+    berichtszeilen: berichtszeilen(auswahl, laufen, { grenzeMs }),
   });
   schreibeStand(false);
 
@@ -1994,6 +2096,8 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
     const start = process.hrtime.bigint();
     const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+    // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
+    if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
     process.stdout.write(ausgabe);
     const bewertung = bewerten(eintrag, gruen, ausgabe);
     guete = bewertung.guete ?? guete;
@@ -2025,6 +2129,7 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
   // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat — dann
   // aber immer, auch beim gruenen Lauf (Issue #763).
   const pfad = schreibeStand(true);
+  berichtsblockSchreiben(berichtszeilen(auswahl, laufen, { grenzeMs }));
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }

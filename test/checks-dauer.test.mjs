@@ -87,7 +87,8 @@ test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGes
     assert.deepEqual(
       Object.keys(summary).sort(),
       [
-        "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "configHash",
+        "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
+        "configHash",
         "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
         "stufe", "vollerUmfang", "zeitpunkt",
       ],

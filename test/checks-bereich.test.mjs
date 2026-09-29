@@ -29,7 +29,7 @@ const CONFIG = {
   },
 };
 
-test("jede Datei ohne Muster steht in ohneZuordnung, der Grund nennt weiter die erste", () => {
+test("jede Datei ohne Muster steht in ohneZuordnung und im Grund (Issue #1003)", () => {
   mitRepo({ config: CONFIG }, (dir) => {
     datei(dir, "a-ohne-muster.txt");
     datei(dir, "b-ohne-muster.txt");
@@ -41,7 +41,7 @@ test("jede Datei ohne Muster steht in ohneZuordnung, der Grund nennt weiter die 
     assert.deepEqual(ergebnis.ohneZuordnung, ["a-ohne-muster.txt", "b-ohne-muster.txt"]);
     assert.equal(
       eintrag(ergebnis.laufen, "npm run build").grund,
-      "voller Umfang: 'a-ohne-muster.txt' trifft kein Muster",
+      "voller Umfang: 'a-ohne-muster.txt', 'b-ohne-muster.txt' treffen kein Muster",
     );
   });
 });
