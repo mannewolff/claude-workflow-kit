@@ -1620,21 +1620,30 @@ export function sperrGrenzeMs(env = process.env) {
 }
 
 /**
- * Die Prozess-Id aus einer Sperrdatei — `null`, wenn es sie nicht gibt, sie nicht
- * lesbar ist oder nicht als positive ganze Zahl dasteht. Alle drei zaehlen als
- * verwaist: Eine Sperre, deren Halter nicht benennbar ist, kann niemanden abhalten.
+ * Liest eine Sperrdatei. Vier Ausgaenge (Issue #999):
+ * - `{ art: "fehlt" }` — es gibt sie nicht (`ENOENT`);
+ * - `{ art: "pid", pid }` — sie traegt eine gueltige Prozess-Id;
+ * - `{ art: "kaputt" }` — gelesen, aber ohne gueltige Id (leer, Text, 0, negativ);
+ * - `{ art: "unklar", code }` — das Lesen scheiterte mit einem anderen Code.
+ *
+ * "unklar" ist NICHT kaputt: Unter Windows scheitert das Lesen einer frisch
+ * verlinkten Datei manchmal kurz mit EBUSY oder EPERM. Raeumte der Lauf sie dann
+ * ab, fuehren zwei Laeufe gleichzeitig. Eine dauerhaft unlesbare Sperre fuehrt ueber
+ * die Obergrenze zu "faehrt ohne Sperre" — der vorhandene, protokollierte Ausweg.
  *
  * `0` ist ausdruecklich keine gueltige Id — `process.kill(0, 0)` zielte auf die
  * eigene Prozessgruppe und meldete damit fuer jede kaputte Datei einen lebenden
  * Halter.
  */
-function lockPid(pfad) {
+function lockPid(pfad, lies = readFileSync) {
+  let inhalt;
   try {
-    const pid = Number(readFileSync(pfad, "utf-8").trim());
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
-  } catch {
-    return null;
+    inhalt = lies(pfad, "utf-8");
+  } catch (e) {
+    return e.code === "ENOENT" ? { art: "fehlt" } : { art: "unklar", code: e.code ?? e.message };
   }
+  const pid = Number(String(inhalt).trim());
+  return Number.isInteger(pid) && pid > 0 ? { art: "pid", pid } : { art: "kaputt" };
 }
 
 /**
@@ -1671,8 +1680,9 @@ function schlafeSync(ms) {
  * eigene pid tragen. Sonst loeschte ein Lauf, der nach Ablauf der Obergrenze ohne
  * Sperre weiterfuhr, die Sperre dessen, der sie inzwischen rechtmaessig haelt.
  *
- * `pfad`, `grenzeMs`, `melde`, `abstandMs`, `uhr` und `schlafe` sind Parameter allein
- * der Pruefbarkeit; im Betrieb kommen alle aus der Umgebung.
+ * `pfad`, `grenzeMs`, `melde`, `abstandMs`, `uhr`, `schlafe` und `lies` sind Parameter
+ * allein der Pruefbarkeit; im Betrieb kommen alle aus der Umgebung. `lies` ersetzt
+ * `readFileSync` beim Lesen der Sperrdatei und stellt so einen Lesefehler nach.
  */
 export function mitSperre(fn, {
   pfad = sperrPfad(),
@@ -1681,12 +1691,13 @@ export function mitSperre(fn, {
   abstandMs = SPERRE_ABSTAND_MS,
   uhr = Date.now,
   schlafe = schlafeSync,
+  lies = readFileSync,
 } = {}) {
-  const gehalten = sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe });
+  const gehalten = sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe, lies });
   try {
     return fn();
   } finally {
-    if (gehalten) sperreFreigeben(pfad, melde);
+    if (gehalten) sperreFreigeben(pfad, melde, lies);
   }
 }
 
@@ -1695,55 +1706,67 @@ export function mitSperre(fn, {
  * `false` heisst, der Lauf faehrt ohne sie (Obergrenze abgelaufen oder Schreibfehler)
  * und darf sie darum hinterher nicht entfernen.
  */
-function sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe }) {
+function sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe, lies }) {
   const beginn = uhr();
   let gemeldet = false;
   for (;;) {
-    const pid = lockPid(pfad);
-    if (pid !== null && prozessLaeuft(pid)) {
-      const wartend = aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet });
+    const gelesen = lockPid(pfad, lies);
+    const halter = belegtVon(gelesen);
+    if (halter !== null) {
+      const wartend = aufHalterWarten({ pfad, halter, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet });
       if (!wartend.weiter) return false;
       gemeldet = wartend.gemeldet;
       continue;
     }
-    if (!verwaisteSperreAbraeumen({ pfad, pid, melde })) return false;
+    if (gelesen.art !== "fehlt" && !verwaisteSperreAbraeumen({ pfad, gelesen, melde })) return false;
     const ergebnis = sperreAnlegen({ pfad, melde });
     if (ergebnis !== "rennen-verloren") return ergebnis === "genommen";
   }
 }
 
 /**
- * Ein lebender Halter liegt auf der Sperre. Rueckgabe `{ weiter, gemeldet }`:
+ * Wer die Sperre belegt, als Text fuer das Protokoll — oder `null`, wenn sie frei,
+ * verwaist oder kaputt ist. Ein Lesefehler ausser ENOENT zaehlt als belegt mit
+ * unbekanntem Halter: Die naechste Runde sieht neu nach (Issue #999).
+ */
+function belegtVon(gelesen) {
+  if (gelesen.art === "unklar") return `ein unbekannter Halter (Lesefehler ${gelesen.code})`;
+  if (gelesen.art === "pid" && prozessLaeuft(gelesen.pid)) return `Prozess ${gelesen.pid}`;
+  return null;
+}
+
+/**
+ * Ein lebender oder unbekannter Halter liegt auf der Sperre. Rueckgabe `{ weiter, gemeldet }`:
  * `weiter: false` heisst, die Obergrenze ist abgelaufen und der Lauf faehrt ohne
  * Sperre; sonst wurde geschlafen und die naechste Runde ist dran.
  *
  * `gemeldet` wandert durch, weil nur die ERSTE Wartezeile ausgegeben wird: Eine Zeile
  * je halbe Sekunde ersaeufte die Ausgabe des Laufs, um die es dem Leser geht.
  */
-function aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet }) {
+function aufHalterWarten({ pfad, halter, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet }) {
   const gewartet = uhr() - beginn;
   if (gewartet >= grenzeMs) {
-    melde(`Sperre ${pfad} nach ${gewartet} ms noch belegt (Prozess ${pid}) — der Lauf faehrt ohne Sperre.\n`);
+    melde(`Sperre ${pfad} nach ${gewartet} ms noch belegt (${halter}) — der Lauf faehrt ohne Sperre.\n`);
     return { weiter: false, gemeldet };
   }
   if (!gemeldet) {
-    melde(`Sperre ${pfad} haelt Prozess ${pid} — es wird gewartet (Obergrenze ${grenzeMs} ms).\n`);
+    melde(`Sperre ${pfad} haelt ${halter} — es wird gewartet (Obergrenze ${grenzeMs} ms).\n`);
   }
   schlafe(abstandMs);
   return { weiter: true, gemeldet: true };
 }
 
 /**
- * Kein lebender Halter. Liegt die Datei trotzdem, ist sie verwaist oder kaputt —
+ * Kein lebender Halter, und die Datei liess sich lesen: Sie ist verwaist oder kaputt —
  * beides wird abgeraeumt, und beides steht im Protokoll: Eine still entfernte Sperre
  * waere von einer nie vorhandenen nicht zu unterscheiden.
  *
  * Rueckgabe: ob der Weg frei ist. `false` heisst, die Datei liegt noch und liess sich
  * nicht entfernen — dann faehrt der Lauf ohne Sperre.
  */
-function verwaisteSperreAbraeumen({ pfad, pid, melde }) {
+function verwaisteSperreAbraeumen({ pfad, gelesen, melde }) {
   if (!existsSync(pfad)) return true;
-  const grund = pid === null ? "unlesbar" : `verwaist (Prozess ${pid} laeuft nicht)`;
+  const grund = gelesen.art === "kaputt" ? "kaputt (keine gueltige Prozess-Id)" : `verwaist (Prozess ${gelesen.pid} laeuft nicht)`;
   try {
     unlinkSync(pfad);
     melde(`Sperre ${pfad} war ${grund} — abgeraeumt.\n`);
@@ -1797,9 +1820,9 @@ function sperreAnlegen({ pfad, melde }) {
  * Gibt die eigene Sperre frei. Ein Fehler dabei bleibt eine Protokollzeile: Die
  * Freigabe steht im `finally` und darf das Ergebnis des Laufs nicht ueberschreiben.
  */
-function sperreFreigeben(pfad, melde) {
+function sperreFreigeben(pfad, melde, lies) {
   try {
-    if (lockPid(pfad) !== process.pid) return;
+    if (lockPid(pfad, lies).pid !== process.pid) return;
     unlinkSync(pfad);
   } catch (e) {
     melde(`Sperre ${pfad} liess sich nicht freigeben (${e.code ?? e.message}) — der naechste Lauf raeumt sie als verwaist ab.\n`);

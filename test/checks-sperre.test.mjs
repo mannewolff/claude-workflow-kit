@@ -316,3 +316,100 @@ test("[checks-958-9] jede Testdatei, die checks.mjs faehrt, setzt einen eigenen 
   assert.deepEqual(ueberfluessig, [],
     `diese Ausnahmen in OHNE_LAUF haben keinen Gegenstand mehr: ${ueberfluessig.join(", ")}`);
 });
+
+// Ein Lesefehler ist kein Beweis fuer eine kaputte Sperre (Issue #999). Unter Windows
+// scheitert das Lesen einer frisch verlinkten Datei manchmal kurz mit EBUSY oder EPERM
+// — raeumte der Lauf sie dann ab, fuehren zwei Laeufe gleichzeitig. Die Tests stellen
+// den Lesefehler ueber `lies` nach und nicht ueber das Timing: Ein Timing-Test waere
+// selbst wieder ein Rennen.
+
+/** Ein Fehler mit Code, wie ihn `readFileSync` wirft. */
+function lesefehler(code) {
+  return Object.assign(new Error(`${code}: gestellter Lesefehler`), { code });
+}
+
+/** Eine Uhr, die bei jeder Abfrage um `schritt` Millisekunden weiterlaeuft. */
+function schrittUhr(schritt) {
+  let jetzt = 0;
+  return () => {
+    const wert = jetzt;
+    jetzt += schritt;
+    return wert;
+  };
+}
+
+test("[checks-958-10] ein voruebergehender Lesefehler (EBUSY) raeumt die Sperre nicht ab", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-999-"));
+  const sperre = join(ablage, "busy.lock");
+  // Der Elternprozess des Tests: ein fremder Halter, der waehrend des Tests nachweislich lebt.
+  writeFileSync(sperre, `${process.ppid}\n`, "utf-8");
+  let versuche = 0;
+  const lies = () => {
+    versuche += 1;
+    if (versuche <= 2) throw lesefehler("EBUSY");
+    return `${process.ppid}\n`;
+  };
+  const zeilen = [];
+  try {
+    let gelaufen = false;
+    mitSperre(() => { gelaufen = true; }, {
+      pfad: sperre, grenzeMs: 1000, melde: (satz) => zeilen.push(satz),
+      uhr: schrittUhr(100), schlafe: () => {}, lies,
+    });
+    const ausgabe = zeilen.join("");
+    assert.ok(gelaufen, "der Lauf muss nach der Obergrenze trotzdem fahren");
+    assert.ok(versuche > 2, `nach dem Lesefehler muss neu nachgesehen werden: ${versuche} Leseversuche`);
+    assert.doesNotMatch(ausgabe, /abgeraeumt/, `eine unlesbare Sperre ist keine kaputte: ${ausgabe}`);
+    assert.match(ausgabe, /EBUSY/, `die Wartezeile nennt den Lesefehler: ${ausgabe}`);
+    assert.match(ausgabe, /es wird gewartet/, `bei einem Lesefehler wird gewartet: ${ausgabe}`);
+    assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.ppid),
+      "die fremde Sperre muss liegen bleiben");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-11] ein dauerhafter Lesefehler (EPERM) faehrt nach der Obergrenze ohne Sperre und laesst die Datei liegen", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-999-"));
+  const sperre = join(ablage, "perm.lock");
+  writeFileSync(sperre, `${process.ppid}\n`, "utf-8");
+  const zeilen = [];
+  try {
+    let gelaufen = false;
+    mitSperre(() => { gelaufen = true; }, {
+      pfad: sperre, grenzeMs: 500, melde: (satz) => zeilen.push(satz),
+      uhr: schrittUhr(100), schlafe: () => {}, lies: () => { throw lesefehler("EPERM"); },
+    });
+    const ausgabe = zeilen.join("");
+    assert.ok(gelaufen, "der Lauf muss nach der Obergrenze trotzdem fahren");
+    assert.match(ausgabe, /es wird gewartet/, `zuerst wird gewartet: ${ausgabe}`);
+    assert.match(ausgabe, /noch belegt .*EPERM.*faehrt ohne Sperre/,
+      `der Ablauf der Obergrenze gehoert samt Lesefehler ins Protokoll: ${ausgabe}`);
+    assert.doesNotMatch(ausgabe, /abgeraeumt/, `eine unlesbare Sperre wird nicht abgeraeumt: ${ausgabe}`);
+    assert.ok(existsSync(sperre), "die Sperrdatei muss liegen bleiben");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-958-12] eine lesbare Sperre ohne gueltige pid ist kaputt und wird abgeraeumt", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-999-"));
+  const sperre = join(ablage, "kaputt.lock");
+  writeFileSync(sperre, "kaputt\n", "utf-8");
+  const zeilen = [];
+  try {
+    let gelaufen = false;
+    mitSperre(() => {
+      gelaufen = true;
+      assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.pid),
+        "nach dem Abraeumen haelt der Lauf die Sperre selbst");
+    }, { pfad: sperre, melde: (satz) => zeilen.push(satz), schlafe: () => {} });
+    const ausgabe = zeilen.join("");
+    assert.ok(gelaufen);
+    assert.match(ausgabe, /war kaputt.*abgeraeumt/, `das Abraeumen gehoert ins Protokoll: ${ausgabe}`);
+    assert.doesNotMatch(ausgabe, /es wird gewartet/, `auf eine kaputte Sperre wird nicht gewartet: ${ausgabe}`);
+    assert.equal(existsSync(sperre), false, "der Lauf gibt seine eigene Sperre wieder frei");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});

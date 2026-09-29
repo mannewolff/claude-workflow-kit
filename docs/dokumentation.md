@@ -403,8 +403,11 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 |---|---|---|
 | ein **laufender** Prozess hält sie | es wird gewartet | `Sperre … haelt Prozess <pid> — es wird gewartet` |
 | ihr Halter **lebt nicht mehr** | sie wird abgeräumt, der Lauf beginnt sofort | `Sperre … war verwaist (Prozess <pid> laeuft nicht) — abgeraeumt` |
-| sie ist **unlesbar** (leer, kaputt) | ebenso abgeräumt | `Sperre … war unlesbar — abgeraeumt` |
+| sie ist lesbar, aber **kaputt** (leer, Text, keine gültige Prozess-Id) | ebenso abgeräumt | `Sperre … war kaputt (keine gueltige Prozess-Id) — abgeraeumt` |
+| sie lässt sich **nicht lesen** (etwa `EBUSY`, `EPERM`) | es wird gewartet wie bei einem laufenden Halter, die nächste Runde sieht neu nach | `Sperre … haelt ein unbekannter Halter (Lesefehler <Code>) — es wird gewartet` |
 | die **Obergrenze** ist abgelaufen | der Lauf fährt **trotzdem**, ohne Sperre | `Sperre … nach <ms> ms noch belegt (Prozess <pid>) — der Lauf faehrt ohne Sperre` |
+
+Ein **Lesefehler** ist kein Beweis für eine kaputte Sperre: Unter Windows scheitert das Lesen einer frisch angelegten Sperre manchmal kurz, etwa während ein Virenscanner sie öffnet. Würde sie dann abgeräumt, führen zwei Läufe gleichzeitig. Eine dauerhaft unlesbare Sperre führt über die Obergrenze zu „fährt ohne Sperre" und wird nie gelöscht.
 
 Verwaist wird über die **Prozess-Id** erkannt und nicht über eine Verfallsfrist: Ein Prüflauf darf länger dauern als jede Schätzung, und ein zu kurzer Verfall gäbe genau die Gleichzeitigkeit frei, die die Sperre verhindern soll. `EPERM` beim Nachsehen heißt „der Prozess lebt und gehört einem anderen Nutzer" — das ist keine verwaiste Sperre.
 
