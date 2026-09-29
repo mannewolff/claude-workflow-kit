@@ -34,6 +34,12 @@
  *     ohne Config stillschweigend "nichts zu pruefen" meldet, zeigt genau dorthin,
  *     wo der Fehler niemandem auffaellt.
  *
+ * EIN Prueflauf je Maschine (Issue #958): `run` nimmt vor dem ersten Kommando eine
+ * maschinenweite Sperre und gibt sie nach dem letzten frei — auf jedem Weg heraus,
+ * auch dem der Ausnahme. Zwei Runner auf einem Rechner fahren damit nacheinander
+ * statt gleichzeitig. Sie ist Vorsorge gegen Last und kein Gate: Nach Ablauf einer
+ * Obergrenze laeuft der Prueflauf trotzdem. Alles dazu bei `mitSperre`.
+ *
  * `run` UEBERNIMMT sein eigenes Ergebnis, wenn sich der Stand seit dem letzten Lauf
  * nicht geaendert hat (Issue #863): gleicher Anker, gleiche Stufe, dieselbe
  * Dateiliste mit denselben Blob-Hashes, dieselbe Config — und eine abgeschlossene
@@ -66,8 +72,37 @@
  * unberuehrten Bereichen (Plan #843, E9). Gemessen wird der Stand, der hinausgeht
  * — und der besteht aus mehr als dem letzten Arbeitspaket.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--frisch]
+ * `--bereich <name>` faehrt die Pruefgruppen genau eines `checkAreas`-Bereichs
+ * (Issue #922, Plan #917, E3). Es ist der vorgesehene Weg, wenn fuer die
+ * geaenderte Datei nur die vollstaendige Gruppe existiert — dann ist der
+ * Gruppenlauf kein Verstoss gegen die Zehn-Minuten-Marke, sondern der Fall, fuer
+ * den das Flag da ist. Ohne es waere derselbe Lauf von Hand am Kommando vorbei
+ * gefahren, und aus den Daten liesse sich Notwendigkeit nicht von Umgehung
+ * trennen.
+ *
+ * Die vierte Achse ist `nichtBeimAbschluss` (Issue #946, Plan #944): Sie sagt, dass
+ * eine Pruefung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss, weil
+ * sie nur das Zusammenspiel prueft (`zusammenspiel`) oder ihren Befund aus der
+ * vollstaendigen Testmenge gewinnt (`volleTestmenge`). Gewirkt wird sie allein durch
+ * `--abschluss [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
+ * bleibt sie aus, samt Guetemessung, und vor dem Veroeffentlichen laeuft beides wieder.
+ *
+ * Haelt der Lauf an der PUSH-STUFE an, nennt er zu jeder roten Pruefung die Karten, die
+ * sie beruehrt haben (Issue #947, AK 4 des Fachplans #938) — gelesen aus den Commits
+ * `<basis>..HEAD`, mit der Kartennummer aus der Commit-Botschaft und ohne Board und ohne
+ * Netz (E6). Der Anker ist der `--since`-Wert des Laufs, den `/push-main` schon heute als
+ * `git merge-base HEAD origin/<mainBranch>` uebergibt (E5). Nur an dieser Stufe: An der
+ * Freigabe ist die Basis `HEAD` selbst, und `<basis>..HEAD` waere leer. Die Suche ist
+ * Buchhaltung ueber einen bereits gefallenen Befund — ihr eigenes Scheitern steht als
+ * Grund an der Stelle der Karten und aendert am Ausgang des Laufs nichts.
+ *
+ * Auch hier ist die Richtung einseitig: Wer `--abschluss` VERGISST, prueft mehr. Darum
+ * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
+ * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
+ * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch]
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -79,8 +114,9 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync, linkSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -88,7 +124,7 @@ import { createHash } from "node:crypto";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.3.0";
+const KIT_VERSION = "3.5.0";
 
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
@@ -179,6 +215,15 @@ export function vergleicheText(a, b) {
 // uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
 const STUFEN = ["paket", "push", "merge"];
 
+// Die Werte der vierten Achse `nichtBeimAbschluss` (Issue #946, Plan #944). Sie ist
+// keine zweite Stufe: Die Stufe sagt, WANN eine Pruefung faellig ist, diese Achse sagt,
+// WARUM sie den Abschluss eines einzelnen Arbeitspakets nicht tragen muss — weil sie nur
+// das Zusammenspiel prueft oder ihren Befund aus der vollstaendigen Testmenge gewinnt.
+// Eine geschlossene Werteliste und kein Freitext: Der Wert steht im Auslassungsgrund und
+// wird damit gelesen; ein Freitext waere an jeder Stelle anders formuliert, und die
+// Auswertung koennte die Gruppen nicht zaehlen.
+const NICHT_BEIM_ABSCHLUSS = ["zusammenspiel", "volleTestmenge"];
+
 /**
  * Die allgemeinen Fehlermerkmale (Issue #858, Fachplan #769, AK 2): Merkmale, an
  * denen eine Ausgabe ihr Scheitern selbst ausweist, auch wenn der Rueckgabewert 0
@@ -197,10 +242,34 @@ const STUFEN = ["paket", "push", "merge"];
  */
 const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
 
+// Die Namen und Vorgaben der maschinenweiten Sperre (Issue #958). Der Mechanismus
+// selbst steht unten bei `mitSperre`; hier oben stehen nur diese Werte, und zwar aus
+// demselben Grund wie FEHLERMERKMALE: `HELP` nennt sie, und ein `const` weiter unten
+// waere dort noch nicht initialisiert.
+
+/** Der Name der Umgebungsvariablen fuer den Sperrpfad. */
+export const SPERRE_ENV = "KIT_CHECKS_LOCK";
+
+/** Der Name der Umgebungsvariablen fuer die Obergrenze der Wartezeit. */
+export const SPERRE_GRENZE_ENV = "KIT_CHECKS_LOCK_TIMEOUT_MS";
+
+const SPERRE_DATEI = "kit-checks-run.lock";
+
+// Zwanzig Minuten. Die Zehn-Minuten-Marke dieses Projekts gilt fuer den Prueflauf
+// EINES Arbeitspakets; zwei Laeufe nacheinander sind damit die Groessenordnung, auf
+// die zu warten sich lohnt. Darueber ist die Annahme "der andere Lauf ist bald
+// fertig" nicht mehr tragfaehig, und Weiterlaufen kostet weniger als Weiterwarten.
+const SPERRE_GRENZE_VORGABE_MS = 20 * 60 * 1000;
+
+// Halbe Sekunde zwischen zwei Blicken auf die Sperre. Kurz genug, dass die Wartezeit
+// gegenueber einem Prueflauf nicht ins Gewicht faellt, lang genug, dass das Warten
+// selbst keine Last erzeugt — was der ganze Zweck ist.
+const SPERRE_ABSTAND_MS = 500;
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>] [--stufe <stufe>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--frisch]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch]
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -223,6 +292,27 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
       vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
       mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
+      An der Stufe 'push' nennt ein roter Lauf die VERURSACHER: die Karten, deren
+      Commits seit dem Anker einen Bereich der roten Pruefung beruehrt haben,
+      gelesen aus '(Issue #<n>)' im Betreff und 'Refs #<n>' im Rumpf. Ein Commit
+      ohne erkennbare Nummer erscheint mit seiner Kurz-SHA, eine Pruefung ohne
+      Bereichszuordnung gilt als von jeder Karte beruehrt. Beruehrt keine Karte
+      die Pruefung, steht das als Satz da und nicht als leere Liste; laesst sich
+      der Anker nicht aufloesen oder scheitert ein git-Aufruf, steht der Grund an
+      derselben Stelle. Die Suche erklaert einen gefallenen Befund und aendert am
+      Ausgang des Laufs nichts.
+      EIN Prueflauf je Maschine: Vor dem ersten Kommando nimmt 'run' eine
+      maschinenweite SPERRE (${sperrPfad()}) und gibt sie nach dem
+      letzten wieder frei, auch bei rotem Ergebnis und bei einem Abbruch.
+      Haelt sie ein laufender Prozess, wird gewartet; ist ihr Halter tot, wird
+      sie abgeraeumt — beides mit Protokollzeile. Sie ist Vorsorge gegen Last
+      und kein Gate: Nach ${SPERRE_GRENZE_VORGABE_MS} ms laeuft der Prueflauf
+      trotzdem und sagt es. Ein uebernommenes Ergebnis wartet nie, es faehrt
+      kein Kommando. Beides ist ueber die Umgebung zu setzen:
+      ${SPERRE_ENV} den Pfad (leer = Vorgabe),
+      ${SPERRE_GRENZE_ENV} die Obergrenze in Millisekunden. Die eigene
+      Testsuite braucht den Pfad, damit ihre parallelen Dateien sich nicht
+      gegenseitig serialisieren.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -232,13 +322,35 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
                   Veroeffentlichungsstufen (push, merge) fahren jede faellige
                   Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
+  --bereich <n>   Faehrt die Pruefgruppen genau eines checkAreas-Bereichs, statt
+                  die beruehrten aus den geaenderten Dateien zu bestimmen. Der
+                  vorgesehene Weg, wenn fuer die geaenderte Datei nur die
+                  vollstaendige Gruppe existiert — ein so begruendeter
+                  Gruppenlauf ist kein Verstoss gegen die Zehn-Minuten-Marke,
+                  sondern sein sanktionierter Fall. Ein unbekannter Name bricht
+                  ab und nennt die konfigurierten Bereiche. Kombinierbar mit
+                  --since, --stufe und --frisch: '--bereich' sagt, OB eine
+                  Pruefung betroffen ist, '--stufe' weiter, WANN sie dran ist.
+  --abschluss [n] Dieser Lauf schliesst genau ein Arbeitspaket ab. Dann bleibt
+                  jede Pruefung mit 'nichtBeimAbschluss' aus und die
+                  Guetemessung ebenso — beide mit Grund in der Liste der
+                  Auslassungen, und beide laufen vor dem Veroeffentlichen
+                  wieder mit. Die Kartennummer ist optional und dient der
+                  Auswertung je Karte; ein Wert, der keine Nummer ist, bricht
+                  ab. Nicht zusammen mit --stufe push|merge (dort laeuft
+                  gerade, was der Abschluss auslaesst) und nicht zusammen mit
+                  --bereich (zwei Eingrenzungen in einem Lauf). Gesetzt wird
+                  der Schalter allein vom Abschluss einer Karte: Wer ihn
+                  vergisst, prueft mehr.
   --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
                   wackligen Test.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
-(Kommandostring, { cmd, areas }, { cmd, always } oder { cmd, stufe }) und
+(Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
+und 'nichtBeimAbschluss': ${NICHT_BEIM_ABSCHLUSS.join(" | ")} — die Pruefung
+zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus) und
 'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
 Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 'frontend/**'.
@@ -279,7 +391,17 @@ function ladeConfig() {
  */
 function normalisiere(check) {
   const objekt = typeof check === "string" ? { cmd: check } : check;
-  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0] };
+  // Ein unbekannter Wert bricht ab wie eine unbekannte Stufe (Issue #946): Er bliebe
+  // sonst wirkungslos, die Pruefung liefe beim Abschluss weiter mit, und der Autor der
+  // Config haette den Gegenteil-Effekt bestellt, ohne es zu merken. Hier und nicht in
+  // einer eigenen Regel darunter, weil der Wert genau hier durch die eine Bahn geht,
+  // durch die auch die fehlende Stufe geht.
+  const nichtBeimAbschluss = objekt.nichtBeimAbschluss ?? null;
+  if (nichtBeimAbschluss !== null && !NICHT_BEIM_ABSCHLUSS.includes(nichtBeimAbschluss)) {
+    const genannt = typeof nichtBeimAbschluss === "string" ? `'${nichtBeimAbschluss}'` : JSON.stringify(nichtBeimAbschluss);
+    fail(`Unbekannter Wert ${genannt} fuer nichtBeimAbschluss bei Pruefung '${objekt.cmd}'. Erwartet: ${NICHT_BEIM_ABSCHLUSS.join(", ")}.`);
+  }
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss };
 }
 
 /**
@@ -320,6 +442,52 @@ function pruefeGuete(checks) {
   if (traeger[0]?.stufe === "merge") {
     fail(`Die Guetemessung '${traeger[0].cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: paket oder push.`);
   }
+}
+
+/**
+ * Die Achse `nichtBeimAbschluss` gehoert an die Paketstufe (Issue #946, Plan #944).
+ *
+ * An einem Eintrag der Stufe `push` oder `merge` sagt sie nichts: Dort laeuft die
+ * Pruefung beim Abschluss ohnehin nicht, die Stufe hat es schon entschieden. Ein Feld,
+ * das nichts bewirkt, ist entweder ein Irrtum ueber die Achse oder ein Rest — beides
+ * faellt hier auf und nicht erst dem naechsten Leser der Config. Derselbe Weg wie beim
+ * unbekannten Bereichsnamen: Abbruch statt stiller Wirkungslosigkeit.
+ *
+ * Diese Regel gilt UNBEDINGT, weil sie eine Aussage ueber die Config selbst ist — anders
+ * als `pruefeAbschlussGate`, das eine Aussage ueber den Abschlusslauf trifft.
+ */
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #949).
+function pruefeNichtBeimAbschlussStufe(checks) {
+  for (const check of checks) {
+    if (!check.nichtBeimAbschluss) continue;
+    if (check.stufe === STUFEN[0]) continue;
+    fail(`Die Pruefung '${check.cmd}' traegt nichtBeimAbschluss und stufe '${check.stufe}' — dort laeuft sie beim Abschluss ohnehin nicht. Die Achse gilt fuer die Stufe '${STUFEN[0]}'.`);
+  }
+}
+
+/**
+ * Das Gate des Abschlusses (Issue #946, Plan #944, E4): Ein Abschlusslauf laesst die
+ * Guetemessung und jede Pruefung mit `nichtBeimAbschluss` aus. Traegt JEDER Eintrag der
+ * Paketstufe eines von beiden, bleibt nichts uebrig — der Lauf waere gruen, weil er nichts
+ * gefahren hat, und ein leeres Gate faellt an nichts auf.
+ *
+ * Geprueft wird NUR im Abschlusslauf, nicht bei jedem Aufruf. Dieselbe Config bleibt fuer
+ * jeden anderen Lauf gueltig, und sie ist es auch: Ohne den Schalter laufen beide
+ * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem `/local-check` oder einem Commit
+ * von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
+ * schliesst die einseitige Richtung des Plans aus: Wer den Schalter nicht setzt, prueft mehr.
+ *
+ * Eine Config OHNE Paketstufen-Eintrag faellt hier nicht durch: Sie hatte nie ein Gate,
+ * die neue Achse aendert daran nichts, und der Zustand hat seine eigene Meldung im
+ * Start-Guard des Nacht-Runners.
+ */
+// SYNC: als Warnung vor dem Speichern in kit/einstellungen.mjs (Issue #949), als Halt im
+// Start-Guard von kit/night.mjs (Issue #950).
+function pruefeAbschlussGate(checks) {
+  const paketstufe = checks.filter((check) => check.stufe === STUFEN[0]);
+  if (paketstufe.length === 0) return;
+  if (paketstufe.some((check) => !check.nichtBeimAbschluss && !check.guete)) return;
+  fail(`Kein Eintrag der Stufe '${STUFEN[0]}' laeuft beim Abschluss: jeder traegt nichtBeimAbschluss oder einen guete-Block. Damit hat der Abschluss eines Arbeitspakets kein Gate.`);
 }
 
 // --- Muster ----------------------------------------------------------------
@@ -370,19 +538,47 @@ export function bereicheVorbereiten(checkAreas) {
  * Ordnet jede geaenderte Datei ihren Bereichen zu. Die erste Datei, die kein
  * einziges Muster trifft, wird als `ohneMuster` gemeldet — sie loest den vollen
  * Umfang aus und gehoert in den Grund, sonst weiss niemand, welches Muster fehlt.
+ *
+ * Daneben steht `ohneZuordnung` mit ALLEN solchen Dateien (Issue #922, Plan
+ * #917, E8): Der Beobachter fragt, welche Dateien kein Muster finden — nicht,
+ * welche es als erste tat. Beides nebeneinander und nicht das eine aus dem
+ * anderen: Der Grund-Text ist Text fuer Menschen und wird woertlich gelesen, die
+ * Liste sind Daten. Wer die Liste aus dem Satz parsen muesste, haette beim ersten
+ * Umformulieren des Satzes eine stille Fehlmessung.
+ *
+ * Die dritte Antwort ist `ohnePruefung` (Issue #934, Plan #930, E1): eine Datei,
+ * zu der es ausdruecklich nichts zu pruefen gibt. Sie zaehlt weder als beruehrt
+ * noch als unzugeordnet und traegt ihren Grund mit sich — die Ausnahme von der
+ * Regel „im Zweifel laeuft alles" ist nur ertraeglich, wenn sie sich begruendet.
  */
-function zuordnen(dateien, bereichsdefinition) {
+function zuordnen(dateien, bereichsdefinition, freistellungen = []) {
   const beruehrt = new Set();
-  let ohneMuster = null;
+  const ohneZuordnung = [];
+  const ohnePruefung = [];
   for (const pfad of dateien) {
     const treffer = bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
-    if (treffer.length === 0) {
-      ohneMuster ??= pfad;
+    // HIER wirkt der Vorrang aus Plan #930, E3: Trifft eine Datei beide Musterarten,
+    // gewinnt `checkAreas`, und die Freistellung bleibt fuer sie wirkungslos. Die
+    // Auswahl darf nur in eine Richtung irren, naemlich zu mehr Pruefung. Andersherum
+    // machte ein zu weit geratenes `ohnePruefung`-Muster einen ganzen Bereich still ab
+    // — und ein Bereich, der nicht mehr laeuft, faellt an nichts auf ausser an der Zeit.
+    if (treffer.length > 0) {
+      for (const bereich of treffer) beruehrt.add(bereich.name);
       continue;
     }
-    for (const bereich of treffer) beruehrt.add(bereich.name);
+    const frei = freistellungen.find((f) => f.regex.test(pfad));
+    if (frei) {
+      ohnePruefung.push({ pfad, grund: frei.grund });
+      continue;
+    }
+    ohneZuordnung.push(pfad);
   }
-  return { beruehrt, ohneMuster };
+  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung };
+}
+
+/** Die pruefungsfreien Eintraege aus der Config als fertige Regexe samt Grund (Issue #934). */
+function freistellungenVorbereiten(ohnePruefung) {
+  return (ohnePruefung ?? []).map((e) => ({ regex: globZuRegex(e.muster), grund: e.grund }));
 }
 
 // --- Aenderungen -----------------------------------------------------------
@@ -493,8 +689,21 @@ function entscheidung(check, beruehrt) {
  * Arbeitspaket gemessen, kein Veroeffentlichungsstand. Der Eintrag behaelt
  * seinen `guete`-Block, damit `ausfuehren` die Auswertung nicht ein zweites Mal
  * aus der Config lesen muss.
+ *
+ * Der ABSCHLUSSLAUF (Issue #946, Plan #944) laesst zwei Gruppen aus, und beide stehen an
+ * genau bemessener Stelle:
+ *   - Die GUETEMESSUNG (E3) faellt unbedingt weg, auch wenn keine Testpruefung wegfiel:
+ *     Ihr Anteil entsteht aus der vollstaendigen Testmenge, und ein Anteil aus einem
+ *     verkuerzten Lauf waere nicht dieselbe Zahl, sondern eine andere Groesse mit
+ *     demselben Namen. Der Zweig steht UNTER dem Zweig fuer die Veroeffentlichungsstufen:
+ *     Dort laeuft sie weiter immer, und `--abschluss` kommt dort ohnehin nicht vor.
+ *   - `nichtBeimAbschluss` faellt weg, und zwar VOR der Bereichsauswahl: Sonst stuende im
+ *     Grund "Bereich unberuehrt", obwohl die Pruefung auch im beruehrten Bereich nicht
+ *     gelaufen waere — dieselbe Falle, die schon die Stufenauswahl nach oben gezogen hat.
+ *     Unter der Stufenauswahl dagegen bleibt er: Wer ohnehin nicht dran ist, braucht keinen
+ *     zweiten Grund.
  */
-function verteilen(checks, stufe, entscheiden) {
+function verteilen(checks, stufe, entscheiden, abschluss = false) {
   const laufen = [];
   const ausgelassen = [];
   const gefahren = STUFEN.indexOf(stufe);
@@ -502,10 +711,14 @@ function verteilen(checks, stufe, entscheiden) {
     let ergebnis;
     if (check.guete && stufe !== STUFEN[0]) {
       ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
-    } else if (STUFEN.indexOf(check.stufe) <= gefahren) {
-      ergebnis = entscheiden(check);
-    } else {
+    } else if (check.guete && abschluss) {
+      ergebnis = { laeuft: false, grund: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge" };
+    } else if (STUFEN.indexOf(check.stufe) > gefahren) {
       ergebnis = { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+    } else if (check.nichtBeimAbschluss && abschluss) {
+      ergebnis = { laeuft: false, grund: `Abschlusslauf: ${check.nichtBeimAbschluss}, laeuft beim Veroeffentlichen` };
+    } else {
+      ergebnis = entscheiden(check);
     }
     const eintrag = { cmd: check.cmd, stufe: check.stufe, grund: ergebnis.grund };
     if (check.guete) eintrag.guete = check.guete;
@@ -514,9 +727,29 @@ function verteilen(checks, stufe, entscheiden) {
   return { laufen, ausgelassen };
 }
 
-function bauen({ basis, stufe, geaendert = [], bereiche = [], laufen = [], ausgelassen = [],
-  vollerUmfang = false, leeresPaket = false }) {
-  return { basis, stufe, geaendert, bereiche, laufen, ausgelassen, vollerUmfang, leeresPaket };
+/**
+ * `ohneZuordnung` hat die Vorgabe `[]` und wird nie aus etwas anderem erschlossen
+ * (Issue #922): Ein voller Umfang wegen eines nicht aufloesbaren Ankers kennt gar
+ * keine Dateiliste — dort stuende sonst ein erfundener Eintrag, und der Beobachter
+ * zaehlte eine Luecke, die es nicht gibt. `ohnePruefung` steht aus demselben Grund
+ * mit derselben Vorgabe daneben (Issue #934).
+ */
+function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
+  laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null,
+  abschluss = false }) {
+  // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
+  // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
+  // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
+  // dem Anker und saehe darum aus wie ein vollstaendiger Lauf. Zwei Leser brauchen den
+  // Unterschied — die Wiederverwendung darf ein eingegrenztes Ergebnis nicht fuer einen
+  // vollen Lauf ausgeben (frueheresErgebnis), und das Commit-Gate darf auf ihm nicht
+  // committen lassen (.githooks/gate.mjs).
+  //
+  // `abschluss` steht aus demselben Grund daneben (Issue #946): Ein Abschlusslauf laesst
+  // Pruefungen aus und saehe ohne das Feld aus wie ein vollstaendiger. Zwei Leser brauchen
+  // es — die Wiederverwendung (`frueheresErgebnis`) und die Auswertung, die je Karte
+  // rechnet.
+  return { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl, abschluss };
 }
 
 function planen(args) {
@@ -525,6 +758,23 @@ function planen(args) {
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
   pruefeGuete(checks);
+  pruefeNichtBeimAbschlussStufe(checks);
+
+  // Der Abschlusslauf (Issue #946): Er schliesst genau ein Arbeitspaket ab und ist der
+  // einzige Lauf, der die Zusammenspiel-Pruefungen auslassen darf. Sein Gate wird hier
+  // geprueft und nur hier — die Begruendung steht an `pruefeAbschlussGate`.
+  const abschluss = args.abschluss === true;
+  if (abschluss) pruefeAbschlussGate(checks);
+
+  // Derselbe Weg wie beim vertippten Bereichsnamen einer Pruefung: Abbruch statt
+  // stiller Wahl. Ein Tippfehler im Flag liefe sonst auf einen Bereich, den keine
+  // Pruefung kennt — es liefe nichts ausser `always`, und der Aufrufer hielte die
+  // Gruppe fuer gefahren.
+  const bereichWahl = args.bereich ?? null;
+  if (bereichWahl !== null && !Object.hasOwn(checkAreas, bereichWahl)) {
+    const namen = Object.keys(checkAreas);
+    fail(`Unbekannter Bereich '${bereichWahl}'. Konfiguriert in checkAreas: ${namen.length > 0 ? namen.join(", ") : "keiner"}.`);
+  }
 
   const stufe = args.stufe ?? STUFEN[0];
   const refText = args.since ?? "HEAD";
@@ -535,14 +785,44 @@ function planen(args) {
     // nicht gewusst.
     const grund = `voller Umfang: Anker '${refText}' laesst sich nicht aufloesen`;
     return bauen({
-      basis: refText, stufe, vollerUmfang: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis: refText, stufe, vollerUmfang: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   const geaendert = geaenderteDateien(basis);
-  const { beruehrt, ohneMuster } = zuordnen(geaendert, bereicheVorbereiten(checkAreas));
+  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung } = zuordnen(
+    geaendert,
+    bereicheVorbereiten(checkAreas),
+    freistellungenVorbereiten(config.ohnePruefung),
+  );
   const bereiche = [...beruehrt].sort(vergleicheText);
+
+  // Der BEREICHSLAUF (Issue #922, Plan #917, E3): Nicht der Diff sagt, welche
+  // Bereiche beruehrt sind, sondern der Aufrufer. Das ist der sanktionierte Weg
+  // fuer den Fall, dass fuer die geaenderte Datei nur die vollstaendige Gruppe
+  // existiert — ohne ihn liefe dieselbe Gruppe von Hand am Kommando vorbei, und
+  // niemand koennte Verstoss und Notwendigkeit auseinanderhalten.
+  //
+  // Die Wahl steht VOR den Sonderwegen darunter (Veroeffentlichungsstufe, leeres
+  // Paket, Datei ohne Muster): Jeder von ihnen wuerde die Eingrenzung wieder
+  // aufheben, um die es beim Aufruf gerade ging. Nicht davor steht der
+  // Zweifelsfall des nicht aufloesbaren Ankers — dort ist gar nichts bekannt, und
+  // dieses Kommando irrt in diese Richtung nie.
+  //
+  // Die STUFENACHSE bleibt unberuehrt: `--bereich` beantwortet, OB eine Pruefung
+  // betroffen ist, `--stufe` weiter, WANN sie an der Reihe ist. Der Grund traegt
+  // das Praefix, damit im Bericht steht, warum die Auswahl so ausfiel.
+  if (bereichWahl !== null) {
+    const gewaehlt = new Set([bereichWahl]);
+    return bauen({
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss,
+      ...verteilen(checks, stufe, (check) => {
+        const ergebnis = entscheidung(check, gewaehlt);
+        return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
+      }, abschluss),
+    });
+  }
 
   // Die Veroeffentlichungsstufen faehren jede faellige Pruefung (Plan #753, E12;
   // fuer die Push-Stufe Plan #843, E9 nach Fachplan #837, AK 11): Ihr Ergebnis
@@ -564,30 +844,30 @@ function planen(args) {
   if (stufe === "push" || stufe === "merge") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   if (geaendert.length === 0) {
     const grund = `leeres Paket: keine Aenderung seit ${basis}`;
     return bauen({
-      basis, stufe, leeresPaket: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: false, grund })),
+      basis, stufe, leeresPaket: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: false, grund }), abschluss),
     });
   }
 
   if (ohneMuster !== null) {
     const grund = `voller Umfang: '${ohneMuster}' trifft kein Muster`;
     return bauen({
-      basis, stufe, geaendert, bereiche, vollerUmfang: true,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund })),
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss,
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche,
-    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt)),
+    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt), abschluss),
   });
 }
 
@@ -855,24 +1135,40 @@ function kommandoMaskieren(cmd) {
 /**
  * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
  *
- * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer. Ein Kommando
- * mit dem Ergebnis `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als
- * Zeile gezaehlt senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht
- * lief.
+ * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer — und dahinter
+ * Anlass, Laufkennung und Karte (Issue #948). Ein Kommando mit dem Ergebnis
+ * `nicht gestartet` bekommt keine — es ist keine Ausfuehrung, und als Zeile gezaehlt
+ * senkte es den Anteil der Beanstandungen einer Pruefung, die gar nicht lief.
  *
  * Angehaengt, nie geleert — sonst saehe die Auswertung nur die letzte Runde, und genau
  * die zweite Runde nach einem Fix ist der Fall, um den es geht.
+ *
+ * Die drei hinteren Spalten stehen HINTEN und nicht in einer zweiten Protokolldatei
+ * (Issue #948, E9): Jedes bestehende Protokoll bleibt lesbar, weil die vier vorderen
+ * Spalten Stellung und Bedeutung behalten und eine aeltere Zeile die hinteren einfach
+ * nicht traegt. Beim Lesen sind darum alle drei optional.
+ *
+ * Warum sie ueberhaupt gebraucht werden: Ein Abschlusslauf schreibt mehrere Zeilen.
+ * Ohne die Laufkennung — fuer alle Zeilen EINES `run`-Aufrufs dieselbe — liesse sich
+ * "je Lauf" nicht von "je Kommando" trennen, und der Nenner jeder Kennzahl je Karte
+ * waere falsch. Die leere `karte` ist kein Nullwert, sondern "nicht gemessen": Eine
+ * Zeile ohne Nummer geht in keine Rechnung je Karte ein.
  *
  * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
  * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
  * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
-function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, jetzt = new Date()) {
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, jetzt = new Date()) {
   const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
+  const { anlass, lauf, karte } = herkunft;
   try {
     mkdirSync(dirname(pfad), { recursive: true });
-    appendFileSync(pfad, `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\n`, "utf-8");
+    appendFileSync(
+      pfad,
+      `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\t${anlass}\t${lauf}\t${karte}\n`,
+      "utf-8",
+    );
   } catch (err) {
     process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
   }
@@ -914,8 +1210,8 @@ function schreibeZusammenfassung(daten) {
  * uebernommenes Ergebnis bezoege sich dort auf eine Auswahl, die es nicht mehr
  * gibt.
  *
- * Gehasht werden die NORMALISIERTEN Eintraege und die Bereiche, also genau das,
- * woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
+ * Gehasht werden die NORMALISIERTEN Eintraege, die Bereiche und die pruefungsfreien
+ * Muster (Issue #934), also genau das, woraus die Auswahl entsteht. Ueber die normalisierte Form, damit der Wechsel
  * von der String-Form zu `{ cmd }` — der nichts bedeutet — keinen Lauf erzwingt.
  * Alles uebrige in der Config (Trigger, Modelle, Pfade) bleibt draussen: Es
  * aendert an den Pruefungen nichts.
@@ -925,6 +1221,7 @@ function configFingerabdruck() {
   const inhalt = JSON.stringify({
     buildChecks: (config.buildChecks ?? []).map((c) => normalisiere(c)),
     checkAreas: config.checkAreas ?? {},
+    ohnePruefung: config.ohnePruefung ?? [],
   });
   return createHash("sha256").update(inhalt).digest("hex");
 }
@@ -971,12 +1268,37 @@ function frueheresErgebnis(auswahl, hashes, configHash) {
   if (alt === null || typeof alt !== "object") return null;
   if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return null;
   if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return null;
+  // Die Eingrenzung gehoert in den Vergleich (Issue #922, Code-Review): Ohne sie
+  // uebernimmt ein uneingeschraenkter Lauf das Ergebnis eines vorangegangenen
+  // `--bereich`-Laufs, weil Basis, Stufe, Dateien und Hashes identisch sind — die
+  // faelligen Pruefungen der uebrigen Bereiche liefen dann nie. `?? null` liest eine
+  // Zusammenfassung aus einer Fassung vor diesem Feld als uneingeschraenkt.
+  if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return null;
+  // Aus demselben Grund die Abschlussmarke (Issue #946): Ein Abschlusslauf faehrt eine
+  // kleinere Auswahl, bei gleicher Basis, gleicher Stufe, gleichen Dateien und gleichen
+  // Hashes. Ohne diesen Vergleich uebernaehme er die Kommandoliste des vollen Laufs — und
+  // umgekehrt liesse der volle Lauf die verschobenen Pruefungen fuer immer aus. `?? false`
+  // liest eine Zusammenfassung aus einer Fassung vor diesem Feld als vollen Lauf.
+  if ((alt.abschluss ?? false) !== (auswahl.abschluss ?? false)) return null;
   if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
   if (typeof alt.zeitpunkt !== "string") return null;
   if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
   if (!hashesGleich(alt.hashes, hashes)) return null;
   return alt;
 }
+
+/**
+ * Der Satzteil, an dem eine Uebernahme in der Ausgabe erkennbar ist (Issue #926).
+ *
+ * Er steht als Konstante, weil ihn ein zweiter Leser braucht: Der Prueflauf-Zaehler des
+ * Nacht-Runners sieht vom Abschlussversuch nur den Bash-Aufruf und seine Ausgabe, und ein
+ * uebernommener Lauf soll dort als Versuch OHNE Dauer zaehlen — `uebernehmen` reicht die
+ * Werte des frueheren Laufs weiter, eine Spanne waere geerbt und nicht gemessen.
+ */
+// SYNC: dieselbe Marke steht in kit/night.mjs als UEBERNAHME_MARKE; der Abgleich ist ein
+// Test in test/night-prueflaeufe.test.mjs. Ein Import waere die bessere Kopplung, aber
+// night.mjs laeuft in Projekten, die checks.mjs nicht mitinstalliert haben muessen.
+export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
 
 /**
  * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
@@ -1006,11 +1328,15 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
     abgeschlossen: true,
     dauerGesamtMs: frueher.dauerGesamtMs ?? null,
     ...(frueher.guete ? { guete: frueher.guete } : {}),
+    // Die Verursacher werden mitgereicht wie die Guete (Issue #947): Derselbe Stand hat
+    // dieselben Karten hinter sich, und ein uebernommener roter Lauf ohne das Feld sahe
+    // aus, als waere die Frage nie gestellt worden.
+    ...(frueher.verursacher ? { verursacher: frueher.verursacher } : {}),
     uebernommen: original,
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   process.stdout.write(
-    `Stand unveraendert seit ${original}: Ergebnis uebernommen (${befund}). Neu pruefen mit --frisch.\n`,
+    `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
   );
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return ungruen === null ? 0 : 1;
@@ -1053,6 +1379,180 @@ function bewerten(eintrag, gruen, ausgabe) {
   return { bestanden: bestanden && guete.erfuellt, guete };
 }
 
+// --- Verursachersuche (Issue #947) -----------------------------------------
+
+/**
+ * Trennzeichen fuer die Ausgabe von `git log`. Zwei Steuerzeichen und kein Text:
+ * Betreff und Rumpf einer Commit-Botschaft sind frei geschriebene Prosa, und jedes
+ * druckbare Trennzeichen kaeme darin irgendwann selbst vor. Der Rumpf traegt eigene
+ * Zeilenumbrueche — deshalb braucht es neben dem Feldtrenner einen Satztrenner.
+ */
+const LOG_FELD = "\x1f";
+const LOG_SATZ = "\x1e";
+
+/** Der Grund eines gescheiterten git-Aufrufs; ein stummes Scheitern nennt seinen Rueckgabewert. */
+function gitGrund(res) {
+  const text = (res.stderr || "").trim();
+  return text !== "" ? text : `Rueckgabewert ${res.status}`;
+}
+
+/**
+ * Die Kartennummer einer Commit-Botschaft oder `null` (Plan #944, E6).
+ *
+ * Zwei Muster, in dieser Reihenfolge: `(Issue #<n>)` im Betreff, wie der
+ * implement-Skill ihn schreibt, und ergaenzend `Refs #<n>` im Rumpf. Der Betreff
+ * gewinnt — er ist die Zeile, die den Commit benennt, waehrend ein `Refs` im Rumpf
+ * auch auf ein Nachbar-Issue zeigen kann.
+ *
+ * Bewusst KEIN Blick aufs Board (E6): `checks.mjs` laeuft im Commit-Gate und in jeder
+ * Session und kommt ohne Board und ohne Netz aus. Der Preis ist der Commit ohne
+ * erkennbare Nummer — und der verschwindet nicht, sondern erscheint mit seiner Kurz-SHA.
+ */
+function kartennummerAusBotschaft(betreff, rumpf) {
+  const imBetreff = /\(Issue #(\d+)\)/.exec(betreff);
+  if (imBetreff !== null) return imBetreff[1];
+  const imRumpf = /(?:^|\s)Refs #(\d+)/.exec(rumpf);
+  return imRumpf === null ? null : imRumpf[1];
+}
+
+/** Die Commits des Fensters `<basis>..HEAD`, juengster zuerst — oder ein Grund, warum nicht. */
+function commitsSeit(basis) {
+  const res = git("log", `--format=%h${LOG_FELD}%s${LOG_FELD}%b${LOG_SATZ}`, `${basis}..HEAD`);
+  if (res.status !== 0) return { fehler: `git log ${basis}..HEAD schlug fehl: ${gitGrund(res)}` };
+  const commits = [];
+  for (const satz of res.stdout.split(LOG_SATZ)) {
+    if (satz.trim() === "") continue;
+    const [sha, betreff, rumpf = ""] = satz.replace(/^\n+/, "").split(LOG_FELD);
+    commits.push({ sha, karte: kartennummerAusBotschaft(betreff, rumpf) });
+  }
+  return { commits };
+}
+
+/**
+ * Die Dateien eines Commits. `-z` statt der zitierten Vorgabeform, damit ein Pfad mit
+ * Umlaut oder Leerzeichen roh ankommt und sein Muster findet.
+ *
+ * Ein Merge-Commit listet hier nichts (der Diff haette zwei Eltern) und beruehrt damit
+ * keinen Bereich. Das ist hingenommen: Ein Merge traegt keine Kartennummer, und die
+ * Aenderungen, die er zusammenfuehrt, stehen als eigene Commits im Fenster.
+ */
+function dateienDesCommits(sha) {
+  const res = git("show", "--name-only", "--format=", "-z", sha);
+  if (res.status !== 0) return { fehler: `git show ${sha} schlug fehl: ${gitGrund(res)}` };
+  const dateien = res.stdout
+    .split("\0")
+    .filter((pfad) => pfad !== "")
+    .map((pfad) => pfad.replaceAll("\\", "/"));
+  return { dateien };
+}
+
+/**
+ * Fasst die Commits des Fensters zu Karten zusammen: eine Gruppe je Kartennummer, und
+ * ein Commit ohne Nummer bildet seine eigene. Die Reihenfolge ist die von `git log` —
+ * juengster zuerst, weil der letzte Stand der naechstliegende Verdacht ist.
+ */
+function kartenGruppen(basis) {
+  const log = commitsSeit(basis);
+  if (log.fehler !== undefined) return { fehler: log.fehler };
+  const gruppen = [];
+  const nachKarte = new Map();
+  for (const { sha, karte } of log.commits) {
+    let gruppe = karte === null ? undefined : nachKarte.get(karte);
+    if (gruppe === undefined) {
+      gruppe = { karte, shas: [], dateien: new Set() };
+      gruppen.push(gruppe);
+      if (karte !== null) nachKarte.set(karte, gruppe);
+    }
+    gruppe.shas.push(sha);
+    const stand = dateienDesCommits(sha);
+    if (stand.fehler !== undefined) return { fehler: stand.fehler };
+    for (const pfad of stand.dateien) gruppe.dateien.add(pfad);
+  }
+  return { gruppen };
+}
+
+/**
+ * Ob eine Karte als Verursacherin der roten Pruefung gilt (Plan #944, E7).
+ *
+ * Grosszuegig, in derselben Richtung wie der Prueflauf selbst: Eine Pruefung ohne
+ * Bereichszuordnung ist von jeder Aenderung betroffen — das ist die Bedeutung der Form —,
+ * und eine Karte mit einer Datei ohne Muster loest im Prueflauf den vollen Umfang aus,
+ * gilt hier also fuer jede rote Pruefung als beruehrt. Keine Karte zu nennen behauptete,
+ * es gebe keinen Verdaechtigen; AK 4 verlangt bei Mehrdeutigkeit ausdruecklich alle.
+ */
+function gruppeTrifft(check, gruppe) {
+  if (gruppe.ohneMuster !== null) return true;
+  if (check.always || !check.areas) return true;
+  return check.areas.some((name) => gruppe.beruehrt.has(name));
+}
+
+/**
+ * Die Karten, die eine rote Pruefung des Push-Laufs beruehrt haben (Issue #947, AK 4
+ * des Fachplans #938).
+ *
+ * Nur bei `--stufe push`, und nur zu einem roten Befund:
+ *   - Der Anker ist der `--since`-Wert des Laufs, den `/push-main` schon heute als
+ *     `git merge-base HEAD origin/<mainBranch>` uebergibt (E5). Eine eigene Marke im
+ *     Projekt waere dieselbe Wahrheit an einem zweiten Ort und liefe auseinander.
+ *   - Die Freigabestufe hat keinen solchen Anker (E5): `/merge-production` legt den
+ *     Worktree auf `origin/<mainBranch>`, die Basis ist `HEAD` selbst, und
+ *     `<basis>..HEAD` waere leer. Dort brauchte die Suche `origin/<productionBranch>`,
+ *     und das ist eine andere Frage als diese.
+ *   - Ohne roten Befund gibt es nichts zu erklaeren.
+ *
+ * Je roter Pruefung steht entweder eine nichtleere Kartenliste oder ein `hinweis` —
+ * nie eine leere Liste: "keine gefunden" und "nicht bestimmbar" sind Verschiedenes, und
+ * eine leere Liste liesse sich als beides lesen.
+ *
+ * Bei `vollerUmfang` laeuft die Suche nicht (E7): An der Push-Stufe entsteht das Feld
+ * allein aus einem nicht aufloesbaren Anker, und dann hat `<basis>..HEAD` keinen linken
+ * Rand — es gibt keine Menge "seit dem Anker", aus der alle genannt werden koennten.
+ * `auswahl.basis` traegt in diesem Fall den `refText` des Aufrufs.
+ *
+ * Die Config wird hier erneut gelesen, weil die Eintraege der Zusammenfassung ihre
+ * `areas` nicht tragen — derselbe Weg wie in `configFingerabdruck`. Findet sich zu einem
+ * Kommando kein Eintrag, gilt es als nicht zugeordnet und damit als von jeder Karte
+ * beruehrt: die sichere Richtung, mehr nennen.
+ */
+function verursacherKarten(auswahl, roteEintraege) {
+  if (auswahl.stufe !== "push" || roteEintraege.length === 0) return null;
+  const alle = (hinweis) => roteEintraege.map((e) => ({ cmd: e.cmd, hinweis }));
+  if (auswahl.vollerUmfang) {
+    return alle(`Verursacher nicht bestimmbar: Anker '${auswahl.basis}' laesst sich nicht aufloesen`);
+  }
+
+  const ermittelt = kartenGruppen(auswahl.basis);
+  if (ermittelt.fehler !== undefined) return alle(`Verursacher nicht bestimmbar: ${ermittelt.fehler}`);
+
+  const config = ladeConfig();
+  const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
+  const bereichsdefinition = bereicheVorbereiten(config.checkAreas ?? {});
+  const freistellungen = freistellungenVorbereiten(config.ohnePruefung);
+  const gruppen = ermittelt.gruppen.map((gruppe) => ({
+    karte: gruppe.karte,
+    shas: gruppe.shas,
+    ...zuordnen([...gruppe.dateien], bereichsdefinition, freistellungen),
+  }));
+
+  return roteEintraege.map((e) => {
+    const check = checks.find((c) => c.cmd === e.cmd) ?? {};
+    const karten = gruppen
+      .filter((gruppe) => gruppeTrifft(check, gruppe))
+      .map((gruppe) => ({ karte: gruppe.karte, shas: gruppe.shas }));
+    return karten.length > 0
+      ? { cmd: e.cmd, karten }
+      : { cmd: e.cmd, hinweis: `Keine abgeschlossene Karte seit ${auswahl.basis} beruehrt diese Pruefung.` };
+  });
+}
+
+/** Die Verursacher einer roten Pruefung als eine Zeile fuer Menschen. */
+function verursacherText(eintrag) {
+  if (eintrag.hinweis !== undefined) return eintrag.hinweis;
+  return eintrag.karten
+    .map((k) => (k.karte === null ? `Commit ohne Karte ${k.shas.join(", ")}` : `Issue #${k.karte} (${k.shas.join(", ")})`))
+    .join(", ");
+}
+
 /**
  * Fuehrt die Auswahl aus `planen` aus und gibt den Exit-Code zurueck.
  *
@@ -1067,6 +1567,245 @@ function bewerten(eintrag, gruen, ausgabe) {
  * Nicht-Ziel "Keine inhaltliche Deutung der Aufrufe" ausschliesst. `checks.mjs`
  * kennt seine Kommandos dagegen beim Namen.
  */
+// --- Die Sperre: ein Prueflauf je Maschine (Issue #958) ---
+//
+// Anlass (kanban-kit, 2026-09-24, Lauf `night-run-2026-09-24-125914`): Zwei Runner
+// fuhren auf EINER Maschine ihre Pruefungen gleichzeitig. Die Testsuite des Kits
+// startet Hunderte Kindprozesse; die Load Average stieg auf 348, und `test:coverage`
+// des anderen Projekts riss mit wechselnden Tests sein Zeitlimit. Die Pruefungen
+// wurden rot, ohne dass die Aenderung schuld war — kein Zeitlimit im Zielprojekt
+// faengt das ab, weil die Ursache ausserhalb des Projekts liegt.
+//
+// Die Sperre liegt MASCHINENWEIT im Temp-Verzeichnis des Nutzers und ausdruecklich
+// nicht im Repository: Der Anlass sind zwei PROJEKTE auf einer Maschine, und eine
+// repo-lokale Datei saehe das andere Projekt nie.
+//
+// Sie ist VORSORGE GEGEN LAST und kein Korrektheitsgate. Daraus folgt jeder ihrer
+// Ausgaenge — und vor allem der letzte: Nach Ablauf der Obergrenze laeuft der
+// Prueflauf TROTZDEM, mit einer Protokollzeile, die das sagt. Unbegrenzt zu warten
+// liefe in das Rundenzeitlimit des Nacht-Runners, und der Lauf zaehlte dann als
+// Fehlschlag der Karte statt als Wartezeit; rot zu melden waere ein Fehlschlag, der
+// nicht am Code liegt. Der Schaden einer Kollision ist ein roter Lauf, der Schaden
+// eines verweigerten Laufs ein roter Lauf ohne Ergebnis. Aus demselben Grund laeuft
+// der Lauf auch dann weiter, wenn sich die Sperre nicht SCHREIBEN laesst.
+//
+// `lockPid` und `prozessLaeuft` stehen hier als eigene Fassung, nach dem Vorbild von
+// `kit/night.mjs` (Umsetzungs-Lock): checks.mjs importiert bewusst nichts aus dem Kit
+// — es wird als CHECKS_MJS_B64 in install.mjs gebacken und muss als Einzeldatei
+// laufen (#440).
+
+/**
+ * Der Sperrpfad: die Umgebungsvariable, sonst die Vorgabe im Temp-Verzeichnis.
+ *
+ * Ein leerer oder nur aus Leerraum bestehender Wert zaehlt wie nicht gesetzt — er
+ * entsteht aus einer fehlgeschlagenen Substitution und schaltete die Sperre sonst
+ * still ab. Dieselbe Haltung wie beim leeren `--since`: im Zweifel die Vorgabe.
+ *
+ * `env` ist ein Parameter und kein Zugriff auf `process.env`, damit der Test beide
+ * Faelle ohne Eingriff in die Prozessumgebung pruefen kann.
+ */
+export function sperrPfad(env = process.env) {
+  const wert = (env[SPERRE_ENV] ?? "").trim();
+  return wert === "" ? join(tmpdir(), SPERRE_DATEI) : wert;
+}
+
+/**
+ * Die Obergrenze der Wartezeit in Millisekunden. Alles, was keine positive Zahl ist
+ * — Text, 0, negativ —, faellt auf die Vorgabe zurueck: Eine Null waere keine
+ * Obergrenze, sondern eine abgeschaltete Sperre.
+ */
+export function sperrGrenzeMs(env = process.env) {
+  const zahl = Number((env[SPERRE_GRENZE_ENV] ?? "").trim());
+  return Number.isFinite(zahl) && zahl > 0 ? zahl : SPERRE_GRENZE_VORGABE_MS;
+}
+
+/**
+ * Die Prozess-Id aus einer Sperrdatei — `null`, wenn es sie nicht gibt, sie nicht
+ * lesbar ist oder nicht als positive ganze Zahl dasteht. Alle drei zaehlen als
+ * verwaist: Eine Sperre, deren Halter nicht benennbar ist, kann niemanden abhalten.
+ *
+ * `0` ist ausdruecklich keine gueltige Id — `process.kill(0, 0)` zielte auf die
+ * eigene Prozessgruppe und meldete damit fuer jede kaputte Datei einen lebenden
+ * Halter.
+ */
+function lockPid(pfad) {
+  try {
+    const pid = Number(readFileSync(pfad, "utf-8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Laeuft der Prozess mit dieser Id noch? `ESRCH` heisst nein; `EPERM` heisst, es gibt
+ * ihn und er gehoert einem anderen Nutzer — das ist keine verwaiste Sperre.
+ */
+function prozessLaeuft(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== "ESRCH";
+  }
+}
+
+/**
+ * Wartet synchron. `Atomics.wait` und kein `spawnSync("sleep")`: Der Zweck des
+ * Wartens ist, die Maschine zu entlasten — ein Kindprozess je halbe Sekunde arbeitete
+ * dagegen. `ausfuehren` ist synchron, ein `await` steht hier also nicht zur Wahl.
+ */
+function schlafeSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Nimmt die Sperre, fuehrt `fn` aus und gibt sie frei — die Freigabe im `finally`
+ * und damit auf JEDEM Weg heraus: gruen, rot, Ausnahme. Eine Freigabe am Ende des
+ * Erfolgspfads liesse die Datei bei jedem roten Lauf liegen, und danach haengt jeder
+ * weitere Lauf auf dieser Maschine: der Runner, `/local-check` und `push main`.
+ *
+ * Gibt zurueck, was `fn` zurueckgibt. Die Sperre aendert am Ausgang des Laufs nichts.
+ *
+ * Freigegeben wird nur die EIGENE Sperre — die Datei muss beim Loslassen noch die
+ * eigene pid tragen. Sonst loeschte ein Lauf, der nach Ablauf der Obergrenze ohne
+ * Sperre weiterfuhr, die Sperre dessen, der sie inzwischen rechtmaessig haelt.
+ *
+ * `pfad`, `grenzeMs`, `melde`, `abstandMs`, `uhr` und `schlafe` sind Parameter allein
+ * der Pruefbarkeit; im Betrieb kommen alle aus der Umgebung.
+ */
+export function mitSperre(fn, {
+  pfad = sperrPfad(),
+  grenzeMs = sperrGrenzeMs(),
+  melde = (satz) => process.stdout.write(satz),
+  abstandMs = SPERRE_ABSTAND_MS,
+  uhr = Date.now,
+  schlafe = schlafeSync,
+} = {}) {
+  const gehalten = sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe });
+  try {
+    return fn();
+  } finally {
+    if (gehalten) sperreFreigeben(pfad, melde);
+  }
+}
+
+/**
+ * Wartet, bis die Sperre frei ist, und nimmt sie. Rueckgabe: ob sie gehalten wird —
+ * `false` heisst, der Lauf faehrt ohne sie (Obergrenze abgelaufen oder Schreibfehler)
+ * und darf sie darum hinterher nicht entfernen.
+ */
+function sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe }) {
+  const beginn = uhr();
+  let gemeldet = false;
+  for (;;) {
+    const pid = lockPid(pfad);
+    if (pid !== null && prozessLaeuft(pid)) {
+      const wartend = aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet });
+      if (!wartend.weiter) return false;
+      gemeldet = wartend.gemeldet;
+      continue;
+    }
+    if (!verwaisteSperreAbraeumen({ pfad, pid, melde })) return false;
+    const ergebnis = sperreAnlegen({ pfad, melde });
+    if (ergebnis !== "rennen-verloren") return ergebnis === "genommen";
+  }
+}
+
+/**
+ * Ein lebender Halter liegt auf der Sperre. Rueckgabe `{ weiter, gemeldet }`:
+ * `weiter: false` heisst, die Obergrenze ist abgelaufen und der Lauf faehrt ohne
+ * Sperre; sonst wurde geschlafen und die naechste Runde ist dran.
+ *
+ * `gemeldet` wandert durch, weil nur die ERSTE Wartezeile ausgegeben wird: Eine Zeile
+ * je halbe Sekunde ersaeufte die Ausgabe des Laufs, um die es dem Leser geht.
+ */
+function aufHalterWarten({ pfad, pid, grenzeMs, melde, abstandMs, uhr, schlafe, beginn, gemeldet }) {
+  const gewartet = uhr() - beginn;
+  if (gewartet >= grenzeMs) {
+    melde(`Sperre ${pfad} nach ${gewartet} ms noch belegt (Prozess ${pid}) — der Lauf faehrt ohne Sperre.\n`);
+    return { weiter: false, gemeldet };
+  }
+  if (!gemeldet) {
+    melde(`Sperre ${pfad} haelt Prozess ${pid} — es wird gewartet (Obergrenze ${grenzeMs} ms).\n`);
+  }
+  schlafe(abstandMs);
+  return { weiter: true, gemeldet: true };
+}
+
+/**
+ * Kein lebender Halter. Liegt die Datei trotzdem, ist sie verwaist oder kaputt —
+ * beides wird abgeraeumt, und beides steht im Protokoll: Eine still entfernte Sperre
+ * waere von einer nie vorhandenen nicht zu unterscheiden.
+ *
+ * Rueckgabe: ob der Weg frei ist. `false` heisst, die Datei liegt noch und liess sich
+ * nicht entfernen — dann faehrt der Lauf ohne Sperre.
+ */
+function verwaisteSperreAbraeumen({ pfad, pid, melde }) {
+  if (!existsSync(pfad)) return true;
+  const grund = pid === null ? "unlesbar" : `verwaist (Prozess ${pid} laeuft nicht)`;
+  try {
+    unlinkSync(pfad);
+    melde(`Sperre ${pfad} war ${grund} — abgeraeumt.\n`);
+    return true;
+  } catch (e) {
+    // Weg ist weg: Hat ein anderer Lauf sie zwischen existsSync und unlinkSync
+    // abgeraeumt, ist das Ziel erreicht und kein Fehler.
+    if (!existsSync(pfad)) return true;
+    melde(`Sperre ${pfad} war ${grund}, liess sich aber nicht abraeumen (${e.code ?? e.message}) — der Lauf faehrt ohne Sperre.\n`);
+    return false;
+  }
+}
+
+/**
+ * Legt die Sperre an. Rueckgabe: `"genommen"`, `"rennen-verloren"` (ein anderer Lauf
+ * war schneller, die naechste Runde sieht neu nach) oder `"fehler"` (der Lauf faehrt
+ * ohne Sperre).
+ *
+ * Erst vollstaendig schreiben, dann atomar verlinken. Ein `writeFileSync(pfad, …,
+ * { flag: "wx" })` waere EIN Schritt zu wenig: Zwischen dem Anlegen der Datei und dem
+ * Schreiben ihres Inhalts ist sie LEER, und ein zweiter Lauf, der genau dann
+ * hineinsieht, haelt sie fuer unlesbar und raeumt sie ab — beide fahren gleichzeitig
+ * los. Genau dieses Rennen trat in den Tests dieses Pakets ein.
+ *
+ * `linkSync` legt den Namen mit dem Inhalt in einem Zug an und scheitert mit EEXIST,
+ * wenn er schon belegt ist. Damit entscheidet das Dateisystem das Rennen zwischen zwei
+ * Laeufen, die gleichzeitig eine freie Sperre vorfinden. Die Hilfsdatei traegt die
+ * eigene pid im Namen, liegt im Verzeichnis der Sperre (Hardlinks gehen nicht ueber
+ * Dateisystemgrenzen) und wird in jedem Fall entfernt — der verlinkte Name behaelt
+ * den Inhalt.
+ */
+function sperreAnlegen({ pfad, melde }) {
+  const hilfsdatei = `${pfad}.${process.pid}`;
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(hilfsdatei, `${process.pid}\n`, "utf-8");
+    linkSync(hilfsdatei, pfad);
+    return "genommen";
+  } catch (e) {
+    if (e.code === "EEXIST") return "rennen-verloren";
+    melde(`Sperre ${pfad} liess sich nicht schreiben (${e.code ?? e.message}) — der Lauf faehrt ohne Sperre.\n`);
+    return "fehler";
+  } finally {
+    try {
+      unlinkSync(hilfsdatei);
+    } catch { /* nie angelegt oder schon weg */ }
+  }
+}
+
+/**
+ * Gibt die eigene Sperre frei. Ein Fehler dabei bleibt eine Protokollzeile: Die
+ * Freigabe steht im `finally` und darf das Ergebnis des Laufs nicht ueberschreiben.
+ */
+function sperreFreigeben(pfad, melde) {
+  try {
+    if (lockPid(pfad) !== process.pid) return;
+    unlinkSync(pfad);
+  } catch (e) {
+    melde(`Sperre ${pfad} liess sich nicht freigeben (${e.code ?? e.message}) — der naechste Lauf raeumt sie als verwaist ab.\n`);
+  }
+}
+
 function ausfuehren(args) {
   const auswahl = planen(args);
   const env = { ...process.env, ...settingsEnv() };
@@ -1098,6 +1837,14 @@ function ausfuehren(args) {
     process.stdout.write(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
   }
 
+  // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
+  // geprueft wird, ist die einzige Ausnahme von der Regel „im Zweifel laeuft alles".
+  // Sie muss in jedem Lauf dastehen, samt Grund — eine stille Ausnahme waere genau
+  // die Sorte Auslassung, die niemandem auffaellt.
+  for (const e of auswahl.ohnePruefung) {
+    process.stdout.write(`ohne Pruefung: ${e.pfad} — ${e.grund}\n`);
+  }
+
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
     process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
@@ -1110,9 +1857,44 @@ function ausfuehren(args) {
   const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
   if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
 
+  // Ab hier laufen Kommandos, und erst ab hier gilt die Sperre (Issue #958): Ein
+  // uebernommenes Ergebnis fuehrt keines aus und erzeugt keine Last — es muss auf
+  // nichts warten. Der Schnitt zwischen `ausfuehren` und `kommandosFahren` liegt
+  // genau darum hier und nicht weiter oben.
+  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }));
+}
+
+/**
+ * Faehrt die ausgewaehlten Kommandos und hinterlaesst den Bericht. Rueckgabe: der
+ * Exitcode des Laufs.
+ *
+ * Eigene Funktion allein, damit `mitSperre` sie als Ganzes umschliessen kann — die
+ * Sperre muss auf jedem Weg heraus freigegeben werden, auch auf dem der Ausnahme.
+ */
+function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
+
+  // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und
+  // an jede Zeile gegeben, damit alle Zeilen EINES `run`-Aufrufs dieselbe Laufkennung
+  // tragen — daran haengt die Trennung von "je Lauf" und "je Kommando".
+  //
+  // Der Anlass kommt aus der Auswahl und nicht aus den rohen Argumenten: `--abschluss`
+  // schlaegt die Stufe, weil ein Abschlusslauf genau der Lauf ist, der Pruefungen
+  // auslaesst — und ohne den Schalter ist die Stufe der Anlass (`paket`, `push`, `merge`).
+  // Die Laufkennung ist derselbe `zeitpunkt`, den die Zusammenfassung traegt; ein zweiter,
+  // eigener Zeitstempel bezeugte einen anderen Moment als sie.
+  const herkunft = {
+    anlass: auswahl.abschluss ? "abschluss" : auswahl.stufe,
+    lauf: zeitpunkt,
+    karte: args.karte ?? "",
+  };
+
   let rot = false;
   let guete = null;
+  // Die Verursacher stehen erst am Ende fest (Issue #947): Vor dem roten Befund gibt es
+  // nichts zu erklaeren, und `schreibeStand` liest die Variable, statt sie zu bekommen —
+  // so traegt jede Fassung der Zusammenfassung den Stand, den sie bezeugt.
+  let verursacher = null;
 
   // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
   // vor dem ersten Kommando und wird vor jedem weiteren ueberschrieben, statt erst am
@@ -1132,6 +1914,7 @@ function ausfuehren(args) {
   const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
+    ...(verursacher ? { verursacher } : {}),
   });
   schreibeStand(false);
 
@@ -1150,10 +1933,19 @@ function ausfuehren(args) {
     // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
     // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
-    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs);
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft);
     rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
+
+  // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
+  // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
+  // dann nicht, wenn ein git-Aufruf dabei scheitert. Dieselbe Haltung wie beim
+  // Ausfuehrungsprotokoll: Buchhaltung, keine Bedingung.
+  verursacher = verursacherKarten(auswahl, laufen.filter((e) => e.ergebnis === "rot"));
+  for (const e of verursacher ?? []) {
+    process.stdout.write(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
+  }
 
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
   // zu Ende gefahren. Auch bei rotem Abbruch geschrieben — und beim leeren Paket
@@ -1170,9 +1962,49 @@ function ausfuehren(args) {
 
 // --- CLI -------------------------------------------------------------------
 
+/**
+ * Die optionale Kartennummer hinter `--abschluss` oder `null` (Issue #946).
+ *
+ * Sie ist OPTIONAL: Der Schalter wirkt auch ohne sie, und ein Aufruf ohne Nummer soll
+ * nicht daran scheitern, dass die Auswertung je Karte ihn nicht zuordnen kann. Ein Wert,
+ * der keine Nummer ist, ist dagegen ein Fehler — er waere entweder ein vertipptes Flag
+ * oder eine Nummer, die niemand je zuordnet. Ein folgendes `--…` ist das naechste Flag
+ * und keine fehlende Nummer.
+ */
+function kartennummer(wert) {
+  if (wert === undefined || wert.startsWith("--")) return null;
+  if (!/^\d+$/.test(wert)) {
+    fail(`'${wert}' ist keine Kartennummer fuer --abschluss. Erwartet: eine Nummer oder nichts.`);
+  }
+  return wert;
+}
+
+/**
+ * Die Kombinationen, die `--abschluss` ausschliesst (Issue #946) — geprueft NACH der
+ * Schleife, damit die Meldung nicht an der Stellung der Flags haengt. Beides ist ein
+ * Fehler und keine stille Wahl:
+ *   - `--abschluss` mit einer Veroeffentlichungsstufe waere zweierlei zugleich (AK 3).
+ *     Der Abschluss misst ein Arbeitspaket, `push` und `merge` messen den Stand, der
+ *     hinausgeht — und dort laeuft gerade das, was der Abschluss auslaesst.
+ *   - `--abschluss` mit `--bereich` waere eine doppelte Eingrenzung (E13): Der
+ *     Bereichslauf ist der begruendete Gruppenlauf mitten in der Arbeit, nicht der
+ *     Abschluss einer Karte. Zusammen liesse sich aus dem Lauf nicht mehr ablesen,
+ *     welche der beiden Verkuerzungen eine Pruefung weggelassen hat.
+ */
+function pruefeKombinationen(args) {
+  if (args.abschluss !== true) return;
+  if (args.stufe === "push" || args.stufe === "merge") {
+    fail(`--abschluss und --stufe '${args.stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '${STUFEN[0]}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --abschluss.`);
+  }
+  if (args.bereich !== undefined) {
+    fail("--abschluss und --bereich zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --abschluss an ihr Ende.");
+  }
+}
+
 function parseArgs(rest) {
   const args = {};
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     if (rest[i] === "--since") {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
@@ -1190,6 +2022,21 @@ function parseArgs(rest) {
       }
       args.stufe = wert;
       i += 1;
+    } else if (rest[i] === "--bereich") {
+      // Der fehlende Wert zaehlt wie ein falscher (wie bei `--stufe`): Die
+      // Pruefung gegen `checkAreas` steht in `planen`, wo die Config liegt, und
+      // der leere Name faellt dort mit derselben nennenden Meldung durch.
+      args.bereich = rest[i + 1] ?? "";
+      i += 1;
+    } else if (rest[i] === "--abschluss") {
+      // Dieser Lauf schliesst genau ein Arbeitspaket ab (Issue #946). Die Kartennummer
+      // liest `kartennummer`, samt ihrer Begruendung.
+      args.abschluss = true;
+      const karte = kartennummer(rest[i + 1]);
+      if (karte !== null) {
+        args.karte = karte;
+        i += 1;
+      }
     } else if (rest[i] === "--frisch") {
       // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
       // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
@@ -1197,7 +2044,9 @@ function parseArgs(rest) {
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }
+    i += 1;
   }
+  pruefeKombinationen(args);
   return args;
 }
 

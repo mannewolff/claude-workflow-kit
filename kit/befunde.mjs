@@ -78,7 +78,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.3.0";
+const KIT_VERSION = "3.5.0";
 
 // Blob-Hash und Ort der Pruef-Zusammenfassung kommen aus checks.mjs und werden NICHT
 // nachgebaut (Issue #802, Plan #797 E13): Zwei Implementierungen derselben Frage
@@ -557,10 +557,6 @@ export function arten() {
 // `geaendert` heraus und stehen darum nie in `hashes`; zaehlte der Vergleichsstand
 // sie hier mit, waere jeder Lauf mit liegender Notiz faelschlich nicht-vergleichbar.
 const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
-
-// Der Uebernahmevermerk der einarbeitenden Session, je Fundblock eine Zeile. Die
-// Umlautfassung gilt mit, aus demselben Grund wie bei STAND_RE.
-const UEBERNAHME_RE = /^(?:Uebernahme|Übernahme)\s*:\s*(.*)$/;
 
 // Die Kennzeichnung aus E6 (Plan #797): Ein so markierter Fund ist kein Vorkommen,
 // auch wenn seine uebrigen Angaben vollstaendig aussehen.
@@ -1372,11 +1368,12 @@ export function befund() {
 
 function parsePruefenArgs(rest) {
   let datei = null;
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     if (rest[i] !== "--datei") fail(`Unbekanntes Argument: '${rest[i]}'`);
     datei = rest[i + 1];
     if (!datei) fail("--datei erwartet einen Pfad.");
-    i += 1;
+    i += 2;  // Option und ihr Wert
   }
   if (datei === null) fail("'pruefen' braucht --datei <pfad>.");
   return datei;
@@ -1385,12 +1382,13 @@ function parsePruefenArgs(rest) {
 function parseBuchenArgs(rest) {
   const werte = { datei: null, stufe: null, karte: null };
   const optionen = { "--datei": "datei", "--stufe": "stufe", "--karte": "karte" };
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     const feld = optionen[rest[i]];
     if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
     werte[feld] = rest[i + 1];
     if (!werte[feld]) fail(`${rest[i]} erwartet einen Wert.`);
-    i += 1;
+    i += 2;  // Option und ihr Wert
   }
   if (werte.datei === null || werte.stufe === null || werte.karte === null) {
     fail("'buchen' braucht --datei <pfad>, --stufe <stufe> und --karte <n>.");
@@ -1404,12 +1402,13 @@ function parseBuchenArgs(rest) {
 function parseVorschlagArgs(rest) {
   const werte = { art: null, abgelehnt: null };
   const optionen = { "--art": "art", "--abgelehnt": "abgelehnt" };
-  for (let i = 0; i < rest.length; i += 1) {
+  let i = 0;
+  while (i < rest.length) {
     const feld = optionen[rest[i]];
     if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
     werte[feld] = rest[i + 1];
     if (!werte[feld]) fail(`${rest[i]} erwartet eine Mangel-Art.`);
-    i += 1;
+    i += 2;  // Option und ihr Wert
   }
   // Beide zugleich sind zwei gegenlaeufige Auftraege; welcher gewinnt, waere geraten.
   if (werte.art !== null && werte.abgelehnt !== null) {

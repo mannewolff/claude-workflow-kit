@@ -14,6 +14,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 // Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
 // damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
 const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
@@ -38,6 +43,10 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-agent-model-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
+  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
+  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -91,9 +100,10 @@ test("Ohne --model steht das Default-Modell in KIT_AGENT_MODEL", NUR_POSIX, () =
       { NIGHT_CLAUDE_CMD: modelFake(modelLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
-    // Der Default steht in night.mjs (DEFAULT_MODEL) und wird auch im --help ausgewiesen.
+    // Der Default steht in night.mjs (DEFAULT_MODEL) und wird auch im --help ausgewiesen —
+    // seit Issue #994 als letzte Stufe hinter night.modell, das dieses Fixture nicht setzt.
     const help = run(dir, process.execPath, [NIGHT, "--help"]);
-    const defaultModel = help.stdout.match(/--model <id>\s+Modell der Nacht-Sessions \(Default (\S+)\)/)?.[1];
+    const defaultModel = help.stdout.match(/--model <id>\s+Modell der Nacht-Sessions \(sonst night\.modell, sonst (\S+)\)/)?.[1];
     assert.ok(defaultModel, "Default-Modell nicht aus --help ablesbar");
     assert.deepEqual(readFileSync(modelLog, "utf-8").trim().split("\n"), [defaultModel],
       "ohne --model haette das Default-Modell in KIT_AGENT_MODEL stehen muessen");

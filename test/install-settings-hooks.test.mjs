@@ -167,6 +167,45 @@ test("[installer-9] bei globalem Install entsteht keine settings.json im Projekt
   });
 });
 
+// --- Der Bash-Pruef-Hook (Issue #995) ---------------------------------------
+
+/** Die PreToolUse-Gruppen mit Matcher Bash, die unseren Pruef-Hook tragen. */
+function bashPruefGruppen(settings) {
+  return (settings.hooks?.PreToolUse ?? []).filter((g) => g.matcher === "Bash"
+    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook bash-pruefen")));
+}
+
+test("[installer-995] der Installer traegt den Bash-Pruef-Hook als PreToolUse mit Matcher Bash ein", () => {
+  mitFixture("install-hooks-bash-", undefined, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const gruppen = bashPruefGruppen(liesSettings(dir));
+    assert.equal(gruppen.length, 1, "genau ein Eintrag erwartet");
+    assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }]);
+  });
+});
+
+test("[installer-995] zweiter Lauf laesst die Datei byteweise gleich, fremde PreToolUse-Hooks bleiben", () => {
+  const fremd = { matcher: "Bash", hooks: [{ type: "command", command: "node .husky/waechter.mjs" }] };
+  mitFixture("install-hooks-bash-zweimal-", { hooks: { PreToolUse: [fremd] } }, (dir) => {
+    assert.equal(installiere(dir).status, 0);
+    const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
+    assert.equal(installiere(dir).status, 0);
+    assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "der zweite Lauf hat die Datei veraendert");
+    const settings = liesSettings(dir);
+    assert.deepEqual(settings.hooks.PreToolUse[0], fremd, "der fremde Hook bleibt vorn stehen");
+    assert.equal(bashPruefGruppen(settings).length, 1);
+  });
+});
+
+test("[installer-995] die Rueckfallmeldung nennt den Bash-Pruef-Hook mit", () => {
+  mitFixture("install-hooks-bash-kaputt-", "{ kaputt\n", (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-pruefen/);
+  });
+});
+
 // --- Der hinterlegte Aufruf ist der Melder und laeuft ----------------------
 
 test("[installer-9] der hinterlegte Aufruf ist der Melder aus #734 und liefert im Wegwerf-Verzeichnis ein", async () => {

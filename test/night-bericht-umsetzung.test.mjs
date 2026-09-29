@@ -14,12 +14,25 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 
-test("[night-36] die Variantenzeile steht unter Stufen, in beiden Lagen", () => {
-  const textA = berichtBauen({ id: "1", ausgang: "fertig", stufen: {} }, { stempel: "s" });
-  assert.match(textA, /### Stufen\n\n- Variante: A\n/);
+// Vor der Variantenzeile steht seit Issue #896 der Auftrag: die gekennzeichnete Karte
+// selbst bei der fachlichen Anforderung, der Plan mit seiner Quelle beim Plan-Auftrag.
+test("[night-36] die Variantenzeile steht unter Stufen, hinter dem Auftrag, in beiden Lagen", () => {
+  const textA = berichtBauen({ id: "1", ausgang: "fertig", auftrag: "fachplan", stufen: {} }, { stempel: "s" });
+  assert.match(textA, /### Stufen\n\n- Auftrag: fachliche Anforderung #1\n- Variante: A\n/);
 
-  const textB = berichtBauen({ id: "1", ausgang: "fertig", variante: "B", stufen: {} }, { stempel: "s" });
-  assert.match(textB, /### Stufen\n\n- Variante: B\n/);
+  const textB = berichtBauen({ id: "1", ausgang: "fertig", auftrag: "fachplan", variante: "B", stufen: {} }, { stempel: "s" });
+  assert.match(textB, /### Stufen\n\n- Auftrag: fachliche Anforderung #1\n- Variante: B\n/);
+});
+
+test("[night-896] ein Plan-Auftrag nennt Plan und fachliche Quelle und rechnet die uebernommene Stufe nicht ab", () => {
+  const einheit = {
+    id: "12", ausgang: "fertig", auftrag: "plan", fachplan: "7",
+    stufen: { plan: { id: "12", uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0 }, pakete: { ids: [] } },
+  };
+  const text = berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body: "Plan-Review: opus (2026-09-14)\n" }, stempel: "s" });
+  assert.match(text, /### Stufen\n\n- Auftrag: Plan #12 \(fachliche Quelle #7\)\n- Variante: A\n/);
+  assert.match(text, /- Plan #12 \(\[Plan\] X\): als Auftrag uebernommen, nicht neu geschrieben, Pruefer opus \(2026-09-14\)\.\n/);
+  assert.doesNotMatch(text, /Dauer 0\.0 min/, "eine uebernommene Stufe behauptet keine Messung");
 });
 
 test("[night-36] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern und -titeln", () => {

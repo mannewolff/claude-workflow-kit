@@ -19,10 +19,10 @@ import assert from "node:assert/strict";
 import { mitRepo, run, datei, ausfuehrungen } from "./helpers/checks-repo.mjs";
 import { wirksamkeit } from "./helpers/wirksamkeit-fixture.mjs";
 
-/** Eine Protokollzeile in ihre vier Spalten zerlegt. */
+/** Eine Protokollzeile in ihre Spalten zerlegt (die drei hinteren seit Issue #948). */
 function spalten(zeile) {
-  const [zeit, cmd, ergebnis, dauerMs] = zeile.split("\t");
-  return { zeit, cmd, ergebnis, dauerMs };
+  const [zeit, cmd, ergebnis, dauerMs, anlass, lauf, karte] = zeile.split("\t");
+  return { zeit, cmd, ergebnis, dauerMs, anlass, lauf, karte };
 }
 
 /** Ein Wegwerf-Repo mit genau diesem Kommando als einziger Pruefung. */
@@ -53,7 +53,9 @@ test("[checks-10] ein Tabulator im Kommando wird maskiert und macht keine fuenft
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 1);
-    assert.equal(zeilen[0].split("\t").length, 4, "die Zeile hat genau vier Spalten");
+    // Die Spaltenzahl ist fest (seit Issue #948 sieben): Ein unmaskierter Tabulator im
+    // Kommando machte daraus eine mehr und verschoebe jede Spalte dahinter.
+    assert.equal(zeilen[0].split("\t").length, 7, "die Zeile hat genau sieben Spalten");
     assert.equal(spalten(zeilen[0]).cmd, String.raw`echo a\tb`);
   });
 });

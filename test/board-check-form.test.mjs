@@ -72,14 +72,18 @@ Keine.
 `;
 
 /** Ein Fixture-Projekt fuer die Dauer eines Tests, danach restlos weg. */
-function mitProjekt(fn) {
-  const dir = setupProjekt(CONFIG, "board-check-form-");
+function mitProjektConfig(config, fn) {
+  const dir = setupProjekt(config, "board-check-form-");
   mkdirSync(join(dir, "eingaben"), { recursive: true });
   try {
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function mitProjekt(fn) {
+  return mitProjektConfig(CONFIG, fn);
 }
 
 /** Der Datei-Weg: liefert Exit-Code und geparste stdout-Ausgabe. */
@@ -293,6 +297,170 @@ test("[board-8] I5 greift nicht ohne Vorlage-Zeile und nicht bei einer Anregung"
     assert.equal(anregung.json.ok, true, JSON.stringify(anregung.json));
     const imCodeblock = dateiWeg(dir, PAKET.replace("## Kontext\n", "## Kontext\n```\nVorlage: docs/x.html — verbindlich\n```\n"), "[Task] x");
     assert.equal(imCodeblock.json.ok, true, "eine Zeile im Codeblock zaehlt nicht");
+  });
+});
+
+// --- I6: keine Guetemessung im Akzeptanzkriterium (Issue #901) ----------------
+
+const MUTATION_CMD = "npm --prefix frontend run test:mutation";
+const MIT_MUTATION = { ...CONFIG, mutationCommand: MUTATION_CMD };
+const MIT_GUETE = {
+  ...CONFIG,
+  buildChecks: [
+    "node --test",
+    { cmd: "npx stryker run", stufe: "push", guete: { muster: String.raw`score: ([\d.]+)`, marke: 0.6 } },
+  ],
+};
+
+/** Das Kriterium des Vorfalls: der Mutationslauf als Zeile in der Karte. */
+function mitKriterium(cmd) {
+  return PAKET.replace("## Akzeptanzkriterium\n", `## Akzeptanzkriterium\n- \`${cmd}\` laeuft und die Mutationskennzahl faellt nicht.\n`);
+}
+
+test("[board-8] I6: das konfigurierte mutationCommand im Akzeptanzkriterium wird abgewiesen", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const r = dateiWeg(dir, mitKriterium(MUTATION_CMD), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.match(meldung, /stufe: push/, meldung);
+  });
+});
+
+test("[board-8] I6: auch das Kommando des guete-Eintrags wird abgewiesen", () => {
+  mitProjektConfig(MIT_GUETE, (dir) => {
+    const r = dateiWeg(dir, mitKriterium("npx stryker run"), "[Task] x");
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: dasselbe Paket ohne die Zeile bleibt gruen", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const r = dateiWeg(dir, PAKET, "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: ohne mutationCommand und ohne guete weist nichts ab", () => {
+  mitProjekt((dir) => {
+    const r = dateiWeg(dir, mitKriterium(MUTATION_CMD), "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6 greift nur im Akzeptanzkriterium, nicht in ## Aufgabe", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const inAufgabe = PAKET.replace("## Aufgabe\n", `## Aufgabe\nDie Marke von \`${MUTATION_CMD}\` steigt auf 0,7.\n`);
+    const r = dateiWeg(dir, inAufgabe, "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6 betrifft die Stufen fachlich und plan nicht", () => {
+  mitProjektConfig(MIT_MUTATION, (dir) => {
+    const fachlich = dateiWeg(dir, FACHLICH.replace("- Der Nutzer sieht es.", `- \`${MUTATION_CMD}\` laeuft.`), "[Fachlich] x");
+    assert.equal(fachlich.json.ok, true, JSON.stringify(fachlich.json));
+    const plan = dateiWeg(dir, PLAN.replace("- node --test", `- ${MUTATION_CMD}`), "[Plan] x");
+    assert.equal(plan.json.ok, true, JSON.stringify(plan.json));
+  });
+});
+
+// --- I6 erweitert: Projekt-Treiber und aufhebende Entscheidung (Issue #942) ----
+//
+// Der Vorfall: Ein Paket baut seinen Mutations-Treiber selbst, also kennt die
+// Konfiguration ihn beim Schneiden noch nicht — I6 schwieg, drei Vollaeufe standen
+// im Kriterium, und die Nacht-Runde endete als wartende Sitzung. Zwei Zugaenge
+// dagegen: das Config-Feld `guetekommandos` fuer Treiber, die es noch nicht gibt,
+// und der Blick in den Kontext auf eine Entscheidung, die die Konvention aufhebt.
+
+const TREIBER = "node scripts/mutationspruefung.mjs vollauf";
+const MIT_GUETEKOMMANDOS = { ...CONFIG, guetekommandos: [TREIBER] };
+
+/** Der Block, der den Session-Abschluss nicht blockiert (Issue #215). */
+function mitManuellerPruefung(cmd) {
+  return PAKET.replace(
+    "## Abhängigkeiten\n",
+    `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)\n- \`${cmd} frontend\` laeuft einmal durch.\n\n## Abhängigkeiten\n`,
+  );
+}
+
+/** Der Wortlaut aus kanban-kit #1215, Zeile im `## Kontext`. */
+const AUFHEBENDE_ZEILE =
+  "Entscheidung: Verlangt das Akzeptanzkriterium dieses Pakets einen echten Vollauf "
+  + "beider Seiten, obwohl eine Gütemessung sonst nicht ins Paket gehört? Gewählt: ja";
+
+function mitKontextzeile(zeile) {
+  return PAKET.replace("## Kontext\n", `## Kontext\n${zeile}\n`);
+}
+
+test("[board-8] I6: ein Kommando aus guetekommandos im Akzeptanzkriterium wird abgewiesen", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const r = dateiWeg(dir, mitKriterium(`${TREIBER} frontend`), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.ok(meldung.includes(TREIBER), meldung);
+  });
+});
+
+test("[board-8] I6: dasselbe Kommando unter '### Manuelle Pruefung' bleibt gruen", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const r = dateiWeg(dir, mitManuellerPruefung(TREIBER), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: der manuelle Block hebt einen Treffer im Kriterium nicht auf", () => {
+  mitProjektConfig(MIT_GUETEKOMMANDOS, (dir) => {
+    const beides = mitManuellerPruefung(TREIBER).replace(
+      "## Akzeptanzkriterium\n",
+      `## Akzeptanzkriterium\n- \`${TREIBER} backend\` laeuft und die Kennzahl faellt nicht.\n`,
+    );
+    const r = dateiWeg(dir, beides, "[Task] x");
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: eine Entscheidung, die die Guetemess-Konvention aufhebt, wird abgewiesen", () => {
+  mitProjekt((dir) => {
+    const r = dateiWeg(dir, mitKontextzeile(AUFHEBENDE_ZEILE), "[Task] x");
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(gates(r).includes("I6"), JSON.stringify(r.json));
+    const meldung = r.json.verstoesse.find((v) => v.gate === "I6").meldung;
+    assert.match(meldung, /Manuelle Pruefung/, meldung);
+  });
+});
+
+test("[board-8] I6: dieselbe Frage mit 'Gewählt: nein' bleibt gruen", () => {
+  mitProjekt((dir) => {
+    const nein = AUFHEBENDE_ZEILE.replace("Gewählt: ja", "Gewählt: nein. Grund: die Konvention gilt ohne Ausnahme.");
+    const r = dateiWeg(dir, mitKontextzeile(nein), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: eine Entscheidung ohne Guetemess-Bezug bleibt gruen", () => {
+  mitProjekt((dir) => {
+    const andere = "Entscheidung: Legen wir das Feld optional an? Gewählt: ja. Verworfen: pflicht. Grund: rueckwaertskompatibel. Rückbau: trivial.";
+    const r = dateiWeg(dir, mitKontextzeile(andere), "[Task] x");
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+  });
+});
+
+test("[board-8] I6: ein zitiertes 'Gewählt: ja' im Text weist nicht ab", () => {
+  // Der Selbstbiss: Das Paket, das diese Regel baut, zitiert ihren Wortlaut im eigenen
+  // Kontext — und wurde von ihr abgewiesen. Es zaehlt die erste Antwort, nicht jedes Zitat.
+  mitProjekt((dir) => {
+    const zitat =
+      "Entscheidung: Wie erkennt I6 einen Treiber, den die Config noch nicht kennt? "
+      + "Gewählt: ein optionales Config-Feld, erkannt an „Gütemessung“/„Vollauf“ zusammen mit „Gewählt: ja“. "
+      + "Verworfen: eine eingebaute Namensliste. Grund: sie veraltet. Rückbau: eine Datei.";
+    const r = dateiWeg(dir, mitKontextzeile(zitat), "[Task] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
   });
 });
 

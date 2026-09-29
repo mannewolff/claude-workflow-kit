@@ -33,19 +33,27 @@ Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb de
 
 **Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
-**Fachliche Issues, Ideen und Plandokumente überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Idee ohne `/techplan`-Zyklus) oder `[Plan]` (Plandokument aus `/techplan` — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
+**Fachliche Issues, Ideen, Plandokumente und Menschenschritte überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Anforderung, noch kein Arbeitspaket), `[Plan]` (Plandokument aus einem technischen Plan — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden) oder `[Mensch]` (ein Schritt, den nur ein Mensch tun kann), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
 
 ```
 Fachliches Issue — wird nicht implementiert, bitte per /techplan #N in technische Issues ueberfuehren.
 ```
 
 ```
-Idee — braucht erst /techplan #N + /issues, wird nicht implementiert.
+Idee — mit Abwaegung erst /fachplan #N, ohne Abwaegung /task #N, wird nicht implementiert.
 ```
+
+Die Idee hat zwei Wege nach vorn, und welcher gilt, entscheidet der Mensch mit dem Aufruf: Verlangt sie eine Abwaegung, `/fachplan #N`; ist nichts abzuwaegen oder hat er bereits entschieden, `/task #N`. Deshalb nennt der Kommentar beide.
 
 ```
 Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
 ```
+
+```
+Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.
+```
+
+Ein `[Mensch]`-Paket ist ein Arbeitspaket, aber seine Aufgabe liegt ausserhalb des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe. Kein Zug einer Sitzung erledigt sie. Der Kommentar sagt darum ausdruecklich, dass die Karte **wartet** und nicht gescheitert ist: Im Backlog sieht sie sonst aus wie ein gescheitertes Paket, und wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat. Nach seiner Handlung zieht der Mensch sie selbst weiter.
 
 **Gezeichnete Issues ueberspringen (Leitplanke):** Ein Issue mit dem Label
 `kit:klaeren` traegt eine offene Entscheidung, auf die ein Mensch antworten muss.
@@ -81,7 +89,7 @@ Lies alle Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen 
 
 **Trägt das Issue eine Zeile `Empfohlenes Modell: <name>` oder `Aufgabenstufe: <schwer|mittel|leicht>`, nenne sie** — zusammen mit dem Hinweis, dass die laufende Sitzung ihr Modell nicht wechselt. Beide sind eine Angabe, keine Anweisung: Nachts wirkt sie von selbst (der Runner startet die Session der Karte damit), tagsüber wählt der Mensch sein Modell selbst und sitzt ohnehin daneben. **Kein Halt, keine Rückfrage, keine Änderung am Ablauf** — wer eine laufende Sitzung für eine Empfehlung zum Neustart auffordert, kostet mehr, als die Empfehlung wert ist.
 
-**Trägt das Paket einen Vermerk mit dem Anker `## Nachtlauf: wartende Sitzung`, nenne ihn** — dann wurde es schon einmal angefangen, und der zuletzt bekannte Stand steht im Vermerk. **Kein Halt, keine Ruecksprache**, nur die Meldung: Wer den Vermerk verschweigt, macht stillschweigend auf halbem Weg weiter.
+**Trägt das Paket einen Vermerk mit dem Anker `## Nachtlauf: wartende Sitzung` oder `## Nachtlauf: Zeitgrenze erreicht`, nenne ihn** — dann wurde es schon einmal angefangen, und der zuletzt bekannte Stand steht im Vermerk. Der zweite Anker sagt zusaetzlich, dass der vorige Lauf an der Sitzungszeitgrenze endete. **Kein Halt, keine Ruecksprache**, nur die Meldung: Wer den Vermerk verschweigt, macht stillschweigend auf halbem Weg weiter.
 
 ### 3. Implementieren
 
@@ -90,15 +98,16 @@ Lies alle Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen 
 - Kein Feature, keine Refactoring, keine Abstraktion die das Issue nicht verlangt
 - Bei UI-Änderungen: Dev-Server starten, Golden Path und Edge Cases durchklicken
 - Bei neuer oder geänderter Logik: abgedeckt oder begründet ausgeschlossen gemäß der Coverage-/Qualitäts-Policy des Projekts (siehe Projekt-Guide bzw. `workflow.config.json`). Untestete Logik nie stillschweigend ausschließen, Schwellen nie senken, nur damit ein Gate grün wird.
-- Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`, Linter-`recommended`-Sets) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
+- Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
 - Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
 - Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
-- Allgemeiner, und darum die Regel hinter der Zeile davor: **Keine Session endet mit laufender eigener Arbeit** — gleich welcher, nicht nur bei einem Pflichtcheck. Wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag; eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst (Issue #754).
+- Allgemeiner, und darum die Regel hinter der Zeile davor: **Keine Session endet mit laufender eigener Arbeit** — gleich welcher, nicht nur bei einem Pflichtcheck. Wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag; eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst (Issue #754). Wer wartet, prueft dabei zweierlei: ob das Ergebnis da ist und ob der Lauf **noch existiert** — eine Warteschleife ohne die zweite Pruefung wartet im Fehlerfall ihre volle Laenge ab, und ein Lauf, den es nicht mehr gibt, ist ein Fehlschlag und wird als solcher gemeldet, nicht als Zeitablauf (Issue #983).
+- Nach jedem erledigten Punkt des Akzeptanzkriteriums eine eigene Ausgabezeile `FORTSCHRITT: AK<n> — <halber Satz>` schreiben, in laufendem Text waehrend der Arbeit und nicht am Ende gesammelt. `<n>` ist die Position des Punkts in der Aufzaehlung unter `## Akzeptanzkriterium`, ohne den Block `### Manuelle Pruefung` — die Kriterien sind im Vier-Abschnitt-Format unnummeriert. Grund: Am Zeitlimit wird die Sitzung gekillt, und nur was sie unterwegs gesagt hat, erreicht den Morgen.
 
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 
-1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`.
-2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run` vor dem Commit.
+1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --bereich <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
+2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --abschluss <kartennummer>` vor dem Commit.
 3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--frisch` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
 5. Ist `checks.mjs run` rot, laufen danach zuerst die fehlschlagenden Tests gezielt. `checks.mjs run` startet erst dann erneut, wenn sie grün sind.
@@ -124,7 +133,7 @@ Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:
 ### 4. Pruefungen vor dem Commit
 
 ```bash
-node .claude/kit/checks.mjs run
+node .claude/kit/checks.mjs run --abschluss <kartennummer>
 ```
 
 Das Kommando waehlt die betroffenen `buildChecks` aus und fuehrt genau sie aus.
@@ -140,12 +149,22 @@ eine Pruefung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in d
 Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht sie wie
 jede andere Auslassung.
 
+**`--abschluss <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
+solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
+Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
+ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die
+**Kartennummer** ist die des Issues, das dieser Lauf abschliesst — ohne sie koennte die
+Wirksamkeit ihre Kennzahl je Karte nicht rechnen (Issue #951).
+
 Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
 
 Das Kommando nennt in seiner Ausgabe die **gelaufenen und die ausgelassenen**
 Pruefungen, jeweils mit Grund. Beides gehoert in den Abschlussbericht (Schritt 6):
 Nur die Laeufe zu nennen genuegt nicht — dann muesste man die Auslassungen indirekt
-erschliessen, und ein verkuerzter Lauf saehe aus wie ein vollstaendiger. Meldet das
+erschliessen, und ein verkuerzter Lauf saehe aus wie ein vollstaendiger. Die
+Auslassungen werden **mit ihrem Grund** aus der Ausgabe uebernommen, wortgetreu und nicht
+zu "ausgelassen" verkuerzt — erst der Grund sagt, ob eine Pruefung an ihrem Zeitpunkt
+wartet oder ausfiel. Meldet das
 Kommando `leeresPaket`, steht das ausdruecklich als "keine Pruefung, weil nichts
 veraendert wurde" im Bericht, nicht als leere Liste.
 
@@ -240,9 +259,9 @@ Die fachliche Quelle kommt aus der Zeile `Fachliche Quelle: Issue #N` des Plans 
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel) und Plandokumente (`[Plan]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel), Plandokumente (`[Plan]`-Titel) und Menschenschritte (`[Mensch]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
-- Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete des gekennzeichneten Fachplans selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch am Fachplan gegeben, als er ihn fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete eines Fachplans, der frueher unter Variante B lief.
+- Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete der gekennzeichneten Karte selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch an der gekennzeichneten Karte gegeben — an der fachlichen Anforderung oder am Plandokument —, als er sie fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete einer Karte, die frueher unter Variante B lief.
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test
 - Issue-schließende Commit-Keywords (`Closes`/`Fixes`/`Resolves #N`): nie — sie schließen das Issue beim Push/Merge und die Board-Automation zieht es nach Done, bevor getestet wurde. Nur `Refs #N` verwenden.
 - Mehr als ein Issue abarbeiten: nie — dafür ist `/implement-ready` da.

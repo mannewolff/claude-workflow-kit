@@ -26,7 +26,8 @@ function karte(number, spalte, extra = {}) {
 function gruppiert(karten) {
   const gruppen = {};
   for (const k of karten) {
-    (gruppen[k.column] ||= []).push(k);
+    gruppen[k.column] ||= [];
+    gruppen[k.column].push(k);
   }
   return gruppen;
 }

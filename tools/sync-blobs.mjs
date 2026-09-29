@@ -32,15 +32,25 @@ const root = process.env.KIT_ROOT
   : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALL = join(root, "install.mjs");
 
+// Codepoint-Ordnung, unabhaengig von der Locale der Maschine (Issue #956, S2871).
+// Die Reihenfolge landet in den Blobs von install.mjs; haenge sie an der Locale,
+// erzeugte dieselbe Quelle auf zwei Rechnern zwei verschiedene install.mjs und
+// `sync-blobs --check` ginge je nach Maschine rot. Gleichwertig zu `vergleicheText`
+// in kit/checks.mjs — hier lokal, weil dieses Tool sonst nichts aus kit/ laedt.
+function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 // Liest einen Ordner mit einer Unterordner-Ebene (z.B. skills/<name>/<datei>)
 // zu { name: { datei: inhalt } } ein — Grundlage fuer einen gemeinsamen Blob.
 function buildDirJson(dir) {
   const result = {};
-  for (const entry of readdirSync(dir).sort()) {
+  for (const entry of readdirSync(dir).sort(vergleicheText)) {
     const entryDir = join(dir, entry);
     if (!statSync(entryDir).isDirectory()) continue;
     const files = {};
-    for (const file of readdirSync(entryDir).sort()) {
+    for (const file of readdirSync(entryDir).sort(vergleicheText)) {
       const filePath = join(entryDir, file);
       if (statSync(filePath).isFile()) files[file] = readFileSync(filePath, "utf-8");
     }
@@ -80,6 +90,11 @@ const BLOBS = [
   // Pruef-Skills setzen sie ueber dieses Kommando in ihre Prompts ein — ohne
   // Auslieferung ginge beides in jedem Projekt ins Leere.
   { constName: "BEFUNDE_MJS_B64", source: join(root, "kit", "befunde.mjs") },
+  // Der Worktree der Release-Skills (Issue #929). Anders als die Werkzeuge darueber ist es
+  // KEINE portable Einzeldatei: Es ruft die Worktree-Vorbereitung aus night.mjs als
+  // Nachbardatei, damit es genau einen Weg gibt, einen Worktree anzulegen. Ohne
+  // Auslieferung riefen `/push-main` und `/merge-production` in jedem Zielprojekt ins Leere.
+  { constName: "WORKTREE_MJS_B64", source: join(root, "kit", "worktree.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
   // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
@@ -92,7 +107,7 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.

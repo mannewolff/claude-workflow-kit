@@ -38,7 +38,8 @@ test("ohneDekoHinten zieht Leerraum, Sterne, Unterstriche und Rauten am Ende ab"
   assert.equal(ohneDekoHinten("Zeile\r"), "Zeile", String.raw`ein \r aus CRLF faellt mit ab`);
 });
 
-// --- 2./3./4. GEGENPROBE_RE, ART_RE, UEBERNAHME_RE: /^Kopf\s*:\s*(.*)$/ ---
+// --- 2./3./4. Die abgeloesten Kopfzeilen-Ausdruecke (Gegenprobe, Art, Uebernahme):
+// je /^Kopf\s*:\s*(.*)$/, heute alle drei durch `angabenWert` bedient ---
 
 test("angabenWert liest den Wert hinter dem Doppelpunkt", () => {
   assert.equal(angabenWert("Gegenprobe: Ein zweiter Ort in skills/", "Gegenprobe"),

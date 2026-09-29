@@ -21,7 +21,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, chmodSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -29,6 +29,31 @@ import {
   NUR_POSIX, NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
+import { nachtlaufMeldung } from "../kit/board.mjs";
+import { UMSETZUNG_LOCK } from "../kit/night.mjs";
+
+
+/** Das Textprotokoll des Laufs als ein String — der Weg ins Detail, den der Morgen liest. */
+function protokoll(dir) {
+  const name = readdirSync(join(dir, ".claude")).find((n) => /^night-run-\d{4}-\d{2}-\d{2}\.log$/.test(n));
+  assert.ok(name, "kein Textprotokoll im Fixture");
+  return readFileSync(join(dir, ".claude", name), "utf-8");
+}
+
+/**
+ * Prueft den Satz an BEIDEN Stellen: am Lauf-Kopf und wortgleich im Textprotokoll.
+ *
+ * Wortgleich ist der ganze Punkt (Fachliche Quelle #880): Wer den Stand auswertet und
+ * wer das Protokoll liest, sollen dieselbe Auskunft bekommen. Zwei Formulierungen
+ * derselben Lage waeren morgens nicht als dieselbe Lage zu erkennen.
+ */
+function grundWortgleich(dir, satz) {
+  const s = stand(dir);
+  assert.equal(s.noWorkReason, satz);
+  const text = protokoll(dir);
+  assert.ok(text.includes(satz), `der Satz fehlt wortgleich im Textprotokoll:\n${text}`);
+  return s;
+}
 
 
 test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes Feld, dazu erzeugtVon", NUR_POSIX, () => {
@@ -47,6 +72,11 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
     // Ein bedingungslos gesetzter Hinweis zerstoerte die Unterscheidung, die er tragen
     // soll: Mit --verbose sind die Kennzahlen erreichbar, es fehlt nichts zu erklaeren.
     assert.ok(!("kennzahlenHinweis" in stand), "mit --verbose fehlt das Feld ganz, es ist nicht null");
+    // Die Zielmarke dieses Laufs (Issue #978): Ohne `night.zielUmsetzungMin` in der
+    // Config steht die Vorgabe des Schemas am Kopf — nicht null und nicht gar nichts.
+    // Eine Auswertung ueber mehrere Naechte misst gegen genau diesen Wert; fehlte er,
+    // muesste sie die Marke von heute auf den Lauf von gestern anwenden.
+    assert.equal(stand.zielUmsetzungMin, 10, "der Lauf-Kopf traegt die Vorgabe der Zielmarke");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -79,6 +109,33 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis
       schluessel[schluessel.indexOf("stufe") + 1],
       "einheiten",
       `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Die Marke, mit der DIESER Lauf gerechnet hat, gehoert an seinen Kopf (Issue #978): Sie
+// kann zwischen zwei Naechten eine andere gewesen sein, und eine Auswertung, die sie aus
+// der heutigen Config naehme, bewertete den Lauf von gestern gegen eine Vorgabe, die
+// damals nicht galt.
+test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-zielmarke-", { zielUmsetzungMin: 7 });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const dateien = staende(dir);
+    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+    assert.equal(stand.zielUmsetzungMin, 7, "die Marke der Config steht am Lauf-Kopf");
+
+    // Hinten angehaengt: Die Feldreihenfolge der Schemafassung 1 ist der Vertrag mit den
+    // Auswertungen, ein neues Feld verschiebt keines der bestehenden.
+    const schluessel = Object.keys(stand);
+    assert.ok(
+      schluessel.indexOf("zielUmsetzungMin") > schluessel.indexOf("verbrauchOhneEinheit"),
+      `zielUmsetzungMin steht nicht hinter den Feldern des Lauf-Starts: ${schluessel.join(", ")}`,
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -143,6 +200,29 @@ test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream
   } finally {
     rmSync(dir, { recursive: true, force: true });
     if (binDir) rmSync(binDir, { recursive: true, force: true });
+  }
+});
+
+// Eine erreichte Grenze ist kein Abbruch (Issue #881): Ein Lauf, der nach --max Paketen
+// planmaessig endet, schliesst regulaer ab und meldet ans Board keinen abortReason. Der
+// Grund gehoert allein dem harten Stopp — stuende er auch hier, saehe jede volle Nacht
+// wie eine Stoerung aus.
+test("[night-2] ein am --max beendeter Lauf schliesst regulaer ab und meldet keinen abortReason", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-max-");
+  try {
+    readyIssue(dir, "Einziges Paket der Nacht");
+    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const s = stand(dir);
+    assert.equal(s.abschluss, "regulaer");
+    assert.equal(s.einheiten.length, 1, "ein leerer Lauf belegte die Aussage nicht");
+    const m = nachtlaufMeldung(s);
+    assert.equal(m.complete, true);
+    assert.ok(!("abortReason" in m), "eine erreichte Grenze ist kein Abbruchgrund");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -292,6 +372,95 @@ test("ein Vorflug-Abbruch traegt die Fehlerklasse zustand", NUR_POSIX, () => {
     assert.equal(s.abschluss, "harterStopp");
     assert.equal(s.fehlerklasse, "zustand");
     assert.deepEqual(s.einheiten, [], "vor der ersten Session gibt es keine Einheiten");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Der Lauf ohne Arbeitspaket nennt seinen Fall (Fachliche Quelle #880; Issue #887) ---
+//
+// Drei Enden der Umsetzungsschleife schwiegen bisher, und ein viertes meldete "Ready ist
+// leer" ueber eine Spalte, die der Lauf selbst geraeumt hatte. Jede Lage hat jetzt ihren
+// eigenen Satz, und der Schreibfehler am Lock ist ueberhaupt kein Fall ohne Arbeit,
+// sondern eine Stoerung der Umgebung.
+
+test("kein Ready-Issue traegt das Routing-Label: der Lauf nennt Label und Kartenzahl statt zu schweigen", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-keinlabel-");
+  try {
+    readyIssue(dir, "Traegt das gesuchte Label nicht");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "kit:nacht"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    grundWortgleich(dir, "Keine der 1 Karten in Ready traegt das Label 'kit:nacht' — nichts zu tun.");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("alle Ready-Karten am Gate zurueckgestellt: der Lauf nennt seine eigene Raeumung, nicht 'Ready ist leer'", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-zurueckgestellt-");
+  try {
+    // Ein Plandokument faellt am Gate zurueck nach Backlog. In der zweiten Runde ist Ready
+    // leer — und genau dort fiel der alte Satz: leer war die Spalte, weil dieser Lauf sie
+    // selbst geraeumt hat.
+    readyIssue(dir, "[Plan] Ein Plandokument");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    grundWortgleich(dir, "Alle 1 Karten in Ready wurden am Gate zurueckgestellt — der Lauf hat Ready selbst "
+      + "geleert, es blieb nichts zu tun.");
+    assert.ok(!protokoll(dir).includes("Ready ist leer"), "der irrefuehrende Satz darf hier nicht mehr fallen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("die Umsetzung ist belegt: der Lauf nennt den haltenden Prozess und endet trotzdem mit Exit 0", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-belegt-");
+  try {
+    readyIssue(dir, "Bleibt liegen, weil belegt");
+    // Die eigene Prozess-Id lebt sicher — der Lock gilt damit als gehalten, nicht verwaist.
+    writeFileSync(join(dir, UMSETZUNG_LOCK), `${process.pid}\n`, "utf-8");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `ein belegter Lock ist ein ruhiger Lauf:\n${res.stderr}\n${res.stdout}`);
+
+    const s = grundWortgleich(dir, `Die Umsetzung ist belegt: eine andere Umsetzung haelt ${UMSETZUNG_LOCK} `
+      + `(Prozess ${process.pid}) — der Lauf endet ohne Paket.`);
+    assert.equal(s.abschluss, "regulaer", "ein belegter Lock ist keine Stoerung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ein nicht beschreibbarer Umsetzungs-Lock ist eine Stoerung der Umgebung: harter Stopp ohne noWorkReason", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-lockfehler-");
+  try {
+    readyIssue(dir, "Kommt nicht zum Zuge");
+    // Ein Verzeichnis an der Stelle der Lock-Datei: als Zahl nicht lesbar, also gilt der
+    // Lock als verwaist — schreiben laesst er sich trotzdem nicht.
+    mkdirSync(join(dir, UMSETZUNG_LOCK), { recursive: true });
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.notEqual(res.status, 0, `ein Schreibfehler am Lock darf nicht wie ein ruhiger Lauf enden:\n${res.stdout}`);
+
+    const s = stand(dir);
+    assert.equal(s.abschluss, "harterStopp");
+    assert.equal(s.fehlerklasse, "umgebung", "die Umgebung liess den Lock nicht schreiben, nicht der Lauf");
+    assert.ok(typeof s.fehlerText === "string" && s.fehlerText.length > 0, "der Fehlertext fehlt");
+    assert.ok(!("noWorkReason" in s), "ein harter Stopp hat einen Fehlertext, keinen Grund ohne Arbeit");
+    const m = nachtlaufMeldung(s);
+    assert.ok(typeof m.abortReason === "string" && m.abortReason.length > 0, "die Meldung ans Board nennt keinen Grund");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ein Lauf mit leerem Ready und ohne jede Rueckstellung behaelt seinen Satz wortgleich", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-leerohne-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    grundWortgleich(dir, "Ready ist leer — nichts zu tun.");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

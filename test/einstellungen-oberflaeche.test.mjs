@@ -115,8 +115,8 @@ test("[einstellungen-7] das helle Schema des Entwurfs bleibt unveraendert", asyn
   // Der Rahmen bringt Klassen, kein neues Erscheinungsbild: Jede Farbe, die er benutzt, ist
   // eine der Variablen, die schon vorher galten.
   const css = html.slice(html.indexOf("<style"), html.indexOf("</style>"));
-  const neueVariablen = [...css.matchAll(/^\s*(--[a-z-]+):/gm)].map((m) => m[1]);
-  const imEntwurf = new Set([...ENTWURF.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]));
+  const neueVariablen = [...css.matchAll(/^[ \t]*(--[a-z][a-z-]*):/gm)].map((m) => m[1]);
+  const imEntwurf = new Set([...ENTWURF.matchAll(/(--[a-z][a-z-]*):/g)].map((m) => m[1]));
   for (const name of neueVariablen) assert.ok(imEntwurf.has(name), `${name} kennt der Entwurf nicht`);
 });
 
@@ -432,9 +432,12 @@ test("[einstellungen-13] M4 zeichnet die Bereiche mit Mustern, Nutzung und der R
   assert.match(stueck, /setzeWert\(teil, "checkAreas"/, "die Bereiche landen nicht in der Arbeitskopie von M4");
 });
 
-test("[einstellungen-13] M4 bearbeitet beide Pfade in einem Teil und braucht keinen Folgepfad", () => {
+test("[einstellungen-13] M4 bearbeitet seine Pfade in einem Teil und braucht keinen Folgepfad", () => {
   const m4 = TEILE.find((t) => t.kennung === "m4");
-  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas"]);
+  // `ohnePruefung` kam mit Issue #934 dazu: dieselbe Frage wie die Bereiche — was eine
+  // geaenderte Datei ausloest —, deshalb derselbe Teil. `nurGeruest` (Issue #943) steht
+  // aus demselben Grund dort: Es entscheidet mit, welche Kopplung die Auswahl sieht.
+  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest"]);
   assert.equal(m4.folgen, undefined, "M4 nennt einen Folgepfad, obwohl es beide Pfade selbst bearbeitet");
   const pfade = new Set(aenderungsliste(
     { buildChecks: [{ cmd: "eslint", areas: ["alt"] }], checkAreas: { alt: ["x"] } },
@@ -501,9 +504,22 @@ test("M6 aendert night.kette formtreu ueber ketteAendern, nicht als neues Objekt
   assert.match(stueck, /setzeWert\(teil, "night\.kette"/, "die Aenderung landet nicht in der Arbeitskopie von M6");
 });
 
-test("M6 bearbeitet nur night.kette und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
+// Die Zielmarke steht neben night.kette (Issue #923, Plan #917 E4) und wird darum als
+// eigener Pfad gesetzt — nicht ueber ketteAendern, das nur den Block darunter schreibt.
+test("M6 bietet die Zielmarke night.zielUmsetzungMin mit der Vorgabe aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(
+    stueck.includes(`const ZIEL_UMSETZUNG_VORGABE = ${JSON.stringify(vorgabeAus("night.zielUmsetzungMin"))};`),
+    "die Vorgabe der Zielmarke im Browser-Skript weicht vom Schema ab oder fehlt",
+  );
+  assert.match(stueck, /setzeWert\(teil, "night\.zielUmsetzungMin"/, "die Zielmarke landet nicht in der Arbeitskopie");
+  assert.match(stueck, /wertVon\(teil, "night\.zielUmsetzungMin"\)/, "die Zielmarke wird nicht aus der Arbeitskopie gelesen");
+  assert.match(stueck, /zeilenGruppe\("night\.zielUmsetzungMin"/, "die Zielmarke hat keine eigene Zeile");
+});
+
+test("M6 bearbeitet night.kette samt Zielmarke und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
 });
@@ -564,11 +580,12 @@ test("[einstellungen-9] M7 merkt das Entfernen der letzten Abweichung in der Arb
 
 test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfelder mit eigenem Teil aus", () => {
   const m7 = TEILE.find((t) => t.kennung === "m7");
-  assert.deepEqual(m7.pfade, ["triggers", "columns", "github", "toolbox", "local"]);
+  // pruefLauf kam mit Issue #905 dazu: drei einfache Felder, genau das, wofuer M7 da ist.
+  assert.deepEqual(m7.pfade, ["triggers", "columns", "github", "toolbox", "local", "pruefLauf"]);
   assert.equal(m7.folgen, undefined);
   // toolbox.tokenFile hat eine eigene Eingabe — in der Gruppe stuende es ohne persoenliche
   // Abweichung ein zweites Mal da.
-  assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [] });
+  assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [], pruefLauf: [] });
   const felder = gruppenZeilen("toolbox", SCHEMA.properties.toolbox, { team: { host: "https://x", tokenFile: ".t" } }, GRUPPEN_AUSNAHMEN.toolbox);
   assert.deepEqual(felder.map((z) => z.feld), ["host", "ideaStored"]);
 });

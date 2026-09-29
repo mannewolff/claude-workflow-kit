@@ -12,7 +12,15 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync 
 import { delimiter, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { setTimeout as schlafen } from "node:timers/promises";
 import assert from "node:assert/strict";
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Jeder Lauf ueber diesen Helfer
+// faehrt das echte kit/checks.mjs und nahm sonst dieselbe maschinenweite Sperre wie
+// jede andere Testdatei — die Suite liefe Datei fuer Datei statt parallel. Der
+// Import steht HIER und nicht in jeder Testdatei, weil jeder Aufruf durch diesen
+// Helfer geht und `process.env` prozessweit gilt, also auch fuer spawn-Aufrufe, die
+// an ihm vorbeigehen.
+import "./checks-sperre.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -148,6 +156,76 @@ export function repoAnlegen({ config = {}, configText = null, ohneConfig = false
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "setup");
   return dir;
+}
+
+/** Die Fehlercodes, die Windows liefert, solange noch ein Handle auf dem Verzeichnis liegt. */
+const BELEGT = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
+
+/**
+ * Beendet unter Windows den ganzen Prozessbaum eines Laufs (Issue #874).
+ *
+ * `checks.mjs` startet seine Pruefkommandos mit `shell: true`; unter Windows steht
+ * damit eine `cmd.exe` zwischen Lauf und Kommando. Ein SIGKILL auf den Lauf beendet
+ * dort keinen Prozessbaum — die Shell ueberlebt als Waise und haelt das
+ * Arbeitsverzeichnis offen. `taskkill /T /F` raeumt sie mit ab.
+ *
+ * Fehler sind kein Testfehler: Der Prozess kann laengst weg sein, und die Funktion
+ * laeuft im `finally`, wo sie das Ergebnis des Tests nicht ueberschreiben darf.
+ * Rueckgabe: ob ein Aufruf abgesetzt wurde — allein zur Pruefbarkeit.
+ */
+export function prozessbaumBeenden(pid, { plattform = process.platform, kill = spawnSync } = {}) {
+  if (plattform !== "win32" || !pid) return false;
+  try {
+    kill("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
+  } catch {
+    // schon weg
+  }
+  return true;
+}
+
+/**
+ * Entfernt ein Wegwerf-Verzeichnis und wartet dabei ab, bis Windows es freigibt
+ * (Issue #874). Die Wiederholungen von `rmSync` selbst sind der erste Weg; gibt die
+ * ueberlebende Shell das Verzeichnis erst spaeter frei, setzt die Schleife mit
+ * wachsendem Abstand nach, hoechstens bis `grenzeMs`. Ein Fehler, der nicht von
+ * einem offenen Handle kommt, wird sofort weitergeworfen — er verginge nicht von
+ * selbst. `rm`, `warten` und `uhr` dienen allein der Pruefbarkeit.
+ */
+export async function repoEntfernenHartnaeckig(
+  dir,
+  { rm = rmSync, grenzeMs = 10_000, warten = schlafen, uhr = Date.now } = {},
+) {
+  const ende = uhr() + grenzeMs;
+  let abstand = 100;
+  for (;;) {
+    try {
+      rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+      return;
+    } catch (fehler) {
+      if (!BELEGT.has(fehler?.code) || uhr() >= ende) throw fehler;
+      await warten(abstand);
+      abstand = Math.min(abstand * 2, 1000);
+    }
+  }
+}
+
+/**
+ * Dasselbe Entfernen, aber es kippt kein Testergebnis (Issue #892). Gibt die
+ * ueberlebende `cmd.exe` das Verzeichnis auch bis zur Obergrenze nicht frei, wird der
+ * Fehler notiert statt geworfen: Ein Wegwerf-Verzeichnis, das unter Windows belegt
+ * bleibt, ist kein Befund ueber das Kit — die Zusicherungen des Tests sind da laengst
+ * durchgelaufen, und das Aufraeumen im `finally` darf ihr Ergebnis nicht ueberschreiben.
+ * Fehler, die nicht von einem offenen Handle kommen, fliegen unveraendert weiter; sonst
+ * verbaerge die Toleranz auch einen falschen Pfad. `notiz` nimmt den Satz entgegen —
+ * im Test `t.diagnostic`, damit er im TAP-Protokoll beim richtigen Test steht.
+ */
+export async function repoEntfernenTolerant(dir, { notiz = null, ...rest } = {}) {
+  try {
+    await repoEntfernenHartnaeckig(dir, rest);
+  } catch (fehler) {
+    if (!BELEGT.has(fehler?.code)) throw fehler;
+    notiz?.(`Wegwerf-Verzeichnis ${dir} blieb belegt (${fehler.code}) — nicht entfernt, kein Testfehler.`);
+  }
 }
 
 export function mitRepo(optionen, fn) {

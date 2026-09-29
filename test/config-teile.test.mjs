@@ -5,20 +5,27 @@
 // `checkAreas`, und `node --test` war ein einziger Eintrag. Jeder Pruefstand
 // meldete deshalb vollen Umfang — die eigene Leitplanke lief hier ungemessen mit.
 //
-// Mit den sechs Teilen und den drei Testaufrufen entsteht eine neue Fehlerart,
-// und sie ist still: Eine Testdatei mit einem Praefix, das keiner der drei
+// Mit den Teilen und den aufgeteilten Testaufrufen entsteht eine neue Fehlerart,
+// und sie ist still: Eine Testdatei mit einem Praefix, das keiner der
 // `node --test`-Eintraege nennt, LAEUFT NIE — weder vor dem Commit noch im
 // Commit-Gate noch in der CI. Gruen hiesse dann „nicht geprueft". Dieselbe
 // Richtung wie eine Quelldatei ohne Teil, nur umgekehrt sichtbar: Die faellt
 // wenigstens in den vollen Umfang, die Testdatei faellt heraus.
 //
+// Seit Issue #933 (Plan #930, E4) prueft diese Datei zusaetzlich die Deckung
+// selbst: Nicht mehr die Zahl der Aufrufe ist die Aussage, sondern dass jede
+// gemessene Kopplung von Testdatei und Quelldatei ein Kommando findet, das sie
+// auch wirklich ausloest. Eine feste Zahl, die bei jeder Aenderung mitgezogen
+// wird, prueft nichts.
+//
 // Deshalb prueft diese Datei die ECHTE Config dieses Repos gegen `git ls-files`
 // und nicht ein Beispiel: Ein Beispiel bewiese die Regel, nicht den Zustand.
 //
-// Die Glob-Aufloesung kommt aus `kit/checks.mjs`. Eine zweite Fassung hier
-// beantwortete die Frage „trifft dieses Muster diese Datei?" ein zweites Mal —
-// und ab der ersten Abweichung bescheinigte der Test eine Abdeckung, die das
-// ausfuehrende Kommando nicht sieht.
+// Die Glob-Aufloesung kommt aus `kit/checks.mjs`, die Verflechtung aus
+// `tools/verflechtung.mjs`. Eine zweite Fassung hier beantwortete die Fragen
+// „trifft dieses Muster diese Datei?" und „laedt dieser Test jene Quelle?" ein
+// zweites Mal — und ab der ersten Abweichung bescheinigte der Test eine
+// Abdeckung, die das ausfuehrende Kommando nicht sieht.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -28,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten } from "../kit/checks.mjs";
+import { verflechtungErheben } from "../tools/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -55,16 +63,20 @@ function versionierte(...pfadangaben) {
   return dateien;
 }
 
-/** Die drei Testaufrufe der Config — an ihrem Kommando erkannt, nicht an ihrer Position. */
+/** Die Testaufrufe der Config — an ihrem Kommando erkannt, nicht an ihrer Position. */
 const testEintraege = (config.buildChecks ?? [])
   .filter((eintrag) => typeof eintrag === "object" && eintrag.cmd.startsWith("node --test"));
 
-test("drei Testaufrufe, jeder einem Teil zugeordnet", () => {
-  // Drei, weil sich die Kit-Werkzeuge gegenseitig laden: night.mjs zieht board,
-  // checks, aufwand, wirksamkeit und befunde nach, und 49 Nacht-Tests nennen
-  // board.mjs. Sechs Aufrufe — einer je Teil — kosteten im vollen Umfang mehr,
-  // als die feinere Eingrenzung je einspart.
-  assert.equal(testEintraege.length, 3, "erwartet: genau drei node --test-Eintraege");
+/** Die Dateimuster eines Testaufrufs als Regexe — die Argumente in Anfuehrungszeichen. */
+function globeVon(eintrag) {
+  return [...eintrag.cmd.matchAll(/"([^"]+)"/g)].map((treffer) => globZuRegex(treffer[1]));
+}
+
+test("jeder Testaufruf ist mindestens einem Teil zugeordnet", () => {
+  // Bewusst ohne Zahl (Issue #933, E6 des Plans #930): Nach der Zerlegung ist nicht
+  // mehr die Anzahl der Aufrufe die Aussage, sondern ihre Deckung. Eine Zahl, die bei
+  // jeder Aenderung mitgezogen wird, prueft nichts.
+  assert.ok(testEintraege.at(0), "kein einziger node --test-Eintrag in buildChecks");
   for (const eintrag of testEintraege) {
     assert.ok(
       eintrag.areas?.length > 0,
@@ -73,10 +85,8 @@ test("drei Testaufrufe, jeder einem Teil zugeordnet", () => {
   }
 });
 
-test("jede versionierte Testdatei wird von einem der drei Aufrufe erfasst", () => {
-  const regexe = testEintraege
-    .flatMap((eintrag) => [...eintrag.cmd.matchAll(/"([^"]+)"/g)])
-    .map((treffer) => globZuRegex(treffer[1]));
+test("jede versionierte Testdatei wird von einem der Aufrufe erfasst", () => {
+  const regexe = testEintraege.flatMap(globeVon);
   assert.ok(regexe.length > 0, "kein einziges Dateimuster in den Testaufrufen gefunden");
 
   const ohneAufruf = versionierte(":(glob)test/**/*.test.mjs")
@@ -88,19 +98,171 @@ test("jede versionierte Testdatei wird von einem der drei Aufrufe erfasst", () =
   );
 });
 
+/**
+ * Die Freistellungen der Config als Regexe — dieselbe Glob-Aufloesung wie bei den
+ * Bereichen, aus `kit/checks.mjs` geholt und nicht nachgebaut.
+ */
+const freistellungen = (config.ohnePruefung ?? []).map((eintrag) => ({
+  muster: eintrag.muster,
+  regex: globZuRegex(eintrag.muster),
+}));
+
+/**
+ * Die Geruest-Liste der Config (Issue #943, Plan #930): Pfade, die Testdateien nur
+ * anlegen, ohne an ihnen etwas zu pruefen. Ihre Erwaehnung belegt keine Kopplung.
+ *
+ * Die Invariante weiter unten liest dieselbe Liste wie jede kuenftige
+ * areas-Berechnung — sonst pruefte sie eine andere Verflechtung als die, nach der
+ * ausgewaehlt wird, und diese Zweiteilung ist genau das, was die Liste verhindert.
+ */
+const geruestMuster = (config.nurGeruest ?? []).map((eintrag) => eintrag.muster);
+const geruestRegexe = geruestMuster.map((muster) => globZuRegex(muster));
+
 test("jede versionierte Quelldatei liegt in mindestens einem Teil", () => {
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
   assert.ok(bereiche.length > 0, ".claude/workflow.config.json traegt keine checkAreas");
 
+  // Seit Issue #935 (Plan #930, E8/E9/E10) stehen `test/helpers/**` und die
+  // Markdown-Dateien der Wurzel mit in der Menge: Sie waren bisher der groesste
+  // Posten unter den Dateien, die bei jeder Aenderung den vollen Umfang zogen —
+  // und eine Menge, die sie auslaesst, bescheinigt eine Deckung, die es nicht gibt.
   const dateien = versionierte(
     "kit", "tools", "skills", "docs", "templates", ".githooks", "install.mjs", "RELEASING.md",
+    ":(glob)test/helpers/**", ":(glob)*.md",
   );
-  const ohneTeil = dateien.filter(
-    (pfad) => !bereiche.some((bereich) => bereich.regexe.some((regex) => regex.test(pfad))),
-  );
+
+  // Eine Datei ist zugeordnet, wenn sie ein `checkAreas`-Muster ODER ein
+  // `ohnePruefung`-Muster trifft. Die Freistellung ist die dritte Antwort auf
+  // dieselbe Frage (Issue #934) — sie hier nicht zu zaehlen hiesse, die
+  // begruendete Antwort „nichts zu pruefen" als Luecke auszuweisen.
+  const zugeordnet = (pfad) => bereiche.some((b) => b.regexe.some((r) => r.test(pfad)))
+    || freistellungen.some((f) => f.regex.test(pfad));
+
   assert.deepEqual(
-    ohneTeil,
+    dateien.filter((pfad) => !zugeordnet(pfad)),
     [],
     "Quelldateien ohne Teil — jede Aenderung an ihnen loest den vollen Umfang aus",
   );
+});
+
+test("keine Datei steht zugleich in ohnePruefung und in einem Teil", () => {
+  // `checkAreas` hat Vorrang (Issue #934): Trifft eine Datei beide Musterarten,
+  // gilt sie als beruehrt und die Freistellung bleibt wirkungslos. Ein solches
+  // Paar ist deshalb kein Fehler im Lauf, sondern eine Luege in der Config —
+  // der Grund verspricht „hier ist nichts zu pruefen", und geprueft wird doch.
+  assert.ok(freistellungen.length > 0, ".claude/workflow.config.json traegt kein ohnePruefung");
+  const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
+
+  const doppelt = [];
+  for (const pfad of versionierte(".")) {
+    const frei = freistellungen.find((f) => f.regex.test(pfad));
+    if (!frei) continue;
+    const teil = bereiche.find((b) => b.regexe.some((r) => r.test(pfad)));
+    if (teil) doppelt.push(`${pfad}: ohnePruefung '${frei.muster}' und Teil '${teil.name}'`);
+  }
+
+  assert.deepEqual(
+    doppelt.sort(),
+    [],
+    "Dateien in beiden Musterlisten — die Freistellung bliebe dort wirkungslos",
+  );
+});
+
+test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie ausloest", () => {
+  // Die Invariante aus E4 (Issue #933, Plan #930). Sie sagt, was die gefallene
+  // Zahl der Aufrufe nie sagen konnte:
+  //
+  //   Laedt eine Testdatei eine Quelldatei, dann gibt es fuer JEDES Muster, das
+  //   diese Quelldatei einem Bereich zuordnet, mindestens ein Pruefkommando, das
+  //   diesen Bereich in `areas` fuehrt UND dessen Globs diese Testdatei erfassen.
+  //
+  // Ohne sie ist der Bereichsschnitt frei erfindbar: Ein Bereich, dessen
+  // Testgruppe kein Kommando ausloest, ist still gruen — genau die Richtung, in
+  // der ein Fehler niemandem auffaellt. Die Zahl der Aufrufe war dafuer nur ein
+  // Stellvertreter; die Deckung ist die Sache selbst.
+  //
+  // Zunaechst nur fuer `kit/` und `tools/` — ausgeweitet mit Issue #936 und mit
+  // Issue #937 wieder eingeschraenkt. Die Ausweitung war richtig gedacht und
+  // messbar schaedlich: Sie erzwang breitere `areas`, weil die Erhebung JEDE
+  // Erwaehnung eines Quellpfads zaehlt und die Nacht-Tests in ihren Wegwerf-Repos
+  // `README.md` und `templates/CLAUDE-workflow.md` anlegen. Das Nacht-Kommando
+  // trug seither `skills-doku`, und eine Aenderung an einer Skill-Datei kostete
+  // 83 s statt 3 s (Referenzmessung R4 an Issue #937).
+  //
+  // Der Zielkonflikt ist nicht hier zu loesen: Invariante scharf heisst `areas`
+  // breit heisst Auswahl wirkungslos. Seit Issue #943 kann die Erhebung Geruest von
+  // Kopplung unterscheiden, und sie misst hier mit derselben Liste, nach der auch
+  // ausgewaehlt wird. Die Liste allein macht die Ausweitung aber noch nicht moeglich:
+  // Ein Muster gilt gegen den Quellpfad, also fuer ALLE Zeilen — und `.gitignore`,
+  // `README.md` und `.claude/workflow.config.json` werden je von mindestens einer
+  // Testdatei wirklich geprueft (Messung an Issue #943). Sie aufzunehmen machte die
+  // Invariante dort blind. Die Luecke ausserhalb der beiden Verzeichnisse bleibt
+  // deshalb offen; sie war es vor Issue #936 auch, und sie kostet nichts, waehrend die
+  // Ausweitung 80 Sekunden je Doku-Aenderung kostete.
+  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  assert.ok(tabelle.size > 0, "die Verflechtungserhebung lieferte keine Zeile");
+
+  const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
+  assert.ok(bereiche.length > 0, ".claude/workflow.config.json traegt keine checkAreas");
+
+  const kommandos = testEintraege.map((eintrag) => ({
+    areas: new Set(eintrag.areas ?? []),
+    regexe: globeVon(eintrag),
+  }));
+
+  // Die drei Schritte stehen als eigene Funktionen da, nicht als drei ineinander
+  // geschachtelte Schleifen: Der Linter zaehlt die Verschachtelung, und die Namen
+  // sagen ohnehin besser, was der Schritt bedeutet.
+  const geschnitten = (quelle) => quelle.startsWith("kit/") || quelle.startsWith("tools/");
+  const bereicheVon = (quelle) => bereiche.filter((b) => b.regexe.some((r) => r.test(quelle)));
+  const gedeckt = (bereich, testdatei) => kommandos.some(
+    (k) => k.areas.has(bereich.name) && k.regexe.some((r) => r.test(testdatei)),
+  );
+
+  const luecken = new Set();
+  for (const [testdatei, quellen] of tabelle) {
+    for (const quelle of quellen.filter(geschnitten)) {
+      for (const bereich of bereicheVon(quelle)) {
+        if (!gedeckt(bereich, testdatei)) luecken.add(`${bereich.name}: ${quelle} braucht ${testdatei}`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    [...luecken].sort(),
+    [],
+    "Bereiche, deren Aenderung eine Testdatei nicht ausloest, die die Quelle laedt — still gruen",
+  );
+});
+
+test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
+  assert.ok(geruestMuster.length > 0, ".claude/workflow.config.json traegt kein nurGeruest");
+
+  const mitListe = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const uebrig = [];
+  for (const [testdatei, quellen] of mitListe) {
+    for (const quelle of quellen.filter((q) => geruestRegexe.some((r) => r.test(q)))) {
+      uebrig.push(`${testdatei}: ${quelle}`);
+    }
+  }
+  assert.deepEqual(uebrig.sort(), [], "Geruest zaehlt weiter als Kopplung — die Liste greift nicht");
+
+  // Und die Gegenrichtung: Ohne die Liste steht mindestens ein Eintrag noch in der
+  // Tabelle. Ein Muster, das nie etwas trifft, waere kein Schutz, sondern Zierat — und
+  // niemand merkte, wenn es beim naechsten Umbau seine Wirkung verloere.
+  const roh = verflechtungErheben({ repoRoot });
+  assert.ok(
+    [...roh.values()].some((quellen) => quellen.some((q) => geruestRegexe.some((r) => r.test(q)))),
+    `kein Muster aus nurGeruest kommt in der rohen Erhebung vor: ${geruestMuster.join(", ")}`,
+  );
+});
+
+test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
+  // Dieselbe Pflicht wie bei `ohnePruefung` (Issue #934): Eine Ausnahme von der Regel
+  // „jede Erwaehnung zaehlt" ist nur ertraeglich, wenn sie sich begruendet — und der
+  // Grund steht dort, wo der Eintrag steht, nicht in einer Commit-Botschaft.
+  for (const eintrag of config.nurGeruest ?? []) {
+    assert.ok(eintrag.muster?.length > 0, `Eintrag ohne Muster: ${JSON.stringify(eintrag)}`);
+    assert.ok(eintrag.grund?.length > 0, `${eintrag.muster} nennt keinen Grund`);
+  }
 });

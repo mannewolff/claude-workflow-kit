@@ -17,6 +17,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 // Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
 // damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
 const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
@@ -39,6 +44,10 @@ function setupProjekt(praefix, config = {}) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
+  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
+  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" }, ...config,
@@ -87,7 +96,9 @@ test("Vorflug: leere buildChecks stoppen den Lauf, --no-checks-ok laesst ihn dur
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 1, "ohne Gate darf nachts nicht implementiert werden");
-    assert.match(res.stderr, /buildChecks .* ist leer[\s\S]*--no-checks-ok/);
+    // Dieselbe Meldung wie fuer jede andere Config ohne Gate (Issue #950): Die leere
+    // Liste ist kein eigener Befund, sondern ihr Grenzfall.
+    assert.match(res.stderr, /buildChecks [\s\S]*keine Pruefung, die beim Abschluss[\s\S]*--no-checks-ok/);
 
     // Mit dem Override laeuft derselbe Stand durch (Ready ist leer -> nichts zu tun).
     const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
@@ -113,6 +124,48 @@ test("[night-48] Vorflug: ohne Pruefung der Paketstufe stoppt der Lauf mit diese
 
     const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(ok.status, 0, `mit --no-checks-ok haette der Lauf durchgehen muessen: ${ok.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Dieselbe Falle eine Ebene tiefer (Issue #950, Plan #944, E14): Die Eintraege TRAGEN
+// hier die Paketstufe, laufen beim Abschluss einer Karte aber nicht — der eine wegen
+// `nichtBeimAbschluss`, der andere, weil eine Guetemessung die vollstaendige Testmenge
+// braucht. Zaehlte der Guard sie mit, ginge eine Config durch, in der die naechtliche
+// Umsetzung kein einziges Gate hat.
+test("[night-950] Vorflug: traegt jeder Paketstufen-Eintrag nichtBeimAbschluss oder guete, stoppt der Lauf", NUR_POSIX, () => {
+  const buildChecks = [
+    { cmd: "true", nichtBeimAbschluss: "zusammenspiel" },
+    { cmd: "true", guete: { muster: String.raw`\((\d+)%\)`, marke: 80 } },
+  ];
+  const dir = setupProjekt("night-guard-abschluss-", { buildChecks });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 1, "ohne Pruefung, die beim Abschluss laeuft, darf nachts nicht implementiert werden");
+    assert.match(res.stderr, /Paketstufe/, "die Meldung nennt die Paketstufe nicht");
+    assert.match(res.stderr, /nichtBeimAbschluss/, "die Meldung nennt die Achse nicht als Grund");
+    assert.match(res.stderr, /guete/, "die Meldung nennt die Guetemessung nicht als Grund");
+    assert.match(res.stderr, /--no-checks-ok/, "der Override wird nicht genannt");
+
+    const ok = run(dir, process.execPath, [NIGHT, "--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(ok.status, 0, `mit --no-checks-ok haette der Lauf durchgehen muessen: ${ok.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Gegenprobe: Ein einziger Eintrag, der beim Abschluss laeuft, genuegt — die beiden
+// ausgelassenen daneben aendern daran nichts.
+test("[night-950] Vorflug: ein Paketstufen-Eintrag ohne beides ist das Gate, der Lauf startet", NUR_POSIX, () => {
+  const buildChecks = [
+    { cmd: "true", nichtBeimAbschluss: "volleTestmenge" },
+    "true",
+  ];
+  const dir = setupProjekt("night-guard-abschluss-ok-", { buildChecks });
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `der Lauf haette starten muessen: ${res.stderr}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -259,7 +312,7 @@ test("Kaskade: unerfuellte Abhaengigkeit wandert kommentiert ins Backlog, erfuel
 // Ohne den Test-Hook baut runSession die echte Kommandozeile. Ein Fake-claude im
 // PATH macht sie pruefbar, ohne je eine Sitzung zu starten: Es protokolliert seine
 // Argumente. So ist belegt, dass Prompt, Modell und Permission-Modus ankommen — und
-// dass --yolo tatsaechlich --dangerously-skip-permissions setzt statt acceptEdits.
+// dass --yolo tatsaechlich --dangerously-skip-permissions setzt statt des auto mode.
 function binMitClaude(dir, claudeScript) {
   const binDir = join(dir, "bin");
   mkdirSync(binDir, { recursive: true });
@@ -292,7 +345,10 @@ test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Mo
     const zeile = readFileSync(argLog, "utf-8").trim();
     assert.match(zeile, new RegExp(`-p /implement-next #${id}`), "das Issue muss verbindlich uebergeben werden");
     assert.match(zeile, /--model claude-test-modell/);
-    assert.match(zeile, /--permission-mode acceptEdits/);
+    // Seit Issue #940 der auto mode samt abgelehnter Rueckfragen — die beiden Flags
+    // gehoeren zusammen, darum beide geprueft.
+    assert.match(zeile, /--permission-mode auto/);
+    assert.match(zeile, /--permission-prompts none/);
     // Bis Issue #668 stand hier das Gegenteil ("ohne --verbose kein Stream-Format"). Der
     // Implementierungslauf fordert den Strom jetzt immer an: An `stop_reason` haengt der
     // Grund einer Runde ohne Ergebnis, und der darf nicht am Konsolenflag haengen.
@@ -355,7 +411,10 @@ test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", NU
     // Timeout zaehlt als issue-spezifisch, nicht als Infrastruktur: Das Issue wandert
     // mit Kommentar ins Backlog und der Lauf endet reguler.
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id} nicht in In review`));
+    // `.*` zwischen Nummer und Zustand seit Issue #977: Vor dem Zustand steht jetzt der
+    // Grund der Runde — hier also der Zeitabbruch. Gemessen wird an dieser Stelle das
+    // Nachsetzen des Kills, nicht der Wortlaut der Zeile.
+    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id}.* nicht in In review`));
     assert.doesNotMatch(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/,
       "ein Timeout ist kein Infrastruktur-Fehler");
   } finally {
@@ -381,7 +440,7 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
     });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id} nicht in In review`),
+    assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id}.* nicht in In review`),
       "der Runner muss das Zeitlimit selbst aufloesen, statt auf das close-Event zu warten");
   } finally {
     rmSync(dir, { recursive: true, force: true });

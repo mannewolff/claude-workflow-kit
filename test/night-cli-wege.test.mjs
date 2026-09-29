@@ -161,7 +161,7 @@ test("ohne buildChecks bricht die Implementierung ab, mit --no-checks-ok nicht",
   mitProjekt((dir) => {
     const ohneChecks = run(dir, ["--dry-run", "--label", "none"]);
     assert.equal(ohneChecks.status, 1, "ohne Gate darf nachts nicht implementiert werden");
-    assert.match(ohneChecks.stderr, /buildChecks in workflow\.config\.json ist leer/);
+    assert.match(ohneChecks.stderr, /buildChecks in workflow\.config\.json traegt keine Pruefung, die beim Abschluss/);
     assert.match(ohneChecks.stderr, /--no-checks-ok/, "der Override wird nicht genannt");
 
     // Mit Override laeuft derselbe Aufruf durch.

@@ -203,13 +203,13 @@ test("[board-11] der Rumpf haelt die Laengengrenzen des Vertrags ein", () => {
 // --- Dollarbetrag -----------------------------------------------------------
 
 test("[board-15] der Betrag wird aus den Mengen gerechnet, getrennt nach Cache-Dauer", () => {
-  // 1.000.000 Eingabe zu 3, 1.000.000 Ausgabe zu 15, je 1.000.000 Cache zu 3,75 und 6,
-  // 1.000.000 gelesen zu 0,30 — Sonnet-Stufe.
+  // 1.000.000 Eingabe zu 2, 1.000.000 Ausgabe zu 10, je 1.000.000 Cache zu 2,5 und 4,
+  // 1.000.000 gelesen zu 0,20 — Stufe von Sonnet 5 (tier_2_10, Issue #994).
   const m = MELDUNG(protokoll(zug({
     id: "a", ms: 0, modell: "claude-sonnet-5",
     eingabe: 1e6, ausgabe: 1e6, cache5m: 1e6, cache1h: 1e6, gelesen: 1e6,
   })), null);
-  assert.equal(m.usage.costUsd, 3 + 15 + 3.75 + 6 + 0.3);
+  assert.equal(m.usage.costUsd, 2 + 10 + 2.5 + 4 + 0.2);
 });
 
 test("[board-15] ein Modell ohne Eintrag fuehrt zu keinem Betrag, nicht zu 0", () => {
@@ -226,7 +226,7 @@ test("[board-15] ein unbekanntes Modell ohne Token kostet nichts und verdirbt de
     zug({ id: "a", ms: 0, modell: "claude-sonnet-5", ausgabe: 1e6 }),
     zug({ id: "b", ms: 1 * MIN, modell: "<synthetic>" }),
   ), null);
-  assert.equal(m.usage.costUsd, 15);
+  assert.equal(m.usage.costUsd, 10);
 });
 
 test("[board-15] der Betrag einer Karte faellt weg, ohne den der anderen mitzunehmen", () => {
@@ -237,7 +237,7 @@ test("[board-15] der Betrag einer Karte faellt weg, ohne den der anderen mitzune
     ),
     marken([10 * MIN, "10", "in_progress"], [20 * MIN, "20", "in_progress"]),
   );
-  assert.equal(m.items[0].usage.costUsd, 15);
+  assert.equal(m.items[0].usage.costUsd, 10);
   assert.equal(m.items[1].usage.costUsd, null);
   assert.equal(m.usage.costUsd, null, "die Sitzungssumme ist unbekannt, sobald ein Teil es ist");
 });

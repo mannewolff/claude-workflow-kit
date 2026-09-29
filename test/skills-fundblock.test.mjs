@@ -38,11 +38,11 @@ test("[skills-37] fuenf Prompts tragen den Fundblock", () => {
   assert.equal(ROLLEN_PROMPTS.length, 4, `es sind ${ROLLEN_PROMPTS.length} Rollen-Prompts statt vier`);
   assert.ok(CODE_PROMPT, "der Review-Prompt mit {{REVIEW_MATERIAL}} fehlt");
   for (const p of ALLE_PROMPTS) {
-    assert.match(p, /^-?\s*Gegenprobe:/m, "ein Prompt verlangt keine Gegenprobe-Zeile");
+    assert.match(p, /^-?[ \t]*Gegenprobe:/m, "ein Prompt verlangt keine Gegenprobe-Zeile");
     assert.match(p, /widerlegen würde/, "ein Prompt sagt nicht, was die Gegenprobe ist");
     assert.match(p, /geprüft, bestätigt/, "ein Prompt nennt den bestaetigten Stand nicht");
     assert.match(p, /nicht geprüft/, "ein Prompt nennt den ungeprueften Stand nicht");
-    assert.match(p, /^-?\s*Art:/m, "ein Prompt verlangt keine Art-Zeile");
+    assert.match(p, /^-?[ \t]*Art:/m, "ein Prompt verlangt keine Art-Zeile");
     assert.match(p, /\{\{ARTEN\}\}/, "ein Prompt setzt die Artenliste nicht ueber den Platzhalter ein");
     assert.match(p, /eigene Gegenprobe widerlegt hat, meldest du nicht/,
       "ein Prompt sagt nicht, dass ein widerlegter Fund nicht gemeldet wird");
@@ -51,10 +51,15 @@ test("[skills-37] fuenf Prompts tragen den Fundblock", () => {
 
 test("[skills-37] jede Zeichenkette des Blocks trifft genau fuenfmal ueber beide Skills", () => {
   const beide = ISSUE_REVIEW + REVIEW;
-  for (const zeichenkette of ["Gegenprobe:", "Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht"]) {
+  for (const zeichenkette of ["Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht"]) {
     assert.equal(beide.split(zeichenkette).length - 1, 5,
       `'${zeichenkette}' steht nicht genau fuenfmal — fuenf Prompts, fuenf Treffer`);
   }
+  // 'Gegenprobe:' steht einmal mehr: im Beispiel der Formregel von `/issue-review`, das
+  // zeigt, wie eine tragende Zeile aussieht. Ein sechster Ort ist die Grenze — was
+  // darueber hinausgeht, waere wieder ein Wortlaut an mehreren Stellen.
+  assert.equal(beide.split("Gegenprobe:").length - 1, 6,
+    "'Gegenprobe:' steht nicht fuenfmal in den Prompts plus einmal im Beispiel der Formregel");
   // Der Platzhalter steht je Skill einmal mehr: im Absatz, der sagt, woraus er gefuellt wird.
   assert.equal(beide.split("{{ARTEN}}").length - 1, 7,
     "'{{ARTEN}}' steht nicht fuenfmal in den Prompts plus einmal je Fuell-Absatz");

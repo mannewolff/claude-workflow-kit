@@ -132,6 +132,32 @@ test("[night-35] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie o
   });
 });
 
+test("[night-35] belegt und Schreibfehler sind an `art` zu unterscheiden, nicht am Wortlaut des Grundes", () => {
+  // Der Wortlaut eines Grundes ist Prosa und wird umformuliert; haengt die Einstufung
+  // einer ganzen Nacht daran, kippt sie bei der naechsten Umformulierung still.
+  mitOrdner((dir) => {
+    lockSchreiben(dir, `${process.pid}\n`);
+    const belegt = umsetzungLockNehmen(dir);
+    assert.equal(belegt.ok, false);
+    assert.equal(belegt.art, "belegt");
+    assert.match(belegt.grund, new RegExp(String(process.pid)));
+  });
+  mitOrdner((dir) => {
+    mkdirSync(lockPfad(dir), { recursive: true });
+    const fehler = umsetzungLockNehmen(dir);
+    assert.equal(fehler.ok, false);
+    assert.equal(fehler.art, "schreibfehler");
+    assert.match(fehler.grund, /schreiben/);
+  });
+  mitOrdner((dir) => {
+    const erfolg = umsetzungLockNehmen(dir);
+    assert.equal(erfolg.ok, true, erfolg.grund);
+    assert.equal(erfolg.hinweis, null);
+    assert.equal(typeof erfolg.freigeben, "function");
+    erfolg.freigeben();
+  });
+});
+
 test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits deckt ihn", () => {
   const res = spawnSync("git", ["check-ignore", "-q", UMSETZUNG_LOCK], { cwd: repoRoot, encoding: "utf-8" });
   assert.equal(res.status, 0, `${UMSETZUNG_LOCK} ist im Kit nicht ignoriert — gitClean() saehe ihn als Rest`);
@@ -139,7 +165,12 @@ test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits 
 
 // --- Die Kette unter Variante B ---
 
-test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleibt fertig, kein Paket wird gezogen", NUR_POSIX, () => {
+// Der Ausgang ist seit Issue #862 `unvollstaendig` statt `fertig`: Die Sperre selbst
+// bleibt richtig — zwei Umsetzungen in einem Checkout gehen nicht —, aber eine Nacht, die
+// ihre bestellte Umsetzung nicht ausgefuehrt hat, darf am Morgen nicht als gelungen
+// dastehen. Was die Stufe tut, aendert das nicht: Sie laesst aus und faellt auf Variante A
+// zurueck. Die Zusicherungen darunter sind deshalb unveraendert.
+test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet unvollstaendig, kein Paket wird gezogen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${process.pid}\n`);
@@ -148,7 +179,7 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette bleib
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(einheit.ausgang, "unvollstaendig", einheit.grund);
     const stufe = einheit.stufen.umsetzung;
     assert.deepEqual(stufe.umgesetzt, []);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);

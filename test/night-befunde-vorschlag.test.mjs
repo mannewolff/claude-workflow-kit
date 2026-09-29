@@ -40,7 +40,7 @@ function kartenTitel(dir) {
   return readdirSync(issues)
     .filter((n) => n.endsWith(".md"))
     .map((n) => readFileSync(join(issues, n), "utf-8"))
-    .map((t) => (t.match(/^title:\s*(.*)$/m) || [null, ""])[1].trim());
+    .map((t) => (t.match(/^title:(.*)$/m) || [null, ""])[1].trim());
 }
 
 function vorschlaege(dir) {

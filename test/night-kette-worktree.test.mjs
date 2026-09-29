@@ -144,6 +144,33 @@ test("[night-17] worktreesAufraeumen entfernt liegengebliebene Worktrees dieses 
   });
 });
 
+test("[night-908] worktreeAnlegen legt mit dem Praefix pruefung einen eigenen Ordner an", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "908", stempel: "2026-09-24-010203", praefix: "pruefung" });
+    angelegt.push(pfad);
+    assert.ok(pfad.startsWith(join(tmpdir(), `pruefung-${basename(dir)}-908-`)), `unerwarteter Pfad: ${pfad}`);
+    assert.ok(existsSync(join(pfad, ".claude", "kit", "board.mjs")), "der Spiegel gilt unveraendert");
+  });
+});
+
+test("[night-908] worktreesAufraeumen raeumt nur den Praefix ab, der uebergeben wurde", () => {
+  mitRepo((dir, angelegt) => {
+    const kette = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "alt" });
+    angelegt.push(kette);
+    const pruefung = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "alt", praefix: "pruefung" });
+    angelegt.push(pruefung);
+
+    assert.deepEqual(worktreesAufraeumen(dir, "pruefung"), [pruefung],
+      "nur der Worktree des uebergebenen Praefixes wird entfernt");
+    assert.ok(!existsSync(pruefung));
+    assert.ok(existsSync(kette), "der Worktree der laufenden Kette bleibt unberuehrt");
+
+    assert.deepEqual(worktreesAufraeumen(dir), [kette],
+      "ohne Argument raeumt der Vorgabewert kette genau die Kette ab");
+    assert.ok(!existsSync(kette));
+  });
+});
+
 test("[night-17] worktreeAnlegen wirft mit der git-Meldung, wenn kein Repo vorliegt", () => {
   const kein = mkdtempSync(join(tmpdir(), "kette-kein-repo-"));
   try {

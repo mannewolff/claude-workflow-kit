@@ -175,7 +175,7 @@ test("pr legt einen Merge Request an und liest die URL aus der Ausgabe", NUR_POS
     const ergebnis = board(dir, "code", "pr", "--from", "feature", "--to", "main");
     assert.deepEqual(ergebnis, { url: "https://gitlab.com/besitzer/repo/-/merge_requests/5" });
     assert.match(aufrufZeilen(dir, "glab").join("\n"),
-      /mr create --source-branch feature --target-branch main --title feature -> main --description  --yes/);
+      /mr create --source-branch feature --target-branch main --title feature -> main --description {2}--yes/);
   }, {
     regeln: [{ match: "^mr create", stdout: "Creating merge request\nhttps://gitlab.com/besitzer/repo/-/merge_requests/5\n" }],
   });

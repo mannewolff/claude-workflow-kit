@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, chmodSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { setupProjekt, runBoard, runBoardAsync, board, starteServer, fakeCli } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
 const NUR_POSIX = process.platform === "win32"
   ? { skip: "Windows: Die Fakes sind endungslose Dateien mit Shebang, und der Leseschutz haengt an POSIX-Rechten. Siehe Issue #197." }
@@ -35,7 +35,10 @@ async function mitToolbox(fn, { karten = [karte(7)], antwort = null, config = {}
     }
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       const g = {};
-      for (const k of karten) (g[k.column] ||= []).push(k);
+      for (const k of karten) {
+        g[k.column] ||= [];
+        g[k.column].push(k);
+      }
       return { status: 200, json: g };
     }
     if (req.method === "POST" && req.url === "/api/kanban/items") {

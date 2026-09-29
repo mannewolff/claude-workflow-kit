@@ -58,7 +58,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.3.0";
+const KIT_VERSION = "3.5.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -114,7 +114,7 @@ Nutzung:
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I5. Die Stufe
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I6. Die Stufe
       kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
   node board.mjs code repo-name
@@ -142,6 +142,11 @@ Nutzung:
       Wegmarken; ohne das Flag wird hoechstens alle fuenf Minuten gemeldet.
       Schweigt ohne Fehler bei gesetztem KIT_AGENT_MODEL (der Nacht-Runner meldet
       selbst) und ohne Toolbox-Token.
+  node board.mjs hook bash-pruefen
+      PreToolUse-Hook fuer Bash (Issue #995): liest den Hook-Rumpf von Claude Code auf
+      stdin und weist mit Exit 2 ab, wenn eine Pipe, Umleitung oder ein weiterer Befehl
+      einem Kommando aus sandbox.excludedCommands die Ausnahme nimmt. Muster aus
+      .claude/settings.json und .claude/settings.local.json.
 
   node board.mjs --version
 
@@ -450,20 +455,22 @@ function loadConfig() {
 
 function parseArgs(argv) {
   const result = { _: [] };
-  for (let i = 0; i < argv.length; i++) {
+  let i = 0;
+  while (i < argv.length) {
     const a = argv[i];
     if (a.startsWith("--")) {
       const key = a.slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
-        i++;
+        i += 1;  // der Wert gehoert zur Option
       } else {
         result[key] = true;
       }
     } else {
       result._.push(a);
     }
+    i += 1;
   }
   return result;
 }
@@ -1201,7 +1208,7 @@ function parseFrontmatter(content) {
     // Fuehrende Leerzeichen nach dem Doppelpunkt uebernimmt das nachgelagerte .trim();
     // deshalb hier bewusst kein \s* (vermeidet ueberlappende Zeichenklassen/Backtracking).
     const m = line.match(/^(\w+):(.*)$/);
-    if (m) meta[m[1]] = m[2].trim().replaceAll(/^["']|["']$/g, "");
+    if (m) meta[m[1]] = m[2].trim().replaceAll(/(?:^["'])|(?:["']$)/g, "");
   }
   return { meta, body: match[2] };
 }
@@ -1266,7 +1273,14 @@ class LocalIssueTracker {
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
       .filter((f) => f.endsWith(".md"))
-      .sort(); // aufsteigend nach Dateiname = aufsteigend nach id
+      // aufsteigend nach Dateiname = aufsteigend nach id — die Namen sind auf vier
+      // Stellen genullt (padId), Codepoint-Ordnung ist damit Zahlenordnung. Der
+      // Vergleich steht ausgeschrieben statt als argumentloses Sortieren (Issue #956,
+      // S2871) und liegt hier statt als benannte Funktion, weil board.mjs ein
+      // eigenstaendiges Single-File-Werkzeug ist (#440) und dies seine einzige
+      // Stelle. `localeCompare` waere hier falsch: Es haengt an der Locale der
+      // Maschine, und die Kartenreihenfolge ist die Abarbeitungsreihenfolge.
+      .sort((a, b) => (a < b ? -1 : Number(a > b)));
   }
 
   _filePath(id) {
@@ -1614,6 +1628,26 @@ export function toolboxBudgetMs(env = process.env) {
 }
 
 /**
+ * Muss board.mjs sich mit NODE_USE_ENV_PROXY=1 neu starten (Issue #998)? Nodes
+ * eingebautes fetch nutzt HTTPS_PROXY nur mit diesem Schalter beim Start. Im Kind ist
+ * er gesetzt — eine Schleife ist nicht moeglich.
+ */
+export function proxyNeustartNoetig(env) {
+  return proxyGesetzt(env) && env.NODE_USE_ENV_PROXY === undefined;
+}
+
+function proxyGesetzt(env) {
+  return [env.HTTPS_PROXY, env.https_proxy].some((wert) => (wert ?? "").trim() !== "");
+}
+
+/**
+ * Der Satz, der einem Netzfehler hinter einem Proxy die Ursache nennt (Issue #998):
+ * "fetch failed" allein laedt zur Fehldiagnose und zum Umgehen der Sandbox ein.
+ */
+export const PROXY_HINWEIS = "Der Aufruf lief hinter einem Proxy (HTTPS_PROXY). Die uebliche Abhilfe ist "
+  + "NODE_USE_ENV_PROXY=1 vor dem Aufruf, nicht das Verlassen der Sandbox.";
+
+/**
  * Ordnet einen fetch-Wurf ein: `zeitablauf` (die eigene Zeitgrenze hat abgebrochen),
  * `endgueltig` (kein Aufruf ging hinaus) oder `abbruch` (die Verbindung brach
  * unterwegs ab — der Aufruf kann angekommen sein).
@@ -1689,9 +1723,11 @@ function zitiere(arg) {
 export function wiederholKommando(schluessel, argv = process.argv) {
   const args = [];
   const roh = argv.slice(2);
-  for (let i = 0; i < roh.length; i++) {
-    if (roh[i] === "--idempotency-key") { i++; continue; }
+  let i = 0;
+  while (i < roh.length) {
+    if (roh[i] === "--idempotency-key") { i += 2; continue; }  // Option und ihr Wert
     args.push(roh[i]);
+    i += 1;
   }
   if (schluessel) args.push("--idempotency-key", schluessel);
   return ["node", argv[1] ?? "board.mjs", ...args].map(zitiere).join(" ");
@@ -1800,11 +1836,17 @@ export class ToolboxIssueTracker {
     }
   }
 
+  /** Namensaufloesung oder Verbindung scheiterte hinter einem Proxy: die Abhilfe nennen (Issue #998). */
+  _proxyZusatz(netz) {
+    if (netz === "zeitablauf" || !netz || !proxyGesetzt(process.env)) return "";
+    return `\n${PROXY_HINWEIS}`;
+  }
+
   /** Der Fehler am Ende der Schleife — mit Rueckmeldung und, wo noetig, dem Weg zurueck. */
   _fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host }) {
     const rueckmeldung = rueckmeldungFuer({ status, netz, method });
     const basis = wurf
-      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}`
+      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}${this._proxyZusatz(netz)}`
       : `Toolbox-API-Fehler: ${grund}`;
     if (rueckmeldung !== RUECKMELDUNG.AUSGANG_UNKLAR) return new BoardError(basis, rueckmeldung);
     return new BoardError(`${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`, rueckmeldung);
@@ -2573,8 +2615,9 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 // ============================================================
 
 /**
- * Die drei Titel-Praefixe der Dokumente, die nie implementiert werden: `[Fachlich]`
- * (PO-Schleife), `[Plan]` (Plandokument aus /techplan) und `[Idee]` (rohe Idee).
+ * Die vier Titel-Praefixe der Karten, die keine Sitzung umsetzt: `[Fachlich]`
+ * (PO-Schleife), `[Plan]` (Plandokument aus /techplan), `[Idee]` (rohe Idee) und
+ * `[Mensch]` (ein Schritt, den nur ein Mensch tun kann).
  *
  * Hier und nur hier. Bis Issue #464 lag die Form doppelt im Bestand — als
  * `isFachlich`/`isIdee`/`isPlan` in kit/night.mjs und als `PLAN_PRAEFIX` in
@@ -2589,7 +2632,14 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
  * er nicht von einem Fehlschlag unterscheiden kann (#192, beobachtet an zwei Tagen
  * mit kanban-kit#494). `[Plan]` beschreibt einen Weg und ist keine Aufgabe; ohne
  * Gate kaeme er als normales Arbeitspaket durch, wuerde implementiert, und am Board
- * saehe das wie ein Erfolg aus (#276).
+ * saehe das wie ein Erfolg aus (#276). `[Mensch]` kennzeichnet eine Aufgabe ausserhalb
+ * des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine
+ * Freigabe: Eine Sitzung erkennt den Fall zwar und tut nichts, aber der Runner kann diese
+ * richtige Untaetigkeit nicht von einem Fehlschlag unterscheiden, und die Karte wandert
+ * aus Ready ins Backlog, wo sie wie ein gescheitertes Paket aussieht (#984, beobachtet an
+ * kanban-kit#1256). Anders als die drei davor ist `[Mensch]` ein Arbeitspaket und kein
+ * Dokument: Es faellt bei der Formpruefung in die Stufe `issue`, nur umsetzen kann es
+ * niemand ausser dem Menschen.
  *
  * `\s*` und `i` wie im Nacht-Runner, damit die Erkennung zeichengleich bleibt:
  * fuehrender Leerraum erlaubt, Gross- und Kleinschreibung gleichgueltig, das
@@ -2599,6 +2649,7 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
 export const FACHLICH_PRAEFIX = /^\s*\[fachlich\]/i;
 export const PLAN_PRAEFIX = /^\s*\[plan\]/i;
 export const IDEE_PRAEFIX = /^\s*\[idee\]/i;
+export const MENSCH_PRAEFIX = /^\s*\[mensch\]/i;
 
 export function istFachlich(title) {
   return FACHLICH_PRAEFIX.test(title || "");
@@ -2610,6 +2661,10 @@ export function istPlan(title) {
 
 export function istIdee(title) {
   return IDEE_PRAEFIX.test(title || "");
+}
+
+export function istMensch(title) {
+  return MENSCH_PRAEFIX.test(title || "");
 }
 
 // ============================================================
@@ -3216,7 +3271,93 @@ function pruefeVorlage(kontext, akzeptanz) {
   return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
 }
 
-function pruefeIssue(abschnitte) {
+/**
+ * Die Kommandos, die eine Guetemessung starten: `mutationCommand`, das `cmd` des
+ * `buildChecks`-Eintrags mit `guete`-Block und die Liste `guetekommandos`, alle drei
+ * aus der Konfiguration des Projekts.
+ *
+ * Bewusst keine eingebaute Namensliste (`stryker`, `pitest`, …): Die veraltet und trifft
+ * fremde Werkzeuge nicht, die Konfiguration weiss es genau. Ein Projekt ohne alle drei
+ * Felder liefert eine leere Liste — dort weist I6 nichts ab.
+ *
+ * `guetekommandos` ist der Weg fuer einen Treiber, den die Config noch nicht als Pruefung
+ * fuehren kann, weil ihn erst ein kommendes Paket baut (Issue #942): Das Projekt nennt sein
+ * Kommando-Praefix, und I6 greift schon, bevor der Treiber existiert.
+ */
+function guetekommandos(config) {
+  const checks = Array.isArray(config?.buildChecks) ? config.buildChecks : [];
+  const ausChecks = checks.filter((c) => c && typeof c === "object" && c.guete).map((c) => c.cmd);
+  const benannt = Array.isArray(config?.guetekommandos) ? config.guetekommandos : [];
+  return [config?.mutationCommand, ...ausChecks, ...benannt]
+    .map((cmd) => (typeof cmd === "string" ? cmd.trim().replaceAll(/\s+/g, " ") : ""))
+    .filter((cmd) => cmd !== "");
+}
+
+// Der Anker des Blocks, der den Session-Abschluss nicht blockiert (Issue #215).
+// `###` ist keine Abschnittsgrenze, der Block steht also in den Zeilen des
+// Akzeptanzkriteriums — I6 liest nur, was davor steht.
+const MANUELLE_PRUEFUNG_ZEILE = /^###[ \t]+manuelle[ \t]+pr(ü|ue)fung/i;
+
+// Eine Entscheidungszeile im Kontext, die die Guetemess-Konvention aufhebt: Sie handelt
+// von einem Vollauf oder einer Guetemessung und beantwortet das mit `Gewaehlt: ja`.
+const ENTSCHEIDUNG_ZEILE = /^Entscheidung:/;
+const GUETE_BEZUG = /vollauf|g(ü|ue)temessung|mutationspruefung|mutationspr(ü|ue)fung/i;
+
+// Die Antwort ist das erste Wort nach dem **ersten** `Gewaehlt:` der Zeile — nicht irgendein
+// `Gewaehlt: ja` im Text. Ein Paket, das diese Regel selbst baut, zitiert den Wortlaut naemlich
+// in seinem eigenen Kontext, und die Regel wies sich prompt selbst ab.
+const GEWAEHLT_ANTWORT = /gew(ä|ae)hlt:[ \t]*(\S+)/i;
+
+/** Beantwortet die Entscheidungszeile ihre Frage mit `ja`? */
+function mitJaEntschieden(zeile) {
+  const treffer = GEWAEHLT_ANTWORT.exec(zeile);
+  return treffer !== null && /^ja\b/i.test(treffer[2]);
+}
+
+/** Die Zeilen des Akzeptanzkriteriums bis zum Block `### Manuelle Pruefung`. */
+function maschinelleKriterien(zeilen) {
+  const ab = zeilen.findIndex((z) => MANUELLE_PRUEFUNG_ZEILE.test(z.trim()));
+  return ab === -1 ? zeilen : zeilen.slice(0, ab);
+}
+
+/**
+ * I6: Das Akzeptanzkriterium ruft keine Guetemessung auf (Issue #901), und keine
+ * Entscheidung im Kontext hebt diese Konvention auf (Issue #942).
+ *
+ * Eine Mutationspruefung laeuft einmal je Veroeffentlichung an ihrer Stufe, nicht einmal
+ * je Paket. Als Zeile in der Karte kostet sie die Zeit, die dem Paket fehlt: Ein Vollauf
+ * hat eine Nacht-Runde exakt ins Rundenzeitlimit gefahren, samt verlorener Schlussmeldung.
+ *
+ * Die zweite Haelfte faengt den Fall, in dem der Planer die Regel selbst aushebelt — in
+ * kanban-kit #1215 stand die Ausnahme als `Entscheidung:`-Zeile im Kontext, und der Code
+ * des Pakets war fertig, als die Runde an den drei Vollaeufen starb.
+ *
+ * Der Block `### Manuelle Pruefung` zaehlt nicht mit: Dort gehoert der Nachweis hin, dass
+ * ein neuer Treiber wirklich durchlaeuft, denn er blockiert den Abschluss nicht.
+ */
+function pruefeGuetemessung(akzeptanz, kontext, config) {
+  const verstoesse = [];
+  if (akzeptanz) {
+    const text = maschinelleKriterien(akzeptanz.zeilen).join(" ").replaceAll(/\s+/g, " ");
+    for (const cmd of guetekommandos(config).filter((c) => text.includes(c))) {
+      verstoesse.push({
+        gate: "I6",
+        meldung: `'## Akzeptanzkriterium' ruft die Guetemessung '${cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket`,
+      });
+    }
+  }
+  for (const zeile of zeilenMitPraefix(kontext?.zeilen ?? [], ENTSCHEIDUNG_ZEILE)) {
+    const z = zeile.trim();
+    if (!GUETE_BEZUG.test(z) || !mitJaEntschieden(z)) continue;
+    verstoesse.push({
+      gate: "I6",
+      meldung: `'${z}' hebt die Guetemess-Konvention auf — sie gilt ohne Ausnahme, auch fuer ein Paket, das den Mess-Treiber selbst baut. Dass ein Vollauf durchlaeuft, steht unter '### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)'`,
+    });
+  }
+  return verstoesse;
+}
+
+function pruefeIssue(abschnitte, config) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
     .map((meldung) => ({ gate: "I1", meldung }));
@@ -3224,7 +3365,10 @@ function pruefeIssue(abschnitte) {
   if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
-  verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
+  verstoesse.push(
+    ...pruefeVorlage(kontext, finde("akzeptanzkriterium")),
+    ...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config),
+  );
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }
@@ -3234,19 +3378,22 @@ function pruefeIssue(abschnitte) {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I5 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * Arbeitspaket: I1 bis I6 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
  * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
- * Vorlage ein Bildschirmfoto im Akzeptanzkriterium. Die
- * `[Urteil]`-Gates bleiben beim Reviewer.
+ * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
+ * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt.
+ * Die `[Urteil]`-Gates bleiben beim Reviewer.
+ *
+ * `config` braucht nur I6 — fuer die Guetekommandos des Projekts.
  */
-export function pruefeForm(body, title) {
+export function pruefeForm(body, title, config = {}) {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
   if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
   else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
-  else verstoesse = pruefeIssue(abschnitte);
+  else verstoesse = pruefeIssue(abschnitte, config);
   return { ok: verstoesse.length === 0, stufe, verstoesse };
 }
 
@@ -3281,14 +3428,14 @@ async function checkFormVomBoard(tracker, id) {
   }
 }
 
-async function issueCheckForm(tracker, args) {
+async function issueCheckForm(tracker, config, args) {
   const id = args._[0];
   const hatDatei = args["body-file"] !== undefined;
   if (id !== undefined && hatDatei) checkFormAbweisen(`Kartennummer und --body-file zugleich uebergeben. ${CHECK_FORM_WEGE}.`);
   if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
 
   const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
-  const ergebnis = pruefeForm(body, title);
+  const ergebnis = pruefeForm(body, title, config);
   out(ergebnis);
   if (!ergebnis.ok) process.exit(1);
 }
@@ -3306,7 +3453,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
-    case "check-form": return issueCheckForm(tracker, args);
+    case "check-form": return issueCheckForm(tracker, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
@@ -3888,6 +4035,8 @@ async function dispatchIssueReview(command, args) {
 
 // Laengengrenzen des Vertrags (NightRunController, NightRunLimits).
 const NACHTLAUF_TITEL_MAX = 300;
+// Gilt fuer jeden Auszug des Vertrags: den `excerpt` eines Arbeitspakets und den
+// `abortReason` des Laufs (Issue #881) — beide misst die Gegenstelle an EXCERPT_MAX.
 const NACHTLAUF_AUSZUG_MAX = 4000;
 const NACHTLAUF_COMMIT_MAX = 40;
 const NACHTLAUF_EINHEITEN_MAX = 200;
@@ -3921,6 +4070,12 @@ const NACHTLAUF_FEST = {
   unbekannt: ["RED", "HARD_ABORT"],
   harterStopp: ["RED", "HARD_ABORT"],
   angehalten: ["RED", "AWAITING_DECISION"],
+  // Der Vorgang lief durch und hat etwas Bestelltes nicht getan (Issue #862): die Kette,
+  // deren Umsetzung an einer belegten Sperre ausblieb, und die Pruefung, deren Ergebnis
+  // den Body nie erreichte. GELB, weil GRUEN das Fehlende verschwiege und ROT aus einem
+  // vorgesehenen Ausgang eine Stoerung machte; ohne Fehlerklasse, weil keine der
+  // vorhandenen ihn trifft — den Grund traegt der `excerpt` der Einheit.
+  unvollstaendig: ["YELLOW", null],
   fertig: ["GREEN", null],
 };
 
@@ -4008,7 +4163,10 @@ const NACHTLAUF_STUFEN = ["plan", "review", "pakete", "abdeckung"];
 function nachtlaufStages(einheit) {
   const stufen = einheit.stufen;
   if (!stufen || typeof stufen !== "object") return null;
-  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage]).map((stage) => ({
+  // Eine uebernommene Stufe (Plan-Auftrag, Issue #895) ist nie gelaufen: Sie traegt nur
+  // die Plannummer. Gemeldet ergaebe sie `durationMs: 0` mit leerem `usage` — eine
+  // Messung, die es nicht gab. Darum bleibt sie draussen, wie im Nachtbericht.
+  const stages = NACHTLAUF_STUFEN.filter((stage) => stufen[stage] && stufen[stage].uebernommen !== true).map((stage) => ({
     stage,
     durationMs: nachtlaufZahl(stufen[stage].dauerMs),
     // Die Stufe fuehrt Mengen und Kennzahlen in EINEM Objekt (leseKennzahlen nutzt
@@ -4041,6 +4199,29 @@ function nachtlaufBudget(stand) {
   budget.origin = defaultFields.length ? "DEFAULTED" : "CONFIGURED";
   if (defaultFields.length) budget.defaultFields = defaultFields;
   return budget;
+}
+
+/**
+ * Der Grund, an dem ein Lauf hart gestoppt ist; `null`, solange keiner vorliegt (Issue #881).
+ *
+ * Die Kaskade folgt den drei Stopp-Pfaden in night.mjs: `fail()` schreibt den Text an den
+ * Lauf-Kopf, der Vorflug-Stopp und der harte Stopp der Implementierung lassen ihn dort
+ * genau dann leer, wenn das Sicherheitsnetz aus Issue #558 den Grund an der betroffenen
+ * Einheit sieht. Bleibt beides leer, ist die Fehlerklasse das Letzte, was der Lauf noch
+ * ueber sich sagen kann — ein leerer Grund waere schlechter als ein grober.
+ *
+ * Reine Funktion wie `nachtlaufBudget`: Sie liest den Stand und schreibt nichts hinein.
+ */
+export function nachtlaufAbbruchGrund(stand) {
+  if (stand?.abschluss !== "harterStopp") return null;
+  const gefuellt = (text) => typeof text === "string" && text !== "";
+  if (gefuellt(stand.fehlerText)) return stand.fehlerText.slice(0, NACHTLAUF_AUSZUG_MAX);
+  const einheiten = Array.isArray(stand.einheiten) ? stand.einheiten : [];
+  const betroffen = stand.fehlerEinheit == null
+    ? null
+    : einheiten.find((e) => String(e?.id) === String(stand.fehlerEinheit));
+  if (betroffen && gefuellt(betroffen.grund)) return betroffen.grund.slice(0, NACHTLAUF_AUSZUG_MAX);
+  return gefuellt(stand.fehlerklasse) ? `Harter Stopp (${stand.fehlerklasse})` : "Harter Stopp";
 }
 
 function nachtlaufDauer(einheit) {
@@ -4111,6 +4292,7 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     ? stand.noWorkReason.slice(0, NACHTLAUF_NOWORKREASON_MAX)
     : null;
   const budget = nachtlaufBudget(stand);
+  const abortReason = nachtlaufAbbruchGrund(stand);
   return {
     startedAt: stand.start,
     kind: NACHTLAUF_ART,
@@ -4119,7 +4301,12 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     processedCount: items.length - grau,
     skippedCount: grau,
     unparsedCount: 0,
-    complete: stand.complete === true,
+    // Abgeschlossen ist ein Lauf am Board, sobald sein Ergebnisstand einen Abschluss
+    // traegt — regulaer ODER hart gestoppt (Issue #881). Bis dahin kam die Aussage aus
+    // `stand.complete`, das nur das regulaere Ende kennt: Ein hart gestoppter Lauf stand
+    // dort ewig unter den aktiven Laeufen, obwohl er lange tot war. Der `abortReason`
+    // daneben sagt der Gegenstelle, dass dieser Abschluss eine Stoerung ist.
+    complete: !laeuft,
     usage: nachtlaufUsage(stand.verbrauch),
     items,
     // Nur bei einem Lauf ohne Arbeit gesetzt (Issue #744) — die Gegenstelle setzt den
@@ -4128,6 +4315,9 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     ...(noWorkReason !== null ? { noWorkReason } : {}),
     // Nur, wo der Stand ein Budget fuehrt (Issue #808) — heute allein die Kette.
     ...(budget !== null ? { budget } : {}),
+    // Nur bei einem hart gestoppten Lauf (Issue #881) — wie noWorkReason und budget:
+    // Das Feld immer mitzuschicken liesse zwei Stellen ueber dieselbe Frage entscheiden.
+    ...(abortReason !== null ? { abortReason } : {}),
   };
 }
 
@@ -4564,6 +4754,225 @@ async function dispatchSitzung(command, args) {
   fail(`Unbekannter sitzung-Befehl: '${command}'`);
 }
 
+// ============================================================
+// Hook gegen Pipe und Umleitung hinter ausgenommenen Kommandos (Issue #995)
+// ============================================================
+//
+// Seit Claude Code 2.1.277 nimmt `sandbox.excludedCommands` eine zusammengesetzte
+// Zeile nur noch aus der Sandbox, wenn JEDER Teil zu einem Eintrag passt. Ein
+// `node .claude/kit/board.mjs … | head` laeuft darum ganz in der Sandbox — ohne Netz,
+// samt dem codex, das board.mjs startet (Nachtlauf 2026-09-28, Issue #986). Eine
+// Eingabeumleitung (`codex exec … < datei`) hebt die Ausnahme ebenfalls auf, auch
+// wenn sonst nichts in der Zeile steht. Der Hook weist solche Zeilen ab, bevor sie
+// laufen, und nennt die richtige Form.
+//
+// Die Muster kommen zur Laufzeit aus den Settings des Projekts, nicht aus einer festen
+// Liste: Genau diese Eintraege verlieren ihre Wirkung, auch fremde wie `mvn *`.
+
+/** Ein Muster aus `excludedCommands` als RegExp: `*` steht fuer einen beliebigen Rest. */
+function bashMusterRegex(muster) {
+  const quelle = muster.split("*").map((s) => s.replaceAll(/[.+?^${}()|[\]\\]/g, String.raw`\$&`)).join(".*");
+  return new RegExp(`^${quelle}$`, "s");
+}
+
+// Ein Umlenken auf einen anderen Dateideskriptor (`2>&1`, `>&2`, `<&0`) — kein Dateiziel.
+const BASH_FD_DUPLIKAT = /^[<>]&(\d+|-)/;
+// Eine Umleitung in oder aus einer Datei, laengste Form zuerst.
+const BASH_UMLEITUNG = /^(&>>|&>|<<-|<<|>>|>\||<|>)/;
+// Zeichen, an denen das Wort hinter einer Umleitung (ihr Ziel) endet.
+const BASH_OPERATOR_ZEICHEN = "|;&<>\n";
+
+/**
+ * Zerlegt eine Bash-Zeile in ihre Befehle und merkt, ob sie in eine Datei oder aus
+ * einer Datei umleitet. Operatoren zaehlen nur ausserhalb von Anfuehrungszeichen und
+ * nicht hinter einem Backslash — `--text "a > b"` ist Text, kein Operator.
+ *
+ * Bewusst keine vollstaendige Shell: Befehlsersetzung (`$(…)`, Backticks) bleibt Teil
+ * des Wortes. Im Zweifel faellt die Zeile damit nicht auf; abgewiesen wird nur, was
+ * an der Oberflaeche sichtbar ist.
+ */
+class BashZerleger {
+  constructor(zeile) {
+    this.zeile = zeile;
+    this.pos = 0;
+    this.teile = [];
+    this.aktuell = "";
+    this.quote = null;
+    this.umleitung = false;
+    // Das Wort hinter einer Umleitung ist ihr Ziel, kein Argument des Befehls:
+    // null (kein Ziel offen), "davor" (Leerraum vor dem Ziel), "drin" (im Ziel).
+    this.ziel = null;
+  }
+
+  zerlege() {
+    while (this.pos < this.zeile.length) this.schritt(this.zeile[this.pos]);
+    this.schliessen();
+    return { teile: this.teile.filter((t) => t.length > 0), umleitung: this.umleitung };
+  }
+
+  schreibe(text) {
+    if (this.ziel) this.ziel = "drin";
+    else this.aktuell += text;
+    this.pos += text.length;
+  }
+
+  schliessen() {
+    this.teile.push(this.aktuell.trim());
+    this.aktuell = "";
+    this.ziel = null;
+  }
+
+  schritt(c) {
+    if (this.quote) return this.inAnfuehrung(c);
+    if (c === "\\") return this.schreibe(this.zeile.slice(this.pos, this.pos + 2));
+    if (c === "'" || c === '"') { this.quote = c; return this.schreibe(c); }
+    if (this.imZiel(c)) { this.pos++; return; }
+    if (this.trenner(c) || this.umlenkung()) return;
+    this.aktuell += c;
+    this.pos++;
+  }
+
+  inAnfuehrung(c) {
+    if (c === "\\" && this.quote === '"') return this.schreibe(this.zeile.slice(this.pos, this.pos + 2));
+    if (c === this.quote) this.quote = null;
+    this.schreibe(c);
+  }
+
+  /** Verbraucht Zeichen des Umleitungsziels; `false`, wenn keines offen ist oder es endet. */
+  imZiel(c) {
+    if (!this.ziel) return false;
+    if (c !== "\n" && /\s/.test(c)) {
+      if (this.ziel === "drin") { this.ziel = null; this.aktuell += " "; }
+      return true;
+    }
+    if (!BASH_OPERATOR_ZEICHEN.includes(c)) { this.ziel = "drin"; return true; }
+    this.ziel = null;
+    return false;
+  }
+
+  /** `|`, `||`, `|&`, `&&`, `&`, `;`, Zeilenumbruch: Ende eines Befehls. */
+  trenner(c) {
+    const zwei = this.zeile.slice(this.pos, this.pos + 2);
+    let laenge = 0;
+    if (zwei === "&&" || zwei === "||" || zwei === "|&") laenge = 2;
+    else if ("\n;|".includes(c) || (c === "&" && zwei !== "&>")) laenge = 1;
+    if (laenge === 0) return false;
+    this.schliessen();
+    this.pos += laenge;
+    return true;
+  }
+
+  umlenkung() {
+    const rest = this.zeile.slice(this.pos);
+    const dup = BASH_FD_DUPLIKAT.exec(rest);
+    if (dup) {
+      this.aktuell += dup[0];
+      this.pos += dup[0].length;
+      return true;
+    }
+    const um = BASH_UMLEITUNG.exec(rest);
+    if (!um) return false;
+    this.umleitung = true;
+    // Die Nummer des umgeleiteten Deskriptors (`2>/dev/null`) gehoert zur Umleitung.
+    this.aktuell = this.aktuell.replace(/(^|\s)\d+$/, "$1");
+    this.ziel = "davor";
+    this.pos += um[0].length;
+    return true;
+  }
+}
+
+/**
+ * Weist eine Bash-Zeile ab, wenn ein Teil davon zu einem Muster aus
+ * `sandbox.excludedCommands` passt, die Zeile die Ausnahme aber wieder aufhebt:
+ * durch eine Umleitung in oder aus einer Datei, oder durch eine Pipe bzw. einen
+ * weiteren Befehl (`&&`, `||`, `;`, Zeilenumbruch), dessen Teile nicht alle passen.
+ *
+ * MESSUNG zu `2>&1` (Claude Code 2.1.283, 2026-09-29, interaktive Session im
+ * Auto-Modus mit aktiver Projekt-Sandbox dieses Repos; als Probe diente
+ * `node .claude/kit/board.mjs issue get <n>`, ausgenommen und auf das Netz
+ * angewiesen — in der Sandbox scheitert es mit "fetch failed"):
+ *   - ohne Umleitung:  Board erreicht, laeuft ausserhalb der Sandbox.
+ *   - mit `2>&1`:      Board erreicht, die Ausnahme bleibt bestehen.
+ *   - mit `2>/dev/null`: nicht gemessen (die Messung wurde vom Auto-Modus
+ *                      abgelehnt); faellt als Umleitung in eine Datei unter die
+ *                      Grundregel und wird abgewiesen.
+ * Die im Arbeitspaket vorgesehene headless Session (`claude -p`) wurde vom
+ * Auto-Modus als neuer Agent abgelehnt; die Sandbox-Entscheidung liegt aber in
+ * derselben Claude-Code-Fassung. Darum bleibt ein reines Umlenken auf einen anderen
+ * Deskriptor (`2>&1`, `>&2`) erlaubt.
+ *
+ * @param {string} zeile  die Bash-Zeile aus `tool_input.command`
+ * @param {string[]} muster  die Eintraege aus `excludedCommands`
+ * @returns {{ abweisen: boolean, grund: string|null }}
+ */
+export function pruefeBashZeile(zeile, muster) {
+  const erlaubt = { abweisen: false, grund: null };
+  if (typeof zeile !== "string" || !Array.isArray(muster) || muster.length === 0) return erlaubt;
+  const regexe = muster.filter((m) => typeof m === "string" && m.trim()).map((m) => [m, bashMusterRegex(m.trim())]);
+  const { teile, umleitung } = new BashZerleger(zeile).zerlege();
+  const passend = (teil) => regexe.find(([, re]) => re.test(teil))?.[0];
+
+  const treffer = teile.map(passend);
+  const erstes = treffer.find(Boolean);
+  if (!erstes) return erlaubt;
+  if (!umleitung && treffer.every(Boolean)) return erlaubt;
+
+  return {
+    abweisen: true,
+    grund: `Abgewiesen: "${erstes}" steht in sandbox.excludedCommands, aber eine Pipe, eine Umleitung `
+      + "oder ein weiterer Befehl in derselben Zeile hebt diese Ausnahme auf (seit Claude Code 2.1.277) — "
+      + "der Aufruf liefe in der Sandbox, ohne Netz. Richtige Form: das Kommando allein aufrufen, ohne Pipe, "
+      + "Umleitung und Folgebefehl (2>&1 ist erlaubt). Eine grosse Ausgabe legt Claude Code selbst in einer "
+      + "Datei ab; die filtert ein zweiter Aufruf.",
+  };
+}
+
+/** Die Muster aus `sandbox.excludedCommands` und `sandbox.network.excludedCommands` einer Settings-Datei. */
+function bashMusterAus(pfad) {
+  if (!existsSync(pfad)) return [];
+  const settings = JSON.parse(readFileSync(pfad, "utf-8"));
+  const sandbox = settings?.sandbox ?? {};
+  return [sandbox.excludedCommands, sandbox.network?.excludedCommands].flatMap((l) => (Array.isArray(l) ? l : []));
+}
+
+/**
+ * `hook bash-pruefen` — PreToolUse-Hook von Claude Code. Exit 2 mit Begruendung auf
+ * stderr weist den Aufruf ab; bei eigenem Fehler laesst der Hook durch (Exit 0, eine
+ * Zeile auf stderr): Ein kaputter Hook darf nicht jede Bash-Zeile einer Session sperren.
+ */
+function hookBashPruefen() {
+  const durchlassen = (warum) => { process.stderr.write(`board.mjs hook bash-pruefen: ${warum} — Aufruf durchgelassen\n`); };
+  let eingabe;
+  try {
+    eingabe = JSON.parse(readFileSync(0, "utf-8"));
+  } catch (e) {
+    return durchlassen(`Eingabe nicht lesbar (${e.message})`);
+  }
+  if (eingabe?.tool_name !== "Bash" || typeof eingabe?.tool_input?.command !== "string") return;
+
+  const wurzel = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const muster = [];
+  for (const datei of ["settings.json", "settings.local.json"]) {
+    const pfad = join(wurzel, ".claude", datei);
+    try {
+      muster.push(...bashMusterAus(pfad));
+    } catch (e) {
+      return durchlassen(`${pfad} nicht lesbar (${e.message})`);
+    }
+  }
+  const ergebnis = pruefeBashZeile(eingabe.tool_input.command, [...new Set(muster)]);
+  if (ergebnis.abweisen) {
+    process.stderr.write(ergebnis.grund + "\n");
+    process.exitCode = 2;
+  }
+}
+
+async function dispatchHook(command) {
+  if (command === "bash-pruefen") return hookBashPruefen();
+  process.stdout.write(HELP);
+  fail(`Unbekannter hook-Befehl: '${command}'`);
+}
+
 async function dispatchKontext(command, args) {
   switch (command) {
     case "paths": return kontextPaths(args);
@@ -4589,6 +4998,17 @@ async function main() {
     process.exit(0);
   }
 
+  // Hinter einem Proxy (Sandbox von Claude Code) erreicht Nodes fetch das Board nur mit
+  // NODE_USE_ENV_PROXY=1 beim Start (Issue #998). Hilfe und --version brauchen kein
+  // Netz und stehen darum davor.
+  if (proxyNeustartNoetig(process.env)) {
+    const kind = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
+      stdio: "inherit",
+      env: { ...process.env, NODE_USE_ENV_PROXY: "1" },
+    });
+    process.exit(kind.status ?? 1);
+  }
+
   const [axis, command, ...rest] = argv;
   const args = parseArgs(rest);
 
@@ -4604,9 +5024,11 @@ async function main() {
     await dispatchNightrun(command, args);
   } else if (axis === "sitzung") {
     await dispatchSitzung(command, args);
+  } else if (axis === "hook") {
+    await dispatchHook(command);
   } else {
     process.stdout.write(HELP);
-    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun | sitzung`);
+    fail(`Unbekannte Achse: '${axis}'. Erwartet: issue | code | kontext | issue-review | nightrun | sitzung | hook`);
   }
 }
 

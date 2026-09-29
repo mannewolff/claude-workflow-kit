@@ -209,9 +209,13 @@ test("[skills-7] der Skill verweist auf 'Entscheiden statt fragen' und nennt die
   assert.match(SKILL, /genau eine je Halt/, "dass ein Halt genau eine Frage traegt, steht nicht da");
 });
 
+// Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei.
+// Zuletzt +2 fuer das Praefix `[Mensch]` (Issue #984): Der Skill legt Arbeitspakete an und
+// muss sagen, wann eines nicht `[Task]` heisst, sondern `[Mensch]` — eine Aufgabe ausserhalb
+// des Repositories, die keine Sitzung erledigt.
 test("[skills-7] der Skill bleibt kurz und begruendet keine Regel mit einem Issue", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 120, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 120`);
+  assert.ok(zeilen < 122, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 122`);
   assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
 });
 
@@ -245,7 +249,7 @@ test("[skills-7] kein Aufrufbeispiel traegt das Flag --derived-from", () => {
 test("[skills-7] ein `[Task]`, der einen Befund ablehnt, hat die Regel als Kriterium", () => {
   assert.match(
     SKILL,
-    /versionierte[n]? Unterdrueckungsregel|versionierte Unterdr(?:ue|ü)ckungsregel/,
+    /versionierten? Unterdrueckungsregel|versionierte Unterdr(?:ue|ü)ckungsregel/,
     "das Akzeptanzkriterium (die versionierte Unterdrueckungsregel) fehlt",
   );
   assert.match(

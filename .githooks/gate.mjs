@@ -118,6 +118,15 @@ function preCommit(zusammenfassungPfad) {
   const rot = daten.laufen.find((e) => e.ergebnis !== "gruen");
   if (rot) ab(`die Pruefung endete ${rot.ergebnis} (${rot.cmd})`);
 
+  // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--bereich` grenzt
+  // die gefahrenen Pruefungen auf einen Bereich ein, bestimmt `geaendert` und `hashes`
+  // aber weiterhin aus dem Anker. Ohne diesen Zweig traegt jede geaenderte Datei einen
+  // Hash und das Gate liesse den Commit durch — auch fuer Bereiche, deren Pruefungen nie
+  // liefen. Der eingegrenzte Lauf bleibt richtig; er ist nur kein Abschlussnachweis.
+  if (typeof daten.bereichWahl === "string") {
+    ab(`die Pruefung lief eingegrenzt auf den Bereich '${daten.bereichWahl}' und deckt den Commit nicht — bitte 'node .claude/kit/checks.mjs run' ohne --bereich fahren`);
+  }
+
   const geprueft = daten.hashes;
   const imIndex = indexHashes();
   for (const { status, pfad } of indexEintraege()) {

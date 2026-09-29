@@ -13,7 +13,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,8 +47,12 @@ test("die Vorlage nennt alle drei Titel-Praefixe", () => {
 
 test("beide Prozessdateien behandeln [Plan] als nicht implementierbar", () => {
   for (const [name, text] of beide) {
-    const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a));
-    assert.ok(absatz, `${name}: kein Absatz zu [Plan] und Ready`);
+    // Gesucht ist der Absatz ueber das Plandokument, nicht jeder, der `[Plan]` und
+    // "Ready" nennt: Seit Issue #898 tut das auch der Nachtbetrieb-Block, weil die
+    // Kette ein Plandokument als Auftrag annimmt. Der Weg nach vorn (`/issues #N`)
+    // steht nur im gemeinten Absatz und kennzeichnet ihn eindeutig.
+    const absatz = text.split(/\n\n/).find((a) => /\[Plan\]/.test(a) && /Ready/.test(a) && /\/issues #N/.test(a));
+    assert.ok(absatz, `${name}: kein Absatz zu [Plan], Ready und /issues #N`);
     assert.match(absatz, /nie implementiert|nicht implementiert/i, `${name}: 'nie implementiert' fehlt`);
     assert.match(absatz, /\/issues #N/, `${name}: der Weg ueber /issues #N fehlt`);
   }
@@ -174,13 +177,6 @@ test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
 // enthaelt davon sechs, und vier sind korrekt (Stufentabelle, Freigabe-Regel,
 // Auswahlregel, Gate-Hinweis). Ein pauschaler Filter waere nur gruen zu bekommen,
 // indem man richtigen Text beschaedigt.
-
-/** Ein `###`-Abschnitt aus der Doku, bis zur naechsten Ueberschrift gleicher Ebene. */
-function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n### /)[0];
-}
 
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   // Die Vorlage nennt die Marker-Orte seit Issue #633 nicht mehr; sie stehen in Doku und Skill.

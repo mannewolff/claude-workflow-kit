@@ -52,7 +52,7 @@ test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker
     assert.match(text, new RegExp(`^${REVIEW_REST_ANKER}$`, "m"), "der Anker steht auf einer eigenen Zeile");
     assert.ok(text.includes(`/issue-review #${id}`), "der Weg nach vorn nennt den Plan");
     assert.match(text, /Zeitbudget review/, "der Grund des Abbruchs steht im Vermerk");
-    assert.ok(!/^\s*Plan-Review:\s*\S/m.test(text), "der Body traegt weiterhin keinen Marker");
+    assert.ok(!/^[ \t]*Plan-Review:[ \t]*\S/m.test(text), "der Body traegt weiterhin keinen Marker");
     assert.match(res.stdout, new RegExp(`Vermerk .*an Plan #${id}`));
   });
 });
@@ -84,7 +84,7 @@ test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne V
     const { einheit, text } = plan(dir, F);
     assert.equal(einheit.ausgang, "abgebrochen");
     assert.match(einheit.grund, /technischer Fehler: die Session der Stufe review endete mit Exit 3/);
-    assert.ok(/^\s*Plan-Review:\s*\S/m.test(text), "der Marker steht im Body");
+    assert.ok(/^[ \t]*Plan-Review:[ \t]*\S/m.test(text), "der Marker steht im Body");
     assert.equal(anker(text), 0, "mit Marker ist die Einarbeitung durch");
     assert.doesNotMatch(res.stdout, new RegExp(REVIEW_REST_ANKER));
   });

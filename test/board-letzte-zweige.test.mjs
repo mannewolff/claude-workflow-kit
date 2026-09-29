@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, rmSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setupProjekt, runBoard, runBoardAsync, board, starteServer } from "./helpers/board-fixture.mjs";
 

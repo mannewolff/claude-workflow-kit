@@ -29,10 +29,11 @@ test("[night-6] ohne Hook stammen die Board-Bindungen aus board.mjs, nicht aus d
   assert.equal(night.nachbarn.istFachlich, board.istFachlich);
   assert.equal(night.nachbarn.istPlan, board.istPlan);
   assert.equal(night.nachbarn.istIdee, board.istIdee);
+  assert.equal(night.nachbarn.istMensch, board.istMensch);
   // Seit Plan #638 sind das die einzigen Bindungen an board.mjs: Pruefvorgabe,
   // Pruefzustand, Rundengrenze und Kopfzeilen-Muster sind mit den Nachtmodi entfallen.
   assert.deepEqual(Object.keys(night.nachbarn).sort(),
-    ["fenceLauf", "istFachlich", "istIdee", "istPlan", "zusammenfassungPfad"]);
+    ["fenceLauf", "istFachlich", "istIdee", "istMensch", "istPlan", "zusammenfassungPfad"]);
 });
 
 test("[night-6] ohne Hook stammt zusammenfassungPfad aus checks.mjs", () => {

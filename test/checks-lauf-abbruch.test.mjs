@@ -15,11 +15,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync, existsSync, copyFileSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as warte } from "node:timers/promises";
 import {
   mitRepo, repoAnlegen, run, zusammenfassung, datei, gate, gateEinbauen, git, CHECKS,
+  prozessbaumBeenden, repoEntfernenHartnaeckig, repoEntfernenTolerant,
 } from "./helpers/checks-repo.mjs";
 
 const CHECK_AREAS = { kern: ["src/**"] };
@@ -175,7 +176,7 @@ test("[checks-8] ein vollstaendiger Lauf endet mit abgeschlossen: true — auch 
   }
 });
 
-test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst einen ungruenen Stand", async () => {
+test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst einen ungruenen Stand", async (t) => {
   // Ein Kommando, das seinen Start meldet und dann haengt: So trifft der Test den
   // Lauf sicher mitten darin und nicht davor oder danach. Gemeldet wird die eigene
   // pid und nicht bloss "ja": Der Kill trifft den Lauf, nicht dessen Kind — das
@@ -195,11 +196,13 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
   // Tod eines Kindprozesses.
   const dir = repoAnlegen({ config });
   let kind = null;
+  // Ausserhalb des `try`, weil das Aufraeumen im `finally` die pid des Laufs braucht.
+  let proc = null;
   try {
     datei(dir, "werkzeug/langsam.mjs", LANGSAM);
     datei(dir, "src/a.txt");
 
-    const proc = spawn(process.execPath, [CHECKS, "run"], { cwd: dir });
+    proc = spawn(process.execPath, [CHECKS, "run"], { cwd: dir });
     proc.stdout.resume();
     proc.stderr.resume();
     await warteAuf(() => kommandoPid(dir) !== null, "das erste Pruefkommando lief nicht an");
@@ -216,13 +219,127 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
     assert.equal(typeof fassung.hashes, "object");
     assert.notEqual(fassung.hashes, null);
   } finally {
-    // Erst der Prozess, dann das Verzeichnis: Unter Windows haelt das ueberlebende
-    // Kommando sein Arbeitsverzeichnis offen, und rmSync scheitert mit EBUSY. Die
-    // Wiederholungen decken den Rest ab — die Shell dazwischen gibt das Verzeichnis
-    // erst kurz nach ihrem Kind frei (Issue #873).
+    // Erst die Prozesse, dann das Verzeichnis: Unter Windows haelt das ueberlebende
+    // Kommando sein Arbeitsverzeichnis offen, und das Loeschen scheitert mit EBUSY.
+    // `beendeKommando` trifft ueber die pid aus `laeuft.txt` nur das node-Kommando;
+    // die `cmd.exe`, die `checks.mjs` wegen `shell: true` dazwischenstellt, kennt es
+    // nie — SIGKILL beendet unter Windows keinen Prozessbaum. `prozessbaumBeenden`
+    // holt sie ueber `taskkill /T` nach, und die Wiederholungen des Entfernens warten
+    // den Rest ab: Die Shell gibt das Verzeichnis erst kurz nach ihrem Kind frei
+    // (Issue #873, #874). Bleibt es trotzdem belegt, wird das notiert und nicht
+    // geworfen — die Zusicherungen oben sind durch, und das Aufraeumen eines
+    // Wegwerf-Verzeichnisses darf ihr Ergebnis nicht kippen (Issue #892).
     await beendeKommando(kind);
-    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    prozessbaumBeenden(proc?.pid);
+    await repoEntfernenTolerant(dir, { notiz: (satz) => t.diagnostic(satz) });
   }
+});
+
+test("[checks-8] prozessbaumBeenden ruft taskkill nur unter Windows", () => {
+  const rufe = [];
+  const kill = (...args) => rufe.push(args);
+
+  assert.equal(prozessbaumBeenden(4711, { plattform: "win32", kill }), true);
+  assert.equal(rufe.length, 1, "unter Windows muss taskkill genau einmal laufen");
+  assert.equal(rufe[0][0], "taskkill");
+  assert.deepEqual(rufe[0][1], ["/pid", "4711", "/T", "/F"],
+    "ohne /T bleibt die cmd.exe zwischen Lauf und Kommando am Leben");
+
+  assert.equal(prozessbaumBeenden(4711, { plattform: "darwin", kill }), false);
+  assert.equal(prozessbaumBeenden(null, { plattform: "win32", kill }), false);
+  assert.equal(rufe.length, 1, "ausserhalb von Windows und ohne pid faellt kein Aufruf an");
+});
+
+test("[checks-8] prozessbaumBeenden schluckt den Fehler eines laengst toten Prozesses", () => {
+  const kill = () => { throw new Error("taskkill: Prozess nicht gefunden"); };
+
+  // Kein Testfehler: Die Funktion laeuft im `finally` und darf das Ergebnis des
+  // Tests nicht ueberschreiben.
+  assert.equal(prozessbaumBeenden(4711, { plattform: "win32", kill }), true);
+});
+
+test("[checks-8] repoEntfernenHartnaeckig wiederholt, bis das Loeschen gelingt", async () => {
+  const optionen = [];
+  let uebrig = 2;
+  const rm = (pfad, opts) => {
+    optionen.push(opts);
+    if (uebrig > 0) {
+      uebrig -= 1;
+      throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${pfad}'`), { code: "EBUSY" });
+    }
+  };
+  const pausen = [];
+
+  await repoEntfernenHartnaeckig("/weg", { rm, warten: async (ms) => { pausen.push(ms); } });
+
+  assert.equal(optionen.length, 3, "nach zwei EBUSY muss ein dritter Versuch folgen");
+  assert.deepEqual(optionen[0], { recursive: true, force: true, maxRetries: 20, retryDelay: 250 },
+    "die Wiederholungen des Entfernens selbst bleiben der erste Weg");
+  assert.equal(pausen.length, 2, "zwischen den Versuchen wird gewartet");
+  assert.ok(pausen[1] > pausen[0], `der Abstand waechst nicht: ${JSON.stringify(pausen)}`);
+});
+
+test("[checks-8] repoEntfernenHartnaeckig gibt an der Obergrenze auf und wirft den Fehler", async () => {
+  let jetzt = 0;
+  const rm = () => { throw Object.assign(new Error("EBUSY"), { code: "EBUSY" }); };
+
+  await assert.rejects(
+    () => repoEntfernenHartnaeckig("/weg", {
+      rm,
+      grenzeMs: 10_000,
+      uhr: () => jetzt,
+      warten: async (ms) => { jetzt += ms; },
+    }),
+    { code: "EBUSY" },
+    "ein Verzeichnis, das nach der Obergrenze noch belegt ist, wird nicht verschwiegen",
+  );
+});
+
+test("[checks-8] repoEntfernenHartnaeckig wirft fremde Fehler sofort weiter", async () => {
+  let versuche = 0;
+  const rm = () => {
+    versuche += 1;
+    throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+  };
+
+  await assert.rejects(() => repoEntfernenHartnaeckig("/weg", { rm }), { code: "EACCES" });
+  assert.equal(versuche, 1, "ein fremder Fehler wird nicht wiederholt — er verginge nicht von selbst");
+});
+
+test("[checks-8] repoEntfernenTolerant notiert EBUSY statt zu werfen", async () => {
+  const optionen = [];
+  let jetzt = 0;
+  const rm = (pfad, opts) => {
+    optionen.push(opts);
+    throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${pfad}'`), { code: "EBUSY" });
+  };
+  const notizen = [];
+
+  await repoEntfernenTolerant("/weg", {
+    notiz: (satz) => notizen.push(satz),
+    rm,
+    grenzeMs: 10_000,
+    uhr: () => jetzt,
+    warten: async (ms) => { jetzt += ms; },
+  });
+
+  assert.equal(notizen.length, 1, "der geschluckte Fehler wird genau einmal notiert");
+  assert.match(notizen[0], /EBUSY/, `die Notiz nennt den Fehlercode nicht: ${notizen[0]}`);
+  assert.match(notizen[0], /\/weg/, `die Notiz nennt den Pfad nicht: ${notizen[0]}`);
+  assert.deepEqual(optionen[0], { recursive: true, force: true, maxRetries: 20, retryDelay: 250 },
+    "die Wiederholungen des Entfernens selbst bleiben der erste Weg — die Toleranz ist nur das Netz dahinter");
+});
+
+test("[checks-8] repoEntfernenTolerant wirft fremde Fehler weiter", async () => {
+  const rm = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+  const notizen = [];
+
+  await assert.rejects(
+    () => repoEntfernenTolerant("/weg", { notiz: (satz) => notizen.push(satz), rm }),
+    { code: "EACCES" },
+    "ein Fehler, der nicht von einem offenen Handle kommt, wird nicht verschwiegen",
+  );
+  assert.equal(notizen.length, 0, "nur ein belegtes Verzeichnis wird notiert");
 });
 
 test("[checks-8] das Commit-Gate weist eine Zwischenfassung als 'nicht gestartet' ab, nicht als altes Format", () => {

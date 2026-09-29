@@ -69,7 +69,7 @@ function ohneCode(zeile) {
   return zeile
     .replaceAll(/(`+)(.*?)\1/g, "")
     .replaceAll(/<(?:https?:\/\/|mailto:)[^>\s]*>/g, "")
-    .replaceAll(/<[^>\s@]+@[^>\s]+>/g, "");
+    .replaceAll(/<[^<>\s@]+@[^<>\s]+>/g, "");
 }
 
 /**
@@ -89,7 +89,6 @@ function ohneKommentar(zeile, imKommentar) {
       const ende = rest.indexOf("-->");
       if (ende === -1) return { text: raus, imKommentar: true };
       rest = rest.slice(ende + 3);
-      drin = false;
     }
     const sichtbar = ohneCode(rest);
     const start = sichtbar.indexOf("<!--");

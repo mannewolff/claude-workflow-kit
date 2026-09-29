@@ -28,10 +28,10 @@
  *                      Umsetzungsnacht (.claude/night-umsetzung.lock, Issue #696) —
  *                      wer ihn gehalten vorfindet, laesst die Umsetzung aus.
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
- *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
+ *   --model <id>       Modell der Nacht-Sessions (sonst night.modell, sonst claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
- *   --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+ *   --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
  *   --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
  *   --label <name>     verarbeitet nur Ready-Issues mit diesem Label (Default
  *                      kit:nightrun); --label none schaltet den Filter ab (altes
@@ -54,8 +54,9 @@
  * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
  * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
  * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
- * Runner deshalb die buildChecks der Paketstufe selbst (nicht mutationCommand —
- * das ist ein nachgelagerter Check, kein Blocker fuer diese Entscheidung). Sind sie gruen,
+ * Runner deshalb die Pflicht-Pruefungen selbst — mit `checks.mjs run --abschluss <id>
+ * --frisch` im Zielprojekt (Issue #919), damit der Nachweis entsteht, den das
+ * Commit-Gate liest. Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
  * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
  * Board zu bewegen. Rote Checks -> harter Stopp. Endet die Session nicht mit
@@ -82,7 +83,7 @@
  * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
  * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146),
- * `[Idee]` (rohe Idee ohne /techplan-Zyklus, #192) und `[Plan]` (Plandokument, muss erst
+ * `[Idee]` (rohe Anforderung, noch kein Arbeitspaket, #192) und `[Plan]` (Plandokument, muss erst
  * per /issues in Arbeitspakete zerlegt werden, #276).
  *
  * Seit Stufe 2 des Prozess-Umbaus (Plan #638) kennt diese Datei zwei Betriebsarten: die
@@ -133,9 +134,10 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
-import { join, dirname, resolve, basename } from "node:path";
+import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir, homedir } from "node:os";
+import { createHash } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -221,12 +223,21 @@ const BEFUNDE_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "befunde.mjs")
   : join(__dirname, "befunde.mjs");
 
+// Und dasselbe noch einmal fuer die Pruefungen (Issue #919): Die Vorpruefung des Salvage
+// faehrt sie als Kindprozess `checks.mjs run` im Zielprojekt, damit dort der Nachweis
+// entsteht, den das Commit-Gate liest. NACHBAR_CHECKS daneben bleibt, was es war — der
+// Import fuer `zusammenfassungPfad`; dieselbe Doppelung wie beim Board, einmal als CLI
+// und einmal als Funktion.
+const CHECKS_PATH = process.env.KIT_ROOT
+  ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "checks.mjs")
+  : join(__dirname, "checks.mjs");
+
 // Die Praefix-Erkennung kommt seit Issue #464 aus demselben Modul, statt hier ein
 // zweites Mal als Regex zu stehen. Ihr Fallback WIRFT wie der obige und liefert
 // bewusst kein `false`: Ein stilles `false` liesse ein Plandokument als
 // Arbeitspaket durch — der Runner implementierte es, und am Board saehe das wie
 // ein Erfolg aus. Genau davor schuetzen die Praefixe.
-const praefixFallback = (was) => (title) => {
+const praefixFallback = (was) => (_title) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
 };
 // Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
@@ -238,12 +249,14 @@ const {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  istMensch: isMensch,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
       istFachlich: praefixFallback("[Fachlich]"),
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
+      istMensch: praefixFallback("[Mensch]"),
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -258,7 +271,7 @@ const {
 //
 // NACHBAR_CHECKS steht oben neben NACHBAR_BOARD: Beide Nachbarn kommen aus demselben
 // Verzeichnis, und beide folgen NIGHT_NACHBAR_DIR.
-const zusammenfassungPfadFallback = (root) => {
+const zusammenfassungPfadFallback = (_root) => {
   throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
 };
 const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
@@ -312,13 +325,14 @@ export const nachbarn = {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  istMensch: isMensch,
   zusammenfassungPfad,
 };
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.3.0";
+const KIT_VERSION = "3.5.0";
 const DEFAULT_MODEL = "claude-opus-5";
 const DEFAULT_LABEL = "kit:nightrun";
 const DEFAULT_MAX_SESSIONS = 10;
@@ -366,11 +380,20 @@ Flags:
                      Variante B statt Variante A; ohne dieses Label laeuft Variante A.
                      --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
                      Label kommt aus der Config. Budgets in night.kette.
+  --pruefen          Prueflauf am Tag statt Implementierung: je [Fachlich]-Issue mit dem
+                     Label aus pruefLauf.label (Default kit:pruefen) eine Session
+                     /issue-review in einem Worktree je Lauf, nacheinander. Der Lauf
+                     bewegt keine Karte und setzt kein Label ausser dem, was die Pruefung
+                     selbst hinterlaesst; begrenzt wird er ueber seine Budgets in
+                     pruefLauf, nicht ueber eine Zahl — --max ist erlaubt, aber nicht
+                     noetig. --label gilt hier nicht, das Label kommt aus der Config.
+                     Eine Vorschau hat er nicht: /issue-review --dry-run zeigt Dokumente
+                     und Reviewer.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
-  --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
+  --model <id>       Modell der Nacht-Sessions (sonst night.modell, sonst ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
-  --yolo             --dangerously-skip-permissions statt acceptEdits (Warnung!)
+  --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
   --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
   --label <name>     nur Ready-Issues mit diesem Label verarbeiten
                      (Default ${DEFAULT_LABEL}); --label none schaltet den
@@ -384,8 +407,8 @@ Flags:
   --help, -h         diese Uebersicht
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
-Working Tree, fuehrt der Runner die buildChecks der Paketstufe selbst aus — ohne
-bereichsbezogene Auswahl, denn was die Runde angefasst hat, weiss niemand. Sind sie gruen, bekommt
+Working Tree, prueft der Runner selbst nach — mit "checks.mjs run --abschluss <id>
+--frisch", also demselben Lauf, dessen Nachweis das Commit-Gate liest. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
 zu verschieben (Zeitlimit 10 min). Das Kommando dazu steht im Prompt der Session und
@@ -432,7 +455,7 @@ const SOFORT_FLAGS = {
 // Wert plausibel ist, entscheidet pruefeArgs — nicht diese Tabelle.
 const WERT_FLAGS = {
   "--max": (args, wert) => { args.max = Number(wert); },
-  "--model": (args, wert) => { args.model = wert; },
+  "--model": (args, wert) => { args.model = wert; args.modelGesetzt = true; },
   "--label": (args, wert) => { args.label = wert; args.labelGesetzt = true; },
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
@@ -440,6 +463,7 @@ const WERT_FLAGS = {
 // Schalter ohne Wert: Flag -> Feldname, immer auf true.
 const SCHALTER_FLAGS = {
   "--kette": "kette",
+  "--pruefen": "pruefen",
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",
@@ -512,7 +536,7 @@ function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
-  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false };
+  const args = { max: null, model: DEFAULT_MODEL, modelGesetzt: false, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false, pruefen: false };
   let i = 0;
   while (i < argv.length) {
     i = liesArgument(args, argv, i);
@@ -535,6 +559,13 @@ export function loeseModusDefaults(args) {
     // nicht, und --max zaehlt Ketten, nicht Sessions (Plan #638, A13).
     return { max: args.max ?? DEFAULT_MAX_KETTEN, noChecksOk: true };
   }
+  if (args.pruefen) {
+    // Der Prueflauf baut so wenig wie die Kette, und er bekommt KEINEN Vorgabewert fuer
+    // `max` (Plan #904, E9): Begrenzt wird er ueber die Budgets in `pruefLauf`, nicht ueber
+    // eine Zahl. `null` heisst hier "kein Zahlendeckel" und ist ein gueltiger Zustand —
+    // ein Vorgabewert waere eine zweite, stille Grenze neben den Budgets.
+    return { max: args.max ?? null, noChecksOk: true };
+  }
   return { max: args.max ?? DEFAULT_MAX_SESSIONS };
 }
 
@@ -546,16 +577,35 @@ export function loeseModusDefaults(args) {
  *
  */
 function pruefeArgs(args) {
+  // Zuerst die beiden Laeufe gegeneinander (Plan #904, E17): Sie haben verschiedene
+  // Budgets, verschiedene Labels und verschiedene Worktree-Praefixe, und `laufArt` kann nur
+  // eine Art nennen. Ein Aufruf mit beiden Flags waere ein Lauf, der nicht sagen kann,
+  // welcher er ist.
+  if (args.kette && args.pruefen) {
+    fail("--kette und --pruefen sind zwei Laeufe mit eigenen Budgets — bitte einzeln starten.");
+  }
+  // Der Prueflauf hat keine Vorschau (Plan #904, E10): Was er tun wuerde, steht in der
+  // Kandidatenliste, die er vor der ersten Session protokolliert.
+  if (args.pruefen && args.dryRun) {
+    fail("Der Prueflauf hat keine Vorschau — `/issue-review --dry-run` zeigt Dokumente und Reviewer.");
+  }
   // Der Abend hat genau eine Geste: Das Kettenlabel kommt aus night.kette.label, ein
   // zweiter Weg zum selben Wert waere eine zweite Wahrheit (Plan #638, E6).
   if (args.kette && args.labelGesetzt) {
     fail("--kette kennt kein --label — das Kettenlabel steht in night.kette.label der workflow.config.json.");
   }
+  // Dieselbe Begruendung fuer den Prueflauf, nur mit seinem eigenen Block.
+  if (args.pruefen && args.labelGesetzt) {
+    fail("--pruefen kennt kein --label — das Kennzeichen steht in pruefLauf.label der workflow.config.json.");
+  }
   // Die Aufloesung steht VOR der Zahlenpruefung: Die Vorbelegung ist null, und die
   // Pruefung wiese sonst jeden Aufruf ohne --max ab.
   Object.assign(args, loeseModusDefaults(args));
 
-  if (!Number.isFinite(args.max) || args.max < 1) fail("--max braucht eine Zahl >= 1");
+  // Der Prueflauf darf ohne Zahlendeckel fahren (E9): Dort ist `null` das Ergebnis der
+  // Aufloesung und keine fehlende Angabe. Ein gesetztes `--max` prueft auch er.
+  const ohneDeckel = args.pruefen && args.max === null;
+  if (!ohneDeckel && (!Number.isFinite(args.max) || args.max < 1)) fail("--max braucht eine Zahl >= 1");
   if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
 }
 
@@ -578,6 +628,11 @@ let KETTE_BUDGET = null;
 // Die Budget-Felder, die aus den Defaults stammen (Issue #659) — geladen zusammen mit
 // KETTE_BUDGET, gezeigt im Protokoll und am Lauf-Kopf.
 let KETTE_BUDGET_AUS_DEFAULT = [];
+// Dieselben zwei Variablen fuer den Prueflauf (Issue #909), geladen in vorbereiten() —
+// getrennt von denen der Kette, weil die beiden Laeufe nebeneinander stehen koennen und
+// jeder seine eigenen Zahlen traegt.
+let PRUEFLAUF_BUDGET = null;
+let PRUEFLAUF_BUDGET_AUS_DEFAULT = [];
 
 // Der Grund des zuletzt gemerkten harten Stopps (Issue #558). Er nimmt denselben Weg
 // wie die Fehlerklasse — Modul-Zustand statt neuem Rueckgabewert —, damit die
@@ -593,6 +648,17 @@ let STOPP_GRUND = "";
 // mehrere Stellen als String vergleichen. Vor jeder Session zurueckgesetzt, damit keine
 // Runde den Befund ihrer Vorgaengerin erbt.
 let WARTEND_BEENDET = false;
+
+// Ist die Sitzung der laufenden Runde am Zeitlimit abgebrochen worden (Issue #977)?
+// Derselbe Modul-Merker nach demselben Muster wie WARTEND_BEENDET darueber und aus
+// demselben Grund: Der Befund faellt in den drei Auswertungswegen, gebraucht wird er beim
+// Fuellen der Einheit — und deren Rueckgabewerte bleiben die Zaehlwoerter. Vor jeder
+// Session zurueckgesetzt, damit keine Runde den Befund ihrer Vorgaengerin erbt.
+//
+// Gesetzt wird er allein in den Zweigen OHNE In-review-Ergebnis: Eine vom Salvage
+// gerettete Karte ist fertig und soll in keiner Auswertung als Zeitabbruch zaehlen
+// (Plan #974, E8).
+let ZEITLIMIT_BEENDET = false;
 
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
 // Muster wie LOG_FILE darueber, und aus demselben Grund: gitReste() braucht sie, wird
@@ -724,8 +790,84 @@ export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus 
 
 // Die Gruende eines Laufs ohne Arbeitspaket (Issue #744) — derselbe Wortlaut steht im
 // Textprotokoll und am Lauf-Kopf (`LAUF.noWorkReason`), damit beide nie auseinanderlaufen.
-const KETTE_LEER_GRUND = "Keine Kette zu fahren — nichts zu tun.";
-const READY_LEER_GRUND = "Ready ist leer — nichts zu tun.";
+// Sie stehen alle als Literal in `grundOhneArbeit` (Issue #887): Eine Konstante daneben
+// waere eine zweite Stelle, an der ein Satz dieser Familie zu suchen ist.
+
+/** Auf so viele Zeichen gehen variable Namen (Label, Lock-Grund) gekuerzt in den Satz. */
+const OHNE_ARBEIT_NAME_MAX = 80;
+
+/**
+ * Der Rueckfall, wenn ein Lauf ohne Session endete, ohne dass ein benannter Fall zutraf
+ * (Fachliche Quelle #880).
+ *
+ * Er sagt ausdruecklich, dass hier ein Fall fehlt: Ein leeres Feld liesse offen, ob der
+ * Lauf nichts zu sagen hatte oder ob eine Lage unbenannt geblieben ist.
+ */
+export const OHNE_ARBEIT_UNBEKANNT = "Kein Grund ermittelbar — der Lauf endete ohne eine Session, ohne dass ein "
+  + "benannter Fall zutraf. Der Weg steht im Textprotokoll daneben; bitte melden.";
+
+/** Kuerzt einen variablen Namen, damit der Satz am Lauf-Kopf nicht gekappt wird. */
+function ohneArbeitName(wert) {
+  const text = String(wert ?? "");
+  return text.length > OHNE_ARBEIT_NAME_MAX ? `${text.slice(0, OHNE_ARBEIT_NAME_MAX - 1)}…` : text;
+}
+
+/**
+ * Der eine Satz zu einem Lauf ohne Arbeitspaket — rein, ohne Zustand (Issue #885).
+ *
+ * An EINER Stelle statt an dreien: Jede weitere Fundstelle waere eine weitere
+ * Gelegenheit, die Saetze auseinanderlaufen zu lassen. Jeder Satz benennt seinen Fall
+ * und traegt die beteiligten Namen und Zahlen mit, damit er ohne das Textprotokoll
+ * daneben zu lesen ist.
+ *
+ * Die beiden Kettensaetze teilen das Praefix `Keine Kette zu fahren:` — daran haengen
+ * die Matcher der Ketten-Tests, die den Fall selbst nicht unterscheiden. Die beiden
+ * Pruefsaetze (Issue #909) teilen ebenso ihr eigenes Praefix.
+ */
+export function grundOhneArbeit(fall, daten) {
+  const d = daten || {};
+  switch (fall) {
+    case "readyLeer":
+      return "Ready ist leer — nichts zu tun.";
+    case "keinLabel":
+      return `Keine der ${d.anzahl} Karten in Ready traegt das Label '${ohneArbeitName(d.label)}' — nichts zu tun.`;
+    case "alleZurueckgestellt":
+      return `Alle ${d.anzahl} Karten in Ready wurden am Gate zurueckgestellt — der Lauf hat Ready selbst `
+        + "geleert, es blieb nichts zu tun.";
+    case "umsetzungBelegt":
+      return `Die Umsetzung ist belegt: ${ohneArbeitName(d.grund)} — der Lauf endet ohne Paket.`;
+    // Karte statt Fachplan seit Issue #896: Auftrag der Kette ist die fachliche
+    // Anforderung ODER das Plandokument, und ein Satz, der nur den Fachplan kennt,
+    // liesse den Morgen das Kennzeichen an der falschen Karte suchen.
+    case "ketteKeinLabel":
+      return `Keine Kette zu fahren: keine Karte traegt das Label '${ohneArbeitName(d.label)}'.`;
+    case "ketteAlleUebersprungen":
+      return `Keine Kette zu fahren: alle ${d.anzahl} gekennzeichneten Karten mit dem Label '${ohneArbeitName(d.label)}' `
+        + "wurden uebersprungen, weil eine Voraussetzung fehlt.";
+    // Die beiden Pruefsaetze teilen das Praefix `Nichts zu pruefen:` — wie die beiden
+    // Kettensaetze darueber, und aus demselben Grund: Ein Matcher, der den Fall selbst nicht
+    // unterscheidet, soll sich an eine Stelle haengen koennen.
+    case "pruefLaufKeinLabel":
+      return `Nichts zu pruefen: keine Karte traegt das Label '${ohneArbeitName(d.label)}'.`;
+    case "pruefLaufAlleUebersprungen":
+      return `Nichts zu pruefen: alle ${d.anzahl} gekennzeichneten Karten mit dem Label '${ohneArbeitName(d.label)}' `
+        + "wurden uebersprungen, weil sie keine fachliche Anforderung sind oder eine Entscheidung wartet.";
+    default:
+      return OHNE_ARBEIT_UNBEKANNT;
+  }
+}
+
+/**
+ * Bildet den Satz, schreibt ihn ins Textprotokoll und an den Lauf-Kopf.
+ *
+ * Seit Issue #887 die einzige Stelle, die `noWorkReason` setzt: Protokoll und
+ * Lauf-Kopf bekommen denselben Wortlaut, weil sie ihn aus demselben Aufruf beziehen.
+ */
+function vermerkeOhneArbeit(fall, daten) {
+  const satz = grundOhneArbeit(fall, daten);
+  log(satz);
+  if (LAUF) LAUF.noWorkReason = satz;
+}
 
 /**
  * Das Sicherheitsnetz fuer einen harten Stopp ohne Grund — der Text, oder `null`
@@ -820,6 +962,15 @@ function meldezeile(zeile) {
  */
 function laufMelden() {
   if (!ERGEBNIS_FILE || !LAUF) return;
+  // Die Art `pruefung` wird nicht eingeliefert (Plan #904, E15): `NACHTLAUF_MODUS` in
+  // kit/board.mjs kennt sie nicht und wirft dafuer — fortschreibend gemeldet waere das je
+  // Karte eine Fehlzeile im Protokoll, und der Ergebnisstand liegt ohnehin als Datei. Die
+  // Ausnahme steht HIER und nicht als Zweig in board.mjs: Der Prueflauf gehoert dem Tag,
+  // und die Schnittstelle beschreibt Nachtlaeufe.
+  if (LAUF.art === "pruefung") {
+    meldezeile("Einlieferung entfaellt: die Lauf-Art 'pruefung' hat keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.");
+    return;
+  }
   const tracker = config?.issueTracker;
   if (tracker !== "toolbox" && !process.env.NIGHT_MELDEN_ERZWINGEN) {
     meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
@@ -991,16 +1142,33 @@ function laufAbschliessen(abschluss) {
  * die Startzeile weiterhin an einer Stelle entschieden werden sollen.
  */
 function laufArt(args) {
+  if (args?.pruefen) return "pruefung";
   return args?.kette ? "kette" : "implementierung";
 }
 
-// Was je Art am Grundgeruest und in der Startzeile haengt. Das Kettenlabel kommt aus
-// der Config, die in vorbereiten() vor dieser Abfrage geladen ist.
-const ART_MODUS = { implementierung: "Implementierung", kette: "Kette" };
+// Was je Art am Grundgeruest und in der Startzeile haengt. Die Labels der beiden
+// unbeaufsichtigten Laeufe kommen aus der Config, die in vorbereiten() vor dieser Abfrage
+// geladen ist.
+const ART_MODUS = { implementierung: "Implementierung", kette: "Kette", pruefung: "Pruefung" };
 const ART_LABEL = {
   implementierung: (args) => args.label,
   kette: () => KETTE_BUDGET?.label ?? KETTE_BUDGET_DEFAULTS.label,
+  pruefung: () => PRUEFLAUF_BUDGET?.label ?? PRUEFLAUF_BUDGET_DEFAULTS.label,
 };
+
+/**
+ * Die Budgets DIESES Laufs und die Felder daraus, die aus den Vorgabewerten stammen —
+ * `null` bei einer Art ohne Budget (Issue #909).
+ *
+ * Eine Stelle statt zweier Abfragen je Verwendung: Lauf-Kopf und Protokollzeile fragen
+ * dasselbe, und zwei Fallunterscheidungen ueber dieselben drei Arten liefen bei der
+ * naechsten Art auseinander.
+ */
+function laufBudget(args) {
+  if (args?.kette) return { budget: KETTE_BUDGET, ausDefault: KETTE_BUDGET_AUS_DEFAULT };
+  if (args?.pruefen) return { budget: PRUEFLAUF_BUDGET, ausDefault: PRUEFLAUF_BUDGET_AUS_DEFAULT };
+  return null;
+}
 
 /**
  * Legt Pfad und Grundgeruest des Ergebnisstands an (Issue #486).
@@ -1026,6 +1194,7 @@ const ART_LABEL = {
  */
 function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
   if (args.dryRun) return;
+  const budgetStand = laufBudget(args);
   const iso = jetzt.toISOString();
   const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
   LAUF_STEMPEL = stempel;
@@ -1050,20 +1219,33 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // schlechter als es zu streichen — es behauptete ein Fehlen, das es nicht gibt.
     // Die Kette fordert den Strom immer an (Plan #638, A5) und traegt ihre Budgets
     // am Lauf-Kopf, damit eine Auswertung den Abbruchgrund gegen die Zahl halten kann.
-    ...(args.kette ? { budget: { ...KETTE_BUDGET } } : {}),
+    // Der Prueflauf ebenso (Issue #909): Er hat keinen Zahlendeckel, und die Deckel, an
+    // denen seine Abbrueche gemessen werden, sind genau diese Budgets — ohne sie am
+    // Lauf-Kopf waere der Grund "Kostenbudget erschoepft" gegen nichts zu halten.
+    ...(budgetStand?.budget ? { budget: { ...budgetStand.budget } } : {}),
     // Nur wenn Felder aus den Defaults stammen (Issue #659): Ein vollstaendiger Block
     // hinterlaesst keine Spur, damit das Feld selbst schon der Befund ist.
-    ...(args.kette && KETTE_BUDGET_AUS_DEFAULT.length > 0 ? { budgetAusDefault: [...KETTE_BUDGET_AUS_DEFAULT] } : {}),
+    ...(budgetStand && budgetStand.ausDefault.length > 0 ? { budgetAusDefault: [...budgetStand.ausDefault] } : {}),
     einheiten: [],
     abschluss: null,
     // Ab hier Issue #669, hinter abschluss, weil die Folge stufe → einheiten Vertrag ist.
     // `complete` ist `false`, solange der Lauf laeuft, und `true` nur am regulaeren Ende: Ein
-    // harter Stopp laesst es stehen, damit die Nacht am Board nicht als ganze erscheint.
+    // harter Stopp laesst es in der DATEI auf `false` stehen — der Lauf kam nie durch.
+    // Die MELDUNG ans Board sagt seit Issue #881 etwas anderes: Sie leitet `complete` aus
+    // `abschluss` ab und traegt den harten Stopp als abgeschlossen samt `abortReason`,
+    // damit er dort nicht ewig unter den aktiven Laeufen steht.
     complete: false,
     // Der Verbrauch des ganzen Laufs, einschliesslich der Sessions ohne Karte, und der Teil
     // davon, der zu keiner Einheit gehoert.
     verbrauch: verbrauchLeer(),
     verbrauchOhneEinheit: verbrauchLeer(),
+    // Die Zielmarke, mit der DIESER Lauf gerechnet hat (Issue #978) — hinten angehaengt,
+    // wie jedes neue Feld der Schemafassung 1. Sie steht hier und nicht erst in der
+    // Auswertung, weil sie zwischen zwei Naechten eine andere gewesen sein kann: Wer
+    // spaeter die Config laese, bewertete den Lauf von gestern gegen die Vorgabe von
+    // heute. Der Wert ist der aufgeloeste — die Vorgabe des Schemas, wo die Config
+    // schweigt —, damit an keiner Stelle ein zweites Mal aufgeloest werden muss.
+    zielUmsetzungMin: zielUmsetzungMin(config?.night?.zielUmsetzungMin),
   };
 }
 
@@ -1248,6 +1430,13 @@ export function gitResteAusnahmen(cfg = config) {
     // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
     ".claude/bewegungen.tsv", // SYNC: kit/board.mjs schreibt sie
     ".claude/ausfuehrungen.tsv", // SYNC: kit/checks.mjs schreibt sie
+    // Der Pruef-Nachweis, aus demselben Grund und mit demselben Schadensbild (Issue #919):
+    // Seit die Salvage-Vorpruefung ueber `checks.mjs run` geht, legt der RUNNER die Datei
+    // selbst an. In einem Projekt ohne den `.claude/*`-Block zaehlte sie danach als
+    // liegengebliebene Arbeit, und die geglueckte Rettung endete als "SALVAGE
+    // WIDERSPRUECHLICH" — der Nachweis der Pruefung machte die Rettung unmoeglich, die er
+    // belegt. Nachweis einer Pruefung, kein Code-Zustand.
+    ".claude/checks-summary.json", // SYNC: kit/checks.mjs schreibt ihn (SUMMARY_DATEI)
     ".claude/wirksamkeit.md", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     ".claude/wirksamkeit.json", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
@@ -1290,8 +1479,8 @@ export function salvageSauberkeitsKommando(ausnahmen = gitResteAusnahmen()) {
   return `git status --porcelain ${teile.join(" ")}`;
 }
 
-function gitReste(cwd = process.cwd()) {
-  const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec()], { encoding: "utf-8", cwd });
+function gitReste(cwd = process.cwd(), cfg = config) {
+  const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec(gitResteAusnahmen(cfg))], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
   return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
 }
@@ -1368,10 +1557,16 @@ function prozessLaeuft(pid) {
 /**
  * Nimmt den Umsetzungs-Lock in der Hauptkopie.
  *
- * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, grund }`. Ein
- * Schreibfehler zaehlt wie ein vorgefundener Lock und laesst die Umsetzung aus: Ein Lock,
- * der bei Schreibfehlern uebergangen wird, ist keiner — und die Kette faellt in diesem Fall
- * auf Variante A zurueck, was ein vorgesehener Ausgang ist.
+ * Rueckgabe ist `{ ok: true, hinweis, freigeben }` oder `{ ok: false, art, grund }`. Beide
+ * Arten des Fehlschlags lassen die Umsetzung aus — ein Lock, der bei Schreibfehlern
+ * uebergangen wird, ist keiner —, sie stehen aber fuer Verschiedenes und sind darum an `art`
+ * zu unterscheiden statt am Wortlaut des Grundes: `"belegt"` ist der vorgefundene Lock eines
+ * laufenden Laufs, `"schreibfehler"` der Lock, der sich nicht schreiben liess.
+ *
+ * Die beiden Aufrufer sind darauf verschieden angewiesen: Die Umsetzungsnacht (6861)
+ * unterscheidet die Arten — belegt ist fuer sie ein ruhiger Lauf, ein Schreibfehler eine
+ * Stoerung der Umgebung. Die Kettenstufe (5257) liest `art` nicht und faellt bei beiden
+ * Arten auf Variante A zurueck, was fuer sie ein vorgesehener Ausgang ist.
  *
  * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
  */
@@ -1379,14 +1574,14 @@ export function umsetzungLockNehmen(repoRoot) {
   const pfad = join(repoRoot, UMSETZUNG_LOCK);
   const pid = lockPid(pfad);
   if (pid !== null && prozessLaeuft(pid)) {
-    return { ok: false, grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+    return { ok: false, art: "belegt", grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
   }
   const verwaist = existsSync(pfad);
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     writeFileSync(pfad, `${process.pid}\n`, "utf-8");
   } catch (e) {
-    return { ok: false, grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+    return { ok: false, art: "schreibfehler", grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
   }
   return {
     ok: true,
@@ -1404,6 +1599,55 @@ export function umsetzungLockNehmen(repoRoot) {
   };
 }
 
+/**
+ * Die Sperren, an denen ein Lauf des Runners in der Hauptkopie erkennbar ist (Issue #929).
+ *
+ * Heute ist es eine: `.claude/night-umsetzung.lock`. Sie deckt beide Faelle, die die
+ * Release-Skills auseinanderhalten muessen — die Umsetzungsnacht nimmt sie, und die
+ * Umsetzungsstufe der Kette nimmt unter Variante B dieselbe Datei (6170), weil sie in der
+ * Hauptkopie baut. Eine Liste statt einer Konstante, damit eine zweite Sperre hier
+ * eingetragen wird und nicht an der Pruefung vorbei entsteht.
+ */
+export const RUNNER_SPERREN = [UMSETZUNG_LOCK];
+
+/** Die Config der Hauptkopie, so weit sie ohne Lauf-Kontext lesbar ist (Muster #800). */
+function configVonPlatte(repoRoot) {
+  try {
+    return JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+  } catch {
+    return null; // keine oder unlesbare Config ist ein normaler Zustand
+  }
+}
+
+/**
+ * Darf das lokale `<mainBranch>` der Hauptkopie jetzt nachgezogen werden (Issue #929)?
+ *
+ * Die Release-Skills arbeiten seit #929 in einem eigenen Worktree und pushen von dort;
+ * das lokale `<mainBranch>` bleibt dabei zurueck. Nachgezogen wird es nur, wenn niemand
+ * sonst in der Hauptkopie arbeitet: Ein `git rebase` unter einer laufenden Umsetzung
+ * verschoebe ihr den Boden, und ein schmutziger Baum bringt den Rebase zum Halten.
+ *
+ * Gemessen wird mit den Mitteln, die es schon gibt — die Prozess-Id-Logik des
+ * Umsetzungs-Locks und `gitReste()` mit denselben Ausnahmen wie der Rest-Guard. Zwei
+ * eigene Messungen desselben Zustands liefen auseinander (dieselbe Begruendung wie #818).
+ *
+ * Rueckgabe: `{ nachziehen, grund }`. `grund` ist bei `true` null, sonst der Satz, den
+ * der Skill in seinen Bericht uebernimmt.
+ */
+export function nachziehenPruefen(repoRoot = process.cwd()) {
+  for (const sperre of RUNNER_SPERREN) {
+    const pid = lockPid(join(repoRoot, sperre));
+    if (pid !== null && prozessLaeuft(pid)) {
+      return { nachziehen: false, grund: `${sperre} wird gehalten (Prozess ${pid}) — in der Hauptkopie arbeitet ein Lauf des Runners` };
+    }
+  }
+  const reste = gitReste(repoRoot, configVonPlatte(repoRoot));
+  if (reste.length > 0) {
+    return { nachziehen: false, grund: `die Hauptkopie traegt unkommittierte Aenderungen: ${reste.join(", ")}` };
+  }
+  return { nachziehen: true, grund: null };
+}
+
 // --- Worktree je Kette (Plan #638, A3) ---
 //
 // Die Nacht-Kette arbeitet in einem eigenen Worktree ausserhalb des Repos: Im Repo laege
@@ -1413,9 +1657,15 @@ export function umsetzungLockNehmen(repoRoot) {
 // Runner spiegelt deshalb `.claude/` der Hauptkopie hinein — ohne `night-run-*`, denn
 // Log und Ergebnisstand bleiben in der Hauptkopie.
 
-/** Der Ordnername eines Kette-Worktrees; der Praefix dient dem Aufraeumen beim Start. */
-function worktreePraefix(repoRoot) {
-  return `kette-${basename(resolve(repoRoot))}-`;
+/**
+ * Der Ordnername eines Worktrees; der Praefix dient dem Aufraeumen beim Start.
+ *
+ * `praefix` trennt die Laeufe, die nebeneinander stehen koennen: die Nacht-Kette
+ * (`kette`, der Vorgabewert) und der Prueflauf am Tag (`pruefung`). Ohne diese
+ * Trennung entfernte ein Prueflauf beim Start den Worktree einer laufenden Kette.
+ */
+function worktreePraefix(repoRoot, praefix = "kette") {
+  return `${praefix}-${basename(resolve(repoRoot))}-`;
 }
 
 function gitIm(repoRoot, gitArgs) {
@@ -1496,10 +1746,19 @@ function claudeSpiegeln(repoRoot, pfad) {
  * Scheitert `git worktree add`, wirft die Funktion mit der git-Meldung; ob daraus ein
  * `abgebrochen` wird, entscheidet der Aufrufer — ein stiller Rueckfall auf die Hauptkopie
  * hiesse, dass die Kette manchmal neben der Umsetzung im selben Baum liefe.
+ *
+ * `ref` ist der Stand, auf dem der Worktree aufsetzt (Issue #929). Die Kette und der
+ * Prueflauf nehmen den Vorgabewert `HEAD` — sie messen die Arbeit dieser Maschine. Die
+ * Release-Skills setzen ihn ausdruecklich: `/merge-production` auf `origin/<mainBranch>`,
+ * weil veroeffentlicht wird, was gepusht ist. Immer `--detach`: Ein Branch, der in der
+ * Hauptkopie ausgecheckt ist, liesse sich in einem zweiten Worktree gar nicht auschecken.
  */
-export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
-  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot)}${issueId}-${stempel}`);
-  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, "HEAD"]);
+export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette", ref = "HEAD" }) {
+  // Ohne Kartennummer bleibt das Segment ganz weg (Plan #904, E11): Der Prueflauf legt
+  // EINEN Worktree je Lauf an, und ein leeres Segment behauptete eine fehlende Nummer.
+  const nummer = issueId === null ? "" : `${issueId}-`;
+  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot, praefix)}${nummer}${stempel}`);
+  const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, ref]);
   if (res.status !== 0) {
     throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
   }
@@ -1507,8 +1766,37 @@ export function worktreeAnlegen({ repoRoot, issueId, stempel }) {
   return pfad;
 }
 
-/** Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt. */
+/**
+ * Liegt das Arbeitsverzeichnis des Prozesses innerhalb von `pfad` (Issue #955)?
+ *
+ * Ueber aufgeloeste, normalisierte Pfade — nicht ueber einen Zeichenkettenvergleich, der
+ * `…/release-abc` fuer einen Teil von `…/release-a` hielte. Laesst sich eine der beiden
+ * Seiten nicht aufloesen, lautet die Antwort nein: Dann ist kein Wechsel begruendet.
+ */
+function cwdLiegtIn(pfad) {
+  let ziel, cwd;
+  try {
+    ziel = realpathSync(pfad);
+    cwd = realpathSync(process.cwd());
+  } catch {
+    return false;
+  }
+  const rel = relative(ziel, cwd);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/**
+ * Entfernt den Worktree — ueber git, und den Ordner, falls er danach noch liegt.
+ *
+ * Steht das Arbeitsverzeichnis des Prozesses IM Worktree, wechselt die Funktion zuerst
+ * hinaus nach `repoRoot` (Issue #955): Genau so rufen die Release-Skills den Abbau, und
+ * Windows sperrt das Loeschen eines Verzeichnisses, in dem ein Prozess steht (EBUSY) —
+ * POSIX erlaubt es, die CI auf `windows-latest` stand daran rot. `repoRoot` ist immer
+ * vorhanden und der Ort, an dem der Worktree-Eintrag gefuehrt wird. Der Wechsel geschieht
+ * NUR in diesem Fall: Wer von aussen aufraeumt, soll sein cwd nicht wechseln sehen.
+ */
 export function worktreeEntfernen(pfad, repoRoot) {
+  if (cwdLiegtIn(pfad)) process.chdir(repoRoot);
   gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
   rmSync(pfad, { recursive: true, force: true });
 }
@@ -1656,10 +1944,14 @@ function kettenBefundeZurueck(kette) {
  * Ein harter Absturz laesst den Ordner unter dem Temp-Verzeichnis und den Eintrag in
  * `git worktree list` zurueck; beide muessen weg, sonst legt der naechste Lauf einen
  * zweiten Worktree neben einen toten. Liefert die entfernten Pfade.
+ *
+ * Geraeumt wird nur der eigene Praefix (`kette` als Vorgabe, `pruefung` fuer den
+ * Prueflauf am Tag): Ein Lauf, der jeden Praefix abraeumte, zerstoerte den Worktree
+ * des jeweils anderen, der gerade daneben laeuft.
  */
-export function worktreesAufraeumen(repoRoot) {
+export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
   gitIm(repoRoot, ["worktree", "prune"]);
-  const praefix = worktreePraefix(repoRoot);
+  const praefix = worktreePraefix(repoRoot, praefixName);
   const entfernt = [];
   for (const name of readdirSync(tmpdir())) {
     if (!name.startsWith(praefix)) continue;
@@ -1713,20 +2005,44 @@ export function hasReviewMarker(body) {
 // Werts ist die von AUTOR_MODELL_ZEILE: vom ersten bis zum letzten Nicht-Leerzeichen.
 export const PLAN_REVIEW_ZEILE = /^Plan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
 
-/** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
-export function planReviewWert(body) {
-  // `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
-  // `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+/**
+ * Der Wert eines Marker-Ausdrucks im Body — sonst `null`.
+ *
+ * `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
+ * `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+ */
+function markerWert(body, ausdruck) {
   for (const zeile of String(body ?? "").split("\n")) {
-    const treffer = PLAN_REVIEW_ZEILE.exec(zeile.trimStart());
+    const treffer = ausdruck.exec(zeile.trimStart());
     if (treffer !== null) return treffer[1];
   }
   return null;
 }
 
+/** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
+export function planReviewWert(body) {
+  return markerWert(body, PLAN_REVIEW_ZEILE);
+}
+
 /** Ob der Body eines Plans den Plan-Review-Marker mit einem Wert traegt. */
 export function hatPlanReviewMarker(body) {
   return planReviewWert(body) !== null;
+}
+
+// Der Pruefer-Vermerk an der fachlichen Anforderung, den /issue-review dort hinterlaesst
+// (Fachplan #899, Plan #904, Issue #907). Gebaut wie PLAN_REVIEW_ZEILE, weil er dasselbe
+// leistet — nur an der anderen Kartenart. Den Namen kennt `kit/board.mjs` bereits als
+// Gate F11 der fachlichen Anforderung.
+export const FACHPLAN_REVIEW_ZEILE = /^Fachplan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
+
+/** Der Pruefer aus der Zeile 'Fachplan-Review: <pruefer>' — sonst `null`. */
+export function fachplanReviewWert(body) {
+  return markerWert(body, FACHPLAN_REVIEW_ZEILE);
+}
+
+/** Ob der Body einer fachlichen Anforderung den Fachplan-Review-Marker mit Wert traegt. */
+export function hatFachplanReviewMarker(body) {
+  return fachplanReviewWert(body) !== null;
 }
 
 /**
@@ -1871,6 +2187,37 @@ export function stoppFragenGrund(body) {
   return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
 }
 
+// Wie eine fachliche Anforderung sagt, dass keine Frage mehr offen ist: die erste
+// nichtleere Zeile beginnt mit "Keine" — ein fuehrender Listenstrich davor und ein
+// beliebiger Zusatz dahinter sind erlaubt. Bewusst laxer als `KEINE_STOPP_FRAGEN`:
+// `/fachplan` schreibt keine Listenform vor, und die vorhandenen Anforderungen tragen
+// dort Fliesstext ("Keine. Die vier Fragen hat der PO entschieden …").
+const KEINE_PO_FRAGEN = /^(?:[-*+]\s+)?Keine/;
+
+/**
+ * Traegt eine fachliche Anforderung offene Fragen an den PO (Issue #916)? — `null`, wenn
+ * nicht.
+ *
+ * Eigene Funktion neben `stoppFragenGrund` und mit eigener Ueberschrift-Konstante: Die
+ * beiden Faelle unterscheiden sich in Ueberschrift, erlaubter Schreibweise und Wirkung
+ * (Halt mitten in der Kette gegen Ausschluss vor dem Start). Ein gemeinsamer Parameter
+ * verbaende zwei Regeln, die getrennt wandern koennen.
+ *
+ * Ein FEHLENDER Abschnitt laeuft, anders als beim Plandokument: Ob eine fachliche
+ * Anforderung ihren Pflichtabschnitt traegt, prueft Gate F7 in board.mjs; die Kette misst
+ * sie nicht ein zweites Mal daran.
+ */
+export function offeneFragenGrund(body) {
+  const abschnitt = abschnittLesen(body, PO_FRAGEN_UEBERSCHRIFT);
+  if (abschnitt === null) return null;
+  // Nur Zeilen ausserhalb eines Fence, aus demselben Grund wie bei `stoppFragenGrund`:
+  // Eine im Codeblock gezeigte Beispielfrage ist keine offene Frage.
+  const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
+  if (erste === undefined) return null;
+  if (KEINE_PO_FRAGEN.test(erste.trim())) return null;
+  return `offene Frage an den PO: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+}
+
 // --- Das Erfolgssignal der Erzeugung (Issue #520) ---
 
 // Welche Herkunftszeile ein erzeugtes Dokument seiner Quelle traegt: Ein Plandokument
@@ -1927,6 +2274,26 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
   return zeile.test(issue?.body || "");
 }
 
+/**
+ * Die fachliche Wurzel eines Plandokuments (Fachplan #883, Plan #890) — `null` ohne sie.
+ *
+ * Dieselbe Zeilenform wie in `stammtAusErzeugung`, nur ohne vorgegebene Nummer: Dort
+ * wird gefragt „traegt dieses Dokument Quelle #N?", hier „welche Quelle traegt es?".
+ * Der Feldname kommt aus `HERKUNFT_FELD.plan`, damit die Schreibweise nicht an zwei
+ * Stellen gepflegt wird.
+ *
+ * Die Nummer geht UNVERAENDERT zurueck, ohne fuehrende Nullen zu streichen: Der lokale
+ * Tracker nummeriert `0001`, und eine normalisierte `1` traefe dort keine Karte. Wer
+ * vergleicht, vergleicht zeichengleich.
+ */
+export function fachlicheQuelleVon(body) {
+  const zeile = new RegExp(
+    String.raw`^[^\S\n]*${HERKUNFT_FELD.plan}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`,
+    "m",
+  );
+  return zeile.exec(String(body ?? ""))?.[1] ?? null;
+}
+
 // --- Abhaengigkeiten ---
 
 const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
@@ -1937,6 +2304,15 @@ const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 // den Gruenden, damit dort keine zweite Schreibweise entsteht.
 const OFFENE_FRAGEN_NAME = "Offene Fragen";
 const OFFENE_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s*$/i;
+// Der Abschnitt, in den eine Antwort auf eine Stopp-Frage gehoert. Er steht in den
+// Gruenden von `planAusschluss` und im Weg nach vorn des Halt-Kommentars (Issue #896) —
+// zwei Schreibweisen desselben Abschnitts liessen den Menschen den falschen suchen.
+const ENTSCHEIDUNGEN_NAME = "Architektonische Entscheidungen";
+// Der Pflichtabschnitt einer fachlichen Anforderung (Gate F7), gelesen von
+// `offeneFragenGrund`. Eigene Konstante neben `OFFENE_FRAGEN_NAME`: Die Ueberschrift
+// lautet anders, und die beiden Regeln koennen getrennt wandern.
+const PO_FRAGEN_NAME = "Offene Fragen an den PO";
+const PO_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s+an\s+den\s+PO\s*$/i;
 
 /**
  * Die Zeilen eines Markdown-Abschnitts — `null`, wenn die Ueberschrift fehlt.
@@ -2091,6 +2467,36 @@ function emitVerbose(issueId, line) {
  * Unlesbare Zeilen werden tolerant uebersprungen, wie in `leseKennzahlen()` — eine
  * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
  */
+/**
+ * Liest eine Zeile des Session-Stroms und gibt das Ereignis zurueck — oder `null`,
+ * wenn die Zeile keines ist (Issue #960).
+ *
+ * Ein bereits geparstes Objekt wird durchgereicht: Die Beobachter bekommen ihre Zeile
+ * teils schon gelesen, und ein zweites `JSON.parse` darauf wuerde werfen.
+ *
+ * Billiger Vorfilter auf `{`: Ein Stream-Ereignis ist immer ein JSON-Objekt. Das haelt
+ * `JSON.parse` von jeder Fliesstext-Zeile fern — und die Beobachter sitzen im
+ * stdout-Handler jeder Session.
+ *
+ * Eine unlesbare Zeile ergibt `null`, statt zu werfen: Eine Kennzahl darf einen
+ * laufenden Nachtlauf nicht zu Fall bringen.
+ *
+ * Exportiert, damit ein Test genau diese Funktion trifft und keine Kopie, die ab der
+ * ersten Abweichung etwas anderes bescheinigt — Muster `globZuRegex` in
+ * `kit/checks.mjs`.
+ */
+export function leseStromereignis(roh) {
+  if (roh && typeof roh === "object") return roh;
+  if (typeof roh !== "string") return null;
+  const trimmed = roh.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
 export function werkzeugZeitBeobachter() {
   let werkzeugMs = 0;
   let schuebe = 0;
@@ -2100,24 +2506,9 @@ export function werkzeugZeitBeobachter() {
   // Aufrufe, mit der er begonnen hat.
   let offen = null;
 
-  const parse = (roh) => {
-    if (roh && typeof roh === "object") return roh;
-    if (typeof roh !== "string") return null;
-    const trimmed = roh.trim();
-    // Billiger Vorfilter wie in leseKennzahlen: Ein Stream-Ereignis ist immer ein
-    // JSON-Objekt. Das haelt JSON.parse von jeder Fliesstext-Zeile fern — und der
-    // Beobachter sitzt im stdout-Handler jeder Session.
-    if (!trimmed.startsWith("{")) return null;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  };
-
   return {
     zeile(roh, ts) {
-      const obj = parse(roh);
+      const obj = leseStromereignis(roh);
       if (!obj || !Array.isArray(obj.message?.content)) return;
 
       if (obj.type === "assistant") {
@@ -2149,6 +2540,235 @@ export function werkzeugZeitBeobachter() {
       // Der noch laufende Schub wird hier dazugezaehlt statt beim Eintreffen abgeschlossen:
       // ergebnis() darf mehrfach abgerufen werden, ohne den Zustand zu veraendern.
       return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0) };
+    },
+  };
+}
+
+// --- Prueflaeufe am Session-Strom (Issue #924) ---
+
+/**
+ * Das erste Programm einer Kommandozeile, ohne Pfad (Issue #924).
+ *
+ * Vorangestellte Umgebungszuweisungen (`NODE_OPTIONS=… node …`) werden uebersprungen:
+ * Sie sind keine Programme, und ein Aufruf mit Zuweisung ist derselbe Lauf wie einer
+ * ohne. Alles Weitere bleibt absichtlich einfach — gefragt ist das erste Wort, nicht
+ * eine Shell-Grammatik im Runner.
+ */
+function erstesProgramm(kommando) {
+  for (const wort of String(kommando ?? "").trim().split(/\s+/)) {
+    if (wort === "") continue;
+    if (/^[A-Za-z_]\w*=/.test(wort)) continue;
+    const ohnePfad = wort.split(/[/\\]/).pop();
+    return ohnePfad || null;
+  }
+  return null;
+}
+
+/** Vergleichsform einer Kommandozeile: getrimmt, Whitespace auf ein Leerzeichen. */
+function kommandoNormal(kommando) {
+  return String(kommando ?? "").trim().replaceAll(/\s+/g, " ");
+}
+
+/**
+ * Der Satzteil, an dem `checks.mjs run` eine Uebernahme meldet (Issue #926).
+ *
+ * Der Zaehler sieht vom Abschlussversuch nur den Aufruf und seine Ausgabe — dass ein Lauf
+ * uebernommen wurde, steht in der Zusammenfassung, aber die liest er nicht: Sie traegt
+ * immer nur den letzten Lauf einer Session, und gefragt ist jeder einzelne Versuch.
+ */
+// SYNC: dieselbe Marke steht in kit/checks.mjs als UEBERNAHME_MARKE und wird dort in die
+// Ausgabe geschrieben; ein Test in test/night-prueflaeufe.test.mjs haelt beide zusammen.
+export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
+
+/**
+ * Der Text eines `tool_result` — als String oder als Bloecke mit `text`.
+ *
+ * Beide Formen kommen im Strom vor, je nachdem, was das Werkzeug zurueckgibt. Was sich
+ * nicht lesen laesst, ist ein leerer Text und keine Ausnahme: Der Zaehler faellt dann auf
+ * die gemessene Spanne zurueck, und das ist die vorsichtigere Auskunft.
+ */
+function ergebnisText(block) {
+  const inhalt = block?.content;
+  if (typeof inhalt === "string") return inhalt;
+  if (!Array.isArray(inhalt)) return "";
+  return inhalt.map((teil) => (typeof teil?.text === "string" ? teil.text : "")).join("\n");
+}
+
+/**
+ * Wie ein Bash-Aufruf zu zaehlen ist (Plan #917, E2/E3/E9) — oder gar nicht.
+ *
+ *   "voll"      woertlich ein `buildChecks`-Kommando: die vollstaendige Gruppe waehrend
+ *               der Arbeit, und genau das ist der Verstoss, den dieser Zaehler sichtbar macht.
+ *   "bereich"   `checks.mjs run --bereich <name>`: der sanktionierte Gruppenlauf (E3).
+ *               Er zaehlt eigens, damit er nicht unter die Verstoesse geraet.
+ *   "gezielt"   dasselbe Programm wie ein `buildChecks`-Kommando, aber anderer Umfang.
+ *   "abschluss" `checks.mjs run` ohne `--bereich`: der Abschlussversuch (E9). Er zaehlt in
+ *               seinem EIGENEN Block und nie in der Arbeit — dort stuende er zweimal.
+ *   null        kein Prueflauf.
+ *
+ * Der Aufrufweg entscheidet, nicht die Absicht: `checks.mjs` wird am Kommando erkannt,
+ * nicht am Programmabgleich — in einem Projekt mit `mvn verify` als Pruefgruppe traegt
+ * der Bereichslauf ein anderes Programm als jede konfigurierte Gruppe.
+ */
+function prueflaufArt(kommando, programme, woertlich) {
+  const text = kommandoNormal(kommando);
+  if (text === "") return null;
+  const worte = text.split(" ");
+  const idx = worte.findIndex((w) => w.replaceAll(/["']/g, "").endsWith("checks.mjs"));
+  if (idx >= 0 && worte[idx + 1] === "run") {
+    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : "abschluss";
+  }
+  if (woertlich.has(text)) return "voll";
+  const programm = erstesProgramm(text);
+  return programm && programme.has(programm) ? "gezielt" : null;
+}
+
+/**
+ * Beobachtet denselben `stream-json`-Strom wie `werkzeugZeitBeobachter` und zaehlt, was
+ * eine Session waehrend ihrer Arbeit an Prueflaeufen startet (Plan #917, E1).
+ *
+ * Ein eigener Beobachter neben der Uhr, kein Ausbau von ihr: Jener liest bewusst keinen
+ * Inhalt — "so hat er nur eine Uhr" (Plan #745, E1/E2) —, dieser hier MUSS deuten, um
+ * einen Prueflauf von einem `git status` zu unterscheiden. Beide Aufgaben in einem
+ * Beobachter haetten die Entscheidung von damals stillschweigend aufgehoben.
+ *
+ * Gezaehlt wird je AUFRUF, nicht je Schub: Zwei nebeneinander gestartete Testlaeufe sind
+ * zwei Laeufe. Die Zuordnung geht ueber `tool_use.id` zu `tool_result.tool_use_id`; ein
+ * Aufruf ohne Ergebnis (abgeschnittener Strom) zaehlt als gestartet, seine Spanne geht
+ * nicht ein — sie waere eine Schaetzung, die sich als Messung ausgibt.
+ *
+ * `buildChecks` kommt aus der Konfiguration, in beiden Eintragsformen (String oder Objekt
+ * mit `cmd`, E2): Sie ist die einzige Stelle, die weiss, was "vollstaendig" heisst.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
+ * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs, abschluss }`.
+ * `abschluss` (Issue #926, E9) zaehlt die Abschlussversuche — `checks.mjs run` ohne
+ * `--bereich` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
+ * stuende derselbe Lauf zweimal. Was aus beidem FOLGT — Laeufe je Abschluss, Anteil an der
+ * Laufzeit, Abstand zur Zielmarke — rechnet der Bericht, nicht dieser Zaehler (E7).
+ */
+export function prueflaufBeobachter(buildChecks) {
+  const kommandos = (Array.isArray(buildChecks) ? buildChecks : [])
+    .map((eintrag) => (typeof eintrag === "string" ? eintrag : eintrag?.cmd))
+    .map(kommandoNormal)
+    .filter((cmd) => cmd !== "");
+  const woertlich = new Set(kommandos);
+  const programme = new Set(kommandos.map(erstesProgramm).filter(Boolean));
+
+  let anzahl = 0;
+  let volle = 0;
+  let volleNoetig = 0;
+  let dauerMs = 0;
+  let abschlussAnzahl = 0;
+  let abschlussDauerMs = 0;
+  // Die noch laufenden Prueflaeufe: tool_use.id -> { start, abschluss }. Nur Prueflaeufe
+  // stehen darin — jeder andere Aufruf ist fuer diesen Beobachter nicht vorhanden. Die Art
+  // gehoert dazu, weil erst das Ergebnis eines Abschlussversuchs zeigt, ob er wirklich lief.
+  const offen = new Map();
+
+  // Ein gestarteter Aufruf: gezaehlt wird beim tool_use, denn gemessen wird, was die
+  // Session STARTET. Die Spanne kommt spaeter dazu, wenn sein Ergebnis eintrifft.
+  const aufrufGesehen = (block, ts) => {
+    if (block?.type !== "tool_use" || block.name !== "Bash") return;
+    if (typeof block.id !== "string" || block.id === "") return;
+    const art = prueflaufArt(block.input?.command, programme, woertlich);
+    if (!art) return;
+    if (art === "abschluss") {
+      abschlussAnzahl += 1;
+      offen.set(block.id, { start: ts, abschluss: true });
+      return;
+    }
+    anzahl += 1;
+    if (art === "voll") volle += 1;
+    else if (art === "bereich") volleNoetig += 1;
+    offen.set(block.id, { start: ts, abschluss: false });
+  };
+
+  const ergebnisGesehen = (block, ts) => {
+    if (block?.type !== "tool_result") return;
+    const lauf = offen.get(block.tool_use_id);
+    if (lauf === undefined) return;
+    offen.delete(block.tool_use_id);
+    if (!lauf.abschluss) {
+      dauerMs += ts - lauf.start;
+      return;
+    }
+    // Ein uebernommener Abschlusslauf hat nichts ausgefuehrt (Issue #926): `uebernehmen`
+    // reicht die Werte des frueheren Laufs weiter, die Spanne dieses Aufrufs waere die
+    // Dauer eines Dateischreibens und gaebe sich als Pruefdauer aus. Der Versuch zaehlt,
+    // die Dauer nicht — dieselbe Regel wie beim Aufruf ohne Ergebnis.
+    if (!ergebnisText(block).includes(UEBERNAHME_MARKE)) abschlussDauerMs += ts - lauf.start;
+  };
+
+  return {
+    zeile(roh, ts) {
+      const obj = leseStromereignis(roh);
+      if (!obj || !Array.isArray(obj.message?.content)) return;
+      const behandle = obj.type === "assistant" ? aufrufGesehen : ergebnisGesehen;
+      for (const block of obj.message.content) behandle(block, ts);
+    },
+    ergebnis() {
+      return { anzahl, volle, volleNoetig, dauerMs, abschluss: { anzahl: abschlussAnzahl, dauerMs: abschlussDauerMs } };
+    },
+  };
+}
+
+// --- Fortschrittszeilen am Session-Strom (Issue #975, Plan #974) ---
+
+// Der Anker, mit dem eine Sitzung ihren eigenen Stand meldet. Ihn zu schreiben ist Auftrag
+// des implement-next-Skills (Issue #981) — kein Werkzeug kann fuer die Sitzung ueber ihren
+// Stand sprechen.
+const FORTSCHRITT_ANKER = "FORTSCHRITT:";
+
+// Je Zeile derselbe Platz wie bei jeder anderen Zeile, die aus einem Strom in einen Text
+// geht (`flatten`): Ein halber Satz je Punkt des Akzeptanzkriteriums passt darin.
+const FORTSCHRITT_ZEILE_MAX = 200;
+
+// Mehr als zehn Zeilen machen den Vermerk unlesbar. Behalten werden die JUENGSTEN: Gefragt
+// ist der Stand, den die Sitzung zuletzt erreicht hat, nicht ihr Anfang. Dass gekuerzt
+// wurde, bleibt an `gesehen` ablesbar — sonst saehe eine gekappte Liste wie die ganze aus.
+const FORTSCHRITT_ZEILEN_MAX = 10;
+
+/**
+ * Beobachtet denselben `stream-json`-Strom wie `werkzeugZeitBeobachter` und
+ * `prueflaufBeobachter` und sammelt, was die Sitzung unterwegs ueber ihren eigenen Stand
+ * gesagt hat (Plan #974, E1).
+ *
+ * Der Anlass ist das Zeitlimit: Dort wird die Sitzung samt Prozessgruppe gekillt, ein
+ * `result`-Ereignis kommt nie an, und `leseErgebnisText` liefert `null`. Der Schlusstext
+ * fehlt also genau im Fall, fuer den er gebraucht wuerde — was bleibt, ist allein das
+ * live Mitgelesene.
+ *
+ * Ein dritter Beobachter neben den beiden bestehenden, aus deren Grund: Jeder liest den
+ * Strom fuer genau eine Frage. Eine unlesbare Zeile wird uebersprungen, wie dort — eine
+ * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt, `ergebnis()` liefert
+ * jederzeit `{ zeilen, gesehen }`. Wer diese Ausgabe liest, entsteht in den Folgepaketen.
+ */
+export function fortschrittBeobachter() {
+  const zeilen = [];
+  let gesehen = 0;
+
+  return {
+    zeile(roh) {
+      const obj = leseStromereignis(roh);
+      if (obj?.type !== "assistant" || !Array.isArray(obj.message?.content)) return;
+      for (const block of obj.message.content) {
+        if (block?.type !== "text" || typeof block.text !== "string") continue;
+        for (const zeile of block.text.split("\n")) {
+          const getrimmt = zeile.trim();
+          if (!getrimmt.startsWith(FORTSCHRITT_ANKER)) continue;
+          gesehen += 1;
+          zeilen.push(flatten(getrimmt, FORTSCHRITT_ZEILE_MAX));
+          if (zeilen.length > FORTSCHRITT_ZEILEN_MAX) zeilen.shift();
+        }
+      }
+    },
+    ergebnis() {
+      // Eine Kopie: `ergebnis()` darf mehrfach abgerufen werden, und ein Aufrufer, der die
+      // Liste weiterreicht, darf den Zustand des Beobachters nicht in der Hand halten.
+      return { zeilen: [...zeilen], gesehen };
     },
   };
 }
@@ -2210,16 +2830,10 @@ function nurBoolean(wert) {
 export function leseKennzahlen(stdout) {
   let letzte = null;
   for (const zeile of String(stdout ?? "").split(/\r\n|\r|\n/)) {
-    const trimmed = zeile.trim();
-    // Billiger Vorfilter: Ein Stream-Ereignis ist immer ein JSON-Objekt. Das haelt
-    // JSON.parse von jeder Fliesstext-Zeile fern.
-    if (!trimmed.startsWith("{")) continue;
-    let obj;
-    try {
-      obj = JSON.parse(trimmed);
-    } catch {
-      continue; // unlesbare Zeile tolerant ueberspringen, wie in emitVerbose
-    }
+    // Vorfilter, Trimmen und das tolerante Ueberspringen einer unlesbaren Zeile
+    // stehen in `leseStromereignis`. Hier kommen ausschliesslich Strings aus dem
+    // `split` an — das Durchreichen eines bereits geparsten Objekts greift also nie.
+    const obj = leseStromereignis(zeile);
     if (obj && typeof obj === "object" && obj.type === "result") letzte = obj;
   }
   if (!letzte) return null;
@@ -2411,6 +3025,54 @@ function zeitenErfassen(issueId, dauerMs, kennzahlen, werkzeug) {
   if (!einheit) return;
   const zeiten = zeitenBauen(dauerMs, kennzahlen, werkzeug);
   einheit.zeiten = einheit.zeiten ? zeitenAddieren(einheit.zeiten, zeiten) : zeiten;
+  schreibeErgebnisstand();
+}
+
+/** Die Felder der Prueflaeufe einer Arbeit, in dieser Reihenfolge im Ergebnisstand. */
+const PRUEFLAUF_FELDER = ["anzahl", "volle", "volleNoetig", "dauerMs"];
+
+/** Die Felder des Abschlussblocks (Issue #926) — ein Versuch hat keine Umfangsfrage. */
+const ABSCHLUSS_FELDER = ["anzahl", "dauerMs"];
+
+/**
+ * Addiert die Prueflaeufe zweier Sessions derselben Einheit feldweise (Issue #924).
+ *
+ * Dieselbe Rechnung wie `zeitenAddieren` und aus demselben Grund: Die Einheit ist die
+ * Karte, nicht die Session — was an einem Paket gepruft wurde, gehoert zusammen, ob es
+ * die regulaere Runde war oder die Rettung danach. Reine Funktion, `ziel` bleibt
+ * unangetastet. Gespeichert wird allein die Messung; Abschlusszahlen und Zielmarke
+ * rechnet der Bericht (Plan #917, E7).
+ */
+export function prueflaeufeAddieren(ziel, zuwachs) {
+  const summe = (block, felder) => {
+    const werte = {};
+    for (const feld of felder) {
+      werte[feld] = (endlicheZahl(ziel?.[block]?.[feld]) ?? 0) + (endlicheZahl(zuwachs?.[block]?.[feld]) ?? 0);
+    }
+    return werte;
+  };
+  return { arbeit: summe("arbeit", PRUEFLAUF_FELDER), abschluss: summe("abschluss", ABSCHLUSS_FELDER) };
+}
+
+/**
+ * Schreibt die Prueflaeufe einer Session auf die juengste Einheit der Karte — an
+ * derselben Stelle und mit demselben `findLast`-Ziel wie `zeitenErfassen`.
+ *
+ * `prueflaeufe` steht NEBEN `zeiten`, nicht darin: Die Zeiten sind eine Messung, die
+ * Prueflaeufe eine Deutung des Stroms (Plan #917, E1). `zeitenBauen` bleibt unberuehrt.
+ *
+ * Eine Session ohne Strom (`mess === null`) traegt nichts bei und laesst das Feld, wie
+ * es ist. Hat keine Session der Einheit gemessen, fehlt es ganz — "nicht gemessen", und
+ * nicht die Behauptung, es sei nichts gepruft worden.
+ */
+function prueflaeufeErfassen(issueId, mess) {
+  if (!LAUF || issueId === null || !mess) return;
+  const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (!einheit) return;
+  // Der Beobachter liefert die Arbeitsfelder flach und den Abschluss als Block; im
+  // Ergebnisstand stehen beide als eigene Bloecke nebeneinander (Issue #926).
+  const { abschluss, ...arbeit } = mess;
+  einheit.prueflaeufe = prueflaeufeAddieren(einheit.prueflaeufe, { arbeit, abschluss });
   schreibeErgebnisstand();
 }
 
@@ -2815,7 +3477,31 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
 // --verbose. Waeren sie weiterhin derselbe Schalter, gaebe es nur zwei gleich falsche
 // Stellungen — die Werkzeugzeit in jedem normalen Nachtlauf dauerhaft "nicht gemessen",
 // oder jedes Stream-Ereignis jeder Session in Konsole und Tagesprotokoll.
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd }) {
+/**
+ * Die Umgebung einer vom Runner gestarteten Session. Beide Schalter stehen hier zentral
+ * und vor dem Spread von `extraEnv`: Ein Aufrufer kann sie bewusst ueberschreiben, aber
+ * kein kuenftiger Session-Weg sie vergessen.
+ *
+ * CLAUDE_CODE_DISABLE_AUTO_MEMORY (Issue #772): Das Auto-Memory des Menschen ist fuer die
+ * Zusammenarbeit mit ihm geschrieben und wirkt in einer unbeaufsichtigten Session falsch —
+ * es sagt "im Gespraech klaeren", wo niemand danebensitzt. Was nachts gelten muss, steht
+ * in den Skills und den CLAUDE-*.md des Kits, nicht im Gedaechtnis eines Menschen.
+ *
+ * NODE_USE_ENV_PROXY (Issue #998): In der Sandbox geht der Netzverkehr ueber einen Proxy,
+ * und Nodes fetch nutzt ihn nur mit diesem Schalter beim Start. Ohne ihn scheitern
+ * board.mjs, checks.mjs und Projektskripte der Session mit "fetch failed".
+ */
+export function sessionUmgebung(issueId, extraEnv, basis = process.env) {
+  return {
+    ...basis,
+    NIGHT_ISSUE_ID: String(issueId),
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+    NODE_USE_ENV_PROXY: "1",
+    ...extraEnv,
+  };
+}
+
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -2825,18 +3511,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
     // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
     const child = spawn(cmd, cmdArgs, {
-      // CLAUDE_CODE_DISABLE_AUTO_MEMORY (Issue #772): Das Auto-Memory des Menschen ist fuer
-      // die Zusammenarbeit mit ihm geschrieben und wirkt in einer unbeaufsichtigten Session
-      // falsch — es sagt "im Gespraech klaeren", wo niemand danebensitzt. Was nachts gelten
-      // muss, steht in den Skills und den CLAUDE-*.md des Kits, nicht im Gedaechtnis eines
-      // Menschen. Hier zentral gesetzt und vor dem Spread von `extraEnv`: Ein Aufrufer kann
-      // sie bewusst ueberschreiben, aber kein kuenftiger Session-Weg sie vergessen.
-      env: {
-        ...process.env,
-        NIGHT_ISSUE_ID: String(issueId),
-        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-        ...extraEnv,
-      },
+      env: sessionUmgebung(issueId, extraEnv),
       detached: process.platform !== "win32",
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
       // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
@@ -2858,6 +3533,17 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // nichts zu messen, und `werkzeugzeit: null` sagt genau das — ein Ergebnis mit Nullen
     // waere die Behauptung, eine Session habe kein Werkzeug benutzt.
     const werkzeugzeit = useStream ? werkzeugZeitBeobachter() : null;
+    // Derselbe Strom, dieselbe Bedingung, zweiter Beobachter (Issue #924, Plan #917, E1).
+    // Die Pruefgruppen kommen aus der geladenen Config; ohne sie zaehlt nur noch der
+    // Bereichslauf, den der Aufrufweg allein ausweist.
+    const prueflaufZaehler = useStream ? prueflaufBeobachter(config?.buildChecks) : null;
+    // Derselbe Strom, dritter Beobachter (Issue #975) — mit einer Bedingung mehr: Die
+    // Kommando-Stufe startet ein fremdes Programm ohne `--output-format stream-json`.
+    // `useStream` ist dort trotzdem wahr, und der Beobachter lieferte `{ zeilen: [],
+    // gesehen: 0 }`; am spaeteren Vermerk stuende dann "keine Auskunft der Sitzung",
+    // obwohl gar nicht beobachtet werden konnte. `null` sagt "nicht beobachtet", dieselbe
+    // Unterscheidung wie "nicht gemessen" gegen 0.
+    const fortschritt = useStream && !kommandoStufe ? fortschrittBeobachter() : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
     const gestartet = Date.now();
@@ -2869,7 +3555,12 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // An genau einer Stelle angehaengt, damit auch die Zeitlimit- und Fehlerpfade das
       // Gemessene mitbringen: Gerade eine abgebrochene Session ist die, bei der die
       // Werkzeugzeit erklaert, woran die Runde haengengeblieben ist.
-      resolve({ ...result, werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null });
+      resolve({
+        ...result,
+        werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null,
+        prueflaeufe: prueflaufZaehler ? prueflaufZaehler.ergebnis() : null,
+        fortschritt: fortschritt ? fortschritt.ergebnis() : null,
+      });
     };
 
     // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
@@ -2891,24 +3582,29 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       ? Number(process.env.NIGHT_KILL_GRACE_MS)
       : 5000;
 
-    timers.push(setTimeout(() => {
+    // Das Zeitlimit laeuft in drei Stufen, je durch die Nachfrist getrennt. Sie
+    // stehen nebeneinander statt ineinander, weil jede fuer sich lesbar ist:
+    // freundlich beenden, hart nachsetzen, und wenn auch das close-Event ausbleibt,
+    // selbst aufloesen. Ein Nachtlauf darf unter keinen Umstaenden unbegrenzt warten.
+    const selbstAufloesen = () => done({
+      status: null,
+      signal: "SIGKILL",
+      error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
+      stdout,
+      stderr,
+    });
+    // Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal, haengender I/O),
+    // wird nachgesetzt.
+    const hartNachsetzen = () => {
+      killTree("SIGKILL");
+      timers.push(setTimeout(selbstAufloesen, killGraceMs));
+    };
+    const zeitlimitErreicht = () => {
       timedOut = true;
       killTree("SIGTERM");
-      // Harte Obergrenze: Reagiert der Baum nicht auf SIGTERM (ignoriertes Signal,
-      // haengender I/O), wird nachgesetzt — und wenn auch das close-Event ausbleibt,
-      // loest der Runner selbst auf. Ein Nachtlauf darf unter keinen Umstaenden
-      // unbegrenzt warten.
-      timers.push(setTimeout(() => {
-        killTree("SIGKILL");
-        timers.push(setTimeout(() => done({
-          status: null,
-          signal: "SIGKILL",
-          error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
-          stdout,
-          stderr,
-        }), killGraceMs));
-      }, killGraceMs));
-    }, timeoutMs));
+      timers.push(setTimeout(hartNachsetzen, killGraceMs));
+    };
+    timers.push(setTimeout(zeitlimitErreicht, timeoutMs));
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
@@ -2923,6 +3619,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         while ((idx = buf.indexOf("\n")) >= 0) {
           const zeile = buf.slice(0, idx);
           werkzeugzeit.zeile(zeile, ts);
+          prueflaufZaehler.zeile(zeile, ts);
+          // Kein Beobachter in der Kommando-Stufe (Issue #975) — dort bleibt das Feld null.
+          fortschritt?.zeile(zeile, ts);
           // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
           // gemessen wird immer, sobald der Strom angefordert ist.
           if (verbose) emitVerbose(issueId, zeile);
@@ -2940,7 +3639,10 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // beim Zeitlimit die abgeschnittene. Auch sie geht erst in die Messung, dann in die
       // Ausgabe.
       if (useStream && buf.trim()) {
-        werkzeugzeit.zeile(buf, Date.now());
+        const ts = Date.now();
+        werkzeugzeit.zeile(buf, ts);
+        prueflaufZaehler.zeile(buf, ts);
+        fortschritt?.zeile(buf, ts);
         if (verbose) emitVerbose(issueId, buf);
       }
       const error = timedOut
@@ -2965,6 +3667,35 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
 // denselben Mechanismus wie eine regulaere Runde, nur mit anderem Prompt und
 // eigenem Zeitlimit. Ohne opts bleibt alles wie vor #167.
 //
+/**
+ * Die Permission-Argumente einer Nacht-Session (Issue #940).
+ *
+ * `auto` statt des frueheren Modus, der Edits pauschal annahm: Dort greift eine eingebaute
+ * Sperre fuer sensible Dateien, die ein `permissions.allow`-Eintrag NICHT aufhebt — Paket
+ * #933 scheiterte
+ * zweimal daran, dass die Session `.claude/workflow.config.json` nicht schreiben durfte,
+ * obwohl der Eintrag stand und derselbe Zugriff interaktiv im auto mode durchlief. Im auto
+ * mode entscheidet ein Klassifikator, und damit wirkt die Allowlist auch nachts.
+ *
+ * `--permission-prompts none` gehoert zwingend dazu: Was der Klassifikator nicht entscheiden
+ * kann, wird zur Rueckfrage. Die Vorgabe `host` schickte sie an einen SDK-Host, den der
+ * Runner nicht hat — die Session hinge bis zum Rundenzeitlimit. `none` lehnt stattdessen ab
+ * ("anything that would prompt is denied automatically; the permission mode still decides
+ * everything else"): aus einem stillen Haenger wird eine klare Ablehnung, die der Morgen
+ * im Protokoll sieht.
+ *
+ * Der Yolo-Zweig bleibt unberuehrt und setzt KEINEN Modus: `--dangerously-skip-permissions`
+ * schaltet alle Checks ab, ein Modus daneben waere eine zweite Aussage ueber dieselbe Sache.
+ *
+ * Eine Funktion fuer beide Aufrufstellen — Session-Start und Vorflug. Zwei Orte fuer dieselbe
+ * Entscheidung driften auseinander; genau diese Doppelung machte die Umstellung erst zu einer
+ * Aenderung an zwei Stellen.
+ */
+export function permissionArgs(yolo) {
+  if (yolo) return ["--dangerously-skip-permissions"];
+  return ["--permission-mode", "auto", "--permission-prompts", "none"];
+}
+
 // Seit Plan #638 dazu: `cwd` (der Worktree der Kette, A4), `stream` (fordert den
 // stream-json-Strom unabhaengig von --verbose an, A5 — das Kostenbudget darf nicht am
 // Konsolenflag haengen; das Echo auf der Konsole bleibt an --verbose) und `stufe`
@@ -3011,13 +3742,32 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
  * Exportiert fuer die Tests (Issue #846): `NIGHT_CLAUDE_CMD` ersetzt den ganzen Aufruf,
  * eine Fake-Session sieht die gebaute Kommandozeile also nie.
  */
+/**
+ * Die Reserve zwischen dem Zeitlimit eines einzelnen Bash-Befehls und dem der Runde:
+ * genug Zeit, damit eine Session nach dem Tod ihres Befehls noch melden, kommentieren und
+ * die Karte bewegen kann (Issue #902).
+ */
+export const BASH_RESERVE_MS = 10 * 60 * 1000;
+
+/**
+ * Das Bash-Zeitlimit der Session aus dem Rundenzeitlimit (Issue #902).
+ *
+ * Die Reserve ist das Kleinere aus `BASH_RESERVE_MS` und 20 Prozent der Runde — ein fester
+ * Bruchteil naehme dem Befehl bei einer Stunde Runde die halbe Runde und machte Issue #668
+ * wieder kaputt, der Anteil haelt die kleinen Werte aus `NIGHT_TIMEOUT_MS` in den Tests
+ * positiv. Mindestens eine Millisekunde, damit das Ergebnis stets unter dem Rundenzeitlimit
+ * liegt und selbst positiv bleibt.
+ */
+export function bashZeitlimit(timeoutMs) {
+  const reserve = Math.max(1, Math.min(BASH_RESERVE_MS, Math.floor(timeoutMs * 0.2)));
+  return Math.max(1, timeoutMs - reserve);
+}
+
 export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   if (testCmd) return { cmd: "sh", cmdArgs: ["-c", testCmd] };
   if (kommando) return { cmd: "sh", cmdArgs: ["-c", `${kommando} "$@"`, "sh", prompt] };
 
-  const permArgs = args.yolo
-    ? ["--dangerously-skip-permissions"]
-    : ["--permission-mode", "acceptEdits"];
+  const permArgs = permissionArgs(args.yolo);
   const streamArgs = (args.verbose || opts.stream) ? ["--output-format", "stream-json", "--verbose"] : [];
   // Die Werkzeugsperre (Issue #668). `Monitor` ist das Werkzeug, mit dem eine Session
   // auf einen eigenen Hintergrundlauf wartet — und genau damit beendet sie ihren Zug,
@@ -3075,6 +3825,10 @@ export async function runSession(issueId, args, opts = {}) {
     // der Strom jedes normalen Nachtlaufs unausgewertet als Block in `res.stdout`.
     // `verbose` daneben steuert nur noch die Ausgabe der Ereignisse.
     issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd,
+    // Die Kommando-Stufe beobachtet ihren Fortschritt nicht (Issue #975): Ihr Programm
+    // kennt das Strom-Format nicht, und ein leeres Ergebnis waere eine Aussage ueber eine
+    // Sitzung, die nie beobachtet wurde.
+    kommandoStufe: Boolean(kommando),
     // KIT_AGENT_MODEL (Issue #193): Modell-Selbstauskunft fuer den Aktivitaetsverlauf
     // des Boards. Die Variable wird von den Bash-Kindprozessen der Session geerbt und
     // von board.mjs als Header X-Agent-Model gesendet — so steht im Verlauf, mit
@@ -3091,10 +3845,16 @@ export async function runSession(issueId, args, opts = {}) {
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
       // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
       // Testcontainers liegt darueber; die Session staerbe an der Uhr statt am Code.
-      // Das Rundenzeitlimit ist die richtige Obergrenze: Was laenger braucht, als die
-      // Runde hat, ist ohnehin verloren.
+      // Die Obergrenze des Befehls liegt aber UNTER der der Runde (Issue #902): Stirbt der
+      // Befehl an einer Grenze darunter, lebt die Session weiter, sieht den Fehler und kann
+      // melden, kommentieren und die Karte bewegen. Stirbt er zeitgleich mit der Runde,
+      // geht beides verloren. Die Reserve ist so bemessen, dass der volle Pruefstand aus
+      // #668 weiter hineinpasst — siehe `bashZeitlimit`.
       ...(opts.vordergrundCheck
-        ? { BASH_MAX_TIMEOUT_MS: String(timeoutMs), BASH_DEFAULT_TIMEOUT_MS: String(timeoutMs) }
+        ? (() => {
+            const grenze = String(bashZeitlimit(timeoutMs));
+            return { BASH_MAX_TIMEOUT_MS: grenze, BASH_DEFAULT_TIMEOUT_MS: grenze };
+          })()
         : {}),
       ...opts.extraEnv,
     },
@@ -3121,6 +3881,15 @@ export async function runSession(issueId, args, opts = {}) {
   const kennzahlen = leseKennzahlen(res.stdout);
   verbrauchErfassen(issueId, kennzahlen);
   zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
+  prueflaeufeErfassen(issueId, res.prueflaeufe);
+  // Das wirksame Zeitlimit dieser Runde (Issue #976). Es wird hier oben gerechnet — aus
+  // `NIGHT_TIMEOUT_MS`, `opts.timeoutMs` oder `args.timeoutMin` — und war bisher nach der
+  // Rueckkehr nicht mehr zu erfahren. Der Zeitabbruch-Vermerk nennt die Grenze aber, und
+  // `args.timeoutMin` waere dort die falsche: Ein Lauf unter `NIGHT_TIMEOUT_MS` oder eine
+  // Salvage-Session mit eigenem `opts.timeoutMs` schrieben damit eine Zahl an die Karte,
+  // an der nichts gemessen wurde. Angehaengt wie `werkzeugzeit`, also ohne die uebrigen
+  // Felder von `runProcess` zu beruehren.
+  res.timeoutMs = timeoutMs;
   return res;
 }
 
@@ -3177,6 +3946,12 @@ function lesePruefung(issueId) {
       basis: typeof daten.basis === "string" ? daten.basis : null,
       bereiche: Array.isArray(daten.bereiche) ? daten.bereiche : null,
       dauerGesamtMs: endlicheZahl(daten.dauerGesamtMs),
+      // Die Dateien ohne Bereichsmuster (Issue #926, Plan #917, E8): Sie sind in der
+      // Auswahl gelandet, ohne dass ein Bereich sie kennt — ein Loch in der Zuordnung, das
+      // der Bericht namentlich nennt. Ein fehlendes Feld ist `null` und nicht `[]`: Ein
+      // Stand aus der Zeit vor Issue #922 weiss darueber nichts, und eine leere Liste
+      // behauptete, es habe keine Luecke gegeben.
+      ohneZuordnung: Array.isArray(daten.ohneZuordnung) ? daten.ohneZuordnung : null,
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf
@@ -3281,7 +4056,11 @@ function nachweisPasstZuCommit(daten, commit) {
   return { passt: true, grund: null };
 }
 
-/** Der Pruefstand der Nachpruefung: die Paketstufe, bis einschliesslich des roten Kommandos. */
+/**
+ * Der Pruefstand der Nachpruefung: der Abschlussumfang, bis einschliesslich des roten
+ * Kommandos. Was `paketstufenChecks` auslaesst, erscheint auch hier nicht — die
+ * Nachpruefung vollzieht den Abschluss nach und faehrt nie mehr als er (Plan #944, E14).
+ */
 function nachpruefLaufen(cfg, nach) {
   const laufen = [];
   for (const eintrag of paketstufenChecks(cfg)) {
@@ -3318,7 +4097,7 @@ function bewertePruefung(issueId, commit, cfg) {
     zustand: nach.ok ? "nachgeprueft" : "rot",
     ...(nach.ok ? {} : { rotesKommando: nach.rotesKommando, rotesErgebnis: "rot" }),
     // Der Umfang ist der der Nachpruefung, nicht der des fremden Nachweises: Sie faehrt
-    // die Paketstufe ohne Bereichsauswahl, wie der Salvage.
+    // den Abschlussumfang ohne Bereichsauswahl.
     laufen: nachpruefLaufen(cfg, nach),
     ausgelassen: [],
     vollerUmfang: true,
@@ -3396,9 +4175,74 @@ function pruefSummenzeile(pruefungen) {
  * Kriterium 11 aus Issue #420 verlangt die Auslassungen an zwei Stellen — am
  * Arbeitspaket (Abschlussbericht, Issue #426) und hier.
  */
-function pruefBericht(pruefungen) {
-  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen."];
-  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen)];
+function pruefBericht(pruefungen, einheiten = [], zielMin = undefined) {
+  const zahlen = prueflaufZeilen(einheiten, zielMin);
+  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen.", ...zahlen];
+  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen), ...zahlen];
+}
+
+// --- Prueflaeufe und Zielmarke im Bericht (Issue #926, Plan #917, E6-E9) ---
+
+/**
+ * Die Zielmarke einer Umsetzung in Minuten — aus der Konfiguration, sonst die Vorgabe.
+ *
+ * Abschalten ist nicht vorgesehen: Fehlt `night.zielUmsetzungMin`, gilt die Vorgabe des
+ * Schemas. Eine Marke, die sich wegkonfigurieren laesst, waere eine Messung, die genau
+ * dort verschwindet, wo sie unangenehm wird.
+ */
+// SYNC: dieselbe Vorgabe steht im Schema von kit/einstellungen.mjs (night.zielUmsetzungMin).
+const ZIEL_UMSETZUNG_VORGABE_MIN = 10;
+
+function zielUmsetzungMin(wert) {
+  const zahl = endlicheZahl(wert);
+  return zahl !== null && zahl > 0 ? zahl : ZIEL_UMSETZUNG_VORGABE_MIN;
+}
+
+/** Die Zahlenzeile eines Pakets: gemessene Dauer, dazu die Prueflaeufe — oder deren Fehlen. */
+function prueflaufPaketZeile(einheit) {
+  const kopf = `- Issue #${einheit.id}: Dauer ${minutenText(einheit.dauerMs)} min`;
+  const arbeit = einheit.prueflaeufe?.arbeit;
+  // "nicht gemessen" und keine Null (E9): Eine 0 hiesse, die Session habe nichts geprueft —
+  // hier ist nur niemand dabei gewesen (Stufe ohne Strom).
+  if (!arbeit) return `${kopf}, Prueflaeufe nicht gemessen`;
+  const abschluss = einheit.prueflaeufe?.abschluss;
+  const abschlussText = abschluss ? `, Abschlussversuche ${abschluss.anzahl ?? 0}` : "";
+  return `${kopf}, Prueflaeufe ${arbeit.anzahl ?? 0} (volle ${arbeit.volle ?? 0}, `
+    + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}`;
+}
+
+/**
+ * Die Prueflaeufe je Paket und die Summe gegen die Zielmarke — derselbe Block in BEIDEN
+ * Berichten (E6): im `pruefBericht` der Umsetzungsnacht und unter `### Umsetzung` des
+ * Kettenberichts. Der Anlassfall — ein Paket von 43 Minuten — lief in einer
+ * Umsetzungsnacht; stuende die Zahl nur im Kettenbericht, blieb genau dieser Lauf
+ * unbeobachtet.
+ *
+ * Gezaehlt werden die Einheiten, die eine Implementierungs-Runde durchlaufen haben —
+ * erkennbar an ihrem `pruefung`. Die Fachplan-Einheit der Kette und die Einheiten ohne
+ * Session (zurueckgestellt, uebersprungen, ohne startbare Stufe) tragen keines und bleiben
+ * draussen: Sie haben keine Umsetzung, deren Dauer sich an einer Marke messen liesse.
+ *
+ * Gerechnet wird mit `einheit.dauerMs`, der Rundendauer einschliesslich aller Pruefungen
+ * und Korrekturen (Konvention aus `kit/aufwand.mjs`) — nicht mit `zeiten.dauerMs`.
+ * Gerechnet wird hier und nicht in der Datei (E7): Zwei Rechnungen ueber dieselbe Messung
+ * driften auseinander.
+ */
+export function prueflaufZeilen(einheiten, ziel = undefined) {
+  const marke = zielUmsetzungMin(ziel);
+  const pakete = (Array.isArray(einheiten) ? einheiten : []).filter((e) => e?.pruefung);
+  if (pakete.length === 0) return ["Prueflaeufe und Zielmarke: keine Umsetzung gemessen."];
+  const zeilen = ["Prueflaeufe und Zielmarke:"];
+  for (const e of pakete) {
+    zeilen.push(prueflaufPaketZeile(e));
+    // Jede Datei mit Namen (E8): Eine Zahl sagte nicht, wo das Loch ist. Der Abschluss
+    // bleibt davon unberuehrt — die Luecke ist ein Befund, kein rotes Ergebnis.
+    const ohne = e.pruefung?.ohneZuordnung ?? [];
+    if (ohne.length > 0) zeilen.push(`- Issue #${e.id}: ohne Zuordnung: ${ohne.join(", ")}`);
+  }
+  const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
+  zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);
+  return zeilen;
 }
 
 // --- Salvage (Issue #167) ---
@@ -3445,22 +4289,39 @@ function checkEnv() {
 }
 
 /**
- * Die Eintraege aus `buildChecks`, die die Paketstufe tragen (Plan #753, E13/E14).
+ * Die Eintraege aus `buildChecks`, die der ABSCHLUSS eines Arbeitspakets faehrt
+ * (Plan #753, E13/E14; Plan #944, E14).
  *
- * Ein Eintrag ohne `stufe` gehoert zur Paketstufe — die String-Form, das Objekt
- * ohne `stufe` und `stufe: "paket"` bedeuten dasselbe. Das ist derselbe Default
- * wie in checks.mjs, und er haelt jede bestehende Config bei ihrem Verhalten.
+ * Erste Bedingung, die Paketstufe: Ein Eintrag ohne `stufe` gehoert dazu — die
+ * String-Form, das Objekt ohne `stufe` und `stufe: "paket"` bedeuten dasselbe. Das ist
+ * derselbe Default wie in checks.mjs, und er haelt jede bestehende Config bei ihrem
+ * Verhalten. Eintraege der Stufe `push` oder `merge` sind erst beim Veroeffentlichen
+ * faellig.
  *
- * Der Nacht-Runner braucht sie an zwei Stellen: fuer die Salvage-Vorpruefung
- * (welche Kommandos laufen) und fuer den Start-Guard (gibt es ueberhaupt ein
- * Gate). Beide meinen die Paketstufe, denn beide urteilen ueber ein Arbeitspaket.
+ * Zweite Bedingung, die beiden Gruppen, die ein Abschlusslauf auslaesst (Issue #946,
+ * Plan #944, E3/E4): jeder Eintrag mit `nichtBeimAbschluss` und jeder mit `guete`-Block.
+ * Der eine traegt den Abschluss einer einzelnen Karte nicht, der andere gewinnt seinen
+ * Anteil aus der vollstaendigen Testmenge — aus einem verkuerzten Lauf waere es nicht
+ * dieselbe Zahl, sondern eine andere Groesse mit demselben Namen.
+ *
+ * Der Nacht-Runner liest daraus an drei Stellen, und alle drei meinen denselben Umfang:
+ *   - die NACHPRUEFUNG (`nachpruefLaufen` / `bewertePruefung`) und die
+ *     SALVAGE-VORPRUEFUNG (`runBuildChecksSync`) vollziehen einen Abschluss nach, den
+ *     sie nicht glauben koennen. Faehren sie MEHR als er, waere das ein zweiter Weg ueber
+ *     denselben Vorgang — und er kostete nachts gerade die teuerste Gruppe, also dort,
+ *     wo die Zeit am knappsten ist (PO-Antwort 3 des Fachplans #938).
+ *   - der START-GUARD fragt, ob die naechtliche Umsetzung ueberhaupt ein Gate hat.
+ *     Zaehlte er Eintraege mit, die der Abschluss nie faehrt, liesse er eine Config
+ *     durch, in der sie keines hat.
  */
 // SYNC: derselbe Default steht in kit/checks.mjs (normalisiere) und wird in
-// kit/einstellungen.mjs geprueft.
+// kit/einstellungen.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
+// (`verteilen` im Abschlusslauf) und dieselbe Bedingung `pruefeAbschlussGate`.
 function paketstufenChecks(cfg) {
   return (cfg.buildChecks || []).filter((eintrag) => {
-    const stufe = typeof eintrag === "string" ? undefined : eintrag.stufe;
-    return (stufe ?? "paket") === "paket";
+    if (typeof eintrag === "string") return true;
+    if ((eintrag.stufe ?? "paket") !== "paket") return false;
+    return !eintrag.nichtBeimAbschluss && !eintrag.guete;
   });
 }
 
@@ -3485,19 +4346,28 @@ function paketstufenChecks(cfg) {
 // PATH-Aufloesung bewusst (S4036, Issue #183).
 //
 // KEINE bereichsbezogene Auswahl, absichtlich (Entscheidung A6 des Plans #421,
-// Issue #428): auch nicht ueber checks.mjs. Wer das spaeter als Luecke liest,
-// dreht die Frage um, die diese Pruefung beantwortet. Nach einem sauberen
-// Arbeitspaket lautet sie "hat diese Arbeit etwas kaputtgemacht?" — dort genuegen
-// die beruehrten Bereiche. Beim Retten lautet sie "ist dieser unklare
-// Zwischenstand ueberhaupt brauchbar?", und eine Runde ohne Ergebnis ist genau
-// die, deren Absicht niemand kennt: Was sie angefasst hat, sagt kein Anker
-// verlaesslich.
+// Issue #428). Wer das spaeter als Luecke liest, dreht die Frage um, die diese
+// Pruefung beantwortet: Sie wird gestellt, wenn ein Nachweis nicht zum Commit
+// gehoert — dann ist unklar, welchen Stand er gemessen hat, und ein Anker fuer die
+// beruehrten Bereiche ist es erst recht nicht.
+//
+// Fuer die SALVAGE-VORPRUEFUNG gilt das seit Issue #919 nicht mehr: Sie geht ueber
+// `checks.mjs run` (siehe `runChecksCliSync`) und damit ueber dessen Auswahl. Der
+// Grund steht dort — sie muss denselben Nachweis hinterlassen, den das Commit-Gate
+// liest, und zwei Wege zu "gruen" sind genau das, was den Vorfall ausgeloest hat.
 //
 // Die STUFENauswahl beantwortet eine andere Frage und greift deshalb sehr wohl
 // (Plan #753, E13): "ist dieser Zwischenstand brauchbar?" ist die Frage der
 // Paketstufe. Eintraege mit `stufe` push oder merge sind erst beim Veroeffentlichen
-// faellig; liefen sie hier mit, wartete jeder Rettungsversuch auf Pruefungen, die
-// ihn nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
+// faellig; liefen sie hier mit, wartete jede Nachpruefung auf Pruefungen, die sie
+// nichts angehen. Beide Auswahlen sind unabhaengig: Bereich aus, Stufe an.
+//
+// Aus demselben Grund bleiben `nichtBeimAbschluss` und die Guetemessung aussen vor
+// (Plan #944, E14): Die Nachpruefung vollzieht den Abschluss nach, den die Session nicht
+// belegt hat. Faehre sie mehr als er, waere sie STRENGER als das Gate, das sie ersetzt —
+// und sie kostete gerade die Gruppe, die wegen ihrer Laufzeit vom Abschluss
+// ausgenommen wurde. Die Marke ist damit nicht aufgegeben, sondern verschoben: Vor dem
+// Veroeffentlichen laeuft die Messung immer.
 //
 // Die Eintragsformen aus Issue #422 (String, { cmd, areas }, { cmd, always })
 // meinen hier alle dasselbe — nur Kommando, Stufe und Guetemessung zaehlen.
@@ -3597,6 +4467,12 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
   // und ein darin zufaellig gefundener Anteil bescheinigte eine Messung, die es nicht
   // gab. Die verfehlte Marke steht in der Ausgabe, denn die letzten Zeilen sind alles,
   // was Protokoll und Salvage-Prompt vom Befund zu sehen bekommen.
+  //
+  // Seit Plan #944, E14 erreicht `runBuildChecksSync` kein Eintrag mit `guete` mehr:
+  // `paketstufenChecks` laesst ihn als Teil des Abschlussumfangs aus. Der Zweig bleibt,
+  // weil er die einzige Stelle ist, die `gueteAuswerten` hier ueberhaupt anwendet — und
+  // `gueteAuswerten` bleibt, weil test/guete-wertung-sync.test.mjs sie an die Fassung in
+  // checks.mjs bindet. Wer den Umfang je wieder weitet, hat die Wertung schon.
   const guete = typeof eintrag === "string" ? undefined : eintrag.guete;
   if (!guete) return { bestanden: true, zeilen: "" };
 
@@ -3626,6 +4502,51 @@ function runBuildChecksSync(cfg) {
   return { ok: true, output, rotesKommando: null };
 }
 
+// Die Ausgabe eines Pruefkommandos kann sehr lang werden (ein `mvn verify` mit
+// Testausgaben), und hier faellt die aller faelligen Kommandos in EINEM Kindprozess an.
+// Laeuft der Puffer ueber, toetet Node den Prozess mit ENOBUFS — die Vorpruefung saehe
+// rot, wo nichts rot war, und die Rettung fiele aus. Derselbe grosszuegige Wert wie
+// beim Board (BOARD_MAX_BUFFER) und aus demselben Grund.
+const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
+
+/**
+ * Die Pflicht-Pruefungen ueber `checks.mjs run` des Zielprojekts (Issue #919).
+ *
+ * WARUM nicht mehr direkt (`runBuildChecksSync`), obwohl derselbe Umfang herauskaeme:
+ * Der Runner mass gruen an einer Stelle, die das Commit-Gate nicht liest. Beobachtet in
+ * kanban-kit am 2026-09-24: Die Session lief rot, der Runner fuhr die buildChecks danach
+ * selbst und fand sie gruen, und die Salvage-Session konnte trotzdem nicht committen —
+ * in `.claude/checks-summary.json` stand noch das rote Ergebnis der Session, die
+ * Blob-Hashes darin passten exakt zum Baum. In dieser Lage kann die Rettung nie
+ * gelingen. `checks.mjs run` schreibt denselben Nachweis, den `.githooks/gate.mjs`
+ * liest; damit gibt es eine Wahrheit ueber "gruen" statt zweier.
+ *
+ * `--frisch` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
+ * Kommando das Ergebnis der Session, wenn sich seither nichts geaendert hat — also
+ * genau ihr rotes, das der Runner gerade anzweifelt.
+ *
+ * `--abschluss <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
+ * Paketstufe ohne `nichtBeimAbschluss` und ohne Guetemessung (Plan #944, E14). Der
+ * Salvage IST der Abschluss dieser Karte — ohne die Nummer koennte die Wirksamkeit
+ * ihre Kennzahl je Karte nicht rechnen (Issue #951).
+ *
+ * Das rote Kommando kommt aus dem Nachweis und nicht aus der Ausgabe: Die Datei sagt
+ * es als Feld, ein Textmuster ueber der Ausgabe waere ein zweiter Rechenweg.
+ */
+function runChecksCliSync(karte) {
+  if (!existsSync(CHECKS_PATH)) {
+    return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
+  }
+  const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
+  const res = spawnSync(process.execPath, cliArgs, {
+    cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), maxBuffer: CHECKS_MAX_BUFFER,
+  });
+  const output = `$ node ${cliArgs.join(" ")}\n${res.stdout || ""}${res.stderr || ""}`;
+  if (res.status === 0) return { ok: true, output, rotesKommando: null };
+  const nachweis = lesePruefung(karte);
+  return { ok: false, output, rotesKommando: nachweis.rotesKommando ?? null };
+}
+
 // Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
 //
 // Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
@@ -3635,19 +4556,23 @@ function runBuildChecksSync(cfg) {
 // laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
 // Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
-function verifyChecksForSalvage(cfg) {
-  const first = runBuildChecksSync(cfg);
+//
+// Beide Durchgaenge gehen ueber `checks.mjs run --frisch` (Issue #919): Der zweite ist
+// der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
+// bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
+function verifyChecksForSalvage(cfg, karte) {
+  const first = runChecksCliSync(karte);
   if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
 
   const fixCmd = (cfg.formatFixCommand || "").trim();
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
-  // Wie oben: fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
+  // fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
   // (Issue #199). PATH-Aufloesung bewusst (S4036, Issue #183).
   spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
 
-  const second = runBuildChecksSync(cfg);
+  const second = runChecksCliSync(karte);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
   log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
   return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
@@ -3667,6 +4592,8 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
+    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --abschluss ${issueId} --frisch"; der Nachweis`,
+    `liegt in .claude/checks-summary.json, und das Commit-Gate liest genau ihn.`,
     `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
     ``,
     `Im Working Tree liegen unkommittete Aenderungen zu Issue #${issueId}. Deine einzige Aufgabe:`,
@@ -3695,9 +4622,43 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
       `Formatierungsaenderungen gehoeren MIT in denselben Commit und in den Abschlussbericht.`,
     ] : []),
     ``,
-    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe:`,
+    // Woher die Zeilen stammen, steht dabei (Issue #919): Im Vorfall vom 2026-09-24
+    // zitierte der Prompt die Ausgabe eines EINZELNEN Kommandos, das der Abschluss des
+    // Pakets gar nicht faehrt — die Session hielt die Gruen-Annahme darum zu Recht fuer
+    // falsch und verweigerte den Commit. Jetzt ist es die Ausgabe desselben Laufs, der
+    // den Nachweis geschrieben hat, samt seiner Auslassungen.
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --abschluss ${issueId} --frisch):`,
     tail,
   ].join("\n");
+}
+
+// --- Das Modell des Laufs (Issue #994) ---
+
+/**
+ * Bestimmt das Modell des Laufs: `--model` vor `night.modell` vor `DEFAULT_MODEL`.
+ *
+ * Es gilt fuer jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung
+ * der Kette, die Korrekturrunden und jedes Paket ohne `Aufgabenstufe:`. Frueher stand es
+ * fest im Code, und ein Projekt, das ueberall `claude-opus-5-5` eingetragen hatte, fuhr
+ * diese Sessions trotzdem mit der Vorgabe.
+ *
+ * `night.modell` muss in `night.modelle` stehen wie jede Modellangabe der Config. Sonst
+ * kommt ein Fehler zurueck statt eines stillen Rueckfalls auf die Vorgabe: Dann liefe
+ * wieder ein Modell, das niemand gewaehlt hat. `--model` bleibt ungeprueft wie bisher —
+ * der Aufruf von Hand ist eine bewusste Wahl des Menschen.
+ *
+ * `config` ist die gemischte Config; `night` steht nicht in der Allowlist, ein lokaler
+ * Wert ist hier also schon verworfen und gemeldet.
+ */
+export function laufModell(args, config) {
+  if (args.modelGesetzt) return { modell: args.model, herkunft: "--model", fehler: null };
+  const wert = config?.night?.modell;
+  if (wert === undefined || wert === null || wert === "") return { modell: DEFAULT_MODEL, herkunft: "Vorgabe", fehler: null };
+  const erlaubt = Array.isArray(config.night.modelle) ? config.night.modelle : [];
+  if (!erlaubt.includes(wert)) {
+    return { modell: null, herkunft: "night.modell", fehler: `night.modell '${wert}' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.` };
+  }
+  return { modell: wert, herkunft: "night.modell", fehler: null };
 }
 
 // --- Config mit persoenlichen Overrides (Issue #207) ---
@@ -3871,6 +4832,51 @@ export function ketteBudgetDefaults(config) {
   return Object.keys(KETTE_BUDGET_DEFAULTS).filter((feld) => block[feld] === undefined);
 }
 
+// --- Budgets des Prueflaufs (Plan #904, E12; Wurzelblock pruefLauf, Issue #905) ---
+
+// Startwerte aus Plan #904. Der Block steht in der WURZEL der Config und nicht unter
+// `night`: Der Lauf gehoert dem Tag, und unter `night` behauptete der Name das Gegenteil.
+export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
+  label: "kit:pruefen",
+  pruefungMin: 25,
+  kostenUsd: 25,
+});
+
+/**
+ * Liest `pruefLauf` aus der Config und prueft jede Zahl.
+ *
+ * Zwillingsfunktion zu `ladeKetteBudget` und mit derselben Begruendung fuer den Wurf statt
+ * `fail`: Die Funktion ist rein und an Fixtures pruefbar; der Lauf macht aus dem Wurf den
+ * Abbruch vor der ersten Session. Ein Zeitbudget von 0 liesse jede Session sofort ablaufen,
+ * ein Kostenbudget von 0 keinen Lauf beginnen — beides ohne erkennbaren Grund am Morgen.
+ */
+export function ladePruefLaufBudget(config) {
+  const block = config?.pruefLauf ?? {};
+  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS };
+  if (block.label !== undefined) {
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("pruefLauf.label muss ein nicht leerer Text sein");
+    budget.label = block.label.trim();
+  }
+  for (const feld of ["pruefungMin", "kostenUsd"]) {
+    if (block[feld] === undefined) continue;
+    const wert = block[feld];
+    if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
+      throw new Error(`pruefLauf.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+    }
+    budget[feld] = wert;
+  }
+  return budget;
+}
+
+/**
+ * Die Budget-Felder, die nicht in `pruefLauf` stehen und deshalb aus den Defaults kommen,
+ * in der Reihenfolge von `ladePruefLaufBudget` — wie `ketteBudgetDefaults`.
+ */
+export function pruefLaufBudgetDefaults(config) {
+  const block = config?.pruefLauf ?? {};
+  return Object.keys(PRUEFLAUF_BUDGET_DEFAULTS).filter((feld) => block[feld] === undefined);
+}
+
 /**
  * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3): "B", wenn die Karte
  * das Label aus `budget.varianteBLabel` traegt, sonst "A". Reine Funktion, nie ein
@@ -3901,6 +4907,15 @@ export function varianteVon(issue, budget) {
 // `verfuegbar: true` und saegte damit denselben Ast an, nur eine Ebene tiefer und
 // schwerer zu erkennen. Die Session startet das Reviewer-Kommando deshalb selbst,
 // direkt und mit dem Prompt ueber stdin — so, wie es die Review-Rolle spaeter auch tut.
+//
+// Eine Ausnahme davon (Issue #986): Den Probe-Prompt bekommt das Kommando als Argument,
+// nicht ueber stdin. Seit Claude Code 2.1.277 nimmt `sandbox.excludedCommands` einen
+// zusammengesetzten Befehl nur noch aus der Sandbox, wenn JEDER Teil zu einem Eintrag
+// passt. `codex *` steht dort, `printf` nicht: Die fruehere Pipe `printf … | <command>` lief
+// ganz in der Sandbox, codex scheiterte, und der Vorflug meldete Reviewer als fehlend,
+// deren echte Reviews laengst liefen. Eine Umleitung `<command> < <datei>` hebt die
+// Ausnahme ebenso auf (gemessen unter 2.1.283). Nur die Zeile ohne Pipe und ohne
+// Umleitung laesst den Eintrag des Reviewers allein greifen.
 
 // Modell und Zeitlimit der Vorflug-Session sind bewusst unabhaengig von --model und
 // --timeout-min. Wuerde der Vorflug beides erben, kostete jedes `--review --dry-run` eine
@@ -3916,7 +4931,7 @@ const VORFLUG_START = "<<<VORFLUG";
 const VORFLUG_ENDE = "VORFLUG>>>";
 
 // Ein Prompt, der nichts verlangt (wie in board.mjs): Die Probe soll feststellen, ob der
-// Reviewer laeuft — nicht, was er kann.
+// Reviewer laeuft — nicht, was er kann. Er steht als letztes Argument an der Zeile.
 const VORFLUG_PROBE_PROMPT = "Antworte nur mit dem Wort OK.";
 
 // Der Stempel, an dem der Gate-Code erkennt, dass ein Befund aus der richtigen Umgebung
@@ -3957,9 +4972,10 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
     );
   } else {
     zeilen.push(
-      `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, mit dem Prompt ueber stdin:`,
+      `Starte jedes dieser Kommandos GENAU EINMAL ueber das Bash-Tool, genau so wie es dasteht,`,
+      `mit dem Prompt als letztem Argument. Baue die Zeile nicht um — keine Pipe, keine Umleitung:`,
       ``,
-      ...kommandoReviewers.map((r) => String.raw`  printf '%s\n' '${VORFLUG_PROBE_PROMPT}' | ${r.command}   # Reviewer-Name fuer den Befund: ${r.name}`),
+      ...kommandoReviewers.map((r) => `  ${r.command} '${VORFLUG_PROBE_PROMPT}'   # Reviewer-Name fuer den Befund: ${r.name}`),
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
@@ -4069,7 +5085,7 @@ async function runVorflugSession(args, prompt) {
     cmd = "sh";
     cmdArgs = ["-c", testCmd];
   } else {
-    const permArgs = args.yolo ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"];
+    const permArgs = permissionArgs(args.yolo);
     cmd = "claude";
     // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
     // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
@@ -4238,18 +5254,36 @@ function ketteBudgetLaden() {
   KETTE_BUDGET_AUS_DEFAULT = ketteBudgetDefaults(config);
 }
 
+/** Dasselbe fuer den Prueflauf (Issue #909): eine kaputte Zahl ist ein Config-Fehler, kein Lauf. */
+function pruefLaufBudgetLaden() {
+  try {
+    PRUEFLAUF_BUDGET = ladePruefLaufBudget(config);
+  } catch (e) {
+    fail(e.message, "zustand");
+  }
+  PRUEFLAUF_BUDGET_AUS_DEFAULT = pruefLaufBudgetDefaults(config);
+}
+
+// Was die Protokollzeile je Lauf-Art ueber ihren Config-Block sagen muss. Getrennt von der
+// Zeile selbst, weil nur diese drei Angaben sich unterscheiden — der Satzbau nicht.
+const KETTE_BUDGET_TEXT = { name: "der Kette", block: "night.kette", defaults: KETTE_BUDGET_DEFAULTS };
+const PRUEFLAUF_BUDGET_TEXT = { name: "des Prueflaufs", block: "pruefLauf", defaults: PRUEFLAUF_BUDGET_DEFAULTS };
+
 /**
  * Die Protokollzeile zu den Budgets aus den Defaults (Issue #659), `null` ohne solche.
- * Setzt `night.kette` kein einziges Feld, sagt die Zeile das dazu: Ob der Block fehlt oder
- * leer ist, macht fuer den Leser keinen Unterschied — beide Male gilt kein eigener Wert.
+ * Setzt der Block kein einziges Feld, sagt die Zeile das dazu: Ob er fehlt oder leer ist,
+ * macht fuer den Leser keinen Unterschied — beide Male gilt kein eigener Wert.
+ *
+ * `text` nennt den Lauf und seinen Block (Issue #909): Kette und Prueflauf bilden dieselbe
+ * Zeile, und zwei Fassungen desselben Satzes liefen bei der ersten Aenderung auseinander.
  */
-function budgetDefaultsZeile(budget, ausDefault) {
+function budgetDefaultsZeile(budget, ausDefault, text = KETTE_BUDGET_TEXT) {
   if (ausDefault.length === 0) return null;
   const werte = ausDefault.map((feld) => `${feld}=${budget[feld]}`).join(", ");
-  const ganz = ausDefault.length === Object.keys(KETTE_BUDGET_DEFAULTS).length
-    ? " — night.kette in .claude/workflow.config.json fehlt oder setzt kein Feld."
+  const ganz = ausDefault.length === Object.keys(text.defaults).length
+    ? ` — ${text.block} in .claude/workflow.config.json fehlt oder setzt kein Feld.`
     : "";
-  return `Budget der Kette aus den Defaults: ${werte}${ganz}`;
+  return `Budget ${text.name} aus den Defaults: ${werte}${ganz}`;
 }
 
 /**
@@ -4338,7 +5372,12 @@ export function vorbereiten(args) {
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
   CONFIG_PATH = configPath;
+  const lauf = laufModell(args, config);
+  if (lauf.fehler) fail(lauf.fehler, "zustand");
+  args.model = lauf.modell;
+  args.modellHerkunft = lauf.herkunft;
   if (args.kette) ketteBudgetLaden();
+  if (args.pruefen) pruefLaufBudgetLaden();
 
   const jetzt = new Date();
   mkdirSync(join(process.cwd(), ".claude"), { recursive: true });
@@ -4368,7 +5407,10 @@ export function vorbereiten(args) {
   schreibeErgebnisstand();
   laufMelden();
 
-  log(`Nacht-Runner startet (Modus ${modus}, max ${args.max} Sessions, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
+  // Ein Lauf ohne Zahlendeckel sagt das aus (Plan #904, E9): "max null Sessions" liesse
+  // offen, ob die Zahl fehlt oder keine gilt.
+  const maxAngabe = args.max === null ? "max ohne Deckel" : `max ${args.max} Sessions`;
+  log(`Nacht-Runner startet (Modus ${modus}, ${maxAngabe}, Modell ${args.model} (${args.modellHerkunft}), Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -4379,21 +5421,31 @@ export function vorbereiten(args) {
   // Hauptkopie und darf nicht auf einem Absturzrest aufsetzen. Die Kette arbeitet in
   // einem eigenen Worktree und laeuft neben einer Umsetzungsnacht (Plan #638, A3): Ein
   // Paket in In progress ist fuer sie kein Absturzrest, ein unsauberer Baum kein Hindernis.
-  if (!args.kette) zustandsVorflug();
+  //
+  // Fuer den Prueflauf gilt dasselbe, und bei ihm noch deutlicher (Issue #909): Er laeuft am
+  // TAG, neben dem arbeitenden Menschen. Dass dessen Arbeitsbaum unsauber ist und eine Karte
+  // in In progress steht, ist dort der Normalzustand — er fasst die Hauptkopie nicht an.
+  if (!args.kette && !args.pruefen) zustandsVorflug();
   // In jeder Betriebsart, nach dem Baum (Issue #618): Eine ungueltige settings-Datei
   // traefe jede Session, ob sie baut oder plant.
   settingsVorflug(args);
   // Nachts ohne Gate zu implementieren ist riskant; ein Lauf, der nichts baut, hebt die
   // Pflicht ueber `noChecksOk` auf (so machen es die Folgepakete fuer die Kette).
   //
-  // Gezaehlt wird die Paketstufe und nicht die Listenlaenge (Plan #753, E14): Eine
-  // gefuellte Liste aus lauter Push-Pruefungen liefe hier sonst durch, obwohl die
-  // Umsetzung eines Arbeitspakets damit kein einziges Gate haette — genau der
-  // Zustand, den dieser Guard verhindern soll. Die Meldung nennt deshalb den Grund
-  // und nicht nur "leer": Wer drei Eintraege in seiner Config sieht, sucht bei einem
-  // blossen "ist leer" an der falschen Stelle.
+  // Gezaehlt wird, was der ABSCHLUSS einer Karte faehrt, und nicht die Listenlaenge
+  // (Plan #753, E14; Plan #944, E14): Eine gefuellte Liste aus lauter Push-Pruefungen
+  // liefe hier sonst durch, ebenso eine, in der jeder Paketstufen-Eintrag
+  // `nichtBeimAbschluss` oder eine Guetemessung traegt — obwohl die Umsetzung eines
+  // Arbeitspakets damit kein einziges Gate haette, genau der Zustand, den dieser Guard
+  // verhindern soll. Die Meldung nennt deshalb alle drei Gruende und nicht nur "leer":
+  // Wer drei Eintraege in seiner Config sieht, sucht bei einem blossen "ist leer" an der
+  // falschen Stelle.
+  //
+  // Dies ist der Halt, dem kit/einstellungen.mjs dieselbe Bedingung als WARNUNG vor dem
+  // Speichern gegenueberstellt (Issue #949): Die Config bleibt speicherbar, nachts
+  // implementiert wird auf ihr nicht.
   if (paketstufenChecks(config).length === 0 && !args.noChecksOk) {
-    fail("buildChecks in workflow.config.json ist leer an der Paketstufe — keine Pruefung traegt die Stufe 'paket', und damit hat die Umsetzung nachts kein Gate. Eintraege mit stufe 'push' oder 'merge' laufen erst beim Veroeffentlichen. Override: --no-checks-ok", "zustand");
+    fail("buildChecks in workflow.config.json traegt keine Pruefung, die beim Abschluss eines Arbeitspakets laeuft — damit hat die Umsetzung nachts kein Gate. Gezaehlt wird die Paketstufe ohne 'nichtBeimAbschluss' und ohne 'guete'-Block: Eintraege mit stufe 'push' oder 'merge' laufen erst beim Veroeffentlichen, Eintraege mit 'nichtBeimAbschluss' ebenso, und eine Guetemessung braucht die vollstaendige Testmenge. Override: --no-checks-ok", "zustand");
   }
   // Nach den bestehenden Vorfluegen (Issue #712): eine Warnzeile je nicht erreichbarer
   // Stufe, ohne den Lauf aufzuhalten.
@@ -4495,7 +5547,11 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = 
   // Vergleich waere kein Ausweg: Ein parallel schreibender Lauf haelt ihn nicht an. Der
   // Zustand der Hauptkopie ist der Kette darum ganz egal; nur ihre Stufe `umsetzung`
   // prueft ihn, weil erst sie dort baut.
-  const reste = args.kette ? [] : gitReste();
+  //
+  // Der Prueflauf ist aus demselben Grund ausgenommen (Issue #909), und bei ihm waere die
+  // Messung noch sicherer falsch: Er laeuft am Tag neben dem arbeitenden Menschen, dessen
+  // Reste hier erwartbar liegen. Er baut in keiner Stufe, also prueft er den Baum nie.
+  const reste = args.kette || args.pruefen ? [] : gitReste();
   if (reste.length > 0) {
     const satz = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert. Sie darf nichts anfassen — bitte morgens sichten.";
     log(`  ${satz}`);
@@ -4545,8 +5601,18 @@ export const KETTE_HALT_ANKER = "## Kette angehalten";
 const ALTE_ROUTING_LABELS = ["kit:nightreview", "kit:nightplan", "kit:nightissues"];
 // Unter dieser Restzeit startet keine Session mehr: Eine Minute reicht fuer keinen Plan.
 const KETTE_MINDEST_REST_MS = 60 * 1000;
-// Die drei Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2).
-const KETTE_AUSGAENGE = ["fertig", "angehalten", "abgebrochen"];
+// Die Ausgaenge einer Stufe und einer Kette (Fachplan #635, Kriterium 2; erweitert um
+// `unvollstaendig`, Issue #862). `unvollstaendig` steht zwischen `fertig` und den beiden
+// Stoerungen: Die Kette lief durch, hat aber etwas Bestelltes nicht getan. Sie haelt
+// niemanden auf — anders als `angehalten` wartet keine Frage auf einen Menschen —, und
+// sie ist kein Fehler — anders als `abgebrochen` ist nichts schiefgegangen.
+const KETTE_AUSGAENGE = ["fertig", "unvollstaendig", "angehalten", "abgebrochen"];
+
+/**
+ * Der Anfang des Grundes, den eine Kette traegt, deren bestellte Umsetzung ausblieb
+ * (Issue #862) — woertlich aus dem Arbeitspaket. Exportiert fuer die Tests.
+ */
+export const UMSETZUNG_AUSGELASSEN_PRAEFIX = "Umsetzung ausgelassen: ";
 // Woran der Runner den Halt von /issues erkennt: der Kommentar, den der Skill
 // unbeaufsichtigt an den Plan schreibt, wenn er kein Paket anlegt (skills-14).
 export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
@@ -4579,47 +5645,329 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
 }
 
 /**
- * Der Grund, aus dem eine gekennzeichnete Karte nicht laeuft — `null`, wenn sie laeuft.
+ * Der Grund, aus dem eine gekennzeichnete fachliche Anforderung nicht laeuft — `null`,
+ * wenn sie laeuft.
  *
- * Die Reihenfolge ist die Antwort: Erst das Praefix (das Kennzeichen gilt nur am
- * Fachplan), dann die Spalte (E4: ausserhalb von Backlog ist ein Versehen), dann
- * `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen),
- * zuletzt die fehlende Pruefung (Fachplan #702). Die Pruefung steht hinter
- * `kit:klaeren`, damit ein Fachplan mit offener Frage den spezifischeren Grund behaelt:
- * Wer die Frage beantwortet, kommt weiter, wer nur pruefen laesst, nicht.
+ * Die Reihenfolge ist die Antwort: Erst die Spalte (E4: ausserhalb von Backlog ist ein
+ * Versehen), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
+ * Fachplan stehen), dann die fehlende Pruefung (Fachplan #702), zuletzt die offenen
+ * Fragen an den PO (Issue #916). Die Pruefung steht hinter `kit:klaeren`, damit ein
+ * Fachplan mit offener Frage den spezifischeren Grund behaelt: Wer die Frage beantwortet,
+ * kommt weiter, wer nur pruefen laesst, nicht.
+ *
+ * Die Praefix-Probe steht seit Issue #895 NICHT mehr hier, sondern in
+ * `waehleKettenKandidaten`: Dort entscheidet sie ueber die Auftragsart, und eine Karte
+ * ohne beide Praefixe bekommt dort ihren Grund. Zwei Praefix-Proben — eine je Art —
+ * liefen bei der ersten Aenderung auseinander.
  */
 function kettenAusschluss(issue, kettenLabel) {
-  if (!isFachlich(issue.title ?? "")) return "kein fachliches Issue ([Fachlich]) — das Kennzeichen gilt nur am Fachplan";
   if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
   if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+  if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
+  // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
+  // laufen liess, soll das zuerst erfahren; die Fragen sind der naechste Schritt danach.
+  // `review:fertig` bezeugt die Pruefung durch fremde Modelle — die Reviewer duerfen die
+  // PO-Fragen ausdruecklich nicht beantworten, also sagt das Label darueber nichts.
+  const poFrage = offeneFragenGrund(issue?.body || "");
+  if (poFrage !== null) {
+    return `${poFrage}; die Fragen im Body beantworten und '## ${PO_FRAGEN_NAME}' auf 'Keine' setzen`;
+  }
+  return null;
+}
+
+/**
+ * Der Grund, aus dem ein gekennzeichneter Plan nicht laeuft — `null`, wenn er laeuft
+ * (Fachplan #883, Plan #890, E6).
+ *
+ * Die Reihenfolge folgt derselben Regel wie die von `kettenAusschluss`: Der
+ * spezifischere Grund gewinnt, damit die Karte morgens den Satz traegt, der den
+ * naechsten Schritt nennt. Erst die Spalte (ausserhalb von Backlog ist ein Versehen),
+ * dann die fachliche Herkunft (ohne sie hat die Kette nichts, wogegen sie die Pakete
+ * halten koennte), dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die
+ * offene Frage im Plan, zuletzt die fehlende Pruefung. Die beiden letzten stehen in
+ * dieser Folge, weil wer die Frage beantwortet weiterkommt, wer nur pruefen laesst
+ * nicht.
+ *
+ * `karten` ist die Liste aus `issue list`: Die Herkunftsnummer muss eine Karte DIESES
+ * Boards treffen, zeichengleich — siehe `fachlicheQuelleVon`.
+ */
+export function planAusschluss(issue, kettenLabel, karten) {
+  if (issue?.status !== "backlog") return `steht in ${issue?.status ?? "unbekannt"}, nicht in Backlog`;
+  const quelle = fachlicheQuelleVon(issue?.body || "");
+  if (quelle === null || !(karten || []).some((k) => String(k?.id) === quelle)) {
+    return `die fachliche Herkunft ist nicht erkennbar — die Zeile '${HERKUNFT_FELD.plan}: Issue #N' fehlt im Plan oder nennt keine Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)`;
+  }
+  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab`;
+  const frage = stoppFragenGrund(issue?.body || "");
+  if (frage !== null) {
+    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' des Plans, danach traegt '## ${OFFENE_FRAGEN_NAME}' wieder '${KEINE_STOPP_FRAGEN}' — ein Satz in der fachlichen Anforderung genuegt nicht`;
+  }
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
 }
 
 /**
- * Waehlt die Ketten einer Nacht aus allen Karten (Plan #638, A2, A13, E4, W5).
+ * Der Hinweis auf das Nicht-Ziel der fachlichen Anforderung #899: Der Prueflauf gilt
+ * allein fachlichen Anforderungen. Er steht an jeder gekennzeichneten Karte, die keine
+ * ist — am Plandokument wie am Arbeitspaket.
+ */
+const PRUEFLAUF_NICHT_FACHLICH = "der Prueflauf gilt allein fachlichen Anforderungen (Nicht-Ziel 'Plandokumente und Arbeitspakete')";
+
+/**
+ * Der Grund, aus dem eine gekennzeichnete Karte nicht geprueft wird — `null`, wenn sie
+ * geprueft wird (Fachplan #899, Plan #904, Issue #906).
+ *
+ * Bewusst OHNE Spaltenbedingung, anders als `kettenAusschluss`: Ein
+ * `[Fachlich]`-Dokument geht nie nach Ready, und die Geste des Menschen gilt der Karte,
+ * nicht ihrem Ort. Die Reihenfolge folgt derselben Regel wie dort — der spezifischere
+ * Grund gewinnt: erst das fehlende Kennzeichen (ohne die Geste steht die Karte hier gar
+ * nicht zur Debatte), dann die Art der Karte (E6: ein Plandokument gehoert nie hierher,
+ * auch nicht nach einer Antwort), zuletzt `kit:klaeren` — wer die wartende Frage
+ * beantwortet, kommt weiter.
+ */
+export function pruefLaufAusschluss(issue, label) {
+  if (!(issue?.labels || []).includes(label)) return `traegt das Kennzeichen ${label} nicht`;
+  const titel = issue?.title ?? "";
+  if (!isFachlich(titel)) {
+    const art = isPlan(titel) ? "traegt [Plan]" : "traegt kein [Fachlich]";
+    return `${art} — ${PRUEFLAUF_NICHT_FACHLICH}`;
+  }
+  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — eine Entscheidung wartet auf einen Menschen, eine zweite Pruefung beantwortet sie nicht`;
+  return null;
+}
+
+/**
+ * Waehlt die Karten eines Prueflaufs aus allen Karten (Plan #904, E6, E9).
+ *
+ * Reine Funktion ueber `issue list` OHNE Status-Filter, nach dem Muster von
+ * `waehleKettenKandidaten`: Was das Kennzeichen traegt, aber nicht geprueft wird, geht mit
+ * Grund nach `uebersprungen` und behaelt sein Kennzeichen — abgenommen wird es erst im
+ * Lauf, unmittelbar vor der Session. Kandidaten sind rohe Issues; eine Auftragsart wie bei
+ * der Kette gibt es nicht, es laeuft nur eine.
+ *
+ * `max` darf `null` sein (E9: kein Zahlendeckel, begrenzt wird ueber die Budgets); dann
+ * werden alle Kandidaten geliefert. Ab `max` bleiben sie liegen — das ist kein Ausschluss
+ * und steht darum in `liegengeblieben`, nicht in `uebersprungen`.
+ */
+export function waehlePruefLaufKandidaten(issues, label, max) {
+  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+  const kandidaten = [];
+  const uebersprungen = [];
+  const liegengeblieben = [];
+  const deckel = Number.isFinite(max) ? max : Infinity;
+  for (const issue of alle) {
+    const grund = pruefLaufAusschluss(issue, label);
+    if (grund !== null) uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
+    else if (kandidaten.length >= deckel) liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
+    else kandidaten.push(issue);
+  }
+  return { kandidaten, uebersprungen, liegengeblieben };
+}
+
+/**
+ * Der Fingerabdruck der geprueften Fassung eines Kartentexts (Plan #904, E7).
+ *
+ * Der Lauf bildet ihn unmittelbar vor der Session und nennt ihn in Liste, Protokoll und
+ * Ergebnisstand. Damit steht hinterher fest, WAS geprueft wurde: Wer den Text waehrend der
+ * Pruefung aendert, sieht am Fingerabdruck, dass die Pruefung eine andere Fassung gelesen
+ * hat. Eine Erkennung der Aenderung selbst gibt es nicht — ein Aenderungsverlauf ist nur bei
+ * zwei von vier Trackern zu haben und seine Feldform nirgends festgelegt.
+ *
+ * Zwoelf Hexstellen, nicht die ganzen vierundsechzig: Verglichen wird er von Menschen, und
+ * innerhalb eines Laufs unterscheidet dieser Anfang jede Fassung.
+ */
+export function pruefLaufFassung(body) {
+  return createHash("sha256").update(String(body ?? "")).digest("hex").slice(0, 12);
+}
+
+/** Die ersten Zeilen der beiden Kommentare, die eine Pruefung an der Karte hinterlaesst. */
+export const PRUEFLAUF_BEFUNDE_ANKER = "## Fachplan-Review, Runde 1";
+export const PRUEFLAUF_EINARBEITUNG_ANKER = "## Einarbeitung, Runde 1";
+
+/** Der zuletzt erreichte Schritt einer abgebrochenen Pruefung (E13) aus ihren neuen Spuren. */
+function pruefLaufSchritt(neue) {
+  if (neue.some((k) => k.includes(PRUEFLAUF_EINARBEITUNG_ANKER))) return "eingearbeitet";
+  if (neue.some((k) => k.includes(PRUEFLAUF_BEFUNDE_ANKER))) return "befunde";
+  return "gestartet";
+}
+
+/**
+ * Das Ergebnis einer Prueflauf-Session am Unterschied der Board-Spuren (Plan #904, E16).
+ *
+ * Reine Funktion: Gelesen wird der UNTERSCHIED zwischen Vorher- und Nachher-Stand, nie der
+ * Nachher-Stand allein. Eine erneut gepruefte Karte traegt Marker, `review:fertig` und den
+ * Befunde-Kommentar schon aus dem Vorlauf; ohne die Beschraenkung auf neue Spuren meldete
+ * die Erkennung "geprueft" fuer eine Pruefung, die nie lief.
+ *
+ * Marker und Label darf der Nachher-Stand trotzdem allein beantworten: Beides hat der Lauf
+ * unmittelbar vor der Session selbst abgeraeumt (E16), es kann also nur aus ihr stammen.
+ * Der Vorher-Stand dient allein dem Kommentar-Vergleich; seine Labels werden nicht gelesen.
+ *
+ * Drei Ausgaenge: `geprueft`, `klaeren` mit der wartenden Frage, sonst `unvollstaendig` mit
+ * dem zuletzt erreichten Schritt.
+ */
+export function pruefLaufErgebnis(vorher, nachher) {
+  if (hatFachplanReviewMarker(nachher?.body) && hatReviewFertigLabel(nachher)) {
+    return { ausgang: "geprueft" };
+  }
+  const neue = neueKommentare(vorher, nachher);
+  if (hatKlaerenLabel(nachher)) {
+    const frage = neue.at(-1) ?? `siehe den letzten Kommentar an #${nachher?.id}`;
+    return { ausgang: "klaeren", frage };
+  }
+  return { ausgang: "unvollstaendig", schritt: pruefLaufSchritt(neue) };
+}
+
+/**
+ * Der Anker des Vermerks, den ein Abbruch des Prueflaufs an der fachlichen Anforderung
+ * hinterlaesst (Plan #904, E14).
+ *
+ * Ein EIGENER Anker, nicht der `REVIEW_REST_ANKER` der Nacht-Kette: Der spricht von Kette,
+ * Plan und Plan-Review-Marker und gehoert der Kette.
+ */
+export const PRUEFLAUF_REST_ANKER = "## Pruefung unvollstaendig";
+
+/**
+ * Der Vermerk an der Karte, wenn die Pruefung abbricht, nachdem sie Spuren hinterlassen hat
+ * (Plan #904) — `true`, wenn er geschrieben wurde.
+ *
+ * Dieselbe Luecke wie bei `reviewRestVermerken`: Die Pruefung ist bezahlt, ihre Befunde
+ * stehen am Board, der Body traegt keinen Marker. Wer die Karte spaeter sichtet, sieht eine
+ * ungepruefte und prueft erneut.
+ *
+ * `spuren` sind die neuen Kommentare der Session. Eine WARTENDE Sitzung bekommt nur ihren
+ * `wartendVermerk`, nicht zusaetzlich diesen Anker — ihr eigener Kommentar ist kurz zuvor an
+ * die Karte gegangen (Issue #778), und zwei Kommentare fuer einen Abbruch sagen nichts, was
+ * einer nicht sagt. Bleibt danach keine Spur, gibt es nichts zu vermerken.
+ */
+export function pruefLaufRestVermerken(id, grund, schritt, spuren = []) {
+  const fremde = (spuren || []).filter((k) => !String(k).includes(WARTEND_ANKER));
+  if (fremde.length === 0) return false;
+  const pfad = join(tmpdir(), `night-prueflauf-rest-${process.pid}-${id}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [
+    PRUEFLAUF_REST_ANKER,
+    "",
+    `Prueflauf ${LAUF_STEMPEL ?? "ohne Stempel"}: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an dieser Karte.`,
+    "",
+    `Sie ist unvollstaendig geblieben — der Lauf endete davor (${grund}) —, zuletzt erreichter Schritt: ${schritt}. Der Body traegt deshalb keinen Fachplan-Review-Marker, obwohl geprueft wurde.`,
+    "",
+    `Weg nach vorn: /issue-review #${id} von Hand fahren.`,
+    "",
+  ].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    board("issue", "comment", String(id), "--text-file", pfad);
+    log(`  Pruefung #${id} abgebrochen (${schritt}) — Vermerk '${PRUEFLAUF_REST_ANKER}' an #${id} geschrieben.`);
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+  return true;
+}
+
+/** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
+const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
+
+/** Die Auftragsart am Titel-Praefix — `null`, wenn die Karte keine der beiden traegt. */
+function auftragsartVon(titel) {
+  if (isPlan(titel)) return "plan";
+  if (isFachlich(titel)) return "fachplan";
+  return null;
+}
+
+/**
+ * Der Auftrag zu einer Karte: Wurzel und Plannummer stehen je Art woanders.
+ *
+ * Beim Fachplan-Auftrag ist die Karte selbst die Wurzel und es gibt keinen Plan; beim
+ * Plan-Auftrag kommt die Wurzel aus der Herkunftszeile — dass sie dort steht und eine
+ * Karte des Boards trifft, hat `planAusschluss` schon geprueft.
+ */
+function auftragAus(issue, art) {
+  return art === "plan"
+    ? { karte: issue, art, F: fachlicheQuelleVon(issue.body || ""), planId: String(issue.id) }
+    : { karte: issue, art, F: String(issue.id), planId: null };
+}
+
+/**
+ * Der Grund, aus dem ein Auftrag einer anderen Karte weicht — `null`, wenn er bleibt
+ * (Issue #895).
+ *
+ * Beide Kollisionen haengen am selben Wert: dem juengsten gekennzeichneten Plan zur
+ * Wurzel des Auftrags. Eine Anforderung weicht ihm immer, ein Plan nur einem juengeren
+ * als er selbst.
+ */
+function kollisionsGrund(auftrag, juengster) {
+  if (juengster === null) return null;
+  if (auftrag.art === "fachplan") {
+    return `zu dieser Anforderung ist Plan #${juengster.id} gekennzeichnet — er laeuft an ihrer Stelle, ein zweiter Plan entstuende sonst daneben`;
+  }
+  if (juengster.id !== auftrag.planId) {
+    return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
+  }
+  return null;
+}
+
+/**
+ * Waehlt die Ketten einer Nacht aus allen Karten (Plan #638, A2, A13, E4, W5; zwei
+ * Auftragsarten seit Fachplan #883, Plan #890, Issue #895).
  *
  * Reine Funktion ueber `issue list` OHNE Status-Filter: Was das Label traegt, aber nicht
  * laufen darf, geht mit Grund in `uebersprungen` — im Ergebnisstand sichtbar, das Label
  * bleibt stehen. Kandidaten laufen in Listenreihenfolge; ab `max` bleiben sie liegen.
+ *
+ * Ein Kandidat ist seit #895 kein rohes Issue mehr, sondern ein Auftrag
+ * `{ karte, art, F, planId }`: `art` kommt aus dem Titel-Praefix, `F` ist immer die
+ * fachliche Wurzel (beim Plan-Auftrag aus `fachlicheQuelleVon`, sonst die Karte selbst),
+ * `planId` nur beim Plan-Auftrag. Die Kette braucht beide Nummern — die gekennzeichnete
+ * Karte fuer Label und Einheit, die Wurzel fuer Abdeckung und Bericht.
+ *
+ * Die Kollisionen stehen zwischen Ausschluss und `max` (Kriterium 10 der fachlichen
+ * Quelle): Eine Karte, die einer anderen weicht, soll keinen der knappen Plaetze
+ * verbrauchen. Massgeblich fuer beide Regeln ist die Menge der GEKENNZEICHNETEN Plaene,
+ * nicht die der laufenden — das Kennzeichen hat der Mensch gesetzt, und eine Anforderung
+ * soll auch dann nicht ersatzweise neu geplant werden, wenn der Plan daneben an einer
+ * eigenen Voraussetzung scheitert.
  */
 export function waehleKettenKandidaten(issues, label, max) {
-  const kandidaten = [];
-  const uebersprungen = [];
-  const liegengeblieben = [];
-  for (const issue of issues || []) {
-    if (!(issue?.labels || []).includes(label)) continue;
-    const grund = kettenAusschluss(issue, label);
-    if (grund !== null) {
-      uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
+  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+  const gruende = new Map();
+  const auftraege = [];
+
+  // Jeder gekennzeichnete Plan mit erkennbarer Wurzel, unabhaengig von seinem Ausschluss.
+  const gekennzeichnetePlaene = alle
+    .filter((i) => isPlan(i?.title ?? ""))
+    .map((i) => ({ id: String(i.id), F: fachlicheQuelleVon(i?.body || "") }))
+    .filter((p) => p.F !== null);
+  /** Der juengste gekennzeichnete Plan zu einer Wurzel — `null`, wenn es keinen gibt. */
+  const juengsterPlanZu = (F) => gekennzeichnetePlaene
+    .filter((p) => p.F === F)
+    .sort((a, b) => Number(b.id) - Number(a.id))[0] ?? null;
+
+  for (const issue of alle) {
+    const art = auftragsartVon(issue?.title ?? "");
+    if (art === null) {
+      gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
       continue;
     }
-    if (kandidaten.length >= max) {
-      liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
-      continue;
-    }
-    kandidaten.push(issue);
+    const grund = art === "plan" ? planAusschluss(issue, label, issues || []) : kettenAusschluss(issue, label);
+    if (grund === null) auftraege.push(auftragAus(issue, art));
+    else gruende.set(String(issue.id), grund);
   }
+
+  const kandidaten = [];
+  const liegengeblieben = [];
+  for (const auftrag of auftraege) {
+    const id = String(auftrag.karte.id);
+    const kollision = kollisionsGrund(auftrag, juengsterPlanZu(auftrag.F));
+    if (kollision !== null) gruende.set(id, kollision);
+    else if (kandidaten.length >= max) liegengeblieben.push({ id, title: auftrag.karte.title ?? "" });
+    else kandidaten.push(auftrag);
+  }
+
+  // `uebersprungen` in Board-Reihenfolge, nicht in der Reihenfolge der beiden Durchgaenge:
+  // Wer morgens das Protokoll liest, liest es neben dem Board.
+  const uebersprungen = alle
+    .filter((i) => gruende.has(String(i.id)))
+    .map((i) => ({ id: String(i.id), title: i.title ?? "", grund: gruende.get(String(i.id)) }));
   return { kandidaten, uebersprungen, liegengeblieben };
 }
 
@@ -5165,12 +6513,33 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
  *
  * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
- * Pakete stehen als nicht begonnen im Bericht), bei einem gehaltenen Umsetzungs-Lock
- * (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen Hauptkopie vor dem
- * ersten Paket (Issue #878, derselbe Rueckfall), `angehalten` bei mindestens einem
- * angehaltenen Paket — aber ohne `haltAmFachplan` (E17) —, `abgebrochen` nur beim harten
- * Stopp.
+ * Pakete stehen als nicht begonnen im Bericht), `unvollstaendig` bei einem gehaltenen
+ * Umsetzungs-Lock (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen
+ * Hauptkopie vor dem ersten Paket (Issue #878, derselbe Rueckfall) — beide liefen gar
+ * nicht erst an, siehe `umsetzungAusgelassen` (Issue #862) —, `angehalten` bei mindestens
+ * einem angehaltenen Paket — aber ohne `haltAmAuftrag` (E17) —, `abgebrochen` nur beim
+ * harten Stopp.
  */
+/**
+ * Die Stufe umsetzung hat ihre Arbeit ausgelassen (Issue #862) — der gemeinsame Ausgang
+ * der beiden Rueckfaelle auf Variante A: gehaltener Lock und unsaubere Hauptkopie.
+ *
+ * Beide sind aus Sicht des Menschen derselbe Befund: Er hat abends "zieh die Pakete gleich
+ * durch" bestellt, und die Bestellung wurde nicht ausgefuehrt. Sie auseinanderzuziehen
+ * ergaebe zwei Wahrheiten ueber eine Lage; was sie unterscheidet, steht im `grund`.
+ *
+ * `stand.ausgelassen` ist der Befund fuer den Bericht — nur daran, nicht an einer leeren
+ * `umgesetzt`-Liste, ist "gar nicht erst gelaufen" von "gelaufen und nichts geschafft" zu
+ * unterscheiden.
+ */
+function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz = "") {
+  paketeNichtBegonnen(stand, paketIds, grund);
+  stand.ausgelassen = grund;
+  stand.dauerMs = Date.now() - stufeStart;
+  log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.${zusatz}`);
+  return { ausgang: "unvollstaendig", grund: `${UMSETZUNG_AUSGELASSEN_PRAEFIX}${grund}` };
+}
+
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
   const stufeStart = Date.now();
@@ -5187,12 +6556,7 @@ async function stufeUmsetzung(kette, paketIds) {
   // Hauptkopie, in der gerade ein anderer Lauf baut, ist erwartbar unsauber: Der Lock ist
   // dafuer die genauere Auskunft als "nicht sauber" und der freundlichere Ausgang.
   const lock = umsetzungLockNehmen(kette.repoRoot);
-  if (!lock.ok) {
-    paketeNichtBegonnen(stand, paketIds, lock.grund);
-    stand.dauerMs = Date.now() - stufeStart;
-    log(`  Stufe umsetzung ausgelassen: ${lock.grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.`);
-    return { ausgang: "fertig" };
-  }
+  if (!lock.ok) return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, lock.grund);
   if (lock.hinweis) log(`  ${lock.hinweis}`);
 
   try {
@@ -5207,16 +6571,14 @@ async function stufeUmsetzung(kette, paketIds) {
     // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
     // Rest-Guard und Dirty-Guard in `werteRunde`.
     //
-    // Ausgang `fertig` wie beim gehaltenen Lock darueber (Issue #878): Eine unsaubere
-    // Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein Mensch
-    // bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute nacht
-    // nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
+    // Ausgang `unvollstaendig` wie beim gehaltenen Lock darueber (Issue #878, #862): Eine
+    // unsaubere Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein
+    // Mensch bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute
+    // nacht nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
     if (!gitClean(kette.repoRoot)) {
       const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
-      paketeNichtBegonnen(stand, paketIds, grund);
-      stand.dauerMs = Date.now() - stufeStart;
-      log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog. Bitte bereinigen und die Pakete selbst nach Ready ziehen.`);
-      return { ausgang: "fertig" };
+      return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund,
+        " Bitte bereinigen und die Pakete selbst nach Ready ziehen.");
     }
 
     let ergebnis;
@@ -5226,7 +6588,7 @@ async function stufeUmsetzung(kette, paketIds) {
       // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
       paketeAbschliessen(stand, lauf.gezogen);
       stand.dauerMs = Date.now() - stufeStart;
-      for (const zeile of pruefBericht(lauf.pruefungen)) log(`  ${zeile}`);
+      for (const zeile of pruefBericht(lauf.pruefungen, LAUF?.einheiten ?? [], config?.night?.zielUmsetzungMin)) log(`  ${zeile}`);
     }
     if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
       // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
@@ -5281,12 +6643,59 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
 }
 
 /**
- * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar am Fachplan und
- * kit:klaeren dort. Der Plan bleibt als Entwurf stehen; die naechste Kette beginnt von
- * vorn. Das Label abnehmen darf nur der Mensch — dieselbe Regel wie im Implementierungslauf.
+ * Der Weg nach vorn im Halt-Kommentar: die Schritte, nach denen der Plan am naechsten
+ * Abend als Plan-Auftrag wieder anlaeuft (Issue #896).
+ *
+ * Der Ort der Entscheidung ist seit Issue #895 der Plan, nicht die fachliche Anforderung:
+ * Die naechste Kette uebernimmt das Dokument und faehrt von der Stufe `pakete` an weiter,
+ * statt von vorn zu beginnen. Die Schritte nennen darum genau die Form, die
+ * `planAusschluss` wieder durchlaesst.
+ *
+ * Der frueher hier stehende Satz "Antwort bitte in den Fachplan schreiben" fuehrte an
+ * diesem Weg vorbei — und der naheliegende Griff, die Antwort unter die Frage zu setzen,
+ * war der teuerste: `stoppFragenGrund` liest die erste nichtleere Zeile unter `## Offene
+ * Fragen` und liesse den Plan allein bei `- Keine.` durch. Der Antworttext selbst waere
+ * am naechsten Abend der Ausschlussgrund gewesen.
+ *
+ * `/issue-review` entfaellt beim Plan-Auftrag: Dort traegt der Plan sein
+ * `review:fertig` schon, sonst haette `planAusschluss` ihn nie als Auftrag durchgelassen.
  */
-function haltAmFachplan(kette, ergebnis) {
-  const pfad = join(tmpdir(), `night-halt-${process.pid}-${kette.F}-${LAUF_STEMPEL ?? Date.now()}.md`);
+function haltWegNachVorn(kette, planId) {
+  const P = `Plan #${planId}`;
+  const schritte = [
+    `1. Die Antwort als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' von ${P} schreiben.`,
+    `2. '## ${OFFENE_FRAGEN_NAME}' von ${P} wieder auf '${KEINE_STOPP_FRAGEN}' setzen (ein Zusatz dahinter ist erlaubt).`
+      + " Die Antwort gehoert NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
+  ];
+  if (kette.art !== "plan") schritte.push(`3. /issue-review #${planId} laufen lassen.`);
+  schritte.push(
+    `${schritte.length + 1}. ${KLAEREN_LABEL} an ${P} abnehmen — und an der fachlichen Anforderung #${kette.F}, wenn es dort noch haengt.`,
+    `${schritte.length + 2}. Zuletzt das Label ${kette.budget.label} an ${P} setzen.`,
+  );
+  return [
+    `Die Entscheidung gehoert in ${P}, nicht in die fachliche Anforderung #${kette.F}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:`,
+    "",
+    ...schritte,
+    "",
+    "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
+  ];
+}
+
+/**
+ * Der Halt der Kette (Plan #638, A8): die eine Frage als Kommentar an der gekennzeichneten
+ * Karte und kit:klaeren dort. Der Plan bleibt als Entwurf stehen. Das Label abnehmen darf
+ * nur der Mensch — dieselbe Regel wie im Implementierungslauf.
+ *
+ * Adressat ist die Karte, die das Kennzeichen trug (Issue #896), nicht die Wurzel: Beim
+ * Plan-Auftrag ist das der Plan selbst, und ein `kit:klaeren` an der fachlichen
+ * Anforderung sperrte dort eine Karte, die diese Nacht nichts beauftragt hat.
+ */
+function haltAmAuftrag(kette, ergebnis) {
+  const ziel = String(kette.karte.id);
+  // Bei jedem `angehalten` steht der Plan schon fest: Die Stufe `plan` setzt ihre Nummer,
+  // bevor sie an einer Stopp-Frage halten kann, und der Plan-Auftrag bringt sie mit.
+  const planId = kette.stufen.plan?.id ?? ergebnis.dokId;
+  const pfad = join(tmpdir(), `night-halt-${process.pid}-${ziel}-${LAUF_STEMPEL ?? Date.now()}.md`);
   const text = [
     KETTE_HALT_ANKER,
     "",
@@ -5294,13 +6703,13 @@ function haltAmFachplan(kette, ergebnis) {
     "",
     ergebnis.frage,
     "",
-    `Plan und bis dahin geschnittene Pakete bleiben als Entwurf stehen. Antwort bitte in den Fachplan schreiben, ${KLAEREN_LABEL} abnehmen und das Label ${kette.budget.label} neu setzen — die naechste Kette beginnt von vorn.`,
+    ...haltWegNachVorn(kette, planId),
     "",
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
-    board("issue", "comment", kette.F, "--text-file", pfad);
-    board("issue", "label", "add", kette.F, KLAEREN_LABEL);
+    board("issue", "comment", ziel, "--text-file", pfad);
+    board("issue", "label", "add", ziel, KLAEREN_LABEL);
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -5369,6 +6778,48 @@ function entscheidungenAusKommentaren(paket) {
   return eintraege;
 }
 
+const SITZUNGSUMFANG_KOPF = "Sitzungsumfang:";
+
+/**
+ * Der Wert der Zeile `Sitzungsumfang: passt | reisst — <ein Satz>` aus dem `## Kontext`
+ * eines Pakets (Konvention aus Issue #979): `"reisst"`, `"passt"` oder `null`, wenn die
+ * Karte die Zeile nicht traegt. Zwei Werte und kein dritter — eine Zwischenstufe naehme
+ * der Einschaetzung ihre einzige Aussage, und `null` heisst darum "nicht eingeschaetzt",
+ * nicht "passt".
+ */
+function sitzungsumfangVon(body) {
+  const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
+  if (!abschnitt) return null;
+  for (let i = 0; i < abschnitt.zeilen.length; i++) {
+    if (!abschnitt.ausserhalb[i]) continue;
+    const zeile = abschnitt.zeilen[i].trim();
+    if (!zeile.toLowerCase().startsWith(SITZUNGSUMFANG_KOPF.toLowerCase())) continue;
+    const wert = zeile.slice(SITZUNGSUMFANG_KOPF.length).trim();
+    if (/^rei(?:ss|ß)t\b/i.test(wert)) return "reisst";
+    if (/^passt\b/i.test(wert)) return "passt";
+  }
+  return null;
+}
+
+/**
+ * Die letzte Zeile des Stufen-Blocks: welche Pakete voraussichtlich ueber der
+ * Sitzungszeitgrenze liegen (Issue #980, Kriterium 1 des Fachplans #963).
+ *
+ * Ohne sie steht die Einschaetzung nur im `## Kontext` der Karten, und wer morgens den
+ * Kettenbericht liest, muesste jede einzelne oeffnen. Genannt werden die Pakete mit
+ * `reisst`; ein Paket ohne die Zeile erscheint als "nicht eingeschaetzt", weil ein
+ * fehlendes Urteil kein gutes ist.
+ */
+function berichtSitzungsumfangZeile(ids, pakete) {
+  const teile = [];
+  for (const id of ids) {
+    const wert = sitzungsumfangVon(pakete.find((k) => String(k.id) === String(id))?.body);
+    if (wert === "reisst") teile.push(`#${id}`);
+    else if (wert === null) teile.push(`#${id} nicht eingeschätzt`);
+  }
+  return `- Voraussichtlich über der Sitzungszeitgrenze: ${teile.length > 0 ? teile.join(", ") : "keine"}`;
+}
+
 /** `#<id> <Titel>` fuer den Bericht — nur `#<id>`, wenn die Karte ihren Titel nicht mitbringt. */
 function paketBezeichnung(pakete, id) {
   const titel = pakete.find((k) => String(k.id) === String(id))?.title;
@@ -5414,7 +6865,7 @@ function berichtUmsetzungEintrag(pakete, eintrag) {
   return `${paketBezeichnung(pakete, id)} (${berichtUmsetzungStufe(eintrag)})`;
 }
 
-function berichtUmsetzung(einheit, pakete) {
+function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
   const stand = einheit.stufen?.umsetzung ?? {};
   const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
   const umgesetzt = stand.umgesetzt ?? [];
@@ -5427,32 +6878,66 @@ function berichtUmsetzung(einheit, pakete) {
     : "keine";
   return [
     "### Umsetzung", "",
+    // Die Auslassung zuerst und als eigene Zeile (Issue #862): Sie sagt, dass die
+    // bestellte Umsetzung gar nicht erst anlief, was sie verhindert hat und wo die Pakete
+    // danach liegen. Aus den drei Listen darunter waere das nur zu erschliessen — und wer
+    // erschliessen muss, sieht nicht nach.
+    ...(stand.ausgelassen ? [`- ausgelassen: ${stand.ausgelassen} — die Pakete bleiben in Backlog.`] : []),
     `- umgesetzt: ${umgesetztText}`,
     `- angehalten: ${liste(stand.angehalten ?? [])}`,
     `- nicht begonnen: ${nichtBegonnenText}`,
+    // Die Prueflaeufe und die Zielmarke (Issue #926, E6) — derselbe Block, den die
+    // Umsetzungsnacht ins Protokoll schreibt. Beide Berichtsorte nennen dieselben Zahlen,
+    // damit keiner von beiden der Ort ist, an dem eine Messung fehlt.
+    ...prueflaufZeilen(einheiten, ziel),
     "",
   ];
 }
 
+/**
+ * Die erste Zeile der Stufen: welcher Auftrag diese Kette war (Issue #896) — `null`, wenn
+ * die Einheit keine der beiden Arten ausweist.
+ *
+ * Ohne sie waere dem Bericht nicht anzusehen, was der Mensch abends gezeichnet hat: Beim
+ * Plan-Auftrag traegt die Einheit die Nummer des Plans, beim Fachplan-Auftrag die der
+ * Anforderung — dieselbe Zahl an derselben Stelle, zwei verschiedene Gesten.
+ */
+function berichtAuftragZeile(einheit) {
+  if (einheit.auftrag === "plan") return `- Auftrag: Plan #${einheit.stufen?.plan?.id} (fachliche Quelle #${einheit.fachplan})`;
+  return einheit.id ? `- Auftrag: fachliche Anforderung #${einheit.id}` : null;
+}
+
+/**
+ * Die Planzeile der Stufen — je nachdem, ob der Plan in dieser Nacht entstanden ist.
+ *
+ * Eine uebernommene Stufe hat keine Dauer, keine Kosten und keine Korrekturrunden:
+ * `Dauer 0.0 min` behauptete eine Messung, die es nicht gab (Issue #896).
+ */
+function berichtPlanZeile(stufen, plan) {
+  const p = stufen.plan;
+  const pruefer = planReviewWert(plan?.body) ?? "keiner";
+  const titel = plan?.title ? ` (${plan.title})` : "";
+  if (p.uebernommen) return `- Plan #${p.id}${titel}: als Auftrag uebernommen, nicht neu geschrieben, Pruefer ${pruefer}.`;
+  const kosten = p.kennzahlen?.kostenUsd;
+  const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
+  return `- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, `
+    + `Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`;
+}
+
 function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
-  const p = stufen.plan;
-  const zeilen = [`- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
-  if (p?.id) {
-    const pruefer = planReviewWert(plan?.body) ?? "keiner";
-    const kosten = p.kennzahlen?.kostenUsd;
-    const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
-    const titel = plan?.title ? ` (${plan.title})` : "";
-    zeilen.push(`- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`);
-  } else {
-    zeilen.push("- Plan: keiner entstanden.");
-  }
+  const auftrag = berichtAuftragZeile(einheit);
+  const zeilen = [...(auftrag ? [auftrag] : []), `- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
+  zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : "- Plan: keiner entstanden.");
   const ids = stufen.pakete?.ids ?? [];
   zeilen.push(ids.length > 0
     ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.`
     : "- Pakete: keine.");
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
-  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${p?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${stufen.plan?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  // Als letzte Zeile des Blocks (Issue #980): `test/night-kette-bericht.test.mjs` fixiert
+  // die Folge bis einschliesslich `- Pakete: …`, und hinten angehaengt bleibt sie gueltig.
+  zeilen.push(berichtSitzungsumfangZeile(ids, pakete));
   return zeilen;
 }
 
@@ -5484,6 +6969,9 @@ function berichtEntscheidungen(stufen, plan, pakete) {
 
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
+  // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
+  // Prueflaeufe daraus, und als Argumente bleibt er eine reine Funktion ueber Fixtures.
+  einheiten = [], zielUmsetzungMin: ziel = undefined,
 } = {}) {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
@@ -5491,15 +6979,15 @@ export function berichtBauen(einheit, {
     "### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
-  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete));
+  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));
 
   const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
   z.push("### Entscheidungen der Nacht", "");
   if (entscheidungen.length === 0) z.push("- Keine.");
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
-  z.push("");
 
   z.push(
+    "",
     "### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "",
     "### Abdeckung gegen den Fachplan", "",
   );
@@ -5518,7 +7006,7 @@ export function berichtBauen(einheit, {
     `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
     `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
     "");
-  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar am Fachplan", "");
+  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar an der gekennzeichneten Karte", "");
   if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
     z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
@@ -5528,27 +7016,33 @@ export function berichtBauen(einheit, {
 }
 
 /**
- * Schreibt den Bericht als Kommentar an den Fachplan (A11) — ueber eine Datei ausserhalb
- * des Projekts, nie als Argument. Nimmt der Tracker ihn nicht an, wartet er als
- * `.claude/night-bericht-<F>-<stempel>.md` in der Hauptkopie. Rueckgabe ist der Wert
- * fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad. Kein `fail`: Ein
- * toter Tracker beim letzten Schritt darf die Kette nicht als Absturz enden lassen.
+ * Schreibt den Bericht als Kommentar an die gekennzeichnete Karte (A11; Issue #896) —
+ * ueber eine Datei ausserhalb des Projekts, nie als Argument. Nimmt der Tracker ihn nicht
+ * an, wartet er als `.claude/night-bericht-<zielId>-<stempel>.md` in der Hauptkopie.
+ * Rueckgabe ist der Wert fuer `einheit.bericht`: "veroeffentlicht" oder der wartende Pfad.
+ * Kein `fail`: Ein toter Tracker beim letzten Schritt darf die Kette nicht als Absturz
+ * enden lassen.
+ *
+ * `zielId` ist die Nummer der Karte, die das Kennzeichen trug — beim Plan-Auftrag der
+ * Plan. Der Bericht gehoert dorthin, wo der Mensch morgens nachsieht: an die Karte, die
+ * er abends gezeichnet hat. `berichteNachtragen` liest die Nummer weiter aus dem
+ * Dateinamen und bleibt davon unberuehrt.
  */
-export function berichtSchreiben(F, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
-  const name = `${BERICHT_DATEI_PRAEFIX}${F}-${stempel ?? Date.now()}.md`;
+export function berichtSchreiben(zielId, text, { stempel = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
+  const name = `${BERICHT_DATEI_PRAEFIX}${zielId}-${stempel ?? Date.now()}.md`;
   // Mit der Prozess-Id: Zwei Runner in derselben Sekunde teilten sich sonst die Zwischendatei.
   const pfad = join(tmpdir(), `${process.pid}-${name}`);
   writeFileSync(pfad, text, "utf-8");
   try {
-    const res = boardRoh("issue", "comment", String(F), "--text-file", pfad);
+    const res = boardRoh("issue", "comment", String(zielId), "--text-file", pfad);
     if (res.status === 0) {
-      log(`  Nachtbericht als Kommentar an #${F} veroeffentlicht.`);
+      log(`  Nachtbericht als Kommentar an #${zielId} veroeffentlicht.`);
       return "veroeffentlicht";
     }
     const wartend = join(".claude", name);
     mkdirSync(join(repoRoot, ".claude"), { recursive: true });
     writeFileSync(join(repoRoot, wartend), text, "utf-8");
-    log(`  Nachtbericht konnte nicht an #${F} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
+    log(`  Nachtbericht konnte nicht an #${zielId} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
     return wartend;
   } finally {
     rmSync(pfad, { force: true });
@@ -5563,7 +7057,10 @@ export function berichtSchreiben(F, text, { stempel = LAUF_STEMPEL, repoRoot = p
 export function berichteNachtragen(repoRoot = process.cwd()) {
   const ordner = join(repoRoot, ".claude");
   if (!existsSync(ordner)) return [];
-  const dateien = readdirSync(ordner).filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort();
+  // Codepoint-Ordnung wie bisher (Issue #956, S2871): Die Berichte tragen den
+  // Zeitstempel im Namen, aufsteigend nach Dateiname ist aufsteigend nach Zeit.
+  const dateien = readdirSync(ordner)
+    .filter((n) => n.startsWith(BERICHT_DATEI_PRAEFIX) && n.endsWith(".md")).sort(vergleicheText);
   const nachgetragen = [];
   for (const name of dateien) {
     const F = name.slice(BERICHT_DATEI_PRAEFIX.length).split("-")[0];
@@ -5639,7 +7136,7 @@ function pruefungFehltKommentieren(u) {
  */
 function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
   if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
-  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jede fachliche Anforderung abgelehnt.`);
+  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jeder Auftrag abgelehnt.`);
   log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
 }
 
@@ -5672,6 +7169,20 @@ function leseKarte(id) {
   return res.status === 0 && res.json ? res.json : null;
 }
 
+/**
+ * Die Paket-Einheiten genau dieser Kette, in der Reihenfolge des Laufs (Issue #926).
+ *
+ * `LAUF.einheiten` fuehrt jede Einheit des Nachtlaufs — auch die frueherer Ketten und
+ * die Ketten-Einheiten selbst. Fuer den Bericht einer Karte zaehlen allein die Pakete,
+ * die diese Kette bestellt hat.
+ */
+export function ketteEinheiten(kette, alle = undefined) {
+  const ids = new Set((kette?.stufen?.pakete?.ids ?? []).map(String));
+  if (ids.size === 0) return [];
+  const quelle = alle ?? LAUF?.einheiten ?? [];
+  return quelle.filter((e) => ids.has(String(e?.id)));
+}
+
 /** Sammelt Plan, Pakete, Einarbeitung und Abdeckung der Kette und baut den Bericht. */
 function berichtFuerKette(kette, einheit, ergebnis) {
   const planId = kette.stufen.plan?.id;
@@ -5682,6 +7193,13 @@ function berichtFuerKette(kette, einheit, ergebnis) {
     plan, pakete, einarbeitung: plan ? einarbeitungVon(plan) : null,
     abdeckung: a ? { text: a.text, grund: a.grund } : null,
     budget: kette.budget, start: kette.start, stempel: LAUF_STEMPEL, frage: ergebnis.frage ?? null,
+    // Die Paket-Einheiten DIESER Kette (Issue #926, eingegrenzt im Code-Review): Aus
+    // ihnen rechnet der Bericht die Prueflaeufe und die Zielmarke; die Ketten-Einheit
+    // selbst traegt sie nicht. Die Eingrenzung auf `kette.stufen.pakete.ids` ist noetig,
+    // weil `LAUF.einheiten` ALLE Einheiten des Nachtlaufs fuehrt: Ab der zweiten Kette
+    // eines Laufs stuenden sonst fremde Pakete im Kommentar dieser Karte, und die Zeile
+    // "N von M" zaehlte sie mit.
+    einheiten: ketteEinheiten(kette), zielUmsetzungMin: config?.night?.zielUmsetzungMin,
   });
 }
 
@@ -5723,13 +7241,25 @@ async function mitMeldung(stufe) {
  * `umsetzung` nicht: Sie meldet ueber `laufeRunde` schon nach jedem fertigen Paket.
  */
 async function stufenDerKette(kette) {
-  const plan = await mitMeldung(() => stufePlan(kette));
-  if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-  const review = await mitMeldung(() => stufeReview(kette, plan.id));
-  if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-  const pakete = await mitMeldung(() => stufePakete(kette, plan.id));
+  let planId;
+  if (kette.art === "plan") {
+    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage.
+    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete, laeuft die Stufe
+    // trotzdem unveraendert und zaehlt nur die neu entstandenen Karten — ein
+    // hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
+    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
+    // verhindern.
+    planId = kette.stufen.plan.id;
+  } else {
+    const plan = await mitMeldung(() => stufePlan(kette));
+    if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
+    const review = await mitMeldung(() => stufeReview(kette, plan.id));
+    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
+    planId = plan.id;
+  }
+  const pakete = await mitMeldung(() => stufePakete(kette, planId));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, plan.id, pakete.ids));
+  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, planId, pakete.ids));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
   if (kette.variante !== "B") return { ausgang: "fertig" };
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
@@ -5740,30 +7270,52 @@ async function stufenDerKette(kette) {
 }
 
 /**
- * Eine Kette zu einem Fachplan: Label verbrauchen, Worktree, Stufen, Einheit.
+ * Der Auftakt einer Kette: Protokollzeile, verbrauchtes Kennzeichen, Ausgangslage.
+ *
+ * Rueckgabe sind die aelteren Plaene zur Wurzel, die nach einem NEUEN Plan den
+ * Ueberholt-Kommentar bekommen (A8). Beim Plan-Auftrag ist die Liste leer und die Stufe
+ * `plan` stattdessen vorbelegt: Es entsteht kein neuer Plan, und der uebernommene ist
+ * keiner, der einen anderen ueberholte — er ist der, den der Mensch gewaehlt hat.
+ */
+function ketteBeginnen(kette, auftrag, nummer, args) {
+  const karte = auftrag.karte;
+  log(auftrag.art === "plan"
+    ? `Kette ${nummer}/${args.max}: Plan #${auftrag.planId} (fachliche Quelle #${kette.F}) — ${karte.title}`
+    : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
+  // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
+  // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
+  board("issue", "label", "remove", String(karte.id), kette.budget.label);
+  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+
+  if (auftrag.art === "plan") {
+    kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
+    log(`  Plan #${auftrag.planId} uebernommen — die Stufen plan und review entfallen.`);
+    return [];
+  }
+  // VOR der Plan-Stufe gesammelt: Danach stuende der neue Plan mit in der Liste.
+  return board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, kette.F, "plan"))
+    .map((i) => String(i.id));
+}
+
+/**
+ * Eine Kette zu einem Auftrag: Label verbrauchen, Worktree, Stufen, Einheit.
  *
  * Rueckgabe ist der Ausgang der Kette. Der Worktree wird in jedem Fall entfernt — auch
  * nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt der naechste Start.
  */
-async function laufeEineKette(kandidat, nummer, args) {
-  const F = String(kandidat.id);
-  const einheit = einheitAnlegen(F, kandidat.title);
+async function laufeEineKette(auftrag, nummer, args) {
+  const karte = auftrag.karte;
+  const F = String(auftrag.F);
+  const einheit = einheitAnlegen(String(karte.id), karte.title);
   const kette = {
-    F, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
+    F, art: auftrag.art, karte, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
-    variante: varianteVon(kandidat, KETTE_BUDGET),
+    // Die Variante steht an der gekennzeichneten Karte, nicht an der Wurzel: Wer den
+    // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
+    variante: varianteVon(karte, KETTE_BUDGET),
   };
-  log(`Kette ${nummer}/${args.max}: Issue #${F} — ${kandidat.title}`);
-  // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
-  // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  board("issue", "label", "remove", F, kette.budget.label);
-  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
-
-  // Aeltere Plaene zum selben Fachplan, VOR der Plan-Stufe gesammelt: Nach einem neuen
-  // Plan bekommen sie den Ueberholt-Kommentar (A8).
-  const aeltere = board("issue", "list")
-    .filter((i) => stammtAusErzeugung(i, F, "plan"))
-    .map((i) => String(i.id));
+  const aeltere = ketteBeginnen(kette, auftrag, nummer, args);
 
   let ergebnis;
   try {
@@ -5776,9 +7328,9 @@ async function laufeEineKette(kandidat, nummer, args) {
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
     // `ohneHaltAmFachplan` setzt allein die Stufe umsetzung (E17): Dort traegt das
-    // angehaltene PAKET bereits kit:klaeren, und ein zweites am Fachplan schloesse ihn
-    // aus der naechsten Kette aus.
-    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmFachplan(kette, ergebnis);
+    // angehaltene PAKET bereits kit:klaeren, und ein zweites an der gekennzeichneten Karte
+    // schloesse sie aus der naechsten Kette aus. Der Feldname bleibt der von E17.
+    if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmAuftrag(kette, ergebnis);
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
       ? aeltereUeberholen(kette, aeltere, neuerPlan)
@@ -5786,6 +7338,11 @@ async function laufeEineKette(kandidat, nummer, args) {
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
       ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      // Die Auftragsart und — nur beim Plan-Auftrag — die fachliche Wurzel (Issue #895):
+      // Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne `fachplan`
+      // waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat.
+      auftrag: kette.art,
+      ...(kette.art === "plan" ? { fachplan: kette.F } : {}),
       variante: kette.variante,
       stufen: kette.stufen,
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
@@ -5800,9 +7357,9 @@ async function laufeEineKette(kandidat, nummer, args) {
       kostenUnbekannt: kette.kosten.kostenUnbekannt,
     });
     // Der Bericht ist der letzte Schritt jeder Kette, bei jedem Ausgang (A10) — nach dem
-    // Halt-Kommentar, damit er am Fachplan hinter der Frage steht, und vor dem Abbau des
-    // Worktrees.
-    einheitErgaenzen(einheit, { bericht: berichtSchreiben(F, berichtFuerKette(kette, einheit, ergebnis)) });
+    // Halt-Kommentar, damit er hinter der Frage steht, und vor dem Abbau des Worktrees.
+    // Adressat ist die gekennzeichnete Karte, wie beim Halt (Issue #896).
+    einheitErgaenzen(einheit, { bericht: berichtSchreiben(String(karte.id), berichtFuerKette(kette, einheit, ergebnis)) });
   } finally {
     if (kette.wt) {
       kettenBefundeZurueck(kette);
@@ -5819,7 +7376,7 @@ function warneVorAltenLabels(issues) {
   for (const issue of issues) {
     for (const alt of ALTE_ROUTING_LABELS) {
       if ((issue.labels || []).includes(alt)) {
-        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' am Fachplan.`);
+        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' an der fachlichen Anforderung oder am Plandokument.`);
       }
     }
   }
@@ -5839,7 +7396,10 @@ export async function laufeKette(args) {
   }
   const alle = board("issue", "list");
   warneVorAltenLabels(alle);
-  const { kandidaten, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
+  const { kandidaten: auftraege, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
+  // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
+  // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
+  const kandidaten = auftraege.map((a) => a.karte);
   uebersprungeneVerbuchen(uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
@@ -5856,28 +7416,327 @@ export async function laufeKette(args) {
   await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
-    log(KETTE_LEER_GRUND);
-    if (LAUF) LAUF.noWorkReason = KETTE_LEER_GRUND;
+    if (uebersprungen.length > 0) {
+      vermerkeOhneArbeit("ketteAlleUebersprungen", { anzahl: uebersprungen.length, label: budget.label });
+    } else {
+      vermerkeOhneArbeit("ketteKeinLabel", { label: budget.label });
+    }
     laufAbschliessen("regulaer");
     process.exit(0);
   }
 
   if (args.dryRun) {
     log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
-    kandidaten.forEach((k, i) => log(`  #${k.id} ${k.title} -> Kette ${i + 1} (Variante ${varianteVon(k, budget)})`));
-    log(`Dry-Run beendet: ${kandidaten.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
+    auftraege.forEach((a, i) => {
+      const art = a.art === "plan" ? `Plan-Auftrag, fachliche Quelle #${a.F}, ` : "";
+      log(`  #${a.karte.id} ${a.karte.title} -> Kette ${i + 1} (${art}Variante ${varianteVon(a.karte, budget)})`);
+    });
+    log(`Dry-Run beendet: ${auftraege.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
     process.exit(0);
   }
 
   const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
   let nummer = 0;
-  for (const kandidat of kandidaten) {
+  for (const auftrag of auftraege) {
     nummer++;
-    const ausgang = await laufeEineKette(kandidat, nummer, args);
+    const ausgang = await laufeEineKette(auftrag, nummer, args);
     zaehler[ausgang]++;
   }
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${LOG_FILE}`);
+  laufAbschliessen("regulaer");
+  process.exit(0);
+}
+
+// --- Der Prueflauf am Tag (Fachplan #899, Plan #904; Issue #909) ---
+//
+// Ein Lauf, der mehrere gekennzeichnete fachliche Anforderungen nacheinander pruefen laesst:
+// je Karte eine Session `/issue-review #N`, alle in EINEM Worktree je Lauf. Er bewegt keine
+// Karte, zieht nichts nach Ready, setzt kein `kit:night` und nimmt kein `kit:klaeren` ab. Er
+// laeuft am Tag, neben dem arbeitenden Menschen und neben einer Nacht-Kette — deshalb faellt
+// er weder auf einen unsauberen Arbeitsbaum noch auf ein Paket in In progress herein.
+//
+// Der dritte Modus des vorhandenen Runners und keine eigene Kit-Datei (Plan #904, E1):
+// Sessionstart, Worktree, Ergebnisstand, Protokoll und die Kosten- und Wartend-Erkennung
+// liegen hier und sind zum Teil nicht exportiert.
+
+/** Der Worktree-Praefix des Prueflaufs — getrennt von dem der Kette (Issue #908). */
+const PRUEFLAUF_PRAEFIX = "pruefung";
+
+/** Die Stufe, unter der die Sessions des Prueflaufs laufen (NIGHT_KETTE_STUFE). */
+const PRUEFLAUF_STUFE = "pruefung";
+
+/**
+ * Der Vorflug ist vor der ersten Pruefung gescheitert: jeder Kandidat bekommt den Kommentar
+ * `Pruefung nicht gestartet` mit Grund, das Kennzeichen bleibt — die Geste ist nicht
+ * verbraucht, denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
+ *
+ * Zwilling von `ketteNichtGestartet` und bewusst nicht mit ihm geteilt: Der erste Satz nennt
+ * den Lauf, und ein Kommentar, der am Tag von einer Kette spraeche, schickte den Leser in die
+ * falsche Ecke.
+ */
+function pruefungNichtGestartet(kandidaten, grund) {
+  for (const k of kandidaten) {
+    const res = boardRoh("issue", "comment", String(k.id), "--text", `Pruefung nicht gestartet: ${grund}`);
+    log(res.status === 0
+      ? `  #${k.id}: Kommentar 'Pruefung nicht gestartet' geschrieben, Kennzeichen bleibt.`
+      : `  #${k.id}: Kommentar 'Pruefung nicht gestartet' nicht geschrieben (${res.text.slice(0, 120)}).`);
+  }
+}
+
+/**
+ * Die eine Session einer Pruefung, mit Zeitbudget (Plan #904).
+ *
+ * Nach dem Muster von `ketteSession`, aber ohne Stufen: Es gibt genau eine Session je Karte,
+ * ihr Zeitbudget ist `pruefungMin`, und Korrekturrunden kennt der Lauf nicht. Die Kosten
+ * gehen auf den LAUF, nicht auf die Karte — der Deckel gilt dem Lauf.
+ *
+ * Rueckgabe: `{ dauerMs, kennzahlen, kosten }`, bei einem Abbruch dazu `abbruch` mit dem
+ * Grund. Ob daraus `unvollstaendig` wird, entscheidet allein der Unterschied der Board-Spuren
+ * (`pruefLaufErgebnis`): Eine Session kann am Zeitlimit sterben, nachdem sie fertig war.
+ */
+async function pruefLaufSession(lauf, id) {
+  const budgetMs = lauf.budget.pruefungMin * 60 * 1000;
+  const t = Date.now();
+  const res = await runSession(id, lauf.args, {
+    prompt: `/issue-review #${id}\n\n${KETTE_ZUSATZ}`,
+    cwd: lauf.wt, stream: true, stufe: PRUEFLAUF_STUFE, timeoutMs: budgetMs,
+  });
+  const dauerMs = Date.now() - t;
+  const kennzahlen = leseKennzahlen(res.stdout);
+  // Dreimal dieselbe Kennzahl, drei verschiedene Empfaenger: die Karte (ihre Einheit), der
+  // Lauf (sein Deckel) und der Lauf-Kopf (sein Verbrauch).
+  const messung = { dauerMs, kennzahlen, kosten: kostenAddieren({}, kennzahlen) };
+  kostenAddieren(lauf.kosten, kennzahlen);
+  if (LAUF) kostenAddieren(LAUF, kennzahlen);
+
+  const minuten = (dauerMs / 60000).toFixed(1);
+  if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
+    return { ...messung, abbruch: `Zeitbudget: die Session wurde nach ${minuten} min am Limit beendet` };
+  }
+  if (res.error || res.status !== 0) {
+    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    return { ...messung, abbruch: `technischer Fehler: die Session endete mit ${exitInfo}` };
+  }
+  // Die wartende Sitzung (Plan #773) hinter Zeitbudget und technischem Fehler, weil sie ein
+  // REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit angestossen, darauf
+  // gewartet und damit ihren Zug beendet.
+  const schlusstext = leseErgebnisText(res.stdout);
+  if (wartendeSession(schlusstext)) return { ...messung, abbruch: GRUND_WARTEND, wartend: true, schlusstext };
+  return messung;
+}
+
+/**
+ * Eine Karte pruefen lassen: Fassung, Kennzeichen, Session, Ergebnis, Vermerk, Einheit.
+ *
+ * Rueckgabe ist die Zeile der Ergebnisliste als Objekt — der Lauf sammelt sie und schreibt
+ * sie am Ende aus.
+ */
+async function pruefeEineKarte(lauf, issue, nummer) {
+  const id = String(issue.id);
+  const titel = issue.title ?? "";
+  const einheit = einheitAnlegen(id, titel);
+  // Der Vorher-Stand kommt frisch vom Board und nicht aus der Kandidatenliste: Zwischen der
+  // Auswahl und dieser Zeile liegen der Vorflug und alle vorigen Pruefungen des Laufs.
+  const vorher = leseKarte(id);
+  if (!vorher) {
+    const grund = "die Karte ist nicht lesbar — es lief keine Session, das Kennzeichen bleibt";
+    log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} uebersprungen (${grund}).`);
+    einheitErgaenzen(einheit, { ausgang: "uebersprungen", grund });
+    return { id, titel, ausgang: "uebersprungen", grund };
+  }
+
+  // Die gepruefte Fassung (E7): gebildet unmittelbar vor der Session. Wer den Text waehrend
+  // der Pruefung aendert, sieht hinterher am Fingerabdruck, dass eine andere Fassung gelesen
+  // wurde — erkennen kann der Lauf die Aenderung nicht.
+  const fassung = pruefLaufFassung(vorher.body);
+  log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} — ${titel} (Fassung ${fassung})`);
+  // Das Kennzeichen ist mit dem Start verbraucht (E2): Ein Abbruch fuehrt zu einem Vermerk
+  // mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
+  board("issue", "label", "remove", id, lauf.budget.label);
+  log(`  Label '${lauf.budget.label}' entfernt — jedes Setzen autorisiert genau eine Pruefung.`);
+  // Und `review:fertig` gleich mit (E16): Nur so beantwortet der Nachher-Stand die Frage nach
+  // DIESER Session und nicht die nach einem Vorlauf. `kit:klaeren` nimmt der Lauf nie ab —
+  // das darf allein ein Mensch.
+  if (hatReviewFertigLabel(vorher)) {
+    board("issue", "label", "remove", id, REVIEW_FERTIG_LABEL);
+    log(`  Label '${REVIEW_FERTIG_LABEL}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.`);
+  }
+
+  const s = await pruefLaufSession(lauf, id);
+  const nachher = leseKarte(id) ?? vorher;
+  const ergebnis = pruefLaufErgebnis(vorher, nachher);
+
+  if (s.wartend) {
+    // Eine wartende Sitzung bekommt NUR diesen Vermerk und keinen zweiten: Zwei Kommentare
+    // fuer einen Abbruch sagen nichts, was einer nicht sagt.
+    wartendVermerken(id, PRUEFLAUF_STUFE, s.schlusstext);
+  } else if (ergebnis.ausgang === "unvollstaendig") {
+    const grund = s.abbruch ?? "die Session endete, ohne den Fachplan-Review-Marker zu setzen";
+    pruefLaufRestVermerken(id, grund, ergebnis.schritt, neueKommentare(vorher, nachher));
+  }
+
+  einheitErgaenzen(einheit, {
+    ausgang: ergebnis.ausgang,
+    fassung,
+    ...(ergebnis.schritt ? { schritt: ergebnis.schritt } : {}),
+    ...(ergebnis.frage ? { frage: ergebnis.frage } : {}),
+    ...(s.abbruch ? { grund: s.abbruch } : {}),
+    // Derselbe Feldname wie an der Einheit einer Implementierungsrunde (Issue #776) und aus
+    // demselben Grund WEG statt `false`, wenn der Fall nicht eintrat.
+    ...(s.wartend ? { wartendBeendet: true } : {}),
+    dauerMs: s.dauerMs,
+    kennzahlen: s.kennzahlen,
+    kostenUsd: s.kosten.kostenSumme,
+    kostenUnbekannt: s.kosten.kostenUnbekannt,
+  });
+  const zusatz = s.abbruch ? ` — ${s.abbruch}` : "";
+  log(`  Pruefung #${id}: ${ergebnis.ausgang}${zusatz} (${s.kosten.kostenSumme.toFixed(2)} $).`);
+  return { id, titel, fassung, ...ergebnis, ...(s.abbruch ? { grund: s.abbruch } : {}) };
+}
+
+/**
+ * Eine Zeile der Ergebnisliste (Plan #904, E4).
+ *
+ * Die Liste steht auf der Konsole, weil der Lauf dem Tag gehoert: Wer ihn startet, sieht sein
+ * Ergebnis. Je Ausgang steht genau das dabei, was den naechsten Schritt bestimmt — bei einer
+ * wartenden Entscheidung die Frage, bei einem Abbruch der erreichte Schritt.
+ */
+function pruefLaufZeile(e) {
+  const fassung = e.fassung ? `, Fassung ${e.fassung}` : "";
+  switch (e.ausgang) {
+    case "geprueft":
+      return `  #${e.id} ${e.titel}: geprueft${fassung}`;
+    case "klaeren":
+      return `  #${e.id} ${e.titel}: wartende Entscheidung${fassung}, Frage: ${ersteZeile(e.frage)}`;
+    case "unvollstaendig":
+      return `  #${e.id} ${e.titel}: unvollstaendig${fassung}, erreichter Schritt: ${e.schritt}`;
+    default:
+      return `  #${e.id} ${e.titel}: ${e.ausgang} — ${e.grund}`;
+  }
+}
+
+/**
+ * Eine Karte, die dieser Lauf nicht (mehr) prueft: Protokollzeile, Einheit, Listenzeile.
+ *
+ * Drei Anlaesse, ein Weg — der Ausschluss bei der Auswahl, der Zahlendeckel und der
+ * erschoepfte Kostendeckel. Sie unterscheiden sich allein im Ausgang und im Grund, und drei
+ * Stellen, die dasselbe verbuchen, liefen bei der ersten Aenderung auseinander.
+ */
+function pruefLaufOhneSession(ergebnisse, id, titel, ausgang, grund) {
+  log(`  #${id} ${titel} -> ${ausgang} (${grund})`);
+  einheitErgaenzen(einheitAnlegen(id, titel), { ausgang, grund });
+  ergebnisse.push({ id: String(id), titel, ausgang, grund });
+}
+
+/**
+ * Verbucht die Auswahl des Prueflaufs und nennt die Kandidaten (Plan #904, E7, E10).
+ *
+ * Alles vor der ersten Session an einer Stelle: die Karten, die nicht laufen, die Warnung bei
+ * einem Label, das nirgends vorkommt, und die Kandidatenliste samt Fassung. Eine Vorschau
+ * bekommt der Lauf nicht, also ist diese Liste die einzige Stelle, an der VORHER steht, was
+ * laufen wird.
+ */
+function pruefLaufAuswahlMelden(args, budget, alle, auswahl, ergebnisse) {
+  const { kandidaten, uebersprungen, liegengeblieben } = auswahl;
+  for (const u of uebersprungen) {
+    pruefLaufOhneSession(ergebnisse, u.id, u.title, "uebersprungen", u.grund);
+  }
+  for (const l of liegengeblieben) {
+    pruefLaufOhneSession(ergebnisse, l.id, l.title, "liegengeblieben", `ueber --max ${args.max}, bleibt liegen`);
+  }
+  if (kandidaten.length === 0 && uebersprungen.length === 0 && liegengeblieben.length === 0) {
+    const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
+    log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts geprueft.`);
+    log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+  }
+  kandidaten.forEach((k, i) => {
+    log(`  #${k.id} ${k.title} -> Pruefung ${i + 1}/${kandidaten.length} (Fassung ${pruefLaufFassung(k.body)})`);
+  });
+}
+
+/**
+ * Die Pruefungen eines Laufs, eine nach der anderen, in EINEM Worktree (Plan #904, E11).
+ *
+ * Der Worktree wird in jedem Fall entfernt — auch nach einem Wurf mitten in einer Pruefung;
+ * einen liegengebliebenen raeumt der naechste Start ab.
+ */
+async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
+  try {
+    // Die Sessions lesen und schreiben am Board, nicht im Arbeitsbaum — ein Worktree je Karte
+    // kostete Zeit fuer eine Trennung ohne Gegenstand.
+    lauf.wt = worktreeAnlegen({ repoRoot: lauf.repoRoot, stempel: LAUF_STEMPEL ?? String(Date.now()), praefix: PRUEFLAUF_PRAEFIX });
+    trackerImWorktreeUmleiten(lauf.wt, lauf.repoRoot);
+    log(`Worktree des Laufs: ${lauf.wt}`);
+
+    let nummer = 0;
+    for (const issue of kandidaten) {
+      nummer++;
+      // Ein Abbruch beendet nur diese Karte (E3): Die naechste kommt dran, und der Grund steht
+      // an ihrer Einheit und in der Liste.
+      ergebnisse.push(await pruefeEineKarte(lauf, issue, nummer));
+      // Der Kostendeckel gilt dem LAUF und wird NACH jeder Session geprueft, nie mittendrin:
+      // Eine halb gelesene Pruefung waere der teurere Fehler.
+      if (lauf.kosten.kostenSumme > lauf.budget.kostenUsd) {
+        const grund = `Kostenbudget: ${lauf.kosten.kostenSumme.toFixed(2)} $ von ${lauf.budget.kostenUsd} $ nach Pruefung ${nummer}`;
+        for (const rest of kandidaten.slice(nummer)) {
+          pruefLaufOhneSession(ergebnisse, rest.id, rest.title ?? "", "uebersprungen", grund);
+        }
+        return;
+      }
+    }
+  } finally {
+    if (lauf.wt) worktreeEntfernen(lauf.wt, lauf.repoRoot);
+  }
+}
+
+/**
+ * Programm Prueflauf (Plan #904): Kandidaten, Vorflug, ein Worktree, Karte fuer Karte.
+ * Beendet den Prozess selbst, wie die Kette und der Dry-Run.
+ */
+export async function laufePrueflauf(args) {
+  const budget = PRUEFLAUF_BUDGET;
+  const repoRoot = process.cwd();
+  const defaultsZeile = budgetDefaultsZeile(budget, PRUEFLAUF_BUDGET_AUS_DEFAULT, PRUEFLAUF_BUDGET_TEXT);
+  if (defaultsZeile) log(defaultsZeile);
+  // Nur der eigene Praefix (Issue #908): Eine Nacht-Kette kann daneben laufen, und ihr
+  // Worktree gehoert ihr.
+  for (const p of worktreesAufraeumen(repoRoot, PRUEFLAUF_PRAEFIX)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
+
+  const alle = board("issue", "list");
+  const auswahl = waehlePruefLaufKandidaten(alle, budget.label, args.max);
+  const { kandidaten, uebersprungen } = auswahl;
+  const ergebnisse = [];
+  pruefLaufAuswahlMelden(args, budget, alle, auswahl, ergebnisse);
+
+  // Der Reviewer-Vorflug wie bei der Kette: Die Pruefer-Session braucht die Reviewer in ihrer
+  // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer. Scheitert er,
+  // behaelt jeder Kandidat sein Kennzeichen und bekommt einen Kommentar — es lief nichts.
+  await fuehreVorflug(args, kandidaten, "/issue-review --dry-run", (grund) => pruefungNichtGestartet(kandidaten, grund));
+
+  if (kandidaten.length === 0) {
+    if (uebersprungen.length > 0) {
+      vermerkeOhneArbeit("pruefLaufAlleUebersprungen", { anzahl: uebersprungen.length, label: budget.label });
+    } else {
+      vermerkeOhneArbeit("pruefLaufKeinLabel", { label: budget.label });
+    }
+    laufAbschliessen("regulaer");
+    process.exit(0);
+  }
+
+  const lauf = {
+    args, budget, repoRoot, wt: null, gesamt: kandidaten.length,
+    kosten: { kostenSumme: 0, kostenUnbekannt: 0 },
+  };
+  await pruefLaufRunden(lauf, kandidaten, ergebnisse);
+
+  log("Ergebnisliste des Prueflaufs:");
+  for (const e of ergebnisse) log(pruefLaufZeile(e));
+  const zahl = (ausgang) => ergebnisse.filter((e) => e.ausgang === ausgang).length;
+  log(`Prueflauf beendet: ${zahl("geprueft")} geprueft, ${zahl("klaeren")} mit wartender Entscheidung, `
+    + `${zahl("unvollstaendig")} unvollstaendig, ${zahl("uebersprungen")} uebersprungen, ${zahl("liegengeblieben")} liegengeblieben.`);
+  log(`Danach: Eine geprueft hinterlassene Karte erfuellt die Aufnahmevoraussetzung der Nacht-Kette — das GO bleibt deins. `
+    + `Eine Karte mit '${KLAEREN_LABEL}' wartet auf deine Antwort; das Label nimmt nur ein Mensch ab. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
 }
@@ -5916,12 +7775,22 @@ function dryRunStufenVermerk({ modell, herkunft, stufe, stufeVerwendet, grund, e
   return `, ${stufeText}, Modell ${modell} (Stufe ${stufeVerwendet})${effortText}`;
 }
 
+// Die vier Titel-Praefixe, deren Karte keine Session umsetzt, mit dem Wort, das der Dry-Run
+// dafuer nennt. Als Tabelle und nicht als vier `if`-Zeilen: Der Dry-Run muss dieselbe Auskunft
+// geben wie `pruefeIssueGates` im echten Lauf, und eine Liste an einer Stelle laeuft mit der
+// Reihenfolge dort nicht auseinander (Issue #984).
+const DRY_RUN_PRAEFIXE = [
+  [isFachlich, "fachliches Issue"],
+  [isIdee, "Idee"],
+  [isPlan, "Plan-Dokument"],
+  [isMensch, "Menschenschritt"],
+];
+
 function dryRunBefund(issue, ctx, assumedDone) {
   const aus = (grund) => ({ grund, vermerk: "" });
   if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
-  if (isFachlich(issue.title)) return aus("wuerde ins Backlog (fachliches Issue, wird nicht implementiert)");
-  if (isIdee(issue.title)) return aus("wuerde ins Backlog (Idee, wird nicht implementiert)");
-  if (isPlan(issue.title)) return aus("wuerde ins Backlog (Plan-Dokument, wird nicht implementiert)");
+  const praefix = DRY_RUN_PRAEFIXE.find(([passt]) => passt(issue.title));
+  if (praefix) return aus(`wuerde ins Backlog (${praefix[1]}, wird nicht implementiert)`);
   if (hatKlaerenLabel(issue)) return aus("wuerde ins Backlog (kit:klaeren, offene Entscheidung)");
 
   const full = board("issue", "get", String(issue.id));
@@ -5978,8 +7847,7 @@ export function laufeDryRun(args, ctx) {
   ctx = { ...ctx, laufModell: args.model };
   const ready = board("issue", "list", "--status", "ready");
   if (ready.length === 0) {
-    log(READY_LEER_GRUND);
-    if (LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
+    vermerkeOhneArbeit("readyLeer", {});
     process.exit(0);
   }
   warnWennLabelNirgendsVorkommt(ctx, ready);
@@ -6005,14 +7873,14 @@ export function laufeDryRun(args, ctx) {
 }
 
 /**
- * Die sechs Gruende, aus denen ein Ready-Issue nicht implementiert wird (Issue #404).
+ * Die sieben Gruende, aus denen ein Ready-Issue nicht implementiert wird (Issue #404, #984).
  *
  * Rueckgabe: `null`, wenn das Issue drankommt — sonst `{ log, kommentar }` mit der
  * Protokollzeile und dem Text, der am Board haengen bleibt. Der Aufrufer verschiebt
  * das Issue danach ins Backlog; welcher Grund gilt, entscheidet allein diese
  * Funktion.
  *
- * Der volle Body wird erst geholt, wenn die vier Titel- und Label-Gates durch sind.
+ * Der volle Body wird erst geholt, wenn die fuenf Titel- und Label-Gates durch sind.
  * Ihn vorher zu laden waere ein Board-Aufruf je Issue, das ohnehin ausscheidet.
  */
 export function pruefeIssueGates(top) {
@@ -6025,13 +7893,23 @@ export function pruefeIssueGates(top) {
   if (isIdee(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Idee — braucht erst /techplan #${top.id} + /issues, wird nachts nicht implementiert.`,
+      kommentar: `Nachtlauf: Idee — mit Abwaegung erst /fachplan #${top.id}, ohne Abwaegung /task #${top.id}, wird nachts nicht implementiert.`,
     };
   }
   if (isPlan(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`,
       kommentar: `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`,
+    };
+  }
+  // Der Menschenschritt (Issue #984): Die Aufgabe liegt ausserhalb des Repositories, kein Zug
+  // einer Sitzung erledigt sie. Der Kommentar sagt ausdruecklich, dass die Karte wartet und
+  // nicht gescheitert ist — sonst sieht sie im Backlog aus wie ein gescheitertes Paket, und
+  // wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat.
+  if (isMensch(top.title)) {
+    return {
+      log: `#${top.id} uebersprungen: Menschenschritt ([Mensch]), wird nicht implementiert.`,
+      kommentar: `Nachtlauf: Menschenschritt — die Karte wartet auf einen Menschen und ist nicht gescheitert; keine Sitzung kann sie erledigen. Nach der Handlung zieht der Mensch sie selbst weiter.`,
     };
   }
   // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
@@ -6093,8 +7971,8 @@ export function pruefeIssueGates(top) {
  * Der Arbeitsbaum ist vor der regulaeren Runde sauber, ein neuer Commit ist damit die
  * einzige Spur, die die Salvage-Session sicher hinterlaesst.
  */
-async function versucheSalvage(top, args, sessionWahl) {
-  const checks = verifyChecksForSalvage(config);
+async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
+  const checks = verifyChecksForSalvage(config, top.id);
   if (!checks.ok) {
     // Kommando und Ausgabe dazu (Issue #668): Ohne sie stand hier ein Satz, der nur das
     // Urteil nannte. Wer morgens sichtet, braucht den Befund — die letzten Zeilen sind
@@ -6127,8 +8005,19 @@ async function versucheSalvage(top, args, sessionWahl) {
   const reste = gitReste();
   if (salvaged && reste.length === 0) {
     log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    // EIN Satz zum Zeitabbruch der regulaeren Runde, nicht der volle Vermerk (Plan #974,
+    // E11): Kein Stand-Abschnitt und keine Empfehlung — an einer fertigen Karte ist nichts
+    // zu teilen, und wer den Abbruch morgens einordnen will, braucht hier nur die Auskunft,
+    // dass die Uhr und nicht die Arbeit die regulaere Runde beendet hat. `ZEITLIMIT_BEENDET`
+    // bleibt aus demselben Grund ungesetzt (E8).
+    //
+    // Der Befund muss durchgereicht werden: `behandleDirtyRunde` kehrt bei `erfolg` sofort
+    // zurueck und erreicht seinen eigenen `rundenGrund`-Aufruf nie.
+    const zeitlimitSatz = rundenGrund(res, pruefung) === GRUND_ZEITLIMIT
+      ? ` Die regulaere Runde endete am Zeitlimit — ${GRUND_ZEITLIMIT}, die Grenze dieser Runde: ${grenzeText(grenzeMinuten(res))}.`
+      : "";
     board("issue", "comment", String(top.id), "--text",
-      "Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.");
+      `Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.${zeitlimitSatz}`);
     return "erfolg";
   }
   // Der Grund traegt den Protokollsatz woertlich. Wo der Satz die Reste bereits nennt,
@@ -6171,8 +8060,10 @@ async function versucheSalvage(top, args, sessionWahl) {
 // Sie beantworten die Frage, die der bisherige Text offenliess: nicht WAS der Runner
 // vorgefunden hat — "nicht in In review UND Working Tree dirty" —, sondern WARUM. Die
 // naechsten Schritte sind je Fall verschieden: Ein `end_turn` ohne Commit ist eine
-// Session, die auf etwas gewartet hat; ein Zeitlimit ist ein zu grosses Paket; ein
-// `is_error` ist ein Abbruch; ein roter Pflichtcheck ist Arbeit am Code.
+// Session, die auf etwas gewartet hat; ein Zeitlimit heisst, dass die Zeit ausging —
+// warum, folgt nicht aus dem Abbruch und steht allenfalls im Vermerk unter
+// `ZEITLIMIT_ANKER` am Arbeitspaket; ein `is_error` ist ein Abbruch; ein roter
+// Pflichtcheck ist Arbeit am Code.
 const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
 const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
 const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
@@ -6308,6 +8199,112 @@ export function wartendVermerk(schlusstext, pfade = []) {
 }
 
 /**
+ * Der Anker des Zeitabbruch-Vermerks am Arbeitspaket (Plan #974, Issue #976).
+ *
+ * Neben `WARTEND_ANKER` und aus demselben Grund woertlich: Die implement-Skills weisen die
+ * naechste Sitzung an, einen Vermerk unter diesem Anker zu melden, statt stillschweigend
+ * auf halbem Weg weiterzumachen. Zwei Fassungen waeren zwei Anker, und einer fuehrte ins
+ * Leere.
+ */
+export const ZEITLIMIT_ANKER = "## Nachtlauf: Zeitgrenze erreicht";
+
+/**
+ * Die Grenze in Minuten fuer den Vermerkstext (Issue #976).
+ *
+ * Fehlt sie, steht das da — eine erfundene Zahl an der Karte waere schlimmer als keine,
+ * und "unbekannt" ist dieselbe Regel wie "nicht gemessen" statt 0. Nicht ganze Werte
+ * behalten eine Nachkommastelle: Unter `NIGHT_TIMEOUT_MS` sind Grenzen unter einer Minute
+ * ueblich, und "0 Minuten" waere falsch.
+ */
+function grenzeText(grenzeMin) {
+  if (typeof grenzeMin !== "number" || !Number.isFinite(grenzeMin)) return "Grenze nicht bekannt";
+  return `${Number.isInteger(grenzeMin) ? grenzeMin : grenzeMin.toFixed(1)} Minuten`;
+}
+
+/**
+ * Die wirksame Grenze dieser Runde in Minuten — oder `null` (Issue #977).
+ *
+ * Aus `res.timeoutMs`, das `runSession` seit Issue #976 fuehrt, und NICHT aus
+ * `args.timeoutMin`: Gerechnet hat die Runde mit dem einen Wert, den `runSession`
+ * bestimmt hat — `NIGHT_TIMEOUT_MS`, `opts.timeoutMs` oder das Flag. Eine zweite
+ * Herleitung aus dem Flag laege an genau den Stellen daneben, an denen es darauf ankommt.
+ *
+ * Fehlt das Feld, bleibt es bei `null`; `grenzeText` macht daraus "Grenze nicht bekannt"
+ * statt einer erfundenen Zahl.
+ */
+function grenzeMinuten(res) {
+  const ms = res?.timeoutMs;
+  return typeof ms === "number" && Number.isFinite(ms) ? ms / 60000 : null;
+}
+
+/**
+ * Der Vermerk, den ein Zeitabbruch am Arbeitspaket hinterlaesst (Plan #974, Issue #976).
+ *
+ * Reine Funktion wie `wartendVermerk`: die wirksame Grenze, das Ergebnis des
+ * `fortschrittBeobachter` und die Pfade aus `gitReste()` hinein, Text heraus. Wer ihn an
+ * die Karte schreibt, entsteht im Folgepaket.
+ *
+ * `fortschritt` traegt drei unterscheidbare Zustaende, und alle drei stehen verschieden im
+ * Text: `null` heisst "nicht beobachtet" (kein Strom — die Kommando-Stufe, ein Lauf ohne
+ * `stream`), eine leere Liste heisst "nichts gemeldet", und eine gefuellte traegt den
+ * Stand. Die beiden ersten zusammenzufassen waere dieselbe Luege wie eine 0 fuer einen
+ * fehlenden Messwert.
+ *
+ * Der Schlusstext fehlt hier strukturell: Am Zeitlimit wird die Sitzung samt Prozessgruppe
+ * gekillt, ein `result`-Ereignis kommt nie an, und `leseErgebnisText` liefert `null`. Was
+ * die Sitzung unterwegs gesagt hat, ist alles, was bleibt.
+ *
+ * Exportiert fuer die Tests und die Verdrahtung des Folgepakets.
+ */
+export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
+  const zeilen = Array.isArray(fortschritt?.zeilen) ? fortschritt.zeilen : null;
+
+  const stand = [];
+  if (zeilen === null) {
+    stand.push("Fortschritt nicht beobachtet (kein Strom) — ueber den Stand dieser Sitzung liegt nichts vor.");
+  } else if (zeilen.length === 0) {
+    stand.push("keine Auskunft der Sitzung — sie hat bis zum Abbruch keine Fortschrittszeile gemeldet.");
+  } else {
+    stand.push(...zeilen);
+    const gesehen = fortschritt.gesehen;
+    if (typeof gesehen === "number" && gesehen > zeilen.length) {
+      // Ohne diesen Satz saehe eine gekappte Liste wie die ganze aus.
+      stand.push("", `(${gesehen} Fortschrittszeilen gemeldet, die juengsten ${zeilen.length} stehen hier.)`);
+    }
+  }
+
+  const teile = [
+    ZEITLIMIT_ANKER,
+    "",
+    `${GRUND_ZEITLIMIT} — die Grenze dieser Runde: ${grenzeText(grenzeMin)}.`,
+    "Das ist kein inhaltlicher Fehlschlag: Die Sitzung wurde an der Uhr abgebrochen, nicht an ihrer Arbeit.",
+    "",
+    "### Stand nach eigener Auskunft der Sitzung",
+    "",
+    ...stand,
+    "",
+    "### Naechster Schritt (Mensch)",
+    "",
+    "Empfehlung (keine Vorgabe): dieses Paket in Teile schneiden, die je in eine Sitzung passen.",
+    "Ob geteilt wird und wie, entscheidet ein Mensch — hier steht keine Aufgabe, sondern ein Vorschlag.",
+    "",
+    // Kriterium 5 des Fachplans: Der Abbruch ist ein Befund ueber die Uhr und keiner ueber
+    // das Paket. Wer ihn als "zu gross geschnitten" liest, hat die Ursache geraten.
+    "Aus dem Abbruch folgt keine Aussage ueber seine Ursache: Dass die Zeit ausging, sagt nicht,",
+    "ob das Paket zu gross geschnitten war, ob die Sitzung sich verlaufen hat oder ob ein einzelner",
+    "Lauf ungewoehnlich lange gebraucht hat.",
+  ];
+
+  if (Array.isArray(pfade) && pfade.length > 0) {
+    // Wie bei `wartendVermerk`: ohne Pfade entfaellt der Abschnitt ersatzlos, statt "keine"
+    // zu melden — und `resteText` kuerzt lange Listen wie in jedem anderen Grund des Runners.
+    teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
+  }
+
+  return `${teile.join("\n")}\n`;
+}
+
+/**
  * Warum hat diese Runde nichts abgeschlossen (Issue #668)?
  *
  * Reine Funktion ueber dem Ergebnis von `runSession` und der Pruef-Zusammenfassung der
@@ -6332,6 +8329,47 @@ export function rundenGrund(res, pruefung) {
     return wartendeSession(leseErgebnisText(res?.stdout)) ? GRUND_WARTEND : GRUND_END_TURN;
   }
   return GRUND_UNBEKANNT;
+}
+
+/**
+ * Der Vermerk zu einem Grund — oder `null`, wenn dieser Grund keinen traegt (Issue #977).
+ *
+ * Zwei der Gruende haben einen eigenen Text am Paket: die wartende Sitzung (Plan #773) und
+ * der Zeitabbruch (Plan #974). Sie hier zusammenzuführen hat einen Grund: Beide Zweige der
+ * Auswertung — Rueckstellung bei sauberem Baum und Fehlschlag bei unsauberem — treffen
+ * dieselbe Wahl, und zwei Fassungen davon liefen auseinander. Der Aufrufer entscheidet
+ * allein, WIE er den Vermerk setzt: als ganzen Kommentar oder angehaengt an seinen eigenen.
+ *
+ * `pfade` reicht durch: Im Rueckstellungszweig ist der Baum sauber und die Liste leer, im
+ * Fehlschlag-Zweig traegt sie die Reste. Beide Vermerke lassen den Abschnitt bei leerer
+ * Liste ersatzlos weg.
+ */
+/**
+ * Der Grund, der eine Rueckstellung bei SAUBEREM Baum benennt — oder `null` (Issue #977).
+ *
+ * Nur zwei der Gruende erscheinen hier: die wartende Sitzung und der Zeitabbruch. Die
+ * uebrigen (is_error, roter Pflichtcheck, regulaeres Ende) bleiben stumm — in diesem Zweig
+ * ist der Baum sauber, und der bisherige Rueckstellungstext war fuer sie nie falsch.
+ *
+ * Die Wartend-Erkennung bleibt bei `wartendeSession` und wechselt NICHT zu `rundenGrund`:
+ * Die beiden sind nicht deckungsgleich — `rundenGrund` liefert `GRUND_WARTEND` nur bei
+ * `stopReason === "end_turn"` —, und ein stiller Wechsel aenderte das Verhalten von
+ * night-55. `rundenGrund` wird allein fuer den Zeitlimit-Fall befragt.
+ *
+ * Die Reihenfolge entscheidet nichts, sie macht nur sichtbar, dass beides zugleich nicht
+ * eintreten kann: Am Zeitlimit wird die Sitzung samt Prozessgruppe gekillt,
+ * `leseErgebnisText` liefert `null`, und ohne Schlusstext ist `wartendeSession` nie wahr.
+ */
+function rueckstellungsGrund(res, pruefung) {
+  if (wartendeSession(leseErgebnisText(res?.stdout))) return GRUND_WARTEND;
+  if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) return GRUND_ZEITLIMIT;
+  return null;
+}
+
+function rundenVermerk(grund, res, pfade = []) {
+  if (grund === GRUND_WARTEND) return wartendVermerk(leseErgebnisText(res?.stdout), pfade);
+  if (grund === GRUND_ZEITLIMIT) return zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, pfade);
+  return null;
 }
 
 /**
@@ -6371,7 +8409,7 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
-    const salvage = await versucheSalvage(top, args, sessionWahl);
+    const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
     if (salvage === "gescheitert") {
@@ -6384,6 +8422,20 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
         // was der Salvage vorfand.
         merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${STOPP_GRUND}`);
         board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, gitReste()));
+      } else if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) {
+        // Derselbe eigene Griff wie fuer die wartende Sitzung darueber, und aus demselben
+        // Grund (Issue #977): Dieser Zweig kehrt zurueck, bevor der Fehlschlag-Zweig unten
+        // mit `rundenGrund` erreicht ist — ohne ihn entstuende der Befund nur fuer die
+        // Haelfte der Faelle. Der Stopp-Grund bleibt unangetastet: Der night-27-Satz
+        // benennt, was morgens im Arbeitsverzeichnis liegt, der Zeitabbruch steht im
+        // Vermerk und am Feld `zeitlimitBeendet` der Einheit.
+        //
+        // `else if`, nicht ein zweites `if`: Zeitlimit und wartend schliessen einander aus
+        // (am Zeitlimit kommt kein `result`-Ereignis an, `leseErgebnisText` liefert `null`),
+        // und zwei Vermerke zu derselben Runde waeren zwei Wahrheiten ueber sie.
+        ZEITLIMIT_BEENDET = true;
+        board("issue", "comment", String(top.id), "--text",
+          zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, gitReste()));
       }
       return "hardStop";
     }
@@ -6397,14 +8449,17 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // Befunds, ohne Zeitlimit, Abbruch und roten Pflichtcheck davor.
   const wartend = grund === GRUND_WARTEND;
   if (wartend) WARTEND_BEENDET = true;
+  // Derselbe Griff fuer den Zeitabbruch (Issue #977): Der Grund steht schon heute im Text,
+  // neu sind Auskunft, Empfehlung und Ursachen-Vorbehalt des Vermerks.
+  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
   const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
   log(`  ${satz}`);
   const kommentar = `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`;
   // Der Vermerk ERWEITERT den Kommentar, anders als im Rueckstellungsfall: Dort ist er
   // die ganze Botschaft, hier steht der harte Stopp davor — mit den Pfaden aus
   // `gitReste()`, denn der Baum ist unsauber.
-  board("issue", "comment", String(top.id), "--text",
-    wartend ? `${kommentar}\n\n${wartendVermerk(leseErgebnisText(res?.stdout), gitReste())}` : kommentar);
+  const vermerk = rundenVermerk(grund, res, gitReste());
+  board("issue", "comment", String(top.id), "--text", vermerk ? `${kommentar}\n\n${vermerk}` : kommentar);
   merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
   return "hardStop";
 }
@@ -6447,6 +8502,17 @@ function nachweisMangel(pruefung) {
 const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
 
 /**
+ * Der Grund, aus dem eine Runde ohne jede Board-Aenderung endet (Issue #927).
+ *
+ * Eine EIGENE Konstante neben `DEFERRED_GRUND`, nicht dessen zweite Verwendung: Die
+ * Faelle sind verschieden — dort wurde ein Zustand gelesen und war nicht `in_review`,
+ * hier ist er unbekannt —, und ihr Text ist das Einzige, woran der Morgen sie
+ * unterscheidet. Ein nicht lesbarer Zustand ist keine Aussage ueber die Spalte, also
+ * folgt ihm auch keine Rueckstellung.
+ */
+const ZUSTAND_UNLESBAR_GRUND = "Zustand der Karte war nicht lesbar — Karte und Commit bleiben unangetastet, Lauf geht mit dem naechsten Issue weiter.";
+
+/**
  * Uebersetzt den Rueckgabewert von werteRunde in die Felder der Einheit (Issue #488).
  *
  * Die Woerter der Zaehler (`deferred`, `hardStop`) und das Vokabular des
@@ -6467,6 +8533,19 @@ const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zuruec
  */
 function wartendFelder() {
   return WARTEND_BEENDET ? { wartendBeendet: true } : {};
+}
+
+/**
+ * Das Feld `zeitlimitBeendet` fuer die Einheit — oder gar keines (Issue #977).
+ *
+ * Dieselbe Anlage wie `wartendFelder` darueber und aus demselben Grund: Ohne den Fall
+ * bleibt das Feld WEG statt `false` zu tragen. Ein `false` behauptete eine Messung, die es
+ * nicht gab, und eine Zaehlung ueber mehrere Naechte kaeme auf dieselbe Zahl, egal ob
+ * gemessen wurde oder nicht. Die Auswertung der Zielmarke (Issue #978) liest genau dieses
+ * Feld, um Zeitabbrueche aus ihren Mittelwerten herauszuhalten.
+ */
+function zeitlimitFelder() {
+  return ZEITLIMIT_BEENDET ? { zeitlimitBeendet: true } : {};
 }
 
 function ausgangsFelder(ausgang) {
@@ -6504,35 +8583,22 @@ export function istHalt(vorher, nachher) {
  * Runde, und benannt gelesen kann keine zwei von ihnen die Reihenfolge vertauschen.
  */
 async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl }) {
-  const nowInReview = board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
-  if (nowInReview) {
-    log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
-    // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
-    // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
-    // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
-    // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
-    const reste = gitReste();
-    if (reste.length > 0) {
-      const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
-      log(`  ${satz}`);
-      merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
-      return "hardStop";
-    }
-    // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
-    // In-review-Pfad. Stuende er weiter oben, griffe er auch fuer eine Karte in
-    // Ready — und weil die Karte dabei liegen bleibt, zoege die naechste Iteration
-    // dasselbe Issue erneut, bis MAX_ITERATIONS erschoepft ist. Dazu bekaeme ein
-    // gescheiterter CLI-Start (Infrastruktur-Guard, #149) den Kommentar "keine
-    // Pruefung gefahren", und der Dirty-Guard waere umgangen.
-    const mangel = nachweisMangel(pruefung);
-    if (mangel) {
-      log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
-      board("issue", "comment", String(top.id),
-        "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
-      return "fehlschlag";
-    }
-    return "erfolg";
+  // Der Zustand kommt vom Einzelabruf an der Karte, nicht aus der Sammelliste
+  // `issue list --status in_review` (Issue #927): Im Lauf night-run-2026-09-25-061517
+  // fuehrte die Liste eine Karte nicht, die nachweislich in In review stand — die
+  // Session hatte sie dorthin gezogen, gruen geprueft und committet —, und der Runner
+  // stellte ein fertiges Paket zurueck. `leseKarte` fragt dort, wo die Antwort
+  // eindeutig ist; denselben Weg geht der Ketten-Pfad in `paketeAbschliessen`.
+  const kartenStatus = leseKarte(top.id)?.status ?? null;
+  // Unbekannter Zustand: KEINE Board-Mutation. Aus fehlendem Wissen eine
+  // Rueckstellung zu machen ist genau der Fehlgriff, den dieses Paket behebt. Der
+  // Ausgang ist `fehlschlag` — das Wort des Laufs fuer "Karte bleibt, Commit bleibt,
+  // weiter"; WARUM sie bleibt, sagt allein diese Log-Zeile.
+  if (kartenStatus === null) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} — ${ZUSTAND_UNLESBAR_GRUND}`);
+    return "fehlschlag";
   }
+  if (kartenStatus === "in_review") return werteInReview(top, minutes, pruefung);
 
   // Infrastruktur-Guard (Issue #149): Exit != 0 ohne Timeout heisst, das CLI selbst
   // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
@@ -6562,7 +8628,43 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
     return "angehalten";
   }
 
-  return stelleRundeZurueck(top, res, minutes);
+  return stelleRundeZurueck(top, res, minutes, pruefung);
+}
+
+/**
+ * Der Erfolgspfad: Die Karte steht in In review (Issue #404, herausgezogen in #927).
+ *
+ * Steht getrennt von `werteRunde`, seit dort mit dem unlesbaren Zustand eine dritte
+ * Verzweigung hinzukam: Die Auswertung liest sich sonst als eine Folge von Guards, in
+ * deren erstem Zweig zwei weitere Guards stecken.
+ */
+function werteInReview(top, minutes, pruefung) {
+  log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+  // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
+  // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
+  // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
+  // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
+  const reste = gitReste();
+  if (reste.length > 0) {
+    const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
+    log(`  ${satz}`);
+    merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
+    return "hardStop";
+  }
+  // Nachweis-Guard (Issue #471): NACH dem Rest-Guard und nur hier, im
+  // In-review-Pfad. Stuende er weiter oben, griffe er auch fuer eine Karte in
+  // Ready — und weil die Karte dabei liegen bleibt, zoege die naechste Iteration
+  // dasselbe Issue erneut, bis MAX_ITERATIONS erschoepft ist. Dazu bekaeme ein
+  // gescheiterter CLI-Start (Infrastruktur-Guard, #149) den Kommentar "keine
+  // Pruefung gefahren", und der Dirty-Guard waere umgangen.
+  const mangel = nachweisMangel(pruefung);
+  if (mangel) {
+    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
+    board("issue", "comment", String(top.id),
+      "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
+    return "fehlschlag";
+  }
+  return "erfolg";
 }
 
 /**
@@ -6578,19 +8680,19 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
  * Arbeitsverzeichnisses, und der ist hier sauber. Anders ist nur, was der Morgen liest —
  * ein Text, der den Fall benennt, statt eine geordnete Rueckstellung zu behaupten.
  */
-function stelleRundeZurueck(top, res, minutes) {
-  const schlusstext = leseErgebnisText(res?.stdout);
-  const wartend = wartendeSession(schlusstext);
-  if (wartend) WARTEND_BEENDET = true;
+function stelleRundeZurueck(top, res, minutes, pruefung) {
+  const grund = rueckstellungsGrund(res, pruefung);
+  if (grund === GRUND_WARTEND) WARTEND_BEENDET = true;
+  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
   // Der Grund steht VOR dem Zustand — dieselbe Ordnung wie im Dirty-Zweig (Issue #668):
   // erst warum die Runde nichts abgeschlossen hat, dann was der Runner vorgefunden hat.
-  const grundTeil = wartend ? ` — ${GRUND_WARTEND};` : "";
+  const grundTeil = grund ? ` — ${grund};` : "";
   log(`  Fehlschlag nach ${minutes} min: Issue #${top.id}${grundTeil} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
-  // Der Vermerk IST der Kommentar: Er traegt GRUND_WARTEND bereits im Wortlaut, und ein
+  // Der Vermerk IST der Kommentar: Er traegt seinen Grund bereits im Wortlaut, und ein
   // vorangestelltes zweites Mal waere dieselbe Aussage doppelt. Ohne Pfade — in diesem
   // Zweig ist der Baum sauber, und eine Meldung ueber nichts ist keine.
-  board("issue", "comment", String(top.id),
-    "--text", wartend ? wartendVermerk(schlusstext) : `Nachtlauf: ${DEFERRED_GRUND}`);
+  const vermerk = rundenVermerk(grund, res);
+  board("issue", "comment", String(top.id), "--text", vermerk ?? `Nachtlauf: ${DEFERRED_GRUND}`);
   board("issue", "move", String(top.id), "backlog");
   return "deferred";
 }
@@ -6698,6 +8800,8 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // einen Runde. Ohne das Zuruecksetzen truege die naechste Einheit den Befund der
   // vorigen — und im Ergebnisstand stuende eine Runde als wartend, die es nie war.
   WARTEND_BEENDET = false;
+  // Und der Merker des Zeitabbruchs, aus demselben Grund (Issue #977).
+  ZEITLIMIT_BEENDET = false;
   // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
   // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
@@ -6755,12 +8859,17 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   const commitDerSession = lastCommitHash();
   const pruefung = bewertePruefung(top.id, commitDerSession === commitVorher ? null : commitDerSession, config);
   pruefungen.push(pruefung);
-  // Die Rohdifferenz fuer den Ergebnisstand, die gerundete Minutenangabe fuer die
-  // Textzeile (Issue #488): Eine Auswertung soll nicht "1.4" zurueckrechnen muessen.
-  const dauerMs = Date.now() - started;
-  const minutes = (dauerMs / 60000).toFixed(1);
+  // Die gerundete Minutenangabe fuer die Textzeilen der Auswertung: Sie benennt die
+  // Dauer der Implementierungs-Session und wird deshalb VOR werteRunde bestimmt.
+  const minutes = ((Date.now() - started) / 60000).toFixed(1);
 
   const ausgang = await werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl });
+  // Die Rohdifferenz fuer den Ergebnisstand, NACH werteRunde (Issue #488, korrigiert im
+  // Code-Review zu #924): In werteRunde kann eine Salvage-Session laufen, samt ihrer
+  // Vorpruefungen. Vor dem Aufruf gemessen fehlte diese Zeit, und ein Paket mit langer
+  // Rettung erschiene faelschlich unter der Zielmarke — die Quelle verlangt die Dauer
+  // "bis zum bestandenen Abschluss, einschliesslich aller Pruefungen und Korrekturen".
+  const dauerMs = Date.now() - started;
   // Unmittelbar nach der Auswertung (Issue #558): Die Guards kennen den Grund, aber
   // nicht die Einheit — hier liegt beides vor.
   if (ausgang === "hardStop") hefteStoppGrund(einheit);
@@ -6777,6 +8886,7 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     // Ganz hinten (Issue #776): Neue Felder haengen an, die bestehenden behalten Namen und
     // Reihenfolge — sie sind der Vertrag mit den Auswertungen.
     ...wartendFelder(),
+    ...zeitlimitFelder(),
   });
   return ausgang;
 }
@@ -6795,13 +8905,36 @@ function lockVorErsterSession() {
 }
 
 /**
- * Vermerkt den Grund, wenn die Umsetzungsschleife mit leerem Ready endet, ohne bis
- * hierher ein einziges Paket gezogen zu haben (Issue #744). Ein Lauf mit Arbeit endet
- * an dieser Stelle ebenso, aber ohne noWorkReason — sonst entschiede diese Stelle
- * dieselbe Frage wie processedCount noch einmal.
+ * Der Fall eines Laufs, dem Ready ausgegangen ist (Issue #887).
+ *
+ * Eine leere Spalte, die dieser Lauf selbst geraeumt hat, ist keine leere Spalte:
+ * "Ready ist leer" schickte den Morgen dann in die falsche Richtung.
  */
-function readyLeerGrundVermerken(lauf) {
-  if (lauf.sessions === 0 && LAUF) LAUF.noWorkReason = READY_LEER_GRUND;
+function fallLeeresReady(lauf) {
+  return lauf.zaehler.deferred > 0
+    ? { fall: "alleZurueckgestellt", daten: { anzahl: lauf.zaehler.deferred } }
+    : { fall: "readyLeer", daten: {} };
+}
+
+/**
+ * Vermerkt am Lauf, was ein nicht genommener Umsetzungs-Lock bedeutet (Issue #887).
+ *
+ * Die beiden Arten stehen fuer Verschiedenes (Issue #886): Ein belegter Lock ist ein
+ * ruhiger Lauf neben einem anderen und endet ohne Paket; ein Schreibfehler ist eine
+ * Stoerung der Umgebung und gehoert als harter Stopp gemeldet, nicht als ruhige Nacht
+ * weggeschrieben. Der Schreibfehler geht denselben Weg wie der Vorflug-Guard: Hier ist
+ * kein Paket gezogen, der Grund gehoert deshalb an den Lauf und nicht an eine Einheit.
+ *
+ * Die Schleife ruft das und bricht danach ab — sie bricht also nicht ohne Auskunft ab.
+ */
+function lockFehlschlagVermerken(lauf) {
+  if (lauf.lock.art === "schreibfehler") {
+    merkeHartenStopp("umgebung", lauf.lock.grund);
+    hefteStoppGrundAnLauf();
+    lauf.hardStop = true;
+    return;
+  }
+  lauf.ohneArbeit = { fall: "umsetzungBelegt", daten: { grund: lauf.lock.grund } };
 }
 
 /**
@@ -6809,6 +8942,12 @@ function readyLeerGrundVermerken(lauf) {
  *
  * Fuehrt ihren Zustand in `lauf`, nicht ueber Rueckgaben: Bricht sie mit `break` ab — und
  * das tun vier harte Stopps —, muss der Aufrufer trotzdem wissen, wie weit sie kam.
+ *
+ * Kein `break` ohne Auskunft (Fachliche Quelle #880): Jedes Ende ohne Paket merkt sich
+ * seinen Fall auf `lauf.ohneArbeit`, ausgewertet wird er EINMAL nach der Schleife. Dass
+ * die Faelle hier nur gemerkt und nicht schon vermerkt werden, ist der Punkt: Ob der
+ * Lauf ueberhaupt ohne Arbeit blieb, weiss erst der Aufrufer — und vier Stellen, die
+ * dieselbe Frage beantworten, laufen auseinander.
  */
 async function implementierungsSchleife(args, ctx, lauf) {
   let iterations = 0;
@@ -6816,7 +8955,7 @@ async function implementierungsSchleife(args, ctx, lauf) {
     iterations++;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) {
-      readyLeerGrundVermerken(lauf);
+      lauf.ohneArbeit = fallLeeresReady(lauf);
       break;
     }
     warnWennLabelNirgendsVorkommt(ctx, ready);
@@ -6824,7 +8963,10 @@ async function implementierungsSchleife(args, ctx, lauf) {
     // Routing-Label (#159): erstes Ready-Issue mit dem gesuchten Label; ungelabelte
     // Issues davor bleiben unangetastet. Kein Treffer -> Lauf endet wie bei leerem Ready.
     const top = ctx.labelFilter === null ? ready[0] : ready.find(ctx.hasLabel);
-    if (!top) break;
+    if (!top) {
+      lauf.ohneArbeit = { fall: "keinLabel", daten: { label: ctx.labelFilter, anzahl: ready.length } };
+      break;
+    }
 
     const gate = pruefeIssueGates(top);
     if (gate) {
@@ -6836,7 +8978,10 @@ async function implementierungsSchleife(args, ctx, lauf) {
     // Erst hier, nicht beim Eintritt: Ein Lauf, der an leerem Ready, am Routing-Label oder
     // an lauter Gates endet, setzt keine Umsetzung in Gang und darf keine Kette abhalten.
     lauf.lock ??= lockVorErsterSession();
-    if (!lauf.lock.ok) break;
+    if (!lauf.lock.ok) {
+      lockFehlschlagVermerken(lauf);
+      break;
+    }
 
     lauf.sessions++;
     log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
@@ -6871,6 +9016,9 @@ export async function laufeImplementierung(args, ctx) {
     zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 },
     // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
     salvageAttempted: new Set(),
+    // Der Fall, an dem die Schleife ohne Paket endete (Issue #887) — gemerkt in der
+    // Schleife, ausgewertet danach.
+    ohneArbeit: null,
     // Was jede Session gepruft und was sie ausgelassen hat (#428) — je Runde ein Eintrag,
     // auch bei hartem Stopp: Der Bericht soll gerade dann sagen, was noch geprueft wurde.
     pruefungen: [],
@@ -6885,6 +9033,15 @@ export async function laufeImplementierung(args, ctx) {
     if (lauf.lock?.ok) lauf.lock.freigeben();
   }
   const { sessions, hardStop } = lauf;
+
+  // Die eine Stelle, die "gab es Arbeit?" beantwortet (Issue #887). Ein harter Stopp ist
+  // kein Lauf ohne Arbeit, sondern eine Stoerung: Er traegt seinen `fehlerText`, und ein
+  // `noWorkReason` daneben liesse ihn wie eine ruhige Nacht aussehen. Fehlt der Fall,
+  // sagt der Rueckfall ausdruecklich, dass hier eine Lage unbenannt geblieben ist.
+  if (sessions === 0 && !hardStop) {
+    const { fall, daten } = lauf.ohneArbeit ?? { fall: null, daten: {} };
+    vermerkeOhneArbeit(fall, daten);
+  }
 
   // Der Abschluss gehoert hierher und nicht in main(): Der Dry-Run beendet den Prozess
   // selbst und kaeme an einer Stelle in main() nie an.
@@ -6906,11 +9063,18 @@ async function main() {
   // Dry-Run, der nichts am Board veraendert.
   if (!args.dryRun) berichteNachtragen();
 
-  // Drei einander ausschliessende Programme. Kette und Dry-Run beenden den Prozess
+  // Vier einander ausschliessende Programme. Kette, Prueflauf und Dry-Run beenden den Prozess
   // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code bilden.
   // Die Kette steht vor dem Dry-Run: --kette --dry-run ist ein Trockenlauf DER KETTE.
   if (args.kette) {
     await laufeKette(args);
+    return;
+  }
+  // Der Prueflauf ebenso vor dem Dry-Run (Plan #904, E17): `--pruefen --dry-run` weist
+  // `pruefeArgs` ab, und dieser Zweig haelt den Aufruf auch dann bei seinem Lauf, wenn dort
+  // je einmal eine Vorschau entstehen sollte.
+  if (args.pruefen) {
+    await laufePrueflauf(args);
     return;
   }
   if (args.dryRun) {
@@ -6923,7 +9087,7 @@ async function main() {
   // Label-Tests matchen die Zeile bis dorthin, und ein Einschub davor haette sie
   // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
   log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
-  for (const zeile of pruefBericht(ergebnis.pruefungen)) log(zeile);
+  for (const zeile of pruefBericht(ergebnis.pruefungen, LAUF?.einheiten ?? [], config?.night?.zielUmsetzungMin)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);
 }

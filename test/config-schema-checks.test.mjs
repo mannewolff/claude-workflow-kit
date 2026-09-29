@@ -61,6 +61,9 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.deepEqual(pruefe({ type: "number", minimum: 0, maximum: 100 }, 80), [], "in den Grenzen");
   assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, 120).length, 1, "ueber der Obergrenze");
   assert.equal(pruefe({ type: "number", minimum: 0, maximum: 100 }, -1).length, 1, "unter der Untergrenze");
+  assert.deepEqual(pruefe({ type: "number", exclusiveMinimum: 0 }, 0.5), [], "ueber der echten Untergrenze");
+  assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, 0).length, 1, "auf der echten Untergrenze");
+  assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, -1).length, 1, "unter der echten Untergrenze");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -219,6 +222,61 @@ test("guete: die Pflichtfelder und die Grenzen stehen am Feld im Schema", () => 
   assert.equal(feld.properties.marke.type, "number", "marke ist keine Zahl");
   assert.equal(feld.properties.marke.minimum, 0, "die Untergrenze 0 fehlt");
   assert.equal(feld.properties.marke.maximum, 100, "die Obergrenze 100 fehlt");
+});
+
+// --- Die vierte Achse: nichtBeimAbschluss (Issue #949) ---
+//
+// Sie sagt nicht, OB und nicht, WANN eine Pruefung laeuft, sondern WARUM sie den
+// Abschluss eines einzelnen Arbeitspakets nicht tragen muss. Eine geschlossene
+// Werteliste und kein Freitext: Der Wert steht im Auslassungsgrund und wird gelesen.
+
+test("nichtBeimAbschluss: die beiden Werte sind gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "zusammenspiel" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "volleTestmenge" }), []);
+});
+
+test("nichtBeimAbschluss: ein Wert ausserhalb der Liste ist ungueltig", () => {
+  // Der eigentliche Zweck des enum. Ein 'abends' liesse die Pruefung beim Abschluss
+  // still weiterlaufen — oder, schlimmer, still ausfallen.
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: "abends" }), []);
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "mvn verify", nichtBeimAbschluss: true }), []);
+});
+
+test("nichtBeimAbschluss: die Achse steht neben areas, always und stufe", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", areas: ["backend"], nichtBeimAbschluss: "zusammenspiel" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "mvn verify", always: true, stufe: "paket", nichtBeimAbschluss: "volleTestmenge" }), []);
+});
+
+test("nichtBeimAbschluss: ein Eintrag ohne die Achse bleibt gueltig", () => {
+  // Der Bestand darf sich nicht ruehren: fehlendes Feld = unveraendertes Verhalten.
+  assert.deepEqual(pruefe(eintragSchema, "node --test"), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test", stufe: "push" }), []);
+});
+
+test("nichtBeimAbschluss: das enum steht am Feld im Schema", () => {
+  const feld = eintragSchema.oneOf.find((z) => z.type === "object")?.properties?.nichtBeimAbschluss;
+  assert.ok(feld, "das Feld 'nichtBeimAbschluss' fehlt in der Objektform von buildChecks");
+  assert.deepEqual(feld.enum, ["zusammenspiel", "volleTestmenge"], "die beiden Werte stimmen nicht");
+  assert.equal(feld.type, "string", "das Feld ist kein String");
+});
+
+test("nichtBeimAbschluss: die Beschreibung nennt --abschluss, das fehlende Feld und die Teamweit-Formel", () => {
+  const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.nichtBeimAbschluss.description;
+  assert.ok(text, "das Feld hat keine description");
+  assert.match(text, /--abschluss/, "der Schalter steht nicht in der Beschreibung");
+  assert.match(text, /fehlendes Feld/i, "was ein fehlendes Feld bedeutet, steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel"
+  );
+});
+
+test("nichtBeimAbschluss: die Beschreibung des Eintrags zaehlt die Achse mit auf", () => {
+  // Die Aufzaehlung der Achsen ist der einzige Ort, an dem ein Leser der Config
+  // erfaehrt, dass es sie gibt — eine unvollstaendige Aufzaehlung ist schlimmer
+  // als keine.
+  assert.match(eintragSchema.description, /nichtBeimAbschluss/,
+    "die Beschreibung des Eintrags nennt die vierte Achse nicht");
 });
 
 test("guete: die Beschreibung nennt den einen Eintrag, die Stufengrenze und die Teamweit-Formel", () => {
@@ -451,7 +509,10 @@ function alleProperties(knoten, pfad = "", out = []) {
 
 /** Alle description-Texte des Schemas, einschliesslich Wurzel und items. */
 function alleBeschreibungen(knoten, out = []) {
-  if (Array.isArray(knoten)) { for (const k of knoten) alleBeschreibungen(k, out); return out; }
+  if (Array.isArray(knoten)) {
+    for (const k of knoten) alleBeschreibungen(k, out);
+    return out;
+  }
   if (!istObjekt(knoten)) return out;
   if (typeof knoten.description === "string") out.push(knoten.description);
   for (const [schluessel, wert] of Object.entries(knoten)) {
@@ -521,6 +582,70 @@ test("aufwand.schwellen: 80 und -0.1 werden je Feld abgewiesen, 0, 0,5 und 1 geh
   }
 });
 
+// --- Der Prueflauf: Label, Zeit- und Kostendeckel (Issue #905) ----------------
+//
+// Der Lauf gehoert dem Tag und steht deshalb in einem eigenen Wurzelblock und nicht
+// unter `night` (Plan #904, E5). Ohne den Block laedt er kein Budget; er ist zugleich
+// die Quelle der Einstellungs-Dokumentation.
+
+test("pruefLauf: der Block steht in der Wurzel und ist geschlossen", () => {
+  const block = schema.properties.pruefLauf;
+  assert.ok(block, "der Wurzelblock 'pruefLauf' fehlt im Schema");
+  assert.equal(block.type, "object", "der Block ist kein Objekt");
+  assert.equal(block.additionalProperties, false, "der Block ist nicht geschlossen");
+  assert.deepEqual(Object.keys(block.properties).sort(), ["kostenUsd", "label", "pruefungMin"]);
+});
+
+test("pruefLauf: die drei Vorgabewerte stehen am Feld", () => {
+  const felder = schema.properties.pruefLauf.properties;
+  assert.equal(felder.label.type, "string", "label ist keine Zeichenkette");
+  assert.equal(felder.label.default, "kit:pruefen", "die Vorgabe 'kit:pruefen' fehlt am Label");
+  assert.equal(felder.pruefungMin.type, "number", "pruefungMin ist keine Zahl");
+  assert.equal(felder.pruefungMin.default, 25, "die Vorgabe 25 fehlt an pruefungMin");
+  assert.equal(felder.pruefungMin.exclusiveMinimum, 0, "die Untergrenze fehlt an pruefungMin");
+  assert.equal(felder.kostenUsd.type, "number", "kostenUsd ist keine Zahl");
+  assert.equal(felder.kostenUsd.default, 25, "die Vorgabe 25 fehlt an kostenUsd");
+  assert.equal(felder.kostenUsd.exclusiveMinimum, 0, "die Untergrenze fehlt an kostenUsd");
+});
+
+test("pruefLauf: eine Config mit dem Block ist gueltig, eine ohne ihn auch", () => {
+  const mit = { ...beispielConfig, pruefLauf: { label: "kit:pruefen", pruefungMin: 25, kostenUsd: 25 } };
+  assert.deepEqual(pruefe(schema, mit), []);
+  const { pruefLauf, ...ohne } = beispielConfig;
+  assert.deepEqual(pruefe(schema, ohne), [], "eine Bestandsconfig ohne den Block faellt durch");
+});
+
+test("pruefLauf: ein unbekanntes Feld und eine Zeit von null fallen durch", () => {
+  // Der eigentliche Zweck der Grenzen: Ein Zeitbudget von null liesse jede Session
+  // sofort ablaufen, und der Lauf meldete lauter unvollstaendige Pruefungen.
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { erfunden: 1 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { pruefungMin: 0 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { kostenUsd: -1 } }), []);
+  assert.notDeepEqual(pruefe(schema, { ...beispielConfig, pruefLauf: { label: 5 } }), []);
+});
+
+test("pruefLauf: die Blockbeschreibung nennt den Tag und endet auf die Teamweit-Formel", () => {
+  // JSON kennt keine Kommentare — dass der Lauf dem Tag gehoert und nicht der Nacht,
+  // liest nur hier, wer sich fragt, warum der Block nicht unter night steht.
+  const text = schema.properties.pruefLauf.description;
+  assert.ok(text, "der Block hat keine description");
+  assert.match(text, /Tag/, "dass der Lauf dem Tag gehoert, steht nicht in der Beschreibung");
+  assert.ok(
+    text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel",
+  );
+});
+
+test("pruefLauf: die ausgelieferte Vorlage traegt den Block mit den Vorgabewerten", () => {
+  // Die Vorlage ist zum Abschreiben gedacht — wer den Lauf einrichtet, sieht die drei
+  // Deckel dort, ohne die Doku zu lesen.
+  const felder = schema.properties.pruefLauf.properties;
+  assert.ok(beispielConfig.pruefLauf, "templates/workflow.config.json fuehrt pruefLauf nicht");
+  for (const [name, knoten] of Object.entries(felder)) {
+    assert.equal(beispielConfig.pruefLauf[name], knoten.default, `${name} weicht vom Vorgabewert ab`);
+  }
+});
+
 test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte", () => {
   // Gezaehlt werden Ruecklaufbewegungen je Karte mit Eintritt nach In review, nicht
   // der Anteil der Arbeitspakete (kit/wirksamkeit.mjs, "Zaehlweise der Quote"). Die
@@ -528,4 +653,26 @@ test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte"
   const text = schema.properties.wirksamkeit.properties.quoteSchwelle.description;
   assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");
   assert.doesNotMatch(text, /Anteil der Arbeitspakete/, "die falsche Zaehlweise steht noch in der Beschreibung");
+});
+
+// --- installCommand: die Abhaengigkeiten des frischen Worktrees (Issue #964) ---
+//
+// `worktree.mjs anlegen` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
+// wie formatFixCommand und gilt wie dieses teamweit; ein Nicht-String waere eine
+// Einstellung, an der das Anlegen jedes Worktrees stillschweigend scheiterte.
+
+test("installCommand: eine Kommandozeile ist gueltig", () => {
+  assert.deepEqual(pruefe(schema.properties.installCommand, "npm ci"), []);
+  assert.deepEqual(pruefe(schema.properties.installCommand, ""), [], "der Leer-String heisst 'nichts tun'");
+});
+
+test("installCommand: ein Nicht-String ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(schema.properties.installCommand, ["npm", "ci"]), []);
+  assert.notDeepEqual(pruefe(schema.properties.installCommand, true), []);
+});
+
+test("installCommand: die Beschreibung sagt, was ein fehlendes Feld bedeutet", () => {
+  const text = schema.properties.installCommand.description;
+  assert.match(text, /teamweit/, "die Beschreibung nennt die Geltung nicht");
+  assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
 });

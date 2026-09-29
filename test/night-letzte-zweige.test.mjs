@@ -8,10 +8,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -127,6 +132,4 @@ test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", NU
 // ============================================================
 // Eine Review-Session, deren CLI scheitert
 // ============================================================
-
-const VORFLUG_OK = 'cat <<\'EOF\'\n<<<VORFLUG\n{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}\nVORFLUG>>>\nEOF';
 

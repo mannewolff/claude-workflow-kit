@@ -52,10 +52,16 @@
       "kostenUsdB": 150,
       "korrekturrunden": 2
     },
+    "zielUmsetzungMin": 10,
     "modelle": [
       "claude-opus-5",
       "claude-sonnet-5"
     ]
+  },
+  "pruefLauf": {
+    "label": "kit:pruefen",
+    "pruefungMin": 25,
+    "kostenUsd": 25
   },
   "issueReview": {
     "requiredBeforeReady": false,

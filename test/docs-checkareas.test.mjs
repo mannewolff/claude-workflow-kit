@@ -214,24 +214,32 @@ test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sicht
   assert.match(absatz, /Summenzeile|Summe/i, "die Summenzeile fehlt");
 });
 
-// Der Salvage-Pfad ist die eine Stelle, an der die bereichsbezogene Auswahl bewusst
-// ausbleibt. Ohne die Begruendung im Text liest ein spaeterer Leser das als vergessene
-// Umstellung. Die Stufenauswahl greift dort aber sehr wohl — beides muss dastehen,
-// sonst ist der Absatz in die eine oder die andere Richtung falsch.
-test("der Salvage-Absatz weist die fehlende Bereichsauswahl mit Begruendung aus", () => {
+// Die Salvage-Vorpruefung geht ueber `checks.mjs run`, damit sie denselben Nachweis
+// hinterlaesst, den das Commit-Gate liest. Ohne diese Begruendung im Text liest ein
+// spaeterer Leser den Umweg als Umstaendlichkeit und dreht ihn zurueck — und damit
+// waere die Rettung wieder unmoeglich, sobald die Session rot gemessen hat. Mit dem
+// Weg kommt die bereichsbezogene Auswahl; die Stufenauswahl bleibt, wie sie war.
+// Beides muss dastehen, sonst ist der Absatz in die eine oder die andere Richtung falsch.
+test("der Salvage-Absatz weist den Weg ueber checks.mjs und den Nachweis fuer das Gate aus", () => {
   const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
-  const absatz = absatzMit(kapitel, /Salvage/, /buildChecks/);
-  assert.ok(absatz, "kein Salvage-Absatz mit buildChecks");
-  assert.match(absatz, /ohne\s+\*{0,2}bereichsbezogene\*{0,2}\s+Auswahl|ohne\s+\*{0,2}Bereichsauswahl/i,
-    "es steht nicht, dass im Salvage-Pfad die bereichsbezogene Auswahl ausbleibt");
+  // `--frisch` als zweites Muster und nicht `checks.mjs run`: Das Kommando steht im
+  // Kapitel auch im Absatz ueber die Prueflaeufe, der Schalter nur hier.
+  const absatz = absatzMit(kapitel, /Salvage/, /--frisch/);
+  assert.ok(absatz, "kein Salvage-Absatz, der den erzwungenen Lauf nennt");
+  assert.match(absatz, /checks\.mjs run/,
+    "es steht nicht, dass die Vorpruefung ueber checks.mjs run geht");
+  assert.match(absatz, /checks-summary\.json/,
+    "der Nachweis, um den es geht, ist nicht benannt");
+  assert.match(absatz, /Commit-Gate/,
+    "es steht nicht, dass genau dieser Nachweis das Commit-Gate passieren laesst");
+  assert.match(absatz, /bereichsbezogene\s+Auswahl|Bereichsauswahl/i,
+    "es steht nicht, welche Auswahl mit dem Weg ueber checks.mjs gilt");
   assert.match(absatz, /Paketstufe/,
     "es steht nicht, dass der Salvage-Pfad die Pruefungen der Paketstufe faehrt");
+  assert.match(absatz, /push|merge/,
+    "es steht nicht, dass die spaeteren Stufen aussen vor bleiben");
   assert.doesNotMatch(absatz, /volle[nrs]? (Liste|Umfang)|alle `buildChecks`/i,
     "der Absatz behauptet weiterhin die volle Liste — mit der Staffelung stimmt das nicht mehr");
-  assert.match(absatz, /kaputt|beschädigt/i,
-    "die Frage nach einem sauberen Paket ('hat diese Arbeit etwas kaputtgemacht?') fehlt");
-  assert.match(absatz, /brauchbar|Zwischenstand überhaupt/i,
-    "die Frage beim Retten ('ist dieser Zwischenstand ueberhaupt brauchbar?') fehlt");
   // Ein Leser der ausgelieferten Doku hat kein Board — eine Board-Nummer waere dort
   // ein Verweis ins Leere.
   assert.doesNotMatch(absatz, /Issue #\d+|Plan #\d+/,

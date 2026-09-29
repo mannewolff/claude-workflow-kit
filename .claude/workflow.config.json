@@ -1,26 +1,67 @@
 {
   "codeHost": "github",
+  "installCommand": "npm ci",
   "issueTracker": "toolbox",
   "buildChecks": [
     {
       "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
       "areas": [
-        "nachtrunner",
         "board",
+        "installer",
+        "nachtrunner",
+        "preise",
         "pruefungen"
       ]
     },
     {
-      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/install-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
       "areas": [
+        "board",
         "einstellungen",
-        "installer"
+        "installer",
+        "nachtrunner",
+        "pruefungen"
       ]
     },
     {
-      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/docs-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test \"test/cli-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\"",
       "areas": [
+        "board",
+        "installer",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\"",
+      "areas": [
+        "board",
+        "einstellungen",
+        "installer",
+        "nachtrunner",
+        "preise",
+        "pruefungen",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/docs-*.test.mjs\"",
+      "areas": [
+        "einstellungen",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
         "skills-doku"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "areas": [
+        "board",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
+        "skills-doku",
+        "worktree"
       ]
     },
     "node tools/sync-blobs.mjs --check",
@@ -48,28 +89,25 @@
   "checkAreas": {
     "nachtrunner": [
       "kit/night.mjs",
-      "kit/board.mjs",
-      "kit/checks.mjs",
-      "kit/aufwand.mjs",
-      "kit/wirksamkeit.mjs",
-      "kit/befunde.mjs",
-      "kit/preise.mjs",
-      "test/night-*.test.mjs"
+      "test/night-*.test.mjs",
+      "test/helpers/ergebnisstand-fixture.mjs",
+      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-umsetzung-fixture.mjs"
     ],
     "board": [
       "kit/board.mjs",
       "kit/board-ui.mjs",
-      "kit/preise.mjs",
       "tools/migrate-issues.mjs",
       "test/board-*.test.mjs",
-      "test/migrate-*.test.mjs"
+      "test/migrate-*.test.mjs",
+      "startboard.sh",
+      "test/helpers/board-*.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",
       "kit/aufwand.mjs",
       "kit/wirksamkeit.mjs",
       "kit/befunde.mjs",
-      "kit/preise.mjs",
       ".githooks/**",
       "templates/**",
       "test/checks-*.test.mjs",
@@ -77,19 +115,30 @@
       "test/aufwand-*.test.mjs",
       "test/wirksamkeit-*.test.mjs",
       "test/befunde-*.test.mjs",
-      "test/guete-*.test.mjs"
+      "test/guete-*.test.mjs",
+      "eslint.config.mjs",
+      "test/helpers/aufwand-fixture.mjs",
+      "test/helpers/checks-repo.mjs",
+      "test/helpers/checks-sperre.mjs",
+      "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "einstellungen": [
       "kit/einstellungen.mjs",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
-      "test/config-*.test.mjs"
+      "test/config-*.test.mjs",
+      "assets/fonts/*.woff2",
+      "test/helpers/einstellungen-fixture.mjs",
+      "test/helpers/mini-validator.mjs",
+      "test/helpers/oberflaeche-vm.mjs"
+    ],
+    "worktree": [
+      "kit/worktree.mjs"
     ],
     "installer": [
       "install.mjs",
       "tools/**",
       ".githooks/**",
-      "kit/**",
       "test/install-*.test.mjs",
       "test/sync-*.test.mjs",
       "test/tools-*.test.mjs",
@@ -97,7 +146,11 @@
       "test/derived-*.test.mjs",
       "test/copy-*.test.mjs",
       "test/kit-*.test.mjs",
-      "test/cli-*.test.mjs"
+      "test/cli-*.test.mjs",
+      ".gitignore",
+      "package.json",
+      "package-lock.json",
+      "test/helpers/board-fixture.mjs"
     ],
     "skills-doku": [
       "skills/**",
@@ -106,41 +159,103 @@
       "RELEASING.md",
       "CLAUDE.md",
       "README.md",
-      "kit/**",
       "test/skills-*.test.mjs",
       "test/docs-*.test.mjs",
       "test/workflow-*.test.mjs",
       "test/push-*.test.mjs",
       "test/mitteilung-*.test.mjs",
-      "test/vergleiche-*.test.mjs"
+      "test/vergleiche-*.test.mjs",
+      ".github/workflows/**",
+      "docs-site/**",
+      "package.json",
+      "test/helpers/board-fixture.mjs"
+    ],
+    "konfiguration": [
+      ".claude/workflow.config.json"
+    ],
+    "preise": [
+      "kit/preise.mjs"
     ]
   },
+  "ohnePruefung": [
+    {
+      "muster": "CHANGELOG.md",
+      "grund": "Release-Protokoll; keine Pruefung liest seinen Inhalt — die Changelog-Tests legen sich ihr eigenes Protokoll in einem Wegwerfprojekt an."
+    },
+    {
+      "muster": "LICENSE",
+      "grund": "Lizenztext; keine Pruefung liest ihn."
+    },
+    {
+      "muster": ".gitattributes",
+      "grund": "Git-Attribute fuer die Ablage; keine Pruefung liest sie."
+    },
+    {
+      "muster": ".claude/launch.json",
+      "grund": "Startvorgaben der Oberflaeche; keine Pruefung liest sie."
+    },
+    {
+      "muster": "sonar-project.properties",
+      "grund": "Konfiguration des externen Analysedienstes; keine Pruefung dieses Repositories liest sie."
+    },
+    {
+      "muster": "assets/fonts/OFL-*.txt",
+      "grund": "Lizenztexte der Schriften; gemessen werden die woff2-Dateien, nicht ihre Lizenz."
+    },
+    {
+      "muster": "assets/fonts/README.md",
+      "grund": "Herkunftsnotiz zu den Schriftdateien; keine Pruefung liest sie."
+    },
+    {
+      "muster": "konzept-rollen-als-agenten.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    },
+    {
+      "muster": "prozess-pruefstand.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    },
+    {
+      "muster": "prozess-pruefstand-nachtlauf.md",
+      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+    }
+  ],
+  "nurGeruest": [
+    {
+      "muster": "package.json",
+      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/install-settings-hooks.test.mjs, test/install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
+    },
+    {
+      "muster": "CLAUDE.md",
+      "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
+    }
+  ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
   "night": {
     "kette": {
       "label": "kit:night",
-      "planMin": 30,
-      "paketeMin": 25,
-      "reviewMin": 30,
-      "abdeckungMin": 10,
+      "planMin": 60,
+      "paketeMin": 30,
+      "reviewMin": 60,
+      "abdeckungMin": 15,
       "kostenUsd": 50,
       "korrekturrunden": 2
     },
+    "modell": "claude-opus-5-5",
     "modelle": [
       "claude-fable-5",
-      "claude-opus-5",
-      "claude-sonnet-5"
+      "claude-sonnet-5",
+      "claude-opus-5-5"
     ],
     "stufen": {
       "schwer": {
-        "modell": "claude-opus-5"
+        "modell": "claude-opus-5-5"
       },
       "mittel": {
-        "modell": "claude-opus-5",
+        "modell": "claude-opus-5-5",
         "effort": "medium"
       },
       "leicht": {
-        "modell": "claude-opus-5",
+        "modell": "claude-opus-5-5",
         "effort": "low"
       }
     }
@@ -151,7 +266,7 @@
       {
         "name": "opus",
         "kind": "claude",
-        "model": "claude-opus-5"
+        "model": "claude-opus-5-5"
       },
       {
         "name": "sonnet",

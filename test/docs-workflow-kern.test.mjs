@@ -13,16 +13,30 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +16 fuer den Abschnitt
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +4 fuer den gekennzeichneten
+// Zeitabbruch und die Kennzahl der Zielmarke (Issue #982, Plan #974): je ein Absatz im
+// Nachtbetrieb- und im Aufwand-Block — der Vermerk am Paket und die getrennt stehenden
+// Zeitabbrueche sind Regeln, nach denen eine Sitzung ihren eigenen Abbruch liest. Davor +3 fuer das vierte
+// Titel-Praefix `[Mensch]` (Issue #984): eine Tabellenzeile und der Absatz, der es von den
+// drei Dokument-Praefixen und von `[Task]` abgrenzt — ein Praefix, das eine Sitzung nicht
+// kennt, setzt sie eine Karte um, die nur ein Mensch erledigen kann. Davor +2 fuer den Verweis auf
+// den Kopf der Lint-Konfiguration (Issue #971, Plan #968/E3: die Vorlage verweist, das
+// Verfahren steht bei den Regeln). Davor +4 fuer die vierte Achse
+// der Pflichtchecks und den Kennzahlblock der Wirksamkeit (Issue #953, Plan #944: der
+// verkleinerte Abschlussumfang traegt nur mit seinen beiden Zusicherungen). Davor +2 fuer
+// die Regel, dass
+// Schritt 8 und 9 in einem eigenen Worktree laufen (Issue #929: eine Entscheidung Mannes,
+// nachdem zwei Release-Laeufe die Nacht-Kette eines Projekts abgerissen haben). Davor +16
+// fuer den Abschnitt
 // "Regel im Text oder Regel im Werkzeug" (Issue #856, Plan #810/E7: zuerst der Massstab,
 // dann die Werkzeuge, dann die Skills). Davor +14 fuer den Abschnitt
 // "Befunde der Modell-Pruefungen" (Issue #798, Plan #797/E19: zuerst der Regeltext, dann
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 394 Zeilen", () => {
+test("die Vorlage bleibt unter 409 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 394, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 394`);
+  assert.ok(zeilen <= 409, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 409`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
@@ -34,8 +48,17 @@ test("die gestrichenen Abschnitte sind weg", () => {
   }
 });
 
+// Seit Issue #898 kommt ein drittes Vorkommen dazu: Der Nachtbetrieb-Block nennt die
+// Pruefung als Bedingung beider Auftragsarten der Kette. Seit Issue #910 ein viertes: Der
+// Prueflauf-Block nennt sie als die Spur, die eine geprueft hinterlassene Karte traegt —
+// dort entsteht sie. Die Leitplanke bleibt scharf — genau vier, zwei davon im Absatz zu
+// /issue-review, das dritte im Nachtbetrieb-Block, das vierte im Prueflauf-Block.
 test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
-  assert.equal(VORLAGE.split("review:fertig").length, 3, "review:fertig steht nicht genau zweimal");
+  assert.equal(VORLAGE.split("review:fertig").length, 5, "review:fertig steht nicht genau viermal");
+  const nachtbetrieb = VORLAGE.slice(VORLAGE.indexOf("## Nachtbetrieb (optional)")).split(/\n## /)[0];
+  assert.equal(nachtbetrieb.split("review:fertig").length, 2, "der Nachtbetrieb-Block nennt review:fertig nicht genau einmal");
+  const prueflauf = VORLAGE.slice(VORLAGE.indexOf("## Der Prueflauf (optional)")).split(/\n## /)[0];
+  assert.equal(prueflauf.split("review:fertig").length, 2, "der Prueflauf-Block nennt review:fertig nicht genau einmal");
   const zeilen = VORLAGE.split("\n");
   const start = zeilen.findIndex((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
   assert.ok(start >= 0, "der Absatz zu /issue-review fehlt");
@@ -46,7 +69,8 @@ test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzu
   assert.match(absatz, /`review:fertig` als sichtbare Spur am Board/);
   assert.match(absatz, /je Board einmal angelegt/);
   assert.match(absatz, /Nacht-Kette verlangt diese Spur aber als Voraussetzung/);
-  assert.match(absatz, /wird uebersprungen, auch wenn er das Kettenlabel traegt/);
+  assert.match(absatz, /wird uebersprungen, auch wenn sie das Kettenlabel traegt/);
+  assert.match(absatz, /fuer die fachliche Anforderung wie fuer das Plandokument/);
 });
 
 test("die bleibenden Abschnitte stehen je einmal", () => {

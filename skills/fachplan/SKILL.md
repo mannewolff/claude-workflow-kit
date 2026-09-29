@@ -7,13 +7,13 @@ user-invocable: true
 # Fachplan
 Werkzeug neben dem Prozess, vor Schritt 2 (`/techplan`): Eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) wird in ein **fachliches Issue** überführt — die Diskussionsgrundlage für den Product Owner. Fachliche Issues beschreiben das Was und Warum, nie das Wie. Sie werden gegroomt, nie implementiert. Die PO-Schleife ist **opt-in**: Wer keinen PO hat, überspringt diesen Skill und ruft direkt `/techplan` auf.
 
-## Eingang `/fachplan #T`: ein angehaltener `[Task]` als Quelle
-Ein `[Task]`, bei dem `/implement-next` oder `/implement-ready` an einer Frage der Stopp-Klasse angehalten haben, trägt den Halt als Kommentar am Board und wartet im Backlog. Die Nummer kommt als Argument: `/fachplan #T` nimmt **den Task samt Halt-Kommentar als Eingang der Anforderung**, nicht den Chat.
+## Eingang `/fachplan #T`: eine Quellkarte statt des Chats
+Zwei Karten sind ein zulässiger Eingang, und die Nummer kommt als Argument: `/fachplan #T` nimmt **die Quellkarte samt Kommentaren als Eingang der Anforderung**, nicht den Chat. Erstens ein **angehaltener `[Task]`** — `/implement-next` oder `/implement-ready` haben an einer Frage der Stopp-Klasse angehalten, der Halt steht als Kommentar am Board, die Karte wartet im Backlog. Zweitens eine **`[Idee]`, die eine Abwägung verlangt**: Verlangt eine Idee eine Abwägung, ist `/fachplan` mit ihrer Nummer der Weg; ist nichts abzuwägen oder hat der Mensch bereits entschieden, `/task`. Welcher Fall vorliegt, entscheidet der Mensch mit dem Aufruf — kein Skill liest es der Karte ab, denn ob etwas abzuwägen ist, ist genau die Frage, die ein Mensch beantwortet.
 
-1. Den Task vollständig lesen, Body **und** Kommentare — der Halt-Kommentar benennt den Punkt der Stopp-Klasse und die eine Frage, nicht der Body.
+1. Die Quellkarte vollständig lesen, Body **und** Kommentare — beim angehaltenen Task benennt der Halt-Kommentar den Punkt der Stopp-Klasse und die eine Frage, nicht der Body.
 2. Daraus die fachliche Anforderung entwickeln: Was die Frage fachlich offenlässt, wird zu Ziel, Akzeptanzkriterien und offenen Fragen an den PO. Technische Wege aus dem Kommentar gehen **nicht** mit — sie sind das Wie.
 
-**Jede andere Karte wird abgelehnt.** Trägt `#T` nicht das Präfix `[Task]` oder keinen Kommentar mit dem wörtlichen Folgesatz `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` (Konstante `HALT_FOLGESATZ` in `kit/night.mjs`), endet der Skill mit der Meldung, dass `/fachplan #T` nur fuer einen angehaltenen `[Task]` gilt, und legt nichts an. Eine `[Idee]` und ein `[Fachlich]` sind keine Vorgänger: Die eine wird per `/task` zum Arbeitspaket, das andere ist selbst die Wurzel.
+**Jede andere Karte wird abgelehnt.** Trägt `#T` weder das Präfix `[Idee]` noch das Präfix `[Task]` mit einem Kommentar, der den wörtlichen Folgesatz `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` enthält (Konstante `HALT_FOLGESATZ` in `kit/night.mjs`), endet der Skill mit der Meldung, dass `/fachplan #T` nur fuer einen angehaltenen `[Task]` gilt oder fuer eine `[Idee]` mit einer Abwägung, und legt nichts an. `[Fachlich]` und `[Plan]` bleiben abgewiesen: Das eine ist selbst die Wurzel, im anderen ist der volle Weg bereits begonnen.
 
 ## Ablauf
 ### 1. Anforderung fachlich verdichten
@@ -34,7 +34,7 @@ Woran erkennt der PO, dass es das ist? Konkret und aus Nutzersicht prüfbar.
 Was gehört ausdrücklich nicht dazu? (Scope-Grenze)
 
 ## Offene Fragen an den PO
-Was muss im Groomen geklärt werden?
+Was muss im Groomen geklärt werden? Sind alle Fragen beantwortet, steht hier als **erste** Zeile ein Vermerk, der mit „Keine“ beginnt (siehe „Grooming findet im Body statt“).
 ```
 
 **Strikt technikfrei:** keine Dateien, keine Architektur, keine Implementierungsdetails. Der Maßstab: Ein PO ohne Code-Kenntnis versteht jede Zeile.
@@ -78,12 +78,12 @@ Scheitert ein Dateischritt, wird die unvollstaendige Datei nicht uebertragen; sc
 
 **Sonderfall Toolbox-/kanban-kit-Tracker (Ideen-Pool):** Liefert `issue create` eine `ideaId` mit `pending: true`, liegt das fachliche Issue als board-lose Idee im Projekt-Ideen-Pool. Adressierbar (#N) und groombar wird es erst, wenn der Mensch es einplant — Pool = ungesichtete Rohanforderung, Backlog = fachlich in Arbeit.
 
-**Nach dem Anlegen aus einem angehaltenen `[Task]`: die Spur zurück.** Ist die fachliche Anforderung `#N` über den Eingang `/fachplan #T` entstanden, hängt der Skill genau einen Kommentar an **#T**:
+**Nach dem Anlegen aus einer Quellkarte: die Spur zurück.** Ist die fachliche Anforderung `#N` über den Eingang `/fachplan #T` entstanden — aus einem angehaltenen `[Task]` wie aus einer `[Idee]` —, hängt der Skill genau einen Kommentar an **#T**:
 ```bash
 node .claude/kit/board.mjs issue comment <T> --text "Fortsetzung: Issue #N"
 ```
 
-Am neuen `[Fachlich]`-Issue entsteht dabei **keine** Herkunftszeile und kein `--derived-from`; `CLAUDE-Fachplan.md` (F9) verbietet sie an der fachlichen Wurzel. Die Spur läuft in die andere Richtung, weil die Nummer der neuen Anforderung erst hier entsteht. Ohne Argument `#T` entfaellt der Aufruf **ersatzlos**. Liefert `issue create` nur eine `ideaId` mit `pending: true`, entfällt der Kommentar ebenfalls ersatzlos, und die Meldung nennt die `ideaId`, damit der Mensch die Spur beim Einplanen selbst legt.
+Am neuen `[Fachlich]`-Issue entsteht dabei **keine** Herkunftszeile und **kein** `--derived-from` — für die Idee gilt dieselbe Spur-Konvention wie für den Task; `CLAUDE-Fachplan.md` (F9) verbietet sie an der fachlichen Wurzel. Die Spur läuft in die andere Richtung, weil die Nummer der neuen Anforderung erst hier entsteht. Ohne Argument `#T` entfaellt der Aufruf **ersatzlos**. Liefert `issue create` nur eine `ideaId` mit `pending: true`, entfällt der Kommentar ebenfalls ersatzlos, und die Meldung nennt die `ideaId`, damit der Mensch die Spur beim Einplanen selbst legt.
 
 ### 3. Abschluss
 Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
@@ -93,7 +93,7 @@ Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
 ## Grooming findet im Body statt, nie in Kommentaren
 **Verbindlich:** Alles, worauf sich ein späterer Plan stützen muss, gehört in den **Body** des Issues — Antworten des PO ebenso wie Ergänzungen der KI. Kommentare sind für Verlauf und Diskussion, nicht für Entscheidungen. Der Body ist der **verhandelte Stand**, Kommentare sind **Verlauf**; wer eine Entscheidung nur kommentiert, zwingt jede spätere Session, sie aus einer Diskussion zu rekonstruieren. `board.mjs issue get` liefert die Kommentare zwar mit, aber das ändert die Regel nicht: Was gilt, steht im Body.
 
-**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar.
+**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Sind damit alle Fragen beantwortet, bekommt der Abschnitt als erste Zeile einen Vermerk, der mit „Keine“ beginnt** — etwa „Keine. Die 3 Fragen hat der PO am 2026-09-24 entschieden, die Antworten stehen unter der jeweiligen Frage." Fragen und Antworten bleiben darunter stehen; sie sind der verhandelte Stand, auf den sich der Plan stützt (F8). Der Grund: Der Nacht-Runner liest allein die **erste** nichtleere Zeile des Abschnitts und hält die Anforderung an, solange dort eine Frage steht — beantwortete Fragen ohne diesen Vermerk erkennt er nicht. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar.
 
 So kommt der ergänzte Body ins Board, wieder über eine Datei **außerhalb des Projektverzeichnisses**:
 ```bash

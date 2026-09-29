@@ -17,6 +17,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -184,20 +189,6 @@ test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", NUR_POS
 // ============================================================
 // Der Review-Modus ohne Kandidaten
 // ============================================================
-
-const EIN_REVIEWER = {
-  issueReview: { rounds: 1, reviewers: [{ name: "fable", kind: "claude", model: "claude-fable-5" }] },
-};
-
-const VORFLUG_OK = 'cat <<\'EOF\'\n<<<VORFLUG\n{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}\nVORFLUG>>>\nEOF';
-
-// Dieselbe Ausgabe allein mit `echo` — ein sh-Builtin, das auch in einem PATH ohne
-// `cat` funktioniert (siehe mitFakeBin).
-const VORFLUG_OK_ECHO = [
-  "echo '<<<VORFLUG'",
-  `echo '{"reviewers":[],"tracker":{"erreichbar":true,"geprueft":"issue list"}}'`,
-  "echo 'VORFLUG>>>'",
-].join("\n");
 
 // ============================================================
 // Eine Session, die gar nicht erst startet

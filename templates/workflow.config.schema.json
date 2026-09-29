@@ -43,7 +43,7 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"guete\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann.",
+        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"guete\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann. Auf einer vierten Achse steht \"nichtBeimAbschluss\": Es sagt, WARUM eine Prüfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss — sie wirkt nur beim Lauf mit \"--abschluss\", und ein fehlendes Feld bedeutet unverändertes Verhalten.",
         "oneOf": [
           {
             "type": "string"
@@ -78,6 +78,14 @@
                 ],
                 "default": "paket",
                 "description": "Wann die Prüfung an der Reihe ist: \"paket\" beim Abschluss eines Arbeitspakets, \"push\" vor dem Veröffentlichen, \"merge\" vor der Freigabe. Fehlendes Feld = \"paket\" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStufen (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette."
+              },
+              "nichtBeimAbschluss": {
+                "type": "string",
+                "enum": [
+                  "zusammenspiel",
+                  "volleTestmenge"
+                ],
+                "description": "Warum diese Pr\u00fcfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss: \"zusammenspiel\" = sie pr\u00fcft das Zusammenspiel mehrerer Teile, \"volleTestmenge\" = sie gewinnt ihren Befund aus der vollst\u00e4ndigen Testmenge. Die vierte Achse neben \"areas\"/\"always\" (ob eine Pr\u00fcfung betroffen ist), \"stufe\" (wann sie an der Reihe ist) und \"guete\" (was sie misst) \u2014 dieses Feld sagt nichts davon, sondern warum sie beim Abschluss entfallen darf. Sie wirkt nur, wenn der Aufruf \"--abschluss\" tr\u00e4gt: den setzen allein die implement-Skills beim Abschluss genau einer Karte. Jeder andere Lauf f\u00e4hrt die Pr\u00fcfung mit, und sp\u00e4testens vor dem Ver\u00f6ffentlichen l\u00e4uft sie in jedem Fall. Nur an einem Eintrag der Stufe \"paket\" sinnvoll \u2014 an \"push\" oder \"merge\" l\u00e4uft die Pr\u00fcfung beim Abschluss ohnehin nicht, und der Pr\u00fcflauf bricht dort ab. Tr\u00e4gt jeder Eintrag der Paketstufe dieses Feld oder einen guete-Block, hat der Abschluss kein Gate mehr; auch das bricht ab. Fehlendes Feld = die Pr\u00fcfung l\u00e4uft auch beim Abschluss = unver\u00e4ndertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
               "guete": {
                 "type": "object",
@@ -129,14 +137,78 @@
         }
       }
     },
+    "ohnePruefung": {
+      "type": "array",
+      "description": "Dateien, zu denen es ausdrücklich nichts zu prüfen gibt — die dritte Antwort neben \"berührt einen Bereich\" und \"trifft kein Muster, also voller Umfang\". Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung seinen Inhalt liest; ohne Grund kein Eintrag, denn eine Ausnahme von der Regel \"im Zweifel läuft alles\" ist nur erträglich, wenn sie sich begründet. checkAreas hat Vorrang: Trifft eine Datei beide Musterarten, gilt sie als berührt und löst ihre Bereichsprüfungen aus — die Auswahl darf nur in Richtung mehr Prüfung irren. Die Datei bleibt im Nachweis der Zusammenfassung — in der Liste der geänderten Dateien und unter ihren Blob-Hashes — und geht darum unverändert durch das Commit-Gate. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "muster": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pfadmuster wie in checkAreas: \"*\" innerhalb eines Segments, \"**\" über Segmentgrenzen hinweg, \"/\" als Trenner."
+          },
+          "grund": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Warum keine Prüfung den Inhalt dieser Datei liest. Steht in jedem Lauf im Bericht und ist Pflicht — ein Bereichsname könnte ihn nicht tragen."
+          }
+        },
+        "required": [
+          "muster",
+          "grund"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "nurGeruest": {
+      "type": "array",
+      "description": "Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Die Verflechtungserhebung (tools/verflechtung.mjs) zählt jede Erwähnung eines Quellpfads im Text einer Testdatei als Kopplung; für die Deckungsprüfung irrt das in die sichere Richtung, für die Auswahl der Prüfkommandos nicht mehr: Ein Test, der sich in einem Wegwerf-Repository eine eigene .gitignore oder package.json schreibt, ist damit nicht an die gleichnamige Datei dieses Projekts gekoppelt. Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung diesen Pfad liest; ohne Grund kein Eintrag. Das Muster gilt gegen den Quellpfad und damit für alle Testdateien zugleich: Was auch nur eine einzige Testdatei wirklich prüft, gehört nicht hierher — es einzutragen machte die Deckungsprüfung an dieser Stelle blind, und zwar still. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "muster": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Pfadmuster wie in checkAreas: \"*\" innerhalb eines Segments, \"**\" über Segmentgrenzen hinweg, \"/\" als Trenner."
+          },
+          "grund": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Pflicht, und belegt statt behauptet: Die Stelle, an der nachgesehen wurde, gehört dazu."
+          }
+        },
+        "required": [
+          "muster",
+          "grund"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
     "mutationCommand": {
       "type": "string",
       "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
+    "guetekommandos": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Weitere Kommandos bzw. Kommando-Präfixe, die eine Gütemessung starten (optional). Gate I6 von \"issue check-form\" weist ein Arbeitspaket ab, dessen Akzeptanzkriterium eines davon nennt — zusätzlich zu \"mutationCommand\" und dem Kommando eines buildChecks-Eintrags mit \"guete\"-Block. Der Weg für einen Mess-Treiber, den das Projekt erst baut: Er kann noch keine Prüfung sein, sein Präfix steht aber schon hier, und ein Vollauf wandert damit nicht ins Akzeptanzkriterium eines Pakets. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": []
+    },
     "formatFixCommand": {
       "type": "string",
       "description": "Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": ""
+    },
+    "installCommand": {
+      "type": "string",
+      "description": "Kommando, das die Abhängigkeiten des Projekts im Projektverzeichnis herstellt (z.B. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). 'worktree.mjs anlegen' führt es nach dem Anlegen im frischen Worktree aus — der trägt nur Versioniertes und hat weder node_modules noch .venv oder vendor/, und ein Pflichtcheck, der daran scheitert, liefert still einen falschen Messwert. Endet es mit einem Fehler, wird der Worktree wieder abgebaut. Leer-String oder fehlendes Feld = keine Installation, dann trägt der Aufrufer die Verantwortung dafür. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "mainBranch": {
@@ -454,17 +526,17 @@
       "properties": {
         "kette": {
           "type": "object",
-          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Ein Fachplan mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
+          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
           "properties": {
             "label": {
               "type": "string",
               "default": "kit:night",
-              "description": "Das Kennzeichen am Fachplan, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
+              "description": "Das Kennzeichen an der fachlichen Anforderung oder am Plandokument, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es."
             },
             "varianteBLabel": {
               "type": "string",
               "default": "kit:durchziehen",
-              "description": "Das Kennzeichen, das einen Fachplan für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
+              "description": "Das Kennzeichen, das die gekennzeichnete Karte für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
             },
             "planMin": {
               "type": "number",
@@ -516,6 +588,12 @@
             }
           },
           "additionalProperties": false
+        },
+        "modell": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^claude-",
+          "description": "Das Modell des Nachtlaufs: Es startet jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung der Kette, die Korrekturrunden und jedes Paket ohne Aufgabenstufe. Vorrang: --model beim Aufruf, dann dieses Feld, dann die Vorgabe des Runners. Muss auch in night.modelle stehen, sonst endet der Runner vor dem Start. Gilt nur aus der geteilten Konfiguration, ein Wert in der persönlichen Datei wird ignoriert."
         },
         "modelle": {
           "type": "array",
@@ -710,8 +788,39 @@
         "stufenRegel": {
           "type": "string",
           "description": "Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits."
+        },
+        "zielUmsetzungMin": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "default": 10,
+          "description": "Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Die Marke gilt für die Umsetzungsstufe der Kette und für die Umsetzungsnacht, darum steht sie neben night.kette und nicht darin. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe."
         }
       },
+      "additionalProperties": false
+    },
+    "pruefLauf": {
+      "type": "object",
+      "description": "Der Prüflauf: ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt, ohne dass jemand zusieht. Er steht in einem eigenen Block und nicht unter night, weil er dem Tag gehört; unter night behauptete der Name das Gegenteil. Optional — fehlt der Block oder ein Feld darin, gelten die eingebauten Vorgaben. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "properties": {
+        "label": {
+          "type": "string",
+          "default": "kit:pruefen",
+          "description": "Das Kennzeichen an der fachlichen Anforderung, die der Lauf prüfen lässt. Jedes Setzen autorisiert genau eine Prüfung; der Lauf nimmt es unmittelbar vor der Session dieser Karte ab."
+        },
+        "pruefungMin": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 25,
+          "description": "Zeitbudget der Prüfer-Session je Karte in Minuten. Es liegt über dem der Plan-Stufe, weil die fachliche Stufe zwei Reviewer fährt."
+        },
+        "kostenUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 25,
+          "description": "Kostenbudget je Lauf in US-Dollar, summiert über alle Sessions des Laufs; geprüft nach jeder Session, nie mittendrin. Ist es erschöpft, gelten die restlichen Karten als übersprungen und behalten ihr Kennzeichen."
+        }
+      },
+      "required": [],
       "additionalProperties": false
     },
     "aufwand": {

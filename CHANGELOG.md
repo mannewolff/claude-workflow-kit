@@ -2,6 +2,110 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.5.0] - 2026-09-29
+- board.mjs erreicht das Board auch hinter dem Sandbox-Proxy (#998)
+- Fünf Sonar-Befunde in kit/ und tools/ behoben (#997)
+- CI und Release-Worktree installieren die Abhängigkeiten vor den Prüfungen (#996)
+
+## [3.4.0] - 2026-09-29
+- Ein Hook weist Kit-Aufrufe mit Pipe oder Umleitung ab, bevor die Sandbox sie schluckt (#995)
+- Nachtlauf startet mit Opus 5.5 (night.modell)
+
+## [3.3.8] - 2026-09-29
+- Das Modell des Nachtlaufs kommt aus der Config, und die Preistabelle kennt Opus 5.5 (#994)
+- Zeitlimit hochgesetzt
+- Zeitlimit hochgesetzt
+
+## [3.3.7] - 2026-09-28
+- Vorflug probt Reviewer ohne Pipe, damit excludedCommands wieder greift (#986)
+- Doku und Prozessvorlage beschreiben den Zeitabbruch ohne Ursachenbehauptung (#982)
+- Die implement-Skills melden Fortschritt und kennen den zweiten Vermerk-Anker (#981)
+- Der Kettenbericht nennt die Pakete ueber der Sitzungszeitgrenze (#980)
+- Jedes Arbeitspaket sagt beim Zerlegen, ob es in eine Sitzung passt (#979)
+- Die Auswertung zeigt, wie viele Umsetzungen die Zielmarke reissen (#978)
+- Ein Zeitabbruch steht mit Stand und Empfehlung an der Karte (#977)
+- Der Zeitabbruch-Vermerk entsteht als reine Funktion mit dem wirksamen Zeitlimit (#976)
+- Der Nachtlauf liest die Fortschrittszeilen einer Sitzung live aus ihrem Strom (#975)
+- Eine Karte, die nur ein Mensch erledigen kann, startet keine Session (#984)
+- Wer auf einen Hintergrundlauf wartet, erkennt einen toten Lauf (#983)
+- Jede Lint-Regel nennt ihre Fundklasse und ihren Anlass (#970)
+- Die Prozessbeschreibung verweist auf die Lint-Konfiguration (#971)
+- Der Kopf der Lint-Konfiguration sagt, wann eine Fundklasse zur Regel wird (#969)
+
+## [3.3.6] - 2026-09-28
+- Der zweite Schritt des Linters laeuft mit (#965)
+- Die Basisregeln des Linters laufen mit (#400)
+- Der frische Worktree stellt seine Abhaengigkeiten selbst her (#964)
+- Eine Idee hat genau zwei Wege, und sie stehen ueberall gleich (#962)
+- Ein Stromereignis wird an einer Stelle gelesen, nicht an drei (#960)
+- Gleichzeitige Prueflaeufe auf einer Maschine laufen nacheinander (#958)
+
+## [3.3.5] - 2026-09-27
+- Die Salvage-Vorpruefung schreibt den Nachweis, den das Commit-Gate liest (#919)
+- I6 erkennt Mutations-Vollläufe auch über Projekt-Treiber und aufhebende Entscheidungen (#942)
+- Die Verflechtungserhebung sieht den Arbeitsstand, nicht nur den Commit (#957)
+- Der Linter faengt .sort() ohne Vergleich, bevor Sonar es tut (#956)
+- Der Worktree-Abbau gelingt auch aus dem Worktree heraus (#955)
+
+## [3.3.4] - 2026-09-26
+- Prozesstext und Doku beschreiben den Abschlussumfang (#953)
+- Die implement-Skills rufen den Prueflauf mit --abschluss (#952)
+- Die Wirksamkeit weist die mittlere Pruefzeit je Karte aus (#951)
+- Der Nacht-Runner faehrt denselben Abschlussumfang (#950)
+- Die Einstellungen kennen die Achse nichtBeimAbschluss (#949)
+- Das Ausfuehrungsprotokoll fuehrt Anlass, Lauf und Karte (#948)
+- Der rote Prueflauf vor dem Push nennt die Verursacher (#947)
+- Der Abschlusslauf laesst Pruefungen mit nichtBeimAbschluss aus (#946)
+
+## [3.3.3] - 2026-09-26
+- Die Verflechtung unterscheidet Geruest von Kopplung (#943)
+- Die Invariante deckt wieder nur kit/ und tools/ (#937)
+- Die Doku nennt neun Teile und kein kit/** mehr (#937)
+- Die Bereiche werden Quell-Einheiten, die Invariante deckt alles (#936)
+- Die Dateien ohne Zuordnung bekommen eine (#935)
+- Die pruefungsfreie Zuordnung ohnePruefung (#934)
+- Die Nacht-Sessions laufen im auto mode (#940)
+- Kein Bereich beansprucht mehr das ganze Werkzeugverzeichnis (#933)
+- Die Verflechtung von Test und Quelle wird erhoben (#931)
+- push main und merge production laufen im eigenen Worktree (#929)
+- Der Umsetzungspfad liest den Kartenzustand an der Karte (#927)
+- Beantwortete PO-Fragen brauchen die Keine-Zeile (#921)
+
+## [3.3.2] - 2026-09-25
+- Die Befunde aus dem Code-Review des Batches sind eingearbeitet
+- Beide Berichte weisen Prueflaeufe und Zielmarke aus (#926)
+- Die Umsetzungs-Skills nennen den sanktionierten Gruppenlauf (#925)
+- Der Runner zaehlt die Prueflaeufe einer Umsetzung (#924)
+- Die Zielmarke fuer eine Umsetzung steht in der Konfiguration (#923)
+- Die Pruefung sammelt alle Dateien ohne Zuordnung und kennt den Bereichslauf (#922)
+- Eine Kette ohne ausgefuehrte Umsetzung heisst nicht gelungen (#862)
+
+## [3.3.1] - 2026-09-25
+- Die Kette nimmt keine Anforderung mit offenen Fragen auf (#916)
+- Der Reviewer-Prompt nennt die Form der Gegenprobe (#915)
+- Der Prueflauf bekommt sein Kapitel in Prozesstext und Dokumentation (#910)
+- Der Prueflauf laeuft: node .claude/kit/night.mjs --pruefen (#909)
+- Jeder Lauf raeumt nur Worktrees seines eigenen Praefixes ab (#908)
+- Der Prueflauf erkennt sein Ergebnis am Unterschied der Board-Spuren (#907)
+- Der Prueflauf waehlt seine Kandidaten (#906)
+- Der Prueflauf bekommt den Einstellungsblock pruefLauf (#905)
+- Das Bash-Limit der Nacht-Session bleibt unter dem Rundenzeitlimit (#902)
+- Ein Akzeptanzkriterium verlangt keinen Mutationslauf (#901)
+- Das Aufraeumen des Wegwerf-Repos kippt den Windows-Lauf nicht mehr (#892)
+- Der CI-Guard laeuft nur noch am Tor main (#891)
+- Die letzten zwei Sonar-Befunde verschwinden (#879)
+- checks-8 raeumt unter Windows den Prozessbaum ab (#874)
+- Prozessdoku und Skills nennen den Plan als zweite Auftragsart (#898)
+- Die Leitstandsmeldung laesst die uebernommene Plan-Stufe aus (#897)
+- Halt und Bericht der Kette gehen an die gekennzeichnete Karte (#896)
+- Die Nacht-Kette nimmt einen gekennzeichneten Plan als Auftrag an (#895)
+- Der Runner erkennt einen startbereiten Plan an zwei reinen Proben (#893)
+- Die Doku nennt alle Faelle eines Laufs ohne Arbeit (#888)
+- Die Umsetzungsnacht nennt ihren Fall statt zu schweigen (#887)
+- Der Umsetzungs-Lock unterscheidet belegt von Schreibfehler (#886)
+- Der Lauf bildet seine Gruende ohne Arbeit an einer Stelle (#885)
+- Der Runner meldet seinen harten Stopp mit Grund (#881)
+
 ## [3.3.0] - 2026-09-24
 - Die Kette laeuft neben einer unsauberen Hauptkopie (#878)
 - ..

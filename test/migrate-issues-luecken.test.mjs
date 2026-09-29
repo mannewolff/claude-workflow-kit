@@ -282,7 +282,10 @@ function verifyKarte(quelle, extra = {}) {
 
 async function verifyFixture(praefix, daten, karten, kommentare = {}) {
   const gruppiert = {};
-  for (const k of karten) (gruppiert[k.column] ??= []).push(k);
+  for (const k of karten) {
+    gruppiert[k.column] ??= [];
+    gruppiert[k.column].push(k);
+  }
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: gruppiert };
     const treffer = /^\/api\/kanban\/items\/(\d+)\/comments$/.exec(req.url);

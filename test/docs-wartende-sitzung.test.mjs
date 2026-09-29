@@ -27,6 +27,11 @@ const SKILLS = [
 // Umschreibung findet der Leser am Board nicht wieder.
 const ANKER = "## Nachtlauf: wartende Sitzung";
 
+// Der zweite Anker (Issue #977, #981): Ein Lauf, den die Sitzungszeitgrenze beendet hat,
+// hinterlaesst denselben Hinweis unter eigener Ueberschrift. Der Hinweis in Schritt 2 gilt
+// fuer beide — ohne den zweiten uebersieht die naechste Sitzung genau diesen Vermerk.
+const ANKER_ZEITGRENZE = "## Nachtlauf: Zeitgrenze erreicht";
+
 // Die Zeile, an der die neue Leitplanke haengt: die vorhandene Regel zum im Hintergrund
 // gestarteten Pflichtcheck, die sie verallgemeinert.
 const HINTERGRUND_CHECK = "ich melde mich, sobald der Lauf durch ist";
@@ -106,6 +111,10 @@ test("[skills-34] beide Implementierungs-Skills melden einen Vermerk der wartend
 
     const absatz = lesen.split(/\n\n/).find((a) => a.includes(ANKER));
     assert.ok(absatz, `${name}: kein Absatz in Schritt 2 nennt den Anker '${ANKER}'`);
+    assert.ok(
+      absatz.includes(ANKER_ZEITGRENZE),
+      `${name}: derselbe Absatz nennt den zweiten Anker '${ANKER_ZEITGRENZE}' nicht`
+    );
     assert.match(absatz, /Kein Halt/, `${name}: der Vermerk-Absatz sagt nicht, dass nichts anhaelt`);
     assert.match(absatz, /Ruecksprache|Rückfrage/, `${name}: der Vermerk-Absatz schliesst die Ruecksprache nicht aus`);
     assert.match(
@@ -113,5 +122,32 @@ test("[skills-34] beide Implementierungs-Skills melden einen Vermerk der wartend
       /schon einmal angefangen/,
       `${name}: der Vermerk-Absatz sagt nicht, dass das Paket schon einmal angefangen wurde`
     );
+  }
+});
+
+// Der zweite Teil derselben Leitplanke (Issue #983): Wer wartet, prueft nicht nur, ob das
+// Ergebnis da ist, sondern auch, ob es den Lauf noch gibt. `local-check` ist die Quelle des
+// Absatzes, die beiden implement-Skills tragen ihn als Listenpunkt — der Anlass trat
+// unbeaufsichtigt auf, und dort liest die Sitzung implement-next, nicht local-check.
+const LEITPLANKE_STELLEN = [
+  ["local-check", lies("skills", "local-check", "SKILL.md")],
+  ...SKILLS,
+];
+
+test("[skills-35] die Leitplanke verlangt an allen drei Stellen die Pruefung, ob der Lauf noch existiert", () => {
+  for (const [name, text] of LEITPLANKE_STELLEN) {
+    const absatz = text
+      .split(/\n\n/)
+      .find((a) => /[Kk]eine Session endet mit laufender eigener Arbeit/.test(a) && /existiert/.test(a));
+    assert.ok(absatz, `${name}: kein Absatz der Leitplanke nennt die Existenz des Laufs`);
+
+    for (const [was, muster] of [
+      ["die Pruefung, ob der Lauf noch existiert", /noch existiert/],
+      ["die Warteschleife als Fundstelle", /Warteschleife/],
+      ["den toten Lauf als Fehlschlag", /Fehlschlag/],
+      ["die Abgrenzung zum Zeitablauf", /Zeitablauf/],
+    ]) {
+      assert.match(absatz, muster, `${name}: die Leitplanke nennt ${was} nicht`);
+    }
   }
 });

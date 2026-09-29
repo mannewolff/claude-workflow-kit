@@ -75,8 +75,8 @@ test("[skills-36] der Abschluss von /issue-review nennt gebuchte Funde und Vorsc
 });
 
 test("[skills-36] /push-main bucht mit der Stufe `code` nach dem Prueflauf und vor dem Commit", () => {
-  const prueflauf = PUSH_MAIN.indexOf("### 4. Der eine Prüflauf");
-  const commit = PUSH_MAIN.indexOf("### 5. Der eine Commit");
+  const prueflauf = PUSH_MAIN.indexOf("### 5. Der eine Prüflauf");
+  const commit = PUSH_MAIN.indexOf("### 6. Der eine Commit");
   const aufruf = PUSH_MAIN.split("\n").find((z) => z.includes("befunde.mjs buchen") && z.includes("--stufe code"));
   const buchen = PUSH_MAIN.indexOf("befunde.mjs buchen");
 
@@ -92,11 +92,13 @@ test("[skills-36] /push-main bucht mit der Stufe `code` nach dem Prueflauf und v
 });
 
 test("[skills-36] der Buchungsblock von /push-main traegt keine eigene Nummer", () => {
+  // Neun Schritte seit Issue #929: Der Worktree kam als Schritt 3 dazu, Rueckweg und Abbau
+  // als Schritt 8 — beides sind eigene Handlungen mit eigener Wartezeit, kein Anhang.
   const nummern = [...PUSH_MAIN.matchAll(/^### (\d+)\. /gm)].map((m) => Number(m[1]));
-  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6, 7], "die Schrittnummern des Skills haben sich verschoben");
-  assert.equal((PUSH_MAIN.match(/^### /gm) ?? []).length, 7,
-    "es gibt eine `###`-Ueberschrift, die keine der sieben Schrittnummern traegt");
-  assert.equal((PUSH_MAIN.match(/Schritt \d+ von 7/g) ?? []).length, 4,
+  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6, 7, 8, 9], "die Schrittnummern des Skills haben sich verschoben");
+  assert.equal((PUSH_MAIN.match(/^### /gm) ?? []).length, 9,
+    "es gibt eine `###`-Ueberschrift, die keine der neun Schrittnummern traegt");
+  assert.equal((PUSH_MAIN.match(/Schritt \d+ von 9/g) ?? []).length, 6,
     "die Zahl der nummerierten Fortschrittszeilen hat sich geaendert");
 
   const kopf = PUSH_MAIN.match(/^\*\*Befunde buchen.*\*\*/m);

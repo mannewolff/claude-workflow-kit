@@ -30,6 +30,11 @@ import { tmpdir } from "node:os";
 
 import { sicherheitsnetzGrund, ERSATZ_GRUND, ANKER_FEHLT } from "../kit/night.mjs";
 
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -74,6 +79,10 @@ function setupProjekt(praefix, buildChecks = ["true"]) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
+  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
+  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     local: { issuesDir: "issues" }, issueReview: { reviewers: NUR_CLAUDE },
@@ -165,29 +174,6 @@ const ARBEIT_UND_COMMIT = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "
   + ' && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"';
 const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}'`
   + " > .claude/checks-summary.json";
-
-/**
- * Die Fake-Session eines Erzeugungslaufs — sie unterscheidet die beiden Phasen am Auftrag.
- *
- * `/issues #Quelle` legt ein Arbeitspaket an (Phase 1), `/issue-review #Dokument`
- * fuehrt aus, was `pruefTeil` vorgibt (Phase 2).
- */
-function erzeugeFake(erzeugeTeil, pruefTeil) {
-  return `case "$NIGHT_PROMPT" in
-  /issue-review*) ${pruefTeil} ;;
-  *) ${erzeugeTeil} ;;
-esac`;
-}
-
-const PAKET_ANLEGEN = `node ${BOARD_IM_FAKE} issue create --title "Paket A" `
-  + `--body "## Kontext\n\nPlan: Issue #$NIGHT_ISSUE_ID\n" > /dev/null`;
-
-/** Die Kartennummer des erzeugten Dokuments — sie unterscheidet sich von der Quelle. */
-function dokumentId(dir) {
-  const dok = board(dir, "issue", "list").find((i) => !String(i.title).startsWith("[Plan]"));
-  assert.ok(dok, "die Erzeugungs-Session hat kein Dokument angelegt");
-  return String(dok.id);
-}
 
 // --- Weg 1: der Rest-Guard nach erfolgreicher Runde ---
 

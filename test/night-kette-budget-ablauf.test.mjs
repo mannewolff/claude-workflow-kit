@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
+import { nachtlaufMeldung } from "../kit/board.mjs";
 
 test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", NUR_POSIX, () => {
   mitProjekt((dir) => {
@@ -95,9 +96,15 @@ test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette a
     const env = umgebung(dir, { stufen: { plan: "sleep 5; " + PLAN_ANLEGEN } });
     const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "300" });
     assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    const lauf = stand(dir);
+    const einheit = lauf.einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "abgebrochen");
     assert.match(einheit.grund, /Zeitbudget plan: die Session wurde nach [\d.]+ min am Limit beendet/);
+    // Eine erreichte Grenze ist kein Abbruch des Laufs (Issue #881): Der Lauf endet
+    // regulaer, und die Meldung ans Board traegt deshalb keinen abortReason — der
+    // Ausgang steht am roten Paket, nicht am Lauf.
+    assert.equal(lauf.abschluss, "regulaer");
+    assert.ok(!("abortReason" in nachtlaufMeldung(lauf)), "ein Zeitbudget stoppt die Kette, nicht den Lauf");
   });
 });
 

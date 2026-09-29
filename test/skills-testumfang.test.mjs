@@ -58,6 +58,26 @@ for (const { name, text } of SKILLS) {
       "das Beispiel fuer den gezielten Lauf fehlt");
   });
 
+  // Plan #917, E3: Der gezielte Lauf endet nicht an der geaenderten Datei. Wer
+  // nur ihre eigenen Tests faehrt, uebersieht, was von ihr abhaengt — die
+  // eingesparte Zeit zahlt sich dann als roter Commit-Lauf zurueck.
+  test(`${name}: der Block verlangt auch die Tests der Abhaengigen`, () => {
+    const block = regelblock(text);
+    assert.match(block, /abh(ä|ae)ng/,
+      "der Block sagt nicht, dass auch die Tests der Abhaengigen laufen");
+  });
+
+  // Gibt es die Tests der Abhaengigen nur als vollstaendige Gruppe, ist der
+  // Bereichslauf der sanktionierte Weg — kein Verstoss gegen die
+  // Zehn-Minuten-Marke, und der Beobachter zaehlt ihn getrennt.
+  test(`${name}: der Block nennt den sanktionierten Gruppenlauf`, () => {
+    const block = regelblock(text);
+    assert.match(block, /checks\.mjs run --bereich <name>/,
+      "der Block nennt den Bereichslauf `checks.mjs run --bereich <name>` nicht");
+    assert.match(block, /kein Versto(ß|ss)/,
+      "der Block sagt nicht, dass der Bereichslauf kein Verstoss gegen die Zehn-Minuten-Marke ist");
+  });
+
   // Punkt 2: Der eine volle Lauf ist das Commit-Gate. Er steht hier ohne
   // Schrittnummer, weil die Nummer je Skill abweicht und `/implement-test`
   // gar nicht committet.

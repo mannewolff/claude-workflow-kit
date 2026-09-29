@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -33,12 +33,6 @@ function run(cwd, cmd, cliArgs, env = {}) {
     cwd, encoding: "utf-8",
     env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, ...env },
   });
-}
-
-function board(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
 }
 
 function setupProjekt(config = {}, praefix = "night-luecken-") {

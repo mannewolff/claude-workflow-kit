@@ -61,7 +61,8 @@ function karte(quelle, extra = {}) {
 function kanbanMock(karten = [], { kommentare = {}, kommentarFehler = null } = {}) {
   const gruppiert = {};
   for (const k of karten) {
-    (gruppiert[k.column] ??= []).push(k);
+    gruppiert[k.column] ??= [];
+    gruppiert[k.column].push(k);
   }
   return (req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") {

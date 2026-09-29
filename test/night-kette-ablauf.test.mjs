@@ -64,7 +64,7 @@ test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, W
     // hinterlaesst, holt der Runner seit dem Rueckbau von SDD nicht mehr zurueck (Issue #829).
     assert.ok(!readdirSync(tmpdir()).some((n) => n.startsWith(`kette-${basename(dir)}-`)), "der Worktree liegt noch");
     assert.ok(!existsSync(join(dir, ".claude", "vorhaben-wartend-plan-1.md")), "der Runner holte noch eine Vorhaben-Notiz zurueck");
-    assert.match(res.stdout, /Nacht-Kette beendet: 1 fertig, 0 angehalten, 0 abgebrochen/);
+    assert.match(res.stdout, /Nacht-Kette beendet: 1 fertig, 0 unvollstaendig, 0 angehalten, 0 abgebrochen/);
   });
 });
 

@@ -834,16 +834,21 @@ async function leseZielKommentare(zugang, kartenId) {
   return roh;
 }
 
+/** Eine Abweichungszeile im Berichtsformat. */
+function abweichungsZeile(nummer, feld, quelle, ziel) {
+  return `#${nummer} field=${feld} source=${alsJson(quelle)} target=${alsJson(ziel)}`;
+}
+
 /** Ein Eintrag gegen seine Zielkarte. Liefert die Abweichungszeilen. */
 async function vergleiche(eintrag, karte, zugang) {
+  // Fehlt die Zielkarte ganz, gibt es nichts Feldweises zu vergleichen: Das ist
+  // die eine Abweichung, und der Rest der Pruefung entfaellt.
+  if (!karte) return [abweichungsZeile(eintrag.number, "card", eintrag.title, null)];
+
   const zeilen = [];
   const melde = (feld, quelle, ziel) =>
-    zeilen.push(`#${eintrag.number} field=${feld} source=${alsJson(quelle)} target=${alsJson(ziel)}`);
+    zeilen.push(abweichungsZeile(eintrag.number, feld, quelle, ziel));
 
-  if (!karte) {
-    melde("card", eintrag.title, null);
-    return zeilen;
-  }
   if (eintrag.title !== karte.title) melde("title", eintrag.title, karte.title);
 
   const zielBody = ohneHerkunft(karte.body);

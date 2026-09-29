@@ -185,6 +185,14 @@ test("[einstellungen-8] Zusatzregel: ein Stufen-modell, das nicht in night.model
   assert.equal(b[0].pfad, "night.stufen.leicht.modell");
 });
 
+test("Zusatzregel: night.modell ausserhalb von night.modelle wird mit Pfad night.modell abgewiesen (Issue #994)", () => {
+  const b = zusatzregeln({ night: { modelle: ["claude-opus-5-5"], modell: "claude-opus-5" } });
+  assert.equal(b.length, 1);
+  assert.equal(b[0].pfad, "night.modell");
+  assert.match(b[0].grund, /claude-opus-5/);
+  assert.deepEqual(zusatzregeln({ night: { modelle: ["claude-opus-5-5"], modell: "claude-opus-5-5" } }), []);
+});
+
 test("[einstellungen-8] eine Config mit night.modelle und night.stufen.leicht.modell wird ohne Fehler angenommen, ein fremdes Modell meldet genau einen Fehler", () => {
   const basis = { reviewModel: "claude-opus-5" };
   const gueltig = { ...basis, night: { modelle: ["claude-opus-5", "claude-sonnet-5"], stufen: { leicht: { modell: "claude-sonnet-5" } } } };

@@ -43,12 +43,17 @@ for (const [name, text] of SKILLS) {
   });
 }
 
-test("dokumentation: das Gate kennt drei Sorten, [Plan] eingeschlossen", () => {
+// Seit Issue #984 zaehlt das Gate vier Sorten: [Mensch] kam als Arbeitspaket hinzu, das
+// nur ein Mensch erledigen kann. Die Zaehlung bleibt gepruefte Zusicherung — eine Doku, die
+// drei nennt und vier aufzaehlt, laesst den Leser die fehlende selbst suchen.
+test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Mensch] eingeschlossen", () => {
   const doku = lies("docs", "dokumentation.md");
-  assert.doesNotMatch(doku, /Zwei Sorten/,
-    "die Zaehlung stimmt nicht mehr — mit [Plan] sind es drei Sorten");
-  assert.match(doku, /Drei Sorten/, "die neue Zaehlung fehlt");
-  assert.match(doku, /\[Plan\]/, "das Praefix wird nicht genannt");
+  for (const veraltet of [/Zwei Sorten/, /Drei Sorten/]) {
+    assert.doesNotMatch(doku, veraltet, "die Zaehlung stimmt nicht mehr — es sind vier Sorten");
+  }
+  assert.match(doku, /Vier Sorten/, "die neue Zaehlung fehlt");
+  assert.match(doku, /\[Plan\]/, "das Praefix [Plan] wird nicht genannt");
+  assert.match(doku, /\[Mensch\]/, "das Praefix [Mensch] wird nicht genannt");
 });
 
 // Seit Stufe 2 des Prozess-Umbaus (Plan #638, Issue #646) gibt es keine Stufenwahl

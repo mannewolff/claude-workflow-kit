@@ -32,7 +32,10 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
     assert.match(text, /## Kette angehalten/);
     assert.match(text, /Ist der neue Endpunkt eine Schnittstelle/);
     assert.match(text, /Stufe plan, Dokument #0002/);
-    assert.match(text, /kit:klaeren abnehmen und das Label kit:night neu setzen/);
+    // Der Weg nach vorn fuehrt ueber den Plan, nicht ueber den Fachplan (Issue #896);
+    // der Wortlaut selbst steht in night-kette-halt-planauftrag.test.mjs auf der Probe.
+    assert.match(text, /kit:klaeren an Plan #0002 abnehmen/);
+    assert.match(text, /das Label kit:night an Plan #0002 setzen/);
 
     const plan = board(dir, "issue", "get", "0002");
     assert.equal(plan.status, "backlog", "der Plan bleibt als Entwurf stehen");
@@ -84,7 +87,9 @@ test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden ueberspr
     assert.equal(lauf.einheiten.find((e) => e.id === offen).ausgang, "uebersprungen");
     assert.match(grund(offen), /traegt kit:klaeren/);
     assert.match(grund(falsch), /steht in ready, nicht in Backlog/);
-    assert.match(grund(String(fremd.id)), /kein fachliches Issue/);
+    // Der Plan traegt keine Herkunftszeile: Seit Issue #895 lehnt ihn `planAusschluss`
+    // als Plan-Auftrag ab, nicht mehr die Praefix-Probe des Fachplan-Auftrags.
+    assert.match(grund(String(fremd.id)), /die fachliche Herkunft ist nicht erkennbar/);
     assert.match(res.stdout, /Keine Kette zu fahren/);
     assert.equal(board(dir, "issue", "list").filter((i) => /^\[Plan\] Ein Weg/.test(i.title)).length, 0, "keine Session darf gelaufen sein");
   });

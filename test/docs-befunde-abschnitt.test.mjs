@@ -177,7 +177,7 @@ test("der Absatz 'Reviews sind Zuarbeit' nennt die drei zusaetzlichen Angaben", 
   const idx = text.indexOf("**Reviews sind Zuarbeit.**");
   assert.ok(idx >= 0, "der Absatz '**Reviews sind Zuarbeit.**' fehlt");
   const absatz = text.slice(idx).split("\n\n")[0];
-  assert.match(absatz, /drei zus(ä|ae)tzliche[n]? Angaben|Gegenprobe/,
+  assert.match(absatz, /drei zus(ä|ae)tzlichen? Angaben|Gegenprobe/,
     "der Absatz nennt die zusaetzlichen Angaben eines Funds nicht");
   assert.match(absatz, /liest sie mit|bevor er (ü|ue)bernimmt/,
     "dass der Autor der Stufe die Angaben mitliest, bevor er uebernimmt oder ablehnt, fehlt");

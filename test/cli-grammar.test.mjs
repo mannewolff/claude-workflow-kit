@@ -61,17 +61,17 @@ export function zaehleArgumente(rest) {
   let min = 0;
   let max = 0;
   // Optionale Gruppen zuerst herausnehmen, damit sie nicht als Pflicht zaehlen.
-  const optional = rest.match(/\[[^\]]*<[^>]+>[^\]]*\]/g) || [];
+  const optional = rest.match(/\[[^\][<]*<[^<>]+>[^\][]*\]/g) || [];
   max += optional.length;
   let ohneOptional = rest;
   for (const o of optional) ohneOptional = ohneOptional.replace(o, "");
 
   // Pflichtgruppen: {<a> | <b>} zaehlt als eines, sonst jedes <x> einzeln.
-  const gruppen = ohneOptional.match(/\{[^}]*\}/g) || [];
+  const gruppen = ohneOptional.match(/\{[^{}]*\}/g) || [];
   min += gruppen.length;
   let rein = ohneOptional;
   for (const g of gruppen) rein = rein.replace(g, "");
-  min += (rein.match(/<[^>]+>/g) || []).length;
+  min += (rein.match(/<[^<>]+>/g) || []).length;
 
   max += min;
   return { min, max };
