@@ -1705,7 +1705,8 @@ function gitIm(repoRoot, gitArgs) {
  * ohne dass etwas rot wird. Dann muessen die beiden Protokolle aus dem Worktree
  * zurueckgeholt werden. Fuer die Befunde gilt das seit Issue #803 nicht mehr:
  * `befundeZurueck` holt `befunde.tsv` an beiden Abbaustellen der Kette zurueck — dort
- * fallen die meisten Buchungen an, denn /issue-review laeuft im Worktree.
+ * fallen die meisten Buchungen an, denn /issue-review laeuft im Worktree —, seit Issue
+ * #1028 auch beim Abbau des Prueflaufs.
  */
 /**
  * Ob ein Eintrag direkt unter `.claude/` in der Hauptkopie zurueckbleibt: die Protokolle
@@ -1922,20 +1923,21 @@ function befundeVorschlagen(repoRoot, art) {
 }
 
 /**
- * Der Rueckweg unmittelbar vor einem Worktree-Abbau der Kette — an BEIDEN Abbaustellen
- * gerufen: vor der Stufe umsetzung und im finally am Kettenende. Das Nullen von
- * `kette.wt` nach dem ersten Abbau verhindert den zweiten Lauf und damit doppeltes
- * Anhaengen; die Arten an der Schwelle stehen als eine Zeile im Protokoll.
+ * Der Rueckweg unmittelbar vor einem Worktree-Abbau — in der Kette an BEIDEN Abbaustellen
+ * gerufen (vor der Stufe umsetzung und im finally am Kettenende), im Prueflauf im finally
+ * seiner Runden (Issue #1028). Das Nullen von `wt` nach dem ersten Abbau verhindert den
+ * zweiten Lauf und damit doppeltes Anhaengen; die Arten an der Schwelle stehen als eine
+ * Zeile im Protokoll.
  *
  * Je zurueckgegebener Art folgt ein `befunde.mjs vorschlag --art <a>` (Issue #804):
  * Hier — am Anlass — und nicht erst beim naechsten `push main`, weil ein zweiter Ort
  * ein zweiter Zeitpunkt waere, zu dem dieselbe Zahl anders herauskommen kann (E9).
  */
-function kettenBefundeZurueck(kette) {
-  const arten = befundeZurueck(kette.wt, kette.repoRoot);
+function befundeZurueckUndVorschlagen(lauf) {
+  const arten = befundeZurueck(lauf.wt, lauf.repoRoot);
   if (arten.length === 0) return;
   log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
-  for (const art of arten) befundeVorschlagen(kette.repoRoot, art);
+  for (const art of arten) befundeVorschlagen(lauf.repoRoot, art);
 }
 
 /**
@@ -6561,7 +6563,7 @@ async function stufeUmsetzung(kette, paketIds) {
 
   try {
     if (kette.wt) {
-      kettenBefundeZurueck(kette);
+      befundeZurueckUndVorschlagen(kette);
       worktreeEntfernen(kette.wt, kette.repoRoot);
       kette.wt = null;
       log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
@@ -7362,7 +7364,7 @@ async function laufeEineKette(auftrag, nummer, args) {
     einheitErgaenzen(einheit, { bericht: berichtSchreiben(String(karte.id), berichtFuerKette(kette, einheit, ergebnis)) });
   } finally {
     if (kette.wt) {
-      kettenBefundeZurueck(kette);
+      befundeZurueckUndVorschlagen(kette);
       worktreeEntfernen(kette.wt, kette.repoRoot);
     }
   }
@@ -7686,7 +7688,12 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
       }
     }
   } finally {
-    if (lauf.wt) worktreeEntfernen(lauf.wt, lauf.repoRoot);
+    // Erst die im Worktree gebuchten Befunde zurueck, dann der Abbau (Issue #1028) — auch
+    // nach einem Wurf, sonst gingen sie mit dem Worktree verloren.
+    if (lauf.wt) {
+      befundeZurueckUndVorschlagen(lauf);
+      worktreeEntfernen(lauf.wt, lauf.repoRoot);
+    }
   }
 }
 

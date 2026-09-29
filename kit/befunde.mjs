@@ -314,7 +314,9 @@ vorschlag
          ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
          Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
          Der Vermerk steht in ${VORSCHLAEGE_DATEI}; ein gescheiterter
-         Board-Aufruf laesst ihn unveraendert und endet ungleich 0.
+         Board-Aufruf laesst ihn unveraendert und endet ungleich 0. Im Worktree
+         eines Laufs legt --art nichts an (der Vorschlag folgt beim Abbau in der
+         Hauptkopie), und --abgelehnt endet ungleich 0.
 auswerten
          Liest ${PROTOKOLL_DATEI} und ${VORSCHLAEGE_DATEI} und
          schreibt ${BERICHT_DATEI} sowie ${STAND_DATEI}: je Art
@@ -684,6 +686,19 @@ function gitLauf(...args) {
 }
 
 /**
+ * Ob das Arbeitsverzeichnis ein VERKNUEPFTER git-Worktree ist (Issue #1028): Nur dort
+ * unterscheiden sich `--git-dir` und `--git-common-dir`. Ausserhalb eines Repos ist es
+ * keiner — dann gilt das Verhalten der Hauptkopie.
+ */
+function imVerknuepftenWorktree() {
+  const res = gitLauf("rev-parse", "--git-dir", "--git-common-dir");
+  if (res.status !== 0) return false;
+  const [gitDir, commonDir] = res.stdout.split("\n").map((z) => z.trim());
+  if (!gitDir || !commonDir) return false;
+  return resolve(process.cwd(), gitDir) !== resolve(process.cwd(), commonDir);
+}
+
+/**
  * Was heute — zum Zeitpunkt der Buchung — gegenueber der Basis des Prueflaufs
  * geaendert ist. Die Richtung ist die des Commit-Gates (gate-1): Gedeckt sein muss
  * der heutige Stand, nicht der von damals; eine nach dem Lauf erstmals geaenderte
@@ -1048,6 +1063,18 @@ function kennungVon(antwort) {
  */
 export function vorschlag({ art, abgelehnt }) {
   const zielArt = art ?? abgelehnt;
+  // Im Worktree eines Laufs wird nur gebucht (Issue #1028): Dort fehlen Protokoll und
+  // Vorschlagsregister der Hauptkopie absichtlich, ein Vorschlag saehe ein leeres Register
+  // und doppelte einen offenen. Den Vorschlag macht der Runner beim Abbau in der Hauptkopie.
+  if (imVerknuepftenWorktree()) {
+    if (abgelehnt !== null) {
+      fail(`'vorschlag --abgelehnt' im Worktree eines Laufs wirkt nirgends und geht mit dem Worktree verloren — den Aufruf in der Hauptkopie machen.`);
+    }
+    return {
+      ok: true, art: zielArt, angelegt: false, ergaenzt: false,
+      grund: "Worktree eines Laufs — der Vorschlag folgt beim Abbau in der Hauptkopie.",
+    };
+  }
   const daten = vorschlaegeLesen();
   const alt = eintragVon(daten, zielArt);
   const zeilen = protokollZeilen(join(process.cwd(), ...PROTOKOLL_DATEI.split("/")));
