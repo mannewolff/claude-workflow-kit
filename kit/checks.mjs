@@ -107,6 +107,11 @@
  *
  * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]]
  *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch]
+ *                          node .claude/kit/checks.mjs bereiche
+ *
+ * `bereiche` (Issue #1004, Plan #1001) rechnet keine Auswahl, sondern den Zuschnitt: je
+ * Bereich, in wie vielen Pruefkommandos er steht, und das Inventar der versionierten
+ * Dateien ohne Bereich — ueber dieselbe Zuordnung, die jede Auswahl trifft.
  *
  * Die Ausgabe von `plan` ist immer JSON, es gibt kein --json-Flag: `board.mjs
  * issue get` liefert ebenfalls JSON ohne Flag, und eine zweite Ausgabeform waere
@@ -281,10 +286,16 @@ export const PRUEFDAUER_OBERGRENZE_MS = 30_000;
 // reissen, verlaengerte die Suite, deren Laufzeit die Grenze gerade begrenzen soll.
 export const OBERGRENZE_ENV = "KIT_CHECKS_PRUEFDAUER_OBERGRENZE_MS";
 
+// Ab wie vielen bereichsgebundenen Kommandos die Hervorhebung eines Bereichs greift
+// (Issue #1004, Plan #1001, E8). Bei zwei Kommandos waere jeder Bereich "in allen bis
+// auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil `HELP` sie nennt.
+const HERVORHEBUNG_AB_KOMMANDOS = 3;
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
   node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch]
+  node checks.mjs bereiche
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
@@ -335,6 +346,18 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       ${SPERRE_GRENZE_ENV} die Obergrenze in Millisekunden. Die eigene
       Testsuite braucht den Pfad, damit ihre parallelen Dateien sich nicht
       gegenseitig serialisieren.
+      Jede Ausfuehrung haengt eine Zeile an ${AUSFUEHRUNGEN_DATEI}; hinten
+      stehen ihr Ausloeser (bereiche | ohne-bereich | ohne-zuordnung |
+      veroeffentlichung | anker), die ausloesenden Bereiche und beim vollen
+      Umfang die Dateien ohne Muster.
+bereiche
+      Gibt als JSON aus, wie die Bereiche zugeschnitten sind: je Bereich
+      seine Muster, in wie vielen der bereichsgebundenen Kommandos der
+      Paketstufe er steht ('nennend' von 'von'), ob er hervorgehoben ist
+      (in allen oder allen bis auf eines, ab ${HERVORHEBUNG_AB_KOMMANDOS} Kommandos) und
+      den Grund aus 'gekoppelteBereiche'. Dazu das Inventar: alle von git
+      versionierten Dateien ohne checkAreas-Treffer, getrennt in
+      freigestellt (ohnePruefung, mit Grund) und ohne jede Zuordnung.
 
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
@@ -953,6 +976,74 @@ function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, oh
   });
 }
 
+// --- Bereiche (Issue #1004) ------------------------------------------------
+
+/**
+ * Anteil je Bereich und Inventar der versionierten Dateien (Issue #1004, Plan #1001, E7,
+ * E8, E14) — die Rohdaten der Wirksamkeits-Auswertung.
+ *
+ * Gezaehlt werden die BEREICHSGEBUNDENEN Kommandos der PAKETSTUFE (`m`): Nur sie waehlt die
+ * Auswahl eines Arbeitspakets nach Bereichen aus. Ein Kommando ohne `areas` laeuft ohnehin
+ * immer, und eines der Stufe `push` oder `merge` laeuft nach Zeitpunkt — beide sagen ueber
+ * den Zuschnitt der Bereiche nichts. Ein Bereich ist HERVORGEHOBEN, wenn er in allen oder
+ * allen bis auf eines steht (`n ≥ m−1`) und `m` mindestens drei ist: Dann loest eine
+ * Aenderung darin (fast) jeden Prueflauf aus, und der Bereich schneidet nichts mehr heraus.
+ *
+ * Ein Eintrag in `gekoppelteBereiche` (E14) aendert an der Hervorhebung NICHTS, er traegt
+ * nur ihren Grund: Eine gemessene Kopplung, die den Bereich in fast alle Kommandos zwingt,
+ * ist eine begruendete Ausnahme und kein Ausschalter — sie bleibt sichtbar.
+ *
+ * Das INVENTAR geht durch `zuordnen`, dieselbe Funktion, die jede Auswahl trifft (E7): Eine
+ * zweite Glob-Logik bescheinigte ab der ersten Abweichung eine Deckung, die die Auswahl
+ * nicht sieht — derselbe Grund wie bei `globZuRegex` fuer test/config-teile.test.mjs.
+ * Versioniert heisst `git ls-files`: Ungetracktes gehoert zu keinem Stand des Projekts.
+ */
+function bereicheAuswerten() {
+  const config = ladeConfig();
+  const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
+  const checkAreas = config.checkAreas ?? {};
+  pruefeBereichsnamen(checks, checkAreas);
+
+  const gebunden = checks.filter((check) => check.stufe === STUFEN[0] && check.areas);
+  const m = gebunden.length;
+  const kopplung = new Map((config.gekoppelteBereiche ?? []).map((e) => [e.bereich, e.grund]));
+  const bereiche = Object.entries(checkAreas).map(([name, muster]) => {
+    const n = gebunden.filter((check) => check.areas.includes(name)).length;
+    return {
+      name,
+      muster: muster ?? [],
+      nennend: n,
+      von: m,
+      hervorgehoben: m >= HERVORHEBUNG_AB_KOMMANDOS && n >= m - 1,
+      kopplungsgrund: kopplung.get(name) ?? null,
+    };
+  });
+
+  const ls = git("ls-files", "-z");
+  if (ls.status !== 0) fail(`git ls-files schlug fehl: ${gitGrund(ls)}`);
+  const dateien = ls.stdout
+    .split("\0")
+    .filter((pfad) => pfad !== "")
+    .map((pfad) => pfad.replaceAll("\\", "/"))
+    .sort(vergleicheText);
+  const { ohneZuordnung, ohnePruefung } = zuordnen(
+    dateien,
+    bereicheVorbereiten(checkAreas),
+    freistellungenVorbereiten(config.ohnePruefung),
+  );
+
+  return {
+    kommandos: m,
+    bereiche,
+    inventar: {
+      dateien: dateien.length,
+      ohneTreffer: ohneZuordnung.length + ohnePruefung.length,
+      freigestellt: ohnePruefung,
+      ohneZuordnung,
+    },
+  };
+}
+
 // --- Ausfuehrung (Issue #424) ----------------------------------------------
 
 /**
@@ -1215,6 +1306,53 @@ function kommandoMaskieren(cmd) {
 }
 
 /**
+ * Eine Liste als EIN Protokollfeld (Issue #1004, E5): jeder Eintrag maskiert wie das
+ * Kommando und zusaetzlich das Komma, dann kommagetrennt. Das Komma kommt NACH dem
+ * Backslash dran — derselbe Grund wie in `kommandoMaskieren`: Nur so bleibt ein `\,`
+ * im Pfad von einem maskierten Trenner unterscheidbar.
+ *
+ * SYNC: kit/wirksamkeit.mjs wandelt beim Lesen zurueck (Issue #1005).
+ */
+function listeMaskieren(eintraege) {
+  return eintraege.map((e) => kommandoMaskieren(e).replaceAll(",", String.raw`\,`)).join(",");
+}
+
+/**
+ * Warum ein Kommando lief — als Daten fuer die Auswertung je Bereich (Issue #1004, Plan
+ * #1001, E5). Fuenf Arten, in dieser Reihenfolge entschieden:
+ *
+ *   - `ohne-bereich`: Das Kommando traegt kein `areas` (String-Form, `{ cmd }`, `always`).
+ *     Es waere auf JEDEM Weg gelaufen, auch ohne fehlende Zuordnung und ohne
+ *     Veroeffentlichung — seine Minuten gehoeren keinem Ausloeser, und darum steht diese
+ *     Art vor allen anderen.
+ *   - `anker`: Der Anker liess sich nicht aufloesen. Erkennbar am vollen Umfang OHNE
+ *     Dateiliste: Nur dieser Zweig von `planen` kennt keine geaenderten Dateien, der volle
+ *     Umfang wegen einer Luecke nennt immer mindestens eine.
+ *   - `bereiche` beim Bereichslauf: genau der gewaehlte Bereich, nicht der beruehrte.
+ *   - `veroeffentlichung`: jede Pruefung an der Push-Stufe und die Stufe `merge` an der
+ *     Freigabe — beide laufen dort nach Zeitpunkt, nicht nach Bereich.
+ *   - `ohne-zuordnung`: voller Umfang wegen unzugeordneter Dateien, mit diesen Dateien.
+ *   - sonst `bereiche` mit den beruehrten Bereichen des Kommandos.
+ *
+ * `bereiche` und `dateien` stehen nur bei der Art, die sie erklaeren; sonst sind sie
+ * leer. So zaehlt die Auswertung eine Ausfuehrung entweder bei ihren Bereichen oder in
+ * einer Sonderzeile, nie in beiden.
+ *
+ * `check` ist der Eintrag aus der Config, `null`, wenn keiner zum Kommando passt — dann
+ * zaehlt es als nicht zugeordnet, dieselbe Deutung wie in `verursacherKarten`.
+ */
+function ausloeserBestimmen(auswahl, check) {
+  const art = (name, bereiche = [], dateien = []) => ({ art: name, bereiche, dateien });
+  const areas = check?.areas;
+  if (!areas) return art("ohne-bereich");
+  if (auswahl.vollerUmfang && auswahl.ohneZuordnung.length === 0) return art("anker");
+  if (auswahl.bereichWahl !== null) return art("bereiche", [auswahl.bereichWahl]);
+  if (auswahl.stufe === "push" || check.stufe === "merge") return art("veroeffentlichung");
+  if (auswahl.vollerUmfang) return art("ohne-zuordnung", [], auswahl.ohneZuordnung);
+  return art("bereiche", auswahl.bereiche.filter((name) => areas.includes(name)));
+}
+
+/**
  * Haengt eine Ausfuehrung an `.claude/ausfuehrungen.tsv` an (Issue #785).
  *
  * Eine Zeile je BEENDETEM Kommando: Zeitpunkt, Kommando, Ergebnis, Dauer — und dahinter
@@ -1236,19 +1374,24 @@ function kommandoMaskieren(cmd) {
  * waere falsch. Die leere `karte` ist kein Nullwert, sondern "nicht gemessen": Eine
  * Zeile ohne Nummer geht in keine Rechnung je Karte ein.
  *
+ * Dahinter stehen seit Issue #1004 (Plan #1001, E5) drei weitere Spalten, auf demselben
+ * Weg und aus demselben Grund: `ausloeser`, `bereiche` und `dateien` — siehe
+ * `ausloeserBestimmen`. Eine Zeile hat damit zehn Spalten, eine aeltere vier oder sieben.
+ *
  * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
  * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
  * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
-function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, jetzt = new Date()) {
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, jetzt = new Date()) {
   const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
   const { anlass, lauf, karte } = herkunft;
+  const hinten = [ausloeser.art, listeMaskieren(ausloeser.bereiche), listeMaskieren(ausloeser.dateien)].join("\t");
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(
       pfad,
-      `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\t${anlass}\t${lauf}\t${karte}\n`,
+      `${jetzt.toISOString()}\t${kommandoMaskieren(cmd)}\t${ergebnis}\t${dauerMs}\t${anlass}\t${lauf}\t${karte}\t${hinten}\n`,
       "utf-8",
     );
   } catch (err) {
@@ -2058,6 +2201,10 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
     lauf: zeitpunkt,
     karte: args.karte ?? "",
   };
+  // Die Eintraege von `laufen` tragen ihre `areas` nicht; der Ausloeser braucht sie
+  // (Issue #1004). Derselbe Weg wie in `verursacherKarten`: die Config erneut lesen.
+  const konfiguriert = (ladeConfig().buildChecks ?? []).map((c) => normalisiere(c));
+  const ausloeserVon = (cmd) => ausloeserBestimmen(auswahl, konfiguriert.find((c) => c.cmd === cmd) ?? null);
 
   let rot = false;
   let guete = null;
@@ -2106,7 +2253,7 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
     // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
     // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
-    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft);
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd));
     rot = !bewertung.bestanden;
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
@@ -2238,9 +2385,16 @@ function main() {
     return 0;
   }
   if (command === "run") return ausfuehren(parseArgs(rest));
+  if (command === "bereiche") {
+    // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
+    // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
+    if (rest.length > 0) fail(`Unbekanntes Argument: '${rest[0]}'`);
+    process.stdout.write(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
+    return 0;
+  }
 
   process.stdout.write(HELP);
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: plan oder run`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: plan, run oder bereiche`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
