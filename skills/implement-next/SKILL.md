@@ -25,7 +25,7 @@ node .claude/kit/board.mjs issue list --status ready
 
 Gibt die Issues in der Reihenfolge der Ready-Spalte des Boards (oben zuerst; nur der lokale Datei-Tracker liefert numerisch nach ID). Welches davon dran ist, hängt am Aufruf:
 
-**Mit Argument (`/implement-next #N`, auch `/implement-next N`) — verbindlicher Auftrag.** Das Issue ist vorgegeben und wird **nicht** neu gewählt. Steht `#N` in der Ready-Liste, ist es das Issue dieses Laufs — unabhängig davon, an welcher Position es liegt. Steht es dort **nicht** (mehr), endet der Skill ergebnislos mit dieser Meldung, ohne ein Ersatz-Issue zu nehmen:
+**Mit Argument (`/implement-next #N`, auch `/implement-next N`) — verbindlicher Auftrag.** Das Issue ist vorgegeben und wird **nicht** neu gewählt, unabhängig davon, an welcher Position es in Ready liegt. Ob es begonnen werden darf, sagt der Auftrag (unten). Liegt es nicht (mehr) in Ready, endet der Skill ergebnislos mit dieser Meldung, ohne ein Ersatz-Issue zu nehmen:
 
 > "Issue #N liegt nicht (mehr) in Ready — kein Ersatz-Issue, Ende."
 
@@ -33,47 +33,35 @@ Nie auf das oberste Ready-Issue ausweichen. Der Auftraggeber (im Nachtbetrieb de
 
 **Ohne Argument (interaktiv).** Das **erste** Element der Liste ist das Issue dieses Laufs — nicht numerisch umsortieren, keine eigene Auswahl treffen.
 
-**Fachliche Issues, Ideen, Plandokumente und Menschenschritte überspringen (Leitplanke):** Trägt das so bestimmte Issue das Titel-Präfix `[Fachlich]` (PO-Schleife), `[Idee]` (rohe Anforderung, noch kein Arbeitspaket), `[Plan]` (Plandokument aus einem technischen Plan — es beschreibt einen Weg, es ist keine Aufgabe, und muss erst per `/issues #N` in Arbeitspakete zerlegt werden) oder `[Mensch]` (ein Schritt, den nur ein Mensch tun kann), wird es **nicht implementiert** — es mit dem passenden Kommentar zurück nach Backlog verschieben:
-
-```
-Fachliches Issue — wird nicht implementiert, bitte per /techplan #N in technische Issues ueberfuehren.
-```
-
-```
-Idee — mit Abwaegung erst /fachplan #N, ohne Abwaegung /task #N, wird nicht implementiert.
-```
-
-Die Idee hat zwei Wege nach vorn, und welcher gilt, entscheidet der Mensch mit dem Aufruf: Verlangt sie eine Abwaegung, `/fachplan #N`; ist nichts abzuwaegen oder hat er bereits entschieden, `/task #N`. Deshalb nennt der Kommentar beide.
-
-```
-Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.
-```
-
-```
-Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.
-```
-
-Ein `[Mensch]`-Paket ist ein Arbeitspaket, aber seine Aufgabe liegt ausserhalb des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe. Kein Zug einer Sitzung erledigt sie. Der Kommentar sagt darum ausdruecklich, dass die Karte **wartet** und nicht gescheitert ist: Im Backlog sieht sie sonst aus wie ein gescheitertes Paket, und wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat. Nach seiner Handlung zieht der Mensch sie selbst weiter.
-
-**Gezeichnete Issues ueberspringen (Leitplanke):** Ein Issue mit dem Label
-`kit:klaeren` traegt eine offene Entscheidung, auf die ein Mensch antworten muss.
-Es wandert mit diesem Kommentar zurueck nach Backlog, der Lauf geht weiter:
-
-```
-Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.
-```
-
-**Das Label wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf
-es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:klaeren`
-abraeumen duerfte, koennte sich selbst freigeben.
-
-Ohne Argument danach mit dem nächsten Ready-Issue fortfahren (bzw. ohne Fehler enden, wenn keines bleibt). Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue.
-
 Wenn Ready leer ist:
 
 > "Ready ist leer. Nichts zu tun."
 
 Ohne Fehler enden.
+
+**Auftrag holen — ein Aufruf, vor jedem Zug:**
+
+```bash
+node .claude/kit/board.mjs issue auftrag <id>
+```
+
+Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Er läuft **vor** Schritt 1: Er erwartet die Karte in Ready, nach dem Zug nach In progress lautete seine Folge `bleibt`. Gehandelt wird allein nach der Folge. Die Prüfungen dahinter — die Titel-Präfixe `[Fachlich]`, `[Idee]`, `[Plan]` und `[Mensch]`, das Label `kit:klaeren`, die Spalte, die Voraussetzungen — und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+
+- **`beginnen`** — weiter mit Schritt 1.
+- **`bleibt`** — die Karte wird nicht bewegt und nicht kommentiert. Der Skill meldet den Grund aus dem Urteil; liegt die Karte nicht (mehr) in Ready, mit der Meldung oben. Mit Argument endet er damit ergebnislos, ohne Argument geht er zum nächsten Ready-Issue.
+- **`backlog`** — die Karte ist keine Umsetzungsaufgabe oder trägt eine offene Frage an einen Menschen. Der Kommentar, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, geht unverändert ans Issue, danach zieht die Karte nach Backlog:
+
+  ```bash
+  node .claude/kit/board.mjs issue comment <id> --text '<Kommentar aus dem Auftrag, woertlich>'
+  ```
+
+  ```bash
+  node .claude/kit/board.mjs issue move <id> backlog
+  ```
+
+  Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue. Ohne Argument geht er zum nächsten Ready-Issue (bzw. endet ohne Fehler, wenn keines bleibt).
+
+**Das Label `kit:klaeren` wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:klaeren` abraeumen duerfte, koennte sich selbst freigeben.
 
 Ob ein Ready-Issue geprueft wurde, ist keine Frage dieses Skills — Ready ist das GO.
 
@@ -85,7 +73,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 ### 2. Issue vollständig lesen
 
-Lies alle Abschnitte des Issues. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
+Gelesen wird der Auftrag aus Schritt 0. Er trägt Aufgabe, Kommentare und Zusammenhang schon: Ein weiteres `issue get` für die Karte, den Plan oder die fachliche Quelle braucht es nicht, und seine Ausgabe wird nicht per `node -e` oder `jq` zerlegt. Was er unter „Lücken" nennt, fehlt wirklich und wird nicht still ergänzt. Lies alle Abschnitte der Aufgabe. Implementiere **gegen das Issue**, nicht gegen den Chat. Was im Issue steht, wird gebaut. Was nicht drinsteht, bleibt draußen.
 
 **Trägt das Issue eine Zeile `Empfohlenes Modell: <name>` oder `Aufgabenstufe: <schwer|mittel|leicht>`, nenne sie** — zusammen mit dem Hinweis, dass die laufende Sitzung ihr Modell nicht wechselt. Beide sind eine Angabe, keine Anweisung: Nachts wirkt sie von selbst (der Runner startet die Session der Karte damit), tagsüber wählt der Mensch sein Modell selbst und sitzt ohnehin daneben. **Kein Halt, keine Rückfrage, keine Änderung am Ablauf** — wer eine laufende Sitzung für eine Empfehlung zum Neustart auffordert, kostet mehr, als die Empfehlung wert ist.
 
@@ -194,38 +182,32 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 **Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
 
-### 6. Issue nach In review verschieben + Abschlussbericht
+### 6. Melden: Abschlussbericht und In review
+
+Bericht ablegen und Karte nach In review ziehen ist **ein** Aufruf. Der Bericht steht als Argument in einfachen Anführungszeichen, ohne Zwischendatei, ohne Heredoc, ohne Pipe:
 
 ```bash
-node .claude/kit/board.mjs issue move <id> in_review
+node .claude/kit/board.mjs issue melden <id> --text '## Abschlussbericht Issue #N
+…'
 ```
 
-Den Abschlussbericht nach der Transportregel ausserhalb des Projektverzeichnisses vorbereiten und als Issue-Kommentar uebertragen:
+**Maskierung:** Ein `'` im Bericht wird als `'\''` geschrieben — das ist die einzige Regel, alles andere steht im Bericht, wie es ist.
+
+**Über 6.000 Zeichen** geht der Bericht in nummerierten Stücken, jedes ein **eigener** Werkzeugaufruf, weil die Grenze je Aufruf gilt. Ein Stück berührt das Board nicht, und eine Wiederholung überschreibt es:
 
 ```bash
-printenv TMPDIR
+node .claude/kit/board.mjs issue melden <id> --teil <n> --text '<Stück n>'
 ```
+
+Danach der abschließende Aufruf ohne `--text` — er setzt die Stücke in Nummernfolge zusammen, legt ab, zieht nach In review und räumt die Stücke erst danach:
 
 ```bash
-cat  > <tmpdir>/id-bericht.md <<'TEIL1'
-## Abschlussbericht Issue #N
-...
-TEIL1
+node .claude/kit/board.mjs issue melden <id>
 ```
 
-```bash
-cat >> <tmpdir>/id-bericht.md <<'TEIL2'
-… weitere Stuecke, je hoechstens 6.000 Zeichen …
-TEIL2
-```
+Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit; die Session schreibt sie nicht. An ihr erkennt `issue melden` den Bericht dieses Laufs: Eine Wiederholung legt keinen zweiten an, sondern lässt ihn bei gleichem Inhalt stehen und ersetzt ihn bei geändertem. **Scheitert die Meldung**, ist die Karte nicht bewegt, und die Ausgabe nennt den Grund. Die Wiederholung ist der Abschlussaufruf allein — bei der Stückform `issue melden <id>` ohne `--text`, die Stücke liegen noch; bei der Einzelform derselbe Aufruf mit `--text`. Warum `issue melden` von der Transportregel ausgenommen ist, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
-```bash
-node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/id-bericht.md
-```
-
-Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
-
-**Working Tree sauber hinterlassen (Nachtbetrieb-Leitplanke).** Am Ende der Session enthält der Working Tree ausschließlich committete Änderungen. Lege für den Abschlussbericht keine Hilfsdateien **im Projektverzeichnis** an (kein `.tmp-report.md`, kein Node-Wrapper zum Posten). Die Berichtsdatei aus der Transportregel liegt ausserhalb und macht den Working Tree nicht unsauber (Issue #270, #584). Waren ausnahmsweise Hilfsdateien nötig, lösche sie vor Session-Ende. Der Nacht-Runner stoppt hart, wenn eine erfolgreiche Runde unkommittete Reste hinterlässt (siehe `kit/night.mjs`, Issue #152).
+**Working Tree sauber hinterlassen (Nachtbetrieb-Leitplanke).** Am Ende der Session enthält der Working Tree ausschließlich committete Änderungen. Lege für den Abschlussbericht keine Hilfsdateien **im Projektverzeichnis** an (kein `.tmp-report.md`, kein Node-Wrapper zum Posten). Der Bericht braucht keine Datei: Er geht als Argument von `issue melden` ans Board, und die Stücke unter `.claude/berichte/` räumt der abschließende Aufruf selbst (Issue #270, #584, #1025). Waren ausnahmsweise Hilfsdateien nötig, lösche sie vor Session-Ende. Der Nacht-Runner stoppt hart, wenn eine erfolgreiche Runde unkommittete Reste hinterlässt (siehe `kit/night.mjs`, Issue #152).
 
 Format des Abschlussberichts:
 

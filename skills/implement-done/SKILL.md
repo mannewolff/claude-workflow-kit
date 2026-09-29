@@ -19,13 +19,31 @@ node .claude/kit/board.mjs issue list --status in_progress
 - Kein Issue dort: stoppen.
   > "Kein Issue in In progress. Erst `/implement-test` starten, um Tests für ein Issue zu schreiben."
 - Mehr als ein Issue dort: stoppen, auflisten, Nutzer um Auswahl bitten. Nicht raten, welches gemeint ist.
-- Genau ein Issue dort: das ist das aktuelle Issue.
+- Genau ein Issue dort: das ist das aktuelle Issue. Ob es fortgesetzt werden darf, sagt der Auftrag in Schritt 1.
 
 ## Ablauf
 
-### 1. Issue vollständig lesen
+### 1. Auftrag holen und lesen
 
-Lies alle Abschnitte des Issues erneut. Das Akzeptanzkriterium ist der Maßstab für die Implementierung, nicht die bereits vorhandenen Tests allein.
+```bash
+node .claude/kit/board.mjs issue auftrag <id> --spalte in_progress
+```
+
+Ein Aufruf liefert das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. `--spalte in_progress`, weil `/implement-test` die Karte schon gezogen hat. Gehandelt wird allein nach der Folge; die Prüfungen dahinter und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+
+- **`beginnen`** — weiter mit Schritt 2.
+- **`bleibt`** — stoppen, den Grund aus dem Urteil melden, die Karte nicht bewegen und nicht kommentieren.
+- **`backlog`** — der Kommentar, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, geht unverändert ans Issue, danach zieht die Karte nach Backlog, und der Skill endet:
+
+  ```bash
+  node .claude/kit/board.mjs issue comment <id> --text '<Kommentar aus dem Auftrag, woertlich>'
+  ```
+
+  ```bash
+  node .claude/kit/board.mjs issue move <id> backlog
+  ```
+
+Lies alle Abschnitte der Aufgabe im Auftrag erneut; ein weiteres `issue get` braucht es nicht, und die Ausgabe wird nicht per `node -e` oder `jq` zerlegt. Das Akzeptanzkriterium ist der Maßstab für die Implementierung, nicht die bereits vorhandenen Tests allein.
 
 ### 2. Gegen die Tests implementieren
 
@@ -107,36 +125,34 @@ Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
 
 **Manuelle Pruefpunkte blockieren den Abschluss nicht.** Traegt das Issue einen Abschnitt `### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)` (Konvention aus dem `issues`-Skill), wird das Issue abgeschlossen, sobald alle maschinellen Kriterien erfuellt sind. Die manuellen Punkte werden **unveraendert in den Abschlussbericht und den Board-Kommentar uebernommen**, damit der Mensch vor dem Done-Zug weiss, was noch aussteht. Sie sind kein Grund anzuhalten — headless antwortet niemand, und eine Session, die daran haengenbleibt, ist vom Runner nicht von einem Fehlschlag zu unterscheiden (Issue #215).
 
-### 5. Issue nach In review verschieben + Abschlussbericht
+### 5. Melden: Abschlussbericht und In review
+
+Gleiches Format wie `implement-ready` Schritt 6, der Bericht steht unten.
+
+Bericht ablegen und Karte nach In review ziehen ist **ein** Aufruf. Der Bericht steht als Argument in einfachen Anführungszeichen, ohne Zwischendatei, ohne Heredoc, ohne Pipe:
 
 ```bash
-node .claude/kit/board.mjs issue move <id> in_review
+node .claude/kit/board.mjs issue melden <id> --text '## Abschlussbericht Issue #N
+…'
 ```
 
-Abschlussbericht als Issue-Kommentar, gleiches Format wie `implement-ready` Schritt 6:
+**Maskierung:** Ein `'` im Bericht wird als `'\''` geschrieben — das ist die einzige Regel, alles andere steht im Bericht, wie es ist.
+
+**Über 6.000 Zeichen** geht der Bericht in nummerierten Stücken, jedes ein **eigener** Werkzeugaufruf, weil die Grenze je Aufruf gilt. Ein Stück berührt das Board nicht, und eine Wiederholung überschreibt es:
 
 ```bash
-printenv TMPDIR
+node .claude/kit/board.mjs issue melden <id> --teil <n> --text '<Stück n>'
 ```
+
+Danach der abschließende Aufruf ohne `--text` — er setzt die Stücke in Nummernfolge zusammen, legt ab, zieht nach In review und räumt die Stücke erst danach:
 
 ```bash
-cat  > <tmpdir>/id-bericht.md <<'TEIL1'
-## Abschlussbericht Issue #N
-...
-TEIL1
+node .claude/kit/board.mjs issue melden <id>
 ```
 
-```bash
-cat >> <tmpdir>/id-bericht.md <<'TEIL2'
-… weitere Stuecke, je hoechstens 6.000 Zeichen …
-TEIL2
-```
+Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit; die Session schreibt sie nicht. An ihr erkennt `issue melden` den Bericht dieses Laufs: Eine Wiederholung legt keinen zweiten an, sondern lässt ihn bei gleichem Inhalt stehen und ersetzt ihn bei geändertem. **Scheitert die Meldung**, ist die Karte nicht bewegt, und die Ausgabe nennt den Grund. Die Wiederholung ist der Abschlussaufruf allein — bei der Stückform `issue melden <id>` ohne `--text`, die Stücke liegen noch; bei der Einzelform derselbe Aufruf mit `--text`. Warum `issue melden` von der Transportregel ausgenommen ist, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
-```bash
-node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/id-bericht.md
-```
-
-Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
+Format des Abschlussberichts:
 
 ```
 ## Abschlussbericht Issue #N

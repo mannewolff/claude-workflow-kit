@@ -24,11 +24,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Alle zwoelf Befehlsstellen in neun Skill-Dateien, EINZELN benannt statt gezaehlt:
+// Die Befehlsstellen mit Dateiweg, EINZELN benannt statt gezaehlt:
 // Eine Gesamtzahl bliebe bei einer vierzehnten Stelle gruen, eine Aufzaehlung wird rot.
 // #583 stellte /issue-review um, #584 die uebrigen sieben Skills, #585 weitet die
 // Pruefung hierauf aus; #574 bringt mit `/task` die dreizehnte Stelle — genau der Fall,
-// fuer den die Aufzaehlung gewaehlt wurde.
+// fuer den die Aufzaehlung gewaehlt wurde. #1025 nimmt die drei Abschlussberichte der
+// `implement-*`-Skills heraus: Sie melden seither mit `issue melden` (STELLEN_MELDEN unten).
 export const STELLEN = [
   { datei: "skills/issue-review/SKILL.md", befehl: "Befunde", zweck: "befunde" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Body-Schreibung", zweck: "body" },
@@ -38,14 +39,32 @@ export const STELLEN = [
   { datei: "skills/fachplan/SKILL.md", befehl: "issue create" },
   { datei: "skills/task/SKILL.md", befehl: "issue create" },
   { datei: "skills/techplan/SKILL.md", befehl: "issue create (mehrzeilig)" },
-  { datei: "skills/implement-ready/SKILL.md", befehl: "Abschlussbericht" },
-  { datei: "skills/implement-next/SKILL.md", befehl: "Abschlussbericht" },
-  { datei: "skills/implement-done/SKILL.md", befehl: "Abschlussbericht" },
   { datei: "skills/review/SKILL.md", befehl: "Review-Ergebnis" },
 ];
 
-// Die neun Dateien, in denen die dreizehn Stellen liegen.
+// Die Dateien, in denen die Stellen mit Dateiweg liegen.
 const DATEIEN = [...new Set(STELLEN.map((stelle) => stelle.datei))];
+
+// Die drei meldenden Skills (Issue #1025, Plan #1015 E8, E14): Der Abschlussbericht geht
+// als Argument von `issue melden` ans Board, ohne Zwischendatei — die benannte Ausnahme
+// von „Lange Texte ans Board".
+export const STELLEN_MELDEN = [
+  "skills/implement-next/SKILL.md",
+  "skills/implement-ready/SKILL.md",
+  "skills/implement-done/SKILL.md",
+];
+
+// Die vier Skills, die ihren Auftrag mit `issue auftrag` holen (Plan #1015 E6).
+export const STELLEN_AUFTRAG = [...STELLEN_MELDEN, "skills/implement-test/SKILL.md"];
+
+/** Der Meldeschritt: vom Kopf `### <n>. Melden …` bis zum naechsten `### `. */
+function meldeschritt(text) {
+  const start = text.search(/^### \d+\. Melden\b/m);
+  if (start < 0) return "";
+  const rest = text.slice(start + 4);
+  const ende = rest.search(/^### /m);
+  return ende < 0 ? text.slice(start) : text.slice(start, start + 4 + ende);
+}
 
 // Nur Zeilen INNERHALB von ```bash-Bloecken zaehlen. Fliesstext, der den Befehl
 // erwaehnt ("`board.mjs issue create` legt kein Issue an, wenn …"), ist kein Aufruf —
@@ -127,8 +146,62 @@ test("[skills-9] Register: der Abschnitt 'Lange Texte ans Board' traegt Regel un
   );
 });
 
+for (const datei of STELLEN_MELDEN) {
+  test(`[skills-1025] ${datei} — Meldeschritt: ein Aufruf issue melden, Bericht als Argument`, () => {
+    const schritt = meldeschritt(lies(datei));
+    assert.notEqual(schritt, "", `${datei}: kein Abschnitt '### <n>. Melden …'`);
+    assert.match(schritt, /board\.mjs issue melden <id> --text '/, `${datei}: der Aufruf issue melden --text '…' fehlt`);
+    assert.match(schritt, /board\.mjs issue melden <id> --teil <n> --text '/, `${datei}: die Stueckform mit --teil fehlt`);
+    assert.match(schritt, /^node \.claude\/kit\/board\.mjs issue melden <id>$/m, `${datei}: der Abschlussaufruf ohne --text fehlt`);
+    assert.ok(schritt.includes(String.raw`'\''`), `${datei}: die Maskierungsregel '\\'' fehlt im Meldeschritt`);
+    assert.match(schritt, /Wiederholung[^.]*Abschlussaufruf/, `${datei}: die Wiederholung nach Fehlschlag fehlt`);
+    assert.doesNotMatch(schritt, /issue comment[^\n]*--text-file/, `${datei}: der Meldeschritt nennt noch issue comment --text-file`);
+    assert.doesNotMatch(schritt, /printenv TMPDIR|cat +>/, `${datei}: der Meldeschritt baut noch eine Zwischendatei`);
+    assert.doesNotMatch(schritt, /issue move <id> in_review/, `${datei}: der Meldeschritt zieht noch selbst nach In review`);
+    for (const [, block] of schritt.matchAll(BASH_BLOCK)) {
+      assert.doesNotMatch(block, /<</, `${datei}: Heredoc im Meldeschritt`);
+      assert.doesNotMatch(block, /\|/, `${datei}: Pipe im Meldeschritt`);
+    }
+  });
+}
+
+test("[skills-1025] die vier implement-Skills holen den Auftrag mit issue auftrag", () => {
+  for (const datei of STELLEN_AUFTRAG) {
+    assert.match(lies(datei), /board\.mjs issue auftrag <id>/, `${datei}: nennt issue auftrag nicht`);
+  }
+  assert.match(lies("skills/implement-done/SKILL.md"), /issue auftrag <id> --spalte in_progress/,
+    "implement-done fragt nicht mit --spalte in_progress nach");
+});
+
+test("[skills-1025] die Backlog-Kommentartexte stehen nur noch in kit/board.mjs, in keinem Skill", async () => {
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  for (const datei of STELLEN_AUFTRAG) {
+    const text = lies(datei);
+    for (const [art, textFn] of Object.entries(AUFTRAG_BACKLOG_TEXTE)) {
+      // Der Wortlaut ohne die Kartennummer, damit weder `#N` noch `#<id>` ihn verbirgt.
+      const kern = textFn("N").split(" — ")[1].split("#")[0];
+      assert.ok(!text.includes(kern), `${datei}: traegt noch den Backlog-Kommentar '${art}' (${kern})`);
+    }
+  }
+});
+
+test("[skills-1025] Register: benannte Ausnahme fuer issue melden, Bericht-Lauf vom Kit gesetzt", () => {
+  const text = lies("templates/CLAUDE-workflow.md");
+  const abschnitt = /## Lange Texte ans Board[\s\S]*?(?=\n## |$)/.exec(text)?.[0] ?? "";
+  assert.match(abschnitt, /Ausnahme[\s\S]*issue melden[\s\S]*--teil/, "die Ausnahme fuer issue melden --text/--teil fehlt");
+  assert.match(abschnitt, /issue create[\s\S]*update[\s\S]*comment/, "der Satz, dass die Regel fuer create/update/comment bleibt, fehlt");
+  const format = /## Abschlussbericht-Format[\s\S]*?(?=\n## |$)/.exec(text)?.[0] ?? "";
+  assert.match(format, /Bericht-Lauf:/, "das Format nennt die Zeile Bericht-Lauf: nicht");
+});
+
+test("[skills-1025] /issues schreibt die Kontext-Zeile Plan-Entscheidungen", () => {
+  const text = lies("skills/issues/SKILL.md");
+  assert.match(text, /^Plan-Entscheidungen: E<n>/m, "die Zeile steht nicht im Muster der Rueckverweise");
+  assert.match(text, /issue auftrag/, "der Satz, wozu issue auftrag die Zeile liest, fehlt");
+});
+
 test("[skills-9] [skills-10] in keiner der neun Dateien steht eine Variable im Redirect-Ziel", () => {
-  for (const datei of DATEIEN) {
+  for (const datei of [...DATEIEN, ...STELLEN_MELDEN]) {
     assert.doesNotMatch(
       lies(datei),
       /\$TMPDIR|\$\{TMPDIR\}/,

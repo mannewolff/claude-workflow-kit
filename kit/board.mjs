@@ -3390,8 +3390,9 @@ async function issueMelden(tracker, args) {
 // Auftrag einer Umsetzung: issue auftrag (Issue #1023, Plan #1015)
 // ============================================================
 
-// Die Kommentartexte fuer Folge "backlog", wortgleich mit dem Schritt 0 der Skills
-// `implement-next` und `implement-ready`.
+// Die Kommentartexte fuer Folge "backlog" — die einzige Fassung fuer die Skills: Seit
+// Issue #1025 tragen `implement-*` sie nicht mehr selbst, sondern posten, was der Auftrag
+// liefert (test/skills-transport.test.mjs haelt sie aus den Skills heraus).
 // SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
 // (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
 // Gleichlauf-Test in test/board-auftrag.test.mjs vergleicht beide Seiten.

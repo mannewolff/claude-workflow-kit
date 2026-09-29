@@ -24,13 +24,33 @@ Kein zweites Issue parallel anfassen — ein Issue in Arbeit zur Zeit.
 
 ## Ablauf
 
-### 1. Ready-Issues laden
+### 1. Ready-Issues laden und Auftrag holen
 
 ```bash
 node .claude/kit/board.mjs issue list --status ready
 ```
 
 Issue mit der niedrigsten ID nehmen. Diese Auswahl ist verbindlich, kein Raten, welches Issue sinnvoller wäre.
+
+Dann den Auftrag holen — ein Aufruf, **vor** dem Zug nach In progress, denn er erwartet die Karte in Ready:
+
+```bash
+node .claude/kit/board.mjs issue auftrag <id>
+```
+
+Er liefert das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Gehandelt wird allein nach der Folge; die Prüfungen dahinter und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+
+- **`beginnen`** — weiter mit Schritt 2.
+- **`bleibt`** — stoppen, den Grund aus dem Urteil melden, die Karte nicht bewegen und nicht kommentieren.
+- **`backlog`** — der Kommentar, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, geht unverändert ans Issue, danach zieht die Karte nach Backlog, und der Skill endet:
+
+  ```bash
+  node .claude/kit/board.mjs issue comment <id> --text '<Kommentar aus dem Auftrag, woertlich>'
+  ```
+
+  ```bash
+  node .claude/kit/board.mjs issue move <id> backlog
+  ```
 
 ### 2. Issue nach In progress verschieben
 
@@ -40,7 +60,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 
 ### 3. Issue vollständig lesen
 
-Lies alle Abschnitte des Issues. Die Tests entstehen gegen das Issue, nicht gegen den Chat.
+Gelesen wird der Auftrag aus Schritt 1; ein weiteres `issue get` braucht es nicht, und seine Ausgabe wird nicht per `node -e` oder `jq` zerlegt. Lies alle Abschnitte der Aufgabe. Die Tests entstehen gegen das Issue, nicht gegen den Chat.
 
 ### 4. Nur die Tests schreiben
 

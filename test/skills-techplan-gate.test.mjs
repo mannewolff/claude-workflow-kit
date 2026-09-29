@@ -25,14 +25,18 @@ const SKILLS = [
   ["implement-next", lies("skills", "implement-next", "SKILL.md")],
 ];
 
+test("kit/board.mjs: der Rueckstellungs-Kommentar begruendet [Plan] mit /issues #N", async () => {
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  assert.equal(AUFTRAG_BACKLOG_TEXTE.plan("N"),
+    "Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.");
+});
+
 for (const [name, text] of SKILLS) {
-  test(`${name}: nennt [Plan], begruendet es und untersagt die Implementierung`, () => {
+  // Seit Issue #1025 prueft `issue auftrag` das Praefix und liefert den Kommentar; der
+  // Skill nennt das Praefix und handelt nach der Folge, der Wortlaut steht in kit/board.mjs.
+  test(`${name}: nennt [Plan] und laesst den Auftrag das Urteil sprechen`, () => {
     assert.match(text, /\[Plan\]/, "das Praefix wird nicht genannt");
-    assert.match(text, /beschreibt (?:nur )?einen Weg/i,
-      "die Begruendung fehlt — ein Plan beschreibt einen Weg, er ist keine Aufgabe");
-    assert.match(text, /\/issues #N/, "der Hinweis auf die Zerlegung per /issues #N fehlt");
-    assert.match(text, /Plan-Dokument — wird nicht implementiert, bitte per \/issues #N in Arbeitspakete ueberfuehren\./,
-      "der woertliche Kommentartext fuer die Rueckstellung fehlt");
+    assert.match(text, /board\.mjs issue auftrag <id>/, "der Auftrag, der das Gate prueft, fehlt");
   });
 
   test(`${name}: fuehrt [Plan] in den Stop-Punkten`, () => {

@@ -93,10 +93,12 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 ```
 Plan: Issue #M
 Fachliche Quelle: Issue #N
+Plan-Entscheidungen: E<n>, …
 ```
 
 - `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/techplan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
 - `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/techplan #N`), kommt dieser Verweis dazu.
+- `Plan-Entscheidungen: E<n>, …` — jedes Paket aus einem `[Plan]`-Issue nennt die Eintraege unter `## Architektonische Entscheidungen` des Plans, auf die seine Aufgabe sich beruft, oder woertlich `Plan-Entscheidungen: Keine.`. `issue auftrag` liest die Zeile, um der Umsetzung genau diese Entscheidungen im Wortlaut mitzugeben; fehlt sie, liefert der Auftrag alle Eintraege des Plans und sagt, dass das Paket keine Auswahl nennt.
 
 **Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
 
@@ -119,7 +121,7 @@ node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --bod
 
 **Zwei Randfälle:**
 
-- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile** und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
+- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile**, keine `Plan-Entscheidungen:`-Zeile und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
 - **Plan ohne fachliche Quelle:** Steht hinter dem Plandokument keine fachliche Anforderung, steht nur `Plan: Issue #M`.
 
 Issue anlegen ueber den Board-Adapter:

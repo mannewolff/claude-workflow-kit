@@ -33,14 +33,14 @@ test("[skills-984] jede Stelle nennt das Praefix `[Mensch]`", () => {
   }
 });
 
-test("[skills-984] beide implement-Skills tragen den Rueckgabe-Kommentar des Menschenschritts", () => {
-  for (const pfad of ["skills/implement-next/SKILL.md", "skills/implement-ready/SKILL.md"]) {
-    const bloecke = [...text(pfad).matchAll(/^```[a-z]*\n([\s\S]*?)^```/gm)].map((m) => m[1]);
-    const treffer = bloecke.filter((b) => /^Menschenschritt —/m.test(b));
-    assert.equal(treffer.length, 1, `${pfad}: genau ein Rueckgabe-Kommentar fuer den Menschenschritt erwartet`);
-    assert.match(treffer[0], /wartet auf einen Menschen/i, `${pfad}: der Kommentar sagt nicht, dass die Karte wartet`);
-    assert.match(treffer[0], /nicht gescheitert/i, `${pfad}: der Kommentar sagt nicht, dass die Karte nicht gescheitert ist`);
-  }
+// Seit Issue #1025 steht der Rueckgabe-Kommentar nur noch in kit/board.mjs; die
+// implement-Skills posten, was `issue auftrag` liefert.
+test("[skills-984] der Auftrag liefert den Rueckgabe-Kommentar des Menschenschritts", async () => {
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const kommentar = AUFTRAG_BACKLOG_TEXTE.mensch("N");
+  assert.match(kommentar, /^Menschenschritt —/, "der Kommentar beginnt nicht mit 'Menschenschritt —'");
+  assert.match(kommentar, /wartet auf einen Menschen/i, "der Kommentar sagt nicht, dass die Karte wartet");
+  assert.match(kommentar, /nicht gescheitert/i, "der Kommentar sagt nicht, dass die Karte nicht gescheitert ist");
 });
 
 test("[skills-984] die Praefix-Tabelle der Vorlage fuehrt vier Praefixe, und `[Task]` gehoert nicht dazu", () => {

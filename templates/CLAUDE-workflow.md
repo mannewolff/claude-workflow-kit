@@ -285,7 +285,7 @@ Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bere
 3. **Nur die Shell, kein Dateischreib-Werkzeug.** Unbeaufsichtigt sind Schreibzugriffe ausserhalb des Projektverzeichnisses damit abgewiesen, innerhalb von `.claude/` zustimmungspflichtig.
 4. **Kein Pipe, keine Gruppierung um den Board-Aufruf.**
 
-Eine Datei im Repo machte den Working Tree unsauber, und darauf stoppt der Nacht-Runner hart. Wer knapp schreibt, merkt von der Grenze nichts; wer gruendlich prueft, verloere sonst alles.
+Eine Datei im Repo machte den Working Tree unsauber, und darauf stoppt der Nacht-Runner hart. Wer knapp schreibt, merkt von der Grenze nichts; wer gruendlich prueft, verloere sonst alles. **Benannte Ausnahme: `issue melden --text` und `--teil`.** Den Abschlussbericht einer Umsetzung traegt `issue melden <id> --text '<bericht>'` als Argument in einfachen Anfuehrungszeichen — ohne Zwischendatei, ohne Heredoc, ohne Pipe; ein `'` im Bericht wird als `'\''` geschrieben. Ueber 6.000 Zeichen geht er in nummerierten Stuecken (`issue melden <id> --teil <n> --text '…'`, jedes ein eigener Werkzeugaufruf), der abschliessende Aufruf `issue melden <id>` ohne `--text` setzt sie zusammen. Grund: Der Ablageort ausserhalb des Projektverzeichnisses war im gemessenen Lauf genau die Stelle, an der ein Bericht scheiterte und doppelt hinausging. Fuer `issue create`, `update` und `comment` gilt die Regel oben unveraendert.
 
 ---
 
@@ -358,7 +358,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier 
 - E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
 
-`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen".
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen". Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit (`issue melden`), nicht die Session: Sie kennzeichnet den Bericht eines Laufs, damit eine Wiederholung ihn ersetzt statt einen zweiten anzulegen.
 
 ---
 
