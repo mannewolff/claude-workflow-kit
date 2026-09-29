@@ -589,6 +589,12 @@
           },
           "additionalProperties": false
         },
+        "modell": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^claude-",
+          "description": "Das Modell des Nachtlaufs: Es startet jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung der Kette, die Korrekturrunden und jedes Paket ohne Aufgabenstufe. Vorrang: --model beim Aufruf, dann dieses Feld, dann die Vorgabe des Runners. Muss auch in night.modelle stehen, sonst endet der Runner vor dem Start. Gilt nur aus der geteilten Konfiguration, ein Wert in der persönlichen Datei wird ignoriert."
+        },
         "modelle": {
           "type": "array",
           "items": {

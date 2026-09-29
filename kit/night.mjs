@@ -28,7 +28,7 @@
  *                      Umsetzungsnacht (.claude/night-umsetzung.lock, Issue #696) —
  *                      wer ihn gehalten vorfindet, laesst die Umsetzung aus.
  *   --max <N>          maximale Session-Starts pro Lauf (Default 10)
- *   --model <id>       Modell der Nacht-Sessions (Default claude-opus-5)
+ *   --model <id>       Modell der Nacht-Sessions (sonst night.modell, sonst claude-opus-5)
  *   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
  *   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
  *   --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
@@ -390,7 +390,7 @@ Flags:
                      Eine Vorschau hat er nicht: /issue-review --dry-run zeigt Dokumente
                      und Reviewer.
   --max <N>          maximale Session-Starts pro Lauf (Default 10)
-  --model <id>       Modell der Nacht-Sessions (Default ${DEFAULT_MODEL})
+  --model <id>       Modell der Nacht-Sessions (sonst night.modell, sonst ${DEFAULT_MODEL})
   --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
   --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
   --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
@@ -455,7 +455,7 @@ const SOFORT_FLAGS = {
 // Wert plausibel ist, entscheidet pruefeArgs — nicht diese Tabelle.
 const WERT_FLAGS = {
   "--max": (args, wert) => { args.max = Number(wert); },
-  "--model": (args, wert) => { args.model = wert; },
+  "--model": (args, wert) => { args.model = wert; args.modelGesetzt = true; },
   "--label": (args, wert) => { args.label = wert; args.labelGesetzt = true; },
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
@@ -536,7 +536,7 @@ function parseArgs(argv) {
   // max bleibt bewusst null: Der Default haengt am Modus, und der steht erst fest,
   // wenn alle Flags gelesen sind. Ein unbedingtes 10 hier machte einen modusabhaengigen
   // Wert von einem gesetzten ununterscheidbar (Issue #517). pruefeArgs loest ihn auf.
-  const args = { max: null, model: DEFAULT_MODEL, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false, pruefen: false };
+  const args = { max: null, model: DEFAULT_MODEL, modelGesetzt: false, timeoutMin: 60, dryRun: false, yolo: false, noChecksOk: false, verbose: true, label: DEFAULT_LABEL, labelGesetzt: false, kette: false, pruefen: false };
   let i = 0;
   while (i < argv.length) {
     i = liesArgument(args, argv, i);
@@ -4619,6 +4619,35 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   ].join("\n");
 }
 
+// --- Das Modell des Laufs (Issue #994) ---
+
+/**
+ * Bestimmt das Modell des Laufs: `--model` vor `night.modell` vor `DEFAULT_MODEL`.
+ *
+ * Es gilt fuer jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung
+ * der Kette, die Korrekturrunden und jedes Paket ohne `Aufgabenstufe:`. Frueher stand es
+ * fest im Code, und ein Projekt, das ueberall `claude-opus-5-5` eingetragen hatte, fuhr
+ * diese Sessions trotzdem mit der Vorgabe.
+ *
+ * `night.modell` muss in `night.modelle` stehen wie jede Modellangabe der Config. Sonst
+ * kommt ein Fehler zurueck statt eines stillen Rueckfalls auf die Vorgabe: Dann liefe
+ * wieder ein Modell, das niemand gewaehlt hat. `--model` bleibt ungeprueft wie bisher —
+ * der Aufruf von Hand ist eine bewusste Wahl des Menschen.
+ *
+ * `config` ist die gemischte Config; `night` steht nicht in der Allowlist, ein lokaler
+ * Wert ist hier also schon verworfen und gemeldet.
+ */
+export function laufModell(args, config) {
+  if (args.modelGesetzt) return { modell: args.model, herkunft: "--model", fehler: null };
+  const wert = config?.night?.modell;
+  if (wert === undefined || wert === null || wert === "") return { modell: DEFAULT_MODEL, herkunft: "Vorgabe", fehler: null };
+  const erlaubt = Array.isArray(config.night.modelle) ? config.night.modelle : [];
+  if (!erlaubt.includes(wert)) {
+    return { modell: null, herkunft: "night.modell", fehler: `night.modell '${wert}' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.` };
+  }
+  return { modell: wert, herkunft: "night.modell", fehler: null };
+}
+
 // --- Config mit persoenlichen Overrides (Issue #207) ---
 
 // SYNC: Allowlist und Merge-Logik stehen identisch in kit/board.mjs und kit/einstellungen.mjs
@@ -5330,6 +5359,10 @@ export function vorbereiten(args) {
   if (!existsSync(configPath)) fail("Keine .claude/workflow.config.json — bitte im Projekt-Root starten.");
   config = ladeConfigMitOverrides(configPath);
   CONFIG_PATH = configPath;
+  const lauf = laufModell(args, config);
+  if (lauf.fehler) fail(lauf.fehler, "zustand");
+  args.model = lauf.modell;
+  args.modellHerkunft = lauf.herkunft;
   if (args.kette) ketteBudgetLaden();
   if (args.pruefen) pruefLaufBudgetLaden();
 
@@ -5364,7 +5397,7 @@ export function vorbereiten(args) {
   // Ein Lauf ohne Zahlendeckel sagt das aus (Plan #904, E9): "max null Sessions" liesse
   // offen, ob die Zahl fehlt oder keine gilt.
   const maxAngabe = args.max === null ? "max ohne Deckel" : `max ${args.max} Sessions`;
-  log(`Nacht-Runner startet (Modus ${modus}, ${maxAngabe}, Modell ${args.model}, Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
+  log(`Nacht-Runner startet (Modus ${modus}, ${maxAngabe}, Modell ${args.model} (${args.modellHerkunft}), Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }

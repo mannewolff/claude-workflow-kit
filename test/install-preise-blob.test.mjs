@@ -112,9 +112,9 @@ test("[board-11] [board-15] der Melder laeuft im installierten Projekt und rechn
     assert.equal(requests[0].headers["x-kanban-token"], "projekt-token", "das Zielprojekt kommt aus der Bindung des Tokens (E3)");
     const body = JSON.parse(requests[0].body);
     assert.equal(body.kind, "INTERACTIVE");
-    // 1.000.000 Ausgabe-Token zu 15 Dollar je Million — der Beleg, dass die
-    // Preistabelle neben board.mjs gefunden wurde.
-    assert.equal(body.usage.costUsd, 15);
+    // 1.000.000 Ausgabe-Token zu 10 Dollar je Million (Sonnet 5, tier_2_10) — der Beleg,
+    // dass die Preistabelle neben board.mjs gefunden wurde.
+    assert.equal(body.usage.costUsd, 10);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     server.close();

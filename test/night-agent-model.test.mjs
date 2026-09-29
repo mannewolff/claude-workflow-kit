@@ -100,9 +100,10 @@ test("Ohne --model steht das Default-Modell in KIT_AGENT_MODEL", NUR_POSIX, () =
       { NIGHT_CLAUDE_CMD: modelFake(modelLog) });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
-    // Der Default steht in night.mjs (DEFAULT_MODEL) und wird auch im --help ausgewiesen.
+    // Der Default steht in night.mjs (DEFAULT_MODEL) und wird auch im --help ausgewiesen —
+    // seit Issue #994 als letzte Stufe hinter night.modell, das dieses Fixture nicht setzt.
     const help = run(dir, process.execPath, [NIGHT, "--help"]);
-    const defaultModel = help.stdout.match(/--model <id>\s+Modell der Nacht-Sessions \(Default (\S+)\)/)?.[1];
+    const defaultModel = help.stdout.match(/--model <id>\s+Modell der Nacht-Sessions \(sonst night\.modell, sonst (\S+)\)/)?.[1];
     assert.ok(defaultModel, "Default-Modell nicht aus --help ablesbar");
     assert.deepEqual(readFileSync(modelLog, "utf-8").trim().split("\n"), [defaultModel],
       "ohne --model haette das Default-Modell in KIT_AGENT_MODEL stehen muessen");

@@ -1,7 +1,7 @@
 /**
  * preise.mjs — Preise je Modell und Million Token (Issue #734)
  *
- * STAND DER TABELLE: 2026-09-18. Dieses Datum ist der Kern der Datei. Preise
+ * STAND DER TABELLE: 2026-09-29. Dieses Datum ist der Kern der Datei. Preise
  * aendern sich, Modelle kommen dazu; eine Tabelle ohne Stand behauptet eine
  * Aktualitaet, die sie nicht hat.
  *
@@ -12,12 +12,16 @@
  * mannewolff/kanban-kit#1007: "rechnen", nicht "durchreichen".
  *
  * Herkunft der Zahlen: die Modell-Registry von Claude Code selbst, gelesen aus dem
- * ausgelieferten Binary (Fassung 2.1.236). Sie ist dieselbe Quelle, aus der die CLI
+ * ausgelieferten Binary (Fassung 2.1.283). Sie ist dieselbe Quelle, aus der die CLI
  * ihr eigenes `total_cost_usd` rechnet — damit stimmt der hier gerechnete Betrag
  * einer interaktiven Sitzung mit dem ueberein, den der Nacht-Runner durchreicht.
  * Nachlesbar mit:
  *
  *     LC_ALL=C grep -a -o -E 'tier_3_15:\{[^}]*\}' "$(readlink -f "$(which claude)")"
+ *
+ * Welche Stufe ein Modell traegt, steht im Modellkatalog desselben Binaries, im Feld
+ * `pricing` des Eintrags `{id:"<modell>",…}` (Issue #994: dort stand Sonnet 5 inzwischen
+ * auf tier_2_10, und Opus 5.5 fehlte hier ganz).
  *
  * PFLEGELAST: Diese Datei veraltet von allein. Ein Modell ohne Eintrag fuehrt zu
  * KEINEM Betrag (nie zu 0 und nie zu einem geratenen) — der Verbrauch in Token wird
@@ -31,7 +35,7 @@
 export const KIT_VERSION = "3.3.7";
 
 /** Der Tag, an dem die Tabelle zuletzt gegen die Quelle gehalten wurde. */
-export const PREISE_STAND = "2026-09-18";
+export const PREISE_STAND = "2026-09-29";
 
 /**
  * Die Preisstufen. Ein Modell bekommt keinen eigenen Satz Zahlen, sondern eine
@@ -47,7 +51,9 @@ export const PREISE_STAND = "2026-09-18";
 export const PREIS_STUFEN = {
   haiku_35:    { eingabe: 0.8, ausgabe: 4,  cacheSchreiben5m: 1,     cacheSchreiben1h: 1.6, cacheLesen: 0.08 },
   haiku_45:    { eingabe: 1,   ausgabe: 5,  cacheSchreiben5m: 1.25,  cacheSchreiben1h: 2,   cacheLesen: 0.1 },
+  tier_2_10:   { eingabe: 2,   ausgabe: 10, cacheSchreiben5m: 2.5,   cacheSchreiben1h: 4,   cacheLesen: 0.2 },
   tier_3_15:   { eingabe: 3,   ausgabe: 15, cacheSchreiben5m: 3.75,  cacheSchreiben1h: 6,   cacheLesen: 0.3 },
+  tier_4_20_cache_read_0_20: { eingabe: 4, ausgabe: 20, cacheSchreiben5m: 5, cacheSchreiben1h: 8, cacheLesen: 0.2 },
   tier_5_25:   { eingabe: 5,   ausgabe: 25, cacheSchreiben5m: 6.25,  cacheSchreiben1h: 10,  cacheLesen: 0.5 },
   tier_10_50:  { eingabe: 10,  ausgabe: 50, cacheSchreiben5m: 12.5,  cacheSchreiben1h: 20,  cacheLesen: 1 },
   tier_15_75:  { eingabe: 15,  ausgabe: 75, cacheSchreiben5m: 18.75, cacheSchreiben1h: 30,  cacheLesen: 1.5 },
@@ -81,7 +87,7 @@ export const MODELL_STUFEN = {
   "claude-sonnet-4-5": "tier_3_15",
   "claude-sonnet-4-5-20250929": "tier_3_15",
   "claude-sonnet-4-6": "tier_3_15",
-  "claude-sonnet-5": "tier_3_15",
+  "claude-sonnet-5": "tier_2_10",
   "claude-opus-4-0": "tier_15_75",
   "claude-opus-4-20250514": "tier_15_75",
   "claude-opus-4-1": "tier_15_75",
@@ -92,6 +98,7 @@ export const MODELL_STUFEN = {
   "claude-opus-4-7": "tier_5_25",
   "claude-opus-4-8": "tier_5_25",
   "claude-opus-5": "tier_5_25",
+  "claude-opus-5-5": "tier_4_20_cache_read_0_20",
   "claude-fable-5": "tier_10_50",
   "claude-mythos-5": "tier_10_50",
 };
