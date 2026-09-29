@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.5.1] - 2026-09-29
+- Befunde-Vorschläge nur in der Hauptkopie, Prüflauf holt Befunde zurück (#1028)
+- Kit-Skripte mit Board-Zugriff in der Sandbox-Doku (#1016)
+- Zuschnitt der Prüfkonfiguration mit board als gekoppeltem Bereich (#1008)
+- Installer fragt ein neues Projekt nach seinen Bereichen (#1009)
+- Config-Feld gekoppelteBereiche in Schema, Einstellungen und Referenz (#1007)
+- implement-Skills und Prozessvorlage übernehmen den Berichtsblock wortgetreu (#1006)
+- Wirksamkeits-Auswertung zeigt den Abschnitt Bereiche (#1005)
+- checks.mjs protokolliert den Auslöser und bietet den Unterbefehl bereiche (#1004)
+- checks.mjs run bildet die Berichtszeilen samt Dauer, Grund und Obergrenze (#1003)
+- merge production prüft nur, was push main nicht geprüft hat (#1000)
+- Prüfsperre räumt nur eine gelesene, kaputte Sperre ab (#999)
+- Kleine Änderungen in der Konfiguration
+
 ## [3.5.0] - 2026-09-29
 - board.mjs erreicht das Board auch hinter dem Sandbox-Proxy (#998)
 - Fünf Sonar-Befunde in kit/ und tools/ behoben (#997)
