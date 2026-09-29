@@ -1,6 +1,6 @@
 name: "Checks: Tests + install.mjs-Blobs synchron"
 
-# CI-Guard mit zwei Steps:
+# CI-Guard mit zwei Steps (davor installiert npm ci die Abhängigkeiten, #996):
 # 1. node --test — die node:test-Suite unter test/ (seit #135).
 # 2. Blob-Check — prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
 #    aktuellen Stand ihrer Quellen passen: templates/CLAUDE-workflow.md,
@@ -50,6 +50,11 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 20
+          cache: npm
+
+      # eslint und die Lint-Tests brauchen node_modules (Issue #996).
+      - name: Abhängigkeiten installieren
+        run: npm ci
 
       - name: Testsuite ausführen
         run: node --test

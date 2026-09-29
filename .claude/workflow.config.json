@@ -1,5 +1,6 @@
 {
   "codeHost": "github",
+  "installCommand": "npm ci",
   "issueTracker": "toolbox",
   "buildChecks": [
     {
