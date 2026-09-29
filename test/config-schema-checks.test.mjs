@@ -352,6 +352,45 @@ test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig"
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
 });
 
+// --- gekoppelteBereiche (Issue #1007, Plan #1001 E14) ---
+//
+// Dieselbe Form wie `ohnePruefung`: je Eintrag ein Name und ein Pflichtgrund. Ein Bereich,
+// den eine gemessene Kopplung in fast alle Pruefkommandos zwingt, bleibt hervorgehoben —
+// aber nur mit Begruendung.
+
+test("gekoppelteBereiche: ein Eintrag mit bereich und grund ist gueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.ok(feld, "gekoppelteBereiche ist im Schema definiert");
+  assert.deepEqual(pruefe(feld, [{ bereich: "board", grund: "Fast jede Testgruppe laedt kit/board.mjs." }]), []);
+  assert.deepEqual(pruefe(feld, []), [], "die leere Liste ist gueltig");
+});
+
+test("gekoppelteBereiche: ein Eintrag ohne grund oder mit leerem grund ist ungueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.notDeepEqual(pruefe(feld, [{ bereich: "board" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ grund: "ohne Namen" }]), []);
+  // Den leeren String weist `minLength` ab; der Mini-Validator ignoriert es, deshalb steht
+  // die Grenze hier am Feld selbst.
+  assert.equal(feld.items.properties.bereich.minLength, 1);
+  assert.equal(feld.items.properties.grund.minLength, 1);
+});
+
+test("gekoppelteBereiche: falsche Typen und unbekannte Felder sind ungueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.notDeepEqual(pruefe(feld, { bereich: "board", grund: "kein Array" }), []);
+  assert.notDeepEqual(pruefe(feld, ["board"]), []);
+  assert.notDeepEqual(pruefe(feld, [{ bereich: 1, grund: "Zahl als Name" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ bereich: "board", grund: "x", muster: "kit/**" }]), []);
+});
+
+test("gekoppelteBereiche: die Beschreibung nennt den Vermerk und das fehlende Feld", () => {
+  const text = schema.properties.gekoppelteBereiche.description;
+  assert.match(text, /durch Kopplung erzwungen: <Grund>/);
+  assert.match(text, /Ohne Eintrag gilt die Hervorhebungsregel ausnahmslos/);
+  assert.match(text, /Gilt teamweit; ein abweichender Wert in workflow\.config\.local\.json wird ignoriert\.$/);
+  assert.deepEqual(schema.properties.gekoppelteBereiche.default, []);
+});
+
 // --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---
 
 test("spec: das Schema kennt den Block nicht mehr, die Wurzel bleibt geschlossen", () => {

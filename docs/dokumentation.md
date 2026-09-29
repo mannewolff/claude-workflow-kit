@@ -559,6 +559,13 @@ Dateien, zu denen es ausdrücklich nichts zu prüfen gibt — die dritte Antwort
 - `ohnePruefung[].muster` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner.
 - `ohnePruefung[].grund` — Warum keine Prüfung den Inhalt dieser Datei liest. Steht in jedem Lauf im Bericht und ist Pflicht — ein Bereichsname könnte ihn nicht tragen.
 
+### `gekoppelteBereiche`
+
+Bereiche, die eine gemessene Kopplung in fast alle Prüfkommandos zwingt — etwa eine Datei, die fast jede Testgruppe lädt. Ein solcher Bereich bleibt in der Auswertung hervorgehoben und trägt den Vermerk "durch Kopplung erzwungen: `<Grund>`". Jeder Eintrag nennt den Bereichsnamen (wie in checkAreas) und den Grund; ohne Grund kein Eintrag. Ohne Eintrag gilt die Hervorhebungsregel ausnahmslos. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `gekoppelteBereiche[].bereich` — Name des Bereichs, wie er in checkAreas steht.
+- `gekoppelteBereiche[].grund` — Welche gemessene Kopplung den Bereich in fast alle Prüfkommandos zwingt. Steht als Vermerk an der Hervorhebung und ist Pflicht.
+
 ### `nurGeruest`
 
 Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Die Verflechtungserhebung (tools/verflechtung.mjs) zählt jede Erwähnung eines Quellpfads im Text einer Testdatei als Kopplung; für die Deckungsprüfung irrt das in die sichere Richtung, für die Auswahl der Prüfkommandos nicht mehr: Ein Test, der sich in einem Wegwerf-Repository eine eigene .gitignore oder package.json schreibt, ist damit nicht an die gleichnamige Datei dieses Projekts gekoppelt. Jeder Eintrag nennt ein Pfadmuster (dieselbe Schreibweise wie in checkAreas) und den Grund, warum keine Prüfung diesen Pfad liest; ohne Grund kein Eintrag. Das Muster gilt gegen den Quellpfad und damit für alle Testdateien zugleich: Was auch nur eine einzige Testdatei wirklich prüft, gehört nicht hierher — es einzutragen machte die Deckungsprüfung an dieser Stelle blind, und zwar still. Fehlendes Feld = keine Ausnahme = unverändertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
