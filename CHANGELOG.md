@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.3.8] - 2026-09-29
+- Das Modell des Nachtlaufs kommt aus der Config, und die Preistabelle kennt Opus 5.5 (#994)
+- Zeitlimit hochgesetzt
+- Zeitlimit hochgesetzt
+
 ## [3.3.7] - 2026-09-28
 - Vorflug probt Reviewer ohne Pipe, damit excludedCommands wieder greift (#986)
 - Doku und Prozessvorlage beschreiben den Zeitabbruch ohne Ursachenbehauptung (#982)
