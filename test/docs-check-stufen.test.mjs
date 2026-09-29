@@ -15,9 +15,9 @@
 //
 // Der zweite heikle Punkt ist die Reichweite. „Eine spaetere Stufe laeuft an der
 // frueheren nicht mit" klingt wie eine Abschwaechung von W3. Sie ist keine —
-// jede Stufe faehrt ihre Vorgaengerstufen mit, und vor jeder Freigabe laufen
-// alle drei. Genau dieser Satz muss im Text stehen, sonst wertet ein Review die
-// Staffelung als Gate-Verstoss.
+// jede Pruefung jeder Stufe laeuft einmal vor der Freigabe (seit Issue #1000:
+// Paket und Push beim push main, Merge beim merge production). Genau dieser Satz
+// muss im Text stehen, sonst wertet ein Review die Staffelung als Gate-Verstoss.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -87,12 +87,17 @@ test("W3 bindet die betroffenen buildChecks an die faellige Stufe", () => {
     "W3 hat die Mechanik der roten Checks verloren");
 });
 
-test("W3 haelt fest, dass vor jeder Freigabe alle drei Stufen laufen", () => {
+test("W3 haelt fest, dass jede Pruefung jeder Stufe einmal vor der Freigabe laeuft", () => {
   // Sonst liest ein Review die Staffelung als Aufweichung eines Gates — genau
-  // die Lesart, gegen die W3 gebaut ist.
+  // die Lesart, gegen die W3 gebaut ist. Seit Issue #1000 praezisiert: einmal,
+  // nicht zweimal — Paket- und Push-Stufe beim push main, Merge-Stufe beim merge.
   const regel = VORLAGE.slice(VORLAGE.indexOf("### W3 —")).split(/\n### /)[0];
-  assert.match(regel, /alle drei Stufen/,
-    "W3 sagt nicht, dass vor jeder Freigabe alle drei Stufen laufen");
+  assert.doesNotMatch(regel, /alle drei Stufen/,
+    "W3 beschreibt noch den Doppellauf aller drei Stufen vor der Freigabe");
+  assert.match(regel, /Jede Pruefung jeder Stufe laeuft \*\*einmal\*\* vor der Freigabe/,
+    "W3 sagt nicht, dass jede Pruefung einmal vor der Freigabe laeuft");
+  assert.match(regel, /Paket- und Push-Stufe beim `push main`, die Merge-Stufe beim `merge production`/,
+    "W3 ordnet die Stufen nicht ihrem Lauf zu");
   assert.match(regel, /[Kk]eine Pflichtpruefung entfaellt[\s\S]{0,80}Gesamtprozess/,
     "W3 sagt nicht, dass keine Pflichtpruefung aus dem Gesamtprozess entfaellt");
 });

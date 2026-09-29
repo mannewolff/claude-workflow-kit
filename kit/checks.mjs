@@ -62,15 +62,19 @@
  *
  * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
  * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
- * sind kumulativ — `push` faehrt `paket` mit, `merge` alle drei —, ein Eintrag
+ * sind kumulativ — `push` faehrt `paket` mit —, ein Eintrag
  * ohne `stufe` gilt als Paketstufe, und damit bleibt jede bestehende Config
  * unveraendert. Die beiden Achsen beantworten Verschiedenes: `areas`/`always`
  * sagen, OB eine Pruefung betroffen ist, `stufe` sagt, WANN sie an der Reihe ist.
  *
- * An den beiden VEROEFFENTLICHUNGSSTUFEN `push` und `merge` faellt die erste
- * Achse weg: Dort laeuft jede faellige Pruefung, auch bei leerem Paket und
- * unberuehrten Bereichen (Plan #843, E9). Gemessen wird der Stand, der hinausgeht
- * — und der besteht aus mehr als dem letzten Arbeitspaket.
+ * An der PUSH-STUFE faellt die erste Achse weg: Dort laeuft jede faellige Pruefung,
+ * auch bei leerem Paket und unberuehrten Bereichen (Plan #843, E9). Gemessen wird der
+ * Stand, der hinausgeht — und der besteht aus mehr als dem letzten Arbeitspaket.
+ *
+ * Die FREIGABESTUFE `merge` prueft nur, was `push main` nicht geprueft hat (Issue
+ * #1000): `merge production` gibt es nie ohne vorheriges `push main`. Es laufen die
+ * Pruefungen der Stufe `merge` und die der Paketstufe nach Bereichen ueber die Dateien
+ * seit dem Anker; die Stufe `push` bleibt mit Grund aus.
  *
  * `--bereich <name>` faehrt die Pruefgruppen genau eines `checkAreas`-Bereichs
  * (Issue #922, Plan #917, E3). Es ist der vorgesehene Weg, wenn fuer die
@@ -318,10 +322,12 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
                   laufen alle Pruefungen.
   --stufe <s>     Gefahrener Zeitpunkt: ${STUFEN.join(" | ")} (Default ${STUFEN[0]}).
-                  Kumulativ — push faehrt paket mit, merge alle drei. Pruefungen
-                  spaeterer Stufen erscheinen mit Grund als ausgelassen. Die
-                  Veroeffentlichungsstufen (push, merge) fahren jede faellige
-                  Pruefung, auch bei leerem Paket und unberuehrten Bereichen.
+                  push faehrt paket mit. Pruefungen spaeterer Stufen erscheinen
+                  mit Grund als ausgelassen. push faehrt jede faellige Pruefung,
+                  auch bei leerem Paket und unberuehrten Bereichen. merge prueft
+                  nur, was push main nicht geprueft hat: die Stufe merge immer,
+                  die Paketstufe nach Bereichen ueber die Dateien seit --since,
+                  die Stufe push nicht.
   --bereich <n>   Faehrt die Pruefgruppen genau eines checkAreas-Bereichs, statt
                   die beruehrten aus den geaenderten Dateien zu bestimmen. Der
                   vorgesehene Weg, wenn fuer die geaenderte Datei nur die
@@ -681,14 +687,16 @@ function entscheidung(check, beruehrt) {
  * `entscheiden` bekommt nur die faelligen Pruefungen und beantwortet die zweite
  * Frage: die des jeweiligen Auswahlfalls (Anker, leeres Paket, Bereiche).
  *
- * Die GUETEMESSUNG laeuft oberhalb der Paketstufe IMMER (Issue #763, E11): AK 8
+ * Die GUETEMESSUNG laeuft an der Push-Stufe IMMER (Issue #763, E11): AK 8
  * des Fachplans (#738) macht ihr Ergebnis fuer den Stand massgeblich, der
  * veroeffentlicht werden soll — eine wegen leeren Pakets oder unberuehrten
  * Bereichs ausgelassene Messung liesse den Halt ins Leere laufen, und das faellt
  * niemandem auf. An der Paketstufe gilt die normale Auswahl: Dort wird ein
  * Arbeitspaket gemessen, kein Veroeffentlichungsstand. Der Eintrag behaelt
  * seinen `guete`-Block, damit `ausfuehren` die Auswertung nicht ein zweites Mal
- * aus der Config lesen muss.
+ * aus der Config lesen muss. An der Freigabestufe hat sie diese Sonderrolle nicht
+ * mehr (Issue #1000): Beim `push main` lief sie fuer denselben Stand, und dort folgt
+ * sie der Auswahl der Freigabe wie jede andere Pruefung (siehe `freigabeAuswahl`).
  *
  * Der ABSCHLUSSLAUF (Issue #946, Plan #944) laesst zwei Gruppen aus, und beide stehen an
  * genau bemessener Stelle:
@@ -709,7 +717,7 @@ function verteilen(checks, stufe, entscheiden, abschluss = false) {
   const gefahren = STUFEN.indexOf(stufe);
   for (const check of checks) {
     let ergebnis;
-    if (check.guete && stufe !== STUFEN[0]) {
+    if (check.guete && stufe === "push") {
       ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
     } else if (check.guete && abschluss) {
       ergebnis = { laeuft: false, grund: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge" };
@@ -824,8 +832,12 @@ function planen(args) {
     });
   }
 
-  // Die Veroeffentlichungsstufen faehren jede faellige Pruefung (Plan #753, E12;
-  // fuer die Push-Stufe Plan #843, E9 nach Fachplan #837, AK 11): Ihr Ergebnis
+  if (stufe === "merge") {
+    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, abschluss });
+  }
+
+  // Die Push-Stufe faehrt jede faellige Pruefung (Plan #753, E12;
+  // Plan #843, E9 nach Fachplan #837, AK 11): Ihr Ergebnis
   // gilt fuer den Stand, der hinausgeht, und der besteht aus mehr als dem letzten
   // Arbeitspaket. Eine Auslassung wegen leeren Pakets oder unberuehrten Bereichs
   // zeigte hier auf den falschen Vergleich — deshalb greift keine von beiden.
@@ -838,10 +850,10 @@ function planen(args) {
   // faelligen entfaellt.
   //
   // `vollerUmfang` bleibt dabei false — das Feld markiert den Zweifelsfall
-  // („wir wissen es nicht, also alles"), und diese Stufen sind das Gegenteil
+  // („wir wissen es nicht, also alles"), und diese Stufe ist das Gegenteil
   // davon: eine Entscheidung. Denselben Unterschied halten String-Form und
   // `always: true` auseinander.
-  if (stufe === "push" || stufe === "merge") {
+  if (stufe === "push") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
       basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
@@ -868,6 +880,40 @@ function planen(args) {
   return bauen({
     basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
     ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt), abschluss),
+  });
+}
+
+/**
+ * Die Auswahl der FREIGABESTUFE (Issue #1000): Sie prueft nur, was `push main` nicht
+ * geprueft hat. `merge production` gibt es nie ohne vorheriges `push main` — der Skill
+ * haelt vorher an, wenn `<mainBranch>` Unveroeffentlichtes traegt. Der Stand bis zum
+ * Anker (`git merge-base HEAD origin/<mainBranch>`) ist darum vollstaendig geprueft,
+ * und die Dateien seit dem Anker sind die Release-Dateien des Merge-Wegs.
+ *
+ *   - Stufe `merge` laeuft immer: Sie ist genau das, was nur hier laeuft.
+ *   - Stufe `push` laeuft nicht und sagt, wo sie lief.
+ *   - Die Paketstufe waehlt nach Bereichen ueber die Dateien seit dem Anker, mit
+ *     denselben Regeln wie beim Abschluss einer Karte: leeres Paket laesst sie aus, eine
+ *     Datei ohne Muster faehrt sie ganz (`vollerUmfang`).
+ *
+ * `leeresPaket` bleibt false, auch ohne Aenderung: Die Merge-Pruefungen laufen, und
+ * ein Bericht "keine Pruefung, weil nichts veraendert wurde" waere falsch.
+ */
+function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, abschluss }) {
+  const leer = geaendert.length === 0;
+  const zweifel = !leer && ohneMuster !== null;
+  const paketstufe = (check) => {
+    if (leer) return { laeuft: false, grund: `leeres Paket: keine Aenderung seit ${basis}` };
+    if (zweifel) return { laeuft: true, grund: `voller Umfang: '${ohneMuster}' trifft kein Muster` };
+    return entscheidung(check, beruehrt);
+  };
+  return bauen({
+    basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss,
+    ...verteilen(checks, "merge", (check) => {
+      if (check.stufe === "merge") return { laeuft: true, grund: "Freigabestufe: laeuft vor jeder Freigabe" };
+      if (check.stufe === "push") return { laeuft: false, grund: "Stufe push, geprueft beim push main" };
+      return paketstufe(check);
+    }, abschluss),
   });
 }
 

@@ -125,36 +125,59 @@ test("[checks-5] die Stufe greift vor der Bereichsauswahl: eine Push-Pruefung bl
   });
 });
 
-test("[checks-5] die Freigabestufe faehrt alles, auch bei unberuehrten Bereichen", () => {
-  const config = {
-    buildChecks: [
-      { cmd: "echo build", areas: ["frontend"] },
-      { cmd: "echo verify", areas: ["backend"] },
-      { cmd: "echo release", stufe: "merge" },
-    ],
-    checkAreas: BEREICHE,
-  };
-  mitRepo({ config }, (dir) => {
+// Die Freigabestufe prueft nur, was `push main` nicht geprueft hat (Issue #1000):
+// `merge production` gibt es nie ohne vorheriges `push main`. Der Stand bis zum
+// Anker ist dort vollstaendig geprueft; neu sind nur die Release-Dateien. Darum
+// laufen die Merge-Pruefungen immer, die Paketpruefungen nach Bereichen ueber die
+// Dateien seit dem Anker, und die Push-Stufe gar nicht — mit Grund.
+const FREIGABE = {
+  buildChecks: [
+    { cmd: "echo release", stufe: "merge" },
+    { cmd: "echo e2e", stufe: "push" },
+    { cmd: "echo build", areas: ["frontend"] },
+    { cmd: "echo verify", areas: ["backend"] },
+  ],
+  checkAreas: BEREICHE,
+};
+
+const PUSH_GRUND = "Stufe push, geprueft beim push main";
+
+test("[checks-5] die Freigabestufe faehrt die Merge-Pruefung und nur die Paketpruefung des beruehrten Bereichs", () => {
+  mitRepo({ config: FREIGABE }, (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
 
-    assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo verify", "echo release"]);
-    assert.deepEqual(ergebnis.ausgelassen, []);
-    for (const cmd of ["echo build", "echo verify", "echo release"]) {
-      assert.equal(eintrag(ergebnis.laufen, cmd).grund, "Veroeffentlichungsstufe: voller Umfang");
-    }
+    assert.deepEqual(kommandos(ergebnis.laufen), ["echo release", "echo build"]);
+    assert.equal(eintrag(ergebnis.laufen, "echo build").grund, "Bereich frontend beruehrt");
+    assert.deepEqual(kommandos(ergebnis.ausgelassen), ["echo e2e", "echo verify"]);
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo e2e").grund, PUSH_GRUND);
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo verify").grund, "Bereich backend unberuehrt");
   });
 });
 
-test("[checks-5] die Freigabestufe faehrt alles, auch wenn das Paket leer ist", () => {
+test("[checks-5] an der Freigabestufe faehrt eine Datei ohne Bereich jede Paketpruefung, die Push-Pruefung nicht", () => {
+  mitRepo({ config: FREIGABE }, (dir) => {
+    datei(dir, "CHANGELOG.md");
+
+    const ergebnis = plan(dir, "--stufe", "merge");
+
+    assert.deepEqual(kommandos(ergebnis.laufen), ["echo release", "echo build", "echo verify"]);
+    assert.match(eintrag(ergebnis.laufen, "echo build").grund, /trifft kein Muster/);
+    assert.deepEqual(kommandos(ergebnis.ausgelassen), ["echo e2e"]);
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo e2e").grund, PUSH_GRUND);
+  });
+});
+
+test("[checks-5] an der Freigabestufe ohne Aenderung laeuft nur die Merge-Pruefung", () => {
   mitRepo({ config: DREI_STUFEN }, (dir) => {
     const ergebnis = plan(dir, "--stufe", "merge");
 
-    assert.equal(ergebnis.leeresPaket, false, "an der Freigabestufe greift die Leerpaket-Auslassung nicht");
-    assert.deepEqual(ergebnis.geaendert, [], "das Paket ist trotzdem leer, und das steht auch so da");
-    assert.deepEqual(kommandos(ergebnis.laufen), ["echo paket", "echo push", "echo merge"]);
-    assert.deepEqual(ergebnis.ausgelassen, []);
+    assert.equal(ergebnis.leeresPaket, false, "die Merge-Pruefung laeuft — das ist kein leeres Paket");
+    assert.deepEqual(ergebnis.geaendert, []);
+    assert.deepEqual(kommandos(ergebnis.laufen), ["echo merge"]);
+    assert.match(eintrag(ergebnis.ausgelassen, "echo paket").grund, /leeres Paket/);
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo push").grund, PUSH_GRUND);
   });
 });
 

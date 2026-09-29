@@ -22,8 +22,8 @@ Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Mensc
 **Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
 Das `n` ist die Zahl der Schritte, die dieser Lauf tatsächlich fährt — ohne `RELEASING.md`
 sind es weniger, und dann zählt die Zeile auch weniger. Der Grund
-ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange wie der volle
-`buildChecks`-Katalog, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
+ist die Wartezeit: Der eine Prüflauf über den fertigen Stand fährt die langen Prüfungen der
+Stufe `merge`, und wer davor sitzt, soll sehen, an welcher Stelle des Wegs er ist.
 
 ### 1. Config lesen
 
@@ -79,6 +79,24 @@ Regelfall `laeuft` und fragte jedes Mal. Und ein Stopp bei `rot` ließe den Vers
 auf `origin/<mainBranch>` zurück, während das Bump-Kommando nicht idempotent ist und der
 nächste Anlauf erneut bumpte. Der Stand von `push main` trägt zudem die eigentliche
 Änderung; der Release-Commit nur Stempel und Changelog.
+
+**Vorab-Halt: erst `push main` (Issue #1000).** Es gibt nie ein `merge production` ohne
+vorheriges `push main`. Bevor der Worktree entsteht, prüft der Skill, ob das lokale
+`<mainBranch>` Commits trägt, die nicht auf `origin/<mainBranch>` liegen:
+
+```bash
+git log origin/<mainBranch>..<mainBranch> --oneline
+```
+
+Ist die Ausgabe nicht leer, endet der Skill hier — kein Worktree, kein Prüflauf, kein PR —
+mit der Meldung:
+
+> Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.
+
+Der Halt ist die Voraussetzung für den verkürzten Prüflauf in Schritt 6: Weil der Stand bis
+`origin/<mainBranch>` beim `push main` vollständig geprüft wurde, prüft die Freigabe nur
+noch, was dort nicht geprüft wurde. Nachgewiesen wird das am Git-Stand, nicht an einer
+zweiten Buchführung.
 
 ### 4. Worktree auf `origin/<mainBranch>` anlegen
 
@@ -158,15 +176,23 @@ Commit und darum einen Lauf.
 node .claude/kit/checks.mjs run --stufe merge --since "$(git merge-base HEAD origin/<mainBranch>)"
 ```
 
-**Dieser Skill fährt die Freigabestufe.** Auf ihr laufen **alle drei Stufen** — Paket,
-Push und Merge —, und zwar im vollen Umfang: auch dann, wenn seit dem letzten Push nichts
-hinzugekommen ist. Das ist gewollt. Der Stand, der nach `production` geht, ist der Stand,
-für den das Ergebnis gilt; eine bereichsbezogene Auswahl misst hier zu wenig.
+**Dieser Skill fährt die Freigabestufe, und sie prüft nur, was `push main` nicht geprüft
+hat** (Issue #1000). Der Stand bis zum Anker ist beim unmittelbar vorangehenden `push main`
+vollständig geprüft worden — dafür steht der Vorab-Halt vor Schritt 4. Neu sind nur die
+Release-Dateien aus Schritt 5 (Bump, Stempel, Changelog). Darum laufen:
+
+- die Prüfungen mit `stufe: "merge"` — immer, sie laufen nur hier;
+- die Prüfungen der Paketstufe **nach Bereichen über die Dateien seit dem Anker**, wie beim
+  Abschluss einer Karte: Eine Datei ohne Bereich fährt jede Prüfung der Paketstufe;
+- die Prüfungen mit `stufe: "push"` **nicht** — sie stehen unter `ausgelassen` mit dem Grund
+  `Stufe push, geprueft beim push main`.
+
+Keine Pflichtprüfung entfällt dadurch aus dem Gesamtprozess: Jede läuft einmal vor der
+Freigabe, Paket- und Push-Stufe beim `push main`, die Merge-Stufe hier.
 
 **Der Anker ist der Batch, nicht `HEAD`.** Ohne `--since` nimmt `planen` in
-`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, meldet es
-`leeresPaket` und lässt **jede** Prüfung mit Exit 0 aus — ein Release liefe dann durch
-eine leere Prüfung.
+`kit/checks.mjs` `HEAD` als Basis; ist seit `HEAD` nichts geändert, liefen nur noch die
+Merge-Prüfungen, und die Release-Dateien bekämen keine Paketprüfung.
 
 Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 5 bleibt im
 Worktree stehen, und der Worktree wird trotzdem **abgebaut** (Schritt 8) — der Bump ist seit
@@ -334,6 +360,9 @@ und den Tag setzt er ebenfalls selbst.
 - Kein Erzeugen, Prüfen oder Committen im Haupt-Working-Tree — das läuft ausschließlich im
   Worktree aus Schritt 4, und der setzt auf `origin/<mainBranch>` auf: Ein lokaler, nicht
   gepushter Commit geht mit diesem Release nicht hinaus
+- **Kein Release über einen unveröffentlichten Stand** — trägt das lokale `<mainBranch>`
+  Commits, die nicht auf `origin/<mainBranch>` liegen, endet der Skill vor dem Worktree
+  (Vorab-Halt, Schritt 3)
 - Kein zurückgelassener Worktree, auch nicht nach einem roten Lauf (Schritt 8)
 - Kein Rebase des lokalen `<mainBranch>`, während eine Sperre des Nacht-Runners liegt oder
   der Haupt-Tree schmutzig ist (Schritt 8)
