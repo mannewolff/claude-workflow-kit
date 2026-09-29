@@ -1935,6 +1935,8 @@ Kein öffentlich beworbenes Kit-Feature: Toolbox ist ein persönliches Kanban-To
 
 **Kein Klartext-Token in die `workflow.config.json`.** Die Config ist eingecheckt und wird geteilt. Steht dort ein `toolbox.token` im Klartext, bricht `board.mjs` mit einer klaren Meldung ab, statt das Secret still zu verwenden — nutze `TBX_TOKEN` oder `toolbox.tokenFile`.
 
+**Hinter einem Proxy** — etwa in der Sandbox von Claude Code, die den Netzverkehr über `HTTPS_PROXY` leitet — nutzt Nodes eingebautes `fetch` den Proxy nur, wenn beim Start `NODE_USE_ENV_PROXY=1` gesetzt ist; sonst endet jeder Board-Aufruf mit „fetch failed". Ist `HTTPS_PROXY` (oder `https_proxy`) gesetzt und der Schalter nicht, startet sich `board.mjs` deshalb einmal selbst mit `NODE_USE_ENV_PROXY=1` neu (Hilfe und `--version` ausgenommen), und der Nacht-Runner setzt die Variable für jede Session. Eigene Node-Aufrufe mit Netz brauchen die Variable ebenso. Scheitert ein Aufruf hinter einem Proxy trotzdem an Namensauflösung oder Verbindung, nennt die Fehlermeldung diese Abhilfe — der Weg ist die Variable, nicht das Verlassen der Sandbox (Issue #998).
+
 **Beispiel: zweite App mit eigenem Token am selben kanban-kit.** Der Server unterstützt projekt-/board-gebundene Tokens: in der Admin-UI ein zweites Token erzeugen und an Projekt 2/Board 2 binden. Im zweiten Projekt dann entweder `TBX_TOKEN` setzen oder in der Config auf eine gitignorete Token-Datei zeigen:
 
 ```json

@@ -1628,6 +1628,26 @@ export function toolboxBudgetMs(env = process.env) {
 }
 
 /**
+ * Muss board.mjs sich mit NODE_USE_ENV_PROXY=1 neu starten (Issue #998)? Nodes
+ * eingebautes fetch nutzt HTTPS_PROXY nur mit diesem Schalter beim Start. Im Kind ist
+ * er gesetzt — eine Schleife ist nicht moeglich.
+ */
+export function proxyNeustartNoetig(env) {
+  return proxyGesetzt(env) && env.NODE_USE_ENV_PROXY === undefined;
+}
+
+function proxyGesetzt(env) {
+  return [env.HTTPS_PROXY, env.https_proxy].some((wert) => (wert ?? "").trim() !== "");
+}
+
+/**
+ * Der Satz, der einem Netzfehler hinter einem Proxy die Ursache nennt (Issue #998):
+ * "fetch failed" allein laedt zur Fehldiagnose und zum Umgehen der Sandbox ein.
+ */
+export const PROXY_HINWEIS = "Der Aufruf lief hinter einem Proxy (HTTPS_PROXY). Die uebliche Abhilfe ist "
+  + "NODE_USE_ENV_PROXY=1 vor dem Aufruf, nicht das Verlassen der Sandbox.";
+
+/**
  * Ordnet einen fetch-Wurf ein: `zeitablauf` (die eigene Zeitgrenze hat abgebrochen),
  * `endgueltig` (kein Aufruf ging hinaus) oder `abbruch` (die Verbindung brach
  * unterwegs ab — der Aufruf kann angekommen sein).
@@ -1816,11 +1836,17 @@ export class ToolboxIssueTracker {
     }
   }
 
+  /** Namensaufloesung oder Verbindung scheiterte hinter einem Proxy: die Abhilfe nennen (Issue #998). */
+  _proxyZusatz(netz) {
+    if (netz === "zeitablauf" || !netz || !proxyGesetzt(process.env)) return "";
+    return `\n${PROXY_HINWEIS}`;
+  }
+
   /** Der Fehler am Ende der Schleife — mit Rueckmeldung und, wo noetig, dem Weg zurueck. */
   _fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host }) {
     const rueckmeldung = rueckmeldungFuer({ status, netz, method });
     const basis = wurf
-      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}`
+      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}${this._proxyZusatz(netz)}`
       : `Toolbox-API-Fehler: ${grund}`;
     if (rueckmeldung !== RUECKMELDUNG.AUSGANG_UNKLAR) return new BoardError(basis, rueckmeldung);
     return new BoardError(`${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`, rueckmeldung);
@@ -4970,6 +4996,17 @@ async function main() {
   if (argv[0] === "--version") {
     process.stdout.write(`board.mjs (claude-workflow-kit v${KIT_VERSION})\n`);
     process.exit(0);
+  }
+
+  // Hinter einem Proxy (Sandbox von Claude Code) erreicht Nodes fetch das Board nur mit
+  // NODE_USE_ENV_PROXY=1 beim Start (Issue #998). Hilfe und --version brauchen kein
+  // Netz und stehen darum davor.
+  if (proxyNeustartNoetig(process.env)) {
+    const kind = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
+      stdio: "inherit",
+      env: { ...process.env, NODE_USE_ENV_PROXY: "1" },
+    });
+    process.exit(kind.status ?? 1);
   }
 
   const [axis, command, ...rest] = argv;
