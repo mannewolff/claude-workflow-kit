@@ -1450,6 +1450,12 @@ export function gitResteAusnahmen(cfg = config) {
     ".claude/befunde-vorschlaege.json", // SYNC: kit/befunde.mjs liest sie
     ".claude/befunde.md",
     ".claude/befunde.json",
+    // Die Stuecke eines gestueckelten Abschlussberichts (Issue #1022): `issue melden
+    // --teil` legt sie ab, der Abschlussaufruf raeumt sie erst nach Ablage und Zug.
+    // Scheitert er, liegen sie bis zur Wiederholung dort — Zwischenstand einer Meldung,
+    // kein Code-Zustand, und ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem
+    // Projekt ohne den `.claude/*`-Block hart, obwohl die Wiederholung alles aufraeumt.
+    ".claude/berichte/", // SYNC: kit/board.mjs schreibt sie (BERICHTE_ORDNER)
   ];
 }
 

@@ -29,6 +29,13 @@
  *       des Projektverzeichnisses (Issue #584).
  *       '--idempotency-key <wert>' wiederholt 'issue create' und 'issue comment'
  *       gefahrlos, wenn der Ausgang unklar blieb (Issue #834).
+ *   node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
+ *   node board.mjs issue melden <id> --teil <n> --text '<stueck>'
+ *   node board.mjs issue melden <id>
+ *       Legt den Abschlussbericht ab und zieht nach In review, je Lauf idempotent
+ *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
+ *       ersetzt. --teil schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
+ *       --text setzt die Stuecke zusammen und schliesst ab.
  *   node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
@@ -46,7 +53,7 @@
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants, rmSync, rmdirSync } from "node:fs";
 import { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -108,6 +115,18 @@ Nutzung:
                              [--idempotency-key <wert>]
       '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
       --idempotency-key wie bei 'issue create' (Issue #834).
+  node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
+  node board.mjs issue melden <id> --teil <n> --text '<stueck>'
+  node board.mjs issue melden <id>
+      Legt den Abschlussbericht ab und zieht die Karte danach nach In review (Issue
+      #1022). Der Bericht bekommt als letzte Zeile 'Bericht-Lauf: <stempel>' (juengster
+      Zug der Karte nach in_progress aus .claude/bewegungen.tsv). Je Lauf idempotent:
+      gleicher Inhalt -> nichts geschrieben, geaenderter -> ersetzt, Berichte anderer
+      Laeufe bleiben. Ein ' im Bericht wird in der Shell als '\\'' geschrieben.
+      --teil <n> schreibt nur Stueck n nach .claude/berichte/<id>.<n>.md (ohne Board);
+      der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
+      und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
+      Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -3186,6 +3205,161 @@ async function issueComment(tracker, args) {
   out({ ok: true, id });
 }
 
+// SYNC: Das Verzeichnis steht auch in kit/night.mjs (Ausschluss im Rest-Guard) und in
+// install.mjs (GITIGNORE_BLOCK). Wer es hier aendert, aendert es dort mit — sonst haelt
+// der Dirty-Guard liegengebliebene Stuecke fuer einen unkommittierten Rest.
+const BERICHTE_ORDNER = "berichte";
+const BERICHT_LAUF = "Bericht-Lauf:";
+
+// Kartennummern vergleichbar machen: `issue move 0005` und `issue move 5` meinen beim
+// lokalen Tracker dieselbe Karte, und das Protokoll haelt fest, was aufgerufen wurde.
+function kartenSchluessel(id) {
+  const s = String(id).trim().replace(/^#/, "");
+  return /^\d+$/.test(s) ? String(Number(s)) : s;
+}
+
+/**
+ * Die Laufkennung einer Karte (Plan #1015, E9): der Zeitstempel ihres juengsten Zugs
+ * nach In progress aus `.claude/bewegungen.tsv`, oder null.
+ *
+ * Nicht aus `.claude/wegmarken.tsv`: Die leert `sitzungVerbuchen` bei `--complete`, und
+ * eine Wiederholung nach dem Sitzungsende faende ihren Lauf nicht mehr — sie legte einen
+ * zweiten Bericht an. Das Bewegungsprotokoll wird nur angehaengt.
+ */
+function laufkennung(id) {
+  const pfad = resolve(".claude", BEWEGUNGEN_DATEI);
+  if (!existsSync(pfad)) return null;
+  const gesucht = kartenSchluessel(id);
+  let stempel = null;
+  for (const zeile of readFileSync(pfad, "utf-8").split("\n")) {
+    const [zeit, karte, status] = zeile.replace(/\r$/, "").split("\t");
+    if (status === "in_progress" && karte !== undefined && kartenSchluessel(karte) === gesucht) stempel = zeit;
+  }
+  return stempel;
+}
+
+// Die Stuecke einer Karte in Nummernfolge (numerisch, nicht lexikalisch: 10 nach 2).
+function berichtStuecke(id) {
+  const ordner = resolve(".claude", BERICHTE_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const praefix = `${kartenSchluessel(id)}.`;
+  return readdirSync(ordner)
+    .map((name) => ({ name, m: name.startsWith(praefix) && name.slice(praefix.length).match(/^(\d+)\.md$/) }))
+    .filter((e) => e.m)
+    .map((e) => ({ nummer: Number(e.m[1]), pfad: join(ordner, e.name) }))
+    .sort((a, b) => a.nummer - b.nummer);
+}
+
+// Beginnt jedes Stueck auf einer neuen Zeile: Eine Session stueckelt an Abschnittsgrenzen,
+// und die Shell nimmt den Zeilenumbruch am Ende eines `--text '…'` nicht mit.
+function stueckeZusammensetzen(stuecke) {
+  return stuecke.reduce((gesamt, s) => {
+    const text = readFileSync(s.pfad, "utf-8");
+    if (gesamt === "") return text;
+    return gesamt.endsWith("\n") ? gesamt + text : `${gesamt}\n${text}`;
+  }, "");
+}
+
+const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
+
+// `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
+function meldenStueck(id, args, hatText) {
+  if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
+    fail(`--teil '${args.teil}' ist keine positive Ganzzahl.`);
+  }
+  if (!hatText) fail("--teil braucht --text '…' mit dem Stueck.");
+  const text = leseTextQuelle(args.text, args["text-file"], "text");
+  const nummer = Number(args.teil);
+  const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
+  mkdirSync(dirname(pfad), { recursive: true });
+  writeFileSync(pfad, text, "utf-8");
+  out({ ok: true, id, teil: nummer, zeichen: text.length });
+}
+
+/**
+ * Legt den Bericht eines Laufs ab und liefert, was geschah (Plan #1015, E10). Jeder
+ * Fehler endet mit Exit 1 — die Karte ist bis hierhin nicht bewegt.
+ */
+async function berichtAblegen(tracker, id, text, laufZeile) {
+  const neu = `${text.trimEnd()}\n\n${laufZeile}`;
+  let kommentare;
+  try {
+    kommentare = await tracker.kommentareStreng(id);
+  } catch (e) {
+    fail(`Kommentare von Issue ${id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: ${e.message}`);
+  }
+  const dieserLauf = kommentare.filter((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+  try {
+    if (dieserLauf.some((c) => vergleichbar(c.body) === vergleichbar(neu))) return "unveraendert";
+    if (dieserLauf.length > 0) {
+      const ziel = dieserLauf.at(-1);
+      if (ziel.id == null) throw new BoardError("der Bericht dieses Laufs traegt keine Kommentar-ID.");
+      await tracker.ersetzeKommentar(id, ziel.id, neu);
+      return "ersetzt";
+    }
+    await tracker.commentIssue(id, neu);
+    return "angelegt";
+  } catch (e) {
+    fail(`Bericht fuer Issue ${id} nicht abgelegt, Karte bleibt in In progress: ${e.message}`);
+  }
+}
+
+/**
+ * `issue melden <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
+ * In review, in einem Aufruf (Issue #1022, Plan #1015 E2, E8, E9, E10).
+ *
+ * Drei Formen:
+ *  - `--text '…'` (oder `--text-file` von Hand): Bericht direkt, dann Abschluss.
+ *  - `--teil <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
+ *    ueberschreibt es bei Wiederholung, beruehrt das Board nicht.
+ *  - ohne beides: setzt die Stuecke zusammen und schliesst ab. Geraeumt wird erst nach
+ *    Ablage UND Zug — scheitert einer davon, ist die Wiederholung dieser Aufruf allein.
+ *
+ * Idempotent je Lauf: Der Bericht traegt als letzte Zeile `Bericht-Lauf: <stempel>`.
+ * Findet sich darunter schon ein Kommentar, wird er bei gleichem Inhalt gelassen und
+ * sonst ersetzt, nie ein zweiter angelegt. Deshalb werden die Kommentare STRENG gelesen:
+ * Ein leer gelesener Stand wuerde den Bericht doppeln. Die Reihenfolge Ablage vor Zug
+ * haelt eine Karte ohne Bericht aus In review heraus.
+ */
+async function issueMelden(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue melden <id> [--teil <n>] --text '…'");
+  const hatText = args.text !== undefined || args["text-file"] !== undefined;
+
+  if (args.teil !== undefined) {
+    meldenStueck(id, args, hatText);
+    return;
+  }
+
+  const stuecke = berichtStuecke(id);
+  if (hatText && stuecke.length > 0) {
+    fail(`Fuer Issue ${id} liegen ${stuecke.length} Stueck(e) unter .claude/${BERICHTE_ORDNER}/ — `
+      + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.");
+  }
+  if (!hatText && stuecke.length === 0) {
+    fail(`Kein Bericht fuer Issue ${id}: weder --text noch Stuecke unter .claude/${BERICHTE_ORDNER}/.`);
+  }
+  const text = hatText ? leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
+
+  const stempel = laufkennung(id);
+  if (!stempel) {
+    fail(`Kein Zug von Issue ${id} nach in_progress in .claude/${BEWEGUNGEN_DATEI} — `
+      + "ohne Laufkennung kein Bericht. Nichts geschrieben.");
+  }
+  const bericht = await berichtAblegen(tracker, id, text, `${BERICHT_LAUF} ${stempel}`);
+
+  // Wie `issue move`: Buchungen erst nach dem geglueckten Zug.
+  await tracker.moveIssue(id, "in_review");
+  wegmarkeSchreiben(id, "in_review");
+  bewegungSchreiben(id, "in_review");
+
+  for (const s of stuecke) rmSync(s.pfad, { force: true });
+  if (stuecke.length > 0) {
+    try { rmdirSync(resolve(".claude", BERICHTE_ORDNER)); } catch { /* nicht leer — Stuecke anderer Karten */ }
+  }
+  out({ ok: true, id, bericht, status: "in_review" });
+}
+
 // Schreibt den Body eines bestehenden Issues (Issue #237). Bewusst nur --body:
 // Titel und Labels aendert kein Skill, und ein Kommando, das alles kann, laedt dazu
 // ein, mehr zu aendern als beabsichtigt.
@@ -3571,6 +3745,7 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
+    case "melden":  return issueMelden(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, config, args);
     default:

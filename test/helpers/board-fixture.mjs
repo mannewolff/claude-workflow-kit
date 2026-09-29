@@ -300,8 +300,14 @@ process.exit(regel.exit ?? 0);
  * der gemeinte Kommentar ersetzt wird und die Zahl gleich bleibt. `patchRoute: false`
  * stellt eine aeltere Instanz ohne Bearbeiten-Route nach (405), `leseRoute: false`
  * eine, deren Lese-Route scheitert (500).
+ *
+ * Fuer `issue melden` (Issue #1022) legt POST einen Kommentar wirklich an und PUT auf
+ * `/move` setzt die Spalte der Karte. `zustand.moveRoute = false` laesst den Zug
+ * scheitern (500) — ein Objekt statt eines Werts, damit ein Test es zwischen zwei
+ * Aufrufen umschalten kann.
  */
-export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, leseRoute = true }) {
+export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, leseRoute = true, zustand = {} }) {
+  let naechsteId = 1000;
   return (req, koerper) => {
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       const gruppen = {};
@@ -311,12 +317,29 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
       }
       return { status: 200, json: gruppen };
     }
+    const zug = req.url.match(/^\/api\/kanban\/items\/(\d+)\/move$/);
+    if (zug && req.method === "PUT") {
+      if (zustand.moveRoute === false) return { status: 500, json: { message: "Zug kaputt" } };
+      const karte = karten.find((k) => String(k.id) === zug[1]);
+      if (!karte) return { status: 404, json: { message: "Karte nicht gefunden" } };
+      karte.column = JSON.parse(koerper).column;
+      return { status: 200, json: karte };
+    }
     const treffer = req.url.match(/^\/api\/kanban\/items\/(\d+)\/comments(?:\/([^/]+))?$/);
     if (!treffer) return null;
     const [, itemId, kommentarId] = treffer;
-    const liste = (kommentare[itemId] ||= []);
+    kommentare[itemId] ||= [];
+    return kommentarRoute(req, koerper, kommentare[itemId], kommentarId);
+  };
+
+  function kommentarRoute(req, koerper, liste, kommentarId) {
     if (!kommentarId && req.method === "GET") {
       return leseRoute ? { status: 200, json: liste } : { status: 500, json: { message: "Kommentare kaputt" } };
+    }
+    if (!kommentarId && req.method === "POST") {
+      const eintrag = { id: naechsteId++, author: "kit", body: JSON.parse(koerper).body, createdAt: "2026-09-29T12:00:00Z" };
+      liste.push(eintrag);
+      return { status: 201, json: eintrag };
     }
     if (kommentarId && req.method === "PATCH") {
       if (!patchRoute) return { status: 405, json: { message: "Method Not Allowed" } };
@@ -326,5 +349,5 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
       return { status: 200, json: eintrag };
     }
     return null;
-  };
+  }
 }
