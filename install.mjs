@@ -443,6 +443,99 @@ async function promptReviewerPaar(rl, D, existingConfig) {
   }
 }
 
+// --- Die Bereiche des Projekts (Issue #1009, Plan #1001 E10) -----------------
+//
+// Die letzte projektlokale Frage: erst die Bereiche (checkAreas), dann je vorhandener
+// Pruefung ihre Zuordnung (areas). Eine falsche Eingabe wird hier auch im Pipe-Modus
+// erneut gefragt statt abgebrochen — die Schleife endet trotzdem, weil eine
+// erschoepfte Pipe mit "" antwortet, und "" heisst an jeder Stelle "fertig".
+
+const BEREICH_FRAGE = "Bereich (Name: Muster, Muster; leer = fertig)";
+
+/** "name: muster, muster" → { name, muster } oder null bei falscher Form. */
+function liesBereich(eingabe) {
+  const doppelpunkt = eingabe.indexOf(":");
+  const name = eingabe.slice(0, Math.max(doppelpunkt, 0)).trim();
+  const muster = eingabe.slice(doppelpunkt + 1).split(",").map((m) => m.trim()).filter(Boolean);
+  if (doppelpunkt < 0 || !name || muster.length === 0) return null;
+  return { name, muster };
+}
+
+/**
+ * Fragt die Bereiche ab. `null` heisst: gleich die erste Eingabe war leer, es bleibt,
+ * wie es ist. Vorhandene Bereiche bleiben erhalten; ein neu genannter gleichen Namens
+ * ersetzt seine Muster.
+ */
+async function frageBereichsliste(rl, vorhanden) {
+  const namen = Object.keys(vorhanden);
+  if (namen.length > 0) {
+    console.log("\n  Vorhandene Bereiche (leer = beibehalten):");
+    for (const name of namen) console.log(`    ${name}: ${vorhanden[name].join(", ")}`);
+  } else {
+    console.log("\n  Bereiche ordnen Pfade den Pruefungen zu, die sie beruehren.");
+  }
+  const bereiche = { ...vorhanden };
+  let neu = 0;
+  while (true) {
+    const vorgabe = namen.length > 0 && neu === 0 ? " [beibehalten]" : "";
+    const eingabe = (await ask(rl, `${BEREICH_FRAGE}${vorgabe}: `)).trim();
+    if (eingabe === "") return neu === 0 ? null : bereiche;
+    const bereich = liesBereich(eingabe);
+    if (!bereich) {
+      console.error("  Fehler: Bitte 'Name: Muster, Muster' eingeben.");
+      continue;
+    }
+    bereiche[bereich.name] = bereich.muster;
+    neu++;
+  }
+}
+
+/** Fragt die Bereiche einer Pruefung; leer laesst den Eintrag, wie er ist. */
+async function frageZuordnung(rl, check, bereiche) {
+  const cmd = typeof check === "string" ? check : check.cmd;
+  const vorhanden = typeof check === "object" && check.areas ? check.areas.join(", ") : "";
+  const frage = vorhanden
+    ? `Bereiche dieser Prüfung (leer = beibehalten) [${vorhanden}]: `
+    : "Bereiche dieser Prüfung (leer = läuft immer): ";
+  console.log(`  Prüfung: ${cmd}`);
+  while (true) {
+    const eingabe = (await ask(rl, frage)).trim();
+    if (eingabe === "") return check;
+    const namen = eingabe.split(",").map((n) => n.trim()).filter(Boolean);
+    const unbekannt = namen.filter((n) => !Object.hasOwn(bereiche, n));
+    if (unbekannt.length === 0) {
+      // areas und always schliessen sich aus (Schema); stufe und die uebrigen Achsen bleiben.
+      const { always: _always, ...rest } = typeof check === "string" ? { cmd } : check;
+      return { ...rest, areas: namen };
+    }
+    console.error(`  Fehler: Unbekannter Bereich '${unbekannt.join("', '")}'. Definiert: ${Object.keys(bereiche).join(", ")}.`);
+  }
+}
+
+/**
+ * Die Bereichsfrage — nur projektlokal. Liefert die Felder, die in die Config gehen,
+ * oder null, wenn nichts zu aendern ist.
+ */
+async function frageBereiche(rl, scope, existingConfig) {
+  if (scope !== "projekt") return null;
+  const vorhanden = existingConfig.checkAreas ?? {};
+  const checkAreas = await frageBereichsliste(rl, vorhanden);
+  if (!checkAreas) {
+    console.log(Object.keys(vorhanden).length > 0
+      ? "  Bereiche beibehalten."
+      : "  Ohne Bereiche fährt jede Karte alle Prüfungen.");
+    return null;
+  }
+  const checks = existingConfig.buildChecks ?? [];
+  if (checks.length === 0) {
+    console.log("  Die Bereiche wirken erst, wenn die Prüfkommandos in workflow.config.json sie in 'areas' nennen.");
+    return { checkAreas };
+  }
+  const buildChecks = [];
+  for (const check of checks) buildChecks.push(await frageZuordnung(rl, check, checkAreas));
+  return { checkAreas, buildChecks };
+}
+
 // --- Das Commit-Gate einhaengen (Issue #473, Plan #467 A2/A11) --------------
 //
 // Der Hook wandert mit dem Clone, die AKTIVIERUNG nicht: `core.hooksPath` ist lokale
@@ -875,7 +968,7 @@ async function main() {
 
   console.log("\n=== claude-workflow-kit Installer ===\n");
   console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Zehn Fragen (bei globalem Install plus Vault-Pfad), dann bist du fertig.\n");
+  console.log("Zehn Fragen, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   const scope = await promptScope(rl);
@@ -924,7 +1017,11 @@ async function main() {
   // Commit-Gate einhaengen (Issue #473).
   const hooks = await frageHooksPath(rl, scope);
 
-  // Frage 10 (nur bei globalem Install): Vault-Pfad für kontext.config.json
+  // Frage 10 (nur projektlokal, die letzte der projektlokalen Folge): die Bereiche
+  // und je vorhandener Pruefung ihre Zuordnung (Issue #1009).
+  const bereiche = await frageBereiche(rl, scope, existingConfig);
+
+  // Frage 9 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
   if (scope === "global") {
     const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
@@ -957,6 +1054,7 @@ async function main() {
     mainBranch,
     productionBranch,
     reviewScope,
+    ...bereiche,
   };
   // Das alte provider-Feld ist beim Laden auf codeHost/issueTracker migriert worden
   // und wird nicht zurueckgeschrieben.

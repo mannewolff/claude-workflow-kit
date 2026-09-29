@@ -39,7 +39,9 @@ const INSTALLER = join(repoRoot, "install.mjs");
 // nach dem beschriebenen Verhalten seit Issue #461 (A19). Bliebe die Zeile stehen,
 // fraesse die Label-Frage sie, das 'j' bliebe uebrig — und die Labels wuerden nie
 // angelegt, ohne dass der Test es merkt.
-const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "j"].join("\n") + "\n";
+// Die zehnte, leere Zeile ueberspringt die Bereichsfrage (Issue #1009); ohne sie
+// fraesse diese das 'j'.
+const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"].join("\n") + "\n";
 
 test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", NUR_POSIX, () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-"));
