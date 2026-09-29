@@ -27,6 +27,23 @@ import { parseDeps, pruefeIssueGates } from "../kit/night.mjs";
 const deps = (...nummern) => `## Abhängigkeiten\n${nummern.length ? nummern.map((n) => "Issue #" + n).join("\n") : "Keine."}\n`;
 const body = (...nummern) => `## Kontext\nText.\n\n## Aufgabe\nTun.\n\n## Akzeptanzkriterium\n- gruen\n\n${deps(...nummern)}`;
 
+// Kontext-Zeilen eines Pakets, wie `/issues` sie schreibt.
+const kontext = (...zeilen) => `## Kontext\nText.\n\n${zeilen.join("\n")}\n\n## Aufgabe\nTun.\n\n## Akzeptanzkriterium\n- gruen\n\n${deps()}`;
+
+// Freitext mit E9 und E2E vor den Eintraegen, ein `- E8:` erst im naechsten Abschnitt: Beides
+// ist keine Plan-Entscheidung.
+const E_ABSCHNITT = "## Architektonische Entscheidungen\n\n- **Zwei Befehle.** Freitext mit E9 und E2E.\n\n"
+  + "- E2: Frage zwei?\n  Gewählt: A. Grund: B.\n- E5: Frage fünf?\n  Gewählt: C.\n  Rückbau: trivial.\n"
+  + "- E7: Frage sieben?\n  Gewählt: D.\n\n## Geplante Änderungen\n\n- E8: steht nicht im Abschnitt.\n";
+const E2 = "- E2: Frage zwei?\n  Gewählt: A. Grund: B.";
+const E5 = "- E5: Frage fünf?\n  Gewählt: C.\n  Rückbau: trivial.";
+const E7 = "- E7: Frage sieben?\n  Gewählt: D.";
+
+// Ein Codeblock mit `##` im Ziel: Er gehoert zum Ziel und beendet es nicht.
+const ZIEL = "Zieltext.\n\n```\n## kein Abschnitt\n```";
+const KRITERIEN = "1. Kriterium eins.\n2. Kriterium zwei.";
+const FACHLICH_BODY = `## Ziel\n\n${ZIEL}\n\n## Fachliche Akzeptanzkriterien\n\n${KRITERIEN}\n\n## Nicht-Ziele\n\nNichts davon.\n`;
+
 const KARTEN = [
   { nr: 10, spalte: "ready", titel: "Paket frei", body: body() },
   { nr: 11, spalte: "in_progress", titel: "Paket in Arbeit", body: body() },
@@ -41,6 +58,17 @@ const KARTEN = [
   { nr: 20, spalte: "ready", titel: "Voraussetzung offen", body: body() },
   { nr: 21, spalte: "in_review", titel: "Voraussetzung im Review", body: body() },
   { nr: 22, spalte: "done", titel: "Voraussetzung fertig", body: body() },
+  // Ein Vorhaben (Issue #1024): Plan 30 mit fachlicher Quelle 40, seine Pakete 31 bis 34.
+  // 35 gehoert zu Plan 300 und nennt #30 nur im Fliesstext; 36 gehoert zu Plan 37 ohne Quelle.
+  { nr: 30, spalte: "backlog", titel: "[Plan] Vorhaben", body: `Fachliche Quelle: Issue #40\n\n## Ziel\nPlanziel.\n\n${E_ABSCHNITT}` },
+  { nr: 31, spalte: "ready", titel: "Paket mit Auswahl", body: kontext("Plan: Issue #30", "Fachliche Quelle: Issue #40", "Plan-Entscheidungen: E2, E5") },
+  { nr: 32, spalte: "done", titel: "Geschwister fertig", body: kontext("Plan: Issue #30") },
+  { nr: 33, spalte: "ready", titel: "Paket ohne Auswahl", body: kontext("Plan: Issue #30") },
+  { nr: 34, spalte: "in_review", titel: "Paket mit Phantom-E", body: kontext("Plan: Issue #30", "Plan-Entscheidungen: E2, E9") },
+  { nr: 35, spalte: "backlog", titel: "Fremdes Vorhaben", body: kontext("Plan: Issue #300", "Siehe Plan: Issue #30 im Fliesstext.") },
+  { nr: 36, spalte: "ready", titel: "Paket ohne Quelle", body: kontext("Plan: Issue #37", "Plan-Entscheidungen: Keine.") },
+  { nr: 37, spalte: "backlog", titel: "[Plan] Ohne Quelle", body: "## Ziel\nOhne Quelle.\n\n## Architektonische Entscheidungen\n\n- E1: Einzige?\n  Gewählt: ja.\n" },
+  { nr: 40, spalte: "backlog", titel: "[Fachlich] Anlass", body: FACHLICH_BODY },
 ];
 
 const GLIEDER = ["Urteil", "Aufgabe", "Plan-Entscheidungen", "Fachlicher Anlass", "Geschwister", "Voraussetzungen", "Lücken"];
@@ -141,18 +169,114 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(res.status, 0);
     assert.deepEqual(ueberschriften(res.stdout), GLIEDER);
     const luecken = res.stdout.slice(res.stdout.lastIndexOf("## Lücken"));
-    for (const glied of ["Plan-Entscheidungen", "Fachlicher Anlass", "Geschwister"]) {
-      assert.match(luecken, new RegExp(`${glied}: noch nicht ermittelt`));
-    }
+    assert.match(luecken, /Plan-Entscheidungen: .*kein Vorhaben/);
+    assert.match(luecken, /Fachlicher Anlass: /);
+    assert.match(luecken, /Geschwister: .*kein Vorhaben/);
+    assert.doesNotMatch(res.stdout, /noch nicht ermittelt/);
   });
 
   await t.test("--json: jedes Glied als eigenes Feld", async () => {
-    const a = await auftrag("10");
+    const a = await auftrag("31");
     assert.deepEqual(Object.keys(a), ["id", "urteil", "aufgabe", "planEntscheidungen", "fachlicherAnlass", "geschwister", "voraussetzungen", "luecken"]);
-    assert.equal(a.planEntscheidungen, null);
-    assert.equal(a.fachlicherAnlass, null);
-    assert.equal(a.geschwister, null);
-    assert.equal(a.luecken.filter((l) => l.endsWith("noch nicht ermittelt")).length, 3);
+    assert.deepEqual(Object.keys(a.planEntscheidungen), ["plan", "auswahl", "hinweis", "eintraege"]);
+    assert.deepEqual(Object.keys(a.fachlicherAnlass), ["quelle", "herkunft", "ziel", "kriterien", "vollerText"]);
+    assert.deepEqual(Object.keys(a.geschwister), ["plan", "hinweis", "karten"]);
+  });
+
+  // --- Plan-Entscheidungen (E1) ---
+
+  await t.test("Plan-Entscheidungen: genau die genannten Eintraege im Wortlaut samt Folgezeilen", async () => {
+    const a = await auftrag("31");
+    assert.equal(a.planEntscheidungen.plan, "30");
+    assert.deepEqual(a.planEntscheidungen.auswahl, ["E2", "E5"]);
+    assert.equal(a.planEntscheidungen.hinweis, null);
+    assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E2", text: E2 }, { id: "E5", text: E5 }]);
+    assert.ok(!a.luecken.some((l) => l.startsWith("Plan-Entscheidung")), a.luecken.join("\n"));
+    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    const glied = md.slice(md.indexOf("## Plan-Entscheidungen"), md.indexOf("## Fachlicher Anlass"));
+    assert.ok(glied.includes(E2) && glied.includes(E5), glied);
+    assert.ok(!glied.includes("E7"), "nicht genannte Eintraege fehlen");
+  });
+
+  await t.test("Plan-Entscheidungen ohne Zeile: alle Eintraege und der Satz 'keine Auswahl'", async () => {
+    const a = await auftrag("33");
+    assert.equal(a.planEntscheidungen.auswahl, null);
+    assert.match(a.planEntscheidungen.hinweis, /keine Auswahl/);
+    assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E2", text: E2 }, { id: "E5", text: E5 }, { id: "E7", text: E7 }]);
+    const md = (await lauf(["issue", "auftrag", "33"])).stdout;
+    assert.match(md, /keine Auswahl/);
+    assert.ok(!md.includes("E8: steht nicht"), "ein `- E8:` ausserhalb des Abschnitts ist kein Eintrag");
+  });
+
+  await t.test("Plan-Entscheidungen: ein im Plan fehlendes E<n> steht unter Luecken", async () => {
+    const a = await auftrag("34", "--spalte", "in_progress");
+    assert.deepEqual(a.planEntscheidungen.eintraege.map((e) => e.id), ["E2"]);
+    assert.ok(a.luecken.some((l) => l.includes("E9") && l.includes("#30")), a.luecken.join("\n"));
+  });
+
+  await t.test("Plan-Entscheidungen: Keine. ist eine Auswahl, keine Luecke", async () => {
+    const a = await auftrag("36");
+    assert.equal(a.planEntscheidungen.plan, "37");
+    assert.deepEqual(a.planEntscheidungen.auswahl, []);
+    assert.deepEqual(a.planEntscheidungen.eintraege, []);
+    assert.ok(!a.luecken.some((l) => l.startsWith("Plan-Entscheidung")), a.luecken.join("\n"));
+  });
+
+  // --- Fachlicher Anlass (E4) ---
+
+  await t.test("fachlicher Anlass aus dem Paket: Ziel und Kriterien woertlich, Satz Voller Text", async () => {
+    const a = await auftrag("31");
+    assert.deepEqual(a.fachlicherAnlass, {
+      quelle: "40", herkunft: "paket", ziel: ZIEL, kriterien: KRITERIEN,
+      vollerText: "Voller Text: `node .claude/kit/board.mjs issue get 40`",
+    });
+    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    assert.deepEqual(ueberschriften(md), GLIEDER, "das `##` im Ziel bleibt Inhalt");
+    const glied = md.slice(md.indexOf("## Fachlicher Anlass"), md.indexOf("## Geschwister"));
+    for (const teil of ["Ziel", "Fachliche Akzeptanzkriterien", "Zieltext.", "1. Kriterium eins.", "Voller Text: `node .claude/kit/board.mjs issue get 40`"]) {
+      assert.ok(glied.includes(teil), `${teil} fehlt in:\n${glied}`);
+    }
+    assert.ok(!glied.includes("Nichts davon."), "nur Ziel und Kriterien, nicht der ganze Body");
+  });
+
+  await t.test("fachlicher Anlass aus dem Plan, wenn das Paket keine Quelle nennt", async () => {
+    const a = await auftrag("33");
+    assert.equal(a.fachlicherAnlass.quelle, "40");
+    assert.equal(a.fachlicherAnlass.herkunft, "plan");
+    assert.equal(a.fachlicherAnlass.kriterien, KRITERIEN);
+  });
+
+  await t.test("ohne fachliche Quelle in Paket und Plan: Luecke", async () => {
+    const a = await auftrag("36");
+    assert.equal(a.fachlicherAnlass.quelle, null);
+    assert.ok(a.luecken.some((l) => l.startsWith("Fachlicher Anlass")), a.luecken.join("\n"));
+  });
+
+  // --- Geschwister (E7) ---
+
+  await t.test("Geschwister: alle Karten des Plans ueber alle Spalten, auch Done, mit Spalte", async () => {
+    const a = await auftrag("31");
+    assert.equal(a.geschwister.plan, "30");
+    const karten = a.geschwister.karten.filter((k) => k.id !== "38");
+    assert.deepEqual(karten, [
+      { id: "32", titel: "Geschwister fertig", spalte: "done" },
+      { id: "33", titel: "Paket ohne Auswahl", spalte: "ready" },
+      { id: "34", titel: "Paket mit Phantom-E", spalte: "in_review" },
+    ]);
+    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    assert.match(md, /#32 Geschwister fertig — Spalte: done/);
+  });
+
+  await t.test("ohne Plan: kein Vorhaben und Luecke", async () => {
+    const a = await auftrag("10");
+    assert.equal(a.planEntscheidungen.plan, null);
+    assert.equal(a.geschwister.plan, null);
+    assert.equal(a.geschwister.hinweis, "kein Vorhaben");
+    assert.deepEqual(a.geschwister.karten, []);
+    assert.equal(a.fachlicherAnlass.quelle, null);
+    assert.ok(a.luecken.some((l) => l.startsWith("Geschwister") && l.includes("kein Vorhaben")), a.luecken.join("\n"));
+    assert.ok(a.luecken.some((l) => l.startsWith("Fachlicher Anlass")), a.luecken.join("\n"));
+    assert.match((await lauf(["issue", "auftrag", "10"])).stdout, /kein Vorhaben/);
   });
 
   await t.test("nicht lesbares Paket -> Exit 1", async () => {
@@ -188,7 +312,7 @@ test("local", async (t) => {
 
 // --- GitHub ---
 
-const GH_STATUS = { ready: "Ready", in_progress: "In progress", in_review: "In review", done: "Done" };
+const GH_STATUS = { backlog: "Backlog", ready: "Ready", in_progress: "In progress", in_review: "In review", done: "Done" };
 const ghKommentar = (i, text) => ({
   id: `IC_${i}`, url: `https://github.com/besitzer/mein-repo/issues/19#issuecomment-${500 + i}`,
   author: { login: "manne" }, body: text, createdAt: "2026-09-28T08:00:00Z",
@@ -209,6 +333,12 @@ function ghRegeln() {
     match: "^project item-list",
     stdout: { items: KARTEN.map((k) => ({ status: GH_STATUS[k.spalte], content: { number: k.nr, title: k.titel } })) },
   });
+  // Die Bodies fuer die Geschwister: alle Zustaende, dazu 38, das in keiner Spalte steht.
+  const geschwister = { number: 38, title: "Geschwister ohne Spalte", body: kontext("Plan: Issue #30"), state: "OPEN" };
+  regeln.push({
+    match: "^issue list .*--state all .*--json number,title,body",
+    stdout: [...KARTEN.map((k) => ({ number: k.nr, title: k.titel, body: k.body, state: k.spalte === "done" ? "CLOSED" : "OPEN" })), geschwister],
+  });
   regeln.push({
     match: "^issue list .*--state all",
     stdout: KARTEN.map((k) => ({ number: k.nr, labels: (k.labels || []).map((name) => ({ name })) })),
@@ -226,6 +356,18 @@ test("GitHub", NUR_POSIX, async (t) => {
   const zustand = () => aufrufe(dir, "gh").filter(ghSchreibend);
   try {
     await adapterFaelle(t, async (args) => runBoard(dir, args), zustand);
+    await t.test("Geschwister in keiner Spalte: nicht feststellbar und unter Luecken", () => {
+      const res = runBoard(dir, ["issue", "auftrag", "31", "--json"]);
+      const a = json(res);
+      assert.deepEqual(a.geschwister.karten.find((k) => k.id === "38"), { id: "38", titel: "Geschwister ohne Spalte", spalte: null });
+      assert.ok(a.luecken.some((l) => l.includes("#38") && l.includes("nicht feststellbar")), a.luecken.join("\n"));
+      const md = runBoard(dir, ["issue", "auftrag", "31"]).stdout;
+      assert.match(md, /#38 Geschwister ohne Spalte — Spalte: nicht feststellbar/);
+    });
+    await t.test("geschlossene Voraussetzung in Done gilt als erfuellt", () => {
+      const a = json(runBoard(dir, ["issue", "auftrag", "19", "--json"]));
+      assert.deepEqual(a.voraussetzungen.find((v) => v.id === "22"), { id: "22", titel: "Voraussetzung fertig", spalte: "done", befund: "erfuellt" });
+    });
     await t.test("kein schreibender gh-Aufruf", () => assert.deepEqual(zustand(), []));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -234,18 +376,25 @@ test("GitHub", NUR_POSIX, async (t) => {
 
 // --- GitLab ---
 
-const GL_LABEL = { ready: "Ready", in_progress: "In progress", in_review: "In review" };
+const GL_LABEL = { backlog: "Backlog", ready: "Ready", in_progress: "In progress", in_review: "In review" };
+
+const glKarte = (k) => ({
+  iid: k.nr, title: k.titel, description: k.body, state: k.spalte === "done" ? "closed" : "opened",
+  labels: [...(k.labels || []), ...(GL_LABEL[k.spalte] ? [GL_LABEL[k.spalte]] : [])],
+  created_at: "2026-09-27T08:00:00Z",
+});
 
 function glRegeln() {
-  const regeln = [];
+  // Die Spaltenlisten fuer die Geschwister: vier Label-Spalten, Done ist der Zustand Closed.
+  const regeln = Object.entries(GL_LABEL).map(([spalte, label]) => ({
+    match: `^issue list .*--label ${label}( |$)`,
+    stdout: KARTEN.filter((k) => k.spalte === spalte).map(glKarte),
+  }));
+  regeln.push({ match: "^issue list .*--closed", stdout: KARTEN.filter((k) => k.spalte === "done").map(glKarte) });
   for (const k of KARTEN) {
     regeln.push({
       match: `^issue view ${k.nr} `,
-      stdout: {
-        iid: k.nr, title: k.titel, description: k.body, state: k.spalte === "done" ? "closed" : "opened",
-        labels: [...(k.labels || []), ...(GL_LABEL[k.spalte] ? [GL_LABEL[k.spalte]] : [])],
-        created_at: "2026-09-27T08:00:00Z",
-      },
+      stdout: glKarte(k),
     });
     regeln.push({
       match: `^api projects/:id/issues/${k.nr}/notes$`,
@@ -273,7 +422,7 @@ test("GitLab", NUR_POSIX, async (t) => {
 
 // --- toolbox ---
 
-const TBX_SPALTE = { ready: "READY", in_progress: "IN_PROGRESS", in_review: "IN_REVIEW", done: "DONE" };
+const TBX_SPALTE = { backlog: "BACKLOG", ready: "READY", in_progress: "IN_PROGRESS", in_review: "IN_REVIEW", done: "DONE" };
 
 test("toolbox", async (t) => {
   const karten = KARTEN.map((k, i) => ({

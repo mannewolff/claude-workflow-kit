@@ -135,8 +135,11 @@ Nutzung:
       Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
       Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
       backlog samt woertlichem Kommentartext), Aufgabe (Titel, Body, Labels, Spalte,
-      Kommentare) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
-      Rein lesend. --spalte in_progress erwartet die Karte in In progress statt Ready.
+      Kommentare), Plan-Entscheidungen im Wortlaut (Auswahl aus der Zeile
+      'Plan-Entscheidungen:', ohne sie alle), fachlicher Anlass (Ziel und Fachliche
+      Akzeptanzkriterien der 'Fachlichen Quelle'), Geschwister des Plans mit Spalte
+      (Issue #1024) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
+      Was sich nicht ermitteln laesst, steht unter Luecken. Rein lesend. --spalte in_progress erwartet die Karte in In progress statt Ready.
       Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
       stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
       beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
@@ -852,6 +855,16 @@ class GitHubIssueTracker {
       }));
 
     return this._mitLabels(gefiltert, repo);
+  }
+
+  /**
+   * Alle Issues jedes Zustands mit Body, ohne Spalte (Issue #1024). `listIssues()` liefert
+   * nur offene, `listIssues(status)` keinen Body — `issue auftrag` braucht fuer die
+   * Geschwister eines Plans beides und legt die Spalte selbst aus den Spaltenlisten daneben.
+   */
+  async listAlleMitBody() {
+    const items = execJSON("gh", ["issue", "list", "--repo", this._repo(), "--state", "all", "--json", "number,title,body", "--limit", "1000"]);
+    return (Array.isArray(items) ? items : []).map((i) => ({ id: String(i.number), title: i.title, body: i.body ?? "" }));
   }
 
   // `gh project item-list` liefert keine Labels (Issue #180) — sie werden ueber einen
@@ -3401,8 +3414,7 @@ const AUFTRAG_PRAEFIXE = [
 const AUFTRAG_KLAEREN = "kit:klaeren";
 const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
 const AUFTRAG_ERFUELLT = ["in_review", "done"];
-// Die Glieder, die das Folgepaket (Issue #1024) fuellt. Bis dahin stehen sie unter Luecken.
-const AUFTRAG_OFFENE_GLIEDER = ["Plan-Entscheidungen", "Fachlicher Anlass", "Geschwister"];
+const KEIN_VORHABEN = "kein Vorhaben";
 
 // SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
 // LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
@@ -3461,6 +3473,198 @@ async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
   const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
   if (spalte === null) return { ...eintrag, befund: "nicht feststellbar", grund: "Spalte nicht bestimmbar" };
   return { ...eintrag, befund: AUFTRAG_ERFUELLT.includes(spalte) ? "erfuellt" : "unerfuellt" };
+}
+
+const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
+
+/**
+ * Die Nummern aller GANZEN Zeilen `<feld>: Issue #N` — Zeilenregel wie `stammtAusErzeugung`
+ * in kit/night.mjs: Eine Erwaehnung im Fliesstext zaehlt nicht, und das Zeilenende hinter
+ * der Nummer trennt #30 von #300. Verglichen wird ohne fuehrende Nullen, weil der lokale
+ * Tracker seine Nummern mit ihnen schreibt.
+ */
+function herkunftNummern(body, feld) {
+  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
+  const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
+  return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
+}
+
+// Die Kontext-Zeile `Plan-Entscheidungen: E1, E3` (oder `Keine.`), die `/issues` in jedes
+// Paket aus einem Plan schreibt (Plan #1015, E1). Gelesen werden die `E<n>` nur aus dieser
+// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`.
+const PLAN_AUSWAHL_FELD = "Plan-Entscheidungen:";
+const E_NUMMER = /\bE(\d+)\b/g;
+
+/** Die genannten `E<n>` ohne Doppelte, `[]` bei `Keine.`, `null` ohne die Zeile (Altbestand). */
+function planAuswahlLesen(body) {
+  // Zeilenweise statt eines `^…(.*)$`-Ausdrucks mit m-Flag (sonarjs/slow-regex).
+  const zeile = normalisiereZeilenenden(body).split("\n").map((z) => z.trimStart())
+    .find((z) => z.startsWith(PLAN_AUSWAHL_FELD));
+  if (zeile === undefined) return null;
+  const wert = zeile.slice(PLAN_AUSWAHL_FELD.length);
+  return [...new Set([...wert.matchAll(E_NUMMER)].map((t) => `E${Number(t[1])}`))];
+}
+
+/**
+ * Der Inhalt des `##`-Abschnitts `name` woertlich, ohne Rand-Leerzeilen; `null`, wenn er
+ * fehlt oder leer ist. Anders als `zerlegeAbschnitte` bleiben Codebloecke Inhalt: Eine
+ * `##`-Zeile darin beendet den Abschnitt nicht und wird mit ausgegeben.
+ */
+function abschnittWoertlich(body, name) {
+  const zeilen = normalisiereZeilenenden(body).split("\n");
+  const imFence = fenceLauf();
+  // Je Zeile die Ueberschrift ausserhalb eines Codeblocks, sonst null.
+  const koepfe = zeilen.map((z) => (imFence(z) ? null : ABSCHNITT_ZEILE.exec(z)?.[1] ?? null));
+  const soll = normUeberschrift(name);
+  const start = koepfe.findIndex((k) => k !== null && normUeberschrift(k) === soll);
+  if (start < 0) return null;
+  const naechster = koepfe.findIndex((k, i) => i > start && k !== null);
+  const inhalt = zeilen.slice(start + 1, naechster < 0 ? zeilen.length : naechster);
+  const nichtLeer = (z) => z.trim() !== "";
+  const von = inhalt.findIndex(nichtLeer);
+  if (von < 0) return null;
+  return inhalt.slice(von, inhalt.findLastIndex(nichtLeer) + 1).join("\n");
+}
+
+// Ein Eintrag im zweizeiligen Format aus `CLAUDE-workflow.md` („Entscheiden statt fragen“):
+// `- E<n>: <Frage>` und eingerueckte Folgezeilen. Eine Leerzeile oder eine nicht
+// eingerueckte Zeile beendet ihn.
+const E_EINTRAG = /^ {0,3}[-*][ \t]+E(\d+):/;
+const E_FOLGEZEILE = /^[ \t]+\S/;
+
+/** Die E-Eintraege aus `## Architektonische Entscheidungen` im Wortlaut, `null` ohne den Abschnitt. */
+function planEintraegeLesen(planBody) {
+  const abschnitt = abschnittWoertlich(planBody, "Architektonische Entscheidungen");
+  if (abschnitt === null) return null;
+  const eintraege = [];
+  let aktuell = null;
+  for (const zeile of abschnitt.split("\n")) {
+    const m = E_EINTRAG.exec(zeile);
+    if (m) {
+      aktuell = { id: `E${Number(m[1])}`, zeilen: [zeile] };
+      eintraege.push(aktuell);
+    } else if (aktuell && E_FOLGEZEILE.test(zeile)) {
+      aktuell.zeilen.push(zeile);
+    } else {
+      aktuell = null;
+    }
+  }
+  return eintraege.map((e) => ({ id: e.id, text: e.zeilen.join("\n") }));
+}
+
+/** Plan-Entscheidungen nach Plan #1015, E1. Jede fehlende Angabe landet in `luecken`. */
+function auftragPlanEntscheidungen(karte, planNr, plan, luecken) {
+  const auswahl = planAuswahlLesen(karte.body);
+  const glied = (hinweis, eintraege = []) => ({ plan: planNr, auswahl, hinweis, eintraege });
+  if (planNr === null) {
+    luecken.push(`Plan-Entscheidungen: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
+    return glied(KEIN_VORHABEN);
+  }
+  if (plan.fehler) {
+    luecken.push(`Plan-Entscheidungen: Plan #${planNr} nicht lesbar (${plan.fehler})`);
+    return glied(null);
+  }
+  if (auswahl !== null && auswahl.length === 0) {
+    return glied("Das Paket beruft sich auf keine Plan-Entscheidung (`Plan-Entscheidungen: Keine.`).");
+  }
+  const alle = planEintraegeLesen(plan.body) ?? [];
+  if (alle.length === 0) {
+    luecken.push(`Plan-Entscheidungen: Plan #${planNr} hat unter \`## Architektonische Entscheidungen\` keinen Eintrag \`- E<n>:\``);
+  }
+  if (auswahl === null) {
+    return glied("Das Paket nennt keine Auswahl (Zeile `Plan-Entscheidungen:` fehlt) — es folgen alle Einträge des Plans.", alle);
+  }
+  const eintraege = [];
+  for (const id of auswahl) {
+    const eintrag = alle.find((e) => e.id === id);
+    if (eintrag) eintraege.push(eintrag);
+    else if (alle.length > 0) luecken.push(`Plan-Entscheidung ${id}: fehlt im Plan #${planNr}`);
+  }
+  return glied(null, eintraege);
+}
+
+/** Fachlicher Anlass nach Plan #1015, E4: aus dem Paket, sonst aus dem Plan. */
+async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
+  const ausPaket = herkunftNummern(karte.body, "Fachliche Quelle")[0];
+  const ausPlan = plan?.body === undefined ? undefined : herkunftNummern(plan.body, "Fachliche Quelle")[0];
+  const quelle = ausPaket ?? ausPlan ?? null;
+  const leer = { quelle: null, herkunft: null, ziel: null, kriterien: null, vollerText: null };
+  if (quelle === null) {
+    luecken.push("Fachlicher Anlass: weder das Paket noch sein Plan nennt eine Zeile `Fachliche Quelle: Issue #N`");
+    return leer;
+  }
+  const anlass = {
+    quelle,
+    herkunft: ausPaket ? "paket" : "plan",
+    ziel: null,
+    kriterien: null,
+    vollerText: `Voller Text: \`node .claude/kit/board.mjs issue get ${quelle}\``,
+  };
+  let body;
+  try {
+    body = (await tracker.getIssue(quelle)).body ?? "";
+  } catch (e) {
+    luecken.push(`Fachlicher Anlass: Issue #${quelle} nicht lesbar (${e.message})`);
+    return anlass;
+  }
+  anlass.ziel = abschnittWoertlich(body, "Ziel");
+  anlass.kriterien = abschnittWoertlich(body, "Fachliche Akzeptanzkriterien");
+  if (anlass.ziel === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Ziel\` fehlt in Issue #${quelle}`);
+  if (anlass.kriterien === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Fachliche Akzeptanzkriterien\` fehlt in Issue #${quelle}`);
+  return anlass;
+}
+
+/**
+ * Alle Karten ueber die fuenf Spalten, je mit Body und Spalte (Plan #1015, E7).
+ *
+ * Die Spalte kommt aus den Spaltenlisten `listIssues(<spalte>)` — dieselbe Lesung wie fuer
+ * die Voraussetzungen, `spaltenListen` teilt sie. Bei local, gitlab und toolbox tragen diese
+ * Listen auch den Body. GitHub liefert dort keinen Body; die Bodies kommen deshalb aus
+ * `listAlleMitBody`, und eine Karte, die in keiner Spaltenliste steht, hat Spalte `null`.
+ */
+async function auftragAlleKarten(tracker, spaltenListen) {
+  for (const s of VALID_STATUSES) {
+    if (!spaltenListen.has(s)) spaltenListen.set(s, await tracker.listIssues(s));
+  }
+  const spalteVon = new Map();
+  const ausListen = new Map();
+  for (const s of VALID_STATUSES) {
+    // Nur Eintraege, die die Spalte tragen: Ohne bestimmbares Project faellt GitHub auf
+    // alle offenen Issues mit `status: null` zurueck — die gehoeren keiner Spalte.
+    for (const i of spaltenListen.get(s).filter((k) => k.status === s)) {
+      const id = ohneFuehrendeNullen(i.id);
+      if (!spalteVon.has(id)) spalteVon.set(id, s);
+      if (!ausListen.has(id)) ausListen.set(id, i);
+    }
+  }
+  const karten = tracker instanceof GitHubIssueTracker ? await tracker.listAlleMitBody() : [...ausListen.values()];
+  return karten.map((k) => {
+    const id = ohneFuehrendeNullen(k.id);
+    return { id, titel: k.title ?? "", body: k.body ?? "", spalte: spalteVon.get(id) ?? null };
+  });
+}
+
+/** Geschwister nach Plan #1015, E7: alle Karten mit der ganzen Zeile `Plan: Issue #M`. */
+async function auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken) {
+  if (planNr === null) {
+    luecken.push(`Geschwister: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
+    return { plan: null, hinweis: KEIN_VORHABEN, karten: [] };
+  }
+  let alle;
+  try {
+    alle = await auftragAlleKarten(tracker, spaltenListen);
+  } catch (e) {
+    luecken.push(`Geschwister: Karten nicht lesbar (${e.message})`);
+    return { plan: planNr, hinweis: "Karten nicht lesbar (siehe Lücken)", karten: [] };
+  }
+  const karten = alle
+    .filter((k) => k.id !== nummer && herkunftNummern(k.body, "Plan").includes(planNr))
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .map(({ id, titel, spalte }) => ({ id, titel, spalte }));
+  for (const k of karten.filter((g) => g.spalte === null)) {
+    luecken.push(`Geschwister #${k.id}: Spalte nicht feststellbar (in keiner Spalte des Boards)`);
+  }
+  return { plan: planNr, hinweis: null, karten };
 }
 
 // Die Kommentare einer Karte: mit der Karte geliefert, beim lokalen Tracker aus der Datei.
@@ -3533,18 +3737,47 @@ function auftragMarkdown(a) {
     : `\n\nKommentare (${auf.kommentare.length}):${kommentarBloecke}`;
   teile.push(aufgabe);
 
-  for (const glied of AUFTRAG_OFFENE_GLIEDER) teile.push(`## ${glied}\n\nnoch nicht ermittelt (siehe Lücken)`);
+  teile.push(`## Plan-Entscheidungen\n\n${planEntscheidungenMarkdown(a.planEntscheidungen)}`);
+  teile.push(`## Fachlicher Anlass\n\n${fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)}`);
+  teile.push(`## Geschwister\n\n${geschwisterMarkdown(a.geschwister)}`);
 
   const voraus = a.voraussetzungen.length === 0 ? "Keine." : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
   teile.push(`## Voraussetzungen\n\n${voraus}`);
-  teile.push(`## Lücken\n\n${a.luecken.map((l) => "- " + l).join("\n")}`);
+  teile.push(`## Lücken\n\n${a.luecken.length === 0 ? "Keine." : a.luecken.map((l) => "- " + l).join("\n")}`);
   return `${teile.join("\n\n")}\n`;
+}
+
+const OHNE_PLAN_MARKDOWN = `${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\` (siehe Lücken)`;
+
+function planEntscheidungenMarkdown(p) {
+  if (p.plan === null) return OHNE_PLAN_MARKDOWN;
+  const teile = [`Plan: Issue #${p.plan}`];
+  if (p.hinweis) teile.push(p.hinweis);
+  if (p.eintraege.length > 0) teile.push(p.eintraege.map((e) => e.text).join("\n"));
+  else if (!p.hinweis) teile.push("keine (siehe Lücken)");
+  return teile.join("\n\n");
+}
+
+function fachlicherAnlassMarkdown(f, planNr) {
+  if (f.quelle === null) return "keine fachliche Quelle (siehe Lücken)";
+  const herkunft = f.herkunft === "paket" ? "aus dem Paket" : `aus dem Plan #${planNr}`;
+  const abschnitt = (text) => (text === null ? "fehlt (siehe Lücken)" : eingezaeunt(text));
+  return `Fachliche Quelle: Issue #${f.quelle} (${herkunft})\n\n### Ziel\n\n${abschnitt(f.ziel)}\n\n`
+    + `### Fachliche Akzeptanzkriterien\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
+}
+
+function geschwisterMarkdown(g) {
+  if (g.plan === null) return OHNE_PLAN_MARKDOWN;
+  const zeilen = g.karten.map((k) => `- #${k.id} ${k.titel || "(ohne Titel)"} — Spalte: ${k.spalte ?? "nicht feststellbar"}`);
+  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : "Keine.")}`;
 }
 
 /**
  * `issue auftrag <id> [--spalte ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
  * und das Urteil, ob eine Umsetzung beginnen darf, in einem Aufruf (Issue #1023, Plan
- * #1015 E2, E3, E5, E6).
+ * #1015 E2, E3, E5, E6), dazu Plan-Entscheidungen, fachlicher Anlass und Geschwister
+ * (Issue #1024, E1, E4, E7). Jede Angabe, die sich nicht ermitteln laesst, steht unter
+ * Luecken — keine stille Luecke (AK 3).
  *
  * Rein lesend: keine Bewegung, kein Kommentar. Bei Folge "backlog" liefert der Befehl den
  * Kommentartext, den die Session selbst ans Board haengt. Exit 0 auch bei "darf nicht
@@ -3573,11 +3806,23 @@ async function issueAuftrag(tracker, args) {
   const voraussetzungen = [];
   for (const n of abhaengigkeitenLesen(karte.body)) voraussetzungen.push(await auftragVoraussetzung(tracker, n, spaltenListen));
 
-  const luecken = [
-    ...AUFTRAG_OFFENE_GLIEDER.map((g) => `${g}: noch nicht ermittelt`),
-    ...(spalte === null ? ["Spalte des Pakets: nicht feststellbar"] : []),
-    ...voraussetzungen.filter((v) => v.befund === "nicht feststellbar").map((v) => `Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`),
-  ];
+  const luecken = [];
+  const planNr = herkunftNummern(karte.body, "Plan")[0] ?? null;
+  let plan = null;
+  if (planNr !== null) {
+    try {
+      plan = { body: (await tracker.getIssue(planNr)).body ?? "" };
+    } catch (e) {
+      plan = { fehler: e.message };
+    }
+  }
+  const planEntscheidungen = auftragPlanEntscheidungen(karte, planNr, plan, luecken);
+  const fachlicherAnlass = await auftragFachlicherAnlass(tracker, karte, plan, luecken);
+  const geschwister = await auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken);
+  if (spalte === null) luecken.push("Spalte des Pakets: nicht feststellbar");
+  for (const v of voraussetzungen.filter((x) => x.befund === "nicht feststellbar")) {
+    luecken.push(`Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`);
+  }
 
   const auftrag = {
     id: nummer,
@@ -3590,9 +3835,9 @@ async function issueAuftrag(tracker, args) {
       body: karte.body ?? "",
       kommentare: (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" })),
     },
-    planEntscheidungen: null,
-    fachlicherAnlass: null,
-    geschwister: null,
+    planEntscheidungen,
+    fachlicherAnlass,
+    geschwister,
     voraussetzungen,
     luecken,
   };
