@@ -79,6 +79,13 @@ wartet oder ausfiel. Meldet das
 Kommando `leeresPaket`, steht das ausdruecklich als "keine Pruefung, weil nichts
 veraendert wurde" im Bericht, nicht als leere Liste.
 
+**Wer eine Datei anlegt, ordnet sie zu.** Nennt der Block `Fuer den Abschlussbericht:`
+`voller Umfang` wegen einer Datei, die dieses Paket angelegt hat, ergaenzt das Paket
+`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `ohnePruefung`)
+und faehrt den Lauf erneut. Weist Claude Code den Schreibzugriff auf die Config ab
+(Nachtlauf, geschuetzte Datei), steht die Datei unter `### Hinweise` im Bericht — kein
+Anhalten, kein Umweg ueber die Shell.
+
 ### 4. Lokal committen (nicht pushen)
 
 Gleiches Format wie `implement-ready` Schritt 5 — Tests und Implementierung zusammen in einem Commit:
@@ -139,7 +146,8 @@ Jeder Block ist ein **eigener** Werkzeugaufruf, und der Pfad steht woertlich —
 - `DateiTest.java` — was getestet wird (von /implement-test vorbereitet)
 
 ### Tests und Checks
-- gelaufen: <Kommando> → <Ergebnis>
+<die Zeilen aus dem Block `Fuer den Abschlussbericht:` der Ausgabe von `checks.mjs run`, wortgetreu, nicht umformuliert oder gekuerzt:>
+- gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>
 - ausgelassen: <Kommando> → <Grund>
 - bei `leeresPaket`: keine Pruefung, weil nichts veraendert wurde
 

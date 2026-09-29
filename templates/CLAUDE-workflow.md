@@ -349,7 +349,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier 
 - `Datei` — kurze Beschreibung der Wirkung
 
 ### Tests und Checks
-- <Kommando> -> <Ergebnis>
+- <Zeilen aus dem Block `Fuer den Abschlussbericht:` von `checks.mjs run`, wortgetreu: `gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>` bzw. `ausgelassen: <Kommando> → <Grund>`>
 
 ### Hinweise
 - <Restrisiken, offene Punkte, manuelle Folgeschritte>

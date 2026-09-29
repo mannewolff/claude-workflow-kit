@@ -166,3 +166,43 @@ test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte"
   assert.match(text, /nicht aus .In review. zur(ü|ue)ck/i,
     "es fehlt, dass die verursachende Karte nicht aus In review zurueckwandert");
 });
+
+// --- Berichtsblock wortgetreu (Issue #1006) ---------------------------------
+//
+// `checks.mjs run` bildet den Block `Fuer den Abschlussbericht:` selbst, samt
+// Dauer und Grund (Issue #1003). Stand im Berichtsformat nur
+// `<Kommando> -> <Ergebnis>`, gingen beide bei der Uebernahme verloren.
+
+for (const { name, text } of SKILLS) {
+  test(`${name}: der Abschnitt Tests und Checks nennt den Block 'Fuer den Abschlussbericht:'`, () => {
+    const format = berichtsformat(text);
+    assert.match(format, /Fuer den Abschlussbericht:/,
+      "das Berichtsformat verweist nicht auf den Block aus `checks.mjs run`");
+    assert.match(format, /gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>/,
+      "die gelaufene Zeile traegt Dauer und Grund nicht");
+    assert.match(format, /wortgetreu/i,
+      "es fehlt, dass die Zeilen wortgetreu uebernommen werden");
+  });
+
+  // Plan E11: Wer eine Datei anlegt, ordnet sie zu.
+  test(`${name}: die Regel zu neu angelegten Dateien im vollen Umfang steht am Pruefschritt`, () => {
+    const pruefschritt = text.slice(text.indexOf("checks.mjs run --abschluss"),
+      text.search(/### \d+\. Lokal committen/));
+    assert.match(pruefschritt, /voller Umfang/);
+    assert.match(pruefschritt, /checkAreas/);
+    assert.match(pruefschritt, /ohnePruefung/);
+    assert.match(pruefschritt, /### Hinweise/);
+  });
+}
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format uebernimmt den Block wortgetreu", () => {
+  const text = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  const start = text.indexOf("## Abschlussbericht-Format");
+  assert.notEqual(start, -1, "der Abschnitt '## Abschlussbericht-Format' fehlt");
+  const format = berichtsformat(text.slice(start));
+  assert.match(format, /Fuer den Abschlussbericht:/);
+  assert.match(format, /gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>/);
+  assert.match(format, /ausgelassen: <Kommando> → <Grund>/);
+  assert.match(format, /wortgetreu/i);
+  assert.doesNotMatch(format, /- <Kommando> -> <Ergebnis>/);
+});
