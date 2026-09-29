@@ -8,7 +8,8 @@
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`
  * (aktualisiert den eingebetteten Blob in install.mjs).
  *
- * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
+ * Ausgabe: JSON auf stdout. Einzige Ausnahme: `issue auftrag` ohne --json schreibt
+ * Markdown (Issue #1023). Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
  *   node board.mjs issue create --title "..." --body "..." [--author-model <modell>]
@@ -36,6 +37,9 @@
  *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
  *       ersetzt. --teil schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
  *       --text setzt die Stuecke zusammen und schliesst ab.
+ *   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+ *       Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug, rein
+ *       lesend (Issue #1023). Ausgabe Markdown, mit --json als JSON.
  *   node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
@@ -127,6 +131,15 @@ Nutzung:
       der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
       und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
       Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
+  node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+      Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
+      Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
+      backlog samt woertlichem Kommentartext), Aufgabe (Titel, Body, Labels, Spalte,
+      Kommentare) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
+      Rein lesend. --spalte in_progress erwartet die Karte in In progress statt Ready.
+      Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
+      stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
+      beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -3360,6 +3373,233 @@ async function issueMelden(tracker, args) {
   out({ ok: true, id, bericht, status: "in_review" });
 }
 
+// ============================================================
+// Auftrag einer Umsetzung: issue auftrag (Issue #1023, Plan #1015)
+// ============================================================
+
+// Die Kommentartexte fuer Folge "backlog", wortgleich mit dem Schritt 0 der Skills
+// `implement-next` und `implement-ready`.
+// SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
+// (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
+// Gleichlauf-Test in test/board-auftrag.test.mjs vergleicht beide Seiten.
+export const AUFTRAG_BACKLOG_TEXTE = {
+  fachlich: (id) => `Fachliches Issue — wird nicht implementiert, bitte per /techplan #${id} in technische Issues ueberfuehren.`,
+  idee: (id) => `Idee — mit Abwaegung erst /fachplan #${id}, ohne Abwaegung /task #${id}, wird nicht implementiert.`,
+  plan: (id) => `Plan-Dokument — wird nicht implementiert, bitte per /issues #${id} in Arbeitspakete ueberfuehren.`,
+  mensch: () => "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
+  klaeren: () => "Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+};
+
+// Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,
+// dann das Label.
+const AUFTRAG_PRAEFIXE = [
+  [istFachlich, "fachlich", "Titel-Praefix [Fachlich]"],
+  [istIdee, "idee", "Titel-Praefix [Idee]"],
+  [istPlan, "plan", "Titel-Praefix [Plan]"],
+  [istMensch, "mensch", "Titel-Praefix [Mensch]"],
+];
+const AUFTRAG_KLAEREN = "kit:klaeren";
+const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
+const AUFTRAG_ERFUELLT = ["in_review", "done"];
+// Die Glieder, die das Folgepaket (Issue #1024) fuellt. Bis dahin stehen sie unter Luecken.
+const AUFTRAG_OFFENE_GLIEDER = ["Plan-Entscheidungen", "Fachlicher Anlass", "Geschwister"];
+
+// SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
+// LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
+// nicht. Der Gleichlauf-Test in test/board-auftrag.test.mjs faehrt beide Lesungen ueber
+// dieselben Fixtures.
+const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+const DEPS_ABSCHNITTS_ENDE = /^ {0,3}##\s/;
+const DEPS_REFERENZ = /(?<![\w`/#])#(\d+)/g;
+
+/**
+ * Die `#N` aus dem Abschnitt `## Abhaengigkeiten`, ohne Doppelte — Auslegung wie
+ * `parseDeps`: Die Ueberschrift zaehlt nur als eigene Zeile ausserhalb eines Fence, bei
+ * mehreren gilt die letzte, und eine `##`-Zeile im Fence beendet den Abschnitt nicht.
+ */
+export function abhaengigkeitenLesen(body) {
+  const zeilen = String(body || "").split(/\r\n|\r|\n/);
+  const imFence = fenceLauf();
+  const ausserhalb = zeilen.map((z) => !imFence(z));
+  let start = -1;
+  zeilen.forEach((z, i) => { if (ausserhalb[i] && DEPS_UEBERSCHRIFT.test(z)) start = i; });
+  if (start < 0) return [];
+  let ende = zeilen.length;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (ausserhalb[i] && DEPS_ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
+  }
+  const abschnitt = zeilen.slice(start + 1, ende).join("\n");
+  return [...new Set([...abschnitt.matchAll(DEPS_REFERENZ)].map((m) => Number(m[1])))];
+}
+
+/**
+ * Die Spalte einer Karte, oder null, wenn sie sich nicht bestimmen laesst.
+ *
+ * Drei Tracker liefern sie mit der Karte. GitHub nicht (`status: null`, die Spalte lebt
+ * im Project): Dort wird sie ueber `listIssues(<spalte>)` gesucht, in der uebergebenen
+ * Reihenfolge und nur so weit wie noetig. `spaltenListen` cacht je Aufruf die Listen.
+ */
+async function auftragSpalte(tracker, issue, reihenfolge, spaltenListen) {
+  if (VALID_STATUSES.includes(issue.status)) return issue.status;
+  if (!(tracker instanceof GitHubIssueTracker)) return null;
+  for (const spalte of [...reihenfolge, ...VALID_STATUSES.filter((s) => !reihenfolge.includes(s))]) {
+    if (!spaltenListen.has(spalte)) spaltenListen.set(spalte, await tracker.listIssues(spalte));
+    if (spaltenListen.get(spalte).some((i) => String(i.id) === String(issue.id))) return spalte;
+  }
+  return null;
+}
+
+async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
+  let karte;
+  try {
+    karte = await tracker.getIssue(String(nummer));
+  } catch (e) {
+    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: `Karte nicht lesbar: ${e.message}` };
+  }
+  const spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_ERFUELLT, spaltenListen)
+    .catch(() => null);
+  const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
+  if (spalte === null) return { ...eintrag, befund: "nicht feststellbar", grund: "Spalte nicht bestimmbar" };
+  return { ...eintrag, befund: AUFTRAG_ERFUELLT.includes(spalte) ? "erfuellt" : "unerfuellt" };
+}
+
+// Die Kommentare einer Karte: mit der Karte geliefert, beim lokalen Tracker aus der Datei.
+async function auftragKommentare(tracker, id, karte) {
+  if (Array.isArray(karte.comments)) return karte.comments;
+  if (typeof tracker.kommentareStreng !== "function") return [];
+  try {
+    return await tracker.kommentareStreng(id);
+  } catch {
+    return [];
+  }
+}
+
+// Das Urteil nach Plan #1015, E6. Reihenfolge: Spalte, Praefix, Label, Voraussetzungen.
+function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen) {
+  const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
+  if (spalte !== erwartet) {
+    const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
+    return nicht("bleibt", `Issue #${id} liegt nicht (mehr) in ${COLUMN_DEFAULTS[erwartet]}, sondern in ${wo}.`);
+  }
+  const praefix = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title));
+  if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
+  if ((karte.labels || []).includes(AUFTRAG_KLAEREN)) {
+    return nicht("backlog", `Label ${AUFTRAG_KLAEREN} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  }
+  const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
+  if (offen.length > 0) {
+    const liste = offen.map((v) => `#${v.id} ${v.befund}`).join(", ");
+    return nicht("bleibt", `Voraussetzung ${liste} (erfuellt ist nur In review oder Done).`);
+  }
+  return { urteil: "darf beginnen", folge: "beginnen", grund: null, kommentar: null };
+}
+
+// Ein Text im Codeblock, dessen Zaun laenger ist als jeder Backtick-Lauf im Text: So
+// bleiben die `##`-Ueberschriften des Bodys Inhalt und keine Glieder der Ausgabe.
+function eingezaeunt(text) {
+  const laengster = Math.max(0, ...[...String(text).matchAll(/`+/g)].map((m) => m[0].length));
+  const zaun = "`".repeat(Math.max(3, laengster + 1));
+  return `${zaun}markdown\n${ohneSchlussUmbrueche(String(text))}\n${zaun}`;
+}
+
+// Ohne Regex: `/\n+$/` waere ein Kandidat fuer quadratische Laufzeit (sonarjs/slow-regex).
+function ohneSchlussUmbrueche(text) {
+  let ende = text.length;
+  while (ende > 0 && text[ende - 1] === "\n") ende--;
+  return text.slice(0, ende);
+}
+
+function auftragKommentarBlock(k) {
+  return `\n\n${k.author || "unbekannt"}, ${k.createdAt || "ohne Datum"}:\n\n${eingezaeunt(k.body)}`;
+}
+
+function auftragVoraussetzungZeile(v) {
+  const grund = v.grund ? " (" + v.grund + ")" : "";
+  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${v.spalte ?? "nicht feststellbar"} — ${v.befund}${grund}`;
+}
+
+function auftragMarkdown(a) {
+  const u = a.urteil;
+  const teile = [`## Urteil\n\n${u.urteil} — Folge: ${u.folge}`];
+  if (u.grund) teile[0] += `\nGrund: ${u.grund}`;
+  if (u.kommentar) teile[0] += `\n\nKommentar fuer die Karte (woertlich):\n\n${u.kommentar}`;
+
+  const auf = a.aufgabe;
+  let aufgabe = `## Aufgabe\n\nIssue #${auf.id}: ${auf.titel}\nSpalte: ${auf.spalte ?? "nicht feststellbar"}\n`
+    + `Labels: ${auf.labels.length ? auf.labels.join(", ") : "keine"}\n\n${eingezaeunt(auf.body)}`;
+  const kommentarBloecke = auf.kommentare.map(auftragKommentarBlock).join("");
+  aufgabe += auf.kommentare.length === 0
+    ? "\n\nKommentare: keine"
+    : `\n\nKommentare (${auf.kommentare.length}):${kommentarBloecke}`;
+  teile.push(aufgabe);
+
+  for (const glied of AUFTRAG_OFFENE_GLIEDER) teile.push(`## ${glied}\n\nnoch nicht ermittelt (siehe Lücken)`);
+
+  const voraus = a.voraussetzungen.length === 0 ? "Keine." : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
+  teile.push(`## Voraussetzungen\n\n${voraus}`);
+  teile.push(`## Lücken\n\n${a.luecken.map((l) => "- " + l).join("\n")}`);
+  return `${teile.join("\n\n")}\n`;
+}
+
+/**
+ * `issue auftrag <id> [--spalte ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
+ * und das Urteil, ob eine Umsetzung beginnen darf, in einem Aufruf (Issue #1023, Plan
+ * #1015 E2, E3, E5, E6).
+ *
+ * Rein lesend: keine Bewegung, kein Kommentar. Bei Folge "backlog" liefert der Befehl den
+ * Kommentartext, den die Session selbst ans Board haengt. Exit 0 auch bei "darf nicht
+ * beginnen" — das ist eine Auskunft, kein Fehler. Exit 1 nur, wenn das Paket selbst nicht
+ * lesbar ist.
+ *
+ * Ausgabe als Markdown, je Glied eine `##`-Ueberschrift in fester Reihenfolge; `--json`
+ * liefert dieselben Glieder als Felder. Die einzige Ausnahme von "Ausgabe: JSON".
+ */
+async function issueAuftrag(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]");
+  const erwartet = args.spalte ?? "ready";
+  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(`--spalte '${erwartet}' ist keine erwartbare Spalte (ready | in_progress).`);
+
+  let karte;
+  try {
+    karte = await tracker.getIssue(String(id));
+  } catch (e) {
+    fail(`Paket ${id} nicht lesbar: ${e.message}`);
+  }
+  const nummer = String(karte.id ?? id).replace(/^0+(?=\d)/, "");
+  const spaltenListen = new Map();
+  const spalte = await auftragSpalte(tracker, { ...karte, id: nummer }, [erwartet], spaltenListen);
+
+  const voraussetzungen = [];
+  for (const n of abhaengigkeitenLesen(karte.body)) voraussetzungen.push(await auftragVoraussetzung(tracker, n, spaltenListen));
+
+  const luecken = [
+    ...AUFTRAG_OFFENE_GLIEDER.map((g) => `${g}: noch nicht ermittelt`),
+    ...(spalte === null ? ["Spalte des Pakets: nicht feststellbar"] : []),
+    ...voraussetzungen.filter((v) => v.befund === "nicht feststellbar").map((v) => `Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`),
+  ];
+
+  const auftrag = {
+    id: nummer,
+    urteil: auftragUrteil(nummer, spalte, erwartet, karte, voraussetzungen),
+    aufgabe: {
+      id: nummer,
+      titel: karte.title ?? "",
+      spalte,
+      labels: karte.labels || [],
+      body: karte.body ?? "",
+      kommentare: (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" })),
+    },
+    planEntscheidungen: null,
+    fachlicherAnlass: null,
+    geschwister: null,
+    voraussetzungen,
+    luecken,
+  };
+  if (args.json) out(auftrag);
+  else process.stdout.write(auftragMarkdown(auftrag));
+}
+
 // Schreibt den Body eines bestehenden Issues (Issue #237). Bewusst nur --body:
 // Titel und Labels aendert kein Skill, und ein Kommando, das alles kann, laedt dazu
 // ein, mehr zu aendern als beabsichtigt.
@@ -3746,6 +3986,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "melden":  return issueMelden(tracker, args);
+    case "auftrag": return issueAuftrag(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, config, args);
     default:

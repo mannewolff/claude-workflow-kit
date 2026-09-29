@@ -81,6 +81,7 @@
       "cmd": "node --test \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/cli-*.test.mjs\"",
       "areas": [
         "board",
+        "nachtrunner",
         "pruefungen"
       ]
     },

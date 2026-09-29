@@ -2376,6 +2376,10 @@ function abschnittLesen(body, ueberschrift) {
  * Bei mehreren echten Ueberschriften gilt die LETZTE: In einem korrekt
  * formatierten Issue ist der Abschnitt der letzte des Dokuments, und ein
  * vorangestelltes Beispiel ausserhalb eines Fence bleibt damit wirkungslos.
+ *
+ * SYNC: `abhaengigkeitenLesen` in kit/board.mjs baut diese Lesung nach (`issue auftrag`,
+ * Issue #1023). Der Gleichlauf-Test in test/board-auftrag.test.mjs faehrt beide ueber
+ * dieselben Fixtures.
  */
 export function parseDeps(body) {
   const gelesen = abschnittLesen(body, DEPS_UEBERSCHRIFT);
@@ -7895,6 +7899,11 @@ export function laufeDryRun(args, ctx) {
  *
  * Der volle Body wird erst geholt, wenn die fuenf Titel- und Label-Gates durch sind.
  * Ihn vorher zu laden waere ein Board-Aufruf je Issue, das ohnehin ausscheidet.
+ *
+ * SYNC: Die fuenf Backlog-Kommentare der Titel- und Label-Gates stehen ohne das Praefix
+ * `Nachtlauf: ` als `AUFTRAG_BACKLOG_TEXTE` in kit/board.mjs (`issue auftrag`, Issue
+ * #1023). Wer einen hier aendert, aendert ihn dort mit — der Gleichlauf-Test in
+ * test/board-auftrag.test.mjs vergleicht beide Seiten.
  */
 export function pruefeIssueGates(top) {
   if (isFachlich(top.title)) {
@@ -7906,7 +7915,7 @@ export function pruefeIssueGates(top) {
   if (isIdee(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Idee — mit Abwaegung erst /fachplan #${top.id}, ohne Abwaegung /task #${top.id}, wird nachts nicht implementiert.`,
+      kommentar: `Nachtlauf: Idee — mit Abwaegung erst /fachplan #${top.id}, ohne Abwaegung /task #${top.id}, wird nicht implementiert.`,
     };
   }
   if (isPlan(top.title)) {
@@ -7922,14 +7931,14 @@ export function pruefeIssueGates(top) {
   if (isMensch(top.title)) {
     return {
       log: `#${top.id} uebersprungen: Menschenschritt ([Mensch]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Menschenschritt — die Karte wartet auf einen Menschen und ist nicht gescheitert; keine Sitzung kann sie erledigen. Nach der Handlung zieht der Mensch sie selbst weiter.`,
+      kommentar: "Nachtlauf: Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
     };
   }
   // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
   if (hatKlaerenLabel(top)) {
     return {
       log: `#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`,
-      kommentar: `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
+      kommentar: "Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
     };
   }
 
