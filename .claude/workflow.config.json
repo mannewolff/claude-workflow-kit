@@ -1,6 +1,5 @@
 {
   "codeHost": "github",
-  "installCommand": "npm ci",
   "issueTracker": "toolbox",
   "buildChecks": [
     {
@@ -86,6 +85,7 @@
     "in_review": "In review",
     "done": "Done"
   },
+  "installCommand": "npm ci",
   "checkAreas": {
     "nachtrunner": [
       "kit/night.mjs",
