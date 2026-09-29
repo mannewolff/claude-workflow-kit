@@ -2753,7 +2753,7 @@ export function fortschrittBeobachter() {
   return {
     zeile(roh) {
       const obj = leseStromereignis(roh);
-      if (!obj || obj.type !== "assistant" || !Array.isArray(obj.message?.content)) return;
+      if (obj?.type !== "assistant" || !Array.isArray(obj.message?.content)) return;
       for (const block of obj.message.content) {
         if (block?.type !== "text" || typeof block.text !== "string") continue;
         for (const zeile of block.text.split("\n")) {
@@ -7164,7 +7164,7 @@ function leseKarte(id) {
  * die diese Kette bestellt hat.
  */
 export function ketteEinheiten(kette, alle = undefined) {
-  const ids = new Set((kette?.stufen?.pakete?.ids ?? []).map((id) => String(id)));
+  const ids = new Set((kette?.stufen?.pakete?.ids ?? []).map(String));
   if (ids.size === 0) return [];
   const quelle = alle ?? LAUF?.einheiten ?? [];
   return quelle.filter((e) => ids.has(String(e?.id)));

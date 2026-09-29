@@ -3339,8 +3339,10 @@ function pruefeIssue(abschnitte, config) {
   if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
-  verstoesse.push(...pruefeVorlage(kontext, finde("akzeptanzkriterium")));
-  verstoesse.push(...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config));
+  verstoesse.push(
+    ...pruefeVorlage(kontext, finde("akzeptanzkriterium")),
+    ...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config),
+  );
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
 }

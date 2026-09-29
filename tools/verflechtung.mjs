@@ -51,7 +51,7 @@ const KIT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Ein Pfad in der Schreibweise der Config: Posix-Trenner, repo-relativ. */
 function posix(pfad) {
-  return pfad.split("\\").join("/");
+  return pfad.replaceAll("\\", "/");
 }
 
 /** Eine Liste von Pfaden aus `git ls-files`, in der Schreibweise der Config. */

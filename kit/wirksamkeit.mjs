@@ -944,9 +944,10 @@ function berichtAbschlusszeit(e) {
       + `${dauer(a.vergleichMs)} — getragen von ${karten} und ${laeufe}.`,
     );
   }
-  zeilen.push(...abschlusszeitVermerke(a), "");
   // Die Messgrenze der Zahl (AK 6): Sie steht in JEDEM Fall da, auch im Leerfall.
   zeilen.push(
+    ...abschlusszeitVermerke(a),
+    "",
     "Messgrenze dieser Zahl: Nur Abschlusslaeufe zaehlen — Pruefzeiten waehrend der Arbeit und beim "
     + "Veroeffentlichen zaehlen nicht mit.",
     "",
