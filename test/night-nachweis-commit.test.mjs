@@ -38,7 +38,7 @@ const NUR_POSIX = process.platform === "win32"
 // toetet checks.mjs, nicht das Kommando — ein durchlaufender Zweig traege seinen
 // Eintrag verwaist nach und verfaelschte die Zaehlung.
 const KIT_CHECK = {
-  cmd: "if [ -f .probe ]; then sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log",
+  cmd: "if [ -f .probe ]; then touch .probe-haelt; sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log",
   areas: ["kit"],
 };
 // Der Bereich 'board' ist bewusst keinem Check zugeordnet: Board-Moves sind beim
@@ -72,7 +72,7 @@ function setupProjekt(buildChecks = [KIT_CHECK]) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"),
-    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.rot\n");
+    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.probe-haelt\n.rot\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
@@ -134,9 +134,13 @@ const ABGEBROCHENE_PROBE = [
   "touch kit/probe.txt",
   "node .claude/kit/checks.mjs run > /dev/null 2>&1 &",
   "PROBE_PID=$!",
-  "sleep 1",
+  // Warten, bis der Pflichtcheck der Probe haelt (`.probe-haelt`), statt einer festen
+  // Sekunde (Issue #1080). Unter Last kam der Abbruch sonst, bevor die Shell des Checks
+  // `.probe` geprueft hatte: `kill -9` trifft nur checks.mjs, die verwaiste Shell fand
+  // `.probe` danach nicht mehr und zaehlte einen dritten Lauf. Hoechstens 30 s.
+  "for i in $(seq 1 300); do [ -f .probe-haelt ] && break; sleep 0.1; done",
   "kill -9 $PROBE_PID",
-  "rm -f .probe kit/probe.txt",
+  "rm -f .probe .probe-haelt kit/probe.txt",
 ].join("\n");
 
 test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", NUR_POSIX, () => {

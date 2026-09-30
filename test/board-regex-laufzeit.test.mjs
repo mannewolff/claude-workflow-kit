@@ -18,6 +18,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { pruefeLinear } from "./helpers/wachstum.mjs";
+
 import {
   fenceLauf,
   nurAutorZeileTrifft,
@@ -27,19 +29,9 @@ import {
 import { REVIEW_MARKER_ZEILE, hasReviewMarker } from "../kit/night.mjs";
 
 const GROSS = 16 * 1024;
-const GRENZE_MS = 100;
 
-function dauer(fn) {
-  const t0 = process.hrtime.bigint();
-  fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6;
-}
-
-test("fenceLauf bleibt bei einer sehr langen Fence-Zeile schnell", () => {
-  const imFence = fenceLauf();
-  const zeile = "   " + "`".repeat(GROSS);
-  const ms = dauer(() => imFence(zeile));
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 16 KiB — erwartet unter ${GRENZE_MS} ms`);
+test("fenceLauf waechst bei einer sehr langen Fence-Zeile linear", () => {
+  pruefeLinear("fenceLauf", (zeile) => fenceLauf()(zeile), (n) => "   " + "`".repeat(n), { gross: GROSS });
 });
 
 // --- Die drei quadratischen Ausdruecke aus Issue #406 ---
@@ -61,23 +53,21 @@ test("fenceLauf bleibt bei einer sehr langen Fence-Zeile schnell", () => {
 
 const SEHR_GROSS = 256 * 1024;
 
-test("nurAutorZeileTrifft bleibt bei 256 KiB Leerraum hinter der Autor-Zeile schnell", () => {
+test("nurAutorZeileTrifft waechst bis 256 KiB Leerraum hinter der Autor-Zeile linear", () => {
   // Die Autor-Zeile trifft, dann folgen 256 KiB Leerzeichen und eine zweite
   // Zeile, an der das Ende scheitert. Genau hier ueberlappten sich `[^\n]*` und
   // `\s*` im alten `^\s*...\s*$`.
   const body = `Autor-Modell: x${" ".repeat(SEHR_GROSS)}\ny`;
-  const ms = dauer(() => nurAutorZeileTrifft(body));
   assert.equal(nurAutorZeileTrifft(body), false, "der Rest muss scheitern, sonst misst die Probe nichts");
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 256 KiB — erwartet unter ${GRENZE_MS} ms`);
+  pruefeLinear("nurAutorZeileTrifft", nurAutorZeileTrifft, (n) => `Autor-Modell: x${" ".repeat(n)}\ny`, { gross: SEHR_GROSS });
 });
 
-test("autorModellSicherstellen bleibt bei 256 KiB Leerzeilen im Kontext schnell", () => {
+test("autorModellSicherstellen waechst bis 256 KiB Leerzeilen im Kontext linear", () => {
   // Der Trim-Replace `\n+$` laeuft ueber den Kontext-Abschnitt. Er endet hier
   // auf `x`, also findet der Ausdruck nie einen Treffer und probierte frueher
   // jede Startposition durch.
-  const body = `## Kontext\n${"\n".repeat(SEHR_GROSS)}x`;
-  const ms = dauer(() => autorModellSicherstellen(body, "opus"));
-  assert.ok(ms < GRENZE_MS, `${ms.toFixed(1)} ms fuer 256 KiB — erwartet unter ${GRENZE_MS} ms`);
+  pruefeLinear("autorModellSicherstellen", (body) => autorModellSicherstellen(body, "opus"),
+    (n) => `## Kontext\n${"\n".repeat(n)}x`, { gross: SEHR_GROSS });
 });
 
 // --- AUTOR_MODELL_ZEILE: die Einstufung des Tickets hielt der Messung nicht ---
@@ -101,12 +91,10 @@ const AUTOR_FORMEN = [
   ["viele Zeilen, keine mit Wert", (n) => "Autor-Modell: \n".repeat(n / 15)],
 ];
 
-test("AUTOR_MODELL_ZEILE bleibt bei 256 KiB in jeder Worst-Case-Form schnell", (t) => {
+test("AUTOR_MODELL_ZEILE waechst bis 256 KiB in jeder Worst-Case-Form linear", (t) => {
   for (const [was, bau] of AUTOR_FORMEN) {
-    const text = bau(SEHR_GROSS);
-    const ms = dauer(() => AUTOR_MODELL_ZEILE.test(text));
-    t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
-    assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+    const e = pruefeLinear(was, (text) => AUTOR_MODELL_ZEILE.test(text), bau, { gross: SEHR_GROSS });
+    t.diagnostic(`${was}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms bei 256 KiB`);
   }
 });
 
@@ -139,18 +127,14 @@ const REVIEW_FORMEN = [
 
 test("REVIEW_MARKER_ZEILE ist bei 256 KiB in jeder Form linear", (t) => {
   for (const [was, bau] of REVIEW_FORMEN) {
-    const text = bau(SEHR_GROSS);
-    const ms = dauer(() => REVIEW_MARKER_ZEILE.test(text));
-    t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
-    assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+    const e = pruefeLinear(was, (text) => REVIEW_MARKER_ZEILE.test(text), bau, { gross: SEHR_GROSS });
+    t.diagnostic(`${was}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms bei 256 KiB`);
   }
 });
 
 test("hasReviewMarker ist bei 256 KiB in jeder Form linear", (t) => {
   for (const [was, bau] of REVIEW_FORMEN) {
-    const text = bau(SEHR_GROSS);
-    const ms = dauer(() => hasReviewMarker(text));
-    t.diagnostic(`${was}: ${ms.toFixed(2)} ms bei 256 KiB`);
-    assert.ok(ms < GRENZE_MS, `${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+    const e = pruefeLinear(was, hasReviewMarker, bau, { gross: SEHR_GROSS });
+    t.diagnostic(`${was}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms bei 256 KiB`);
   }
 });

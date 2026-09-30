@@ -187,10 +187,11 @@ test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haen
     // bringt das Issue nicht nach In review -> Timeout greift, Runde = Fehlschlag.
     const started = Date.now();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: "sleep 30", NIGHT_TIMEOUT_MS: "400" });
+      { NIGHT_CLAUDE_CMD: "sleep 120", NIGHT_TIMEOUT_MS: "400" });
     const elapsed = Date.now() - started;
 
-    assert.ok(elapsed < 20000, `Timeout griff nicht — Lauf haengt (${elapsed} ms)`);
+    // Unter der Schlafdauer, mit Reserve fuer Last (Issue #1080).
+    assert.ok(elapsed < 90000, `Timeout griff nicht — Lauf haengt (${elapsed} ms)`);
     // Sauberer Tree, kein In review -> Issue zurueck ins Backlog, Lauf endet regulaer.
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(String(issue.id)), "Issue haette nach Timeout im Backlog liegen muessen");

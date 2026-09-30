@@ -125,6 +125,9 @@
  *   NIGHT_TIMEOUT_MS  ueberschreibt das Rundenzeitlimit in Millisekunden
  *                     (statt --timeout-min), damit der Timeout-Pfad schnell
  *                     testbar ist. Gilt auch fuer die Salvage-Session.
+ *   NIGHT_TIMEOUT_STUFE beschraenkt NIGHT_TIMEOUT_MS auf die Sessions dieser
+ *                     Stufe (plan, review, pakete, abdeckung, umsetzung); alle
+ *                     anderen behalten ihr regulaeres Limit (Issue #1080).
  *   NIGHT_SALVAGE     wird der Salvage-Session als Umgebungsvariable gesetzt
  *                     (Wert "1"), damit ein Fake-Hook die beiden Session-Arten
  *                     unterscheiden kann.
@@ -4163,7 +4166,14 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
 
 // Exportiert fuer die Kette und ihre Tests.
 export async function runSession(issueId, args, opts = {}) {
-  const timeoutMs = process.env.NIGHT_TIMEOUT_MS
+  // NIGHT_TIMEOUT_STUFE (Issue #1080) beschraenkt NIGHT_TIMEOUT_MS auf die Sessions einer
+  // Stufe. Ohne sie galt das kurze Testlimit JEDER Session einer Kette, und die Sessions,
+  // die schnell sein sollten, rissen es unter Last — der Test wurde rot, obwohl die
+  // gemeinte Stufe richtig reagierte. Sessions ohne Kettenstufe zaehlen als `umsetzung`,
+  // wie im Fake der Tests.
+  const nurStufe = process.env.NIGHT_TIMEOUT_STUFE;
+  const testlimitGilt = process.env.NIGHT_TIMEOUT_MS && (!nurStufe || nurStufe === (opts.stufe || "umsetzung"));
+  const timeoutMs = testlimitGilt
     ? Number(process.env.NIGHT_TIMEOUT_MS)
     : (opts.timeoutMs ?? args.timeoutMin * 60 * 1000);
   // Das Issue wird der Session verbindlich uebergeben (Issue #191) — sie waehlt

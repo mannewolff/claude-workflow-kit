@@ -78,13 +78,15 @@ test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", NUR_POSIX, 
 
     // "& wait" erzwingt einen echten Enkelprozess: Die Shell bleibt Elternprozess,
     // sleep haelt die geerbte stdout-Pipe. Ohne Gruppen-Kill laeuft der Runner die
-    // vollen 30 s, obwohl das Zeitlimit bei 400 ms liegt.
+    // vollen 120 s, obwohl das Zeitlimit bei 400 ms liegt. Die Grenze muss nur unter der
+    // Schlafdauer liegen (Issue #1080): Unter Last brauchte allein der Runner-Start 27 s,
+    // und 20 s bei 30 s Schlaf riss ohne Fehler.
     const started = Date.now();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: "sleep 30 & wait", NIGHT_TIMEOUT_MS: "400" });
+      { NIGHT_CLAUDE_CMD: "sleep 120 & wait", NIGHT_TIMEOUT_MS: "400" });
     const elapsed = Date.now() - started;
 
-    assert.ok(elapsed < 20000, `Timeout griff nicht — Enkelprozess hielt den Lauf auf (${elapsed} ms)`);
+    assert.ok(elapsed < 90000, `Timeout griff nicht — Enkelprozess hielt den Lauf auf (${elapsed} ms)`);
     assert.equal(res.status, 0, "regulaeres Ende (kein harter Stopp) nach Timeout-Fehlschlag");
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(String(issue.id)), "Issue haette nach Timeout im Backlog liegen muessen");
@@ -103,10 +105,11 @@ test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", NUR_POSIX, ()
     // Runner unbegrenzt — genau der Zustand, den ein Nachtlauf nie erreichen darf.
     const started = Date.now();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 30', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
+      { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 120', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
     const elapsed = Date.now() - started;
 
-    assert.ok(elapsed < 20000, `harte Obergrenze griff nicht — Lauf haengt (${elapsed} ms)`);
+    // Unter der Schlafdauer, mit Reserve fuer Last (Issue #1080).
+    assert.ok(elapsed < 90000, `harte Obergrenze griff nicht — Lauf haengt (${elapsed} ms)`);
     assert.equal(res.status, 0, "regulaeres Ende nach hartem Nachkillen");
   } finally {
     rmSync(dir, { recursive: true, force: true });

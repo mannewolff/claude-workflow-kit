@@ -50,7 +50,9 @@ test("Ein Fixture-Aufruf gegen einen 5xx-Server endet in Sekunden, nicht in Minu
     const dauer = Date.now() - start;
     assert.equal(res.status, 1);
     assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 503/);
-    assert.ok(dauer < 5_000, `Aufruf brauchte ${dauer} ms — die Fixture setzt KIT_TOOLBOX_BUDGET_MS nicht`);
+    // Unter dem Vorgabe-Budget von 30 s, mit Reserve fuer Last (Issue #1080): 5 s riss
+    // unter der Last eines vollen Prueflaufs schon der Start von board.mjs.
+    assert.ok(dauer < 20_000, `Aufruf brauchte ${dauer} ms — die Fixture setzt KIT_TOOLBOX_BUDGET_MS nicht`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     server.close();

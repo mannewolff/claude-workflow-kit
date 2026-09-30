@@ -61,8 +61,9 @@ test("[night-20] reisst die Abdeckungs-Session ihr Zeitbudget, endet die Kette t
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: "sleep 5" } });
-    // NIGHT_TIMEOUT_MS gilt jeder Session; die drei davor sind schnell genug.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500" });
+    // Das kurze Limit gilt nur der Abdeckung (Issue #1080): Die drei Sessions davor
+    // rissen es unter Last, und der Test wurde rot, obwohl die Abdeckung richtig reagierte.
+    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "abdeckung" });
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);

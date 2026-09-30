@@ -1019,11 +1019,13 @@ const NUR_ZIFFERN = /^\d+$/;
  */
 export function tausenderPunkte(ziffern) {
   if (!NUR_ZIFFERN.test(ziffern)) return ziffern;
+  // Angehaengt und einmal umgedreht (Issue #1080): `unshift` verschob bei jeder Gruppe
+  // das ganze Array, die Schleife war damit quadratisch — die Wachstumsprobe fand es.
   const gruppen = [];
   for (let ende = ziffern.length; ende > 0; ende -= 3) {
-    gruppen.unshift(ziffern.slice(Math.max(0, ende - 3), ende));
+    gruppen.push(ziffern.slice(Math.max(0, ende - 3), ende));
   }
-  return gruppen.join(".");
+  return gruppen.reverse().join(".");
 }
 
 export function zahlform(wert, stellen) {

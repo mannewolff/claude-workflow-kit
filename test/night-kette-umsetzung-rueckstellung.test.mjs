@@ -22,8 +22,9 @@ test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am 
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } });
-    // Das Zeitlimit gilt jeder Session; die vier erzeugenden sind schnell genug.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500" });
+    // Das kurze Limit gilt nur der Umsetzung (Issue #1080): Die vier erzeugenden Sessions
+    // rissen es unter Last.
+    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "umsetzung" });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit } = umsetzung(dir, F);

@@ -18,6 +18,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { pruefeLinear } from "./helpers/wachstum.mjs";
+
 import { hatPlanReviewMarker, planReviewWert } from "../kit/night.mjs";
 
 test("planReviewWert liest den Pruefer aus der Zeile", () => {
@@ -100,13 +102,6 @@ test("ein Marker ueber Zeilengrenzen zaehlt nicht", () => {
 // --- Laufzeitproben ---------------------------------------------------------
 
 const SEHR_GROSS = 256 * 1024;
-const GRENZE_MS = 100;
-
-function dauer(fn) {
-  const t0 = process.hrtime.bigint();
-  fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6;
-}
 
 // Dieselben drei Formen, mit denen Issue #496 REVIEW_MARKER_ZEILE vermessen hat: Das
 // fuehrende `\s*` ist der teure Teil, also braucht die Eingabe Leerraum VOR dem Kopf.
@@ -117,12 +112,10 @@ const FORMEN = [
 ];
 
 for (const [name, lauf] of [["planReviewWert", planReviewWert], ["hatPlanReviewMarker", hatPlanReviewMarker]]) {
-  test(`${name} bleibt bei 256 KiB in jeder Form unter ${GRENZE_MS} ms`, (t) => {
+  test(`${name} waechst bis 256 KiB in jeder Form linear`, (t) => {
     for (const [was, bau] of FORMEN) {
-      const text = bau(SEHR_GROSS);
-      const ms = dauer(() => lauf(text));
-      t.diagnostic(`${name}, ${was}: ${ms.toFixed(2)} ms`);
-      assert.ok(ms < GRENZE_MS, `${name}, ${was}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+      const e = pruefeLinear(`${name}, ${was}`, lauf, bau, { gross: SEHR_GROSS });
+      t.diagnostic(`${name}, ${was}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms`);
     }
   });
 }

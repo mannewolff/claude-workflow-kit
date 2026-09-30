@@ -16,6 +16,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { pruefeLinear } from "./helpers/wachstum.mjs";
+
 import {
   ABSCHNITT_ZEILE,
   AUTOR_MODELL_ZEILE,
@@ -229,13 +231,6 @@ test("REVIEW_MARKER_ZEILE: der Marker wird auch bei CRLF erkannt", () => {
 // trifft die Probe den Pfad, den SonarCloud bemaengelt.
 
 const GROSS = 16 * 1024;
-const GRENZE_MS = 100;
-
-function dauer(fn) {
-  const t0 = process.hrtime.bigint();
-  fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6;
-}
 
 const WORST_CASE = [
   ["AUTOR_MODELL_ZEILE", AUTOR_MODELL_ZEILE, (n) => `Autor-Modell: x${" ".repeat(n)}\n`],
@@ -251,10 +246,8 @@ const WORST_CASE = [
 ];
 
 for (const [name, re, bau] of WORST_CASE) {
-  test(`${name} bleibt beim Worst-Case mit Zeilenumbruch unter ${GRENZE_MS} ms`, () => {
-    const text = bau(GROSS);
-    const ms = dauer(() => re.test(text));
-    assert.ok(ms < GRENZE_MS, `${name}: ${ms.toFixed(1)} ms bei 16 KiB — erwartet unter ${GRENZE_MS} ms`);
+  test(`${name} waechst beim Worst-Case mit Zeilenumbruch bis 16 KiB linear`, () => {
+    pruefeLinear(name, (text) => re.test(text), bau, { gross: GROSS });
   });
 }
 
@@ -265,9 +258,9 @@ test("die Trim-Replaces bleiben beim Worst-Case schnell", () => {
   // trifft dort SOFORT, also mass die Probe kein Backtracking und blieb auch
   // gegen die quadratische Fassung gruen. Der Worst-Case braucht die umgekehrte
   // Form: Umbrueche zuerst, dann ein Zeichen, an dem das Ende scheitert.
-  const viele = `${"\n".repeat(GROSS)}x`;
-  assert.ok(dauer(() => autorModellSicherstellen(`## Kontext\n${viele}`, "opus")) < GRENZE_MS);
-  assert.ok(dauer(() => nurAutorZeileTrifft(`Autor-Modell: x${" ".repeat(GROSS)}\ny`)) < GRENZE_MS);
+  pruefeLinear("autorModellSicherstellen", (body) => autorModellSicherstellen(body, "opus"),
+    (n) => `## Kontext\n${"\n".repeat(n)}x`, { gross: GROSS });
+  pruefeLinear("nurAutorZeileTrifft", nurAutorZeileTrifft, (n) => `Autor-Modell: x${" ".repeat(n)}\ny`, { gross: GROSS });
 });
 
 // --- Die eine gewollte Verhaltensaenderung ---

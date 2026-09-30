@@ -177,6 +177,7 @@
       "eslint.config.mjs",
       "test/helpers/checks-repo.mjs",
       "test/helpers/checks-sperre.mjs",
+      "test/helpers/wachstum.mjs",
       "test/fixtures/mvn-verify-*.log"
     ],
     "aufwand": [
