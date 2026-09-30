@@ -117,6 +117,29 @@ Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push m
 
 `x` (Major) wird ausschliesslich auf explizite Ansage erhoeht.
 
+### Frischer Checkout in der Push-Stufe
+
+Die Push-Stufe prueft in diesem Repo zusaetzlich den **frischen Checkout**:
+`node tools/frischer-checkout.mjs` ist ein `buildCheck` mit `stufe: "push"` und faehrt die
+Suite in einem Worktree, der nur Versioniertes enthaelt, ohne die installierte Kopie unter
+`.claude/` (Issue #1012, Plan #1035). Beim Abschluss eines Pakets und in der Merge-Stufe
+laeuft die Pruefung nicht.
+
+Ein **Fund** heisst: Ein Test haengt an etwas Unversioniertem. Entweder ist er im frischen
+Checkout rot, oder er ist dort gruen und hat trotzdem eine Datei gesucht, die nur im
+Arbeitsverzeichnis liegt (der stille Fall). Die Meldung nennt je Testdatei den fehlenden
+Pfad. Ein Fund haelt den Push an wie jede andere rote Pflichtpruefung. So waere der Fall
+vom 2026-09-04 (Issue #472) vor dem Push aufgefallen.
+
+**Behoben wird ein Fund, indem der Test auf die Quelle umgestellt wird** (`kit/`,
+`skills/`, `templates/`), nicht indem die Datei versioniert wird. Die installierte Kopie
+bleibt unversioniert.
+
+Ein Pfad kommt nur dann auf die Ausnahmeliste `AUSNAHMEN` in `tools/frischer-checkout.mjs`,
+wenn er **bestimmungsgemaess optional** ist, also auch im Arbeitsverzeichnis fehlen darf
+(etwa `.claude/workflow.config.local.json`), und zwar mit Grund. Eine echte Abhaengigkeit
+wird so nie zum Schweigen gebracht.
+
 ## Git-Tags
 
 **Kein Release-Schritt erzeugt einen Tag.** Weder `push main` noch

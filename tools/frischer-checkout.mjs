@@ -63,6 +63,10 @@ import { vergleicheText, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen
 /** Pfade, die bestimmungsgemaess fehlen duerfen, je mit Grund (E9). */
 export const AUSNAHMEN = {
   ".claude/workflow.config.local.json": "maschinenspezifisch, optional",
+  // `sync-blobs --check` fragt nur, ob die Dogfooding-Kopien da sind, und ueberspringt
+  // sie still, wenn nicht — so wie in jedem Klon vor dem ersten `sync-blobs` (Issue #1039).
+  ".claude/kit": "Dogfooding-Kopie, fehlt vor dem ersten sync-blobs; --check ueberspringt sie dann",
+  ".claude/skills": "Dogfooding-Kopie, fehlt vor dem ersten sync-blobs; --check ueberspringt sie dann",
 };
 
 const PRAEFIX = "frisch";

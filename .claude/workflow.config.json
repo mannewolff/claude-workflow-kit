@@ -201,6 +201,11 @@
         "worktree"
       ]
     },
+    {
+      "cmd": "node tools/frischer-checkout.mjs",
+      "always": true,
+      "stufe": "push"
+    },
     "node tools/sync-blobs.mjs --check",
     "npx eslint kit tools test install.mjs .githooks"
   ],
