@@ -338,6 +338,19 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
       vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
       mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
+      War der vorige Lauf ROT und hat sich seither nur der Stand geaendert,
+      nicht die Auswahl — gleicher Anker, gleiche Stufe, dieselbe Config,
+      dieselben ausgewaehlten Kommandos in derselben Reihenfolge, aber andere
+      Dateien oder Blob-Hashes —, faehrt 'run' zuerst einen TEILLAUF mit nur
+      den zuletzt roten Kommandos, nach denselben Achsen wie der volle Lauf.
+      Werden sie gruen, folgt im selben Aufruf genau einmal der volle Lauf als
+      Nachweis; bleiben sie rot, endet der Aufruf rot, die uebrigen stehen auf
+      'nicht gestartet', die Zusammenfassung traegt 'teillauf': true und der
+      Berichtsblock vor den Zeilen 'Teillauf: nur die zuletzt roten
+      Pruefungen'. Nach einer Korrektur genuegt darum derselbe Aufruf wie
+      zuvor. '--frisch' ueberspringt den Teillauf und faehrt sofort alles.
+      Als rotes Kommando nennt jede Meldung das erste mit Ergebnis 'rot', erst
+      ohne ein solches das erste ungruene.
       Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
       ('gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>' und
       'ausgelassen: <Kommando> → <Grund>'), auch beim uebernommenen Lauf; das
@@ -419,7 +432,8 @@ bereiche
                   --bereich (zwei Eingrenzungen in einem Lauf). Gesetzt wird
                   der Schalter allein vom Abschluss einer Karte: Wer ihn
                   vergisst, prueft mehr.
-  --frisch        Nur fuer 'run': kein Ergebnis uebernehmen, alle faelligen
+  --frisch        Nur fuer 'run': kein Ergebnis uebernehmen und keinen Teillauf
+                  mit den zuletzt roten fahren, sondern alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
                   wackligen Test.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
@@ -1638,8 +1652,8 @@ function hashesGleich(a, b) {
 }
 
 /**
- * Die Zusammenfassung des letzten Laufs, WENN sie denselben Stand bezeugt wie der
- * jetzige — sonst `null` (Issue #863).
+ * Die Zusammenfassung des letzten Laufs (`alt`, aus `vorigeZusammenfassung`), WENN sie
+ * denselben Stand bezeugt wie der jetzige — sonst `null` (Issue #863).
  *
  * Derselbe Stand heisst: derselbe Anker, dieselbe Stufe, dieselbe Dateiliste mit
  * denselben Blob-Hashes und dieselbe Config. Die Liste steht neben den Hashes,
@@ -1658,33 +1672,70 @@ function hashesGleich(a, b) {
  * `configHash`. Das ist dieselbe Richtung, in die dieses Kommando ueberall irrt —
  * lieber einmal zu viel pruefen.
  */
-function frueheresErgebnis(auswahl, hashes, configHash) {
-  let alt;
-  try {
-    alt = JSON.parse(readFileSync(zusammenfassungPfad(), "utf-8"));
-  } catch {
-    return null;
-  }
-  if (alt === null || typeof alt !== "object") return null;
-  if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return null;
-  if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return null;
+function frueheresErgebnis(alt, auswahl, hashes, configHash) {
+  if (!gleicheAuswahlBasis(alt, auswahl, configHash)) return null;
+  if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
+  if (!hashesGleich(alt.hashes, hashes)) return null;
+  return alt;
+}
+
+/**
+ * Was ein frueherer Lauf mit dem jetzigen gemeinsam haben muss, damit sein Ergebnis etwas
+ * ueber diesen sagt — alles ausser der Dateiliste und den Hashes. Geteilt von
+ * `frueheresErgebnis` (derselbe Stand) und `zuletztRote` (dieselbe Auswahl, anderer
+ * Stand, Issue #1072).
+ */
+function gleicheAuswahlBasis(alt, auswahl, configHash) {
+  if (alt === null || typeof alt !== "object") return false;
+  if (alt.abgeschlossen !== true || !Array.isArray(alt.laufen)) return false;
+  if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return false;
   // Die Eingrenzung gehoert in den Vergleich (Issue #922, Code-Review): Ohne sie
   // uebernimmt ein uneingeschraenkter Lauf das Ergebnis eines vorangegangenen
   // `--bereich`-Laufs, weil Basis, Stufe, Dateien und Hashes identisch sind — die
   // faelligen Pruefungen der uebrigen Bereiche liefen dann nie. `?? null` liest eine
   // Zusammenfassung aus einer Fassung vor diesem Feld als uneingeschraenkt.
-  if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return null;
+  if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return false;
   // Aus demselben Grund die Abschlussmarke (Issue #946): Ein Abschlusslauf faehrt eine
   // kleinere Auswahl, bei gleicher Basis, gleicher Stufe, gleichen Dateien und gleichen
   // Hashes. Ohne diesen Vergleich uebernaehme er die Kommandoliste des vollen Laufs — und
   // umgekehrt liesse der volle Lauf die verschobenen Pruefungen fuer immer aus. `?? false`
   // liest eine Zusammenfassung aus einer Fassung vor diesem Feld als vollen Lauf.
-  if ((alt.abschluss ?? false) !== (auswahl.abschluss ?? false)) return null;
-  if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return null;
-  if (typeof alt.zeitpunkt !== "string") return null;
-  if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
-  if (!hashesGleich(alt.hashes, hashes)) return null;
-  return alt;
+  if ((alt.abschluss ?? false) !== (auswahl.abschluss ?? false)) return false;
+  if (typeof alt.configHash !== "string" || alt.configHash !== configHash) return false;
+  return typeof alt.zeitpunkt === "string";
+}
+
+/**
+ * Die zuletzt roten Kommandos, WENN der vorige Lauf dieselbe Auswahl bei geaendertem
+ * Stand bezeugt — sonst `null` (Issue #1072, Plan #1066, A3).
+ *
+ * Dieselbe Auswahl heisst: dieselben Vergleiche wie beim Uebernehmen ausser Dateiliste und
+ * Hashes, dazu dieselben ausgewaehlten Kommandos in derselben Reihenfolge. Dann liegt
+ * zwischen beiden Laeufen eine Korrektur, und es lohnt, zuerst nur die roten zu fahren —
+ * der volle Lauf folgt ohnehin, sobald sie gruen sind. Aendert sich die Auswahl, sagt das
+ * alte Rot nichts mehr ueber die neue, und es laeuft sofort alles.
+ *
+ * Bei unveraendertem Stand greift `frueheresErgebnis`, bei einem gruenen Vorlauf gibt es
+ * nichts zuerst zu fahren. Ein `nicht gestartet` zaehlt nicht als rot: Es wurde nie
+ * gemessen und laeuft im vollen Lauf mit.
+ */
+function zuletztRote(alt, auswahl, hashes, configHash) {
+  if (!gleicheAuswahlBasis(alt, auswahl, configHash)) return null;
+  if (!listenGleich(alt.laufen.map((e) => e?.cmd), auswahl.laufen.map((e) => e.cmd))) return null;
+  if (listenGleich(alt.geaendert, auswahl.geaendert) && hashesGleich(alt.hashes, hashes)) return null;
+  const rote = alt.laufen.filter((e) => e?.ergebnis === "rot").map((e) => e.cmd);
+  return rote.length > 0 ? rote : null;
+}
+
+/**
+ * Das Kommando, das ein Lauf als rot nennt (Issue #1072): das erste `rot`, erst ohne ein
+ * solches das erste ungruene. Nach einem roten Teillauf stehen vor der roten Gruppe
+ * nicht gestartete — die zu nennen, schickte den Leser zur falschen Pruefung.
+ */
+// SYNC: dieselbe Regel steht in .githooks/gate.mjs und in `lesePruefung` (kit/night.mjs);
+// beide laden checks.mjs nicht als Bibliothek. Der Abgleich ist test/checks-rote-zuerst.test.mjs.
+function rotesKommando(laufen) {
+  return laufen.find((e) => e.ergebnis === "rot") ?? laufen.find((e) => e.ergebnis !== "gruen") ?? null;
 }
 
 /**
@@ -1699,6 +1750,13 @@ function frueheresErgebnis(auswahl, hashes, configHash) {
 // Test in test/night-prueflaeufe.test.mjs. Ein Import waere die bessere Kopplung, aber
 // night.mjs laeuft in Projekten, die checks.mjs nicht mitinstalliert haben muessen.
 export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
+
+/**
+ * Die Zeile, mit der ein Teillauf beginnt und die im Berichtsblock eines roten Teillaufs
+ * vor den Zeilen je Pruefung steht (Issue #1072). Ohne sie saehe ein Bericht mit lauter
+ * `nicht gestartet` aus wie ein abgebrochener voller Lauf.
+ */
+const TEILLAUF_ZEILE = "Teillauf: nur die zuletzt roten Pruefungen";
 
 /**
  * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
@@ -1717,12 +1775,15 @@ export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
  * gestartet` nach rotem Abbruch.
  */
 function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs, vorige, karte }) {
-  const ungruen = frueher.laufen.find((e) => e.ergebnis !== "gruen") ?? null;
+  const ungruen = rotesKommando(frueher.laufen);
   const original = typeof frueher.uebernommen === "string" ? frueher.uebernommen : frueher.zeitpunkt;
   // Die Zeilen tragen die Dauer des URSPRUNGSLAUFS aus der frueheren Zusammenfassung
   // (Issue #1003, E12): Auch ein uebernommener Lauf gehoert in den Bericht, und ohne
   // Block muesste die Session ihn aus Einzelfeldern nachbauen.
-  const zeilen = berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() });
+  const zeilen = [
+    ...(frueher.teillauf === true ? [TEILLAUF_ZEILE] : []),
+    ...berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() }),
+  ];
   // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
   // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
   const wartezeitMs = msSeit(startNs);
@@ -1740,6 +1801,9 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // dieselben Karten hinter sich, und ein uebernommener roter Lauf ohne das Feld sahe
     // aus, als waere die Frage nie gestellt worden.
     ...(frueher.verursacher ? { verursacher: frueher.verursacher } : {}),
+    // Ein uebernommener roter Teillauf bleibt ein Teillauf (Issue #1072): Die nicht
+    // gestarteten Eintraege darin sind nie gemessen worden.
+    ...(frueher.teillauf === true ? { teillauf: true } : {}),
     uebernommen: original,
     berichtszeilen: zeilen,
     wartezeitMs,
@@ -2314,16 +2378,18 @@ async function ausfuehren(args) {
   // laeuft, steht auch im uebernommenen Bericht — sonst saehe ein uebernommener
   // Lauf aus wie ein verkuerzter. Hier und nicht vor `blobHashes`, weil der
   // Vergleich genau diese Hashes braucht.
-  const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
+  const frueher = args.frisch ? null : frueheresErgebnis(vorige, auswahl, hashes, configHash);
   if (frueher !== null) {
     return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs, vorige, karte: args.karte });
   }
+  // Nach einer Korrektur zuerst die zuletzt roten (Issue #1072); `--frisch` faehrt sofort alles.
+  const rote = args.frisch ? null : zuletztRote(vorige, auswahl, hashes, configHash);
 
   // Ab hier laufen Kommandos, und erst ab hier gilt die Sperre (Issue #958): Ein
   // uebernommenes Ergebnis fuehrt keines aus und erzeugt keine Last — es muss auf
   // nichts warten. Der Schnitt zwischen `ausfuehren` und `kommandosFahren` liegt
   // genau darum hier und nicht weiter oben.
-  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }));
+  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote }));
 }
 
 /**
@@ -2333,13 +2399,13 @@ async function ausfuehren(args) {
  * Eigene Funktion allein, damit `mitSperre` sie als Ganzes umschliessen kann — die
  * Sperre muss auf jedem Weg heraus freigegeben werden, auch auf dem der Ausnahme.
  */
-async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }) {
-  const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
+async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null }) {
   const grenzeMs = pruefdauerObergrenzeMs();
 
   // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und
   // an jede Zeile gegeben, damit alle Zeilen EINES `run`-Aufrufs dieselbe Laufkennung
-  // tragen — daran haengt die Trennung von "je Lauf" und "je Kommando".
+  // tragen — daran haengt die Trennung von "je Lauf" und "je Kommando". Ein Teillauf und
+  // der volle Lauf danach sind ein Aufruf und teilen sie (Issue #1072).
   //
   // Der Anlass kommt aus der Auswahl und nicht aus den rohen Argumenten: `--abschluss`
   // schlaegt die Stufe, weil ein Abschlusslauf genau der Lauf ist, der Pruefungen
@@ -2355,13 +2421,8 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // (Issue #1004). Derselbe Weg wie in `verursacherKarten`: die Config erneut lesen.
   const konfiguriert = (ladeConfig().buildChecks ?? []).map((c) => normalisiere(c));
   const ausloeserVon = (cmd) => ausloeserBestimmen(auswahl, konfiguriert.find((c) => c.cmd === cmd) ?? null);
-
-  let rot = false;
-  let guete = null;
-  // Die Verursacher stehen erst am Ende fest (Issue #947): Vor dem roten Befund gibt es
-  // nichts zu erklaeren, und `schreibeStand` liest die Variable, statt sie zu bekommen —
-  // so traegt jede Fassung der Zusammenfassung den Stand, den sie bezeugt.
-  let verursacher = null;
+  const gekennzeichnet = new Set(konfiguriert.filter((c) => c.gleichzeitig).map((c) => c.cmd));
+  const grenze = gleichzeitigGrenze(env);
 
   // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
   // vor dem ersten Kommando und wird vor jedem weiteren ueberschrieben, statt erst am
@@ -2382,93 +2443,130 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Die Wartezeit steht nur in der abgeschlossenen Fassung (Issue #1069) — vorher ist
   // der Lauf nicht zu Ende. Die Summe der Karte reicht jede fruehere Fassung unveraendert
   // weiter: Stirbt der Lauf, beginnt der naechste nicht bei null.
+  //
+  // Ein Teillauf (Issue #1072) fuehrt alle ausgewaehlten Kommandos in `laufen`, die nicht
+  // gefahrenen auf `nicht gestartet` — darum steht er in keiner Fassung gruen, auch nicht
+  // in der letzten. Die Marke `teillauf` und die Zeile davor sagen, warum.
   let wartezeit = {};
-  const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
-    ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
-    dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
-    ...(verursacher ? { verursacher } : {}),
-    berichtszeilen: berichtszeilen(auswahl, laufen, { grenzeMs }),
-    ...wartezeit,
-  });
   if (args.karte !== undefined && vorige?.wartezeitKarte?.karte === args.karte) {
     wartezeit = { wartezeitKarte: vorige.wartezeitKarte };
   }
-  schreibeStand(false);
+  const zeilenVon = (stand) => [
+    ...(stand.teillauf ? [TEILLAUF_ZEILE] : []),
+    ...berichtszeilen(auswahl, stand.laufen, { grenzeMs }),
+  ];
+  const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
+    ...auswahl, laufen: stand.laufen, zeitpunkt, hashes, configHash, abgeschlossen,
+    dauerGesamtMs: dauerGesamt(stand.laufen), ...(stand.guete ? { guete: stand.guete } : {}),
+    ...(stand.verursacher ? { verursacher: stand.verursacher } : {}),
+    ...(stand.teillauf ? { teillauf: true } : {}),
+    berichtszeilen: zeilenVon(stand),
+    ...wartezeit,
+  });
 
-  // Ein Kommando fahren, bewerten und festhalten — fuer beide Phasen dieselbe Bahn.
-  // `schreibe` nimmt alles auf, was zum Kommando gehoert: in der nachfolgenden Phase
-  // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
-  const einKommando = async (eintrag, schreibe, nebenAnderen) => {
-    const start = process.hrtime.bigint();
-    const { gruen, ausgabe } = await kommandoAusfuehren(eintrag.cmd, env);
-    eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
-    // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
-    if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
-    // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
-    if (nebenAnderen) eintrag.gleichzeitig = true;
-    schreibe(ausgabe);
-    const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe);
-    guete = bewertung.guete ?? guete;
-    eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
-    schreibe(`-> ${eintrag.ergebnis}\n`);
-    // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
-    // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
-    // Auswertung zu allererst geht.
-    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd),
-      { gleichzeitig: nebenAnderen });
-    if (!bewertung.bestanden) rot = true;
-  };
+  // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
+  // in `nur`. Beide folgen denselben Achsen (Plan #1066, E5): Mehrere rote Testgruppen
+  // sind der Normalfall eines roten Laufs, und nacheinander kosteten sie die Minuten, die
+  // der Teillauf sparen soll.
+  const durchgang = async (nur) => {
+    // Die Verursacher stehen erst am Ende fest (Issue #947): Vor dem roten Befund gibt es
+    // nichts zu erklaeren, und `schreibeStand` liest das Feld, statt es zu bekommen —
+    // so traegt jede Fassung der Zusammenfassung den Stand, den sie bezeugt.
+    const stand = {
+      laufen: auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null })),
+      rot: false, guete: null, verursacher: null, teillauf: nur !== null,
+    };
+    schreibeStand(stand, false);
 
-  // Zwei Phasen (Issue #1071, Plan #1066, A1, A2, A6): zuerst die mit `gleichzeitig`
-  // gekennzeichneten, hoechstens `grenze` auf einmal, danach die uebrigen nacheinander.
-  // Ohne gekennzeichnete bleibt die erste Phase leer, und der Ablauf ist der bisherige.
-  const gekennzeichnet = new Set(konfiguriert.filter((c) => c.gleichzeitig).map((c) => c.cmd));
-  const erste = laufen.filter((e) => gekennzeichnet.has(e.cmd));
-  const danach = laufen.filter((e) => !gekennzeichnet.has(e.cmd));
-  const grenze = gleichzeitigGrenze(env);
-  // "Neben anderen gemessen" nur, wenn wirklich mehrere zugleich laufen konnten: Mit der
-  // Grenze 1 oder einer einzigen gekennzeichneten ist die Dauer eine allein gemessene.
-  const nebenAnderen = grenze > 1 && erste.length > 1;
+    // Ein Kommando fahren, bewerten und festhalten — fuer beide Phasen dieselbe Bahn.
+    // `schreibe` nimmt alles auf, was zum Kommando gehoert: in der nachfolgenden Phase
+    // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
+    const einKommando = async (eintrag, schreibe, nebenAnderen) => {
+      const start = process.hrtime.bigint();
+      const { gruen, ausgabe } = await kommandoAusfuehren(eintrag.cmd, env);
+      eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+      // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
+      if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
+      // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
+      if (nebenAnderen) eintrag.gleichzeitig = true;
+      schreibe(ausgabe);
+      const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe);
+      stand.guete = bewertung.guete ?? stand.guete;
+      eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
+      schreibe(`-> ${eintrag.ergebnis}\n`);
+      // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
+      // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
+      // Auswertung zu allererst geht.
+      ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd),
+        { gleichzeitig: nebenAnderen });
+      if (!bewertung.bestanden) stand.rot = true;
+    };
 
-  // Die erste Phase laeuft VOLLSTAENDIG durch, auch nach einem Rot: Wer korrigiert, soll
-  // alle roten auf einmal sehen und nicht eine nach der anderen. Die Ausgabe jedes
-  // Kommandos wird gesammelt und als geschlossener Block geschrieben, sobald er und alle
-  // davor fertig sind — so steht sie in Config-Reihenfolge, gleich wer zuerst endet.
-  const bloecke = new Map();
-  let naechsterBlock = 0;
-  const warteschlange = [...erste];
-  const arbeiter = async () => {
-    for (let eintrag = warteschlange.shift(); eintrag; eintrag = warteschlange.shift()) {
-      let block = `\n$ ${eintrag.cmd} — ${eintrag.grund}\n`;
-      await einKommando(eintrag, (text) => { block += text; }, nebenAnderen);
-      bloecke.set(eintrag, block);
-      // Nach jedem Ende (Issue #857): Die noch laufenden stehen darin weiter auf
-      // `nicht gestartet` — ein Abbruch mittendrin sieht damit nie gruen aus.
-      schreibeStand(false);
-      while (naechsterBlock < erste.length && bloecke.has(erste[naechsterBlock])) {
-        process.stdout.write(bloecke.get(erste[naechsterBlock]));
-        naechsterBlock += 1;
+    // Zwei Phasen (Issue #1071, Plan #1066, A1, A2, A6): zuerst die mit `gleichzeitig`
+    // gekennzeichneten, hoechstens `grenze` auf einmal, danach die uebrigen nacheinander.
+    // Ohne gekennzeichnete bleibt die erste Phase leer, und der Ablauf ist der bisherige.
+    const faellig = nur === null ? stand.laufen : stand.laufen.filter((e) => nur.has(e.cmd));
+    const erste = faellig.filter((e) => gekennzeichnet.has(e.cmd));
+    const danach = faellig.filter((e) => !gekennzeichnet.has(e.cmd));
+    // "Neben anderen gemessen" nur, wenn wirklich mehrere zugleich laufen konnten: Mit der
+    // Grenze 1 oder einer einzigen gekennzeichneten ist die Dauer eine allein gemessene.
+    const nebenAnderen = grenze > 1 && erste.length > 1;
+
+    // Die erste Phase laeuft VOLLSTAENDIG durch, auch nach einem Rot: Wer korrigiert, soll
+    // alle roten auf einmal sehen und nicht eine nach der anderen. Die Ausgabe jedes
+    // Kommandos wird gesammelt und als geschlossener Block geschrieben, sobald er und alle
+    // davor fertig sind — so steht sie in Config-Reihenfolge, gleich wer zuerst endet.
+    const bloecke = new Map();
+    let naechsterBlock = 0;
+    const warteschlange = [...erste];
+    const arbeiter = async () => {
+      for (let eintrag = warteschlange.shift(); eintrag; eintrag = warteschlange.shift()) {
+        let block = `\n$ ${eintrag.cmd} — ${eintrag.grund}\n`;
+        await einKommando(eintrag, (text) => { block += text; }, nebenAnderen);
+        bloecke.set(eintrag, block);
+        // Nach jedem Ende (Issue #857): Die noch laufenden stehen darin weiter auf
+        // `nicht gestartet` — ein Abbruch mittendrin sieht damit nie gruen aus.
+        schreibeStand(stand, false);
+        while (naechsterBlock < erste.length && bloecke.has(erste[naechsterBlock])) {
+          process.stdout.write(bloecke.get(erste[naechsterBlock]));
+          naechsterBlock += 1;
+        }
       }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(grenze, erste.length) }, arbeiter));
+    };
+    await Promise.all(Array.from({ length: Math.min(grenze, erste.length) }, arbeiter));
 
-  // Die nachfolgende Phase startet nach einem Rot der ersten nicht und bricht beim ersten
-  // eigenen Rot ab; der Rest bleibt "nicht gestartet".
-  for (const eintrag of danach) {
-    if (rot) break;
-    schreibeStand(false);
-    process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
-    await einKommando(eintrag, (text) => process.stdout.write(text), false);
+    // Die nachfolgende Phase startet nach einem Rot der ersten nicht und bricht beim ersten
+    // eigenen Rot ab; der Rest bleibt "nicht gestartet".
+    for (const eintrag of danach) {
+      if (stand.rot) break;
+      schreibeStand(stand, false);
+      process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+      await einKommando(eintrag, (text) => process.stdout.write(text), false);
+    }
+    stand.guete ??= gueteOhneLauf(stand.laufen, auswahl.ausgelassen);
+    return stand;
+  };
+
+  // Zuerst die zuletzt roten (Issue #1072, Plan #1066, A3): Bleiben sie rot, endet der
+  // Aufruf damit — der volle Lauf braechte dasselbe Rot erst nach allen anderen. Werden
+  // sie gruen, folgt im selben Aufruf genau einmal der volle Lauf als Nachweis.
+  let stand = null;
+  if (rote !== null) {
+    process.stdout.write(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
+    stand = await durchgang(new Set(rote));
+    if (!stand.rot) {
+      process.stdout.write("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
+      stand = null;
+    }
   }
-  guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
+  stand ??= await durchgang(null);
 
   // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
   // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
   // dann nicht, wenn ein git-Aufruf dabei scheitert. Dieselbe Haltung wie beim
   // Ausfuehrungsprotokoll: Buchhaltung, keine Bedingung.
-  verursacher = verursacherKarten(auswahl, laufen.filter((e) => e.ergebnis === "rot"));
-  for (const e of verursacher ?? []) {
+  stand.verursacher = verursacherKarten(auswahl, stand.laufen.filter((e) => e.ergebnis === "rot"));
+  for (const e of stand.verursacher ?? []) {
     process.stdout.write(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
   }
 
@@ -2480,13 +2578,16 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   //
   // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat — dann
   // aber immer, auch beim gruenen Lauf (Issue #763).
+  //
+  // Die Wartezeit laeuft ab dem Aufruf und umfasst damit Teillauf und vollen Lauf
+  // (Issue #1072) — beide sind Warten desselben Pakets.
   const wartezeitMs = msSeit(startNs);
   const wartezeitKarte = wartezeitKarteNach(vorige, args.karte, wartezeitMs);
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
-  const pfad = schreibeStand(true);
-  berichtsblockSchreiben(berichtszeilen(auswahl, laufen, { grenzeMs }), wartezeitZeile(wartezeitMs, wartezeitKarte));
+  const pfad = schreibeStand(stand, true);
+  berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
-  return rot ? 1 : 0;
+  return stand.rot ? 1 : 0;
 }
 
 // --- CLI -------------------------------------------------------------------

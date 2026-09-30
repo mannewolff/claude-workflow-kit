@@ -4117,7 +4117,7 @@ function verwerfeZusammenfassung() {
  * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
  * der letzte Lauf — daraus entsteht bewusst keine Historie.
  */
-function lesePruefung(issueId) {
+export function lesePruefung(issueId) {
   const pfad = zusammenfassungPfad(process.cwd());
   if (!existsSync(pfad)) return { id: String(issueId), zustand: "ungeprueft" };
   try {
@@ -4156,7 +4156,11 @@ function lesePruefung(issueId) {
     // eine Pruefung gelaufen und hat versagt, hier ist keine gelaufen. Bis Issue
     // #471 fielen beide zusammen — jede lesbare Datei galt als "geprueft", auch
     // eine mit rotem Lauf, und der Zustand floss in werteRunde gar nicht ein.
-    const ungruen = laufen.find((e) => e.ergebnis !== "gruen");
+    //
+    // Genannt wird das erste `rot`, erst ohne ein solches das erste ungruene (Issue #1072):
+    // Nach einem roten Teillauf stehen vor der roten Gruppe nicht gestartete.
+    // SYNC: dieselbe Regel wie `rotesKommando` in kit/checks.mjs und in .githooks/gate.mjs.
+    const ungruen = laufen.find((e) => e.ergebnis === "rot") ?? laufen.find((e) => e.ergebnis !== "gruen");
     return {
       id: String(issueId),
       zustand: ungruen ? "rot" : "geprueft",

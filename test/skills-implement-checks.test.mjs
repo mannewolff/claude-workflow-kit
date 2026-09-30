@@ -225,6 +225,25 @@ for (const name of ["implement-next", "implement-ready", "implement-done"]) {
   });
 }
 
+// --- Zeile Teillauf (Issue #1072) ---------------------------------------------
+//
+// Nach einem roten Teillauf steht vor den Zeilen je Pruefung `Teillauf: nur die zuletzt
+// roten Pruefungen`. Kennt das Format die Zeile nicht, laesst der Bericht sie weg — und
+// die Zeilen mit `nicht gestartet` saehen aus wie ein abgebrochener voller Lauf.
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt die Zeile 'Teillauf:'", () => {
+  const text = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  const format = berichtsformat(text.slice(text.indexOf("## Abschlussbericht-Format")));
+  assert.match(format, /Teillauf: nur die zuletzt roten Pruefungen/);
+});
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt die Zeile 'Teillauf:'`, () => {
+    const format = berichtsformat(readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8"));
+    assert.match(format, /Teillauf: nur die zuletzt roten Pruefungen/);
+  });
+}
+
 test("implement-test: der Hinweis auf den vollen Lauf nennt die Zeile 'Wartezeit:'", () => {
   const text = readFileSync(join(repoRoot, "skills", "implement-test", "SKILL.md"), "utf-8");
   assert.match(text, /`Wartezeit:`/);

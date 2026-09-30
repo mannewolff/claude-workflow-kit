@@ -115,16 +115,22 @@ for (const { name, text } of SKILLS) {
       "Punkt 4 nennt die Variable statt des Platzhalters — der Redirect waere unbeaufsichtigt abgewiesen");
   });
 
-  // Punkt 5: Nach rot wird gezielt nachgebessert, nicht die ganze Suite
-  // wiederholt — sonst faellt die eingesparte Zeit hinten wieder an.
+  // Punkt 5: Nach rot genuegt derselbe Aufruf (Issue #1072) — er faehrt selbst zuerst
+  // die zuletzt roten Pruefungen und erst danach einmal alles. Die fruehere Regel
+  // ("erst gezielt, dann erneut") stand im Text und wirkte nicht; jetzt steht sie im
+  // Werkzeug, und der Text darf nicht mehr verlangen, was das Kommando selbst tut.
   test(`${name}: Punkt 5 regelt den Weg nach einem roten Lauf`, () => {
     const block = regelblock(text);
     assert.match(block, /^5\..*rot/m,
       "Punkt 5 nennt den roten Lauf nicht");
-    assert.match(block, /^5\..*fehlschlagenden Tests gezielt/m,
-      "Punkt 5 verlangt nicht, zuerst die fehlschlagenden Tests gezielt laufen zu lassen");
-    assert.match(block, /^5\..*erst dann erneut/m,
-      "Punkt 5 sagt nicht, dass `checks.mjs run` erst nach Gruen erneut startet");
+    assert.match(block, /^5\..*genügt nach der Korrektur derselbe Aufruf `checks\.mjs run --abschluss <kartennummer>`/m,
+      "Punkt 5 sagt nicht, dass nach der Korrektur derselbe Aufruf genuegt");
+    assert.match(block, /^5\..*zuerst die zuletzt roten Prüfungen/m,
+      "Punkt 5 sagt nicht, dass der Aufruf selbst zuerst die zuletzt roten Pruefungen faehrt");
+    assert.match(block, /^5\..*Gezielte Einzeltests während der Korrektur bleiben erlaubt/m,
+      "Punkt 5 laesst offen, ob gezielte Einzeltests waehrend der Korrektur erlaubt sind");
+    assert.doesNotMatch(block, /erst dann erneut/,
+      "Punkt 5 traegt noch die alte Regel, nach der `checks.mjs run` erst nach gezieltem Gruen erneut startet");
   });
 }
 
