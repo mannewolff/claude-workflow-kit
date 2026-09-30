@@ -259,7 +259,8 @@
     "aufwand": [
       "kit/aufwand.mjs",
       "test/aufwand-*.test.mjs",
-      "test/helpers/aufwand-fixture.mjs"
+      "test/helpers/aufwand-fixture.mjs",
+      "test/fixtures/aufwand/**"
     ],
     "wirksamkeit": [
       "kit/wirksamkeit.mjs",

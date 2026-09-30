@@ -2832,6 +2832,10 @@ const AUFBEREITUNG_PIPE = /(?<!\|)\|(?!\|)\s*(?:jq|node\s+-e|python3?)(?![\w-])/
  *                   `issue comment`, `issue melden`) und ein `node -e` ohne Rueckfrage.
  *
  * Gezaehlt wird am Aufruf, nicht an der Absicht: Das Muster nach `prueflaufArt`.
+ *
+ * SYNC: `TOOL_RESULTS_PFAD`, `RUECKFRAGE_MUSTER`, `AUFBEREITUNG_PIPE` und diese Funktion
+ * stehen als Kopie in kit/aufwand.mjs (Issue #1027), das damit Transkripte nachtraeglich
+ * misst. Den Gleichlauf haelt test/night-auskunft-gleichlauf.test.mjs.
  */
 export function auskunftArt(block) {
   if (block?.type !== "tool_use" || !block.input || typeof block.input !== "object") return null;
