@@ -179,3 +179,23 @@ test("[night-17] worktreeAnlegen wirft mit der git-Meldung, wenn kein Repo vorli
     rmSync(kein, { recursive: true, force: true });
   }
 });
+
+test("[night-1036] worktreeAnlegen mit spiegeln: false laesst die ignorierten Dateien unter .claude/ zurueck", () => {
+  mitRepo((dir, angelegt) => {
+    // Der frische Checkout (Plan #1035): nur Versioniertes, kein Spiegel der Hauptkopie.
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "frisch", praefix: "frisch", spiegeln: false });
+    angelegt.push(pfad);
+    assert.ok(existsSync(pfad), "der Worktree fehlt");
+    assert.deepEqual(readdirSync(join(pfad, ".claude")), ["workflow.config.json"],
+      "unter .claude/ liegen nur versionierte Dateien");
+    assert.ok(!existsSync(join(pfad, ".claude", "kit", "board.mjs")), "die ignorierte Kit-Kopie darf nicht mitkommen");
+  });
+});
+
+test("[night-1036] ohne spiegeln bleibt der Spiegel der Vorgabewert", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "gegen" });
+    angelegt.push(pfad);
+    assert.ok(existsSync(join(pfad, ".claude", "kit", "board.mjs")), "die ignorierte Kit-Kopie wird weiter gespiegelt");
+  });
+});

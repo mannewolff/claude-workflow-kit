@@ -1779,8 +1779,12 @@ function claudeSpiegeln(repoRoot, pfad) {
  * Release-Skills setzen ihn ausdruecklich: `/merge-production` auf `origin/<mainBranch>`,
  * weil veroeffentlicht wird, was gepusht ist. Immer `--detach`: Ein Branch, der in der
  * Hauptkopie ausgecheckt ist, liesse sich in einem zweiten Worktree gar nicht auschecken.
+ *
+ * `spiegeln: false` laesst `.claude/` ungespiegelt: Der Worktree ist dann ein frischer
+ * Checkout mit nur versionierten Dateien, wie ihn die Pruefung der Push-Stufe braucht
+ * (Plan #1035).
  */
-export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette", ref = "HEAD" }) {
+export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette", ref = "HEAD", spiegeln = true }) {
   // Ohne Kartennummer bleibt das Segment ganz weg (Plan #904, E11): Der Prueflauf legt
   // EINEN Worktree je Lauf an, und ein leeres Segment behauptete eine fehlende Nummer.
   const nummer = issueId === null ? "" : `${issueId}-`;
@@ -1789,7 +1793,7 @@ export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "
   if (res.status !== 0) {
     throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
   }
-  claudeSpiegeln(repoRoot, pfad);
+  if (spiegeln) claudeSpiegeln(repoRoot, pfad);
   return pfad;
 }
 
