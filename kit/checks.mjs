@@ -1160,7 +1160,11 @@ function kommandoAusfuehren(cmd, env) {
       const ausgabe = `${Buffer.concat(stdout).toString("utf-8")}${Buffer.concat(stderr).toString("utf-8")}`;
       aufloesen({ gruen: code === 0, ausgabe });
     };
-    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true });
+    // stdin "ignore" (Issue #1076): Ohne Angabe waere sie eine Pipe, deren Schreibende
+    // wir halten und nie schliessen. Ein Nachfahre, der von stdin liest, ohne eine
+    // eigene zu bekommen — etwa `board.mjs … --text -` in einem Test —, wartete darauf
+    // endlos. `ignore` ist /dev/null: Er sieht sofort Ende-der-Eingabe.
+    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true, stdio: ["ignore", "pipe", "pipe"] });
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
     kind.on("error", () => fertig(null));

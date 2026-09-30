@@ -15,8 +15,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync as liesDatei } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawn, spawnSync } from "node:child_process";
 
 import { setupProjekt, runBoard, board, BOARD } from "./helpers/board-fixture.mjs";
 
@@ -117,6 +117,48 @@ test("ein Text jenseits der Kommandozeilenlaenge geht durch", () => {
 
   const [dir2, id2] = mitIssue();
   assert.equal(runMitStdin(dir2, ["issue", "comment", id2, "--text", "-"], lang).status, 0);
+});
+
+// --- stdin wird ueber die Event-Schleife gelesen, nicht blockierend (Issue #1076) ---
+//
+// Der Test "ein Text jenseits der Kommandozeilenlaenge" hing in der Gruppe sporadisch
+// eine halbe Stunde: `board.mjs issue comment 0001 --text -` blockierte in
+// `readFileSync(0)`, obwohl alle 200.000 Byte angekommen waren und die Gegenseite ihre
+// Schreibseite geschlossen hatte (Socket-Zustand CANTRCVMORE, Empfangspuffer leer).
+// Unter Last traf das ein blockierendes Lesen einer Socket-stdin mit grosser Eingabe
+// in 5 von 4.800 Aufrufen; asynchrones Lesen, kleine Eingabe und eine Shell-Pipe in 0
+// von 4.800. Der Wettlauf selbst laesst sich nicht erzwingen — belegt wird darum die
+// Eigenschaft, die ihn ausschliesst: Waehrend auf stdin gewartet wird, laeuft die
+// Event-Schleife weiter. Ein blockierendes Lesen liesse keinen einzigen Tick durch.
+
+test("--text - liest stdin, ohne die Event-Schleife zu blockieren", async () => {
+  const skript = [
+    `const { leseTextQuelle } = await import(${JSON.stringify(pathToFileURL(BOARD).href)});`,
+    `const takt = setInterval(() => process.stderr.write("tick\\n"), 20);`,
+    `const text = await leseTextQuelle("-", undefined, "text");`,
+    `clearInterval(takt);`,
+    `process.stdout.write(String(text.length));`,
+  ].join("\n");
+  const kind = spawn(process.execPath, ["--input-type=module", "-e", skript], { stdio: ["pipe", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  kind.stdout.on("data", (t) => { stdout += t; });
+  kind.stderr.on("data", (t) => { stderr += t; });
+  const ende = new Promise((aufloesen) => kind.on("close", aufloesen));
+
+  // Warten, bis der Takt nachweislich waehrend des Lesens laeuft — dann erst Eingabe.
+  const frist = Date.now() + 10_000;
+  while ((stderr.match(/tick/g) ?? []).length < 3 && Date.now() < frist) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  const ticksVorEingabe = (stderr.match(/tick/g) ?? []).length;
+  kind.stdin.end("x".repeat(200_000));
+  const code = await ende;
+
+  assert.ok(ticksVorEingabe >= 3,
+    `waehrend des Wartens auf stdin lief die Event-Schleife nicht (${ticksVorEingabe} Ticks) — blockierendes Lesen: ${stderr}`);
+  assert.equal(code, 0, stderr);
+  assert.equal(stdout, "200000", "die Eingabe kam nicht vollstaendig an");
 });
 
 test("--text ohne Wert bleibt ein Fehler", () => {

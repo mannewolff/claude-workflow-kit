@@ -2991,7 +2991,7 @@ async function issueCreate(tracker, args) {
   // Nummer soll keine Karte anlegen und keine Datei lesen.
   const derivedFrom = derivedFromOption(args["derived-from"]);
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
-  const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
+  const roh = hatQuelle ? await leseTextQuelle(args.body, args["body-file"], "body") : "";
   const felder = {
     title: args.title,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
@@ -3216,8 +3216,14 @@ async function issueLabel(tracker, config, args) {
  * Fuer kurze Texte ist stdin der einfachste Weg. Fuer lange fuehrt er nicht mehr ans
  * Ziel: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt — auch im
  * Heredoc (Issue #584). Dann '--text-file' mit einer stueckweise erzeugten Datei.
+ *
+ * Asynchron seit Issue #1076: stdin wird ueber die Event-Schleife gelesen
+ * (`process.stdin`), nicht mit einem blockierenden `readFileSync(0)`. Blockierend hing
+ * das Lesen einer Socket-stdin mit grosser Eingabe — so, wie `spawnSync` mit `input`
+ * sie anlegt — sporadisch endlos, obwohl alles angekommen und die Gegenseite
+ * geschlossen war; unter Last 5 von 4.800 Aufrufen, ueber die Event-Schleife keiner.
  */
-export function leseTextQuelle(direkt, dateiPfad, flagName) {
+export async function leseTextQuelle(direkt, dateiPfad, flagName) {
   const dateiFlag = `--${flagName}-file`;
   const hatDatei = typeof dateiPfad === "string" && dateiPfad !== "";
   const hatDirekt = typeof direkt === "string";
@@ -3238,7 +3244,7 @@ export function leseTextQuelle(direkt, dateiPfad, flagName) {
     }
   } else if (direkt === "-") {
     try {
-      text = readFileSync(0, "utf-8"); // fd 0 = stdin
+      text = await stdinLesen();
     } catch (e) {
       fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
     }
@@ -3252,13 +3258,23 @@ export function leseTextQuelle(direkt, dateiPfad, flagName) {
   return text;
 }
 
+/** Liest stdin bis zum Ende ueber die Event-Schleife (Issue #1076, siehe leseTextQuelle). */
+function stdinLesen() {
+  return new Promise((aufloesen, ablehnen) => {
+    const teile = [];
+    process.stdin.on("data", (teil) => teile.push(teil));
+    process.stdin.on("end", () => aufloesen(Buffer.concat(teile).toString("utf-8")));
+    process.stdin.on("error", ablehnen);
+  });
+}
+
 async function issueComment(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
   // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
   // lesen und schon gar nichts ans Board schicken.
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
-  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"), idempotencyKey);
+  await tracker.commentIssue(id, await leseTextQuelle(args.text, args["text-file"], "text"), idempotencyKey);
   out({ ok: true, id });
 }
 
@@ -3320,12 +3336,12 @@ function stueckeZusammensetzen(stuecke) {
 const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
 
 // `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
-function meldenStueck(id, args, hatText) {
+async function meldenStueck(id, args, hatText) {
   if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
     fail(`--teil '${args.teil}' ist keine positive Ganzzahl.`);
   }
   if (!hatText) fail("--teil braucht --text '…' mit dem Stueck.");
-  const text = leseTextQuelle(args.text, args["text-file"], "text");
+  const text = await leseTextQuelle(args.text, args["text-file"], "text");
   const nummer = Number(args.teil);
   const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
   mkdirSync(dirname(pfad), { recursive: true });
@@ -3384,7 +3400,7 @@ async function issueMelden(tracker, args) {
   const hatText = args.text !== undefined || args["text-file"] !== undefined;
 
   if (args.teil !== undefined) {
-    meldenStueck(id, args, hatText);
+    await meldenStueck(id, args, hatText);
     return;
   }
 
@@ -3396,7 +3412,7 @@ async function issueMelden(tracker, args) {
   if (!hatText && stuecke.length === 0) {
     fail(`Kein Bericht fuer Issue ${id}: weder --text noch Stuecke unter .claude/${BERICHTE_ORDNER}/.`);
   }
-  const text = hatText ? leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
+  const text = hatText ? await leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
 
   const stempel = laufkennung(id);
   if (!stempel) {
@@ -3982,7 +3998,7 @@ async function issueAuftrag(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  const neu = leseTextQuelle(args.body, args["body-file"], "body");
+  const neu = await leseTextQuelle(args.body, args["body-file"], "body");
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
   // er kommt.
   await tracker.updateIssue(id, { body: neu });
