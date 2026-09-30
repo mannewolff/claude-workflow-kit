@@ -67,6 +67,7 @@ Gelesen wird der Auftrag aus Schritt 1; ein weiteres `issue get` braucht es nich
 - Testdatei(en) gegen das Akzeptanzkriterium schreiben — so, dass sie beim jetzigen Stand des Codes fehlschlagen (rot).
 - Keine Produktionslogik. Kein Stub, keine Mock-Implementierung, die den Test schon grün macht.
 - Bestehende Test-Muster und -Helfer des Projekts wiederverwenden.
+- Ohne Aufsicht (gesetztes `KIT_AGENT_MODEL`) gibt es keine Hintergrundarbeit: Der Hook `bash-pruefen` weist einen Bash-Aufruf mit `run_in_background` ab (Issue #1081) — den Befehl im Vordergrund aufrufen und auf ihn warten. Interaktiv bleibt Hintergrundarbeit erlaubt.
 
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 

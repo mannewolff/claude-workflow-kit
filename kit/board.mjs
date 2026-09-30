@@ -6055,6 +6055,27 @@ export function pruefeBashZeile(zeile, muster) {
   };
 }
 
+/**
+ * Hintergrundarbeit ohne Aufsicht (Issue #1081): Eine headless Session hat keinen
+ * Folge-Zug. Startet sie einen Bash-Aufruf mit `run_in_background` und beendet dann ihren
+ * Zug, ist die Sitzung zu Ende und das Ergebnis verloren — in der Nacht zum 30.09.2026 bei
+ * #1065, obwohl die Regel im Skilltext stand (#668, #754, #983). Unbeaufsichtigt heisst wie
+ * ueberall im Kit: `KIT_AGENT_MODEL` ist gesetzt. Interaktiv bleibt Hintergrundarbeit
+ * erlaubt, dort gibt es den Folge-Zug.
+ */
+export function pruefeHintergrund(toolInput, env = process.env) {
+  const unbeaufsichtigt = typeof env.KIT_AGENT_MODEL === "string" && env.KIT_AGENT_MODEL.trim() !== "";
+  if (!unbeaufsichtigt || toolInput?.run_in_background !== true) return { abweisen: false, grund: null };
+  return {
+    abweisen: true,
+    grund: "Abgewiesen: run_in_background ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt). Eine "
+      + "unbeaufsichtigte Session hat keinen Folge-Zug — beendet sie ihren Zug, waehrend der Befehl "
+      + "noch laeuft, ist die Sitzung zu Ende und sein Ergebnis verloren. Richtige Form: denselben "
+      + "Befehl im Vordergrund aufrufen und auf ihn warten; das Bash-Zeitlimit der Session reicht "
+      + "bis knapp unter das Rundenlimit (Issue #668).",
+  };
+}
+
 /** Die Muster aus `sandbox.excludedCommands` und `sandbox.network.excludedCommands` einer Settings-Datei. */
 function bashMusterAus(pfad) {
   if (!existsSync(pfad)) return [];
@@ -6077,6 +6098,12 @@ function hookBashPruefen() {
     return durchlassen(`Eingabe nicht lesbar (${e.message})`);
   }
   if (eingabe?.tool_name !== "Bash" || typeof eingabe?.tool_input?.command !== "string") return;
+  const hintergrund = pruefeHintergrund(eingabe.tool_input);
+  if (hintergrund.abweisen) {
+    process.stderr.write(hintergrund.grund + "\n");
+    process.exitCode = 2;
+    return;
+  }
 
   const wurzel = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const muster = [];
