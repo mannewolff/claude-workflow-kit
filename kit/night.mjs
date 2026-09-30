@@ -243,6 +243,11 @@ const CHECKS_PATH = process.env.KIT_ROOT
 const praefixFallback = (was) => (_title) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — das Praefix ${was} ist nicht erkennbar.`);
 };
+// Die Lesung mit Herkunft (Issue #1062, Plan #1057 E1) wirft ohne Nachbarn aus demselben
+// Grund: Ein stiller Ersatz liesse den Befund ohne Herkunft stehen, als gaebe es keine.
+const abhaengigkeitenFallback = (_body) => {
+  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Herkunft der Abhaengigkeiten ist nicht lesbar.`);
+};
 // Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
 // dann Auskunft geben, wenn NICHTS neben der Datei liegt (Issue #170) — ein statischer
 // Import scheitert vor jeder Zeile Code und nimmt genau diese Auskunft. Fehlt der Nachbar,
@@ -253,6 +258,7 @@ const {
   istPlan: isPlan,
   istIdee: isIdee,
   istMensch: isMensch,
+  abhaengigkeitenMitHerkunft,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
@@ -260,6 +266,7 @@ const {
       istPlan: praefixFallback("[Plan]"),
       istIdee: praefixFallback("[Idee]"),
       istMensch: praefixFallback("[Mensch]"),
+      abhaengigkeitenMitHerkunft: abhaengigkeitenFallback,
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -329,6 +336,7 @@ export const nachbarn = {
   istPlan: isPlan,
   istIdee: isIdee,
   istMensch: isMensch,
+  abhaengigkeitenMitHerkunft,
   zusammenfassungPfad,
 };
 
@@ -2431,10 +2439,80 @@ export function parseDeps(body) {
   return [...new Set(refs)];
 }
 
+/**
+ * Der Lauf-Cache der Karten, auf die Abhaengigkeiten zeigen: Nummer -> Karte (Issue #1062,
+ * Plan #1057 E6). Die Gates laufen je Ready-Paket und je Runde; ohne Cache wuechse die Zahl
+ * der Abrufe mit der Groesse der Kette. `satisfiedIds` fuellt ihn aus den Listen, die es
+ * ohnehin abruft — diese Eintraege tragen den Titel, nicht zwingend den Body. Eine Nummer,
+ * deren Abruf scheitert, steht mit `null` darin und wird im Lauf nicht erneut gefragt.
+ */
+const KARTEN_CACHE = new Map();
+
+function karteAusCache(nummer) {
+  if (!KARTEN_CACHE.has(nummer)) KARTEN_CACHE.set(nummer, leseKarte(nummer));
+  return KARTEN_CACHE.get(nummer);
+}
+
 function satisfiedIds() {
   const inReview = board("issue", "list", "--status", "in_review");
   const done = board("issue", "list", "--status", "done");
-  return new Set([...inReview, ...done].map((i) => Number(i.id)));
+  const erledigt = [...inReview, ...done];
+  for (const k of erledigt) KARTEN_CACHE.set(Number(k.id), k);
+  return new Set(erledigt.map((i) => Number(i.id)));
+}
+
+// Der Satz je Dokument-Art, dem Wortlaut von `dokumentArt` in kit/board.mjs folgend
+// (Issue #1060): Beim Schreiben und im Nachtlauf sagt derselbe Hinweis dasselbe.
+const DOKUMENT_SATZ_ERST = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
+const DOKUMENT_ARTEN = [
+  [isPlan, "[Plan]", "ein Plandokument wird nie durch Umsetzung erledigt"],
+  [isFachlich, "[Fachlich]", DOKUMENT_SATZ_ERST],
+  [isIdee, "[Idee]", DOKUMENT_SATZ_ERST],
+];
+
+/**
+ * Der Abhaengigkeitsbefund eines Pakets (Issue #1062, Plan #1057 E6, E10): je Abhaengigkeit
+ * `{ nummer, erfuellt, herkunft, stelle, titel, dokument }`. Die Menge der Nummern kommt
+ * aus `parseDeps` — sie entscheidet ueber das Zurueckstellen und bleibt die eine Lesung
+ * dafuer; `abhaengigkeitenMitHerkunft` liefert nur Herkunft und Stelle dazu. `dokument` ist
+ * `[Fachlich]`, `[Plan]`, `[Idee]` oder `null`; eine Karte, die sich nicht abrufen laesst,
+ * bleibt ohne Titel und ohne Dokument-Art. `erfuellt` ist die Menge aus `satisfiedIds`.
+ */
+export function abhaengigkeitsBefund(top, body, erfuellt) {
+  const herkunft = new Map(abhaengigkeitenMitHerkunft(body).map((h) => [h.nummer, h]));
+  const abhaengigkeiten = parseDeps(body).map((nummer) => {
+    const karte = karteAusCache(nummer);
+    const titel = karte?.title ?? null;
+    const art = titel === null ? null : DOKUMENT_ARTEN.find(([passt]) => passt(titel));
+    return {
+      nummer,
+      erfuellt: erfuellt.has(nummer),
+      herkunft: herkunft.get(nummer)?.herkunft ?? "text",
+      stelle: herkunft.get(nummer)?.stelle ?? "",
+      titel,
+      dokument: art ? art[1] : null,
+      dokumentSatz: art ? art[2] : null,
+    };
+  });
+  return { paket: Number(top.id), abhaengigkeiten };
+}
+
+/** Eine Zeile des Blocks je Abhaengigkeit (E10), ohne Titel bei unbekannter Karte. */
+function abhaengigkeitsZeile(a) {
+  const titel = a.titel === null ? "" : ` (${a.titel})`;
+  const stand = a.erfuellt ? "erfuellt" : "unerfuellt";
+  const herkunft = a.herkunft === "verweiszeile" ? "aus einer Verweiszeile" : "aus erlaeuterndem Text";
+  const dokument = a.dokument ? ` — Dokument (${a.dokument}), kein Arbeitspaket: ${a.dokumentSatz}.` : "";
+  return `- #${a.nummer}${titel}: ${stand}, ${herkunft}: „${a.stelle}“${dokument}`;
+}
+
+/**
+ * Der Block unter dem Rueckstell-Kommentar (Issue #1062, Plan #1057 E10): Kopfzeile, dann
+ * je Abhaengigkeit eine Zeile. Er gehoert an die Karte, nicht in Logzeile, Einheit oder
+ * Kettenbericht — die lesen den einzeiligen `kommentar`.
+ */
+export function abhaengigkeitsBlock(befund) {
+  return ["Abhaengigkeiten, wie der Nachtlauf sie liest:", ...befund.abhaengigkeiten.map(abhaengigkeitsZeile)].join("\n");
 }
 
 // --- Verbose-Stream (Issue #154) ---
@@ -8183,12 +8261,24 @@ export function pruefeIssueGates(top) {
     }
   }
 
-  const unmet = parseDeps(full.body).filter((d) => !satisfiedIds().has(d));
+  // Der Befund erst, wenn es Abhaengigkeiten gibt: Ein Paket mit "Keine." kostet so
+  // keinen Abruf der erledigten Listen mehr als vorher.
+  if (parseDeps(full.body).length === 0) return null;
+  const befund = abhaengigkeitsBefund(top, full.body, satisfiedIds());
+  const unmet = befund.abhaengigkeiten.filter((a) => !a.erfuellt).map((a) => a.nummer);
   if (unmet.length > 0) {
     return {
       log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
       kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`,
+      block: abhaengigkeitsBlock(befund),
     };
+  }
+  // Ein startendes Paket wird nicht zurueckgestellt, also kein Kommentar (E11) — aber der
+  // Dokument-Verweis steht im Protokoll.
+  const dokumente = befund.abhaengigkeiten.filter((a) => a.dokument);
+  if (dokumente.length > 0) {
+    const verweise = dokumente.map((a) => `#${a.nummer} (${a.dokument})`).join(", ");
+    log(`#${top.id} startet mit Dokument-Verweis: ${verweise} — ein Dokument ist kein Arbeitspaket.`);
   }
   return null;
 }
@@ -8952,7 +9042,9 @@ function stelleRundeZurueck(top, res, minutes, pruefung) {
  */
 function stelleAmGateZurueck(top, gate) {
   log(gate.log);
-  board("issue", "comment", String(top.id), "--text", gate.kommentar);
+  // Der Befund-Block des Abhaengigkeits-Gates (Issue #1062, E10) nur hier, an der Karte.
+  const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
+  board("issue", "comment", String(top.id), "--text", text);
   board("issue", "move", String(top.id), "backlog");
   einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.kommentar });
 }
