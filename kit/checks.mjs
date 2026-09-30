@@ -286,6 +286,24 @@ export const PRUEFDAUER_OBERGRENZE_MS = 30_000;
 // reissen, verlaengerte die Suite, deren Laufzeit die Grenze gerade begrenzen soll.
 export const OBERGRENZE_ENV = "KIT_CHECKS_PRUEFDAUER_OBERGRENZE_MS";
 
+// Die Abbruchgrenze einer haengenden Pruefung (Issue #1077). Anders als die Obergrenze
+// darueber, die nur vermerkt, bricht diese ab: In der Nacht zum 30.09.2026 hing ein Test
+// 30 Minuten, bis das Werkzeug der Session aufgab. Die Grenze soll nur einen echten
+// Haenger treffen, nie einen langsamen, aber normalen Lauf — darum das Fuenffache des
+// Medians der gruenen Laeufe desselben Kommandos, mindestens drei Minuten, ohne Historie
+// 15 Minuten. Kein Config-Feld aus demselben Grund wie bei der Obergrenze.
+export const HAENGEN_FAKTOR = 5;
+export const HAENGEN_MINDEST_MS = 3 * 60_000;
+export const HAENGEN_VORGABE_MS = 15 * 60_000;
+// Zwischen SIGTERM an die Prozessgruppe und SIGKILL.
+export const HAENGEN_FRIST_MS = 5_000;
+// So viele gruene Laeufe je Kommando gehen hoechstens in den Median — die juengsten.
+const HAENGEN_HISTORIE = 10;
+// Allein fuer Tests, wie OBERGRENZE_ENV: niemand soll Minuten schlafen muessen.
+const HAENGEN_MINDEST_ENV = "KIT_CHECKS_HAENGEN_MINDEST_MS";
+const HAENGEN_VORGABE_ENV = "KIT_CHECKS_HAENGEN_VORGABE_MS";
+const HAENGEN_FRIST_ENV = "KIT_CHECKS_HAENGEN_FRIST_MS";
+
 // Wie viele gekennzeichnete Pruefungen hoechstens gleichzeitig laufen (Issue #1071, Plan
 // #1066, A5, E3). Kein Config-Feld aus demselben Grund wie die Obergrenze: Die Zahl sagt
 // etwas ueber die Maschine, nicht ueber das Projekt. Die Umgebungsvariable uebersteuert
@@ -349,6 +367,11 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Berichtsblock vor den Zeilen 'Teillauf: nur die zuletzt roten
       Pruefungen'. Nach einer Korrektur genuegt darum derselbe Aufruf wie
       zuvor. '--frisch' ueberspringt den Teillauf und faehrt sofort alles.
+      Eine haengende Pruefung wird abgebrochen: Grenze ist das Fuenffache des
+      Medians ihrer gruenen Laeufe aus .claude/ausfuehrungen.tsv, mindestens
+      3 min, ohne Historie 15 min. Die ganze Prozessgruppe bekommt SIGTERM, nach
+      5 s SIGKILL; die Pruefung steht rot mit 'haengend: nach <s> s Grenze
+      abgebrochen' (Feld 'haengend' in laufen[]).
       Als rotes Kommando nennt jede Meldung das erste mit Ergebnis 'rot', erst
       ohne ein solches das erste ungruene.
       Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
@@ -1144,7 +1167,7 @@ function settingsEnv() {
  * durchgereicht: nur so steht sie garantiert zwischen der eigenen Kopf- und
  * Fusszeile und nicht irgendwo dazwischen.
  */
-function kommandoAusfuehren(cmd, env) {
+function kommandoAusfuehren(cmd, env, { grenzeMs = Infinity, fristMs = HAENGEN_FRIST_MS } = {}) {
   // Asynchron seit Issue #1070 (Plan #1066): Gleichzeitige Kindprozesse gehen mit
   // `spawnSync` nicht. Die Ausgabe bleibt, wie sie war — erst stdout, dann stderr —,
   // und wird als Ganzes dekodiert, damit kein Zeichen an einer Stueckgrenze zerfaellt.
@@ -1152,24 +1175,97 @@ function kommandoAusfuehren(cmd, env) {
     const stdout = [];
     const stderr = [];
     let erledigt = false;
+    let haengend = false;
+    const uhren = [];
     const fertig = (code) => {
       if (erledigt) return;
       erledigt = true;
+      for (const uhr of uhren) clearTimeout(uhr);
       // code ist null, wenn der Prozess durch ein Signal endete oder gar nicht erst
-      // startete — beides ist rot, nie gruen.
+      // startete — beides ist rot, nie gruen. Ein Haenger ist rot, auch wenn die Gruppe
+      // auf SIGTERM hin noch sauber endet.
       const ausgabe = `${Buffer.concat(stdout).toString("utf-8")}${Buffer.concat(stderr).toString("utf-8")}`;
-      aufloesen({ gruen: code === 0, ausgabe });
+      aufloesen({ gruen: code === 0 && !haengend, ausgabe, haengend });
     };
     // stdin "ignore" (Issue #1076): Ohne Angabe waere sie eine Pipe, deren Schreibende
     // wir halten und nie schliessen. Ein Nachfahre, der von stdin liest, ohne eine
     // eigene zu bekommen — etwa `board.mjs … --text -` in einem Test —, wartete darauf
     // endlos. `ignore` ist /dev/null: Er sieht sofort Ende-der-Eingabe.
-    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true, stdio: ["ignore", "pipe", "pipe"] });
+    //
+    // Eine eigene Prozessgruppe (`detached`, Issue #1077): Mit `shell: true` haengt der
+    // eigentliche Haenger als Enkel unter der Shell, etwa `node --test` -> `board.mjs`.
+    // Nur ueber die Gruppe erreicht ihn der Abbruch — ein Weg ueber die Prozessliste
+    // (`ps`) scheitert in der Sandbox der Sessions. Damit die Gruppe beim Abbruch des
+    // AUFRUFERS nicht verwaist, beendet `laufendeGruppenBeenden` sie mit (siehe dort).
+    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    if (kind.pid) LAUFENDE_GRUPPEN.add(kind.pid);
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
     kind.on("error", () => fertig(null));
-    kind.on("close", (code) => fertig(code));
+    kind.on("close", (code) => {
+      LAUFENDE_GRUPPEN.delete(kind.pid);
+      fertig(code);
+    });
+    if (Number.isFinite(grenzeMs) && kind.pid) {
+      uhren.push(setTimeout(() => {
+        haengend = true;
+        haengerAbbrechen(kind.pid, fristMs, uhren, fertig);
+      }, grenzeMs));
+    }
   });
+}
+
+/**
+ * Bricht die Gruppe eines haengenden Kommandos ab (Issue #1077): SIGTERM, nach `fristMs`
+ * SIGKILL. Das Netz danach: Haelt ein Prozess ausserhalb der Gruppe die Pipe offen, kaeme
+ * `close` nie. Dann gilt das Kommando nach einer weiteren Sekunde als beendet — `run`
+ * soll binnen Grenze und Frist fertig sein, nicht irgendwann.
+ */
+function haengerAbbrechen(pid, fristMs, uhren, fertig) {
+  gruppeSignal(pid, "SIGTERM");
+  const netz = () => {
+    LAUFENDE_GRUPPEN.delete(pid);
+    fertig(null);
+  };
+  uhren.push(setTimeout(() => {
+    gruppeSignal(pid, "SIGKILL");
+    uhren.push(setTimeout(netz, 1_000));
+  }, fristMs));
+}
+
+/** Die Prozessgruppen der gerade laufenden Pruefungen (Issue #1077). */
+const LAUFENDE_GRUPPEN = new Set();
+
+/**
+ * Ein Signal an die Prozessgruppe `pid`; unter Windows, wo es keine Gruppen gibt, an den
+ * Prozess selbst. Eine Gruppe, die schon fort ist, wird uebergangen.
+ */
+function gruppeSignal(pid, signal) {
+  try {
+    process.kill(process.platform === "win32" ? pid : -pid, signal);
+  } catch {
+    // schon beendet
+  }
+}
+
+/**
+ * Beendet die Gruppen der laufenden Pruefungen, wenn `checks.mjs` selbst beendet wird
+ * (Issue #1077). Die Pruefungen laufen in eigenen Gruppen und bekaemen das Signal an den
+ * Aufrufer sonst nicht mit: Der Nacht-Runner beendet eine Session an ihrer Gruppe mit
+ * SIGTERM, Ctrl-C schickt SIGINT an die Vordergrundgruppe. Ein SIGKILL an `checks.mjs`
+ * laesst sich nicht abfangen — das bleibt die Luecke dieses Wegs.
+ */
+function laufendeGruppenBeenden(signal) {
+  for (const pid of LAUFENDE_GRUPPEN) gruppeSignal(pid, "SIGKILL");
+  LAUFENDE_GRUPPEN.clear();
+  process.exit(signal === "SIGINT" ? 130 : 143);
+}
+/** Einmal je Prozess, erst in `run` — ein Import des Moduls soll keine Handler setzen. */
+let gruppenHandlerGesetzt = false;
+function gruppenHandlerSetzen() {
+  if (gruppenHandlerGesetzt) return;
+  gruppenHandlerGesetzt = true;
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => laufendeGruppenBeenden(signal));
 }
 
 /**
@@ -1493,6 +1589,64 @@ function pruefdauerObergrenzeMs(env = process.env) {
   return Number.isFinite(zahl) && zahl > 0 ? zahl : PRUEFDAUER_OBERGRENZE_MS;
 }
 
+/** Eine positive Zahl aus der Umgebung, sonst `vorgabe` — wie bei `pruefdauerObergrenzeMs`. */
+function positiveZahl(env, name, vorgabe) {
+  const zahl = Number((env[name] ?? "").trim());
+  return Number.isFinite(zahl) && zahl > 0 ? zahl : vorgabe;
+}
+
+/**
+ * Die Abbruchgrenze einer Pruefung (Issue #1077): das Vielfache des Medians der
+ * juengsten gruenen Laeufe desselben Kommandos, mindestens der Mindestwert; ohne gruene
+ * Historie die Vorgabe. Rote Laeufe zaehlen nicht — ein abgebrochener Haenger steht
+ * als rot im Protokoll und zoege den Median sonst selbst nach oben.
+ *
+ * `zeilen` sind Eintraege `{ cmd, ergebnis, dauerMs }`, wie `ausfuehrungenLesen` sie
+ * liefert. Exportiert, damit die Tests die Rechnung ohne Subprozess pruefen.
+ */
+export function haengeGrenzeMs(cmd, zeilen, env = process.env) {
+  const mindest = positiveZahl(env, HAENGEN_MINDEST_ENV, HAENGEN_MINDEST_MS);
+  const vorgabe = positiveZahl(env, HAENGEN_VORGABE_ENV, HAENGEN_VORGABE_MS);
+  const dauern = zeilen
+    .filter((z) => z.cmd === cmd && z.ergebnis === "gruen" && Number.isFinite(z.dauerMs))
+    .map((z) => z.dauerMs)
+    .slice(-HAENGEN_HISTORIE)
+    .sort((a, b) => a - b);
+  if (dauern.length === 0) return vorgabe;
+  const mitte = Math.floor(dauern.length / 2);
+  const median = dauern.length % 2 === 1 ? dauern[mitte] : (dauern[mitte - 1] + dauern[mitte]) / 2;
+  return Math.max(mindest, HAENGEN_FAKTOR * median);
+}
+
+/** Die Frist zwischen SIGTERM und SIGKILL beim Abbruch (Issue #1077). */
+function haengenFristMs(env = process.env) {
+  return positiveZahl(env, HAENGEN_FRIST_ENV, HAENGEN_FRIST_MS);
+}
+
+/**
+ * Die Zeilen des Ausfuehrungsprotokolls als `{ cmd, ergebnis, dauerMs }` (Issue #1077).
+ * Das Kommando wird entmaskiert — die Umkehrung von `kommandoMaskieren`, wie
+ * `kommandoLesen` in kit/wirksamkeit.mjs. Fehlt die Datei oder ist sie unlesbar, gibt es
+ * keine Historie: Dann gilt die Vorgabe, und `run` laeuft weiter.
+ */
+function ausfuehrungenLesen() {
+  let text;
+  try {
+    text = readFileSync(join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/")), "utf-8");
+  } catch {
+    return [];
+  }
+  const zurueck = { "\\": "\\", t: "\t", n: "\n", r: "\r" };
+  return text.split("\n").filter(Boolean).map((zeile) => {
+    const [, cmd = "", ergebnis = "", dauer = ""] = zeile.split("\t");
+    return {
+      cmd: cmd.replaceAll(/\\([\\tnr])/g, (_, z) => zurueck[z]),
+      ergebnis,
+      dauerMs: Number(dauer),
+    };
+  });
+}
+
 /**
  * Die wirksame Grenze gleichzeitiger Pruefungen (Issue #1071): die Vorgabe, ueber die
  * Umgebungsvariable uebersteuert. Alles, was keine positive ganze Zahl ist, faellt auf die
@@ -1523,6 +1677,11 @@ export function obergrenzeZusatz(dauerMs, grenzeMs = PRUEFDAUER_OBERGRENZE_MS) {
   return ` — Obergrenze ${sekunden(grenzeMs)} s um ${sekunden(dauerMs - grenzeMs)} s ueberschritten`;
 }
 
+/** Der Vermerk einer abgebrochenen, haengenden Pruefung (Issue #1077). */
+export function haengendText(grenzeMs) {
+  return `haengend: nach ${sekunden(grenzeMs)} s Grenze abgebrochen`;
+}
+
 /**
  * Die fertigen Zeilen fuer den Abschlussbericht (Issue #1003, Plan #1001, E1, E12).
  *
@@ -1543,8 +1702,9 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
   for (const e of laufen) {
     const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
     const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
+    const haengt = e.haengend ? " — " + haengendText(e.haengend.grenzeMs) : "";
     zeilen.push(
-      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}`,
+      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}`,
     );
   }
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
@@ -2329,6 +2489,7 @@ function sperreFreigeben(pfad, melde, lies) {
  * Ergebnis, damit der Aufrufer nur einen Fall kennt.
  */
 async function ausfuehren(args) {
+  gruppenHandlerSetzen();
   // Die Wartezeit laeuft ab dem Aufruf (Issue #1069, Plan #1066): Auch das Warten auf die
   // maschinenweite Sperre ist Warten des Pakets.
   const startNs = process.hrtime.bigint();
@@ -2405,6 +2566,9 @@ async function ausfuehren(args) {
  */
 async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null }) {
   const grenzeMs = pruefdauerObergrenzeMs();
+  // Einmal je Lauf gelesen (Issue #1077): Die Abbruchgrenze jedes Kommandos folgt
+  // seiner Historie, und die Zeilen dieses Laufs sollen sie nicht mehr verschieben.
+  const historie = ausfuehrungenLesen();
 
   // Woher die Zeilen dieses Laufs im Protokoll stammen (Issue #948). Einmal gebildet und
   // an jede Zeile gegeben, damit alle Zeilen EINES `run`-Aufrufs dieselbe Laufkennung
@@ -2487,13 +2651,18 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
     const einKommando = async (eintrag, schreibe, nebenAnderen) => {
       const start = process.hrtime.bigint();
-      const { gruen, ausgabe } = await kommandoAusfuehren(eintrag.cmd, env);
+      const haengeMs = haengeGrenzeMs(eintrag.cmd, historie, env);
+      const { gruen, ausgabe, haengend } = await kommandoAusfuehren(eintrag.cmd, env,
+        { grenzeMs: haengeMs, fristMs: haengenFristMs(env) });
       eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+      // Das Feld fehlt ohne Abbruch (Issue #1077) — wie `ueberObergrenzeMs`.
+      if (haengend) eintrag.haengend = { grenzeMs: haengeMs };
       // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
       if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
       // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
       if (nebenAnderen) eintrag.gleichzeitig = true;
       schreibe(ausgabe);
+      if (haengend) schreibe(`${haengendText(haengeMs)}\n`);
       const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe);
       stand.guete = bewertung.guete ?? stand.guete;
       eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
