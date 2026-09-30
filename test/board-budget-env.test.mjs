@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { toolboxBudgetMs } from "../kit/board.mjs";
+import { toolboxBudgetMs, toolboxVersuchMs } from "../kit/board.mjs";
 import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
 test("KIT_TOOLBOX_BUDGET_MS schlaegt beide Regelwerte", () => {
@@ -55,4 +55,20 @@ test("Ein Fixture-Aufruf gegen einen 5xx-Server endet in Sekunden, nicht in Minu
     rmSync(dir, { recursive: true, force: true });
     server.close();
   }
+});
+
+// Die Grenze je Versuch folgt dem Budget (Issue #1067): Nachts reisst die Uebertragung
+// einer grossen Antwort bei langsamer Leitung die 10 s, und jeder Wiederholversuch
+// scheiterte genauso. Drei Versuche passen in beiden Faellen ins Budget.
+test("Die Grenze je Versuch ist interaktiv 10 s und nachts 30 s", () => {
+  assert.equal(toolboxVersuchMs(toolboxBudgetMs({})), 10_000);
+  assert.equal(toolboxVersuchMs(30_000), 10_000);
+  assert.equal(toolboxVersuchMs(toolboxBudgetMs({ KIT_AGENT_MODEL: "claude-opus-5" })), 30_000);
+  assert.equal(toolboxVersuchMs(120_000), 30_000);
+});
+
+test("Ein ausdruecklich gesetztes Budget unter dem Nacht-Budget behaelt 10 s je Versuch", () => {
+  assert.equal(toolboxVersuchMs(toolboxBudgetMs({ KIT_TOOLBOX_BUDGET_MS: "200" })), 10_000);
+  assert.equal(toolboxVersuchMs(toolboxBudgetMs({ KIT_TOOLBOX_BUDGET_MS: "119999" })), 10_000);
+  assert.equal(toolboxVersuchMs(toolboxBudgetMs({ KIT_TOOLBOX_BUDGET_MS: "120000" })), 30_000);
 });

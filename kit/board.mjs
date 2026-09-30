@@ -1712,10 +1712,15 @@ export function agentModelHeader(env = process.env) {
 /** Das Problem-Detail, an dem eine Ueberlast-Abweisung erkennbar ist. */
 export const TOOLBOX_UEBERLAST_TYPE = "urn:manban:overload";
 
-/** Zeitgrenze je Einzelversuch. Drei volle Haenger passen so ins Tagesbudget. */
-const TOOLBOX_VERSUCH_MS = 10_000;
+/**
+ * Zeitgrenze je Einzelversuch, abgeleitet aus dem Budget (toolboxVersuchMs). Drei volle
+ * Haenger passen so in beide Budgets: 3 × 10 s ins Tagesbudget, 3 × 30 s ins Nachtbudget.
+ */
+const TOOLBOX_VERSUCH_INTERAKTIV_MS = 10_000;
+const TOOLBOX_VERSUCH_NACHT_MS = 30_000;
 const TOOLBOX_BUDGET_INTERAKTIV_MS = 30_000;
-const TOOLBOX_BUDGET_NACHT_MS = 120_000;
+/** Exportiert fuer den Nacht-Runner, der seinen Board-Aufrufen dieses Budget mitgibt (Issue #1067). */
+export const TOOLBOX_BUDGET_NACHT_MS = 120_000;
 const TOOLBOX_WARTE_BASIS_MS = 500;
 const TOOLBOX_WARTE_MAX_MS = 8_000;
 const TOOLBOX_WARTE_MIN_MS = 100;
@@ -1748,6 +1753,18 @@ export function toolboxBudgetMs(env = process.env) {
   const gesetzt = Number(String(env.KIT_TOOLBOX_BUDGET_MS ?? "").trim());
   if (Number.isInteger(gesetzt) && gesetzt > 0) return gesetzt;
   return (env.KIT_AGENT_MODEL || "").trim() ? TOOLBOX_BUDGET_NACHT_MS : TOOLBOX_BUDGET_INTERAKTIV_MS;
+}
+
+/**
+ * Die Zeitgrenze eines Einzelversuchs folgt dem Budget (Issue #1067). Im Nachtbetrieb
+ * (Budget ab TOOLBOX_BUDGET_NACHT_MS) sind es 30 s: `issue list --status ready` liefert
+ * alle Bodies der Spalte, und bei langsamer Leitung riss schon die Uebertragung die
+ * 10 s — jeder Wiederholversuch scheiterte genauso. Interaktiv bleiben es 10 s, damit
+ * drei Versuche weiter ins Budget von 30 s passen; ebenso bei jedem ausdruecklich
+ * kleineren Budget.
+ */
+export function toolboxVersuchMs(budget) {
+  return budget >= TOOLBOX_BUDGET_NACHT_MS ? TOOLBOX_VERSUCH_NACHT_MS : TOOLBOX_VERSUCH_INTERAKTIV_MS;
 }
 
 /**
@@ -1923,12 +1940,13 @@ export class ToolboxIssueTracker {
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     const budget = toolboxBudgetMs();
     const frist = this._jetzt() + budget;
+    const versuchMs = toolboxVersuchMs(budget);
 
     for (let versuch = 1; ; versuch++) {
       let res = null;
       let wurf = null;
       try {
-        res = await fetch(`${host}${path}`, { ...rest, headers, signal: AbortSignal.timeout(TOOLBOX_VERSUCH_MS) });
+        res = await fetch(`${host}${path}`, { ...rest, headers, signal: AbortSignal.timeout(versuchMs) });
       } catch (e) {
         wurf = e;
       }

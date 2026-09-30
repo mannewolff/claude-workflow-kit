@@ -41,6 +41,10 @@ test("[night-6] ohne Nachbarn gelingt das Laden von night.mjs — erst der Aufru
   assert.throws(() => night.nachbarn.fenceLauf(), /board\.mjs fehlt neben night\.mjs/);
 });
 
+test("[night-6] ohne board.mjs setzt boardUmgebung kein Budget (Issue #1067)", () => {
+  assert.deepEqual(night.boardUmgebung({ PATH: "/usr/bin" }), { PATH: "/usr/bin" });
+});
+
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istFachlich", () => {
   assert.throws(() => night.nachbarn.istFachlich("[Fachlich] Etwas"), /das Praefix \[Fachlich\] ist nicht erkennbar/);
 });

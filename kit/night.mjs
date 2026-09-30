@@ -185,7 +185,7 @@ const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
  * `.catch` also nie — und die beiden Board-Importe dieser Datei zeigten unter Hook
  * auf verschiedene Dateien (Issue #498).
  */
-const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => ({
+const { fenceLauf, TOOLBOX_BUDGET_NACHT_MS } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => ({
   fenceLauf: () => {
     throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   },
@@ -1314,13 +1314,30 @@ export function boardFehlertext(cliArgs, res) {
   return `board.mjs ${cliArgs.join(" ")} schlug fehl${praefix}: ${zitat}`;
 }
 
+/**
+ * Die Umgebung, mit der `board()` und `boardRoh()` board.mjs starten (Issue #1067).
+ * Der Runner traegt kein KIT_AGENT_MODEL — das bekommen nur seine Sessions —, und ohne
+ * diese Funktion liefen seine eigenen Board-Aufrufe mit dem interaktiven Budget von
+ * 30 s. Bei langsamer Leitung beendete eine einzige haengende Ready-Abfrage so den
+ * ganzen Lauf. Gesetzt wird die dokumentierte Stellschraube KIT_TOOLBOX_BUDGET_MS aus
+ * Issue #842, nicht KIT_AGENT_MODEL: Das ist das Erkennungsmerkmal unbeaufsichtigter
+ * Skills und steuert den Modell-Header, und der Runner ist kein Modell. Ein vom
+ * Aufrufer gesetzter Wert bleibt stehen; ein leerer gilt als nicht gesetzt.
+ * Fehlt der Nachbar board.mjs, fehlt auch die Konstante; dann bleibt die Umgebung,
+ * wie sie ist — statt eines Werts "undefined", und ohne zweite Zahl in dieser Datei.
+ */
+export function boardUmgebung(env = process.env) {
+  if (TOOLBOX_BUDGET_NACHT_MS === undefined || String(env.KIT_TOOLBOX_BUDGET_MS ?? "").trim()) return { ...env };
+  return { ...env, KIT_TOOLBOX_BUDGET_MS: String(TOOLBOX_BUDGET_NACHT_MS) };
+}
+
 // Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
 // Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
 // Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER, env: boardUmgebung() });
   if (res.status !== 0) {
     fail(boardFehlertext(cliArgs, res), "tracker");
   }
@@ -1342,7 +1359,7 @@ function board(...cliArgs) {
 function boardRoh(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER });
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER, env: boardUmgebung() });
   let json = null;
   try {
     json = JSON.parse(res.stdout);
