@@ -88,6 +88,8 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 
 **Abhängigkeits-Konvention (maschinenlesbar):** Der Abschnitt enthält entweder exakt `Keine.` oder explizite Referenzen der Form `Issue #N` (mehrere möglich, je eine pro Zeile). Erläuternder Freitext ist zusätzlich erlaubt — aber wenn ein anderes Issue gemeint ist, muss die `#N`-Referenz dabeistehen. Grund: Der Nacht-Runner (`kit/night.mjs`) wertet ausschließlich `#N`-Referenzen aus und stellt Issues mit unerfüllten Abhängigkeiten automatisch zurück; eine nur in Prosa beschriebene Abhängigkeit ist für ihn unsichtbar. Abhängigkeiten auf fremde Repos als `owner/repo#N` schreiben (mit Repo-Präfix) — sie werden bewusst nicht als lokale Issues gewertet.
 
+**Jede lokale `#N` im Abschnitt zählt — auch in Erläuterungen.** „Nicht #N: …" hält das Paket genauso fest wie `Issue #N`. Eine Verweiszeile beginnt nach optionalem Leerraum und optionalem Listenzeichen (`-`, `*`, `+`, `1.`) mit `Issue #N` und trägt keine weitere lokale Nummer; jede andere Nummer stammt aus erläuterndem Text, auch eine im Codeblock des Abschnitts. Was nicht aus einer Verweiszeile stammt oder auf ein Dokument (`[Plan]`, `[Fachlich]`, `[Idee]`) zeigt, melden `check-form` und `create` beim Schreiben unter `hinweise` (siehe beim Anlegen unten). Eine Nummer, die nur erklärt, gehört in den `## Kontext`.
+
 **Rückverweise auf Plan und fachliche Quelle:** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Beide Verweise stehen **im Kontext-Abschnitt**, unmittelbar untereinander und in dieser Reihenfolge:
 
 ```
@@ -150,6 +152,8 @@ node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/neues-issue.md 
 ```bash
 node .claude/kit/board.mjs issue create --title "Titel" --body-file <tmpdir>/neues-issue.md
 ```
+
+**Die `hinweise` aus `check-form` und `create` werden gelesen.** Neben `ok` und `verstoesse` kann das JSON den Schlüssel `hinweise` tragen. Ein Eintrag mit `art: schreibweise` nennt eine Nummer aus erläuterndem Text, ein Eintrag mit `art: dokument` einen Verweis auf ein Dokument. Beide berühren weder `ok` noch den Exit-Code, zeigen aber, was der Nachtlauf als Abhängigkeit lesen wird. Je Eintrag gilt: Ist die Nummer nicht gemeint, wird der Text vor dem Anlegen korrigiert — die Nummer verlässt den Abschnitt oder wandert in den `## Kontext` —, und `check-form` läuft erneut. Ist sie gemeint, bleibt der Text, und der Abschluss nennt den Hinweis mit Paket und Nummer. Meldet erst `create` einen Hinweis, gilt dieselbe Regel; die Korrektur geht dann per `issue update <id> --body-file <tmpdir>/neues-issue.md` an die angelegte Karte. Unbeaufsichtigt gilt dasselbe ohne Rückfrage: Die Session entscheidet je Nummer selbst.
 
 Jeder Block ist ein **eigener** Werkzeugaufruf, die Datei liegt außerhalb des Projektverzeichnisses, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
 
