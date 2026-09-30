@@ -96,6 +96,8 @@ Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeit
 
 **Interaktiv:** Präsentiere den Plan und warte auf Feedback. Implementiere **nicht**, bevor der Plan freigegeben wurde. Plan-Akzeptanz ist kein GO — das GO kommt separat (Schritt 4).
 
+**Testhinweise vor dem Präsentieren (Bahn 2, interaktiv):** Den Planentwurf mit Kopfzeilen in `<tmpdir>/plandokument.md` schreiben (wie in Schritt 5) und `issue check-form --body-file <tmpdir>/plandokument.md --title "[Plan] <Titel>"` fahren. Meldet das Ergebnis `hinweise` — eigene Tests geführter Bausteine, die der Plan nicht nennt —, stehen sie in **derselben Antwort** wie der Plan, Baustein und Test beim Namen. Der Autor nimmt den Test in `## Geplante Änderungen` auf, als geändert oder als „bleibt grün", immer mit Namen, oder lässt den Hinweis bewusst stehen. Ein Hinweis ist kein Verstoß und hält die Diskussion nicht auf.
+
 ### 5. Plan-Dokument anlegen (nur Bahn 2 — interaktiv nach der Freigabe, unbeaufsichtigt unmittelbar nach Schritt 3)
 Steht der Plan — interaktiv also nach der Freigabe, unbeaufsichtigt nach Schritt 3 —, hält der Skill ihn als eigenes Issue fest: das **Plan-Dokument**. Ohne es ist der Plan das einzige Artefakt der Kette ohne Ort: Er entsteht im Gespräch, wird einmal überflogen und verschwindet. Die technischen Issues verweisen später auf die fachliche Quelle, aber was **dazwischen** entschieden wurde — Architektur, Schnitt, Abwägungen — wäre nach der Sitzung nicht mehr rekonstruierbar.
 
@@ -112,6 +114,8 @@ Vor dem Anlegen prüft ein Kommando die Form; erst bei `ok: true` folgt `issue c
 ```bash
 node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/plandokument.md --title "[Plan] <Titel>"
 ```
+
+Die Testhinweise stehen im Ergebnis neben `ok` (`json.hinweise ?? []`); sie berühren weder `ok` noch den Exit-Code. **Hinweise halten nie an.** Interaktiv hat der Mensch sie in Schritt 4 gesehen: Was danach noch steht, hält nicht erneut an und steht in der Abschlussantwort. Unbeaufsichtigt entscheidet die Sitzung ohne Rückfrage — den Test aufnehmen oder den Hinweis stehen lassen — und legt den Plan an. Den Kommentar `## Testhinweise der Formpruefung` mit dem, was stehen bleibt, schreibt danach der Nacht-Runner an den Plan, nicht die Sitzung.
 
 **Angelegt über:**
 ```bash
