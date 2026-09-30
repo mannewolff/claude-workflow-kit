@@ -94,13 +94,17 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 
-test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Eingabe und die unbekannten", () => {
+test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Eingabe, testAblagen und die unbekannten", () => {
   assert.equal(teilFuer("night.modelle").kennung, "text");
+  // testAblagen ist bekannt und trotzdem im Rueckfall (Issue #1032, A13): zwei Eintragsformen,
+  // keine feste Tabelle — eine eigene Eingabe braeuchte zwei Zeilenarten.
+  assert.equal(teilFuer("testAblagen").kennung, "text");
+  assert.equal(THEMEN.testAblagen, "Prüfungen");
   assert.equal(teilFuer("erfundenesFeld").kennung, "text", "ein unbekanntes Feld faellt auf den Text-Teil zurueck");
   const { zustand, raeumAuf } = wegwerfProjekt();
   try {
     const imText = instanzen(zustand).filter((i) => i.kennung === "text").flatMap((i) => i.eintraege.map((e) => e.pfad));
-    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufenRegel"]);
+    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufenRegel", "testAblagen"]);
     for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "night.stufen", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
       assert.notEqual(teilFuer(pfad).kennung, "text", `${pfad} braucht eine eigene Eingabe`);
     }

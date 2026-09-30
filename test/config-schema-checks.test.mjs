@@ -64,6 +64,8 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.deepEqual(pruefe({ type: "number", exclusiveMinimum: 0 }, 0.5), [], "ueber der echten Untergrenze");
   assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, 0).length, 1, "auf der echten Untergrenze");
   assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, -1).length, 1, "unter der echten Untergrenze");
+  assert.deepEqual(pruefe({ const: true }, true), [], "const trifft");
+  assert.equal(pruefe({ const: true }, false).length, 1, "const trifft nicht");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -389,6 +391,45 @@ test("gekoppelteBereiche: die Beschreibung nennt den Vermerk und das fehlende Fe
   assert.match(text, /Ohne Eintrag gilt die Hervorhebungsregel ausnahmslos/);
   assert.match(text, /Gilt teamweit; ein abweichender Wert in workflow\.config\.local\.json wird ignoriert\.$/);
   assert.deepEqual(schema.properties.gekoppelteBereiche.default, []);
+});
+
+// --- testAblagen (Issue #1032, Plan #1029 A4/A5) ---
+//
+// Zwei Eintragsformen: ein Paar aus Quell- und Test-Muster oder der Marker
+// `{ "vorgaben": true }`, der die Vorgaben des Kits an dieser Stelle einfuegt. Kein
+// `default`: „Feld fehlt" heisst Vorgaben, `[]` heisst abgeschaltet.
+
+test("testAblagen: ein Paar, der Vorgaben-Marker und die leere Liste sind gueltig", () => {
+  const feld = schema.properties.testAblagen;
+  assert.ok(feld, "testAblagen ist im Schema definiert");
+  assert.deepEqual(pruefe(feld, [{ quelle: "src/{pfad}/{name}.ts", test: "src/{pfad}/{name}*.test.ts" }]), []);
+  assert.deepEqual(pruefe(feld, [{ vorgaben: true }]), []);
+  assert.deepEqual(pruefe(feld, [{ quelle: "kit/{name}.mjs", test: "test/{name}-*.test.mjs" }, { vorgaben: true }]), []);
+  assert.deepEqual(pruefe(feld, []), [], "die leere Liste schaltet ab und ist gueltig");
+});
+
+test("testAblagen: leeres quelle, unbekannter Schluessel und vorgaben false sind ungueltig", () => {
+  const feld = schema.properties.testAblagen;
+  const paar = feld.items.oneOf.find((zweig) => zweig.properties?.quelle);
+  // Den leeren String weist `minLength` ab; der Mini-Validator ignoriert es, deshalb steht
+  // die Grenze hier am Feld selbst — wie bei gekoppelteBereiche.
+  assert.equal(paar.properties.quelle.minLength, 1);
+  assert.equal(paar.properties.test.minLength, 1);
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts", test: "src/{name}.test.ts", modul: "a" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ vorgaben: false }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts" }]), [], "ein Paar ohne test");
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts", test: "src/{name}.test.ts", vorgaben: true }]), []);
+  assert.notDeepEqual(pruefe(feld, { quelle: "src/{name}.ts", test: "src/{name}.test.ts" }), [], "kein Array");
+});
+
+test("testAblagen: kein default, die Beschreibung nennt Platzhalter, Vorgaben und die drei Faelle", () => {
+  const feld = schema.properties.testAblagen;
+  assert.equal(Object.hasOwn(feld, "default"), false);
+  const text = feld.description;
+  for (const teil of ["{pfad}", "{name}", "*", ".spec", "src/main/java", "src/test/java", "{ \"vorgaben\": true }", "[]"]) {
+    assert.ok(text.includes(teil), `die Beschreibung nennt ${teil} nicht`);
+  }
+  assert.match(text, /Mehrmodul/);
 });
 
 // --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---

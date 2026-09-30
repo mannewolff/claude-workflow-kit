@@ -503,7 +503,7 @@ node einstellungen.mjs ~/ki-projects
 
 **Zehn Teile.** Die Oberfläche gliedert die Einstellungen in zehn Teile: Reviewer, Paarungen, Prüfstufen, Befunde, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit, Aufgabenstufen und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur zwei Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) — und Einstellungen, die das Kit nicht kennt. Für beide gibt es keinen eigenen der zehn Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur drei Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) —, die Test-Ablagen (`testAblagen`), deren Einträge zwei Formen kennen und darum in keine feste Tabelle passen, und Einstellungen, die das Kit nicht kennt. Für sie alle gibt es keinen eigenen der zehn Teile.
 
 **Aufgabenstufen.** Der Teil *Aufgabenstufen* pflegt `night.stufen` ohne JSON-Eingabe: je Stufe — schwer, mittel, leicht — eine Wahl zwischen *Keine*, *Modell* und *Kommando*. Zum Modell gehört die Gründlichkeit, die der Nachtlauf als `--effort` an die Claude-CLI gibt; „Voreinstellung“ überlässt sie ihr und schreibt kein Feld. Eine Stufe auf *Keine* zu stellen entfernt ihren Eintrag — der Nachtlauf weicht dann zur nächststärkeren Stufe aus. Neben einem fremden `kommando` gibt es keine Gründlichkeit, und der Wechsel dorthin nimmt `modell` und `effort` mit.
 
@@ -565,6 +565,14 @@ Bereiche, die eine gemessene Kopplung in fast alle Prüfkommandos zwingt — etw
 
 - `gekoppelteBereiche[].bereich` — Name des Bereichs, wie er in checkAreas steht.
 - `gekoppelteBereiche[].grund` — Welche gemessene Kopplung den Bereich in fast alle Prüfkommandos zwingt. Steht als Vermerk an der Hervorhebung und ist Pflicht.
+
+### `testAblagen`
+
+Wo die eigenen Tests eines Bausteins liegen — daraus meldet issue check-form bei einem Plan Testhinweise: je eigener Test eines geführten Bausteins, den der Plan nicht nennt, ein Hinweis, der weder ok noch den Exit-Code berührt. Jeder Eintrag ist ein Paar aus quelle und test. Platzhalter: {pfad} steht für null oder mehr Verzeichnisse ({pfad}/ darf leer sein), {name} für den Dateinamen ohne Endung, * im Test-Muster für beliebige Zeichen innerhalb eines Pfadsegments. Ohne das Feld gelten die Vorgaben des Kits: TypeScript {pfad}/{name}.ts und .tsx mit {name}.test und {name}.spec daneben, Java src/main/java/{pfad}/{name}.java mit src/test/java/{pfad}/{name}Test.java. Ein Array ersetzt die Vorgaben; der Eintrag { "vorgaben": true } fügt sie an seiner Stelle ein, statt sie abzuschreiben; [] schaltet die Testhinweise ab. Mehrmodulprojekte tragen je Modul eine Ablage mit festem Präfix ein, etwa backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Bewusst ohne Vorgabewert: Fehlt das Feld, gelten die Vorgaben, und das ist etwas anderes als [].
+
+- `testAblagen[].quelle` — Muster der Quelldatei, etwa src/{pfad}/{name}.ts.
+- `testAblagen[].test` — Muster ihres eigenen Tests, mit denselben Platzhaltern und * innerhalb eines Segments, etwa src/{pfad}/{name}*.test.ts.
+- `testAblagen[].vorgaben` — Fügt die Vorgaben des Kits an dieser Stelle ein.
 
 ### `nurGeruest`
 
