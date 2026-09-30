@@ -161,6 +161,7 @@
         "befunde",
         "board",
         "einstellungen",
+        "frischer-checkout",
         "herkunft",
         "installer",
         "nachtrunner",
@@ -337,6 +338,10 @@
     ],
     "preise": [
       "kit/preise.mjs"
+    ],
+    "frischer-checkout": [
+      "tools/frischer-checkout*.mjs",
+      "test/tools-frischer-checkout*.test.mjs"
     ]
   },
   "ohnePruefung": [
