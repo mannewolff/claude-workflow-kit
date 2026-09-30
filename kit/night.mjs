@@ -896,8 +896,13 @@ export function sicherheitsnetzGrund(lauf, stoppGrund) {
   return gefuellt(stoppGrund) ? `${stoppGrund} ${ANKER_FEHLT}` : ERSATZ_GRUND;
 }
 
-/** Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand. */
-function einheitAnlegen(id, titel, modellStand = null) {
+/**
+ * Legt die Einheit eines Pakets an und schreibt sofort — auch ohne Ergebnisstand.
+ *
+ * Exportiert fuer den Test der Feldreihenfolge (Issue #1026): Ohne laufenden Lauf haengt
+ * das Objekt an nichts und wird nicht geschrieben.
+ */
+export function einheitAnlegen(id, titel, modellStand = null) {
   // Das Objekt entsteht immer, damit der Aufrufer nicht zwei Wege kennen muss. Im
   // Dry-Run haengt es an nichts und wird nie geschrieben.
   //
@@ -925,6 +930,13 @@ function einheitAnlegen(id, titel, modellStand = null) {
     // Arbeitsschritt an der Karte zu und sieht den Dateikopf dort nicht mehr.
     art: LAUF?.art ?? null,
     ausgang: "unbekannt",
+    // Ob eine Session der Einheit mit /implement-* startete (Issue #1026, Plan #1015, E12).
+    // Nicht nach `art`: Eine Kette enthaelt Umsetzungs- und andere Einheiten.
+    umsetzung: false,
+    // Die Zeit fuer Board-Auskuenfte (Issue #1026, E15), `{ ms, aufrufe }` sobald eine
+    // Session beobachtet wurde. `null` heisst nicht gemessen, nie 0. Hinten, weil die
+    // Feldreihenfolge der Vertrag mit den Auswertungen ist.
+    auskunft: null,
   };
   if (LAUF) {
     LAUF.einheiten.push(einheit);
@@ -2785,6 +2797,106 @@ export function fortschrittBeobachter() {
   };
 }
 
+// --- Board-Auskuenfte am Session-Strom (Issue #1026, Plan #1015, E11) ---
+
+/**
+ * Das Verzeichnis, in dem Claude Code ein zu grosses Werkzeugergebnis ablegt; die Session
+ * liest es danach ueber seinen Pfad nach. Wer einen solchen Pfad nennt, bereitet eine
+ * Antwort auf, statt an der Aufgabe zu arbeiten.
+ *
+ * Beleg: Claude Code 2.1.236, Transkript vom 2026-09-21, ein `Read` mit
+ * `{"file_path":"<home>/.claude/projects/<projekt>/<session-id>/tool-results/<kennung>.txt"}`.
+ * Die Beispielzeile liegt gekuerzt unter `test/fixtures/auskunft/transkript-tool-results.jsonl`.
+ */
+export const TOOL_RESULTS_PFAD = "tool-results/";
+
+// Die Rueckfragen aus E11. Jeweils mit Grenze nach dem Unterbefehl, damit `issue list`
+// nicht auch `issue lists` trifft; eine Grenze davor, damit `gh` nicht in `sigh` steckt.
+const RUECKFRAGE_MUSTER = [
+  /board\.mjs["']?\s+(?:issue\s+(?:get|list|epics|activity|auftrag)|kontext)(?![\w-])/,
+  /(?:^|[\s;&|(])(?:gh|glab)\s+issue\s+(?:view|list)(?![\w-])/,
+  /(?:^|[\s;&|(])gh\s+api\b[^|;&\n]*issues/,
+];
+
+// Eine einfache Pipe (nicht `||`) an ein Programm, das die Antwort zerlegt.
+const AUFBEREITUNG_PIPE = /(?<!\|)\|(?!\|)\s*(?:jq|node\s+-e|python3?)(?![\w-])/g;
+
+/**
+ * Ob ein `tool_use`-Block eine Board-Auskunft ist (E11) — und welche Art.
+ *
+ *   "rueckfrage"    ein Bash-Aufruf, der das Board oder den Tracker fragt.
+ *   "aufbereitung"  ein Aufruf, der die Antwort einer Rueckfrage zerlegt: eine Rueckfrage
+ *                   per Pipe an `jq`, `node -e` oder `python`, oder jeder Aufruf, dessen
+ *                   Eingabe einen ausgelagerten Werkzeugergebnis-Pfad nennt.
+ *   null            keine Auskunft — auch ein schreibender Board-Aufruf (`issue move`,
+ *                   `issue comment`, `issue melden`) und ein `node -e` ohne Rueckfrage.
+ *
+ * Gezaehlt wird am Aufruf, nicht an der Absicht: Das Muster nach `prueflaufArt`.
+ */
+export function auskunftArt(block) {
+  if (block?.type !== "tool_use" || !block.input || typeof block.input !== "object") return null;
+  const bashText = block.name === "Bash" && typeof block.input.command === "string" ? block.input.command : null;
+  if (JSON.stringify(block.input).includes(TOOL_RESULTS_PFAD)) return "aufbereitung";
+  if (bashText === null) return null;
+  let erste = -1;
+  for (const muster of RUECKFRAGE_MUSTER) {
+    const treffer = muster.exec(bashText);
+    if (treffer && (erste < 0 || treffer.index < erste)) erste = treffer.index;
+  }
+  if (erste < 0) return null;
+  for (const pipe of bashText.matchAll(AUFBEREITUNG_PIPE)) {
+    if (pipe.index > erste) return "aufbereitung";
+  }
+  return "rueckfrage";
+}
+
+/**
+ * Beobachtet denselben `stream-json`-Strom wie die drei anderen Beobachter und misst die
+ * Zeit fuer Board-Auskuenfte (Plan #1015, E11): die Spanne tool_use bis tool_result jedes
+ * Aufrufs, den `auskunftArt` erkennt. Nachdenkzeit zwischen den Aufrufen zaehlt nicht.
+ *
+ * Ein eigener Beobachter aus demselben Grund wie `prueflaufBeobachter`: Jeder liest den
+ * Strom fuer genau eine Frage. Gezaehlt wird je Aufruf beim tool_use; ein Aufruf ohne
+ * Ergebnis zaehlt mit, seine Spanne nicht — sie waere eine Schaetzung.
+ *
+ * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
+ * ANKUNFT, `ergebnis()` liefert jederzeit `{ ms, aufrufe }`.
+ */
+export function auskunftBeobachter() {
+  let ms = 0;
+  let aufrufe = 0;
+  const offen = new Map();
+
+  return {
+    zeile(roh, ts) {
+      const obj = leseStromereignis(roh);
+      if (!obj || !Array.isArray(obj.message?.content)) return;
+      for (const block of obj.message.content) {
+        if (obj.type === "assistant") {
+          if (typeof block?.id !== "string" || block.id === "" || !auskunftArt(block)) continue;
+          aufrufe += 1;
+          offen.set(block.id, ts);
+        } else if (block?.type === "tool_result" && offen.has(block.tool_use_id)) {
+          ms += ts - offen.get(block.tool_use_id);
+          offen.delete(block.tool_use_id);
+        }
+      }
+    },
+    ergebnis() {
+      return { ms, aufrufe };
+    },
+  };
+}
+
+/**
+ * Ob ein Session-Prompt eine Umsetzung startet (Plan #1015, E12): `/implement-next`,
+ * `/implement-ready`, `/implement-test` oder `/implement-done` am Anfang. Die Kette, die
+ * Kartenanlage, der Prueflauf und die Rettung einer Runde starten anders.
+ */
+export function umsetzungsStart(prompt) {
+  return typeof prompt === "string" && /^\s*\/implement-(?:next|ready|test|done)(?![\w-])/.test(prompt);
+}
+
 // --- Session-Kennzahlen (Issue #487) ---
 
 // Ein Feld gilt nur als gelesen, wenn es eine endliche Zahl ist — auch die 0. Alles
@@ -3085,6 +3197,29 @@ function prueflaeufeErfassen(issueId, mess) {
   // Ergebnisstand stehen beide als eigene Bloecke nebeneinander (Issue #926).
   const { abschluss, ...arbeit } = mess;
   einheit.prueflaeufe = prueflaeufeAddieren(einheit.prueflaeufe, { arbeit, abschluss });
+  schreibeErgebnisstand();
+}
+
+/**
+ * Schreibt die Auskunftszeit einer Session auf die juengste Einheit der Karte (Issue #1026)
+ * und vermerkt, ob die Session eine Umsetzung war — an derselben Stelle wie
+ * `prueflaeufeErfassen`.
+ *
+ * Zwei Sessions derselben Einheit (Runde und Rettung) addieren sich. Eine Session ohne
+ * Beobachtung (`mess === null`) laesst `auskunft` stehen, wie es ist: `null` bleibt
+ * "nicht gemessen". Das Merkmal bleibt gesetzt, sobald eine Session umsetzte.
+ */
+function auskunftErfassen(issueId, mess, prompt) {
+  if (!LAUF || issueId === null) return;
+  const einheit = LAUF.einheiten.findLast((e) => e.id === String(issueId));
+  if (!einheit) return;
+  if (umsetzungsStart(prompt)) einheit.umsetzung = true;
+  if (mess) {
+    einheit.auskunft = {
+      ms: (einheit.auskunft?.ms ?? 0) + mess.ms,
+      aufrufe: (einheit.auskunft?.aufrufe ?? 0) + mess.aufrufe,
+    };
+  }
   schreibeErgebnisstand();
 }
 
@@ -3556,6 +3691,9 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // obwohl gar nicht beobachtet werden konnte. `null` sagt "nicht beobachtet", dieselbe
     // Unterscheidung wie "nicht gemessen" gegen 0.
     const fortschritt = useStream && !kommandoStufe ? fortschrittBeobachter() : null;
+    // Vierter Beobachter (Issue #1026), mit derselben Bedingung wie der dritte: Ohne
+    // `stream-json` gibt es keine Aufrufe zu sehen, und `null` heisst nicht gemessen.
+    const auskunft = useStream && !kommandoStufe ? auskunftBeobachter() : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
     const gestartet = Date.now();
@@ -3572,6 +3710,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         werkzeugzeit: werkzeugzeit ? werkzeugzeit.ergebnis() : null,
         prueflaeufe: prueflaufZaehler ? prueflaufZaehler.ergebnis() : null,
         fortschritt: fortschritt ? fortschritt.ergebnis() : null,
+        auskunft: auskunft ? auskunft.ergebnis() : null,
       });
     };
 
@@ -3634,6 +3773,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
           prueflaufZaehler.zeile(zeile, ts);
           // Kein Beobachter in der Kommando-Stufe (Issue #975) — dort bleibt das Feld null.
           fortschritt?.zeile(zeile, ts);
+          auskunft?.zeile(zeile, ts);
           // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
           // gemessen wird immer, sobald der Strom angefordert ist.
           if (verbose) emitVerbose(issueId, zeile);
@@ -3655,6 +3795,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
         werkzeugzeit.zeile(buf, ts);
         prueflaufZaehler.zeile(buf, ts);
         fortschritt?.zeile(buf, ts);
+        auskunft?.zeile(buf, ts);
         if (verbose) emitVerbose(issueId, buf);
       }
       const error = timedOut
@@ -3894,6 +4035,7 @@ export async function runSession(issueId, args, opts = {}) {
   verbrauchErfassen(issueId, kennzahlen);
   zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
   prueflaeufeErfassen(issueId, res.prueflaeufe);
+  auskunftErfassen(issueId, res.auskunft, prompt);
   // Das wirksame Zeitlimit dieser Runde (Issue #976). Es wird hier oben gerechnet — aus
   // `NIGHT_TIMEOUT_MS`, `opts.timeoutMs` oder `args.timeoutMin` — und war bisher nach der
   // Rueckkehr nicht mehr zu erfahren. Der Zeitabbruch-Vermerk nennt die Grenze aber, und

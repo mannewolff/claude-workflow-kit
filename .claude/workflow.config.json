@@ -229,7 +229,8 @@
       "test/night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
       "test/helpers/kette-fixture.mjs",
-      "test/helpers/kette-umsetzung-fixture.mjs"
+      "test/helpers/kette-umsetzung-fixture.mjs",
+      "test/fixtures/auskunft/**"
     ],
     "board": [
       "kit/board.mjs",
