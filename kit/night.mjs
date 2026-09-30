@@ -6388,7 +6388,9 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
     if (form.json.ok) {
       log(`  Formpruefung #${stand.id} gruen.`);
-      testhinweiseVermerken(stand.id, form.json.hinweise);
+      // Nur Eintraege mit Baustein und Test sind Testhinweise; Abhaengigkeits-Hinweise der
+      // Pakete (Plan #1057 E4) tragen keine und bleiben hier ohne Kommentar (Issue #1059).
+      testhinweiseVermerken(stand.id, (form.json.hinweise || []).filter((h) => h.baustein && h.test));
       return null;
     }
     const verstoesse = (form.json.verstoesse || []).map((v) => `${v.gate}: ${v.meldung}`).join("; ");
@@ -6413,8 +6415,9 @@ export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
  * Nachts reagiert die planende Sitzung selbst auf die Hinweise; was danach stehen bleibt,
  * schreibt der Runner an den Plan — nicht die Sitzung, damit der Kommentar nicht an ihrer
  * Disziplin haengt. Ein Hinweis haelt nichts an: Scheitert das Kommentieren, steht das im
- * Protokoll, und die Kette laeuft weiter. Pakete tragen kein `hinweise`, fuer sie geschieht
- * hier nichts.
+ * Protokoll, und die Kette laeuft weiter. Pakete koennen Abhaengigkeits-Hinweise tragen
+ * (Plan #1057 E4); die sind keine Testhinweise und werden hier nicht vermerkt — der Aufrufer
+ * reicht nur Eintraege mit `baustein` und `test` weiter (Issue #1059).
  */
 function testhinweiseVermerken(dokId, hinweise) {
   if (!Array.isArray(hinweise) || hinweise.length === 0) return;

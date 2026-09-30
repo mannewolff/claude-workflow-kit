@@ -270,3 +270,56 @@ test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, a
     }
   });
 });
+
+// Abhaengigkeits-Hinweise der Pakete (Issue #1059, Plan #1057 E4): `issue check-form` liefert
+// kuenftig auch bei Paketen einen Schluessel `hinweise`, aber mit Eintraegen ohne `baustein`
+// und `test`. Die Formstufe vermerkt nur echte Testhinweise. Der Fake legt vor die echte
+// board.mjs eine Huelle, die jeder gruenen Formpruefung einen Abhaengigkeits-Hinweis beigibt.
+
+const SCHREIBWEISE_MELDUNG = "Nummer #724 steht ausserhalb einer Verweiszeile und zaehlt als Abhaengigkeit.";
+
+function checkFormMitSchreibweise(dir) {
+  const kit = join(dir, ".claude", "kit");
+  writeFileSync(join(kit, "board-echt.mjs"), readFileSync(join(kit, "board.mjs")));
+  writeFileSync(join(kit, "board.mjs"), `import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+const args = process.argv.slice(2);
+const res = spawnSync(process.execPath, [join(import.meta.dirname, "board-echt.mjs"), ...args], { encoding: "utf-8", stdio: ["inherit", "pipe", "pipe"] });
+let out = res.stdout;
+if (args[0] === "issue" && args[1] === "check-form") {
+  try {
+    const json = JSON.parse(out);
+    if (json.ok) {
+      json.hinweise = [...(json.hinweise || []), { art: "schreibweise", nummer: 724, stelle: "Nicht #724: erlaeutert nur.", meldung: ${JSON.stringify(SCHREIBWEISE_MELDUNG)} }];
+      out = JSON.stringify(json, null, 2) + "\\n";
+    }
+  } catch {}
+}
+process.stdout.write(out);
+process.stderr.write(res.stderr);
+process.exit(res.status ?? 1);
+`);
+}
+
+test("[night-19] ein Abhaengigkeits-Hinweis erzeugt keinen Testhinweis-Kommentar, ein echter Testhinweis am Plan weiterhin", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    navVersionieren(dir);
+    checkFormMitSchreibweise(dir);
+    const F = fachplan(dir);
+    const env = umgebung(dir, { plan: PLAN_MIT_NAV, stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+
+    for (const id of einheit.stufen.pakete.ids) {
+      assert.equal(testhinweisAnker(dir, id), 0, `Paket #${id} traegt einen Testhinweis-Kommentar`);
+    }
+    const planId = einheit.stufen.plan.id;
+    assert.equal(testhinweisAnker(dir, planId), 1, "der echte Testhinweis steht weiterhin am Plan");
+    const text = readFileSync(join(dir, "issues", `${planId}.md`), "utf-8");
+    const block = text.slice(text.indexOf(TESTHINWEIS_ANKER));
+    assert.ok(block.includes(NAV_SPEC), block);
+    assert.ok(!text.includes(SCHREIBWEISE_MELDUNG), "der Abhaengigkeits-Hinweis gehoert nicht in den Kommentar");
+  });
+});
