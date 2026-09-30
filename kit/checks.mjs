@@ -127,7 +127,7 @@ import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkd
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
@@ -1109,10 +1109,27 @@ function settingsEnv() {
  * Fusszeile und nicht irgendwo dazwischen.
  */
 function kommandoAusfuehren(cmd, env) {
-  const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
-  // status ist null, wenn der Prozess durch ein Signal endete oder gar nicht erst
-  // startete — beides ist rot, nie gruen.
-  return { gruen: res.status === 0, ausgabe: `${res.stdout || ""}${res.stderr || ""}` };
+  // Asynchron seit Issue #1070 (Plan #1066): Gleichzeitige Kindprozesse gehen mit
+  // `spawnSync` nicht. Die Ausgabe bleibt, wie sie war — erst stdout, dann stderr —,
+  // und wird als Ganzes dekodiert, damit kein Zeichen an einer Stueckgrenze zerfaellt.
+  return new Promise((aufloesen) => {
+    const stdout = [];
+    const stderr = [];
+    let erledigt = false;
+    const fertig = (code) => {
+      if (erledigt) return;
+      erledigt = true;
+      // code ist null, wenn der Prozess durch ein Signal endete oder gar nicht erst
+      // startete — beides ist rot, nie gruen.
+      const ausgabe = `${Buffer.concat(stdout).toString("utf-8")}${Buffer.concat(stderr).toString("utf-8")}`;
+      aufloesen({ gruen: code === 0, ausgabe });
+    };
+    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true });
+    kind.stdout.on("data", (stueck) => stdout.push(stueck));
+    kind.stderr.on("data", (stueck) => stderr.push(stueck));
+    kind.on("error", () => fertig(null));
+    kind.on("close", (code) => fertig(code));
+  });
 }
 
 /**
@@ -2016,7 +2033,8 @@ function prozessLaeuft(pid) {
 /**
  * Wartet synchron. `Atomics.wait` und kein `spawnSync("sleep")`: Der Zweck des
  * Wartens ist, die Maschine zu entlasten — ein Kindprozess je halbe Sekunde arbeitete
- * dagegen. `ausfuehren` ist synchron, ein `await` steht hier also nicht zur Wahl.
+ * dagegen. Synchron auch seit Issue #1070: Solange auf die Sperre gewartet wird, laeuft
+ * in diesem Prozess nichts, dem die blockierte Ereignisschleife fehlen koennte.
  */
 function schlafeSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -2029,6 +2047,11 @@ function schlafeSync(ms) {
  * weitere Lauf auf dieser Maschine: der Runner, `/local-check` und `push main`.
  *
  * Gibt zurueck, was `fn` zurueckgibt. Die Sperre aendert am Ausgang des Laufs nichts.
+ *
+ * Liefert `fn` ein Promise, faellt die Freigabe in dessen `finally` (Issue #1070): Die
+ * Sperre haelt, bis der asynchrone Lauf erledigt ist — gruen, rot oder verworfen —, und
+ * nicht nur, bis `fn` zurueckkehrt. Ein Einstieg fuer beide Faelle statt einer zweiten
+ * Funktion; die synchronen Aufrufer bleiben, wie sie sind.
  *
  * Freigegeben wird nur die EIGENE Sperre — die Datei muss beim Loslassen noch die
  * eigene pid tragen. Sonst loeschte ein Lauf, der nach Ablauf der Obergrenze ohne
@@ -2048,11 +2071,19 @@ export function mitSperre(fn, {
   lies = readFileSync,
 } = {}) {
   const gehalten = sperreNehmen({ pfad, grenzeMs, melde, abstandMs, uhr, schlafe, lies });
-  try {
-    return fn();
-  } finally {
+  const freigeben = () => {
     if (gehalten) sperreFreigeben(pfad, melde, lies);
+  };
+  let ergebnis;
+  try {
+    ergebnis = fn();
+  } catch (e) {
+    freigeben();
+    throw e;
   }
+  if (ergebnis instanceof Promise) return ergebnis.finally(freigeben);
+  freigeben();
+  return ergebnis;
 }
 
 /**
@@ -2183,7 +2214,11 @@ function sperreFreigeben(pfad, melde, lies) {
   }
 }
 
-function ausfuehren(args) {
+/**
+ * `run`. Rueckgabe: ein Promise auf den Exitcode (Issue #1070) — auch beim uebernommenen
+ * Ergebnis, damit der Aufrufer nur einen Fall kennt.
+ */
+async function ausfuehren(args) {
   // Die Wartezeit laeuft ab dem Aufruf (Issue #1069, Plan #1066): Auch das Warten auf die
   // maschinenweite Sperre ist Warten des Pakets.
   const startNs = process.hrtime.bigint();
@@ -2256,7 +2291,7 @@ function ausfuehren(args) {
  * Eigene Funktion allein, damit `mitSperre` sie als Ganzes umschliessen kann — die
  * Sperre muss auf jedem Weg heraus freigegeben werden, auch auf dem der Ausnahme.
  */
-function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }) {
+async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   const grenzeMs = pruefdauerObergrenzeMs();
 
@@ -2323,7 +2358,7 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, st
     schreibeStand(false);
     process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
     const start = process.hrtime.bigint();
-    const { gruen, ausgabe } = kommandoAusfuehren(eintrag.cmd, env);
+    const { gruen, ausgabe } = await kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
     if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
@@ -2456,6 +2491,10 @@ function parseArgs(rest) {
   return args;
 }
 
+/**
+ * Rueckgabe: der Exitcode — fuer `run` als Promise (Issue #1070), fuer `plan` und
+ * `bereiche` wie bisher als Zahl.
+ */
 function main() {
   const argv = process.argv.slice(2);
 
@@ -2494,7 +2533,7 @@ if (process.argv[1]) {
 if (runAsCli) {
   try {
     // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
-    process.exitCode = main();
+    process.exitCode = await main();
   } catch (err) {
     const prefix = err instanceof ChecksError ? "Fehler" : "Unerwarteter Fehler";
     process.stderr.write(`${prefix}: ${err.message}\n`);

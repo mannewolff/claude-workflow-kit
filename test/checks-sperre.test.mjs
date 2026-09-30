@@ -413,3 +413,36 @@ test("[checks-958-12] eine lesbare Sperre ohne gueltige pid ist kaputt und wird 
     rmSync(ablage, { recursive: true, force: true });
   }
 });
+
+// `run` faehrt seine Kommandos asynchron (Issue #1070, Plan #1066): `fn` liefert dann ein
+// Promise, und die Sperre muss halten, bis es sich erledigt hat — nicht nur, bis `fn`
+// zurueckkehrt. Gaebe sie frei, sobald das Promise entsteht, liefen zwei Laeufe wieder
+// gleichzeitig, und niemand saehe es an der Ausgabe.
+test("[checks-1070-1] mitSperre haelt die Sperre, solange das Promise laeuft, und gibt danach frei — auch wenn es verwirft", async () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-1070-"));
+  const sperre = join(ablage, "promise.lock");
+  try {
+    let freigeben;
+    const laufend = mitSperre(() => new Promise((aufloesen) => { freigeben = aufloesen; }),
+      { pfad: sperre, melde: () => {} });
+    assert.ok(laufend instanceof Promise, "ein Promise von fn kommt als Promise zurueck");
+    // Ein paar Runden der Ereignisschleife: Die Sperre darf nicht mit der Rueckkehr von fn fallen.
+    await new Promise((weiter) => setTimeout(weiter, 20));
+    assert.ok(existsSync(sperre), "solange das Promise laeuft, muss die Sperrdatei liegen");
+    assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.pid));
+    freigeben(7);
+    assert.equal(await laufend, 7, "der Wert des Promise kommt durch");
+    assert.equal(existsSync(sperre), false, "nach dem Promise ist die Sperre frei");
+
+    const verworfen = mitSperre(async () => {
+      assert.ok(existsSync(sperre), "auch im verwerfenden Lauf haelt die Sperre");
+      await new Promise((weiter) => setTimeout(weiter, 10));
+      throw new Error("mitten im asynchronen Lauf");
+    }, { pfad: sperre, melde: () => {} });
+    await assert.rejects(verworfen, /mitten im asynchronen Lauf/);
+    assert.equal(existsSync(sperre), false,
+      "ein verworfenes Promise darf die Sperre nicht liegenlassen — sonst haengt danach jeder Lauf");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});

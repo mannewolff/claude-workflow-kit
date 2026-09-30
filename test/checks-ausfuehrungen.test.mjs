@@ -145,7 +145,11 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
     const mitFehler = run(dir, "--frisch");
 
     assert.equal(mitFehler.status, ohneFehler.status, "der Exit-Code bleibt derselbe");
-    assert.equal(mitFehler.stdout, ohneFehler.stdout, "die stdout-Ausgabe bleibt unveraendert");
+    // Die Zeile `Wartezeit:` (Issue #1069) misst die Wandzeit jedes Laufs und darf
+    // zwischen zwei Laeufen um eine Stelle abweichen — unter Last der Suite tut sie es.
+    const ohneWartezeit = (text) => text.replace(/^Wartezeit: .*$/m, "Wartezeit: …");
+    assert.equal(ohneWartezeit(mitFehler.stdout), ohneWartezeit(ohneFehler.stdout),
+      "die stdout-Ausgabe bleibt unveraendert");
     assert.match(mitFehler.stderr, /Ausfuehrung/, "der Fehlschlag wird als Hinweis gemeldet, nicht verschwiegen");
   });
 });
