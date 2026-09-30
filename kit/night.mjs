@@ -2609,6 +2609,19 @@ export function abhaengigkeitsBlock(befund) {
   ].join("\n");
 }
 
+/**
+ * Derselbe Befund als eingerueckte Zeilen unter der Zeile eines Pakets im Probelauf (Issue
+ * #1064, Plan #1057 E12): je Abhaengigkeit eine Zeile wie im Block, danach die Kreise. Ohne
+ * Abhaengigkeit keine Zeile — die erste Zeile des Pakets bleibt dann allein.
+ */
+export function abhaengigkeitsZeilen(befund) {
+  if (!befund || befund.abhaengigkeiten.length === 0) return [];
+  return [
+    ...befund.abhaengigkeiten.map(abhaengigkeitsZeile),
+    ...(befund.kreise ?? []).map(kreisZeile),
+  ].map((zeile) => `    ${zeile}`);
+}
+
 // --- Verbose-Stream (Issue #154) ---
 
 // Kuerzt Text auf eine kompakte, einzeilige Log-Zeile.
@@ -8200,13 +8213,17 @@ const DRY_RUN_PRAEFIXE = [
 ];
 
 function dryRunBefund(issue, ctx, assumedDone) {
-  const aus = (grund) => ({ grund, vermerk: "" });
+  let befund = null;
+  const aus = (grund) => ({ grund, vermerk: "", befund });
   if (!ctx.hasLabel(issue)) return aus(`uebersprungen (kein Label '${ctx.labelFilter}')`);
   const praefix = DRY_RUN_PRAEFIXE.find(([passt]) => passt(issue.title));
   if (praefix) return aus(`wuerde ins Backlog (${praefix[1]}, wird nicht implementiert)`);
   if (hatKlaerenLabel(issue)) return aus("wuerde ins Backlog (kit:klaeren, offene Entscheidung)");
 
   const full = board("issue", "get", String(issue.id));
+  // Der Befund wie im Rueckstell-Kommentar, auch fuer ein Paket, das startet (Issue #1064):
+  // Gerade eine versehentliche, zufaellig erfuellte Abhaengigkeit fiele sonst nicht auf.
+  befund = abhaengigkeitsBefund(issue, full.body, assumedDone);
   // Dasselbe Review-Gate wie im echten Lauf (Issue #304). Bis dahin lief es hier
   // NICHT mit: Der Dry-Run bildete nur Praefixe, Abhaengigkeiten und --max ab und
   // wies Tickets als Session aus, die der echte Lauf zurueckstellt. Wer damit
@@ -8228,9 +8245,9 @@ function dryRunBefund(issue, ctx, assumedDone) {
     // laufen wuerde, prueft auch, WOMIT. Herkunft dazu, sonst liesse sich ein Rueckfall
     // auf das Lauf-Modell nicht von einer Karte unterscheiden, die es selbst empfiehlt.
     const { modell, grund } = empfohlenesModell(full.body, config.night?.modelle);
-    if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)` };
+    if (modell) return { grund: null, vermerk: `, Modell ${modell} (Karte)`, befund };
     const nachsatz = grund ? ` — ${grund}` : "";
-    return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}` };
+    return { grund: null, vermerk: `, Modell ${ctx.laufModell} (Lauf)${nachsatz}`, befund };
   }
 
   // Bei aktiver Einstellung entscheidet dieselbe Funktion wie im echten Lauf, samt Stufe
@@ -8244,7 +8261,7 @@ function dryRunBefund(issue, ctx, assumedDone) {
   if (!modellStand.startbar) {
     return aus(`wuerde nicht starten (keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund})`);
   }
-  return { grund: null, vermerk: dryRunStufenVermerk(modellStand) };
+  return { grund: null, vermerk: dryRunStufenVermerk(modellStand), befund };
 }
 
 /**
@@ -8268,18 +8285,22 @@ export function laufeDryRun(args, ctx) {
   const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
   let planned = 0;
   for (const issue of ready) {
-    const { grund, vermerk } = dryRunBefund(issue, ctx, assumedDone);
+    const { grund, vermerk, befund } = dryRunBefund(issue, ctx, assumedDone);
+    const befundZeilen = abhaengigkeitsZeilen(befund);
     if (grund !== null) {
       log(`  #${issue.id} ${issue.title} -> ${grund}`);
+      befundZeilen.forEach((zeile) => log(zeile));
       continue;
     }
     if (planned >= args.max) {
       log(`  #${issue.id} ${issue.title} -> ueber --max ${args.max}, bliebe liegen`);
+      befundZeilen.forEach((zeile) => log(zeile));
       continue;
     }
     planned++;
     assumedDone.add(Number(issue.id));
     log(`  #${issue.id} ${issue.title} -> Session ${planned}${vermerk}`);
+    befundZeilen.forEach((zeile) => log(zeile));
   }
   log(`Dry-Run beendet: ${planned} Session(s) wuerden starten.`);
   process.exit(0);

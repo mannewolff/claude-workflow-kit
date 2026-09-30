@@ -312,3 +312,78 @@ test("[night-1063] jede Karte wird je Lauf hoechstens einmal abgerufen", NUR_POS
     for (const [id, anzahl] of abrufe) assert.equal(anzahl, 1, `#${id} wurde ${anzahl}-mal abgerufen`);
   });
 });
+
+// --- Der Probelauf zeigt denselben Befund (Issue #1064, Plan #1057 E12) ---
+
+function probelauf(dir) {
+  const res = run(dir, ["--dry-run", "--label", "none"]);
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  return res.stdout.split("\n").map((z) => z.replace(/^\[[^\]]*\]\s?/, ""));
+}
+
+/** Die erste Zeile des Pakets im Probelauf und die eingerueckten Zeilen darunter. */
+function paketZeilen(zeilen, id, titel) {
+  const kopf = zeilen.findIndex((z) => z.startsWith(`  #${id} ${titel} -> `));
+  assert.ok(kopf >= 0, `keine Zeile fuer #${id}:\n${zeilen.join("\n")}`);
+  const darunter = [];
+  for (const z of zeilen.slice(kopf + 1)) {
+    if (!z.startsWith("    ")) break;
+    darunter.push(z);
+  }
+  return { kopf: zeilen[kopf], darunter };
+}
+
+test("[night-1064] der Probelauf nennt Herkunft und Dokument-Hinweis auch bei einem Paket, das eine Session bekaeme", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const fertig = karte(dir, "Schon fertig", "## Abhaengigkeiten\nKeine.", "in_review");
+    const plan = karte(dir, "[Plan] Ein Plandokument", "## Kontext\nx", "in_review");
+    const paket = karte(dir, "Startet trotzdem",
+      `## Abhaengigkeiten\nIssue #${fertig} muss vorher fertig sein.\nDer Rahmen steht in #${plan}.`, "ready");
+
+    const { kopf, darunter } = paketZeilen(probelauf(dir), paket, "Startet trotzdem");
+    assert.match(kopf, new RegExp(`^  #${paket} Startet trotzdem -> Session 1, Modell [^\\n]*$`));
+    assert.equal(darunter.length, 2, darunter.join("\n"));
+    assert.ok(darunter[0].startsWith(`    - ${n(fertig)} (Schon fertig): erfuellt, aus einer Verweiszeile: „Issue #${fertig} muss vorher fertig sein.“`), darunter[0]);
+    assert.ok(darunter[1].startsWith(`    - ${n(plan)} ([Plan] Ein Plandokument): erfuellt, aus erlaeuterndem Text: „Der Rahmen steht in #${plan}.“`), darunter[1]);
+    assert.match(darunter[1], /Dokument \(\[Plan\]\), kein Arbeitspaket: ein Plandokument wird nie durch Umsetzung erledigt\./);
+  });
+});
+
+test("[night-1064] die erste Zeile eines zurueckgestellten Pakets bleibt zeichengleich, der Befund steht darunter", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const offen = karte(dir, "Noch offen", "## Abhaengigkeiten\nKeine.");
+    const paket = karte(dir, "Wartet", `## Abhaengigkeiten\nIssue #${offen}`, "ready");
+
+    const { kopf, darunter } = paketZeilen(probelauf(dir), paket, "Wartet");
+    assert.equal(kopf, `  #${paket} Wartet -> wuerde ins Backlog (Abhaengigkeit ${n(offen)} nicht erfuellt)`);
+    assert.deepEqual(darunter, [`    - ${n(offen)} (Noch offen): unerfuellt, aus einer Verweiszeile: „Issue #${offen}“`]);
+  });
+});
+
+test("[night-1064] ein Kreis erscheint im Probelauf als eigene Zeile", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const a = karte(dir, "Erstes", "## Abhaengigkeiten\nKeine.");
+    const b = karte(dir, "Zweites", `## Abhaengigkeiten\nIssue #${a}`, "ready");
+    board(dir, "issue", "update", a, "--body", `## Abhaengigkeiten\nIssue #${b}`);
+    board(dir, "issue", "move", a, "ready");
+
+    const zeilen = probelauf(dir);
+    const kreis = `    Kreis: ${n(a)} -> ${n(b)} -> ${n(a)}`;
+    for (const [id, titel] of [[a, "Erstes"], [b, "Zweites"]]) {
+      const { darunter } = paketZeilen(zeilen, id, titel);
+      assert.equal(darunter.at(-1), kreis, darunter.join("\n"));
+      assert.equal(darunter.filter((z) => z.startsWith("    Kreis: ")).length, 1);
+    }
+  });
+});
+
+test("[night-1064] ein Paket ohne Abhaengigkeit bekommt im Probelauf keine eingerueckte Zeile", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const ohne = karte(dir, "Ohne", "## Abhaengigkeiten\nKeine.", "ready");
+    const keinAbschnitt = karte(dir, "Ganz ohne", "## Kontext\nx", "ready");
+
+    const zeilen = probelauf(dir);
+    assert.deepEqual(paketZeilen(zeilen, ohne, "Ohne").darunter, []);
+    assert.deepEqual(paketZeilen(zeilen, keinAbschnitt, "Ganz ohne").darunter, []);
+  });
+});
