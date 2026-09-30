@@ -169,7 +169,7 @@ test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und 
     "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
     "configHash",
     "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
-    "stufe", "vollerUmfang", "zeitpunkt",
+    "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
   ];
   const faelle = [
     { name: "gruen", cmd: "echo eins", leer: false },

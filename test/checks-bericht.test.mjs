@@ -37,14 +37,29 @@ const CONFIG = {
   },
 };
 
-/** Die Zeilen des Blocks `Fuer den Abschlussbericht:` — bis zur ersten Leerzeile. */
-function berichtsblock(stdout) {
+/** Alle Zeilen des Blocks `Fuer den Abschlussbericht:` — bis zur ersten Leerzeile. */
+function vollerBlock(stdout) {
   const zeilen = stdout.split("\n");
   const start = zeilen.indexOf("Fuer den Abschlussbericht:");
   assert.notEqual(start, -1, `kein Berichtsblock in der Ausgabe:\n${stdout}`);
   const rest = zeilen.slice(start + 1);
   const ende = rest.indexOf("");
   return ende === -1 ? rest : rest.slice(0, ende);
+}
+
+/**
+ * Die Pruefzeilen des Blocks, ohne die Zeile `Wartezeit:`, die ihn eroeffnet (Issue
+ * #1069). Sie sind genau das Feld `berichtszeilen` der Zusammenfassung.
+ */
+function berichtsblock(stdout) {
+  const [wartezeit, ...rest] = vollerBlock(stdout);
+  assert.match(wartezeit, /^Wartezeit: /, "der Block beginnt nicht mit der Zeile 'Wartezeit:'");
+  return rest;
+}
+
+/** Die Zeile `Wartezeit:` am Anfang des Blocks. */
+function wartezeitZeile(stdout) {
+  return vollerBlock(stdout)[0];
 }
 
 // --- Grundtext des vollen Umfangs (E2) --------------------------------------
@@ -213,5 +228,93 @@ test("uebernommener Lauf ohne Dauer im Ursprung: 'Dauer nicht gemessen'", () => 
 
     assert.equal(zweiter.status, 0, zweiter.stderr);
     assert.match(berichtsblock(zweiter.stdout)[0], /→ gruen, Dauer nicht gemessen \(Ergebnis uebernommen\) — /);
+  });
+});
+
+// --- Wartezeit (Issue #1069, Plan #1066, A7, E4) ----------------------------
+
+const ABSCHLUSS = {
+  buildChecks: [BAU],
+};
+
+test("ohne Kartennummer: die Zeile nennt nur die Wartezeit, wartezeitKarte fehlt", () => {
+  mitRepo({ config: ABSCHLUSS }, (dir) => {
+    datei(dir, "a.txt");
+
+    const res = run(dir, "--abschluss");
+
+    assert.equal(res.status, 0, res.stderr);
+    const summary = zusammenfassung(dir);
+    assert.equal(wartezeitZeile(res.stdout), `Wartezeit: ${dauerText(summary.wartezeitMs)}`);
+    assert.equal(summary.wartezeitKarte, undefined);
+  });
+});
+
+test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", () => {
+  mitRepo({ config: ABSCHLUSS }, (dir) => {
+    datei(dir, "a.txt");
+
+    const res = run(dir, "--abschluss", "7");
+
+    assert.equal(res.status, 0, res.stderr);
+    const summary = zusammenfassung(dir);
+    assert.deepEqual(summary.wartezeitKarte, { karte: "7", summeMs: summary.wartezeitMs, laeufe: 1 });
+    const s = dauerText(summary.wartezeitMs);
+    assert.equal(wartezeitZeile(res.stdout), `Wartezeit: ${s}, zusammen ${s} in 1 Laeufen fuer Karte #7`);
+    assert.deepEqual(summary.berichtszeilen, berichtsblock(res.stdout), "berichtszeilen bleibt ohne die Zeile");
+  });
+});
+
+test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt hoch", () => {
+  mitRepo({ config: ABSCHLUSS }, (dir) => {
+    datei(dir, "a.txt");
+    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    const erster = zusammenfassung(dir).wartezeitMs;
+    datei(dir, "b.txt");
+
+    const res = run(dir, "--abschluss", "7");
+
+    assert.equal(res.status, 0, res.stderr);
+    const summary = zusammenfassung(dir);
+    const summe = erster + summary.wartezeitMs;
+    assert.deepEqual(summary.wartezeitKarte, { karte: "7", summeMs: summe, laeufe: 2 });
+    assert.equal(
+      wartezeitZeile(res.stdout),
+      `Wartezeit: ${dauerText(summary.wartezeitMs)}, zusammen ${dauerText(summe)} in 2 Laeufen fuer Karte #7`,
+    );
+  });
+});
+
+test("eine andere Karte beginnt die Summe neu", () => {
+  mitRepo({ config: ABSCHLUSS }, (dir) => {
+    datei(dir, "a.txt");
+    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    datei(dir, "b.txt");
+
+    const res = run(dir, "--abschluss", "8");
+
+    assert.equal(res.status, 0, res.stderr);
+    const summary = zusammenfassung(dir);
+    assert.deepEqual(summary.wartezeitKarte, { karte: "8", summeMs: summary.wartezeitMs, laeufe: 1 });
+  });
+});
+
+test("ein uebernommener Lauf zaehlt als Lauf ohne Zeit", () => {
+  mitRepo({ config: ABSCHLUSS }, (dir) => {
+    datei(dir, "a.txt");
+    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    const erster = zusammenfassung(dir).wartezeitMs;
+
+    const res = run(dir, "--abschluss", "7");
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /Ergebnis uebernommen/);
+    const summary = zusammenfassung(dir);
+    assert.ok(Number.isFinite(summary.wartezeitMs), "auch der uebernommene Lauf traegt seine Wartezeit");
+    assert.deepEqual(summary.wartezeitKarte, { karte: "7", summeMs: erster, laeufe: 2 });
+    assert.equal(
+      wartezeitZeile(res.stdout),
+      `Wartezeit: ${dauerText(summary.wartezeitMs)}, zusammen ${dauerText(erster)} in 2 Laeufen fuer Karte #7`,
+    );
   });
 });

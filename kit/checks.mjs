@@ -321,7 +321,16 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
       ('gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>' und
       'ausgelassen: <Kommando> → <Grund>'), auch beim uebernommenen Lauf; das
-      Feld 'berichtszeilen' der Zusammenfassung traegt dasselbe. Dauert eine
+      Feld 'berichtszeilen' der Zusammenfassung traegt dasselbe. Eroeffnet
+      wird der Block von der Zeile 'Wartezeit: <s> s, zusammen <s> s in <n>
+      Laeufen fuer Karte #<n>', ohne Kartennummer nur 'Wartezeit: <s> s'. Die
+      erste Zahl ist die Wanduhr dieses Laufs vom Aufruf bis zum Ergebnis,
+      samt Warten auf die Sperre (Feld 'wartezeitMs'; 'dauerGesamtMs' bleibt
+      die Summe der Einzeldauern). Die zweite zaehlt mit --abschluss <n> alle
+      Laeufe derselben Karte zusammen (Feld 'wartezeitKarte'); ein
+      uebernommener Lauf zaehlt als Lauf ohne Zeit. Nachts beginnt die Summe
+      mit jeder Session neu, weil der Runner die Zusammenfassung vor jeder
+      Runde verwirft; die Summe ueber Sessions liefert der Nachtbericht. Dauert eine
       Pruefung laenger als ${PRUEFDAUER_OBERGRENZE_MS} ms, vermerkt ihre Zeile
       die Ueberschreitung (Feld 'ueberObergrenzeMs'); rot wird der Lauf davon
       nicht.
@@ -1466,8 +1475,58 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
   return zeilen;
 }
 
-function berichtsblockSchreiben(zeilen) {
-  process.stdout.write(["", "Fuer den Abschlussbericht:", ...zeilen, ""].join("\n"));
+/**
+ * Die Zeile, die den Block `Fuer den Abschlussbericht:` eroeffnet (Issue #1069, Plan
+ * #1066, A7, E4): die Wartezeit dieses Laufs und, mit Kartennummer, die Summe aller
+ * Laeufe der Karte. Sie steht nur im Block und nicht in `berichtszeilen` — das Feld
+ * bleibt, was es war, die Zeilen je Pruefung.
+ */
+export function wartezeitZeile(wartezeitMs, wartezeitKarte) {
+  const lauf = `Wartezeit: ${dauerText(wartezeitMs)}`;
+  if (!wartezeitKarte) return lauf;
+  const { karte, summeMs, laeufe } = wartezeitKarte;
+  return `${lauf}, zusammen ${dauerText(summeMs)} in ${laeufe} Laeufen fuer Karte #${karte}`;
+}
+
+function berichtsblockSchreiben(zeilen, wartezeit) {
+  process.stdout.write(["", "Fuer den Abschlussbericht:", wartezeit, ...zeilen, ""].join("\n"));
+}
+
+/**
+ * Die Summe der Wartezeit je Karte nach diesem Lauf (Issue #1069, Plan #1066, E4) —
+ * oder `undefined` ohne Kartennummer, dann fehlt das Feld.
+ *
+ * Traegt die vorige Zusammenfassung dieselbe Karte, wird weitergezaehlt, sonst beginnt
+ * die Summe neu. `zuschlagMs` ist die Wartezeit dieses Laufs, bei einem uebernommenen
+ * 0: Er zaehlt als Lauf, aber seine Zeit ist keine Pruefzeit. Nachts beginnt die Summe
+ * mit jeder Session neu, weil der Runner die Zusammenfassung vor jeder Runde verwirft.
+ */
+function wartezeitKarteNach(vorige, karte, zuschlagMs) {
+  if (karte === undefined) return undefined;
+  const alt = vorige?.wartezeitKarte;
+  const weiter = alt && alt.karte === karte && Number.isFinite(alt.summeMs) && Number.isInteger(alt.laeufe);
+  return weiter
+    ? { karte, summeMs: alt.summeMs + zuschlagMs, laeufe: alt.laeufe + 1 }
+    : { karte, summeMs: zuschlagMs, laeufe: 1 };
+}
+
+/**
+ * Die vorige Zusammenfassung, wie sie liegt, oder `null` — anders als
+ * `frueheresErgebnis` ohne Bedingung an den Stand: Die Summe je Karte laeuft ueber
+ * geaenderte Staende hinweg weiter.
+ */
+function vorigeZusammenfassung() {
+  try {
+    const alt = JSON.parse(readFileSync(zusammenfassungPfad(), "utf-8"));
+    return alt !== null && typeof alt === "object" ? alt : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Die Wanduhr seit `startNs` in ganzen Millisekunden. */
+function msSeit(startNs) {
+  return Math.round(Number(process.hrtime.bigint() - startNs) / 1e6);
 }
 
 function schreibeZusammenfassung(daten) {
@@ -1599,13 +1658,17 @@ export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
  * dabei wie ueberall hier alles, was nicht `gruen` ist — auch ein `nicht
  * gestartet` nach rotem Abbruch.
  */
-function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
+function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs, vorige, karte }) {
   const ungruen = frueher.laufen.find((e) => e.ergebnis !== "gruen") ?? null;
   const original = typeof frueher.uebernommen === "string" ? frueher.uebernommen : frueher.zeitpunkt;
   // Die Zeilen tragen die Dauer des URSPRUNGSLAUFS aus der frueheren Zusammenfassung
   // (Issue #1003, E12): Auch ein uebernommener Lauf gehoert in den Bericht, und ohne
   // Block muesste die Session ihn aus Einzelfeldern nachbauen.
   const zeilen = berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() });
+  // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
+  // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
+  const wartezeitMs = msSeit(startNs);
+  const wartezeitKarte = wartezeitKarteNach(vorige, karte, 0);
   const pfad = schreibeZusammenfassung({
     ...auswahl,
     laufen: frueher.laufen,
@@ -1621,12 +1684,14 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash }) {
     ...(frueher.verursacher ? { verursacher: frueher.verursacher } : {}),
     uebernommen: original,
     berichtszeilen: zeilen,
+    wartezeitMs,
+    ...(wartezeitKarte ? { wartezeitKarte } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   process.stdout.write(
     `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
   );
-  berichtsblockSchreiben(zeilen);
+  berichtsblockSchreiben(zeilen, wartezeitZeile(wartezeitMs, wartezeitKarte));
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return ungruen === null ? 0 : 1;
 }
@@ -2119,6 +2184,12 @@ function sperreFreigeben(pfad, melde, lies) {
 }
 
 function ausfuehren(args) {
+  // Die Wartezeit laeuft ab dem Aufruf (Issue #1069, Plan #1066): Auch das Warten auf die
+  // maschinenweite Sperre ist Warten des Pakets.
+  const startNs = process.hrtime.bigint();
+  // Gelesen, bevor dieser Lauf die Datei zum ersten Mal ueberschreibt — sie traegt die
+  // bisherige Summe der Karte.
+  const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
   const env = { ...process.env, ...settingsEnv() };
 
@@ -2167,13 +2238,15 @@ function ausfuehren(args) {
   // Lauf aus wie ein verkuerzter. Hier und nicht vor `blobHashes`, weil der
   // Vergleich genau diese Hashes braucht.
   const frueher = args.frisch ? null : frueheresErgebnis(auswahl, hashes, configHash);
-  if (frueher !== null) return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash });
+  if (frueher !== null) {
+    return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs, vorige, karte: args.karte });
+  }
 
   // Ab hier laufen Kommandos, und erst ab hier gilt die Sperre (Issue #958): Ein
   // uebernommenes Ergebnis fuehrt keines aus und erzeugt keine Last — es muss auf
   // nichts warten. Der Schnitt zwischen `ausfuehren` und `kommandosFahren` liegt
   // genau darum hier und nicht weiter oben.
-  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }));
+  return mitSperre(() => kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }));
 }
 
 /**
@@ -2183,7 +2256,7 @@ function ausfuehren(args) {
  * Eigene Funktion allein, damit `mitSperre` sie als Ganzes umschliessen kann — die
  * Sperre muss auf jedem Weg heraus freigegeben werden, auch auf dem der Ausnahme.
  */
-function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) {
+function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige }) {
   const laufen = auswahl.laufen.map((e) => ({ ...e, ergebnis: "nicht gestartet", dauerMs: null }));
   const grenzeMs = pruefdauerObergrenzeMs();
 
@@ -2228,12 +2301,21 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
   // (`lesePruefung` in night.mjs) allein `ergebnis !== "gruen"` auswerten und
   // `abgeschlossen` nicht sehen: Das laufende Kommando muss in der Datei noch
   // ungruen stehen, sonst saehe ein Abbruch mittendrin gruen aus.
+  //
+  // Die Wartezeit steht nur in der abgeschlossenen Fassung (Issue #1069) — vorher ist
+  // der Lauf nicht zu Ende. Die Summe der Karte reicht jede fruehere Fassung unveraendert
+  // weiter: Stirbt der Lauf, beginnt der naechste nicht bei null.
+  let wartezeit = {};
   const schreibeStand = (abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(laufen), ...(guete ? { guete } : {}),
     ...(verursacher ? { verursacher } : {}),
     berichtszeilen: berichtszeilen(auswahl, laufen, { grenzeMs }),
+    ...wartezeit,
   });
+  if (args.karte !== undefined && vorige?.wartezeitKarte?.karte === args.karte) {
+    wartezeit = { wartezeitKarte: vorige.wartezeitKarte };
+  }
   schreibeStand(false);
 
   for (const eintrag of laufen) {
@@ -2275,8 +2357,11 @@ function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash }) 
   //
   // Das guete-Feld steht nur da, wenn das Projekt eine Messung benannt hat — dann
   // aber immer, auch beim gruenen Lauf (Issue #763).
+  const wartezeitMs = msSeit(startNs);
+  const wartezeitKarte = wartezeitKarteNach(vorige, args.karte, wartezeitMs);
+  wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(true);
-  berichtsblockSchreiben(berichtszeilen(auswahl, laufen, { grenzeMs }));
+  berichtsblockSchreiben(berichtszeilen(auswahl, laufen, { grenzeMs }), wartezeitZeile(wartezeitMs, wartezeitKarte));
   process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
   return rot ? 1 : 0;
 }
