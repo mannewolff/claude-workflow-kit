@@ -208,6 +208,40 @@ test("[wirksamkeit-1005] der Ueberschreitungszaehler zaehlt Abschlusslaeufe uebe
   });
 });
 
+test("[wirksamkeit-1073] die Obergrenze vermerkt, wie viele Ueberschreitungen gleichzeitig gemessen wurden", () => {
+  mitProjekt({
+    config: { buildChecks: ["node --test a"] },
+    zeilen: [
+      // Elfspaltig mit `gleichzeitig`: neben anderen Pruefungen gemessen.
+      `${lauf({ cmd: "node --test a", anlass: "abschluss", karte: "1", dauerMs: 40_000 })}\tgleichzeitig`,
+      // Elfspaltig mit leerer Spalte: nacheinander gemessen.
+      `${lauf({ cmd: "node --test a", anlass: "abschluss", karte: "2", dauerMs: 41_000 })}\t`,
+      // Unter der Grenze zaehlt nicht mit, auch gleichzeitig gemessen.
+      `${lauf({ cmd: "node --test a", anlass: "abschluss", karte: "3", dauerMs: 20_000 })}\tgleichzeitig`,
+    ],
+    zuschnitt: zuschnitt(),
+  }, (dir) => {
+    const a = auswerten(dir).bereiche.obergrenze.kommandos.find((k) => k.cmd === "node --test a");
+    assert.deepEqual([a.abschlusslaeufe, a.ueber, a.ueberGleichzeitig], [3, 2, 1]);
+    assert.match(bericht(dir), /\| `node --test a` \| 3 \| 2 \| 1 \|/);
+  });
+});
+
+test("[wirksamkeit-1073] alte Zeilen ohne die Spalte gleichzeitig gelten als nacheinander gemessen", () => {
+  mitProjekt({
+    config: { buildChecks: ["node --test b"] },
+    zeilen: [
+      lauf({ cmd: "node --test b", anlass: "abschluss", karte: "1", dauerMs: 45_000 }),
+      zeile({ tage: 2, cmd: "node --test b", anlass: "abschluss", lauf: "X", karte: "3", dauerMs: 45_000 }),
+    ],
+    zuschnitt: zuschnitt(),
+  }, (dir) => {
+    const b = auswerten(dir).bereiche.obergrenze.kommandos.find((k) => k.cmd === "node --test b");
+    assert.deepEqual([b.abschlusslaeufe, b.ueber, b.ueberGleichzeitig], [2, 2, 0]);
+    assert.match(bericht(dir), /davon gleichzeitig gemessen/);
+  });
+});
+
 test("[wirksamkeit-1005] scheitert checks.mjs bereiche, endet die Auswertung mit 0 und vermerkt es", () => {
   mitProjekt({
     zeilen: [lauf({ bereiche: ["kern"], dauerMs: 60_000 })],

@@ -351,6 +351,32 @@ test("[night-926] prueflaeufe null sagt 'nicht gemessen' und nennt keine Null", 
   assert.match(zeile, /Dauer 8\.0 min/, "die Dauer ist gemessen und bleibt stehen");
 });
 
+test("[night-1073] die Paketzeile nennt letzten Abschluss und Abschluss-Wartezeit zusammen", () => {
+  const e = paketEinheit(101, 8, undefined, { wartezeitMs: 95_400 });
+  const zeile = prueflaufZeilen([e], 10).find((z) => z.includes("#101"));
+  assert.match(zeile, /Abschlussversuche 1, letzter Abschluss 95\.4 s, Abschluss-Wartezeit zusammen 2\.0 min$/);
+});
+
+test("[night-1073] ohne wartezeitMs steht nur die Summe der Abschluesse", () => {
+  const zeile = prueflaufZeilen([paketEinheit(101, 8)], 10).find((z) => z.includes("#101"));
+  assert.match(zeile, /Abschlussversuche 1, Abschluss-Wartezeit zusammen 2\.0 min$/);
+  assert.ok(!/letzter Abschluss/.test(zeile), zeile);
+});
+
+test("[night-1073] ohne gemessene Abschluesse steht nur der letzte Abschluss", () => {
+  const e = paketEinheit(101, 8, { arbeit: { anzahl: 3, volle: 0, volleNoetig: 1, dauerMs: 60_000 } }, { wartezeitMs: 95_400 });
+  const zeile = prueflaufZeilen([e], 10).find((z) => z.includes("#101"));
+  assert.match(zeile, /Gruppenlaeufe 1\), letzter Abschluss 95\.4 s$/);
+  assert.ok(!/Abschluss-Wartezeit/.test(zeile), zeile);
+});
+
+test("[night-1073] ohne beide Zahlen bleibt die Zeile wie bisher", () => {
+  const e = paketEinheit(101, 8, { arbeit: { anzahl: 3, volle: 0, volleNoetig: 1, dauerMs: 60_000 } });
+  const zeile = prueflaufZeilen([e], 10).find((z) => z.includes("#101"));
+  assert.match(zeile, /Gruppenlaeufe 1\)$/);
+  assert.ok(!/letzter Abschluss|Abschluss-Wartezeit/.test(zeile), zeile);
+});
+
 test("[night-926] jede Datei ohne Zuordnung steht mit Namen im Bericht", () => {
   const einheit = paketEinheit(101, 8, undefined, { ohneZuordnung: ["kit/neu.mjs", "docs/neu.md"] });
   const zeilen = prueflaufZeilen([einheit], 10);

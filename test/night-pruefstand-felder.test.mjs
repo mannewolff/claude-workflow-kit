@@ -97,6 +97,7 @@ test("[night-46] eine Zusammenfassung mit vollerUmfang: true traegt vollerUmfang
       basis: "HEAD",
       bereiche: ["kit", "test"],
       dauerGesamtMs: 42,
+      wartezeitMs: 57,
     };
     const fake = [summary(zusammenfassung), ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
@@ -109,6 +110,7 @@ test("[night-46] eine Zusammenfassung mit vollerUmfang: true traegt vollerUmfang
     assert.equal(p.basis, "HEAD");
     assert.deepEqual(p.bereiche, ["kit", "test"]);
     assert.equal(p.dauerGesamtMs, 42);
+    assert.equal(p.wartezeitMs, 57, "die Wartezeit des Laufs (Issue #1073)");
     // Die laufen-Eintraege tragen ihr dauerMs unveraendert mit.
     assert.equal(p.laufen[0].dauerMs, 42);
   } finally {
@@ -133,6 +135,7 @@ test("[night-46] eine Zusammenfassung ohne vollerUmfang (alter Stand) traegt vol
     assert.equal(p.basis, null);
     assert.equal(p.bereiche, null);
     assert.equal(p.dauerGesamtMs, null);
+    assert.equal(p.wartezeitMs, null, "ein Stand vor Issue #1069 kennt keine Wartezeit");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

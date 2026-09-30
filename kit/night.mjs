@@ -4133,6 +4133,10 @@ export function lesePruefung(issueId) {
       basis: typeof daten.basis === "string" ? daten.basis : null,
       bereiche: Array.isArray(daten.bereiche) ? daten.bereiche : null,
       dauerGesamtMs: endlicheZahl(daten.dauerGesamtMs),
+      // Die Wartezeit des Laufs vom Start bis zum Ergebnis, samt Warten auf die Sperre
+      // (Issue #1069, #1073): Der Nachtbericht nennt sie als letzten Abschluss. Ein Stand
+      // vor Issue #1069 fuehrt sie nicht — dann `null`, nie eine geratene 0.
+      wartezeitMs: endlicheZahl(daten.wartezeitMs),
       // Die Dateien ohne Bereichsmuster (Issue #926, Plan #917, E8): Sie sind in der
       // Auswahl gelandet, ohne dass ein Bereich sie kennt — ein Loch in der Zuordnung, das
       // der Bericht namentlich nennt. Ein fehlendes Feld ist `null` und nicht `[]`: Ein
@@ -4389,7 +4393,14 @@ function zielUmsetzungMin(wert) {
   return zahl !== null && zahl > 0 ? zahl : ZIEL_UMSETZUNG_VORGABE_MIN;
 }
 
-/** Die Zahlenzeile eines Pakets: gemessene Dauer, dazu die Prueflaeufe — oder deren Fehlen. */
+/**
+ * Die Zahlenzeile eines Pakets: gemessene Dauer, dazu die Prueflaeufe — oder deren Fehlen.
+ *
+ * Hinter den Abschlussversuchen steht die Wartezeit auf den Abschluss (Issue #1073, Plan
+ * #1066, A9): der letzte Abschluss aus `wartezeitMs` des Pruefstands, die Summe aller
+ * Abschlussversuche aus dem Zaehler des Runners. Fehlt eine der beiden Zahlen, entfaellt
+ * ihr Teil — dieselbe Haltung wie beim fehlenden Zaehler, und die Zeile bleibt kurz.
+ */
 function prueflaufPaketZeile(einheit) {
   const kopf = `- Issue #${einheit.id}: Dauer ${minutenText(einheit.dauerMs)} min`;
   const arbeit = einheit.prueflaeufe?.arbeit;
@@ -4398,8 +4409,12 @@ function prueflaufPaketZeile(einheit) {
   if (!arbeit) return `${kopf}, Prueflaeufe nicht gemessen`;
   const abschluss = einheit.prueflaeufe?.abschluss;
   const abschlussText = abschluss ? `, Abschlussversuche ${abschluss.anzahl ?? 0}` : "";
+  const letzter = endlicheZahl(einheit.pruefung?.wartezeitMs);
+  const summe = (abschluss?.anzahl ?? 0) > 0 ? endlicheZahl(abschluss.dauerMs) : null;
+  const letzterText = letzter === null ? "" : `, letzter Abschluss ${(letzter / 1000).toFixed(1)} s`;
+  const summeText = summe === null ? "" : `, Abschluss-Wartezeit zusammen ${minutenText(summe)} min`;
   return `${kopf}, Prueflaeufe ${arbeit.anzahl ?? 0} (volle ${arbeit.volle ?? 0}, `
-    + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}`;
+    + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}${letzterText}${summeText}`;
 }
 
 /**

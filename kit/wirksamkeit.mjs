@@ -418,6 +418,8 @@ function protokollLesen(root) {
       ausloeser: typeof teile[7] === "string" && teile[7] !== "" ? teile[7] : null,
       bereiche: listeLesen(teile[8]),
       dateien: listeLesen(teile[9]),
+      // Die elfte Spalte aus Issue #1071: Ohne sie gilt die Dauer als nacheinander gemessen.
+      gleichzeitig: teile[10] === "gleichzeitig",
     });
   }
   return { vorhanden: true, zeilen, fehlerhaft };
@@ -655,13 +657,15 @@ function zuschnittHolen(root) {
  * und die Minuten aller dieser Zeilen.
  *
  * DIE OBERGRENZE (E4) zaehlt je Kommando die Abschlusszeilen ueber 30 s — auch alte
- * siebenspaltige: Der Anlass steht dort schon, und nur er entscheidet.
+ * siebenspaltige: Der Anlass steht dort schon, und nur er entscheidet. Davon vermerkt sie,
+ * wie viele gleichzeitig gemessen wurden (Issue #1073); eine Zeile ohne die Spalte
+ * `gleichzeitig` gilt als nacheinander gemessen.
  */
 function bereicheErmitteln(zeilen, fenster, buildCmds, geholt) {
   const jeBereich = new Map();
   const sonder = new Map([...SONDERZEILEN.values(), VOR_DER_ERFASSUNG].map((name) => [name, { name, laeufe: 0, dauerMs: 0 }]));
   const teuer = new Map();
-  const obergrenze = new Map(buildCmds.map((cmd) => [cmd, { cmd, abschlusslaeufe: 0, ueber: 0 }]));
+  const obergrenze = new Map(buildCmds.map((cmd) => [cmd, { cmd, abschlusslaeufe: 0, ueber: 0, ueberGleichzeitig: 0 }]));
   let gesamtDauerMs = 0;
 
   for (const z of zeilen) {
@@ -729,9 +733,13 @@ function teuerZaehlen(z, teuer) {
 /** Die Obergrenze (E4): je Kommando seine Abschlusszeilen und die ueber der Grenze. */
 function obergrenzeZaehlen(z, obergrenze) {
   if (z.anlass !== ANLASS_ABSCHLUSS) return;
-  const o = eintragVon(obergrenze, z.cmd, () => ({ cmd: z.cmd, abschlusslaeufe: 0, ueber: 0 }));
+  const o = eintragVon(obergrenze, z.cmd, () => ({ cmd: z.cmd, abschlusslaeufe: 0, ueber: 0, ueberGleichzeitig: 0 }));
   o.abschlusslaeufe += 1;
-  if (z.dauerMs > PRUEFDAUER_OBERGRENZE_MS) o.ueber += 1;
+  if (z.dauerMs <= PRUEFDAUER_OBERGRENZE_MS) return;
+  o.ueber += 1;
+  // Neben anderen Pruefungen gemessen (Issue #1073): Die Dauer enthaelt fremde Last und
+  // sagt ueber die Pruefung allein weniger als eine nacheinander gemessene.
+  if (z.gleichzeitig) o.ueberGleichzeitig += 1;
 }
 
 /**
@@ -1277,9 +1285,9 @@ function berichtObergrenze(o) {
     return zeilen;
   }
   zeilen.push(
-    `| Kommando | Abschlusslaeufe | ueber ${grenze} |`,
-    "| --- | --- | --- |",
-    ...o.kommandos.map((k) => `| \`${k.cmd}\` | ${k.abschlusslaeufe} | ${k.ueber} |`),
+    `| Kommando | Abschlusslaeufe | ueber ${grenze} | davon gleichzeitig gemessen |`,
+    "| --- | --- | --- | --- |",
+    ...o.kommandos.map((k) => `| \`${k.cmd}\` | ${k.abschlusslaeufe} | ${k.ueber} | ${k.ueberGleichzeitig ?? 0} |`),
     "",
   );
   return zeilen;
