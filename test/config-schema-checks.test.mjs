@@ -756,3 +756,18 @@ test("installCommand: die Beschreibung sagt, was ein fehlendes Feld bedeutet", (
   assert.match(text, /teamweit/, "die Beschreibung nennt die Geltung nicht");
   assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
 });
+
+// --- Die Achse gleichzeitig (Issue #1071, Plan #1066, E2) ---
+//
+// Ein Wahrheitswert je Eintrag: Gekennzeichnete Pruefungen laufen in `checks.mjs run`
+// in einer ersten Phase gleichzeitig. Eine Zeichenkette waere ein vertipptes Feld, das
+// still nichts bewirkte.
+
+test("gleichzeitig: ein Wahrheitswert ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test test/a.test.mjs", gleichzeitig: true }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "npx eslint .", areas: ["kit"], gleichzeitig: false }), []);
+});
+
+test("gleichzeitig: eine Zeichenkette ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", gleichzeitig: "ja" }), []);
+});

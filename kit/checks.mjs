@@ -286,6 +286,17 @@ export const PRUEFDAUER_OBERGRENZE_MS = 30_000;
 // reissen, verlaengerte die Suite, deren Laufzeit die Grenze gerade begrenzen soll.
 export const OBERGRENZE_ENV = "KIT_CHECKS_PRUEFDAUER_OBERGRENZE_MS";
 
+// Wie viele gekennzeichnete Pruefungen hoechstens gleichzeitig laufen (Issue #1071, Plan
+// #1066, A5, E3). Kein Config-Feld aus demselben Grund wie die Obergrenze: Die Zahl sagt
+// etwas ueber die Maschine, nicht ueber das Projekt. Die Umgebungsvariable uebersteuert
+// sie — `1` faehrt die gekennzeichneten nacheinander.
+export const GLEICHZEITIG_ENV = "KIT_CHECKS_GLEICHZEITIG";
+const GLEICHZEITIG_VORGABE = 4;
+
+// Der Vermerk hinter der Dauer einer gleichzeitig gelaufenen Pruefung (Issue #1071). Hier
+// oben, weil `HELP` ihn nennt.
+export const NEBEN_MARKE = "neben anderen gemessen";
+
 // Ab wie vielen bereichsgebundenen Kommandos die Hervorhebung eines Bereichs greift
 // (Issue #1004, Plan #1001, E8). Bei zwei Kommandos waere jeder Bereich "in allen bis
 // auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil `HELP` sie nennt.
@@ -300,17 +311,26 @@ const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Prue
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
       mit Grund. Ausgefuehrt wird nichts.
-run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
-      ab (Exit ungleich 0) und schreibt die Zusammenfassung nach
-      ${SUMMARY_DATEI}.
+run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
+      Zusammenfassung nach ${SUMMARY_DATEI}. Zuerst laufen die mit
+      'gleichzeitig' gekennzeichneten Pruefungen gleichzeitig, hoechstens
+      ${GLEICHZEITIG_ENV} auf einmal (Vorgabe ${GLEICHZEITIG_VORGABE}; 1 faehrt sie
+      nacheinander). Diese Phase laeuft vollstaendig durch, damit alle roten
+      bekannt sind; ihre Ausgabe steht je Pruefung als geschlossener Block in
+      Config-Reihenfolge, und die Berichtszeile vermerkt bei der Dauer
+      '(${NEBEN_MARKE})'. Danach laufen die uebrigen nacheinander in
+      Config-Reihenfolge und brechen beim ersten roten Check ab; nach einem Rot
+      der ersten Phase starten sie nicht. Ein roter Lauf endet mit Exit
+      ungleich 0.
       Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
       feste Liste allgemeiner Fehlermerkmale (${FEHLERMERKMALE.join(", ")}). Ein
       Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
       Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
       Das Kommando irrt nur in eine Richtung, mehr pruefen.
       Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
-      Kommando und wird vor jedem weiteren ueberschrieben; das laufende
-      Kommando steht darin noch auf 'nicht gestartet'. Erst die letzte Fassung
+      Kommando und wird vor jedem weiteren und nach jedem gleichzeitig
+      gelaufenen ueberschrieben; ein laufendes Kommando steht darin noch auf
+      'nicht gestartet'. Erst die letzte Fassung
       traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
       Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
       Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
@@ -358,7 +378,8 @@ run   Fuehrt genau diese Auswahl sequenziell aus, bricht beim ersten roten Check
       Jede Ausfuehrung haengt eine Zeile an ${AUSFUEHRUNGEN_DATEI}; hinten
       stehen ihr Ausloeser (bereiche | ohne-bereich | ohne-zuordnung |
       veroeffentlichung | anker), die ausloesenden Bereiche und beim vollen
-      Umfang die Dateien ohne Muster.
+      Umfang die Dateien ohne Muster, als letztes 'gleichzeitig', wenn die
+      Dauer neben anderen Pruefungen gemessen wurde.
 bereiche
       Gibt als JSON aus, wie die Bereiche zugeschnitten sind: je Bereich
       seine Muster, in wie vielen der bereichsgebundenen Kommandos der
@@ -406,7 +427,8 @@ bereiche
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
 (Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
 und 'nichtBeimAbschluss': ${NICHT_BEIM_ABSCHLUSS.join(" | ")} — die Pruefung
-zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus) und
+zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, sowie
+'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen) und
 'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
 Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 'frontend/**'.
@@ -457,7 +479,7 @@ function normalisiere(check) {
     const genannt = typeof nichtBeimAbschluss === "string" ? `'${nichtBeimAbschluss}'` : JSON.stringify(nichtBeimAbschluss);
     fail(`Unbekannter Wert ${genannt} fuer nichtBeimAbschluss bei Pruefung '${objekt.cmd}'. Erwartet: ${NICHT_BEIM_ABSCHLUSS.join(", ")}.`);
   }
-  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss };
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, gleichzeitig: objekt.gleichzeitig === true };
 }
 
 /**
@@ -1402,17 +1424,22 @@ function ausloeserBestimmen(auswahl, check) {
  *
  * Dahinter stehen seit Issue #1004 (Plan #1001, E5) drei weitere Spalten, auf demselben
  * Weg und aus demselben Grund: `ausloeser`, `bereiche` und `dateien` — siehe
- * `ausloeserBestimmen`. Eine Zeile hat damit zehn Spalten, eine aeltere vier oder sieben.
+ * `ausloeserBestimmen`. Seit Issue #1071 (Plan #1066) folgt als elfte die Spalte
+ * `gleichzeitig`: der Text `gleichzeitig`, wenn die Dauer neben anderen Pruefungen gemessen
+ * wurde, sonst leer. Eine Zeile hat damit elf Spalten, eine aeltere vier, sieben oder zehn.
  *
  * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
  * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
  * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
-function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, jetzt = new Date()) {
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gleichzeitig = false, jetzt = new Date() } = {}) {
   const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
   const { anlass, lauf, karte } = herkunft;
-  const hinten = [ausloeser.art, listeMaskieren(ausloeser.bereiche), listeMaskieren(ausloeser.dateien)].join("\t");
+  const hinten = [
+    ausloeser.art, listeMaskieren(ausloeser.bereiche), listeMaskieren(ausloeser.dateien),
+    gleichzeitig ? "gleichzeitig" : "",
+  ].join("\t");
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(
@@ -1448,6 +1475,17 @@ function pruefdauerObergrenzeMs(env = process.env) {
   return Number.isFinite(zahl) && zahl > 0 ? zahl : PRUEFDAUER_OBERGRENZE_MS;
 }
 
+/**
+ * Die wirksame Grenze gleichzeitiger Pruefungen (Issue #1071): die Vorgabe, ueber die
+ * Umgebungsvariable uebersteuert. Alles, was keine positive ganze Zahl ist, faellt auf die
+ * Vorgabe zurueck — dieselbe Haltung wie bei `pruefdauerObergrenzeMs`.
+ */
+function gleichzeitigGrenze(env = process.env) {
+  const text = (env[GLEICHZEITIG_ENV] ?? "").trim();
+  const zahl = Number(text);
+  return /^\d+$/.test(text) && zahl > 0 ? zahl : GLEICHZEITIG_VORGABE;
+}
+
 /** Sekunden mit hoechstens einer Nachkommastelle, ohne abschliessende Null. */
 function sekunden(ms) {
   return String(Math.round(ms / 100) / 10);
@@ -1477,15 +1515,18 @@ export function obergrenzeZusatz(dauerMs, grenzeMs = PRUEFDAUER_OBERGRENZE_MS) {
  * Ein nicht gestartetes Kommando (nach einem roten) steht als `gelaufen` mit seinem
  * Ergebnis: Es war ausgewaehlt, und ein Bericht, der es verschwiege, saehe aus wie
  * ein vollstaendiger Lauf. `uebernommen` haengt den Vermerk an die Dauer — sie ist die
- * des Ursprungslaufs und in diesem Aufruf nicht gemessen.
+ * des Ursprungslaufs und in diesem Aufruf nicht gemessen. Ein gleichzeitig gelaufenes
+ * Kommando traegt `(neben anderen gemessen)` hinter der Dauer (Issue #1071): Seine Dauer
+ * ist nicht die, die es allein braeuchte.
  */
 function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
   const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
   const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
   for (const e of laufen) {
     const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
+    const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
     zeilen.push(
-      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}`,
+      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}`,
     );
   }
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
@@ -1717,7 +1758,8 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
  * Das Urteil ueber ein gelaufenes Kommando — aus drei Quellen, in dieser
  * Reihenfolge: Rueckgabewert, Fehlermerkmal in der Ausgabe (Issue #858) und, wo
  * das Projekt eine Messung benannt hat, die Guete. Die Zeilen, die zum Befund
- * gehoeren, schreibt die Funktion selbst.
+ * gehoeren, schreibt die Funktion selbst — ueber `schreibe`, damit ein gleichzeitig
+ * gelaufenes Kommando sie in seinen Block sammeln kann (Issue #1071).
  *
  * Die MERKMAL-PRUEFUNG steht VOR dem guete-Zweig (Plan #810, E4): Eine Ausgabe,
  * die ihr Scheitern selbst ausweist, ist kein Messstand — ein darin gefundener
@@ -1730,11 +1772,11 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
  * ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei Urteile in
  * einer Verzweigungskette traegt.
  */
-function bewerten(eintrag, gruen, ausgabe) {
+function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => process.stdout.write(text)) {
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
     eintrag.fehlermerkmal = merkmal;
-    process.stdout.write(`Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n`);
+    schreibe(`Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n`);
   }
   const bestanden = gruen && merkmal === null;
   if (!eintrag.guete) return { bestanden, guete: null };
@@ -1746,7 +1788,7 @@ function bewerten(eintrag, gruen, ausgabe) {
     ? "kein Anteil erhoben — das Kommando selbst war rot"
     : `kein Anteil erhoben — Fehlermerkmal '${merkmal}' in der Ausgabe`;
   const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
-  process.stdout.write(`${gueteZeile(guete)}\n`);
+  schreibe(`${gueteZeile(guete)}\n`);
   return { bestanden: bestanden && guete.erfuellt, guete };
 }
 
@@ -2353,25 +2395,71 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   }
   schreibeStand(false);
 
-  for (const eintrag of laufen) {
-    if (rot) break; // Beim ersten roten ist Schluss; der Rest bleibt "nicht gestartet".
-    schreibeStand(false);
-    process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+  // Ein Kommando fahren, bewerten und festhalten — fuer beide Phasen dieselbe Bahn.
+  // `schreibe` nimmt alles auf, was zum Kommando gehoert: in der nachfolgenden Phase
+  // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
+  const einKommando = async (eintrag, schreibe, nebenAnderen) => {
     const start = process.hrtime.bigint();
     const { gruen, ausgabe } = await kommandoAusfuehren(eintrag.cmd, env);
     eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
     // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
     if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
-    process.stdout.write(ausgabe);
-    const bewertung = bewerten(eintrag, gruen, ausgabe);
+    // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
+    if (nebenAnderen) eintrag.gleichzeitig = true;
+    schreibe(ausgabe);
+    const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe);
     guete = bewertung.guete ?? guete;
     eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
-    process.stdout.write(`-> ${eintrag.ergebnis}\n`);
-    // In der Schleife und nicht danach (Issue #785): So traegt auch das rote Kommando
-    // seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
+    schreibe(`-> ${eintrag.ergebnis}\n`);
+    // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
+    // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
     // Auswertung zu allererst geht.
-    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd));
-    rot = !bewertung.bestanden;
+    ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd),
+      { gleichzeitig: nebenAnderen });
+    if (!bewertung.bestanden) rot = true;
+  };
+
+  // Zwei Phasen (Issue #1071, Plan #1066, A1, A2, A6): zuerst die mit `gleichzeitig`
+  // gekennzeichneten, hoechstens `grenze` auf einmal, danach die uebrigen nacheinander.
+  // Ohne gekennzeichnete bleibt die erste Phase leer, und der Ablauf ist der bisherige.
+  const gekennzeichnet = new Set(konfiguriert.filter((c) => c.gleichzeitig).map((c) => c.cmd));
+  const erste = laufen.filter((e) => gekennzeichnet.has(e.cmd));
+  const danach = laufen.filter((e) => !gekennzeichnet.has(e.cmd));
+  const grenze = gleichzeitigGrenze(env);
+  // "Neben anderen gemessen" nur, wenn wirklich mehrere zugleich laufen konnten: Mit der
+  // Grenze 1 oder einer einzigen gekennzeichneten ist die Dauer eine allein gemessene.
+  const nebenAnderen = grenze > 1 && erste.length > 1;
+
+  // Die erste Phase laeuft VOLLSTAENDIG durch, auch nach einem Rot: Wer korrigiert, soll
+  // alle roten auf einmal sehen und nicht eine nach der anderen. Die Ausgabe jedes
+  // Kommandos wird gesammelt und als geschlossener Block geschrieben, sobald er und alle
+  // davor fertig sind — so steht sie in Config-Reihenfolge, gleich wer zuerst endet.
+  const bloecke = new Map();
+  let naechsterBlock = 0;
+  const warteschlange = [...erste];
+  const arbeiter = async () => {
+    for (let eintrag = warteschlange.shift(); eintrag; eintrag = warteschlange.shift()) {
+      let block = `\n$ ${eintrag.cmd} — ${eintrag.grund}\n`;
+      await einKommando(eintrag, (text) => { block += text; }, nebenAnderen);
+      bloecke.set(eintrag, block);
+      // Nach jedem Ende (Issue #857): Die noch laufenden stehen darin weiter auf
+      // `nicht gestartet` — ein Abbruch mittendrin sieht damit nie gruen aus.
+      schreibeStand(false);
+      while (naechsterBlock < erste.length && bloecke.has(erste[naechsterBlock])) {
+        process.stdout.write(bloecke.get(erste[naechsterBlock]));
+        naechsterBlock += 1;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(grenze, erste.length) }, arbeiter));
+
+  // Die nachfolgende Phase startet nach einem Rot der ersten nicht und bricht beim ersten
+  // eigenen Rot ab; der Rest bleibt "nicht gestartet".
+  for (const eintrag of danach) {
+    if (rot) break;
+    schreibeStand(false);
+    process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+    await einKommando(eintrag, (text) => process.stdout.write(text), false);
   }
   guete ??= gueteOhneLauf(laufen, auswahl.ausgelassen);
 

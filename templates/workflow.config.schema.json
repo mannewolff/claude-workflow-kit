@@ -108,6 +108,11 @@
                 ],
                 "additionalProperties": false,
                 "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stufe\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
+              "gleichzeitig": {
+                "type": "boolean",
+                "default": false,
+                "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens vier, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [
@@ -123,7 +128,7 @@
           }
         ]
       },
-      "description": "Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {
