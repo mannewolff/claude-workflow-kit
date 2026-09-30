@@ -3452,6 +3452,41 @@ const DEPS_REFERENZ = /(?<![\w`/#])#(\d+)/g;
  * mehreren gilt die letzte, und eine `##`-Zeile im Fence beendet den Abschnitt nicht.
  */
 export function abhaengigkeitenLesen(body) {
+  return abhaengigkeitenMitHerkunft(body).map((t) => t.nummer);
+}
+
+// Plan #1057 E2: `Issue #N` am Zeilenanfang, davor hoechstens Leerraum und ein Listenzeichen.
+const DEPS_VERWEISZEILE = /^\s*(?:(?:[-*+]|\d+\.)\s+)?Issue #\d+/;
+const DEPS_STELLE_MAX = 100;
+
+/**
+ * Die Nummern von `abhaengigkeitenLesen`, je Nummer mit Herkunft und Textstelle
+ * (Issue #1058, Plan #1057 E1–E3): `{ nummer, herkunft: "verweiszeile" | "text", stelle }`.
+ *
+ * Verweiszeile ist eine Zeile ausserhalb eines Fence, die mit `Issue #N` beginnt und keine
+ * weitere lokale Nummer traegt; alles andere ist Text, auch eine Nummer im Codeblock des
+ * Abschnitts (`parseDeps` liest sie mit). Die Stelle ist die getrimmte Zeile, auf
+ * hoechstens 100 Zeichen gekuerzt. Eine doppelte Nummer steht einmal, an ihrem ersten
+ * Vorkommen; traegt sie irgendwo eine Verweiszeile, gilt deren Herkunft und Stelle.
+ */
+export function abhaengigkeitenMitHerkunft(body) {
+  const treffer = new Map();
+  for (const { zeile, ausserhalb } of depsAbschnittZeilen(body)) {
+    const nummern = [...zeile.matchAll(DEPS_REFERENZ)].map((m) => Number(m[1]));
+    const verweis = ausserhalb && nummern.length === 1 && DEPS_VERWEISZEILE.test(zeile);
+    const herkunft = verweis ? "verweiszeile" : "text";
+    const stelle = depsStelle(zeile);
+    for (const nummer of nummern) {
+      const bisher = treffer.get(nummer);
+      if (!bisher) treffer.set(nummer, { nummer, herkunft, stelle });
+      else if (verweis && bisher.herkunft === "text") Object.assign(bisher, { herkunft, stelle });
+    }
+  }
+  return [...treffer.values()];
+}
+
+/** Die Zeilen des Abschnitts `## Abhaengigkeiten` samt Fence-Lage — leer, wenn er fehlt. */
+function depsAbschnittZeilen(body) {
   const zeilen = String(body || "").split(/\r\n|\r|\n/);
   const imFence = fenceLauf();
   const ausserhalb = zeilen.map((z) => !imFence(z));
@@ -3462,8 +3497,12 @@ export function abhaengigkeitenLesen(body) {
   for (let i = start + 1; i < zeilen.length; i++) {
     if (ausserhalb[i] && DEPS_ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
   }
-  const abschnitt = zeilen.slice(start + 1, ende).join("\n");
-  return [...new Set([...abschnitt.matchAll(DEPS_REFERENZ)].map((m) => Number(m[1])))];
+  return zeilen.slice(start + 1, ende).map((zeile, k) => ({ zeile, ausserhalb: ausserhalb[start + 1 + k] }));
+}
+
+function depsStelle(zeile) {
+  const getrimmt = zeile.trim();
+  return getrimmt.length > DEPS_STELLE_MAX ? getrimmt.slice(0, DEPS_STELLE_MAX - 1) + "…" : getrimmt;
 }
 
 /**

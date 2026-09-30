@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren } from "./helpers/board-fixture.mjs";
 import { NUR_POSIX, GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
-import { AUFTRAG_BACKLOG_TEXTE, abhaengigkeitenLesen, fenceLauf } from "../kit/board.mjs";
+import { AUFTRAG_BACKLOG_TEXTE, abhaengigkeitenLesen, abhaengigkeitenMitHerkunft, fenceLauf } from "../kit/board.mjs";
 import { parseDeps, pruefeIssueGates } from "../kit/night.mjs";
 
 // --- Das gemeinsame Board ---
@@ -489,6 +489,21 @@ function depsAbweichungen(lesen, vergleich) {
 test("Gleichlauf: die Abhaengigkeitslesung stimmt auf allen Fixtures mit parseDeps ueberein", () => {
   assert.deepEqual(depsAbweichungen(abhaengigkeitenLesen, parseDeps), []);
   assert.deepEqual(abhaengigkeitenLesen(body(3, 4)), [3, 4]);
+});
+
+// Die Lesung mit Herkunft (Issue #1058) muss dieselben Nummern liefern wie parseDeps.
+const herkunftNummern = (lesen) => (b) => lesen(b).map((t) => t.nummer);
+
+test("Gleichlauf: die Nummern der Lesung mit Herkunft stimmen mit parseDeps ueberein", () => {
+  assert.deepEqual(depsAbweichungen(herkunftNummern(abhaengigkeitenMitHerkunft), parseDeps), []);
+  assert.deepEqual(depsAbweichungen(herkunftNummern(abhaengigkeitenMitHerkunft), abhaengigkeitenLesen), []);
+});
+
+test("Gleichlauf: eine abweichende Kopie der Lesung mit Herkunft faellt auf", () => {
+  const ohneCodeblock = (b) => abhaengigkeitenMitHerkunft(b).filter((t) => t.stelle !== "#11");
+  const ohneDedupe = (b) => abhaengigkeitenMitHerkunft(b).flatMap((t) => (t.nummer === 7 ? [t, t] : [t]));
+  assert.notDeepEqual(depsAbweichungen(herkunftNummern(ohneCodeblock), parseDeps), []);
+  assert.notDeepEqual(depsAbweichungen(herkunftNummern(ohneDedupe), parseDeps), []);
 });
 
 test("Gleichlauf: eine abweichende Kopie der Lesung faellt auf", () => {
