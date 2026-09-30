@@ -107,6 +107,8 @@ Nutzung:
       --idempotency-key wiederholt einen Aufruf, dessen Ausgang unklar blieb, ohne
       ihn ein zweites Mal auszufuehren (Issue #834). Ohne den Schalter entsteht der
       Schluessel je Auftrag selbst; die Fehlermeldung nennt ihn samt Kommando.
+      Hat der Body einen Abschnitt '## Abhaengigkeiten', traegt die Ausgabe dessen
+      'hinweise' wie bei 'check-form' (Issue #1060); sie beruehren das Anlegen nicht.
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
   node board.mjs issue activity --ids <n,n,...>
@@ -115,6 +117,8 @@ Nutzung:
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+      Ausgabe { ok, id }, dazu 'hinweise' zum Abschnitt '## Abhaengigkeiten' wie bei
+      'issue create' (Issue #1060).
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
                              [--idempotency-key <wert>]
       '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
@@ -155,6 +159,11 @@ Nutzung:
       Bei [Plan] zusaetzlich 'hinweise' ([{ baustein, test, meldung }], Issue #1031):
       eigene Tests gefuehrter Bausteine, die der Plan nicht nennt, nach den Ablagen aus
       'testAblagen' gegen 'git ls-files'; sie beruehren weder ok noch den Exit-Code.
+      Beim Arbeitspaket 'hinweise' zum Abschnitt '## Abhaengigkeiten' ([{ art, nummer,
+      stelle, meldung }], Issue #1060): 'schreibweise' je #N ausserhalb einer Verweiszeile
+      ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
+      [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
+      ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs code ci-status --commit <sha>
@@ -2999,7 +3008,8 @@ async function issueCreate(tracker, args) {
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
   // Nur toolbox wertet den Schluessel aus; die uebrigen Tracker ignorieren das Feld.
   if (idempotencyKey !== undefined) felder.idempotencyKey = idempotencyKey;
-  out(await tracker.createIssue(felder));
+  const angelegt = await tracker.createIssue(felder);
+  out(await mitAbhaengigkeitsHinweisen(angelegt, felder.body, tracker));
 }
 
 async function issueGet(tracker, args) {
@@ -3485,6 +3495,63 @@ export function abhaengigkeitenMitHerkunft(body) {
   return [...treffer.values()];
 }
 
+/**
+ * Die Hinweise zum Abschnitt `## Abhaengigkeiten` beim Schreiben (Issue #1060, Plan #1057
+ * E4, E5): `{ art: "schreibweise" | "dokument", nummer, stelle, meldung }` — `schreibweise`
+ * je Nummer aus Text, `dokument` je Nummer, deren Karte ein Dokument-Praefix traegt, auch
+ * in einer Verweiszeile. Jede Nummer wird einmal nachgeschlagen; scheitert der Abruf,
+ * entfaellt ihr Dokument-Hinweis still — alte erledigte Karten findet `getIssue` nicht.
+ */
+export async function abhaengigkeitsHinweise(body, tracker) {
+  const hinweise = [];
+  for (const { nummer, herkunft, stelle } of abhaengigkeitenMitHerkunft(body)) {
+    if (herkunft === "text") {
+      hinweise.push({
+        art: "schreibweise", nummer, stelle,
+        meldung: `#${nummer} zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #${nummer}‘): ${stelle}`,
+      });
+    }
+    const dokument = await dokumentArt(tracker, nummer);
+    if (dokument) {
+      hinweise.push({
+        art: "dokument", nummer, stelle,
+        meldung: `#${nummer} ist ein Dokument (${dokument.praefix}), kein Arbeitspaket — ${dokument.satz}`,
+      });
+    }
+  }
+  return hinweise;
+}
+
+/** Praefix und Satz, wenn die Karte ein Dokument ist; sonst oder bei scheiterndem Abruf null. */
+async function dokumentArt(tracker, nummer) {
+  let titel;
+  try {
+    titel = (await tracker.getIssue(String(nummer))).title;
+  } catch {
+    return null;
+  }
+  const erst = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
+  if (istPlan(titel)) return { praefix: "[Plan]", satz: "ein Plandokument wird nie durch Umsetzung erledigt" };
+  if (istFachlich(titel)) return { praefix: "[Fachlich]", satz: erst };
+  if (istIdee(titel)) return { praefix: "[Idee]", satz: erst };
+  return null;
+}
+
+/**
+ * Haengt die Hinweise an die Ausgabe eines Schreibwegs, sofern der Body einen Abschnitt
+ * `## Abhaengigkeiten` hat und es welche gibt. Ein Fehler dabei laesst den Schreibweg
+ * gelingen, dann ohne `hinweise` — geschrieben ist ohnehin schon.
+ */
+async function mitAbhaengigkeitsHinweisen(ergebnis, body, tracker) {
+  if (depsAbschnittZeilen(body).length === 0) return ergebnis;
+  try {
+    const hinweise = await abhaengigkeitsHinweise(body, tracker);
+    return hinweise.length > 0 ? { ...ergebnis, hinweise } : ergebnis;
+  } catch {
+    return ergebnis;
+  }
+}
+
 /** Die Zeilen des Abschnitts `## Abhaengigkeiten` samt Fence-Lage — leer, wenn er fehlt. */
 function depsAbschnittZeilen(body) {
   const zeilen = String(body || "").split(/\r\n|\r|\n/);
@@ -3919,7 +3986,7 @@ async function issueUpdate(tracker, args) {
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
   // er kommt.
   await tracker.updateIssue(id, { body: neu });
-  out({ ok: true, id });
+  out(await mitAbhaengigkeitsHinweisen({ ok: true, id }, neu, tracker));
 }
 
 // ============================================================
@@ -4414,6 +4481,10 @@ function versionierteDateien() {
  * gefuehrten Bausteins, den der Plan nicht nennt, ein Eintrag in `hinweise`, gegen den
  * Bestand `dateien`. Sie sind **kein Gate** — `ok` haengt allein an `verstoesse`, und
  * der Schluessel `hinweise` steht nur bei mindestens einem Treffer im Ergebnis.
+ *
+ * Beim Arbeitspaket haengt `issue check-form` die Hinweise zum Abschnitt
+ * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
+ * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
  */
 export function pruefeForm(body, title, config = {}, dateien = []) {
   const stufe = stufeAusTitel(title);
@@ -4471,6 +4542,10 @@ async function issueCheckForm(tracker, config, args) {
   const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
   const ergebnis = pruefeForm(body, title, config, dateien);
+  if (ergebnis.stufe === "issue") {
+    const hinweise = await abhaengigkeitsHinweise(body, tracker);
+    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
+  }
   out(ergebnis);
   if (!ergebnis.ok) process.exit(1);
 }
