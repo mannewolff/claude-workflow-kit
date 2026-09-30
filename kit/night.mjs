@@ -100,7 +100,10 @@
  * review), /issues #M (Stufe pakete, Formpruefung je Paket) und eine lesende
  * Abdeckungs-Session, die die Pakete gegen den Fachplan haelt (Stufe abdeckung, ihr Text
  * steht im Ergebnisstand). Aeltere Plandokumente zum selben Fachplan bekommen den
- * Kommentar "Ueberholt durch Plan #M". Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
+ * Kommentar "Ueberholt durch Plan #M". Testhinweise der Formpruefung (eigene Tests
+ * gefuehrter Bausteine, die der Plan nicht nennt) halten nichts an; was davon nach der
+ * Planungssitzung stehen bleibt, schreibt der Runner als Kommentar "## Testhinweise der
+ * Formpruefung" an den Plan (Issue #1033). Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
  * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
  * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
  * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
@@ -1332,9 +1335,14 @@ function board(...cliArgs) {
  * Ein Board-Aufruf, der NICHT abbricht (Plan #638, A7): `issue check-form` endet bei
  * Verstoessen mit Exit 1 und JSON — fuer die Kette ist das ein Befund, kein Ausfall.
  * Rueckgabe `{ status, json, text }`; `json` ist null, wenn stdout kein JSON traegt.
+ *
+ * Das letzte Argument darf wie bei `board` ein Optionsobjekt `{ cwd }` sein (Issue #1033):
+ * Die Testhinweise der Formpruefung entstehen gegen die Dateien des Worktrees.
  */
 function boardRoh(...cliArgs) {
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", maxBuffer: BOARD_MAX_BUFFER });
+  const letztes = cliArgs.at(-1);
+  const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER });
   let json = null;
   try {
     json = JSON.parse(res.stdout);
@@ -6336,10 +6344,11 @@ async function stufePlan(kette) {
 async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   const { budget } = kette;
   for (;;) {
-    const form = boardRoh("issue", "check-form", stand.id);
+    const form = boardRoh("issue", "check-form", stand.id, { cwd: kette.wt });
     if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
     if (form.json.ok) {
       log(`  Formpruefung #${stand.id} gruen.`);
+      testhinweiseVermerken(stand.id, form.json.hinweise);
       return null;
     }
     const verstoesse = (form.json.verstoesse || []).map((v) => `${v.gate}: ${v.meldung}`).join("; ");
@@ -6352,6 +6361,32 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     summe(k);
     if (k.ausgang !== "fertig") return k;
     if (kostenErschoepft(kette)) return kostenErschoepft(kette);
+  }
+}
+
+/** Der Anker des Kommentars mit den Testhinweisen, die nach der Planungssitzung stehen bleiben. */
+export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
+
+/**
+ * Die Testhinweise der Formpruefung als Kommentar am Plan (Issue #1033, Plan #1029 A10, E1).
+ *
+ * Nachts reagiert die planende Sitzung selbst auf die Hinweise; was danach stehen bleibt,
+ * schreibt der Runner an den Plan — nicht die Sitzung, damit der Kommentar nicht an ihrer
+ * Disziplin haengt. Ein Hinweis haelt nichts an: Scheitert das Kommentieren, steht das im
+ * Protokoll, und die Kette laeuft weiter. Pakete tragen kein `hinweise`, fuer sie geschieht
+ * hier nichts.
+ */
+function testhinweiseVermerken(dokId, hinweise) {
+  if (!Array.isArray(hinweise) || hinweise.length === 0) return;
+  const pfad = join(tmpdir(), `night-testhinweise-${process.pid}-${dokId}-${LAUF_STEMPEL ?? Date.now()}.md`);
+  const text = [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""].join("\n");
+  writeFileSync(pfad, text, "utf-8");
+  try {
+    const res = boardRoh("issue", "comment", dokId, "--text-file", pfad);
+    if (res.status === 0) log(`  ${hinweise.length} Testhinweis(e) als Kommentar '${TESTHINWEIS_ANKER}' an Plan #${dokId} geschrieben.`);
+    else log(`  Testhinweise an Plan #${dokId} nicht geschrieben (${res.text.slice(0, 200)}) — die Kette laeuft weiter.`);
+  } finally {
+    rmSync(pfad, { force: true });
   }
 }
 

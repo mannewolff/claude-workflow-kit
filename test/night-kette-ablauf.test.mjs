@@ -7,12 +7,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
+import { TESTHINWEIS_ANKER } from "../kit/night.mjs";
 
 const PLAN_MIT_NOTIZ = `${PLAN_ANLEGEN}; printf "notiz" > .claude/vorhaben-wartend-plan-1.md`;
 
@@ -178,5 +180,93 @@ test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehls
     assert.match(res.stdout, /Einlieferung fehlgeschlagen: .*nur mit issueTracker toolbox/);
     assert.equal(stand(dir).einheiten.find((x) => x.id === F).ausgang, "fertig");
     assert.equal(stand(dir).abschluss, "regulaer");
+  });
+});
+
+// Testhinweise der Formpruefung (Issue #1033, Plan #1029 A10): Was nach der Planungssitzung an
+// Hinweisen stehen bleibt, schreibt der Runner als Kommentar an den Plan. Die Formpruefung
+// laeuft im Worktree der Kette, also gegen den Stand, gegen den geplant wurde. Hinweise
+// aendern `ok` nicht: Die Kette laeuft weiter, ohne Korrekturrunde.
+
+const NAV = "src/app/nav/side-nav.ts";
+const NAV_SPEC = "src/app/nav/side-nav.spec.ts";
+
+/** Legt Baustein und eigenen Test versioniert ins Fixture-Repo — der Worktree entsteht aus HEAD. */
+function navVersionieren(dir) {
+  mkdirSync(join(dir, "src", "app", "nav"), { recursive: true });
+  writeFileSync(join(dir, NAV), "export const nav = [];\n");
+  writeFileSync(join(dir, NAV_SPEC), "// erwartet nichts oberhalb des Fusses\n");
+  for (const a of [["add", NAV, NAV_SPEC], ["commit", "-q", "-m", "Navigation"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
+}
+
+/** Wie oft der Anker in der Datei einer Karte steht. */
+function testhinweisAnker(dir, id) {
+  return readFileSync(join(dir, "issues", `${id}.md`), "utf-8").split(TESTHINWEIS_ANKER).length - 1;
+}
+
+const PLAN_MIT_NAV = planBody().replace("- kit/night.mjs: eine Funktion.", `- ${NAV}: der Fuss wandert nach oben.`);
+
+test("[night-19] bleibt ein Testhinweis stehen, laeuft die Kette weiter und der Plan traegt genau einen Kommentar", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    navVersionieren(dir);
+    const F = fachplan(dir);
+    const env = umgebung(dir, { plan: PLAN_MIT_NAV, stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(einheit.stufen.plan.korrekturrunden, 0, "ein Hinweis startet keine Korrekturrunde");
+    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
+
+    const planId = einheit.stufen.plan.id;
+    assert.equal(testhinweisAnker(dir, planId), 1, "genau ein Kommentar mit dem Anker am Plan");
+    const text = readFileSync(join(dir, "issues", `${planId}.md`), "utf-8");
+    const block = text.slice(text.indexOf(TESTHINWEIS_ANKER));
+    assert.match(block, new RegExp(`^${TESTHINWEIS_ANKER}$`, "m"), "der Anker steht auf einer eigenen Zeile");
+    const zeilen = block.split("\n").filter((z) => z.includes(" gehört "));
+    assert.equal(zeilen.length, 1, "eine Zeile je Hinweis");
+    assert.ok(zeilen[0].includes(NAV) && zeilen[0].includes(NAV_SPEC), zeilen[0]);
+
+    // Die Paket-Formpruefung in stufePakete schreibt nie einen solchen Kommentar.
+    for (const id of einheit.stufen.pakete.ids) {
+      assert.equal(testhinweisAnker(dir, id), 0, `Paket #${id} traegt einen Testhinweis-Kommentar`);
+    }
+  });
+});
+
+test("[night-19] ohne Testhinweis bekommt der Plan keinen Kommentar mit dem Anker", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    navVersionieren(dir);
+    const F = fachplan(dir);
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(testhinweisAnker(dir, einheit.stufen.plan.id), 0);
+  });
+});
+
+test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, auch wenn ein Paket den Baustein fuehrt", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    navVersionieren(dir);
+    const F = fachplan(dir);
+    // Ein Paket, das denselben Baustein in seiner Aufgabe fuehrt: Die Stufe `issue` kennt keine
+    // Testhinweise, also auch keinen Kommentar.
+    const paketMitNav = PAKETE_ANLEGEN.replaceAll("Paket %s.", `Paket %s: ${NAV}.`);
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: paketMitNav } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(einheit.stufen.pakete.ids.length, 2);
+    for (const id of einheit.stufen.pakete.ids) {
+      assert.ok(readFileSync(join(dir, "issues", `${id}.md`), "utf-8").includes(NAV), `Paket #${id} fuehrt den Baustein nicht`);
+      assert.equal(testhinweisAnker(dir, id), 0, `Paket #${id} traegt einen Testhinweis-Kommentar`);
+    }
   });
 });
