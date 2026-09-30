@@ -2453,6 +2453,77 @@ function karteAusCache(nummer) {
   return KARTEN_CACHE.get(nummer);
 }
 
+/**
+ * Eine Karte mit Body aus dem Lauf-Cache (Issue #1063): Ein Eintrag aus den Listen von
+ * `satisfiedIds` traegt den Body nicht zwingend, dann wird die Karte einmal geholt.
+ * `null` heisst: Der Abruf scheiterte, und das bleibt im Lauf so.
+ */
+function karteMitBody(nummer) {
+  const gecacht = KARTEN_CACHE.get(nummer);
+  if (gecacht === null || typeof gecacht?.body === "string") return gecacht;
+  KARTEN_CACHE.set(nummer, leseKarte(nummer));
+  return KARTEN_CACHE.get(nummer);
+}
+
+/**
+ * Der volle Body des geprueften Pakets fuer die Gates, ueber den Lauf-Cache (Issue #1063):
+ * Hat die Kreis-Suche eines frueheren Pakets die Karte schon geholt, wird sie nicht noch
+ * einmal abgerufen. Anders als in der Kreis-Suche ueber `board()` — das Paket selbst nicht
+ * lesen zu koennen, ist wie bisher ein Ausfall des Trackers.
+ */
+function gateKarte(top) {
+  const nummer = Number(top.id);
+  const gecacht = KARTEN_CACHE.get(nummer);
+  if (typeof gecacht?.body === "string") return gecacht;
+  const full = board("issue", "get", String(top.id));
+  KARTEN_CACHE.set(nummer, full);
+  return full;
+}
+
+/**
+ * Die Kreise, die ein Paket ueber seine unerfuellten Abhaengigkeiten erreicht (Issue #1063,
+ * Plan #1057 E7, E8): Tiefensuche, je Karte ueber `parseDeps` ihres Bodies aus dem Lauf-Cache.
+ * Ein Kreis ist eine Rueckkante auf eine Karte im aktuellen Suchpfad; ein Paket, das von sich
+ * selbst abhaengt, ist ein Kreis aus einem Paket. Eine erfuellte Abhaengigkeit haelt nichts
+ * fest und beendet den Pfad, ein gescheiterter Abruf ebenso — der Lauf geht weiter. Jeder
+ * Kreis beginnt bei seiner kleinsten Nummer, damit er an jedem Paket gleich lautet.
+ * Rueckgabe: Liste von Nummernlisten, ohne Doppel.
+ */
+export function kreiseAb(start, erfuellt) {
+  const kreise = new Map();
+  const pfad = [];
+  const fertig = new Set();
+  const besuche = (nummer) => {
+    const karte = karteMitBody(nummer);
+    if (!karte) return;
+    pfad.push(nummer);
+    for (const dep of parseDeps(karte.body)) {
+      if (erfuellt.has(dep)) continue;
+      const imPfad = pfad.indexOf(dep);
+      if (imPfad >= 0) {
+        const kreis = kreisAbKleinster(pfad.slice(imPfad));
+        kreise.set(kreis.join(","), kreis);
+      } else if (!fertig.has(dep)) {
+        besuche(dep);
+      }
+    }
+    pfad.pop();
+    fertig.add(nummer);
+  };
+  besuche(Number(start));
+  return [...kreise.values()];
+}
+
+function kreisAbKleinster(kreis) {
+  const ab = kreis.indexOf(Math.min(...kreis));
+  return [...kreis.slice(ab), ...kreis.slice(0, ab)];
+}
+
+/** Ein Kreis als Text `#A -> #B -> #A`. */
+function kreisText(kreis) {
+  return [...kreis, kreis[0]].map((k) => `#${k}`).join(" -> ");
+}
+
 function satisfiedIds() {
   const inReview = board("issue", "list", "--status", "in_review");
   const done = board("issue", "list", "--status", "done");
@@ -2494,7 +2565,26 @@ export function abhaengigkeitsBefund(top, body, erfuellt) {
       dokumentSatz: art ? art[2] : null,
     };
   });
-  return { paket: Number(top.id), abhaengigkeiten };
+  // Die Kreise nur, wenn etwas unerfuellt ist: Sonst fuehrt kein Pfad weiter (E7), und ein
+  // startendes Paket kostet keinen Abruf mehr als vorher.
+  const paket = Number(top.id);
+  const kreise = abhaengigkeiten.every((a) => a.erfuellt)
+    ? []
+    : kreiseAb(paket, erfuellt).map((karten) => ({ karten, steht: karten.includes(paket) }));
+  return { paket, abhaengigkeiten, kreise };
+}
+
+/**
+ * Die Zeile eines Kreises unter den Abhaengigkeitszeilen (E9, E10): Steht das Paket nicht
+ * selbst darin, haengt es nur daran und wartet auf einen Kreis.
+ */
+function kreisZeile(kreis) {
+  return `Kreis: ${kreisText(kreis.karten)}${kreis.steht ? "" : " — dieses Paket wartet auf einen Kreis."}`;
+}
+
+/** Die zweite Logzeile des Abhaengigkeits-Gates je Kreis (E10). */
+function kreisLogZeile(paket, kreis) {
+  return `#${paket} ${kreis.steht ? "steht in einem Kreis" : "wartet auf einen Kreis"}: ${kreisText(kreis.karten)}`;
 }
 
 /** Eine Zeile des Blocks je Abhaengigkeit (E10), ohne Titel bei unbekannter Karte. */
@@ -2512,7 +2602,11 @@ function abhaengigkeitsZeile(a) {
  * Kettenbericht — die lesen den einzeiligen `kommentar`.
  */
 export function abhaengigkeitsBlock(befund) {
-  return ["Abhaengigkeiten, wie der Nachtlauf sie liest:", ...befund.abhaengigkeiten.map(abhaengigkeitsZeile)].join("\n");
+  return [
+    "Abhaengigkeiten, wie der Nachtlauf sie liest:",
+    ...befund.abhaengigkeiten.map(abhaengigkeitsZeile),
+    ...(befund.kreise ?? []).map(kreisZeile),
+  ].join("\n");
 }
 
 // --- Verbose-Stream (Issue #154) ---
@@ -8244,7 +8338,7 @@ export function pruefeIssueGates(top) {
     };
   }
 
-  const full = board("issue", "get", String(top.id));
+  const full = gateKarte(top);
   // Ungepruefte Issues zurueckstellen (Issue #223). Nur wenn ausdruecklich aktiviert:
   // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten, deshalb
   // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
@@ -8271,6 +8365,7 @@ export function pruefeIssueGates(top) {
       log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
       kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`,
       block: abhaengigkeitsBlock(befund),
+      kreisLog: befund.kreise.map((k) => kreisLogZeile(top.id, k)),
     };
   }
   // Ein startendes Paket wird nicht zurueckgestellt, also kein Kommentar (E11) — aber der
@@ -9042,6 +9137,8 @@ function stelleRundeZurueck(top, res, minutes, pruefung) {
  */
 function stelleAmGateZurueck(top, gate) {
   log(gate.log);
+  // Die zweite Logzeile je Kreis (Issue #1063, E10) — die erste bleibt einzeilig wie bisher.
+  for (const zeile of gate.kreisLog ?? []) log(zeile);
   // Der Befund-Block des Abhaengigkeits-Gates (Issue #1062, E10) nur hier, an der Karte.
   const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
   board("issue", "comment", String(top.id), "--text", text);
