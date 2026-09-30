@@ -3,7 +3,59 @@
   "issueTracker": "toolbox",
   "buildChecks": [
     {
-      "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
+      "cmd": "node --test \"test/night-kette-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board",
+        "installer",
+        "nachtrunner"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-w*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board",
+        "nachtrunner",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board",
+        "installer",
+        "nachtrunner",
+        "preise",
+        "pruefungen",
+        "sync"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-s*.test.mjs\" \"test/night-t*.test.mjs\" \"test/night-u*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-w*.test.mjs\" \"test/night-z*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
+        "skills-doku",
+        "wirksamkeit"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/board-g*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/guete-*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
@@ -18,64 +70,44 @@
       ]
     },
     {
-      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "cmd": "node --test \"test/migrate-*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
         "board",
-        "einstellungen",
-        "installer",
-        "konfiguration",
-        "nachtrunner",
-        "pruefungen",
-        "sync",
-        "wirksamkeit",
-        "workflow-vorlage"
+        "nachtrunner"
       ]
     },
     {
-      "cmd": "node --test \"test/cli-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\"",
+      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
-        "board",
-        "installer",
-        "sync",
-        "wirksamkeit"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\"",
-      "areas": [
         "board",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
         "installer",
+        "konfiguration",
         "nachtrunner",
         "preise",
         "pruefungen",
+        "skills-doku",
         "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
         "worktree"
       ]
     },
     {
-      "cmd": "node --test \"test/docs-*.test.mjs\"",
-      "areas": [
-        "befunde",
-        "einstellungen",
-        "herkunft",
-        "installer",
-        "nachtrunner",
-        "skills-doku",
-        "sync",
-        "workflow-vorlage"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
         "board",
+        "einstellungen",
+        "herkunft",
         "installer",
         "nachtrunner",
         "pruefungen",
