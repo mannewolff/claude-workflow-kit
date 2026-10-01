@@ -1538,6 +1538,36 @@ Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permissio
 
 Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht davon nichts.
 
+### Der Laufstand
+
+**Der Stand eines Laufs steht am Board, nicht im Prozess.** Bis dahin lebte er im laufenden Runner: Starb der Prozess, ging das Wissen mit ihm, denn der Nachtbericht entsteht erst beim Ausgang, und ein Absturz ist kein Ausgang. Deshalb trägt jede Karte einer Kette oder Umsetzungsnacht ihren eigenen Stand, sichtbar ohne Blick ins Protokoll.
+
+**Drei Labels und ein Kommentar.** An der Karte hängt höchstens eines der drei Labels `lauf:laeuft`, `lauf:abgebrochen` und `lauf:wartet`, dazu genau ein Kommentar `## Laufstand`, der bei jedem Wechsel ersetzt wird. Er nennt den zuletzt begonnenen und den zuletzt abgeschlossenen Schritt, jeweils mit Zeitpunkt. Der Kommentar ist Tafel, nicht Verlauf; der Nachtbericht bleibt Verlauf. Wer wissen will, *was* in einer Nacht geschah, liest den Bericht; wer wissen will, *wo* eine Karte jetzt steht, liest den Laufstand.
+
+**Abbruch und Halt sind unterscheidbar.** `lauf:abgebrochen` heißt: technisch abgebrochen, Wiederholen genügt. `lauf:wartet` sagt im Laufstand wörtlich, worauf die Karte wartet, in einer von drei Formen:
+
+- `wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night` — das Projekt hat den Übergang nicht freigegeben (siehe unten);
+- `wartet: Karte ohne Freigabe zur Umsetzung` — der Übergang in die Umsetzung ist freigegeben, aber die Karte trägt kein `kit:durchziehen`;
+- „Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`“ — ein inhaltlicher Halt. Der Weg dafür über `kit:klaeren` und den Kommentar `## Kette angehalten` bleibt, wie er ist.
+
+**Wiederholen mit derselben Geste.** Einen eigenen Befehl für einen einzelnen Schritt gibt es nicht. `kit:night` an der Karte startet die Kette bei der ersten Stufe ohne Ergebnis: Was schon vorliegt — Plan, Prüfvermerk, Pakete, Abdeckung, umgesetzte Pakete in In review —, gilt als erledigt und entsteht nicht doppelt, auch wenn der vorige Lauf danach an der Uhr oder am Board scheiterte. Ein vorhandener Plan zählt dabei als Ergebnis, solange er nicht in Done steht; ein frischer Plan entsteht erst, wenn der alte in Done steht. Wer neu planen lassen will, schließt den alten Plan.
+
+**Übergänge einzeln freigeben.** Welche Übergänge der Kette automatisch folgen dürfen, legt das Projekt in `night.kette.uebergaenge` fest, mit den vier Schaltern `planReview`, `reviewPakete`, `paketeAbdeckung` und `abdeckungUmsetzung`. Die Vorgabe des Kits gibt die ersten drei frei und den vierten nicht, also das Verhalten von heute. `abdeckungUmsetzung` wirkt nur zusammen mit `kit:durchziehen` an der Karte: Das GO lässt sich nie projektweit erteilen, es bleibt an der einzelnen Karte. Ein gesperrter Übergang endet mit `lauf:wartet` in der ersten Form oben.
+
+**Ein Versuch, nur für den lebenden Lauf.** Einen automatischen Versuch gibt es nur bei Umgebungsfehlern, solange der Lauf lebt: Das Board war nicht erreichbar, oder eine Sitzung kam nicht zustande. Dann versucht der Lauf den Schritt nach einer Pause genau einmal erneut, und der Laufstand vermerkt „2. Versuch“. Scheitert auch er, hält der Lauf sichtbar an. Eine Sitzung, die zustande kam und ohne Ergebnis, am Zeitlimit oder ohne Nachweis endete, ist ein Paketfehler und bekommt keinen Versuch. Ein gestorbener Lauf wird nicht wiederholt: Er kann sich nicht selbst wiederholen, und ein Neustart von außen wäre ein Lauf ohne Geste. Seine Karten zeigen nach der Frist „nicht beendet“, und weiter geht es mit `kit:night`.
+
+#### Der Wächter
+
+Wer einen Lauf bemerkt, der ohne Abschied gestorben ist, und wann er als verstummt gilt.
+
+#### Das Journal
+
+Was ein Lauf unterwegs festhält, damit sein Stand den Prozess überlebt.
+
+#### Die Belegfälle
+
+Für jeden Belegfall der fachlichen Anforderung: welchen Stand die Karte danach am Board zeigt und mit welcher Geste es weitergeht.
+
 ### Mit einem lokalen Modell fahren
 
 > **Ungetestet.** Dieser Abschnitt beschreibt einen Weg, der sich aus der Architektur des Runners ergibt und ohne jede Änderung am Kit funktionieren sollte — er ist hier aber **nicht praktisch erprobt**. Weder wurde LiteLLM aufgesetzt noch ein Lauf gegen ein lokales Modell gefahren. Nimm ihn als begründeten Vorschlag, nicht als Erfahrungsbericht.
