@@ -1574,13 +1574,29 @@ Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demsel
 
 Wer einen Lauf bemerkt, der ohne Abschied gestorben ist, und wann er als verstummt gilt.
 
+Beim Laufbeginn startet der Runner einen abgekoppelten Wächter, der jede Minute nachsieht. Der Lauf schreibt dazu jede Minute ein Lebenszeichen in seine Puls-Datei `.claude/lauf/<lauf>.puls`. Als verstummt gilt er erst, wenn dieses Lebenszeichen älter als die Frist `night.stand.fristMin` ist (Vorgabe 10 Minuten) **und** der Runner-Prozess nicht mehr existiert. Ein Lauf, der lebt, gilt damit nie als verstummt, auch wenn ein Schritt lange keinen Puls schreibt. Ist der Lauf verstummt, setzt der Wächter jede Karte, die noch auf `laeuft` steht, auf `lauf:abgebrochen` mit `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` und endet. Einen Neustart gibt es nicht. Starb der Wächter mit dem Rechner, holt der nächste Lauf das beim Start nach.
+
 #### Das Journal
 
 Was ein Lauf unterwegs festhält, damit sein Stand den Prozess überlebt.
 
+Jeder Lauf schreibt jeden Stand, bevor er ihn ans Board gibt, als Zeile in sein Journal `.claude/lauf/<lauf>.jsonl`. Nimmt das Board einen Stand nicht an, bleibt die Zeile offen, und am Board gilt der zuletzt sichtbare Stand. Offene Zeilen werden nachgetragen, sobald das Board wieder antwortet: im selben Lauf beim nächsten Stand, sonst beim Start des nächsten Laufs. Das Protokoll nennt jeden Nachtrag mit „Laufstand nachgetragen“. Das Journal ist das Gedächtnis des Laufs; lesen musst du es nur, wenn das Board einen Stand schuldig blieb.
+
+**Teilschnitt.** Stirbt die Stufe `pakete` mitten im Schnitt, trägt die Karte „pakete begonnen für #M“ ohne „pakete fertig für #M“. Der nächste Lauf wiederholt die Stufe dann nicht, sondern zeigt `lauf:abgebrochen` mit „Teilschnitt vorhanden (#a, #b) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night“. Aufräumen heißt: die genannten Pakete am Board schließen oder löschen, dann `kit:night` erneut an die Karte. Pakete ohne jeden Laufstand-Eintrag, etwa von Hand angelegt, sind kein Teilschnitt.
+
+**Reste im Stash.** Lässt ein gescheitertes Paket Änderungen im Arbeitsbaum zurück und gelingt die Rettung nicht, liegen sie im Stash `nachtrest #<id> <lauf>`, und der Laufstand des Pakets nennt ihn. Zurück holst du sie mit `git stash list` und `git stash apply stash@{<n>}`; ist das Paket erledigt, räumt `git stash drop stash@{<n>}` den Eintrag.
+
 #### Die Belegfälle
 
 Für jeden Belegfall der fachlichen Anforderung: welchen Stand die Karte danach am Board zeigt und mit welcher Geste es weitergeht.
+
+| Fall | Kartenstand danach | Weg nach vorn |
+|---|---|---|
+| Spurlos: der Lauf stirbt in der Vorabprüfung | zuerst `lauf:laeuft` mit „Lauf angenommen um …, Vorabprüfung läuft“, nach der Frist `lauf:abgebrochen` mit `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` | Protokoll lesen, Ursache beheben, dann `kit:night` erneut an die Karte |
+| Abgebrochen, obwohl fertig: die Prüfstufe reißt das Zeitbudget, der Prüfvermerk steht schon im Plan | `lauf:abgebrochen` mit dem Grund; der Laufstand nennt den zuletzt abgeschlossenen Schritt | `kit:night` erneut an die Karte: Die Stufe gilt als vorgefunden, die Kette setzt bei der ersten Stufe ohne Ergebnis an |
+| Ausgang unbekannt: das Board ist kurz nicht erreichbar | gelingt der Versuch nach der Pause, der Stand der Karte mit „2. Versuch“; scheitert er, `lauf:abgebrochen` mit `abgebrochen, Umgebungsfehler um <zeit>: …`, die übrigen Karten des Laufs `lauf:wartet` mit `nicht begonnen: der Lauf hielt um <zeit> an — …` | nach einem gelungenen Versuch nichts; sonst, wenn das Board wieder antwortet, den Lauf erneut starten bzw. `kit:night` erneut an die Kette |
+| Ein Paket hält die Nacht an: Sitzung ohne Commit, Zeitgrenze oder wartende Sitzung | nur dieses Paket `lauf:abgebrochen` mit Grund, es geht ins Backlog; abhängige Pakete `lauf:wartet` mit „hängt an #N (abgebrochen in diesem Lauf)“; Reste im Stash `nachtrest #<id> <lauf>`; die übrigen Pakete laufen weiter | Grund lesen, Reste bei Bedarf aus dem Stash holen, das Paket nachbessern und wieder nach Ready ziehen |
+| Verschränkte Protokolle: Kette und Prüflauf laufen gleichzeitig | jeder Laufstand nennt in der Zeile `Protokoll:` die Datei `.claude/protokolle/<lauf>/<karte>-<stufe>.log` seines Schritts | die genannte Datei öffnen; im Tagesprotokoll trennt die Lauf-Kennung in `[<Zeitpunkt> <lauf>]` die Läufe |
 
 ### Mit einem lokalen Modell fahren
 
