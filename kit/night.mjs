@@ -706,10 +706,75 @@ let config = null;
 // liefen bei der ersten Aenderung auseinander.
 let CONFIG_PATH = null;
 
+// Die Kennung des Laufs in jeder Zeile des Tagesprotokolls (Issue #1090, E16). Laufen Kette
+// und Prueflauf gleichzeitig, schreiben sie in dieselbe Tagesdatei; erst die Kennung trennt
+// ihre Zeilen. Gesetzt nur im Waechter, der einen fremden Lauf beobachtet — sonst ist sie
+// der Stempel des Laufs, im Trockenlauf ohne Stempel die Prozess-Id.
+let LOG_KENNUNG = null;
+
+// Das Protokoll des laufenden Schritts (Issue #1090, E16): `{ karte, stufe, rel }` oder
+// null. Solange es gesetzt ist, gehen die Runner-Zeilen und der Session-Output zusaetzlich
+// nach `.claude/protokolle/<lauf>/<karte>-<stufe>[-v2].log`.
+let SCHRITT_LOG = null;
+// Das zuletzt begonnene Schrittprotokoll je Karte: Der Laufstand nennt es auch nach dem
+// Ende des Schritts, etwa im Halt, der erst nach der Stufe an die Karte geht.
+const LETZTES_PROTOKOLL = new Map();
+
+function logKennung() {
+  return LOG_KENNUNG ?? LAUF_STEMPEL ?? `pid-${process.pid}`;
+}
+
+// Die Kennung steht in derselben Klammer wie der Zeitstempel, nicht in einer zweiten: Wer
+// genau eine fuehrende Klammer abstreift, liest die Zeile weiter wie vorher.
 function log(msg) {
-  const line = `[${new Date().toISOString()}] ${msg}`;
+  const line = `[${new Date().toISOString()} ${logKennung()}] ${msg}`;
   process.stdout.write(line + "\n");
   if (LOG_FILE) appendFileSync(LOG_FILE, line + "\n", "utf-8");
+  schrittProtokollieren(line + "\n");
+}
+
+/** Der Pfad eines Schrittprotokolls relativ zum Projekt, mit `/` wie im Laufstand. */
+export function schrittProtokollPfad(lauf, karte, stufe, versuch = 1) {
+  const zusatz = versuch > 1 ? `-v${versuch}` : "";
+  return [".claude", "protokolle", lauf, `${karte}-${stufe}${zusatz}.log`].join("/");
+}
+
+/**
+ * Beginnt das Protokoll eines Schritts und gibt das vorige zurueck, das `schrittEnden`
+ * wiederherstellt: Die Stufe umsetzung der Kette faehrt die Runden ihrer Pakete, und jede
+ * Runde ist ein eigener Schritt ihres Pakets. Ohne Stempel (Trockenlauf) kein Protokoll.
+ */
+function schrittBeginnen(karte, stufe) {
+  const vorher = SCHRITT_LOG;
+  SCHRITT_LOG = LAUF_STEMPEL ? { karte: String(karte), stufe, rel: schrittProtokollPfad(LAUF_STEMPEL, karte, stufe) } : null;
+  if (SCHRITT_LOG) LETZTES_PROTOKOLL.set(SCHRITT_LOG.karte, SCHRITT_LOG.rel);
+  return vorher;
+}
+
+function schrittEnden(vorher) {
+  SCHRITT_LOG = vorher;
+}
+
+/** Der zweite Versuch eines Schritts (Issue #1088) schreibt in eine eigene Datei `-v2`. */
+function schrittZweiterVersuch() {
+  if (!SCHRITT_LOG) return;
+  SCHRITT_LOG = { ...SCHRITT_LOG, rel: schrittProtokollPfad(LAUF_STEMPEL, SCHRITT_LOG.karte, SCHRITT_LOG.stufe, 2) };
+  LETZTES_PROTOKOLL.set(SCHRITT_LOG.karte, SCHRITT_LOG.rel);
+}
+
+// Ein Schreibfehler haelt den Lauf nicht an: Das Tagesprotokoll traegt dieselben Zeilen.
+// Gemeldet wird er dort einmal je Schritt, und der Laufstand nennt die Datei nicht mehr.
+function schrittProtokollieren(text) {
+  if (!SCHRITT_LOG) return;
+  const pfad = join(process.cwd(), SCHRITT_LOG.rel);
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, text, "utf-8");
+  } catch (err) {
+    LETZTES_PROTOKOLL.delete(SCHRITT_LOG.karte);
+    SCHRITT_LOG = null;
+    log(`Schrittprotokoll konnte nicht geschrieben werden: ${err.message} — die Zeilen stehen weiter im Tagesprotokoll.`);
+  }
 }
 
 /**
@@ -1441,6 +1506,18 @@ function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
 }
 
 /**
+ * Der Laufstand nennt das Protokoll des Schritts, der gerade an dieser Karte laeuft oder
+ * zuletzt lief (Issue #1090, E16). Hier und nicht an jeder Aufrufstelle: So traegt auch der
+ * Stand des Anhaltens den Pfad, und keiner der Wege vergisst ihn.
+ */
+function mitProtokollZeile(karte, eintrag) {
+  const rel = LETZTES_PROTOKOLL.get(karte);
+  if (!rel) return eintrag;
+  const zeile = `Protokoll: ${rel}`;
+  return eintrag ? `${eintrag}\n\n${zeile}` : zeile;
+}
+
+/**
  * Der gemeinsame Schreibweg jedes Standwechsels (E5): erst die Journalzeile, dann
  * `issue stand`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
  * naechsten Start nachgetragen. Rueckgabe `geschrieben`, `offen` oder `null` ohne Lauf
@@ -1450,7 +1527,7 @@ export function standSetzen(karte, zustand, eintrag, { lauf = LAUF_STEMPEL, repo
   if (!lauf) return null;
   const pfad = laufPfad(repoRoot, lauf, "jsonl");
   const nr = journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
-  const text = mitVersuchVermerk(String(karte), eintrag);
+  const text = mitProtokollZeile(String(karte), mitVersuchVermerk(String(karte), eintrag));
   const zeile = { art: "stand", nr, zeit: new Date().toISOString(), karte: String(karte), zustand, text, status: "offen" };
   journalZeile(pfad, zeile);
   return standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) ? "geschrieben" : "offen";
@@ -1809,6 +1886,7 @@ async function waechterLaufen(lauf) {
   const configPath = join(repoRoot, ".claude", "workflow.config.json");
   if (existsSync(configPath)) config = ladeConfigMitOverrides(configPath);
   LOG_FILE = join(repoRoot, ".claude", `night-run-${lauf.slice(0, 10)}.log`);
+  LOG_KENNUNG = `${lauf}-waechter`;
   const fristMs = waechterFristMs(config);
   const taktMs = Math.min(WAECHTER_TAKT_MS, fristMs);
   for (;;) {
@@ -2091,6 +2169,9 @@ export function gitResteAusnahmen(cfg = config) {
     // und ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
     // `.claude/*`-Block schon nach der ersten Runde hart, weil der Runner beide selbst anlegt.
     ".claude/lauf/",
+    // Die Protokolle je Schritt (Issue #1090, E16) aus demselben Grund: Der Runner legt sie
+    // waehrend jeder Runde selbst an.
+    ".claude/protokolle/",
   ];
 }
 
@@ -4841,9 +4922,9 @@ export async function runSession(issueId, args, opts = {}) {
       fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
     }
   }
-  if (LOG_FILE) {
-    appendFileSync(LOG_FILE, `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
-  }
+  const sessionOutput = `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`;
+  if (LOG_FILE) appendFileSync(LOG_FILE, sessionOutput, "utf-8");
+  schrittProtokollieren(sessionOutput);
   // Jede Session einer Karte an genau einer Stelle verbucht (Issue #669): Implementierung,
   // Salvage und alle Stufen der Kette laufen hier durch.
   const kennzahlen = leseKennzahlen(res.stdout);
@@ -4864,6 +4945,7 @@ export async function runSession(issueId, args, opts = {}) {
   // und der Aufrufer haelt den Lauf an. Ohne Stempel (Import durch Tests) kein Versuch.
   if (LAUF_STEMPEL && !opts.zweiterVersuch && sitzungsStartGescheitert(res, kommando)) {
     zweiterVersuch(`Sitzungsstart zu #${issueId} gescheitert (${exitText(res)})`);
+    schrittZweiterVersuch();
     const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true });
     zweiter.zweiterVersuch = true;
     zweiter.umgebungGescheitert = sitzungsStartGescheitert(zweiter, kommando);
@@ -7784,6 +7866,10 @@ function haltAmAuftrag(kette, ergebnis) {
   } finally {
     rmSync(pfad, { force: true });
   }
+  // Der Halt-Stand (Issue #1090, E1): Erst mit ihm ist am Board ohne Deutung zu sehen, dass
+  // eine Frage wartet und kein technischer Abbruch vorliegt — auch wenn die Kette ausserhalb
+  // einer Stufe anhielt.
+  ketteStand(kette, "wartet", HALT_WARTET);
 }
 
 // --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
@@ -8149,16 +8235,18 @@ export function berichteNachtragen(repoRoot = process.cwd()) {
 }
 
 /**
- * Der Vorflug ist vor der ersten Kette gescheitert: jeder Kandidat bekommt den Kommentar
- * `Kette nicht gestartet` mit Grund, das Label bleibt — die Geste ist nicht verbraucht,
- * denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
+ * Der Vorflug ist vor der ersten Kette gescheitert: Der Vorab-Stand jedes Kandidaten wird
+ * `abgebrochen` mit `Kette nicht gestartet` und dem Befund (Issue #1090, E17) — der
+ * fruehere eigene Kommentar geht darin auf. Das Label bleibt, die Geste ist nicht
+ * verbraucht, denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
  */
 function ketteNichtGestartet(kandidaten, grund) {
+  const zeit = new Date().toISOString();
   for (const k of kandidaten) {
-    const res = boardRoh("issue", "comment", String(k.id), "--text", `Kette nicht gestartet: ${grund}`);
-    log(res.status === 0
-      ? `  #${k.id}: Kommentar 'Kette nicht gestartet' geschrieben, Label bleibt.`
-      : `  #${k.id}: Kommentar 'Kette nicht gestartet' nicht geschrieben (${res.text.slice(0, 120)}).`);
+    const ergebnis = standSetzen(k.id, "abgebrochen", `Kette nicht gestartet um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+    log(ergebnis === "geschrieben"
+      ? `  #${k.id}: Laufstand 'Kette nicht gestartet' geschrieben, Label bleibt.`
+      : `  #${k.id}: Laufstand 'Kette nicht gestartet' nicht geschrieben — bleibt offen im Journal.`);
   }
 }
 
@@ -8421,6 +8509,9 @@ function teilschnitt(auftrag, planId) {
   return { ausgang: "abgebrochen", grund: `Teilschnitt vorhanden (${ids.map((id) => "#" + id).join(", ")}) — ${TEILSCHNITT_FOLGE}` };
 }
 
+// Der Wortlaut von `wartet` bei einem inhaltlichen Halt (E1), wie er im Regeltext steht.
+const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``;
+
 /**
  * Schreibt den Laufstand der tragenden Karte (E2): zuletzt begonnener und zuletzt
  * abgeschlossener Schritt, darueber bei einem Abbruch oder Halt dessen Grund. Ein Board,
@@ -8434,6 +8525,7 @@ function ketteStand(kette, zustand, kopf = null) {
     ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
   ];
   standSetzen(kette.karte.id, zustand, zeilen.join("\n"), { repoRoot: kette.repoRoot });
+  kette.standGesetzt = true;
 }
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
@@ -8449,9 +8541,7 @@ function stufeEndet(kette, stufe, ziel, ergebnis) {
     ketteStand(kette, "fertig");
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
-    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan
-      ? `Halt: ${ergebnis.grund}`
-      : `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``);
+    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
   } else {
     ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig", `${ergebnis.ausgang}: Stufe ${stufe}: ${ergebnis.grund ?? "ohne Grund"}`);
   }
@@ -8477,6 +8567,16 @@ async function stufeMitErgebnis(kette, stufe, ziel, { auftrag, laufen, vorfinden
     stufeEndet(kette, stufe, ziel, sperre);
     return sperre;
   }
+  const vorherLog = schrittBeginnen(kette.karte.id, stufe);
+  try {
+    return await stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden });
+  } finally {
+    schrittEnden(vorherLog);
+  }
+}
+
+/** Der laufende Teil von `stufeMitErgebnis`, ganz im Protokoll seines Schritts. */
+async function stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden }) {
   stufeBeginnt(kette, stufe, ziel);
   let ergebnis = await laufen();
   // Nur nach dem Abbruch einer SESSION von aussen (Zeitlimit, technischer Fehler): Dort ist
@@ -8543,7 +8643,7 @@ function vorDerUmsetzung(kette, abdeckung) {
  */
 async function stufenDerKette(kette) {
   // Der Laufstand, den die Kette vorfand — VOR ihrem ersten eigenen, der ihn ersetzt.
-  const auftrag = { F: kette.F, karte: kette.karte, repoRoot: kette.repoRoot, laufstandVorher: laufstandAmBoard(kette.karte.id) };
+  const auftrag = { F: kette.F, karte: kette.karte, repoRoot: kette.repoRoot, laufstandVorher: kette.laufstandVorher ?? laufstandAmBoard(kette.karte.id) };
   kette.laufstand ??= { begonnen: null, abgeschlossen: null };
   let planId;
   if (kette.art === "plan") {
@@ -8671,6 +8771,8 @@ async function laufeEineKette(auftrag, nummer, args) {
     // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
     variante: varianteVon(karte, KETTE_BUDGET),
     uebergaenge: KETTE_UEBERGAENGE,
+    // Der Laufstand vor dem Vorab-Stand dieses Laufs (Issue #1090) — fuer die Ergebnispruefung.
+    laufstandVorher: auftrag.laufstandVorher,
   };
   // Haelt der Lauf wegen der Umgebung an, sind die naechsten die Pakete des Auftrags ohne
   // Ergebnis (E15).
@@ -8694,6 +8796,12 @@ async function laufeEineKette(auftrag, nummer, args) {
     // angehaltene PAKET bereits kit:klaeren, und ein zweites an der gekennzeichneten Karte
     // schloesse sie aus der naechsten Kette aus. Der Feldname bleibt der von E17.
     if (ergebnis.ausgang === "angehalten" && !ergebnis.ohneHaltAmFachplan) haltAmAuftrag(kette, ergebnis);
+    // Endet die Kette, bevor sie einen Stand setzte — etwa am Worktree —, stuende sonst der
+    // Vorab-Stand `laeuft` weiter an der Karte (Issue #1090, E17).
+    if (!kette.standGesetzt) {
+      const zustand = { abgebrochen: "abgebrochen", angehalten: "wartet" }[ergebnis.ausgang] ?? "fertig";
+      ketteStand(kette, zustand, `${ergebnis.ausgang}: ${ergebnis.grund ?? "ohne Grund"}`);
+    }
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
       ? aeltereUeberholen(kette, aeltere, neuerPlan)
@@ -8746,6 +8854,24 @@ function warneVorAltenLabels(issues) {
 }
 
 /**
+ * Der Vorab-Stand (Issue #1090, E17): Stirbt der Lauf in der Vorabpruefung, zeigt die Karte,
+ * dass er sie angenommen hatte (Belegfall 1). Nicht im Trockenlauf — er veraendert kein
+ * Label —, und nie im Prueflauf, der diesen Weg nicht geht.
+ *
+ * Der Stand ersetzt den Laufstand-Kommentar eines frueheren Laufs, und aus dem liest die
+ * Kette, welche Stufen schon ein Ergebnis haben (E10). Er wird darum vorher am Auftrag
+ * festgehalten.
+ */
+function vorabStandSetzen(args, auftraege) {
+  if (args.dryRun) return;
+  const zeit = new Date().toISOString();
+  for (const a of auftraege) {
+    a.laufstandVorher = laufstandAmBoard(a.karte.id);
+    standSetzen(a.karte.id, "laeuft", `Lauf angenommen um ${zeit}, Vorabprüfung läuft`);
+  }
+}
+
+/**
  * Programm Kette (Plan #638): Kandidaten, Vorflug, Dry-Run, dann Kette fuer Kette.
  * Beendet den Prozess selbst, wie der Dry-Run der Implementierung.
  */
@@ -8774,6 +8900,7 @@ export async function laufeKette(args) {
     log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
   }
 
+  vorabStandSetzen(args, auftraege);
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
   // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
   await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
@@ -8926,7 +9053,15 @@ async function pruefeEineKarte(lauf, issue, nummer) {
     log(`  Label '${REVIEW_FERTIG_LABEL}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.`);
   }
 
-  const s = await pruefLaufSession(lauf, id);
+  // Die Session hat ihr eigenes Protokoll (Issue #1090, E16): Laeuft daneben eine Kette,
+  // stehen ihre Zeilen sonst verschraenkt im selben Tagesprotokoll (Belegfall 5).
+  const vorherLog = schrittBeginnen(id, PRUEFLAUF_STUFE);
+  let s;
+  try {
+    s = await pruefLaufSession(lauf, id);
+  } finally {
+    schrittEnden(vorherLog);
+  }
   const nachher = leseKarte(id) ?? vorher;
   const ergebnis = pruefLaufErgebnis(vorher, nachher);
 
@@ -10269,6 +10404,18 @@ function ohneSessionGescheitert(top, einheit, modellStand, started) {
  * bei ihren alten Woertern.
  */
 async function laufeRunde(top, args, salvageAttempted, pruefungen) {
+  // Jede Runde ist ein Schritt ihres Pakets mit eigenem Protokoll (Issue #1090, E16) —
+  // die Salvage-Session derselben Runde schreibt mit hinein.
+  const vorherLog = schrittBeginnen(top.id, "umsetzung");
+  try {
+    return await rundeLaufen(top, args, salvageAttempted, pruefungen);
+  } finally {
+    schrittEnden(vorherLog);
+  }
+}
+
+/** Der Inhalt von `laufeRunde`, ganz im Protokoll ihres Schritts. */
+async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
   // Die Einheit entsteht VOR der Session und wird sofort geschrieben: Bricht der Lauf
   // mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand — mit ausgang
   // "unbekannt", was etwas anderes sagt als ein Fehlschlag.

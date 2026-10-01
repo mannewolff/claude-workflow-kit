@@ -78,7 +78,7 @@ function setupProjekt() {
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
     night: { stand: { pauseMin: PAUSE_MIN } },
   }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/lauf/\nissues/\nhelfer/\n");
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/lauf/\n.claude/protokolle/\nissues/\nhelfer/\n");
   for (const a of [["init", "-q"], ["config", "user.email", "test@example.invalid"], ["config", "user.name", "Night Test"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
     assert.equal(res.status, 0, `git ${a.join(" ")} schlug fehl: ${res.stderr}`);

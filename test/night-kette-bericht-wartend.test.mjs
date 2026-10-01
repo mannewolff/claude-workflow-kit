@@ -2,8 +2,8 @@
 //
 // Nimmt der Tracker den Bericht nicht an, wartet er als `.claude/night-bericht-<F>-<stempel>.md`
 // in der Hauptkopie — kein Rest im Arbeitsbaum — und geht beim naechsten Start jeder
-// Betriebsart nach. Scheitert der Reviewer-Vorflug vor der ersten Kette, bekommt jeder
-// Kandidat den Kommentar "Kette nicht gestartet" und behaelt sein Label.
+// Betriebsart nach. Scheitert der Reviewer-Vorflug vor der ersten Kette, zeigt jeder
+// Kandidat "Kette nicht gestartet" im Laufstand und behaelt sein Label (Issue #1090).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -93,10 +93,10 @@ test("[night-21] scheitert der Vorflug vor der ersten Kette, bekommt jeder Kandi
       const karte = board(dir, "issue", "get", F);
       assert.ok(karte.labels.includes("kit:night"), `das Label an #${F} bleibt`);
       const text = readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
-      assert.match(text, /Kette nicht gestartet: Die Vorflug-Session lieferte kein Ergebnis \(die Vorflug-Session endete ohne auswertbaren Befund-Block\)/);
+      assert.match(text, /Kette nicht gestartet um \S+: Die Vorflug-Session lieferte kein Ergebnis \(die Vorflug-Session endete ohne auswertbaren Befund-Block\)/);
       assert.ok(!text.includes(BERICHT_ANKER), "ohne Kette kein Nachtbericht");
     }
-    assert.match(res.stdout, /#0001: Kommentar 'Kette nicht gestartet' geschrieben, Label bleibt\./);
+    assert.match(res.stdout, /#0001: Laufstand 'Kette nicht gestartet' geschrieben, Label bleibt\./);
     assert.equal(board(dir, "issue", "list").length, 2, "kein Plan entstanden");
     assert.equal(stand(dir).abschluss, "harterStopp");
     assert.ok(!existsSync(join(dir, "helfer", "kette-sessions.log")), "keine Ketten-Session gestartet");
