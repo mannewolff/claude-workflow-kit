@@ -177,6 +177,14 @@ Nutzung:
       ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
       [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
       ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
+  node board.mjs issue check-geschuetzt <id>
+      Geschuetzte Dateien eines Pakets (Issue #1045, Plan #987): Treffer aus Aufgabe und
+      Akzeptanzkriterium gegen die Sperren der Projektwurzel, das Label kit:geschuetzt
+      und die Freigabe — ein Halt-Kommentar '## Geschuetzte Datei' mit der Zeile
+      'Label kit:geschuetzt gesetzt', das Label abgenommen und jeder Treffer dort
+      genannt. Ausgabe: { ok, treffer, label, freigegeben, handlung, kommentar };
+      'kommentar' ist der Halt-Text ohne Label-Zeile. Exit 1 bei ok false, auch bei
+      Label ohne Treffer. Rein lesend.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs code ci-status --commit <sha>
@@ -4362,6 +4370,81 @@ export function geschuetzteTreffer(body, title, wurzel) {
   return listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel);
 }
 
+// Halt-Kommentar und Freigabe (Issue #1045, Plan #987, E5, E11, E17). Der Text ist
+// Schreib- und Leseformat zugleich: Das Gate liest beim naechsten Anlauf aus genau diesem
+// Kommentar zurueck, welche Pfade der Mensch freigegeben hat. Darum baut ihn nur
+// `geschuetztKommentar`, und `kit/night.mjs` prueft seine eigenen Konstanten gegen diese.
+
+export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
+export const GESCHUETZT_LABEL = "kit:geschuetzt";
+export const GESCHUETZT_LABEL_GESETZT = `Label ${GESCHUETZT_LABEL} gesetzt`;
+export const GESCHUETZT_LABEL_NICHT_GESETZT = `Label ${GESCHUETZT_LABEL} nicht gesetzt`;
+
+/**
+ * Der Pfad einer Listenzeile `- <lauf><pfad><lauf>` mit genau einem Backtick-Pfad, sonst
+ * null. Die zitierten Zeilen darunter beginnen mit `>` und zaehlen darum nie als genannt,
+ * auch wenn sie selbst Pfade tragen.
+ */
+function listenPfad(zeile) {
+  if (!zeile.startsWith("- `")) return null;
+  const rest = zeile.slice(2);
+  const lauf = /^`+/.exec(rest)[0];
+  const ende = rest.length - lauf.length;
+  if (ende <= lauf.length || !rest.endsWith(lauf) || rest[ende - 1] === "`") return null;
+  return rest.slice(lauf.length, ende);
+}
+
+/** Ein Pfad in einem Backtick-Lauf, der laenger ist als jeder Lauf im Pfad selbst. */
+function inBackticks(pfad) {
+  const laengster = Math.max(0, ...[...pfad.matchAll(BACKTICK_LAUF)].map((m) => m[0].length));
+  const lauf = "`".repeat(laengster + 1);
+  return `${lauf}${pfad}${lauf}`;
+}
+
+/**
+ * Der Halt-Kommentar nach E17 ohne die Label-Zeile aus E11: unter dem Anker je getroffenem
+ * Pfad eine Listenzeile mit genau einem Backtick-Pfad, darunter die Zeilen aus Aufgabe und
+ * Akzeptanzkriterium, in denen er steht, woertlich als Zitat.
+ */
+export function geschuetztKommentar(treffer) {
+  const jePfad = new Map();
+  for (const { pfad, zeile } of treffer) {
+    if (!jePfad.has(pfad)) jePfad.set(pfad, []);
+    jePfad.get(pfad).push(zeile);
+  }
+  const liste = [...jePfad].flatMap(([pfad, zeilen]) => [`- ${inBackticks(pfad)}`, ...zeilen.map((z) => `  > ${z}`)]);
+  return [
+    GESCHUETZT_ANKER,
+    "",
+    `Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf — eine Session darf sie nicht aendern und den Schutz nicht umgehen. Ein Mensch nimmt die Aenderung, die die zitierten Zeilen verlangen, selbst vor und nimmt danach das Label \`${GESCHUETZT_LABEL}\` ab; beim naechsten Anlauf laeuft das Paket dann durch, solange es keine weitere geschuetzte Datei nennt.`,
+    "",
+    ...liste,
+  ].join("\n");
+}
+
+/** Die Pfade der Listenzeilen eines Halt-Kommentars, oder null, wenn er nicht freigeben kann. */
+function freigegebenePfade(body) {
+  const zeilen = String(body ?? "").replaceAll("\r", "").split("\n").map((z) => z.trimEnd());
+  if (!zeilen.includes(GESCHUETZT_ANKER) || !zeilen.includes(GESCHUETZT_LABEL_GESETZT)) return null;
+  if (zeilen.includes(GESCHUETZT_LABEL_NICHT_GESETZT)) return null;
+  return new Set(zeilen.map(listenPfad).filter((p) => p !== null));
+}
+
+/**
+ * Ist das Paket nach E5 freigegeben? Nur wenn das Label nicht (mehr) haengt und ein Kommentar
+ * mit dem Anker die Zeile `Label kit:geschuetzt gesetzt` traegt und jeden aktuellen Treffer
+ * in seiner Backtick-Liste nennt. `Label kit:geschuetzt nicht gesetzt` gibt nie frei — dort
+ * fehlt das Label, weil das Setzen scheiterte, nicht weil ein Mensch es abnahm. Ohne Treffer
+ * gibt es nichts freizugeben: `false`.
+ */
+export function geschuetztFreigabe(treffer, kommentare, labels) {
+  if (treffer.length === 0 || labels.includes(GESCHUETZT_LABEL)) return false;
+  return kommentare.some((k) => {
+    const pfade = freigegebenePfade(k.body);
+    return pfade !== null && treffer.every((t) => pfade.has(t.pfad));
+  });
+}
+
 /** Die Pfad-Token der Zeilen, die einen Eintrag der Liste treffen, je Pfad und Zeile einmal. */
 function listenTreffer(zeilen, liste, wurzel) {
   const treffer = [];
@@ -4927,6 +5010,36 @@ async function issueCheckForm(tracker, config, args) {
   if (!ergebnis.ok) process.exit(1);
 }
 
+/**
+ * `issue check-geschuetzt <id>` (Issue #1045, Plan #987, E6): Treffer, Label, Freigabe und
+ * Halt-Kommentar eines Pakets — die eine Quelle fuer Runner, Auftrag und Skills. Rein lesend.
+ * Ein Label ohne Treffer ist ein Befund (Karte aus dem Rueckfall-Halt): Der Runner
+ * ueberspringt sie, das Kommando gibt dieselbe Auskunft.
+ */
+async function issueCheckGeschuetzt(tracker, args) {
+  const id = args._[0];
+  if (id === undefined) fail("issue check-geschuetzt braucht eine Kartennummer: node board.mjs issue check-geschuetzt <id>");
+  const issue = await tracker.getIssue(String(id));
+  const kommentare = await tracker.kommentareStreng(String(id));
+  const labels = issue.labels || [];
+  const treffer = geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel());
+  const label = labels.includes(GESCHUETZT_LABEL);
+  const freigegeben = geschuetztFreigabe(treffer, kommentare, labels);
+  const ok = freigegeben || (treffer.length === 0 && !label);
+  out({ ok, treffer, label, freigegeben, handlung: geschuetztHandlung(treffer, label, freigegeben), kommentar: treffer.length > 0 ? geschuetztKommentar(treffer) : null });
+  if (!ok) process.exit(1);
+}
+
+/** Der Satz fuer den Menschen zum Ergebnis von `issue check-geschuetzt`. */
+function geschuetztHandlung(treffer, label, freigegeben) {
+  if (freigegeben) return "Freigegeben: Der Halt-Kommentar nennt jede geschuetzte Datei und das Label ist abgenommen — das Paket darf beginnen.";
+  if (treffer.length === 0 && !label) return "Keine geschuetzte Datei genannt — das Paket darf beginnen.";
+  if (treffer.length === 0) return `menschliche Handlung wartet: Die Karte traegt das Label ${GESCHUETZT_LABEL}. Ist die geschuetzte Aenderung erledigt, nimmt ein Mensch das Label ab.`;
+  const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
+  if (label) return `menschliche Handlung wartet: Ein Mensch nimmt die Aenderung an ${pfade} selbst vor und nimmt danach das Label ${GESCHUETZT_LABEL} ab.`;
+  return `menschliche Handlung wartet: Das Paket nennt ${pfade}, die nur ein Mensch schreiben darf. Es wird angehalten; der Halt-Kommentar sagt, was zu aendern ist.`;
+}
+
 async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
@@ -4944,6 +5057,7 @@ async function dispatchIssue(command, args) {
     case "auftrag": return issueAuftrag(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, config, args);
+    case "check-geschuetzt": return issueCheckGeschuetzt(tracker, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
