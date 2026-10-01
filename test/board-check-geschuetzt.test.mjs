@@ -10,11 +10,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   GESCHUETZTE_PFADE,
+  GESCHUETZT_ABGEWIESEN,
   GESCHUETZT_ANKER,
   GESCHUETZT_LABEL,
   GESCHUETZT_LABEL_GESETZT,
@@ -275,6 +276,65 @@ test("der Hilfetext nennt das Kommando", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue check-geschuetzt <id>/);
+    assert.match(res.stdout, /issue check-geschuetzt <id> \[--pfad <pfad>\]/);
+  });
+});
+
+// --- --pfad: der beim Schreiben abgewiesene Pfad (Issue #1053, Plan #987, E13, E17) ---
+
+test("local: --pfad mit geschuetztem Pfad ergibt ok false und den Pfad in der Backtick-Liste", () => {
+  mitLokal({ body: UNBETROFFEN }, (dir) => {
+    const res = runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN]);
+    assert.equal(res.status, 1, res.stderr);
+    const r = json(res);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.treffer, [{ pfad: EINSTELLUNGEN, zeile: GESCHUETZT_ABGEWIESEN }]);
+    assert.equal(GESCHUETZT_ABGEWIESEN, "beim Schreiben abgewiesen");
+    assert.ok(r.kommentar.split("\n").includes(`- \`${EINSTELLUNGEN}\``), r.kommentar);
+    assert.equal(r.kommentar, geschuetztKommentar(r.treffer));
+  });
+});
+
+test("local: --pfad — der Kommentar samt 'gesetzt' wird von geschuetztFreigabe als Halt-Kommentar erkannt", () => {
+  mitLokal({ body: UNBETROFFEN }, (dir) => {
+    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN]));
+    const body = `${r.kommentar}\n\n${GESCHUETZT_LABEL_GESETZT}`;
+    assert.equal(geschuetztFreigabe(r.treffer, [{ body }], []), true);
+    assert.equal(geschuetztFreigabe(r.treffer, [{ body }], [GESCHUETZT_LABEL]), false, "solange das Label haengt");
+  });
+});
+
+test("local: --pfad mehrfach — jeder geschuetzte Pfad ist ein Treffer, ein fremder keiner", () => {
+  mitLokal({ body: UNBETROFFEN }, (dir) => {
+    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN, "--pfad", "kit/board.mjs", "--pfad", LOKAL_EINSTELLUNGEN]));
+    assert.deepEqual(r.treffer.map((t) => t.pfad), [EINSTELLUNGEN, LOKAL_EINSTELLUNGEN]);
+  });
+});
+
+test("local: --pfad mit fremdem Pfad ergibt keinen Treffer", () => {
+  mitLokal({ body: UNBETROFFEN }, (dir) => {
+    const res = runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", "kit/board.mjs"]);
+    assert.equal(res.status, 0, res.stderr);
+    const r = json(res);
+    assert.deepEqual({ ok: r.ok, treffer: r.treffer, kommentar: r.kommentar }, { ok: true, treffer: [], kommentar: null });
+  });
+});
+
+test("local: --pfad absolut unter der Projektwurzel trifft wie relativ", () => {
+  mitLokal({ body: UNBETROFFEN }, (dir) => {
+    const absolut = join(realpathSync(dir), EINSTELLUNGEN);
+    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", absolut]));
+    assert.deepEqual(r.treffer, [{ pfad: absolut, zeile: GESCHUETZT_ABGEWIESEN }]);
+  });
+});
+
+test("local: --pfad ergaenzt die Treffer aus dem Body", () => {
+  mitLokal({ body: paket() }, (dir) => {
+    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", LOKAL_EINSTELLUNGEN]));
+    assert.deepEqual(r.treffer, [
+      { pfad: EINSTELLUNGEN, zeile: AUFGABE_ZEILE },
+      { pfad: LOKAL_EINSTELLUNGEN, zeile: GESCHUETZT_ABGEWIESEN },
+    ]);
   });
 });
 

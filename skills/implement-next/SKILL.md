@@ -45,7 +45,7 @@ Ohne Fehler enden.
 node .claude/kit/board.mjs issue auftrag <id>
 ```
 
-Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Er läuft **vor** Schritt 1: Er erwartet die Karte in Ready, nach dem Zug nach In progress lautete seine Folge `bleibt`. Gehandelt wird allein nach der Folge. Die Prüfungen dahinter — die Titel-Präfixe `[Fachlich]`, `[Idee]`, `[Plan]` und `[Mensch]`, das Label `kit:klaeren`, die Spalte, die Voraussetzungen — und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Er läuft **vor** Schritt 1: Er erwartet die Karte in Ready, nach dem Zug nach In progress lautete seine Folge `bleibt`. Gehandelt wird allein nach der Folge. Die Prüfungen dahinter — die Titel-Präfixe `[Fachlich]`, `[Idee]`, `[Plan]` und `[Mensch]`, das Label `kit:klaeren`, das Label `kit:geschuetzt` und die geschützten Dateien, die das Paket nennt, die Spalte, die Voraussetzungen — und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
 
 - **`beginnen`** — weiter mit Schritt 1.
 - **`bleibt`** — die Karte wird nicht bewegt und nicht kommentiert. Der Skill meldet den Grund aus dem Urteil; liegt die Karte nicht (mehr) in Ready, mit der Meldung oben. Mit Argument endet er damit ergebnislos, ohne Argument geht er zum nächsten Ready-Issue.
@@ -61,7 +61,29 @@ Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nich
 
   Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue. Ohne Argument geht er zum nächsten Ready-Issue (bzw. endet ohne Fehler, wenn keines bleibt).
 
+- **`geschuetzt`** — das Paket nennt eine geschützte Datei, die nur ein Mensch schreiben darf, und ist nicht freigegeben. Es wird nicht begonnen, keine Datei wird angefasst. Die Schritte nennt auch der Grund im Urteil, in dieser Reihenfolge — zuerst nach Backlog:
+
+  ```bash
+  node .claude/kit/board.mjs issue move <id> backlog
+  ```
+
+  Dann das Label:
+
+  ```bash
+  node .claude/kit/board.mjs issue label add <id> kit:geschuetzt
+  ```
+
+  Ein Fehlschlag dieses Aufrufs wird gemeldet und hält nicht auf. Danach geht der Kommentar ans Issue, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, als letzte Zeile ergänzt um die Label-Zeile, die den Ausgang vermerkt: `Label kit:geschuetzt gesetzt`, oder `Label kit:geschuetzt nicht gesetzt`, wenn der Aufruf davor scheiterte. Nur die erste gibt das Paket später frei. Der Kommentar geht nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann
+
+  ```bash
+  node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md
+  ```
+
+  Mit Argument endet der Skill danach ergebnislos — der Auftrag lautete auf genau dieses Issue. Ohne Argument geht er zum nächsten Ready-Issue (bzw. endet ohne Fehler, wenn keines bleibt).
+
 **Das Label `kit:klaeren` wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:klaeren` abraeumen duerfte, koennte sich selbst freigeben.
+
+**Auch `kit:geschuetzt` wird nie entfernt.** Die Maschine setzt es, abnehmen darf es allein der Mensch, nachdem er die geschützte Änderung selbst vorgenommen hat — erst damit gilt das Paket beim nächsten Anlauf als freigegeben.
 
 Ob ein Ready-Issue geprueft wurde, ist keine Frage dieses Skills — Ready ist das GO.
 
@@ -118,6 +140,16 @@ Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann gesch
 **Ob sich jeder eigene Anteil namentlich zuruecknehmen laesst, wird vor Schritt 2 entschieden.** Nicht namentlich zuruecknehmbar ist etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug und die die Session weiter geaendert hat — `git restore` naehme dem Menschen seinen Anteil weg. Bleibt so eine eigene Aenderung zurueck, wird **nicht** angehalten: keiner der Schritte 2 bis 5, also kein Label, kein Kommentar, kein Move, kein Commit. Die Session meldet, welche Datei zurueckbleibt und warum, und endet; das Issue bleibt in In progress. Interaktiv entscheidet der Mensch, nachts greift der Dirty-Guard des Runners wie bei jeder Runde ohne In-review-Ergebnis.
 
 Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
+
+**Rueckfall: Schreibzugriff auf eine geschuetzte Datei abgewiesen.** Weist Claude Code einen Schreibzugriff ab, weil die Datei geschützt ist, obwohl die Aufgabe sie nicht beim Namen nennt, hält die Session an — ohne weiteren Versuch. Der Schutz wird nie umgangen, auch nicht über die Shell. Das ist nicht der Halt einer Stopp-Frage: anderes Label, anderer Anker, eine andere Reihenfolge, und der Weg nach vorn ist die Handlung des Menschen an der Datei, kein Fachkonzept. In dieser Reihenfolge:
+
+1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Gemessen wird der eigene Anteil, belegt ueber die eigenen Werkzeugaufrufe.
+2. `node .claude/kit/board.mjs issue move <id> backlog`
+3. `node .claude/kit/board.mjs issue label add <id> kit:geschuetzt` — ein Fehlschlag wird gemeldet und beendet den Halt nicht.
+4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-geschuetzt <id> --pfad <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--pfad`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:geschuetzt gesetzt` oder `Label kit:geschuetzt nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
+5. Melden, welche Datei ein Mensch ändern muss — **kein Commit**. In `/implement-ready` geht der Lauf danach mit dem naechsten Ready-Issue weiter, die anderen Skills enden damit.
+
+Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laesst — etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug —, wird **nicht** angehalten: kein Move, kein Label, kein Kommentar, kein Commit. Die Session meldet die Datei und endet; das Paket bleibt in In progress. Auch hier gilt: `kit:geschuetzt` wird nie entfernt.
 
 ### 4. Pruefungen vor dem Commit
 

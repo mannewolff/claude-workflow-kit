@@ -180,9 +180,12 @@ Nutzung:
       ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
       [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
       ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
-  node board.mjs issue check-geschuetzt <id>
+  node board.mjs issue check-geschuetzt <id> [--pfad <pfad>]
       Geschuetzte Dateien eines Pakets (Issue #1045, Plan #987): Treffer aus Aufgabe und
-      Akzeptanzkriterium gegen die Sperren der Projektwurzel, das Label kit:geschuetzt
+      Akzeptanzkriterium gegen die Sperren der Projektwurzel; --pfad (auch mehrfach,
+      Issue #1053) nimmt einen beim Schreiben abgewiesenen Pfad dazu, ist er geschuetzt,
+      mit der Zeile 'beim Schreiben abgewiesen' — fuer den Rueckfall-Halt, wenn die
+      Aufgabe ihn nicht nennt. Dazu das Label kit:geschuetzt
       und die Freigabe — ein Halt-Kommentar '## Geschuetzte Datei' mit der Zeile
       'Label kit:geschuetzt gesetzt', das Label abgenommen und jeder Treffer dort
       genannt. Ausgabe: { ok, treffer, label, freigegeben, handlung, kommentar };
@@ -537,6 +540,10 @@ function loadConfig() {
 
 function parseArgs(argv) {
   const result = { _: [] };
+  // Alle Werte einer mehrfach genannten Option (`--pfad a --pfad b`); `result[key]` traegt
+  // weiter den letzten. Nicht aufzaehlbar, damit es kein Optionsname werden kann.
+  const werte = {};
+  Object.defineProperty(result, "werte", { value: werte, enumerable: false });
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -545,6 +552,7 @@ function parseArgs(argv) {
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
+        werte[key] = [...(werte[key] ?? []), next];
         i += 1;  // der Wert gehoert zur Option
       } else {
         result[key] = true;
@@ -4406,6 +4414,21 @@ export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
 export const GESCHUETZT_LABEL = "kit:geschuetzt";
 export const GESCHUETZT_LABEL_GESETZT = `Label ${GESCHUETZT_LABEL} gesetzt`;
 export const GESCHUETZT_LABEL_NICHT_GESETZT = `Label ${GESCHUETZT_LABEL} nicht gesetzt`;
+// Die zitierte Zeile eines Pfads, den der Schutz beim Schreiben abwies (Issue #1053, E13):
+// Die Aufgabe nennt ihn gerade nicht, es gibt keine Zeile aus dem Paket zu zitieren.
+export const GESCHUETZT_ABGEWIESEN = "beim Schreiben abgewiesen";
+
+/**
+ * Die beim Schreiben abgewiesenen Pfade, die geschuetzt sind, als Treffer mit der Zeile
+ * `GESCHUETZT_ABGEWIESEN` — fuer den Halt-Kommentar des Rueckfalls, wenn die Aufgabe den
+ * Pfad nicht nennt. Ein fremder Pfad ist kein Treffer.
+ */
+export function abgewieseneTreffer(pfade, wurzel) {
+  const liste = geschuetztePfade(wurzel);
+  return [...new Set(pfade)]
+    .filter((pfad) => liste.some((eintrag) => tokenFormen(pfad, wurzel).some((f) => trifftGeschuetzt(f, eintrag))))
+    .map((pfad) => ({ pfad, zeile: GESCHUETZT_ABGEWIESEN }));
+}
 
 /**
  * Der Pfad einer Listenzeile `- <lauf><pfad><lauf>` mit genau einem Backtick-Pfad, sonst
@@ -5038,8 +5061,9 @@ async function issueCheckForm(tracker, config, args) {
 }
 
 /**
- * `issue check-geschuetzt <id>` (Issue #1045, Plan #987, E6): Treffer, Label, Freigabe und
- * Halt-Kommentar eines Pakets — die eine Quelle fuer Runner, Auftrag und Skills. Rein lesend.
+ * `issue check-geschuetzt <id> [--pfad <pfad>]...` (Issue #1045, Plan #987, E6): Treffer, Label,
+ * Freigabe und Halt-Kommentar eines Pakets — die eine Quelle fuer Runner, Auftrag und Skills.
+ * `--pfad` nimmt einen beim Schreiben abgewiesenen Pfad mit auf (Issue #1053, E13). Rein lesend.
  * Ein Label ohne Treffer ist ein Befund (Karte aus dem Rueckfall-Halt): Der Runner
  * ueberspringt sie, das Kommando gibt dieselbe Auskunft.
  */
@@ -5049,7 +5073,10 @@ async function issueCheckGeschuetzt(tracker, args) {
   const issue = await tracker.getIssue(String(id));
   const kommentare = await tracker.kommentareStreng(String(id));
   const labels = issue.labels || [];
-  const treffer = geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel());
+  const treffer = [
+    ...geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel()),
+    ...abgewieseneTreffer(args.werte?.pfad ?? [], configWurzel()),
+  ];
   const label = labels.includes(GESCHUETZT_LABEL);
   const freigegeben = geschuetztFreigabe(treffer, kommentare, labels);
   const ok = freigegeben || (treffer.length === 0 && !label);

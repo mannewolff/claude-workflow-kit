@@ -52,6 +52,28 @@ Er liefert das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund
   node .claude/kit/board.mjs issue move <id> backlog
   ```
 
+- **`geschuetzt`** — das Paket nennt eine geschützte Datei, die nur ein Mensch schreiben darf, und ist nicht freigegeben. Es wird nicht begonnen, keine Datei wird angefasst. Die Schritte nennt auch der Grund im Urteil, in dieser Reihenfolge — zuerst nach Backlog:
+
+  ```bash
+  node .claude/kit/board.mjs issue move <id> backlog
+  ```
+
+  Dann das Label:
+
+  ```bash
+  node .claude/kit/board.mjs issue label add <id> kit:geschuetzt
+  ```
+
+  Ein Fehlschlag dieses Aufrufs wird gemeldet und hält nicht auf. Danach geht der Kommentar ans Issue, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, als letzte Zeile ergänzt um die Label-Zeile, die den Ausgang vermerkt: `Label kit:geschuetzt gesetzt`, oder `Label kit:geschuetzt nicht gesetzt`, wenn der Aufruf davor scheiterte. Nur die erste gibt das Paket später frei. Der Kommentar geht nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann
+
+  ```bash
+  node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md
+  ```
+
+  Danach endet der Skill.
+
+**Auch `kit:geschuetzt` wird nie entfernt.** Die Maschine setzt es, abnehmen darf es allein der Mensch, nachdem er die geschützte Änderung selbst vorgenommen hat — erst damit gilt das Paket beim nächsten Anlauf als freigegeben.
+
 ### 2. Issue nach In progress verschieben
 
 ```bash
@@ -79,6 +101,16 @@ Gelesen wird der Auftrag aus Schritt 1; ein weiteres `issue get` braucht es nich
 
 Das rote Laufenlassen der neuen Tests aus Schritt 4 ist genau so ein gezielter Lauf: nur die geschriebene Testdatei, nicht die Suite. Den vollen Lauf holt `/implement-done` vor dem Commit nach. Er traegt dort `--abschluss <kartennummer>`, weil er der
 Abschluss genau einer Karte ist; dieser Skill schliesst nichts ab und faehrt ihn nicht.
+
+**Rueckfall: Schreibzugriff auf eine geschuetzte Datei abgewiesen.** Weist Claude Code einen Schreibzugriff ab, weil die Datei geschützt ist, obwohl die Aufgabe sie nicht beim Namen nennt, hält die Session an — ohne weiteren Versuch. Der Schutz wird nie umgangen, auch nicht über die Shell. Das ist nicht der Halt einer Stopp-Frage: anderes Label, anderer Anker, eine andere Reihenfolge, und der Weg nach vorn ist die Handlung des Menschen an der Datei, kein Fachkonzept. In dieser Reihenfolge:
+
+1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Gemessen wird der eigene Anteil, belegt ueber die eigenen Werkzeugaufrufe.
+2. `node .claude/kit/board.mjs issue move <id> backlog`
+3. `node .claude/kit/board.mjs issue label add <id> kit:geschuetzt` — ein Fehlschlag wird gemeldet und beendet den Halt nicht.
+4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-geschuetzt <id> --pfad <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--pfad`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:geschuetzt gesetzt` oder `Label kit:geschuetzt nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
+5. Melden, welche Datei ein Mensch ändern muss — **kein Commit**. In `/implement-ready` geht der Lauf danach mit dem naechsten Ready-Issue weiter, die anderen Skills enden damit.
+
+Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laesst — etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug —, wird **nicht** angehalten: kein Move, kein Label, kein Kommentar, kein Commit. Die Session meldet die Datei und endet; das Paket bleibt in In progress. Auch hier gilt: `kit:geschuetzt` wird nie entfernt.
 
 ### 5. Kein Commit
 
