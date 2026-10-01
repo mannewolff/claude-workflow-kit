@@ -110,10 +110,16 @@ test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Mel
   const beginn = quelle.indexOf("async function stufenDerKette(");
   assert.notEqual(beginn, -1, "stufenDerKette nicht gefunden");
   const rumpf = quelle.slice(beginn, quelle.indexOf("\n}\n", beginn));
-  const zeilen = rumpf.split("\n").filter((z) => /\bstufe(Plan|Review|Pakete|Abdeckung)\(/.test(z));
+  // Seit Issue #1086 laeuft jede Stufe durch `stufeMitErgebnis`, das sie nur startet, wenn
+  // ihr Ergebnis nicht schon vorliegt — gemeldet wird um diesen Aufruf herum.
+  const zeilen = rumpf.split("\n").filter((z) => /\bstufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/.test(z));
   assert.equal(zeilen.length, 4, `vier Stufenaufrufe erwartet, gefunden:\n${zeilen.join("\n")}`);
   for (const z of zeilen) {
-    assert.match(z.trim(), /mitMeldung\(\(\) => stufe(Plan|Review|Pakete|Abdeckung)\(/, `Stufe ohne Meldung: ${z.trim()}`);
+    assert.match(z.trim(), /mitMeldung\(\(\) => stufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/, `Stufe ohne Meldung: ${z.trim()}`);
+  }
+  // Die Stufen selbst stehen nur noch als `laufen` darin, nie als eigener Aufruf daneben.
+  for (const z of rumpf.split("\n").filter((z) => /\bstufe(Plan|Review|Pakete|Abdeckung)\(/.test(z))) {
+    assert.match(z.trim(), /^laufen: \(\) => stufe(Plan|Review|Pakete|Abdeckung)\(/, `Stufe ausserhalb von stufeMitErgebnis: ${z.trim()}`);
   }
 });
 

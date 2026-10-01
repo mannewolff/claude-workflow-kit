@@ -6928,7 +6928,7 @@ function wartendVermerken(dokId, stufe, schlusstext) {
 async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null) {
   const rest = budgetMs - (Date.now() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null };
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
   }
   const t = Date.now();
   const res = await runSession(kette.F, kette.args, {
@@ -6941,11 +6941,11 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   if (LAUF) kostenAddieren(LAUF, kennzahlen);
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
   if (timedOut) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen };
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   if (res.error || res.status !== 0) {
     const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-    return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen };
+    return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   // Die wartende Sitzung (Plan #773, Issue #778) — hinter Zeitbudget und technischem
   // Fehler, weil sie ein REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit
@@ -8126,6 +8126,198 @@ async function mitMeldung(stufe) {
   return ergebnis;
 }
 
+// --- Vorhandenes Ergebnis einer Stufe (Issue #1086, Plan #1079 E2, E9, E10, E11) ---
+//
+// Eine Stufe prueft vor ihrem Start und nach jedem Abbruch am Board, ob ihr Ergebnis
+// schon vorliegt, statt vorher und nachher zu vergleichen: Der Vergleich sieht nach einem
+// Absturz nichts mehr. So gilt ein Pruefvermerk, der vor dem Zeitlimit im Plan stand, als
+// Ergebnis (Belegfall 2 aus #1075), und `kit:night` an der Karte setzt bei der ersten
+// Stufe ohne Ergebnis an.
+
+// Ein Plan in Done zaehlt nicht: Wer einen frischen Plan will, schliesst den alten (E9).
+const PLAN_VORHANDEN_SPALTEN = new Set(["backlog", "ready", "in_review"]);
+const PAKET_UMGESETZT_SPALTEN = new Set(["in_review", "done"]);
+// Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt.
+const NACHWEIS_MANGEL_KOPF = "Nachtlauf: Nachweis ";
+// Der Wortlaut des Teilschnitts (E10) — hinter der Liste der angelegten Pakete.
+const TEILSCHNITT_FOLGE = "eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night";
+
+/** Ein Laufstand-Eintrag einer Stufe: `<stufe> begonnen|fertig für #<ziel>`. */
+const stufenEintrag = (stufe, was, ziel) => `${stufe} ${was} für #${ziel}`;
+
+/** Traegt einer der Texte den Eintrag — mit Zahlgrenze, sonst passte #12 auf #123. */
+function eintragDa(texte, stufe, was, ziel) {
+  const muster = new RegExp(`(?:^|[^\\w])${stufe} ${was} für #${ziel}(?!\\d)`, "m");
+  return texte.some((t) => muster.test(t));
+}
+
+/**
+ * Der Kommentar `## Laufstand` einer Karte, wie er jetzt am Board steht — leer ohne ihn.
+ */
+const laufstandAmBoard = (karteId) => kommentareVon(leseKarte(karteId)).filter((k) => k.startsWith("## Laufstand"));
+
+/**
+ * Der Laufstand-Text der tragenden Karte aus allen Quellen (E10): der Kommentar, wie ihn
+ * die Kette beim Start vorfand (`auftrag.laufstandVorher`), wie er jetzt steht, und die
+ * Standzeilen dieser Karte in jedem Journal unter `.claude/lauf/`. Der Kommentar wird bei
+ * jedem Wechsel ersetzt — von den eigenen Stufen dieses Laufs, von einem Abbruch oder vom
+ * Waechter —, das Journal haengt nur an und haelt die Stufenzeilen fest.
+ */
+function laufstandTexte(auftrag) {
+  const karteId = auftrag.karte.id;
+  const texte = [...(auftrag.laufstandVorher ?? []), ...laufstandAmBoard(karteId)];
+  const ordner = join(auftrag.repoRoot, LAUF_ORDNER);
+  if (existsSync(ordner)) {
+    for (const name of readdirSync(ordner).filter((n) => n.endsWith(".jsonl")).sort(vergleicheText)) {
+      for (const s of journalLesen(join(ordner, name)).staende) {
+        if (s.karte === String(karteId)) texte.push(String(s.text ?? ""));
+      }
+    }
+  }
+  return texte;
+}
+
+/**
+ * Ist dieses Paket umgesetzt (E9)? In In review oder Done und ohne den Kommentar, den
+ * `werteInReview` bei fehlendem, unlesbarem oder rotem Nachweis schreibt — derselbe Guard
+ * wie dort (Issue #471). Exportiert fuer die Tests.
+ */
+export function paketUmgesetzt(issue) {
+  if (!issue || !PAKET_UMGESETZT_SPALTEN.has(issue.status)) return false;
+  return !kommentareVon(issue).some((k) => k.startsWith(NACHWEIS_MANGEL_KOPF));
+}
+
+/** Die Arbeitspakete zum Plan am Board, aufsteigend nach Nummer. */
+function paketeZumPlan(planId) {
+  return board("issue", "list")
+    .filter((i) => stammtAusErzeugung(i, planId, "issue"))
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .map((i) => String(i.id));
+}
+
+/**
+ * Liegt das Ergebnis dieser Stufe schon vor (E9)? `null`, wenn nicht, sonst ein Objekt mit
+ * dem, was die folgenden Stufen brauchen.
+ *
+ * `auftrag` traegt `karte` (die Karte, die die Kette traegt), `F`, `repoRoot`, dazu je
+ * nach Stufe `planId` und `paketIds`. Die Eintraege von pakete und abdeckung stehen an der
+ * tragenden Karte (E2). `abdeckung fertig` deckt `pakete fertig` mit: Der Laufstand-
+ * Kommentar nennt nur den zuletzt abgeschlossenen Schritt, und die Abdeckung kommt nach
+ * den Paketen.
+ */
+export function ergebnisVorhanden(stufe, auftrag) {
+  return Object.hasOwn(ERGEBNIS_REGELN, stufe) ? ERGEBNIS_REGELN[stufe](auftrag) : null;
+}
+
+/** Die fuenf Ergebnisregeln aus E9, je Stufe eine. */
+const ERGEBNIS_REGELN = {
+  plan: (auftrag) => {
+    const plan = board("issue", "list")
+      .filter((i) => PLAN_VORHANDEN_SPALTEN.has(i.status) && stammtAusErzeugung(i, auftrag.F, "plan"))
+      .sort((a, b) => Number(b.id) - Number(a.id))[0];
+    return plan ? { id: String(plan.id) } : null;
+  },
+  review: (auftrag) => (hatPlanReviewMarker(leseKarte(auftrag.planId)?.body) ? {} : null),
+  pakete: (auftrag) => {
+    const texte = laufstandTexte(auftrag);
+    const fertig = eintragDa(texte, "pakete", "fertig", auftrag.planId) || eintragDa(texte, "abdeckung", "fertig", auftrag.planId);
+    return fertig ? { ids: paketeZumPlan(auftrag.planId) } : null;
+  },
+  abdeckung: (auftrag) => (eintragDa(laufstandTexte(auftrag), "abdeckung", "fertig", auftrag.planId) ? {} : null),
+  umsetzung: (auftrag) => {
+    const ids = auftrag.paketIds ?? [];
+    return ids.length > 0 && ids.every((id) => paketUmgesetzt(leseKarte(id))) ? { ids } : null;
+  },
+};
+
+/**
+ * Der Teilschnitt (E10): Der Laufstand dieser Karte traegt `pakete begonnen für #M` ohne
+ * `pakete fertig für #M`, und am Board liegen schon Pakete zum Plan. Die Stufe startet
+ * dann nicht — `/issues` kennt keinen Wiedereinstieg, und eine Wiederholung legte doppelt
+ * an. Pakete ohne jeden Laufstand-Eintrag zaehlen wie bisher (Issue #895): Die Stufe
+ * laeuft. `null` ohne Teilschnitt.
+ */
+function teilschnitt(auftrag, planId) {
+  if (!eintragDa(laufstandTexte(auftrag), "pakete", "begonnen", planId)) return null;
+  const ids = paketeZumPlan(planId);
+  if (ids.length === 0) return null;
+  return { ausgang: "abgebrochen", grund: `Teilschnitt vorhanden (${ids.map((id) => "#" + id).join(", ")}) — ${TEILSCHNITT_FOLGE}` };
+}
+
+/**
+ * Schreibt den Laufstand der tragenden Karte (E2): zuletzt begonnener und zuletzt
+ * abgeschlossener Schritt, darueber bei einem Abbruch oder Halt dessen Grund. Ein Board,
+ * das nicht annimmt, haelt nichts an — `standSetzen` laesst die Zeile offen im Journal.
+ */
+function ketteStand(kette, zustand, kopf = null) {
+  const s = kette.laufstand;
+  const zeilen = [
+    ...(kopf ? [kopf, ""] : []),
+    ...(s.begonnen ? [`zuletzt begonnen: ${s.begonnen}`] : []),
+    ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
+  ];
+  standSetzen(kette.karte.id, zustand, zeilen.join("\n"), { repoRoot: kette.repoRoot });
+}
+
+/** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
+function stufeBeginnt(kette, stufe, ziel) {
+  kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${new Date().toISOString()}`;
+  ketteStand(kette, "laeuft");
+}
+
+/** Der Laufstand zum Ende einer Stufe — `fertig`, oder ihr Abbruch beziehungsweise Halt. */
+function stufeEndet(kette, stufe, ziel, ergebnis) {
+  if (ergebnis.ausgang === "fertig") {
+    kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${new Date().toISOString()}`;
+    ketteStand(kette, "fertig");
+  } else if (ergebnis.ausgang === "angehalten") {
+    // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
+    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan
+      ? `Halt: ${ergebnis.grund}`
+      : `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``);
+  } else {
+    ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig", `${ergebnis.ausgang}: Stufe ${stufe}: ${ergebnis.grund ?? "ohne Grund"}`);
+  }
+}
+
+/**
+ * Eine Stufe mit Ergebnispruefung (E9): vorher am Board nachsehen und ohne Session
+ * `fertig` mit `vorgefunden: true` melden; sonst laufen lassen und nach dem Abbruch
+ * einer Session noch einmal nachsehen. `vorfinden` setzt den Stand der Stufe fuer den vorgefundenen
+ * Fall und liefert das Ergebnis der Stufe.
+ */
+async function stufeMitErgebnis(kette, stufe, ziel, { auftrag, laufen, vorfinden, vorab = null }) {
+  const vorhanden = ergebnisVorhanden(stufe, auftrag);
+  if (vorhanden) {
+    log(`  Stufe ${stufe}: Ergebnis liegt vor — keine Session, die Stufe gilt als fertig.`);
+    const ergebnis = vorfinden(vorhanden);
+    stufeEndet(kette, stufe, ziel, ergebnis);
+    return ergebnis;
+  }
+  const sperre = vorab?.();
+  if (sperre) {
+    log(`  Stufe ${stufe}: ${sperre.grund}.`);
+    stufeEndet(kette, stufe, ziel, sperre);
+    return sperre;
+  }
+  stufeBeginnt(kette, stufe, ziel);
+  let ergebnis = await laufen();
+  // Nur nach dem Abbruch einer SESSION von aussen (Zeitlimit, technischer Fehler): Dort ist
+  // offen, was sie hinterlassen hat. Eine rote Form, ein erschoepftes Kostenbudget oder ein
+  // harter Stopp sind dagegen ein Urteil ueber das Ergebnis — ein vorgefundener Plan
+  // ueberginge die Form, eine vorgefundene Stufe das Budget. Die wartende Sitzung ebenso:
+  // Sie sagt selbst, dass ihre Arbeit noch nicht durch ist (Issue #778).
+  if (ergebnis.ausgang === "abgebrochen" && ergebnis.sitzungsAbbruch && !kette.kostenGrund) {
+    const nachher = ergebnisVorhanden(stufe, auftrag);
+    if (nachher) {
+      log(`  Stufe ${stufe}: abgebrochen (${ergebnis.grund}), das Ergebnis liegt aber vor — die Stufe gilt als fertig.`);
+      ergebnis = vorfinden(nachher, kette.stufen[stufe]);
+    }
+  }
+  stufeEndet(kette, stufe, ziel, ergebnis);
+  return ergebnis;
+}
+
 /**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
@@ -8133,32 +8325,81 @@ async function mitMeldung(stufe) {
  *
  * Jede der vier erzeugenden Stufen laeuft durch `mitMeldung` (Issue #794). Die Stufe
  * `umsetzung` nicht: Sie meldet ueber `laufeRunde` schon nach jedem fertigen Paket.
+ *
+ * Jede Stufe laeuft durch `stufeMitErgebnis` (Issue #1086): Liegt ihr Ergebnis schon vor,
+ * startet keine Session, und ihr Laufstand steht an der Karte, die die Kette traegt.
  */
 async function stufenDerKette(kette) {
+  // Der Laufstand, den die Kette vorfand — VOR ihrem ersten eigenen, der ihn ersetzt.
+  const auftrag = { F: kette.F, karte: kette.karte, repoRoot: kette.repoRoot, laufstandVorher: laufstandAmBoard(kette.karte.id) };
+  kette.laufstand ??= { begonnen: null, abgeschlossen: null };
   let planId;
   if (kette.art === "plan") {
     // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage.
-    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete, laeuft die Stufe
-    // trotzdem unveraendert und zaehlt nur die neu entstandenen Karten — ein
-    // hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
+    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete OHNE Laufstand-Eintrag,
+    // laeuft die Stufe trotzdem unveraendert und zaehlt nur die neu entstandenen Karten —
+    // ein hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
     // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
-    // verhindern.
+    // verhindern. Mit Eintrag gelten sie als vorgefunden oder als Teilschnitt (#1086).
     planId = kette.stufen.plan.id;
   } else {
-    const plan = await mitMeldung(() => stufePlan(kette));
+    const plan = await mitMeldung(() => stufeMitErgebnis(kette, "plan", kette.F, {
+      auftrag,
+      laufen: () => stufePlan(kette),
+      vorfinden: (v, vorher) => {
+        kette.stufen.plan = { dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [], ...vorher, id: v.id, vorgefunden: true };
+        return { ausgang: "fertig", id: v.id, vorgefunden: true };
+      },
+    }));
     if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-    const review = await mitMeldung(() => stufeReview(kette, plan.id));
-    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
     planId = plan.id;
+    const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
+      auftrag: { ...auftrag, planId },
+      laufen: () => stufeReview(kette, planId),
+      vorfinden: (v, vorher) => {
+        kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
+        return { ausgang: "fertig", vorgefunden: true };
+      },
+    }));
+    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
   }
-  const pakete = await mitMeldung(() => stufePakete(kette, planId));
+  const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
+    auftrag: { ...auftrag, planId },
+    laufen: () => stufePakete(kette, planId),
+    vorab: () => teilschnitt(auftrag, planId),
+    vorfinden: (v, vorher) => {
+      kette.stufen.pakete = { nichtZuordenbar: [], dauerMs: 0, kennzahlen: null, korrekturrunden: 0, ...vorher, ids: v.ids, vorgefunden: true };
+      return { ausgang: "fertig", ids: v.ids, vorgefunden: true };
+    },
+  }));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  const abdeckung = await mitMeldung(() => stufeAbdeckung(kette, kette.F, planId, pakete.ids));
+  const abdeckung = await mitMeldung(() => stufeMitErgebnis(kette, "abdeckung", planId, {
+    auftrag: { ...auftrag, planId },
+    laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
+    vorfinden: () => {
+      kette.stufen.abdeckung = { dauerMs: 0, kennzahlen: null, text: null, grund: "aus einem frueheren Lauf vorgefunden — der Text steht in dessen Bericht", vorgefunden: true };
+      return { ausgang: "fertig", vorgefunden: true };
+    },
+  }));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
   if (kette.variante !== "B") return { ausgang: "fertig" };
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
-  // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft.
-  const umsetzung = await stufeUmsetzung(kette, kette.stufen.pakete?.ids ?? []);
+  // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft. Was davon schon
+  // umgesetzt ist, laeuft nicht noch einmal (E9).
+  const paketIds = kette.stufen.pakete?.ids ?? [];
+  const umsetzung = await stufeMitErgebnis(kette, "umsetzung", planId, {
+    auftrag: { ...auftrag, planId, paketIds },
+    laufen: async () => {
+      const vorgefunden = paketIds.filter((id) => paketUmgesetzt(leseKarte(id)));
+      const ergebnis = await stufeUmsetzung(kette, paketIds.filter((id) => !vorgefunden.includes(id)));
+      if (vorgefunden.length > 0) kette.stufen.umsetzung.vorgefundenePakete = vorgefunden;
+      return ergebnis;
+    },
+    vorfinden: (v, vorher) => {
+      kette.stufen.umsetzung = { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0, ...vorher, vorgefundenePakete: v.ids, vorgefunden: true };
+      return { ausgang: "fertig", vorgefunden: true };
+    },
+  });
   if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
   return { ausgang: "fertig" };
 }
@@ -8169,7 +8410,9 @@ async function stufenDerKette(kette) {
  * Rueckgabe sind die aelteren Plaene zur Wurzel, die nach einem NEUEN Plan den
  * Ueberholt-Kommentar bekommen (A8). Beim Plan-Auftrag ist die Liste leer und die Stufe
  * `plan` stattdessen vorbelegt: Es entsteht kein neuer Plan, und der uebernommene ist
- * keiner, der einen anderen ueberholte — er ist der, den der Mensch gewaehlt hat.
+ * keiner, der einen anderen ueberholte — er ist der, den der Mensch gewaehlt hat. Leer
+ * ist sie auch, wenn ein Plan vorgefunden wird (Issue #1086, E9): Die Stufe plan legt
+ * dann keinen neuen an.
  */
 function ketteBeginnen(kette, auftrag, nummer, args) {
   const karte = auftrag.karte;
@@ -8186,6 +8429,9 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
     log(`  Plan #${auftrag.planId} uebernommen — die Stufen plan und review entfallen.`);
     return [];
   }
+  // Ein vorgefundener Plan (E9) ist das Ergebnis der Stufe plan, kein neuer: Er ueberholt
+  // keinen anderen, und der Ueberholt-Kommentar entfaellt.
+  if (ergebnisVorhanden("plan", { F: kette.F })) return [];
   // VOR der Plan-Stufe gesammelt: Danach stuende der neue Plan mit in der Liste.
   return board("issue", "list")
     .filter((i) => stammtAusErzeugung(i, kette.F, "plan"))
