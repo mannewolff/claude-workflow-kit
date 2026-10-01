@@ -650,6 +650,8 @@ let KETTE_BUDGET = null;
 // Die Budget-Felder, die aus den Defaults stammen (Issue #659) — geladen zusammen mit
 // KETTE_BUDGET, gezeigt im Protokoll und am Lauf-Kopf.
 let KETTE_BUDGET_AUS_DEFAULT = [];
+// Die freigegebenen Uebergaenge der Kette (Issue #1087), geladen zusammen mit KETTE_BUDGET.
+let KETTE_UEBERGAENGE = null;
 // Dieselben zwei Variablen fuer den Prueflauf (Issue #909), geladen in vorbereiten() —
 // getrennt von denen der Kette, weil die beiden Laeufe nebeneinander stehen koennen und
 // jeder seine eigenen Zahlen traegt.
@@ -5677,6 +5679,35 @@ export function ladeKetteBudget(config) {
   return budget;
 }
 
+// Welche Uebergaenge der Kette automatisch folgen (Plan #1079, E12; Issue #1087). Die
+// Vorgabe ist das Verhalten von heute: Die ersten drei folgen, der in die Umsetzung nicht —
+// und auch freigegeben wirkt er nur zusammen mit dem Variante-B-Label an der Karte.
+export const KETTE_UEBERGAENGE_DEFAULTS = Object.freeze({
+  planReview: true,
+  reviewPakete: true,
+  paketeAbdeckung: true,
+  abdeckungUmsetzung: false,
+});
+
+/**
+ * Liest `night.kette.uebergaenge` — vier Wahrheitswerte, fehlende aus der Vorgabe.
+ *
+ * Wirft wie `ladeKetteBudget` mit dem Feldnamen; ein unbekannter Schalter ist ebenso ein
+ * Fehler, weil ein vertippter Name sonst still die Vorgabe liesse.
+ */
+export function ladeKetteUebergaenge(config) {
+  const block = config?.night?.kette?.uebergaenge;
+  const uebergaenge = { ...KETTE_UEBERGAENGE_DEFAULTS };
+  if (block === undefined) return uebergaenge;
+  if (block === null || typeof block !== "object" || Array.isArray(block)) throw new Error("night.kette.uebergaenge muss ein Objekt mit Wahrheitswerten sein");
+  for (const [feld, wert] of Object.entries(block)) {
+    if (!Object.hasOwn(KETTE_UEBERGAENGE_DEFAULTS, feld)) throw new Error(`night.kette.uebergaenge.${feld} ist kein Uebergang der Kette (bekannt: ${Object.keys(KETTE_UEBERGAENGE_DEFAULTS).join(", ")})`);
+    if (typeof wert !== "boolean") throw new Error(`night.kette.uebergaenge.${feld} muss true oder false sein, ist ${JSON.stringify(wert)}`);
+    uebergaenge[feld] = wert;
+  }
+  return uebergaenge;
+}
+
 /**
  * Die Budget-Felder, die nicht in `night.kette` stehen und deshalb aus den Defaults
  * kommen (Issue #659), in der Reihenfolge von `ladeKetteBudget`.
@@ -6105,6 +6136,7 @@ function warnWennLabelNirgendsVorkommt(ctx, ready) {
 function ketteBudgetLaden() {
   try {
     KETTE_BUDGET = ladeKetteBudget(config);
+    KETTE_UEBERGAENGE = ladeKetteUebergaenge(config);
   } catch (e) {
     fail(e.message, "zustand");
   }
@@ -8318,6 +8350,41 @@ async function stufeMitErgebnis(kette, stufe, ziel, { auftrag, laufen, vorfinden
   return ergebnis;
 }
 
+// --- Freigegebene Uebergaenge (Issue #1087, Plan #1079 E1, E12) ---
+
+// Die beiden Wortlaute von `wartet` aus E1, wie sie im Regeltext stehen.
+const uebergangNichtFreigegeben = (uebergang) => `wartet: Übergang ${uebergang} im Projekt nicht freigegeben — weiter mit kit:night`;
+const OHNE_FREIGABE_ZUR_UMSETZUNG = "wartet: Karte ohne Freigabe zur Umsetzung";
+
+/**
+ * Folgt die naechste Stufe automatisch? Gesperrt wird nur das Folgen auf eine Stufe, die in
+ * DIESEM Lauf lief. War die vorige vorgefunden, ist die naechste die erste offene, und dort
+ * hat der Mensch mit `kit:night` selbst angestossen — sonst setzte die Geste, die der
+ * Wartetext nennt, nie bei der wartenden Stufe an.
+ */
+const uebergangGesperrt = (kette, uebergang, vorige) => !vorige.vorgefunden && !kette.uebergaenge[uebergang];
+
+/** Ende der Kette vor `stufe`: Laufstand `wartet` mit dem Wortlaut, Ausgang `unvollstaendig`. */
+function ketteWartet(kette, stufe, text) {
+  log(`  Stufe ${stufe}: ${text}.`);
+  ketteStand(kette, "wartet", text);
+  return { ausgang: "unvollstaendig", grund: text, stufe };
+}
+
+/**
+ * Endet die Kette nach der Abdeckung? Das GO steht an der Karte (`kit:durchziehen`), das
+ * Projekt kann es nur zulassen (E12). Ohne Freigabe im Projekt und ohne Label endet sie wie
+ * bisher `fertig`; `null`, wenn die Umsetzung folgt.
+ */
+function vorDerUmsetzung(kette, abdeckung) {
+  if (kette.variante !== "B") {
+    return kette.uebergaenge.abdeckungUmsetzung ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
+  }
+  return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
+    ? ketteWartet(kette, "umsetzung", uebergangNichtFreigegeben("abdeckungUmsetzung"))
+    : null;
+}
+
 /**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
@@ -8353,6 +8420,7 @@ async function stufenDerKette(kette) {
     }));
     if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
     planId = plan.id;
+    if (uebergangGesperrt(kette, "planReview", plan)) return ketteWartet(kette, "review", uebergangNichtFreigegeben("planReview"));
     const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
       auftrag: { ...auftrag, planId },
       laufen: () => stufeReview(kette, planId),
@@ -8362,6 +8430,7 @@ async function stufenDerKette(kette) {
       },
     }));
     if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
+    if (uebergangGesperrt(kette, "reviewPakete", review)) return ketteWartet(kette, "pakete", uebergangNichtFreigegeben("reviewPakete"));
   }
   const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
     auftrag: { ...auftrag, planId },
@@ -8373,6 +8442,7 @@ async function stufenDerKette(kette) {
     },
   }));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
+  if (uebergangGesperrt(kette, "paketeAbdeckung", pakete)) return ketteWartet(kette, "abdeckung", uebergangNichtFreigegeben("paketeAbdeckung"));
   const abdeckung = await mitMeldung(() => stufeMitErgebnis(kette, "abdeckung", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
@@ -8382,7 +8452,8 @@ async function stufenDerKette(kette) {
     },
   }));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
-  if (kette.variante !== "B") return { ausgang: "fertig" };
+  const ohneUmsetzung = vorDerUmsetzung(kette, abdeckung);
+  if (ohneUmsetzung) return ohneUmsetzung;
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
   // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft. Was davon schon
   // umgesetzt ist, laeuft nicht noch einmal (E9).
@@ -8454,6 +8525,7 @@ async function laufeEineKette(auftrag, nummer, args) {
     // Die Variante steht an der gekennzeichneten Karte, nicht an der Wurzel: Wer den
     // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
     variante: varianteVon(karte, KETTE_BUDGET),
+    uebergaenge: KETTE_UEBERGAENGE,
   };
   const aeltere = ketteBeginnen(kette, auftrag, nummer, args);
 

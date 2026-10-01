@@ -707,6 +707,11 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.kette.kostenUsd` — Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.kostenUsdB` — Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.korrekturrunden` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung.
+- `night.kette.uebergaenge` — Welche Übergänge der Kette automatisch folgen dürfen. Ein gesperrter Übergang endet mit lauf:wartet und 'wartet: Übergang `<x>` im Projekt nicht freigegeben — weiter mit kit:night'; ein neues kit:night setzt bei der wartenden Stufe an. Fehlt der Block oder ein Feld darin, gilt das Verhalten von heute.
+- `night.kette.uebergaenge.planReview` — Nach dem Plan folgt die Prüfung des Plans automatisch.
+- `night.kette.uebergaenge.reviewPakete` — Nach der Prüfung des Plans folgen die Arbeitspakete automatisch.
+- `night.kette.uebergaenge.paketeAbdeckung` — Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch.
+- `night.kette.uebergaenge.abdeckungUmsetzung` — Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Fehlt das Label, wartet die Karte mit 'wartet: Karte ohne Freigabe zur Umsetzung'.
 - `night.stand` — Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue stand). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.
 - `night.stand.labels` — Die Namen der drei Laufstand-Labels. Sie müssen am Board angelegt sein; ein fehlendes Label meldet der Adapter als Fehler.
 - `night.stand.labels.laeuft` — Label einer Karte, an der ein Lauf gerade arbeitet.

@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { UMSETZUNG_LOCK, umsetzungLockNehmen } from "../kit/night.mjs";
 import {
   NUR_POSIX, repoRoot, run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
-  fake, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  fake, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 /** Die vier erzeugenden Stufen, wie sie jeder Ketten-Test braucht. */
@@ -28,7 +28,7 @@ const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANL
 /** Ein Fachplan mit beiden Labels: Kettenlabel und das Kennzeichen der Variante B. */
 function fachplanB(dir) {
   const F = fachplan(dir, "[Fachlich] Ein Anliegen");
-  board(dir, "issue", "label", "add", F, "kit:durchziehen");
+  durchziehen(dir, F);
   return F;
 }
 

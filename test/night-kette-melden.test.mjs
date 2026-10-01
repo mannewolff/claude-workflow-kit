@@ -17,8 +17,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, basename } from "node:path";
 import {
-  NUR_POSIX, repoRoot, run, board, mitProjekt, setupProjekt, fachplan, umgebung, stand,
-  meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  NUR_POSIX, repoRoot, run, mitProjekt, setupProjekt, fachplan, umgebung, stand,
+  meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 /** Ein Fixture-Projekt mit dem meldung-abfangenden Board-Umweg; die Capture-Datei liegt daneben. */
@@ -65,7 +65,7 @@ test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erre
 test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einzelnen Pakete", NUR_POSIX, () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
-    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    durchziehen(dir, F);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { ...GLATT, umsetzung: UMSETZUNG_ERFOLG }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");

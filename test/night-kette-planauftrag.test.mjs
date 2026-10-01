@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 /** Die Abdeckungs-Session schneidet ihren Auftrag mit — nur so ist pruefbar, wogegen sie haelt. */
@@ -89,7 +89,7 @@ test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzun
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const M = planauftrag(dir, F);
-    board(dir, "issue", "label", "add", M, "kit:durchziehen");
+    durchziehen(dir, M);
     const env = umgebung(dir, { stufen: { ...STUFEN, umsetzung: UMSETZUNG_ERFOLG } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -106,7 +106,7 @@ test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzun
 test("[night-895] das Durchziehen-Label an der fachlichen Anforderung bleibt wirkungslos", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
-    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    durchziehen(dir, F);
     const M = planauftrag(dir, F);
     const env = umgebung(dir, { stufen: { ...STUFEN, umsetzung: UMSETZUNG_ERFOLG } });
     const res = run(dir, ["--kette"], env);

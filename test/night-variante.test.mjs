@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { varianteVon } from "../kit/night.mjs";
 import {
   NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 test("[night-33] varianteVon: Karte mit dem Label ergibt B, ohne A", () => {
@@ -48,7 +48,7 @@ test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert"
 test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung, das Label bleibt stehen", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    durchziehen(dir, F);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -66,7 +66,7 @@ test("[night-33] der Dry-Run nennt je Kandidat die Variante", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const a = fachplan(dir, "[Fachlich] Variante A");
     const b = fachplan(dir, "[Fachlich] Variante B");
-    board(dir, "issue", "label", "add", b, "kit:durchziehen");
+    durchziehen(dir, b);
     const res = run(dir, ["--kette", "--dry-run", "--max", "2"], umgebung(dir));
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, new RegExp(`#${a} \\[Fachlich\\] Variante A -> Kette 1 \\(Variante A\\)`));

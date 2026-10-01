@@ -20,8 +20,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { befundeZurueck } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  NUR_POSIX, run, mitProjekt, fachplan, umgebung,
+  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 /** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
@@ -177,7 +177,7 @@ test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Revie
 test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck — und das finally haengt nicht noch einmal an", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    durchziehen(dir, F);
     const env = umgebung(dir, { stufen: {
       plan: PLAN_ANLEGEN,
       review: REVIEW_MARKER,

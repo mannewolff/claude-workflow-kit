@@ -94,6 +94,27 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   return dir;
 }
 
+/**
+ * Kennzeichnet eine Karte fuer Variante B: `kit:durchziehen` an der Karte und — solange der
+ * Test den Schalter nicht selbst nennt — `night.kette.uebergaenge.abdeckungUmsetzung: true`
+ * im Projekt. Die Kit-Vorgabe sperrt diesen Uebergang (Issue #1087, E12), und die Umsetzung
+ * folgt nur, wenn Projekt und Karte sie beide erlauben. Die geaenderte Config wird
+ * committet: Die Umsetzungsstufe prueft die Hauptkopie auf einen sauberen Arbeitsbaum.
+ */
+export function durchziehen(dir, karte) {
+  board(dir, "issue", "label", "add", karte, "kit:durchziehen");
+  const pfad = join(dir, ".claude", "workflow.config.json");
+  const config = JSON.parse(readFileSync(pfad, "utf-8"));
+  const uebergaenge = config.night.kette.uebergaenge ?? {};
+  if (uebergaenge.abdeckungUmsetzung !== undefined) return;
+  config.night.kette.uebergaenge = { ...uebergaenge, abdeckungUmsetzung: true };
+  writeFileSync(pfad, JSON.stringify(config, null, 2));
+  for (const a of [["add", ".claude/workflow.config.json"], ["commit", "-q", "-m", "Umsetzung freigegeben"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
+}
+
 export function mitProjekt(fn, kette, praefix, configZusatz) {
   const dir = setupProjekt(kette ?? {}, praefix, configZusatz);
   try {

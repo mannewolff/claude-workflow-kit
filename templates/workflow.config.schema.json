@@ -656,6 +656,33 @@
               "minimum": 1,
               "default": 2,
               "description": "Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung."
+            },
+            "uebergaenge": {
+              "type": "object",
+              "description": "Welche Übergänge der Kette automatisch folgen dürfen. Ein gesperrter Übergang endet mit lauf:wartet und 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night'; ein neues kit:night setzt bei der wartenden Stufe an. Fehlt der Block oder ein Feld darin, gilt das Verhalten von heute.",
+              "properties": {
+                "planReview": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach dem Plan folgt die Prüfung des Plans automatisch."
+                },
+                "reviewPakete": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach der Prüfung des Plans folgen die Arbeitspakete automatisch."
+                },
+                "paketeAbdeckung": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch."
+                },
+                "abdeckungUmsetzung": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Fehlt das Label, wartet die Karte mit 'wartet: Karte ohne Freigabe zur Umsetzung'."
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

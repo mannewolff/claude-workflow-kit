@@ -658,3 +658,20 @@ test("[einstellungen-21] M2 bietet als Autor keinen Namen an, der schon eine eig
   const rumpf = stueck.slice(stueck.indexOf("function paarungsZellen("));
   assert.match(rumpf, /autoren\.indexOf\(n\) < 0/, "die Autorauswahl filtert die belegten Namen nicht");
 });
+
+// Die freigegebenen Uebergaenge (Issue #1087, Plan #1079 E12): vier Schalter in night.kette,
+// je eine eigene Zeile, gesetzt formtreu ueber ketteAendern.
+test("M6 bietet die vier Uebergaenge als eigene Zeilen mit den Vorgaben aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  const erwartet = {
+    planReview: vorgabeAus("night.kette.uebergaenge.planReview"),
+    reviewPakete: vorgabeAus("night.kette.uebergaenge.reviewPakete"),
+    paketeAbdeckung: vorgabeAus("night.kette.uebergaenge.paketeAbdeckung"),
+    abdeckungUmsetzung: vorgabeAus("night.kette.uebergaenge.abdeckungUmsetzung"),
+  };
+  assert.deepEqual(Object.values(erwartet), [true, true, true, false]);
+  assert.ok(stueck.includes(`const UEBERGAENGE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben der Uebergaenge weichen vom Schema ab");
+  assert.match(stueck, /ketteAendern\(teil, \{ uebergaenge: Object\.assign\(\{\}, uebergaengeVon\(teil\)/, "die Uebergaenge werden nicht formtreu gesetzt");
+  assert.match(stueck, /ketteFeldZeile\("night\.kette\.uebergaenge\." \+ feld/, "die Uebergaenge haben keine eigene Zeile");
+  for (const feld of Object.keys(erwartet)) assert.ok(stueck.includes(`["${feld}", `), `${feld} hat keine Zeile`);
+});
