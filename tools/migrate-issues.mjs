@@ -710,9 +710,9 @@ async function legeKarteAn(zugang, eintrag, repoUrl) {
 async function schreibeKarten(zugang, offen, repoUrl, bilanz) {
   for (const eintrag of offen) {
     try {
-      const id = await legeKarteAn(zugang, eintrag, repoUrl);
+      const id = await legeKarteAn(zugang, eintrag, repoUrl);  // NOSONAR S9382: Karten entstehen in fester Reihenfolge, sie ist das Ergebnis
       for (const kommentar of sortierteKommentare(eintrag.comments)) {
-        await kanbanFetch(zugang, `/api/kanban/items/${id}/comments`, {
+        await kanbanFetch(zugang, `/api/kanban/items/${id}/comments`, {  // NOSONAR S9382: Kommentare entstehen in fester Reihenfolge, sie ist das Ergebnis
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ body: kommentarBody(eintrag, kommentar, repoUrl) }),
@@ -900,7 +900,7 @@ async function fuehreVerifyAus(cliArgs) {
 
   const alle = [];
   for (const eintrag of auswahl) {
-    alle.push(...(await vergleiche(eintrag, nachNummer.get(Number(eintrag.number)), zugang)));
+    alle.push(...(await vergleiche(eintrag, nachNummer.get(Number(eintrag.number)), zugang)));  // NOSONAR S9382: einmaliges Werkzeug gegen eine drosselnde API, nacheinander gewollt
   }
 
   for (const zeile of alle) process.stdout.write(`${zeile}\n`);

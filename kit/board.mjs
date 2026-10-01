@@ -1470,7 +1470,7 @@ class LocalIssueTracker {
     const ergebnis = {};
     for (const id of ids) {
       try {
-        ergebnis[id] = await this.listActivity(id);
+        ergebnis[id] = await this.listActivity(id);  // NOSONAR S9382: Dateizugriffe, parallel gewinnt nichts
       } catch (e) {
         ergebnis[id] = { fehler: e.message };
       }
@@ -1867,6 +1867,35 @@ export function wartezeitMs(versuch, retryAfterSek = null, zufall = Math.random)
   return Math.max(TOOLBOX_WARTE_MIN_MS, Math.round(basis + basis * TOOLBOX_STREUUNG * zufall()));
 }
 
+// Gleichzeitige Verlaufsabrufe der Sammelform (Issue #1095): genug, dass sich die
+// Wartezeiten ueberlappen, wenig genug fuer eine API, die drosselt.
+const VERLAUF_GLEICHZEITIG = 4;
+
+/**
+ * Wendet `fn` auf jeden Eintrag an, hoechstens `grenze` Aufrufe zugleich, und liefert
+ * die Ergebnisse in Eingabereihenfolge. Der erste Fehler laesst das Ganze scheitern;
+ * danach beginnt kein Arbeiter einen neuen Eintrag mehr. Die Arbeiter rufen sich
+ * selbst wieder auf statt in einer Schleife zu warten.
+ */
+async function hoechstensGleichzeitig(grenze, eintraege, fn) {
+  const ergebnisse = new Array(eintraege.length);
+  let naechster = 0;
+  let gescheitert = false;
+  const arbeiter = async () => {
+    if (gescheitert || naechster >= eintraege.length) return;
+    const i = naechster++;
+    try {
+      ergebnisse[i] = await fn(eintraege[i], i);
+    } catch (e) {
+      gescheitert = true;
+      throw e;
+    }
+    return arbeiter();
+  };
+  await Promise.all(Array.from({ length: Math.min(grenze, eintraege.length) }, arbeiter));
+  return ergebnisse;
+}
+
 /** Shell-sicheres Zitat fuer das Wiederholkommando — nur, wo noetig. */
 function zitiere(arg) {
   if (/^[\w@%+=:,./-]+$/.test(arg)) return arg;
@@ -1979,7 +2008,7 @@ export class ToolboxIssueTracker {
 
       const status = res?.status ?? null;
       const netz = wurf ? netzfehlerArt(wurf) : null;
-      const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);
+      const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
       const warte = wartezeitMs(versuch, retryAfter, this._zufall);
       const nochmal = darfWiederholen({ method, status, typ, hatSchluessel: Boolean(idempotencyKey), netz })
         && this._jetzt() + warte <= frist;
@@ -1992,7 +2021,7 @@ export class ToolboxIssueTracker {
         `board: ${method} ${path} — Versuch ${versuch} endete mit ${grund}, erneut in ${warte} ms `
         + `(Frist ${Math.round(budget / 1000)} s)`
       );
-      await this._schlaf(warte);
+      await this._schlaf(warte);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
     }
   }
 
@@ -2216,19 +2245,21 @@ export class ToolboxIssueTracker {
    * in der Einzelform: Er betrifft nicht eine Karte, sondern den Zugang. Still
    * weitergezaehlt ergaebe er eine Quote, die nach Null aussieht und in Wahrheit nichts
    * gemessen hat.
+   *
+   * Die Verlaeufe kommen gleichzeitig, hoechstens VERLAUF_GLEICHZEITIG auf einmal
+   * (Issue #1095): Nacheinander addierten sich Dutzende Wartezeiten, alle auf einmal
+   * liefen in die Drosselung.
    */
   async listActivityMany(numbers) {
     const items = await this._boardItems();
-    const ergebnis = {};
-    for (const number of numbers) {
+    const eintraege = await hoechstensGleichzeitig(VERLAUF_GLEICHZEITIG, numbers, async (number) => {
       const item = this._findByNumber(items, Number(number));
-      if (!item) {
-        ergebnis[number] = { fehler: `Issue ${number} nicht gefunden` };
-        continue;
-      }
+      if (!item) return { fehler: `Issue ${number} nicht gefunden` };
       const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
-      ergebnis[number] = await res.json();
-    }
+      return await res.json();
+    });
+    const ergebnis = {};
+    numbers.forEach((number, i) => { ergebnis[number] = eintraege[i]; });
     return ergebnis;
   }
 

@@ -385,26 +385,11 @@ function listeLesen(feld) {
  * kaputtes Protokoll aus wie ein duennes.
  */
 function protokollLesen(root) {
-  const pfad = join(root, CLAUDE_DIR, AUSFUEHRUNGEN_DATEI);
-  if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  let inhalt;
-  try {
-    inhalt = readFileSync(pfad, "utf-8");
-  } catch {
-    return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  }
-  const zeilen = [];
-  let fehlerhaft = 0;
-  for (const roh of inhalt.split("\n")) {
-    if (roh === "") continue;
-    const teile = roh.split("\t");
+  return tabZeilenLesen(join(root, CLAUDE_DIR, AUSFUEHRUNGEN_DATEI), (teile) => {
     const zeitMs = Date.parse(teile[0]);
     const dauerMs = teile.length >= 4 ? Number(teile[3]) : Number.NaN;
-    if (teile.length < 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
-      fehlerhaft += 1;
-      continue;
-    }
-    zeilen.push({
+    if (teile.length < 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) return null;
+    return {
       zeitMs,
       tag: teile[0].slice(0, 10),
       cmd: kommandoLesen(teile[1]),
@@ -420,7 +405,31 @@ function protokollLesen(root) {
       dateien: listeLesen(teile[9]),
       // Die elfte Spalte aus Issue #1071: Ohne sie gilt die Dauer als nacheinander gemessen.
       gleichzeitig: teile[10] === "gleichzeitig",
-    });
+    };
+  });
+}
+
+/**
+ * Gemeinsamer Leser der beiden Tab-Protokolle (Issue #1095). Fehlt die Datei oder ist
+ * sie unlesbar, heisst das `vorhanden: false`; eine leere Zeile wird uebersprungen.
+ * `zeileAus(teile)` entscheidet je Aufrufer, was eine Zeile gueltig macht und welche
+ * Felder entstehen — liefert sie `null`, zaehlt die Zeile als fehlerhaft.
+ */
+function tabZeilenLesen(pfad, zeileAus) {
+  if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
+  let inhalt;
+  try {
+    inhalt = readFileSync(pfad, "utf-8");
+  } catch {
+    return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
+  }
+  const zeilen = [];
+  let fehlerhaft = 0;
+  for (const roh of inhalt.split("\n")) {
+    if (roh === "") continue;
+    const zeile = zeileAus(roh.split("\t"));
+    if (zeile) zeilen.push(zeile);
+    else fehlerhaft += 1;
   }
   return { vorhanden: true, zeilen, fehlerhaft };
 }
@@ -785,27 +794,11 @@ function bereichsTabelle(zuschnitt, jeBereich) {
  * Ausfuehrungsprotokoll — eine halbe Zeile darf keine Auswertung kosten.
  */
 function bewegungenLesen(root) {
-  const pfad = join(root, CLAUDE_DIR, BEWEGUNGEN_DATEI);
-  if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  let inhalt;
-  try {
-    inhalt = readFileSync(pfad, "utf-8");
-  } catch {
-    return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  }
-  const zeilen = [];
-  let fehlerhaft = 0;
-  for (const roh of inhalt.split("\n")) {
-    if (roh === "") continue;
-    const teile = roh.split("\t");
+  return tabZeilenLesen(join(root, CLAUDE_DIR, BEWEGUNGEN_DATEI), (teile) => {
     const zeitMs = Date.parse(teile[0]);
-    if (teile.length !== 3 || Number.isNaN(zeitMs) || teile[1] === "") {
-      fehlerhaft += 1;
-      continue;
-    }
-    zeilen.push({ zeitMs, id: teile[1] });
-  }
-  return { vorhanden: true, zeilen, fehlerhaft };
+    if (teile.length !== 3 || Number.isNaN(zeitMs) || teile[1] === "") return null;
+    return { zeitMs, id: teile[1] };
+  });
 }
 
 /**
@@ -1472,6 +1465,8 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
  * Der Befund als Text. Nie ein Fehler: Eine fehlende, leere oder unlesbare Datei ist
  * dasselbe wie kein Befund — es soll dann nichts dastehen und nichts aufgehalten
  * werden.
+ *
+ * SYNC: dieselbe Funktion steht in kit/aufwand.mjs (#440).
  */
 export function befund(root) {
   const pfad = join(root, CLAUDE_DIR, STAND_DATEI);
@@ -1484,6 +1479,7 @@ export function befund(root) {
 
 // --- CLI ---------------------------------------------------------------------
 
+// SYNC: `parseAuswertenArgs` und `main` stehen gleichlautend in kit/aufwand.mjs (#440).
 function parseAuswertenArgs(rest) {
   const args = {};
   let i = 0;

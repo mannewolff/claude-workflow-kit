@@ -4496,7 +4496,7 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
   };
   while (gruppeLaeuft()) {
     if (jetzt() >= frist) return false;
-    await new Promise((r) => setTimeout(r, pollMs));
+    await new Promise((r) => setTimeout(r, pollMs));  // NOSONAR S9382: Abfragen in festem Takt
   }
   return true;
 }
@@ -8929,7 +8929,7 @@ export async function laufeKette(args) {
   let nummer = 0;
   for (const auftrag of auftraege) {
     nummer++;
-    const ausgang = await laufeEineKette(auftrag, nummer, args);
+    const ausgang = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
     zaehler[ausgang]++;
   }
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
