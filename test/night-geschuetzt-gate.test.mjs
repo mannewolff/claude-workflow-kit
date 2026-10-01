@@ -295,3 +295,52 @@ test("Der Runner nimmt kit:geschuetzt nie ab", () => {
   assert.doesNotMatch(quelle, /"label",\s*"remove",[^)]*GESCHUETZT_LABEL/);
   assert.doesNotMatch(quelle, /label remove[^\n]*kit:geschuetzt/);
 });
+
+// --- Vorschau (Issue #1047, Plan #987, E19) ---
+
+/** Die Zeile, die `--dry-run` fuer eine Karte schreibt. */
+function vorschauZeile(dir, id) {
+  const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
+  assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
+  const zeile = res.stdout.split("\n").find((z) => z.includes(`  #${id} `));
+  assert.ok(zeile, `dry-run nennt #${id} nicht:\n${res.stdout}`);
+  return zeile;
+}
+
+test("Vorschau: eine Karte mit geschuetztem Pfad wuerde ins Backlog, keine Session", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const id = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
+    const zeile = vorschauZeile(dir, id);
+    assert.ok(zeile.includes(`wuerde ins Backlog (geschuetzte Datei ${PFAD})`), zeile);
+    assert.doesNotMatch(zeile, /Session/);
+    assert.equal(spalte(dir, id), "ready", "die Vorschau hat die Karte bewegt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backlog, keine Session", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const id = readyPaket(dir, "Paket aus dem Rueckfall-Halt", paketBody("src/frei.mjs"));
+    board(dir, "issue", "label", "add", id, "kit:geschuetzt");
+    const zeile = vorschauZeile(dir, id);
+    assert.ok(zeile.includes("wuerde ins Backlog (kit:geschuetzt, menschliche Handlung wartet)"), zeile);
+    assert.doesNotMatch(zeile, /Session/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Vorschau: die freigegebene Karte nach E5 bekommt eine Session", NUR_POSIX, () => {
+  const dir = setupProjekt();
+  try {
+    const body = paketBody(PFAD);
+    const id = readyPaket(dir, "Freigegebenes Paket", body);
+    board(dir, "issue", "comment", id, "--text", haltKommentar(dir, body, "Freigegebenes Paket"));
+    assert.match(vorschauZeile(dir, id), /-> Session 1/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

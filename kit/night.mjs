@@ -9330,6 +9330,15 @@ const DRY_RUN_PRAEFIXE = [
   [isMensch, "Menschenschritt"],
 ];
 
+/** Der Befund des Body-Gates aus `geschuetztGate` im Konjunktiv, `null` ohne Halt (Issue #1047). */
+function dryRunGeschuetzt(issue, full) {
+  const treffer = geschuetzteTreffer(full.body || "", issue.title || full.title || "", hauptWurzel());
+  if (treffer.length === 0) return null;
+  const kommentare = kommentareVon(full).map((k) => ({ body: k }));
+  if (geschuetztFreigabe(treffer, kommentare, full.labels || issue.labels || [])) return null;
+  return `wuerde ins Backlog (geschuetzte Datei ${treffer.map((t) => t.pfad).join(", ")})`;
+}
+
 function dryRunBefund(issue, ctx, assumedDone) {
   let befund = null;
   const aus = (grund) => ({ grund, vermerk: "", befund });
@@ -9337,8 +9346,14 @@ function dryRunBefund(issue, ctx, assumedDone) {
   const praefix = DRY_RUN_PRAEFIXE.find(([passt]) => passt(issue.title));
   if (praefix) return aus(`wuerde ins Backlog (${praefix[1]}, wird nicht implementiert)`);
   if (hatKlaerenLabel(issue)) return aus("wuerde ins Backlog (kit:klaeren, offene Entscheidung)");
+  // Beide Gates fuer geschuetzte Dateien in der Reihenfolge von `pruefeIssueGates` (Issue
+  // #1047, Plan #987, E19): erst das Label, das auch eine Karte ohne Pfad im Body traegt,
+  // dann der Treffer, sofern der Mensch ihn nicht nach E5 freigegeben hat.
+  if (hatGeschuetztLabel(issue)) return aus(`wuerde ins Backlog (${GESCHUETZT_LABEL}, menschliche Handlung wartet)`);
 
   const full = board("issue", "get", String(issue.id));
+  const geschuetzt = dryRunGeschuetzt(issue, full);
+  if (geschuetzt) return aus(geschuetzt);
   // Der Befund wie im Rueckstell-Kommentar, auch fuer ein Paket, das startet (Issue #1064):
   // Gerade eine versehentliche, zufaellig erfuellte Abhaengigkeit fiele sonst nicht auf.
   befund = abhaengigkeitsBefund(issue, full.body, assumedDone);
