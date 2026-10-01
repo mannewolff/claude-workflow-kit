@@ -256,6 +256,12 @@ const praefixFallback = (was) => (_title) => {
 const abhaengigkeitenFallback = (_body) => {
   throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — die Herkunft der Abhaengigkeiten ist nicht lesbar.`);
 };
+// Die Erkennung geschuetzter Dateien (Issue #1046, Plan #987, E1) wirft ohne Nachbarn wie
+// die Praefixe: Ein stilles "keine Treffer" liesse ein Paket mit geschuetzter Datei in eine
+// Session — genau der Ausgang, der zweimal eine ganze Nacht gekostet hat.
+const geschuetztFallback = (was) => () => {
+  throw new Error(`board.mjs liegt nicht neben night.mjs (${NACHBAR_BOARD}) — ${was} ist nicht verfuegbar.`);
+};
 // Warum bedingt und nicht als `import`-Zeile oben: `--version` und `--help` muessen auch
 // dann Auskunft geben, wenn NICHTS neben der Datei liegt (Issue #170) — ein statischer
 // Import scheitert vor jeder Zeile Code und nimmt genau diese Auskunft. Fehlt der Nachbar,
@@ -267,6 +273,9 @@ const {
   istIdee: isIdee,
   istMensch: isMensch,
   abhaengigkeitenMitHerkunft,
+  geschuetzteTreffer,
+  geschuetztKommentar,
+  geschuetztFreigabe,
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
@@ -275,6 +284,9 @@ const {
       istIdee: praefixFallback("[Idee]"),
       istMensch: praefixFallback("[Mensch]"),
       abhaengigkeitenMitHerkunft: abhaengigkeitenFallback,
+      geschuetzteTreffer: geschuetztFallback("die Erkennung geschuetzter Dateien"),
+      geschuetztKommentar: geschuetztFallback("der Halt-Kommentar fuer geschuetzte Dateien"),
+      geschuetztFreigabe: geschuetztFallback("die Freigabe geschuetzter Dateien"),
     };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet
@@ -345,6 +357,9 @@ export const nachbarn = {
   istIdee: isIdee,
   istMensch: isMensch,
   abhaengigkeitenMitHerkunft,
+  geschuetzteTreffer,
+  geschuetztKommentar,
+  geschuetztFreigabe,
   zusammenfassungPfad,
 };
 
@@ -2816,6 +2831,32 @@ export const KLAEREN_LABEL = "kit:klaeren";
 export function hatKlaerenLabel(issue) {
   return (issue?.labels || []).includes(KLAEREN_LABEL);
 }
+
+/**
+ * Das Zeichen fuer eine wartende menschliche Handlung an einer geschuetzten Datei (Issue
+ * #1046, Plan #987, E11).
+ *
+ * Dieselbe Richtung wie bei `kit:klaeren`: Die Maschine SETZT das Label, abnehmen darf es
+ * allein der Mensch — das Abnehmen ist zusammen mit dem Halt-Kommentar die Freigabe (E5).
+ * Ein Lauf, der es abraeumen duerfte, gaebe sich selbst frei; `issue label remove` mit
+ * diesem Namen kommt im Runner darum nicht vor. Ein eigenes Label und nicht `kit:klaeren`,
+ * weil hier nichts zu entscheiden, sondern etwas zu tun ist.
+ *
+ * SYNC: `GESCHUETZT_LABEL` und `GESCHUETZT_ANKER` stehen gleichlautend in kit/board.mjs
+ * (Issue #1045), wo `geschuetztKommentar` den Halt-Text baut und `geschuetztFreigabe` ihn
+ * zurueckliest. Wer einen hier aendert, aendert ihn dort mit — der Gleichlauf-Test in
+ * test/night-geschuetzt-gate.test.mjs vergleicht beide Seiten.
+ */
+export const GESCHUETZT_LABEL = "kit:geschuetzt";
+export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
+
+export function hatGeschuetztLabel(issue) {
+  return (issue?.labels || []).includes(GESCHUETZT_LABEL);
+}
+
+// Der Kommentar des Label-Gates. SYNC: Ohne das Praefix `Nachtlauf: ` steht er als
+// Backlog-Text von `issue auftrag` in kit/board.mjs (Issue #1052).
+export const GESCHUETZT_LABEL_GATE_TEXT = `Nachtlauf: Traegt ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.`;
 
 /**
  * Die Spur einer gelaufenen Pruefung, die die Nacht-Kette voraussetzt (Fachplan #702,
@@ -9435,8 +9476,20 @@ export function pruefeIssueGates(top) {
       kommentar: "Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
     };
   }
+  // Auch dieses Label bleibt stehen (E11): Erst wenn der Mensch es abnimmt, prueft das
+  // Body-Gate unten die Freigabe.
+  if (hatGeschuetztLabel(top)) {
+    return {
+      log: `#${top.id} uebersprungen: traegt ${GESCHUETZT_LABEL}, eine menschliche Handlung an einer geschuetzten Datei wartet.`,
+      kommentar: GESCHUETZT_LABEL_GATE_TEXT,
+    };
+  }
 
   const full = gateKarte(top);
+  // Vor Review- und Abhaengigkeits-Gate (E10): Der Befund nennt dem Menschen eine Handlung,
+  // die teurere Auskunft gehoert zuerst gemeldet.
+  const geschuetzt = geschuetztGate(top, full);
+  if (geschuetzt) return geschuetzt;
   // Ungepruefte Issues zurueckstellen (Issue #223). Nur wenn ausdruecklich aktiviert:
   // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten, deshalb
   // ist der Default false. Anders als bei [Fachlich]/[Idee] wuerde der Runner ein
@@ -9475,6 +9528,57 @@ export function pruefeIssueGates(top) {
     log(`#${top.id} startet mit Dokument-Verweis: ${verweise} — ein Dokument ist kein Arbeitspaket.`);
   }
   return null;
+}
+
+/**
+ * Das Gate fuer ein Paket, das eine geschuetzte Datei beim Namen nennt (Issue #1046, Plan
+ * #987, E10). Rueckgabe `null`, wenn nichts getroffen ist oder der Mensch nach E5
+ * freigegeben hat — sonst `{ art: "geschuetzt", log, kommentar }` mit dem Halt-Text aus
+ * `geschuetztKommentar` ohne Label-Zeile; die setzt `geschuetztAmBoardVermerken`, weil erst
+ * nach dem `label add` feststeht, wie sie lautet.
+ *
+ * Gemessen wird gegen die Wurzel der Hauptkopie, nicht gegen einen Worktree: Die lokalen
+ * Einstellungen sind nicht versioniert und fehlen dort — ihre Schreibsperren gaelten sonst
+ * in der Kette nicht.
+ */
+export function geschuetztGate(top, full) {
+  const body = full?.body || "";
+  const treffer = geschuetzteTreffer(body, top.title || full?.title || "", hauptWurzel());
+  if (treffer.length === 0) return null;
+  const kommentare = kommentareVon(full).map((k) => ({ body: k }));
+  if (geschuetztFreigabe(treffer, kommentare, full?.labels || top.labels || [])) return null;
+  const fundstellen = treffer.map((t) => `${t.pfad} (Zeile: '${t.zeile.trim()}')`).join("; ");
+  return {
+    art: "geschuetzt",
+    log: `#${top.id} angehalten: nennt geschuetzte Datei ${fundstellen} — ein Mensch nimmt die Aenderung selbst vor und nimmt danach ${GESCHUETZT_LABEL} ab.`,
+    kommentar: geschuetztKommentar(treffer),
+  };
+}
+
+/** Die Wurzel der Hauptkopie: das Verzeichnis, aus dem die Lauf-Config stammt. */
+function hauptWurzel() {
+  return CONFIG_PATH ? dirname(dirname(CONFIG_PATH)) : process.cwd();
+}
+
+/**
+ * Label und Halt-Kommentar an einem Paket mit geschuetzter Datei (Issue #1046, Plan #987,
+ * E11, E14), in dieser Reihenfolge: erst `label add`, dann der Kommentar, der dessen
+ * Ausgang als eigene Zeile vermerkt — nur so traegt er die Freigabe-Bedingung aus E5.
+ *
+ * Das Label geht ueber `boardRoh`: `board()` beendete bei Exit != 0 die ganze Nacht, und
+ * ein Board, an dem `kit:geschuetzt` (noch) nicht angelegt ist, weist es ab. Der Fehlschlag
+ * steht im Protokoll und im Kommentar; der Lauf geht weiter.
+ */
+function geschuetztAmBoardVermerken(karte, gate) {
+  const id = String(karte.id);
+  const res = boardRoh("issue", "label", "add", id, GESCHUETZT_LABEL);
+  const gesetzt = res.status === 0;
+  if (!gesetzt) {
+    const grund = res.text || "Exit " + res.status;
+    log(`#${id}: Label ${GESCHUETZT_LABEL} nicht gesetzt — ${grund}. Der Halt-Kommentar vermerkt es; der Lauf geht weiter.`);
+  }
+  const zeile = `Label ${GESCHUETZT_LABEL} ${gesetzt ? "gesetzt" : "nicht gesetzt"}`;
+  board("issue", "comment", id, "--text", `${gate.kommentar}\n\n${zeile}`);
 }
 
 /**
@@ -10315,6 +10419,14 @@ function stelleRundeZurueck(top, res, minutes, pruefung) {
  */
 function stelleAmGateZurueck(top, gate) {
   log(gate.log);
+  // Beim geschuetzten Treffer erst der Move, dann Label und Kommentar (E11) — der Kommentar
+  // ist der Halt-Text samt Label-Zeile, ein zweiter entsteht nicht.
+  if (gate.art === "geschuetzt") {
+    board("issue", "move", String(top.id), "backlog");
+    geschuetztAmBoardVermerken(top, gate);
+    einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.log });
+    return;
+  }
   // Die zweite Logzeile je Kreis (Issue #1063, E10) — die erste bleibt einzeilig wie bisher.
   for (const zeile of gate.kreisLog ?? []) log(zeile);
   // Der Befund-Block des Abhaengigkeits-Gates (Issue #1062, E10) nur hier, an der Karte.
