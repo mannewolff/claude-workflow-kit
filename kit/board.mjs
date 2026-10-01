@@ -148,7 +148,10 @@ Nutzung:
   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
       Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
       Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
-      backlog samt woertlichem Kommentartext), Aufgabe (Titel, Body, Labels, Spalte,
+      backlog samt woertlichem Kommentartext | geschuetzt: nennt das Paket eine
+      geschuetzte Datei und ist nicht freigegeben, Backlog, label add kit:geschuetzt,
+      dann der Halt-Kommentar aus check-geschuetzt plus Label-Zeile; das Label
+      kit:geschuetzt selbst ergibt backlog, Issue #1052), Aufgabe (Titel, Body, Labels, Spalte,
       Kommentare), Plan-Entscheidungen im Wortlaut (Auswahl aus der Zeile
       'Plan-Entscheidungen:', ohne sie alle), fachlicher Anlass (Ziel und Fachliche
       Akzeptanzkriterien der 'Fachlichen Quelle'), Geschwister des Plans mit Spalte
@@ -3600,6 +3603,8 @@ export const AUFTRAG_BACKLOG_TEXTE = {
   plan: (id) => `Plan-Dokument — wird nicht implementiert, bitte per /issues #${id} in Arbeitspakete ueberfuehren.`,
   mensch: () => "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
   klaeren: () => "Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+  // SYNC: `GESCHUETZT_LABEL_GATE_TEXT` in kit/night.mjs (Issue #1046, #1052).
+  geschuetzt: () => "Traegt kit:geschuetzt — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.",
 };
 
 // Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,
@@ -3973,8 +3978,20 @@ async function auftragKommentare(tracker, id, karte) {
   }
 }
 
-// Das Urteil nach Plan #1015, E6. Reihenfolge: Spalte, Praefix, Label, Voraussetzungen.
-function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen) {
+// Die Schritte bei Folge "geschuetzt" (Plan #987, E11): Erst nach dem `label add` steht
+// fest, welche Label-Zeile der Kommentar traegt — und nur `gesetzt` gibt nach E5 frei.
+function geschuetztSchritte(id, treffer) {
+  const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
+  return `Geschuetzte Datei ${pfade} — eine menschliche Handlung wartet, wird nicht implementiert. `
+    + `Schritte: 1. Karte nach Backlog. 2. \`node .claude/kit/board.mjs issue label add ${id} ${GESCHUETZT_LABEL}\` — `
+    + "scheitert er, den Fehlschlag melden und nicht aufhoeren. 3. Den Kommentar unten woertlich ans Issue, "
+    + `als letzte Zeile ergaenzt um \`${GESCHUETZT_LABEL_GESETZT}\` oder, wenn Schritt 2 scheiterte, \`${GESCHUETZT_LABEL_NICHT_GESETZT}\`.`;
+}
+
+// Das Urteil nach Plan #1015, E6, um die geschuetzten Dateien erweitert (Issue #1052, Plan
+// #987, E10). Reihenfolge: Spalte, Praefix, kit:klaeren, kit:geschuetzt, geschuetzter Pfad,
+// Voraussetzungen — wie `pruefeIssueGates` in kit/night.mjs.
+function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare) {
   const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
   if (spalte !== erwartet) {
     const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
@@ -3984,6 +4001,14 @@ function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen) {
   if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
   if ((karte.labels || []).includes(AUFTRAG_KLAEREN)) {
     return nicht("backlog", `Label ${AUFTRAG_KLAEREN} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  }
+  const labels = karte.labels || [];
+  if (labels.includes(GESCHUETZT_LABEL)) {
+    return nicht("backlog", `Label ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
+  }
+  const treffer = geschuetzteTreffer(karte.body || "", karte.title || "", configWurzel());
+  if (treffer.length > 0 && !geschuetztFreigabe(treffer, kommentare, labels)) {
+    return nicht("geschuetzt", geschuetztSchritte(id, treffer), geschuetztKommentar(treffer));
   }
   const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
   if (offen.length > 0) {
@@ -4075,7 +4100,8 @@ function geschwisterMarkdown(g) {
  * Luecken — keine stille Luecke (AK 3).
  *
  * Rein lesend: keine Bewegung, kein Kommentar. Bei Folge "backlog" liefert der Befehl den
- * Kommentartext, den die Session selbst ans Board haengt. Exit 0 auch bei "darf nicht
+ * Kommentartext, den die Session selbst ans Board haengt; bei Folge "geschuetzt" (Issue
+ * #1052) den Halt-Text aus `geschuetztKommentar`, ohne Label-Zeile, die Schritte im Grund. Exit 0 auch bei "darf nicht
  * beginnen" — das ist eine Auskunft, kein Fehler. Exit 1 nur, wenn das Paket selbst nicht
  * lesbar ist.
  *
@@ -4119,16 +4145,17 @@ async function issueAuftrag(tracker, args) {
     luecken.push(`Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`);
   }
 
+  const kommentare = (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" }));
   const auftrag = {
     id: nummer,
-    urteil: auftragUrteil(nummer, spalte, erwartet, karte, voraussetzungen),
+    urteil: auftragUrteil(nummer, spalte, erwartet, karte, voraussetzungen, kommentare),
     aufgabe: {
       id: nummer,
       titel: karte.title ?? "",
       spalte,
       labels: karte.labels || [],
       body: karte.body ?? "",
-      kommentare: (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" })),
+      kommentare,
     },
     planEntscheidungen,
     fachlicherAnlass,

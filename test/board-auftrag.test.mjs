@@ -7,7 +7,8 @@
 // Je Adapter dieselben Faelle ueber das echte CLI: local direkt, GitHub und GitLab mit
 // Fake-gh/-glab, toolbox gegen einen Mock-Server. Dazu zwei Gleichlauf-Tests gegen
 // kit/night.mjs: Abhaengigkeitslesung gegen `parseDeps`, Backlog-Texte gegen die
-// `Nachtlauf: `-Texte in `pruefeIssueGates`.
+// `Nachtlauf: `-Texte in `pruefeIssueGates`, der Text fuer `kit:geschuetzt` darunter
+// (Issue #1052).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,8 +18,10 @@ import { join } from "node:path";
 import { setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren } from "./helpers/board-fixture.mjs";
 import { NUR_POSIX, GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
-import { AUFTRAG_BACKLOG_TEXTE, abhaengigkeitenLesen, abhaengigkeitenMitHerkunft, fenceLauf } from "../kit/board.mjs";
-import { parseDeps, pruefeIssueGates } from "../kit/night.mjs";
+import {
+  AUFTRAG_BACKLOG_TEXTE, GESCHUETZTE_PFADE, GESCHUETZT_LABEL_GESETZT, abhaengigkeitenLesen, abhaengigkeitenMitHerkunft, fenceLauf,
+} from "../kit/board.mjs";
+import { GESCHUETZT_LABEL_GATE_TEXT, parseDeps, pruefeIssueGates } from "../kit/night.mjs";
 
 // --- Das gemeinsame Board ---
 //
@@ -43,6 +46,15 @@ const E7 = "- E7: Frage sieben?\n  Gewählt: D.";
 const ZIEL = "Zieltext.\n\n```\n## kein Abschnitt\n```";
 const KRITERIEN = "1. Kriterium eins.\n2. Kriterium zwei.";
 const FACHLICH_BODY = `## Ziel\n\n${ZIEL}\n\n## Fachliche Akzeptanzkriterien\n\n${KRITERIEN}\n\n## Nicht-Ziele\n\nNichts davon.\n`;
+
+// Ein Paket, das eine geschuetzte Datei beim Namen nennt (Issue #1052, Plan #987). Der Pfad
+// kommt aus der Vorgabeliste (E18), nicht aus einer eigenen Schreibweise im Test.
+const GESCHUETZT_PFAD = GESCHUETZTE_PFADE[0];
+const GESCHUETZT_ZEILE = `Den Eintrag in \`${GESCHUETZT_PFAD}\` ergaenzen.`;
+const geschuetztBody = `## Kontext\nText.\n\n## Aufgabe\n${GESCHUETZT_ZEILE}\n\n## Akzeptanzkriterium\n- gruen\n\n${deps()}`;
+// Der Halt-Kommentar, wie der Runner ihn nach einem gelungenen `label add` schreibt — mit
+// abgenommenem Label gibt er die Karte nach E5 frei.
+const FREIGABE = `## Geschuetzte Datei\n\nText.\n\n- \`${GESCHUETZT_PFAD}\`\n  > ${GESCHUETZT_ZEILE}\n\n${GESCHUETZT_LABEL_GESETZT}`;
 
 const KARTEN = [
   { nr: 10, spalte: "ready", titel: "Paket frei", body: body() },
@@ -69,6 +81,12 @@ const KARTEN = [
   { nr: 36, spalte: "ready", titel: "Paket ohne Quelle", body: kontext("Plan: Issue #37", "Plan-Entscheidungen: Keine.") },
   { nr: 37, spalte: "backlog", titel: "[Plan] Ohne Quelle", body: "## Ziel\nOhne Quelle.\n\n## Architektonische Entscheidungen\n\n- E1: Einzige?\n  Gewählt: ja.\n" },
   { nr: 40, spalte: "backlog", titel: "[Fachlich] Anlass", body: FACHLICH_BODY },
+  // Geschuetzte Dateien (Issue #1052): Label, Treffer, freigegebene Karte, Menschenschritt.
+  { nr: 50, spalte: "ready", titel: "Paket wartet auf Handlung", body: body(), labels: ["kit:geschuetzt"] },
+  { nr: 51, spalte: "ready", titel: "Paket mit geschuetzter Datei", body: geschuetztBody },
+  { nr: 52, spalte: "ready", titel: "Paket freigegeben", body: geschuetztBody, kommentare: [FREIGABE] },
+  { nr: 53, spalte: "ready", titel: "[Mensch] Einstellung eintragen", body: geschuetztBody },
+  { nr: 54, spalte: "ready", titel: "Paket mit geschuetzter Datei und Voraussetzung", body: geschuetztBody.replace(deps(), deps(20)) },
 ];
 
 const GLIEDER = ["Urteil", "Aufgabe", "Plan-Entscheidungen", "Fachlicher Anlass", "Geschwister", "Voraussetzungen", "Lücken"];
@@ -137,6 +155,56 @@ async function adapterFaelle(t, lauf, zustand) {
       assert.deepEqual(await zustand(nr), vorher, "weder Spalte noch Kommentare veraendert");
     });
   }
+
+  // --- Geschuetzte Dateien (Issue #1052, Plan #987, E5, E6, E10, E11, E17) ---
+
+  await t.test("kit:geschuetzt -> backlog mit eigenem Text, Label und Karte unveraendert", async () => {
+    const vorher = await zustand("50");
+    const a = await auftrag("50");
+    assert.equal(a.urteil.urteil, "darf nicht beginnen");
+    assert.equal(a.urteil.folge, "backlog");
+    assert.equal(a.urteil.kommentar, AUFTRAG_BACKLOG_TEXTE.geschuetzt("50"));
+    assert.match(a.urteil.grund, /kit:geschuetzt/);
+    assert.ok(a.aufgabe.labels.includes("kit:geschuetzt"), "das Label bleibt");
+    assert.deepEqual(await zustand("50"), vorher);
+  });
+
+  await t.test("geschuetzter Pfad -> geschuetzt, Kommentar gleich dem von check-geschuetzt", async () => {
+    const vorher = await zustand("51");
+    const a = await auftrag("51");
+    assert.equal(a.urteil.urteil, "darf nicht beginnen");
+    assert.equal(a.urteil.folge, "geschuetzt");
+    const check = await lauf(["issue", "check-geschuetzt", "51"]);
+    assert.equal(check.status, 1, check.stderr);
+    const erwartet = JSON.parse(check.stdout).kommentar;
+    assert.ok(erwartet, "check-geschuetzt liefert einen Kommentar");
+    assert.equal(a.urteil.kommentar, erwartet);
+    assert.ok(!a.urteil.kommentar.includes(GESCHUETZT_LABEL_GESETZT), "ohne Label-Zeile");
+    for (const schritt of [/Backlog/, /issue label add 51 kit:geschuetzt/, /Fehlschlag/, /Label kit:geschuetzt gesetzt/, /Label kit:geschuetzt nicht gesetzt/]) {
+      assert.match(a.urteil.grund, schritt);
+    }
+    const md = await lauf(["issue", "auftrag", "51"]);
+    assert.equal(md.status, 0);
+    assert.match(md.stdout, /Folge: geschuetzt/);
+    assert.ok(md.stdout.includes(`Kommentar fuer die Karte (woertlich):\n\n${erwartet}`), md.stdout);
+    assert.deepEqual(await zustand("51"), vorher, "weder Spalte noch Labels noch Kommentare veraendert");
+  });
+
+  await t.test("geschuetzt steht vor den Voraussetzungen", async () => {
+    assert.equal((await auftrag("54")).urteil.folge, "geschuetzt");
+  });
+
+  await t.test("freigegebene Karte nach E5 -> darf beginnen", async () => {
+    const a = await auftrag("52");
+    assert.equal(a.urteil.urteil, "darf beginnen");
+    assert.equal(a.urteil.folge, "beginnen");
+  });
+
+  await t.test("[Mensch]-Titel mit geschuetztem Pfad -> weiter das Praefix-Urteil", async () => {
+    const a = await auftrag("53");
+    assert.equal(a.urteil.folge, "backlog");
+    assert.equal(a.urteil.kommentar, AUFTRAG_BACKLOG_TEXTE.mensch("53"));
+  });
 
   await t.test("Voraussetzung unerfuellt -> bleibt", async () => {
     const a = await auftrag("17");
@@ -521,6 +589,7 @@ const TEXT_FAELLE = [
   ["plan", { id: "43", title: "[Plan] X", labels: [] }],
   ["mensch", { id: "44", title: "[Mensch] X", labels: [] }],
   ["klaeren", { id: "45", title: "Paket", labels: ["kit:klaeren"] }],
+  ["geschuetzt", { id: "46", title: "Paket", labels: ["kit:geschuetzt"] }],
 ];
 
 function textAbweichungen(texte, gates) {
@@ -539,7 +608,18 @@ test("Gleichlauf: ein abweichender Text auf einer Seite faellt auf", () => {
   assert.deepEqual(textAbweichungen(kopie, pruefeIssueGates), ["idee"]);
   const nachtAnders = (issue) => {
     const r = pruefeIssueGates(issue);
-    return issue.labels.length ? { ...r, kommentar: `${r.kommentar} ` } : r;
+    return issue.labels.includes("kit:klaeren") ? { ...r, kommentar: `${r.kommentar} ` } : r;
   };
   assert.deepEqual(textAbweichungen(AUFTRAG_BACKLOG_TEXTE, nachtAnders), ["klaeren"]);
+});
+
+test("Gleichlauf: der Label-Text fuer kit:geschuetzt gleicht GESCHUETZT_LABEL_GATE_TEXT, eine Abwandlung faellt auf", () => {
+  assert.equal(`Nachtlauf: ${AUFTRAG_BACKLOG_TEXTE.geschuetzt("46")}`, GESCHUETZT_LABEL_GATE_TEXT);
+  const kopie = { ...AUFTRAG_BACKLOG_TEXTE, geschuetzt: (id) => AUFTRAG_BACKLOG_TEXTE.geschuetzt(id).replace("nur ein Mensch", "die Maschine") };
+  assert.deepEqual(textAbweichungen(kopie, pruefeIssueGates), ["geschuetzt"]);
+  const nachtAnders = (issue) => {
+    const r = pruefeIssueGates(issue);
+    return issue.labels.includes("kit:geschuetzt") ? { ...r, kommentar: r.kommentar.replace("wartet", "steht aus") } : r;
+  };
+  assert.deepEqual(textAbweichungen(AUFTRAG_BACKLOG_TEXTE, nachtAnders), ["geschuetzt"]);
 });
