@@ -7344,20 +7344,29 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   for (;;) {
     const form = boardRoh("issue", "check-form", stand.id, { cwd: kette.wt });
     if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
-    if (form.json.ok) {
+    // I8 ist kein Korrekturfall (Plan #987, E15): Die geschuetzte Datei verlangt eine
+    // [Mensch]-Karte und eine Teilung, und der korrekturPrompt verbietet beides. Der Verstoss
+    // steht im Protokoll, die Karte laeuft ins Gate der Umsetzungsstufe.
+    const geschuetzt = (form.json.verstoesse || []).filter((v) => v.gate === "I8");
+    const zuKorrigieren = (form.json.verstoesse || []).filter((v) => v.gate !== "I8");
+    if (geschuetzt.length > 0) {
+      const meldungen = geschuetzt.map((v) => `${v.gate}: ${v.meldung}`).join("; ");
+      log(`  Formpruefung #${stand.id}: ${meldungen} — kein Korrekturfall, das Paket haelt in der Umsetzungsstufe an.`);
+    }
+    if (form.json.ok || zuKorrigieren.length === 0) {
       log(`  Formpruefung #${stand.id} gruen.`);
       // Nur Eintraege mit Baustein und Test sind Testhinweise; Abhaengigkeits-Hinweise der
       // Pakete (Plan #1057 E4) tragen keine und bleiben hier ohne Kommentar (Issue #1059).
       testhinweiseVermerken(stand.id, (form.json.hinweise || []).filter((h) => h.baustein && h.test));
       return null;
     }
-    const verstoesse = (form.json.verstoesse || []).map((v) => `${v.gate}: ${v.meldung}`).join("; ");
+    const verstoesse = zuKorrigieren.map((v) => `${v.gate}: ${v.meldung}`).join("; ");
     if (stand.korrekturrunden >= budget.korrekturrunden) {
       return { ausgang: "abgebrochen", grund: `Form nach ${stand.korrekturrunden} Korrekturrunde(n) weiterhin verletzt (#${stand.id}): ${verstoesse}` };
     }
     stand.korrekturrunden++;
     log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
-    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, form.json.verstoesse), stufeStart, budgetMs, stand.id);
+    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, stand.id);
     summe(k);
     if (k.ausgang !== "fertig") return k;
     if (kostenErschoepft(kette)) return kostenErschoepft(kette);

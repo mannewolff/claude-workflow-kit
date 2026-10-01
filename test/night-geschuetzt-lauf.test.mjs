@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  NUR_POSIX, run, board, mitProjekt, umgebung, repoRoot, UMSETZUNG_ERFOLG,
+  NUR_POSIX, run, board, mitProjekt, umgebung, repoRoot, sessions, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
 
@@ -123,15 +123,14 @@ test("Einzellauf: das Paket, das die angehaltene Karte voraussetzt, wird mit Abh
  * Die Fake-Zeile der Stufe pakete: drei Pakete mit `Plan: Issue #M`, das zweite haengt vom
  * ersten ab, das dritte ist frei. Die Nummer des ersten legt der Fake fuer die Abdeckung ab.
  */
-const PAKETE_DREI = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 2 ]; then dep="Issue #$erste"; else dep="Keine."; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nIn \`src/paket%s.mjs\` den Eintrag ergaenzen.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; printf "%s" "$id" > "$KETTE_LOG.erste"; fi; done`;
+const PAKETE_DREI = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 2 ]; then dep="Issue #$erste"; else dep="Keine."; fi; datei="src/paket$n.mjs"; if [ "$n" = 1 ] && [ -n "$KETTE_GESCHUETZT_BEIM_SCHNEIDEN" ]; then datei="$KETTE_GESCHUETZT_BEIM_SCHNEIDEN"; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nIn \`%s\` den Eintrag ergaenzen.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$datei" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; printf "%s" "$id" > "$KETTE_LOG.erste"; fi; done`;
 
 /**
  * Die Fake-Zeile der Stufe abdeckung: Sie schreibt die geschuetzte Datei aus
  * `$KETTE_GESCHUETZT` in die Aufgabe des ersten Pakets.
  *
- * Die Formstufe weist ein solches Paket heute mit I8 ab, bevor die Umsetzung es sieht.
- * Den Weg zur Umsetzungsstufe oeffnet erst Issue #1049; bis dahin kommt der Pfad nach der
- * Formpruefung ins Paket — der Fall, den die Umsetzungsstufe ohnehin auffangen muss.
+ * Der Pfad kommt erst nach der Formpruefung ins Paket — der Fall, den die Umsetzungsstufe
+ * auch dann auffangen muss, wenn die Formstufe ihn nie gesehen hat.
  */
 const ABDECKUNG_SCHUETZT_ERSTES = String.raw`id=$(cat "$KETTE_LOG.erste"); sed "s|src/paket1.mjs|$KETTE_GESCHUETZT|" "$KETTE_LOG.p1.md" > "$KETTE_LOG.p1g.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.p1g.md" >/dev/null`;
 
@@ -154,6 +153,61 @@ test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengi
 
     istAngehalten(dir, geschuetzt);
     istZurueckgestellt(dir, abhaengig, geschuetzt);
+    keinRestInArbeit(dir);
+  });
+});
+
+// --- Formstufe der Kette (Issue #1049, Plan #987, Verifizierung 9, E15) ---
+
+test("Kette: ein Paket, dessen einziger Verstoss I8 ist, bekommt keine Korrektursession und haelt erst in der Umsetzungsstufe an", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, form: ":", umsetzung: UMSETZUNG_MIT_SPUR };
+    const env = { ...umgebung(dir, { stufen }), KETTE_GESCHUETZT_BEIM_SCHNEIDEN: PFAD };
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.notEqual(einheit.ausgang, "abgebrochen", einheit.grund);
+    const [geschuetzt, abhaengig, frei] = einheit.stufen.pakete.ids;
+    assert.ok(frei, `die Stufe pakete legte keine drei Pakete an: ${JSON.stringify(einheit.stufen.pakete)}`);
+
+    // Die Formstufe ist gruen, ohne eine einzige Korrektursession.
+    assert.equal(einheit.stufen.pakete.korrekturrunden, 0);
+    assert.ok(!sessions(env.logPfad).some((s) => s.stufe === "form"), "fuer den I8-Verstoss startete eine Korrektursession");
+    assert.match(res.stdout, new RegExp(`I8.*#${geschuetzt}|#${geschuetzt}.*I8`), "der I8-Verstoss steht nicht im Protokoll");
+
+    assert.deepEqual(gestartet(env), [frei]);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), [frei]);
+    istAngehalten(dir, geschuetzt);
+    istZurueckgestellt(dir, abhaengig, geschuetzt);
+    keinRestInArbeit(dir);
+  });
+});
+
+/** Die Fake-Zeile der Stufe pakete: ein Paket, dessen Aufgabe keine Datei als Backtick-Pfad nennt (I7). */
+const PAKET_OHNE_PFAD = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nDen Eintrag ergaenzen.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" > "$KETTE_LOG.p.md"; node .claude/kit/board.mjs issue create --title "Paket ohne Pfad" --body-file "$KETTE_LOG.p.md" >/dev/null`;
+
+/** Die Fake-Zeile der Stufe form: ergaenzt in der Aufgabe des Dokuments aus dem Prompt einen Backtick-Pfad. */
+const PFAD_ERGAENZEN = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s/^Das Dokument #\([0-9]*\).*/\1/p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.replace("Den Eintrag ergaenzen.","In \x60src/paket.mjs\x60 den Eintrag ergaenzen."))' > "$KETTE_LOG.pfix.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.pfix.md" >/dev/null`;
+
+test("Kette: ein Paket, das allein an I7 rot ist, wird in genau einer Korrekturrunde gruen", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const stufen = { ...ERZEUGEN, pakete: PAKET_OHNE_PFAD, form: PFAD_ERGAENZEN, umsetzung: UMSETZUNG_MIT_SPUR };
+    const env = umgebung(dir, { stufen });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit } = umsetzung(dir, F);
+    assert.notEqual(einheit.ausgang, "abgebrochen", einheit.grund);
+    const [paket] = einheit.stufen.pakete.ids;
+    assert.equal(einheit.stufen.pakete.korrekturrunden, 1);
+    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "form").length, 1);
+    assert.match(res.stdout, new RegExp(`Formpruefung #${paket} rot \\(I7: .*Korrekturrunde 1 von`));
+    assert.match(res.stdout, new RegExp(`Formpruefung #${paket} gruen`));
+    assert.match(board(dir, "issue", "get", paket).body, /In `src\/paket\.mjs` den Eintrag ergaenzen\./);
+    assert.deepEqual(gestartet(env), [paket]);
     keinRestInArbeit(dir);
   });
 });
