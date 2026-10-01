@@ -108,16 +108,21 @@ test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette a
   });
 });
 
-test("[night-19] ein Fehlstart der Session ist ein technischer Fehler dieser Kette, kein harter Stopp", NUR_POSIX, () => {
+// Seit Issue #1088 (Plan #1079 E13) ist ein Fehlstart — Exit ungleich 0 ohne ein Ereignis
+// der Session — ein Umgebungsfehler: ein zweiter Versuch nach der Pause, scheitert auch er,
+// haelt der Lauf an. Eine Session, die zustande kam und scheiterte, bleibt ein technischer
+// Fehler dieser Kette (test/night-kette-review-rest.test.mjs).
+test("[night-19] ein Fehlstart der Session bekommt einen zweiten Versuch, scheitert auch er, haelt der Lauf an", NUR_POSIX, () => {
   mitProjekt((dir) => {
-    const F = fachplan(dir);
+    fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "exit 3" } });
     const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, "ein Fehlstart beendet die Kette, nicht den Lauf");
+    assert.equal(res.status, 1, `${res.stdout}\n${res.stderr}`);
+    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "plan").length, 2, "der Fehlstart wurde nicht genau einmal wiederholt");
+    assert.match(res.stdout, /Umgebungsfehler: Sitzungsstart zu #\d+ gescheitert \(Exit 3\) — 2\. Versuch/);
     const lauf = stand(dir);
-    assert.equal(lauf.abschluss, "regulaer");
-    const einheit = lauf.einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /technischer Fehler: die Session der Stufe plan endete mit Exit 3/);
-  });
+    assert.equal(lauf.abschluss, "harterStopp");
+    assert.equal(lauf.fehlerklasse, "umgebung");
+    assert.match(lauf.fehlerText, /Sitzungsstart der Stufe plan .* auch im 2\. Versuch gescheitert \(Exit 3\)/);
+  }, {}, "night-kette-", { night: { stand: { pauseMin: 0.0001 } } });
 });

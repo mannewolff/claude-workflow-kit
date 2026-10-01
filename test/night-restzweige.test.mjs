@@ -153,7 +153,7 @@ test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exi
     // Issue ins Backlog wandert. Es bleibt liegen, wo es lag.
     assert.equal(board(dir, "issue", "get", id).status, "ready",
       "ein Infrastruktur-Fehlschlag darf das Ticket nicht verschieben");
-  }, {}, "night-rest-signal-");
+  }, { night: { stand: { pauseMin: 0.0001 } } }, "night-rest-signal-");
 });
 
 // ============================================================
@@ -227,7 +227,7 @@ test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines 
       assert.equal(board(dir, "issue", "get", id).status, "ready",
         "ein Infrastruktur-Fehlschlag darf das Ticket nicht verschieben");
     });
-  }, {}, "night-rest-eacces-");
+  }, { night: { stand: { pauseMin: 0.0001 } } }, "night-rest-eacces-");
 });
 
 // ============================================================

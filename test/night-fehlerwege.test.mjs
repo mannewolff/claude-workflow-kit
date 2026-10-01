@@ -180,7 +180,7 @@ test("ein Infrastruktur-Fehlschlag nennt Exit-Code und die ersten Zeilen der Aus
     // Ready-Spalte leerraeumen.
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
     assert.ok(ready.includes(id), "das Issue haette in Ready bleiben muessen");
-  }, {}, "night-fehler-infra-");
+  }, { config: { night: { stand: { pauseMin: 0.0001 } } } }, "night-fehler-infra-");
 });
 
 test("ein Fehlstart ohne jede Ausgabe meldet trotzdem den Exit-Code", NUR_POSIX, () => {
@@ -193,7 +193,7 @@ test("ein Fehlstart ohne jede Ausgabe meldet trotzdem den Exit-Code", NUR_POSIX,
     assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(Exit 9\)/);
     assert.doesNotMatch(res.stdout, /CLI-Meldung:/,
       "ohne Ausgabe darf keine leere CLI-Meldung erscheinen");
-  }, {}, "night-fehler-infra-stumm-");
+  }, { config: { night: { stand: { pauseMin: 0.0001 } } } }, "night-fehler-infra-stumm-");
 });
 
 test("eine Session, die ihr Zeitlimit reisst, ist KEIN Infrastruktur-Fehlschlag", NUR_POSIX, () => {

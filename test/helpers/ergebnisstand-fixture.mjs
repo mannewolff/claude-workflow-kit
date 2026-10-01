@@ -48,7 +48,8 @@ export function setupProjekt(praefix, night = null) {
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
-    ...(night ? { night } : {}),
+    // Ein Board-Ausfall bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 }, ...night },
   }, null, 2));
   // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der

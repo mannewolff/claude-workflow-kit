@@ -67,7 +67,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
   // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
   copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { kette } }, null, 2));
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { ...configZusatz.night, kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.
   //
@@ -227,6 +227,12 @@ export function fake(stufen = {}) {
     "fi",
   ].join("\n");
 }
+
+/**
+ * Ein Ereignis im Strom der Session: Sie kam zustande. Eine Stufe, die danach mit Exit
+ * ungleich 0 endet, ist ein Fehler dieser Stufe und kein Fehlstart (Issue #1088, E13).
+ */
+export const EREIGNIS = `echo '{"type":"system","subtype":"init"}'`;
 
 /** Die Fake-Zeile der Stufe plan: legt den Plan aus `$KETTE_PLAN_BODY` mit der Herkunftszeile an. */
 export const PLAN_ANLEGEN = 'sed "s/__F__/$NIGHT_ISSUE_ID/" "$KETTE_PLAN_BODY" > "$KETTE_LOG.plan.md"; node .claude/kit/board.mjs issue create --title "[Plan] Ein Weg" --body-file "$KETTE_LOG.plan.md" >/dev/null';

@@ -44,6 +44,8 @@ function setupProjekt() {
     issueTracker: "local",
     buildChecks: ["true"],
     local: { issuesDir: "issues" },
+    // Der Fehlstart bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 } },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
   for (const [c, a] of [
@@ -96,9 +98,9 @@ test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt u
     // Keine Kommentare auf den Issues.
     assert.doesNotMatch(issuesDirText(dir), /Nachtlauf/, "Issue wurde faelschlich kommentiert");
 
-    // Genau eine Session — nach dem Fehlstart keine weitere.
+    // Ein Versuch nach der Pause (Issue #1088, E13), dann keine weitere Session.
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
+    assert.deepEqual(sessions, [String(erstes.id), String(erstes.id)], "es lief nicht genau ein zweiter Versuch");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

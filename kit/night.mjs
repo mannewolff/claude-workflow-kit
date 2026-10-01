@@ -1441,7 +1441,8 @@ export function standSetzen(karte, zustand, eintrag, { lauf = LAUF_STEMPEL, repo
   if (!lauf) return null;
   const pfad = laufPfad(repoRoot, lauf, "jsonl");
   const nr = journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
-  const zeile = { art: "stand", nr, zeit: new Date().toISOString(), karte: String(karte), zustand, text: eintrag, status: "offen" };
+  const text = mitVersuchVermerk(String(karte), eintrag);
+  const zeile = { art: "stand", nr, zeit: new Date().toISOString(), karte: String(karte), zustand, text, status: "offen" };
   journalZeile(pfad, zeile);
   return standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) ? "geschrieben" : "offen";
 }
@@ -1565,6 +1566,121 @@ function abbruchHandlerSetzen() {
   process.on("uncaughtException", (err) => abbruchDurchFehler("uncaughtException", err));
   process.on("unhandledRejection", (err) => abbruchDurchFehler("unhandledRejection", err));
 }
+
+// --- Umgebung oder Paket: ein Versuch (Issue #1088, Plan #1079 E13, E15) ---
+
+// Was der Lauf gerade bearbeitet: die Karte, an der ein Umgebungsfehler vermerkt wird, und
+// die Karten, die er als naechste aufnaehme. Kette und Umsetzungsnacht setzen beides; beim
+// Anhalten bekommen die naechsten "nicht begonnen" (E15).
+let LAUF_KONTEXT = { karte: null, kandidaten: () => [] };
+// Gesetzt, sobald der Lauf anhaelt: Ein Board-Aufruf, der dann scheitert, wirft, statt einen
+// zweiten Versuch und ein zweites Anhalten zu beginnen.
+let ANHALTEN_LAEUFT = false;
+// Je Karte der Vermerk "2. Versuch" — er steht in jedem weiteren Laufstand dieser Karte, bis
+// der Lauf endet, und wird nicht von der naechsten Stufe ueberschrieben.
+const VERSUCH_VERMERKE = new Map();
+
+/** Haengt den Vermerk "2. Versuch" der Karte an einen Laufstand-Text, hoechstens einmal. */
+function mitVersuchVermerk(karte, eintrag) {
+  const vermerk = VERSUCH_VERMERKE.get(karte);
+  if (!vermerk || eintrag.includes(vermerk)) return eintrag;
+  return eintrag ? `${eintrag}\n\n${vermerk}` : vermerk;
+}
+
+/** Die Pause vor dem zweiten Versuch: `night.stand.pauseMin`, ein unbrauchbarer Block faellt auf die Vorgabe. */
+function pauseMs() {
+  const stand = nightStandLaden(config);
+  return (stand.fehler ? STAND_VORGABEN.pauseMin : stand.pauseMin) * 60_000;
+}
+
+/**
+ * Vermerkt einen Umgebungsfehler und wartet die Pause ab, synchron ueber `Atomics.wait` wie
+ * in kit/checks.mjs: `board()` ist synchron, und ein asynchroner Umbau beruehrte jede
+ * Aufrufstelle (E13). Der Puls davor und danach — waehrend der Pause schweigt der Takt, und
+ * `pauseMin < fristMin` haelt den Waechter still.
+ */
+function zweiterVersuch(grund) {
+  const ms = pauseMs();
+  const zeit = new Date().toISOString();
+  log(`Umgebungsfehler: ${grund} — 2. Versuch nach ${ms / 1000} s Pause.`);
+  if (LAUF_STEMPEL) journalZeile(laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit, pid: process.pid, text: `2. Versuch: ${ersteZeile(grund)}` });
+  if (LAUF_KONTEXT.karte) VERSUCH_VERMERKE.set(String(LAUF_KONTEXT.karte), `2. Versuch nach Umgebungsfehler um ${zeit}: ${ersteZeile(grund)}`);
+  pulsSchreiben();
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  pulsSchreiben();
+}
+
+/**
+ * Schreibt den letzten Stand der laufenden Karte erneut, jetzt mit dem Vermerk — nach einem
+ * gelungenen zweiten Board-Versuch, denn waehrend des Ausfalls nahm das Board nichts an.
+ * Eine Karte ohne Stand im Journal bekommt ihn mit dem naechsten Stand ihrer Runde.
+ */
+function vermerkAnDieKarte() {
+  const karte = LAUF_KONTEXT.karte;
+  if (!karte || !LAUF_STEMPEL) return;
+  const letzter = journalLesen(laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl")).staende.findLast((s) => s.karte === String(karte));
+  if (letzter) standSetzen(karte, letzter.zustand, letzter.text);
+}
+
+/**
+ * Setzt die Staende des Anhaltens (E15): die laufende Karte auf `abgebrochen`, jede Karte,
+ * die der Lauf als naechste aufgenommen haette, auf `wartet` mit "nicht begonnen", Grund und
+ * Zeitpunkt. Was das Board nicht annimmt, bleibt offen im Journal. Lassen sich die naechsten
+ * Karten nicht bestimmen, weil das Board schweigt, gilt dort ihr zuletzt sichtbarer Stand.
+ */
+function anhaltenVermerken(grund) {
+  ANHALTEN_LAEUFT = true;
+  const zeit = new Date().toISOString();
+  const karte = LAUF_KONTEXT.karte ? String(LAUF_KONTEXT.karte) : null;
+  log(`Lauf haelt an: ${grund}`);
+  if (karte) standSetzen(karte, "abgebrochen", `abgebrochen, Umgebungsfehler um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+  let ids;
+  try {
+    ids = LAUF_KONTEXT.kandidaten().map(String);
+  } catch (err) {
+    log(`  Die naechsten Karten liessen sich nicht bestimmen (${ersteZeile(err.message)}) — am Board gilt ihr zuletzt sichtbarer Stand.`);
+    return;
+  }
+  for (const id of ids.filter((i) => i !== karte)) {
+    log(`  #${id} nicht begonnen.`);
+    standSetzen(id, "wartet", `nicht begonnen: der Lauf hielt um ${zeit} an — ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+  }
+}
+
+/**
+ * Haelt den Lauf wegen der Umgebung an (E13, E15): Staende setzen, dann der Weg von fail().
+ * Die Klasse bleibt die des Ausfalls — ein schweigendes Board ist `tracker`, ein
+ * gescheiterter Sitzungsstart `umgebung`.
+ */
+function laufAnhalten(grund, klasse = "umgebung") {
+  anhaltenVermerken(grund);
+  fail(`Lauf angehalten: ${grund}`, klasse);
+}
+
+/** Hat die Sitzung ein Ereignis in ihren Strom geschrieben, kam sie zustande (E13). */
+export function hatSitzungsereignis(stdout) {
+  return String(stdout ?? "").split("\n").some((zeile) => {
+    if (!zeile.trim().startsWith("{")) return false;
+    try {
+      return typeof JSON.parse(zeile)?.type === "string";
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Ist dieser Sitzungsstart an der Umgebung gescheitert? Exit ungleich 0 ohne Zeitlimit und
+ * ohne ein einziges Sitzungsereignis (E13). Die Kommando-Stufe meldet keine Ereignisse; dort
+ * laesst sich Umgebung nicht von Paket trennen, und es bleibt beim harten Stopp ohne Versuch.
+ */
+function sitzungsStartGescheitert(res, kommando) {
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  if (timedOut || !(res.error || res.status !== 0)) return false;
+  return !kommando && !hatSitzungsereignis(res.stdout);
+}
+
+const exitText = (res) => (res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`);
 
 // --- Waechter: der verstummte Lauf (Issue #1085, Plan #1079 E7) ---
 
@@ -1796,9 +1912,18 @@ function boardAufruf(cliArgs, opts) {
 function board(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = boardAufruf(cliArgs, opts);
+  let res = boardAufruf(cliArgs, opts);
+  // Ein gescheiterter Aufruf des lebenden Laufs bekommt genau einen Versuch nach der Pause
+  // (Issue #1088, E13); scheitert auch er, haelt der Lauf an. Ohne Stempel — Trockenlauf,
+  // Vorbereitung — gibt es noch keinen Lauf, und es bleibt beim sofortigen Ende.
   if (res.status !== 0) {
-    fail(boardFehlertext(cliArgs, res), "tracker");
+    const text = boardFehlertext(cliArgs, res);
+    if (ANHALTEN_LAEUFT) throw new Error(text);
+    if (!LAUF_STEMPEL) fail(text, "tracker");
+    zweiterVersuch(text);
+    res = boardAufruf(cliArgs, opts);
+    if (res.status !== 0) laufAnhalten(`${boardFehlertext(cliArgs, res)} (auch im 2. Versuch)`, "tracker");
+    vermerkAnDieKarte();
   }
   try {
     return JSON.parse(res.stdout);
@@ -4725,6 +4850,16 @@ export async function runSession(issueId, args, opts = {}) {
   // an der nichts gemessen wurde. Angehaengt wie `werkzeugzeit`, also ohne die uebrigen
   // Felder von `runProcess` zu beruehren.
   res.timeoutMs = timeoutMs;
+  // Ein Sitzungsstart, der an der Umgebung scheiterte, bekommt genau einen Versuch nach der
+  // Pause (Issue #1088, E13). Scheitert auch er, traegt das Ergebnis `umgebungGescheitert`,
+  // und der Aufrufer haelt den Lauf an. Ohne Stempel (Import durch Tests) kein Versuch.
+  if (LAUF_STEMPEL && !opts.zweiterVersuch && sitzungsStartGescheitert(res, kommando)) {
+    zweiterVersuch(`Sitzungsstart zu #${issueId} gescheitert (${exitText(res)})`);
+    const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true });
+    zweiter.zweiterVersuch = true;
+    zweiter.umgebungGescheitert = sitzungsStartGescheitert(zweiter, kommando);
+    return zweiter;
+  }
   return res;
 }
 
@@ -6975,8 +7110,9 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   if (timedOut) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
+  if (res.umgebungGescheitert) laufAnhalten(`Sitzungsstart der Stufe ${stufe} zu #${kette.F} auch im 2. Versuch gescheitert (${exitText(res)})`);
   if (res.error || res.status !== 0) {
-    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+    const exitInfo = exitText(res);
     return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   // Die wartende Sitzung (Plan #773, Issue #778) — hinter Zeitbudget und technischem
@@ -8527,6 +8663,12 @@ async function laufeEineKette(auftrag, nummer, args) {
     variante: varianteVon(karte, KETTE_BUDGET),
     uebergaenge: KETTE_UEBERGAENGE,
   };
+  // Haelt der Lauf wegen der Umgebung an, sind die naechsten die Pakete des Auftrags ohne
+  // Ergebnis (E15).
+  LAUF_KONTEXT = {
+    karte: String(karte.id),
+    kandidaten: () => (kette.stufen.pakete?.ids ?? []).map(String).filter((id) => !paketUmgesetzt(leseKarte(id))),
+  };
   const aeltere = ketteBeginnen(kette, auftrag, nummer, args);
 
   let ergebnis;
@@ -9847,9 +9989,15 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
   // ist gescheitert (Auth abgelaufen, Fehlkonfiguration) — mit dem Issue ist nichts
   // falsch. Harter Stopp ohne Kommentar und ohne Backlog-Move, sonst raeumt eine
   // kaputte Umgebung die ganze Ready-Spalte leer.
+  //
+  // Seit Issue #1088 (E13) nur noch, wenn die Sitzung kein Ereignis gemeldet hat, und erst
+  // nach dem einen Versuch in runSession: Eine Sitzung, die zustande kam und mit Exit
+  // ungleich 0 endete, ist ein Paketfehler und geht den Weg jeder Runde ohne Ergebnis.
+  // Die Kommando-Stufe meldet keine Ereignisse und bleibt beim harten Stopp.
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
-  if (!timedOut && (res.error || res.status !== 0)) {
-    const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
+  const kommando = Boolean(sessionWahl?.kommando);
+  if (!timedOut && (res.error || res.status !== 0) && (kommando || !hatSitzungsereignis(res.stdout))) {
+    const exitInfo = exitText(res);
     const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
     const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`;
     log(`  ${kopf}`);
@@ -9857,6 +10005,7 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
     // Beide Protokollzeilen, in derselben Reihenfolge (Issue #558): Die CLI-Meldung ist
     // hier das Einzige, was den Ausfall benennt — exitInfo allein sagt nur, dass es ihn gab.
     merkeHartenStopp("umgebung", detail ? `${kopf}\nCLI-Meldung: ${detail}` : kopf);
+    anhaltenVermerken(detail ? `Sitzungsstart gescheitert (${exitInfo}): ${detail}` : `Sitzungsstart gescheitert (${exitInfo})`);
     return "hardStop";
   }
 
@@ -10198,8 +10347,10 @@ function lockFehlschlagVermerken(lauf) {
  */
 async function implementierungsSchleife(args, ctx, lauf) {
   let iterations = 0;
+  LAUF_KONTEXT = { karte: null, kandidaten: () => umsetzungsKandidaten(ctx) };
   while (lauf.sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
+    LAUF_KONTEXT.karte = null;
     const ready = board("issue", "list", "--status", "ready");
     if (ready.length === 0) {
       lauf.ohneArbeit = fallLeeresReady(lauf);
@@ -10214,6 +10365,8 @@ async function implementierungsSchleife(args, ctx, lauf) {
       lauf.ohneArbeit = { fall: "keinLabel", daten: { label: ctx.labelFilter, anzahl: ready.length } };
       break;
     }
+    // Ab hier ist es die Karte des Laufs: Ein Umgebungsfehler wird an ihr vermerkt (E13).
+    LAUF_KONTEXT.karte = String(top.id);
 
     const gate = pruefeIssueGates(top);
     if (gate) {
@@ -10233,12 +10386,37 @@ async function implementierungsSchleife(args, ctx, lauf) {
     lauf.sessions++;
     log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
     const ausgang = await laufeRunde(top, args, lauf.salvageAttempted, lauf.pruefungen);
+    rundeMitVermerkAbschliessen(top, ausgang);
     if (ausgang === "hardStop") {
       lauf.hardStop = true;
       break;
     }
     lauf.zaehler[ausgang]++;
   }
+}
+
+/**
+ * Die Karten, die die Schleife jetzt als naechste aufnaehme (E15): Ready mit Routing-Label,
+ * die `pruefeIssueGates` bestehen — so, wie sie im Moment des Anhaltens am Board liegen.
+ */
+function umsetzungsKandidaten(ctx) {
+  const ready = board("issue", "list", "--status", "ready");
+  return ready
+    .filter((issue) => ctx.labelFilter === null || ctx.hasLabel(issue))
+    .filter((issue) => !pruefeIssueGates(issue))
+    .map((issue) => String(issue.id));
+}
+
+// Der Laufstand einer Runde, die einen Umgebungsfehler hinter sich hat, nach ihrem Ausgang.
+const RUNDEN_STAND = { erfolg: "fertig", angehalten: "wartet" };
+
+/**
+ * Traegt eine Karte den Vermerk "2. Versuch", bekommt sie zum Ende ihrer Runde einen Stand,
+ * an dem er steht (E13). Nach dem Anhalten steht ihr Stand schon.
+ */
+function rundeMitVermerkAbschliessen(top, ausgang) {
+  if (ANHALTEN_LAEUFT || !VERSUCH_VERMERKE.has(String(top.id))) return;
+  standSetzen(top.id, RUNDEN_STAND[ausgang] ?? "abgebrochen", `Runde beendet: ${ausgang} um ${new Date().toISOString()}`);
 }
 
 /**

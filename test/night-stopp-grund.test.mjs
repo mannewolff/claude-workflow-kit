@@ -86,6 +86,8 @@ function setupProjekt(praefix, buildChecks = ["true"]) {
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     local: { issuesDir: "issues" }, issueReview: { reviewers: NUR_CLAUDE },
+    // Der Infrastruktur-Guard folgt seit Issue #1088 auf einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 } },
   }, null, 2));
   // Bewusst OHNE `.claude/*`: Der Ergebnisstand muss untracked sichtbar bleiben, sonst
   // pruefte der Rest-Guard-Test die falsche Datei. Das Textprotokoll und die

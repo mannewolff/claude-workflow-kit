@@ -37,6 +37,8 @@ test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am 
 test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
+    // Ein Fehlstart ohne Ereignis der Session: seit Issue #1088 (E13) mit einem zweiten
+    // Versuch nach der Pause, danach der harte Stopp.
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -46,10 +48,10 @@ test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, 
     const [erstes, zweites] = einheit.stufen.pakete.ids;
     assert.deepEqual(stufe.zurueckgestellt.map((p) => p.id), [erstes], "das gezogene Paket steht nicht als zurueckgestellt");
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), [zweites], "das zweite Paket wurde begonnen");
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 1, "es lief mehr als eine Umsetzungs-Session");
+    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 2, "es lief nicht genau ein zweiter Versuch");
     stehenInBacklog(dir, [erstes, zweites]);
     keinRestInArbeit(dir);
-  });
+  }, {}, "night-kette-", { night: { stand: { pauseMin: 0.0001 } } });
 });
 
 test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {

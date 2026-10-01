@@ -227,7 +227,9 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
     { cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; kill -9 $PPID", areas: ["kit"] },
     FRONTEND_CHECK,
   ];
-  const fake = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
+  // Das Ereignis im Strom: Die Session kam zustande, ihr Exit nach dem Tod von checks.mjs
+  // ist kein Fehlstart (Issue #1088, E13).
+  const fake = [`echo '{"type":"system","subtype":"init"}'`, LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);

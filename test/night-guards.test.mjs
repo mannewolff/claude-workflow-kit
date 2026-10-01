@@ -191,7 +191,7 @@ function stubBoard(dir, script) {
 }
 
 test("board.mjs mit Exit ungleich 0 beendet den Lauf mit sprechender Meldung", NUR_POSIX, () => {
-  const dir = setupProjekt("night-guard-boardfail-");
+  const dir = setupProjekt("night-guard-boardfail-", { night: { stand: { pauseMin: 0.0001 } } });
   try {
     stubBoard(dir, 'process.stderr.write("Adapter kaputt\\n");\nprocess.exit(3);\n');
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -219,7 +219,7 @@ test("board.mjs ohne JSON-Ausgabe beendet den Lauf mit sprechender Meldung", NUR
 // readFileSync scheitert. Danach faellt der erste Board-Aufruf ohnehin aus — die
 // Warnung muss trotzdem schon dagestanden haben.
 test("Versions-Drift: unlesbare board.mjs warnt mit 'unbekannt'", NUR_POSIX, () => {
-  const dir = setupProjekt("night-guard-unreadable-");
+  const dir = setupProjekt("night-guard-unreadable-", { night: { stand: { pauseMin: 0.0001 } } });
   try {
     rmSync(join(dir, ".claude", "kit", "board.mjs"));
     mkdirSync(join(dir, ".claude", "kit", "board.mjs"));

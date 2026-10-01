@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER,
+  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER, EREIGNIS,
 } from "./helpers/kette-fixture.mjs";
 import { REVIEW_REST_ANKER } from "../kit/night.mjs";
 
@@ -55,7 +55,7 @@ test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker
 test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Plan ohne Vermerk", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: "exit 3" } });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${EREIGNIS}; exit 3` } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, res.stderr);
 
@@ -73,7 +73,7 @@ test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne V
     // Die Review-Session hat den Marker gesetzt: Die Einarbeitung war durch, der Abbruch
     // traf sie danach. Seit Issue #1086 (Plan #1079 E9) ist der Marker das Ergebnis der
     // Stufe — sie gilt als fertig, und die Kette laeuft weiter.
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${REVIEW_MARKER}; ${BEFUNDE}; exit 3`, pakete: PAKETE_ANLEGEN } });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${REVIEW_MARKER}; ${BEFUNDE}; ${EREIGNIS}; exit 3`, pakete: PAKETE_ANLEGEN } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, res.stderr);
 
