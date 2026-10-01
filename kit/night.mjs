@@ -7663,6 +7663,16 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
   }
   const gate = pruefeIssueGates(karte);
   if (gate) {
+    // Am Board wie im Einzellauf (E9, E14), nur ohne Move — das Paket steht schon in
+    // Backlog. Der Bericht fuehrt es zusaetzlich als nicht begonnen.
+    if (gate.art === "geschuetzt") {
+      log(gate.log);
+      geschuetztAmBoardVermerken(karte, gate);
+    } else if (gate.unmet) {
+      const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
+      const res = boardRoh("issue", "comment", id, "--text", text);
+      if (res.status !== 0) log(`  Paket #${id}: Abhaengigkeits-Kommentar nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
+    }
     paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
     return null;
   }

@@ -155,10 +155,12 @@ test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und
     assert.match(stufe.nichtBegonnen[0].grund, /Abhaengigkeit #3 nicht erfuellt/);
     assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0005"], "das unabhaengige Paket lief nach dem Halt weiter");
 
-    // Das ausgelassene Paket wurde nie bewegt: kein Zug nach Ready, kein Kommentar.
+    // Das ausgelassene Paket wurde nie bewegt, traegt aber den Grund (Issue #1048, E14):
+    // den Abhaengigkeits-Kommentar, wie ihn der Einzellauf schreibt — genau einmal.
     const ausgelassen = board(dir, "issue", "get", "0004");
     assert.equal(ausgelassen.status, "backlog");
-    assert.doesNotMatch(ausgelassen.body || "", /Nachtlauf|Nacht-Kette/, "das ausgelassene Paket bekam einen Kommentar");
+    assert.equal((ausgelassen.body || "").match(/Nachtlauf: Abhaengigkeit #3 nicht erfuellt/g)?.length, 1,
+      "das ausgelassene Paket traegt den Abhaengigkeits-Kommentar nicht genau einmal");
     keinRestInArbeit(dir);
   });
 });
