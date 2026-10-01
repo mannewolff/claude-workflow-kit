@@ -4189,6 +4189,176 @@ function zerlegeAbschnitte(body) {
   return { kopf, abschnitte };
 }
 
+// ============================================================
+// Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
+// ============================================================
+//
+// Zwei Naechte endeten hart, weil ein Paket eine Datei aendern sollte, die nur ein Mensch
+// schreiben darf: Claude Code weist den Schreibzugriff ab, die Session darf den Schutz
+// nicht umgehen und laesst ihre Arbeit liegen. Hier und nur hier wird entschieden, ob ein
+// Paket einen solchen Pfad beim Namen nennt — Formgates, `issue check-geschuetzt` und das
+// Gate des Runners rufen diese Funktionen, statt die Regel ein zweites Mal zu schreiben.
+//
+// Die Vorgabeliste traegt die Sperre, die Claude Code ueberall fuehrt und die sich nicht
+// auslesen laesst: die Team- und die lokalen Einstellungen und das Hook-Verzeichnis (E2).
+// Was ein Projekt zusaetzlich sperrt, kommt aus `permissions.deny` dieser beiden Dateien.
+// Die Pruefeinstellungen des Kits (`workflow.config.json`) stehen bewusst NICHT darin: Sie
+// sind versioniert und unter `permissions.allow` ausdruecklich freigegeben — eine Session
+// darf sie schreiben, und ein Gate darauf waere ein Fehlalarm.
+
+const EINSTELLUNGS_DATEIEN = Object.freeze([".claude/settings.json", ".claude/settings.local.json"]);
+
+export const GESCHUETZTE_PFADE = Object.freeze([...EINSTELLUNGS_DATEIEN, ".claude/hooks/"]);
+
+// Die installierte Kopie des Kits (E7): Sie wird nie von Hand geaendert, gemeint ist im Kit
+// die Quelle, in einem installierten Projekt ein Kit-Update. Dieselbe Trefferregel (E16);
+// das Gate dazu (I9) liest sie, nicht die Erkennung geschuetzter Pfade.
+export const KOPIE_PFADE = Object.freeze([".claude/kit/", ".claude/skills/", ".claude/CLAUDE-*.md"]);
+
+// `Edit(…)`/`Write(…)` aus `permissions.deny` — andere Werkzeuge sperren kein Schreiben.
+const SCHREIB_REGEL = /^(?:Edit|Write)\(([^()]+)\)$/;
+
+/**
+ * Ein Claude-Code-Muster auf die Projektwurzel normalisiert (E16): `//` absolut, `~/` im
+ * Home, sonst relativ zur Wurzel — ein fuehrendes `./` oder `/` faellt dabei weg.
+ */
+function normalisiereSchreibMuster(muster) {
+  if (muster.startsWith("//")) return muster.slice(1);
+  if (muster.startsWith("~/")) return join(homedir(), muster.slice(2));
+  if (muster.startsWith("./")) return muster.slice(2);
+  return muster.startsWith("/") ? muster.slice(1) : muster;
+}
+
+/** Die Schreibsperren einer Einstellungsdatei; fehlt oder bricht sie, sind es keine. */
+function schreibSperren(datei) {
+  let einstellungen;
+  try {
+    einstellungen = JSON.parse(readFileSync(datei, "utf8"));
+  } catch {
+    return [];
+  }
+  const deny = einstellungen?.permissions?.deny;
+  if (!Array.isArray(deny)) return [];
+  return deny.flatMap((regel) => {
+    const m = SCHREIB_REGEL.exec(typeof regel === "string" ? regel.trim() : "");
+    return m ? [normalisiereSchreibMuster(m[1].trim())] : [];
+  });
+}
+
+/**
+ * Die geschuetzten Pfade unter `wurzel`: die Vorgabeliste, dahinter die Schreibsperren aus
+ * Team- und lokalen Einstellungen, ohne Doppel. Eine fehlende oder unlesbare Datei liefert
+ * nur die Vorgabeliste und haelt nichts auf.
+ */
+export function geschuetztePfade(wurzel) {
+  const pfade = new Set(GESCHUETZTE_PFADE);
+  for (const datei of EINSTELLUNGS_DATEIEN) {
+    for (const muster of schreibSperren(join(wurzel, datei))) pfade.add(muster);
+  }
+  return [...pfade];
+}
+
+const GLOB_ZEICHEN = /[*?]/;
+const GLOB_TEIL = /\*\*\/|\*\*|\*|\?/g;
+
+/**
+ * Ein Glob als verankerter Ausdruck: `*` und `?` bleiben im Segment, `**` geht ueber
+ * Segmentgrenzen, und `**` samt folgendem Trenner darf ganz verschwinden. Ein Muster ohne
+ * Schraegstrich gilt wie bei `.gitignore`, nach dessen Regeln Claude Code liest, in jeder Tiefe.
+ */
+function globAlsAusdruck(muster) {
+  const teile = { "**/": "(?:.*/)?", "**": ".*", "*": "[^/]*", "?": "[^/]" };
+  let quelle = "";
+  let letzte = 0;
+  for (const m of muster.matchAll(GLOB_TEIL)) {
+    quelle += escapeRegex(muster.slice(letzte, m.index)) + teile[m[0]];
+    letzte = m.index + m[0].length;
+  }
+  quelle += escapeRegex(muster.slice(letzte));
+  return new RegExp(`^${muster.includes("/") ? "" : "(?:.*/)?"}${quelle}$`);
+}
+
+/**
+ * Trifft ein Pfad-Token einen Eintrag der Liste (E16)? Bei Gleichheit; bei einem Eintrag mit
+ * Endung `/` auch das Verzeichnis selbst und alles darunter; bei einem Glob nach dessen Regeln.
+ * Ein fuehrendes `./` am Token zaehlt nicht.
+ */
+export function trifftGeschuetzt(token, eintrag) {
+  const pfad = String(token).startsWith("./") ? String(token).slice(2) : String(token);
+  const verzeichnis = eintrag.endsWith("/");
+  if (GLOB_ZEICHEN.test(eintrag)) return globAlsAusdruck(verzeichnis ? `${eintrag}**` : eintrag).test(pfad);
+  if (!verzeichnis) return pfad === eintrag;
+  return pfad === eintrag.slice(0, -1) || pfad.startsWith(eintrag);
+}
+
+const BACKTICK_LAUF = /`+/g;
+
+/**
+ * Die Pfad-Token der Zeilen (E3): der Inhalt jedes Backtick-Spans ohne Leerraum, je mit der
+ * Zeile, in der er steht. Gepaart wird wie in Markdown — ein Span endet am naechsten Lauf
+ * gleicher Laenge, ein Lauf ohne Partner ist Text. Codebloecke gibt es hier nicht mehr: Die
+ * Zeilen kommen aus `zerlegeAbschnitte`, `fenceLauf` bleibt die einzige Fence-Auslegung.
+ */
+export function pfadTokens(zeilen) {
+  const tokens = [];
+  for (const zeile of zeilen) {
+    const laeufe = [...zeile.matchAll(BACKTICK_LAUF)];
+    let i = 0;
+    while (i < laeufe.length) {
+      const auf = laeufe[i];
+      const zu = laeufe.findIndex((l, j) => j > i && l[0].length === auf[0].length);
+      if (zu === -1) {
+        i += 1;
+        continue;
+      }
+      const inhalt = zeile.slice(auf.index + auf[0].length, laeufe[zu].index);
+      if (inhalt !== "" && !/\s/.test(inhalt)) tokens.push({ token: inhalt, zeile });
+      i = zu + 1;
+    }
+  }
+  return tokens;
+}
+
+/** Das Token, wie es steht, absolut und — liegt es unter der Wurzel — relativ zu ihr. */
+function tokenFormen(token, wurzel) {
+  const basis = resolve(wurzel);
+  const absolut = token.startsWith("~/") ? join(homedir(), token.slice(2)) : resolve(basis, token);
+  const formen = [token, absolut];
+  if (absolut.startsWith(`${basis}/`)) formen.push(absolut.slice(basis.length + 1));
+  return formen;
+}
+
+// Gebaut wird, was in der Aufgabe steht; geprueft, was im Kriterium steht (E4). Der Kontext
+// erzaehlt die Vorgeschichte und zitiert Pfade, die das Paket gerade nicht aendert.
+const GESCHUETZT_ABSCHNITTE = new Set(["aufgabe", "akzeptanzkriterium"]);
+
+/**
+ * Die geschuetzten Pfade, die ein Paket in `## Aufgabe` und `## Akzeptanzkriterium` beim
+ * Namen nennt, gegen `geschuetztePfade(wurzel)`. Je Treffer der Pfad und die woertliche Zeile
+ * (E17); derselbe Pfad in derselben Zeile zaehlt einmal. Ein absolut genanntes Token unter
+ * der Wurzel wird auch relativ verglichen und umgekehrt, damit relative wie absolute Sperren
+ * greifen. Ein `[Mensch]`-Titel liefert immer eine leere Liste (E8): Seine Aufgabe liegt
+ * ausserhalb des Repositories und ist genau die Handlung, die der Mensch vornehmen soll.
+ */
+export function geschuetzteTreffer(body, title, wurzel) {
+  if (istMensch(title)) return [];
+  const liste = geschuetztePfade(wurzel);
+  const zeilen = zerlegeAbschnitte(body).abschnitte
+    .filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel))
+    .flatMap((a) => a.zeilen);
+  const treffer = [];
+  const gesehen = new Set();
+  for (const { token, zeile } of pfadTokens(zeilen)) {
+    const formen = tokenFormen(token, wurzel);
+    if (!liste.some((eintrag) => formen.some((f) => trifftGeschuetzt(f, eintrag)))) continue;
+    const schluessel = `${token}\n${zeile}`;
+    if (gesehen.has(schluessel)) continue;
+    gesehen.add(schluessel);
+    treffer.push({ pfad: token, zeile });
+  }
+  return treffer;
+}
+
 function ersteNichtLeere(zeilen) {
   return zeilen.map((z) => z.trim()).find((z) => z !== "") ?? null;
 }
