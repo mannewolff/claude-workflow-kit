@@ -163,8 +163,11 @@ Nutzung:
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I6. Die Stufe
-      kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I9. Die Stufe
+      kommt aus dem Titel-Praefix. I7 bis I9 (Issue #1044): '## Aufgabe' nennt eine
+      Datei als Backtick-Pfad, keine genannte Datei ist geschuetzt (Sperren aus den
+      Einstellungen der Projektwurzel), '## Aufgabe' nennt nicht die installierte
+      Kopie; ein [Mensch]-Paket besteht alle drei. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
       Bei [Plan] zusaetzlich 'hinweise' ([{ baustein, test, meldung }], Issue #1031):
       eigene Tests gefuehrter Bausteine, die der Plan nicht nennt, nach den Ablagen aus
@@ -484,11 +487,22 @@ function ladeConfigDatei(p) {
   return config;
 }
 
+/** Die Wurzeln, unter denen die Config gesucht wird: erst das cwd, dann der Ort des Kits. */
+function configKandidaten() {
+  return [resolve("."), configRoot()];
+}
+
+/**
+ * Die Projektwurzel, aus der `loadConfig` liest — die erste mit einer Config. Ohne Config
+ * das cwd. Nicht `process.cwd()` allein: Aus einem Unterverzeichnis heraus laege dort keine
+ * Einstellungsdatei, und die Schreibsperren des Projekts fielen still weg (Issue #1044).
+ */
+function configWurzel() {
+  return configKandidaten().find((w) => existsSync(join(w, ".claude", "workflow.config.json"))) ?? resolve(".");
+}
+
 function readWorkflowConfig() {
-  const candidates = [
-    resolve(".claude", "workflow.config.json"),
-    join(configRoot(), ".claude", "workflow.config.json"),
-  ];
+  const candidates = configKandidaten().map((w) => join(w, ".claude", "workflow.config.json"));
   for (const p of candidates) {
     if (!existsSync(p)) continue;
     try {
@@ -4342,10 +4356,14 @@ const GESCHUETZT_ABSCHNITTE = new Set(["aufgabe", "akzeptanzkriterium"]);
  */
 export function geschuetzteTreffer(body, title, wurzel) {
   if (istMensch(title)) return [];
-  const liste = geschuetztePfade(wurzel);
   const zeilen = zerlegeAbschnitte(body).abschnitte
     .filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel))
     .flatMap((a) => a.zeilen);
+  return listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel);
+}
+
+/** Die Pfad-Token der Zeilen, die einen Eintrag der Liste treffen, je Pfad und Zeile einmal. */
+function listenTreffer(zeilen, liste, wurzel) {
   const treffer = [];
   const gesehen = new Set();
   for (const { token, zeile } of pfadTokens(zeilen)) {
@@ -4492,6 +4510,46 @@ function pruefeVorlage(kontext, akzeptanz) {
   return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
 }
 
+// Ein Dateipfad unter den Pfad-Token (E7): mit Schraegstrich oder mit Dateiendung. Ein Label
+// wie `kit:klaeren` oder eine Konstante wie `KOPIE_PFADE` nennt keine Datei.
+const DATEIPFAD = /(?:\/)|(?:\.[a-z0-9]+$)/;
+
+const KOPIE_MELDUNG = "Die installierte Kopie unter `.claude/kit/`/`.claude/skills/` wird nie von Hand geändert; "
+  + "im Kit ist die Quelle unter `kit/`/`skills/` gemeint, in einem installierten Projekt ein Kit-Update.";
+
+/**
+ * I7 bis I9 (Issue #1044, Plan #987, E7): Ein Paket, das eine geschuetzte Datei aendern muss,
+ * faellt beim Schneiden auf, nicht erst nachts an der abgewiesenen Schreibanfrage.
+ *
+ * I7 — `## Aufgabe` nennt mindestens einen Dateipfad als Backtick-Token; ohne ihn findet die
+ * Erkennung nichts. I8 — ein Token aus Aufgabe oder Akzeptanzkriterium ist geschuetzt
+ * (`geschuetzteTreffer`); die Aenderung gehoert als `[Mensch]`-Karte heraus. I9 — ein Token
+ * nur aus `## Aufgabe` liegt in der installierten Kopie: Das Kriterium darf sie aufrufen
+ * (`node .claude/kit/checks.mjs run`), bauen soll das Paket an der Quelle.
+ *
+ * Ein `[Mensch]`-Paket besteht alle drei (E8): Seine Aufgabe liegt ausserhalb des
+ * Repositories, und es ist genau die Karte, die I8 verlangt.
+ */
+function pruefeGeschuetzt(abschnitte, title, wurzel) {
+  if (istMensch(title)) return [];
+  const verstoesse = [];
+  const aufgabe = abschnitte.find((a) => a.titel === "aufgabe")?.zeilen ?? [];
+  if (!pfadTokens(aufgabe).some(({ token }) => DATEIPFAD.test(token))) {
+    verstoesse.push({ gate: "I7", meldung: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte" });
+  }
+  const zeilen = abschnitte.filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel)).flatMap((a) => a.zeilen);
+  for (const { pfad, zeile } of listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel)) {
+    verstoesse.push({
+      gate: "I8",
+      meldung: `'${pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '${zeile.trim()}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr`,
+    });
+  }
+  for (const { pfad, zeile } of listenTreffer(aufgabe, KOPIE_PFADE, wurzel)) {
+    verstoesse.push({ gate: "I9", meldung: `'${pfad}' in '## Aufgabe' (Zeile: '${zeile.trim()}') — ${KOPIE_MELDUNG}` });
+  }
+  return verstoesse;
+}
+
 /**
  * Die Kommandos, die eine Guetemessung starten: `mutationCommand`, das `cmd` des
  * `buildChecks`-Eintrags mit `guete`-Block und die Liste `guetekommandos`, alle drei
@@ -4578,7 +4636,7 @@ function pruefeGuetemessung(akzeptanz, kontext, config) {
   return verstoesse;
 }
 
-function pruefeIssue(abschnitte, config) {
+function pruefeIssue(abschnitte, config, title, wurzel) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
     .map((meldung) => ({ gate: "I1", meldung }));
@@ -4589,6 +4647,7 @@ function pruefeIssue(abschnitte, config) {
   verstoesse.push(
     ...pruefeVorlage(kontext, finde("akzeptanzkriterium")),
     ...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config),
+    ...pruefeGeschuetzt(abschnitte, title, wurzel),
   );
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
@@ -4783,14 +4842,17 @@ function versionierteDateien() {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I6 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * Arbeitspaket: I1 bis I9 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
  * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
  * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
- * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt.
- * Die `[Urteil]`-Gates bleiben beim Reviewer.
+ * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt;
+ * dazu eine Datei als Backtick-Pfad in der Aufgabe (I7), keine geschuetzte Datei in
+ * Aufgabe oder Kriterium (I8) und nicht die installierte Kopie in der Aufgabe (I9) —
+ * ein `[Mensch]`-Paket besteht I7 bis I9. Die `[Urteil]`-Gates bleiben beim Reviewer.
  *
  * `config` braucht I6 — fuer die Guetekommandos des Projekts — und beim Plan die
- * Test-Ablagen (`testAblagen`).
+ * Test-Ablagen (`testAblagen`). `wurzel` ist die Projektwurzel, deren Einstellungen I8
+ * nach Schreibsperren liest; die Kommandozeile reicht die Wurzel der Config.
  *
  * Beim Plan kommen die Testhinweise dazu (Issue #1031): je eigener Test eines
  * gefuehrten Bausteins, den der Plan nicht nennt, ein Eintrag in `hinweise`, gegen den
@@ -4801,14 +4863,14 @@ function versionierteDateien() {
  * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
  * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
  */
-export function pruefeForm(body, title, config = {}, dateien = []) {
+export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".") {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
   if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
   else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
-  else verstoesse = pruefeIssue(abschnitte, config);
+  else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
   const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
   if (stufe === "plan") {
     const hinweise = pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config);
@@ -4856,7 +4918,7 @@ async function issueCheckForm(tracker, config, args) {
 
   const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
-  const ergebnis = pruefeForm(body, title, config, dateien);
+  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
   if (ergebnis.stufe === "issue") {
     const hinweise = await abhaengigkeitsHinweise(body, tracker);
     if (hinweise.length > 0) ergebnis.hinweise = hinweise;

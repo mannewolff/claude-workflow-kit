@@ -24,7 +24,7 @@ ${kontext}
 Autor-Modell: fixture-modell
 
 ## Aufgabe
-Was.
+In \`kit/board.mjs\` etwas aendern.
 
 ## Akzeptanzkriterium
 - Ein Kommando liefert etwas.

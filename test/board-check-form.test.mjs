@@ -62,7 +62,7 @@ Warum.
 Autor-Modell: fixture-modell
 
 ## Aufgabe
-Was.
+In \`kit/board.mjs\` etwas aendern.
 
 ## Akzeptanzkriterium
 - Ein Kommando liefert etwas.
@@ -239,7 +239,7 @@ test("[board-5] F9 und F11: Herkunftszeile und Issue-Review-Zeile an der Wurzel 
 
 test("[board-5] I1: die vier Abschnitte in Reihenfolge, Abhaengigkeiten zuletzt", () => {
   mitProjekt((dir) => {
-    const ohneAufgabe = dateiWeg(dir, PAKET.replace("## Aufgabe\nWas.\n\n", ""), "[Task] x");
+    const ohneAufgabe = dateiWeg(dir, PAKET.replace("## Aufgabe\nIn `kit/board.mjs` etwas aendern.\n\n", ""), "[Task] x");
     assert.ok(gates(ohneAufgabe).includes("I1"), JSON.stringify(ohneAufgabe.json));
     const nachAbh = dateiWeg(dir, PAKET + "\n## Notizen\n- x\n", "[Task] x");
     assert.ok(gates(nachAbh).includes("I1"), "eine ##-Ueberschrift nach Abhaengigkeiten verstoesst");

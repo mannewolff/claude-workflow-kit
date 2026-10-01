@@ -153,7 +153,7 @@ Warum.
 Autor-Modell: fixture-modell
 
 ## Aufgabe
-- ${NAV}: Fuss wandert nach oben
+- \`${NAV}\`: Fuss wandert nach oben
 
 ## Akzeptanzkriterium
 - Ein Kommando liefert etwas.

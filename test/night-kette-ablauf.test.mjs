@@ -257,7 +257,7 @@ test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, a
     const F = fachplan(dir);
     // Ein Paket, das denselben Baustein in seiner Aufgabe fuehrt: Die Stufe `issue` kennt keine
     // Testhinweise, also auch keinen Kommentar.
-    const paketMitNav = PAKETE_ANLEGEN.replaceAll("Paket %s.", `Paket %s: ${NAV}.`);
+    const paketMitNav = PAKETE_ANLEGEN.replaceAll("Paket %s in", `Paket %s: ${NAV}, in`);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: paketMitNav } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
