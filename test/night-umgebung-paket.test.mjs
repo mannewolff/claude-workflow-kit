@@ -144,7 +144,8 @@ test("[#1026] ein Board-Aufruf scheitert einmal: Pause, zweiter Versuch, Vermerk
     // Der Fake hinterlaesst keinen Pruefnachweis; die Runde endet darum ohne gueltigen
     // Nachweis — hier zaehlt, dass ihr Stand den Vermerk traegt.
     assert.match(text, /Runde beendet: \w+ um /);
-    assert.equal(laufstand(dir, b), null, "die zweite Karte hatte keinen Umgebungsfehler");
+    // Seit Issue #1089 (E2) steht jedes Paket mit Laufstand — den Vermerk traegt nur die erste.
+    assert.doesNotMatch(laufstand(dir, b), /2\. Versuch/, "die zweite Karte hatte keinen Umgebungsfehler");
   });
 });
 
@@ -164,7 +165,7 @@ test("[E15] scheitert auch der zweite Versuch am Board, haelt der Lauf an und di
 
     assert.deepEqual(sitzungen(log), [a], "nach dem Anhalten lief noch eine Session");
     assert.equal(spalte(dir, a), "in_review");
-    assert.equal(laufstand(dir, a), null);
+    assert.doesNotMatch(laufstand(dir, a), /2\. Versuch/);
 
     assert.ok(labels(dir, b).includes("lauf:abgebrochen"), `Labels #${b}: ${labels(dir, b)}`);
     assert.match(laufstand(dir, b), /2\. Versuch/);
@@ -239,6 +240,25 @@ test("[E13] eine Sitzung, die zustande kam und ohne Ergebnis endete, ist ein Pak
     assert.doesNotMatch(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/);
     assert.notEqual(spalte(dir, a), "in_review");
     assert.equal(spalte(dir, b), "in_review");
+    // Der Paketfehler steht an seiner Karte (Issue #1089, E2): abgebrochen, mit Grund.
+    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.match(laufstand(dir, a), /Runde beendet: deferred um [^\n]+\n\nGrund: /);
+  });
+});
+
+// --- Laufstand je Paket (Issue #1089, E2) ---
+
+test("[E2] jedes Paket steht mit Laufstand: laeuft zu Rundenbeginn, danach sein Ausgang", NUR_POSIX, () => {
+  mitDir((dir) => {
+    const a = karte(dir, "Ein Paket");
+    const log = join(dir, "helfer", "sessions.log");
+    // Die Session sieht ihre eigene Karte: Der Stand `laeuft` steht schon, waehrend sie arbeitet.
+    const res = run(dir, [], { NIGHT_CLAUDE_CMD: fake(log, `grep -q "lauf:laeuft" issues/$NIGHT_ISSUE_ID.md && echo laeuft >> ${JSON.stringify(log)}; ${ERFOLG}`) });
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.deepEqual(sitzungen(log), [a, "laeuft"], "zu Rundenbeginn stand kein laeuft an der Karte");
+    // Ohne Pruefnachweis kein `fertig`: Die Karte steht in In review, ihr Stand nennt den Mangel.
+    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.match(laufstand(dir, a), /Runde beendet: fehlschlag um [^\n]+\n\nNachweis fehlt/);
   });
 });
 

@@ -245,11 +245,15 @@ test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", 
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "echo dreck > uebrig.txt" });
-    assert.notEqual(res.status, 0, `der Salvage haette scheitern muessen:\n${res.stdout}`);
+    // Seit Issue #1089 (E14) kein harter Stopp: Der Grund steht an der Einheit des
+    // abgebrochenen Pakets, der Lauf traegt keine Fehlerklasse.
+    assert.equal(res.status, 0, `das gescheiterte Paket haelt nur sich an:\n${res.stdout}`);
 
     const s = stand(dir);
-    assert.equal(s.fehlerklasse, "harterStopp");
-    const grund = grundDerKarte(s, id);
+    assert.equal(s.fehlerklasse ?? null, null);
+    assert.equal(einheit(s, id).ausgang, "abgebrochen");
+    // Kein `fehlerEinheit`: Der verweist auf die Einheit eines harten Stopps.
+    const grund = einheit(s, id).grund;
     assert.match(grund, /SALVAGE-VERSUCH gescheitert/, `der Salvage-Satz fehlt: ${grund}`);
     assert.match(grund, /kein Commit, Board nicht bewegt/, `der Endzustand fehlt: ${grund}`);
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
@@ -265,11 +269,11 @@ test("[night-11] ohne moeglichen Salvage traegt der Dirty-Fehlschlag seine Fehls
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "echo dreck > uebrig.txt" });
-    assert.notEqual(res.status, 0, `der Dirty-Guard haette anschlagen muessen:\n${res.stdout}`);
+    assert.equal(res.status, 0, `das gescheiterte Paket haelt nur sich an (Issue #1089):\n${res.stdout}`);
 
     const s = stand(dir);
-    assert.equal(s.fehlerklasse, "harterStopp");
-    const grund = grundDerKarte(s, id);
+    assert.equal(s.fehlerklasse ?? null, null);
+    const grund = einheit(s, id).grund;
     assert.match(grund, /nicht in In review UND Working Tree dirty/, `die Fehlschlag-Zeile fehlt: ${grund}`);
     assert.doesNotMatch(grund, /SALVAGE/, "ohne moeglichen Salvage darf sein Text nicht auftauchen");
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);

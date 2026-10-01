@@ -237,7 +237,8 @@ test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage lief nicht an");
-    assert.equal(res.status, 1, "der gescheiterte Salvage haette hart stoppen muessen");
+    // Seit Issue #1089 (E14) haelt ein Salvage ohne Commit nur sein Paket an.
+    assert.equal(res.status, 0, "der gescheiterte Salvage haelt nur sein Paket an");
     assert.match(res.stdout, /SALVAGE-VERSUCH gescheitert/, "das Ergebnis wird nicht benannt");
   }, {}, "night-fehler-salvage-");
 });
@@ -275,7 +276,7 @@ test("ohne buildChecks-Feld gilt die leere Pruefliste", NUR_POSIX, () => {
 
     const res = run(dir, ["--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, "die gescheiterte Runde haette hart stoppen muessen");
+    assert.equal(res.status, 0, "die gescheiterte Runde haelt nur ihr Paket an (Issue #1089)");
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
       "ohne buildChecks-Feld gilt die leere Liste als gruen — der Salvage haette starten muessen");
   }, { config: { buildChecks: undefined } }, "night-fehler-ohne-checks-feld-");

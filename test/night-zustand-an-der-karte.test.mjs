@@ -190,9 +190,12 @@ test("[night-93] Nachtlauf: ein unlesbarer Kartenzustand aendert am Board nichts
     assert.match(res.stdout, /nicht lesbar/i, "der Fall wird im Protokoll nicht benannt");
 
     // Keine Board-Mutation am ersten Paket: Es steht da, wo die Session es hingezogen
-    // hat, und traegt keinen Kommentar des Runners.
+    // hat, und traegt keinen Kommentar des Runners — ausser seinem Laufstand (Issue #1089,
+    // E2), der den unlesbaren Zustand selbst benennt, statt `laeuft` stehen zu lassen.
     assert.equal(board(dir, "issue", "get", erstes).status, "in_review", "die Karte wurde verschoben");
-    assert.doesNotMatch(kartenText(dir, erstes), /\*\*Kommentar\*\*/, "der Runner hat die Karte kommentiert");
+    const kommentare = kartenText(dir, erstes).split("\n---\n**Kommentar**").slice(1);
+    assert.ok(kommentare.every((k) => /\n## Laufstand\b/.test(k)), "der Runner hat die Karte kommentiert");
+    assert.match(kommentare.at(-1), /Zustand der Karte war nicht lesbar/);
 
     // Und der Lauf ging mit dem naechsten Issue weiter.
     assert.deepEqual(sessionen(dir), [erstes, zweites], "es liefen nicht beide Sessions");

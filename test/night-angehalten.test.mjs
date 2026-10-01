@@ -135,9 +135,11 @@ function nurBeim(ersteId, wennErste, sonst) {
 }
 
 /** Die Kommentare, die am Issue haengen — der lokale Tracker haengt sie an den Body. */
+// Ohne den Laufstand (Issue #1089, E2): Er ist der Stand des Laufs an der Karte, keine
+// zweite Aussage ueber den Halt — `issue stand` ersetzt ihn statt anzuhaengen.
 function kommentarZahl(dir, id) {
   const body = board(dir, "issue", "get", String(id)).body || "";
-  return (body.match(/\*\*Kommentar\*\*/g) || []).length;
+  return body.split("\n---\n**Kommentar**").slice(1).filter((k) => !/\n## Laufstand\b/.test(k)).length;
 }
 
 test("[night-13] Nachtlauf: ein vollstaendiger Halt wird als angehalten verbucht, der Lauf geht weiter", NUR_POSIX, () => {

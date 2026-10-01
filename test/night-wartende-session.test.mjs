@@ -186,16 +186,17 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
     const fake = "echo arbeit > arbeit.txt; (sleep 1; echo fertig > bg-ende.txt) & exit 0";
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
-    assert.ok(existsSync(join(dir, "bg-ende.txt")), "der Hintergrundlauf muss gelaufen sein, sonst prueft der Test nichts");
+    // Seit Issue #1089 liegen die Dateien der Runde im Stash statt im Baum.
+    const gesichert = spawnSync("git", ["ls-tree", "-r", "--name-only", "stash@{0}^3"], { cwd: dir, encoding: "utf-8" }).stdout.split("\n");
+    assert.ok(gesichert.includes("bg-ende.txt"), "der Hintergrundlauf muss gelaufen sein, sonst prueft der Test nichts");
     assert.ok(
-      !existsSync(join(dir, "verletzung.txt")),
+      !gesichert.includes("verletzung.txt") && !existsSync(join(dir, "verletzung.txt")),
       "die Vorpruefung lief, waehrend der Hintergrundlauf der Session noch lief",
     );
-    // Wohin die Karte gehoert, entscheidet Issue #404 und nicht dieses Paket — geprueft
-    // wird hier nur, dass der harte Stopp sie nicht ins Backlog raeumt.
-    assert.notEqual(board(dir, "issue", "get", id).status, "backlog", "ein harter Stopp raeumt die Karte nicht weg");
+    // Seit Issue #1089 (E14) gehen die Reste in den Stash und die Karte ins Backlog.
+    assert.equal(board(dir, "issue", "get", id).status, "backlog", "die Karte bliebe sonst in Ready und liefe erneut");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -216,7 +217,7 @@ test("[night-24] eine regulaer beendete Session ohne Commit wird als solche ausg
     const fake = `echo arbeit > arbeit.txt; echo '${resultZeile("end_turn")}'; exit 0`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}`);
     assert.match(
       res.stdout,
       /Grund: Session regulaer beendet ohne Commit \(end_turn\)/,
@@ -241,7 +242,7 @@ test("[night-24] eine am Zeitlimit beendete Session bekommt einen anderen Grund"
       NIGHT_TIMEOUT_MS: "800",
       NIGHT_KILL_GRACE_MS: "300",
     });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}`);
     assert.match(res.stdout, /Grund: Session am Zeitlimit beendet/, `der Zeitlimit-Grund fehlt:\n${res.stdout}`);
     assert.doesNotMatch(
       res.stdout,
@@ -262,7 +263,7 @@ test("[night-24] eine abgebrochene Session wird an is_error erkannt, nicht an st
     const fake = `echo arbeit > arbeit.txt; echo '${resultZeile("end_turn", true)}'; exit 0`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}`);
     assert.match(res.stdout, /Grund: Session mit is_error beendet/, `der Abbruch-Grund fehlt:\n${res.stdout}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -280,7 +281,7 @@ test("[night-24] eine rote Vorpruefung nennt das Kommando und seine Ausgabe", NU
     const fake = `echo arbeit > arbeit.txt; echo '${resultZeile("end_turn")}'; exit 0`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}`);
     assert.match(
       res.stdout,
       /Grund: Pflichtcheck rot — .*VERBINDUNGSLIMIT|Pflichtcheck rot — sh -c/,
@@ -583,14 +584,14 @@ test("[night-56] wartender Schlusstext, Salvage erfolgreich: der Erfolg bleibt u
   }
 });
 
-test("[night-56] wartender Schlusstext, Salvage nicht moeglich: harter Stopp mit Grund, Vermerk samt Resten und Feld", NUR_POSIX, () => {
+test("[night-56] wartender Schlusstext, Salvage nicht moeglich: Abbruch mit Grund, Vermerk samt Resten und Feld", NUR_POSIX, () => {
   const dir = setupProjekt("night-warte-salvage-rot-", ["false"]);
   try {
     const id = readyIssue(dir, "Wartet, die Vorpruefung ist rot");
     const fake = `echo arbeit > arbeit.txt; echo '${resultZeileMitText("end_turn", WARTE_SCHLUSSTEXT)}'; exit 0`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
     // Der Grund im Protokoll — der Zustandstext bleibt daneben stehen (Linie von night-24).
     assert.ok(res.stdout.includes(WARTEND_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
@@ -604,7 +605,7 @@ test("[night-56] wartender Schlusstext, Salvage nicht moeglich: harter Stopp mit
     assert.match(body, /arbeit\.txt/, `die liegengebliebene Datei fehlt im Vermerk:\n${body}`);
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.ausgang, "abgebrochen", `das Paket ist abgebrochen, seine Reste im Stash: ${JSON.stringify(e)}`);
     assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
     assert.ok(String(e.grund).includes(WARTEND_WORTLAUT), `der Grund fehlt an der Einheit: ${e.grund}`);
   } finally {
@@ -620,16 +621,16 @@ test("[night-56] wartender Schlusstext, Salvage gescheitert: der night-27-Grund 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       NIGHT_CLAUDE_CMD: salvageFake(WARTE_SCHLUSSTEXT, "  :"),
     });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.ausgang, "abgebrochen", `das Paket ist abgebrochen, seine Reste im Stash: ${JSON.stringify(e)}`);
     assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
     // Vorangestellt, nicht ersetzt: Der night-27-Zustand ist die konkretere Auskunft
     // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch.
     const grund = String(e.grund);
     assert.ok(grund.startsWith(WARTEND_WORTLAUT), `der Warte-Grund steht nicht vorn: ${grund}`);
-    assert.match(grund, /SALVAGE-VERSUCH gescheitert — harter Stopp/, `der night-27-Grund fehlt: ${grund}`);
+    assert.match(grund, /SALVAGE-VERSUCH gescheitert\./, `der night-27-Grund fehlt: ${grund}`);
     assert.match(grund, /kein Commit, Board nicht bewegt/, `die night-27-Begruendung fehlt: ${grund}`);
 
     const body = karte(dir, id).body;
@@ -666,13 +667,13 @@ test("[night-56] ohne wartenden Schlusstext behaelt der nicht moegliche Salvage 
     const fake = `echo arbeit > arbeit.txt; echo '${resultZeileMitText("end_turn", NICHT_WARTEND_SCHLUSSTEXT)}'; exit 0`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Grund: Session regulaer beendet ohne Commit \(end_turn\)/, `der bisherige Grund fehlt:\n${res.stdout}`);
     assert.ok(!res.stdout.includes(WARTEND_WORTLAUT), `ohne den Fall gehoert der Grund nicht ins Protokoll:\n${res.stdout}`);
     assert.ok(!karte(dir, id).body.includes(WARTEND_ANKER), "ohne den Fall gehoert kein Vermerk ans Paket");
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp");
+    assert.equal(e.ausgang, "abgebrochen");
     assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -686,10 +687,10 @@ test("[night-56] ohne wartenden Schlusstext behaelt der gescheiterte Salvage den
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       NIGHT_CLAUDE_CMD: salvageFake(NICHT_WARTEND_SCHLUSSTEXT, "  :"),
     });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp");
+    assert.equal(e.ausgang, "abgebrochen");
     assert.ok(!("wartendBeendet" in e), `das Feld steht da, obwohl der Fall nicht eintrat: ${JSON.stringify(e)}`);
     const grund = String(e.grund);
     assert.ok(grund.startsWith("SALVAGE-VERSUCH gescheitert"), `der night-27-Grund traegt einen Vorspann: ${grund}`);

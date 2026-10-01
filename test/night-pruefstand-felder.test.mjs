@@ -149,7 +149,8 @@ test("[night-46] die bestehenden Zustaende bleiben gleich: rot, leeresPaket und 
     const rot = { laufen: [{ cmd: "true", ergebnis: "rot", grund: "beruehrt" }], ausgelassen: [], vollerUmfang: false };
     const fakeRot = [summary(rot), 'echo dirty > "dirty-$NIGHT_ISSUE_ID.txt"'].join("\n");
     const resRot = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "--max", "1"], { NIGHT_CLAUDE_CMD: fakeRot });
-    assert.equal(resRot.status, 1, "eine unbewegte, unsaubere Karte stoppt hart");
+    // Seit Issue #1089 (E14) kein harter Stopp mehr: Die Reste gehen in den Stash.
+    assert.equal(resRot.status, 0, "eine unbewegte, unsaubere Karte haelt nur sich an");
     assert.equal(einheit(dir, rotesIssue).pruefung.zustand, "rot");
     assert.equal(einheit(dir, rotesIssue).pruefung.vollerUmfang, false);
   } finally {

@@ -125,7 +125,8 @@ for (const [wie, merkmal] of [["ersten", MERKMAL_STUFE], ["zweiten", MERKMAL_BAU
   test(`[night-859] Salvage: Exit 0 mit dem ${wie} Merkmal in der Ausgabe ist rot — kein Rettungsversuch`, NUR_POSIX, () => {
     const { res, geretttet, sessions, id } = lauf([gibtAus(merkmal)]);
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    // Seit Issue #1089 (E14) haelt das gescheiterte Paket nur sich an, die Reste gehen in den Stash.
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Salvage nicht moeglich/,
       "das Fehlermerkmal haette den Salvage verhindern muessen");
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,

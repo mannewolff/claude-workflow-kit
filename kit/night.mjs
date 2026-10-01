@@ -665,6 +665,15 @@ let PRUEFLAUF_BUDGET_AUS_DEFAULT = [];
 // Sicherheitsnetz in laufAbschliessen().
 let STOPP_GRUND = "";
 
+// Der Satz einer Rettung ohne Commit (Issue #1089) und der Grund eines abgebrochenen Pakets,
+// dessen Reste im Stash liegen — dasselbe Muster wie STOPP_GRUND, fuer den Ausgang
+// `abgebrochen`, der den Lauf nicht anhaelt.
+let SALVAGE_GRUND = "";
+let ABBRUCH_GRUND = "";
+// Die Pakete, die in diesem Lauf abgebrochen sind (E15): Ein Paket, das von einem davon
+// abhaengt, zeigt am Gate `wartet` statt nur zurueckzugehen.
+const ABGEBROCHENE_PAKETE = new Set();
+
 // Hat die Sitzung der laufenden Runde auf eine selbst angestossene Arbeit gewartet
 // (Issue #776)? Modul-Zustand nach demselben Muster wie STOPP_GRUND darueber und aus
 // demselben Grund: Der Befund faellt in der Auswertung, gebraucht wird er beim Fuellen der
@@ -9316,6 +9325,7 @@ export function pruefeIssueGates(top) {
   const unmet = befund.abhaengigkeiten.filter((a) => !a.erfuellt).map((a) => a.nummer);
   if (unmet.length > 0) {
     return {
+      unmet,
       log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
       kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`,
       block: abhaengigkeitsBlock(befund),
@@ -9340,15 +9350,16 @@ export function pruefeIssueGates(top) {
  * verloren hat (Hintergrund-Check ohne Folge-Turn) und nicht wirklich gescheitert
  * ist. Genau ein Versuch pro Issue.
  *
- * Drei Ausgaenge, und sie sind nicht dasselbe: `erfolg` (der Lauf geht weiter),
- * `gescheitert` (harter Stopp, die Begruendung steht bereits im Protokoll) und
+ * Vier Ausgaenge, und sie sind nicht dasselbe: `erfolg` (der Lauf geht weiter),
+ * `gescheitert` (harter Stopp, die Begruendung steht bereits im Protokoll), `ohneCommit`
+ * (Issue #1089: kein Commit, kein Zug — der Aufrufer sichert die Reste im Stash) und
  * `nichtMoeglich` (rote Checks — danach gilt die regulaere Fehlschlag-Meldung des
  * Aufrufers). Wer die letzten beiden zusammenfasst, schreibt entweder eine
  * Fehlschlag-Zeile zu viel oder eine zu wenig.
  *
  * Der Ausgang `gescheitert` traegt seit Issue #672 drei unterscheidbare Endzustaende,
- * weil sie morgens drei verschiedene Griffe verlangen (Rueckgabewert bleibt einer —
- * `behandleDirtyRunde` behandelt alle drei als harten Stopp):
+ * weil sie morgens drei verschiedene Griffe verlangen (seit Issue #1089 traegt der erste
+ * den eigenen Rueckgabewert `ohneCommit`; die beiden anderen bleiben harter Stopp):
  *   - kein neuer Commit, Karte nicht bewegt -> die Session hat nichts hinterlassen
  *   - neuer Commit, Karte nicht bewegt      -> die Arbeit ist da, der Board-Zug fehlt
  *   - Karte in In review, Baum unsauber     -> die Karte behauptet mehr, als committet ist
@@ -9422,9 +9433,13 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
     grund = satz;
     kommentar = `Nachtlauf: Die Salvage-Session hat committet, aber Arbeit liegen gelassen und das Board nicht bewegt — Lauf hart gestoppt. Der Commit ${commitNachher} liegt lokal. Bitte morgens manuell sichten.`;
   } else {
-    satz = `SALVAGE-VERSUCH gescheitert — harter Stopp. Issue #${top.id}: kein Commit, Board nicht bewegt.`;
-    grund = `${satz} ${resteText(reste)}`;
-    kommentar = "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session hat weder committet noch das Board bewegt — Lauf hart gestoppt. Bitte morgens manuell sichten.";
+    // Ohne Commit und ohne Zug liegt nur der Arbeitsbaum da (Issue #1089, E14): Kein harter
+    // Stopp mehr, der Aufrufer sichert die Reste im Stash, und die Nacht laeuft weiter. Die
+    // beiden Faelle darueber bleiben harter Stopp — dort kann ein Commit unvollstaendig sein.
+    const satzOhne = `SALVAGE-VERSUCH gescheitert. Issue #${top.id}: kein Commit, Board nicht bewegt.`;
+    log(`  ${satzOhne}`);
+    SALVAGE_GRUND = satzOhne;
+    return "ohneCommit";
   }
   log(`  ${satz}`);
   board("issue", "comment", String(top.id), "--text", kommentar);
@@ -9758,8 +9773,10 @@ function rundenVermerk(grund, res, pfade = []) {
 }
 
 /**
- * Der vierte harte Stopp: die Runde hat nichts abgeschlossen und den Baum
- * veraendert (Issue #404).
+ * Die Runde hat nichts abgeschlossen und den Baum veraendert (Issue #404). Bis Issue
+ * #1089 der vierte harte Stopp; seitdem gehen die Reste in den Stash, und der Lauf geht
+ * weiter (E14). Harter Stopp bleibt der Halt mit unsauberem Baum und eine Rettung, die
+ * committet oder gezogen hat.
  *
  * Zuerst bekommt der Salvage seinen einen Versuch. Erst wenn der nicht moeglich war
  * — rote Checks —, gilt die regulaere Fehlschlag-Meldung. Ein GESCHEITERTER Salvage
@@ -9773,8 +9790,9 @@ function rundenVermerk(grund, res, pfade = []) {
  * die Salvage-Session hat mit night-27 bereits drei eigene Endzustaende samt Grund, und
  * ein zweites Urteil ueber denselben Vorgang waere eine zweite Wahrheit.
  *
- * Das Issue bleibt liegen, wo es ist: Ein Backlog-Move saehe morgens aus wie ein
- * regulaer zurueckgestelltes Ticket, nicht wie ein Lauf, der stehengeblieben ist.
+ * Mit dem Stash geht das Issue ins Backlog (Issue #1089): Bliebe es in Ready, zoege der Lauf
+ * es erneut. Vom zurueckgestellten Ticket unterscheiden es Laufstand `abgebrochen` und
+ * Kommentar, die beide den Stash nennen. Beim harten Stopp bleibt es liegen, wo es ist.
  *
  * Vor allem anderen steht seit Issue #572 der Ausschluss der angehaltenen Karte. Der
  * Auftrag des Salvage lautet, einen passenden Stand zu committen und die Karte nach
@@ -9797,33 +9815,8 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
     const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
     if (salvage === "erfolg") return "erfolg";
     // Klasse und Grund hat versucheSalvage bereits gemerkt — hier bleibt nur der Ausgang.
-    if (salvage === "gescheitert") {
-      const schlusstext = leseErgebnisText(res?.stdout);
-      if (wartendeSession(schlusstext)) {
-        WARTEND_BEENDET = true;
-        // Vorangestellt, nicht ersetzt: Der night-27-Grund ist die konkretere Auskunft
-        // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch — zwei
-        // Vorgaenge sind zu berichten: warum die regulaere Runde nichts hinterliess, und
-        // was der Salvage vorfand.
-        merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${STOPP_GRUND}`);
-        board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, gitReste()));
-      } else if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) {
-        // Derselbe eigene Griff wie fuer die wartende Sitzung darueber, und aus demselben
-        // Grund (Issue #977): Dieser Zweig kehrt zurueck, bevor der Fehlschlag-Zweig unten
-        // mit `rundenGrund` erreicht ist — ohne ihn entstuende der Befund nur fuer die
-        // Haelfte der Faelle. Der Stopp-Grund bleibt unangetastet: Der night-27-Satz
-        // benennt, was morgens im Arbeitsverzeichnis liegt, der Zeitabbruch steht im
-        // Vermerk und am Feld `zeitlimitBeendet` der Einheit.
-        //
-        // `else if`, nicht ein zweites `if`: Zeitlimit und wartend schliessen einander aus
-        // (am Zeitlimit kommt kein `result`-Ereignis an, `leseErgebnisText` liefert `null`),
-        // und zwei Vermerke zu derselben Runde waeren zwei Wahrheiten ueber sie.
-        ZEITLIMIT_BEENDET = true;
-        board("issue", "comment", String(top.id), "--text",
-          zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, gitReste()));
-      }
-      return "hardStop";
-    }
+    // Ohne Commit (Issue #1089, E14) dieselben Vermerke, danach der Stash statt des Stopps.
+    if (salvage === "gescheitert" || salvage === "ohneCommit") return salvageGescheitert(top, salvage, res, pruefung);
   }
   // Der Grund steht VOR dem Zustand (Issue #668): Wer morgens sichtet, liest zuerst,
   // warum die Runde nichts abgeschlossen hat, und danach, was der Runner vorgefunden hat.
@@ -9837,16 +9830,103 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // Derselbe Griff fuer den Zeitabbruch (Issue #977): Der Grund steht schon heute im Text,
   // neu sind Auskunft, Empfehlung und Ursachen-Vorbehalt des Vermerks.
   if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
-  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty — harter Stopp.`;
+  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty.`;
   log(`  ${satz}`);
-  const kommentar = `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen — Lauf hart gestoppt. ${grund}. Bitte morgens manuell sichten.`;
   // Der Vermerk ERWEITERT den Kommentar, anders als im Rueckstellungsfall: Dort ist er
-  // die ganze Botschaft, hier steht der harte Stopp davor — mit den Pfaden aus
+  // die ganze Botschaft, hier steht der Fehlschlag davor — mit den Pfaden aus
   // `gitReste()`, denn der Baum ist unsauber.
   const vermerk = rundenVermerk(grund, res, gitReste());
-  board("issue", "comment", String(top.id), "--text", vermerk ? `${kommentar}\n\n${vermerk}` : kommentar);
-  merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
-  return "hardStop";
+  return resteSichern(top, `${satz} ${resteText(gitReste())}`, `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen. ${grund}.`, vermerk);
+}
+
+/**
+ * Die Rettung ist gescheitert (`gescheitert`) oder blieb ohne Commit (`ohneCommit`, Issue
+ * #1089): erst die Vermerke der regulaeren Runde, dann harter Stopp oder Stash.
+ */
+function salvageGescheitert(top, salvage, res, pruefung) {
+  const schlusstext = leseErgebnisText(res?.stdout);
+  if (wartendeSession(schlusstext)) {
+    WARTEND_BEENDET = true;
+    // Vorangestellt, nicht ersetzt: Der night-27-Grund ist die konkretere Auskunft
+    // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch — zwei
+    // Vorgaenge sind zu berichten: warum die regulaere Runde nichts hinterliess, und
+    // was der Salvage vorfand.
+    if (salvage === "gescheitert") merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${STOPP_GRUND}`);
+    else SALVAGE_GRUND = `${GRUND_WARTEND}; ${SALVAGE_GRUND}`;
+    board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, gitReste()));
+  } else if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) {
+    // Derselbe eigene Griff wie fuer die wartende Sitzung darueber, und aus demselben
+    // Grund (Issue #977): Dieser Zweig kehrt zurueck, bevor der Fehlschlag-Zweig unten
+    // mit `rundenGrund` erreicht ist — ohne ihn entstuende der Befund nur fuer die
+    // Haelfte der Faelle. Der Stopp-Grund bleibt unangetastet: Der night-27-Satz
+    // benennt, was morgens im Arbeitsverzeichnis liegt, der Zeitabbruch steht im
+    // Vermerk und am Feld `zeitlimitBeendet` der Einheit.
+    //
+    // `else if`, nicht ein zweites `if`: Zeitlimit und wartend schliessen einander aus
+    // (am Zeitlimit kommt kein `result`-Ereignis an, `leseErgebnisText` liefert `null`),
+    // und zwei Vermerke zu derselben Runde waeren zwei Wahrheiten ueber sie.
+    ZEITLIMIT_BEENDET = true;
+    board("issue", "comment", String(top.id), "--text",
+      zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, gitReste()));
+  }
+  if (salvage === "gescheitert") return "hardStop";
+  return resteSichern(top, `${SALVAGE_GRUND} ${resteText(gitReste())}`,
+    "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session hat weder committet noch das Board bewegt.");
+}
+
+/**
+ * Die Pfade der Reste, wie `gitReste()` sie zaehlt — aus `git status -z`, damit Leerzeichen,
+ * Anfuehrungszeichen und Umbenennungen (beide Pfade) heil ankommen.
+ */
+function restPfade(cwd = process.cwd()) {
+  const res = spawnSync("git", ["status", "--porcelain", "-z", ...gitRestePathspec(gitResteAusnahmen())], { encoding: "utf-8", cwd });
+  if (res.status !== 0) return [];
+  const teile = res.stdout.split("\0").filter(Boolean);
+  const pfade = [];
+  let i = 0;
+  while (i < teile.length) {
+    pfade.push(teile[i].slice(3));
+    // Eine Umbenennung traegt ihren alten Pfad als naechsten Eintrag.
+    if (/^[RC]/.test(teile[i])) pfade.push(teile[i + 1]);
+    i += /^[RC]/.test(teile[i]) ? 2 : 1;
+  }
+  return pfade;
+}
+
+/** Der Name des Stashs, in dem die Reste eines abgebrochenen Pakets liegen (E14). */
+const nachtrestName = (id, lauf) => `nachtrest #${id} ${lauf ?? "ohne-lauf"}`;
+
+/**
+ * Sichert die Reste eines gescheiterten Pakets im Stash (Issue #1089, Plan #1079 E14) und
+ * legt die Karte nach Backlog: Die Nacht laeuft weiter, und das naechste Paket baut nicht auf
+ * halben Aenderungen auf. Gesichert wird genau, was `gitReste()` als Rest zaehlt — samt
+ * unversionierter Dateien, ohne Journal, Protokoll und Board-Dateien. Laesst sich der Baum
+ * so nicht saeubern, bleibt es beim harten Stopp: Weiterbauen auf einem unsauberen Baum ist
+ * genau das, was der Stash verhindern soll.
+ */
+function resteSichern(top, grund, kommentar, vermerk = null) {
+  const name = nachtrestName(top.id, LAUF_STEMPEL);
+  // Die Pfade einzeln und woertlich, nicht die Ausschluesse als Pathspec: `git stash push`
+  // bricht ab, sobald ein Ausschluss auf eine ignorierte Datei zeigt.
+  // Ohne Pfad kein Aufruf: `git stash push` ohne Pathspec saehe alles, auch Journal und Protokoll.
+  const pfade = restPfade();
+  const res = pfade.length > 0
+    ? spawnSync("git", ["stash", "push", "--include-untracked", "-m", name, "--", ...pfade.map((p) => `:(literal)${p}`)], { encoding: "utf-8", cwd: process.cwd() })
+    : { status: 1, stderr: "keine Pfade der Reste lesbar" };
+  if (res.status !== 0 || !gitClean()) {
+    const meldung = ersteZeile(res.stderr || res.stdout || "Exit " + res.status);
+    const satz = `HARTER STOPP: Reste zu Issue #${top.id} liessen sich nicht im Stash sichern (${meldung}).`;
+    log(`  ${satz}`);
+    board("issue", "comment", String(top.id), "--text", `${kommentar} Die Reste liessen sich nicht im Stash sichern — Lauf hart gestoppt. Bitte morgens manuell sichten.`);
+    merkeHartenStopp("harterStopp", `${satz} ${grund}`);
+    return "hardStop";
+  }
+  log(`  Reste zu Issue #${top.id} im Stash „${name}“ gesichert — Issue ins Backlog, weiter.`);
+  const text = `${kommentar} Die Reste liegen im Stash „${name}“ (\`git stash list\`), die Karte geht ins Backlog, und der Lauf geht weiter.`;
+  board("issue", "comment", String(top.id), "--text", vermerk ? `${text}\n\n${vermerk}` : text);
+  board("issue", "move", String(top.id), "backlog");
+  ABBRUCH_GRUND = `${grund} Reste im Stash „${name}“.`;
+  return "abgebrochen";
 }
 
 /**
@@ -9936,6 +10016,8 @@ function zeitlimitFelder() {
 function ausgangsFelder(ausgang) {
   if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
+  // Das Paket ist an sich selbst gescheitert, seine Reste liegen im Stash (Issue #1089).
+  if (ausgang === "abgebrochen") return { ausgang, grund: ABBRUCH_GRUND };
   // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
   // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
   // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
@@ -10105,6 +10187,10 @@ function stelleAmGateZurueck(top, gate) {
   board("issue", "comment", String(top.id), "--text", text);
   board("issue", "move", String(top.id), "backlog");
   einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.kommentar });
+  // Haengt das Paket an einem Paket, das in diesem Lauf abgebrochen ist, wartet es (E15) —
+  // zusaetzlich zum Rueckstell-Kommentar, der unveraendert bleibt.
+  const an = (gate.unmet ?? []).filter((n) => ABGEBROCHENE_PAKETE.has(Number(n)));
+  if (an.length > 0) standSetzen(top.id, "wartet", an.map((n) => `hängt an #${n} (abgebrochen in diesem Lauf)`).join("\n"));
 }
 
 /**
@@ -10188,6 +10274,10 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // "unbekannt", was etwas anderes sagt als ein Fehlschlag.
   const commitVorher = lastCommitHash();
   const started = Date.now();
+  // Der Laufstand des Pakets an der Paketkarte (Issue #1089, E2) — in Kette und
+  // Umsetzungsnacht gleich, denn beide gehen durch diese Runde.
+  standSetzen(top.id, "laeuft", `Umsetzung laeuft seit ${new Date(started).toISOString()}`);
+  ABBRUCH_GRUND = "";
   // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
   // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
   // weiter unten in werteRunde laufen kann, ist aussen vor.
@@ -10228,7 +10318,11 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
   // auf das Modell des Laufs waere hier falsch — wer eine Stufe setzt, will dieses Paket auf
   // dieser Ebene laufen lassen. Und weil die Entscheidung vor dem ersten Arbeitsschritt
   // faellt, wird keine begonnene Umsetzung mit einem zweiten Modell wiederholt.
-  if (!modellStand.startbar) return ohneSessionGescheitert(top, einheit, modellStand, started);
+  if (!modellStand.startbar) {
+    const ohne = ohneSessionGescheitert(top, einheit, modellStand, started);
+    paketStandAbschliessen(top, ohne, einheit.grund);
+    return ohne;
+  }
 
   // Womit die Session startet (Issue #711): Modellname oder die Kommandozeile der Stufe.
   // Dasselbe Buendel geht spaeter an die Salvage-Session desselben Pakets — sie prueft den
@@ -10284,7 +10378,32 @@ async function laufeRunde(top, args, salvageAttempted, pruefungen) {
     ...wartendFelder(),
     ...zeitlimitFelder(),
   });
+  paketStandAbschliessen(top, ausgang, rundenStandGrund(ausgang, { einheit, pruefung, res, commit: commitNachher }));
   return ausgang;
+}
+
+// Der Laufstand eines Pakets nach dem Ausgang seiner Runde (E2); alles Uebrige ist `abgebrochen`.
+const RUNDEN_STAND = { erfolg: "fertig", angehalten: "wartet" };
+
+/** Der Grund im Laufstand einer Runde, je Ausgang aus dem, was die Auswertung schon weiss. */
+function rundenStandGrund(ausgang, { einheit, pruefung, res, commit }) {
+  if (ausgang === "erfolg") return `In review mit Nachweis (${pruefung?.zustand ?? "ungeprueft"}), Commit ${commit}`;
+  if (ausgang === "angehalten") return "eine offene Entscheidung wartet am Board auf einen Menschen";
+  if (ausgang === "deferred") return `${rundenGrund(res, pruefung)}; die Karte ging ins Backlog, der Lauf weiter`;
+  if (ausgang === "fehlschlag") return nachweisMangel(pruefung) ?? ZUSTAND_UNLESBAR_GRUND;
+  return einheit.grund ?? STOPP_GRUND;
+}
+
+/**
+ * Setzt den Laufstand eines Pakets zum Ende seiner Runde (Issue #1089, E2): `fertig` bei In
+ * review mit Nachweis, `wartet` beim Halt, sonst `abgebrochen` mit Grund. Nach dem Anhalten
+ * steht der Stand schon (E15). Ein abgebrochenes Paket merkt sich der Lauf fuer das Gate.
+ */
+function paketStandAbschliessen(top, ausgang, grund) {
+  if (ANHALTEN_LAEUFT) return;
+  const zustand = RUNDEN_STAND[ausgang] ?? "abgebrochen";
+  if (zustand === "abgebrochen") ABGEBROCHENE_PAKETE.add(Number(top.id));
+  standSetzen(top.id, zustand, `Runde beendet: ${ausgang} um ${new Date().toISOString()}\n\n${grund}`);
 }
 
 /**
@@ -10386,7 +10505,9 @@ async function implementierungsSchleife(args, ctx, lauf) {
     lauf.sessions++;
     log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
     const ausgang = await laufeRunde(top, args, lauf.salvageAttempted, lauf.pruefungen);
-    rundeMitVermerkAbschliessen(top, ausgang);
+    // Kein `break` bei Paketfehlern (Issue #1089, E14): Ein abgebrochenes Paket haelt nur
+    // sich und die von ihm abhaengigen an. Der harte Stopp bleibt fuer Umgebung und Reste
+    // nach einem Erfolg.
     if (ausgang === "hardStop") {
       lauf.hardStop = true;
       break;
@@ -10405,18 +10526,6 @@ function umsetzungsKandidaten(ctx) {
     .filter((issue) => ctx.labelFilter === null || ctx.hasLabel(issue))
     .filter((issue) => !pruefeIssueGates(issue))
     .map((issue) => String(issue.id));
-}
-
-// Der Laufstand einer Runde, die einen Umgebungsfehler hinter sich hat, nach ihrem Ausgang.
-const RUNDEN_STAND = { erfolg: "fertig", angehalten: "wartet" };
-
-/**
- * Traegt eine Karte den Vermerk "2. Versuch", bekommt sie zum Ende ihrer Runde einen Stand,
- * an dem er steht (E13). Nach dem Anhalten steht ihr Stand schon.
- */
-function rundeMitVermerkAbschliessen(top, ausgang) {
-  if (ANHALTEN_LAEUFT || !VERSUCH_VERMERKE.has(String(top.id))) return;
-  standSetzen(top.id, RUNDEN_STAND[ausgang] ?? "abgebrochen", `Runde beendet: ${ausgang} um ${new Date().toISOString()}`);
 }
 
 /**
@@ -10438,7 +10547,7 @@ export async function laufeImplementierung(args, ctx) {
     // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
     // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
     // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
-    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0 },
+    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0, abgebrochen: 0 },
     // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
     salvageAttempted: new Set(),
     // Der Fall, an dem die Schleife ohne Paket endete (Issue #887) — gemerkt in der
@@ -10477,6 +10586,7 @@ export async function laufeImplementierung(args, ctx) {
     deferred: zaehler.deferred,
     ohneNachweis: zaehler.fehlschlag,
     angehalten: zaehler.angehalten,
+    abgebrochen: zaehler.abgebrochen,
   };
 }
 
@@ -10523,7 +10633,9 @@ async function main() {
   // `angehalten` steht NACH `Session(s) gestartet` (Issue #572): Die bestehenden
   // Label-Tests matchen die Zeile bis dorthin, und ein Einschub davor haette sie
   // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
-  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  // Nur wenn es sie gab (Issue #1089): Die Label-Tests matchen die Zeile bis `angehalten.`.
+  const abgebrochen = ergebnis.abgebrochen ? ", " + ergebnis.abgebrochen + " abgebrochen mit Resten im Stash" : "";
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${abgebrochen}${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
   for (const zeile of pruefBericht(ergebnis.pruefungen, LAUF?.einheiten ?? [], config?.night?.zielUmsetzungMin)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);

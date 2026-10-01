@@ -320,11 +320,11 @@ test("[night-47] im Dry-Run entfaellt der Aufruf ganz", NUR_POSIX, () => {
 // --- Der harte Stopp ----------------------------------------------------------
 
 test("[night-47] auch ein harter Stopp durchlaeuft den Weg: Abschlussart, Fehlerklasse und Grund bleiben unveraendert", NUR_POSIX, () => {
-  // Rote Pflichtchecks schliessen den Salvage-Versuch aus; der Fake laesst die Karte
-  // liegen und den Baum schmutzig — der vierte hardStop-Ausgang (Issue #404).
-  mitProjekt("night-abschluss-hartstopp-", { buildChecks: ["false"] }, (dir, capture) => {
+  // Eine erfolgreiche Runde mit Rest (Issue #152): Seit Issue #1089 haelt ein gescheitertes
+  // Paket nur noch sich an, der Rest nach einem Erfolg bleibt der harte Stopp.
+  mitProjekt("night-abschluss-hartstopp-", {}, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
-    const fake = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt"';
+    const fake = `${FAKE_ERFOLG} && echo rest > rest.txt`;
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake, AUFWAND_CAPTURE: capture });
     assert.equal(res.status, 1, `der harte Stopp haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
 

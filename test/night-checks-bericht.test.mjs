@@ -127,8 +127,10 @@ const FAKE_MIT_PRUEFUNG = [
 const FAKE_OHNE_PRUEFUNG = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', COMMIT, NACH_IN_REVIEW].join("\n");
 
 // Eine Session, die nichts veraendert und trotzdem prueft: checks.mjs meldet
-// leeresPaket.
-const FAKE_LEERES_PAKET = [LOG_SESSION, CHECKS_RUN, NACH_IN_REVIEW].join("\n");
+// leeresPaket. Seit Issue #1089 schreibt der Runner vor der Session den Laufstand `laeuft`
+// an die Karte — in diesem Fixture eine versionierte Datei unter issues/. Die Session blendet
+// den Board-Stand fuer git darum aus, sonst zaehlte er als ihre Aenderung.
+const FAKE_LEERES_PAKET = [LOG_SESSION, "git update-index --assume-unchanged issues/*.md", CHECKS_RUN, NACH_IN_REVIEW].join("\n");
 
 function sessions(dir) {
   const p = join(dir, "sessions.log");

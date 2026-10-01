@@ -93,7 +93,7 @@ function fakeSession(sessionLog, salvageBody) {
     + `fi\n`;
 }
 
-test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraendert", NUR_POSIX, () => {
+test("Salvage: rote buildChecks starten keine Rettung — die Reste gehen in den Stash, der Lauf geht weiter (Issue #1089)", NUR_POSIX, () => {
   const dir = setupProjekt(["false"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -106,7 +106,7 @@ test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraend
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/,
       "die bestehende Fehlschlag-Meldung fehlt");
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
@@ -115,11 +115,14 @@ test("Salvage: rote buildChecks lassen das heutige Hard-Stop-Verhalten unveraend
     assert.doesNotMatch(res.stdout, /FORMAT-FIX/,
       "ohne formatFixCommand darf kein Format-Fix versucht werden");
 
-    // Nur die regulaere Session lief, das Issue blieb liegen (kein Backlog-Move).
+    // Nur die regulaeren Sessions liefen; beide Pakete liegen mit ihren Resten im Stash.
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
-    const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
-    assert.ok(ready.includes(String(zweites.id)), "zweites Issue haette in Ready bleiben muessen");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht genau die zwei regulaeren Sessions");
+    const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
+    assert.deepEqual(backlog.sort(), [String(erstes.id), String(zweites.id)].sort());
+    const stashes = run(dir, "git", ["stash", "list"]).stdout;
+    assert.match(stashes, new RegExp(`nachtrest #${erstes.id} `));
+    assert.match(stashes, new RegExp(`nachtrest #${zweites.id} `));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -249,7 +252,7 @@ test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Preceden
   assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", NUR_POSIX, () => {
+test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeile, die Reste gehen in den Stash", NUR_POSIX, () => {
   const dir = setupProjekt(["true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -263,18 +266,17 @@ test("Salvage: gescheiterte Salvage-Session stoppt hart mit eigener Log-Zeile", 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
       "die Salvage-Startzeile fehlt");
     assert.match(res.stdout, /SALVAGE-VERSUCH gescheitert/,
       "der Salvage-Fehlschlag braucht eine eigene, unterscheidbare Log-Zeile");
 
-    // Genau eine Salvage-Session fuer dieses Issue, danach Stopp.
+    // Genau eine Salvage-Session je Issue, danach geht der Lauf weiter.
     const log = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(log, [String(erstes.id), String(erstes.id), `salvage ${erstes.id}`],
-      `erwartet: regulaere Runde + genau eine Salvage-Runde, tatsaechlich: ${log.join(" / ")}`);
-    const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
-    assert.ok(ready.includes(String(zweites.id)), "zweites Issue haette in Ready bleiben muessen");
+    assert.deepEqual(log, [String(erstes.id), String(erstes.id), `salvage ${erstes.id}`, String(zweites.id), String(zweites.id), `salvage ${zweites.id}`],
+      `erwartet: je Issue regulaere Runde + genau eine Salvage-Runde, tatsaechlich: ${log.join(" / ")}`);
+    assert.match(run(dir, "git", ["stash", "list"]).stdout, new RegExp(`nachtrest #${erstes.id} `));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -321,7 +323,7 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den L
   }
 });
 
-test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief genau einmal", NUR_POSIX, () => {
+test("Format-Fix: hilft er nicht, bleibt das Paket gescheitert — und er lief genau einmal", NUR_POSIX, () => {
   // Das Format-Kommando protokolliert jeden Aufruf, die Checks bleiben rot.
   // Belegt zugleich: keine Schleife, genau ein Versuch.
   const dir = setupProjekt(["false"], { formatFixCommand: "echo lauf >> fixcount.log" });
@@ -334,7 +336,7 @@ test("Format-Fix: hilft er nicht, bleibt es beim harten Stopp — und er lief ge
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, /FORMAT-FIX angewendet/,
       "der Fix hat nicht geholfen, darf also nicht als erfolgreich gemeldet werden");
     assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/, "die bestehende Fehlschlag-Meldung fehlt");

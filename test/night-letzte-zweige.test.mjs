@@ -123,7 +123,7 @@ test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", NU
 
     const res = run(dir, ["--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, "die gescheiterte Runde haette hart stoppen muessen");
+    assert.equal(res.status, 0, "die gescheiterte Runde haelt nur ihr Paket an (Issue #1089)");
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
       "eine leere Pruefliste gilt als gruen — der Salvage haette starten muessen");
   }, { buildChecks: [] }, "night-letzte-ohne-checks-");
