@@ -136,6 +136,8 @@
  *   NIGHT_AUSWERTUNG_TIMEOUT_MS ueberschreibt das Zeitlimit der beiden
  *                     Auswertungen (Aufwand, Wirksamkeit), damit der
  *                     Timeout-Pfad schnell testbar ist.
+ *   NIGHT_PULS_MS     ueberschreibt den Takt der Puls-Datei (Vorgabe eine Minute),
+ *                     damit ein Test ihre Erneuerung sehen kann (Issue #1084).
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -636,6 +638,9 @@ let LAUF = null;
 // Der Zeitstempel des Laufs, wie er im Dateinamen des Ergebnisstands steht: Die Kette
 // nennt ihn im Worktree-Namen und im Bericht.
 let LAUF_STEMPEL = null;
+// Laeuft gerade ein Abbruch (Issue #1084, E8)? Ein zweites Signal oder ein fail() aus dem
+// Abbruch heraus beginnt keinen zweiten.
+let ABBRUCH_LAEUFT = false;
 // Die Budgets der Kette, geladen in vorbereiten() — Modul-Zustand wie `config`, weil
 // ART_LABEL und die Stufen sie brauchen, ohne dass jede Funktion sie durchreicht.
 let KETTE_BUDGET = null;
@@ -704,6 +709,10 @@ function log(msg) {
  * Der Abschluss gehoert an genau diese Stelle: Die Datei kennt kein try/finally und
  * keinen exit-Handler, und ein Stand, der erst am regulaeren Ende entstuende, fehlte
  * im interessantesten Fall. Ohne ihn saehe ein erkannter Stopp aus wie ein Absturz.
+ *
+ * Seit Issue #1084 (E8) laeuft fail() ueber denselben Weg wie die Signal-Handler: Das
+ * Journal haelt den Abbruch fest, und jede laufende Karte zeigt ihn. Der Abschluss bleibt
+ * `harterStopp` — ein erkannter Stopp ist kein Abbruch von aussen.
  */
 function fail(msg, klasse = "unbekannt") {
   const line = `Fehler: ${msg}`;
@@ -712,11 +721,8 @@ function fail(msg, klasse = "unbekannt") {
   if (LAUF) {
     LAUF.fehlerklasse = klasse;
     LAUF.fehlerText = msg;
-    LAUF.abschluss = "harterStopp";
-    schreibeErgebnisstand();
-    laufMelden();
   }
-  process.exit(1);
+  laufAbbrechen(msg, { abschluss: "harterStopp", exitCode: 1 });
 }
 
 /**
@@ -986,7 +992,9 @@ function meldezeile(zeile) {
  * anderen entfaellt der Aufruf mit einer Zeile. `NIGHT_MELDEN_ERZWINGEN` ist ein Test-Hook,
  * der den Aufruf auch ohne toolbox erzwingt, damit der Fehlerpfad pruefbar ist.
  */
-function laufMelden() {
+// `budgetMs` begrenzt die Einlieferung im Abbruch (Issue #1084, E8): Ein Ctrl-C soll
+// nicht zwei Minuten auf ein langsames Board warten.
+function laufMelden({ budgetMs } = {}) {
   if (!ERGEBNIS_FILE || !LAUF) return;
   // Die Art `pruefung` wird nicht eingeliefert (Plan #904, E15): `NACHTLAUF_MODUS` in
   // kit/board.mjs kennt sie nicht und wirft dafuer — fortschreibend gemeldet waere das je
@@ -1002,7 +1010,7 @@ function laufMelden() {
     meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
     return;
   }
-  const res = boardRoh("nightrun", "melden", "--datei", ERGEBNIS_FILE);
+  const res = boardRoh("nightrun", "melden", "--datei", ERGEBNIS_FILE, { budgetMs });
   if (res.status !== 0) {
     meldezeile(`Einlieferung fehlgeschlagen: ${res.text.trim().slice(0, 300)} — der Ergebnisstand bleibt als Datei.`);
     return;
@@ -1293,6 +1301,255 @@ function schreibeErgebnisstand() {
   }
 }
 
+// --- Laufstand: Journal, Puls, Abbruch (Issue #1084, Plan #1079 E5, E6, E8) ---
+
+// SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
+// `night.stand` (fristMin, pauseMin).
+const STAND_VORGABEN = Object.freeze({ fristMin: 10, pauseMin: 5 });
+// Journal und Puls eines Laufs liegen unter `.claude/lauf/<lauf>.jsonl` und
+// `.claude/lauf/<lauf>.puls`; `<lauf>` ist der Stempel des Laufberichts.
+const LAUF_ORDNER = join(".claude", "lauf");
+const PULS_TAKT_MS = 60_000;
+// Das kurze Budget der Board-Aufrufe im Abbruch (E8): Ein Ctrl-C soll binnen Sekunden am
+// Board stehen und nicht zwei Minuten auf ein langsames Board warten.
+const ABBRUCH_BUDGET_MS = 5_000;
+let PULS_DATEI = null;
+let PULS_TIMER = null;
+
+/**
+ * Laedt `night.stand` mit Vorgaben und prueft ihn (E6). Rueckgabe `{ fristMin, pauseMin }`
+ * oder `{ fehler }` mit dem Feldnamen. `pauseMin` muss unter `fristMin` liegen: Waehrend
+ * der Pause vor dem einen Versuch schweigt der Puls, und ein lebender Lauf gaelte sonst
+ * schon als verstummt. Die Labelnamen prueft `issue stand` in kit/board.mjs selbst.
+ */
+export function nightStandLaden(cfg) {
+  const block = cfg?.night?.stand ?? {};
+  const stand = { ...STAND_VORGABEN };
+  for (const feld of Object.keys(STAND_VORGABEN)) {
+    const wert = block[feld];
+    if (wert === undefined) continue;
+    if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
+      return { fehler: `night.stand.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}.` };
+    }
+    stand[feld] = wert;
+  }
+  if (stand.pauseMin >= stand.fristMin) {
+    return { fehler: `night.stand.pauseMin (${stand.pauseMin}) muss kleiner sein als night.stand.fristMin (${stand.fristMin}) — sonst gaelte ein lebender Lauf in der Pause vor seinem zweiten Versuch als verstummt.` };
+  }
+  return stand;
+}
+
+/** Haelt den Lauf mit dem Befund von `nightStandLaden` an, bevor er etwas veraendert. */
+function nightStandPruefen(cfg) {
+  const stand = nightStandLaden(cfg);
+  if (stand.fehler) fail(stand.fehler, "zustand");
+}
+
+const laufPfad = (repoRoot, lauf, endung) => join(repoRoot, LAUF_ORDNER, `${lauf}.${endung}`);
+
+/**
+ * Haengt eine Zeile ans Journal, synchron. Ein Schreibfehler bricht nichts ab — wie beim
+ * Ergebnisstand ist das Journal Protokoll, und der Board-Aufruf danach soll trotzdem
+ * versucht werden.
+ */
+function journalZeile(pfad, objekt) {
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    appendFileSync(pfad, JSON.stringify(objekt) + "\n", "utf-8");
+  } catch (err) {
+    log(`Journal ${pfad} nicht geschrieben: ${err.message}`);
+  }
+}
+
+/**
+ * Liest ein Journal (E5). Drei Zeilenarten: `lauf` (Beginn und Abbruch des Laufs), `stand`
+ * (ein Standwechsel, angelegt als "offen") und `quittung` (das Board hat den Stand mit
+ * dieser Nummer angenommen). Nur angehaengt, nie umgeschrieben: Eine Zeile, die vor einem
+ * Absturz stand, steht danach noch. Eine unlesbare Zeile — die halbe letzte nach einem
+ * Absturz — wird uebergangen.
+ *
+ * Der Status eines Stands ist `geschrieben` mit Quittung, `ueberholt`, wenn ein spaeterer
+ * Stand derselben Karte quittiert ist (`issue stand` ersetzt, ein Nachtrag des aelteren
+ * ueberschriebe den neueren), sonst `offen`.
+ */
+export function journalLesen(pfad) {
+  const lauf = [];
+  const staende = [];
+  const quittiert = new Set();
+  const zeilen = existsSync(pfad) ? readFileSync(pfad, "utf-8").split("\n") : [];
+  for (const roh of zeilen) {
+    if (!roh.trim()) continue;
+    let zeile;
+    try {
+      zeile = JSON.parse(roh);
+    } catch {
+      continue;
+    }
+    if (zeile.art === "stand") staende.push(zeile);
+    else if (zeile.art === "quittung") quittiert.add(zeile.nr);
+    else if (zeile.art === "lauf") lauf.push(zeile);
+  }
+  const mitStatus = staende.map((z) => ({ ...z, status: quittiert.has(z.nr) ? "geschrieben" : "offen" }));
+  mitStatus.forEach((z, i) => {
+    if (z.status === "offen" && mitStatus.slice(i + 1).some((s) => s.karte === z.karte && s.status === "geschrieben")) {
+      z.status = "ueberholt";
+    }
+  });
+  return { lauf, staende: mitStatus };
+}
+
+/** Die Karten, deren letzter Stand im Journal `laeuft` ist — sie zeigen einen Abbruch. */
+function laufendeKarten(staende) {
+  const letzter = new Map();
+  for (const s of staende) letzter.set(s.karte, s.zustand);
+  return [...letzter].filter(([, zustand]) => zustand === "laeuft").map(([karte]) => karte);
+}
+
+/** Schreibt einen Journal-Stand ans Board und quittiert ihn; `true`, wenn das Board ihn annahm. */
+function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
+  // Mit Prozess-Id und Nummer: Zwei Runner teilen sich sonst die Zwischendatei.
+  const datei = join(tmpdir(), `${process.pid}-laufstand-${zeile.karte}-${zeile.nr}.md`);
+  writeFileSync(datei, zeile.text, "utf-8");
+  try {
+    const res = boardRoh("issue", "stand", zeile.karte, "--zustand", zeile.zustand, "--text-file", datei, { cwd: repoRoot, budgetMs });
+    if (res.status !== 0) {
+      log(`Laufstand #${zeile.karte} ${zeile.zustand} nicht geschrieben (${res.text.slice(0, 200)}) — bleibt offen im Journal und wird nachgetragen.`);
+      return false;
+    }
+    journalZeile(pfad, { art: "quittung", nr: zeile.nr, zeit: new Date().toISOString() });
+    return true;
+  } finally {
+    rmSync(datei, { force: true });
+  }
+}
+
+/**
+ * Der gemeinsame Schreibweg jedes Standwechsels (E5): erst die Journalzeile, dann
+ * `issue stand`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
+ * naechsten Start nachgetragen. Rueckgabe `geschrieben`, `offen` oder `null` ohne Lauf
+ * (der Trockenlauf hat keinen Stempel und schreibt keinen Stand).
+ */
+export function standSetzen(karte, zustand, eintrag, { lauf = LAUF_STEMPEL, repoRoot = process.cwd(), budgetMs } = {}) {
+  if (!lauf) return null;
+  const pfad = laufPfad(repoRoot, lauf, "jsonl");
+  const nr = journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
+  const zeile = { art: "stand", nr, zeit: new Date().toISOString(), karte: String(karte), zustand, text: eintrag, status: "offen" };
+  journalZeile(pfad, zeile);
+  return standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) ? "geschrieben" : "offen";
+}
+
+/**
+ * Lebt der Lauf, dessen Puls hier liegt? Ein Puls ohne lesbare PID gilt als tot; EPERM
+ * heisst, den Prozess gibt es, er gehoert nur einem anderen Benutzer.
+ */
+function laufLebt(repoRoot, lauf) {
+  let pid;
+  try {
+    pid = JSON.parse(readFileSync(laufPfad(repoRoot, lauf, "puls"), "utf-8")).pid;
+  } catch {
+    return false;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+
+/**
+ * Traegt offene Journalzeilen nach (E5) — beim Start jeder Betriebsart ausser dem
+ * Trockenlauf, neben `berichteNachtragen`. Journale aufsteigend nach Name (der Stempel ist
+ * die Zeit), darin in Zeilenfolge. Das Journal eines noch lebenden Laufs bleibt liegen:
+ * Er schreibt selbst weiter, und ein Nachtrag von aussen koennte seinen neueren Stand mit
+ * einem aelteren ueberschreiben. Idempotent, weil `issue stand` ersetzt.
+ */
+export function staendeNachtragen(repoRoot = process.cwd()) {
+  const ordner = join(repoRoot, LAUF_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const journale = readdirSync(ordner).filter((n) => n.endsWith(".jsonl")).sort(vergleicheText);
+  const nachgetragen = [];
+  for (const name of journale) {
+    const lauf = name.slice(0, -".jsonl".length);
+    if (laufLebt(repoRoot, lauf)) continue;
+    const pfad = join(ordner, name);
+    for (const zeile of journalLesen(pfad).staende.filter((s) => s.status === "offen")) {
+      if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
+      nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
+      log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${name}).`);
+    }
+  }
+  return nachgetragen;
+}
+
+/** Erneuert die Puls-Datei: Zeitstempel und PID (E6). Ohne Lauf ein Leerlauf. */
+function pulsSchreiben() {
+  if (!PULS_DATEI) return;
+  try {
+    writeFileSync(PULS_DATEI, JSON.stringify({ zeit: new Date().toISOString(), pid: process.pid }) + "\n", "utf-8");
+  } catch (err) {
+    log(`Puls ${PULS_DATEI} nicht geschrieben: ${err.message}`);
+  }
+}
+
+/**
+ * Legt Journal und Puls dieses Laufs an und startet den Takt (E6). Nur mit Stempel, also
+ * nie im Trockenlauf. `unref`: Der Takt haelt den Prozess nicht am Leben.
+ */
+function laufstandStarten() {
+  if (!LAUF_STEMPEL) return;
+  PULS_DATEI = laufPfad(process.cwd(), LAUF_STEMPEL, "puls");
+  journalZeile(laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, text: "begonnen" });
+  pulsSchreiben();
+  PULS_TIMER = setInterval(pulsSchreiben, Number(process.env.NIGHT_PULS_MS) || PULS_TAKT_MS);
+  PULS_TIMER.unref();
+}
+
+/**
+ * Der eine Weg jedes Abbruchs, den der Prozess noch bemerkt (E8): Signal, Exception und
+ * fail(). Erst synchron die Journalzeile "abgebrochen, <Grund>", dann jede Karte, die im
+ * Journal laeuft, auf `abgebrochen` — mit dem Budget des Aufrufers —, dann der Laufbericht
+ * mit seinem Abschluss, dann das Ende. Was das Board nicht annimmt, bleibt offen im
+ * Journal und wird nachgetragen.
+ */
+function laufAbbrechen(grund, { abschluss = "abgebrochen", budgetMs, exitCode = 1 } = {}) {
+  if (ABBRUCH_LAEUFT) process.exit(exitCode);
+  ABBRUCH_LAEUFT = true;
+  if (PULS_TIMER) clearInterval(PULS_TIMER);
+  const text = `abgebrochen, ${grund}`;
+  if (abschluss === "abgebrochen") log(`Lauf ${text}.`);
+  if (LAUF_STEMPEL) {
+    const pfad = laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl");
+    const zeit = new Date().toISOString();
+    journalZeile(pfad, { art: "lauf", zeit, pid: process.pid, text });
+    for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
+      standSetzen(karte, "abgebrochen", `${text} (um ${zeit})`, { budgetMs });
+    }
+  }
+  if (LAUF) {
+    LAUF.abschluss = abschluss;
+    if (abschluss === "abgebrochen") LAUF.fehlerText = text;
+    schreibeErgebnisstand();
+    laufMelden({ budgetMs });
+  }
+  process.exit(exitCode);
+}
+
+/** Ein Abbruch durch einen Fehler, den niemand gefangen hat: Stack nach stderr, dann E8. */
+function abbruchDurchFehler(art, err) {
+  process.stderr.write(`${err?.stack ?? String(err)}\n`);
+  laufAbbrechen(`${art}: ${ersteZeile(err?.message ?? String(err))}`, { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 1 });
+}
+
+/** Die vier Handler (E8) — nur im CLI-Start gesetzt, nie beim Import durch die Tests. */
+function abbruchHandlerSetzen() {
+  process.on("SIGINT", () => laufAbbrechen("SIGINT", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 130 }));
+  process.on("SIGTERM", () => laufAbbrechen("SIGTERM", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 143 }));
+  process.on("uncaughtException", (err) => abbruchDurchFehler("uncaughtException", err));
+  process.on("unhandledRejection", (err) => abbruchDurchFehler("unhandledRejection", err));
+}
+
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
 
 // Ohne `maxBuffer` puffert Node hoechstens 1 MB stdout/stderr, beendet den Kindprozess
@@ -1336,19 +1593,37 @@ export function boardFehlertext(cliArgs, res) {
  * Aufrufer gesetzter Wert bleibt stehen; ein leerer gilt als nicht gesetzt.
  * Fehlt der Nachbar board.mjs, fehlt auch die Konstante; dann bleibt die Umgebung,
  * wie sie ist — statt eines Werts "undefined", und ohne zweite Zahl in dieser Datei.
+ *
+ * Ein ausdrueckliches `budgetMs` steht vor allem anderen (Issue #1084, E8): Die
+ * Abbruch-Handler geben ihren Board-Aufrufen ein kurzes Budget, und gerade dort darf
+ * weder der Nachtwert noch ein gesetzter Wert sie zwei Minuten warten lassen.
  */
-export function boardUmgebung(env = process.env) {
+export function boardUmgebung(env = process.env, budgetMs = undefined) {
+  if (budgetMs !== undefined) return { ...env, KIT_TOOLBOX_BUDGET_MS: String(budgetMs) };
   if (TOOLBOX_BUDGET_NACHT_MS === undefined || String(env.KIT_TOOLBOX_BUDGET_MS ?? "").trim()) return { ...env };
   return { ...env, KIT_TOOLBOX_BUDGET_MS: String(TOOLBOX_BUDGET_NACHT_MS) };
 }
 
-// Das letzte Argument darf ein Optionsobjekt sein — heute nur `cwd` (Plan #638, A4):
-// Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf dort liest die
-// Config des Worktrees. Ohne Objekt bleibt alles, wie es war.
+/**
+ * Der eine Kindprozess-Aufruf beider Board-Helfer — mit dem Puls davor und danach
+ * (Issue #1084, E6): Ein Board-Aufruf kann bis zum vollen Budget blockieren, und waehrend
+ * er laeuft, schweigt der Takt des Pulses.
+ */
+function boardAufruf(cliArgs, opts) {
+  pulsSchreiben();
+  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER, env: boardUmgebung(process.env, opts.budgetMs) });
+  pulsSchreiben();
+  return res;
+}
+
+// Das letzte Argument darf ein Optionsobjekt sein — `cwd` (Plan #638, A4) und `budgetMs`
+// (Issue #1084, E8): Die Kette arbeitet in einem eigenen Worktree, und ein Board-Aufruf
+// dort liest die Config des Worktrees; das Budget kuerzt die Aufrufe im Abbruch. Ohne
+// Objekt bleibt alles, wie es war.
 function board(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER, env: boardUmgebung() });
+  const res = boardAufruf(cliArgs, opts);
   if (res.status !== 0) {
     fail(boardFehlertext(cliArgs, res), "tracker");
   }
@@ -1364,13 +1639,14 @@ function board(...cliArgs) {
  * Verstoessen mit Exit 1 und JSON — fuer die Kette ist das ein Befund, kein Ausfall.
  * Rueckgabe `{ status, json, text }`; `json` ist null, wenn stdout kein JSON traegt.
  *
- * Das letzte Argument darf wie bei `board` ein Optionsobjekt `{ cwd }` sein (Issue #1033):
- * Die Testhinweise der Formpruefung entstehen gegen die Dateien des Worktrees.
+ * Das letzte Argument darf wie bei `board` ein Optionsobjekt `{ cwd, budgetMs }` sein
+ * (Issue #1033, #1084): Die Testhinweise der Formpruefung entstehen gegen die Dateien des
+ * Worktrees.
  */
 function boardRoh(...cliArgs) {
   const letztes = cliArgs.at(-1);
   const opts = letztes && typeof letztes === "object" ? cliArgs.pop() : {};
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...cliArgs], { encoding: "utf-8", cwd: opts.cwd ?? process.cwd(), maxBuffer: BOARD_MAX_BUFFER, env: boardUmgebung() });
+  const res = boardAufruf(cliArgs, opts);
   let json = null;
   try {
     json = JSON.parse(res.stdout);
@@ -1504,6 +1780,10 @@ export function gitResteAusnahmen(cfg = config) {
     // kein Code-Zustand, und ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem
     // Projekt ohne den `.claude/*`-Block hart, obwohl die Wiederholung alles aufraeumt.
     ".claude/berichte/", // SYNC: kit/board.mjs schreibt sie (BERICHTE_ORDNER)
+    // Journal und Puls jedes Laufs (Issue #1084): Laufzeit-Zustand, kein Code-Zustand —
+    // und ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne den
+    // `.claude/*`-Block schon nach der ersten Runde hart, weil der Runner beide selbst anlegt.
+    ".claude/lauf/",
   ];
 }
 
@@ -4889,7 +5169,9 @@ function runBuildChecksSync(cfg) {
   let output = "";
   for (const eintrag of paketstufenChecks(cfg)) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
+    pulsSchreiben();
     const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
+    pulsSchreiben();
     const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
     output += `$ ${cmd}\n${ausgabe}`;
 
@@ -4939,9 +5221,12 @@ function runChecksCliSync(karte) {
     return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
   }
   const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
+  // Der Puls davor und danach (Issue #1084, E6): Der volle Pruefumfang blockiert den Takt.
+  pulsSchreiben();
   const res = spawnSync(process.execPath, cliArgs, {
     cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), maxBuffer: CHECKS_MAX_BUFFER,
   });
+  pulsSchreiben();
   const output = `$ node ${cliArgs.join(" ")}\n${res.stdout || ""}${res.stderr || ""}`;
   if (res.status === 0) return { ok: true, output, rotesKommando: null };
   const nachweis = lesePruefung(karte);
@@ -5777,6 +6062,9 @@ export function vorbereiten(args) {
   if (lauf.fehler) fail(lauf.fehler, "zustand");
   args.model = lauf.modell;
   args.modellHerkunft = lauf.herkunft;
+  // Vor der ersten Session und vor dem Laufbericht (Issue #1084, E6): Ein falscher Block
+  // haelt den Lauf an, bevor er etwas veraendert.
+  nightStandPruefen(config);
   if (args.kette) ketteBudgetLaden();
   if (args.pruefen) pruefLaufBudgetLaden();
 
@@ -5807,6 +6095,8 @@ export function vorbereiten(args) {
   // erst schreiben, dann melden — sonst faende board.mjs die Datei noch nicht vor.
   schreibeErgebnisstand();
   laufMelden();
+  // Journal und Puls (Issue #1084): ab hier hinterlaesst der Lauf ein Lebenszeichen.
+  laufstandStarten();
 
   // Ein Lauf ohne Zahlendeckel sagt das aus (Plan #904, E9): "max null Sessions" liesse
   // offen, ob die Zahl fehlt oder keine gilt.
@@ -9522,12 +9812,17 @@ export async function laufeImplementierung(args, ctx) {
 }
 
 async function main() {
+  abbruchHandlerSetzen();
   const args = parseArgs(process.argv.slice(2));
 
   const ctx = vorbereiten(args);
   // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im
-  // Dry-Run, der nichts am Board veraendert.
-  if (!args.dryRun) berichteNachtragen();
+  // Dry-Run, der nichts am Board veraendert. Offene Laufstaende aus dem Journal ebenso
+  // (Issue #1084, E5) — nicht in vorbereiten(), das auch im Dry-Run laeuft.
+  if (!args.dryRun) {
+    berichteNachtragen();
+    staendeNachtragen();
+  }
 
   // Vier einander ausschliessende Programme. Kette, Prueflauf und Dry-Run beenden den Prozess
   // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code bilden.
