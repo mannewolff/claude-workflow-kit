@@ -37,6 +37,9 @@
  *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
  *       ersetzt. --teil schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
  *       --text setzt die Stuecke zusammen und schliesst ab.
+ *   node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+ *       Label und Kommentar '## Laufstand' einer Karte in einem Zug, wiederholbar
+ *       (Issue #1083). Labelnamen aus night.stand.labels.
  *   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
  *       Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug, rein
  *       lesend (Issue #1023). Ausgabe Markdown, mit --json als JSON.
@@ -135,6 +138,13 @@ Nutzung:
       der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
       und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
       Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
+  node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+      Laufstand einer Karte in einem Zug (Issue #1083): setzt das Label des Zustands
+      und nimmt die beiden anderen ab (fertig: alle drei), dazu genau ein Kommentar
+      '## Laufstand', bei jedem Aufruf ersetzt. Die Labelnamen kommen aus
+      night.stand.labels der Config (Vorgaben lauf:laeuft, lauf:abgebrochen,
+      lauf:wartet). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
+      geschrieben. Ausgabe: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
       Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
       Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
@@ -3434,6 +3444,94 @@ async function issueMelden(tracker, args) {
 }
 
 // ============================================================
+// Laufstand einer Karte: issue stand (Issue #1083, Plan #1079 E1, E3, E4)
+// ============================================================
+
+// SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
+// `night.stand.labels` — test/board-stand.test.mjs vergleicht beide.
+export const STAND_LABEL_VORGABEN = Object.freeze({
+  laeuft: "lauf:laeuft",
+  abgebrochen: "lauf:abgebrochen",
+  wartet: "lauf:wartet",
+});
+const STAND_ZUSTAENDE = [...Object.keys(STAND_LABEL_VORGABEN), "fertig"];
+const LAUFSTAND_ANKER = "## Laufstand";
+
+/** Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4). */
+function standLabels(config) {
+  const block = config?.night?.stand?.labels ?? {};
+  const labels = { ...STAND_LABEL_VORGABEN };
+  for (const zustand of Object.keys(STAND_LABEL_VORGABEN)) {
+    const wert = block[zustand];
+    if (wert === undefined) continue;
+    if (typeof wert !== "string" || wert.trim() === "") {
+      fail(`night.stand.labels.${zustand} muss ein nicht leerer Text sein, ist ${JSON.stringify(wert)}.`);
+    }
+    labels[zustand] = wert.trim();
+  }
+  if (new Set(Object.values(labels)).size !== Object.keys(labels).length) {
+    fail(`night.stand.labels: die drei Namen muessen verschieden sein (${Object.values(labels).join(", ")}).`);
+  }
+  return labels;
+}
+
+const istLaufstand = (body) => String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0].trim() === LAUFSTAND_ANKER;
+
+/**
+ * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
+ * setzt das Label des Zustands, nimmt die beiden anderen ab (bei `fertig` alle drei) und
+ * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an.
+ *
+ * Wiederholbar wie `berichtAblegen`: gleicher Inhalt -> nichts geschrieben, anderer ->
+ * ersetzt, nie ein zweiter. Darum wird STRENG gelesen, und zwar vor jedem Schreiben — ein
+ * leer gelesener Stand legte einen zweiten Laufstand an. Die Labelnamen kommen allein aus
+ * der Config; ein am Board fehlendes Label meldet der Adapter.
+ */
+async function issueStand(tracker, config, args) {
+  const id = args._[0];
+  const nutzung = "board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>";
+  if (!id) fail(`id ist erforderlich: ${nutzung}`);
+  if (args.labels !== undefined) fail(`--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. ${nutzung}`);
+  if (!STAND_ZUSTAENDE.includes(args.zustand)) {
+    fail(`--zustand '${args.zustand ?? ""}' unbekannt. Erwartet: ${STAND_ZUSTAENDE.join(" | ")}`);
+  }
+  if (args["text-file"] === undefined) fail(`--text-file ist erforderlich: ${nutzung}`);
+  const labels = standLabels(config);
+  const text = await leseTextQuelle(undefined, args["text-file"], "text");
+  const rumpf = text.replaceAll("\r\n", "\n").trim();
+  const neu = istLaufstand(rumpf) ? rumpf : `${LAUFSTAND_ANKER}\n\n${rumpf}`;
+
+  let kommentare;
+  try {
+    kommentare = await tracker.kommentareStreng(id);
+  } catch (e) {
+    fail(`Kommentare von Issue ${id} nicht lesbar — kein Laufstand geschrieben: ${e.message}`);
+  }
+
+  // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
+  const ziel = labels[args.zustand];
+  for (const name of Object.values(labels)) {
+    if (name !== ziel) await tracker.labelIssue(id, name, "remove");
+  }
+  if (ziel) await tracker.labelIssue(id, ziel, "add");
+
+  const staende = kommentare.filter((c) => istLaufstand(c.body));
+  let kommentar;
+  if (staende.some((c) => vergleichbar(c.body) === vergleichbar(neu))) {
+    kommentar = "unveraendert";
+  } else if (staende.length > 0) {
+    const alt = staende.at(-1);
+    if (alt.id == null) fail(`Der Laufstand an Issue ${id} traegt keine Kommentar-ID — nicht ersetzt.`);
+    await tracker.ersetzeKommentar(id, alt.id, neu);
+    kommentar = "ersetzt";
+  } else {
+    await tracker.commentIssue(id, neu);
+    kommentar = "angelegt";
+  }
+  out({ ok: true, id, zustand: args.zustand, kommentar });
+}
+
+// ============================================================
 // Auftrag einer Umsetzung: issue auftrag (Issue #1023, Plan #1015)
 // ============================================================
 
@@ -4579,6 +4677,7 @@ async function dispatchIssue(command, args) {
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
     case "melden":  return issueMelden(tracker, args);
+    case "stand":   return issueStand(tracker, config, args);
     case "auftrag": return issueAuftrag(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, config, args);

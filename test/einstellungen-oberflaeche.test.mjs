@@ -529,11 +529,30 @@ test("M6 bietet die Zielmarke night.zielUmsetzungMin mit der Vorgabe aus dem Sch
   assert.match(stueck, /zeilenGruppe\("night\.zielUmsetzungMin"/, "die Zielmarke hat keine eigene Zeile");
 });
 
-test("M6 bearbeitet night.kette samt Zielmarke und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
+test("M6 bearbeitet night.kette samt Zielmarke und Laufstand und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.stand"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
+});
+
+// Der Laufstand steht neben night.kette (Issue #1083, Plan #1079 E4): drei Labelnamen,
+// Frist und Pause, gesetzt ueber den eigenen Pfad night.stand.
+test("M6 bietet night.stand mit den Vorgaben aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  const erwartet = {
+    laeuft: vorgabeAus("night.stand.labels.laeuft"),
+    abgebrochen: vorgabeAus("night.stand.labels.abgebrochen"),
+    wartet: vorgabeAus("night.stand.labels.wartet"),
+    fristMin: vorgabeAus("night.stand.fristMin"),
+    pauseMin: vorgabeAus("night.stand.pauseMin"),
+  };
+  assert.deepEqual(Object.values(erwartet), ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet", 10, 5]);
+  assert.ok(stueck.includes(`const STAND_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben des Laufstands weichen vom Schema ab");
+  assert.match(stueck, /setzeWert\(teil, "night\.stand"/, "der Laufstand landet nicht in der Arbeitskopie");
+  for (const feld of ["labels.laeuft", "labels.abgebrochen", "labels.wartet", "fristMin", "pauseMin"]) {
+    assert.ok(stueck.includes(`"${feld.split(".").pop()}"`), `${feld} hat keine Zeile`);
+  }
 });
 
 // ------------------------------------------------------------

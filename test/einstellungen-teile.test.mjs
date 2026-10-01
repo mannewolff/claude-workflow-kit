@@ -90,7 +90,7 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest", "gekoppelteBereiche"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
-  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin"]);
+  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin", "night.stand"]);
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 

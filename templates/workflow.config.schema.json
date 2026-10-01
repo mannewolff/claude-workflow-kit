@@ -660,6 +660,50 @@
           },
           "additionalProperties": false
         },
+        "stand": {
+          "type": "object",
+          "description": "Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue stand). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.",
+          "properties": {
+            "labels": {
+              "type": "object",
+              "description": "Die Namen der drei Laufstand-Labels. Sie müssen am Board angelegt sein; ein fehlendes Label meldet der Adapter als Fehler.",
+              "properties": {
+                "laeuft": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:laeuft",
+                  "description": "Label einer Karte, an der ein Lauf gerade arbeitet."
+                },
+                "abgebrochen": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:abgebrochen",
+                  "description": "Label einer technisch abgebrochenen Karte: Wiederholen genügt."
+                },
+                "wartet": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:wartet",
+                  "description": "Label einer wartenden Karte; worauf sie wartet, steht wörtlich im Laufstand."
+                }
+              },
+              "additionalProperties": false
+            },
+            "fristMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 10,
+              "description": "Erkennungsfrist in Minuten ab dem letzten Lebenszeichen eines Laufs; danach zeigt seine Karte den letzten Stand mit dem Zusatz 'nicht beendet'."
+            },
+            "pauseMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 5,
+              "description": "Pause in Minuten vor dem einen automatischen Versuch nach einem Umgebungsfehler des lebenden Laufs."
+            }
+          },
+          "additionalProperties": false
+        },
         "modell": {
           "type": "string",
           "minLength": 1,
