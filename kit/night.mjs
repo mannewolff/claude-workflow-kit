@@ -138,6 +138,9 @@
  *                     Timeout-Pfad schnell testbar ist.
  *   NIGHT_PULS_MS     ueberschreibt den Takt der Puls-Datei (Vorgabe eine Minute),
  *                     damit ein Test ihre Erneuerung sehen kann (Issue #1084).
+ *   KIT_NIGHT_WAECHTER=0 unterdrueckt den Start des Waechters (Issue #1085).
+ *   KIT_NIGHT_WAECHTER_FRIST_S setzt die Frist des Waechters in Sekunden statt
+ *                     night.stand.fristMin (Issue #1085).
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -993,15 +996,17 @@ function meldezeile(zeile) {
  * der den Aufruf auch ohne toolbox erzwingt, damit der Fehlerpfad pruefbar ist.
  */
 // `budgetMs` begrenzt die Einlieferung im Abbruch (Issue #1084, E8): Ein Ctrl-C soll
-// nicht zwei Minuten auf ein langsames Board warten.
-function laufMelden({ budgetMs } = {}) {
-  if (!ERGEBNIS_FILE || !LAUF) return;
+// nicht zwei Minuten auf ein langsames Board warten. `datei` und `stand` nennen einen
+// fremden Laufbericht — den eines verstummten Laufs, den der Waechter oder der Rueckfall
+// beim Start abschliesst (Issue #1085, E7, E18).
+function laufMelden({ budgetMs, datei = ERGEBNIS_FILE, stand = LAUF } = {}) {
+  if (!datei || !stand) return;
   // Die Art `pruefung` wird nicht eingeliefert (Plan #904, E15): `NACHTLAUF_MODUS` in
   // kit/board.mjs kennt sie nicht und wirft dafuer — fortschreibend gemeldet waere das je
   // Karte eine Fehlzeile im Protokoll, und der Ergebnisstand liegt ohnehin als Datei. Die
   // Ausnahme steht HIER und nicht als Zweig in board.mjs: Der Prueflauf gehoert dem Tag,
   // und die Schnittstelle beschreibt Nachtlaeufe.
-  if (LAUF.art === "pruefung") {
+  if (stand.art === "pruefung") {
     meldezeile("Einlieferung entfaellt: die Lauf-Art 'pruefung' hat keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.");
     return;
   }
@@ -1010,12 +1015,12 @@ function laufMelden({ budgetMs } = {}) {
     meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
     return;
   }
-  const res = boardRoh("nightrun", "melden", "--datei", ERGEBNIS_FILE, { budgetMs });
+  const res = boardRoh("nightrun", "melden", "--datei", datei, { budgetMs });
   if (res.status !== 0) {
     meldezeile(`Einlieferung fehlgeschlagen: ${res.text.trim().slice(0, 300)} — der Ergebnisstand bleibt als Datei.`);
     return;
   }
-  if (LAUF.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
+  if (stand.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
 }
 
 /** Die erste Zeile eines Fremdtextes, gekuerzt — damit eine Meldung eine Zeile bleibt. */
@@ -1166,6 +1171,7 @@ function laufAbschliessen(abschluss) {
   befundeAuswerten();
   schreibeErgebnisstand();
   laufMelden();
+  waechterBeenden();
 }
 
 /**
@@ -1473,12 +1479,19 @@ export function staendeNachtragen(repoRoot = process.cwd()) {
   for (const name of journale) {
     const lauf = name.slice(0, -".jsonl".length);
     if (laufLebt(repoRoot, lauf)) continue;
-    const pfad = join(ordner, name);
-    for (const zeile of journalLesen(pfad).staende.filter((s) => s.status === "offen")) {
-      if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
-      nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
-      log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${name}).`);
-    }
+    nachgetragen.push(...journalNachtragen(repoRoot, lauf));
+  }
+  return nachgetragen;
+}
+
+/** Traegt die offenen Zeilen EINES Journals nach, in Zeilenfolge — fuer Start und Waechter. */
+function journalNachtragen(repoRoot, lauf) {
+  const pfad = laufPfad(repoRoot, lauf, "jsonl");
+  const nachgetragen = [];
+  for (const zeile of journalLesen(pfad).staende.filter((s) => s.status === "offen")) {
+    if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
+    nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
+    log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${lauf}.jsonl).`);
   }
   return nachgetragen;
 }
@@ -1533,6 +1546,7 @@ function laufAbbrechen(grund, { abschluss = "abgebrochen", budgetMs, exitCode = 
     schreibeErgebnisstand();
     laufMelden({ budgetMs });
   }
+  waechterBeenden();
   process.exit(exitCode);
 }
 
@@ -1548,6 +1562,163 @@ function abbruchHandlerSetzen() {
   process.on("SIGTERM", () => laufAbbrechen("SIGTERM", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 143 }));
   process.on("uncaughtException", (err) => abbruchDurchFehler("uncaughtException", err));
   process.on("unhandledRejection", (err) => abbruchDurchFehler("unhandledRejection", err));
+}
+
+// --- Waechter: der verstummte Lauf (Issue #1085, Plan #1079 E7) ---
+
+// Der Takt, in dem der Waechter nachsieht; bei einer kuerzeren Frist (nur in Tests) die
+// Frist selbst, damit "Frist plus ein Pruefakt" eine kurze Zeit bleibt.
+const WAECHTER_TAKT_MS = 60_000;
+// Die PID des Waechters dieses Laufs; `laufAbschliessen` und `laufAbbrechen` beenden ihn.
+let WAECHTER_PID = null;
+
+/**
+ * Die Frist in Millisekunden: `night.stand.fristMin`, im Test `KIT_NIGHT_WAECHTER_FRIST_S`
+ * in Sekunden. Ein unbrauchbarer Block faellt auf die Vorgabe zurueck — der Runner hat ihn
+ * vor dem Start schon abgewiesen, und der Waechter soll an ihm nicht scheitern.
+ */
+function waechterFristMs(cfg, env = process.env) {
+  const sekunden = Number(env.KIT_NIGHT_WAECHTER_FRIST_S);
+  if (String(env.KIT_NIGHT_WAECHTER_FRIST_S ?? "").trim() && Number.isFinite(sekunden) && sekunden > 0) return sekunden * 1000;
+  const stand = nightStandLaden(cfg);
+  return (stand.fehler ? STAND_VORGABEN.fristMin : stand.fristMin) * 60_000;
+}
+
+const fristText = (ms) => (ms % 60_000 === 0 ? `${ms / 60_000} min` : `${ms / 1000} s`);
+
+/** Die Puls-Datei eines Laufs (`{ zeit, pid }`) oder `null`, wenn sie fehlt oder unlesbar ist. */
+function pulsLesen(repoRoot, lauf) {
+  try {
+    return JSON.parse(readFileSync(laufPfad(repoRoot, lauf, "puls"), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+const laufberichtPfad = (repoRoot, lauf) => join(repoRoot, ".claude", `night-run-${lauf}.json`);
+
+/** Der Laufbericht eines Laufs oder `null`. */
+function laufberichtLesen(repoRoot, lauf) {
+  try {
+    return JSON.parse(readFileSync(laufberichtPfad(repoRoot, lauf), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Was der Waechter vorfindet: `beendet` (Journal weg oder Laufbericht mit Abschluss),
+ * `lebt` oder `verstummt`. Verstummt nur, wenn der Puls aelter als die Frist ist UND die
+ * PID des Runners nicht mehr lebt: Ein Lauf, der wegen synchroner Pruefungen lange
+ * schweigt, aber lebt, gilt nie als verstummt (E7).
+ */
+function waechterLage(repoRoot, lauf, fristMs) {
+  if (!existsSync(laufPfad(repoRoot, lauf, "jsonl"))) return "beendet";
+  const bericht = laufberichtLesen(repoRoot, lauf);
+  if (bericht && bericht.abschluss != null) return "beendet";
+  const alterMs = Date.now() - Date.parse(pulsLesen(repoRoot, lauf)?.zeit ?? "");
+  if (Number.isFinite(alterMs) && alterMs <= fristMs) return "lebt";
+  return laufLebt(repoRoot, lauf) ? "lebt" : "verstummt";
+}
+
+/**
+ * Schliesst einen verstummten Lauf ab (E7): Journalzeile, jede Karte mit Journalstand
+ * `laeuft` auf `abgebrochen`, offene Zeilen nachtragen, Laufbericht `abschluss:
+ * "verstummt"` samt Einlieferung. Einen Neustart gibt es nicht — ein Neustart von aussen
+ * waere ein Lauf ohne Geste (Kriterium 12 aus #1075).
+ */
+function verstummtAbschliessen(repoRoot, lauf, fristMs) {
+  const text = `nicht beendet, letztes Lebenszeichen ${pulsLesen(repoRoot, lauf)?.zeit ?? "unbekannt"}, Frist ${fristText(fristMs)}`;
+  log(`Lauf ${lauf} verstummt: ${text}.`);
+  const pfad = laufPfad(repoRoot, lauf, "jsonl");
+  journalZeile(pfad, { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, text: `verstummt, ${text}` });
+  for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
+    standSetzen(karte, "abgebrochen", text, { lauf, repoRoot, budgetMs: ABBRUCH_BUDGET_MS });
+  }
+  journalNachtragen(repoRoot, lauf);
+  const bericht = laufberichtLesen(repoRoot, lauf);
+  if (!bericht || bericht.abschluss != null) return;
+  bericht.abschluss = "verstummt";
+  bericht.fehlerText = text;
+  for (const einheit of Array.isArray(bericht.einheiten) ? bericht.einheiten : []) {
+    if (einheit.ausgang == null || einheit.ausgang === "unbekannt") {
+      einheit.ausgang = "verstummt";
+      einheit.grund = text;
+    }
+  }
+  try {
+    writeFileSync(laufberichtPfad(repoRoot, lauf), JSON.stringify(bericht, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    log(`Laufbericht ${lauf} nicht geschrieben: ${err.message}`);
+    return;
+  }
+  laufMelden({ budgetMs: ABBRUCH_BUDGET_MS, datei: laufberichtPfad(repoRoot, lauf), stand: bericht });
+}
+
+/**
+ * Rueckfall beim Start (E7): Ein Journal, dessen Runner nicht mehr lebt und dessen
+ * Laufbericht noch keinen Abschluss traegt, wird wie verstummt abgeschlossen — fuer den
+ * Waechter, der mit dem Rechner gestorben ist. Ein Journal ohne Laufbericht bleibt dem
+ * Nachtrag ueberlassen.
+ */
+export function verwaisteLaeufeAbschliessen(repoRoot = process.cwd()) {
+  const ordner = join(repoRoot, LAUF_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const fristMs = waechterFristMs(config);
+  const abgeschlossen = [];
+  for (const name of readdirSync(ordner).filter((n) => n.endsWith(".jsonl")).sort(vergleicheText)) {
+    const lauf = name.slice(0, -".jsonl".length);
+    if (laufLebt(repoRoot, lauf) || laufberichtLesen(repoRoot, lauf)?.abschluss !== null) continue;
+    verstummtAbschliessen(repoRoot, lauf, fristMs);
+    abgeschlossen.push(lauf);
+  }
+  return abgeschlossen;
+}
+
+/** Der Modus `--waechter <lauf>`: prueft im Takt, bis der Lauf beendet oder verstummt ist. */
+async function waechterLaufen(lauf) {
+  const repoRoot = process.cwd();
+  if (!lauf) return;
+  const configPath = join(repoRoot, ".claude", "workflow.config.json");
+  if (existsSync(configPath)) config = ladeConfigMitOverrides(configPath);
+  LOG_FILE = join(repoRoot, ".claude", `night-run-${lauf.slice(0, 10)}.log`);
+  const fristMs = waechterFristMs(config);
+  const taktMs = Math.min(WAECHTER_TAKT_MS, fristMs);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, taktMs));
+    const lage = waechterLage(repoRoot, lauf, fristMs);
+    if (lage === "lebt") continue;
+    if (lage === "verstummt") verstummtAbschliessen(repoRoot, lauf, fristMs);
+    return;
+  }
+}
+
+/**
+ * Startet den Waechter dieses Laufs als abgekoppelten Kindprozess und merkt seine PID im
+ * Journal (E7). Nur mit Stempel, also nie im Trockenlauf; `KIT_NIGHT_WAECHTER=0`
+ * unterdrueckt ihn (nur fuer Tests).
+ */
+function waechterStarten() {
+  if (!LAUF_STEMPEL || process.env.KIT_NIGHT_WAECHTER === "0") return;
+  try {
+    const kind = spawn(process.execPath, [fileURLToPath(import.meta.url), "--waechter", LAUF_STEMPEL], { cwd: process.cwd(), detached: true, stdio: "ignore" });
+    kind.on("error", (err) => log(`Waechter nicht gestartet: ${err.message}`));
+    kind.unref();
+    WAECHTER_PID = kind.pid ?? null;
+  } catch (err) {
+    log(`Waechter nicht gestartet: ${err.message}`);
+    return;
+  }
+  journalZeile(laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, waechterPid: WAECHTER_PID, text: "Waechter gestartet" });
+}
+
+/** Beendet den Waechter dieses Laufs mit SIGTERM; ohne Waechter ein Leerlauf. */
+function waechterBeenden() {
+  if (!WAECHTER_PID) return;
+  try {
+    process.kill(WAECHTER_PID, "SIGTERM");
+  } catch { /* schon beendet */ }
+  WAECHTER_PID = null;
 }
 
 // --- Board-Adapter als Kind-Prozess (keine Logik-Duplikation) ---
@@ -6097,6 +6268,8 @@ export function vorbereiten(args) {
   laufMelden();
   // Journal und Puls (Issue #1084): ab hier hinterlaesst der Lauf ein Lebenszeichen.
   laufstandStarten();
+  // Der Waechter (Issue #1085): Stirbt der Lauf ohne Abschied, schliesst er ihn ab.
+  waechterStarten();
 
   // Ein Lauf ohne Zahlendeckel sagt das aus (Plan #904, E9): "max null Sessions" liesse
   // offen, ob die Zahl fehlt oder keine gilt.
@@ -9812,6 +9985,11 @@ export async function laufeImplementierung(args, ctx) {
 }
 
 async function main() {
+  // Der Waechter eines Laufs (Issue #1085) ist kein Lauf: keine Handler, kein Lauf-Kopf.
+  if (process.argv[2] === "--waechter") {
+    await waechterLaufen(process.argv[3]);
+    process.exit(0);
+  }
   abbruchHandlerSetzen();
   const args = parseArgs(process.argv.slice(2));
 
@@ -9819,8 +9997,10 @@ async function main() {
   // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im
   // Dry-Run, der nichts am Board veraendert. Offene Laufstaende aus dem Journal ebenso
   // (Issue #1084, E5) — nicht in vorbereiten(), das auch im Dry-Run laeuft.
+  // Verwaiste Laeufe zuerst (Issue #1085, E7): Ihr `abgebrochen` geht vor den Nachtrag.
   if (!args.dryRun) {
     berichteNachtragen();
+    verwaisteLaeufeAbschliessen();
     staendeNachtragen();
   }
 

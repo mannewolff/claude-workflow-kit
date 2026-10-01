@@ -255,6 +255,30 @@ test("[board-19] am Ende eines Laufs bleibt eine Einheit ohne Ausgang als harter
   assert.deepEqual(regulaer.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"]]);
 });
 
+// Die beiden Abschluesse aus Issue #1085 (Plan #1079, E18): `verstummt` setzt der Waechter
+// fuer einen Lauf, der ohne Abschied starb, `abgebrochen` die Abbruch-Handler. Beide
+// setzen einen Abschluss, der Lauf gilt damit als vorbei; der Leitstand zeigt ihn mit der
+// Fehlerklasse des harten Abbruchs und dem Grund, statt ihn weiter als laufend zu fuehren.
+test("[night-1085] verstummt: abgeschlossen, Grund am Lauf, Einheiten rot mit harter Abbruch-Klasse", () => {
+  const text = "nicht beendet, letztes Lebenszeichen 2026-09-16T10:05:00.000Z, Frist 10 min";
+  const m = nachtlaufMeldung(stand("implementierung", [
+    { id: "5", titel: "Offen", ausgang: "unbekannt" },
+    { id: "6", titel: "Vom Waechter", ausgang: "verstummt", grund: text },
+  ], { abschluss: "verstummt", complete: false, fehlerText: text }), JETZT);
+  assert.equal(m.complete, true);
+  assert.equal(m.abortReason, text);
+  assert.deepEqual(m.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"], ["RED", "HARD_ABORT"]]);
+});
+
+test("[night-1085] abgebrochen: abgeschlossen, Grund am Lauf, Einheit ohne Ausgang rot mit harter Abbruch-Klasse", () => {
+  const m = nachtlaufMeldung(stand("kette", [{ id: "5", titel: "F", ausgang: "unbekannt" }], { abschluss: "abgebrochen", complete: false, fehlerText: "abgebrochen, SIGTERM" }), JETZT);
+  assert.equal(m.complete, true);
+  assert.equal(m.abortReason, "abgebrochen, SIGTERM");
+  assert.deepEqual(m.items.map((i) => [i.state, i.errorClass]), [["RED", "HARD_ABORT"]]);
+  assert.equal(nachtlaufAbbruchGrund({ abschluss: "abgebrochen" }), "Abgebrochen");
+  assert.equal(nachtlaufAbbruchGrund({ abschluss: "verstummt" }), "Verstummt");
+});
+
 test("[night-31] Arbeitspaket: Nummer, gekuerzte Texte, Dauer, Commit, Verbrauch; Zaehlwerte nach Farbe", () => {
   const lang = "x".repeat(5000);
   const m = nachtlaufMeldung(stand("kette", [

@@ -5296,6 +5296,10 @@ const NACHTLAUF_FEST = {
   liegengeblieben: ["GREY", null],
   unbekannt: ["RED", "HARD_ABORT"],
   harterStopp: ["RED", "HARD_ABORT"],
+  // Eine Einheit, die der Waechter eines verstummten Laufs abgeschlossen hat (Issue #1085,
+  // E18). `abgebrochen` steht bewusst NICHT hier: Die Kette fuehrt es als eigenen Ausgang
+  // mit dem Zeitbudget als Unterscheidung (farbeAbgebrochen).
+  verstummt: ["RED", "HARD_ABORT"],
   angehalten: ["RED", "AWAITING_DECISION"],
   // Der Vorgang lief durch und hat etwas Bestelltes nicht getan (Issue #862): die Kette,
   // deren Umsetzung an einer belegten Sperre ausblieb, und die Pruefung, deren Ergebnis
@@ -5430,6 +5434,7 @@ function nachtlaufBudget(stand) {
 
 /**
  * Der Grund, an dem ein Lauf hart gestoppt ist; `null`, solange keiner vorliegt (Issue #881).
+ * Seit Issue #1085 ebenso fuer einen verstummten und einen abgebrochenen Lauf.
  *
  * Die Kaskade folgt den drei Stopp-Pfaden in night.mjs: `fail()` schreibt den Text an den
  * Lauf-Kopf, der Vorflug-Stopp und der harte Stopp der Implementierung lassen ihn dort
@@ -5439,8 +5444,15 @@ function nachtlaufBudget(stand) {
  *
  * Reine Funktion wie `nachtlaufBudget`: Sie liest den Stand und schreibt nichts hinein.
  */
+// Die Abschluesse, die eine Stoerung sind, mit dem Grund, der bleibt, wenn der Stand keinen
+// nennt. `verstummt` setzt der Waechter, `abgebrochen` die Abbruch-Handler (Issue #1085,
+// E18): Beide schliessen den Lauf ab, und ohne Grund stuende er am Leitstand wie ein
+// regulaer beendeter.
+const NACHTLAUF_ABBRUCH = { harterStopp: "Harter Stopp", verstummt: "Verstummt", abgebrochen: "Abgebrochen" };
+
 export function nachtlaufAbbruchGrund(stand) {
-  if (stand?.abschluss !== "harterStopp") return null;
+  const ersatz = NACHTLAUF_ABBRUCH[stand?.abschluss];
+  if (ersatz === undefined) return null;
   const gefuellt = (text) => typeof text === "string" && text !== "";
   if (gefuellt(stand.fehlerText)) return stand.fehlerText.slice(0, NACHTLAUF_AUSZUG_MAX);
   const einheiten = Array.isArray(stand.einheiten) ? stand.einheiten : [];
@@ -5448,7 +5460,7 @@ export function nachtlaufAbbruchGrund(stand) {
     ? null
     : einheiten.find((e) => String(e?.id) === String(stand.fehlerEinheit));
   if (betroffen && gefuellt(betroffen.grund)) return betroffen.grund.slice(0, NACHTLAUF_AUSZUG_MAX);
-  return gefuellt(stand.fehlerklasse) ? `Harter Stopp (${stand.fehlerklasse})` : "Harter Stopp";
+  return gefuellt(stand.fehlerklasse) ? `${ersatz} (${stand.fehlerklasse})` : ersatz;
 }
 
 function nachtlaufDauer(einheit) {
@@ -5542,7 +5554,8 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     ...(noWorkReason !== null ? { noWorkReason } : {}),
     // Nur, wo der Stand ein Budget fuehrt (Issue #808) — heute allein die Kette.
     ...(budget !== null ? { budget } : {}),
-    // Nur bei einem hart gestoppten Lauf (Issue #881) — wie noWorkReason und budget:
+    // Nur bei einem hart gestoppten, verstummten oder abgebrochenen Lauf (Issue #881,
+    // #1085) — wie noWorkReason und budget:
     // Das Feld immer mitzuschicken liesse zwei Stellen ueber dieselbe Frage entscheiden.
     ...(abortReason !== null ? { abortReason } : {}),
   };
