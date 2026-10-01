@@ -708,6 +708,12 @@ let WARTEND_BEENDET = false;
 // (Plan #974, E8).
 let ZEITLIMIT_BEENDET = false;
 
+// Die Art des Halts der laufenden Runde (Issue #1050, E12): `"klaeren"`, `"geschuetzt"` oder
+// `null`. Derselbe Modul-Merker wie WARTEND_BEENDET und aus demselben Grund: Der Befund
+// faellt in `werteRunde`, gebraucht wird er beim Fuellen der Einheit und in der Kette —
+// und der Rueckgabewert bleibt das Zaehlwort `angehalten`. Vor jeder Session zurueckgesetzt.
+let HALT_ART = null;
+
 // Die geladene Config auf Modulebene, zugewiesen in main() (Issue #232). Dasselbe
 // Muster wie LOG_FILE darueber, und aus demselben Grund: gitReste() braucht sie, wird
 // aber aus der Hauptschleife heraus aufgerufen. Seit das Hauptprogramm in main()
@@ -7696,8 +7702,31 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
 
   const ausgang = await laufeRunde({ id, title: karte.title, labels: karte.labels }, kette.args, lauf.salvageAttempted, lauf.pruefungen);
   rundeVerbuchen(kette, id);
-  if (ausgang === "angehalten") lauf.stand.angehalten.push(id);
+  if (ausgang === "angehalten") {
+    lauf.stand.angehalten.push(id);
+    // Die Art je Paket (Issue #1050): Stufengrund und Bericht nennen sie.
+    lauf.stand.haltArten[id] = HALT_ART ?? "klaeren";
+  }
   return ausgang === "hardStop" ? `Stufe umsetzung: harter Stopp in der Runde zu Paket #${id}` : null;
+}
+
+/**
+ * Der Stufengrund einer Umsetzung mit angehaltenen Paketen, je Art des Halts (Issue #1050,
+ * E12) — dazu die Art der Stufe: `klaeren`, sobald ein Paket an einer Stopp-Frage haelt,
+ * sonst `geschuetzt`. Ein Paket ohne vermerkte Art (Stand von vor #1050) zaehlt als
+ * Stopp-Frage, wie es damals verbucht wurde.
+ */
+export function umsetzungHaltGrund(stand) {
+  const art = (id) => stand.haltArten?.[id] ?? "klaeren";
+  const teile = [];
+  for (const [a, text] of [["klaeren", "haelt an einer Stopp-Frage"], ["geschuetzt", "haelt an einer geschuetzten Datei"]]) {
+    const ids = stand.angehalten.filter((id) => art(id) === a);
+    if (ids.length > 0) teile.push(`${ids.map((id) => "#" + id).join(", ")} ${text}`);
+  }
+  return {
+    grund: `Stufe umsetzung: ${teile.join("; ")}`,
+    haltArt: stand.angehalten.some((id) => art(id) === "klaeren") ? "klaeren" : "geschuetzt",
+  };
 }
 
 /** Die Pakete der Reihe nach (E16), bis eines hart stoppt oder ein Budget endet. */
@@ -7756,7 +7785,7 @@ function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz 
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
   const stufeStart = Date.now();
-  const stand = { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
+  const stand = { umgesetzt: [], angehalten: [], haltArten: {}, zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
   kette.stufen.umsetzung = stand;
   const lauf = {
     stand, gezogen: new Set(), salvageAttempted: new Set(), pruefungen: [],
@@ -7806,11 +7835,7 @@ async function stufeUmsetzung(kette, paketIds) {
     if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
       // Das kit:klaeren traegt bereits das Paket; ein zweites am Fachplan schloesse ihn aus
       // `waehleKettenKandidaten` aus und blockierte die naechste Kette (E17).
-      return {
-        ausgang: "angehalten",
-        grund: `Stufe umsetzung: ${stand.angehalten.map((id) => "#" + id).join(", ")} haelt an einer Stopp-Frage`,
-        ohneHaltAmFachplan: true,
-      };
+      return { ausgang: "angehalten", ...umsetzungHaltGrund(stand), ohneHaltAmFachplan: true };
     }
     return ergebnis;
   } finally {
@@ -8184,6 +8209,20 @@ function berichtEntscheidungen(stufen, plan, pakete) {
   return entscheidungen;
 }
 
+/**
+ * Was ein Halt der Kette fuer den Bericht ist (Issue #1050, E12): eine Stopp-Frage, und wie
+ * viele Pakete an einer geschuetzten Datei warten. Ein geschuetzter Halt ist keine Frage —
+ * er erscheint weder im Zaehler `Stopp-Fragen` noch unter `### Offene Stopp-Frage`.
+ */
+function berichtHaltArten(einheit) {
+  if (einheit.ausgang !== "angehalten") return { stoppFrage: false, geschuetzt: 0 };
+  const stand = einheit.stufen?.umsetzung;
+  // Ein Halt ausserhalb der Umsetzung ist immer eine Stopp-Frage (Plan, Review, Schneiden).
+  if ((stand?.angehalten?.length ?? 0) === 0) return { stoppFrage: true, geschuetzt: 0 };
+  const arten = stand.angehalten.map((id) => stand.haltArten?.[id] ?? "klaeren");
+  return { stoppFrage: arten.includes("klaeren"), geschuetzt: arten.filter((a) => a === "geschuetzt").length };
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
   // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
@@ -8213,17 +8252,20 @@ export function berichtBauen(einheit, {
   if (einheit.abdeckungSchrieb) z.push("", "Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen sollte.");
   z.push("");
 
+  const halt = berichtHaltArten(einheit);
   const startZeit = start instanceof Date ? start : new Date(start ?? jetzt);
   const paketeErreicht = (stufen.pakete?.ids ?? []).length > 0;
   z.push("### Kennzahlen", "",
     `- Pakete erreicht: ${paketeErreicht ? "ja" : "nein"}`,
     `- Dauer der Kette: ${minutenText(jetzt - startZeit.getTime())} min ab ${startZeit.toISOString()}`,
     `- Entscheidungen: ${entscheidungen.length}`,
-    `- Stopp-Fragen: ${einheit.ausgang === "angehalten" ? 1 : 0}`,
+    `- Stopp-Fragen: ${halt.stoppFrage ? 1 : 0}`,
+    ...(halt.geschuetzt > 0 ? [`- Geschuetzte Dateien: ${halt.geschuetzt}`] : []),
     `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
     `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
     "");
-  if (einheit.ausgang === "angehalten") z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar an der gekennzeichneten Karte", "");
+  if (halt.stoppFrage) z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar an der gekennzeichneten Karte", "");
+  if (halt.geschuetzt > 0) z.push("### Wartende Handlung an geschuetzter Datei", "", einheit.grund ?? "siehe den Halt-Kommentar am Paket", "");
   if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
     z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
@@ -10046,6 +10088,31 @@ function rundenVermerk(grund, res, pfade = []) {
 }
 
 /**
+ * Der Halt mit unsauberem Baum (Issue #572, beide Arten seit #1050, E12) — `null`, wenn die
+ * Session keinen Halt hinterliess, sonst `hardStop`. Steht VOR dem Salvage: Dessen Auftrag
+ * lautet, einen passenden Stand zu committen und die Karte nach In review zu schieben — an
+ * einer angehaltenen Karte waere das genau der halbfertige Stand, den der Halt verworfen hat.
+ *
+ * `kit:klaeren` gilt wie bisher schon am Label allein, der geschuetzte Halt an seinem
+ * vollstaendigen Nachweis — sein Label kann fehlen (E11).
+ */
+function haltMitUnsauberemBaum(top, minutes, vorher) {
+  // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
+  // Label nicht, das die Session selbst gesetzt hat.
+  const nachher = board("issue", "get", String(top.id));
+  const haltArt = hatKlaerenLabel(nachher) ? "klaeren" : istHalt(vorher, nachher);
+  if (!haltArt) return null;
+  const befund = haltArt === "klaeren" ? `traegt ${KLAEREN_LABEL}` : "haelt an einer geschuetzten Datei";
+  const satz = `HALT MIT UNSAUBEREM BAUM nach ${minutes} min: Issue #${top.id} ${befund}, aber der Working Tree ist dirty — kein Salvage, harter Stopp.`;
+  log(`  ${satz}`);
+  const getan = haltArt === "klaeren" ? "hat kit:klaeren gesetzt" : "hat den Halt an einer geschuetzten Datei vermerkt";
+  board("issue", "comment", String(top.id), "--text",
+    `Nachtlauf: Halt mit unsauberem Working Tree — die Session ${getan}, aber Aenderungen liegen gelassen; kein Salvage, Lauf hart gestoppt. Bitte morgens manuell sichten.`);
+  merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
+  return "hardStop";
+}
+
+/**
  * Die Runde hat nichts abgeschlossen und den Baum veraendert (Issue #404). Bis Issue
  * #1089 der vierte harte Stopp; seitdem gehen die Reste in den Stash, und der Lauf geht
  * weiter (E14). Harter Stopp bleibt der Halt mit unsauberem Baum und eine Rettung, die
@@ -10067,22 +10134,10 @@ function rundenVermerk(grund, res, pfade = []) {
  * es erneut. Vom zurueckgestellten Ticket unterscheiden es Laufstand `abgebrochen` und
  * Kommentar, die beide den Stash nennen. Beim harten Stopp bleibt es liegen, wo es ist.
  *
- * Vor allem anderen steht seit Issue #572 der Ausschluss der angehaltenen Karte. Der
- * Auftrag des Salvage lautet, einen passenden Stand zu committen und die Karte nach
- * In review zu schieben — an einer angehaltenen Karte waere das genau der halbfertige
- * Stand, den der Halt gerade verworfen hat.
+ * Den Ausschluss der angehaltenen Karte (Issue #572) prueft der Aufrufer vorher, seit
+ * Issue #1050 in `haltMitUnsauberemBaum` — er braucht die Karte vor der Session.
  */
 async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl) {
-  // Frisch gelesen: `top` stammt aus der Ready-Liste VOR der Session und kennt das
-  // Label nicht, das die Session selbst gesetzt hat.
-  if (hatKlaerenLabel(board("issue", "get", String(top.id)))) {
-    const satz = `HALT MIT UNSAUBEREM BAUM nach ${minutes} min: Issue #${top.id} traegt ${KLAEREN_LABEL}, aber der Working Tree ist dirty — kein Salvage, harter Stopp.`;
-    log(`  ${satz}`);
-    board("issue", "comment", String(top.id), "--text",
-      "Nachtlauf: Halt mit unsauberem Working Tree — die Session hat kit:klaeren gesetzt, aber Aenderungen liegen gelassen; kein Salvage, Lauf hart gestoppt. Bitte morgens manuell sichten.");
-    merkeHartenStopp("harterStopp", `${satz} ${resteText(gitReste())}`);
-    return "hardStop";
-  }
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
@@ -10310,12 +10365,33 @@ function ausgangsFelder(ausgang) {
  * Gewertet wird nur, was WAEHREND der Session hinzukam — ueber `neueKommentare`,
  * dieselbe Funktion, die auch der Review-Modus benutzt. Ein Zeitstempel wird nicht
  * herangezogen: Ein Zeitfenster belegt keine Urheberschaft (Issue #568).
+ *
+ * Rueckgabe ist die ART des Halts (Issue #1050, Plan #987, E12): `"klaeren"` fuer eine
+ * Stopp-Frage (`kit:klaeren` samt `HALT_FOLGESATZ`), `"geschuetzt"` fuer eine Session, die
+ * erst beim Schreiben am Schutz scheiterte (`GESCHUETZT_ANKER` in einem neuen Kommentar),
+ * sonst `null`. Das Label ist fuer den geschuetzten Halt keine Spur: Es kann nach E11
+ * fehlen, wenn es am Board nicht angelegt ist. Wer beide Arten zu einem `true` faltete,
+ * meldete morgens eine Entscheidung, wo eine Handlung wartet.
  */
 export function istHalt(vorher, nachher) {
-  if (!hatKlaerenLabel(nachher)) return false;
-  if (nachher?.status !== "backlog") return false;
-  return neueKommentare(vorher, nachher).some((text) => String(text).includes(HALT_FOLGESATZ));
+  if (nachher?.status !== "backlog") return null;
+  const neue = neueKommentare(vorher, nachher).map(String);
+  if (hatKlaerenLabel(nachher) && neue.some((text) => text.includes(HALT_FOLGESATZ))) return "klaeren";
+  if (neue.some((text) => text.includes(GESCHUETZT_ANKER))) return "geschuetzt";
+  return null;
 }
+
+/** Die Logzeile nach `istHalt`, je Art des Halts (Issue #1050). */
+const HALT_LOG_TEXT = {
+  klaeren: "eine offene Entscheidung wartet auf einen Menschen",
+  geschuetzt: "eine Handlung an einer geschuetzten Datei wartet auf einen Menschen",
+};
+
+/** Der Laufstand eines angehaltenen Pakets, je Art des Halts (Issue #1050). */
+const HALT_STAND_TEXT = {
+  klaeren: "eine offene Entscheidung wartet am Board auf einen Menschen",
+  geschuetzt: "eine Handlung an einer geschuetzten Datei wartet am Board auf einen Menschen",
+};
 
 /**
  * Wertet eine gelaufene Runde aus. Die Angaben kommen als EIN Objekt statt als acht
@@ -10364,14 +10440,16 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
     return "hardStop";
   }
 
-  if (!gitClean()) return behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl);
+  if (!gitClean()) return haltMitUnsauberemBaum(top, minutes, vorher) ?? behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl);
 
   // Der Halt-Zweig (Issue #572) — NACH dem Infrastruktur- und dem Dirty-Guard und VOR
   // der Rueckstellung. Ein abgestuerztes CLI und ein unsauberer Baum sind auch dann
   // kein Halt, wenn das Label steht. Hier ist der Halt kein Fehler: eigene Log-Zeile,
   // kein Board-Kommentar und kein Move — beides hat die Session bereits getan.
-  if (istHalt(vorher, board("issue", "get", String(top.id)))) {
-    log(`  angehalten: eine offene Entscheidung wartet auf einen Menschen — Issue #${top.id} nach ${minutes} min von der Session ins Backlog gezeichnet, kein Kommentar und kein Move durch den Runner, weiter.`);
+  const haltArt = istHalt(vorher, board("issue", "get", String(top.id)));
+  if (haltArt) {
+    HALT_ART = haltArt;
+    log(`  angehalten: ${HALT_LOG_TEXT[haltArt]} — Issue #${top.id} nach ${minutes} min von der Session ins Backlog gezeichnet, kein Kommentar und kein Move durch den Runner, weiter.`);
     return "angehalten";
   }
 
@@ -10581,6 +10659,8 @@ async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
   WARTEND_BEENDET = false;
   // Und der Merker des Zeitabbruchs, aus demselben Grund (Issue #977).
   ZEITLIMIT_BEENDET = false;
+  // Und die Art des Halts (Issue #1050).
+  HALT_ART = null;
   // Die Karte VOR der Session, vollstaendig (Issue #572): Nur gegen diesen Stand
   // laesst sich sagen, welche Kommentare die Session selbst beigetragen hat — und nur
   // ein eigener Kommentar belegt den Halt. `top` stammt aus der Ready-Liste und
@@ -10670,6 +10750,8 @@ async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
     // Reihenfolge — sie sind der Vertrag mit den Auswertungen.
     ...wartendFelder(),
     ...zeitlimitFelder(),
+    // Die Art des Halts (Issue #1050), nur beim Halt — sonst WEG, wie die beiden davor.
+    ...(ausgang === "angehalten" && HALT_ART ? { haltArt: HALT_ART } : {}),
   });
   paketStandAbschliessen(top, ausgang, rundenStandGrund(ausgang, { einheit, pruefung, res, commit: commitNachher }));
   return ausgang;
@@ -10681,7 +10763,7 @@ const RUNDEN_STAND = { erfolg: "fertig", angehalten: "wartet" };
 /** Der Grund im Laufstand einer Runde, je Ausgang aus dem, was die Auswertung schon weiss. */
 function rundenStandGrund(ausgang, { einheit, pruefung, res, commit }) {
   if (ausgang === "erfolg") return `In review mit Nachweis (${pruefung?.zustand ?? "ungeprueft"}), Commit ${commit}`;
-  if (ausgang === "angehalten") return "eine offene Entscheidung wartet am Board auf einen Menschen";
+  if (ausgang === "angehalten") return HALT_STAND_TEXT[HALT_ART ?? "klaeren"];
   if (ausgang === "deferred") return `${rundenGrund(res, pruefung)}; die Karte ging ins Backlog, der Lauf weiter`;
   if (ausgang === "fehlschlag") return nachweisMangel(pruefung) ?? ZUSTAND_UNLESBAR_GRUND;
   return einheit.grund ?? STOPP_GRUND;
