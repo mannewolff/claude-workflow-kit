@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.5.3] - 2026-10-02
+- Das Kit-Stand-Fixture hält unter Windows LF wie das Repo (#1125)
+- Die Sperrliste erkennt absolute Windows-Pfade unter der Projektwurzel (#1124)
+- Das Prüfwerkzeug startet und beendet Kommandos unter Windows ohne Prozessgruppe (#1123)
+- Zwei Nacht-Tests laufen ohne KIT_AGENT_MODEL in der Umgebung (#1118)
+
 ## [3.5.2] - 2026-10-02
 - Der frische Checkout zählt todo-Tests nicht als rot und kennt die Einstellungsdateien (#1120)
 - Vorlage und Dokumentation beschreiben kit:geschuetzt, das neue Gate und I7 bis I9 (#1055)
