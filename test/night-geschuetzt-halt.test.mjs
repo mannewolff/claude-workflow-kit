@@ -232,3 +232,108 @@ for (const [art, fake, muster] of [
     }
   });
 }
+
+// --- Auffang im Runner (Issue #1051, Plan #987, E20) ---
+//
+// Befolgt die Session den Rueckfall-Halt nicht und hinterlaesst einen unsauberen Baum ohne
+// Label und ohne Anker, faengt der Runner den Fall selbst auf — sofern ihr Stream eine
+// abgewiesene Schreibanfrage auf einen geschuetzten Pfad traegt.
+//
+// Format des Stream-Fixtures nach dem Beleg an Issue #1042 (echter Stream der Nacht vom
+// 2026-09-21, Fall #799, Claude Code 2.1.236): Die `result`-Zeile traegt
+// `permission_denials` mit je `tool_name` (`Edit` oder `Write`), `tool_use_id` und
+// `tool_input.file_path` als absolutem Pfad. Abweisungen des Hooks `bash-pruefen` stehen in
+// derselben Liste mit `tool_name: "Bash"` und loesen den Auffang nicht aus.
+
+const abweisung = (werkzeug, pfadAusdruck) =>
+  `{"type":"result","subtype":"success","is_error":false,"result":"ABGEWIESEN","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_0","tool_input":{"command":"ls | head"}},{"tool_name":"${werkzeug}","tool_use_id":"toolu_1","tool_input":{"file_path":"'"${pfadAusdruck}"'","old_string":"a","new_string":"b"}}]}`;
+
+/** Die Session des ersten Pakets laesst einen Rest liegen und meldet die Abweisung; jede andere schreibt nur ins Sitzungsprotokoll. */
+const auffangFake = (erstes, stream) =>
+  `if [ "$NIGHT_ISSUE_ID" = "${erstes}" ]; then echo rest > zwischenstand.txt; printf '%s\\n' '${stream}'; else echo "$NIGHT_ISSUE_ID" >> sessions.log; fi`;
+
+function auffangLauf(praefix, stream) {
+  const dir = setupProjekt(praefix);
+  const erstes = readyIssue(dir, "[Task] Scheitert am Schutz und vermerkt nichts");
+  const zweites = readyIssue(dir, "Danach");
+  const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: auffangFake(erstes, stream(dir)) });
+  return { dir, erstes, zweites, res };
+}
+
+const stashListe = (dir) => run(dir, "git", ["stash", "list"]).stdout;
+const sitzungen = (dir) => {
+  try { return readFileSync(join(dir, "sessions.log"), "utf-8").split("\n").filter(Boolean); } catch { return []; }
+};
+
+for (const werkzeug of ["Edit", "Write"]) {
+  test(`[night-1051] mit Abweisung (${werkzeug}) auf einen geschuetzten Pfad: Stash, sauberer Baum, Anker-Kommentar, das naechste Paket startet`, NUR_POSIX, () => {
+    const { dir, erstes, zweites, res } = auffangLauf("night-1051-auffang-", (d) => abweisung(werkzeug, `${d}/.claude/settings.json`));
+    try {
+      assert.equal(res.status, 0, `night.mjs haette regulaer enden muessen: ${res.stderr}\n${res.stdout}`);
+      assert.match(res.stdout, /AUFFANG GESCHUETZT/, res.stdout);
+      assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH/, "vor dem Auffang darf kein Salvage laufen");
+
+      assert.equal(run(dir, "git", ["status", "--porcelain", "--", "zwischenstand.txt"]).stdout, "", "der Baum ist nicht sauber");
+      assert.match(stashListe(dir), new RegExp(`nachtrest #${erstes} `), "der Zwischenstand liegt nicht im Stash");
+
+      const karte = board(dir, "issue", "get", erstes);
+      assert.equal(karte.status, "backlog");
+      const text = karte.body || "";
+      assert.ok(text.includes(GESCHUETZT_ANKER), "der Anker-Kommentar fehlt");
+      assert.match(text, /\.claude\/settings\.json/, "der abgewiesene Pfad fehlt im Kommentar");
+      assert.match(text, new RegExp(`Zwischenstand: Stash „nachtrest #${erstes} `), "der Ort des Zwischenstands fehlt im Kommentar");
+
+      assert.deepEqual(sitzungen(dir), [zweites], "das naechste Paket hat keine Session bekommen");
+      const e = einheit(dir, erstes);
+      assert.equal(e.ausgang, "angehalten");
+      assert.equal(e.haltArt, "geschuetzt");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const [fall, stream] of [
+  ["ohne Abweisung", () => `{"type":"result","subtype":"success","is_error":false,"result":"fertig","permission_denials":[]}`],
+  ["mit Abweisung auf einen fremden Pfad", (d) => abweisung("Edit", `${d}/src/frei.mjs`)],
+]) {
+  test(`[night-1051] ${fall}: kein Auffang, der Bestand greift (Salvage)`, NUR_POSIX, () => {
+    const { dir, erstes, res } = auffangLauf("night-1051-bestand-", stream);
+    try {
+      assert.doesNotMatch(res.stdout, /AUFFANG GESCHUETZT/, res.stdout);
+      assert.match(res.stdout, /SALVAGE-VERSUCH/, "der Bestand beginnt mit dem Salvage");
+      assert.ok(!(board(dir, "issue", "get", erstes).body || "").includes(GESCHUETZT_ANKER), "ohne Abweisung entsteht kein Anker-Kommentar");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("[night-1051] abgewieseneSchreibpfade liest nur Schreibwerkzeuge, relativ zum Baum, ohne Pfade ausserhalb", async () => {
+  const { abgewieseneSchreibpfade } = await import("../kit/night.mjs");
+  const baum = mkdtempSync(join(tmpdir(), "night-1051-pfade-"));
+  try {
+    const stream = [
+      `{"type":"assistant","message":{"content":[]}}`,
+      "kein JSON, permission_denials",
+      JSON.stringify({ type: "result", permission_denials: [
+        { tool_name: "Bash", tool_use_id: "t0", tool_input: { command: "ls" } },
+        { tool_name: "Edit", tool_use_id: "t1", tool_input: { file_path: join(baum, ".claude", "settings.json") } },
+        { tool_name: "Write", tool_use_id: "t2", tool_input: { file_path: join(baum, ".claude", "hooks", "probe.sh") } },
+        { tool_name: "Write", tool_use_id: "t3", tool_input: { file_path: "/ganz/woanders/datei.txt" } },
+        { tool_name: "Edit", tool_use_id: "t4", tool_input: { file_path: join(baum, ".claude", "settings.json") } },
+      ] }),
+    ].join("\n");
+    assert.deepEqual(abgewieseneSchreibpfade(stream, baum), [".claude/settings.json", ".claude/hooks/probe.sh"]);
+    assert.deepEqual(abgewieseneSchreibpfade(`{"type":"result","permission_denials":[]}`, baum), []);
+    assert.deepEqual(abgewieseneSchreibpfade(undefined, baum), []);
+  } finally {
+    rmSync(baum, { recursive: true, force: true });
+  }
+});
+
+test("[night-1051] GESCHUETZT_ABGEWIESEN steht in Runner und Board gleichlautend", async () => {
+  const runner = await import("../kit/night.mjs");
+  const brett = await import("../kit/board.mjs");
+  assert.equal(runner.GESCHUETZT_ABGEWIESEN, brett.GESCHUETZT_ABGEWIESEN);
+});

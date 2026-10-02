@@ -3072,6 +3072,10 @@ export function hatKlaerenLabel(issue) {
  */
 export const GESCHUETZT_LABEL = "kit:geschuetzt";
 export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
+// Die Zeile, mit der `issue check-geschuetzt --pfad` einen beim Schreiben abgewiesenen Pfad
+// fuehrt (Issue #1053). Der Auffang aus #1051 erkennt daran, dass der Pfad aus dem Stream der
+// Session stammt und nicht aus der Aufgabe. SYNC: gleichlautend in kit/board.mjs.
+export const GESCHUETZT_ABGEWIESEN = "beim Schreiben abgewiesen";
 
 export function hatGeschuetztLabel(issue) {
   return (issue?.labels || []).includes(GESCHUETZT_LABEL);
@@ -10418,6 +10422,10 @@ function haltMitUnsauberemBaum(top, minutes, vorher) {
  * Issue #1050 in `haltMitUnsauberemBaum` — er braucht die Karte vor der Session.
  */
 async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pruefung, sessionWahl) {
+  // Vor Salvage und Stash (Issue #1051, E20): Scheiterte die Session am Schutz einer Datei und
+  // vermerkte keinen Halt, haelt der Runner das Paket selbst an.
+  const auffang = geschuetztAuffangen(top, res, minutes);
+  if (auffang) return auffang;
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
@@ -10445,6 +10453,89 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // `gitReste()`, denn der Baum ist unsauber.
   const vermerk = rundenVermerk(grund, res, gitReste());
   return resteSichern(top, `${satz} ${resteText(gitReste())}`, `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen. ${grund}.`, vermerk);
+}
+
+// Die Werkzeuge, mit denen eine Session Dateien schreibt. Abweisungen anderer Werkzeuge —
+// vor allem `Bash` durch den Hook `bash-pruefen` — stehen in derselben Liste und zaehlen
+// hier nicht.
+const SCHREIBWERKZEUGE = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+/**
+ * Ein Pfad mit aufgeloesten Verweisen, auch wenn die Datei oder ihre Ordner (noch) fehlen:
+ * aufgeloest wird der naechste vorhandene Vorfahre, der Rest haengt woertlich daran. Sonst
+ * stuende unter macOS `/var/…` neben `/private/var/…`, und kein Pfad laege im Baum.
+ */
+function echterPfad(pfad) {
+  let kopf = resolve(pfad);
+  const rest = [];
+  while (!existsSync(kopf) && dirname(kopf) !== kopf) {
+    rest.unshift(basename(kopf));
+    kopf = dirname(kopf);
+  }
+  try {
+    return join(realpathSync(kopf), ...rest);
+  } catch {
+    return resolve(pfad);
+  }
+}
+
+/** Die `permission_denials` einer Zeile des Streams, wenn sie eine `result`-Zeile ist, sonst `[]`. */
+function abweisungenDerZeile(zeile) {
+  if (!zeile.includes("permission_denials")) return [];
+  try {
+    const ereignis = JSON.parse(zeile);
+    return ereignis?.type === "result" && Array.isArray(ereignis.permission_denials) ? ereignis.permission_denials : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Die Pfade, deren Schreibanfrage die Session abgewiesen bekam (Issue #1051, Beleg an Issue
+ * #1042): aus `permission_denials` der `result`-Zeilen des `stream-json`, je Eintrag mit
+ * `tool_name` eines Schreibwerkzeugs und `tool_input.file_path`. Relativ zum Arbeitsbaum der
+ * Session, damit sie gegen die Sperrliste der Projektwurzel gelesen werden koennen; ein Pfad
+ * ausserhalb des Baums faellt weg. Reine Funktion ueber den Text.
+ */
+export function abgewieseneSchreibpfade(stream, baum = process.cwd()) {
+  const wurzel = echterPfad(baum);
+  const pfade = [];
+  for (const d of String(stream ?? "").split("\n").flatMap(abweisungenDerZeile)) {
+    const datei = d?.tool_input?.file_path ?? d?.tool_input?.notebook_path;
+    if (!SCHREIBWERKZEUGE.has(d?.tool_name) || typeof datei !== "string") continue;
+    const rel = relative(wurzel, echterPfad(isAbsolute(datei) ? datei : join(wurzel, datei)));
+    if (rel && !rel.startsWith("..") && !isAbsolute(rel)) pfade.push(rel.split("\\").join("/"));
+  }
+  return [...new Set(pfade)];
+}
+
+/**
+ * Der Auffang aus E20 (Issue #1051): Traegt der Stream der Session eine abgewiesene
+ * Schreibanfrage auf einen geschuetzten Pfad, sichert der Runner den Zwischenstand im Stash,
+ * zieht die Karte nach Backlog, vermerkt den Halt wie der Rueckfall der Skills (Label, dann
+ * Anker-Kommentar mit dem Ort des Zwischenstands) und macht mit dem naechsten Paket weiter.
+ * `null`, wenn kein solcher Pfad abgewiesen wurde oder sich der Baum nicht sichern liess —
+ * dann greift der Bestand (Salvage, Stash oder harter Stopp).
+ */
+function geschuetztAuffangen(top, res, minutes) {
+  const pfade = abgewieseneSchreibpfade(res?.stdout);
+  if (pfade.length === 0) return null;
+  const id = String(top.id);
+  const pruef = boardRoh("issue", "check-geschuetzt", id, ...pfade.flatMap((p) => ["--pfad", p]));
+  const abgewiesen = (pruef.json?.treffer ?? []).filter((t) => t.zeile === GESCHUETZT_ABGEWIESEN);
+  if (abgewiesen.length === 0 || !pruef.json?.kommentar) return null;
+
+  const { ok, name, meldung } = resteInStash(top);
+  if (!ok) {
+    log(`  Auffang an geschuetzter Datei fuer Issue #${id} nicht moeglich: Reste nicht im Stash gesichert (${meldung}).`);
+    return null;
+  }
+  const dateien = [...new Set(abgewiesen.map((t) => t.pfad))].join(", ");
+  log(`  AUFFANG GESCHUETZT nach ${minutes} min: Issue #${id} — die Session scheiterte beim Schreiben an ${dateien} und vermerkte keinen Halt; Zwischenstand im Stash „${name}“, Issue ins Backlog, weiter.`);
+  board("issue", "move", id, "backlog");
+  geschuetztAmBoardVermerken(top, { kommentar: `${pruef.json.kommentar}\n\nZwischenstand: Stash „${name}“ (\`git stash list\`).` });
+  HALT_ART = "geschuetzt";
+  return "angehalten";
 }
 
 /**
@@ -10505,14 +10596,11 @@ function restPfade(cwd = process.cwd()) {
 const nachtrestName = (id, lauf) => `nachtrest #${id} ${lauf ?? "ohne-lauf"}`;
 
 /**
- * Sichert die Reste eines gescheiterten Pakets im Stash (Issue #1089, Plan #1079 E14) und
- * legt die Karte nach Backlog: Die Nacht laeuft weiter, und das naechste Paket baut nicht auf
- * halben Aenderungen auf. Gesichert wird genau, was `gitReste()` als Rest zaehlt — samt
- * unversionierter Dateien, ohne Journal, Protokoll und Board-Dateien. Laesst sich der Baum
- * so nicht saeubern, bleibt es beim harten Stopp: Weiterbauen auf einem unsauberen Baum ist
- * genau das, was der Stash verhindern soll.
+ * Legt die Reste eines Pakets in den Stash `nachtrest #<id> <lauf>`. Gesichert wird genau,
+ * was `gitReste()` als Rest zaehlt — samt unversionierter Dateien, ohne Journal, Protokoll und
+ * Board-Dateien. `ok` erst, wenn der Baum danach sauber ist.
  */
-function resteSichern(top, grund, kommentar, vermerk = null) {
+function resteInStash(top) {
   const name = nachtrestName(top.id, LAUF_STEMPEL);
   // Die Pfade einzeln und woertlich, nicht die Ausschluesse als Pathspec: `git stash push`
   // bricht ab, sobald ein Ausschluss auf eine ignorierte Datei zeigt.
@@ -10521,8 +10609,19 @@ function resteSichern(top, grund, kommentar, vermerk = null) {
   const res = pfade.length > 0
     ? spawnSync("git", ["stash", "push", "--include-untracked", "-m", name, "--", ...pfade.map((p) => `:(literal)${p}`)], { encoding: "utf-8", cwd: process.cwd() })
     : { status: 1, stderr: "keine Pfade der Reste lesbar" };
-  if (res.status !== 0 || !gitClean()) {
-    const meldung = ersteZeile(res.stderr || res.stdout || "Exit " + res.status);
+  if (res.status === 0 && gitClean()) return { ok: true, name };
+  return { ok: false, name, meldung: ersteZeile(res.stderr || res.stdout || "Exit " + res.status) };
+}
+
+/**
+ * Sichert die Reste eines gescheiterten Pakets im Stash (Issue #1089, Plan #1079 E14) und
+ * legt die Karte nach Backlog: Die Nacht laeuft weiter, und das naechste Paket baut nicht auf
+ * halben Aenderungen auf. Laesst sich der Baum so nicht saeubern, bleibt es beim harten
+ * Stopp: Weiterbauen auf einem unsauberen Baum ist genau das, was der Stash verhindern soll.
+ */
+function resteSichern(top, grund, kommentar, vermerk = null) {
+  const { ok, name, meldung } = resteInStash(top);
+  if (!ok) {
     const satz = `HARTER STOPP: Reste zu Issue #${top.id} liessen sich nicht im Stash sichern (${meldung}).`;
     log(`  ${satz}`);
     board("issue", "comment", String(top.id), "--text", `${kommentar} Die Reste liessen sich nicht im Stash sichern — Lauf hart gestoppt. Bitte morgens manuell sichten.`);
