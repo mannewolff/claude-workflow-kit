@@ -659,7 +659,7 @@
             },
             "uebergaenge": {
               "type": "object",
-              "description": "Welche Übergänge der Kette automatisch folgen dürfen. Ein gesperrter Übergang endet mit lauf:wartet und 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night'; ein neues kit:night setzt bei der wartenden Stufe an. Fehlt der Block oder ein Feld darin, gilt das Verhalten von heute.",
+              "description": "Welche Übergänge der Kette automatisch folgen dürfen. Ein gesperrter Übergang endet mit lauf:wartet und 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night'; ein neues kit:night setzt bei der wartenden Stufe an. Fehlt der Block oder ein Feld darin, gilt das Verhalten von vor der Einstellung: Die ersten drei Übergänge folgen, und eine Karte mit dem Variante-B-Label wird nach der Abdeckung umgesetzt.",
               "properties": {
                 "planReview": {
                   "type": "boolean",
@@ -678,8 +678,7 @@
                 },
                 "abdeckungUmsetzung": {
                   "type": "boolean",
-                  "default": false,
-                  "description": "Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Fehlt das Label, wartet die Karte mit 'wartet: Karte ohne Freigabe zur Umsetzung'."
+                  "description": "Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Ohne Eintrag gilt das Verhalten von vor der Einstellung: Eine Karte mit dem Variante-B-Label wird umgesetzt, eine ohne endet nach der Abdeckung. Mit true wartet eine Karte ohne das Label mit 'wartet: Karte ohne Freigabe zur Umsetzung', mit false wartet eine Karte mit dem Label mit 'wartet: Übergang abdeckungUmsetzung im Projekt nicht freigegeben — weiter mit kit:night'."
                 }
               },
               "additionalProperties": false

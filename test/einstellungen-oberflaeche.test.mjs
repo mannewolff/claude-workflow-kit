@@ -669,9 +669,21 @@ test("M6 bietet die vier Uebergaenge als eigene Zeilen mit den Vorgaben aus dem 
     paketeAbdeckung: vorgabeAus("night.kette.uebergaenge.paketeAbdeckung"),
     abdeckungUmsetzung: vorgabeAus("night.kette.uebergaenge.abdeckungUmsetzung"),
   };
-  assert.deepEqual(Object.values(erwartet), [true, true, true, false]);
+  assert.deepEqual(Object.values(erwartet), [true, true, true, undefined]);
   assert.ok(stueck.includes(`const UEBERGAENGE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben der Uebergaenge weichen vom Schema ab");
   assert.match(stueck, /ketteAendern\(teil, \{ uebergaenge: Object\.assign\(\{\}, uebergaengeVon\(teil\)/, "die Uebergaenge werden nicht formtreu gesetzt");
   assert.match(stueck, /ketteFeldZeile\("night\.kette\.uebergaenge\." \+ feld/, "die Uebergaenge haben keine eigene Zeile");
   for (const feld of Object.keys(erwartet)) assert.ok(stueck.includes(`["${feld}", `), `${feld} hat keine Zeile`);
+});
+
+// Issue #1105: abdeckungUmsetzung hat keine Vorgabe — ohne Eintrag gilt das Verhalten von vor
+// #1087. Die Zeile zeigt das als eigenen Zustand und schreibt nichts, solange niemand waehlt.
+test("M6 zeigt abdeckungUmsetzung ohne Eintrag als Vorgabe-Zustand einer Auswahl, nicht als Kaestchen", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(stueck.includes('"Vorgabe: wie vor der Einstellung (Variante B setzt um)"'), "der Zustand ohne Eintrag ist nicht benannt");
+  assert.match(stueck, /if \(UEBERGAENGE_VORGABEN_BROWSER\[feld\] === undefined\) return uebergangAuswahlZeile\(/, "ein Schalter ohne Vorgabe bekommt keine Auswahl");
+  const rumpf = stueck.slice(stueck.indexOf("function uebergangAuswahlZeile("));
+  assert.match(rumpf, /wahl\.value = typeof wert === "boolean" \? String\(wert\) : "";/, "ohne Eintrag steht die Auswahl nicht auf der Vorgabe");
+  assert.match(rumpf, /if \(wahl\.value === ""\) delete neu\[feld\];/, "die Vorgabe zu waehlen entfernt den Eintrag nicht");
+  assert.match(rumpf.slice(0, rumpf.indexOf('addEventListener("change"')), /^(?![\s\S]*ketteAendern)/, "die Auswahl schreibt schon beim Aufbau");
 });

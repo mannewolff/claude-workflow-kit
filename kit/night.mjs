@@ -5953,17 +5953,20 @@ export function ladeKetteBudget(config) {
 }
 
 // Welche Uebergaenge der Kette automatisch folgen (Plan #1079, E12; Issue #1087). Die
-// Vorgabe ist das Verhalten von heute: Die ersten drei folgen, der in die Umsetzung nicht —
-// und auch freigegeben wirkt er nur zusammen mit dem Variante-B-Label an der Karte.
+// ersten drei folgen nach Vorgabe. Der in die Umsetzung hat keine: `null` heisst „nicht
+// gesetzt“ und gilt wie vor #1087 — Variante A endet nach der Abdeckung, Variante B setzt
+// um (Issue #1105). Erst ein gesetzter Wert wirkt, und auch freigegeben nur zusammen mit
+// dem Variante-B-Label an der Karte.
 export const KETTE_UEBERGAENGE_DEFAULTS = Object.freeze({
   planReview: true,
   reviewPakete: true,
   paketeAbdeckung: true,
-  abdeckungUmsetzung: false,
+  abdeckungUmsetzung: null,
 });
 
 /**
- * Liest `night.kette.uebergaenge` — vier Wahrheitswerte, fehlende aus der Vorgabe.
+ * Liest `night.kette.uebergaenge` — vier Wahrheitswerte, fehlende aus der Vorgabe
+ * (`abdeckungUmsetzung` fehlend: `null`).
  *
  * Wirft wie `ladeKetteBudget` mit dem Feldnamen; ein unbekannter Schalter ist ebenso ein
  * Fehler, weil ein vertippter Name sonst still die Vorgabe liesse.
@@ -8707,9 +8710,10 @@ const OHNE_FREIGABE_ZUR_UMSETZUNG = "wartet: Karte ohne Freigabe zur Umsetzung";
  * Folgt die naechste Stufe automatisch? Gesperrt wird nur das Folgen auf eine Stufe, die in
  * DIESEM Lauf lief. War die vorige vorgefunden, ist die naechste die erste offene, und dort
  * hat der Mensch mit `kit:night` selbst angestossen — sonst setzte die Geste, die der
- * Wartetext nennt, nie bei der wartenden Stufe an.
+ * Wartetext nennt, nie bei der wartenden Stufe an. Gesperrt ist nur ein ausdrueckliches
+ * `false`; ein nicht gesetzter `abdeckungUmsetzung` (`null`) sperrt nicht (Issue #1105).
  */
-const uebergangGesperrt = (kette, uebergang, vorige) => !vorige.vorgefunden && !kette.uebergaenge[uebergang];
+const uebergangGesperrt = (kette, uebergang, vorige) => !vorige.vorgefunden && kette.uebergaenge[uebergang] === false;
 
 /** Ende der Kette vor `stufe`: Laufstand `wartet` mit dem Wortlaut, Ausgang `unvollstaendig`. */
 function ketteWartet(kette, stufe, text) {
@@ -8720,12 +8724,13 @@ function ketteWartet(kette, stufe, text) {
 
 /**
  * Endet die Kette nach der Abdeckung? Das GO steht an der Karte (`kit:durchziehen`), das
- * Projekt kann es nur zulassen (E12). Ohne Freigabe im Projekt und ohne Label endet sie wie
- * bisher `fertig`; `null`, wenn die Umsetzung folgt.
+ * Projekt kann es nur zulassen (E12). Ohne Label endet sie `fertig`, nur ein gesetztes `true`
+ * laesst sie auf die Freigabe der Karte warten; mit Label sperrt nur ein gesetztes `false`
+ * (Issue #1105). `null`, wenn die Umsetzung folgt.
  */
 function vorDerUmsetzung(kette, abdeckung) {
   if (kette.variante !== "B") {
-    return kette.uebergaenge.abdeckungUmsetzung ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
+    return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
   }
   return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
     ? ketteWartet(kette, "umsetzung", uebergangNichtFreigegeben("abdeckungUmsetzung"))

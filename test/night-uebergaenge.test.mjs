@@ -1,7 +1,9 @@
 // Das Projekt gibt die Uebergaenge der Kette einzeln frei (Plan #1079, E1, E12; Issue #1087).
 //
 // `night.kette.uebergaenge` traegt vier Schalter: `planReview`, `reviewPakete` und
-// `paketeAbdeckung` (Vorgabe `true`) sowie `abdeckungUmsetzung` (Vorgabe `false`). Ein
+// `paketeAbdeckung` (Vorgabe `true`) sowie `abdeckungUmsetzung` (ohne Vorgabe: Fehlt er,
+// gilt das Verhalten von vor #1087 — Variante A endet `fertig`, Variante B setzt um;
+// Issue #1105). Ein
 // gesperrter Uebergang endet mit `lauf:wartet` und dem Wortlaut aus E1, die Kette mit dem
 // Ausgang `unvollstaendig`. Gesperrt wird nur das AUTOMATISCHE Folgen: Ein neues
 // `kit:night` setzt bei der ersten Stufe ohne Ergebnis an und laeuft dort los (#1086).
@@ -38,8 +40,8 @@ function wartetMit(dir, F, text) {
   assert.ok(kartenText(dir, F).includes(text), `Laufstand ohne '${text}':\n${kartenText(dir, F)}`);
 }
 
-test("[night-uebergaenge] ladeKetteUebergaenge: ohne Feld die Vorgabe von heute", () => {
-  assert.deepEqual(ladeKetteUebergaenge({}), { planReview: true, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: false });
+test("[night-uebergaenge] ladeKetteUebergaenge: ohne Feld die Vorgabe, abdeckungUmsetzung nicht gesetzt", () => {
+  assert.deepEqual(ladeKetteUebergaenge({}), { planReview: true, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: null });
   assert.deepEqual(ladeKetteUebergaenge({ night: { kette: {} } }), KETTE_UEBERGAENGE_DEFAULTS);
   assert.deepEqual(ladeKetteUebergaenge({ night: { kette: { uebergaenge: { planReview: false, abdeckungUmsetzung: true } } } }),
     { planReview: false, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: true });
@@ -72,7 +74,7 @@ test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Ka
   }, { uebergaenge: { planReview: false } });
 });
 
-test("[night-uebergaenge] ohne Feld: die drei ersten Uebergaenge folgen, die Kette endet vor der Umsetzung wie heute", NUR_POSIX, () => {
+test("[night-uebergaenge] ohne Feld, Variante A: die drei ersten Uebergaenge folgen, die Kette endet fertig wie vor #1087", NUR_POSIX, () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
@@ -82,6 +84,26 @@ test("[night-uebergaenge] ohne Feld: die drei ersten Uebergaenge folgen, die Ket
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
     assert.equal(einheitVon(dir, F).ausgang, "fertig");
     assert.ok(!labels(dir, F).some((l) => l.startsWith("lauf:")), `Labels: ${labels(dir, F)}`);
+  }, { uebergaenge: undefined });
+});
+
+// Issue #1105: Vor #1087 setzte eine Kette mit kit:durchziehen nach der Abdeckung um. Ohne
+// Eintrag im Projekt gilt das weiter — erst ein ausdrueckliches `false` haelt sie an.
+test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Umsetzung, kein lauf:wartet", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const stufen = sessions(env.logPfad).map((s) => s.stufe);
+    assert.deepEqual(stufen.slice(0, 4), ["plan", "review", "pakete", "abdeckung"]);
+    assert.ok(stufen.length > 4 && stufen.slice(4).every((s) => s === "umsetzung"), `Stufen: ${stufen}`);
+    const einheit = einheitVon(dir, F);
+    assert.notEqual(einheit.stufen.umsetzung, undefined, "die Stufe umsetzung lief");
+    assert.ok(!labels(dir, F).includes("lauf:wartet"), `Labels: ${labels(dir, F)}`);
+    assert.ok(!kartenText(dir, F).includes("wartet: Übergang abdeckungUmsetzung"), kartenText(dir, F));
   }, { uebergaenge: undefined });
 });
 

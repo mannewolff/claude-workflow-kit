@@ -97,8 +97,8 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
 /**
  * Kennzeichnet eine Karte fuer Variante B: `kit:durchziehen` an der Karte und — solange der
  * Test den Schalter nicht selbst nennt — `night.kette.uebergaenge.abdeckungUmsetzung: true`
- * im Projekt. Die Kit-Vorgabe sperrt diesen Uebergang (Issue #1087, E12), und die Umsetzung
- * folgt nur, wenn Projekt und Karte sie beide erlauben. Die geaenderte Config wird
+ * im Projekt. So laeuft der Fall mit ausdruecklicher Freigabe (Issue #1087, E12); ohne
+ * Eintrag setzt Variante B ebenfalls um (Issue #1105). Die geaenderte Config wird
  * committet: Die Umsetzungsstufe prueft die Hauptkopie auf einen sauberen Arbeitsbaum.
  */
 export function durchziehen(dir, karte) {
