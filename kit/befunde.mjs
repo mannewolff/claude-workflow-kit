@@ -314,7 +314,9 @@ vorschlag
          ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
          Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
          Der Vermerk steht in ${VORSCHLAEGE_DATEI}; ein gescheiterter
-         Board-Aufruf laesst ihn unveraendert und endet ungleich 0. Im Worktree
+         Board-Aufruf laesst ihn unveraendert und endet ungleich 0. Eine nicht mehr
+         auffindbare Vorschlagskarte gilt als erledigt: Ihr Stand wird der neue
+         Nullpunkt, und eine neue Idee traegt nur die Funde danach. Im Worktree
          eines Laufs legt --art nichts an (der Vorschlag folgt beim Abbau in der
          Hauptkopie), und --abgelehnt endet ungleich 0.
 auswerten
@@ -951,20 +953,28 @@ function ergaenzungText(art, neue, { zaehlerstand, vorher }) {
   ].join("\n");
 }
 
+/** Die Antwort von `boardLauf`, wenn der Adapter die genannte Karte nicht aufloest. */
+const KARTE_FEHLT = Symbol("karte-fehlt");
+
 /**
- * Ruft den Board-Adapter und liefert seine JSON-Antwort; jeder Fehlschlag wirft.
+ * Ruft den Board-Adapter und liefert seine JSON-Antwort; jeder Fehlschlag wirft — bis
+ * auf die nicht gefundene Karte, nach der der Aufrufer mit `karte` ausdruecklich fragt.
  *
  * Werfend und nicht meldend, weil der Aufrufer danach die Zustandsdatei schreibt: Ein
  * Fehlschlag, der als Wert zurueckkaeme, muesste an jeder Aufrufstelle einzeln
  * abgefangen werden — und die eine vergessene Stelle hinterliesse einen Vermerk ohne
  * Karte (die Zusage aus der Aufgabe: kein halb vermerkter Vorschlag).
  */
-function boardLauf(args) {
+function boardLauf(args, { karte = null } = {}) {
   if (!existsSync(BOARD_PATH)) fail(`board.mjs liegt nicht neben befunde.mjs (${BOARD_PATH}) — 'vorschlag' schreibt ueber den Board-Adapter.`);
   const res = spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: process.cwd(), encoding: "utf-8" });
   if (res.error) fail(`board.mjs liess sich nicht starten: ${res.error.message}`);
   if (res.status !== 0) {
     const grund = (res.stderr || res.stdout || "").trim().split("\n")[0] || `Exit ${res.status}`;
+    // Die eine Ausnahme vom Werfen (Issue #1100): Wer eine `karte` nennt, bekommt deren
+    // Fehlen als Wert zurueck. Erkannt wird allein die Meldung, die der lokale und der
+    // Toolbox-Tracker dafuer liefern — ein Netz- oder Zugangsfehler wirft weiter.
+    if (karte !== null && new RegExp(`\\bIssue #?${karte} nicht gefunden\\b`).test(grund)) return KARTE_FEHLT;
     fail(`board.mjs ${args.slice(0, 2).join(" ")} schlug fehl: ${grund}`);
   }
   try {
@@ -1037,7 +1047,7 @@ function eintragVon(daten, art) {
   return {
     karte: typeof roh.karte === "string" ? roh.karte : null,
     ideaId: typeof roh.ideaId === "string" ? roh.ideaId : null,
-    stand: roh.stand === "abgelehnt" ? "abgelehnt" : "offen",
+    stand: roh.stand === "abgelehnt" || roh.stand === "erledigt" ? roh.stand : "offen",
     zaehlerstand: Number.isInteger(roh.zaehlerstand) ? roh.zaehlerstand : 0,
     nullpunkt: Number.isInteger(roh.nullpunkt) && roh.nullpunkt >= 0 ? roh.nullpunkt : 0,
   };
@@ -1121,23 +1131,46 @@ export function vorschlag({ art, abgelehnt }) {
     }
     const neue = vorkommen.slice(alt.zaehlerstand);
     const text = ergaenzungText(zielArt, neue, { zaehlerstand, vorher: alt.zaehlerstand });
-    mitTextdatei(`${zielArt}-ergaenzung.md`, text, (pfad) =>
-      boardLauf(["issue", "comment", alt.karte, "--text-file", pfad]));
-    vorschlaegeSchreiben({ ...daten, [zielArt]: { ...alt, zaehlerstand } });
-    return { ...basis, ergaenzt: true, zaehlerstand };
+    const antwort = mitTextdatei(`${zielArt}-ergaenzung.md`, text, (pfad) =>
+      boardLauf(["issue", "comment", alt.karte, "--text-file", pfad], { karte: alt.karte }));
+    if (antwort !== KARTE_FEHLT) {
+      vorschlaegeSchreiben({ ...daten, [zielArt]: { ...alt, zaehlerstand } });
+      return { ...basis, ergaenzt: true, zaehlerstand };
+    }
+    // Die vermerkte Karte ist am Board nicht mehr adressierbar (Issue #1100) — erledigt
+    // oder entfernt. Der Vorschlag gilt als erledigt, und sein Stand wird der neue
+    // Nullpunkt: Die alte Karte hat die frueheren Funde schon getragen, eine neue Idee
+    // wiederholte sie nur.
+    const neuerNullpunkt = alt.zaehlerstand;
+    if (zaehlerstand - neuerNullpunkt < schwelle) {
+      vorschlaegeSchreiben({ ...daten, [zielArt]: { ...alt, stand: "erledigt", nullpunkt: neuerNullpunkt } });
+      return {
+        ...basis, erreicht: false, nullpunkt: neuerNullpunkt,
+        grund: `Die vermerkte Vorschlagskarte #${alt.karte} wurde am Board nicht mehr gefunden und gilt als erledigt; ${zaehlerstand} Vorkommen ueber dem neuen Nullpunkt ${neuerNullpunkt} erreichen die Schwelle ${schwelle} nicht.`,
+      };
+    }
+    return ideeAnlegen({ daten, art: zielArt, vorkommen, nullpunkt: neuerNullpunkt, schwelle, basis });
   }
 
-  // Neu — entweder gab es nie einen Vorschlag, oder der abgelehnte hat oberhalb seines
-  // Nullpunkts erneut die Schwelle erreicht. Der Nullpunkt der Ablehnung BLEIBT stehen:
-  // Er ist die Grenze, ab der gezaehlt wird, und nicht der Stand dieser Anlage.
-  const titel = vorschlagTitel(zielArt);
-  const body = ideeBody(zielArt, vorkommen.slice(nullpunkt), { zaehlerstand, nullpunkt, schwelle });
-  const antwort = mitTextdatei(`${zielArt}-idee.md`, body, (pfad) =>
+  // Neu — entweder gab es nie einen Vorschlag, oder der abgelehnte oder erledigte hat
+  // oberhalb seines Nullpunkts erneut die Schwelle erreicht.
+  return ideeAnlegen({ daten, art: zielArt, vorkommen, nullpunkt, schwelle, basis });
+}
+
+/**
+ * Legt die Idee am Board an und vermerkt sie danach als offen. Der Nullpunkt BLEIBT
+ * stehen: Er ist die Grenze, ab der gezaehlt wird, und nicht der Stand dieser Anlage.
+ */
+function ideeAnlegen({ daten, art, vorkommen, nullpunkt, schwelle, basis }) {
+  const zaehlerstand = vorkommen.length;
+  const titel = vorschlagTitel(art);
+  const body = ideeBody(art, vorkommen.slice(nullpunkt), { zaehlerstand, nullpunkt, schwelle });
+  const antwort = mitTextdatei(`${art}-idee.md`, body, (pfad) =>
     boardLauf(["issue", "create", "--title", titel, "--body-file", pfad, "--author-model", AUTOR]));
   const { karte, ideaId } = kennungVon(antwort);
   const eintrag = { karte, ideaId, stand: "offen", zaehlerstand, nullpunkt };
-  vorschlaegeSchreiben({ ...daten, [zielArt]: eintrag });
-  return { ...basis, angelegt: true, titel, karte, ideaId };
+  vorschlaegeSchreiben({ ...daten, [art]: eintrag });
+  return { ...basis, nullpunkt, angelegt: true, titel, karte, ideaId };
 }
 
 // --- Auswerten und Befund (Issue #806) ---------------------------------------
