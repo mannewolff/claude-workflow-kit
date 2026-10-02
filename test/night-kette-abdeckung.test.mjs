@@ -7,7 +7,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { abdeckungPrompt, ABDECKUNG_PROMPT, leseErgebnisText } from "../kit/night.mjs";
+import { readFileSync } from "node:fs";
+import { abdeckungPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ, leseErgebnisText } from "../kit/night.mjs";
 import {
   NUR_POSIX, run, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, ABDECKUNG_SCHREIBT,
@@ -77,7 +78,7 @@ test("[night-20] abdeckungPrompt nennt Fachplan, Plan und Pakete, verbietet Schr
   const p = abdeckungPrompt("0001", "0002", ["0003", "0004"]);
   assert.match(p, /den Fachplan #0001, den Plan #0002 und die Pakete #0003, #0004/);
   assert.ok(p.includes(ABDECKUNG_PROMPT));
-  for (const teil of ["Aendere dabei NICHTS", "### Zuordnung", "### Ohne Paket", "### Zuwachs", "Dieser Lauf ist unbeaufsichtigt"]) {
+  for (const teil of ["Aendere dabei NICHTS", "### Zuordnung", "### Ohne Paket", "### Zuwachs"]) {
     assert.ok(p.includes(teil), `${teil} fehlt im Prompt`);
   }
 });
@@ -89,4 +90,27 @@ test("[night-20] leseErgebnisText liest das result-Feld des letzten result-Ereig
   assert.equal(leseErgebnisText('{"type":"result"}'), null);
   assert.equal(leseErgebnisText(""), null);
   assert.equal(leseErgebnisText(undefined), null);
+});
+
+test("[night-20] die Abdeckungs-Session bekommt keinen Auftrag, ans Board zu schreiben — Plan, Review und Pakete tragen KETTE_ZUSATZ unveraendert", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    fachplan(dir);
+    const mit = (stufe, befehl) => (befehl ? `${befehl}; ` : "") + String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.` + stufe + `"`;
+    const env = umgebung(dir, { stufen: {
+      plan: mit("plan", PLAN_ANLEGEN), review: mit("review", REVIEW_MARKER),
+      pakete: mit("pakete", PAKETE_ANLEGEN), abdeckung: mit("abdeckung"),
+    } });
+    const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
+    assert.equal(res.status, 0, res.stderr);
+    for (const stufe of ["plan", "review", "pakete"]) {
+      const prompt = readFileSync(`${env.logPfad}.${stufe}`, "utf-8");
+      assert.ok(prompt.includes(KETTE_ZUSATZ), `KETTE_ZUSATZ fehlt an Stufe ${stufe}:\n${prompt}`);
+    }
+    const prompt = readFileSync(`${env.logPfad}.abdeckung`, "utf-8");
+    assert.ok(!prompt.includes("Schreibe dein Ergebnis ans Board"), prompt);
+    assert.doesNotMatch(prompt, /ans Board/);
+    assert.ok(prompt.includes(ABDECKUNG_ZUSATZ), prompt);
+    assert.match(prompt, /Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft/);
+    assert.match(prompt, /Warte auf ihr Ergebnis oder brich sie ab/);
+  });
 });

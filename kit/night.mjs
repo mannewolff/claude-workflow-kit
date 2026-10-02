@@ -6761,9 +6761,17 @@ export async function fuehreVorflug(args, kandidaten, dryRunHinweis, beiStopp = 
 // `implement-next` und `implement-done`, und zwei Orte fuer dieselbe Regel liefen
 // auseinander.
 //
+// Ausnahme ist die Abdeckungs-Session: Sie aendert nichts und gibt ihr Ergebnis als letzte
+// Nachricht aus. Der Satz ueber das Board widersprach ihrem Auftrag, darum bekommt sie
+// `ABDECKUNG_ZUSATZ` — dieselben Saetze ohne ihn (Issue #1106).
+//
 // Exportiert fuer die Tests.
 export const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
   + "Schreibe dein Ergebnis ans Board, bevor die Session endet. "
+  + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
+  + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.";
+export const ABDECKUNG_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
+  + "Gib dein Ergebnis als letzte Nachricht aus, bevor die Session endet. "
   + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
   + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.";
 // Der Anker des Halt-Kommentars am Fachplan.
@@ -6807,8 +6815,6 @@ export const ABDECKUNG_PROMPT = [
     "",
   "### Zuwachs",
   "Was in den Paketen steht, ohne im Fachplan zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.",
-  "",
-  KETTE_ZUSATZ,
 ].join("\n");
 
 export function abdeckungPrompt(fachplanId, planId, paketIds) {
@@ -7240,7 +7246,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   }
   const t = Date.now();
   const res = await runSession(kette.F, kette.args, {
-    prompt: `${prompt}\n\n${KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+    prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
   });
   const dauerMs = Date.now() - t;
   const minuten = (dauerMs / 60000).toFixed(1);
