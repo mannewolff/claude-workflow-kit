@@ -6360,8 +6360,15 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
       ``,
       `Rufe dafuer AUF KEINEN FALL "board.mjs issue-review check" auf. Dieser Pfad ist von der`,
       `Sandbox ausgenommen und wuerde eine andere Umgebung messen als die, um die es hier geht.`,
-      `Ein Reviewer gilt nur bei Exit-Code 0 als verfuegbar. Startfehler, Abbruch, Zeitueberschreitung`,
-      `und Exit-Code ungleich 0 ergeben "verfuegbar": false; als "grund" die letzte Fehlerzeile.`,
+      // Woran die Session den Exit-Code erkennt, steht ausdruecklich da (Issue #1107): Ohne
+      // diese Angabe riet eine Vorflug-Session aus Warnzeilen auf "nicht verfuegbar".
+      `Einen Exit-Code ungleich 0 meldet das Bash-Tool als Zeile \`Exit code N\` am Kopf des`,
+      `Ergebnisses. Fehlt diese Zeile, war der Exit-Code 0.`,
+      `Warnzeilen, Hinweise und Meldungen in eckigen Klammern (etwa \`[claude-code:unrecognized_model]\`)`,
+      `sind kein Fehler und kippen das Urteil nicht.`,
+      `Verfuegbar ist ein Reviewer bei Exit-Code 0, wenn seine Ausgabe eine Zeile \`OK\` enthaelt.`,
+      `Startfehler, Abbruch, Zeitueberschreitung, Exit-Code ungleich 0 oder eine fehlende \`OK\`-Zeile ergeben "verfuegbar": false;`,
+      `als "grund" die letzte Fehlerzeile, bei fehlender \`OK\`-Zeile "keine Antwort OK".`,
     );
   }
   zeilen.push(
@@ -6374,6 +6381,7 @@ export function vorflugPrompt(kommandoReviewers, trackerId) {
       ? `Beide muessen mit Exit-Code 0 und auswertbarem JSON enden, sonst ist der Tracker nicht erreichbar.`
       : `Der Tracker fuehrt derzeit kein Issue. Setze "geprueft" auf "issue list" und zusaetzlich`
         + ` "uebersprungen" auf "kein Issue vorhanden"; "erreichbar" ist true, sofern "issue list" mit Exit-Code 0 endete.`,
+    `Exit-Code 0 heisst wie in Schritt 1: keine \`Exit code\`-Zeile am Kopf des Ergebnisses. Warnzeilen sind kein Fehler.`,
     `Dieser Befund ist eigenstaendig — vermische ihn nicht mit der Reviewer-Verfuegbarkeit.`,
     ``,
     `SCHRITT 3 — Befund`,
