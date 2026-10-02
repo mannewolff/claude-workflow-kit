@@ -147,7 +147,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
 import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir, homedir, constants as osConstants } from "node:os";
 import { createHash } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1383,6 +1383,9 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // heute. Der Wert ist der aufgeloeste — die Vorgabe des Schemas, wo die Config
     // schweigt —, damit an keiner Stelle ein zweites Mal aufgeloest werden muss.
     zielUmsetzungMin: zielUmsetzungMin(config?.night?.zielUmsetzungMin),
+    // Der feste Kit-Stand dieses Laufs (Issue #1102, A7) — hinten angehaengt, die Fassung
+    // bleibt 1 (E9). `null` heisst: Der Lauf arbeitete mit der Kopie der Hauptkopie.
+    kitStand: kitStandFeld(),
   };
 }
 
@@ -1672,6 +1675,11 @@ function abbruchHandlerSetzen() {
   process.on("SIGTERM", () => laufAbbrechen("SIGTERM", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 143 }));
   process.on("uncaughtException", (err) => abbruchDurchFehler("uncaughtException", err));
   process.on("unhandledRejection", (err) => abbruchDurchFehler("unhandledRejection", err));
+  // Jeder Abbruch endet in process.exit und erreicht kein finally mehr: Die Markierung des
+  // festen Kit-Stands (Issue #1102, A4) faellt deshalb hier, synchron, bei jedem Ende.
+  process.on("exit", () => {
+    for (const baum of [...KIT_STAND_BAEUME]) kitStandFreigeben(baum);
+  });
 }
 
 // --- Umgebung oder Paket: ein Versuch (Issue #1088, Plan #1079 E13, E15) ---
@@ -2126,6 +2134,9 @@ export function gitResteAusnahmen(cfg = config) {
     // erfolgreichen Runde hart, und die Umsetzungsstufe saehe die Hauptkopie schon vor ihrem
     // ersten Paket als unsauber.
     UMSETZUNG_LOCK,
+    // Die Markierung des festen Kit-Stands (Issue #1102, A4) liegt waehrend des Laufs in der
+    // Hauptkopie: Laufzeit-Zustand wie der Lock darueber, kein Code-Zustand.
+    KIT_STAND_MARKIERUNG,
     // Die Wegmarken (Issue #733) entstehen bei JEDEM Zug nach In progress oder In review —
     // der Runner schreibt zwei je Runde, die Session weitere. Buchhaltung, kein
     // Code-Zustand, und aus demselben Grund hier ausgeschlossen wie das Protokoll darueber:
@@ -2709,6 +2720,209 @@ export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
     entfernt.push(pfad);
   }
   return entfernt;
+}
+
+// --- Fester Kit-Stand je unbeaufsichtigtem Lauf (Issue #1102, Plan #1101) ---
+//
+// Ein unbeaufsichtigter Lauf arbeitet und prueft mit dem Kit des letzten Pushs, nicht mit
+// der Kopie der Hauptkopie: Die frischt jedes Paket ueber `sync-blobs` auf, und das naechste
+// Paket derselben Nacht arbeitete schon mit dem neuen, unbewaehrten Werkzeug. Der Stand ist
+// eine eigene Kit-Installation aus `origin/<mainBranch>` in einem Worktree (A1). Der Runner
+// selbst laeuft als Kind aus ihr (A2), und ihre Kopie wird in jeden Baum eingesetzt, in dem
+// Sitzungen laufen (A3). Die Markierung im Baum bindet die Wirkung auf `sync-blobs` und den
+// Commit-Hook an genau diesen Baum (A4) — eine blosse Umgebungsvariable erbte jeder
+// Testprozess einer Nacht samt seiner Fixture-Repos.
+
+/** Die Markierung eines eingesetzten Baums, relativ zu seiner Wurzel (A4) — mit `/` wie UMSETZUNG_LOCK. */
+export const KIT_STAND_MARKIERUNG = ".claude/kit-stand.json";
+
+// Der Stand dieses Laufs, `{ commit, pfad }` — gesetzt nur im Kind (A2), sonst `null`.
+let KIT_STAND_LAUF = null;
+// Die Baeume, die dieser Prozess markiert hat. Freigegeben wird beim Ende jedes Laufs, auch
+// beim Abbruch ueber process.exit, der kein finally mehr erreicht.
+const KIT_STAND_BAEUME = new Set();
+
+/** Traegt der Stand `ref` die Kit-Quelle selbst (E3)? Nur dann greift der Mechanismus. */
+function traegtKitQuelle(repoRoot, ref) {
+  return ["kit/night.mjs", "tools/sync-blobs.mjs"]
+    .every((datei) => gitIm(repoRoot, ["cat-file", "-e", `${ref}:${datei}`]).status === 0);
+}
+
+/**
+ * Der Stand des Laufs: Commit und Commit-Zeit von `refs/remotes/origin/<mainBranch>`, ohne
+ * `git fetch` (E1). `null`, wenn der Commit die Kit-Quelle nicht traegt (E3) — das ist jedes
+ * Projekt ausser dem Kit selbst.
+ *
+ * Fehlt der Verweis, entscheidet der eigene Arbeitsstand: Traegt er die Kit-Quelle, ist das
+ * Fehlen ein Abbruchgrund (E2), und die Funktion wirft. Sonst ist es ein anderes Projekt
+ * ohne Remote, das unveraendert laeuft.
+ */
+export function kitStandErmitteln(repoRoot, mainBranch) {
+  const verweis = `refs/remotes/origin/${mainBranch}`;
+  const res = gitIm(repoRoot, ["rev-parse", "--verify", "--quiet", `${verweis}^{commit}`]);
+  if (res.status !== 0) {
+    if (!traegtKitQuelle(repoRoot, "HEAD")) return null;
+    throw new Error(`Kit-Stand: der Verweis origin/${mainBranch} fehlt — ohne ihn gibt es keinen veroeffentlichten Stand, mit dem der Lauf arbeiten kann. Einmal 'git fetch origin' oder 'push main', dann neu starten.`);
+  }
+  const commit = res.stdout.trim();
+  if (!traegtKitQuelle(repoRoot, commit)) return null;
+  const commitZeit = gitIm(repoRoot, ["show", "-s", "--format=%cI", commit]).stdout.trim();
+  return { commit, ref: `origin/${mainBranch}`, commitZeit };
+}
+
+/**
+ * Stellt den Stand bereit (A1): ein abgeloester Worktree auf `commit` mit einer installierten
+ * Kopie, gebaut auf dem Weg des Menschen — `.claude/kit/` und `.claude/skills/` anlegen,
+ * das `sync-blobs` DIESES Stands laufen lassen, die Regeltexte nach `.claude/` kopieren.
+ * Ein zweiter Weg mit eigener Dateiliste liefe beim ersten neuen Werkzeug auseinander.
+ *
+ * Vorab raeumt er den Stand derselben Laufart ab (E4): Nebeneinander laufende Laufarten
+ * duerfen einander nichts wegraeumen. Scheitert ein Schritt, wirft die Funktion mit Grund
+ * und laesst keinen halben Stand liegen; den Abbruch entscheidet der Aufrufer (E2).
+ */
+export function kitStandBereitstellen(repoRoot, commit, laufart) {
+  const praefix = `kitstand-${laufart}`;
+  worktreesAufraeumen(repoRoot, praefix);
+  // Ein eigener Stempel: Der Lauf-Stempel entsteht erst im Kind.
+  const stempel = `${new Date().toISOString().replaceAll(/[-:.TZ]/g, "")}-${process.pid}`;
+  const pfad = worktreeAnlegen({ repoRoot, stempel, praefix, ref: commit, spiegeln: false });
+  try {
+    mkdirSync(join(pfad, ".claude", "kit"), { recursive: true });
+    mkdirSync(join(pfad, ".claude", "skills"), { recursive: true });
+    // KIT_ROOT ueberschrieben: Eine ererbte Variable liesse sync-blobs in den fremden Root schreiben.
+    const res = spawnSync(process.execPath, [join(pfad, "tools", "sync-blobs.mjs")], {
+      cwd: pfad, encoding: "utf-8", env: { ...process.env, KIT_ROOT: pfad },
+    });
+    if (res.status !== 0) {
+      throw new Error(`sync-blobs im Stand ${commit.slice(0, 12)} schlug fehl: ${ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim())}`);
+    }
+    const vorlagen = join(pfad, "templates");
+    for (const name of readdirSync(vorlagen).filter((n) => /^CLAUDE-.*\.md$/.test(n))) {
+      cpSync(join(vorlagen, name), join(pfad, ".claude", name));
+    }
+  } catch (err) {
+    worktreeEntfernen(pfad, repoRoot);
+    throw err;
+  }
+  return pfad;
+}
+
+/**
+ * Setzt den Stand in einen Baum ein, in dem Sitzungen laufen (A3): `.claude/kit/*`,
+ * `.claude/skills/*` und `.claude/CLAUDE-*.md` des Stands. Es wird nur ueberschrieben, nichts
+ * geloescht — was `sync-blobs` nicht schreibt, gehoert nicht zum Stand und bleibt. Danach
+ * die Markierung `{ commit, pfad, pid, seit }` (A4).
+ */
+export function kitStandEinsetzen(stand, baum) {
+  const quelle = join(stand.pfad, ".claude");
+  const ziel = join(baum, ".claude");
+  for (const teil of ["kit", "skills"]) {
+    cpSync(join(quelle, teil), join(ziel, teil), { recursive: true, force: true });
+  }
+  for (const name of readdirSync(quelle).filter((n) => /^CLAUDE-.*\.md$/.test(n))) {
+    cpSync(join(quelle, name), join(ziel, name), { force: true });
+  }
+  const markierung = { commit: stand.commit, pfad: stand.pfad, pid: process.pid, seit: new Date().toISOString() };
+  writeFileSync(join(baum, KIT_STAND_MARKIERUNG), JSON.stringify(markierung, null, 2) + "\n", "utf-8");
+  KIT_STAND_BAEUME.add(baum);
+}
+
+/** Entfernt die Markierung; die Kopie bleibt auf dem Stand (E5). */
+export function kitStandFreigeben(baum) {
+  rmSync(join(baum, KIT_STAND_MARKIERUNG), { force: true });
+  KIT_STAND_BAEUME.delete(baum);
+}
+
+/** Gibt einen Baum frei, den DIESER Prozess markiert hat — nie die Markierung eines anderen Laufs. */
+function kitStandAbgeben(baum) {
+  if (KIT_STAND_BAEUME.has(baum)) kitStandFreigeben(baum);
+}
+
+/**
+ * Setzt den Stand dieses Laufs ein, falls es einen gibt — die vier Stellen aus A3. Einmal je
+ * Baum: Die Umsetzungsnacht ruft es vor jeder Session, eingesetzt wird nur beim ersten Mal.
+ */
+function kitStandInBaum(baum) {
+  if (KIT_STAND_LAUF && !KIT_STAND_BAEUME.has(baum)) kitStandEinsetzen(KIT_STAND_LAUF, baum);
+}
+
+/** Die Startzeile des festen Kit-Stands (A7) — nichts ohne Stand. */
+function kitStandMelden() {
+  if (LAUF?.kitStand) log(kitStandZeile(LAUF.kitStand));
+}
+
+/**
+ * Ist dieser Prozess das Kind, das aus dem Stand laeuft (A2)? `KIT_STAND` allein genuegt
+ * nicht: Ein Runner, den ein Test in einer naechtlichen Sitzung startet, erbt die Variable,
+ * liegt aber nicht unter dem Stand — er baut seinen eigenen.
+ */
+export function istStandKind(skript, env = process.env) {
+  if (!env.KIT_STAND || !env.KIT_STAND_PFAD) return false;
+  try {
+    const rel = relative(realpathSync(env.KIT_STAND_PFAD), realpathSync(skript));
+    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  } catch {
+    return false;
+  }
+}
+
+/** Was `KIT_STAND` und `KIT_STAND_PFAD` jeder Sitzung mitgeben — leer ohne Stand. */
+function kitStandUmgebung() {
+  return KIT_STAND_LAUF ? { KIT_STAND: KIT_STAND_LAUF.commit, KIT_STAND_PFAD: KIT_STAND_LAUF.pfad } : {};
+}
+
+/** Das Feld `kitStand` des Laufberichts (A7): `{ commit, ref, commitZeit }` oder `null`. */
+function kitStandFeld() {
+  if (!KIT_STAND_LAUF) return null;
+  const mainBranch = config?.mainBranch || "main";
+  const commitZeit = gitIm(process.cwd(), ["show", "-s", "--format=%cI", KIT_STAND_LAUF.commit]).stdout.trim() || null;
+  return { commit: KIT_STAND_LAUF.commit, ref: `origin/${mainBranch}`, commitZeit };
+}
+
+/** Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)` (A7). */
+export function kitStandZeile(kitStand) {
+  const zeit = kitStand.commitZeit ? ` vom ${kitStand.commitZeit.slice(0, 10)} ${kitStand.commitZeit.slice(11, 16)}` : "";
+  return `Kit-Stand: ${kitStand.commit.slice(0, 12)} (${kitStand.ref}${zeit})`;
+}
+
+/**
+ * Der Stand-Schritt in main() (A2): ermitteln, bereitstellen, den Runner des Stands als Kind
+ * starten und dessen Exit-Code zurueckgeben. `null` heisst, dieser Prozess arbeitet selbst —
+ * als Kind (dann ist der Stand gesetzt) oder ohne Stand. Fehler brechen ab (E2).
+ */
+async function kitStandSchritt(args, argv) {
+  if (args.dryRun) return null;
+  if (istStandKind(process.argv[1])) {
+    KIT_STAND_LAUF = { commit: process.env.KIT_STAND, pfad: process.env.KIT_STAND_PFAD };
+    return null;
+  }
+  const repoRoot = process.cwd();
+  const configPfad = join(repoRoot, ".claude", "workflow.config.json");
+  let stand;
+  let pfad;
+  try {
+    const mainBranch = (existsSync(configPfad) ? ladeConfigMitOverrides(configPfad)?.mainBranch : null) || "main";
+    stand = kitStandErmitteln(repoRoot, mainBranch);
+    if (!stand) return null;
+    pfad = kitStandBereitstellen(repoRoot, stand.commit, laufArt(args));
+  } catch (err) {
+    fail(`Kit-Stand nicht bereitgestellt: ${err.message}`, "umgebung");
+  }
+  process.stdout.write(`${kitStandZeile(stand)} — der Lauf arbeitet mit ${pfad}\n`);
+  return await new Promise((fertig) => {
+    const kind = spawn(process.execPath, [join(pfad, ".claude", "kit", "night.mjs"), ...argv], {
+      cwd: repoRoot, stdio: "inherit",
+      env: { ...process.env, KIT_STAND: stand.commit, KIT_STAND_PFAD: pfad },
+    });
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+      process.on(signal, () => kind.kill(signal));
+    }
+    kind.on("error", (err) => {
+      process.stderr.write(`Fehler: Runner des Kit-Stands nicht gestartet: ${err.message}\n`);
+      fertig(1);
+    });
+    kind.on("exit", (code, signal) => fertig(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : 1)));
+  });
 }
 
 // Review-Marker aus /issue-review (Issue #223). Anders als die beiden Filter darueber
@@ -4937,6 +5151,9 @@ export async function runSession(issueId, args, opts = {}) {
       // Im Kommando-Zweig steht hier der Name der Stufe (Issue #710, E10) — nie leer.
       KIT_AGENT_MODEL: selbstauskunft,
       ...(opts.stufe ? { NIGHT_KETTE_STUFE: opts.stufe } : {}),
+      // Der feste Kit-Stand des Laufs (Issue #1102, A2): Commit-Hook und board.mjs der
+      // Session fragen ihn zusammen mit der Markierung des Baums ab.
+      ...kitStandUmgebung(),
       // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
       // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
@@ -6583,6 +6800,9 @@ export function vorbereiten(args) {
   // offen, ob die Zahl fehlt oder keine gilt.
   const maxAngabe = args.max === null ? "max ohne Deckel" : `max ${args.max} Sessions`;
   log(`Nacht-Runner startet (Modus ${modus}, ${maxAngabe}, Modell ${args.model} (${args.modellHerkunft}), Label ${aktivesLabel}${dryRunAngabe}${yoloAngabe})`);
+  // Der feste Kit-Stand (Issue #1102, A7): eine Zeile, mit der der Morgen den Lauf vom Stand
+  // in seiner Arbeitskopie unterscheidet.
+  kitStandMelden();
   if (args.yolo && !args.dryRun) {
     log("WARNUNG: --yolo umgeht ALLE Permission-Checks der Nacht-Sessions. Die Stop-Punkte haengen dann allein am Skill-Prompt.");
   }
@@ -7817,6 +8037,9 @@ async function stufeUmsetzung(kette, paketIds) {
       kette.wt = null;
       log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
     }
+    // Variante B baut in der Hauptkopie: Auch dort arbeiten die Sessions mit dem festen
+    // Kit-Stand (Issue #1102, A3). Die Markierung ist vom Sauberkeits-Guard ausgenommen.
+    kitStandInBaum(kette.repoRoot);
     log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
 
     // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
@@ -7851,6 +8074,7 @@ async function stufeUmsetzung(kette, paketIds) {
     // Auch nach einem Wurf aus der Stufe heraus: Ein liegengebliebener Lock haelt die
     // naechste Nacht ab, bis sein Prozess als tot erkannt wird.
     lock.freigeben();
+    kitStandAbgeben(kette.repoRoot);
   }
 }
 
@@ -8898,6 +9122,8 @@ async function laufeEineKette(auftrag, nummer, args) {
   let ergebnis;
   try {
     kette.wt = worktreeAnlegen({ repoRoot: kette.repoRoot, issueId: F, stempel: LAUF_STEMPEL ?? String(Date.now()) });
+    // Nach dem Spiegel: Der Stand ueberschreibt die gespiegelte Kopie der Hauptkopie (Issue #1102, A3).
+    kitStandInBaum(kette.wt);
     trackerImWorktreeUmleiten(kette.wt, kette.repoRoot);
     log(`  Worktree: ${kette.wt}`);
   } catch (e) {
@@ -9277,6 +9503,8 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
     // Die Sessions lesen und schreiben am Board, nicht im Arbeitsbaum — ein Worktree je Karte
     // kostete Zeit fuer eine Trennung ohne Gegenstand.
     lauf.wt = worktreeAnlegen({ repoRoot: lauf.repoRoot, stempel: LAUF_STEMPEL ?? String(Date.now()), praefix: PRUEFLAUF_PRAEFIX });
+    // Nach dem Spiegel: Der Stand ueberschreibt die gespiegelte Kopie der Hauptkopie (Issue #1102, A3).
+    kitStandInBaum(lauf.wt);
     trackerImWorktreeUmleiten(lauf.wt, lauf.repoRoot);
     log(`Worktree des Laufs: ${lauf.wt}`);
 
@@ -10887,6 +11115,9 @@ async function implementierungsSchleife(args, ctx, lauf) {
       lockFehlschlagVermerken(lauf);
       break;
     }
+    // Der feste Kit-Stand in der Hauptkopie (Issue #1102, A3): nach dem Zustands-Vorflug und
+    // erst mit dem Lock — ein Lauf ohne ihn ueberschriebe die Kopie dessen, der gerade baut.
+    kitStandInBaum(process.cwd());
 
     lauf.sessions++;
     log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
@@ -10951,6 +11182,7 @@ export async function laufeImplementierung(args, ctx) {
   } finally {
     // Nur den eigenen: Wer ihn nicht genommen hat, gibt ihn nicht frei.
     if (lauf.lock?.ok) lauf.lock.freigeben();
+    kitStandAbgeben(process.cwd());
   }
   const { sessions, hardStop } = lauf;
 
@@ -10982,8 +11214,14 @@ async function main() {
     await waechterLaufen(process.argv[3]);
     process.exit(0);
   }
-  abbruchHandlerSetzen();
   const args = parseArgs(process.argv.slice(2));
+  // Der feste Kit-Stand (Issue #1102, A2): Hat der Lauf einen, arbeitet ein Kind aus ihm, und
+  // dieser Prozess reicht nur noch Signale weiter und endet mit dessen Exit-Code. `--version`
+  // und `--help` enden schon in parseArgs, `--dry-run` und `--waechter` brauchen keinen Stand.
+  // Vor den Abbruch-Handlern: Ein Signal soll hier das Kind erreichen, nicht diesen Prozess beenden.
+  const kindExit = await kitStandSchritt(args, process.argv.slice(2));
+  if (kindExit !== null) process.exit(kindExit);
+  abbruchHandlerSetzen();
 
   const ctx = vorbereiten(args);
   // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im

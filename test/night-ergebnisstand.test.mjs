@@ -142,6 +142,29 @@ test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config",
   }
 });
 
+// Der feste Kit-Stand (Issue #1102, Plan #1101 A7, E9): Das Feld `kitStand` haengt hinten am
+// Lauf-Kopf, die Fassung bleibt 1. Ohne festen Stand — hier ein Projekt ohne Kit-Quelle und
+// ohne origin — steht dort `null`, damit der Morgen den Lauf mit der Kopie der Hauptkopie
+// von einem mit festem Stand unterscheidet.
+test("[night-2] ohne festen Kit-Stand traegt der Lauf-Kopf kitStand null, hinter der Zielmarke", NUR_POSIX, () => {
+  const dir = setupProjekt("night-stand-kitstand-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+    assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
+    assert.ok("kitStand" in stand, "das Feld fehlt");
+    assert.equal(stand.kitStand, null);
+    const schluessel = Object.keys(stand);
+    assert.equal(schluessel.indexOf("kitStand"), schluessel.indexOf("zielUmsetzungMin") + 1,
+      `kitStand gehoert direkt hinter die Zielmarke: ${schluessel.join(", ")}`);
+    assert.doesNotMatch(res.stdout, /Kit-Stand:/, "ohne Stand keine Stand-Zeile");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Bricht
 // der Implementierungslauf schon in der ersten Runde am leeren Ready ab, steht "Ready
 // ist leer" wortgleich am Lauf-Kopf, hinter den Feldern der Schemafassung 1.

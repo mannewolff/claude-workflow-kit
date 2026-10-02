@@ -203,7 +203,41 @@ for (const { constName, source, sourceDir } of BLOBS) {
 const LOCAL_KIT = join(root, ".claude", "kit");
 const copyDrift = [];
 
-if (existsSync(LOCAL_KIT)) {
+// --- Fester Kit-Stand eines laufenden Laufs (Issue #1102, Plan #1101 A5) ---
+//
+// Ein unbeaufsichtigter Lauf setzt die Kopie seines Stands in den Baum und markiert ihn mit
+// `.claude/kit-stand.json`. Solange die Markierung lebt, gehoert die Kopie dem Lauf: Beide
+// Abschnitte "Dogfooding-Kopie" schreiben sie nicht, und `--check` meldet ihre Abweichung
+// nicht als Drift. Genau ueber diesen Weg erreichte bisher ein neues Werkzeug das naechste
+// Paket derselben Nacht — und ein `sync-blobs` des Menschen am Tag den laufenden Lauf.
+// Stempel und Blobs in install.mjs sind versioniert und Pruefgegenstand: Sie bleiben.
+//
+// Lebend heisst: Die Datei liegt vor, und ihr `pid` lebt. Eine verwaiste Markierung (der
+// Lauf ist tot) gilt nicht. Bewusst ohne Blick auf KIT_STAND: Der Mensch, der am Tag
+// `sync-blobs` ruft, traegt die Variable nicht, und gerade ihn soll die Markierung aufhalten.
+function lebendeMarkierung() {
+  let markierung;
+  try {
+    markierung = JSON.parse(readFileSync(join(root, ".claude", "kit-stand.json"), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(markierung?.pid) || markierung.pid <= 0) return null;
+  try {
+    process.kill(markierung.pid, 0);
+  } catch (err) {
+    // EPERM: Der Prozess lebt, gehoert nur einem anderen Nutzer.
+    if (err.code !== "EPERM") return null;
+  }
+  return markierung;
+}
+
+const laufStand = lebendeMarkierung();
+const laufStandZeile = laufStand
+  ? `Kopie gehört dem Lauf auf ${String(laufStand.commit ?? "unbekannt").slice(0, 12)} — .claude/kit/ und .claude/skills/ bleiben unberuehrt.`
+  : null;
+
+if (existsSync(LOCAL_KIT) && !laufStand) {
   for (const datei of STAMPED) {
     const ziel = join(LOCAL_KIT, datei);
     const soll = readFileSync(join(root, "kit", datei), "utf-8");
@@ -230,7 +264,7 @@ if (existsSync(LOCAL_KIT)) {
 const LOCAL_SKILLS = join(root, ".claude", "skills");
 const SKILLS_SRC = join(root, "skills");
 
-if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC)) {
+if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC) && !laufStand) {
   for (const name of readdirSync(SKILLS_SRC, { withFileTypes: true })) {
     if (!name.isDirectory()) continue;
     const quelle = join(SKILLS_SRC, name.name, "SKILL.md");
@@ -259,6 +293,8 @@ if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC)) {
     }
   }
 }
+
+if (laufStandZeile) process.stdout.write(`${laufStandZeile}\n`);
 
 if (checkOnly) {
   // Stempel- und Blob-Drift getrennt melden: sie haben verschiedene Ursachen

@@ -296,3 +296,63 @@ test("[gate-1] nach dem uneingeschraenkten Lauf nimmt das Gate denselben Stand a
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
   });
 });
+
+// --- Die Weiche zum Gate des festen Kit-Stands (Issue #1102, Plan #1101 A6) ---
+//
+// Arbeitet ein unbeaufsichtigter Lauf mit dem Kit des letzten Pushs, startet der Hook das
+// Gate des Stands statt des Gates neben sich — aber nur, wenn KIT_STAND_PFAD gesetzt ist,
+// der Baum die Markierung traegt UND das Gate des Stands vorliegt. Die Variable allein erbt
+// jedes Fixture-Repo eines Tests, das in einer naechtlichen Sitzung laeuft.
+
+/** Ein Stand, dessen Gate sich in `spur` eintraegt und durchlaesst. */
+function fremderStand(dir) {
+  const stand = join(dir, "stand");
+  mkdirSync(join(stand, ".githooks"), { recursive: true });
+  writeFileSync(join(stand, ".githooks", "gate.mjs"),
+    'import { appendFileSync } from "node:fs";\nappendFileSync(process.env.STAND_SPUR, process.argv.slice(2).join(" ") + "\\n");\n');
+  return stand;
+}
+
+function hookMitStand(dir, env) {
+  return spawnSync("sh", [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+}
+
+test("[kitstand-6] mit Markierung und KIT_STAND_PFAD startet der Hook das Gate des Stands", { skip: process.platform === "win32" }, () => {
+  mitRepo({ config: LEISE }, (dir) => {
+    gateEinbauen(dir);
+    const stand = fremderStand(dir);
+    const spur = join(dir, "spur.txt");
+    writeFileSync(join(dir, ".claude", "kit-stand.json"), JSON.stringify({ commit: "abc", pfad: stand, pid: process.pid }));
+
+    const res = hookMitStand(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(readFileSync(spur, "utf-8"), "pre-commit\n", "das Gate des Stands lief mit dem Hook-Argument");
+  });
+});
+
+test("[kitstand-6] ohne Markierung bleibt der Hook beim eigenen Gate, auch mit KIT_STAND_PFAD", { skip: process.platform === "win32" }, () => {
+  mitRepo({ config: LEISE }, (dir) => {
+    gateEinbauen(dir);
+    const stand = fremderStand(dir);
+    const spur = join(dir, "spur.txt");
+
+    const res = hookMitStand(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+
+    assert.notEqual(res.status, 0, "das eigene Gate weist ohne Zusammenfassung ab");
+    assert.match(res.stderr, /Zusammenfassung fehlt/);
+    assert.equal(existsSync(spur), false, "das Gate des Stands darf nicht laufen");
+  });
+});
+
+test("[kitstand-6] fehlt das Gate des Stands, bleibt der Hook beim eigenen", { skip: process.platform === "win32" }, () => {
+  mitRepo({ config: LEISE }, (dir) => {
+    gateEinbauen(dir);
+    writeFileSync(join(dir, ".claude", "kit-stand.json"), JSON.stringify({ commit: "abc", pfad: "/nicht/vorhanden", pid: process.pid }));
+
+    const res = hookMitStand(dir, { KIT_STAND_PFAD: "/nicht/vorhanden" });
+
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /Zusammenfassung fehlt/, "das eigene Gate lief");
+  });
+});

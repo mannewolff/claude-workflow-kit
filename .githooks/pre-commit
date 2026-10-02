@@ -7,7 +7,18 @@
 #
 # Faellt node aus oder fehlt gate.mjs, endet der Hook mit Exit ungleich 0: Ein
 # nicht lauffaehiges Gate laesst nicht durch.
+#
+# Fester Kit-Stand (Issue #1102, Plan #1101 A6): Arbeitet ein unbeaufsichtigter Lauf mit
+# dem Kit des letzten Pushs, prueft auch dessen Gate. Bedingung sind alle drei:
+# KIT_STAND_PFAD ist gesetzt, der Baum traegt die Markierung .claude/kit-stand.json, und
+# das Gate des Stands liegt vor. Die Variable allein erbt jedes Fixture-Repo eines Tests.
 gate="$(dirname "$0")/gate.mjs"
+if [ -n "$KIT_STAND_PFAD" ] && [ -f "$KIT_STAND_PFAD/.githooks/gate.mjs" ]; then
+  wurzel="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$wurzel" ] && [ -f "$wurzel/.claude/kit-stand.json" ]; then
+    gate="$KIT_STAND_PFAD/.githooks/gate.mjs"
+  fi
+fi
 if [ ! -f "$gate" ]; then
   echo "pre-commit: $gate fehlt — Commit abgewiesen." >&2
   exit 1

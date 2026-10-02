@@ -21,7 +21,7 @@
       ]
     },
     {
-      "cmd": "node --test \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -153,6 +153,7 @@
       "test/helpers/ergebnisstand-fixture.mjs",
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-umsetzung-fixture.mjs",
+      "test/helpers/kitstand-fixture.mjs",
       "test/fixtures/auskunft/**"
     ],
     "board": [

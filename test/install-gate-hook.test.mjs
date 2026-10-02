@@ -541,3 +541,39 @@ test("[installer-2] gate.mjs steht nicht in STAMPED und wird nicht nach .claude/
   assert.doesNotMatch(stamped, /gate\.mjs/, "das Gate gehoert nicht in die Dogfooding-Kopie");
   assert.equal(existsSync(join(repoRoot, ".claude", "kit", "gate.mjs")), false);
 });
+
+// --- Die Weiche zum Gate des festen Kit-Stands (Issue #1102, Plan #1101 A6) ---
+//
+// Der ausgelieferte Hook ist derselbe wie im Kit-Repo: Mit Markierung im Baum und gesetztem
+// KIT_STAND_PFAD startet er das Gate des Stands, sonst das eigene. In einem Zielprojekt ist
+// KIT_STAND_PFAD nie gesetzt; der Test belegt, dass auch eine geerbte Variable ohne
+// Markierung nichts umlenkt.
+
+function standMitSpur(dir) {
+  const stand = join(dir, "stand");
+  mkdirSync(join(stand, ".githooks"), { recursive: true });
+  writeFileSync(join(stand, ".githooks", "gate.mjs"),
+    'import { writeFileSync } from "node:fs";\nwriteFileSync(process.env.STAND_SPUR, "stand\\n");\n');
+  return stand;
+}
+
+function hook(dir, env) {
+  return spawnSync("sh", [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+}
+
+test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Markierung", NUR_POSIX, () => {
+  mitFixture("install-gate-stand-", (dir) => {
+    assert.equal(installiere(dir, antworten("j")).status, 0);
+    const stand = standMitSpur(dir);
+    const spur = join(dir, "spur.txt");
+
+    const ohne = hook(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+    assert.notEqual(ohne.status, 0, "ohne Markierung prueft das eigene Gate und weist ohne Zusammenfassung ab");
+    assert.equal(existsSync(spur), false, "ohne Markierung lief das Gate des Stands");
+
+    writeFileSync(join(dir, ".claude", "kit-stand.json"), JSON.stringify({ commit: "abc", pfad: stand, pid: process.pid }));
+    const mit = hook(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+    assert.equal(mit.status, 0, mit.stderr);
+    assert.equal(readFileSync(spur, "utf-8"), "stand\n", "mit Markierung lief das Gate des Stands");
+  });
+});
