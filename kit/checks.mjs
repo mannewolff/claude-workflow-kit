@@ -1192,12 +1192,13 @@ function kommandoAusfuehren(cmd, env, { grenzeMs = Infinity, fristMs = HAENGEN_F
     // eigene zu bekommen — etwa `board.mjs … --text -` in einem Test —, wartete darauf
     // endlos. `ignore` ist /dev/null: Er sieht sofort Ende-der-Eingabe.
     //
-    // Eine eigene Prozessgruppe (`detached`, Issue #1077): Mit `shell: true` haengt der
+    // Eine eigene Prozessgruppe (`detached`, Issue #1077; nur auf POSIX, siehe
+    // `startOptionen`, Issue #1123): Mit `shell: true` haengt der
     // eigentliche Haenger als Enkel unter der Shell, etwa `node --test` -> `board.mjs`.
     // Nur ueber die Gruppe erreicht ihn der Abbruch — ein Weg ueber die Prozessliste
     // (`ps`) scheitert in der Sandbox der Sessions. Damit die Gruppe beim Abbruch des
     // AUFRUFERS nicht verwaist, beendet `laufendeGruppenBeenden` sie mit (siehe dort).
-    const kind = spawn(cmd, { cwd: process.cwd(), env, shell: true, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const kind = spawn(cmd, { cwd: process.cwd(), env, ...startOptionen() });
     if (kind.pid) LAUFENDE_GRUPPEN.add(kind.pid);
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
@@ -1237,12 +1238,38 @@ function haengerAbbrechen(pid, fristMs, uhren, fertig) {
 const LAUFENDE_GRUPPEN = new Set();
 
 /**
- * Ein Signal an die Prozessgruppe `pid`; unter Windows, wo es keine Gruppen gibt, an den
- * Prozess selbst. Eine Gruppe, die schon fort ist, wird uebergangen.
+ * Die `spawn`-Optionen eines Kommandos (Issue #1123). Die eigene Prozessgruppe (`detached`,
+ * Issue #1077) gibt es nur auf POSIX: Unter Windows gibt es keine Gruppen, und ein
+ * abgekoppelter Prozess bekommt ein eigenes Konsolenfenster, dessen Ausgabe die Pipe nicht
+ * zuverlaessig erreicht — in der CI fehlten dort Fehlermerkmale und Guete-Werte.
+ */
+export function startOptionen(plattform = process.platform) {
+  return { shell: true, stdio: ["ignore", "pipe", "pipe"], detached: plattform !== "win32" };
+}
+
+/**
+ * Wie ein Baum beendet wird (Issue #1123): auf POSIX ein Signal an die Prozessgruppe, unter
+ * Windows `taskkill /T /F`, denn ein Signal an die PID erreichte nur die `cmd.exe`, und ihre
+ * Enkel hielten das Arbeitsverzeichnis fest. Unter Windows gibt es kein mildes SIGTERM fuer
+ * einen Baum; beide Signale werden zum harten Abbruch.
+ */
+export function baumBeendenAufruf(pid, signal, plattform = process.platform) {
+  if (plattform === "win32") return { taskkill: ["/pid", String(pid), "/T", "/F"] };
+  return { pid: -pid, signal };
+}
+
+/**
+ * Ein Signal an die Prozessgruppe `pid`, unter Windows `taskkill` auf den Baum. Ein Baum,
+ * der schon fort ist, wird uebergangen.
  */
 function gruppeSignal(pid, signal) {
+  const aufruf = baumBeendenAufruf(pid, signal);
+  if (aufruf.taskkill) {
+    spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
+    return;
+  }
   try {
-    process.kill(process.platform === "win32" ? pid : -pid, signal);
+    process.kill(aufruf.pid, aufruf.signal);
   } catch {
     // schon beendet
   }
