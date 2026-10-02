@@ -15,7 +15,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
 import {
@@ -183,6 +184,31 @@ test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
     assert.equal((fach.labels || []).includes(KLAEREN_LABEL), false, "der Fachplan wurde gezeichnet");
     assert.ok((board(dir, "issue", "get", "0003").labels || []).includes(KLAEREN_LABEL), "das Paket traegt kit:klaeren nicht");
     assert.doesNotMatch(fach.body || "", new RegExp(KETTE_HALT_ANKER), "der Fachplan traegt den Abschnitt 'Kette angehalten'");
+    keinRestInArbeit(dir);
+  });
+});
+
+// Issue #1104: Ein Paket, das das geaenderte Werkzeug eines anderen Pakets als Werkzeug
+// braucht, sagt es mit dem Zusatz `(wartet auf Push)` an seiner Verweiszeile. Seit #1102
+// arbeitet die Nacht mit dem Kit-Stand des letzten Pushs — das Werkzeug des ersten Pakets
+// wirkt also erst nach `push main`, auch wenn es schon in In review liegt. Die Kette zieht
+// ein solches Paket nicht nach Ready; ein Paket mit gewoehnlicher Verweiszeile schon.
+const PAKETE_WARTEN_AUF_PUSH = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 1 ]; then dep="Keine."; elif [ "$n" = 2 ]; then dep="Issue #$erste (wartet auf Push)"; else dep="Issue #$erste"; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
+
+test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoehnlicher Verweiszeile wird gezogen", NUR_POSIX, () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const stufen = { ...ERZEUGEN, pakete: PAKETE_WARTEN_AUF_PUSH, umsetzung: UMSETZUNG_ERFOLG };
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.deepEqual(einheit.stufen.pakete.ids, ["0003", "0004", "0005"]);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0003", "0005"], "das wartende Paket lief nicht, die anderen schon");
+    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), ["0004"]);
+    assert.equal(stufe.nichtBegonnen[0].grund, "wartet auf einen Push (Issue #3)");
+    assert.equal(board(dir, "issue", "get", "0004").status, "backlog", "das wartende Paket wurde bewegt");
+    assert.match(readFileSync(join(dir, "issues", `${F}.md`), "utf-8"), /wartet auf einen Push \(Issue #3\)/, "der Grund fehlt im Nachtbericht");
     keinRestInArbeit(dir);
   });
 });

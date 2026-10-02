@@ -3374,6 +3374,23 @@ export function parseDeps(body) {
   return [...new Set(refs)];
 }
 
+// Der Zusatz an einer Verweiszeile, mit dem ein Paket sagt, dass es das geaenderte Werkzeug
+// eines anderen Pakets als Werkzeug braucht (Issue #1104, Plan #1101 A8). Seit #1102 wirkt
+// ein solches Werkzeug in unbeaufsichtigten Laeufen erst nach `push main`.
+const WARTET_AUF_PUSH = /^\s*(?:(?:[-*+]|\d+\.)\s+)?Issue #(\d+)\s*\(wartet auf Push\)/i;
+
+/**
+ * Die Nummern, auf deren Push ein Paket wartet — aus den Verweiszeilen seines Abschnitts
+ * `## Abhaengigkeiten` mit dem Zusatz `(wartet auf Push)`. Den Zusatz setzt allein `/issues`
+ * beim Schneiden; der Runner liest ihn nur (E7).
+ */
+export function wartetAufPush(body) {
+  const gelesen = abschnittLesen(body, DEPS_UEBERSCHRIFT);
+  if (gelesen === null) return [];
+  const nummern = gelesen.zeilen.map((z) => z.match(WARTET_AUF_PUSH)?.[1]).filter(Boolean).map(Number);
+  return [...new Set(nummern)];
+}
+
 /**
  * Der Lauf-Cache der Karten, auf die Abhaengigkeiten zeigen: Nummer -> Karte (Issue #1062,
  * Plan #1057 E6). Die Gates laufen je Ready-Paket und je Runde; ohne Cache wuechse die Zahl
@@ -7929,6 +7946,15 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
       if (res.status !== 0) log(`  Paket #${id}: Abhaengigkeits-Kommentar nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
     }
     paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
+    return null;
+  }
+  // Wartet das Paket auf einen Push (Issue #1104), zieht die Kette es nicht nach Ready: Es
+  // bleibt sichtbar wartend in Backlog, und Pakete, die von ihm abhaengen, fallen ueber
+  // ihre Gates von selbst heraus.
+  const push = wartetAufPush(karte.body);
+  if (push.length > 0) {
+    const verweise = push.map((n) => "Issue #" + n).join(", ");
+    paketeNichtBegonnen(lauf.stand, [id], `wartet auf einen Push (${verweise})`);
     return null;
   }
 

@@ -94,6 +94,8 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 
 **Jede lokale `#N` im Abschnitt zählt — auch in Erläuterungen.** „Nicht #N: …" hält das Paket genauso fest wie `Issue #N`. Eine Verweiszeile beginnt nach optionalem Leerraum und optionalem Listenzeichen (`-`, `*`, `+`, `1.`) mit `Issue #N` und trägt keine weitere lokale Nummer; jede andere Nummer stammt aus erläuterndem Text, auch eine im Codeblock des Abschnitts. Was nicht aus einer Verweiszeile stammt oder auf ein Dokument (`[Plan]`, `[Fachlich]`, `[Idee]`) zeigt, melden `check-form` und `create` beim Schreiben unter `hinweise` (siehe beim Anlegen unten). Eine Nummer, die nur erklärt, gehört in den `## Kontext`.
 
+**Wartet ein Paket auf einen Push, sagt es das an der Verweiszeile:** `Issue #N (wartet auf Push)`. Der Zusatz gilt, wenn das Paket das geänderte Werkzeug, den Skill oder den Regeltext von #N **als Werkzeug** braucht; baut es nur auf dessen Code auf, zählt das nicht, und der Zusatz entfällt. Grund: Unbeaufsichtigte Läufe arbeiten mit dem Kit-Stand des letzten Pushs, ein Werkzeug aus #N wirkt dort also erst nach `push main`, auch wenn #N schon in In review steht. `/issues` setzt den Zusatz beim Schneiden; die Kette zieht ein so gekennzeichnetes Paket auch unter Variante B nicht nach Ready.
+
 **Rückverweise auf Plan und fachliche Quelle:** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Beide Verweise stehen **im Kontext-Abschnitt**, unmittelbar untereinander und in dieser Reihenfolge:
 
 ```

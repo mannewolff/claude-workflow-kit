@@ -115,6 +115,19 @@ test("local: ein ruhiger Bestand gibt keinen Schluessel hinweise", () => {
   });
 });
 
+// Issue #1104: Der Zusatz `(wartet auf Push)` haengt an der Verweiszeile und macht sie nicht
+// zu Erlaeuterungstext — `DEPS_VERWEISZEILE` bleibt unveraendert, kein Hinweis schreibweise.
+test("local: eine Verweiszeile mit (wartet auf Push) gibt keinen Hinweis schreibweise", () => {
+  mitLokal((dir) => {
+    for (const abschnitt of ["Issue #4 (wartet auf Push)", "- Issue #4 (wartet auf Push)"]) {
+      for (const { weg, res, json } of alleWege(dir, paket(abschnitt))) {
+        assert.equal(res.status, 0, `${weg}: ${res.stderr}`);
+        assert.equal("hinweise" in json, false, `${weg} bei ${JSON.stringify(abschnitt)}`);
+      }
+    }
+  });
+});
+
 test("local: eine unbekannte Nummer in einer Verweiszeile gibt keinen Eintrag und keinen Fehler", () => {
   mitLokal((dir) => {
     for (const { weg, res, json } of alleWege(dir, paket("Issue #777"))) {
