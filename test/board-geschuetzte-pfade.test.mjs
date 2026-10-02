@@ -294,3 +294,24 @@ test("[board-1041] ein leerer Body ergibt keine Treffer", () => {
     rmSync(wurzel, { recursive: true, force: true });
   }
 });
+
+// Issue #1124 (Teil von #1122): Unter Windows trennt `resolve` mit `\`. `tokenFormen` erkannte
+// einen Pfad unter der Wurzel an `${basis}/` und liess die relative Form weg; die relativ
+// normalisierte Sperrliste griff nicht. Geprueft mit `path.win32`, damit der Fall auch hier laeuft.
+test("[1124] tokenFormen liefert unter Windows die relative Form mit Schraegstrich", async () => {
+  const { tokenFormen } = await import("../kit/board.mjs");
+  const path = await import("node:path");
+  const formen = tokenFormen(String.raw`C:\repo\config\zwei.json`, String.raw`C:\repo`, path.win32);
+  assert.ok(formen.includes("config/zwei.json"), `relative Form fehlt: ${JSON.stringify(formen)}`);
+  const relativ = tokenFormen(String.raw`config\zwei.json`, String.raw`C:\repo`, path.win32);
+  assert.ok(relativ.includes("config/zwei.json"), `relativ genannt, relative Form fehlt: ${JSON.stringify(relativ)}`);
+});
+
+test("[1124] ein Pfad ausserhalb der Wurzel bekommt keine relative Form", async () => {
+  const { tokenFormen } = await import("../kit/board.mjs");
+  const path = await import("node:path");
+  const formen = tokenFormen(String.raw`D:\anderswo\zwei.json`, String.raw`C:\repo`, path.win32);
+  assert.ok(!formen.some((f) => f.startsWith("..") || f === "anderswo/zwei.json"), `unerwartete relative Form: ${JSON.stringify(formen)}`);
+  const posix = tokenFormen("/srv/anderswo/zwei.json", "/repo", path.posix);
+  assert.ok(!posix.some((f) => f.startsWith("..")), `unerwartete relative Form: ${JSON.stringify(posix)}`);
+});

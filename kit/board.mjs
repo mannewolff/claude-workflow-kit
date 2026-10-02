@@ -61,7 +61,7 @@
  */
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants, rmSync, rmdirSync } from "node:fs";
-import { resolve, join, dirname, basename, extname } from "node:path";
+import path, { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -4439,12 +4439,18 @@ export function pfadTokens(zeilen) {
   return tokens;
 }
 
-/** Das Token, wie es steht, absolut und — liegt es unter der Wurzel — relativ zu ihr. */
-function tokenFormen(token, wurzel) {
-  const basis = resolve(wurzel);
-  const absolut = token.startsWith("~/") ? join(homedir(), token.slice(2)) : resolve(basis, token);
+/**
+ * Das Token, wie es steht, absolut und — liegt es unter der Wurzel — relativ zu ihr, mit `/`
+ * geschrieben wie die Sperrliste. Die relative Form entsteht ueber `relative` des Pfadmoduls
+ * (Issue #1124): Unter Windows trennt `resolve` mit `\`, und ein Vergleich auf `${basis}/` liess
+ * sie dort weg. `pfad` ist fuer Tests austauschbar (`path.win32`).
+ */
+export function tokenFormen(token, wurzel, pfad = path) {
+  const basis = pfad.resolve(wurzel);
+  const absolut = token.startsWith("~/") ? pfad.join(homedir(), token.slice(2)) : pfad.resolve(basis, token);
   const formen = [token, absolut];
-  if (absolut.startsWith(`${basis}/`)) formen.push(absolut.slice(basis.length + 1));
+  const rel = pfad.relative(basis, absolut);
+  if (rel && !rel.startsWith("..") && !pfad.isAbsolute(rel)) formen.push(rel.split(pfad.sep).join("/"));
   return formen;
 }
 
