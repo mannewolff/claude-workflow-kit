@@ -95,6 +95,9 @@ export function kitFixture({ mitKitQuelle = true, ohneOrigin = false, config = {
     ...config,
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n/issues/\n/helfer/\n");
+  // Dieselben Zeilenenden wie im Kit-Repo (Issue #1125): Ohne sie checkt Git unter Windows mit
+  // CRLF aus, und `sync-blobs` saehe im Stand-Worktree andere Bytes als die Blobs.
+  cpSync(join(repoRoot, ".gitattributes"), join(dir, ".gitattributes"));
   // Die Blobs in install.mjs passen zur Quelle des Fixtures, bevor sie committet wird —
   // das Gate traegt eine Spur, und die Arbeitskopie des Repos kann dem Blob voraus sein.
   if (mitKitQuelle) syncBlobs(dir);

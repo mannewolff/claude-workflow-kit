@@ -103,6 +103,19 @@ test("[kitstand-2] bereitgestellt wird eine installierte Kopie des Pushs in eine
   });
 });
 
+// Issue #1125 (Teil von #1122): Unter Windows checkt Git mit `core.autocrlf=true` aus. Ohne die
+// `.gitattributes` des Repos bekam der Stand-Worktree CRLF, `sync-blobs` sah andere Bytes und
+// schrieb Blobs und Stempel neu — in der CI trug der Worktree ` M install.mjs`. Nachgestellt
+// ueber dieselbe Einstellung, damit der Fall auch hier laeuft.
+test("[kitstand-2] auch mit core.autocrlf=true bleibt der Stand-Worktree unveraendert", () => {
+  mitFixture({}, ({ dir }) => {
+    git(dir, "config", "core.autocrlf", "true");
+    const { commit } = kitStandErmitteln(dir, "main");
+    const pfad = kitStandBereitstellen(dir, commit, "implementierung");
+    assert.equal(git(pfad, "status", "--porcelain", "--untracked-files=no"), "", "der Stand ist unter CRLF-Auschecken nicht sauber");
+  });
+});
+
 test("[kitstand-2] vorab wird nur der eigene Praefix abgeraeumt", () => {
   mitFixture({}, ({ dir }) => {
     const base = basename(dir);
