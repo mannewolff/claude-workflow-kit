@@ -40,7 +40,7 @@ function git(cwd, ...args) {
 }
 
 function board(cwd, ...cliArgs) {
-  const res = spawnSync(process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs], { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd } });
+  const res = spawnSync(process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs], { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd } });
   assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
   return JSON.parse(res.stdout);
 }
