@@ -2879,7 +2879,10 @@ function kitStandFeld() {
   return { commit: KIT_STAND_LAUF.commit, ref: `origin/${mainBranch}`, commitZeit };
 }
 
-/** Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)` (A7). */
+/**
+ * Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)` (A7).
+ * SYNC: dieselbe Form baut `kitStandZeileFuer` in kit/board.mjs fuer jeden Kommentar.
+ */
 export function kitStandZeile(kitStand) {
   const zeit = kitStand.commitZeit ? ` vom ${kitStand.commitZeit.slice(0, 10)} ${kitStand.commitZeit.slice(11, 16)}` : "";
   return `Kit-Stand: ${kitStand.commit.slice(0, 12)} (${kitStand.ref}${zeit})`;
@@ -8469,6 +8472,9 @@ export function berichtBauen(einheit, {
   // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
   // Prueflaeufe daraus, und als Argumente bleibt er eine reine Funktion ueber Fixtures.
   einheiten = [], zielUmsetzungMin: ziel = undefined,
+  // Der feste Kit-Stand des Laufs (Issue #1103). Er steht im Text selbst: Ein wartender
+  // Bericht, den ein spaeterer Lauf nachtraegt, nennt so den Stand des Laufs, der ihn schrieb.
+  kitStand = LAUF?.kitStand ?? null,
 } = {}) {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
@@ -8511,6 +8517,7 @@ export function berichtBauen(einheit, {
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
     z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
   }
+  if (kitStand) z.push(kitStandZeile(kitStand), "");
   z.push(BERICHT_SCHLUSS, "");
   return z.join("\n");
 }

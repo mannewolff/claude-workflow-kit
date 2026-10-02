@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { berichtBauen, einarbeitungVon, kommentareVon, BERICHT_ANKER, BERICHT_SCHLUSS } from "../kit/night.mjs";
+import { berichtBauen, einarbeitungVon, kommentareVon, kitStandZeile, BERICHT_ANKER, BERICHT_SCHLUSS } from "../kit/night.mjs";
 import {
   NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, planBody,
   PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, EINARBEITUNG_ZEILE_ABGELEHNT, PAKET_ENTSCHEIDUNG,
@@ -204,4 +204,19 @@ test("[night-980] die Zeile steht als letzte des Stufen-Blocks, auch hinter `Nic
   const zeilen = stufenBlock(berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body: "" }, pakete, stempel: "s" }));
   assert.equal(zeilen.at(-1), "- Voraussichtlich über der Sitzungszeitgrenze: #13");
   assert.match(zeilen.at(-2), /^- Nicht zuordenbar /);
+});
+
+// Issue #1103: Der Nachtbericht nennt den Kit-Stand, mit dem die Kette lief. Er steht im
+// Text selbst, also traegt auch ein wartender Bericht, den ein spaeterer Lauf nachtraegt,
+// die Zeile des Laufs, der ihn schrieb — nicht die des nachtragenden.
+test("[kitstand-zeile] der Nachtbericht traegt die Kit-Stand-Zeile des Laufs, ohne Stand keine", () => {
+  const kitStand = { commit: "0123456789abcdef0123456789abcdef01234567", ref: "origin/main", commitZeit: "2026-10-01T22:15:00+02:00" };
+  const mit = berichtBauen({ ausgang: "fertig" }, { stempel: "s", kitStand });
+  assert.ok(mit.includes(`\n${kitStandZeile(kitStand)}\n`), "die Zeile fehlt im Bericht");
+  assert.equal(kitStandZeile(kitStand), "Kit-Stand: 0123456789ab (origin/main vom 2026-10-01 22:15)");
+  assert.equal(mit.match(/^Kit-Stand: /gm).length, 1, "genau eine Zeile");
+  assert.ok(mit.indexOf("Kit-Stand: ") < mit.indexOf(BERICHT_SCHLUSS), "die Zeile steht vor dem Schluss");
+
+  const ohne = berichtBauen({ ausgang: "fertig" }, { stempel: "s", kitStand: null });
+  assert.ok(!ohne.includes("Kit-Stand:"), "ohne festen Stand keine Zeile");
 });

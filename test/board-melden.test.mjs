@@ -491,3 +491,61 @@ test("der Rest-Guard des Nacht-Runners nimmt .claude/berichte/ aus", async () =>
   assert.ok(gitResteAusnahmen().includes(".claude/berichte/"));
   assert.ok(gitRestePathspec().includes(":(exclude).claude/berichte/"));
 });
+
+// --- Kit-Stand-Zeile (Issue #1103, Plan #1101 A4, A7) ---
+//
+// Ein unbeaufsichtigter Lauf nennt seinen Kit-Stand an jedem Kommentar. Die Zeile setzt
+// das Werkzeug, und nur, wenn Umgebung (`KIT_STAND`) und lebende Markierung
+// `.claude/kit-stand.json` im Baum zusammenkommen. Die Fixtures sind keine Git-Repos,
+// darum fehlt die Commit-Zeit, und die Zeile endet nach dem Ref.
+
+const STAND = "0123456789abcdef0123456789abcdef01234567";
+const STAND_ZEILE = "Kit-Stand: 0123456789ab (origin/main)";
+// Ein Prozess, den es mit Sicherheit nicht gibt: Die Markierung gilt dann als verwaist.
+const TOTER_PID = 2 ** 22 + 7;
+
+function markierung(dir, pid = process.pid) {
+  writeFileSync(join(dir, ".claude", "kit-stand.json"),
+    JSON.stringify({ commit: STAND, pfad: "/stand", pid, seit: "2026-10-02T00:00:00.000Z" }), "utf-8");
+}
+
+test("[kitstand-zeile] melden setzt die Zeile unmittelbar vor Bericht-Lauf, das bleibt die letzte Zeile", () => {
+  mitLokal((dir, datei) => {
+    markierung(dir);
+    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Alles gruen."], { KIT_STAND: STAND }));
+    assert.deepEqual(lokalKommentare(datei), [`Alles gruen.\n\n${STAND_ZEILE}\n${LAUF}`]);
+  });
+});
+
+test("[kitstand-zeile] comment haengt die Zeile als letzte Zeile an", () => {
+  mitLokal((dir, datei) => {
+    markierung(dir);
+    ausgabe(runBoard(dir, ["issue", "comment", "5", "--text", "Ein Kommentar."], { KIT_STAND: STAND }));
+    assert.deepEqual(lokalKommentare(datei), [`Ein Kommentar.\n\n${STAND_ZEILE}`]);
+  });
+});
+
+for (const [fall, vorbereiten, env] of [
+  ["ohne Markierung", () => {}, { KIT_STAND: STAND }],
+  ["mit verwaister Markierung", (dir) => markierung(dir, TOTER_PID), { KIT_STAND: STAND }],
+  ["ohne KIT_STAND", (dir) => markierung(dir), { KIT_STAND: "" }],
+]) {
+  test(`[kitstand-zeile] ${fall} setzen melden und comment keine Zeile`, () => {
+    mitLokal((dir, datei) => {
+      vorbereiten(dir);
+      ausgabe(runBoard(dir, ["issue", "comment", "5", "--text", "Kommentar."], env));
+      ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."], env));
+      assert.deepEqual(lokalKommentare(datei), ["Kommentar.", bericht("Bericht.")]);
+    });
+  });
+}
+
+test("[kitstand-zeile] traegt der Text schon eine Kit-Stand-Zeile, entsteht keine zweite", () => {
+  mitLokal((dir, datei) => {
+    markierung(dir);
+    const vorhanden = "Kit-Stand: fedcba987654 (origin/main vom 2026-10-01 22:00)";
+    ausgabe(runBoard(dir, ["issue", "comment", "5", "--text", `Nachtrag.\n\n${vorhanden}`], { KIT_STAND: STAND }));
+    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", `Bericht.\n\n${vorhanden}`], { KIT_STAND: STAND }));
+    assert.deepEqual(lokalKommentare(datei), [`Nachtrag.\n\n${vorhanden}`, `Bericht.\n\n${vorhanden}\n\n${LAUF}`]);
+  });
+});

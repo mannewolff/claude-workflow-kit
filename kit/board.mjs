@@ -3348,8 +3348,68 @@ async function issueComment(tracker, args) {
   // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
   // lesen und schon gar nichts ans Board schicken.
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
-  await tracker.commentIssue(id, await leseTextQuelle(args.text, args["text-file"], "text"), idempotencyKey);
+  const text = await leseTextQuelle(args.text, args["text-file"], "text");
+  const kitZeile = kitStandZeileFuer(text);
+  await tracker.commentIssue(id, kitZeile ? `${text.trimEnd()}\n\n${kitZeile}` : text, idempotencyKey);
   out({ ok: true, id });
+}
+
+// ============================================================
+// Kit-Stand-Zeile (Issue #1103, Plan #1101 A4, A7)
+// ============================================================
+
+// Der feste Kit-Stand eines unbeaufsichtigten Laufs steht an jedem Kommentar, den dieser
+// Lauf schreibt — vom Runner wie von seinen Sitzungen. Die Zeile setzt das Werkzeug, nicht
+// der Skill-Text. Bedingung sind Umgebung UND Markierung (A4): `KIT_STAND` allein erbt jede
+// Shell, die aus einer Nachtsitzung heraus gestartet wurde; die Markierung allein bleibt
+// nach einem harten Abbruch liegen. Lebend heisst wie in `tools/sync-blobs.mjs`: Die Datei
+// liegt vor, und ihr `pid` lebt.
+const KIT_STAND_MARKIERUNG = join(".claude", "kit-stand.json");
+const KIT_STAND_PRAEFIX = "Kit-Stand:";
+
+function lebendeKitStandMarkierung(baum) {
+  let markierung;
+  try {
+    markierung = JSON.parse(readFileSync(join(baum, KIT_STAND_MARKIERUNG), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(markierung?.pid) || markierung.pid <= 0) return null;
+  try {
+    process.kill(markierung.pid, 0);
+  } catch (e) {
+    if (e.code !== "EPERM") return null; // EPERM: der Prozess lebt, gehoert nur jemand anderem
+  }
+  return markierung;
+}
+
+/**
+ * Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)`
+ * fuer einen Kommentartext, oder `null`: ohne `KIT_STAND`, ohne lebende Markierung im Baum,
+ * oder wenn der Text schon eine Kit-Stand-Zeile traegt — ein nachgetragener Nachtbericht
+ * behaelt die Zeile des Laufs, der ihn schrieb. Die Commit-Zeit kommt aus dem Commit; ist
+ * er im Baum nicht aufzuloesen, endet die Zeile nach dem Ref.
+ */
+export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(), config = null } = {}) {
+  if (!env.KIT_STAND) return null;
+  if (String(text).split(/\r?\n/).some((z) => z.startsWith(KIT_STAND_PRAEFIX))) return null;
+  const markierung = lebendeKitStandMarkierung(baum);
+  if (!markierung) return null;
+  const commit = String(env.KIT_STAND);
+  const mainBranch = config?.mainBranch ?? ladeMainBranch(baum);
+  const zeit = spawnSync("git", ["show", "-s", "--format=%cI", commit], { cwd: baum, encoding: "utf-8" });
+  const iso = zeit.status === 0 ? zeit.stdout.trim() : "";
+  // SYNC: dieselbe Form baut `kitStandZeile` in kit/night.mjs fuer den Nachtbericht.
+  const vom = iso ? ` vom ${iso.slice(0, 10)} ${iso.slice(11, 16)}` : "";
+  return `${KIT_STAND_PRAEFIX} ${commit.slice(0, 12)} (origin/${mainBranch}${vom})`;
+}
+
+function ladeMainBranch(baum) {
+  try {
+    return JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8")).mainBranch || "main";
+  } catch {
+    return "main";
+  }
 }
 
 // SYNC: Das Verzeichnis steht auch in kit/night.mjs (Ausschluss im Rest-Guard) und in
@@ -3428,7 +3488,10 @@ async function meldenStueck(id, args, hatText) {
  * Fehler endet mit Exit 1 — die Karte ist bis hierhin nicht bewegt.
  */
 async function berichtAblegen(tracker, id, text, laufZeile) {
-  const neu = `${text.trimEnd()}\n\n${laufZeile}`;
+  // Die Kit-Stand-Zeile unmittelbar vor `Bericht-Lauf:` (Issue #1103): Diese bleibt die
+  // letzte Zeile, an ihr findet eine Wiederholung ihren Bericht.
+  const kitZeile = kitStandZeileFuer(text);
+  const neu = kitZeile ? `${text.trimEnd()}\n\n${kitZeile}\n${laufZeile}` : `${text.trimEnd()}\n\n${laufZeile}`;
   let kommentare;
   try {
     kommentare = await tracker.kommentareStreng(id);
