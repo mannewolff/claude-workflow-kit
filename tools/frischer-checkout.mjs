@@ -67,6 +67,10 @@ export const AUSNAHMEN = {
   // sie still, wenn nicht — so wie in jedem Klon vor dem ersten `sync-blobs` (Issue #1039).
   ".claude/kit": "Dogfooding-Kopie, fehlt vor dem ersten sync-blobs; --check ueberspringt sie dann",
   ".claude/skills": "Dogfooding-Kopie, fehlt vor dem ersten sync-blobs; --check ueberspringt sie dann",
+  // `geschuetztePfade` in kit/board.mjs liest beide nur, um die Sperrliste zu ergaenzen; fehlen
+  // sie, gilt die Vorgabeliste (Issue #1120). In diesem Repo sind sie nicht versioniert.
+  ".claude/settings.json": "Projekt-Einstellungen, unversioniert; ohne sie gilt die Vorgabe der Sperrliste",
+  ".claude/settings.local.json": "maschinenspezifisch, optional; ohne sie gilt die Vorgabe der Sperrliste",
 };
 
 const PRAEFIX = "frisch";
@@ -81,6 +85,9 @@ export default async function* reporter(quelle) {
     if (type === "test:pass") {
       yield `${JSON.stringify({ typ: "pass", datei: data.file ?? null })}\n`;
     } else if (type === "test:fail") {
+      // Ein als offen vermerkter oder uebersprungener Test, der scheitert, ist kein Fehlschlag (Issue #1120): `node --test`
+      // zaehlt ihn nicht, und der Vermerk sagt bewusst, dass die Absicht noch offen ist.
+      if (data.todo || data.skip) continue;
       const fehler = data.details?.error;
       // Eine Suite, die nur an ihren Untertests scheitert, ist kein eigener Befund.
       if (fehler?.failureType === "subtestsFailed") continue;

@@ -162,6 +162,38 @@ test("[1038] sauberer Fall: ueberall fehlender Pfad und Pfad der Ausnahmeliste �
   );
 });
 
+// Issue #1120: Ein scheiternder, als offen vermerkter oder uebersprungener Test ist kein Befund — `node --test` zaehlt ihn
+// nicht als Fehlschlag, und der Vermerk sagt bewusst „Absicht offen“. Daran hing der rote
+// frische Checkout von `push main` am 2026-10-02 (config-teile, night-vorflug-stopp).
+test("[1120] ein scheiternder todo- und ein uebersprungener Test sind kein Befund — Exit 0", () => {
+  mitRepo(
+    {
+      "test/offen.test.mjs": [
+        `import { test } from "node:test";`,
+        `import assert from "node:assert/strict";`,
+        `test("Absicht offen", { todo: "spaeter" }, () => { assert.fail("noch nicht"); });`,
+        `test("ausgelassen", { skip: "nicht hier" }, () => { assert.fail("nie"); });`,
+        `test("laeuft", () => {});`,
+        ``,
+      ].join("\n"),
+    },
+    (dir) => {
+      const r = pruefe(dir);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.doesNotMatch(r.stdout, /rot im frischen Checkout|Befund/);
+    },
+  );
+});
+
+// Issue #1120: Die Einstellungsdateien liest `geschuetztePfade` nur, um die Sperrliste zu
+// ergaenzen; ohne sie gilt die Vorgabeliste. Sie sind unversioniert und duerfen fehlen.
+test("[1120] die Einstellungsdateien stehen auf der Ausnahmeliste", async () => {
+  const { AUSNAHMEN } = await import("../tools/frischer-checkout.mjs");
+  for (const pfad of [".claude/settings.json", ".claude/settings.local.json"]) {
+    assert.ok(typeof AUSNAHMEN[pfad] === "string" && AUSNAHMEN[pfad].length > 0, `${pfad} fehlt auf der Ausnahmeliste oder traegt keinen Grund`);
+  }
+});
+
 test("[1038] unkommittierte Aenderung: geaenderte versionierte und ungetrackte Datei liegen auch im frischen Stand", () => {
   mitRepo(
     {
