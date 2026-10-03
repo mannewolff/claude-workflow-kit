@@ -14,7 +14,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
 import { readFileSync, existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { CHECKS, mitRepo, repoAnlegen, datei, eintrag, zusammenfassung, ausfuehrungen } from "./helpers/checks-repo.mjs";
 import {
   haengeGrenzeMs, HAENGEN_FAKTOR, HAENGEN_MINDEST_MS, HAENGEN_VORGABE_MS,
@@ -76,8 +77,14 @@ function lebt(pid) {
   }
 }
 
-// Ein Enkel: Die Shell startet sleep im Hintergrund, schreibt seine PID und wartet.
-const HAENGER = "sleep 60 & echo $! > enkel.pid; wait";
+// Die Kommandos rufen ein Node-Skript statt POSIX-Shellsyntax auf: Unter Windows
+// laeuft jede Pruefung ueber `cmd.exe`, das `&`, `$!` und `;` nicht kennt (Issue #1127).
+const HELFER = join(dirname(fileURLToPath(import.meta.url)), "helpers", "haenger.mjs");
+const helferAufruf = (...args) => [process.execPath, HELFER].map((p) => `"${p}"`).concat(args).join(" ");
+
+// Ein Enkel: Das Skript startet einen Kindprozess, schreibt seine PID und wartet auf ihn.
+const HAENGER = helferAufruf("enkel");
+const KURZ = helferAufruf("warte", "200");
 
 test("ein haengendes Kommando wird abgebrochen und als haengend rot gemeldet, samt Enkel", () => {
   mitRepo({ config: { buildChecks: [{ cmd: HAENGER }] } }, (dir) => {
@@ -95,7 +102,7 @@ test("ein haengendes Kommando wird abgebrochen und als haengend rot gemeldet, sa
     assert.equal(lauf.haengend?.grenzeMs, 1500, `haengend fehlt: ${JSON.stringify(lauf)}`);
     assert.match(res.stdout, /haengend: nach 1\.5 s Grenze abgebrochen/);
     const zeilen = zusammenfassung(dir).berichtszeilen.join("\n");
-    assert.match(zeilen, /gelaufen: sleep 60 .* → rot, .* — haengend: nach 1\.5 s Grenze abgebrochen/);
+    assert.match(zeilen, /gelaufen: .*haenger\.mjs" enkel → rot, .* — haengend: nach 1\.5 s Grenze abgebrochen/);
 
     const pid = Number(readFileSync(join(dir, "enkel.pid"), "utf-8").trim());
     assert.ok(pid > 0, "der Enkel hat seine PID nicht geschrieben");
@@ -107,11 +114,11 @@ test("ein haengendes Kommando wird abgebrochen und als haengend rot gemeldet, sa
 });
 
 test("ein Kommando unter der Grenze bleibt unberuehrt", () => {
-  mitRepo({ config: { buildChecks: [{ cmd: "sleep 0.2; echo fertig" }] } }, (dir) => {
+  mitRepo({ config: { buildChecks: [{ cmd: KURZ }] } }, (dir) => {
     datei(dir, "src/x.txt");
     const res = runMit(dir, UMGEBUNG);
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
-    const lauf = eintrag(zusammenfassung(dir).laufen, "sleep 0.2; echo fertig");
+    const lauf = eintrag(zusammenfassung(dir).laufen, KURZ);
     assert.equal(lauf.ergebnis, "gruen");
     assert.equal(lauf.haengend, undefined);
     assert.ok(!existsSync(join(dir, "enkel.pid")));
@@ -135,7 +142,14 @@ test("wird checks.mjs selbst beendet, endet die laufende Pruefung samt Enkel mit
     }
     const pid = Number(readFileSync(pidDatei, "utf-8").trim());
     const ende = new Promise((weiter) => kind.once("exit", weiter));
-    kind.kill("SIGTERM");
+    // Windows kennt kein abfangbares SIGTERM — `kind.kill` waere dort ein harter Abbruch
+    // ohne Handler. Dort beendet der Aufrufer den ganzen Baum, und genau das ist die
+    // Zusage dieses Tests auf der Plattform. Auf POSIX reicht checks.mjs SIGTERM weiter.
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(kind.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      kind.kill("SIGTERM");
+    }
     await ende;
     await new Promise((weiter) => setTimeout(weiter, 300));
     assert.equal(lebt(pid), false, `der Enkel ${pid} lebt nach dem Ende von checks.mjs noch`);
