@@ -8,7 +8,8 @@
 // in den Laufbericht. Einen Neustart gibt es nicht.
 //
 // Geprueft am lokalen Tracker mit kurzer Frist (KIT_NIGHT_WAECHTER_FRIST_S) und
-// vorgetaeuschter Sitzung (NIGHT_CLAUDE_CMD).
+// vorgetaeuschter Sitzung (NIGHT_CLAUDE_CMD). Unter Windows laeuft die Sitzung ueber die
+// Git Bash (#1131), und der Waechter startet abgekoppelt und ohne Fenster (#1132).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, und POSIX-Signale fehlen. Siehe Issue #199." } : {};
+import { waechterStartOptionen } from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -132,7 +133,13 @@ function starteWaechter(dir) {
   return { kind, ende };
 }
 
-test("Belegfall 1: nach SIGKILL auf den Runner steht die Karte binnen Frist plus Pruefakt auf abgebrochen", NUR_POSIX, async () => {
+test("der Waechter startet abgekoppelt und ohne Fenster", () => {
+  // `detached` auch unter Windows: Dort endete ein nicht abgekoppeltes Kind mit dem
+  // Job-Objekt des Runners, also genau dann, wenn der Waechter gebraucht wird.
+  assert.deepEqual(waechterStartOptionen("/repo"), { cwd: "/repo", detached: true, stdio: "ignore", windowsHide: true });
+});
+
+test("Belegfall 1: nach SIGKILL auf den Runner steht die Karte binnen Frist plus Pruefakt auf abgebrochen", async () => {
   const dir = setupProjekt();
   let runner = null;
   let pid = null;
@@ -168,7 +175,7 @@ test("Belegfall 1: nach SIGKILL auf den Runner steht die Karte binnen Frist plus
   }
 });
 
-test("alter Puls, aber lebende PID: der Waechter setzt nichts auf abgebrochen", NUR_POSIX, async () => {
+test("alter Puls, aber lebende PID: der Waechter setzt nichts auf abgebrochen", async () => {
   const dir = setupProjekt();
   const { kind, ende } = (() => {
     const id = karte(dir, "Paket");
@@ -189,7 +196,7 @@ test("alter Puls, aber lebende PID: der Waechter setzt nichts auf abgebrochen", 
   }
 });
 
-test("der Waechter traegt offene Journalzeilen nach und schliesst den Lauf als verstummt", NUR_POSIX, async () => {
+test("der Waechter traegt offene Journalzeilen nach und schliesst den Lauf als verstummt", async () => {
   const dir = setupProjekt();
   try {
     const a = karte(dir, "Laufend");
@@ -213,7 +220,7 @@ test("der Waechter traegt offene Journalzeilen nach und schliesst den Lauf als v
   }
 });
 
-test("ein regulaerer Abschluss beendet den Waechter", NUR_POSIX, async () => {
+test("ein regulaerer Abschluss beendet den Waechter", async () => {
   const dir = setupProjekt();
   let pid = null;
   try {
@@ -230,7 +237,7 @@ test("ein regulaerer Abschluss beendet den Waechter", NUR_POSIX, async () => {
   }
 });
 
-test("KIT_NIGHT_WAECHTER=0 unterdrueckt den Start", NUR_POSIX, () => {
+test("KIT_NIGHT_WAECHTER=0 unterdrueckt den Start", () => {
   const dir = setupProjekt();
   try {
     const res = run(dir, process.execPath, [NIGHT], { NIGHT_CLAUDE_CMD: "true", KIT_NIGHT_WAECHTER: "0" });
@@ -241,7 +248,7 @@ test("KIT_NIGHT_WAECHTER=0 unterdrueckt den Start", NUR_POSIX, () => {
   }
 });
 
-test("Rueckfall beim Start: ein verwaister Lauf ohne lebenden Runner wird wie verstummt behandelt", NUR_POSIX, () => {
+test("Rueckfall beim Start: ein verwaister Lauf ohne lebenden Runner wird wie verstummt behandelt", () => {
   const dir = setupProjekt();
   try {
     const a = karte(dir, "Laufend");

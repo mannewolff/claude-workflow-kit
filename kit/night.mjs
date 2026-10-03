@@ -1937,10 +1937,22 @@ async function waechterLaufen(lauf) {
  * Journal (E7). Nur mit Stempel, also nie im Trockenlauf; `KIT_NIGHT_WAECHTER=0`
  * unterdrueckt ihn (nur fuer Tests).
  */
+/**
+ * Die `spawn`-Optionen des Waechters (Issue #1132, Plan #1128 E10). `detached` gilt auf jeder
+ * Plattform: Unter Windows legt Node jedes nicht abgekoppelte Kind in ein Job-Objekt, das
+ * mit dem Runner endet — der Waechter stuerbe mit genau dem Lauf, den er ueberwachen soll.
+ * Das Konsolenfenster, das `detached` dort sonst bringt (#1123), unterdruecken
+ * `windowsHide` und `stdio: "ignore"`; eine Ausgabe, die verloren gehen koennte, hat der
+ * Waechter nicht.
+ */
+export function waechterStartOptionen(cwd) {
+  return { cwd, detached: true, stdio: "ignore", windowsHide: true };
+}
+
 function waechterStarten() {
   if (!LAUF_STEMPEL || process.env.KIT_NIGHT_WAECHTER === "0") return;
   try {
-    const kind = spawn(process.execPath, [fileURLToPath(import.meta.url), "--waechter", LAUF_STEMPEL], { cwd: process.cwd(), detached: true, stdio: "ignore" });
+    const kind = spawn(process.execPath, [fileURLToPath(import.meta.url), "--waechter", LAUF_STEMPEL], waechterStartOptionen(process.cwd()));
     kind.on("error", (err) => log(`Waechter nicht gestartet: ${err.message}`));
     kind.unref();
     WAECHTER_PID = kind.pid ?? null;
@@ -4789,11 +4801,12 @@ export function frischeStufenFelder(configPfad, stand) {
  * Frist — der Aufrufer protokolliert das, haelt den Lauf aber nicht an.
  *
  * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht);
- * die Funktion meldet dort sofort `true`. Dieselbe bekannte Einschraenkung wie beim
- * Kill am Zeitlimit.
+ * die Funktion meldet dort sofort `true`. Den Baum beendet dort `taskkill /T` synchron
+ * (Issue #1132), und was nach dem regulaeren Ende einer Session weiterliefe, haelt das
+ * Job-Objekt nicht ueber das Ende des Runners hinaus am Leben.
  */
-export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now } = {}) {
-  if (process.platform === "win32" || !pgid || restMs <= 0) return true;
+export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform } = {}) {
+  if (plattform === "win32" || !pgid || restMs <= 0) return true;
   const frist = jetzt() + restMs;
   // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
   // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
@@ -4845,6 +4858,18 @@ export function sessionUmgebung(issueId, extraEnv, basis = process.env) {
     NODE_USE_ENV_PROXY: "1",
     ...extraEnv,
   };
+}
+
+/**
+ * Wie der Baum einer Session beendet wird (Issue #1132, Plan #1128 E10, Muster
+ * `kit/checks.mjs` aus #1123): auf POSIX ein Signal an die Prozessgruppe, unter Windows
+ * `taskkill /T /F`, denn ein Signal an die PID erreichte nur den direkten Kindprozess, und
+ * seine Enkel hielten die geerbte Pipe offen. Unter Windows gibt es kein mildes SIGTERM fuer
+ * einen Baum; beide Stufen des Zeitlimits werden zum harten Abbruch.
+ */
+export function baumBeendenAufruf(pid, signal, plattform = process.platform) {
+  if (plattform === "win32") return { taskkill: ["/pid", String(pid), "/T", "/F"] };
+  return { pid: -pid, signal };
 }
 
 function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }) {
@@ -4913,14 +4938,18 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       });
     };
 
-    // Signal an die ganze Prozessgruppe (negative PID, POSIX). Windows kennt keine
-    // Prozessgruppen in dieser Form — dort bleibt es beim Einzel-Kill, die
-    // Einschraenkung ist bekannt und nicht behebbar. Ein bereits beendeter Prozess
-    // laesst kill mit ESRCH scheitern; das ist der Normalfall, kein Fehler.
+    // Signal an die ganze Prozessgruppe (negative PID, POSIX), unter Windows `taskkill`
+    // auf den Baum (Issue #1132). Ein bereits beendeter Prozess laesst kill mit ESRCH
+    // scheitern und taskkill mit einem Exitcode ungleich 0; das ist der Normalfall, kein
+    // Fehler.
     const killTree = (signal) => {
+      const aufruf = baumBeendenAufruf(child.pid, signal);
+      if (aufruf.taskkill) {
+        spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
+        return;
+      }
       try {
-        if (process.platform === "win32") child.kill(signal);
-        else process.kill(-child.pid, signal);
+        process.kill(aufruf.pid, aufruf.signal);
       } catch {
         /* Prozess(gruppe) bereits weg */
       }

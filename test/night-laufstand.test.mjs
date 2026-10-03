@@ -20,7 +20,10 @@ import { tmpdir } from "node:os";
 
 import { standSetzen, journalLesen, staendeNachtragen, nightStandLaden, boardUmgebung } from "../kit/night.mjs";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, und POSIX-Signale fehlen. Siehe Issue #199." } : {};
+// Unter Windows ist SIGTERM nicht abfangbar: `kill` beendet den Runner dort hart, ohne dass
+// sein Handler laeuft. Den Stand hinterlaesst dann der abgekoppelte Waechter (#1085, #1132),
+// und genau das prueft der Signal-Test auf dieser Plattform.
+const SIGTERM_ABFANGBAR = process.platform !== "win32";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -144,7 +147,7 @@ test("ein spaeter geschriebener Stand derselben Karte ueberholt eine offene Zeil
   }
 });
 
-test("der naechste Start traegt offene Zeilen in derselben Reihenfolge nach", NUR_POSIX, () => {
+test("der naechste Start traegt offene Zeilen in derselben Reihenfolge nach", () => {
   const dir = setupProjekt();
   try {
     const a = karte(dir, "Erste");
@@ -164,7 +167,7 @@ test("der naechste Start traegt offene Zeilen in derselben Reihenfolge nach", NU
   }
 });
 
-test("--kette --dry-run traegt nichts nach und veraendert weder Label noch Kommentar", NUR_POSIX, () => {
+test("--kette --dry-run traegt nichts nach und veraendert weder Label noch Kommentar", () => {
   const dir = setupProjekt();
   try {
     const a = karte(dir, "Erste", ["kit:nightrun"]);
@@ -182,7 +185,7 @@ test("--kette --dry-run traegt nichts nach und veraendert weder Label noch Komme
   }
 });
 
-test("night.stand mit pauseMin >= fristMin wird vor der ersten Session mit Feldnamen abgewiesen", NUR_POSIX, () => {
+test("night.stand mit pauseMin >= fristMin wird vor der ersten Session mit Feldnamen abgewiesen", () => {
   assert.deepEqual(nightStandLaden({}), { fristMin: 10, pauseMin: 5 });
   assert.deepEqual(nightStandLaden({ night: { stand: { fristMin: 20 } } }), { fristMin: 20, pauseMin: 5 });
   assert.match(nightStandLaden({ night: { stand: { fristMin: 5, pauseMin: 5 } } }).fehler, /night\.stand\.pauseMin.*night\.stand\.fristMin/);
@@ -221,7 +224,7 @@ function warteAuf(pruefung, ms = 15000) {
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Laufbericht", NUR_POSIX, async () => {
+test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Laufbericht", async () => {
   const dir = setupProjekt();
   let kind = null;
   try {
@@ -232,7 +235,7 @@ test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Lauf
     const fake = String.raw`j=$(ls .claude/lauf/*.jsonl) && printf '{"art":"stand","nr":900,"karte":"%s","zustand":"laeuft","text":"x","status":"offen"}\n{"art":"quittung","nr":900}\n' "$NIGHT_ISSUE_ID" >> "$j" && touch marker && sleep 5`;
     kind = spawn(process.execPath, [NIGHT], {
       cwd: dir, stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: dir, NIGHT_CLAUDE_CMD: fake, NIGHT_PULS_MS: "100" },
+      env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: dir, NIGHT_CLAUDE_CMD: fake, NIGHT_PULS_MS: "100", ...(SIGTERM_ABFANGBAR ? {} : { KIT_NIGHT_WAECHTER_FRIST_S: "1" }) },
     });
     let stdout = "";
     kind.stdout.on("data", (d) => { stdout += d; });
@@ -250,6 +253,12 @@ test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Lauf
     kind.kill("SIGTERM");
     const { code } = await ende;
     kind = null;
+    if (!SIGTERM_ABFANGBAR) {
+      await warteAuf(() => laufbericht(dir).abschluss === "verstummt");
+      assert.deepEqual(board(dir, "issue", "get", id).labels.filter((l) => l.startsWith("lauf:")), ["lauf:abgebrochen"]);
+      assert.match(laufstaende(dir, id).at(-1), /nicht beendet, letztes Lebenszeichen/);
+      return;
+    }
     assert.equal(code, 143, stdout);
 
     const journalName = readdirSync(join(dir, ".claude", "lauf")).find((n) => n.endsWith(".jsonl"));
