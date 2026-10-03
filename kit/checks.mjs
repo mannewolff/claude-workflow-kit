@@ -477,8 +477,24 @@ function fail(nachricht) {
   throw new ChecksError(nachricht);
 }
 
+/**
+ * Wie git gestartet wird (Issue #1136). Der Test-Hook `CHECKS_GIT_FAKE` nach dem Muster
+ * `NIGHT_CLAUDE_CMD` nennt ein Node-Skript, das statt git startet — mit dem laufenden
+ * Node und ohne Shell, damit es auch unter Windows startbar ist, wo ein endungsloses
+ * Fake im PATH es nicht waere. Ohne die Variable bleibt der Start, wie er war.
+ */
+export function gitStart(args, env = process.env) {
+  const fake = env.CHECKS_GIT_FAKE;
+  return fake ? { cmd: process.execPath, args: [fake, ...args] } : { cmd: "git", args };
+}
+
+function gitSpawn(args, optionen) {
+  const start = gitStart(args);
+  return spawnSync(start.cmd, start.args, optionen);
+}
+
 function git(...args) {
-  return spawnSync("git", args, { cwd: process.cwd(), encoding: "utf-8" });
+  return gitSpawn(args, { cwd: process.cwd(), encoding: "utf-8" });
 }
 
 // --- Config ----------------------------------------------------------------
@@ -1352,7 +1368,7 @@ export function blobHashes(pfade) {
   }
   if (vorhanden.length === 0) return hashes;
 
-  const res = spawnSync("git", ["hash-object", "--stdin-paths"], {
+  const res = gitSpawn(["hash-object", "--stdin-paths"], {
     cwd: process.cwd(),
     encoding: "utf-8",
     input: `${vorhanden.join("\n")}\n`,
