@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.5.4] - 2026-10-03
+- Das Hilfsskript der Hänge-Tests bricht die Testsuche nicht mehr (#1142)
+- README und Dokumentation sagen Windows mit Git Bash zu, die Anweisungen fangen ein leeres TMPDIR ab (#1139)
+- Kein Test überspringt sich mehr wegen Windows, ein Wächtertest hält das fest (#1138)
+- Der GO-Commit der Board-Oberfläche startet git ohne Shell (#1137)
+- checks.mjs und install.mjs nehmen Node-Fakes für git und glab über Test-Hooks (#1136)
+- board.mjs startet Reviewer- und Board-CLIs unter Windows auch als npm-Skript-Hülle (#1135)
+- Night-Tests ueber die Ketten- und Kit-Stand-Fixtures laufen unter Windows (#1134)
+- Night-Tests mit lokaler NUR_POSIX-Konstante laufen unter Windows (#1133)
+- Der Nacht-Runner beendet unter Windows hängende Sessions samt Prozessbaum (#1132)
+- Die Kommando-Stufe des Nacht-Runners läuft unter Windows über die Git Bash (#1131)
+- Die Windows-Prüfung der CI meldet sich beim nächsten Arbeitsschritt im Kit-Repository (#1129)
+- Die Hänge-Tests des Prüfwerkzeugs laufen unter Windows grün (#1127)
+
 ## [3.5.3] - 2026-10-02
 - Das Kit-Stand-Fixture hält unter Windows LF wie das Repo (#1125)
 - Die Sperrliste erkennt absolute Windows-Pfade unter der Projektwurzel (#1124)
