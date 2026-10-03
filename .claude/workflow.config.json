@@ -227,6 +227,7 @@
       "install.mjs",
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
+      "tools/windows-pruefung.mjs",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
       "test/tools-*.test.mjs",

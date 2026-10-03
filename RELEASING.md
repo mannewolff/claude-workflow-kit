@@ -42,6 +42,29 @@ git config core.hooksPath .githooks
 Ohne diesen Schritt weist nichts einen Commit ohne Pruefnachweis ab; es bleibt allein
 die nachtraegliche Wertung im Nacht-Runner (Issue #471).
 
+Die Rueckmeldung zur Windows-Pruefung (Issue #1129) laeuft als Hook in
+`.claude/settings.json`. Die Datei ist nicht versioniert, und schreiben darf sie nur der
+Mensch. Deshalb stehen die beiden Eintraege hier, wortgetreu unter `"hooks"`:
+
+```json
+"SessionStart": [
+  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
+],
+"UserPromptSubmit": [
+  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
+]
+```
+
+### Rueckmeldung zur Windows-Pruefung
+
+Fuer die Windows-Pruefung ist #316 zurueckgenommen: Ein roter Job `check (windows-latest)`
+auf `origin/main` faellt nicht mehr erst beim CI-Gate in `/merge-production` auf.
+`push main` wartet weiter nicht auf die CI. Gemeldet wird beim naechsten Schritt: Der Hook
+fragt `code ci-status` fuer `origin/main` ab, ohne Fetch und mit einer Frist von fuenf
+Sekunden. Ein rotes Ergebnis meldet er einmal je Sitzung und bei jedem Sitzungsstart
+erneut. Ergebnis und Abfragezeit haelt er in `.claude/windows-pruefung.json`. Laeuft der Job
+noch, fragt er fruehestens nach zwei Minuten wieder. Scheitert die Abfrage, schweigt er.
+
 ## Ablauf
 
 Die Listen unten fuehren nur die **Erzeugungsschritte**. Prueflauf, Festschreiben und

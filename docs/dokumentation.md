@@ -973,7 +973,7 @@ Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach p
 
 **Gefahren wird die Stufe `merge`, die Freigabestufe** — der Skill ruft `checks.mjs run --stufe merge` auf. Sie prüft nur, was `push main` nicht geprüft hat: die Prüfungen mit `stufe: "merge"` immer, die der Paketstufe nach Bereichen über die Release-Dateien (Bump, Stempel, Changelog), die der Stufe `push` nicht — sie stehen unter `ausgelassen` mit dem Grund `Stufe push, geprueft beim push main` (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Keine Pflichtprüfung entfällt dadurch: Paket- und Push-Stufe liefen beim `push main` für denselben Stand. Es ist der letzte Lauf vor production.
 
-Der Grund für ein zweites Gate neben den Pflicht-Checks: Die lokalen `buildChecks` messen nur, was deine Maschine messen kann — sie messen nicht, was die CI misst. Dieses Repo fährt einen zweiten Job auf `windows-latest`; zwei Releases gingen nach production, während genau dieser Job fehlschlug. Die Information lag jedes Mal vor, sie wurde nur nie abgerufen.
+Der Grund für ein zweites Gate neben den Pflicht-Checks: Die lokalen `buildChecks` messen nur, was deine Maschine messen kann — sie messen nicht, was die CI misst. Dieses Repo fährt einen zweiten Job auf `windows-latest`; zwei Releases gingen nach production, während genau dieser Job fehlschlug. Die Information lag jedes Mal vor, sie wurde nur nie abgerufen. Das Kit-Repository meldet die Windows-Prüfung deshalb zusätzlich nach `push main` zurück: Ein Hook fragt sie beim nächsten Arbeitsschritt ab und zeigt ein rotes Ergebnis an, ohne dass `push main` darauf wartet (siehe `RELEASING.md`).
 
 ### Eigene Release-Schritte per RELEASING.md
 
