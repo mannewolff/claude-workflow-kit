@@ -22,10 +22,11 @@
 
 import { spawnSync, execFile } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, readdirSync, rmSync } from "node:fs";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { gitBashPfad } from "../../kit/board.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const BOARD = join(repoRoot, "kit", "board.mjs");
@@ -39,6 +40,60 @@ export const BOARD = join(repoRoot, "kit", "board.mjs");
  * unter der ersten Wartezeit der Staffel (500 ms): Es bleibt bei einem Versuch.
  */
 export const TEST_TOOLBOX_BUDGET_MS = "200";
+
+/**
+ * Der PATH eines Fixtures: `fakebin` vor dem PATH des Rechners, getrennt nach der
+ * Plattform (`;` unter Windows, `:` sonst — Issue #1135).
+ */
+export function fakePath(dir) {
+  return `${join(dir, "fakebin")}${delimiter}${process.env.PATH}`;
+}
+
+/**
+ * Die echte Git Bash, festgehalten, bevor ein Fixture ein Fake-`git` in den PATH legt
+ * (Issue #1135). Unter Windows startet das Kit ein Fake ueber seine sh-Huelle in der Git
+ * Bash und findet die ueber die `git.exe` im PATH (Plan #1128, E8). Ein Fake-`git` im
+ * Fixture laege dort vor der echten und fuehrte die Suche ins Leere; mit der Variablen
+ * entfaellt sie. Auf POSIX gibt es keine Git Bash zu suchen.
+ */
+const ECHTE_GIT_BASH = process.platform === "win32" ? gitBashPfad().pfad : null;
+export const GIT_BASH_ENV = ECHTE_GIT_BASH ? { CLAUDE_CODE_GIT_BASH_PATH: ECHTE_GIT_BASH } : {};
+
+/**
+ * Legt neben ein endungsloses Fake die `.cmd`-Attrappe (Issue #1135). Unter Windows
+ * findet die Suche im PATH nur Dateien mit einer Endung aus PATHEXT; das Kit startet dann
+ * nicht die `.cmd`, sondern die sh-Huelle daneben ueber die Git Bash (Plan #1128, E8) —
+ * genau so, wie npm ein CLI unter Windows ablegt. Auf POSIX bleibt die Attrappe liegen,
+ * ohne dass sie jemand liest.
+ */
+export function cmdAttrappe(pfad) {
+  writeFileSync(`${pfad}.cmd`, "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
+}
+
+/**
+ * Skip fuer Tests, die an POSIX-Dateirechten haengen (Issue #1135, Plan #1128, E6).
+ *
+ * Gemessen wird die Faehigkeit, nicht der Plattformname: Ein Verzeichnis ohne jedes
+ * Recht muss sich dem Lesen verweigern. Das tut es nicht, wenn der Lauf als root geht —
+ * auch auf Linux —, und nicht unter Windows, wo `chmod` nur das Schreibschutz-Attribut
+ * kennt.
+ */
+function dateirechteGreifen() {
+  const probe = mkdtempSync(join(tmpdir(), "rechte-probe-"));
+  try {
+    chmodSync(probe, 0o000);
+    readdirSync(probe);
+    return false;
+  } catch {
+    return true;
+  } finally {
+    chmodSync(probe, 0o700);
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
+export const MIT_DATEIRECHTEN = dateirechteGreifen()
+  ? {}
+  : { skip: "Dateirechte greifen hier nicht (Lauf als root oder ein Dateisystem ohne POSIX-Rechte) — der Test braucht eine Datei, die sich dem Zugriff verweigert." };
 
 /**
  * Legt ein Fixture-Projekt im Temp-Verzeichnis an. `config === null` laesst die
@@ -71,7 +126,8 @@ export function runBoard(dir, cliArgs, extraEnv = {}, spawnOpts = {}) {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
   Object.assign(env, {
-    PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
+    PATH: fakePath(dir),
+    ...GIT_BASH_ENV,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     // Fester Wert statt Loeschen (Issue #266): `issue create` verlangt seit der
@@ -114,7 +170,8 @@ export function runBoardAsync(dir, cliArgs, extraEnv = {}, stdinText = "") {
   const env = { ...process.env };
   delete env.TBX_TOKEN;
   Object.assign(env, {
-    PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
+    PATH: fakePath(dir),
+    ...GIT_BASH_ENV,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_AGENT_MODEL: "fixture-modell", // siehe runBoard (Issue #266)
@@ -196,6 +253,7 @@ export function fakeCli(dir, name, regeln) {
   const cliPfad = join(binDir, name);
   writeFileSync(cliPfad, wrapper);
   chmodSync(cliPfad, 0o755);
+  cmdAttrappe(cliPfad);
 }
 
 /** Die Argumentlisten aller Aufrufe eines Fake-Binaries, in Aufrufreihenfolge. */

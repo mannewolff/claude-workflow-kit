@@ -246,8 +246,18 @@ wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer ver
 // Betriebssystem, es existiert kein Escaping-Layer, der pro Plattform anders arbeitet.
 // Nebenbei entfaellt jede Kommando-Injection-Flaeche — ein Issue-Titel kann keine
 // zweite Kommandozeile mehr eroeffnen.
+//
+// Unter Windows liegt ein per npm installiertes CLI nur als `.cmd`-Huelle vor, und die
+// startet Node ohne Shell nicht (CVE-2024-27980). Den Startbefehl bestimmt darum
+// `startbefehlFuer` (Issue #1135, Plan #1128, E8): eine `.exe` direkt, eine `.cmd` ueber
+// ihre sh-Huelle in der Git Bash — nie ueber die Shell-Option von spawn.
 function exec(datei, args = []) {
-  const res = spawnSync(datei, args, { encoding: "utf-8" });
+  const start = startbefehlFuer(datei);
+  if (start.fehler) throw new Error(start.fehler);
+  const res = spawnSync(start.befehl, [...start.vorArgs, ...args], {
+    encoding: "utf-8",
+    env: { ...process.env, ...start.umgebung },
+  });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
     throw new Error(res.error.code === "ENOENT"
@@ -5502,7 +5512,7 @@ const PATHEXT_DEFAULT = ".COM;.EXE;.BAT;.CMD";
  * ob das Werkzeug DA ist — dafuer braucht es keinen Prozess. Der fruehere Weg (`datei
  * --version` starten) lieferte unter Windows falsch negative Ergebnisse: Ein per npm
  * installiertes CLI liegt dort als `codex.cmd`, und fuer `.cmd` wirft Node seit
- * CVE-2024-27980 `EINVAL` ohne `shell: true` — das aber hat board.mjs in Issue #196
+ * CVE-2024-27980 `EINVAL` ohne die Shell-Option von spawn — die aber hat board.mjs in Issue #196
  * bewusst abgeschafft. Getroffen haette es ausgerechnet die fremden Modelle, fuer die
  * der `command`-Adapter gebaut wurde.
  *
@@ -5630,7 +5640,7 @@ export function gitBashPfad({ env = process.env, plattform = "win32", existiert 
  *     Endung, startet diese ueber die Git Bash: `bash.exe <datei> …args`. npm legt eine solche
  *     sh-Huelle unter Windows immer mit an.
  *   - Fehlt sie, ist das Programm ohne `cmd.exe` nicht startbar, und genau das steht im Fehler.
- *     Ein `.cmd` ueber `shell: true` faellt aus: Node lehnt `.cmd` ohne Shell seit
+ *     Ein `.cmd` ueber die Shell-Option von spawn faellt aus: Node lehnt `.cmd` ohne Shell seit
  *     CVE-2024-27980 ab, und cmd-Quoting kann keine Zeilenumbrueche.
  *
  * Liegt das Programm gar nicht im PATH, bleibt es beim Namen: Der Start scheitert dann mit
@@ -5663,12 +5673,23 @@ export function startbefehlFuer(name, { env = process.env, plattform = process.p
 
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
 // sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
-// Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
-// noch einmal zu suchen (unter Windows steckt in `pfad` die Endung aus PATHEXT).
-function kommandoVerfuegbar(kommandozeile) {
+// Liefert zusaetzlich den aufgeloesten Pfad und den Startbefehl dazu — der Probelauf
+// unten startet damit, statt noch einmal zu suchen. Unter Windows steckt in `pfad` die
+// Endung aus PATHEXT, und ein per npm installiertes `codex.cmd` startet ueber seine
+// sh-Huelle in der Git Bash (Issue #1135, E8); fehlt die Huelle, steht das in
+// `start.fehler`. Umgebung, Plattform und Dateisystem sind injizierbar wie bei
+// `startbefehlFuer`.
+export function kommandoVerfuegbar(kommandozeile, { env = process.env, plattform = process.platform, existiert, ausfuehrbar } = {}) {
   const datei = kommandozeile.trim().split(/\s+/)[0];
-  const pfad = findeImPath(datei, { path: process.env.PATH, pathext: process.env.PATHEXT });
-  return { datei, ok: pfad !== null, pfad };
+  const pfad = findeImPath(datei, {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+    ausfuehrbar,
+  });
+  if (pfad === null) return { datei, ok: false, pfad, start: null };
+  return { datei, ok: true, pfad, start: startbefehlFuer(pfad, { env, plattform, existiert }) };
 }
 
 // Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
@@ -5697,13 +5718,15 @@ const PROBE_TIMEOUT_MS = Number(process.env.KIT_PROBE_TIMEOUT_MS) || 60_000;
  * Whitespace zerlegt und als argv uebergeben. Dieselbe Annahme wie in
  * kommandoVerfuegbar — eine Reviewer-Kommandozeile mit Quotes oder Pipes ist damit
  * nicht abgedeckt, und das ist der Preis dafuer, dass es unter Windows laeuft.
+ * Gestartet wird nach `start` aus kommandoVerfuegbar (Issue #1135, E8).
  */
-function probelauf(kommandozeile, pfad) {
+function probelauf(kommandozeile, start) {
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
-  const res = spawnSync(pfad, argumente, {
+  const res = spawnSync(start.befehl, [...start.vorArgs, ...argumente], {
     input: PROBE_PROMPT,
     encoding: "utf-8",
     timeout: PROBE_TIMEOUT_MS,
+    env: { ...process.env, ...start.umgebung },
   });
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
     return { ok: false, grund: `Zeitlimit von ${PROBE_TIMEOUT_MS} ms ueberschritten` };
@@ -5813,10 +5836,12 @@ function issueReviewCheck(args = {}) {
   const ergebnis = reviewers.map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
     if (r.kind === "claude") return { ...basis, verfuegbar: true };
-    const { datei, ok, pfad } = kommandoVerfuegbar(r.command);
+    const { datei, ok, start } = kommandoVerfuegbar(r.command);
     if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    // Im PATH, aber nicht startbar: eine `.cmd` ohne sh-Huelle unter Windows (E8).
+    if (start.fehler) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: start.fehler };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
-    const probe = probelauf(r.command, pfad);
+    const probe = probelauf(r.command, start);
     return probe.ok
       ? { ...basis, verfuegbar: true, geprueft: "probelauf" }
       : { ...basis, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };

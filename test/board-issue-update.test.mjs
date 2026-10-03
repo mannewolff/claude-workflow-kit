@@ -21,8 +21,6 @@ import { join } from "node:path";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufe, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
-
 // Der Haerte-Fall: alles, was eine Kommandozeile zerlegen wuerde.
 const BOESER_BODY = [
   "## Kontext",
@@ -118,7 +116,7 @@ test("issue update: ein unbekanntes Issue bricht ab", () => {
 
 const GITHUB = { codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } };
 
-test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", NUR_POSIX, () => {
+test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", () => {
   const dir = setupProjekt(GITHUB, "board-update-gh-");
   try {
     fakeCli(dir, "gh", [
@@ -147,7 +145,7 @@ test("issue update: GitHub ruft 'gh issue edit' mit unveraendertem Body", NUR_PO
 
 const GITLAB = { codeHost: "gitlab", issueTracker: "gitlab" };
 
-test("issue update: GitLab ruft 'glab issue update' mit --description", NUR_POSIX, () => {
+test("issue update: GitLab ruft 'glab issue update' mit --description", () => {
   const dir = setupProjekt(GITLAB, "board-update-glab-");
   try {
     fakeCli(dir, "glab", [

@@ -14,11 +14,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, mitProjekt } from "./helpers/board-github-fixture.mjs";
+import { mitProjekt } from "./helpers/board-github-fixture.mjs";
 
 // --- Lesen ---
 
-test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", NUR_POSIX, () => {
+test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", () => {
   mitProjekt((dir) => {
     const geholt = board(dir, "issue", "get", "42");
     assert.deepEqual(geholt, {
@@ -49,7 +49,7 @@ test("get liest das Issue ueber gh issue view und normalisiert die Kommentare", 
 // dafuer in der --json-Feldliste stehen: gh liefert nur, was ausdruecklich
 // angefordert wird — ein fehlendes Feld waere still zu "kein Anlagedatum" geworden.
 
-test("get fordert createdAt an und liefert es als Kalendertag", NUR_POSIX, () => {
+test("get fordert createdAt an und liefert es als Kalendertag", () => {
   mitProjekt((dir) => {
     assert.match(board(dir, "issue", "get", "42").created, /^\d{4}-\d{2}-\d{2}$/);
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /--json \S*createdAt/);
@@ -63,7 +63,7 @@ test("get fordert createdAt an und liefert es als Kalendertag", NUR_POSIX, () =>
 
 // Eine Antwort ohne createdAt (aeltere gh-Version, fremder Mock) darf kein Datum
 // erfinden — sonst wertet das Gate ein altes Paket als neu.
-test("get ohne createdAt laesst das Feld weg", NUR_POSIX, () => {
+test("get ohne createdAt laesst das Feld weg", () => {
   mitProjekt((dir) => {
     assert.equal("created" in board(dir, "issue", "get", "42"), false);
   }, {
@@ -74,7 +74,7 @@ test("get ohne createdAt laesst das Feld weg", NUR_POSIX, () => {
   });
 });
 
-test("list ohne Status fragt die offenen Issues samt Labels ab", NUR_POSIX, () => {
+test("list ohne Status fragt die offenen Issues samt Labels ab", () => {
   mitProjekt((dir) => {
     const alle = board(dir, "issue", "list");
     assert.deepEqual(alle, [
@@ -88,7 +88,7 @@ test("list ohne Status fragt die offenen Issues samt Labels ab", NUR_POSIX, () =
   });
 });
 
-test("list --status filtert ueber das Project und schlaegt die Labels nach", NUR_POSIX, () => {
+test("list --status filtert ueber das Project und schlaegt die Labels nach", () => {
   mitProjekt((dir) => {
     const bereit = board(dir, "issue", "list", "--status", "ready");
     assert.deepEqual(bereit, [
@@ -120,7 +120,7 @@ test("list --status filtert ueber das Project und schlaegt die Labels nach", NUR
 
 // Ein Netzwerkschluckauf beim Label-Nachschlag darf einen Nachtlauf nicht kippen:
 // die Liste ueberlebt ohne Labels, mit Hinweis auf stderr.
-test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", NUR_POSIX, () => {
+test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -137,7 +137,7 @@ test("list --status ueberlebt einen fehlgeschlagenen Label-Nachschlag", NUR_POSI
 });
 
 // Leere Trefferliste: der zweite gh-Aufruf muss ausbleiben (nichts nachzuschlagen).
-test("list --status ohne Treffer schlaegt keine Labels nach", NUR_POSIX, () => {
+test("list --status ohne Treffer schlaegt keine Labels nach", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "list", "--status", "in_review"), []);
     assert.doesNotMatch(aufrufZeilen(dir, "gh").join("\n"), /--state all/);
@@ -146,7 +146,7 @@ test("list --status ohne Treffer schlaegt keine Labels nach", NUR_POSIX, () => {
   });
 });
 
-test("list --status ohne passende Project-Option schlaegt fehl", NUR_POSIX, () => {
+test("list --status ohne passende Project-Option schlaegt fehl", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "in_review"]);
     assert.equal(res.status, 1);
@@ -174,14 +174,14 @@ const GH_MIT_LABELS = {
   },
 };
 
-test("get liefert die Labels als Namen-Array", NUR_POSIX, () => {
+test("get liefert die Labels als Namen-Array", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "get", "42").labels, ["kit:nightrun", "fix"]);
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /--json number,title,body,state,comments,labels/);
   }, { regeln: [GH_MIT_LABELS] });
 });
 
-test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", NUR_POSIX, () => {
+test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "get", "42").labels, []);
   }, {
@@ -192,7 +192,7 @@ test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined
   });
 });
 
-test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () => {
+test("get und list liefern fuer dasselbe Issue dieselben Labels", () => {
   mitProjekt((dir) => {
     const ausGet = board(dir, "issue", "get", "42").labels;
     const ausList = board(dir, "issue", "list").find((i) => i.id === "42").labels;

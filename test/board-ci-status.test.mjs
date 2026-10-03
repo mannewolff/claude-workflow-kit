@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { NUR_POSIX, SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
+import { SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
 
 // --- GitHub ---
 
@@ -29,7 +29,7 @@ function ghRegeln(jobs, { laeufe = [{ databaseId: 77, workflowName: "CI", conclu
   ];
 }
 
-test("[board-7] github: alle Jobs gruen ergeben gruen", NUR_POSIX, () => {
+test("[board-7] github: alle Jobs gruen ergeben gruen", () => {
   const { daten, zeilen } = ciStatusOk(GITHUB, "gh", ghRegeln([
     { name: "check (ubuntu-latest)", conclusion: "success", status: "completed" },
     { name: "check (windows-latest)", conclusion: "skipped", status: "completed" },
@@ -48,7 +48,7 @@ test("[board-7] github: alle Jobs gruen ergeben gruen", NUR_POSIX, () => {
   assert.match(zeilen[1], /run view 77 --json jobs/);
 });
 
-test("[board-7] github: ein roter Job ergibt rot und wird benannt", NUR_POSIX, () => {
+test("[board-7] github: ein roter Job ergibt rot und wird benannt", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln([
     { name: "check (ubuntu-latest)", conclusion: "success", status: "completed" },
     { name: "check (windows-latest)", conclusion: "failure", status: "completed" },
@@ -59,7 +59,7 @@ test("[board-7] github: ein roter Job ergibt rot und wird benannt", NUR_POSIX, (
   });
 });
 
-test("[board-7] github: ein laufender Job ergibt laeuft", NUR_POSIX, () => {
+test("[board-7] github: ein laufender Job ergibt laeuft", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln([
     { name: "check (ubuntu-latest)", conclusion: "success", status: "completed" },
     { name: "check (windows-latest)", conclusion: null, status: "in_progress" },
@@ -68,7 +68,7 @@ test("[board-7] github: ein laufender Job ergibt laeuft", NUR_POSIX, () => {
   assert.deepEqual(daten.jobs[1], { name: "check (windows-latest)", ergebnis: "laeuft" });
 });
 
-test("[board-7] github: cancelled zaehlt als rot", NUR_POSIX, () => {
+test("[board-7] github: cancelled zaehlt als rot", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln([
     { name: "check (windows-latest)", conclusion: "cancelled", status: "completed" },
   ]));
@@ -77,7 +77,7 @@ test("[board-7] github: cancelled zaehlt als rot", NUR_POSIX, () => {
 
 // Der Mischfall ist der Grund fuer die Vorrangregel: Waere `laeuft` staerker, hiesse
 // ein roter Job „warte noch" — und das Release liefe durch.
-test("[board-7] github: rot schlaegt laeuft", NUR_POSIX, () => {
+test("[board-7] github: rot schlaegt laeuft", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln([
     { name: "check (ubuntu-latest)", conclusion: null, status: "in_progress" },
     { name: "check (windows-latest)", conclusion: "failure", status: "completed" },
@@ -87,17 +87,17 @@ test("[board-7] github: rot schlaegt laeuft", NUR_POSIX, () => {
 
 // Unmittelbar nach einem Push ist der Lauf fuer einige Sekunden unsichtbar. Ein `keine`
 // an dieser Stelle risse genau die Luecke wieder auf, die Issue #316 schliesst.
-test("[board-7] github: kein Lauf zum SHA ergibt laeuft, nicht keine", NUR_POSIX, () => {
+test("[board-7] github: kein Lauf zum SHA ergibt laeuft, nicht keine", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", [{ match: "^run list", stdout: [] }]);
   assert.deepEqual(daten, { status: "laeuft", jobs: [] });
 });
 
-test("[board-7] github: ein Lauf ohne Jobs ergibt laeuft", NUR_POSIX, () => {
+test("[board-7] github: ein Lauf ohne Jobs ergibt laeuft", () => {
   const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln([]));
   assert.deepEqual(daten, { status: "laeuft", jobs: [] });
 });
 
-test("[board-7] github: ein CLI mit Exit 1 endet mit Exit 1", NUR_POSIX, () => {
+test("[board-7] github: ein CLI mit Exit 1 endet mit Exit 1", () => {
   const { res } = ciStatus(GITHUB, "gh", [
     { match: "^run list", exit: 1, stderr: "gh: HTTP 401 Bad credentials\n" },
   ]);
@@ -105,7 +105,7 @@ test("[board-7] github: ein CLI mit Exit 1 endet mit Exit 1", NUR_POSIX, () => {
   assert.match(res.stderr, /Fehler:/);
 });
 
-test("[board-7] github: ungueltiges JSON endet mit Exit 1", NUR_POSIX, () => {
+test("[board-7] github: ungueltiges JSON endet mit Exit 1", () => {
   const { res } = ciStatus(GITHUB, "gh", [{ match: "^run list", stdout: "kein json" }]);
   assert.equal(res.status, 1);
   assert.match(res.stderr, /Fehler:/);
@@ -113,7 +113,7 @@ test("[board-7] github: ungueltiges JSON endet mit Exit 1", NUR_POSIX, () => {
 
 // Die Achse haengt am codeHost, nicht am issueTracker: Dieses Repo faehrt toolbox als
 // Tracker und github als Host.
-test("[board-7] die Achse haengt am codeHost, nicht am issueTracker", NUR_POSIX, () => {
+test("[board-7] die Achse haengt am codeHost, nicht am issueTracker", () => {
   const { daten } = ciStatusOk(
     { codeHost: "github", issueTracker: "toolbox", toolbox: { host: "https://example.invalid" } },
     "gh",

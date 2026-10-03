@@ -16,22 +16,18 @@ import { execFile } from "node:child_process";
 import { writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setupProjekt, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakePath, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
 const REPO_URL = "https://github.com/mannewolff/claude-workflow-kit";
 const TOKEN = "fixture-token";
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
-  : {};
-
 function runMigrate(dir, cliArgs, extraEnv = {}) {
   const env = { ...process.env };
   delete env.KIT_AGENT_MODEL;
   Object.assign(env, {
-    PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
+    PATH: fakePath(dir),
     TBX_TOKEN: TOKEN,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // kurzes Wiederholbudget (Issue #842)
@@ -121,7 +117,7 @@ test("die Pruefung greift vor jedem Netzzugriff", async () => {
 // Unerwartete Antworten der Gegenseite
 // ============================================================
 
-test("ein Kartenbestand, der kein Objekt ist, wird als solcher gemeldet", NUR_POSIX, async () => {
+test("ein Kartenbestand, der kein Objekt ist, wird als solcher gemeldet", async () => {
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, text: '"kein Objekt"' };
     return undefined;
@@ -145,7 +141,7 @@ test("ein Kartenbestand, der kein Objekt ist, wird als solcher gemeldet", NUR_PO
   }
 });
 
-test("eine Create-Antwort ohne id bricht ab, sobald Kommentare anzuhaengen waeren", NUR_POSIX, async () => {
+test("eine Create-Antwort ohne id bricht ab, sobald Kommentare anzuhaengen waeren", async () => {
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     // Die Karte entsteht, aber die Antwort nennt keine id — die Kommentare haetten
@@ -177,7 +173,7 @@ test("eine Create-Antwort ohne id bricht ab, sobald Kommentare anzuhaengen waere
   }
 });
 
-test("eine Create-Antwort ohne id genuegt, solange es keine Kommentare gibt", NUR_POSIX, async () => {
+test("eine Create-Antwort ohne id genuegt, solange es keine Kommentare gibt", async () => {
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     if (req.method === "POST" && req.url === "/api/kanban/items") return { status: 200, json: { number: 101 } };
@@ -202,7 +198,7 @@ test("eine Create-Antwort ohne id genuegt, solange es keine Kommentare gibt", NU
   }
 });
 
-test("eine GraphQL-Antwort in unerwarteter Form nennt den gelesenen Gegenstand", NUR_POSIX, async () => {
+test("eine GraphQL-Antwort in unerwarteter Form nennt den gelesenen Gegenstand", async () => {
   const dir = setupProjekt({ issueTracker: "github", github: { projectNumber: 14 } }, "migrate-graphql-kaputt-");
   fakeCli(dir, "gh", [
     { match: "repo view", stdout: "mannewolff/claude-workflow-kit\n" },
@@ -221,7 +217,7 @@ test("eine GraphQL-Antwort in unerwarteter Form nennt den gelesenen Gegenstand",
   }
 });
 
-test("liefert gh kein gueltiges JSON, steht der Anfang der Ausgabe im Fehler", NUR_POSIX, async () => {
+test("liefert gh kein gueltiges JSON, steht der Anfang der Ausgabe im Fehler", async () => {
   const dir = setupProjekt({ issueTracker: "github", github: { projectNumber: 14 } }, "migrate-kein-json-");
   fakeCli(dir, "gh", [
     { match: "repo view", stdout: "mannewolff/claude-workflow-kit\n" },

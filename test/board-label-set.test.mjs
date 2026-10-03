@@ -15,10 +15,6 @@ import { join } from "node:path";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
-
 const GITHUB = { codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } };
 const GITLAB = { codeHost: "gitlab", issueTracker: "gitlab" };
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
@@ -91,7 +87,7 @@ const LOKAL_OHNE_LABELS = LOKAL_MIT_LABELS.replace("labels: kit:nightrun, fix\n"
 
 // --- GitHub ---
 
-test("github: add setzt das Label ueber `gh issue edit --add-label`", NUR_POSIX, () => {
+test("github: add setzt das Label ueber `gh issue edit --add-label`", () => {
   mitGitHub((dir) => {
     assert.deepEqual(board(dir, "issue", "label", "add", "7", "kit:klaeren"), {
       ok: true, id: "7", label: "kit:klaeren", aktion: "add",
@@ -103,7 +99,7 @@ test("github: add setzt das Label ueber `gh issue edit --add-label`", NUR_POSIX,
   });
 });
 
-test("github: remove entfernt das Label ueber `--remove-label`", NUR_POSIX, () => {
+test("github: remove entfernt das Label ueber `--remove-label`", () => {
   mitGitHub((dir) => {
     board(dir, "issue", "label", "remove", "7", "kit:klaeren");
     assert.match(
@@ -113,7 +109,7 @@ test("github: remove entfernt das Label ueber `--remove-label`", NUR_POSIX, () =
   });
 });
 
-test("github: ein zweiter add-Aufruf bleibt bei Exit 0 (idempotent)", NUR_POSIX, () => {
+test("github: ein zweiter add-Aufruf bleibt bei Exit 0 (idempotent)", () => {
   mitGitHub((dir) => {
     board(dir, "issue", "label", "add", "7", "kit:klaeren");
     const zweiter = runBoard(dir, ["issue", "label", "add", "7", "kit:klaeren"]);
@@ -124,7 +120,7 @@ test("github: ein zweiter add-Aufruf bleibt bei Exit 0 (idempotent)", NUR_POSIX,
 // Existiert die Labeldefinition beim Tracker nicht, meldet gh das mit Exit != 0.
 // Der Adapter darf das nicht schlucken — sonst gilt eine nie gesetzte Zeichnung als
 // gesetzt, und der Nachtlauf haelt ein Issue faelschlich fuer erledigt.
-test("github: unbekannte Labeldefinition schlaegt durch", NUR_POSIX, () => {
+test("github: unbekannte Labeldefinition schlaegt durch", () => {
   mitGitHub((dir) => {
     const res = runBoard(dir, ["issue", "label", "add", "7", "gibtsnicht"]);
     assert.notEqual(res.status, 0);
@@ -134,7 +130,7 @@ test("github: unbekannte Labeldefinition schlaegt durch", NUR_POSIX, () => {
 
 // --- GitLab ---
 
-test("gitlab: add und remove nutzen --label und --unlabel", NUR_POSIX, () => {
+test("gitlab: add und remove nutzen --label und --unlabel", () => {
   mitGitLab((dir) => {
     board(dir, "issue", "label", "add", "7", "kit:klaeren");
     board(dir, "issue", "label", "remove", "7", "kit:klaeren");
@@ -146,7 +142,7 @@ test("gitlab: add und remove nutzen --label und --unlabel", NUR_POSIX, () => {
 
 // Bei GitLab SIND die Spaltennamen Labels. Ohne diese Sperre koennte das generische
 // Label-Kommando `issue move` umgehen und den Boardzustand beschaedigen.
-test("gitlab: ein Status-Label wird abgewiesen, ohne glab zu rufen", NUR_POSIX, () => {
+test("gitlab: ein Status-Label wird abgewiesen, ohne glab zu rufen", () => {
   mitGitLab((dir) => {
     for (const aktion of ["add", "remove"]) {
       const res = runBoard(dir, ["issue", "label", aktion, "7", "Ready"]);
@@ -159,7 +155,7 @@ test("gitlab: ein Status-Label wird abgewiesen, ohne glab zu rufen", NUR_POSIX, 
 
 // Das Ziel-Label muss den Spaltenwechsel ueberleben: `moveIssue` unlabelt bei GitLab
 // nur die Status-Labels, nicht alles.
-test("gitlab: ein anschliessendes move erhaelt das gesetzte Label", NUR_POSIX, () => {
+test("gitlab: ein anschliessendes move erhaelt das gesetzte Label", () => {
   mitGitLab((dir) => {
     board(dir, "issue", "label", "add", "7", "kit:klaeren");
     board(dir, "issue", "move", "7", "ready");
@@ -258,7 +254,7 @@ const UNGUELTIG = [
 ];
 
 for (const fall of UNGUELTIG) {
-  test(`operanden: ${fall.name} endet mit Exit 1, HELP und ohne CLI-Aufruf`, NUR_POSIX, () => {
+  test(`operanden: ${fall.name} endet mit Exit 1, HELP und ohne CLI-Aufruf`, () => {
     mitGitHub((dir) => {
       const res = runBoard(dir, fall.argv);
       assert.equal(res.status, 1, res.stderr);
@@ -271,7 +267,7 @@ for (const fall of UNGUELTIG) {
 
 // Leerzeichen und Doppelpunkt sind gueltige Labelbestandteile und muessen als EIN
 // Argument ankommen — sonst zerfaellt ein Name unterwegs in zwei.
-test("operanden: Name mit Leerzeichen und Doppelpunkt bleibt ein Argument", NUR_POSIX, () => {
+test("operanden: Name mit Leerzeichen und Doppelpunkt bleibt ein Argument", () => {
   mitGitHub((dir) => {
     board(dir, "issue", "label", "add", "7", "kit: bitte klaeren");
     const argv = readFileSync(join(dir, "fakebin", "gh.log.jsonl"), "utf-8")
@@ -283,7 +279,7 @@ test("operanden: Name mit Leerzeichen und Doppelpunkt bleibt ein Argument", NUR_
   });
 });
 
-test("operanden: unbekannter Unterbefehl endet mit Exit != 0 und Usage", NUR_POSIX, () => {
+test("operanden: unbekannter Unterbefehl endet mit Exit != 0 und Usage", () => {
   mitGitHub((dir) => {
     const res = runBoard(dir, ["issue", "label", "foo", "7", "fix"]);
     assert.notEqual(res.status, 0);

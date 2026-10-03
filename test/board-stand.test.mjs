@@ -11,7 +11,6 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from "node:
 import { join } from "node:path";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX } from "./helpers/board-github-fixture.mjs";
 import { STAND_LABEL_VORGABEN } from "../kit/board.mjs";
 
 const VORGABEN = ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet"];
@@ -116,7 +115,7 @@ test("die Vorgaben im Kommando sind die des Schemas", () => {
   assert.equal(block.pauseMin.default, 5);
 });
 
-test("strenges Lesen: nicht lesbare Kommentare -> Exit 1, kein zweiter Kommentar, kein Label", NUR_POSIX, () => {
+test("strenges Lesen: nicht lesbare Kommentare -> Exit 1, kein zweiter Kommentar, kein Label", () => {
   if (process.getuid?.() === 0) return; // root liest trotz chmod 000
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");

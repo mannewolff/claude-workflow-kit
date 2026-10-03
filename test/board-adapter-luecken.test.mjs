@@ -14,11 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { setupProjekt, runBoard, fakeCli } from "./helpers/board-fixture.mjs";
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-CLI ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197." }
-  : {};
+import { setupProjekt, runBoard, fakeCli, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
 
 const GITHUB = { codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } };
 const GITHUB_OHNE_NUMMER = { codeHost: "github", issueTracker: "github" };
@@ -71,7 +67,7 @@ function mitGh(fn, { regeln = [], config = GITHUB, praefix = "board-adapter-gh-"
 // GitHub: fehlende Felder in den gh-Antworten
 // ============================================================
 
-test("ein 'project list' ohne projects-Feld gilt als 'kein Project'", NUR_POSIX, () => {
+test("ein 'project list' ohne projects-Feld gilt als 'kein Project'", () => {
   // Ohne den Rueckfall auf die leere Liste stuende hier `undefined.length` — ein
   // Absturz statt der Meldung, die der Anwender braucht.
   //
@@ -91,7 +87,7 @@ test("ein 'project list' ohne projects-Feld gilt als 'kein Project'", NUR_POSIX,
   }, { regeln: [{ match: "^project list", stdout: {} }], config: GITHUB_OHNE_NUMMER, praefix: "board-adapter-ohne-projects-" });
 });
 
-test("ein Status-Feld ohne options meldet den fehlenden Status statt zu crashen", NUR_POSIX, () => {
+test("ein Status-Feld ohne options meldet den fehlenden Status statt zu crashen", () => {
   mitGh((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
 
@@ -104,7 +100,7 @@ test("ein Status-Feld ohne options meldet den fehlenden Status statt zu crashen"
   });
 });
 
-test("eine field-list ohne fields-Feld wird als fehlendes Status-Feld gemeldet", NUR_POSIX, () => {
+test("eine field-list ohne fields-Feld wird als fehlendes Status-Feld gemeldet", () => {
   mitGh((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
 
@@ -113,7 +109,7 @@ test("eine field-list ohne fields-Feld wird als fehlendes Status-Feld gemeldet",
   }, { regeln: [{ match: "^project field-list", stdout: {} }], praefix: "board-adapter-ohne-fields-" });
 });
 
-test("ein Issue ohne projectItems liegt nicht auf dem Board", NUR_POSIX, () => {
+test("ein Issue ohne projectItems liegt nicht auf dem Board", () => {
   mitGh((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
 
@@ -125,7 +121,7 @@ test("ein Issue ohne projectItems liegt nicht auf dem Board", NUR_POSIX, () => {
   });
 });
 
-test("eine item-list ohne items-Feld liefert eine leere Liste", NUR_POSIX, () => {
+test("eine item-list ohne items-Feld liefert eine leere Liste", () => {
   // Der Status-Filter laeuft ueber das Project. Fehlt das Feld, ist die richtige
   // Antwort "keine Treffer" — nicht ein Absturz und auch nicht "alle Issues".
   mitGh((dir) => {
@@ -136,7 +132,7 @@ test("eine item-list ohne items-Feld liefert eine leere Liste", NUR_POSIX, () =>
   }, { regeln: [{ match: "^project item-list", stdout: {} }], praefix: "board-adapter-ohne-itemliste-" });
 });
 
-test("ein Project-Item ohne status faellt aus dem Statusfilter", NUR_POSIX, () => {
+test("ein Project-Item ohne status faellt aus dem Statusfilter", () => {
   mitGh((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
 
@@ -149,7 +145,7 @@ test("ein Project-Item ohne status faellt aus dem Statusfilter", NUR_POSIX, () =
   });
 });
 
-test("issue create ohne --body schickt einen leeren Body statt 'undefined'", NUR_POSIX, () => {
+test("issue create ohne --body schickt einen leeren Body statt 'undefined'", () => {
   mitGh((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne Body"]);
 
@@ -160,7 +156,7 @@ test("issue create ohne --body schickt einen leeren Body statt 'undefined'", NUR
   }, { praefix: "board-adapter-create-ohne-body-" });
 });
 
-test("ein korrupter Auto-Cache wird wie ein Cache-Miss behandelt", NUR_POSIX, () => {
+test("ein korrupter Auto-Cache wird wie ein Cache-Miss behandelt", () => {
   mitGh((dir) => {
     // Der Cache liegt da, ist aber unlesbar. Der Adapter muss ihn uebergehen und
     // neu ermitteln, statt daran zu scheitern.
@@ -175,7 +171,7 @@ test("ein korrupter Auto-Cache wird wie ein Cache-Miss behandelt", NUR_POSIX, ()
   }, { config: GITHUB_OHNE_NUMMER, praefix: "board-adapter-cache-kaputt-" });
 });
 
-test("ein Auto-Cache ohne projectNumber gilt als leer", NUR_POSIX, () => {
+test("ein Auto-Cache ohne projectNumber gilt als leer", () => {
   mitGh((dir) => {
     // Syntaktisch gueltiges JSON, aber der Eintrag traegt die Nummer nicht — etwa
     // aus einer aelteren Kit-Version. Auch das ist ein Cache-Miss.
@@ -195,7 +191,7 @@ test("ein Auto-Cache ohne projectNumber gilt als leer", NUR_POSIX, () => {
 // GitLab
 // ============================================================
 
-test("glab: issue create ohne --body schickt eine leere Beschreibung", NUR_POSIX, () => {
+test("glab: issue create ohne --body schickt eine leere Beschreibung", () => {
   const dir = setupProjekt(GITLAB, "board-adapter-glab-create-");
   try {
     fakeCli(dir, "glab", [
@@ -211,7 +207,7 @@ test("glab: issue create ohne --body schickt eine leere Beschreibung", NUR_POSIX
   }
 });
 
-test("glab: ein Status ohne Label-Zuordnung wird woertlich als Label genutzt", NUR_POSIX, () => {
+test("glab: ein Status ohne Label-Zuordnung wird woertlich als Label genutzt", () => {
   // `columnLabels(config)[status] || status`: Fuer einen Status, den die
   // Spaltentabelle nicht fuehrt, gilt der Statusname selbst. Ohne diesen Rueckfall
   // stuende `--label undefined` in der Kommandozeile.
@@ -235,7 +231,7 @@ test("glab: ein Status ohne Label-Zuordnung wird woertlich als Label genutzt", N
 // exec: das Werkzeug selbst
 // ============================================================
 
-test("ein nicht ausfuehrbares gh meldet den Systemfehler, nicht 'nicht gefunden'", NUR_POSIX, () => {
+test("ein nicht ausfuehrbares gh meldet den Systemfehler, nicht 'nicht gefunden'", MIT_DATEIRECHTEN, () => {
   const dir = setupProjekt(GITHUB, "board-adapter-eacces-");
   try {
     // Eine Datei ohne Ausfuehrungsrecht: spawnSync liefert EACCES statt ENOENT — der

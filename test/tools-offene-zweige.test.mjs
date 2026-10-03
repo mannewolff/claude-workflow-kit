@@ -21,20 +21,13 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSyn
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { setupProjekt, fakeCli } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakePath, fakeCli, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHANGELOG_TOOL = join(repoRoot, "tools", "changelog.mjs");
 const COPY_TOOL = join(repoRoot, "tools", "copy-downloads-for-docs.mjs");
 const REPORT_TOOL = join(repoRoot, "tools", "derived-from-report.mjs");
 const MIGRATE_TOOL = join(repoRoot, "tools", "migrate-issues.mjs");
-
-// Das Fake-gh ist eine endungslose Datei mit sh-Wrapper — startbar sind unter
-// Windows nur .cmd/.bat/.exe (Issue #197, #231). chmod-Rechte wirken dort ebenfalls
-// nicht, weshalb derselbe Vermerk fuer den Schreibrecht-Test gilt.
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: kein startbares Fake-Binary ohne Endung, und chmod ohne Wirkung. Siehe Issue #197 und #231." }
-  : {};
 
 function tempDir(praefix) {
   return mkdtempSync(join(tmpdir(), praefix));
@@ -183,7 +176,7 @@ const KEINE_ISSUES = {
   data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } },
 };
 
-test("migrate-issues: ein gesperrtes Zielverzeichnis meldet Klartext statt Stacktrace", NUR_POSIX, () => {
+test("migrate-issues: ein gesperrtes Zielverzeichnis meldet Klartext statt Stacktrace", MIT_DATEIRECHTEN, () => {
   // schreibeAtomar schreibt erst eine Nachbardatei und benennt sie um. Scheitert das
   // Schreiben, raeumt es beide Pfade weg — und dieses Aufraeumen darf den eigentlichen
   // Fehler nicht ueberdecken, auch wenn es selbst scheitert. Genau das ist hier der
@@ -200,7 +193,7 @@ test("migrate-issues: ein gesperrtes Zielverzeichnis meldet Klartext statt Stack
     chmodSync(out, 0o000);
     const res = spawnSync(process.execPath, [MIGRATE_TOOL, "export", "--out", out], {
       cwd: dir, encoding: "utf-8",
-      env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}` },
+      env: { ...process.env, PATH: fakePath(dir) },
     });
 
     assert.equal(res.status, 1, "ein unbeschreibbares Ziel muss mit Exit 1 enden");

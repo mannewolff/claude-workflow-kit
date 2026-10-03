@@ -25,8 +25,6 @@ import { mergeKontextConfig, resolveKontextPaths, pickLatestLog } from "../kit/b
 const VAULT = join("/Users", "x", "ClaudeMemory");
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." } : {};
-
 /**
  * Fixture mit umgelenktem HOME plus optionaler globaler und lokaler kontext.config.json.
  * `global`/`local` duerfen ein Objekt (wird serialisiert) oder Rohtext sein — letzteres
@@ -224,7 +222,7 @@ test("kontext paths: cfg.project schlaegt den Repo-Namen", () => {
   });
 });
 
-test("kontext paths: ohne cfg.project gilt der Repo-Name des Code-Hosts", NUR_POSIX, () => {
+test("kontext paths: ohne cfg.project gilt der Repo-Name des Code-Hosts", () => {
   mitKontext({ global: { vault: VAULT } }, (dir, env) => {
     fakeCli(dir, "git", [{ match: "remote get-url origin", stdout: "https://example.com/team/auth-service.git\n" }]);
     assert.equal(paths(dir, env).project, "auth-service");

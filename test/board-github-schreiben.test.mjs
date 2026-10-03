@@ -16,11 +16,11 @@ import { spawnSync } from "node:child_process";
 import { basename } from "node:path";
 
 import { runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, mitProjekt } from "./helpers/board-github-fixture.mjs";
+import { mitProjekt } from "./helpers/board-github-fixture.mjs";
 
 // --- Anlegen ---
 
-test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", NUR_POSIX, () => {
+test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", () => {
   mitProjekt((dir) => {
     const angelegt = board(dir, "issue", "create", "--title", "Neu mit 'Quote'", "--body", "Autor-Modell: m\nBody");
     assert.deepEqual(angelegt, { id: "42", url: "https://github.com/besitzer/mein-repo/issues/42" });
@@ -36,7 +36,7 @@ test("create legt das Issue an, haengt es ans Board und setzt es auf backlog", N
   });
 });
 
-test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", NUR_POSIX, () => {
+test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne URL"]);
     assert.equal(res.status, 1);
@@ -47,7 +47,7 @@ test("create ohne lesbare Issue-URL in der gh-Ausgabe schlaegt fehl", NUR_POSIX,
 });
 
 // Die Board-Zuordnung ist Kuer: schlaegt sie fehl, existiert das Issue trotzdem.
-test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", NUR_POSIX, () => {
+test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne Board"]);
     assert.equal(res.status, 0, res.stderr);
@@ -63,7 +63,7 @@ test("create ueberlebt eine fehlgeschlagene Board-Zuordnung mit Hinweis", NUR_PO
 
 // Eventual Consistency: ein frisch hinzugefuegtes Item ist manchmal erst beim
 // zweiten Versuch sichtbar — deshalb der Retry mit Wartezeit.
-test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtbar ist", NUR_POSIX, () => {
+test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtbar ist", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Verzoegert sichtbar"]);
     assert.equal(res.status, 0, res.stderr);
@@ -80,7 +80,7 @@ test("create wiederholt das Setzen auf backlog, wenn das Item noch nicht sichtba
 
 // --- Kommentieren ---
 
-test("comment reicht den Text als --body an gh weiter", NUR_POSIX, () => {
+test("comment reicht den Text als --body an gh weiter", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "comment", "42", "--text", "Zeile eins"), { ok: true, id: "42" });
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /issue comment 42 --repo besitzer\/mein-repo --body Zeile eins/);
@@ -89,7 +89,7 @@ test("comment reicht den Text als --body an gh weiter", NUR_POSIX, () => {
 
 // --- CodeHost ---
 
-test("repo-name kommt von gh", NUR_POSIX, () => {
+test("repo-name kommt von gh", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "code", "repo-name"), { repoName: "besitzer/mein-repo" });
   });
@@ -104,7 +104,7 @@ test("repo-name kommt von gh", NUR_POSIX, () => {
 // /document baute daraus einen Vault-Pfad. Aus "claude-workflow-kit.git" oder der
 // ganzen URL wurde dort ein falscher Projektname. Eine Notfall-Auskunft darf luecken-
 // haft sein, aber nicht ein anderes Format haben als der Normalfall.
-test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zurueck", NUR_POSIX, () => {
+test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zurueck", () => {
   const gescheitertesGh = [{ match: "^repo view", stderr: "gh: not authenticated\n", exit: 1 }];
 
   mitProjekt((dir) => {
@@ -123,7 +123,7 @@ test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zur
   }, { regeln: gescheitertesGh });
 });
 
-test("pr erzeugt einen Pull Request mit Standardtitel", NUR_POSIX, () => {
+test("pr erzeugt einen Pull Request mit Standardtitel", () => {
   mitProjekt((dir) => {
     const ergebnis = board(dir, "code", "pr", "--from", "feature", "--to", "main");
     assert.deepEqual(ergebnis, { url: "https://github.com/besitzer/mein-repo/pull/5" });
@@ -133,7 +133,7 @@ test("pr erzeugt einen Pull Request mit Standardtitel", NUR_POSIX, () => {
   });
 });
 
-test("pr uebernimmt einen mitgegebenen Titel", NUR_POSIX, () => {
+test("pr uebernimmt einen mitgegebenen Titel", () => {
   mitProjekt((dir) => {
     board(dir, "code", "pr", "--from", "feature", "--to", "main", "--title", "Mein Titel");
     assert.match(aufrufZeilen(dir, "gh").join("\n"), /--title Mein Titel/);
@@ -146,7 +146,7 @@ test("pr uebernimmt einen mitgegebenen Titel", NUR_POSIX, () => {
 
 // Ein Fehler, der nicht aus dem Adapter kommt (hier: gh liefert kaputtes JSON),
 // muss als "Unerwarteter Fehler" erkennbar sein — nicht als Bedienfehler.
-test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", NUR_POSIX, () => {
+test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 1);
@@ -158,7 +158,7 @@ test("Unerwartete Fehler tragen ein anderes Praefix als BoardError", NUR_POSIX, 
 
 // gh meldet Fehler auf stderr; ist stderr leer, muss die Meldung des Prozesses
 // selbst durchkommen statt eines leeren Strings.
-test("Leeres stderr eines gh-Fehlschlags liefert trotzdem eine Meldung", NUR_POSIX, () => {
+test("Leeres stderr eines gh-Fehlschlags liefert trotzdem eine Meldung", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 1);

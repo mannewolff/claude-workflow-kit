@@ -16,7 +16,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "nod
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
+import { GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
 import {
   AUFTRAG_BACKLOG_TEXTE, GESCHUETZTE_PFADE, GESCHUETZT_LABEL_GESETZT, abhaengigkeitenLesen, abhaengigkeitenMitHerkunft, fenceLauf,
@@ -418,7 +418,7 @@ const ghSchreibend = (argv) => (argv[0] === "issue" && ["comment", "edit", "clos
   || (argv[0] === "project" && ["item-edit", "item-add"].includes(argv[1]))
   || argv.includes("PATCH");
 
-test("GitHub", NUR_POSIX, async (t) => {
+test("GitHub", async (t) => {
   const dir = setupProjekt(GITHUB, "board-auftrag-gh-");
   fakeCli(dir, "gh", [...ghRegeln(), ...ghBasis()]);
   const zustand = () => aufrufe(dir, "gh").filter(ghSchreibend);
@@ -476,7 +476,7 @@ function glRegeln() {
 const glSchreibend = (argv) => (argv[0] === "issue" && ["update", "note", "close", "reopen"].includes(argv[1]))
   || argv.includes("PUT") || argv.includes("POST");
 
-test("GitLab", NUR_POSIX, async (t) => {
+test("GitLab", async (t) => {
   const dir = setupProjekt(GITLAB, "board-auftrag-glab-");
   fakeCli(dir, "glab", [...glRegeln(), ...glabBasis()]);
   const zustand = () => aufrufe(dir, "glab").filter(glSchreibend);

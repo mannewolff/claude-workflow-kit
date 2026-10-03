@@ -19,20 +19,9 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { setupProjekt, fakeCli, aufrufe, aufrufZeilen } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakePath, fakeCli, aufrufe, aufrufZeilen } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Unter Windows uebersprungen: `fakeCli` legt das Fake-`gh` als endungslose Datei mit
-// Shebang an, und dort entscheidet die ENDUNG (.cmd/.bat/.exe), ob etwas startbar
-// ist. Die Tests unten erreichen das Fake deshalb nicht und starten das echte `gh` —
-// in der CI scheitert das an GH_TOKEN (25 Fehlschlaege, Windows-Job rot seit dem
-// 2026-08-11). Wortgleich zu test/board-issue-review.test.mjs (Issue #315).
-//
-// Ausgenommen wird genau die Menge, die das Fake-`gh` startet; die uebrigen Tests
-// dieser Datei laufen unter Windows weiter.
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
-  : {};
 
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
 
@@ -53,7 +42,7 @@ function runMigrate(dir, cliArgs, extraEnv = {}) {
   return spawnSync(process.execPath, [MIGRATE, ...cliArgs], {
     cwd: dir,
     encoding: "utf-8",
-    env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}`, ...extraEnv },
+    env: { ...process.env, PATH: fakePath(dir), ...extraEnv },
   });
 }
 
@@ -264,7 +253,7 @@ test("fehlendes, unbekanntes Unterkommando und --out ohne Wert zeigen die Hilfe 
   }
 });
 
-test("der Direktstart-Guard laesst den Modul-Import wirkungslos", NUR_POSIX, () => {
+test("der Direktstart-Guard laesst den Modul-Import wirkungslos", () => {
   const dir = fixture("migrate-import-", []);
   try {
     const probe = join(dir, "probe.mjs");
@@ -274,7 +263,7 @@ test("der Direktstart-Guard laesst den Modul-Import wirkungslos", NUR_POSIX, () 
     const res = spawnSync(process.execPath, [probe], {
       cwd: dir,
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}` },
+      env: { ...process.env, PATH: fakePath(dir) },
     });
 
     assert.equal(res.status, 0, res.stderr);
@@ -291,7 +280,7 @@ test("der Direktstart-Guard laesst den Modul-Import wirkungslos", NUR_POSIX, () 
 // export — Inhalt
 // ============================================================
 
-test("export schreibt alle offenen Issues beider Seiten im vereinbarten Schema", NUR_POSIX, () => {
+test("export schreibt alle offenen Issues beider Seiten im vereinbarten Schema", () => {
   const dir = fixture("migrate-export-", erfolgsRegeln());
   try {
     const { res } = exportiere(dir);
@@ -324,7 +313,7 @@ test("export schreibt alle offenen Issues beider Seiten im vereinbarten Schema",
   }
 });
 
-test("export ordnet nur Spalten des Ziel-Repositorys zu und laesst den Rest null", NUR_POSIX, () => {
+test("export ordnet nur Spalten des Ziel-Repositorys zu und laesst den Rest null", () => {
   const dir = fixture("migrate-spalte-", erfolgsRegeln());
   try {
     const { res } = exportiere(dir);
@@ -341,7 +330,7 @@ test("export ordnet nur Spalten des Ziel-Repositorys zu und laesst den Rest null
   }
 });
 
-test("export holt Kommentare ueber die erste Seite hinaus und normalisiert sie", NUR_POSIX, () => {
+test("export holt Kommentare ueber die erste Seite hinaus und normalisiert sie", () => {
   const dir = fixture("migrate-kommentare-", erfolgsRegeln());
   try {
     const { res } = exportiere(dir);
@@ -358,7 +347,7 @@ test("export holt Kommentare ueber die erste Seite hinaus und normalisiert sie",
   }
 });
 
-test("export gibt Umlaute und Codeblock zeichengleich zurueck", NUR_POSIX, () => {
+test("export gibt Umlaute und Codeblock zeichengleich zurueck", () => {
   const dir = fixture("migrate-utf8-", erfolgsRegeln());
   try {
     const { res } = exportiere(dir);
@@ -370,7 +359,7 @@ test("export gibt Umlaute und Codeblock zeichengleich zurueck", NUR_POSIX, () =>
   }
 });
 
-test("export fragt ausschliesslich offene Issues ab und setzt nur lesende gh-Aufrufe ab", NUR_POSIX, () => {
+test("export fragt ausschliesslich offene Issues ab und setzt nur lesende gh-Aufrufe ab", () => {
   const dir = fixture("migrate-lesend-", erfolgsRegeln());
   try {
     const { res } = exportiere(dir);
@@ -392,7 +381,7 @@ test("export fragt ausschliesslich offene Issues ab und setzt nur lesende gh-Auf
 // export — Ausgabedatei
 // ============================================================
 
-test("export legt das Zielverzeichnis an und meldet ausschliesslich den absoluten Pfad", NUR_POSIX, () => {
+test("export legt das Zielverzeichnis an und meldet ausschliesslich den absoluten Pfad", () => {
   const dir = fixture("migrate-pfad-", erfolgsRegeln());
   try {
     const { res, out } = exportiere(dir);
@@ -408,7 +397,7 @@ test("export legt das Zielverzeichnis an und meldet ausschliesslich den absolute
   }
 });
 
-test("ohne --out landet die Datei unter os.tmpdir()", NUR_POSIX, () => {
+test("ohne --out landet die Datei unter os.tmpdir()", () => {
   const dir = fixture("migrate-default-out-", erfolgsRegeln());
   let pfad = null;
   try {
@@ -423,7 +412,7 @@ test("ohne --out landet die Datei unter os.tmpdir()", NUR_POSIX, () => {
   }
 });
 
-test("eine vorhandene gleichnamige Zieldatei wird nie ueberschrieben", NUR_POSIX, () => {
+test("eine vorhandene gleichnamige Zieldatei wird nie ueberschrieben", () => {
   const dir = fixture("migrate-kollision-", erfolgsRegeln());
   try {
     const stamp = "2026-08-11T09-00-00.000Z";
@@ -443,7 +432,7 @@ test("eine vorhandene gleichnamige Zieldatei wird nie ueberschrieben", NUR_POSIX
   }
 });
 
-test("eine leer gelesene Issue-Liste wird als [] geschrieben", NUR_POSIX, () => {
+test("eine leer gelesene Issue-Liste wird als [] geschrieben", () => {
   const leer = {
     data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } },
   };
@@ -493,7 +482,7 @@ test("ein fehlgeschlagener oder unlesbarer gh-Aufruf hinterlaesst keine Datei", 
   }
 });
 
-test("ein Schreibfehler hinterlaesst keine Zieldatei", NUR_POSIX, () => {
+test("ein Schreibfehler hinterlaesst keine Zieldatei", () => {
   const dir = fixture("migrate-schreibfehler-", erfolgsRegeln());
   try {
     // Der temporaere Name ist als Verzeichnis belegt: writeFileSync scheitert

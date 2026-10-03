@@ -27,12 +27,6 @@ import {
 
 const MIT_TOKEN = { TBX_TOKEN: "test-token" };
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." }
-  : {};
-
 function standardAntwort(req) {
   if (req.url === "/api/kanban/items" && req.method === "GET") return { status: 200, json: {} };
   if (req.url === "/api/kanban/items" && req.method === "POST") return { status: 200, json: { id: 700, number: 7 } };
@@ -123,7 +117,7 @@ for (const fall of FORMFEHLER) {
 
 // --- github, gitlab, local: annehmen und ignorieren ---
 
-test("github nimmt die Option an und veraendert die Ausgabe nicht", NUR_POSIX, () => {
+test("github nimmt die Option an und veraendert die Ausgabe nicht", () => {
   const regeln = [
     { match: "^repo view", stdout: "besitzer/mein-repo\n" },
     { match: "^issue create", stdout: "https://github.com/besitzer/mein-repo/issues/5\n" },
@@ -144,7 +138,7 @@ test("github nimmt die Option an und veraendert die Ausgabe nicht", NUR_POSIX, (
   assert.equal(mit.stdout, ohne.stdout);
 });
 
-test("gitlab nimmt die Option an und veraendert die Ausgabe nicht", NUR_POSIX, () => {
+test("gitlab nimmt die Option an und veraendert die Ausgabe nicht", () => {
   const regeln = [{ match: "^issue create", stdout: "https://gitlab.com/o/r/-/issues/5\n" }];
   const laufe = (extra) => {
     const dir = setupProjekt({ codeHost: "gitlab", issueTracker: "gitlab" }, "board-derived-gl-");

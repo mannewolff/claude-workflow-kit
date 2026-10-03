@@ -21,7 +21,7 @@ import {
   setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren,
   BOARD, TEST_TOOLBOX_BUDGET_MS,
 } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
+import { GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
 
 const STEMPEL = "2026-09-29T09:00:00.000Z";
@@ -123,7 +123,7 @@ test("local: ein Bericht mit aelterem Bericht-Lauf bleibt Byte fuer Byte", () =>
   }, { kommentare: [ALTER_BERICHT] });
 });
 
-test("local: Karte nicht lesbar -> Exit 1, nichts geschrieben, Karte bleibt", NUR_POSIX, () => {
+test("local: Karte nicht lesbar -> Exit 1, nichts geschrieben, Karte bleibt", () => {
   if (process.getuid?.() === 0) return; // root liest trotz chmod 000
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");
@@ -181,7 +181,7 @@ test("Laufkennung: ohne bewegungen.tsv Exit 1 und nichts geschrieben", () => {
 
 // --- Maskierung ---
 
-test(String.raw`ein ' im Bericht, als '\'' in der Shell geschrieben, kommt unveraendert an`, NUR_POSIX, () => {
+test(String.raw`ein ' im Bericht, als '\'' in der Shell geschrieben, kommt unveraendert an`, () => {
   mitLokal((dir, datei) => {
     const text = "Die Session schreibt 'so' und it's fine.\nZweite Zeile mit \"Doppel\".";
     const ersatz = String.raw`'\''`;
@@ -313,7 +313,7 @@ function mitGitHub(regeln, fn) {
 const ghSchreiben = (dir) => aufrufe(dir, "gh").filter((a) => (a[0] === "issue" && a[1] === "comment") || a[0] === "api" && a.includes("PATCH"));
 const ghZuege = (dir) => aufrufe(dir, "gh").filter((a) => a[0] === "project" && a[1] === "item-edit");
 
-test("GitHub: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert, Karte in In review", NUR_POSIX, () => {
+test("GitHub: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert, Karte in In review", () => {
   mitGitHub([
     { match: GH_VIEW, times: 1, stdout: { comments: [] } },
     { match: GH_VIEW, stdout: { comments: [ghKommentar(301, bericht("Gruen."))] } },
@@ -329,7 +329,7 @@ test("GitHub: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert,
   });
 });
 
-test("GitHub: geaenderter Text ersetzt per PATCH, kein zweiter Kommentar; alter Lauf bleibt", NUR_POSIX, () => {
+test("GitHub: geaenderter Text ersetzt per PATCH, kein zweiter Kommentar; alter Lauf bleibt", () => {
   mitGitHub([
     { match: GH_VIEW, stdout: { comments: [ghKommentar(300, ALTER_BERICHT), ghKommentar(301, bericht("Alt."))] } },
   ], (dir) => {
@@ -340,7 +340,7 @@ test("GitHub: geaenderter Text ersetzt per PATCH, kein zweiter Kommentar; alter 
   });
 });
 
-test("GitHub: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", NUR_POSIX, () => {
+test("GitHub: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", () => {
   mitGitHub([{ match: GH_VIEW, stderr: "HTTP 502\n", exit: 1 }], (dir) => {
     const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);
@@ -370,7 +370,7 @@ function mitGitLab(regeln, fn) {
 const glSchreiben = (dir) => aufrufe(dir, "glab").filter((a) => (a[0] === "issue" && a[1] === "note") || a.includes("PUT"));
 const glZuege = (dir) => aufrufe(dir, "glab").filter((a) => a[0] === "issue" && a[1] === "update");
 
-test("GitLab: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert, Karte in In review", NUR_POSIX, () => {
+test("GitLab: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert, Karte in In review", () => {
   mitGitLab([
     { match: GL_NOTES, times: 1, stdout: [] },
     { match: GL_NOTES, stdout: [glNote(7, bericht("Gruen."))] },
@@ -385,7 +385,7 @@ test("GitLab: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert,
   });
 });
 
-test("GitLab: geaenderter Text ersetzt per PUT, kein zweiter Kommentar; alter Lauf bleibt", NUR_POSIX, () => {
+test("GitLab: geaenderter Text ersetzt per PUT, kein zweiter Kommentar; alter Lauf bleibt", () => {
   mitGitLab([
     { match: GL_NOTES, stdout: [glNote(6, ALTER_BERICHT), glNote(7, bericht("Alt."))] },
   ], (dir) => {
@@ -394,7 +394,7 @@ test("GitLab: geaenderter Text ersetzt per PUT, kein zweiter Kommentar; alter La
   });
 });
 
-test("GitLab: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", NUR_POSIX, () => {
+test("GitLab: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", () => {
   mitGitLab([{ match: GL_NOTES, stderr: "404 Not Found\n", exit: 1 }], (dir) => {
     const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);

@@ -22,7 +22,6 @@ import { resolveTracker } from "../kit/board.mjs";
 import {
   setupProjekt, fakeCli, aufrufe, starteServer, runBoardAsync, toolboxMitKommentaren, TEST_TOOLBOX_BUDGET_MS,
 } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX } from "./helpers/board-github-fixture.mjs";
 
 process.env.TBX_TOKEN = "test-token";
 process.env.TBX_CONFIG_DIR = "/nicht/vorhanden";
@@ -52,7 +51,7 @@ const GH_KOMMENTARE = {
   ],
 };
 
-test("GitHub: kommentareStreng liefert die REST-IDs", NUR_POSIX, async () => {
+test("GitHub: kommentareStreng liefert die REST-IDs", async () => {
   await mitFakeCli("gh", [
     { match: "^repo view", stdout: "besitzer/repo" },
     { match: "^issue view 5 ", stdout: GH_KOMMENTARE },
@@ -62,7 +61,7 @@ test("GitHub: kommentareStreng liefert die REST-IDs", NUR_POSIX, async () => {
   });
 });
 
-test("GitHub: kommentareStreng wirft, wenn gh scheitert", NUR_POSIX, async () => {
+test("GitHub: kommentareStreng wirft, wenn gh scheitert", async () => {
   await mitFakeCli("gh", [
     { match: "^repo view", stdout: "besitzer/repo" },
     { match: "^issue view", stderr: "HTTP 502\n", exit: 1 },
@@ -71,7 +70,7 @@ test("GitHub: kommentareStreng wirft, wenn gh scheitert", NUR_POSIX, async () =>
   });
 });
 
-test("GitHub: ersetzeKommentar ruft PATCH auf die numerische Kommentar-ID", NUR_POSIX, async () => {
+test("GitHub: ersetzeKommentar ruft PATCH auf die numerische Kommentar-ID", async () => {
   await mitFakeCli("gh", [
     { match: "^repo view", stdout: "besitzer/repo" },
     { match: "^api repos/besitzer/repo/issues/comments/222 ", stdout: "{}" },
@@ -91,7 +90,7 @@ test("GitHub: ersetzeKommentar ruft PATCH auf die numerische Kommentar-ID", NUR_
 
 const GITLAB = { issueTracker: "gitlab" };
 
-test("GitLab: kommentareStreng liefert die Note-IDs", NUR_POSIX, async () => {
+test("GitLab: kommentareStreng liefert die Note-IDs", async () => {
   await mitFakeCli("glab", [
     { match: "^api projects/:id/issues/42/notes$", stdout: [
       { id: 7, author: { username: "manne" }, body: "Notiz", created_at: "2026-09-01T10:00:00Z" },
@@ -103,7 +102,7 @@ test("GitLab: kommentareStreng liefert die Note-IDs", NUR_POSIX, async () => {
   });
 });
 
-test("GitLab: kommentareStreng wirft bei scheiternder Notes-Route, issue get laeuft weiter mit []", NUR_POSIX, async () => {
+test("GitLab: kommentareStreng wirft bei scheiternder Notes-Route, issue get laeuft weiter mit []", async () => {
   await mitFakeCli("glab", [
     { match: "^issue view 42", stdout: { iid: 42, title: "T", description: "B", state: "opened", labels: [] } },
     { match: "^api projects/:id/issues/42/notes$", stderr: "404 Not Found\n", exit: 1 },
@@ -115,7 +114,7 @@ test("GitLab: kommentareStreng wirft bei scheiternder Notes-Route, issue get lae
   });
 });
 
-test("GitLab: ersetzeKommentar ruft PUT auf die Note", NUR_POSIX, async () => {
+test("GitLab: ersetzeKommentar ruft PUT auf die Note", async () => {
   await mitFakeCli("glab", [
     { match: "^api projects/:id/issues/42/notes/7 ", stdout: "{}" },
   ], async (dir) => {
