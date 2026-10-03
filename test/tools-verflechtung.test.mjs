@@ -46,7 +46,8 @@ test("[931] einstellungen-teile laedt die echte Projektkonfiguration", () => {
 });
 
 test("[931] die board-Tests laden kit/board.mjs", () => {
-  const boardTests = [...tabelle.keys()].filter((p) => p.startsWith("test/board-"));
+  // test/board-ui-* prueft kit/board-ui.mjs, nicht kit/board.mjs (Issue #1137).
+  const boardTests = [...tabelle.keys()].filter((p) => p.startsWith("test/board-") && !p.startsWith("test/board-ui-"));
   assert.ok(boardTests.length > 0, "keine board-Tests in der Tabelle");
   const ohneBoard = boardTests.filter((p) => !tabelle.get(p).includes("kit/board.mjs"));
   assert.deepEqual(ohneBoard, [], "board-Tests ohne Kopplung an kit/board.mjs");

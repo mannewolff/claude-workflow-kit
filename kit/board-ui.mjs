@@ -16,7 +16,7 @@ import { createServer } from "node:http";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from "node:fs";
 import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 // Versionskennung (x.y.z). Einzige Anzeige-Quelle — funktioniert auch fuer die
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
@@ -348,9 +348,9 @@ function handleRequest(req, res, issuesDir) {
         // GO-Commit: Drag nach ready erzeugt einen eigenen git-Commit
         if (to === "ready") {
           try {
-            execSync(`git add ${JSON.stringify(file)}`, { stdio: "pipe" });
+            execFileSync("git", ["add", "--", file], { stdio: "pipe" });
             // --only: nur die Issue-Datei committen, fremde gestagte Aenderungen bleiben im Index
-            execSync(`git commit -o -m "GO: #${id} nach ready" -- ${JSON.stringify(file)}`, { stdio: "pipe" });
+            execFileSync("git", ["commit", "-o", "-m", `GO: #${id} nach ready`, "--", file], { stdio: "pipe" });
           } catch (e) {
             process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
           }
