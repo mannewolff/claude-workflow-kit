@@ -87,9 +87,10 @@ test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGes
     assert.deepEqual(
       Object.keys(summary).sort(),
       [
-        "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "configHash",
+        "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
+        "configHash",
         "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
-        "stufe", "vollerUmfang", "zeitpunkt",
+        "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
       ],
     );
   });
@@ -112,7 +113,7 @@ test("[checks-4] checks.mjs plan traegt weder dauerMs noch dauerGesamtMs — die
   });
 });
 
-test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine zusaetzliche Zeitzeile", () => {
+test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine Zeitzeile ausser 'Wartezeit:' im Berichtsblock", () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
@@ -126,5 +127,37 @@ test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine zu
     assert.match(res.stdout, /\n\$ echo eins — als immer laufend festgelegt\n/);
     assert.match(res.stdout, /\n-> gruen\n/);
     assert.doesNotMatch(res.stdout, /dauer/i);
+    const zeitzeilen = res.stdout.split("\n").filter((z) => /wartezeit|\d s\b/i.test(z) && !z.startsWith("gelaufen: "));
+    assert.deepEqual(zeitzeilen.length, 1, `genau eine Zeitzeile erwartet:\n${res.stdout}`);
+    const zeilen = res.stdout.split("\n");
+    assert.match(zeilen[zeilen.indexOf("Fuer den Abschlussbericht:") + 1], /^Wartezeit: [\d.]+ s$/);
+  });
+});
+
+// Die Wartezeit des Laufs (Issue #1069, Plan #1066, A7, E4): Wanduhr vom Aufruf bis
+// zum Ergebnis. Heute laufen die Kommandos nacheinander, also ist sie mindestens die
+// Summe der Wartezeiten der Kommandos; laufen sie spaeter gleichzeitig, bleibt sie
+// die Zeit, auf die jemand gewartet hat, waehrend dauerGesamtMs die Summe bleibt.
+test("[checks-4] wartezeitMs ist die Wanduhr des Laufs, bei zwei wartenden Kommandos mindestens deren Summe", () => {
+  const warten = (ms) => `node -e "setTimeout(() => {}, ${ms})"`;
+  const config = {
+    buildChecks: [
+      { cmd: warten(200), always: true },
+      { cmd: warten(250), always: true },
+    ],
+    checkAreas: { kern: ["src/**"] },
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "src/a.txt");
+
+    const res = run(dir);
+
+    assert.equal(res.status, 0, res.stderr);
+    const summary = zusammenfassung(dir);
+    assert.ok(Number.isFinite(summary.wartezeitMs), `wartezeitMs fehlt: ${JSON.stringify(summary)}`);
+    assert.ok(summary.wartezeitMs >= 450, `wartezeitMs ${summary.wartezeitMs} unter der Summe der Wartezeiten`);
+    assert.ok(summary.wartezeitMs >= summary.dauerGesamtMs, "die Wanduhr umfasst die Einzeldauern");
+    assert.equal(summary.dauerGesamtMs, summary.laufen.reduce((s, e) => s + e.dauerMs, 0),
+      "dauerGesamtMs bleibt die Summe der Einzeldauern");
   });
 });

@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 // Der Vorflug laeuft nur im Kettenmodus — sein Fixture steht schon bereit.
 import {
-  NUR_POSIX, NIGHT, repoRoot, run as ketteRun, mitProjekt, fachplan, umgebung, VORFLUG_OK,
+  NIGHT, repoRoot, run as ketteRun, mitProjekt, fachplan, umgebung, VORFLUG_OK,
 } from "./helpers/kette-fixture.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
@@ -86,7 +86,7 @@ function envZeilen(logPfad) {
   });
 }
 
-test("[night-63] Implementierungs- und Salvage-Session starten ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
+test("[night-63] Implementierungs- und Salvage-Session starten ohne das Auto-Memory des Menschen", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -130,7 +130,7 @@ test("[night-63] Implementierungs- und Salvage-Session starten ohne das Auto-Mem
   }
 });
 
-test("[night-63] auch die Vorflug-Session startet ohne das Auto-Memory des Menschen", NUR_POSIX, () => {
+test("[night-63] auch die Vorflug-Session startet ohne das Auto-Memory des Menschen", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: {} });

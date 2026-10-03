@@ -31,8 +31,6 @@ import { ZEITLIMIT_ANKER, WARTEND_ANKER } from "../kit/night.mjs";
 // Die Sperre gegen echte Pflichtchecks aus einem Test heraus — wie in jedem night-Test.
 import "./helpers/checks-sperre.mjs";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -126,7 +124,7 @@ const resultZeileMitText = (stopReason, text) =>
 
 // --- night-977-1: der saubere Zweig ---
 
-test("[night-977-1] ein Zeitabbruch bei sauberem Baum traegt Vermerk, Grund und Feld — die Karte geht wie bisher ins Backlog", NUR_POSIX, () => {
+test("[night-977-1] ein Zeitabbruch bei sauberem Baum traegt Vermerk, Grund und Feld — die Karte geht wie bisher ins Backlog", () => {
   const dir = setupProjekt("night-zeit-sauber-", ["true"]);
   try {
     const id = readyIssue(dir, "Laeuft in das Zeitlimit, ohne etwas anzufassen");
@@ -176,7 +174,7 @@ test("[night-977-1] ein Zeitabbruch bei sauberem Baum traegt Vermerk, Grund und 
   }
 });
 
-test("[night-977-1] dieselbe Rueckstellung ohne Zeitabbruch behaelt den bisherigen Grund, ohne Vermerk und ohne Feld", NUR_POSIX, () => {
+test("[night-977-1] dieselbe Rueckstellung ohne Zeitabbruch behaelt den bisherigen Grund, ohne Vermerk und ohne Feld", () => {
   const dir = setupProjekt("night-zeit-sauber-alt-", ["true"]);
   try {
     const id = readyIssue(dir, "Endet regulaer ohne Commit");
@@ -199,7 +197,7 @@ test("[night-977-1] dieselbe Rueckstellung ohne Zeitabbruch behaelt den bisherig
 
 // --- night-977-2: der unsaubere Zweig ---
 
-test("[night-977-2] ein Zeitabbruch bei unsauberem Baum stoppt hart und traegt den Vermerk am bestehenden Kommentar", NUR_POSIX, () => {
+test("[night-977-2] ein Zeitabbruch bei unsauberem Baum bricht das Paket ab (Issue #1089) und traegt den Vermerk am bestehenden Kommentar", () => {
   // Rote Vorpruefung: Der Salvage ist nicht moeglich, und die Runde faellt in den
   // regulaeren Fehlschlag-Zweig von `behandleDirtyRunde`.
   const dir = setupProjekt("night-zeit-dirty-", ["false"]);
@@ -212,7 +210,7 @@ test("[night-977-2] ein Zeitabbruch bei unsauberem Baum stoppt hart und traegt d
       NIGHT_TIMEOUT_MS: String(TIMEOUT_MS),
       NIGHT_KILL_GRACE_MS: "300",
     });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
     assert.ok(res.stdout.includes(ZEITLIMIT_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
     assert.match(res.stdout, /nicht in In review UND Working Tree dirty/, `der Zustandstext ist verschwunden:\n${res.stdout}`);
@@ -227,7 +225,7 @@ test("[night-977-2] ein Zeitabbruch bei unsauberem Baum stoppt hart und traegt d
     assert.match(body, /arbeit\.txt/, `die liegengebliebene Datei fehlt im Vermerk:\n${body}`);
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.ausgang, "abgebrochen", `das Paket ist abgebrochen, seine Reste im Stash: ${JSON.stringify(e)}`);
     assert.equal(e.zeitlimitBeendet, true, "das Feld des Zeitabbruchs fehlt an der Einheit");
     assert.equal(Object.keys(e).at(-1), "zeitlimitBeendet",
       `das neue Feld steht nicht hinten: ${Object.keys(e).join(", ")}`);
@@ -261,7 +259,7 @@ const SALVAGE_ERFOLG = [
   '  node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null',
 ].join("\n");
 
-test("[night-977-3] ein gescheiterter Salvage nach Zeitabbruch traegt den Vermerk ebenfalls", NUR_POSIX, () => {
+test("[night-977-3] ein gescheiterter Salvage nach Zeitabbruch traegt den Vermerk ebenfalls", () => {
   const dir = setupProjekt("night-zeit-salvage-fehl-", ["true"]);
   try {
     const id = readyIssue(dir, "Zeitlimit, der Salvage tut nichts");
@@ -270,7 +268,7 @@ test("[night-977-3] ein gescheiterter Salvage nach Zeitabbruch traegt den Vermer
       NIGHT_TIMEOUT_MS: String(TIMEOUT_MS),
       NIGHT_KILL_GRACE_MS: "300",
     });
-    assert.equal(res.status, 1, `harter Stopp erwartet:\n${res.stdout}\n${res.stderr}`);
+    assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
 
     const body = karte(dir, id).body;
     assert.ok(body.includes(ZEITLIMIT_ANKER), `der Anker fehlt am Paket:\n${body}`);
@@ -279,14 +277,14 @@ test("[night-977-3] ein gescheiterter Salvage nach Zeitabbruch traegt den Vermer
     assert.match(body, /weder committet noch das Board bewegt/, `der Salvage-Kommentar fehlt:\n${body}`);
 
     const e = einheit(dir, id);
-    assert.equal(e.ausgang, "harterStopp", `der Ausgang bleibt der harte Stopp: ${JSON.stringify(e)}`);
+    assert.equal(e.ausgang, "abgebrochen", `das Paket ist abgebrochen, seine Reste im Stash: ${JSON.stringify(e)}`);
     assert.equal(e.zeitlimitBeendet, true, "das Feld des Zeitabbruchs fehlt an der Einheit");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("[night-977-4] nach gelungenem Salvage steht EIN Satz an der Karte — keine Empfehlung, kein Stand, kein Feld", NUR_POSIX, () => {
+test("[night-977-4] nach gelungenem Salvage steht EIN Satz an der Karte — keine Empfehlung, kein Stand, kein Feld", () => {
   const dir = setupProjekt("night-zeit-salvage-erfolg-", ["true"]);
   try {
     const id = readyIssue(dir, "Zeitlimit, der Salvage rettet");

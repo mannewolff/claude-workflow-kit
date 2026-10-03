@@ -8,8 +8,8 @@
 // Temp-Verzeichnis, nach dem Muster der night-*-Tests.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync } from "node:fs";
-import { delimiter, join, dirname } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { setTimeout as schlafen } from "node:timers/promises";
@@ -21,12 +21,32 @@ import assert from "node:assert/strict";
 // Helfer geht und `process.env` prozessweit gilt, also auch fuer spawn-Aufrufe, die
 // an ihm vorbeigehen.
 import "./checks-sperre.mjs";
+import { gitBashPfad } from "../../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const CHECKS = join(repoRoot, "kit", "checks.mjs");
 export const GATE = join(repoRoot, ".githooks", "gate.mjs");
 export const HOOK = join(repoRoot, ".githooks", "pre-commit");
+
+/**
+ * Die POSIX-Shell, mit der ein Test den Hook startet: `sh`, unter Windows die Git Bash,
+ * die das Kit dort voraussetzt (Issue #1138, Plan #1128 E7).
+ */
+export function posixShell() {
+  if (process.platform !== "win32") return "sh";
+  const { pfad, fehler } = gitBashPfad();
+  if (!pfad) throw new Error(fehler);
+  return pfad;
+}
+
+/**
+ * Ein Pfad, wie ihn die Shell als Argument braucht: Unter Windows mit `/` — `dirname "$0"`
+ * im Hook trennt nur dort.
+ */
+export function shellPfad(pfad) {
+  return process.platform === "win32" ? pfad.replaceAll("\\", "/") : pfad;
+}
 
 export function git(dir, ...args) {
   const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
@@ -39,50 +59,58 @@ export function checks(dir, ...cliArgs) {
   return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8" });
 }
 
+/** Der Ort des Fake-`git` im Wegwerf-Repo (Issue #504, #1136). */
+function fakeGitPfad(dir) {
+  return join(dir, "fakebin", "git.mjs");
+}
+
 /**
- * Derselbe Aufruf, aber mit `fakebin` vorne im PATH (Issue #504). Die uebrige
- * Umgebung wird durchgereicht — insbesondere NODE_V8_COVERAGE, sonst faende die
- * Messung den Kindprozess nicht.
+ * Derselbe Aufruf, aber `CHECKS_GIT_FAKE` zeigt auf das Fake-`git` (Issue #504, #1136).
+ * Nicht mehr ueber den PATH: Ein endungsloses sh-Skript ist unter Windows nicht
+ * startbar, ein Node-Skript ueber den Test-Hook schon. Die uebrige Umgebung wird
+ * durchgereicht — insbesondere NODE_V8_COVERAGE, sonst faende die Messung den
+ * Kindprozess nicht.
  */
 export function checksMitFakeGit(dir, ...cliArgs) {
-  const env = { ...process.env, PATH: `${join(dir, "fakebin")}${delimiter}${process.env.PATH}` };
+  const env = { ...process.env, CHECKS_GIT_FAKE: fakeGitPfad(dir) };
   return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
 }
 
 /**
- * Ein Fake-`git` in `<dir>/fakebin`, das genau ein Unterkommando scheitern laesst
- * und alles andere an das echte git durchreicht (Issue #504, Muster `fakeCli` aus
- * board-fixture.mjs). Anders als ein Mock laesst es die uebrigen git-Aufrufe von
- * checks.mjs unangetastet: `rev-parse` loest weiter auf, nur der eine Schritt
- * danach bricht ab — genau die Reihenfolge, um die es in den Fehlerpfaden geht.
+ * Ein Fake-`git` als Node-Skript in `<dir>/fakebin`, das genau ein Unterkommando
+ * scheitern laesst und alles andere an das echte git durchreicht (Issue #504, #1136).
+ * Anders als ein Mock laesst es die uebrigen git-Aufrufe von checks.mjs unangetastet:
+ * `rev-parse` loest weiter auf, nur der eine Schritt danach bricht ab — genau die
+ * Reihenfolge, um die es in den Fehlerpfaden geht.
  *
- * Der Pfad des echten git wird hier aufgeloest und fest eingetragen. Ein
- * `exec git "$@"` im Wrapper riefe sich selbst wieder auf, weil `fakebin` im PATH
- * vorne steht.
+ * Das echte git kommt aus dem PATH: Der Test-Hook `CHECKS_GIT_FAKE` laesst den PATH
+ * unberuehrt, ein Selbstaufruf ist darum ausgeschlossen. stdin wird durchgereicht —
+ * `hash-object --stdin-paths` liest die Pfade von dort.
  *
  * `meldung: null` laesst das Unterkommando stumm scheitern — der Fall, in dem
  * checks.mjs seine Meldung ohne Zutun von git bilden muss.
  */
 export function fakeGitOhne(dir, unterkommando, meldung = "fake: absichtlich gescheitert") {
-  const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
-  assert.ok(echtesGit, "das echte git liess sich nicht im PATH finden");
-
-  const binDir = join(dir, "fakebin");
-  mkdirSync(binDir, { recursive: true });
-  const wrapper = [
-    "#!/bin/sh",
-    "# Generiert von test/helpers/checks-repo.mjs (Issue #504) — kein Produktivcode.",
-    `if [ "$1" = ${JSON.stringify(unterkommando)} ]; then`,
-    meldung === null ? "  :" : `  printf '%s\\n' ${JSON.stringify(meldung)} >&2`,
-    "  exit 128",
-    "fi",
-    `exec ${JSON.stringify(echtesGit)} "$@"`,
+  mkdirSync(join(dir, "fakebin"), { recursive: true });
+  const skript = [
+    "// Generiert von test/helpers/checks-repo.mjs (Issue #504, #1136) — kein Produktivcode.",
+    'import { spawnSync } from "node:child_process";',
+    "const argv = process.argv.slice(2);",
+    `if (argv[0] === ${JSON.stringify(unterkommando)}) {`,
+    meldung === null ? "  // stumm" : `  process.stderr.write(${JSON.stringify(meldung + "\n")});`,
+    "  process.exit(128);",
+    "}",
+    'const res = spawnSync("git", argv, { stdio: "inherit" });',
+    "if (res.error) {",
+    "  process.stderr.write(`${res.error.message}\\n`);",
+    "  process.exit(1);",
+    "}",
+    "process.exit(res.status ?? 1);",
     "",
   ].join("\n");
-  const cliPfad = join(binDir, "git");
-  writeFileSync(cliPfad, wrapper, "utf-8");
-  chmodSync(cliPfad, 0o755);
-  return binDir;
+  const pfad = fakeGitPfad(dir);
+  writeFileSync(pfad, skript, "utf-8");
+  return pfad;
 }
 
 /** Erfolgreicher `plan`-Aufruf, JSON geparst. */

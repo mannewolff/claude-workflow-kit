@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
+import { SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
 
 // --- GitLab ---
 
@@ -24,7 +24,7 @@ function glabRegeln(jobs, { pipelines = [{ id: 42, status: "running" }] } = {}) 
   ];
 }
 
-test("[board-7] gitlab: alle Jobs gruen ergeben gruen", NUR_POSIX, () => {
+test("[board-7] gitlab: alle Jobs gruen ergeben gruen", () => {
   const { daten, zeilen } = ciStatusOk(GITLAB, "glab", glabRegeln([
     { name: "test", status: "success" },
     { name: "lint", status: "skipped" },
@@ -39,7 +39,7 @@ test("[board-7] gitlab: alle Jobs gruen ergeben gruen", NUR_POSIX, () => {
   assert.match(zeilen[1], /--with-job-details/);
 });
 
-test("[board-7] gitlab: ein roter Job ergibt rot und wird benannt", NUR_POSIX, () => {
+test("[board-7] gitlab: ein roter Job ergibt rot und wird benannt", () => {
   const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln([
     { name: "test", status: "success" },
     { name: "lint", status: "failed" },
@@ -48,19 +48,19 @@ test("[board-7] gitlab: ein roter Job ergibt rot und wird benannt", NUR_POSIX, (
   assert.deepEqual(daten.jobs.find((j) => j.ergebnis === "rot"), { name: "lint", ergebnis: "rot" });
 });
 
-test("[board-7] gitlab: ein laufender Job ergibt laeuft", NUR_POSIX, () => {
+test("[board-7] gitlab: ein laufender Job ergibt laeuft", () => {
   const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln([
     { name: "test", status: "running" },
   ]));
   assert.equal(daten.status, "laeuft");
 });
 
-test("[board-7] gitlab: canceled zaehlt als rot", NUR_POSIX, () => {
+test("[board-7] gitlab: canceled zaehlt als rot", () => {
   const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln([{ name: "test", status: "canceled" }]));
   assert.equal(daten.status, "rot");
 });
 
-test("[board-7] gitlab: rot schlaegt laeuft", NUR_POSIX, () => {
+test("[board-7] gitlab: rot schlaegt laeuft", () => {
   const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln([
     { name: "test", status: "running" },
     { name: "lint", status: "failed" },
@@ -68,12 +68,12 @@ test("[board-7] gitlab: rot schlaegt laeuft", NUR_POSIX, () => {
   assert.equal(daten.status, "rot");
 });
 
-test("[board-7] gitlab: keine Pipeline zum SHA ergibt laeuft, nicht keine", NUR_POSIX, () => {
+test("[board-7] gitlab: keine Pipeline zum SHA ergibt laeuft, nicht keine", () => {
   const { daten } = ciStatusOk(GITLAB, "glab", [{ match: "^ci list", stdout: [] }]);
   assert.deepEqual(daten, { status: "laeuft", jobs: [] });
 });
 
-test("[board-7] gitlab: ein CLI mit Exit 1 endet mit Exit 1", NUR_POSIX, () => {
+test("[board-7] gitlab: ein CLI mit Exit 1 endet mit Exit 1", () => {
   const { res } = ciStatus(GITLAB, "glab", [
     { match: "^ci list", exit: 1, stderr: "glab: 401 Unauthorized\n" },
   ]);

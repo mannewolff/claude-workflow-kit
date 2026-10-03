@@ -8,7 +8,7 @@ import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { waehleKettenKandidaten, korrekturPrompt } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
 test("[night-19] --kette mit --label wird abgewiesen: das Kettenlabel steht in der Config", () => {
@@ -35,7 +35,7 @@ test("[night-19] ein kaputtes Budget bricht vor dem Ergebnisstand mit dem Feldna
   }, { planMin: 0 });
 });
 
-test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", NUR_POSIX, () => {
+test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const offen = fachplan(dir, "[Fachlich] Mit offener Frage");
@@ -54,7 +54,7 @@ test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget u
   });
 });
 
-test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung", NUR_POSIX, () => {
+test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung", () => {
   mitProjekt((dir) => {
     const alt = fachplan(dir, "[Fachlich] Mit altem Label", "kit:nightplan");
     const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
@@ -65,7 +65,7 @@ test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung"
   });
 });
 
-test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --max laesst den Rest liegen", NUR_POSIX, () => {
+test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --max laesst den Rest liegen", () => {
   mitProjekt((dir) => {
     const a = fachplan(dir, "[Fachlich] Erstes");
     const b = fachplan(dir, "[Fachlich] Zweites");

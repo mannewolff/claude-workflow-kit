@@ -17,13 +17,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { empfohlenesModell, aufgabenStufe, stufenEinstellung, stufeStartbar, modellFuerStufe, paketWahl, frischeStufenFelder } from "../kit/night.mjs";
-
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -131,6 +129,13 @@ function readyIssue(dir, titel, empfehlung, stufe = null) {
   return String(issue.id);
 }
 
+// Unter Windows findet das Kit ein Programm nur ueber eine Endung aus PATHEXT. Wie npm es
+// installiert, liegt daneben eine `.cmd`, und gestartet wird die sh-Datei ohne Endung ueber
+// die Git Bash (Issue #1131, E8). Die `.cmd` selbst laeuft nie; auf POSIX bleibt sie unbeachtet.
+function huelleFuerWindows(binDir, name) {
+  writeFileSync(join(binDir, `${name}.cmd`), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
+}
+
 /** Eine Fake-CLI im PATH, die Argumente und KIT_AGENT_MODEL mitschreibt. */
 function fakeCli(extra = "") {
   const binDir = mkdtempSync(join(tmpdir(), "night-modell-bin-"));
@@ -139,20 +144,21 @@ function fakeCli(extra = "") {
     `#!/bin/sh\nprintf 'ARGS %s\\n' "$*" >> ${JSON.stringify(argLog)}\n` +
     `printf 'AGENT %s\\n' "$KIT_AGENT_MODEL" >> ${JSON.stringify(argLog)}\n${extra}exit 0\n`);
   chmodSync(join(binDir, "claude"), 0o755);
+  huelleFuerWindows(binDir, "claude");
   return { binDir, argLog };
 }
 
 const staende = (dir) => readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)).sort();
 const leseStand = (dir) => JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
 
-test("[night-26] die Session startet mit dem Modell der Karte, in --model und KIT_AGENT_MODEL", NUR_POSIX, () => {
+test("[night-26] die Session startet mit dem Modell der Karte, in --model und KIT_AGENT_MODEL", () => {
   const dir = setupProjekt("night-modell-karte-");
   let bin = null;
   try {
     readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const log = readFileSync(bin.argLog, "utf-8");
@@ -164,14 +170,14 @@ test("[night-26] die Session startet mit dem Modell der Karte, in --model und KI
   }
 });
 
-test("[night-4] die Einheit traegt Modell, Herkunft und Grund", NUR_POSIX, () => {
+test("[night-4] die Einheit traegt Modell, Herkunft und Grund", () => {
   const dir = setupProjekt("night-modell-einheit-");
   let bin = null;
   try {
     readyIssue(dir, "Empfiehlt etwas Fremdes", "gpt-6-astra");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     // Der Rueckfall: ein Name ausserhalb der Liste laeuft mit dem Modell des Laufs.
@@ -192,14 +198,14 @@ test("[night-4] die Einheit traegt Modell, Herkunft und Grund", NUR_POSIX, () =>
   }
 });
 
-test("[night-26] ein Flag als Empfehlung kommt nicht in die Argumente", NUR_POSIX, () => {
+test("[night-26] ein Flag als Empfehlung kommt nicht in die Argumente", () => {
   const dir = setupProjekt("night-modell-flag-");
   let bin = null;
   try {
     readyIssue(dir, "Versucht ein Flag", "--dangerously-skip-permissions");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const log = readFileSync(bin.argLog, "utf-8");
@@ -211,14 +217,14 @@ test("[night-26] ein Flag als Empfehlung kommt nicht in die Argumente", NUR_POSI
   }
 });
 
-test("[night-26] eine leere Liste schaltet die Wirkung ab", NUR_POSIX, () => {
+test("[night-26] eine leere Liste schaltet die Wirkung ab", () => {
   const dir = setupProjekt("night-modell-leer-", { modelle: [] });
   let bin = null;
   try {
     readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-opus-5/, "ohne Liste gilt das Modell des Laufs");
 
@@ -231,7 +237,7 @@ test("[night-26] eine leere Liste schaltet die Wirkung ab", NUR_POSIX, () => {
   }
 });
 
-test("[night-26] --dry-run nennt je Karte Modell und Herkunft", NUR_POSIX, () => {
+test("[night-26] --dry-run nennt je Karte Modell und Herkunft", () => {
   const dir = setupProjekt("night-modell-dry-");
   try {
     readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
@@ -363,12 +369,13 @@ function programmImPfad(name) {
   const binDir = mkdtempSync(join(tmpdir(), "night-stufe-bin-"));
   writeFileSync(join(binDir, name), "#!/bin/sh\nexit 0\n");
   chmodSync(join(binDir, name), 0o755);
+  huelleFuerWindows(binDir, name);
   return binDir;
 }
 
 function mitPfad(binDir, fn) {
   const alt = process.env.PATH;
-  process.env.PATH = `${binDir}:${alt}`;
+  process.env.PATH = `${binDir}${delimiter}${alt}`;
   try {
     return fn();
   } finally {
@@ -376,7 +383,7 @@ function mitPfad(binDir, fn) {
   }
 }
 
-test("[night-37] ein auffindbares Programm im PATH gilt als startbar", NUR_POSIX, () => {
+test("[night-37] ein auffindbares Programm im PATH gilt als startbar", () => {
   const binDir = programmImPfad("mein-runner-xyz");
   try {
     mitPfad(binDir, () => {
@@ -389,7 +396,7 @@ test("[night-37] ein auffindbares Programm im PATH gilt als startbar", NUR_POSIX
   }
 });
 
-test("[night-37] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname", NUR_POSIX, () => {
+test("[night-37] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname", () => {
   // Sonst suchte die Startpruefung nach einem Programm namens `KEIN_ECHTER_HOST=1` und
   // wiche still nach oben aus, obwohl das Programm da ist (Plan #707, E8).
   const binDir = programmImPfad("mein-runner-xyz");
@@ -403,13 +410,13 @@ test("[night-37] eine fuehrende NAME=WERT-Zuweisung gilt nicht als Programmname"
   }
 });
 
-test("[night-37] ein nicht auffindbares Programm gilt als nicht startbar", NUR_POSIX, () => {
+test("[night-37] ein nicht auffindbares Programm gilt als nicht startbar", () => {
   const { ok, grund } = stufeStartbar({ kommando: "KEIN_ECHTER_HOST=1 gibt-es-nicht-xyz --flag" }, []);
   assert.equal(ok, false);
   assert.match(grund, /gibt-es-nicht-xyz/, "der Grund nennt das gesuchte Programm");
 });
 
-test("[night-37] ein Shell-Builtin gilt als startbar", NUR_POSIX, () => {
+test("[night-37] ein Shell-Builtin gilt als startbar", () => {
   // `command -v` findet Builtins; eine eigene PATH-Suche faende sie nicht (E8).
   assert.equal(stufeStartbar({ kommando: "cd /tmp" }, []).ok, true);
 });
@@ -475,7 +482,7 @@ test("[night-26] die Stufe stellt das Modell und weicht nach oben aus", () => {
   assert.equal(w.startbar, true);
 });
 
-test("[night-26] eine Kommando-Stufe liefert Kommandozeile und Namen statt eines Modellnamens", NUR_POSIX, () => {
+test("[night-26] eine Kommando-Stufe liefert Kommandozeile und Namen statt eines Modellnamens", () => {
   const w = wahl("Aufgabenstufe: leicht\n", { leicht: { kommando: "cd /tmp", name: "lokal" } });
   assert.equal(w.kommando, "cd /tmp");
   assert.equal(w.stufenName, "lokal");
@@ -518,14 +525,14 @@ test("[night-26] frischeStufenFelder liest stufen und stufenRegel von Platte", (
 
 // --- Der Stufenweg im Lauf: E2E gegen ein Temp-Repo (Issue #711) ---
 
-test("[night-26] die Session startet mit dem Modell der Stufe, wenn die Karte keinen Namen nennt", NUR_POSIX, () => {
+test("[night-26] die Session startet mit dem Modell der Stufe, wenn die Karte keinen Namen nennt", () => {
   const dir = setupProjekt("night-stufe-lauf-", { stufen: { schwer: { modell: "claude-sonnet-5" } } });
   let bin = null;
   try {
     readyIssue(dir, "Leichtes Paket", null, "leicht");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const log = readFileSync(bin.argLog, "utf-8");
@@ -547,7 +554,7 @@ test("[night-26] die Session startet mit dem Modell der Stufe, wenn die Karte ke
   }
 });
 
-test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das naechste laeuft weiter", NUR_POSIX, () => {
+test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das naechste laeuft weiter", () => {
   // Kriterium 10: Eine begonnene Umsetzung wird nie mit einem zweiten Modell wiederholt —
   // darum faellt die Entscheidung VOR der Session, und das Paket kostet keine.
   const dir = setupProjekt("night-stufe-unstartbar-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-711 --auftrag" } } });
@@ -557,7 +564,7 @@ test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das 
     const danach = readyIssue(dir, "Ohne Stufe", null, null);
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const einheiten = leseStand(dir).einheiten;
@@ -579,14 +586,14 @@ test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das 
   }
 });
 
-test("[night-26] Modellname und Stufe zugleich: der Name laeuft, der Grund vermerkt beides", NUR_POSIX, () => {
+test("[night-26] Modellname und Stufe zugleich: der Name laeuft, der Grund vermerkt beides", () => {
   const dir = setupProjekt("night-stufe-doppelt-", { stufen: { leicht: { modell: "claude-opus-5" } } });
   let bin = null;
   try {
     readyIssue(dir, "Nennt beides", "claude-sonnet-5", "leicht");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-sonnet-5/, "der Name der Karte setzt sich nicht durch");
 
@@ -601,14 +608,14 @@ test("[night-26] Modellname und Stufe zugleich: der Name laeuft, der Grund verme
   }
 });
 
-test("[night-26] ein abgewiesener Modellname laeuft auf dem Modell des Laufs, nicht auf dem der Stufe", NUR_POSIX, () => {
+test("[night-26] ein abgewiesener Modellname laeuft auf dem Modell des Laufs, nicht auf dem der Stufe", () => {
   const dir = setupProjekt("night-stufe-abgewiesen-", { stufen: { leicht: { modell: "claude-sonnet-5" } } });
   let bin = null;
   try {
     readyIssue(dir, "Nennt einen Unbekannten", "claude-gibt-es-nicht", "leicht");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const log = readFileSync(bin.argLog, "utf-8");
@@ -621,7 +628,7 @@ test("[night-26] ein abgewiesener Modellname laeuft auf dem Modell des Laufs, ni
   }
 });
 
-test("[night-26] eine Aenderung an night.stufen wirkt schon beim naechsten Paket desselben Laufs", NUR_POSIX, () => {
+test("[night-26] eine Aenderung an night.stufen wirkt schon beim naechsten Paket desselben Laufs", () => {
   // E19: Die Einstellung wird unmittelbar vor jedem Paket frisch gelesen. Ohne das saehe
   // ein laufender Nachtlauf eine Aenderung erst am naechsten Abend.
   const dir = setupProjekt("night-stufe-frisch-", { stufen: { leicht: { modell: "claude-opus-5" } } });
@@ -644,7 +651,7 @@ test("[night-26] eine Aenderung an night.stufen wirkt schon beim naechsten Paket
       `if [ ! -f ${JSON.stringify(marker)} ]; then : > ${JSON.stringify(marker)};`
       + ` cp ${JSON.stringify(neueConfig)} ${JSON.stringify(join(dir, ".claude", "workflow.config.json"))}; fi\n`);
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const modelle = (readFileSync(bin.argLog, "utf-8").match(/--model (\S+)/g) || []);
@@ -674,7 +681,7 @@ test("[night-26] ein unlesbarer Stand liefert den Stand des Laufbeginns mit Grun
 // eingesetzt wuerde; ein eigener Vorflug meldet je belegter Stufe ohne Netz, ob sie
 // startbar ist — ohne den Lauf aufzuhalten (Kriterium 11).
 
-test("[night-39] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", NUR_POSIX, () => {
+test("[night-39] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", () => {
   const dir = setupProjekt("night-dryrun-stufen-", {
     stufen: { leicht: { modell: "claude-sonnet-5" }, schwer: { modell: "claude-opus-5" } },
   });
@@ -696,7 +703,7 @@ test("[night-39] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach
   }
 });
 
-test("[night-39] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", NUR_POSIX, () => {
+test("[night-39] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", () => {
   const dir = setupProjekt("night-dryrun-gegenprobe-");
   try {
     readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
@@ -711,14 +718,14 @@ test("[night-39] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich
   }
 });
 
-test("[night-40] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", NUR_POSIX, () => {
+test("[night-40] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", () => {
   const dir = setupProjekt("night-vorflug-stufen-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-712 --auftrag" } } });
   let bin = null;
   try {
     readyIssue(dir, "Leichtes Paket", null, "leicht");
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const warnungen = res.stdout.match(/WARNUNG: Stufe leicht nicht startbar: .*gibt-es-nicht-xyz-712.*/g) || [];
@@ -735,14 +742,14 @@ test("[night-40] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, d
   }
 });
 
-test("[night-40] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", NUR_POSIX, () => {
+test("[night-40] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", () => {
   const dir = setupProjekt("night-vorflug-gegenprobe-");
   let bin = null;
   try {
     readyIssue(dir, "Normales Paket", null);
     bin = fakeCli();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
-      { PATH: `${bin.binDir}:${process.env.PATH}` });
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, /Stufe/, `keine Stufen-Zeile erwartet, aber:\n${res.stdout}`);
   } finally {

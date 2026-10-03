@@ -15,7 +15,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { writeFileSync, readFileSync, readdirSync, mkdirSync, rmSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setupProjekt, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakePath, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
@@ -23,15 +23,11 @@ const ZIEL_REPO = "mannewolff/claude-workflow-kit";
 const REPO_URL = "https://github.com/mannewolff/claude-workflow-kit";
 const TOKEN = "fixture-token";
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
-  : {};
-
 function runMigrateSync(dir, cliArgs, extraEnv = {}) {
   return spawnSync(process.execPath, [MIGRATE, ...cliArgs], {
     cwd: dir,
     encoding: "utf-8",
-    env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}`, ...extraEnv },
+    env: { ...process.env, PATH: fakePath(dir), ...extraEnv },
   });
 }
 
@@ -39,7 +35,7 @@ function runMigrate(dir, cliArgs, extraEnv = {}) {
   const env = { ...process.env };
   delete env.KIT_AGENT_MODEL;
   Object.assign(env, {
-    PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
+    PATH: fakePath(dir),
     TBX_TOKEN: TOKEN,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // kurzes Wiederholbudget (Issue #842)
@@ -86,7 +82,7 @@ function exportiere(praefix, nodes, { repoView = `${ZIEL_REPO}\n` } = {}) {
 // Luecken auf der GitHub-Seite
 // ============================================================
 
-test("ein Issue ohne Titel und ohne Body wird zu leeren Texten, nicht zu 'undefined'", NUR_POSIX, () => {
+test("ein Issue ohne Titel und ohne Body wird zu leeren Texten, nicht zu 'undefined'", () => {
   const f = exportiere("migrate-issue-leer-", [
     { number: 101, labels: { nodes: [] }, comments: { pageInfo: { hasNextPage: false }, nodes: [] } },
   ]);
@@ -100,7 +96,7 @@ test("ein Issue ohne Titel und ohne Body wird zu leeren Texten, nicht zu 'undefi
   }
 });
 
-test("fehlt der comments-Knoten ganz, entsteht eine leere Kommentarliste", NUR_POSIX, () => {
+test("fehlt der comments-Knoten ganz, entsteht eine leere Kommentarliste", () => {
   const f = exportiere("migrate-ohne-comments-", [
     { number: 101, title: "T", body: "B", labels: { nodes: [] } },
   ]);
@@ -113,7 +109,7 @@ test("fehlt der comments-Knoten ganz, entsteht eine leere Kommentarliste", NUR_P
   }
 });
 
-test("ein Kommentar ohne createdAt behaelt seinen Text und bekommt ein leeres Datum", NUR_POSIX, () => {
+test("ein Kommentar ohne createdAt behaelt seinen Text und bekommt ein leeres Datum", () => {
   const f = exportiere("migrate-komm-ohne-datum-", [
     {
       number: 101, title: "T", body: "B", labels: { nodes: [] },
@@ -131,7 +127,7 @@ test("ein Kommentar ohne createdAt behaelt seinen Text und bekommt ein leeres Da
   }
 });
 
-test("ein Kommentar ganz ohne body faellt heraus, statt als leerer Eintrag mitzugehen", NUR_POSIX, () => {
+test("ein Kommentar ganz ohne body faellt heraus, statt als leerer Eintrag mitzugehen", () => {
   const f = exportiere("migrate-komm-ohne-body-", [
     {
       number: 101, title: "T", body: "B", labels: { nodes: [] },
@@ -151,7 +147,7 @@ test("ein Kommentar ganz ohne body faellt heraus, statt als leerer Eintrag mitzu
   }
 });
 
-test("fehlende und namenlose Labels ergeben eine leere Namensliste", NUR_POSIX, () => {
+test("fehlende und namenlose Labels ergeben eine leere Namensliste", () => {
   const f = exportiere("migrate-labels-leer-", [
     { number: 101, title: "T", body: "B", comments: { pageInfo: { hasNextPage: false }, nodes: [] } },
     { number: 102, title: "T", body: "B", labels: { nodes: [{}, null, { name: "" }] }, comments: { pageInfo: { hasNextPage: false }, nodes: [] } },
@@ -166,7 +162,7 @@ test("fehlende und namenlose Labels ergeben eine leere Namensliste", NUR_POSIX, 
   }
 });
 
-test("liefert gh einen Repo-Namen ohne Schraegstrich, bricht export mit dem Wert ab", NUR_POSIX, () => {
+test("liefert gh einen Repo-Namen ohne Schraegstrich, bricht export mit dem Wert ab", () => {
   const f = exportiere("migrate-repo-kaputt-", [], { repoView: "nurname\n" });
   try {
     assert.equal(f.res.status, 1, "export haette mit Exit 1 enden muessen");
@@ -177,7 +173,7 @@ test("liefert gh einen Repo-Namen ohne Schraegstrich, bricht export mit dem Wert
   }
 });
 
-test("liefert gh keine URL, bricht import vor jedem Schreibzugriff ab", NUR_POSIX, async () => {
+test("liefert gh keine URL, bricht import vor jedem Schreibzugriff ab", async () => {
   const { server, requests, host } = await starteServer(() => ({ status: 200, json: {} }));
   const dir = setupProjekt(
     { issueTracker: "github", github: { projectNumber: 14 }, toolbox: { host } },
@@ -205,7 +201,7 @@ test("liefert gh keine URL, bricht import vor jedem Schreibzugriff ab", NUR_POSI
 // Luecken beim Schreiben
 // ============================================================
 
-test("ein Kommentar ohne Autor wird als 'unbekannt' uebernommen", NUR_POSIX, async () => {
+test("ein Kommentar ohne Autor wird als 'unbekannt' uebernommen", async () => {
   const { server, requests, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     if (req.method === "POST" && req.url === "/api/kanban/items") return { status: 200, json: { id: 5001, number: 101 } };
@@ -236,7 +232,7 @@ test("ein Kommentar ohne Autor wird als 'unbekannt' uebernommen", NUR_POSIX, asy
   }
 });
 
-test("eine Create-Antwort ohne JSON-Koerper gilt als Karte ohne id", NUR_POSIX, async () => {
+test("eine Create-Antwort ohne JSON-Koerper gilt als Karte ohne id", async () => {
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     // Status 200, aber der Koerper ist kein JSON: Der Lauf darf daran nicht zerbrechen.
@@ -302,7 +298,7 @@ async function verifyFixture(praefix, daten, karten, kommentare = {}) {
   return { dir, datei, ende: () => { server.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-test("verify meldet eine abweichende Kommentarzahl mit beiden Werten", NUR_POSIX, async () => {
+test("verify meldet eine abweichende Kommentarzahl mit beiden Werten", async () => {
   const quelle = {
     number: 101, title: "T", body: "B", labels: [], spalte: "Backlog",
     comments: [
@@ -325,7 +321,7 @@ test("verify meldet eine abweichende Kommentarzahl mit beiden Werten", NUR_POSIX
   }
 });
 
-test("verify vergleicht Kommentartexte ohne die Herkunfts-Kopfzeile", NUR_POSIX, async () => {
+test("verify vergleicht Kommentartexte ohne die Herkunfts-Kopfzeile", async () => {
   const quelle = {
     number: 101, title: "T", body: "B", labels: [], spalte: "Backlog",
     comments: [{ author: "a", body: "gleicher Text", createdAt: "2026-01-01T00:00:00Z" }],
@@ -343,7 +339,7 @@ test("verify vergleicht Kommentartexte ohne die Herkunfts-Kopfzeile", NUR_POSIX,
   }
 });
 
-test("verify meldet einen abweichenden Kommentartext, Kopfzeile hin oder her", NUR_POSIX, async () => {
+test("verify meldet einen abweichenden Kommentartext, Kopfzeile hin oder her", async () => {
   const quelle = {
     number: 101, title: "T", body: "B", labels: [], spalte: "Backlog",
     comments: [{ author: "a", body: "Original", createdAt: "2026-01-01T00:00:00Z" }],
@@ -364,7 +360,7 @@ test("verify meldet einen abweichenden Kommentartext, Kopfzeile hin oder her", N
   }
 });
 
-test("verify meldet eine Zielkarte ohne Titel und Body als Abweichung mit null", NUR_POSIX, async () => {
+test("verify meldet eine Zielkarte ohne Titel und Body als Abweichung mit null", async () => {
   const quelle = { number: 101, title: "Titel", body: "Body", comments: [], labels: [], spalte: "Backlog" };
   // Eine Karte, der beide Textfelder fehlen — so sieht sie aus, wenn sie von Hand
   // angelegt wurde. `undefined` muss dabei als `null` erscheinen: Die Meldezeile ist
@@ -386,7 +382,7 @@ test("verify meldet eine Zielkarte ohne Titel und Body als Abweichung mit null",
   }
 });
 
-test("verify vergleicht einen Zielkommentar ohne Body als leeren Text", NUR_POSIX, async () => {
+test("verify vergleicht einen Zielkommentar ohne Body als leeren Text", async () => {
   const quelle = {
     number: 101, title: "T", body: "B", labels: [], spalte: "Backlog",
     comments: [{ author: "a", body: "Original", createdAt: "2026-01-01T00:00:00Z" }],
@@ -405,7 +401,7 @@ test("verify vergleicht einen Zielkommentar ohne Body als leeren Text", NUR_POSI
   }
 });
 
-test("verify meldet eine fehlende Zielkarte mit target=null", NUR_POSIX, async () => {
+test("verify meldet eine fehlende Zielkarte mit target=null", async () => {
   const quelle = { number: 101, title: "Fehlt am Ziel", body: "B", comments: [], labels: [], spalte: "Backlog" };
   const f = await verifyFixture("migrate-verify-ohne-karte-", [quelle], []);
   try {
@@ -419,7 +415,7 @@ test("verify meldet eine fehlende Zielkarte mit target=null", NUR_POSIX, async (
   }
 });
 
-test("verify bildet eine unbekannte Quellspalte auf sich selbst ab und meldet den Unterschied", NUR_POSIX, async () => {
+test("verify bildet eine unbekannte Quellspalte auf sich selbst ab und meldet den Unterschied", async () => {
   const quelle = { number: 101, title: "T", body: "B", comments: [], labels: [], spalte: "Irgendwas Eigenes" };
   const f = await verifyFixture("migrate-verify-spalte-", [quelle], [verifyKarte(quelle)]);
   try {
@@ -450,7 +446,7 @@ test("ohne workflow.config.json nennt export das Projektverzeichnis als Ursache"
   }
 });
 
-test("ohne TBX_CONFIG_DIR wird der tbx-Login unter HOME gesucht", NUR_POSIX, async () => {
+test("ohne TBX_CONFIG_DIR wird der tbx-Login unter HOME gesucht", async () => {
   const { server, requests, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     if (req.method === "POST" && req.url === "/api/kanban/items") return { status: 200, json: { id: 5001, number: 101 } };
@@ -472,7 +468,7 @@ test("ohne TBX_CONFIG_DIR wird der tbx-Login unter HOME gesucht", NUR_POSIX, asy
     const env = { ...process.env };
     delete env.TBX_TOKEN;
     delete env.TBX_CONFIG_DIR;
-    env.PATH = `${join(dir, "fakebin")}:${process.env.PATH}`;
+    env.PATH = fakePath(dir);
     env.HOME = join(dir, "home");
     env.USERPROFILE = join(dir, "home");
 
@@ -492,7 +488,7 @@ test("ohne TBX_CONFIG_DIR wird der tbx-Login unter HOME gesucht", NUR_POSIX, asy
   }
 });
 
-test("ein nicht ausfuehrbares gh meldet den Systemfehler im Klartext", NUR_POSIX, () => {
+test("ein nicht ausfuehrbares gh meldet den Systemfehler im Klartext", MIT_DATEIRECHTEN, () => {
   const dir = setupProjekt({ issueTracker: "github", github: { projectNumber: 14 } }, "migrate-gh-eacces-");
   try {
     // Eine Datei ohne Ausfuehrungsrecht: spawnSync liefert EACCES statt ENOENT —
@@ -514,7 +510,7 @@ test("ein nicht ausfuehrbares gh meldet den Systemfehler im Klartext", NUR_POSIX
   }
 });
 
-test("gibt gh gar nichts aus, bricht export mit dem leeren Wert ab", NUR_POSIX, () => {
+test("gibt gh gar nichts aus, bricht export mit dem leeren Wert ab", () => {
   // `gh repo view` mit leerer Ausgabe: Der Rueckfall auf den leeren Text greift, und
   // die Pruefung darunter faengt ihn. Ohne den Rueckfall stuende hier ein Aufruf auf
   // `undefined.split` — ein Absturz statt einer Meldung.

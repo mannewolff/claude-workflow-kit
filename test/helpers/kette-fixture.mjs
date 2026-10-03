@@ -23,10 +23,6 @@ import {
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-export const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 /** Der Vorflug meldet: Tracker erreichbar, keine Kommando-Reviewer zu pruefen. */
 export const VORFLUG_OK = "cat <<'EOF'\n<<<VORFLUG\n{\"reviewers\":[],\"tracker\":{\"erreichbar\":true,\"geprueft\":\"issue list\"}}\nVORFLUG>>>\nEOF";
 
@@ -67,7 +63,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
   // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
   copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { kette } }, null, 2));
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { ...configZusatz.night, kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.
   //
@@ -84,7 +80,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // `.claude`-Pfade einzeln, weil es seine Kit-Kopie committen muss. Fuer `gitReste()`
   // sind sie ohnehin ausgeschlossen — der Session-Fake der Umsetzung committet aber mit
   // einem rohen `git add -A`, das diese Ausschluesse nicht kennt.
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\n.claude/befunde.md\n.claude/befunde.json\nissues/\nhelfer/\n");
+  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\n.claude/befunde.md\n.claude/befunde.json\n.claude/lauf/\n.claude/protokolle/\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
@@ -92,6 +88,27 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
     assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
   }
   return dir;
+}
+
+/**
+ * Kennzeichnet eine Karte fuer Variante B: `kit:durchziehen` an der Karte und — solange der
+ * Test den Schalter nicht selbst nennt — `night.kette.uebergaenge.abdeckungUmsetzung: true`
+ * im Projekt. So laeuft der Fall mit ausdruecklicher Freigabe (Issue #1087, E12); ohne
+ * Eintrag setzt Variante B ebenfalls um (Issue #1105). Die geaenderte Config wird
+ * committet: Die Umsetzungsstufe prueft die Hauptkopie auf einen sauberen Arbeitsbaum.
+ */
+export function durchziehen(dir, karte) {
+  board(dir, "issue", "label", "add", karte, "kit:durchziehen");
+  const pfad = join(dir, ".claude", "workflow.config.json");
+  const config = JSON.parse(readFileSync(pfad, "utf-8"));
+  const uebergaenge = config.night.kette.uebergaenge ?? {};
+  if (uebergaenge.abdeckungUmsetzung !== undefined) return;
+  config.night.kette.uebergaenge = { ...uebergaenge, abdeckungUmsetzung: true };
+  writeFileSync(pfad, JSON.stringify(config, null, 2));
+  for (const a of [["add", ".claude/workflow.config.json"], ["commit", "-q", "-m", "Umsetzung freigegeben"]]) {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  }
 }
 
 export function mitProjekt(fn, kette, praefix, configZusatz) {
@@ -175,6 +192,9 @@ export function planauftrag(dir, F, { titel = "[Plan] Ein fertiger Weg", label =
  * nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
  * KIT_AGENT_MODEL in `$KETTE_LOG` und liefert ein result-Ereignis mit `$KETTE_KOSTEN`.
  *
+ * Das Arbeitsverzeichnis schreibt node und nicht `pwd -P`: In der Git Bash liefert `pwd`
+ * die Form /c/..., die mit realpathSync unter Windows nicht vergleichbar ist (Issue #1134).
+ *
  * Die vier erzeugenden Stufen nennt der Runner in NIGHT_KETTE_STUFE. Die Sessions der
  * Stufe `umsetzung` bekommen sie NICHT gesetzt — sie sehen ein regulaeres Ready-Paket
  * und erfahren von der Variante nichts (Plan #691, E11). Der Fake benennt sie deshalb
@@ -196,7 +216,7 @@ export function fake(stufen = {}) {
     'if [ -z "$stufe" ]; then',
     '  if [ -n "$NIGHT_SALVAGE" ]; then stufe=salvage; else stufe=umsetzung; fi',
     "fi",
-    String.raw`printf "%s\t%s\t%s\n" "$stufe" "$(pwd -P)" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
+    String.raw`printf "%s\t%s\t%s\n" "$stufe" "$(node -e 'process.stdout.write(require("fs").realpathSync(process.cwd()))')" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
     'case "$stufe" in',
     faelle,
     "  *) : ;;",
@@ -206,6 +226,12 @@ export function fake(stufen = {}) {
     "fi",
   ].join("\n");
 }
+
+/**
+ * Ein Ereignis im Strom der Session: Sie kam zustande. Eine Stufe, die danach mit Exit
+ * ungleich 0 endet, ist ein Fehler dieser Stufe und kein Fehlstart (Issue #1088, E13).
+ */
+export const EREIGNIS = `echo '{"type":"system","subtype":"init"}'`;
 
 /** Die Fake-Zeile der Stufe plan: legt den Plan aus `$KETTE_PLAN_BODY` mit der Herkunftszeile an. */
 export const PLAN_ANLEGEN = 'sed "s/__F__/$NIGHT_ISSUE_ID/" "$KETTE_PLAN_BODY" > "$KETTE_LOG.plan.md"; node .claude/kit/board.mjs issue create --title "[Plan] Ein Weg" --body-file "$KETTE_LOG.plan.md" >/dev/null';
@@ -266,10 +292,10 @@ export function umgebung(dir, { stufen = {}, plan = planBody(), fix = planBody()
 
 /** Die Fake-Zeile der Stufe pakete: zwei Pakete mit `Plan: Issue #M` und eine Karte ohne Herkunftszeile. */
 export const PAKET_ENTSCHEIDUNG = "Entscheidung: Wie heisst die Datei? Gewählt: kurz. Verworfen: lang. Grund: Bestand. Rückbau: trivial.";
-export const PAKETE_ANLEGEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); for n in 1 2; do printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" "$([ "$n" = 1 ] && printf "%s" "$KETTE_PAKET_ENTSCHEIDUNG" || printf "Keine Entscheidung.")" "$n" > "$KETTE_LOG.paket$n.md"; node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.paket$n.md" >/dev/null; done; printf "## Kontext\n\nOhne Herkunft.\n\n## Aufgabe\n\nx\n\n## Akzeptanzkriterium\n\n- y\n\n## Abhängigkeiten\n\nKeine.\n" > "$KETTE_LOG.fremd.md"; node .claude/kit/board.mjs issue create --title "Fremde Karte" --body-file "$KETTE_LOG.fremd.md" >/dev/null`;
+export const PAKETE_ANLEGEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); for n in 1 2; do printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n%s\n\n## Aufgabe\n\nPaket %s in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n" "$m" "$NIGHT_ISSUE_ID" "$([ "$n" = 1 ] && printf "%s" "$KETTE_PAKET_ENTSCHEIDUNG" || printf "Keine Entscheidung.")" "$n" > "$KETTE_LOG.paket$n.md"; node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.paket$n.md" >/dev/null; done; printf "## Kontext\n\nOhne Herkunft.\n\n## Aufgabe\n\nx\n\n## Akzeptanzkriterium\n\n- y\n\n## Abhängigkeiten\n\nKeine.\n" > "$KETTE_LOG.fremd.md"; node .claude/kit/board.mjs issue create --title "Fremde Karte" --body-file "$KETTE_LOG.fremd.md" >/dev/null`;
 
 /** Die Fake-Zeile der Stufe pakete: ein Paket ohne den Abschnitt Abhaengigkeiten (rote Form). */
-export const PAKET_OHNE_ABHAENGIGKEITEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); printf "## Kontext\n\nPlan: Issue #%s\n\n## Aufgabe\n\nPaket.\n\n## Akzeptanzkriterium\n\n- node --test\n" "$m" > "$KETTE_LOG.paket.md"; node .claude/kit/board.mjs issue create --title "Paket ohne Abhaengigkeiten" --body-file "$KETTE_LOG.paket.md" >/dev/null`;
+export const PAKET_OHNE_ABHAENGIGKEITEN = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); printf "## Kontext\n\nPlan: Issue #%s\n\n## Aufgabe\n\nPaket in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n" "$m" > "$KETTE_LOG.paket.md"; node .claude/kit/board.mjs issue create --title "Paket ohne Abhaengigkeiten" --body-file "$KETTE_LOG.paket.md" >/dev/null`;
 
 /** Die Fake-Zeile der Stufe form fuer ein Paket: haengt den Abschnitt Abhaengigkeiten an. */
 export const PAKET_REPARIEREN = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s/^Das Dokument #\([0-9]*\).*/\1/p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.trimEnd()+"\n\n## Abhängigkeiten\n\nKeine.\n")' > "$KETTE_LOG.paketfix.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.paketfix.md" >/dev/null`;
@@ -376,7 +402,7 @@ export function jePaket(faelle, sonst = ":") {
  * Die Nummer des ersten Pakets liest der Fake aus der Antwort von `issue create`, statt
  * sie zu raten: Nur so bleibt die Referenz richtig, wenn der Test weitere Karten anlegt.
  */
-export const PAKETE_MIT_ABHAENGIGKEIT = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 2 ]; then dep="Issue #$erste"; else dep="Keine."; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
+export const PAKETE_MIT_ABHAENGIGKEIT = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 2 ]; then dep="Issue #$erste"; else dep="Keine."; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
 
 /**
  * Ersetzt die Kit-Kopie von board.mjs im Fixture durch einen Umweg ueber das echte

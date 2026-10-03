@@ -41,6 +41,10 @@ test("[night-6] ohne Nachbarn gelingt das Laden von night.mjs — erst der Aufru
   assert.throws(() => night.nachbarn.fenceLauf(), /board\.mjs fehlt neben night\.mjs/);
 });
 
+test("[night-6] ohne board.mjs setzt boardUmgebung kein Budget (Issue #1067)", () => {
+  assert.deepEqual(night.boardUmgebung({ PATH: "/usr/bin" }), { PATH: "/usr/bin" });
+});
+
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istFachlich", () => {
   assert.throws(() => night.nachbarn.istFachlich("[Fachlich] Etwas"), /das Praefix \[Fachlich\] ist nicht erkennbar/);
 });
@@ -56,6 +60,18 @@ test("[night-6] ohne board.mjs wirft der Ersatz fuer istIdee", () => {
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istMensch", () => {
   assert.throws(() => night.nachbarn.istMensch("[Mensch] Etwas"), /das Praefix \[Mensch\] ist nicht erkennbar/);
 });
+
+// Ein stilles "keine Treffer" liesse ein Paket mit geschuetzter Datei in eine Session
+// (Issue #1046, Plan #987, E1) — darum werfen auch diese drei Ersatzfunktionen.
+for (const [name, was] of [
+  ["geschuetzteTreffer", "die Erkennung geschuetzter Dateien"],
+  ["geschuetztKommentar", "der Halt-Kommentar fuer geschuetzte Dateien"],
+  ["geschuetztFreigabe", "die Freigabe geschuetzter Dateien"],
+]) {
+  test(`[night-6] ohne board.mjs wirft der Ersatz fuer ${name}`, () => {
+    assert.throws(() => night.nachbarn[name]("x", "y", "z"), new RegExp(`board\\.mjs liegt nicht neben night\\.mjs .* — ${was} ist nicht verfuegbar`));
+  });
+}
 
 test("[night-16] ohne board.mjs braucht reviewFreigabe den Nachbarn nicht: ohne Marker ungeprueft", () => {
   // Seit Plan #638 (A17) liest das Gate nur den Marker; eine Pruefvorgabe-Zeile wird

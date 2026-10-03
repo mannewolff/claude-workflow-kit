@@ -81,3 +81,22 @@ test("[installer-15] der Block fuehrt die beiden Befunde-Zustandsdateien, aber k
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("[installer-16] der Block fuehrt die Stuecke von issue melden, und git ignoriert sie", () => {
+  // `.claude/berichte/` haelt die Stuecke eines gestueckelten Abschlussberichts bis zum
+  // gelungenen Abschluss (Issue #1022). Geprueft wird auch die Wirkung: Eine Zeile, die
+  // git nicht als Verzeichnisregel liest, stuende da und ignorierte nichts.
+  const dir = fixture("install-berichte-gitignore-");
+  try {
+    spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, res.stderr);
+
+    const zeilen = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n").map((z) => z.trim());
+    assert.ok(zeilen.includes(".claude/berichte/"), `.claude/berichte/ fehlt im .gitignore-Block:\n${zeilen.join("\n")}`);
+    const pruef = spawnSync("git", ["check-ignore", "-q", ".claude/berichte/5.1.md"], { cwd: dir, encoding: "utf-8" });
+    assert.equal(pruef.status, 0, "ein Stueck unter .claude/berichte/ wird nicht ignoriert");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

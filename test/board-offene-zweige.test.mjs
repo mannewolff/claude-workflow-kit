@@ -18,11 +18,7 @@ import { join, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
-import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen, BOARD } from "./helpers/board-fixture.mjs";
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Fakes sind endungslose Dateien mit sh-Wrapper; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197." }
-  : {};
+import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen, BOARD, cmdAttrappe } from "./helpers/board-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -53,7 +49,7 @@ function mitProjekt(fn, config = LOKAL, praefix = "board-offen-") {
 // zwar eingetragen ist, aber keine URL traegt (halb geschriebene .git/config, ein
 // Remote ohne url-Zeile). exec() liefert dafuer den leeren String, nicht null —
 // gitRemoteUrl macht daraus null, damit dahinter nur noch ein Fall zu behandeln ist.
-test("code repo-name: ein leerer Remote faellt auf den Verzeichnisnamen zurueck", NUR_POSIX, () => {
+test("code repo-name: ein leerer Remote faellt auf den Verzeichnisnamen zurueck", () => {
   mitProjekt((dir) => {
     fakeCli(dir, "git", [{ match: "^remote get-url origin", stdout: "" }]);
 
@@ -75,7 +71,7 @@ test("code repo-name: ein leerer Remote faellt auf den Verzeichnisnamen zurueck"
 // Lauf kann die Datei auch ganz entfernen. Das Verwerfen des Caches findet dann
 // nichts mehr vor — und muss trotzdem durchlaufen, sonst kippt ein fremder Prozess
 // den move.
-test("move ueberlebt einen Cache, den ein fremder Prozess mittendrin loescht", NUR_POSIX, () => {
+test("move ueberlebt einen Cache, den ein fremder Prozess mittendrin loescht", () => {
   const dir = setupProjekt(GITHUB, "board-offen-cache-");
   fakeCli(dir, "gh", [
     {
@@ -138,7 +134,7 @@ test("issue activity ohne id nennt die Aufrufform", () => {
 // scheitert das Lesen mit EBADF. Das ist der einzige Weg, auf dem die stdin-Quelle
 // nicht leer, sondern kaputt ist — und er darf nicht als "Text fehlt" durchgehen,
 // sonst sucht der Aufrufer den Fehler in seinem Aufruf statt in seiner Umgebung.
-test("issue comment --text -: eine nicht lesbare stdin wird als solche gemeldet", NUR_POSIX, () => {
+test("issue comment --text -: eine nicht lesbare stdin wird als solche gemeldet", () => {
   mitProjekt((dir) => {
     const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
     const nurSchreiben = openSync(join(dir, "nur-schreiben.txt"), "w");
@@ -147,7 +143,10 @@ test("issue comment --text -: eine nicht lesbare stdin wird als solche gemeldet"
         { stdio: [nurSchreiben, "pipe", "pipe"] });
 
       assert.equal(res.status, 1, "eine kaputte stdin haette scheitern muessen");
-      assert.match(res.stderr, /--text -: stdin ist nicht lesbar \(EBADF\)/,
+      // Unter Windows meldet das Lesen eines nur zum Schreiben geoeffneten Handles einen
+      // anderen Code als EBADF; gleich bleibt, dass er in der Meldung steht (Issue #1135).
+      const code = process.platform === "win32" ? "E[A-Z]+" : "EBADF";
+      assert.match(res.stderr, new RegExp(`--text -: stdin ist nicht lesbar \\(${code}\\)`),
         `die Meldung nennt weder die Quelle noch den Fehlercode: ${res.stderr}`);
       assert.doesNotMatch(res.stderr, /darf nicht leer sein/,
         "der Fehler wurde als leerer Text gemeldet statt als nicht lesbare stdin");
@@ -169,13 +168,15 @@ test("issue comment --text -: eine nicht lesbare stdin wird als solche gemeldet"
 // die Datei als Skript und beendet mit Status 127, der Fehler kommt bei Node nie an.
 // Gemeinsam ist beiden Wegen nur, was der Vorflug daraus macht: eine Begruendung, die
 // den Startfehler nennt statt "Durch Signal null beendet".
-test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehler", NUR_POSIX, () => {
+test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehler", () => {
   mitProjekt((dir) => {
     const binDir = join(dir, "fakebin");
     mkdirSync(binDir, { recursive: true });
     const pfad = join(binDir, "kein-programm");
     writeFileSync(pfad, "\x00\x01kein startbares Programm\n");
     chmodSync(pfad, 0o755);
+    // Unter Windows startet das Kit die Datei ueber die Git Bash (Issue #1135, E8).
+    cmdAttrappe(pfad);
 
     const res = runBoard(dir, ["issue-review", "check"]);
 
@@ -186,7 +187,11 @@ test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehle
       "die PATH-Pruefung haette die Datei finden muessen — der Befund kommt aus dem Probelauf");
     // Auf Linux sind beide Formen moeglich: `not found` ist die letzte stderr-Zeile
     // von /bin/sh, `Exit 127` der Rueckfall aus probelauf, wenn stderr leer bleibt.
-    const erwartet = process.platform === "darwin" ? /ENOEXEC/ : /not found|Exit 127/;
+    // Unter Windows liest die Git Bash die Datei und weist sie als Binaerdatei ab.
+    const erwartet = {
+      darwin: /ENOEXEC/,
+      win32: /cannot execute binary file|Exit 126/,
+    }[process.platform] ?? /not found|Exit 127/;
     assert.match(befund.grund, erwartet,
       `der Startfehler fehlt in der Begruendung: ${befund.grund}`);
     assert.doesNotMatch(befund.grund, /Signal/,
@@ -203,13 +208,18 @@ test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehle
 // gilt aber allein fuer ENOEXEC — ein Shebang auf einen Interpreter, den es nicht
 // gibt, scheitert mit ENOENT, und dagegen faengt keine Shell auf. Das ist der Fall,
 // der auf beiden Plattformen ohne Status und mit Fehler endet.
-test("check: ein Shebang auf einen fehlenden Interpreter meldet den Startfehler", NUR_POSIX, () => {
+test("check: ein Shebang auf einen fehlenden Interpreter meldet den Startfehler", () => {
   mitProjekt((dir) => {
     const binDir = join(dir, "fakebin");
     mkdirSync(binDir, { recursive: true });
     const pfad = join(binDir, "kein-interpreter");
     writeFileSync(pfad, "#!/nicht/vorhanden/interpreter\necho hi\n");
     chmodSync(pfad, 0o755);
+    // Unter Windows hat ein Shebang keine Bedeutung — die Git Bash, ueber die das Kit eine
+    // sh-Huelle startet, liest ihn nicht. Den Startfehler ohne Exit-Status liefert dort eine
+    // `.exe`, die kein Programm ist; sie geht der Huelle in PATHEXT voraus und wird direkt
+    // gestartet (Issue #1135, E8). Auf POSIX sucht niemand nach `kein-interpreter.exe`.
+    writeFileSync(`${pfad}.exe`, "kein Programm\n");
 
     const res = runBoard(dir, ["issue-review", "check"]);
 
@@ -218,7 +228,7 @@ test("check: ein Shebang auf einen fehlenden Interpreter meldet den Startfehler"
     assert.equal(befund.verfuegbar, false, "ein nicht startbares Programm darf nicht als verfuegbar gelten");
     assert.equal(befund.geprueft, "probelauf",
       "die PATH-Pruefung haette die Datei finden muessen — der Befund kommt aus dem Probelauf");
-    assert.match(befund.grund, /ENOENT/,
+    assert.match(befund.grund, process.platform === "win32" ? /^spawnSync / : /ENOENT/,
       `der Startfehler fehlt in der Begruendung: ${befund.grund}`);
     assert.doesNotMatch(befund.grund, /Signal/,
       "der Fall ist als Signal-Tod gemeldet worden, obwohl ein Fehler vorlag");

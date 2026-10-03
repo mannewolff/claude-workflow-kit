@@ -19,7 +19,7 @@ test("GitHub-Form: author.login und createdAt werden gemappt", () => {
     { author: { login: "mannewolff" }, body: "Erster Kommentar", createdAt: "2026-07-28T09:00:00Z" },
   ];
   assert.deepEqual(normalizeComments(raw), [
-    { author: "mannewolff", body: "Erster Kommentar", createdAt: "2026-07-28T09:00:00Z" },
+    { author: "mannewolff", body: "Erster Kommentar", createdAt: "2026-07-28T09:00:00Z", id: null },
   ]);
 });
 
@@ -28,7 +28,7 @@ test("GitLab-Form: author.username und created_at werden gemappt", () => {
     { author: { username: "manne" }, body: "Notiz", created_at: "2026-07-28T10:00:00Z" },
   ];
   assert.deepEqual(normalizeComments(raw), [
-    { author: "manne", body: "Notiz", createdAt: "2026-07-28T10:00:00Z" },
+    { author: "manne", body: "Notiz", createdAt: "2026-07-28T10:00:00Z", id: null },
   ]);
 });
 
@@ -45,7 +45,7 @@ test("GitLab-System-Notes werden gefiltert (keine echten Kommentare)", () => {
 test("kanbancompat-Form: author ist bereits ein String", () => {
   const raw = [{ author: "Manfred Wolff", body: "Abschlussbericht", createdAt: "2026-07-28T11:00:00Z" }];
   assert.deepEqual(normalizeComments(raw), [
-    { author: "Manfred Wolff", body: "Abschlussbericht", createdAt: "2026-07-28T11:00:00Z" },
+    { author: "Manfred Wolff", body: "Abschlussbericht", createdAt: "2026-07-28T11:00:00Z", id: null },
   ]);
 });
 
@@ -82,7 +82,7 @@ test("null-Elemente werden gefiltert", () => {
 
 test("fehlende Einzelfelder werden zu leeren Strings, nicht zu undefined", () => {
   const raw = [{ body: "nur Text" }];
-  assert.deepEqual(normalizeComments(raw), [{ author: "", body: "nur Text", createdAt: "" }]);
+  assert.deepEqual(normalizeComments(raw), [{ author: "", body: "nur Text", createdAt: "", id: null }]);
 });
 
 test("Kommentar ohne Body wird gefiltert (nichts zu zeigen)", () => {
@@ -97,5 +97,45 @@ test("Kommentar ohne Body wird gefiltert (nichts zu zeigen)", () => {
 
 test("author-Objekt ohne login/username faellt auf leeren String zurueck", () => {
   const raw = [{ author: { id: 7 }, body: "Text", createdAt: "2026-07-28T09:00:00Z" }];
-  assert.deepEqual(normalizeComments(raw), [{ author: "", body: "Text", createdAt: "2026-07-28T09:00:00Z" }]);
+  assert.deepEqual(normalizeComments(raw), [{ author: "", body: "Text", createdAt: "2026-07-28T09:00:00Z", id: null }]);
+});
+
+// Kommentar-IDs (Issue #1021, Plan #1015 E10): `issue melden` muss den Bericht
+// eines Laufs wiederfinden und ersetzen. Dafuer traegt jeder Kommentar seine ID —
+// hinten angehaengt, damit die bestehenden Felder ihre Reihenfolge behalten.
+
+test("GitHub-Form: id ist die REST-ID aus #issuecomment-<n>, nicht die Knoten-ID", () => {
+  const raw = [{
+    id: "IC_kwDOABCDEF5xyz",
+    url: "https://github.com/besitzer/repo/issues/5#issuecomment-2345678901",
+    author: { login: "mannewolff" },
+    body: "Bericht",
+    createdAt: "2026-07-28T09:00:00Z",
+  }];
+  assert.deepEqual(normalizeComments(raw), [
+    { author: "mannewolff", body: "Bericht", createdAt: "2026-07-28T09:00:00Z", id: "2345678901" },
+  ]);
+});
+
+test("GitHub-Form mit url ohne issuecomment-Anker: id ist null, nie die Knoten-ID", () => {
+  const raw = [{ id: "IC_kwDOABCDEF5xyz", url: "https://github.com/besitzer/repo/issues/5", author: { login: "m" }, body: "b" }];
+  assert.equal(normalizeComments(raw)[0].id, null);
+});
+
+test("GitLab- und kanbancompat-Form: numerische id wird als String gefuehrt", () => {
+  const raw = [
+    { id: 17, author: { username: "manne" }, body: "Notiz", created_at: "2026-07-28T10:00:00Z" },
+    { id: 900, author: "Manfred Wolff", body: "Bericht", createdAt: "2026-07-28T11:00:00Z" },
+  ];
+  assert.deepEqual(normalizeComments(raw), [
+    { author: "manne", body: "Notiz", createdAt: "2026-07-28T10:00:00Z", id: "17" },
+    { author: "Manfred Wolff", body: "Bericht", createdAt: "2026-07-28T11:00:00Z", id: "900" },
+  ]);
+});
+
+test("Kommentar ohne id: id ist null", () => {
+  const raw = [{ author: "a", body: "ohne Kennung", createdAt: "2026-07-28T09:00:00Z" }];
+  assert.deepEqual(normalizeComments(raw), [
+    { author: "a", body: "ohne Kennung", createdAt: "2026-07-28T09:00:00Z", id: null },
+  ]);
 });

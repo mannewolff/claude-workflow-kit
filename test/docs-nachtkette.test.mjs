@@ -74,7 +74,10 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["den Rueckweg", "Plan-Auftrag"],
     ["die ueberholten Plaene", "Ueberholt durch Plan"],
     ["die wartenden Berichte", ".claude/night-bericht-"],
-    ["den Kommentar bei gescheitertem Vorflug", "Kette nicht gestartet"],
+    // Issue #1090 (E17): Der Befund des gescheiterten Vorflugs steht im Laufstand, nicht
+    // mehr in einem eigenen Kommentar — der Wortlaut bleibt.
+    ["den Laufstand bei gescheitertem Vorflug", "`lauf:abgebrochen` mit `Kette nicht gestartet"],
+    ["den Vorab-Stand", "Lauf angenommen um …, Vorabprüfung läuft"],
     ["die Pruefung als Voraussetzung", `\`${REVIEW_FERTIG_LABEL}\``],
     ["den Anker der uebersprungenen Pruefung", `\`${KETTE_UNGEPRUEFT_ANKER}\``],
     ["den Satz zum Verlauf", "Dieser Bericht ist Verlauf"],

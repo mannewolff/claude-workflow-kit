@@ -210,12 +210,14 @@ test("[skills-7] der Skill verweist auf 'Entscheiden statt fragen' und nennt die
 });
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei.
-// Zuletzt +2 fuer das Praefix `[Mensch]` (Issue #984): Der Skill legt Arbeitspakete an und
-// muss sagen, wann eines nicht `[Task]` heisst, sondern `[Mensch]` — eine Aufgabe ausserhalb
-// des Repositories, die keine Sitzung erledigt.
+// Zuletzt +2 fuer die `hinweise` aus `check-form` und `create` (Issue #1065, Plan #1057 E4):
+// Der Skill legt ein Paket an und muss sagen, was er mit einer Nummer tut, die der Nachtlauf
+// als Abhaengigkeit lesen wird. Davor +2 fuer das Praefix `[Mensch]` (Issue #984): Der Skill
+// legt Arbeitspakete an und muss sagen, wann eines nicht `[Task]` heisst, sondern
+// `[Mensch]` — eine Aufgabe ausserhalb des Repositories, die keine Sitzung erledigt.
 test("[skills-7] der Skill bleibt kurz und begruendet keine Regel mit einem Issue", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 122, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 122`);
+  assert.ok(zeilen < 124, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 124`);
   assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
 });
 

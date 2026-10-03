@@ -53,9 +53,9 @@ test("[checks-10] ein Tabulator im Kommando wird maskiert und macht keine fuenft
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 1);
-    // Die Spaltenzahl ist fest (seit Issue #948 sieben): Ein unmaskierter Tabulator im
+    // Die Spaltenzahl ist fest (seit Issue #1071 elf): Ein unmaskierter Tabulator im
     // Kommando machte daraus eine mehr und verschoebe jede Spalte dahinter.
-    assert.equal(zeilen[0].split("\t").length, 7, "die Zeile hat genau sieben Spalten");
+    assert.equal(zeilen[0].split("\t").length, 11, "die Zeile hat genau elf Spalten");
     assert.equal(spalten(zeilen[0]).cmd, String.raw`echo a\tb`);
   });
 });

@@ -145,7 +145,14 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
     const mitFehler = run(dir, "--frisch");
 
     assert.equal(mitFehler.status, ohneFehler.status, "der Exit-Code bleibt derselbe");
-    assert.equal(mitFehler.stdout, ohneFehler.stdout, "die stdout-Ausgabe bleibt unveraendert");
+    // Die Zeile `Wartezeit:` (Issue #1069) misst die Wandzeit jedes Laufs und darf
+    // zwischen zwei Laeufen um eine Stelle abweichen — unter Last der Suite tut sie es.
+    // Dasselbe gilt fuer die Dauer in den `gelaufen:`-Zeilen (Issue #1080: 0 s gegen 0.1 s).
+    const ohneWartezeit = (text) => text
+      .replace(/^Wartezeit: .*$/m, "Wartezeit: …")
+      .replaceAll(/^(gelaufen: .* → \S+), [\d.]+ s/gm, "$1, … s");
+    assert.equal(ohneWartezeit(mitFehler.stdout), ohneWartezeit(ohneFehler.stdout),
+      "die stdout-Ausgabe bleibt unveraendert");
     assert.match(mitFehler.stderr, /Ausfuehrung/, "der Fehlschlag wird als Hinweis gemeldet, nicht verschwiegen");
   });
 });
@@ -166,9 +173,10 @@ test("[checks-7] checks.mjs plan schreibt keine Zeile", () => {
 
 test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und leeres Paket", () => {
   const FELDER = [
-    "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "configHash",
+    "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
+    "configHash",
     "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
-    "stufe", "vollerUmfang", "zeitpunkt",
+    "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
   ];
   const faelle = [
     { name: "gruen", cmd: "echo eins", leer: false },

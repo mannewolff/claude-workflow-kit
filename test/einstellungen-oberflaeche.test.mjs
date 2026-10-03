@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, vorgabeAus } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, THEMEN, vorgabeAus } from "../kit/einstellungen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -165,6 +165,11 @@ test("[einstellungen-7] fuer ein bekanntes zusammengesetztes Feld entsteht kein 
     .sort();
   assert.deepEqual(rufer, ["elemente", "redaktorText"]);
   assert.equal(TEILE.filter((t) => t.redaktor === "text").length, 1, "mehr als ein Teil zeigt die Dateischreibweise");
+  // Benannte Ausnahmen neben night.modelle: bekannte zusammengesetzte Felder, die bewusst in
+  // Dateischreibweise bleiben (testAblagen, Issue #1032, A13 — zwei Eintragsformen).
+  const textTeil = TEILE.find((t) => t.redaktor === "text");
+  assert.deepEqual(textTeil.pfade, ["night.modelle", "night.stufenRegel", "testAblagen"]);
+  assert.equal(THEMEN.testAblagen, "Prüfungen");
   for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers"]) {
     const teil = TEILE.find((t) => t.pfade.includes(pfad));
     assert.notEqual(teil.redaktor, "text", `${pfad} zeigt noch die Dateischreibweise`);
@@ -437,7 +442,7 @@ test("[einstellungen-13] M4 bearbeitet seine Pfade in einem Teil und braucht kei
   // `ohnePruefung` kam mit Issue #934 dazu: dieselbe Frage wie die Bereiche — was eine
   // geaenderte Datei ausloest —, deshalb derselbe Teil. `nurGeruest` (Issue #943) steht
   // aus demselben Grund dort: Es entscheidet mit, welche Kopplung die Auswahl sieht.
-  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest"]);
+  assert.deepEqual(m4.pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest", "gekoppelteBereiche"]);
   assert.equal(m4.folgen, undefined, "M4 nennt einen Folgepfad, obwohl es beide Pfade selbst bearbeitet");
   const pfade = new Set(aenderungsliste(
     { buildChecks: [{ cmd: "eslint", areas: ["alt"] }], checkAreas: { alt: ["x"] } },
@@ -446,6 +451,13 @@ test("[einstellungen-13] M4 bearbeitet seine Pfade in einem Teil und braucht kei
   ).map((a) => a.pfad));
   assert.ok(pfade.has("buildChecks[0].areas[0]"), [...pfade].join(", "));
   assert.ok(pfade.has("checkAreas.neu"), [...pfade].join(", "));
+});
+
+test("[einstellungen-13b] M4 fuehrt gekoppelteBereiche und schreibt eine Aenderung daran (Issue #1007)", () => {
+  const alt = { gekoppelteBereiche: [] };
+  const neu = { gekoppelteBereiche: [{ bereich: "board", grund: "Fast jede Testgruppe laedt kit/board.mjs." }] };
+  const pfade = aenderungsliste(alt, neu, "m4").map((a) => a.pfad);
+  assert.ok(pfade.some((p) => p.startsWith("gekoppelteBereiche")), pfade.join(", "));
 });
 
 // ------------------------------------------------------------
@@ -517,11 +529,30 @@ test("M6 bietet die Zielmarke night.zielUmsetzungMin mit der Vorgabe aus dem Sch
   assert.match(stueck, /zeilenGruppe\("night\.zielUmsetzungMin"/, "die Zielmarke hat keine eigene Zeile");
 });
 
-test("M6 bearbeitet night.kette samt Zielmarke und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
+test("M6 bearbeitet night.kette samt Zielmarke und Laufstand und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.stand"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
+});
+
+// Der Laufstand steht neben night.kette (Issue #1083, Plan #1079 E4): drei Labelnamen,
+// Frist und Pause, gesetzt ueber den eigenen Pfad night.stand.
+test("M6 bietet night.stand mit den Vorgaben aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  const erwartet = {
+    laeuft: vorgabeAus("night.stand.labels.laeuft"),
+    abgebrochen: vorgabeAus("night.stand.labels.abgebrochen"),
+    wartet: vorgabeAus("night.stand.labels.wartet"),
+    fristMin: vorgabeAus("night.stand.fristMin"),
+    pauseMin: vorgabeAus("night.stand.pauseMin"),
+  };
+  assert.deepEqual(Object.values(erwartet), ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet", 10, 5]);
+  assert.ok(stueck.includes(`const STAND_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben des Laufstands weichen vom Schema ab");
+  assert.match(stueck, /setzeWert\(teil, "night\.stand"/, "der Laufstand landet nicht in der Arbeitskopie");
+  for (const feld of ["labels.laeuft", "labels.abgebrochen", "labels.wartet", "fristMin", "pauseMin"]) {
+    assert.ok(stueck.includes(`"${feld.split(".").pop()}"`), `${feld} hat keine Zeile`);
+  }
 });
 
 // ------------------------------------------------------------
@@ -626,4 +657,33 @@ test("[einstellungen-21] M2 bietet als Autor keinen Namen an, der schon eine eig
   const stueck = SEITEN_BAUSTEINE.redaktorPaarungen;
   const rumpf = stueck.slice(stueck.indexOf("function paarungsZellen("));
   assert.match(rumpf, /autoren\.indexOf\(n\) < 0/, "die Autorauswahl filtert die belegten Namen nicht");
+});
+
+// Die freigegebenen Uebergaenge (Issue #1087, Plan #1079 E12): vier Schalter in night.kette,
+// je eine eigene Zeile, gesetzt formtreu ueber ketteAendern.
+test("M6 bietet die vier Uebergaenge als eigene Zeilen mit den Vorgaben aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  const erwartet = {
+    planReview: vorgabeAus("night.kette.uebergaenge.planReview"),
+    reviewPakete: vorgabeAus("night.kette.uebergaenge.reviewPakete"),
+    paketeAbdeckung: vorgabeAus("night.kette.uebergaenge.paketeAbdeckung"),
+    abdeckungUmsetzung: vorgabeAus("night.kette.uebergaenge.abdeckungUmsetzung"),
+  };
+  assert.deepEqual(Object.values(erwartet), [true, true, true, undefined]);
+  assert.ok(stueck.includes(`const UEBERGAENGE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben der Uebergaenge weichen vom Schema ab");
+  assert.match(stueck, /ketteAendern\(teil, \{ uebergaenge: Object\.assign\(\{\}, uebergaengeVon\(teil\)/, "die Uebergaenge werden nicht formtreu gesetzt");
+  assert.match(stueck, /ketteFeldZeile\("night\.kette\.uebergaenge\." \+ feld/, "die Uebergaenge haben keine eigene Zeile");
+  for (const feld of Object.keys(erwartet)) assert.ok(stueck.includes(`["${feld}", `), `${feld} hat keine Zeile`);
+});
+
+// Issue #1105: abdeckungUmsetzung hat keine Vorgabe — ohne Eintrag gilt das Verhalten von vor
+// #1087. Die Zeile zeigt das als eigenen Zustand und schreibt nichts, solange niemand waehlt.
+test("M6 zeigt abdeckungUmsetzung ohne Eintrag als Vorgabe-Zustand einer Auswahl, nicht als Kaestchen", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(stueck.includes('"Vorgabe: wie vor der Einstellung (Variante B setzt um)"'), "der Zustand ohne Eintrag ist nicht benannt");
+  assert.match(stueck, /if \(UEBERGAENGE_VORGABEN_BROWSER\[feld\] === undefined\) return uebergangAuswahlZeile\(/, "ein Schalter ohne Vorgabe bekommt keine Auswahl");
+  const rumpf = stueck.slice(stueck.indexOf("function uebergangAuswahlZeile("));
+  assert.match(rumpf, /wahl\.value = typeof wert === "boolean" \? String\(wert\) : "";/, "ohne Eintrag steht die Auswahl nicht auf der Vorgabe");
+  assert.match(rumpf, /if \(wahl\.value === ""\) delete neu\[feld\];/, "die Vorgabe zu waehlen entfernt den Eintrag nicht");
+  assert.match(rumpf.slice(0, rumpf.indexOf('addEventListener("change"')), /^(?![\s\S]*ketteAendern)/, "die Auswahl schreibt schon beim Aufbau");
 });

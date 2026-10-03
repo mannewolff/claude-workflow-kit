@@ -3,13 +3,17 @@
 // Eine zweite Kette zum selben Fachplan beginnt von vorn. Der aeltere Plan bekommt den
 // Kommentar "Ueberholt durch Plan #M2", kein Label, keinen Move; ein Plan zu einem
 // anderen Fachplan bleibt unberuehrt.
+//
+// Von vorn beginnt sie nur, wenn der Mensch den alten Plan geschlossen hat: Ein Plan in
+// Backlog, Ready oder In review ist das vorgefundene Ergebnis der Stufe plan (Issue
+// #1086, Plan #1079 E9) und bekommt keinen Nachfolger.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
+  run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 import { UEBERHOLT_UNBESTAETIGT_GRUND as UNBESTAETIGT_GRUND } from "../kit/night.mjs";
@@ -30,15 +34,19 @@ function ersteKette(dir, env) {
   return { F, alt: alt[0] };
 }
 
-/** Die zweite Kette zum selben Fachplan: der Mensch setzt das Label neu. */
-function zweiteKette(dir, F, env) {
+/**
+ * Die zweite Kette zum selben Fachplan: Der Mensch schliesst den alten Plan, damit ein
+ * frischer entsteht (E9), und setzt das Label neu.
+ */
+function zweiteKette(dir, F, env, alt) {
+  board(dir, "issue", "move", alt, "done");
   board(dir, "issue", "label", "add", F, "kit:night");
   const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
   assert.equal(res.status, 0, res.stderr);
   return { res, einheit: stand(dir).einheiten.find((e) => e.id === F), text: readFileSync(join(dir, "issues", `${F}.md`), "utf-8") };
 }
 
-test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, den fremden nicht", NUR_POSIX, () => {
+test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, den fremden nicht", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const anderer = fachplan(dir, "[Fachlich] Ein anderes Anliegen", null);
@@ -51,7 +59,8 @@ test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, d
     const fremd = board(dir, "issue", "create", "--title", "[Plan] Fremder Weg", "--body",
       `Plan-Modell: x\nFachliche Quelle: Issue #${anderer}\n\n## Ziel\n\nx\n\n## Betroffene Bereiche\n\n- y\n\n## Architektonische Entscheidungen\n\n- Keine.\n\n## Geplante Änderungen\n\n- z\n\n## Offene Fragen\n\n- Keine.\n\n## Verifizierung\n\n- w\n`);
 
-    // Die zweite Kette: der Mensch setzt das Label neu.
+    // Die zweite Kette: der Mensch schliesst den alten Plan (E9) und setzt das Label neu.
+    board(dir, "issue", "move", "0003", "done");
     board(dir, "issue", "label", "add", F, "kit:night");
     const zweiter = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
     assert.equal(zweiter.status, 0, zweiter.stderr);
@@ -63,13 +72,13 @@ test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, d
     assert.notEqual(neuerPlan, "0003");
     const alt = readFileSync(join(dir, "issues", "0003.md"), "utf-8");
     assert.match(alt, new RegExp(`Ueberholt durch Plan #${neuerPlan} \\(Kette `));
-    assert.equal(board(dir, "issue", "get", "0003").status, "backlog", "der alte Plan wird nicht bewegt");
+    assert.equal(board(dir, "issue", "get", "0003").status, "done", "der alte Plan wird nicht bewegt");
     assert.doesNotMatch(readFileSync(join(dir, "issues", `${fremd.id}.md`), "utf-8"), /Ueberholt/, "ein Plan zu einem anderen Fachplan bleibt unberuehrt");
     assert.match(zweiter.stdout, new RegExp(`Plan #0003 als ueberholt kommentiert \\(neuer Plan #${neuerPlan}\\)`));
   });
 });
 
-test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", NUR_POSIX, () => {
+test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -79,11 +88,11 @@ test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", NUR
   });
 });
 
-test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steht der Plan im Bericht unter Ueberholt", NUR_POSIX, () => {
+test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steht der Plan im Bericht unter Ueberholt", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
     const { F, alt } = ersteKette(dir, env);
-    const { res, einheit, text } = zweiteKette(dir, F, env);
+    const { res, einheit, text } = zweiteKette(dir, F, env, alt);
 
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
     assert.deepEqual(einheit.ueberholt, [alt]);
@@ -94,13 +103,13 @@ test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steh
   });
 });
 
-test("[night-20] ist der Ueberholt-Kommentar nicht auffindbar, steht der Plan getrennt im Bericht und der Lauf laeuft weiter", NUR_POSIX, () => {
+test("[night-20] ist der Ueberholt-Kommentar nicht auffindbar, steht der Plan getrennt im Bericht und der Lauf laeuft weiter", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
     const { F, alt } = ersteKette(dir, env);
     // Ab hier nimmt das Board den Kommentar an den alten Plan an, ohne ihn zu speichern.
     boardFakeInstallieren(dir);
-    const { res, einheit, text } = zweiteKette(dir, F, { ...env, BOARD_FAKE_SCHLUCKEN: alt });
+    const { res, einheit, text } = zweiteKette(dir, F, { ...env, BOARD_FAKE_SCHLUCKEN: alt }, alt);
 
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
     assert.equal("ueberholt" in einheit, false, "ohne Zustellnachweis gilt kein Plan als ueberholt");

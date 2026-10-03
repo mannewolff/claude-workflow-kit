@@ -32,10 +32,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Session-Fakes laufen ueber `sh -c`. Siehe Issue #199." }
-  : {};
-
 const VORFLUG_OK = `cat <<'EOF'
 <<<VORFLUG
 {"reviewers": [], "tracker": {"erreichbar": true, "geprueft": "issue list"}}
@@ -141,7 +137,7 @@ function fake(salvageTeil) {
 // Endzustand 2: Commit, Board nicht bewegt
 // ============================================================
 
-test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTAENDIG samt Resten", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTAENDIG samt Resten", () => {
   mitProjekt("night-salvage-unvoll-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, ["--label", "none"], {
@@ -168,7 +164,7 @@ test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTA
 // Endzustand 3: In review, aber Baum unsauber
 // ============================================================
 
-test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, meldet WIDERSPRUECHLICH", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, meldet WIDERSPRUECHLICH", () => {
   mitProjekt("night-salvage-widerspruch-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, ["--label", "none"], {
@@ -194,19 +190,21 @@ test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, me
 // Endzustand 1: kein Commit, Board nicht bewegt
 // ============================================================
 
-test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'gescheitert' und sagt warum", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'gescheitert', sagt warum, und die Reste gehen in den Stash (Issue #1089)", () => {
   mitProjekt("night-salvage-gescheitert-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     // Die Salvage-Session tut nichts: kein Commit, kein Board-Zug. Die Arbeit der
     // regulaeren Runde bleibt liegen.
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake("  :") });
 
-    assert.notEqual(res.status, 0, `der gescheiterte Salvage haette hart stoppen muessen:\n${res.stdout}`);
-    assert.match(res.stdout, new RegExp(`SALVAGE-VERSUCH gescheitert — harter Stopp\\. Issue #${id}: kein Commit, Board nicht bewegt`),
+    // Ohne Commit kann nichts Unvollstaendiges im Verlauf liegen: kein harter Stopp (E14).
+    assert.equal(res.status, 0, `der gescheiterte Salvage haelt nur sein Paket an:\n${res.stdout}`);
+    assert.match(res.stdout, new RegExp(`SALVAGE-VERSUCH gescheitert\\. Issue #${id}: kein Commit, Board nicht bewegt`),
       "der alte Satz gehoert genau diesem Fall — und er muss sagen, was fehlt");
 
     const grund = grundDerKarte(dir, id);
-    assert.match(grund, /SALVAGE-VERSUCH gescheitert — harter Stopp/, `der Satz fehlt im Grund: ${grund}`);
+    assert.match(grund, /SALVAGE-VERSUCH gescheitert\./, `der Satz fehlt im Grund: ${grund}`);
+    assert.match(grund, new RegExp(`Reste im Stash „nachtrest #${id} `), `der Stash fehlt im Grund: ${grund}`);
     assert.match(grund, /kein Commit, Board nicht bewegt/, `die Begruendung fehlt im Grund: ${grund}`);
     assert.match(grund, /work-\d+\.txt/, `die liegengebliebene Datei fehlt im Grund: ${grund}`);
     assert.match(kartentext(dir, id), /weder committet noch das Board bewegt/,
@@ -218,16 +216,17 @@ test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'ges
 // Die Reihenfolge im Salvage-Prompt
 // ============================================================
 
-test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", NUR_POSIX, () => {
+test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", () => {
   mitProjekt("night-salvage-prompt-", (dir) => {
     readyIssue(dir, "Runde ohne Board-Ergebnis");
     // Der Prompt der Session steht ihr als NIGHT_PROMPT zur Verfuegung (Issue #620) —
     // der Fake legt ihn ab, statt dass der Test die private Funktion aufruft.
     run(dir, ["--label", "none"], {
-      NIGHT_CLAUDE_CMD: fake('  printf \'%s\' "$NIGHT_PROMPT" > prompt.txt'),
+      // Unter .git/: Eine Datei im Baum ginge seit Issue #1089 mit den Resten in den Stash.
+      NIGHT_CLAUDE_CMD: fake('  printf \'%s\' "$NIGHT_PROMPT" > .git/prompt.txt'),
     });
 
-    const prompt = readFileSync(join(dir, "prompt.txt"), "utf-8");
+    const prompt = readFileSync(join(dir, ".git", "prompt.txt"), "utf-8");
     const pruefung = prompt.indexOf("git status --porcelain");
     const zug = prompt.indexOf("issue move");
     assert.ok(pruefung >= 0, `der Prompt verlangt keine Sauberkeitspruefung:\n${prompt}`);
@@ -258,7 +257,7 @@ function einheitDerKarte(dir, id) {
   return einheit;
 }
 
-test("[night-27] die Rundendauer schliesst die Salvage-Session ein", NUR_POSIX, () => {
+test("[night-27] die Rundendauer schliesst die Salvage-Session ein", () => {
   mitProjekt("night-salvage-dauer-", (dir) => {
     const id = readyIssue(dir);
     // Die regulaere Session endet unsauber (Datei ohne Commit) — das fuehrt in

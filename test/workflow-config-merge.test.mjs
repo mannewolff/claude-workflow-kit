@@ -21,10 +21,6 @@ import { mergeWorkflowConfig } from "../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Nacht-Runner wird hier ueber git im Fixture gefahren; siehe Issue #199." } : {};
-
 const GETEILT = {
   codeHost: "local",
   issueTracker: "local",
@@ -267,7 +263,7 @@ function nightDryRun(dir) {
     { cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
 }
 
-test("night.mjs: lokale buildChecks koennen das Gate nicht abschalten", NUR_POSIX, () => {
+test("night.mjs: lokale buildChecks koennen das Gate nicht abschalten", () => {
   const dir = nightFixture({ buildChecks: [] });
   try {
     const res = nightDryRun(dir);
@@ -282,7 +278,7 @@ test("night.mjs: lokale buildChecks koennen das Gate nicht abschalten", NUR_POSI
   }
 });
 
-test("night.mjs: ohne lokale Datei bleibt der Vorflug unveraendert", NUR_POSIX, () => {
+test("night.mjs: ohne lokale Datei bleibt der Vorflug unveraendert", () => {
   const dir = nightFixture(null);
   try {
     const res = nightDryRun(dir);
@@ -293,7 +289,7 @@ test("night.mjs: ohne lokale Datei bleibt der Vorflug unveraendert", NUR_POSIX, 
   }
 });
 
-test("night.mjs: kaputte lokale Datei kippt den Lauf nicht", NUR_POSIX, () => {
+test("night.mjs: kaputte lokale Datei kippt den Lauf nicht", () => {
   const dir = mkdtempSync(join(tmpdir(), "night-localcfg-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
@@ -320,7 +316,7 @@ test("night.mjs: kaputte lokale Datei kippt den Lauf nicht", NUR_POSIX, () => {
 // koennte jemand lokal einen Namen ergaenzen, den das Team nie freigegeben hat — und
 // damit genau die Pruefung aushebeln, die verhindert, dass ein Wert aus einem Issue-Body
 // in `argv` wandert. Dasselbe Argument wie bei `buildChecks`, nur eine Stufe frueher.
-test("night.mjs: lokale night.modelle werden ignoriert und gemeldet", NUR_POSIX, () => {
+test("night.mjs: lokale night.modelle werden ignoriert und gemeldet", () => {
   const dir = nightFixture({ night: { modelle: ["claude-fremd-1"] } });
   try {
     const res = nightDryRun(dir);

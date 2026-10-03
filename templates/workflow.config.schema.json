@@ -108,6 +108,11 @@
                 ],
                 "additionalProperties": false,
                 "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stufe\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
+              "gleichzeitig": {
+                "type": "boolean",
+                "default": false,
+                "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens vier, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [
@@ -123,7 +128,7 @@
           }
         ]
       },
-      "description": "Kommandos, die /local-check sequenziell ausführt (Build, Tests). Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {
@@ -161,6 +166,72 @@
         "additionalProperties": false
       },
       "default": []
+    },
+    "gekoppelteBereiche": {
+      "type": "array",
+      "description": "Bereiche, die eine gemessene Kopplung in fast alle Prüfkommandos zwingt — etwa eine Datei, die fast jede Testgruppe lädt. Ein solcher Bereich bleibt in der Auswertung hervorgehoben und trägt den Vermerk \"durch Kopplung erzwungen: <Grund>\". Jeder Eintrag nennt den Bereichsnamen (wie in checkAreas) und den Grund; ohne Grund kein Eintrag. Ohne Eintrag gilt die Hervorhebungsregel ausnahmslos. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bereich": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Name des Bereichs, wie er in checkAreas steht."
+          },
+          "grund": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Welche gemessene Kopplung den Bereich in fast alle Prüfkommandos zwingt. Steht als Vermerk an der Hervorhebung und ist Pflicht."
+          }
+        },
+        "required": [
+          "bereich",
+          "grund"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "testAblagen": {
+      "type": "array",
+      "description": "Wo die eigenen Tests eines Bausteins liegen — daraus meldet issue check-form bei einem Plan Testhinweise: je eigener Test eines geführten Bausteins, den der Plan nicht nennt, ein Hinweis, der weder ok noch den Exit-Code berührt. Jeder Eintrag ist ein Paar aus quelle und test. Platzhalter: {pfad} steht für null oder mehr Verzeichnisse ({pfad}/ darf leer sein), {name} für den Dateinamen ohne Endung, * im Test-Muster für beliebige Zeichen innerhalb eines Pfadsegments. Ohne das Feld gelten die Vorgaben des Kits: TypeScript {pfad}/{name}.ts und .tsx mit {name}.test und {name}.spec daneben, Java src/main/java/{pfad}/{name}.java mit src/test/java/{pfad}/{name}Test.java. Ein Array ersetzt die Vorgaben; der Eintrag { \"vorgaben\": true } fügt sie an seiner Stelle ein, statt sie abzuschreiben; [] schaltet die Testhinweise ab. Mehrmodulprojekte tragen je Modul eine Ablage mit festem Präfix ein, etwa backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Bewusst ohne Vorgabewert: Fehlt das Feld, gelten die Vorgaben, und das ist etwas anderes als [].",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "quelle": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Muster der Quelldatei, etwa src/{pfad}/{name}.ts."
+              },
+              "test": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Muster ihres eigenen Tests, mit denselben Platzhaltern und * innerhalb eines Segments, etwa src/{pfad}/{name}*.test.ts."
+              }
+            },
+            "required": [
+              "quelle",
+              "test"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "vorgaben": {
+                "const": true,
+                "description": "Fügt die Vorgaben des Kits an dieser Stelle ein."
+              }
+            },
+            "required": [
+              "vorgaben"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
     },
     "nurGeruest": {
       "type": "array",
@@ -585,6 +656,76 @@
               "minimum": 1,
               "default": 2,
               "description": "Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung."
+            },
+            "uebergaenge": {
+              "type": "object",
+              "description": "Welche Übergänge der Kette automatisch folgen dürfen. Ein gesperrter Übergang endet mit lauf:wartet und 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night'; ein neues kit:night setzt bei der wartenden Stufe an. Fehlt der Block oder ein Feld darin, gilt das Verhalten von vor der Einstellung: Die ersten drei Übergänge folgen, und eine Karte mit dem Variante-B-Label wird nach der Abdeckung umgesetzt.",
+              "properties": {
+                "planReview": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach dem Plan folgt die Prüfung des Plans automatisch."
+                },
+                "reviewPakete": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach der Prüfung des Plans folgen die Arbeitspakete automatisch."
+                },
+                "paketeAbdeckung": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch."
+                },
+                "abdeckungUmsetzung": {
+                  "type": "boolean",
+                  "description": "Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Ohne Eintrag gilt das Verhalten von vor der Einstellung: Eine Karte mit dem Variante-B-Label wird umgesetzt, eine ohne endet nach der Abdeckung. Mit true wartet eine Karte ohne das Label mit 'wartet: Karte ohne Freigabe zur Umsetzung', mit false wartet eine Karte mit dem Label mit 'wartet: Übergang abdeckungUmsetzung im Projekt nicht freigegeben — weiter mit kit:night'."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "stand": {
+          "type": "object",
+          "description": "Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue stand). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.",
+          "properties": {
+            "labels": {
+              "type": "object",
+              "description": "Die Namen der drei Laufstand-Labels. Sie müssen am Board angelegt sein; ein fehlendes Label meldet der Adapter als Fehler.",
+              "properties": {
+                "laeuft": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:laeuft",
+                  "description": "Label einer Karte, an der ein Lauf gerade arbeitet."
+                },
+                "abgebrochen": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:abgebrochen",
+                  "description": "Label einer technisch abgebrochenen Karte: Wiederholen genügt."
+                },
+                "wartet": {
+                  "type": "string",
+                  "minLength": 1,
+                  "default": "lauf:wartet",
+                  "description": "Label einer wartenden Karte; worauf sie wartet, steht wörtlich im Laufstand."
+                }
+              },
+              "additionalProperties": false
+            },
+            "fristMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 10,
+              "description": "Erkennungsfrist in Minuten ab dem letzten Lebenszeichen eines Laufs; danach zeigt seine Karte den letzten Stand mit dem Zusatz 'nicht beendet'."
+            },
+            "pauseMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 5,
+              "description": "Pause in Minuten vor dem einen automatischen Versuch nach einem Umgebungsfehler des lebenden Laufs."
             }
           },
           "additionalProperties": false
@@ -912,7 +1053,7 @@
     },
     "befunde": {
       "type": "object",
-      "description": "Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Gilt für alle Prüfungen, die Funde buchen — den Issue-Review ebenso wie den Code-Review, der nicht unter issueReview hängt; deshalb ein eigener Block. Optional — fehlt der Block oder das Feld darin, gilt die eingebaute Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert, weil zwei Menschen mit verschiedenen Schwellen im selben Projekt verschiedene Vorschläge aus denselben Funden erzeugten.",
+      "description": "Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Gilt für alle Prüfungen, die Funde buchen — den Issue-Review ebenso wie den Code-Review, der nicht unter issueReview hängt; deshalb ein eigener Block. Optional — fehlt der Block oder das Feld darin, gilt die eingebaute Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert, weil zwei Menschen mit verschiedenen Schwellen im selben Projekt verschiedene Vorschläge aus denselben Funden erzeugten. Eine nicht mehr auffindbare Vorschlagskarte gilt als erledigt: Gezählt wird dann ab ihrem Stand, und ein neuer Vorschlag trägt nur die Funde danach.",
       "properties": {
         "schwelle": {
           "type": "integer",

@@ -17,21 +17,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Fakes laufen ueber `sh -c` bzw. als endungslose Skripte. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, {
     cwd, encoding: "utf-8",
-    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, PATH: `${join(cwd, "bin")}:${process.env.PATH}`, ...env },
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, PATH: `${join(cwd, "bin")}${delimiter}${process.env.PATH}`, ...env },
   });
 }
 
@@ -92,7 +88,7 @@ test("--version nennt die Kit-Version und beantwortet sie ohne Projekt", () => {
 // Persoenliche Overrides
 // ============================================================
 
-test("ein erlaubtes Feld aus workflow.config.local.json wirkt", NUR_POSIX, () => {
+test("ein erlaubtes Feld aus workflow.config.local.json wirkt", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "workflow.config.local.json"),
       JSON.stringify({ reviewModel: "persoenliches-modell" }), "utf-8");
@@ -105,7 +101,7 @@ test("ein erlaubtes Feld aus workflow.config.local.json wirkt", NUR_POSIX, () =>
   });
 });
 
-test("toolbox.tokenFile gewinnt lokal, die uebrigen toolbox-Felder bleiben teamweit", NUR_POSIX, () => {
+test("toolbox.tokenFile gewinnt lokal, die uebrigen toolbox-Felder bleiben teamweit", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "workflow.config.local.json"), JSON.stringify({
       toolbox: { tokenFile: ".claude/mein-token", host: "https://privat.example" },
@@ -122,7 +118,7 @@ test("toolbox.tokenFile gewinnt lokal, die uebrigen toolbox-Felder bleiben teamw
   }, { toolbox: { host: "https://team.example" } }, "night-luecken-blatt-");
 });
 
-test("ein unbekanntes Feld aus der lokalen Datei wird namentlich abgewiesen", NUR_POSIX, () => {
+test("ein unbekanntes Feld aus der lokalen Datei wird namentlich abgewiesen", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "workflow.config.local.json"),
       JSON.stringify({ mainBranch: "mein-branch" }), "utf-8");

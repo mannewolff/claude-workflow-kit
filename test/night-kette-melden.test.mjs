@@ -17,8 +17,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, basename } from "node:path";
 import {
-  NUR_POSIX, repoRoot, run, board, mitProjekt, setupProjekt, fachplan, umgebung, stand,
-  meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
+  repoRoot, run, mitProjekt, setupProjekt, fachplan, umgebung, stand,
+  meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
 /** Ein Fixture-Projekt mit dem meldung-abfangenden Board-Umweg; die Capture-Datei liegt daneben. */
@@ -46,7 +46,7 @@ function meldeUmgebung(dir, capture, stufen, zusatz = {}) {
 
 const GLATT = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };
 
-test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erreichten Stufe genau einmal", NUR_POSIX, () => {
+test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erreichten Stufe genau einmal", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT));
@@ -62,10 +62,10 @@ test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erre
   });
 });
 
-test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einzelnen Pakete", NUR_POSIX, () => {
+test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einzelnen Pakete", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
-    board(dir, "issue", "label", "add", F, "kit:durchziehen");
+    durchziehen(dir, F);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { ...GLATT, umsetzung: UMSETZUNG_ERFOLG }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
@@ -76,7 +76,7 @@ test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einze
   });
 });
 
-test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danach folgt die Abschlussmeldung", NUR_POSIX, () => {
+test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danach folgt die Abschlussmeldung", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { plan: PLAN_ANLEGEN, review: REVIEW_HALT }));
@@ -89,7 +89,7 @@ test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danac
   });
 });
 
-test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette endet", NUR_POSIX, () => {
+test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette endet", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     // Die Plan-Session legt keinen Plan an: die Stufe endet abgebrochen.
@@ -110,14 +110,20 @@ test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Mel
   const beginn = quelle.indexOf("async function stufenDerKette(");
   assert.notEqual(beginn, -1, "stufenDerKette nicht gefunden");
   const rumpf = quelle.slice(beginn, quelle.indexOf("\n}\n", beginn));
-  const zeilen = rumpf.split("\n").filter((z) => /\bstufe(Plan|Review|Pakete|Abdeckung)\(/.test(z));
+  // Seit Issue #1086 laeuft jede Stufe durch `stufeMitErgebnis`, das sie nur startet, wenn
+  // ihr Ergebnis nicht schon vorliegt — gemeldet wird um diesen Aufruf herum.
+  const zeilen = rumpf.split("\n").filter((z) => /\bstufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/.test(z));
   assert.equal(zeilen.length, 4, `vier Stufenaufrufe erwartet, gefunden:\n${zeilen.join("\n")}`);
   for (const z of zeilen) {
-    assert.match(z.trim(), /mitMeldung\(\(\) => stufe(Plan|Review|Pakete|Abdeckung)\(/, `Stufe ohne Meldung: ${z.trim()}`);
+    assert.match(z.trim(), /mitMeldung\(\(\) => stufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/, `Stufe ohne Meldung: ${z.trim()}`);
+  }
+  // Die Stufen selbst stehen nur noch als `laufen` darin, nie als eigener Aufruf daneben.
+  for (const z of rumpf.split("\n").filter((z) => /\bstufe(Plan|Review|Pakete|Abdeckung)\(/.test(z))) {
+    assert.match(z.trim(), /^laufen: \(\) => stufe(Plan|Review|Pakete|Abdeckung)\(/, `Stufe ausserhalb von stufeMitErgebnis: ${z.trim()}`);
   }
 });
 
-test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter und der Grund steht einmal im Protokoll", NUR_POSIX, () => {
+test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter und der Grund steht einmal im Protokoll", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT, { KETTE_MELDE_FEHLER: "1" }));
@@ -130,7 +136,7 @@ test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter
   });
 });
 
-test("[night-61] ohne toolbox entfaellt die Meldung nach einer Stufe mit derselben einen Protokollzeile", NUR_POSIX, () => {
+test("[night-61] ohne toolbox entfaellt die Meldung nach einer Stufe mit derselben einen Protokollzeile", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], umgebung(dir, { stufen: GLATT }));

@@ -37,13 +37,17 @@ function zeile(art, { karte = "797", stufe = "plan", rolle = "reviewer", marke =
  * in einem Wegwerf-Verzeichnis ausserhalb des Projekts und ist nach dem Aufruf weg —
  * der Test kaeme sonst nicht mehr an den uebergebenen Text.
  */
-function stubBoard({ antwort = { id: "812" }, exit = 0 } = {}) {
+function stubBoard({ antwort = { id: "812" }, exit = 0, kommentarFehler = null } = {}) {
   return [
     "import { appendFileSync, readFileSync } from 'node:fs';",
     "const argv = process.argv.slice(2);",
     "const i = argv.findIndex((a) => a === '--body-file' || a === '--text-file');",
     "const text = i === -1 ? null : readFileSync(argv[i + 1], 'utf-8');",
     String.raw`appendFileSync(process.env.STUB_LOG, JSON.stringify({ argv, text }) + '\n', 'utf-8');`,
+    // `kommentarFehler` laesst nur `issue comment` scheitern, mit genau dieser Meldung —
+    // so meldet der Adapter eine Karte, die er nicht (mehr) aufloesen kann (Issue #1100).
+    `const kommentarFehler = ${JSON.stringify(kommentarFehler)};`,
+    String.raw`if (kommentarFehler !== null && argv[1] === 'comment') { process.stderr.write(kommentarFehler + '\n'); process.exit(1); }`,
     `const exitCode = ${exit};`,
     String.raw`if (exitCode !== 0) { process.stderr.write('Stub: Board nicht erreichbar\n'); process.exit(exitCode); }`,
     `process.stdout.write(JSON.stringify(${JSON.stringify(antwort)}) + '\\n');`,
@@ -295,6 +299,77 @@ test("[befunde-vorschlag] ein gescheitertes Ergaenzen laesst den vermerkten Stan
     assert.notEqual(res.status, 0);
     assert.equal(res.json.ok, false);
     assert.equal(zustand(dir).luecke.zaehlerstand, 3, "der Vergleichspunkt bleibt auf dem Stand der Anlage");
+  });
+});
+
+// --- Vermerkte Karte nicht mehr am Board (Issue #1100) ----------------------
+
+/** Ein Register, das auf eine Karte zeigt, die der Adapter nicht mehr aufloest. */
+const VERSCHWUNDEN = {
+  luecke: { karte: "870", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
+};
+const NICHT_GEFUNDEN = "Fehler: Issue 870 nicht gefunden";
+
+test("[befunde-vorschlag] ist die vermerkte Karte weg, entsteht eine neue Idee nur mit den Funden danach", () => {
+  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("luecke", { karte: "805" }))];
+  mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: NICHT_GEFUNDEN } }, (dir) => {
+    const res = vorschlag(dir, "--art", "luecke");
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.json.angelegt, true);
+    assert.equal(res.json.karte, "812");
+
+    const aufrufe = boardAufrufe(dir);
+    assert.deepEqual(aufrufe.map((a) => a.argv[1]), ["comment", "create"]);
+    const body = aufrufe[1].text;
+    assert.equal(body.split("| 805 |").length - 1, 3, "die drei Funde nach dem alten Stand");
+    assert.ok(!body.includes("| 797 |"), "keine Fundzeile, die die alte Karte schon trug");
+
+    assert.deepEqual(zustand(dir), {
+      luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 6, nullpunkt: 3 },
+    });
+  });
+});
+
+test("[befunde-vorschlag] ist die vermerkte Karte weg und die neuen Funde reichen nicht, gilt sie als erledigt", () => {
+  const protokoll = [...DREI, zeile("luecke", { karte: "805" })];
+  mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: NICHT_GEFUNDEN } }, (dir) => {
+    const res = vorschlag(dir, "--art", "luecke");
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.json.ok, true);
+    assert.equal(res.json.angelegt, false);
+    assert.equal(res.json.ergaenzt, false);
+    assert.match(res.json.grund, /870/);
+    assert.match(res.json.grund, /nicht (mehr )?gefunden/);
+
+    assert.deepEqual(boardAufrufe(dir).map((a) => a.argv[1]), ["comment"], "keine neue Karte");
+    assert.deepEqual(zustand(dir), {
+      luecke: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 },
+    });
+  });
+});
+
+test("[befunde-vorschlag] ein anderer Fehlschlag beim Ergaenzen laesst das Register byte-gleich", () => {
+  const protokoll = [...DREI, zeile("luecke", { karte: "805" })];
+  mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: "Fehler: HTTP 503 Service Unavailable" } }, (dir) => {
+    const pfad = join(dir, ".claude", "befunde-vorschlaege.json");
+    const vorher = readFileSync(pfad, "utf-8");
+    const res = vorschlag(dir, "--art", "luecke");
+    assert.notEqual(res.status, 0);
+    assert.equal(res.json.ok, false);
+    assert.equal(readFileSync(pfad, "utf-8"), vorher);
+    assert.deepEqual(boardAufrufe(dir).map((a) => a.argv[1]), ["comment"], "kein create nach einem Netzfehler");
+  });
+});
+
+test("[befunde-vorschlag] ein erledigter Vorschlag zaehlt ab seinem Nullpunkt und legt dann neu an", () => {
+  const vorschlaege = { luecke: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 } };
+  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("luecke", { karte: "805" }))];
+  mitDir({ protokoll, vorschlaege }, (dir) => {
+    const res = vorschlag(dir, "--art", "luecke");
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.json.angelegt, true);
+    assert.deepEqual(boardAufrufe(dir).map((a) => a.argv[1]), ["create"], "kein Kommentar an die erledigte Karte");
+    assert.equal(zustand(dir).luecke.nullpunkt, 3);
   });
 });
 

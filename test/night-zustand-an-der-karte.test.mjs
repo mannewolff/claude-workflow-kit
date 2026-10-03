@@ -30,10 +30,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -150,7 +146,7 @@ function kartenText(dir, id) {
   return `${karte.body ?? ""}`;
 }
 
-test("[night-92] Nachtlauf: der Einzelabruf entscheidet — in_review an der Karte ist Erfolg, auch wenn die Sammelliste die Karte nicht fuehrt", NUR_POSIX, () => {
+test("[night-92] Nachtlauf: der Einzelabruf entscheidet — in_review an der Karte ist Erfolg, auch wenn die Sammelliste die Karte nicht fuehrt", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir, "Ein Paket");
     const fake = [LOG, ARBEIT, CHECKS_RUN, COMMIT, NACH_IN_REVIEW].join("\n");
@@ -168,7 +164,7 @@ test("[night-92] Nachtlauf: der Einzelabruf entscheidet — in_review an der Kar
   });
 });
 
-test("[night-93] Nachtlauf: ein unlesbarer Kartenzustand aendert am Board nichts — kein Kommentar, kein Move, der Lauf faehrt fort", NUR_POSIX, () => {
+test("[night-93] Nachtlauf: ein unlesbarer Kartenzustand aendert am Board nichts — kein Kommentar, kein Move, der Lauf faehrt fort", () => {
   mitProjekt((dir) => {
     const erstes = readyIssue(dir, "Erstes Paket");
     const zweites = readyIssue(dir, "Zweites Paket");
@@ -190,16 +186,19 @@ test("[night-93] Nachtlauf: ein unlesbarer Kartenzustand aendert am Board nichts
     assert.match(res.stdout, /nicht lesbar/i, "der Fall wird im Protokoll nicht benannt");
 
     // Keine Board-Mutation am ersten Paket: Es steht da, wo die Session es hingezogen
-    // hat, und traegt keinen Kommentar des Runners.
+    // hat, und traegt keinen Kommentar des Runners — ausser seinem Laufstand (Issue #1089,
+    // E2), der den unlesbaren Zustand selbst benennt, statt `laeuft` stehen zu lassen.
     assert.equal(board(dir, "issue", "get", erstes).status, "in_review", "die Karte wurde verschoben");
-    assert.doesNotMatch(kartenText(dir, erstes), /\*\*Kommentar\*\*/, "der Runner hat die Karte kommentiert");
+    const kommentare = kartenText(dir, erstes).split("\n---\n**Kommentar**").slice(1);
+    assert.ok(kommentare.every((k) => /\n## Laufstand\b/.test(k)), "der Runner hat die Karte kommentiert");
+    assert.match(kommentare.at(-1), /Zustand der Karte war nicht lesbar/);
 
     // Und der Lauf ging mit dem naechsten Issue weiter.
     assert.deepEqual(sessionen(dir), [erstes, zweites], "es liefen nicht beide Sessions");
   });
 });
 
-test("[night-94] Nachtlauf: ein anderer Zustand als in_review stellt zurueck wie bisher — Kommentar, Backlog-Move", NUR_POSIX, () => {
+test("[night-94] Nachtlauf: ein anderer Zustand als in_review stellt zurueck wie bisher — Kommentar, Backlog-Move", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir, "Ein Paket");
     // Die Session zieht die Karte zurueck nach Ready und schliesst nichts ab.

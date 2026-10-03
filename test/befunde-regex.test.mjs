@@ -14,6 +14,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { pruefeLinear } from "./helpers/wachstum.mjs";
+
 import {
   angabenWert,
   ohneDekoHinten,
@@ -157,13 +159,6 @@ test("reviewerRolle: was kein Reviewer-Kopf ist", () => {
 // mehr aufruft.
 
 const GROSS = 64 * 1024;
-const GRENZE_MS = 100;
-
-function dauer(fn) {
-  const t0 = process.hrtime.bigint();
-  fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6;
-}
 
 const PROBEN = [
   // Dekoration, dann eine lange Leerraum-Schleppe, dann ein Zeichen, an dem `$` scheitert.
@@ -181,10 +176,8 @@ const PROBEN = [
 ];
 
 for (const [name, bau, lauf] of PROBEN) {
-  test(`${name} bleibt beim Worst-Case unter ${GRENZE_MS} ms`, (t) => {
-    const text = bau(GROSS);
-    const ms = dauer(() => lauf(text));
-    t.diagnostic(`${name}: ${ms.toFixed(2)} ms bei 64 KiB`);
-    assert.ok(ms < GRENZE_MS, `${name}: ${ms.toFixed(1)} ms bei 64 KiB — erwartet unter ${GRENZE_MS} ms`);
+  test(`${name} waechst beim Worst-Case bis 64 KiB linear`, (t) => {
+    const e = pruefeLinear(name, lauf, bau, { gross: GROSS });
+    t.diagnostic(`${name}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms bei 64 KiB`);
   });
 }

@@ -115,7 +115,11 @@ function indexHashes() {
 function preCommit(zusammenfassungPfad) {
   const daten = leseZusammenfassung(zusammenfassungPfad(process.cwd()));
 
-  const rot = daten.laufen.find((e) => e.ergebnis !== "gruen");
+  // Das erste `rot`, erst ohne ein solches das erste ungruene (Issue #1072): Nach einem
+  // roten Teillauf stehen vor der roten Gruppe nicht gestartete, und die Meldung soll die
+  // Pruefung nennen, die tatsaechlich rot war.
+  // SYNC: dieselbe Regel wie `rotesKommando` in kit/checks.mjs und `lesePruefung` in kit/night.mjs.
+  const rot = daten.laufen.find((e) => e.ergebnis === "rot") ?? daten.laufen.find((e) => e.ergebnis !== "gruen");
   if (rot) ab(`die Pruefung endete ${rot.ergebnis} (${rot.cmd})`);
 
   // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--bereich` grenzt

@@ -19,10 +19,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -74,7 +70,7 @@ function successFake(sessionLog) {
 
 const WARNUNG = /kein Ready-Issue traegt das Label/;
 
-test("Vertipper: --label no warnt und nennt gesuchten Wert, vorhandene Labels und den Ausweg", NUR_POSIX, () => {
+test("Vertipper: --label no warnt und nennt gesuchten Wert, vorhandene Labels und den Ausweg", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Nachtlauf", "--body", "## Abhaengigkeiten\nKeine.");
@@ -95,7 +91,7 @@ test("Vertipper: --label no warnt und nennt gesuchten Wert, vorhandene Labels un
   }
 });
 
-test("Vertipper: ohne jedes Label in Ready meldet die Warnung ausdruecklich 'keine'", NUR_POSIX, () => {
+test("Vertipper: ohne jedes Label in Ready meldet die Warnung ausdruecklich 'keine'", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
@@ -112,7 +108,7 @@ test("Vertipper: ohne jedes Label in Ready meldet die Warnung ausdruecklich 'kei
   }
 });
 
-test("Gegenprobe: passendes Label vorhanden -> keine Warnung", NUR_POSIX, () => {
+test("Gegenprobe: passendes Label vorhanden -> keine Warnung", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Nachtlauf", "--body", "## Abhaengigkeiten\nKeine.");
@@ -129,7 +125,7 @@ test("Gegenprobe: passendes Label vorhanden -> keine Warnung", NUR_POSIX, () => 
   }
 });
 
-test("Gegenprobe: --label none -> keine Warnung, der Filter ist ja abgeschaltet", NUR_POSIX, () => {
+test("Gegenprobe: --label none -> keine Warnung, der Filter ist ja abgeschaltet", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
@@ -145,7 +141,7 @@ test("Gegenprobe: --label none -> keine Warnung, der Filter ist ja abgeschaltet"
   }
 });
 
-test("Gegenprobe: leeres Ready -> keine Warnung, es gibt nichts zu unterscheiden", NUR_POSIX, () => {
+test("Gegenprobe: leeres Ready -> keine Warnung, es gibt nichts zu unterscheiden", () => {
   const dir = setupProjekt();
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "no"],
@@ -161,7 +157,7 @@ test("Gegenprobe: leeres Ready -> keine Warnung, es gibt nichts zu unterscheiden
   }
 });
 
-test("--dry-run: die Warnung erscheint auch im Trockenlauf", NUR_POSIX, () => {
+test("--dry-run: die Warnung erscheint auch im Trockenlauf", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Nachtlauf", "--body", "## Abhaengigkeiten\nKeine.");

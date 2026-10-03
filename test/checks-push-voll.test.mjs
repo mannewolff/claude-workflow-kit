@@ -93,17 +93,17 @@ test("[checks-7] die Paketstufe laesst bei leerem Paket unveraendert jede Pruefu
   });
 });
 
-test("[checks-7] die Freigabestufe faehrt weiterhin alles, mit demselben Grund", () => {
+test("[checks-7] die Freigabestufe faehrt nicht mehr alles: die Push-Stufe lief beim push main", () => {
+  // Gegenstueck zur Push-Stufe (Issue #1000): Dort bleibt der volle Umfang, an der
+  // Freigabe wird nur noch geprueft, was `push main` nicht geprueft hat.
   mitRepo({ config: CONFIG }, (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
 
-    assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo verify", "echo e2e", "echo release"]);
-    assert.deepEqual(ergebnis.ausgelassen, []);
-    for (const cmd of kommandos(ergebnis.laufen)) {
-      assert.equal(eintrag(ergebnis.laufen, cmd).grund, GRUND);
-    }
+    assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo release"]);
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo verify").grund, "Bereich backend unberuehrt");
+    assert.equal(eintrag(ergebnis.ausgelassen, "echo e2e").grund, "Stufe push, geprueft beim push main");
   });
 });
 

@@ -69,6 +69,10 @@ Die Ueberschrift ist der Anker, an dem `implement-*` und der Nacht-Runner den Bl
 
 Menschenschritt-Konvention: Liegt die **ganze** Aufgabe eines Pakets ausserhalb des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe — und kann kein Zug einer Sitzung sie erledigen, traegt der Titel das Praefix `[Mensch]`. Das ist etwas anderes als der Block `### Manuelle Pruefung` darueber: Der nimmt einen **Teil** eines Pakets aus dem Session-Abschluss heraus, `[Mensch]` nimmt das **ganze** Paket aus der Umsetzung. Sonst bleibt es ein Arbeitspaket im Vier-Abschnitt-Format und faellt bei `issue check-form` in die Stufe `issue`; die Aufgabe beschreibt die Handlung, das Akzeptanzkriterium, woran der Mensch erkennt, dass sie getan ist. Ohne das Praefix startet der Nacht-Runner eine Session, die den Fall zwar richtig erkennt und nichts tut — er kann diese richtige Untaetigkeit aber nicht von einem Fehlschlag unterscheiden, und die Karte wandert ins Backlog, wo sie wie ein gescheitertes Paket aussieht.
 
+Konvention „Geschuetzte Datei“: Nennt eine geplante Aenderung einen geschuetzten Pfad — eine Datei, die nur ein Mensch schreiben darf —, wird sie beim Schneiden als eigene `[Mensch]`-Karte herausgetrennt. Das Restpaket nennt diese Karte unter `## Abhaengigkeiten` als `Issue #N`; solange sie nicht erledigt ist, stellt der Abhaengigkeits-Mechanismus das Restpaket zurueck. Welche Pfade geschuetzt sind, wird hier nicht abgeschrieben: Massgeblich sind `GESCHUETZTE_PFADE` in `kit/board.mjs` und die `deny`-Eintraege der Einstellungen. Davon getrennt die installierte Kopie (`.claude/kit/`, `.claude/skills/`, `.claude/CLAUDE-*.md`): Ein Paket, das die Kopie aendern will, ist falsch geschnitten — gemeint ist die Quelle, und die Kopie zieht `node tools/sync-blobs.mjs` bzw. ein Kit-Update nach. `issue check-form` weist beides ab: einen geschuetzten Pfad als I8, die installierte Kopie in `## Aufgabe` als I9. Ein `[Mensch]`-Paket selbst ist von I7 bis I9 ausgenommen.
+
+Konvention „Dateien in Backticks“: `## Aufgabe` nennt die Dateien, die das Paket aendert, als Backtick-Token — ein Token mit `/` oder mit Dateiendung, nicht ein Label oder eine Konstante. Erst daran setzt jede Erkennung an; `issue check-form` weist ein Paket ohne einen solchen Dateipfad in `## Aufgabe` ab (I7).
+
 ### 3. Issues im Vier-Abschnitt-Format anlegen
 Jedes Issue bekommt vier Abschnitte:
 ```
@@ -88,15 +92,21 @@ Welche anderen Issues müssen zuerst fertig sein? Oder: "Keine."
 
 **Abhängigkeits-Konvention (maschinenlesbar):** Der Abschnitt enthält entweder exakt `Keine.` oder explizite Referenzen der Form `Issue #N` (mehrere möglich, je eine pro Zeile). Erläuternder Freitext ist zusätzlich erlaubt — aber wenn ein anderes Issue gemeint ist, muss die `#N`-Referenz dabeistehen. Grund: Der Nacht-Runner (`kit/night.mjs`) wertet ausschließlich `#N`-Referenzen aus und stellt Issues mit unerfüllten Abhängigkeiten automatisch zurück; eine nur in Prosa beschriebene Abhängigkeit ist für ihn unsichtbar. Abhängigkeiten auf fremde Repos als `owner/repo#N` schreiben (mit Repo-Präfix) — sie werden bewusst nicht als lokale Issues gewertet.
 
+**Jede lokale `#N` im Abschnitt zählt — auch in Erläuterungen.** „Nicht #N: …" hält das Paket genauso fest wie `Issue #N`. Eine Verweiszeile beginnt nach optionalem Leerraum und optionalem Listenzeichen (`-`, `*`, `+`, `1.`) mit `Issue #N` und trägt keine weitere lokale Nummer; jede andere Nummer stammt aus erläuterndem Text, auch eine im Codeblock des Abschnitts. Was nicht aus einer Verweiszeile stammt oder auf ein Dokument (`[Plan]`, `[Fachlich]`, `[Idee]`) zeigt, melden `check-form` und `create` beim Schreiben unter `hinweise` (siehe beim Anlegen unten). Eine Nummer, die nur erklärt, gehört in den `## Kontext`.
+
+**Wartet ein Paket auf einen Push, sagt es das an der Verweiszeile:** `Issue #N (wartet auf Push)`. Der Zusatz gilt, wenn das Paket das geänderte Werkzeug, den Skill oder den Regeltext von #N **als Werkzeug** braucht; baut es nur auf dessen Code auf, zählt das nicht, und der Zusatz entfällt. Grund: Unbeaufsichtigte Läufe arbeiten mit dem Kit-Stand des letzten Pushs, ein Werkzeug aus #N wirkt dort also erst nach `push main`, auch wenn #N schon in In review steht. `/issues` setzt den Zusatz beim Schneiden; die Kette zieht ein so gekennzeichnetes Paket auch unter Variante B nicht nach Ready.
+
 **Rückverweise auf Plan und fachliche Quelle:** Die Kette soll an jedem Punkt lesbar sein — vom Arbeitspaket zum Plan, vom Plan zur fachlichen Anforderung. Beide Verweise stehen **im Kontext-Abschnitt**, unmittelbar untereinander und in dieser Reihenfolge:
 
 ```
 Plan: Issue #M
 Fachliche Quelle: Issue #N
+Plan-Entscheidungen: E<n>, …
 ```
 
 - `Plan: Issue #M` — entstehen die Arbeitspakete aus einem `[Plan]`-Issue `#M` (angelegt von `/techplan`, siehe Issue #275), trägt jedes von ihnen diese Zeile.
 - `Fachliche Quelle: Issue #N` — entstehen sie aus einem fachlichen Issue (`[Fachlich]`-Titel, via `/techplan #N`), kommt dieser Verweis dazu.
+- `Plan-Entscheidungen: E<n>, …` — jedes Paket aus einem `[Plan]`-Issue nennt die Eintraege unter `## Architektonische Entscheidungen` des Plans, auf die seine Aufgabe sich beruft, oder woertlich `Plan-Entscheidungen: Keine.`. `issue auftrag` liest die Zeile, um der Umsetzung genau diese Entscheidungen im Wortlaut mitzugeben; fehlt sie, liefert der Auftrag alle Eintraege des Plans und sagt, dass das Paket keine Auswahl nennt.
 
 **Niemals in den Abhängigkeiten-Abschnitt — beide nicht.** Der Nacht-Runner wertet dort jede `Issue #N`-Referenz als Abhängigkeit. Weder das Plandokument noch das fachliche Issue wird Done, solange seine Arbeitspakete laufen: Das fachliche Issue wird erst Done, wenn seine technischen Kinder fertig sind, das Plandokument ohnehin nie durch Umsetzung. Stünde der Verweis unten, blieben alle Kinder nachts dauerhaft zurückgestellt (Henne-Ei).
 
@@ -119,13 +129,15 @@ node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --bod
 
 **Zwei Randfälle:**
 
-- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile** und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
+- **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile**, keine `Plan-Entscheidungen:`-Zeile und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
 - **Plan ohne fachliche Quelle:** Steht hinter dem Plandokument keine fachliche Anforderung, steht nur `Plan: Issue #M`.
 
 Issue anlegen ueber den Board-Adapter:
 ```bash
 printenv TMPDIR
 ```
+
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"` als `<tmpdir>`.
 
 ```bash
 cat  > <tmpdir>/neues-issue.md <<'TEIL1'
@@ -148,6 +160,8 @@ node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/neues-issue.md 
 ```bash
 node .claude/kit/board.mjs issue create --title "Titel" --body-file <tmpdir>/neues-issue.md
 ```
+
+**Die `hinweise` aus `check-form` und `create` werden gelesen.** Neben `ok` und `verstoesse` kann das JSON den Schlüssel `hinweise` tragen. Ein Eintrag mit `art: schreibweise` nennt eine Nummer aus erläuterndem Text, ein Eintrag mit `art: dokument` einen Verweis auf ein Dokument. Beide berühren weder `ok` noch den Exit-Code, zeigen aber, was der Nachtlauf als Abhängigkeit lesen wird. Je Eintrag gilt: Ist die Nummer nicht gemeint, wird der Text vor dem Anlegen korrigiert — die Nummer verlässt den Abschnitt oder wandert in den `## Kontext` —, und `check-form` läuft erneut. Ist sie gemeint, bleibt der Text, und der Abschluss nennt den Hinweis mit Paket und Nummer. Meldet erst `create` einen Hinweis, gilt dieselbe Regel; die Korrektur geht dann per `issue update <id> --body-file <tmpdir>/neues-issue.md` an die angelegte Karte. Unbeaufsichtigt gilt dasselbe ohne Rückfrage: Die Session entscheidet je Nummer selbst.
 
 Jeder Block ist ein **eigener** Werkzeugaufruf, die Datei liegt außerhalb des Projektverzeichnisses, und der Pfad steht woertlich — die Grenze von 6.000 Zeichen gilt je Aufruf, und eine Variable im Redirect-Ziel wird unbeaufsichtigt abgewiesen. Warum, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board". **Scheitert ein Dateischritt**, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad der Datei und endet ohne weitere Mutation.
 

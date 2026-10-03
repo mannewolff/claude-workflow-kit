@@ -18,25 +18,18 @@ import { execFile } from "node:child_process";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setupProjekt, schreibeConfig, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakePath, schreibeConfig, fakeCli, starteServer, TEST_TOOLBOX_BUDGET_MS } from "./helpers/board-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATE = join(repoRoot, "tools", "migrate-issues.mjs");
 const REPO_URL = "https://github.com/mannewolff/claude-workflow-kit";
-
-// Unter Windows uebersprungen: `fakeCli` legt das Fake-`gh` als endungslose Datei mit
-// Shebang an, und dort entscheidet die ENDUNG (.cmd/.bat/.exe), ob etwas startbar
-// ist. Wortgleich zu den drei Bestandsdateien (Issue #197, #231).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
-  : {};
 
 function runMigrate(dir, cliArgs, extraEnv = {}) {
   const env = { ...process.env };
   delete env.KIT_AGENT_MODEL;
   delete env.TBX_TOKEN;
   Object.assign(env, {
-    PATH: `${join(dir, "fakebin")}:${process.env.PATH}`,
+    PATH: fakePath(dir),
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS, // kurzes Wiederholbudget (Issue #842)
   }, extraEnv);
@@ -77,7 +70,7 @@ test("export ohne gh im PATH nennt das fehlende Werkzeug statt eines Systemfehle
   }
 });
 
-test("scheitert gh fachlich, steht seine eigene Meldung im Fehler", NUR_POSIX, async () => {
+test("scheitert gh fachlich, steht seine eigene Meldung im Fehler", async () => {
   const dir = setupProjekt({ issueTracker: "github", github: { projectNumber: 14 } }, "migrate-gh-rot-");
   try {
     fakeCli(dir, "gh", [{ match: "repo view", stderr: "gh: not authenticated\n", exit: 1 }]);
@@ -126,7 +119,7 @@ test("ohne github.projectNumber bricht export mit einem fachlichen Hinweis ab", 
 // kanban-kit-Zugang: Host
 // ============================================================
 
-test("ohne toolbox.host und ohne tbx-Login nennt import beide Auswege", NUR_POSIX, async () => {
+test("ohne toolbox.host und ohne tbx-Login nennt import beide Auswege", async () => {
   const f = await importFixture("migrate-ohne-host-", { issueTracker: "github", github: { projectNumber: 14 } });
   try {
     const res = await runMigrate(f.dir, ["import", "--file", f.datei, "--yes"]);
@@ -140,7 +133,7 @@ test("ohne toolbox.host und ohne tbx-Login nennt import beide Auswege", NUR_POSI
   }
 });
 
-test("fehlt toolbox.host, springt der Host aus dem tbx-Login ein", NUR_POSIX, async () => {
+test("fehlt toolbox.host, springt der Host aus dem tbx-Login ein", async () => {
   const { server, requests, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     if (req.method === "POST" && req.url === "/api/kanban/items") return { status: 200, json: { id: 5001, number: 101 } };
@@ -166,7 +159,7 @@ test("fehlt toolbox.host, springt der Host aus dem tbx-Login ein", NUR_POSIX, as
   }
 });
 
-test("eine kaputte tbx-config wird still uebergangen, nicht zum Absturz", NUR_POSIX, async () => {
+test("eine kaputte tbx-config wird still uebergangen, nicht zum Absturz", async () => {
   const f = await importFixture("migrate-tbx-kaputt-", { issueTracker: "github", github: { projectNumber: 14 } });
   try {
     mkdirSync(join(f.dir, "tbx-config"), { recursive: true });
@@ -190,7 +183,7 @@ test("eine kaputte tbx-config wird still uebergangen, nicht zum Absturz", NUR_PO
 // kanban-kit-Zugang: Token
 // ============================================================
 
-test("ein Klartext-Token in der eingecheckten Config bricht ab", NUR_POSIX, async () => {
+test("ein Klartext-Token in der eingecheckten Config bricht ab", async () => {
   const f = await importFixture("migrate-klartext-token-", {
     issueTracker: "github", github: { projectNumber: 14 },
     toolbox: { host: "http://127.0.0.1:9", token: "geheim" },
@@ -208,7 +201,7 @@ test("ein Klartext-Token in der eingecheckten Config bricht ab", NUR_POSIX, asyn
   }
 });
 
-test("ein nicht lesbares toolbox.tokenFile nennt Pfad und Ursache", NUR_POSIX, async () => {
+test("ein nicht lesbares toolbox.tokenFile nennt Pfad und Ursache", async () => {
   const f = await importFixture("migrate-tokenfile-weg-", {
     issueTracker: "github", github: { projectNumber: 14 },
     toolbox: { host: "http://127.0.0.1:9", tokenFile: ".claude/gibt-es-nicht" },
@@ -224,7 +217,7 @@ test("ein nicht lesbares toolbox.tokenFile nennt Pfad und Ursache", NUR_POSIX, a
   }
 });
 
-test("das Token aus toolbox.tokenFile wird gelesen und mitgeschickt", NUR_POSIX, async () => {
+test("das Token aus toolbox.tokenFile wird gelesen und mitgeschickt", async () => {
   const { server, requests, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 200, json: {} };
     if (req.method === "POST" && req.url === "/api/kanban/items") return { status: 200, json: { id: 5001, number: 101 } };
@@ -252,7 +245,7 @@ test("das Token aus toolbox.tokenFile wird gelesen und mitgeschickt", NUR_POSIX,
   }
 });
 
-test("ohne Token aus Env, Datei oder Login nennt import alle drei Auswege", NUR_POSIX, async () => {
+test("ohne Token aus Env, Datei oder Login nennt import alle drei Auswege", async () => {
   const f = await importFixture("migrate-ohne-token-", {
     issueTracker: "github", github: { projectNumber: 14 },
     toolbox: { host: "http://127.0.0.1:9" },
@@ -273,7 +266,7 @@ test("ohne Token aus Env, Datei oder Login nennt import alle drei Auswege", NUR_
 // kanban-kit-Zugang: der Endpunkt selbst
 // ============================================================
 
-test("ein toter Endpunkt wird als Erreichbarkeitsproblem gemeldet, mit Host", NUR_POSIX, async () => {
+test("ein toter Endpunkt wird als Erreichbarkeitsproblem gemeldet, mit Host", async () => {
   // Port 9 (discard) nimmt keine HTTP-Verbindung an: fetch scheitert in der
   // Transportschicht, nicht mit einem Status.
   const f = await importFixture("migrate-tot-", {
@@ -291,7 +284,7 @@ test("ein toter Endpunkt wird als Erreichbarkeitsproblem gemeldet, mit Host", NU
   }
 });
 
-test("ein Serverfehler ohne JSON-Body faellt auf den HTTP-Status zurueck", NUR_POSIX, async () => {
+test("ein Serverfehler ohne JSON-Body faellt auf den HTTP-Status zurueck", async () => {
   const { server, host } = await starteServer((req) => {
     if (req.method === "GET" && req.url === "/api/kanban/items") return { status: 503, text: "<html>kaputt</html>" };
     return undefined;

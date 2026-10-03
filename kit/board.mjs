@@ -8,7 +8,8 @@
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`
  * (aktualisiert den eingebetteten Blob in install.mjs).
  *
- * Ausgabe: JSON auf stdout. Fehler: Meldung auf stderr, Exit-Code 1.
+ * Ausgabe: JSON auf stdout. Einzige Ausnahme: `issue auftrag` ohne --json schreibt
+ * Markdown (Issue #1023). Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
  *   node board.mjs issue create --title "..." --body "..." [--author-model <modell>]
@@ -29,6 +30,19 @@
  *       des Projektverzeichnisses (Issue #584).
  *       '--idempotency-key <wert>' wiederholt 'issue create' und 'issue comment'
  *       gefahrlos, wenn der Ausgang unklar blieb (Issue #834).
+ *   node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
+ *   node board.mjs issue melden <id> --teil <n> --text '<stueck>'
+ *   node board.mjs issue melden <id>
+ *       Legt den Abschlussbericht ab und zieht nach In review, je Lauf idempotent
+ *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
+ *       ersetzt. --teil schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
+ *       --text setzt die Stuecke zusammen und schliesst ab.
+ *   node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+ *       Label und Kommentar '## Laufstand' einer Karte in einem Zug, wiederholbar
+ *       (Issue #1083). Labelnamen aus night.stand.labels.
+ *   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+ *       Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug, rein
+ *       lesend (Issue #1023). Ausgabe Markdown, mit --json als JSON.
  *   node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
@@ -46,8 +60,8 @@
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
  */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants } from "node:fs";
-import { resolve, join, dirname, basename, extname } from "node:path";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, readdirSync, mkdirSync, realpathSync, accessSync, constants, rmSync, rmdirSync } from "node:fs";
+import path, { resolve, join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -58,7 +72,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.5.0";
+const KIT_VERSION = "3.6.0";
 
 const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -96,6 +110,8 @@ Nutzung:
       --idempotency-key wiederholt einen Aufruf, dessen Ausgang unklar blieb, ohne
       ihn ein zweites Mal auszufuehren (Issue #834). Ohne den Schalter entsteht der
       Schluessel je Auftrag selbst; die Fehlermeldung nennt ihn samt Kommando.
+      Hat der Body einen Abschnitt '## Abhaengigkeiten', traegt die Ausgabe dessen
+      'hinweise' wie bei 'check-form' (Issue #1060); sie beruehren das Anlegen nicht.
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
   node board.mjs issue activity --ids <n,n,...>
@@ -104,19 +120,77 @@ Nutzung:
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
   node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+      Ausgabe { ok, id }, dazu 'hinweise' zum Abschnitt '## Abhaengigkeiten' wie bei
+      'issue create' (Issue #1060).
   node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
                              [--idempotency-key <wert>]
       '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
       --idempotency-key wie bei 'issue create' (Issue #834).
+  node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
+  node board.mjs issue melden <id> --teil <n> --text '<stueck>'
+  node board.mjs issue melden <id>
+      Legt den Abschlussbericht ab und zieht die Karte danach nach In review (Issue
+      #1022). Der Bericht bekommt als letzte Zeile 'Bericht-Lauf: <stempel>' (juengster
+      Zug der Karte nach in_progress aus .claude/bewegungen.tsv). Je Lauf idempotent:
+      gleicher Inhalt -> nichts geschrieben, geaenderter -> ersetzt, Berichte anderer
+      Laeufe bleiben. Ein ' im Bericht wird in der Shell als '\\'' geschrieben.
+      --teil <n> schreibt nur Stueck n nach .claude/berichte/<id>.<n>.md (ohne Board);
+      der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
+      und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
+      Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
+  node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+      Laufstand einer Karte in einem Zug (Issue #1083): setzt das Label des Zustands
+      und nimmt die beiden anderen ab (fertig: alle drei), dazu genau ein Kommentar
+      '## Laufstand', bei jedem Aufruf ersetzt. Die Labelnamen kommen aus
+      night.stand.labels der Config (Vorgaben lauf:laeuft, lauf:abgebrochen,
+      lauf:wartet). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
+      geschrieben. Ausgabe: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
+  node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+      Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
+      Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
+      backlog samt woertlichem Kommentartext | geschuetzt: nennt das Paket eine
+      geschuetzte Datei und ist nicht freigegeben, Backlog, label add kit:geschuetzt,
+      dann der Halt-Kommentar aus check-geschuetzt plus Label-Zeile; das Label
+      kit:geschuetzt selbst ergibt backlog, Issue #1052), Aufgabe (Titel, Body, Labels, Spalte,
+      Kommentare), Plan-Entscheidungen im Wortlaut (Auswahl aus der Zeile
+      'Plan-Entscheidungen:', ohne sie alle), fachlicher Anlass (Ziel und Fachliche
+      Akzeptanzkriterien der 'Fachlichen Quelle'), Geschwister des Plans mit Spalte
+      (Issue #1024) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
+      Was sich nicht ermitteln laesst, steht unter Luecken. Rein lesend. --spalte in_progress erwartet die Karte in In progress statt Ready.
+      Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
+      stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
+      beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
   node board.mjs issue check-form <id>
   node board.mjs issue check-form --body-file <pfad> --title "<titel>"
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I6. Die Stufe
-      kommt aus dem Titel-Praefix. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
+      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I9. Die Stufe
+      kommt aus dem Titel-Praefix. I7 bis I9 (Issue #1044): '## Aufgabe' nennt eine
+      Datei als Backtick-Pfad, keine genannte Datei ist geschuetzt (Sperren aus den
+      Einstellungen der Projektwurzel), '## Aufgabe' nennt nicht die installierte
+      Kopie; ein [Mensch]-Paket besteht alle drei. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
       bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
+      Bei [Plan] zusaetzlich 'hinweise' ([{ baustein, test, meldung }], Issue #1031):
+      eigene Tests gefuehrter Bausteine, die der Plan nicht nennt, nach den Ablagen aus
+      'testAblagen' gegen 'git ls-files'; sie beruehren weder ok noch den Exit-Code.
+      Beim Arbeitspaket 'hinweise' zum Abschnitt '## Abhaengigkeiten' ([{ art, nummer,
+      stelle, meldung }], Issue #1060): 'schreibweise' je #N ausserhalb einer Verweiszeile
+      ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
+      [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
+      ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
+  node board.mjs issue check-geschuetzt <id> [--pfad <pfad>]
+      Geschuetzte Dateien eines Pakets (Issue #1045, Plan #987): Treffer aus Aufgabe und
+      Akzeptanzkriterium gegen die Sperren der Projektwurzel; --pfad (auch mehrfach,
+      Issue #1053) nimmt einen beim Schreiben abgewiesenen Pfad dazu, ist er geschuetzt,
+      mit der Zeile 'beim Schreiben abgewiesen' — fuer den Rueckfall-Halt, wenn die
+      Aufgabe ihn nicht nennt. Dazu das Label kit:geschuetzt
+      und die Freigabe — ein Halt-Kommentar '## Geschuetzte Datei' mit der Zeile
+      'Label kit:geschuetzt gesetzt', das Label abgenommen und jeder Treffer dort
+      genannt. Ausgabe: { ok, treffer, label, freigegeben, handlung, kommentar };
+      'kommentar' ist der Halt-Text ohne Label-Zeile. Exit 1 bei ok false, auch bei
+      Label ohne Treffer. Rein lesend.
   node board.mjs code repo-name
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs code ci-status --commit <sha>
@@ -172,8 +246,18 @@ wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer ver
 // Betriebssystem, es existiert kein Escaping-Layer, der pro Plattform anders arbeitet.
 // Nebenbei entfaellt jede Kommando-Injection-Flaeche — ein Issue-Titel kann keine
 // zweite Kommandozeile mehr eroeffnen.
+//
+// Unter Windows liegt ein per npm installiertes CLI nur als `.cmd`-Huelle vor, und die
+// startet Node ohne Shell nicht (CVE-2024-27980). Den Startbefehl bestimmt darum
+// `startbefehlFuer` (Issue #1135, Plan #1128, E8): eine `.exe` direkt, eine `.cmd` ueber
+// ihre sh-Huelle in der Git Bash — nie ueber die Shell-Option von spawn.
 function exec(datei, args = []) {
-  const res = spawnSync(datei, args, { encoding: "utf-8" });
+  const start = startbefehlFuer(datei);
+  if (start.fehler) throw new Error(start.fehler);
+  const res = spawnSync(start.befehl, [...start.vorArgs, ...args], {
+    encoding: "utf-8",
+    env: { ...process.env, ...start.umgebung },
+  });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
     throw new Error(res.error.code === "ENOENT"
@@ -427,11 +511,22 @@ function ladeConfigDatei(p) {
   return config;
 }
 
+/** Die Wurzeln, unter denen die Config gesucht wird: erst das cwd, dann der Ort des Kits. */
+function configKandidaten() {
+  return [resolve("."), configRoot()];
+}
+
+/**
+ * Die Projektwurzel, aus der `loadConfig` liest — die erste mit einer Config. Ohne Config
+ * das cwd. Nicht `process.cwd()` allein: Aus einem Unterverzeichnis heraus laege dort keine
+ * Einstellungsdatei, und die Schreibsperren des Projekts fielen still weg (Issue #1044).
+ */
+function configWurzel() {
+  return configKandidaten().find((w) => existsSync(join(w, ".claude", "workflow.config.json"))) ?? resolve(".");
+}
+
 function readWorkflowConfig() {
-  const candidates = [
-    resolve(".claude", "workflow.config.json"),
-    join(configRoot(), ".claude", "workflow.config.json"),
-  ];
+  const candidates = configKandidaten().map((w) => join(w, ".claude", "workflow.config.json"));
   for (const p of candidates) {
     if (!existsSync(p)) continue;
     try {
@@ -455,6 +550,10 @@ function loadConfig() {
 
 function parseArgs(argv) {
   const result = { _: [] };
+  // Alle Werte einer mehrfach genannten Option (`--pfad a --pfad b`); `result[key]` traegt
+  // weiter den letzten. Nicht aufzaehlbar, damit es kein Optionsname werden kann.
+  const werte = {};
+  Object.defineProperty(result, "werte", { value: werte, enumerable: false });
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -463,6 +562,7 @@ function parseArgs(argv) {
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
+        werte[key] = [...(werte[key] ?? []), next];
         i += 1;  // der Wert gehoert zur Option
       } else {
         result[key] = true;
@@ -822,6 +922,16 @@ class GitHubIssueTracker {
     return this._mitLabels(gefiltert, repo);
   }
 
+  /**
+   * Alle Issues jedes Zustands mit Body, ohne Spalte (Issue #1024). `listIssues()` liefert
+   * nur offene, `listIssues(status)` keinen Body — `issue auftrag` braucht fuer die
+   * Geschwister eines Plans beides und legt die Spalte selbst aus den Spaltenlisten daneben.
+   */
+  async listAlleMitBody() {
+    const items = execJSON("gh", ["issue", "list", "--repo", this._repo(), "--state", "all", "--json", "number,title,body", "--limit", "1000"]);
+    return (Array.isArray(items) ? items : []).map((i) => ({ id: String(i.number), title: i.title, body: i.body ?? "" }));
+  }
+
   // `gh project item-list` liefert keine Labels (Issue #180) — sie werden ueber einen
   // zweiten Aufruf nachgeschlagen. Schlaegt der fehl, bleibt es bei labels: [] und die
   // Liste selbst ueberlebt: Ein Netzwerkschluckauf darf einen Nachtlauf nicht kippen.
@@ -880,6 +990,23 @@ class GitHubIssueTracker {
   async commentIssue(id, text) {
     const repo = this._repo();
     exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
+  }
+
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Ein Fehler von gh wirft. Hier
+  // war schon `getIssue` streng — die eigene Methode gibt es, damit alle vier
+  // Adapter dieselbe Schnittstelle haben.
+  async kommentareStreng(id) {
+    const repo = this._repo();
+    const data = execJSON("gh", ["issue", "view", String(id), "--repo", repo, "--json", "comments"]);
+    return normalizeComments(data.comments);
+  }
+
+  // `kommentarId` ist die numerische REST-ID aus normalizeComments, nicht die
+  // Knoten-ID. Der Pfad steht vor den Flags, weil gh nur so ihn als Positions-
+  // argument liest.
+  async ersetzeKommentar(id, kommentarId, text) {
+    const repo = this._repo();
+    exec("gh", ["api", `repos/${repo}/issues/comments/${kommentarId}`, "-X", "PATCH", "-f", `body=${text}`]);
   }
 
   async updateIssue(id, { body }) {
@@ -1049,7 +1176,7 @@ class GitLabIssueTracker {
   // Titel/Body/Status sind die Hauptsache. Deshalb leeres Array statt Abbruch.
   _notes(id) {
     try {
-      return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
+      return this._notesStreng(id);
     } catch (e) {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
@@ -1135,6 +1262,20 @@ class GitLabIssueTracker {
     // Analogie naheliegt. glab liest ein vorangestelltes 'create' als zusaetzliches
     // Argument und bricht mit "Accepts 1 arg(s), received 2" ab.
     exec("glab", ["issue", "note", String(id), "--message", text]);
+  }
+
+  _notesStreng(id) {
+    return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
+  }
+
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_notes` wirft ein
+  // Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht anlegen.
+  async kommentareStreng(id) {
+    return this._notesStreng(id);
+  }
+
+  async ersetzeKommentar(id, kommentarId, text) {
+    exec("glab", ["api", `projects/:id/issues/${id}/notes/${kommentarId}`, "-X", "PUT", "-f", `body=${text}`]);
   }
 
   async updateIssue(id, { body }) {
@@ -1372,7 +1513,7 @@ class LocalIssueTracker {
     const ergebnis = {};
     for (const id of ids) {
       try {
-        ergebnis[id] = await this.listActivity(id);
+        ergebnis[id] = await this.listActivity(id);  // NOSONAR S9382: Dateizugriffe, parallel gewinnt nichts
       } catch (e) {
         ergebnis[id] = { fehler: e.message };
       }
@@ -1423,6 +1564,50 @@ class LocalIssueTracker {
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
     writeFileSync(p, raw + comment, "utf-8");
+  }
+
+  /**
+   * Die angehaengten `**Kommentar**`-Bloecke einer Karte (Issue #1021).
+   *
+   * Der lokale Tracker fuehrt Kommentare nicht getrennt, `commentIssue` haengt sie an
+   * die Datei. Die ID ist darum die laufende Nummer des Blocks, ab 1 — sie aendert
+   * sich nicht, weil Bloecke nur angehaengt und nie entfernt werden. Jeder Block
+   * reicht bis zum naechsten Blockkopf oder zum Dateiende.
+   */
+  _kommentarBloecke(raw) {
+    const kopf = /\n\n---\n\*\*Kommentar\*\* \(([^)\n]*)\)\n\n/g;
+    const koepfe = [...raw.matchAll(kopf)];
+    return koepfe.map((m, i) => ({
+      id: String(i + 1),
+      createdAt: m[1],
+      start: m.index + m[0].length,
+      ende: i + 1 < koepfe.length ? koepfe[i + 1].index : raw.length,
+    }));
+  }
+
+  async kommentareStreng(id) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    return this._kommentarBloecke(raw).map((b) => ({
+      author: "", body: raw.slice(b.start, b.ende), createdAt: b.createdAt, id: b.id,
+    }));
+  }
+
+  // Ersetzt den Text eines Blocks; Blockkopf, alles davor und alles danach bleiben
+  // Byte fuer Byte. Traegt der neue Text eine `Bericht-Lauf:`-Zeile, muss der Block
+  // dieselbe tragen — sonst waere es der Bericht eines anderen Laufs.
+  async ersetzeKommentar(id, kommentarId, text) {
+    const p = this._filePath(id);
+    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    const raw = readFileSync(p, "utf-8");
+    const block = this._kommentarBloecke(raw).find((b) => b.id === String(kommentarId));
+    if (!block) throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} nicht gefunden.`);
+    const lauf = text.match(/^Bericht-Lauf:.*$/m)?.[0];
+    if (lauf && !raw.slice(block.start, block.ende).split("\n").includes(lauf)) {
+      throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} traegt nicht die Zeile '${lauf}' — kein Ersetzen.`);
+    }
+    writeFileSync(p, raw.slice(0, block.start) + text + raw.slice(block.ende), "utf-8");
   }
 
   async updateIssue(id, { body }) {
@@ -1589,10 +1774,15 @@ export function agentModelHeader(env = process.env) {
 /** Das Problem-Detail, an dem eine Ueberlast-Abweisung erkennbar ist. */
 export const TOOLBOX_UEBERLAST_TYPE = "urn:manban:overload";
 
-/** Zeitgrenze je Einzelversuch. Drei volle Haenger passen so ins Tagesbudget. */
-const TOOLBOX_VERSUCH_MS = 10_000;
+/**
+ * Zeitgrenze je Einzelversuch, abgeleitet aus dem Budget (toolboxVersuchMs). Drei volle
+ * Haenger passen so in beide Budgets: 3 × 10 s ins Tagesbudget, 3 × 30 s ins Nachtbudget.
+ */
+const TOOLBOX_VERSUCH_INTERAKTIV_MS = 10_000;
+const TOOLBOX_VERSUCH_NACHT_MS = 30_000;
 const TOOLBOX_BUDGET_INTERAKTIV_MS = 30_000;
-const TOOLBOX_BUDGET_NACHT_MS = 120_000;
+/** Exportiert fuer den Nacht-Runner, der seinen Board-Aufrufen dieses Budget mitgibt (Issue #1067). */
+export const TOOLBOX_BUDGET_NACHT_MS = 120_000;
 const TOOLBOX_WARTE_BASIS_MS = 500;
 const TOOLBOX_WARTE_MAX_MS = 8_000;
 const TOOLBOX_WARTE_MIN_MS = 100;
@@ -1625,6 +1815,18 @@ export function toolboxBudgetMs(env = process.env) {
   const gesetzt = Number(String(env.KIT_TOOLBOX_BUDGET_MS ?? "").trim());
   if (Number.isInteger(gesetzt) && gesetzt > 0) return gesetzt;
   return (env.KIT_AGENT_MODEL || "").trim() ? TOOLBOX_BUDGET_NACHT_MS : TOOLBOX_BUDGET_INTERAKTIV_MS;
+}
+
+/**
+ * Die Zeitgrenze eines Einzelversuchs folgt dem Budget (Issue #1067). Im Nachtbetrieb
+ * (Budget ab TOOLBOX_BUDGET_NACHT_MS) sind es 30 s: `issue list --status ready` liefert
+ * alle Bodies der Spalte, und bei langsamer Leitung riss schon die Uebertragung die
+ * 10 s — jeder Wiederholversuch scheiterte genauso. Interaktiv bleiben es 10 s, damit
+ * drei Versuche weiter ins Budget von 30 s passen; ebenso bei jedem ausdruecklich
+ * kleineren Budget.
+ */
+export function toolboxVersuchMs(budget) {
+  return budget >= TOOLBOX_BUDGET_NACHT_MS ? TOOLBOX_VERSUCH_NACHT_MS : TOOLBOX_VERSUCH_INTERAKTIV_MS;
 }
 
 /**
@@ -1706,6 +1908,35 @@ export function wartezeitMs(versuch, retryAfterSek = null, zufall = Math.random)
     ? roh * 1000
     : Math.min(TOOLBOX_WARTE_BASIS_MS * 2 ** (versuch - 1), TOOLBOX_WARTE_MAX_MS);
   return Math.max(TOOLBOX_WARTE_MIN_MS, Math.round(basis + basis * TOOLBOX_STREUUNG * zufall()));
+}
+
+// Gleichzeitige Verlaufsabrufe der Sammelform (Issue #1095): genug, dass sich die
+// Wartezeiten ueberlappen, wenig genug fuer eine API, die drosselt.
+const VERLAUF_GLEICHZEITIG = 4;
+
+/**
+ * Wendet `fn` auf jeden Eintrag an, hoechstens `grenze` Aufrufe zugleich, und liefert
+ * die Ergebnisse in Eingabereihenfolge. Der erste Fehler laesst das Ganze scheitern;
+ * danach beginnt kein Arbeiter einen neuen Eintrag mehr. Die Arbeiter rufen sich
+ * selbst wieder auf statt in einer Schleife zu warten.
+ */
+async function hoechstensGleichzeitig(grenze, eintraege, fn) {
+  const ergebnisse = new Array(eintraege.length);
+  let naechster = 0;
+  let gescheitert = false;
+  const arbeiter = async () => {
+    if (gescheitert || naechster >= eintraege.length) return;
+    const i = naechster++;
+    try {
+      ergebnisse[i] = await fn(eintraege[i], i);
+    } catch (e) {
+      gescheitert = true;
+      throw e;
+    }
+    return arbeiter();
+  };
+  await Promise.all(Array.from({ length: Math.min(grenze, eintraege.length) }, arbeiter));
+  return ergebnisse;
 }
 
 /** Shell-sicheres Zitat fuer das Wiederholkommando — nur, wo noetig. */
@@ -1800,12 +2031,13 @@ export class ToolboxIssueTracker {
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     const budget = toolboxBudgetMs();
     const frist = this._jetzt() + budget;
+    const versuchMs = toolboxVersuchMs(budget);
 
     for (let versuch = 1; ; versuch++) {
       let res = null;
       let wurf = null;
       try {
-        res = await fetch(`${host}${path}`, { ...rest, headers, signal: AbortSignal.timeout(TOOLBOX_VERSUCH_MS) });
+        res = await fetch(`${host}${path}`, { ...rest, headers, signal: AbortSignal.timeout(versuchMs) });
       } catch (e) {
         wurf = e;
       }
@@ -1819,7 +2051,7 @@ export class ToolboxIssueTracker {
 
       const status = res?.status ?? null;
       const netz = wurf ? netzfehlerArt(wurf) : null;
-      const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);
+      const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
       const warte = wartezeitMs(versuch, retryAfter, this._zufall);
       const nochmal = darfWiederholen({ method, status, typ, hatSchluessel: Boolean(idempotencyKey), netz })
         && this._jetzt() + warte <= frist;
@@ -1832,7 +2064,7 @@ export class ToolboxIssueTracker {
         `board: ${method} ${path} — Versuch ${versuch} endete mit ${grund}, erneut in ${warte} ms `
         + `(Frist ${Math.round(budget / 1000)} s)`
       );
-      await this._schlaf(warte);
+      await this._schlaf(warte);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
     }
   }
 
@@ -2013,8 +2245,7 @@ export class ToolboxIssueTracker {
   // Deshalb leeres Array statt Abbruch, mit Hinweis auf stderr.
   async _comments(itemId) {
     try {
-      const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
-      return normalizeComments(await res.json());
+      return await this._kommentareLesen(itemId);
     } catch (e) {
       process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
       return [];
@@ -2057,19 +2288,21 @@ export class ToolboxIssueTracker {
    * in der Einzelform: Er betrifft nicht eine Karte, sondern den Zugang. Still
    * weitergezaehlt ergaebe er eine Quote, die nach Null aussieht und in Wahrheit nichts
    * gemessen hat.
+   *
+   * Die Verlaeufe kommen gleichzeitig, hoechstens VERLAUF_GLEICHZEITIG auf einmal
+   * (Issue #1095): Nacheinander addierten sich Dutzende Wartezeiten, alle auf einmal
+   * liefen in die Drosselung.
    */
   async listActivityMany(numbers) {
     const items = await this._boardItems();
-    const ergebnis = {};
-    for (const number of numbers) {
+    const eintraege = await hoechstensGleichzeitig(VERLAUF_GLEICHZEITIG, numbers, async (number) => {
       const item = this._findByNumber(items, Number(number));
-      if (!item) {
-        ergebnis[number] = { fehler: `Issue ${number} nicht gefunden` };
-        continue;
-      }
+      if (!item) return { fehler: `Issue ${number} nicht gefunden` };
       const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
-      ergebnis[number] = await res.json();
-    }
+      return await res.json();
+    });
+    const ergebnis = {};
+    numbers.forEach((number, i) => { ergebnis[number] = eintraege[i]; });
     return ergebnis;
   }
 
@@ -2138,6 +2371,40 @@ export class ToolboxIssueTracker {
       body: JSON.stringify({ body: text }),
       idempotencyKey: idempotencyKey || randomUUID(),
     });
+  }
+
+  async _kommentareLesen(itemId) {
+    const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
+    return normalizeComments(await res.json());
+  }
+
+  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_comments` wirft
+  // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
+  // anlegen.
+  async kommentareStreng(number) {
+    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    return this._kommentareLesen(item.id);
+  }
+
+  // Die Route ist juenger als der Lesepfad. Eine Instanz ohne sie antwortet mit
+  // 404/405; die Meldung nennt dann die Route, damit klar ist, dass die Instanz und
+  // nicht der Kommentar fehlt.
+  async ersetzeKommentar(number, kommentarId, text) {
+    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    const pfad = `/api/kanban/items/${item.id}/comments/${kommentarId}`;
+    try {
+      await this._fetch(pfad, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: text }),
+      });
+    } catch (e) {
+      const status = e.message.match(/HTTP (40[45])\b/)?.[1];
+      if (!status) throw e;
+      throw new BoardError(
+        `Die Toolbox-Instanz kennt die Route PATCH ${pfad} nicht (HTTP ${status}) — Kommentare lassen sich dort nicht ersetzen.`
+      );
+    }
   }
 
   async updateIssue(number, { body }) {
@@ -2273,8 +2540,19 @@ export function normalizeComments(rawComments) {
         : String(c.author ?? ""),
       body: String(c.body ?? ""),
       createdAt: String(c.createdAt ?? c.created_at ?? ""),
+      id: kommentarIdAus(c),
     }))
     .filter((c) => c.body !== "");
+}
+
+// Die ID, unter der ein Kommentar sich ersetzen laesst (Issue #1021, Plan #1015 E10),
+// als String oder null. GitHub liefert in `id` die GraphQL-Knoten-ID (`IC_…`), die
+// REST-Route zum Bearbeiten will aber die Zahl aus dem `url`-Anker
+// `#issuecomment-<n>`. Traegt ein Kommentar ein `url`, gilt deshalb nur dieser Anker
+// — nie die Knoten-ID, auch nicht als Rueckfall.
+function kommentarIdAus(c) {
+  if (typeof c.url === "string") return c.url.match(/#issuecomment-(\d+)/)?.[1] ?? null;
+  return c.id === undefined || c.id === null ? null : String(c.id);
 }
 
 // Normalisiert das Anlagedatum eines Issues auf den Kalendertag `JJJJ-MM-TT`
@@ -2319,7 +2597,7 @@ function labelToStatus(labelNames, config, state) {
 // Adapter-Auswahl
 // ============================================================
 
-function resolveTracker(config) {
+export function resolveTracker(config) {
   switch (config.issueTracker) {
     case "github": return new GitHubIssueTracker(config);
     case "gitlab": return new GitLabIssueTracker(config);
@@ -2797,7 +3075,7 @@ async function issueCreate(tracker, args) {
   // Nummer soll keine Karte anlegen und keine Datei lesen.
   const derivedFrom = derivedFromOption(args["derived-from"]);
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
-  const roh = hatQuelle ? leseTextQuelle(args.body, args["body-file"], "body") : "";
+  const roh = hatQuelle ? await leseTextQuelle(args.body, args["body-file"], "body") : "";
   const felder = {
     title: args.title,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
@@ -2814,7 +3092,8 @@ async function issueCreate(tracker, args) {
   if (derivedFrom !== undefined) felder.derivedFrom = derivedFrom;
   // Nur toolbox wertet den Schluessel aus; die uebrigen Tracker ignorieren das Feld.
   if (idempotencyKey !== undefined) felder.idempotencyKey = idempotencyKey;
-  out(await tracker.createIssue(felder));
+  const angelegt = await tracker.createIssue(felder);
+  out(await mitAbhaengigkeitsHinweisen(angelegt, felder.body, tracker));
 }
 
 async function issueGet(tracker, args) {
@@ -3021,8 +3300,14 @@ async function issueLabel(tracker, config, args) {
  * Fuer kurze Texte ist stdin der einfachste Weg. Fuer lange fuehrt er nicht mehr ans
  * Ziel: Der Befehls-Parser weist einen Aufruf ab, der den ganzen Text traegt — auch im
  * Heredoc (Issue #584). Dann '--text-file' mit einer stueckweise erzeugten Datei.
+ *
+ * Asynchron seit Issue #1076: stdin wird ueber die Event-Schleife gelesen
+ * (`process.stdin`), nicht mit einem blockierenden `readFileSync(0)`. Blockierend hing
+ * das Lesen einer Socket-stdin mit grosser Eingabe — so, wie `spawnSync` mit `input`
+ * sie anlegt — sporadisch endlos, obwohl alles angekommen und die Gegenseite
+ * geschlossen war; unter Last 5 von 4.800 Aufrufen, ueber die Event-Schleife keiner.
  */
-export function leseTextQuelle(direkt, dateiPfad, flagName) {
+export async function leseTextQuelle(direkt, dateiPfad, flagName) {
   const dateiFlag = `--${flagName}-file`;
   const hatDatei = typeof dateiPfad === "string" && dateiPfad !== "";
   const hatDirekt = typeof direkt === "string";
@@ -3043,7 +3328,7 @@ export function leseTextQuelle(direkt, dateiPfad, flagName) {
     }
   } else if (direkt === "-") {
     try {
-      text = readFileSync(0, "utf-8"); // fd 0 = stdin
+      text = await stdinLesen();
     } catch (e) {
       fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
     }
@@ -3057,14 +3342,910 @@ export function leseTextQuelle(direkt, dateiPfad, flagName) {
   return text;
 }
 
+/** Liest stdin bis zum Ende ueber die Event-Schleife (Issue #1076, siehe leseTextQuelle). */
+function stdinLesen() {
+  return new Promise((aufloesen, ablehnen) => {
+    const teile = [];
+    process.stdin.on("data", (teil) => teile.push(teil));
+    process.stdin.on("end", () => aufloesen(Buffer.concat(teile).toString("utf-8")));
+    process.stdin.on("error", ablehnen);
+  });
+}
+
 async function issueComment(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
   // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
   // lesen und schon gar nichts ans Board schicken.
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
-  await tracker.commentIssue(id, leseTextQuelle(args.text, args["text-file"], "text"), idempotencyKey);
+  const text = await leseTextQuelle(args.text, args["text-file"], "text");
+  const kitZeile = kitStandZeileFuer(text);
+  await tracker.commentIssue(id, kitZeile ? `${text.trimEnd()}\n\n${kitZeile}` : text, idempotencyKey);
   out({ ok: true, id });
+}
+
+// ============================================================
+// Kit-Stand-Zeile (Issue #1103, Plan #1101 A4, A7)
+// ============================================================
+
+// Der feste Kit-Stand eines unbeaufsichtigten Laufs steht an jedem Kommentar, den dieser
+// Lauf schreibt — vom Runner wie von seinen Sitzungen. Die Zeile setzt das Werkzeug, nicht
+// der Skill-Text. Bedingung sind Umgebung UND Markierung (A4): `KIT_STAND` allein erbt jede
+// Shell, die aus einer Nachtsitzung heraus gestartet wurde; die Markierung allein bleibt
+// nach einem harten Abbruch liegen. Lebend heisst wie in `tools/sync-blobs.mjs`: Die Datei
+// liegt vor, und ihr `pid` lebt.
+const KIT_STAND_MARKIERUNG = join(".claude", "kit-stand.json");
+const KIT_STAND_PRAEFIX = "Kit-Stand:";
+
+function lebendeKitStandMarkierung(baum) {
+  let markierung;
+  try {
+    markierung = JSON.parse(readFileSync(join(baum, KIT_STAND_MARKIERUNG), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(markierung?.pid) || markierung.pid <= 0) return null;
+  try {
+    process.kill(markierung.pid, 0);
+  } catch (e) {
+    if (e.code !== "EPERM") return null; // EPERM: der Prozess lebt, gehoert nur jemand anderem
+  }
+  return markierung;
+}
+
+/**
+ * Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)`
+ * fuer einen Kommentartext, oder `null`: ohne `KIT_STAND`, ohne lebende Markierung im Baum,
+ * oder wenn der Text schon eine Kit-Stand-Zeile traegt — ein nachgetragener Nachtbericht
+ * behaelt die Zeile des Laufs, der ihn schrieb. Die Commit-Zeit kommt aus dem Commit; ist
+ * er im Baum nicht aufzuloesen, endet die Zeile nach dem Ref.
+ */
+export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(), config = null } = {}) {
+  if (!env.KIT_STAND) return null;
+  if (String(text).split(/\r?\n/).some((z) => z.startsWith(KIT_STAND_PRAEFIX))) return null;
+  const markierung = lebendeKitStandMarkierung(baum);
+  if (!markierung) return null;
+  const commit = String(env.KIT_STAND);
+  const mainBranch = config?.mainBranch ?? ladeMainBranch(baum);
+  const zeit = spawnSync("git", ["show", "-s", "--format=%cI", commit], { cwd: baum, encoding: "utf-8" });
+  const iso = zeit.status === 0 ? zeit.stdout.trim() : "";
+  // SYNC: dieselbe Form baut `kitStandZeile` in kit/night.mjs fuer den Nachtbericht.
+  const vom = iso ? ` vom ${iso.slice(0, 10)} ${iso.slice(11, 16)}` : "";
+  return `${KIT_STAND_PRAEFIX} ${commit.slice(0, 12)} (origin/${mainBranch}${vom})`;
+}
+
+function ladeMainBranch(baum) {
+  try {
+    return JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8")).mainBranch || "main";
+  } catch {
+    return "main";
+  }
+}
+
+// SYNC: Das Verzeichnis steht auch in kit/night.mjs (Ausschluss im Rest-Guard) und in
+// install.mjs (GITIGNORE_BLOCK). Wer es hier aendert, aendert es dort mit — sonst haelt
+// der Dirty-Guard liegengebliebene Stuecke fuer einen unkommittierten Rest.
+const BERICHTE_ORDNER = "berichte";
+const BERICHT_LAUF = "Bericht-Lauf:";
+
+// Kartennummern vergleichbar machen: `issue move 0005` und `issue move 5` meinen beim
+// lokalen Tracker dieselbe Karte, und das Protokoll haelt fest, was aufgerufen wurde.
+function kartenSchluessel(id) {
+  const s = String(id).trim().replace(/^#/, "");
+  return /^\d+$/.test(s) ? String(Number(s)) : s;
+}
+
+/**
+ * Die Laufkennung einer Karte (Plan #1015, E9): der Zeitstempel ihres juengsten Zugs
+ * nach In progress aus `.claude/bewegungen.tsv`, oder null.
+ *
+ * Nicht aus `.claude/wegmarken.tsv`: Die leert `sitzungVerbuchen` bei `--complete`, und
+ * eine Wiederholung nach dem Sitzungsende faende ihren Lauf nicht mehr — sie legte einen
+ * zweiten Bericht an. Das Bewegungsprotokoll wird nur angehaengt.
+ */
+function laufkennung(id) {
+  const pfad = resolve(".claude", BEWEGUNGEN_DATEI);
+  if (!existsSync(pfad)) return null;
+  const gesucht = kartenSchluessel(id);
+  let stempel = null;
+  for (const zeile of readFileSync(pfad, "utf-8").split("\n")) {
+    const [zeit, karte, status] = zeile.replace(/\r$/, "").split("\t");
+    if (status === "in_progress" && karte !== undefined && kartenSchluessel(karte) === gesucht) stempel = zeit;
+  }
+  return stempel;
+}
+
+// Die Stuecke einer Karte in Nummernfolge (numerisch, nicht lexikalisch: 10 nach 2).
+function berichtStuecke(id) {
+  const ordner = resolve(".claude", BERICHTE_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const praefix = `${kartenSchluessel(id)}.`;
+  return readdirSync(ordner)
+    .map((name) => ({ name, m: name.startsWith(praefix) && name.slice(praefix.length).match(/^(\d+)\.md$/) }))
+    .filter((e) => e.m)
+    .map((e) => ({ nummer: Number(e.m[1]), pfad: join(ordner, e.name) }))
+    .sort((a, b) => a.nummer - b.nummer);
+}
+
+// Beginnt jedes Stueck auf einer neuen Zeile: Eine Session stueckelt an Abschnittsgrenzen,
+// und die Shell nimmt den Zeilenumbruch am Ende eines `--text '…'` nicht mit.
+function stueckeZusammensetzen(stuecke) {
+  return stuecke.reduce((gesamt, s) => {
+    const text = readFileSync(s.pfad, "utf-8");
+    if (gesamt === "") return text;
+    return gesamt.endsWith("\n") ? gesamt + text : `${gesamt}\n${text}`;
+  }, "");
+}
+
+const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
+
+// `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
+async function meldenStueck(id, args, hatText) {
+  if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
+    fail(`--teil '${args.teil}' ist keine positive Ganzzahl.`);
+  }
+  if (!hatText) fail("--teil braucht --text '…' mit dem Stueck.");
+  const text = await leseTextQuelle(args.text, args["text-file"], "text");
+  const nummer = Number(args.teil);
+  const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
+  mkdirSync(dirname(pfad), { recursive: true });
+  writeFileSync(pfad, text, "utf-8");
+  out({ ok: true, id, teil: nummer, zeichen: text.length });
+}
+
+/**
+ * Legt den Bericht eines Laufs ab und liefert, was geschah (Plan #1015, E10). Jeder
+ * Fehler endet mit Exit 1 — die Karte ist bis hierhin nicht bewegt.
+ */
+async function berichtAblegen(tracker, id, text, laufZeile) {
+  // Die Kit-Stand-Zeile unmittelbar vor `Bericht-Lauf:` (Issue #1103): Diese bleibt die
+  // letzte Zeile, an ihr findet eine Wiederholung ihren Bericht.
+  const kitZeile = kitStandZeileFuer(text);
+  const neu = kitZeile ? `${text.trimEnd()}\n\n${kitZeile}\n${laufZeile}` : `${text.trimEnd()}\n\n${laufZeile}`;
+  let kommentare;
+  try {
+    kommentare = await tracker.kommentareStreng(id);
+  } catch (e) {
+    fail(`Kommentare von Issue ${id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: ${e.message}`);
+  }
+  const dieserLauf = kommentare.filter((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+  try {
+    if (dieserLauf.some((c) => vergleichbar(c.body) === vergleichbar(neu))) return "unveraendert";
+    if (dieserLauf.length > 0) {
+      const ziel = dieserLauf.at(-1);
+      if (ziel.id == null) throw new BoardError("der Bericht dieses Laufs traegt keine Kommentar-ID.");
+      await tracker.ersetzeKommentar(id, ziel.id, neu);
+      return "ersetzt";
+    }
+    await tracker.commentIssue(id, neu);
+    return "angelegt";
+  } catch (e) {
+    fail(`Bericht fuer Issue ${id} nicht abgelegt, Karte bleibt in In progress: ${e.message}`);
+  }
+}
+
+/**
+ * `issue melden <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
+ * In review, in einem Aufruf (Issue #1022, Plan #1015 E2, E8, E9, E10).
+ *
+ * Drei Formen:
+ *  - `--text '…'` (oder `--text-file` von Hand): Bericht direkt, dann Abschluss.
+ *  - `--teil <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
+ *    ueberschreibt es bei Wiederholung, beruehrt das Board nicht.
+ *  - ohne beides: setzt die Stuecke zusammen und schliesst ab. Geraeumt wird erst nach
+ *    Ablage UND Zug — scheitert einer davon, ist die Wiederholung dieser Aufruf allein.
+ *
+ * Idempotent je Lauf: Der Bericht traegt als letzte Zeile `Bericht-Lauf: <stempel>`.
+ * Findet sich darunter schon ein Kommentar, wird er bei gleichem Inhalt gelassen und
+ * sonst ersetzt, nie ein zweiter angelegt. Deshalb werden die Kommentare STRENG gelesen:
+ * Ein leer gelesener Stand wuerde den Bericht doppeln. Die Reihenfolge Ablage vor Zug
+ * haelt eine Karte ohne Bericht aus In review heraus.
+ */
+async function issueMelden(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue melden <id> [--teil <n>] --text '…'");
+  const hatText = args.text !== undefined || args["text-file"] !== undefined;
+
+  if (args.teil !== undefined) {
+    await meldenStueck(id, args, hatText);
+    return;
+  }
+
+  const stuecke = berichtStuecke(id);
+  if (hatText && stuecke.length > 0) {
+    fail(`Fuer Issue ${id} liegen ${stuecke.length} Stueck(e) unter .claude/${BERICHTE_ORDNER}/ — `
+      + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.");
+  }
+  if (!hatText && stuecke.length === 0) {
+    fail(`Kein Bericht fuer Issue ${id}: weder --text noch Stuecke unter .claude/${BERICHTE_ORDNER}/.`);
+  }
+  const text = hatText ? await leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
+
+  const stempel = laufkennung(id);
+  if (!stempel) {
+    fail(`Kein Zug von Issue ${id} nach in_progress in .claude/${BEWEGUNGEN_DATEI} — `
+      + "ohne Laufkennung kein Bericht. Nichts geschrieben.");
+  }
+  const bericht = await berichtAblegen(tracker, id, text, `${BERICHT_LAUF} ${stempel}`);
+
+  // Wie `issue move`: Buchungen erst nach dem geglueckten Zug.
+  await tracker.moveIssue(id, "in_review");
+  wegmarkeSchreiben(id, "in_review");
+  bewegungSchreiben(id, "in_review");
+
+  for (const s of stuecke) rmSync(s.pfad, { force: true });
+  if (stuecke.length > 0) {
+    try { rmdirSync(resolve(".claude", BERICHTE_ORDNER)); } catch { /* nicht leer — Stuecke anderer Karten */ }
+  }
+  out({ ok: true, id, bericht, status: "in_review" });
+}
+
+// ============================================================
+// Laufstand einer Karte: issue stand (Issue #1083, Plan #1079 E1, E3, E4)
+// ============================================================
+
+// SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
+// `night.stand.labels` — test/board-stand.test.mjs vergleicht beide.
+export const STAND_LABEL_VORGABEN = Object.freeze({
+  laeuft: "lauf:laeuft",
+  abgebrochen: "lauf:abgebrochen",
+  wartet: "lauf:wartet",
+});
+const STAND_ZUSTAENDE = [...Object.keys(STAND_LABEL_VORGABEN), "fertig"];
+const LAUFSTAND_ANKER = "## Laufstand";
+
+/** Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4). */
+function standLabels(config) {
+  const block = config?.night?.stand?.labels ?? {};
+  const labels = { ...STAND_LABEL_VORGABEN };
+  for (const zustand of Object.keys(STAND_LABEL_VORGABEN)) {
+    const wert = block[zustand];
+    if (wert === undefined) continue;
+    if (typeof wert !== "string" || wert.trim() === "") {
+      fail(`night.stand.labels.${zustand} muss ein nicht leerer Text sein, ist ${JSON.stringify(wert)}.`);
+    }
+    labels[zustand] = wert.trim();
+  }
+  if (new Set(Object.values(labels)).size !== Object.keys(labels).length) {
+    fail(`night.stand.labels: die drei Namen muessen verschieden sein (${Object.values(labels).join(", ")}).`);
+  }
+  return labels;
+}
+
+const istLaufstand = (body) => String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0].trim() === LAUFSTAND_ANKER;
+
+/**
+ * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
+ * setzt das Label des Zustands, nimmt die beiden anderen ab (bei `fertig` alle drei) und
+ * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an.
+ *
+ * Wiederholbar wie `berichtAblegen`: gleicher Inhalt -> nichts geschrieben, anderer ->
+ * ersetzt, nie ein zweiter. Darum wird STRENG gelesen, und zwar vor jedem Schreiben — ein
+ * leer gelesener Stand legte einen zweiten Laufstand an. Die Labelnamen kommen allein aus
+ * der Config; ein am Board fehlendes Label meldet der Adapter.
+ */
+async function issueStand(tracker, config, args) {
+  const id = args._[0];
+  const nutzung = "board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>";
+  if (!id) fail(`id ist erforderlich: ${nutzung}`);
+  if (args.labels !== undefined) fail(`--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. ${nutzung}`);
+  if (!STAND_ZUSTAENDE.includes(args.zustand)) {
+    fail(`--zustand '${args.zustand ?? ""}' unbekannt. Erwartet: ${STAND_ZUSTAENDE.join(" | ")}`);
+  }
+  if (args["text-file"] === undefined) fail(`--text-file ist erforderlich: ${nutzung}`);
+  const labels = standLabels(config);
+  const text = await leseTextQuelle(undefined, args["text-file"], "text");
+  const rumpf = text.replaceAll("\r\n", "\n").trim();
+  const neu = istLaufstand(rumpf) ? rumpf : `${LAUFSTAND_ANKER}\n\n${rumpf}`;
+
+  let kommentare;
+  try {
+    kommentare = await tracker.kommentareStreng(id);
+  } catch (e) {
+    fail(`Kommentare von Issue ${id} nicht lesbar — kein Laufstand geschrieben: ${e.message}`);
+  }
+
+  // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
+  const ziel = labels[args.zustand];
+  for (const name of Object.values(labels)) {
+    if (name !== ziel) await tracker.labelIssue(id, name, "remove");
+  }
+  if (ziel) await tracker.labelIssue(id, ziel, "add");
+
+  const staende = kommentare.filter((c) => istLaufstand(c.body));
+  let kommentar;
+  if (staende.some((c) => vergleichbar(c.body) === vergleichbar(neu))) {
+    kommentar = "unveraendert";
+  } else if (staende.length > 0) {
+    const alt = staende.at(-1);
+    if (alt.id == null) fail(`Der Laufstand an Issue ${id} traegt keine Kommentar-ID — nicht ersetzt.`);
+    await tracker.ersetzeKommentar(id, alt.id, neu);
+    kommentar = "ersetzt";
+  } else {
+    await tracker.commentIssue(id, neu);
+    kommentar = "angelegt";
+  }
+  out({ ok: true, id, zustand: args.zustand, kommentar });
+}
+
+// ============================================================
+// Auftrag einer Umsetzung: issue auftrag (Issue #1023, Plan #1015)
+// ============================================================
+
+// Die Kommentartexte fuer Folge "backlog" — die einzige Fassung fuer die Skills: Seit
+// Issue #1025 tragen `implement-*` sie nicht mehr selbst, sondern posten, was der Auftrag
+// liefert (test/skills-transport.test.mjs haelt sie aus den Skills heraus).
+// SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
+// (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
+// Gleichlauf-Test in test/board-auftrag.test.mjs vergleicht beide Seiten.
+export const AUFTRAG_BACKLOG_TEXTE = {
+  fachlich: (id) => `Fachliches Issue — wird nicht implementiert, bitte per /techplan #${id} in technische Issues ueberfuehren.`,
+  idee: (id) => `Idee — mit Abwaegung erst /fachplan #${id}, ohne Abwaegung /task #${id}, wird nicht implementiert.`,
+  plan: (id) => `Plan-Dokument — wird nicht implementiert, bitte per /issues #${id} in Arbeitspakete ueberfuehren.`,
+  mensch: () => "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
+  klaeren: () => "Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+  // SYNC: `GESCHUETZT_LABEL_GATE_TEXT` in kit/night.mjs (Issue #1046, #1052).
+  geschuetzt: () => "Traegt kit:geschuetzt — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.",
+};
+
+// Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,
+// dann das Label.
+const AUFTRAG_PRAEFIXE = [
+  [istFachlich, "fachlich", "Titel-Praefix [Fachlich]"],
+  [istIdee, "idee", "Titel-Praefix [Idee]"],
+  [istPlan, "plan", "Titel-Praefix [Plan]"],
+  [istMensch, "mensch", "Titel-Praefix [Mensch]"],
+];
+const AUFTRAG_KLAEREN = "kit:klaeren";
+const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
+const AUFTRAG_ERFUELLT = ["in_review", "done"];
+const KEIN_VORHABEN = "kein Vorhaben";
+
+// SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
+// LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
+// nicht. Der Gleichlauf-Test in test/board-auftrag.test.mjs faehrt beide Lesungen ueber
+// dieselben Fixtures.
+const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+const DEPS_ABSCHNITTS_ENDE = /^ {0,3}##\s/;
+const DEPS_REFERENZ = /(?<![\w`/#])#(\d+)/g;
+
+/**
+ * Die `#N` aus dem Abschnitt `## Abhaengigkeiten`, ohne Doppelte — Auslegung wie
+ * `parseDeps`: Die Ueberschrift zaehlt nur als eigene Zeile ausserhalb eines Fence, bei
+ * mehreren gilt die letzte, und eine `##`-Zeile im Fence beendet den Abschnitt nicht.
+ */
+export function abhaengigkeitenLesen(body) {
+  return abhaengigkeitenMitHerkunft(body).map((t) => t.nummer);
+}
+
+// Plan #1057 E2: `Issue #N` am Zeilenanfang, davor hoechstens Leerraum und ein Listenzeichen.
+const DEPS_VERWEISZEILE = /^\s*(?:(?:[-*+]|\d+\.)\s+)?Issue #\d+/;
+const DEPS_STELLE_MAX = 100;
+
+/**
+ * Die Nummern von `abhaengigkeitenLesen`, je Nummer mit Herkunft und Textstelle
+ * (Issue #1058, Plan #1057 E1–E3): `{ nummer, herkunft: "verweiszeile" | "text", stelle }`.
+ *
+ * Verweiszeile ist eine Zeile ausserhalb eines Fence, die mit `Issue #N` beginnt und keine
+ * weitere lokale Nummer traegt; alles andere ist Text, auch eine Nummer im Codeblock des
+ * Abschnitts (`parseDeps` liest sie mit). Die Stelle ist die getrimmte Zeile, auf
+ * hoechstens 100 Zeichen gekuerzt. Eine doppelte Nummer steht einmal, an ihrem ersten
+ * Vorkommen; traegt sie irgendwo eine Verweiszeile, gilt deren Herkunft und Stelle.
+ */
+export function abhaengigkeitenMitHerkunft(body) {
+  const treffer = new Map();
+  for (const { zeile, ausserhalb } of depsAbschnittZeilen(body)) {
+    const nummern = [...zeile.matchAll(DEPS_REFERENZ)].map((m) => Number(m[1]));
+    const verweis = ausserhalb && nummern.length === 1 && DEPS_VERWEISZEILE.test(zeile);
+    const herkunft = verweis ? "verweiszeile" : "text";
+    const stelle = depsStelle(zeile);
+    for (const nummer of nummern) {
+      const bisher = treffer.get(nummer);
+      if (!bisher) treffer.set(nummer, { nummer, herkunft, stelle });
+      else if (verweis && bisher.herkunft === "text") Object.assign(bisher, { herkunft, stelle });
+    }
+  }
+  return [...treffer.values()];
+}
+
+/**
+ * Die Hinweise zum Abschnitt `## Abhaengigkeiten` beim Schreiben (Issue #1060, Plan #1057
+ * E4, E5): `{ art: "schreibweise" | "dokument", nummer, stelle, meldung }` — `schreibweise`
+ * je Nummer aus Text, `dokument` je Nummer, deren Karte ein Dokument-Praefix traegt, auch
+ * in einer Verweiszeile. Jede Nummer wird einmal nachgeschlagen; scheitert der Abruf,
+ * entfaellt ihr Dokument-Hinweis still — alte erledigte Karten findet `getIssue` nicht.
+ */
+export async function abhaengigkeitsHinweise(body, tracker) {
+  const hinweise = [];
+  for (const { nummer, herkunft, stelle } of abhaengigkeitenMitHerkunft(body)) {
+    if (herkunft === "text") {
+      hinweise.push({
+        art: "schreibweise", nummer, stelle,
+        meldung: `#${nummer} zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #${nummer}‘): ${stelle}`,
+      });
+    }
+    const dokument = await dokumentArt(tracker, nummer);
+    if (dokument) {
+      hinweise.push({
+        art: "dokument", nummer, stelle,
+        meldung: `#${nummer} ist ein Dokument (${dokument.praefix}), kein Arbeitspaket — ${dokument.satz}`,
+      });
+    }
+  }
+  return hinweise;
+}
+
+/** Praefix und Satz, wenn die Karte ein Dokument ist; sonst oder bei scheiterndem Abruf null. */
+async function dokumentArt(tracker, nummer) {
+  let titel;
+  try {
+    titel = (await tracker.getIssue(String(nummer))).title;
+  } catch {
+    return null;
+  }
+  const erst = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
+  if (istPlan(titel)) return { praefix: "[Plan]", satz: "ein Plandokument wird nie durch Umsetzung erledigt" };
+  if (istFachlich(titel)) return { praefix: "[Fachlich]", satz: erst };
+  if (istIdee(titel)) return { praefix: "[Idee]", satz: erst };
+  return null;
+}
+
+/**
+ * Haengt die Hinweise an die Ausgabe eines Schreibwegs, sofern der Body einen Abschnitt
+ * `## Abhaengigkeiten` hat und es welche gibt. Ein Fehler dabei laesst den Schreibweg
+ * gelingen, dann ohne `hinweise` — geschrieben ist ohnehin schon.
+ */
+async function mitAbhaengigkeitsHinweisen(ergebnis, body, tracker) {
+  if (depsAbschnittZeilen(body).length === 0) return ergebnis;
+  try {
+    const hinweise = await abhaengigkeitsHinweise(body, tracker);
+    return hinweise.length > 0 ? { ...ergebnis, hinweise } : ergebnis;
+  } catch {
+    return ergebnis;
+  }
+}
+
+/** Die Zeilen des Abschnitts `## Abhaengigkeiten` samt Fence-Lage — leer, wenn er fehlt. */
+function depsAbschnittZeilen(body) {
+  const zeilen = String(body || "").split(/\r\n|\r|\n/);
+  const imFence = fenceLauf();
+  const ausserhalb = zeilen.map((z) => !imFence(z));
+  let start = -1;
+  zeilen.forEach((z, i) => { if (ausserhalb[i] && DEPS_UEBERSCHRIFT.test(z)) start = i; });
+  if (start < 0) return [];
+  let ende = zeilen.length;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (ausserhalb[i] && DEPS_ABSCHNITTS_ENDE.test(zeilen[i])) { ende = i; break; }
+  }
+  return zeilen.slice(start + 1, ende).map((zeile, k) => ({ zeile, ausserhalb: ausserhalb[start + 1 + k] }));
+}
+
+function depsStelle(zeile) {
+  const getrimmt = zeile.trim();
+  return getrimmt.length > DEPS_STELLE_MAX ? getrimmt.slice(0, DEPS_STELLE_MAX - 1) + "…" : getrimmt;
+}
+
+/**
+ * Die Spalte einer Karte, oder null, wenn sie sich nicht bestimmen laesst.
+ *
+ * Drei Tracker liefern sie mit der Karte. GitHub nicht (`status: null`, die Spalte lebt
+ * im Project): Dort wird sie ueber `listIssues(<spalte>)` gesucht, in der uebergebenen
+ * Reihenfolge und nur so weit wie noetig. `spaltenListen` cacht je Aufruf die Listen.
+ */
+async function auftragSpalte(tracker, issue, reihenfolge, spaltenListen) {
+  if (VALID_STATUSES.includes(issue.status)) return issue.status;
+  if (!(tracker instanceof GitHubIssueTracker)) return null;
+  for (const spalte of [...reihenfolge, ...VALID_STATUSES.filter((s) => !reihenfolge.includes(s))]) {
+    if (!spaltenListen.has(spalte)) spaltenListen.set(spalte, await tracker.listIssues(spalte));
+    if (spaltenListen.get(spalte).some((i) => String(i.id) === String(issue.id))) return spalte;
+  }
+  return null;
+}
+
+async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
+  let karte;
+  try {
+    karte = await tracker.getIssue(String(nummer));
+  } catch (e) {
+    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: `Karte nicht lesbar: ${e.message}` };
+  }
+  const spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_ERFUELLT, spaltenListen)
+    .catch(() => null);
+  const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
+  if (spalte === null) return { ...eintrag, befund: "nicht feststellbar", grund: "Spalte nicht bestimmbar" };
+  return { ...eintrag, befund: AUFTRAG_ERFUELLT.includes(spalte) ? "erfuellt" : "unerfuellt" };
+}
+
+const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
+
+/**
+ * Die Nummern aller GANZEN Zeilen `<feld>: Issue #N` — Zeilenregel wie `stammtAusErzeugung`
+ * in kit/night.mjs: Eine Erwaehnung im Fliesstext zaehlt nicht, und das Zeilenende hinter
+ * der Nummer trennt #30 von #300. Verglichen wird ohne fuehrende Nullen, weil der lokale
+ * Tracker seine Nummern mit ihnen schreibt.
+ */
+function herkunftNummern(body, feld) {
+  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
+  const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
+  return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
+}
+
+// Die Kontext-Zeile `Plan-Entscheidungen: E1, E3` (oder `Keine.`), die `/issues` in jedes
+// Paket aus einem Plan schreibt (Plan #1015, E1). Gelesen werden die `E<n>` nur aus dieser
+// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`.
+const PLAN_AUSWAHL_FELD = "Plan-Entscheidungen:";
+const E_NUMMER = /\bE(\d+)\b/g;
+
+/** Die genannten `E<n>` ohne Doppelte, `[]` bei `Keine.`, `null` ohne die Zeile (Altbestand). */
+function planAuswahlLesen(body) {
+  // Zeilenweise statt eines `^…(.*)$`-Ausdrucks mit m-Flag (sonarjs/slow-regex).
+  const zeile = normalisiereZeilenenden(body).split("\n").map((z) => z.trimStart())
+    .find((z) => z.startsWith(PLAN_AUSWAHL_FELD));
+  if (zeile === undefined) return null;
+  const wert = zeile.slice(PLAN_AUSWAHL_FELD.length);
+  return [...new Set([...wert.matchAll(E_NUMMER)].map((t) => `E${Number(t[1])}`))];
+}
+
+/**
+ * Der Inhalt des `##`-Abschnitts `name` woertlich, ohne Rand-Leerzeilen; `null`, wenn er
+ * fehlt oder leer ist. Anders als `zerlegeAbschnitte` bleiben Codebloecke Inhalt: Eine
+ * `##`-Zeile darin beendet den Abschnitt nicht und wird mit ausgegeben.
+ */
+function abschnittWoertlich(body, name) {
+  const zeilen = normalisiereZeilenenden(body).split("\n");
+  const imFence = fenceLauf();
+  // Je Zeile die Ueberschrift ausserhalb eines Codeblocks, sonst null.
+  const koepfe = zeilen.map((z) => (imFence(z) ? null : ABSCHNITT_ZEILE.exec(z)?.[1] ?? null));
+  const soll = normUeberschrift(name);
+  const start = koepfe.findIndex((k) => k !== null && normUeberschrift(k) === soll);
+  if (start < 0) return null;
+  const naechster = koepfe.findIndex((k, i) => i > start && k !== null);
+  const inhalt = zeilen.slice(start + 1, naechster < 0 ? zeilen.length : naechster);
+  const nichtLeer = (z) => z.trim() !== "";
+  const von = inhalt.findIndex(nichtLeer);
+  if (von < 0) return null;
+  return inhalt.slice(von, inhalt.findLastIndex(nichtLeer) + 1).join("\n");
+}
+
+// Ein Eintrag im zweizeiligen Format aus `CLAUDE-workflow.md` („Entscheiden statt fragen“):
+// `- E<n>: <Frage>` und eingerueckte Folgezeilen. Eine Leerzeile oder eine nicht
+// eingerueckte Zeile beendet ihn.
+const E_EINTRAG = /^ {0,3}[-*][ \t]+E(\d+):/;
+const E_FOLGEZEILE = /^[ \t]+\S/;
+
+/** Die E-Eintraege aus `## Architektonische Entscheidungen` im Wortlaut, `null` ohne den Abschnitt. */
+function planEintraegeLesen(planBody) {
+  const abschnitt = abschnittWoertlich(planBody, "Architektonische Entscheidungen");
+  if (abschnitt === null) return null;
+  const eintraege = [];
+  let aktuell = null;
+  for (const zeile of abschnitt.split("\n")) {
+    const m = E_EINTRAG.exec(zeile);
+    if (m) {
+      aktuell = { id: `E${Number(m[1])}`, zeilen: [zeile] };
+      eintraege.push(aktuell);
+    } else if (aktuell && E_FOLGEZEILE.test(zeile)) {
+      aktuell.zeilen.push(zeile);
+    } else {
+      aktuell = null;
+    }
+  }
+  return eintraege.map((e) => ({ id: e.id, text: e.zeilen.join("\n") }));
+}
+
+/** Plan-Entscheidungen nach Plan #1015, E1. Jede fehlende Angabe landet in `luecken`. */
+function auftragPlanEntscheidungen(karte, planNr, plan, luecken) {
+  const auswahl = planAuswahlLesen(karte.body);
+  const glied = (hinweis, eintraege = []) => ({ plan: planNr, auswahl, hinweis, eintraege });
+  if (planNr === null) {
+    luecken.push(`Plan-Entscheidungen: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
+    return glied(KEIN_VORHABEN);
+  }
+  if (plan.fehler) {
+    luecken.push(`Plan-Entscheidungen: Plan #${planNr} nicht lesbar (${plan.fehler})`);
+    return glied(null);
+  }
+  if (auswahl !== null && auswahl.length === 0) {
+    return glied("Das Paket beruft sich auf keine Plan-Entscheidung (`Plan-Entscheidungen: Keine.`).");
+  }
+  const alle = planEintraegeLesen(plan.body) ?? [];
+  if (alle.length === 0) {
+    luecken.push(`Plan-Entscheidungen: Plan #${planNr} hat unter \`## Architektonische Entscheidungen\` keinen Eintrag \`- E<n>:\``);
+  }
+  if (auswahl === null) {
+    return glied("Das Paket nennt keine Auswahl (Zeile `Plan-Entscheidungen:` fehlt) — es folgen alle Einträge des Plans.", alle);
+  }
+  const eintraege = [];
+  for (const id of auswahl) {
+    const eintrag = alle.find((e) => e.id === id);
+    if (eintrag) eintraege.push(eintrag);
+    else if (alle.length > 0) luecken.push(`Plan-Entscheidung ${id}: fehlt im Plan #${planNr}`);
+  }
+  return glied(null, eintraege);
+}
+
+/** Fachlicher Anlass nach Plan #1015, E4: aus dem Paket, sonst aus dem Plan. */
+async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
+  const ausPaket = herkunftNummern(karte.body, "Fachliche Quelle")[0];
+  const ausPlan = plan?.body === undefined ? undefined : herkunftNummern(plan.body, "Fachliche Quelle")[0];
+  const quelle = ausPaket ?? ausPlan ?? null;
+  const leer = { quelle: null, herkunft: null, ziel: null, kriterien: null, vollerText: null };
+  if (quelle === null) {
+    luecken.push("Fachlicher Anlass: weder das Paket noch sein Plan nennt eine Zeile `Fachliche Quelle: Issue #N`");
+    return leer;
+  }
+  const anlass = {
+    quelle,
+    herkunft: ausPaket ? "paket" : "plan",
+    ziel: null,
+    kriterien: null,
+    vollerText: `Voller Text: \`node .claude/kit/board.mjs issue get ${quelle}\``,
+  };
+  let body;
+  try {
+    body = (await tracker.getIssue(quelle)).body ?? "";
+  } catch (e) {
+    luecken.push(`Fachlicher Anlass: Issue #${quelle} nicht lesbar (${e.message})`);
+    return anlass;
+  }
+  anlass.ziel = abschnittWoertlich(body, "Ziel");
+  anlass.kriterien = abschnittWoertlich(body, "Fachliche Akzeptanzkriterien");
+  if (anlass.ziel === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Ziel\` fehlt in Issue #${quelle}`);
+  if (anlass.kriterien === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Fachliche Akzeptanzkriterien\` fehlt in Issue #${quelle}`);
+  return anlass;
+}
+
+/**
+ * Alle Karten ueber die fuenf Spalten, je mit Body und Spalte (Plan #1015, E7).
+ *
+ * Die Spalte kommt aus den Spaltenlisten `listIssues(<spalte>)` — dieselbe Lesung wie fuer
+ * die Voraussetzungen, `spaltenListen` teilt sie. Bei local, gitlab und toolbox tragen diese
+ * Listen auch den Body. GitHub liefert dort keinen Body; die Bodies kommen deshalb aus
+ * `listAlleMitBody`, und eine Karte, die in keiner Spaltenliste steht, hat Spalte `null`.
+ */
+async function auftragAlleKarten(tracker, spaltenListen) {
+  for (const s of VALID_STATUSES) {
+    if (!spaltenListen.has(s)) spaltenListen.set(s, await tracker.listIssues(s));
+  }
+  const spalteVon = new Map();
+  const ausListen = new Map();
+  for (const s of VALID_STATUSES) {
+    // Nur Eintraege, die die Spalte tragen: Ohne bestimmbares Project faellt GitHub auf
+    // alle offenen Issues mit `status: null` zurueck — die gehoeren keiner Spalte.
+    for (const i of spaltenListen.get(s).filter((k) => k.status === s)) {
+      const id = ohneFuehrendeNullen(i.id);
+      if (!spalteVon.has(id)) spalteVon.set(id, s);
+      if (!ausListen.has(id)) ausListen.set(id, i);
+    }
+  }
+  const karten = tracker instanceof GitHubIssueTracker ? await tracker.listAlleMitBody() : [...ausListen.values()];
+  return karten.map((k) => {
+    const id = ohneFuehrendeNullen(k.id);
+    return { id, titel: k.title ?? "", body: k.body ?? "", spalte: spalteVon.get(id) ?? null };
+  });
+}
+
+/** Geschwister nach Plan #1015, E7: alle Karten mit der ganzen Zeile `Plan: Issue #M`. */
+async function auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken) {
+  if (planNr === null) {
+    luecken.push(`Geschwister: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
+    return { plan: null, hinweis: KEIN_VORHABEN, karten: [] };
+  }
+  let alle;
+  try {
+    alle = await auftragAlleKarten(tracker, spaltenListen);
+  } catch (e) {
+    luecken.push(`Geschwister: Karten nicht lesbar (${e.message})`);
+    return { plan: planNr, hinweis: "Karten nicht lesbar (siehe Lücken)", karten: [] };
+  }
+  const karten = alle
+    .filter((k) => k.id !== nummer && herkunftNummern(k.body, "Plan").includes(planNr))
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .map(({ id, titel, spalte }) => ({ id, titel, spalte }));
+  for (const k of karten.filter((g) => g.spalte === null)) {
+    luecken.push(`Geschwister #${k.id}: Spalte nicht feststellbar (in keiner Spalte des Boards)`);
+  }
+  return { plan: planNr, hinweis: null, karten };
+}
+
+// Die Kommentare einer Karte: mit der Karte geliefert, beim lokalen Tracker aus der Datei.
+async function auftragKommentare(tracker, id, karte) {
+  if (Array.isArray(karte.comments)) return karte.comments;
+  if (typeof tracker.kommentareStreng !== "function") return [];
+  try {
+    return await tracker.kommentareStreng(id);
+  } catch {
+    return [];
+  }
+}
+
+// Die Schritte bei Folge "geschuetzt" (Plan #987, E11): Erst nach dem `label add` steht
+// fest, welche Label-Zeile der Kommentar traegt — und nur `gesetzt` gibt nach E5 frei.
+function geschuetztSchritte(id, treffer) {
+  const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
+  return `Geschuetzte Datei ${pfade} — eine menschliche Handlung wartet, wird nicht implementiert. `
+    + `Schritte: 1. Karte nach Backlog. 2. \`node .claude/kit/board.mjs issue label add ${id} ${GESCHUETZT_LABEL}\` — `
+    + "scheitert er, den Fehlschlag melden und nicht aufhoeren. 3. Den Kommentar unten woertlich ans Issue, "
+    + `als letzte Zeile ergaenzt um \`${GESCHUETZT_LABEL_GESETZT}\` oder, wenn Schritt 2 scheiterte, \`${GESCHUETZT_LABEL_NICHT_GESETZT}\`.`;
+}
+
+// Das Urteil nach Plan #1015, E6, um die geschuetzten Dateien erweitert (Issue #1052, Plan
+// #987, E10). Reihenfolge: Spalte, Praefix, kit:klaeren, kit:geschuetzt, geschuetzter Pfad,
+// Voraussetzungen — wie `pruefeIssueGates` in kit/night.mjs.
+function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare) {
+  const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
+  if (spalte !== erwartet) {
+    const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
+    return nicht("bleibt", `Issue #${id} liegt nicht (mehr) in ${COLUMN_DEFAULTS[erwartet]}, sondern in ${wo}.`);
+  }
+  const praefix = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title));
+  if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
+  if ((karte.labels || []).includes(AUFTRAG_KLAEREN)) {
+    return nicht("backlog", `Label ${AUFTRAG_KLAEREN} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  }
+  const labels = karte.labels || [];
+  if (labels.includes(GESCHUETZT_LABEL)) {
+    return nicht("backlog", `Label ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
+  }
+  const treffer = geschuetzteTreffer(karte.body || "", karte.title || "", configWurzel());
+  if (treffer.length > 0 && !geschuetztFreigabe(treffer, kommentare, labels)) {
+    return nicht("geschuetzt", geschuetztSchritte(id, treffer), geschuetztKommentar(treffer));
+  }
+  const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
+  if (offen.length > 0) {
+    const liste = offen.map((v) => `#${v.id} ${v.befund}`).join(", ");
+    return nicht("bleibt", `Voraussetzung ${liste} (erfuellt ist nur In review oder Done).`);
+  }
+  return { urteil: "darf beginnen", folge: "beginnen", grund: null, kommentar: null };
+}
+
+// Ein Text im Codeblock, dessen Zaun laenger ist als jeder Backtick-Lauf im Text: So
+// bleiben die `##`-Ueberschriften des Bodys Inhalt und keine Glieder der Ausgabe.
+function eingezaeunt(text) {
+  const laengster = Math.max(0, ...[...String(text).matchAll(/`+/g)].map((m) => m[0].length));
+  const zaun = "`".repeat(Math.max(3, laengster + 1));
+  return `${zaun}markdown\n${ohneSchlussUmbrueche(String(text))}\n${zaun}`;
+}
+
+// Ohne Regex: `/\n+$/` waere ein Kandidat fuer quadratische Laufzeit (sonarjs/slow-regex).
+function ohneSchlussUmbrueche(text) {
+  let ende = text.length;
+  while (ende > 0 && text[ende - 1] === "\n") ende--;
+  return text.slice(0, ende);
+}
+
+function auftragKommentarBlock(k) {
+  return `\n\n${k.author || "unbekannt"}, ${k.createdAt || "ohne Datum"}:\n\n${eingezaeunt(k.body)}`;
+}
+
+function auftragVoraussetzungZeile(v) {
+  const grund = v.grund ? " (" + v.grund + ")" : "";
+  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${v.spalte ?? "nicht feststellbar"} — ${v.befund}${grund}`;
+}
+
+function auftragMarkdown(a) {
+  const u = a.urteil;
+  const teile = [`## Urteil\n\n${u.urteil} — Folge: ${u.folge}`];
+  if (u.grund) teile[0] += `\nGrund: ${u.grund}`;
+  if (u.kommentar) teile[0] += `\n\nKommentar fuer die Karte (woertlich):\n\n${u.kommentar}`;
+
+  const auf = a.aufgabe;
+  let aufgabe = `## Aufgabe\n\nIssue #${auf.id}: ${auf.titel}\nSpalte: ${auf.spalte ?? "nicht feststellbar"}\n`
+    + `Labels: ${auf.labels.length ? auf.labels.join(", ") : "keine"}\n\n${eingezaeunt(auf.body)}`;
+  const kommentarBloecke = auf.kommentare.map(auftragKommentarBlock).join("");
+  aufgabe += auf.kommentare.length === 0
+    ? "\n\nKommentare: keine"
+    : `\n\nKommentare (${auf.kommentare.length}):${kommentarBloecke}`;
+  teile.push(aufgabe);
+
+  teile.push(`## Plan-Entscheidungen\n\n${planEntscheidungenMarkdown(a.planEntscheidungen)}`);
+  teile.push(`## Fachlicher Anlass\n\n${fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)}`);
+  teile.push(`## Geschwister\n\n${geschwisterMarkdown(a.geschwister)}`);
+
+  const voraus = a.voraussetzungen.length === 0 ? "Keine." : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
+  teile.push(`## Voraussetzungen\n\n${voraus}`);
+  teile.push(`## Lücken\n\n${a.luecken.length === 0 ? "Keine." : a.luecken.map((l) => "- " + l).join("\n")}`);
+  return `${teile.join("\n\n")}\n`;
+}
+
+const OHNE_PLAN_MARKDOWN = `${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\` (siehe Lücken)`;
+
+function planEntscheidungenMarkdown(p) {
+  if (p.plan === null) return OHNE_PLAN_MARKDOWN;
+  const teile = [`Plan: Issue #${p.plan}`];
+  if (p.hinweis) teile.push(p.hinweis);
+  if (p.eintraege.length > 0) teile.push(p.eintraege.map((e) => e.text).join("\n"));
+  else if (!p.hinweis) teile.push("keine (siehe Lücken)");
+  return teile.join("\n\n");
+}
+
+function fachlicherAnlassMarkdown(f, planNr) {
+  if (f.quelle === null) return "keine fachliche Quelle (siehe Lücken)";
+  const herkunft = f.herkunft === "paket" ? "aus dem Paket" : `aus dem Plan #${planNr}`;
+  const abschnitt = (text) => (text === null ? "fehlt (siehe Lücken)" : eingezaeunt(text));
+  return `Fachliche Quelle: Issue #${f.quelle} (${herkunft})\n\n### Ziel\n\n${abschnitt(f.ziel)}\n\n`
+    + `### Fachliche Akzeptanzkriterien\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
+}
+
+function geschwisterMarkdown(g) {
+  if (g.plan === null) return OHNE_PLAN_MARKDOWN;
+  const zeilen = g.karten.map((k) => `- #${k.id} ${k.titel || "(ohne Titel)"} — Spalte: ${k.spalte ?? "nicht feststellbar"}`);
+  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : "Keine.")}`;
+}
+
+/**
+ * `issue auftrag <id> [--spalte ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
+ * und das Urteil, ob eine Umsetzung beginnen darf, in einem Aufruf (Issue #1023, Plan
+ * #1015 E2, E3, E5, E6), dazu Plan-Entscheidungen, fachlicher Anlass und Geschwister
+ * (Issue #1024, E1, E4, E7). Jede Angabe, die sich nicht ermitteln laesst, steht unter
+ * Luecken — keine stille Luecke (AK 3).
+ *
+ * Rein lesend: keine Bewegung, kein Kommentar. Bei Folge "backlog" liefert der Befehl den
+ * Kommentartext, den die Session selbst ans Board haengt; bei Folge "geschuetzt" (Issue
+ * #1052) den Halt-Text aus `geschuetztKommentar`, ohne Label-Zeile, die Schritte im Grund. Exit 0 auch bei "darf nicht
+ * beginnen" — das ist eine Auskunft, kein Fehler. Exit 1 nur, wenn das Paket selbst nicht
+ * lesbar ist.
+ *
+ * Ausgabe als Markdown, je Glied eine `##`-Ueberschrift in fester Reihenfolge; `--json`
+ * liefert dieselben Glieder als Felder. Die einzige Ausnahme von "Ausgabe: JSON".
+ */
+async function issueAuftrag(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("id ist erforderlich: board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]");
+  const erwartet = args.spalte ?? "ready";
+  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(`--spalte '${erwartet}' ist keine erwartbare Spalte (ready | in_progress).`);
+
+  let karte;
+  try {
+    karte = await tracker.getIssue(String(id));
+  } catch (e) {
+    fail(`Paket ${id} nicht lesbar: ${e.message}`);
+  }
+  const nummer = String(karte.id ?? id).replace(/^0+(?=\d)/, "");
+  const spaltenListen = new Map();
+  const spalte = await auftragSpalte(tracker, { ...karte, id: nummer }, [erwartet], spaltenListen);
+
+  const voraussetzungen = [];
+  for (const n of abhaengigkeitenLesen(karte.body)) voraussetzungen.push(await auftragVoraussetzung(tracker, n, spaltenListen));
+
+  const luecken = [];
+  const planNr = herkunftNummern(karte.body, "Plan")[0] ?? null;
+  let plan = null;
+  if (planNr !== null) {
+    try {
+      plan = { body: (await tracker.getIssue(planNr)).body ?? "" };
+    } catch (e) {
+      plan = { fehler: e.message };
+    }
+  }
+  const planEntscheidungen = auftragPlanEntscheidungen(karte, planNr, plan, luecken);
+  const fachlicherAnlass = await auftragFachlicherAnlass(tracker, karte, plan, luecken);
+  const geschwister = await auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken);
+  if (spalte === null) luecken.push("Spalte des Pakets: nicht feststellbar");
+  for (const v of voraussetzungen.filter((x) => x.befund === "nicht feststellbar")) {
+    luecken.push(`Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`);
+  }
+
+  const kommentare = (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" }));
+  const auftrag = {
+    id: nummer,
+    urteil: auftragUrteil(nummer, spalte, erwartet, karte, voraussetzungen, kommentare),
+    aufgabe: {
+      id: nummer,
+      titel: karte.title ?? "",
+      spalte,
+      labels: karte.labels || [],
+      body: karte.body ?? "",
+      kommentare,
+    },
+    planEntscheidungen,
+    fachlicherAnlass,
+    geschwister,
+    voraussetzungen,
+    luecken,
+  };
+  if (args.json) out(auftrag);
+  else process.stdout.write(auftragMarkdown(auftrag));
 }
 
 // Schreibt den Body eines bestehenden Issues (Issue #237). Bewusst nur --body:
@@ -3076,11 +4257,11 @@ async function issueComment(tracker, args) {
 async function issueUpdate(tracker, args) {
   const id = args._[0];
   if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
-  const neu = leseTextQuelle(args.body, args["body-file"], "body");
+  const neu = await leseTextQuelle(args.body, args["body-file"], "body");
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
   // er kommt.
   await tracker.updateIssue(id, { body: neu });
-  out({ ok: true, id });
+  out(await mitAbhaengigkeitsHinweisen({ ok: true, id }, neu, tracker));
 }
 
 // ============================================================
@@ -3136,6 +4317,276 @@ function zerlegeAbschnitte(body) {
     (aktuell ? aktuell.zeilen : kopf).push(zeile);
   }
   return { kopf, abschnitte };
+}
+
+// ============================================================
+// Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
+// ============================================================
+//
+// Zwei Naechte endeten hart, weil ein Paket eine Datei aendern sollte, die nur ein Mensch
+// schreiben darf: Claude Code weist den Schreibzugriff ab, die Session darf den Schutz
+// nicht umgehen und laesst ihre Arbeit liegen. Hier und nur hier wird entschieden, ob ein
+// Paket einen solchen Pfad beim Namen nennt — Formgates, `issue check-geschuetzt` und das
+// Gate des Runners rufen diese Funktionen, statt die Regel ein zweites Mal zu schreiben.
+//
+// Die Vorgabeliste traegt die Sperre, die Claude Code ueberall fuehrt und die sich nicht
+// auslesen laesst: die Team- und die lokalen Einstellungen und das Hook-Verzeichnis (E2).
+// Was ein Projekt zusaetzlich sperrt, kommt aus `permissions.deny` dieser beiden Dateien.
+// Die Pruefeinstellungen des Kits (`workflow.config.json`) stehen bewusst NICHT darin: Sie
+// sind versioniert und unter `permissions.allow` ausdruecklich freigegeben — eine Session
+// darf sie schreiben, und ein Gate darauf waere ein Fehlalarm.
+
+const EINSTELLUNGS_DATEIEN = Object.freeze([".claude/settings.json", ".claude/settings.local.json"]);
+
+export const GESCHUETZTE_PFADE = Object.freeze([...EINSTELLUNGS_DATEIEN, ".claude/hooks/"]);
+
+// Die installierte Kopie des Kits (E7): Sie wird nie von Hand geaendert, gemeint ist im Kit
+// die Quelle, in einem installierten Projekt ein Kit-Update. Dieselbe Trefferregel (E16);
+// das Gate dazu (I9) liest sie, nicht die Erkennung geschuetzter Pfade.
+export const KOPIE_PFADE = Object.freeze([".claude/kit/", ".claude/skills/", ".claude/CLAUDE-*.md"]);
+
+// `Edit(…)`/`Write(…)` aus `permissions.deny` — andere Werkzeuge sperren kein Schreiben.
+const SCHREIB_REGEL = /^(?:Edit|Write)\(([^()]+)\)$/;
+
+/**
+ * Ein Claude-Code-Muster auf die Projektwurzel normalisiert (E16): `//` absolut, `~/` im
+ * Home, sonst relativ zur Wurzel — ein fuehrendes `./` oder `/` faellt dabei weg.
+ */
+function normalisiereSchreibMuster(muster) {
+  if (muster.startsWith("//")) return muster.slice(1);
+  if (muster.startsWith("~/")) return join(homedir(), muster.slice(2));
+  if (muster.startsWith("./")) return muster.slice(2);
+  return muster.startsWith("/") ? muster.slice(1) : muster;
+}
+
+/** Die Schreibsperren einer Einstellungsdatei; fehlt oder bricht sie, sind es keine. */
+function schreibSperren(datei) {
+  let einstellungen;
+  try {
+    einstellungen = JSON.parse(readFileSync(datei, "utf8"));
+  } catch {
+    return [];
+  }
+  const deny = einstellungen?.permissions?.deny;
+  if (!Array.isArray(deny)) return [];
+  return deny.flatMap((regel) => {
+    const m = SCHREIB_REGEL.exec(typeof regel === "string" ? regel.trim() : "");
+    return m ? [normalisiereSchreibMuster(m[1].trim())] : [];
+  });
+}
+
+/**
+ * Die geschuetzten Pfade unter `wurzel`: die Vorgabeliste, dahinter die Schreibsperren aus
+ * Team- und lokalen Einstellungen, ohne Doppel. Eine fehlende oder unlesbare Datei liefert
+ * nur die Vorgabeliste und haelt nichts auf.
+ */
+export function geschuetztePfade(wurzel) {
+  const pfade = new Set(GESCHUETZTE_PFADE);
+  for (const datei of EINSTELLUNGS_DATEIEN) {
+    for (const muster of schreibSperren(join(wurzel, datei))) pfade.add(muster);
+  }
+  return [...pfade];
+}
+
+const GLOB_ZEICHEN = /[*?]/;
+const GLOB_TEIL = /\*\*\/|\*\*|\*|\?/g;
+
+/**
+ * Ein Glob als verankerter Ausdruck: `*` und `?` bleiben im Segment, `**` geht ueber
+ * Segmentgrenzen, und `**` samt folgendem Trenner darf ganz verschwinden. Ein Muster ohne
+ * Schraegstrich gilt wie bei `.gitignore`, nach dessen Regeln Claude Code liest, in jeder Tiefe.
+ */
+function globAlsAusdruck(muster) {
+  const teile = { "**/": "(?:.*/)?", "**": ".*", "*": "[^/]*", "?": "[^/]" };
+  let quelle = "";
+  let letzte = 0;
+  for (const m of muster.matchAll(GLOB_TEIL)) {
+    quelle += escapeRegex(muster.slice(letzte, m.index)) + teile[m[0]];
+    letzte = m.index + m[0].length;
+  }
+  quelle += escapeRegex(muster.slice(letzte));
+  return new RegExp(`^${muster.includes("/") ? "" : "(?:.*/)?"}${quelle}$`);
+}
+
+/**
+ * Trifft ein Pfad-Token einen Eintrag der Liste (E16)? Bei Gleichheit; bei einem Eintrag mit
+ * Endung `/` auch das Verzeichnis selbst und alles darunter; bei einem Glob nach dessen Regeln.
+ * Ein fuehrendes `./` am Token zaehlt nicht.
+ */
+export function trifftGeschuetzt(token, eintrag) {
+  const pfad = String(token).startsWith("./") ? String(token).slice(2) : String(token);
+  const verzeichnis = eintrag.endsWith("/");
+  if (GLOB_ZEICHEN.test(eintrag)) return globAlsAusdruck(verzeichnis ? `${eintrag}**` : eintrag).test(pfad);
+  if (!verzeichnis) return pfad === eintrag;
+  return pfad === eintrag.slice(0, -1) || pfad.startsWith(eintrag);
+}
+
+const BACKTICK_LAUF = /`+/g;
+
+/**
+ * Die Pfad-Token der Zeilen (E3): der Inhalt jedes Backtick-Spans ohne Leerraum, je mit der
+ * Zeile, in der er steht. Gepaart wird wie in Markdown — ein Span endet am naechsten Lauf
+ * gleicher Laenge, ein Lauf ohne Partner ist Text. Codebloecke gibt es hier nicht mehr: Die
+ * Zeilen kommen aus `zerlegeAbschnitte`, `fenceLauf` bleibt die einzige Fence-Auslegung.
+ */
+export function pfadTokens(zeilen) {
+  const tokens = [];
+  for (const zeile of zeilen) {
+    const laeufe = [...zeile.matchAll(BACKTICK_LAUF)];
+    let i = 0;
+    while (i < laeufe.length) {
+      const auf = laeufe[i];
+      const zu = laeufe.findIndex((l, j) => j > i && l[0].length === auf[0].length);
+      if (zu === -1) {
+        i += 1;
+        continue;
+      }
+      const inhalt = zeile.slice(auf.index + auf[0].length, laeufe[zu].index);
+      if (inhalt !== "" && !/\s/.test(inhalt)) tokens.push({ token: inhalt, zeile });
+      i = zu + 1;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Das Token, wie es steht, absolut und — liegt es unter der Wurzel — relativ zu ihr, mit `/`
+ * geschrieben wie die Sperrliste. Die relative Form entsteht ueber `relative` des Pfadmoduls
+ * (Issue #1124): Unter Windows trennt `resolve` mit `\`, und ein Vergleich auf `${basis}/` liess
+ * sie dort weg. `pfad` ist fuer Tests austauschbar (`path.win32`).
+ */
+export function tokenFormen(token, wurzel, pfad = path) {
+  const basis = pfad.resolve(wurzel);
+  const absolut = token.startsWith("~/") ? pfad.join(homedir(), token.slice(2)) : pfad.resolve(basis, token);
+  const formen = [token, absolut];
+  const rel = pfad.relative(basis, absolut);
+  if (rel && !rel.startsWith("..") && !pfad.isAbsolute(rel)) formen.push(rel.split(pfad.sep).join("/"));
+  return formen;
+}
+
+// Gebaut wird, was in der Aufgabe steht; geprueft, was im Kriterium steht (E4). Der Kontext
+// erzaehlt die Vorgeschichte und zitiert Pfade, die das Paket gerade nicht aendert.
+const GESCHUETZT_ABSCHNITTE = new Set(["aufgabe", "akzeptanzkriterium"]);
+
+/**
+ * Die geschuetzten Pfade, die ein Paket in `## Aufgabe` und `## Akzeptanzkriterium` beim
+ * Namen nennt, gegen `geschuetztePfade(wurzel)`. Je Treffer der Pfad und die woertliche Zeile
+ * (E17); derselbe Pfad in derselben Zeile zaehlt einmal. Ein absolut genanntes Token unter
+ * der Wurzel wird auch relativ verglichen und umgekehrt, damit relative wie absolute Sperren
+ * greifen. Ein `[Mensch]`-Titel liefert immer eine leere Liste (E8): Seine Aufgabe liegt
+ * ausserhalb des Repositories und ist genau die Handlung, die der Mensch vornehmen soll.
+ */
+export function geschuetzteTreffer(body, title, wurzel) {
+  if (istMensch(title)) return [];
+  const zeilen = zerlegeAbschnitte(body).abschnitte
+    .filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel))
+    .flatMap((a) => a.zeilen);
+  return listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel);
+}
+
+// Halt-Kommentar und Freigabe (Issue #1045, Plan #987, E5, E11, E17). Der Text ist
+// Schreib- und Leseformat zugleich: Das Gate liest beim naechsten Anlauf aus genau diesem
+// Kommentar zurueck, welche Pfade der Mensch freigegeben hat. Darum baut ihn nur
+// `geschuetztKommentar`, und `kit/night.mjs` prueft seine eigenen Konstanten gegen diese.
+
+export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
+export const GESCHUETZT_LABEL = "kit:geschuetzt";
+export const GESCHUETZT_LABEL_GESETZT = `Label ${GESCHUETZT_LABEL} gesetzt`;
+export const GESCHUETZT_LABEL_NICHT_GESETZT = `Label ${GESCHUETZT_LABEL} nicht gesetzt`;
+// Die zitierte Zeile eines Pfads, den der Schutz beim Schreiben abwies (Issue #1053, E13):
+// Die Aufgabe nennt ihn gerade nicht, es gibt keine Zeile aus dem Paket zu zitieren.
+export const GESCHUETZT_ABGEWIESEN = "beim Schreiben abgewiesen";
+
+/**
+ * Die beim Schreiben abgewiesenen Pfade, die geschuetzt sind, als Treffer mit der Zeile
+ * `GESCHUETZT_ABGEWIESEN` — fuer den Halt-Kommentar des Rueckfalls, wenn die Aufgabe den
+ * Pfad nicht nennt. Ein fremder Pfad ist kein Treffer.
+ */
+export function abgewieseneTreffer(pfade, wurzel) {
+  const liste = geschuetztePfade(wurzel);
+  return [...new Set(pfade)]
+    .filter((pfad) => liste.some((eintrag) => tokenFormen(pfad, wurzel).some((f) => trifftGeschuetzt(f, eintrag))))
+    .map((pfad) => ({ pfad, zeile: GESCHUETZT_ABGEWIESEN }));
+}
+
+/**
+ * Der Pfad einer Listenzeile `- <lauf><pfad><lauf>` mit genau einem Backtick-Pfad, sonst
+ * null. Die zitierten Zeilen darunter beginnen mit `>` und zaehlen darum nie als genannt,
+ * auch wenn sie selbst Pfade tragen.
+ */
+function listenPfad(zeile) {
+  if (!zeile.startsWith("- `")) return null;
+  const rest = zeile.slice(2);
+  const lauf = /^`+/.exec(rest)[0];
+  const ende = rest.length - lauf.length;
+  if (ende <= lauf.length || !rest.endsWith(lauf) || rest[ende - 1] === "`") return null;
+  return rest.slice(lauf.length, ende);
+}
+
+/** Ein Pfad in einem Backtick-Lauf, der laenger ist als jeder Lauf im Pfad selbst. */
+function inBackticks(pfad) {
+  const laengster = Math.max(0, ...[...pfad.matchAll(BACKTICK_LAUF)].map((m) => m[0].length));
+  const lauf = "`".repeat(laengster + 1);
+  return `${lauf}${pfad}${lauf}`;
+}
+
+/**
+ * Der Halt-Kommentar nach E17 ohne die Label-Zeile aus E11: unter dem Anker je getroffenem
+ * Pfad eine Listenzeile mit genau einem Backtick-Pfad, darunter die Zeilen aus Aufgabe und
+ * Akzeptanzkriterium, in denen er steht, woertlich als Zitat.
+ */
+export function geschuetztKommentar(treffer) {
+  const jePfad = new Map();
+  for (const { pfad, zeile } of treffer) {
+    if (!jePfad.has(pfad)) jePfad.set(pfad, []);
+    jePfad.get(pfad).push(zeile);
+  }
+  const liste = [...jePfad].flatMap(([pfad, zeilen]) => [`- ${inBackticks(pfad)}`, ...zeilen.map((z) => `  > ${z}`)]);
+  return [
+    GESCHUETZT_ANKER,
+    "",
+    `Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf — eine Session darf sie nicht aendern und den Schutz nicht umgehen. Ein Mensch nimmt die Aenderung, die die zitierten Zeilen verlangen, selbst vor und nimmt danach das Label \`${GESCHUETZT_LABEL}\` ab; beim naechsten Anlauf laeuft das Paket dann durch, solange es keine weitere geschuetzte Datei nennt.`,
+    "",
+    ...liste,
+  ].join("\n");
+}
+
+/** Die Pfade der Listenzeilen eines Halt-Kommentars, oder null, wenn er nicht freigeben kann. */
+function freigegebenePfade(body) {
+  const zeilen = String(body ?? "").replaceAll("\r", "").split("\n").map((z) => z.trimEnd());
+  if (!zeilen.includes(GESCHUETZT_ANKER) || !zeilen.includes(GESCHUETZT_LABEL_GESETZT)) return null;
+  if (zeilen.includes(GESCHUETZT_LABEL_NICHT_GESETZT)) return null;
+  return new Set(zeilen.map(listenPfad).filter((p) => p !== null));
+}
+
+/**
+ * Ist das Paket nach E5 freigegeben? Nur wenn das Label nicht (mehr) haengt und ein Kommentar
+ * mit dem Anker die Zeile `Label kit:geschuetzt gesetzt` traegt und jeden aktuellen Treffer
+ * in seiner Backtick-Liste nennt. `Label kit:geschuetzt nicht gesetzt` gibt nie frei — dort
+ * fehlt das Label, weil das Setzen scheiterte, nicht weil ein Mensch es abnahm. Ohne Treffer
+ * gibt es nichts freizugeben: `false`.
+ */
+export function geschuetztFreigabe(treffer, kommentare, labels) {
+  if (treffer.length === 0 || labels.includes(GESCHUETZT_LABEL)) return false;
+  return kommentare.some((k) => {
+    const pfade = freigegebenePfade(k.body);
+    return pfade !== null && treffer.every((t) => pfade.has(t.pfad));
+  });
+}
+
+/** Die Pfad-Token der Zeilen, die einen Eintrag der Liste treffen, je Pfad und Zeile einmal. */
+function listenTreffer(zeilen, liste, wurzel) {
+  const treffer = [];
+  const gesehen = new Set();
+  for (const { token, zeile } of pfadTokens(zeilen)) {
+    const formen = tokenFormen(token, wurzel);
+    if (!liste.some((eintrag) => formen.some((f) => trifftGeschuetzt(f, eintrag)))) continue;
+    const schluessel = `${token}\n${zeile}`;
+    if (gesehen.has(schluessel)) continue;
+    gesehen.add(schluessel);
+    treffer.push({ pfad: token, zeile });
+  }
+  return treffer;
 }
 
 function ersteNichtLeere(zeilen) {
@@ -3271,6 +4722,46 @@ function pruefeVorlage(kontext, akzeptanz) {
   return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
 }
 
+// Ein Dateipfad unter den Pfad-Token (E7): mit Schraegstrich oder mit Dateiendung. Ein Label
+// wie `kit:klaeren` oder eine Konstante wie `KOPIE_PFADE` nennt keine Datei.
+const DATEIPFAD = /(?:\/)|(?:\.[a-z0-9]+$)/;
+
+const KOPIE_MELDUNG = "Die installierte Kopie unter `.claude/kit/`/`.claude/skills/` wird nie von Hand geändert; "
+  + "im Kit ist die Quelle unter `kit/`/`skills/` gemeint, in einem installierten Projekt ein Kit-Update.";
+
+/**
+ * I7 bis I9 (Issue #1044, Plan #987, E7): Ein Paket, das eine geschuetzte Datei aendern muss,
+ * faellt beim Schneiden auf, nicht erst nachts an der abgewiesenen Schreibanfrage.
+ *
+ * I7 — `## Aufgabe` nennt mindestens einen Dateipfad als Backtick-Token; ohne ihn findet die
+ * Erkennung nichts. I8 — ein Token aus Aufgabe oder Akzeptanzkriterium ist geschuetzt
+ * (`geschuetzteTreffer`); die Aenderung gehoert als `[Mensch]`-Karte heraus. I9 — ein Token
+ * nur aus `## Aufgabe` liegt in der installierten Kopie: Das Kriterium darf sie aufrufen
+ * (`node .claude/kit/checks.mjs run`), bauen soll das Paket an der Quelle.
+ *
+ * Ein `[Mensch]`-Paket besteht alle drei (E8): Seine Aufgabe liegt ausserhalb des
+ * Repositories, und es ist genau die Karte, die I8 verlangt.
+ */
+function pruefeGeschuetzt(abschnitte, title, wurzel) {
+  if (istMensch(title)) return [];
+  const verstoesse = [];
+  const aufgabe = abschnitte.find((a) => a.titel === "aufgabe")?.zeilen ?? [];
+  if (!pfadTokens(aufgabe).some(({ token }) => DATEIPFAD.test(token))) {
+    verstoesse.push({ gate: "I7", meldung: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte" });
+  }
+  const zeilen = abschnitte.filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel)).flatMap((a) => a.zeilen);
+  for (const { pfad, zeile } of listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel)) {
+    verstoesse.push({
+      gate: "I8",
+      meldung: `'${pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '${zeile.trim()}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr`,
+    });
+  }
+  for (const { pfad, zeile } of listenTreffer(aufgabe, KOPIE_PFADE, wurzel)) {
+    verstoesse.push({ gate: "I9", meldung: `'${pfad}' in '## Aufgabe' (Zeile: '${zeile.trim()}') — ${KOPIE_MELDUNG}` });
+  }
+  return verstoesse;
+}
+
 /**
  * Die Kommandos, die eine Guetemessung starten: `mutationCommand`, das `cmd` des
  * `buildChecks`-Eintrags mit `guete`-Block und die Liste `guetekommandos`, alle drei
@@ -3357,7 +4848,7 @@ function pruefeGuetemessung(akzeptanz, kontext, config) {
   return verstoesse;
 }
 
-function pruefeIssue(abschnitte, config) {
+function pruefeIssue(abschnitte, config, title, wurzel) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
     .map((meldung) => ({ gate: "I1", meldung }));
@@ -3368,9 +4859,194 @@ function pruefeIssue(abschnitte, config) {
   verstoesse.push(
     ...pruefeVorlage(kontext, finde("akzeptanzkriterium")),
     ...pruefeGuetemessung(finde("akzeptanzkriterium"), kontext, config),
+    ...pruefeGeschuetzt(abschnitte, title, wurzel),
   );
   const abh = finde("abhaengigkeiten");
   return abh ? [...verstoesse, ...pruefeAbhaengigkeiten(abh.zeilen)] : verstoesse;
+}
+
+// ------------------------------------------------------------
+// Testhinweise fuer Plaene (Issue #1031, Plan #1029)
+// ------------------------------------------------------------
+
+/**
+ * Die Test-Ablagen, die ohne Einstellung gelten (A5): TypeScript mit `.test`/`.spec`
+ * neben der Quelle, Java nach Maven-Gliederung. `{pfad}` steht fuer null oder mehr
+ * Verzeichnisse, `{name}` fuer den Dateinamen ohne Endung, `*` im Test-Muster fuer
+ * beliebige Zeichen innerhalb eines Segments.
+ */
+export const TEST_ABLAGEN_VORGABE = Object.freeze([
+  { quelle: "{pfad}/{name}.ts", test: "{pfad}/{name}.test.ts" },
+  { quelle: "{pfad}/{name}.ts", test: "{pfad}/{name}.spec.ts" },
+  { quelle: "{pfad}/{name}.tsx", test: "{pfad}/{name}.test.tsx" },
+  { quelle: "{pfad}/{name}.tsx", test: "{pfad}/{name}.spec.tsx" },
+  { quelle: "src/main/java/{pfad}/{name}.java", test: "src/test/java/{pfad}/{name}Test.java" },
+]);
+
+/**
+ * Die Ablagen eines Projekts aus `config.testAblagen`: fehlt das Feld, gelten die
+ * Vorgaben; ein Array ersetzt sie; ein Eintrag `{ "vorgaben": true }` fuegt die
+ * Vorgaben an dieser Stelle ein; `[]` schaltet die Pruefung ab. Die Form des Feldes
+ * prueft das Schema — hier zaehlt nur, was als Paar lesbar ist.
+ */
+export function testAblagen(config) {
+  const feld = config?.testAblagen;
+  if (!Array.isArray(feld)) return [...TEST_ABLAGEN_VORGABE];
+  return feld.flatMap((eintrag) => {
+    if (eintrag?.vorgaben === true) return TEST_ABLAGEN_VORGABE;
+    const gueltig = typeof eintrag?.quelle === "string" && eintrag.quelle !== ""
+      && typeof eintrag?.test === "string" && eintrag.test !== "";
+    return gueltig ? [{ quelle: eintrag.quelle, test: eintrag.test }] : [];
+  });
+}
+
+const ABLAGE_TEIL = /\{pfad\}\/|\{pfad\}|\{name\}|\*/g;
+
+/**
+ * Ein Ablage-Muster als verankerter Ausdruck (A4). Ohne `feste` fangen die benannten
+ * Gruppen `pfad` und `name` die Werte ein — `{pfad}/` darf dabei leer sein, die Gruppe
+ * fehlt dann. Mit `feste` stehen dieselben Werte woertlich im Ausdruck: So findet das
+ * Test-Muster genau die Tests, die zu der gefangenen Quelle gehoeren, ohne dass ein `*`
+ * neben `{name}` die Grenze verschieben koennte.
+ */
+export function ablageAlsAusdruck(muster, feste = null) {
+  const gesehen = new Set();
+  const gruppe = (name, ausdruck) => {
+    if (gesehen.has(name)) return String.raw`\k<${name}>`;
+    gesehen.add(name);
+    return `(?<${name}>${ausdruck})`;
+  };
+  const text = String(muster);
+  let quelle = "";
+  let letzte = 0;
+  for (const m of text.matchAll(ABLAGE_TEIL)) {
+    quelle += escapeRegex(text.slice(letzte, m.index)) + ablageTeilAlsAusdruck(m[0], feste, gruppe);
+    letzte = m.index + m[0].length;
+  }
+  return new RegExp(`^${quelle}${escapeRegex(text.slice(letzte))}$`);
+}
+
+const ABLAGE_PFAD = "[^/]+(?:/[^/]+)*";
+
+/** Ein Platzhalter der Ablage: gefangen (`gruppe`) oder mit dem festen Wert woertlich. */
+function ablageTeilAlsAusdruck(teil, feste, gruppe) {
+  if (teil === "*") return "[^/]*";
+  if (teil === "{name}") return feste ? escapeRegex(feste.name) : gruppe("name", "[^/]+");
+  if (teil === "{pfad}") return feste ? escapeRegex(feste.pfad) : gruppe("pfad", ABLAGE_PFAD);
+  if (!feste) return `(?:${gruppe("pfad", ABLAGE_PFAD)}/)?`;
+  return feste.pfad === "" ? "" : escapeRegex(`${feste.pfad}/`);
+}
+
+function escapeRegex(text) {
+  return String(text).replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/** Der Dateiname ohne seine letzte Endung. */
+function dateiStamm(datei) {
+  const name = basename(datei);
+  const ext = extname(name);
+  return ext ? name.slice(0, -ext.length) : name;
+}
+
+/**
+ * Das Verzeichnis, gegen das Nennungen aufgeloest werden (A8): jedes Pfad-Endstueck ab
+ * einer Segmentgrenze und jeder Dateiname ohne Endung, beide auf die Dateien, die sie
+ * bezeichnen. Eindeutig ist eine Nennung, wenn ihr Eintrag genau eine Datei traegt.
+ */
+export function nennungsVerzeichnis(dateien) {
+  const endstuecke = new Map();
+  const staemme = new Map();
+  const eintragen = (karte, schluessel, datei) => {
+    const liste = karte.get(schluessel);
+    if (liste) liste.push(datei);
+    else karte.set(schluessel, [datei]);
+  };
+  for (const datei of dateien) {
+    const segmente = datei.split("/");
+    for (let i = 0; i < segmente.length; i += 1) eintragen(endstuecke, segmente.slice(i).join("/"), datei);
+    eintragen(staemme, dateiStamm(datei), datei);
+  }
+  return { endstuecke, staemme };
+}
+
+const NENNUNG_TOKEN = /[A-Za-z0-9_./-]+/g;
+
+/** Punkt, Bindestrich und Schraegstrich am Tokenende gehoeren zum Satz, nicht zur Datei. */
+function ohneSatzzeichenAmEnde(token) {
+  let ende = token.length;
+  while (ende > 0 && "./-".includes(token[ende - 1])) ende -= 1;
+  return token.slice(0, ende);
+}
+
+/**
+ * Die Dateien, die ein Text eindeutig nennt: Tokens aus Pfadzeichen, Satzzeichen am Ende
+ * abgeschnitten, aufgeloest ueber das Endstueck und mit `stamm` auch ueber den Dateinamen
+ * ohne Endung. Eine mehrdeutige Nennung zaehlt fuer keine der Dateien.
+ */
+export function genannteDateien(text, verzeichnis, { stamm = false } = {}) {
+  const genannt = new Set();
+  for (const [roh] of String(text).matchAll(NENNUNG_TOKEN)) {
+    const token = ohneSatzzeichenAmEnde(roh.startsWith("./") ? roh.slice(2) : roh);
+    if (token === "") continue;
+    const treffer = verzeichnis.endstuecke.get(token) ?? (stamm ? verzeichnis.staemme.get(token) : undefined);
+    if (treffer?.length === 1) genannt.add(treffer[0]);
+  }
+  return genannt;
+}
+
+// Nur hier fuehrt ein Plan seine Bausteine (A6); Ziel und Verifizierung erwaehnen nur.
+const BAUSTEIN_ABSCHNITTE = new Set(["betroffene bereiche", "geplante aenderungen"]);
+
+/**
+ * Die Testhinweise eines Plans (A6 bis A9). Bausteine sind die Dateien, die
+ * `## Betroffene Bereiche` und `## Geplante Aenderungen` ausserhalb von Codebloecken
+ * mindestens mit Dateiname und Endung nennen. Je Baustein ergeben die Ablagen seine
+ * eigenen Tests — nur existierende Dateien, die Quelle selbst nicht, keine Import-Analyse.
+ * Ein Test gilt als genannt, wenn der ganze Body ihn eindeutig nennt, auch im Kopf und in
+ * Codebloecken, auch nur mit seinem Stamm.
+ */
+export function pruefeTestNennung(abschnitte, body, dateien, config) {
+  const ablagen = testAblagen(config);
+  if (ablagen.length === 0 || dateien.length === 0) return [];
+  const verzeichnis = nennungsVerzeichnis(dateien);
+  const bausteinText = abschnitte.filter((a) => BAUSTEIN_ABSCHNITTE.has(a.titel)).flatMap((a) => a.zeilen).join("\n");
+  const bausteine = genannteDateien(bausteinText, verzeichnis);
+  if (bausteine.size === 0) return [];
+  const genannt = genannteDateien(body, verzeichnis, { stamm: true });
+  const hinweise = [];
+  const gemeldet = new Set();
+  for (const baustein of bausteine) {
+    for (const ablage of ablagen) {
+      const m = ablageAlsAusdruck(ablage.quelle).exec(baustein);
+      if (!m) continue;
+      const feste = { pfad: m.groups?.pfad ?? "", name: m.groups?.name ?? "" };
+      const testAusdruck = ablageAlsAusdruck(ablage.test, feste);
+      for (const test of dateien.filter((d) => testAusdruck.test(d))) {
+        const schluessel = `${baustein}\n${test}`;
+        if (test === baustein || genannt.has(test) || gemeldet.has(schluessel)) continue;
+        gemeldet.add(schluessel);
+        hinweise.push({
+          baustein,
+          test,
+          meldung: `Zu ${baustein} gehört ${test}, der Plan nennt ihn nicht. Bleibt er grün, oder fehlt er in der Liste der Änderungen?`,
+        });
+      }
+    }
+  }
+  return hinweise;
+}
+
+/**
+ * Die versionierten Dateien des Projekts als Bestand der Testhinweise (A3, E5):
+ * `git ls-files --full-name` liefert Pfade ab der Repo-Wurzel, auch aus einem
+ * Unterverzeichnis. Ohne Repo gibt es keinen Bestand und damit keine Hinweise.
+ */
+function versionierteDateien() {
+  const res = spawnSync("git", ["ls-files", "--full-name", "-z"], {
+    cwd: process.cwd(), encoding: "utf-8", maxBuffer: 256 * 1024 * 1024,
+  });
+  if (res.error || res.status !== 0) return [];
+  return res.stdout.split("\0").filter((d) => d !== "");
 }
 
 /**
@@ -3378,23 +5054,41 @@ function pruefeIssue(abschnitte, config) {
  *
  * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
  * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I6 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * Arbeitspaket: I1 bis I9 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
  * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
  * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
- * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt.
- * Die `[Urteil]`-Gates bleiben beim Reviewer.
+ * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt;
+ * dazu eine Datei als Backtick-Pfad in der Aufgabe (I7), keine geschuetzte Datei in
+ * Aufgabe oder Kriterium (I8) und nicht die installierte Kopie in der Aufgabe (I9) —
+ * ein `[Mensch]`-Paket besteht I7 bis I9. Die `[Urteil]`-Gates bleiben beim Reviewer.
  *
- * `config` braucht nur I6 — fuer die Guetekommandos des Projekts.
+ * `config` braucht I6 — fuer die Guetekommandos des Projekts — und beim Plan die
+ * Test-Ablagen (`testAblagen`). `wurzel` ist die Projektwurzel, deren Einstellungen I8
+ * nach Schreibsperren liest; die Kommandozeile reicht die Wurzel der Config.
+ *
+ * Beim Plan kommen die Testhinweise dazu (Issue #1031): je eigener Test eines
+ * gefuehrten Bausteins, den der Plan nicht nennt, ein Eintrag in `hinweise`, gegen den
+ * Bestand `dateien`. Sie sind **kein Gate** — `ok` haengt allein an `verstoesse`, und
+ * der Schluessel `hinweise` steht nur bei mindestens einem Treffer im Ergebnis.
+ *
+ * Beim Arbeitspaket haengt `issue check-form` die Hinweise zum Abschnitt
+ * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
+ * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
  */
-export function pruefeForm(body, title, config = {}) {
+export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".") {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
   if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
   else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
-  else verstoesse = pruefeIssue(abschnitte, config);
-  return { ok: verstoesse.length === 0, stufe, verstoesse };
+  else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
+  const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
+  if (stufe === "plan") {
+    const hinweise = pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config);
+    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
+  }
+  return ergebnis;
 }
 
 /** Weist einen Aufruf ab — mit JSON auf stdout, damit ein Aufrufer die Abweisung lesen kann. */
@@ -3435,9 +5129,48 @@ async function issueCheckForm(tracker, config, args) {
   if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
 
   const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
-  const ergebnis = pruefeForm(body, title, config);
+  const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
+  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
+  if (ergebnis.stufe === "issue") {
+    const hinweise = await abhaengigkeitsHinweise(body, tracker);
+    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
+  }
   out(ergebnis);
   if (!ergebnis.ok) process.exit(1);
+}
+
+/**
+ * `issue check-geschuetzt <id> [--pfad <pfad>]...` (Issue #1045, Plan #987, E6): Treffer, Label,
+ * Freigabe und Halt-Kommentar eines Pakets — die eine Quelle fuer Runner, Auftrag und Skills.
+ * `--pfad` nimmt einen beim Schreiben abgewiesenen Pfad mit auf (Issue #1053, E13). Rein lesend.
+ * Ein Label ohne Treffer ist ein Befund (Karte aus dem Rueckfall-Halt): Der Runner
+ * ueberspringt sie, das Kommando gibt dieselbe Auskunft.
+ */
+async function issueCheckGeschuetzt(tracker, args) {
+  const id = args._[0];
+  if (id === undefined) fail("issue check-geschuetzt braucht eine Kartennummer: node board.mjs issue check-geschuetzt <id>");
+  const issue = await tracker.getIssue(String(id));
+  const kommentare = await tracker.kommentareStreng(String(id));
+  const labels = issue.labels || [];
+  const treffer = [
+    ...geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel()),
+    ...abgewieseneTreffer(args.werte?.pfad ?? [], configWurzel()),
+  ];
+  const label = labels.includes(GESCHUETZT_LABEL);
+  const freigegeben = geschuetztFreigabe(treffer, kommentare, labels);
+  const ok = freigegeben || (treffer.length === 0 && !label);
+  out({ ok, treffer, label, freigegeben, handlung: geschuetztHandlung(treffer, label, freigegeben), kommentar: treffer.length > 0 ? geschuetztKommentar(treffer) : null });
+  if (!ok) process.exit(1);
+}
+
+/** Der Satz fuer den Menschen zum Ergebnis von `issue check-geschuetzt`. */
+function geschuetztHandlung(treffer, label, freigegeben) {
+  if (freigegeben) return "Freigegeben: Der Halt-Kommentar nennt jede geschuetzte Datei und das Label ist abgenommen — das Paket darf beginnen.";
+  if (treffer.length === 0 && !label) return "Keine geschuetzte Datei genannt — das Paket darf beginnen.";
+  if (treffer.length === 0) return `menschliche Handlung wartet: Die Karte traegt das Label ${GESCHUETZT_LABEL}. Ist die geschuetzte Aenderung erledigt, nimmt ein Mensch das Label ab.`;
+  const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
+  if (label) return `menschliche Handlung wartet: Ein Mensch nimmt die Aenderung an ${pfade} selbst vor und nimmt danach das Label ${GESCHUETZT_LABEL} ab.`;
+  return `menschliche Handlung wartet: Das Paket nennt ${pfade}, die nur ein Mensch schreiben darf. Es wird angehalten; der Halt-Kommentar sagt, was zu aendern ist.`;
 }
 
 async function dispatchIssue(command, args) {
@@ -3452,8 +5185,12 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
+    case "melden":  return issueMelden(tracker, args);
+    case "stand":   return issueStand(tracker, config, args);
+    case "auftrag": return issueAuftrag(tracker, args);
     case "label":   return issueLabel(tracker, config, args);
     case "check-form": return issueCheckForm(tracker, config, args);
+    case "check-geschuetzt": return issueCheckGeschuetzt(tracker, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
@@ -3775,7 +5512,7 @@ const PATHEXT_DEFAULT = ".COM;.EXE;.BAT;.CMD";
  * ob das Werkzeug DA ist — dafuer braucht es keinen Prozess. Der fruehere Weg (`datei
  * --version` starten) lieferte unter Windows falsch negative Ergebnisse: Ein per npm
  * installiertes CLI liegt dort als `codex.cmd`, und fuer `.cmd` wirft Node seit
- * CVE-2024-27980 `EINVAL` ohne `shell: true` — das aber hat board.mjs in Issue #196
+ * CVE-2024-27980 `EINVAL` ohne die Shell-Option von spawn — die aber hat board.mjs in Issue #196
  * bewusst abgeschafft. Getroffen haette es ausgerechnet die fremden Modelle, fuer die
  * der `command`-Adapter gebaut wurde.
  *
@@ -3827,14 +5564,132 @@ export function findeImPath(datei, opts = {}) {
   return null;
 }
 
+/**
+ * Der Wert einer Umgebungsvariablen ohne Ruecksicht auf Gross-/Kleinschreibung (Issue #1131).
+ *
+ * `process.env` ist unter Windows case-insensitiv, eine Kopie davon nicht mehr: Dort heisst
+ * die Variable meist `Path`, und `{ ...process.env, PATH: x }` traegt dann beide Schluessel.
+ * Gewonnen hat der spaetere, wie bei der Kopie gemeint.
+ */
+function umgebungsWert(env, name) {
+  let wert;
+  for (const [schluessel, w] of Object.entries(env || {})) {
+    if (schluessel.toUpperCase() === name) wert = w;
+  }
+  return wert;
+}
+
+const GIT_BASH_FEHLT = "Git Bash nicht gefunden (Voraussetzung unter Windows)"
+  + String.raw` — Git for Windows installieren oder CLAUDE_CODE_GIT_BASH_PATH auf bin\bash.exe setzen`;
+
+/**
+ * Die Umgebung jedes Starts ueber die Git Bash (Issue #1131). Ohne sie verwandelt die Git Bash
+ * ein Argument mit fuehrendem Schraegstrich auf dem Weg zu einem nativen Programm in einen
+ * Windows-Pfad — aus dem Auftrag `/implement-next #1` wuerde `C:/Program Files/Git/implement-next #1`.
+ * Beide Schreibweisen, weil MSYS2 die zweite liest und Git for Windows die erste.
+ */
+export const GIT_BASH_UMGEBUNG = Object.freeze({ MSYS_NO_PATHCONV: "1", MSYS2_ARG_CONV_EXCL: "*" });
+
+/**
+ * Wo liegt die Git Bash (Issue #1131, Plan #1128, E1)? Liefert `{ pfad, fehler }`.
+ *
+ * Der Reihe nach: `CLAUDE_CODE_GIT_BASH_PATH`, wenn die Datei existiert — dieselbe Variable,
+ * mit der Claude Code selbst seine Shell findet. Dann vom Pfad der im PATH gefundenen
+ * `git.exe` aufwaerts bis zu dem Verzeichnis, das `bin\bash.exe` enthaelt; so trifft die Suche
+ * `<Git>\cmd\git.exe`, `<Git>\bin\git.exe` und `<Git>\mingw64\bin\git.exe` gleichermassen.
+ *
+ * **Nie `bash` ueber den PATH:** `C:\Windows\System32\bash.exe` ist der WSL-Starter, und WSL
+ * gilt als Linux, nicht als natives Windows. Eine Fundstelle dort waere eine fremde Shell mit
+ * eigenem Dateisystem.
+ *
+ * Umgebung, Plattform und Dateisystem sind injizierbar wie bei `findeImPath`.
+ */
+export function gitBashPfad({ env = process.env, plattform = "win32", existiert = existsSync } = {}) {
+  const eingestellt = umgebungsWert(env, "CLAUDE_CODE_GIT_BASH_PATH");
+  if (eingestellt && existiert(eingestellt)) return { pfad: eingestellt, fehler: null };
+
+  const git = findeImPath("git", {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+  });
+  if (git) {
+    // path.win32 statt path: Die Semantik ist die der uebergebenen Plattform, nicht die des
+    // Hosts — derselbe Grund wie beim Zusammensetzen in findeImPath.
+    let dir = path.win32.dirname(git);
+    for (;;) {
+      const bash = path.win32.join(dir, "bin", "bash.exe");
+      if (existiert(bash)) return { pfad: bash, fehler: null };
+      const oben = path.win32.dirname(dir);
+      if (oben === dir) break;
+      dir = oben;
+    }
+  }
+  return { pfad: null, fehler: GIT_BASH_FEHLT };
+}
+
+/**
+ * Wie startet das Kit ein Programm (Issue #1131, Plan #1128, E8)? Liefert
+ * `{ befehl, vorArgs, umgebung, fehler }`; gestartet wird `befehl` mit `[...vorArgs, ...args]`
+ * und `umgebung` zusaetzlich zur eigenen.
+ *
+ * Auf POSIX unveraendert der Name. Unter Windows:
+ *   - Liefert die Suche im PATH eine `.exe` oder `.com`, startet sie direkt.
+ *   - Liegt nur eine `.cmd`- oder `.bat`-Huelle vor und daneben eine gleichnamige Datei ohne
+ *     Endung, startet diese ueber die Git Bash: `bash.exe <datei> …args`. npm legt eine solche
+ *     sh-Huelle unter Windows immer mit an.
+ *   - Fehlt sie, ist das Programm ohne `cmd.exe` nicht startbar, und genau das steht im Fehler.
+ *     Ein `.cmd` ueber die Shell-Option von spawn faellt aus: Node lehnt `.cmd` ohne Shell seit
+ *     CVE-2024-27980 ab, und cmd-Quoting kann keine Zeilenumbrueche.
+ *
+ * Liegt das Programm gar nicht im PATH, bleibt es beim Namen: Der Start scheitert dann mit
+ * ENOENT, und die Meldung dazu kennt der Aufrufer.
+ */
+export function startbefehlFuer(name, { env = process.env, plattform = process.platform, existiert = existsSync } = {}) {
+  const direkt = { befehl: name, vorArgs: [], umgebung: {}, fehler: null };
+  if (plattform !== "win32") return direkt;
+
+  const gefunden = findeImPath(name, {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+  });
+  if (!gefunden) return direkt;
+
+  const endung = path.win32.extname(gefunden).toLowerCase();
+  if (endung === ".exe" || endung === ".com") return { ...direkt, befehl: gefunden };
+
+  const nichtStartbar = (grund) => ({ befehl: null, vorArgs: [], umgebung: {}, fehler: grund });
+  const huelle = gefunden.slice(0, -endung.length);
+  if ((endung === ".cmd" || endung === ".bat") && existiert(huelle)) {
+    const bash = gitBashPfad({ env, plattform, existiert });
+    if (bash.fehler) return nichtStartbar(`"${name}" liegt als sh-Huelle vor (${huelle}): ${bash.fehler}`);
+    return { befehl: bash.pfad, vorArgs: [huelle], umgebung: { ...GIT_BASH_UMGEBUNG }, fehler: null };
+  }
+  return nichtStartbar(`"${name}" liegt nur als ${gefunden} ohne sh-Huelle daneben vor und ist nicht ohne cmd.exe startbar`);
+}
+
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
 // sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
-// Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
-// noch einmal zu suchen (unter Windows steckt in `pfad` die Endung aus PATHEXT).
-function kommandoVerfuegbar(kommandozeile) {
+// Liefert zusaetzlich den aufgeloesten Pfad und den Startbefehl dazu — der Probelauf
+// unten startet damit, statt noch einmal zu suchen. Unter Windows steckt in `pfad` die
+// Endung aus PATHEXT, und ein per npm installiertes `codex.cmd` startet ueber seine
+// sh-Huelle in der Git Bash (Issue #1135, E8); fehlt die Huelle, steht das in
+// `start.fehler`. Umgebung, Plattform und Dateisystem sind injizierbar wie bei
+// `startbefehlFuer`.
+export function kommandoVerfuegbar(kommandozeile, { env = process.env, plattform = process.platform, existiert, ausfuehrbar } = {}) {
   const datei = kommandozeile.trim().split(/\s+/)[0];
-  const pfad = findeImPath(datei, { path: process.env.PATH, pathext: process.env.PATHEXT });
-  return { datei, ok: pfad !== null, pfad };
+  const pfad = findeImPath(datei, {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+    ausfuehrbar,
+  });
+  if (pfad === null) return { datei, ok: false, pfad, start: null };
+  return { datei, ok: true, pfad, start: startbefehlFuer(pfad, { env, plattform, existiert }) };
 }
 
 // Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
@@ -3863,13 +5718,15 @@ const PROBE_TIMEOUT_MS = Number(process.env.KIT_PROBE_TIMEOUT_MS) || 60_000;
  * Whitespace zerlegt und als argv uebergeben. Dieselbe Annahme wie in
  * kommandoVerfuegbar — eine Reviewer-Kommandozeile mit Quotes oder Pipes ist damit
  * nicht abgedeckt, und das ist der Preis dafuer, dass es unter Windows laeuft.
+ * Gestartet wird nach `start` aus kommandoVerfuegbar (Issue #1135, E8).
  */
-function probelauf(kommandozeile, pfad) {
+function probelauf(kommandozeile, start) {
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
-  const res = spawnSync(pfad, argumente, {
+  const res = spawnSync(start.befehl, [...start.vorArgs, ...argumente], {
     input: PROBE_PROMPT,
     encoding: "utf-8",
     timeout: PROBE_TIMEOUT_MS,
+    env: { ...process.env, ...start.umgebung },
   });
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
     return { ok: false, grund: `Zeitlimit von ${PROBE_TIMEOUT_MS} ms ueberschritten` };
@@ -3979,10 +5836,12 @@ function issueReviewCheck(args = {}) {
   const ergebnis = reviewers.map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
     if (r.kind === "claude") return { ...basis, verfuegbar: true };
-    const { datei, ok, pfad } = kommandoVerfuegbar(r.command);
+    const { datei, ok, start } = kommandoVerfuegbar(r.command);
     if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    // Im PATH, aber nicht startbar: eine `.cmd` ohne sh-Huelle unter Windows (E8).
+    if (start.fehler) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: start.fehler };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
-    const probe = probelauf(r.command, pfad);
+    const probe = probelauf(r.command, start);
     return probe.ok
       ? { ...basis, verfuegbar: true, geprueft: "probelauf" }
       : { ...basis, verfuegbar: false, geprueft: "probelauf", grund: probe.grund };
@@ -4069,6 +5928,10 @@ const NACHTLAUF_FEST = {
   liegengeblieben: ["GREY", null],
   unbekannt: ["RED", "HARD_ABORT"],
   harterStopp: ["RED", "HARD_ABORT"],
+  // Eine Einheit, die der Waechter eines verstummten Laufs abgeschlossen hat (Issue #1085,
+  // E18). `abgebrochen` steht bewusst NICHT hier: Die Kette fuehrt es als eigenen Ausgang
+  // mit dem Zeitbudget als Unterscheidung (farbeAbgebrochen).
+  verstummt: ["RED", "HARD_ABORT"],
   angehalten: ["RED", "AWAITING_DECISION"],
   // Der Vorgang lief durch und hat etwas Bestelltes nicht getan (Issue #862): die Kette,
   // deren Umsetzung an einer belegten Sperre ausblieb, und die Pruefung, deren Ergebnis
@@ -4203,6 +6066,7 @@ function nachtlaufBudget(stand) {
 
 /**
  * Der Grund, an dem ein Lauf hart gestoppt ist; `null`, solange keiner vorliegt (Issue #881).
+ * Seit Issue #1085 ebenso fuer einen verstummten und einen abgebrochenen Lauf.
  *
  * Die Kaskade folgt den drei Stopp-Pfaden in night.mjs: `fail()` schreibt den Text an den
  * Lauf-Kopf, der Vorflug-Stopp und der harte Stopp der Implementierung lassen ihn dort
@@ -4212,8 +6076,15 @@ function nachtlaufBudget(stand) {
  *
  * Reine Funktion wie `nachtlaufBudget`: Sie liest den Stand und schreibt nichts hinein.
  */
+// Die Abschluesse, die eine Stoerung sind, mit dem Grund, der bleibt, wenn der Stand keinen
+// nennt. `verstummt` setzt der Waechter, `abgebrochen` die Abbruch-Handler (Issue #1085,
+// E18): Beide schliessen den Lauf ab, und ohne Grund stuende er am Leitstand wie ein
+// regulaer beendeter.
+const NACHTLAUF_ABBRUCH = { harterStopp: "Harter Stopp", verstummt: "Verstummt", abgebrochen: "Abgebrochen" };
+
 export function nachtlaufAbbruchGrund(stand) {
-  if (stand?.abschluss !== "harterStopp") return null;
+  const ersatz = NACHTLAUF_ABBRUCH[stand?.abschluss];
+  if (ersatz === undefined) return null;
   const gefuellt = (text) => typeof text === "string" && text !== "";
   if (gefuellt(stand.fehlerText)) return stand.fehlerText.slice(0, NACHTLAUF_AUSZUG_MAX);
   const einheiten = Array.isArray(stand.einheiten) ? stand.einheiten : [];
@@ -4221,7 +6092,7 @@ export function nachtlaufAbbruchGrund(stand) {
     ? null
     : einheiten.find((e) => String(e?.id) === String(stand.fehlerEinheit));
   if (betroffen && gefuellt(betroffen.grund)) return betroffen.grund.slice(0, NACHTLAUF_AUSZUG_MAX);
-  return gefuellt(stand.fehlerklasse) ? `Harter Stopp (${stand.fehlerklasse})` : "Harter Stopp";
+  return gefuellt(stand.fehlerklasse) ? `${ersatz} (${stand.fehlerklasse})` : ersatz;
 }
 
 function nachtlaufDauer(einheit) {
@@ -4315,7 +6186,8 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     ...(noWorkReason !== null ? { noWorkReason } : {}),
     // Nur, wo der Stand ein Budget fuehrt (Issue #808) — heute allein die Kette.
     ...(budget !== null ? { budget } : {}),
-    // Nur bei einem hart gestoppten Lauf (Issue #881) — wie noWorkReason und budget:
+    // Nur bei einem hart gestoppten, verstummten oder abgebrochenen Lauf (Issue #881,
+    // #1085) — wie noWorkReason und budget:
     // Das Feld immer mitzuschicken liesse zwei Stellen ueber dieselbe Frage entscheiden.
     ...(abortReason !== null ? { abortReason } : {}),
   };
@@ -4927,6 +6799,27 @@ export function pruefeBashZeile(zeile, muster) {
   };
 }
 
+/**
+ * Hintergrundarbeit ohne Aufsicht (Issue #1081): Eine headless Session hat keinen
+ * Folge-Zug. Startet sie einen Bash-Aufruf mit `run_in_background` und beendet dann ihren
+ * Zug, ist die Sitzung zu Ende und das Ergebnis verloren — in der Nacht zum 30.09.2026 bei
+ * #1065, obwohl die Regel im Skilltext stand (#668, #754, #983). Unbeaufsichtigt heisst wie
+ * ueberall im Kit: `KIT_AGENT_MODEL` ist gesetzt. Interaktiv bleibt Hintergrundarbeit
+ * erlaubt, dort gibt es den Folge-Zug.
+ */
+export function pruefeHintergrund(toolInput, env = process.env) {
+  const unbeaufsichtigt = typeof env.KIT_AGENT_MODEL === "string" && env.KIT_AGENT_MODEL.trim() !== "";
+  if (!unbeaufsichtigt || toolInput?.run_in_background !== true) return { abweisen: false, grund: null };
+  return {
+    abweisen: true,
+    grund: "Abgewiesen: run_in_background ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt). Eine "
+      + "unbeaufsichtigte Session hat keinen Folge-Zug — beendet sie ihren Zug, waehrend der Befehl "
+      + "noch laeuft, ist die Sitzung zu Ende und sein Ergebnis verloren. Richtige Form: denselben "
+      + "Befehl im Vordergrund aufrufen und auf ihn warten; das Bash-Zeitlimit der Session reicht "
+      + "bis knapp unter das Rundenlimit (Issue #668).",
+  };
+}
+
 /** Die Muster aus `sandbox.excludedCommands` und `sandbox.network.excludedCommands` einer Settings-Datei. */
 function bashMusterAus(pfad) {
   if (!existsSync(pfad)) return [];
@@ -4949,6 +6842,12 @@ function hookBashPruefen() {
     return durchlassen(`Eingabe nicht lesbar (${e.message})`);
   }
   if (eingabe?.tool_name !== "Bash" || typeof eingabe?.tool_input?.command !== "string") return;
+  const hintergrund = pruefeHintergrund(eingabe.tool_input);
+  if (hintergrund.abweisen) {
+    process.stderr.write(hintergrund.grund + "\n");
+    process.exitCode = 2;
+    return;
+  }
 
   const wurzel = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const muster = [];

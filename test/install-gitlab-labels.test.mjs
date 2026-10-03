@@ -7,25 +7,58 @@
 // dieselbe Fehlerklasse wie in Issue #196, nur an anderer Stelle.
 //
 // Getestet wird gegen das ECHTE install.mjs aus dem Repo, im Piped-Modus mit einem
-// Fake-glab im PATH — kein Netz, kein echtes GitLab, und geschrieben wird
-// ausschliesslich in ein Wegwerf-Verzeichnis.
+// Fake-glab ueber den Test-Hook INSTALL_GLAB_FAKE (Issue #1136) — kein Netz, kein
+// echtes GitLab, und geschrieben wird ausschliesslich in ein Wegwerf-Verzeichnis.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { fakeCli, aufrufe } from "./helpers/board-fixture.mjs";
-
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und install.mjs startet seit #198 bewusst ohne Shell. Siehe Issue #197." } : {};
+import { cliStart } from "../install.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
+const GRAMMATIK = join(repoRoot, "test", "fixtures", "cli-grammar.json");
+
+/**
+ * Das Fake-glab aus `fakeCli`, erreichbar ueber den Test-Hook statt ueber den PATH
+ * (Issue #1136): ein Node-Skript, das die Fake-Implementierung mit Spec, Log und
+ * Grammatik startet — dieselbe Zeile, die sonst der sh-Wrapper absetzt. Ein Node-Skript
+ * ist auch unter Windows startbar, der sh-Wrapper nicht.
+ */
+function glabFake(dir, regeln) {
+  fakeCli(dir, "glab", regeln);
+  const bin = join(dir, "fakebin");
+  const skript = join(bin, "glab-hook.mjs");
+  const vorne = [join(bin, "glab-impl.mjs"), join(bin, "glab.spec.json"), join(bin, "glab.log.jsonl"), GRAMMATIK];
+  writeFileSync(skript, [
+    'import { spawnSync } from "node:child_process";',
+    `const res = spawnSync(process.execPath, [...${JSON.stringify(vorne)}, ...process.argv.slice(2)], {`,
+    '  stdio: "inherit", env: { ...process.env, FAKE_CLI_NAME: "glab" },',
+    "});",
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"));
+  return { ...process.env, INSTALL_GLAB_FAKE: skript };
+}
+
+test("ohne INSTALL_GLAB_FAKE startet install.mjs das echte glab mit unveraenderten Argumenten", () => {
+  const args = ["label", "create", "--name", "In progress"];
+  assert.deepEqual(cliStart("glab", args, "INSTALL_GLAB_FAKE", {}), { cmd: "glab", args });
+});
+
+test("mit INSTALL_GLAB_FAKE startet install.mjs das Node-Skript mit dem laufenden Node", () => {
+  const skript = join(repoRoot, "install.mjs");
+  assert.deepEqual(
+    cliStart("glab", ["label", "create"], "INSTALL_GLAB_FAKE", { INSTALL_GLAB_FAKE: skript }),
+    { cmd: process.execPath, args: [skript, "label", "create"] },
+  );
+});
 
 // Die Antworten auf die Installer-Fragen, in der Reihenfolge von main():
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
@@ -39,18 +72,20 @@ const INSTALLER = join(repoRoot, "install.mjs");
 // nach dem beschriebenen Verhalten seit Issue #461 (A19). Bliebe die Zeile stehen,
 // fraesse die Label-Frage sie, das 'j' bliebe uebrig — und die Labels wuerden nie
 // angelegt, ohne dass der Test es merkt.
-const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "j"].join("\n") + "\n";
+// Die zehnte, leere Zeile ueberspringt die Bereichsfrage (Issue #1009); ohne sie
+// fraesse diese das 'j'.
+const ANTWORTEN = ["projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"].join("\n") + "\n";
 
-test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", NUR_POSIX, () => {
+test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-"));
   try {
-    fakeCli(dir, "glab", [{ match: "^label create", stdout: "" }]);
+    const env = glabFake(dir, [{ match: "^label create", stdout: "" }]);
 
     const res = spawnSync(process.execPath, [INSTALLER], {
       cwd: dir,
       input: ANTWORTEN,
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}` },
+      env,
     });
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
 
@@ -73,10 +108,10 @@ test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", NUR_PO
   }
 });
 
-test("install.mjs meldet ein bereits vorhandenes Label als solches", NUR_POSIX, () => {
+test("install.mjs meldet ein bereits vorhandenes Label als solches", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-exists-"));
   try {
-    fakeCli(dir, "glab", [
+    const env = glabFake(dir, [
       { match: "^label create --name Backlog", stderr: "label already exists\n", exit: 1 },
       { match: "^label create", stdout: "" },
     ]);
@@ -85,7 +120,7 @@ test("install.mjs meldet ein bereits vorhandenes Label als solches", NUR_POSIX, 
       cwd: dir,
       input: ANTWORTEN,
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}` },
+      env,
     });
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}`);
     assert.match(res.stdout, /~ Backlog \(bereits vorhanden\)/);
@@ -95,10 +130,10 @@ test("install.mjs meldet ein bereits vorhandenes Label als solches", NUR_POSIX, 
   }
 });
 
-test("install.mjs meldet einen echten glab-Fehler als Warnung, ohne abzubrechen", NUR_POSIX, () => {
+test("install.mjs meldet einen echten glab-Fehler als Warnung, ohne abzubrechen", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-fehler-"));
   try {
-    fakeCli(dir, "glab", [
+    const env = glabFake(dir, [
       { match: "^label create --name Ready", stderr: "401 Unauthorized\n", exit: 1 },
       { match: "^label create", stdout: "" },
     ]);
@@ -107,7 +142,7 @@ test("install.mjs meldet einen echten glab-Fehler als Warnung, ohne abzubrechen"
       cwd: dir,
       input: ANTWORTEN,
       encoding: "utf-8",
-      env: { ...process.env, PATH: `${join(dir, "fakebin")}:${process.env.PATH}` },
+      env,
     });
     // Ein fehlgeschlagenes Label darf die Installation nicht kippen — der Rest
     // der Einrichtung ist davon unabhaengig.

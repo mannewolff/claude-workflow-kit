@@ -35,6 +35,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten } from "../kit/checks.mjs";
+// `checks.mjs bereiche` laeuft als Kindprozess (Issue #1008); der eigene Sperrpfad haelt
+// die Datei aus der maschinenweiten Sperre, wie jede andere, die checks.mjs startet.
+import "./helpers/checks-sperre.mjs";
 import { verflechtungErheben } from "../tools/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -85,6 +88,19 @@ test("jeder Testaufruf ist mindestens einem Teil zugeordnet", () => {
   }
 });
 
+test("genau die Testaufrufe tragen gleichzeitig: true", () => {
+  // Issue #1074 (Plan #1066, A1, E3): Die Testgruppen laufen nebeneinander, alles andere
+  // danach allein — Lint, Drift-Pruefung und der frische Checkout messen den Stand, den die
+  // Tests hinterlassen, und teilen sich keine Last mit ihnen. Dieselbe Erkennung wie
+  // `testEintraege`: am Kommando, nicht an der Position.
+  const eintraege = (config.buildChecks ?? [])
+    .map((eintrag) => (typeof eintrag === "string" ? { cmd: eintrag } : eintrag));
+  const falsch = eintraege
+    .filter((eintrag) => (eintrag.gleichzeitig === true) !== eintrag.cmd.startsWith("node --test"))
+    .map((eintrag) => `${eintrag.cmd}: gleichzeitig=${eintrag.gleichzeitig === true}`);
+  assert.deepEqual(falsch, [], "Eintraege, deren Kennzeichen gleichzeitig nicht zu ihrem Kommando passt");
+});
+
 test("jede versionierte Testdatei wird von einem der Aufrufe erfasst", () => {
   const regexe = testEintraege.flatMap(globeVon);
   assert.ok(regexe.length > 0, "kein einziges Dateimuster in den Testaufrufen gefunden");
@@ -126,9 +142,11 @@ test("jede versionierte Quelldatei liegt in mindestens einem Teil", () => {
   // Markdown-Dateien der Wurzel mit in der Menge: Sie waren bisher der groesste
   // Posten unter den Dateien, die bei jeder Aenderung den vollen Umfang zogen —
   // und eine Menge, die sie auslaesst, bescheinigt eine Deckung, die es nicht gibt.
+  // Seit Issue #1008 (Plan #1001, E9) gehoert `test/fixtures/**` dazu: Die Dateien dort
+  // waren die letzten, die im Inventar „ohne jede Zuordnung" standen.
   const dateien = versionierte(
     "kit", "tools", "skills", "docs", "templates", ".githooks", "install.mjs", "RELEASING.md",
-    ":(glob)test/helpers/**", ":(glob)*.md",
+    ":(glob)test/helpers/**", ":(glob)test/fixtures/**", ":(glob)*.md",
   );
 
   // Eine Datei ist zugeordnet, wenn sie ein `checkAreas`-Muster ODER ein
@@ -265,4 +283,102 @@ test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
     assert.ok(eintrag.muster?.length > 0, `Eintrag ohne Muster: ${JSON.stringify(eintrag)}`);
     assert.ok(eintrag.grund?.length > 0, `${eintrag.muster} nennt keinen Grund`);
   }
+});
+
+// --- Gekoppelte Bereiche (Issue #1008, Plan #1001, E8, E14) -------------------
+//
+// `gekoppelteBereiche` erlaubt einem Bereich, hervorgehoben zu bleiben — in allen
+// oder allen bis auf einem bereichsgebundenen Kommando —, wenn eine gemessene
+// Kopplung ihn dorthin zwingt. Damit das Feld kein stummer Ausschalter wird, gilt
+// es in beiden Richtungen: Ein hervorgehobener Bereich ohne Eintrag ist ein Zuschnitt,
+// der nichts mehr herausschneidet, und ein Eintrag ohne Kopplung ist eine Ausrede.
+//
+// Die Hervorhebung kommt aus `checks.mjs bereiche`, nicht aus einer zweiten Rechnung
+// hier: Dieselbe Regel zweimal beschrieben wiche ab der ersten Aenderung voneinander ab.
+
+/** Die Ausgabe von `checks.mjs bereiche` fuer die Config dieses Repos. */
+function bereicheAuswertung() {
+  const res = spawnSync(process.execPath, [join(repoRoot, "kit", "checks.mjs"), "bereiche"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+  });
+  assert.equal(res.status, 0, `checks.mjs bereiche schlug fehl: ${(res.stderr || "").trim()}`);
+  return JSON.parse(res.stdout);
+}
+
+/** Hervorgehobene Bereiche, die `gekoppelteBereiche` der Config nicht nennt. */
+function hervorgehobenOhneEintrag(auswertung, cfg) {
+  const eingetragen = new Set((cfg.gekoppelteBereiche ?? []).map((e) => e.bereich));
+  return auswertung.bereiche
+    .filter((b) => b.hervorgehoben && !eingetragen.has(b.name))
+    .map((b) => b.name)
+    .sort();
+}
+
+/**
+ * Je Eintrag in `gekoppelteBereiche` die Testaufrufe, die ihn in `areas` fuehren, ohne
+ * dass eine ihrer Testdateien nach der Verflechtung eine Quelle dieses Bereichs laedt.
+ */
+function eintraegeOhneKopplung(cfg, tabelle) {
+  const bereiche = bereicheVorbereiten(cfg.checkAreas ?? {});
+  const aufrufe = (cfg.buildChecks ?? [])
+    .filter((eintrag) => typeof eintrag === "object" && eintrag.cmd.startsWith("node --test"));
+  const testdateien = [...tabelle.keys()];
+
+  const ohne = [];
+  for (const { bereich } of cfg.gekoppelteBereiche ?? []) {
+    const regexe = bereiche.find((b) => b.name === bereich)?.regexe ?? [];
+    const laedt = (testdatei) => tabelle.get(testdatei).some((q) => regexe.some((r) => r.test(q)));
+    for (const aufruf of aufrufe.filter((a) => (a.areas ?? []).includes(bereich))) {
+      const eigene = testdateien.filter((t) => globeVon(aufruf).some((r) => r.test(t)));
+      if (!eigene.some(laedt)) ohne.push(`${bereich}: ${aufruf.cmd}`);
+    }
+  }
+  return ohne.sort();
+}
+
+// Mit den groben Gruppen (Issue #1068) sind mehrere Bereiche wieder hervorgehoben; der
+// feinere Zuschnitt kommt mit #1040 zurueck. Bis dahin zeigt der Fall die Absicht als offen.
+test("jeder hervorgehobene Bereich steht in gekoppelteBereiche", { todo: "grobe Gruppen bis #1040" }, () => {
+  const auswertung = bereicheAuswertung();
+  assert.ok(auswertung.kommandos >= 3, "weniger als drei bereichsgebundene Kommandos — keine Hervorhebung messbar");
+  assert.deepEqual(
+    hervorgehobenOhneEintrag(auswertung, config),
+    [],
+    "hervorgehobene Bereiche ohne gemessene Kopplung als Grund — sie schneiden nichts mehr heraus",
+  );
+
+  // Gegenprobe: Ohne den Eintrag `board` wird genau dieser Bereich gemeldet. Bliebe die
+  // Liste leer, hinge die Aussage oben an einer Hervorhebung, die es gar nicht gibt.
+  const ohneBoard = {
+    ...config,
+    gekoppelteBereiche: (config.gekoppelteBereiche ?? []).filter((e) => e.bereich !== "board"),
+  };
+  assert.deepEqual(hervorgehobenOhneEintrag(auswertung, ohneBoard), ["board"]);
+});
+
+test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, gemessen gekoppelt", () => {
+  assert.ok((config.gekoppelteBereiche ?? []).length > 0, ".claude/workflow.config.json traegt kein gekoppelteBereiche");
+  for (const eintrag of config.gekoppelteBereiche) {
+    assert.ok(eintrag.grund?.length > 0, `${eintrag.bereich} nennt keinen Grund`);
+  }
+
+  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  assert.deepEqual(
+    eintraegeOhneKopplung(config, tabelle),
+    [],
+    "Eintraege in gekoppelteBereiche, die eine Gruppe ohne gemessene Kopplung fuehrt",
+  );
+
+  // Gegenprobe: Ein Bereich ohne jede Kopplung, zusaetzlich eingetragen und von einer
+  // Gruppe gefuehrt, wird gemeldet. Ohne sie bewiese das leere Ergebnis oben nur, dass
+  // die Pruefung nichts findet — nicht, dass es nichts zu finden gibt.
+  const [erster, ...rest] = testEintraege;
+  const mitUngekoppeltem = {
+    ...config,
+    checkAreas: { ...config.checkAreas, gegenprobe: ["gibt-es-nicht/**"] },
+    buildChecks: [{ ...erster, areas: [...erster.areas, "gegenprobe"] }, ...rest],
+    gekoppelteBereiche: [...config.gekoppelteBereiche, { bereich: "gegenprobe", grund: "Gegenprobe" }],
+  };
+  assert.deepEqual(eintraegeOhneKopplung(mitUngekoppeltem, tabelle), [`gegenprobe: ${erster.cmd}`]);
 });

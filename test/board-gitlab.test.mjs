@@ -12,11 +12,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, GITLAB_OPEN, mitProjekt } from "./helpers/board-gitlab-fixture.mjs";
+import { GITLAB_OPEN, mitProjekt } from "./helpers/board-gitlab-fixture.mjs";
 
 // --- Anlegen ---
 
-test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", NUR_POSIX, () => {
+test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", () => {
   mitProjekt((dir) => {
     const angelegt = board(dir, "issue", "create", "--title", "Neu", "--body", "Autor-Modell: m\nBody");
     assert.deepEqual(angelegt, { id: "42", url: "https://gitlab.com/besitzer/repo/-/issues/42" });
@@ -29,7 +29,7 @@ test("create liest die Issue-ID aus der glab-URL und setzt das Backlog-Label", N
   });
 });
 
-test("create ohne lesbare Issue-ID schlaegt fehl", NUR_POSIX, () => {
+test("create ohne lesbare Issue-ID schlaegt fehl", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne URL"]);
     assert.equal(res.status, 1);
@@ -39,7 +39,7 @@ test("create ohne lesbare Issue-ID schlaegt fehl", NUR_POSIX, () => {
   });
 });
 
-test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", NUR_POSIX, () => {
+test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "create", "--title", "Ohne Label"]);
     assert.equal(res.status, 0, res.stderr);
@@ -53,7 +53,7 @@ test("create ueberlebt ein fehlgeschlagenes Backlog-Label mit Hinweis", NUR_POSI
 });
 
 // Ist backlog der native Open-Zustand, waere ein Backlog-Label ein Phantom-Label.
-test("create setzt kein Label, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
+test("create setzt kein Label, wenn backlog der Open-Zustand ist", () => {
   mitProjekt((dir) => {
     board(dir, "issue", "create", "--title", "Bleibt einfach offen");
     assert.doesNotMatch(aufrufZeilen(dir, "glab").join("\n"), /issue update/);
@@ -65,7 +65,7 @@ test("create setzt kein Label, wenn backlog der Open-Zustand ist", NUR_POSIX, ()
 
 // --- Lesen ---
 
-test("get leitet den Status aus den Labels ab und liefert die Notes als Kommentare", NUR_POSIX, () => {
+test("get leitet den Status aus den Labels ab und liefert die Notes als Kommentare", () => {
   mitProjekt((dir) => {
     const geholt = board(dir, "issue", "get", "42");
     assert.deepEqual(geholt, {
@@ -74,7 +74,7 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
       body: "Die Beschreibung",
       status: "ready",
       labels: ["Ready"], // seit Issue #312 auch bei get
-      comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z" }],
+      comments: [{ author: "manne", body: "Eine Notiz", createdAt: "2026-07-28T10:00:00Z", id: null }],
       created: "2026-08-14", // Anlagedatum aus created_at (Issue #457)
     });
     assert.match(aufrufZeilen(dir, "glab").join("\n"), /api projects\/:id\/issues\/42\/notes/);
@@ -100,7 +100,7 @@ test("get leitet den Status aus den Labels ab und liefert die Notes als Kommenta
 
 // --- Anlagedatum bei `issue get` (Issue #457) ---
 
-test("get liefert created_at als Kalendertag", NUR_POSIX, () => {
+test("get liefert created_at als Kalendertag", () => {
   mitProjekt((dir) => {
     assert.match(board(dir, "issue", "get", "42").created, /^\d{4}-\d{2}-\d{2}$/);
   }, {
@@ -112,7 +112,7 @@ test("get liefert created_at als Kalendertag", NUR_POSIX, () => {
 });
 
 // Kein erfundenes Datum, wenn die Antwort keins traegt (Issue #457).
-test("get ohne created_at laesst das Feld weg", NUR_POSIX, () => {
+test("get ohne created_at laesst das Feld weg", () => {
   mitProjekt((dir) => {
     assert.equal("created" in board(dir, "issue", "get", "42"), false);
   }, {
@@ -124,7 +124,7 @@ test("get ohne created_at laesst das Feld weg", NUR_POSIX, () => {
 });
 
 // Der Verlauf ist Zusatzinformation: ein Fehlschlag darf `issue get` nicht kippen.
-test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", NUR_POSIX, () => {
+test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "get", "42"]);
     assert.equal(res.status, 0, res.stderr);
@@ -142,7 +142,7 @@ test("get ueberlebt nicht abrufbare Notes mit leerem Kommentar-Array", NUR_POSIX
   });
 });
 
-test("get erkennt geschlossene Issues als done", NUR_POSIX, () => {
+test("get erkennt geschlossene Issues als done", () => {
   mitProjekt((dir) => {
     assert.equal(board(dir, "issue", "get", "42").status, "done");
   }, {
@@ -150,7 +150,7 @@ test("get erkennt geschlossene Issues als done", NUR_POSIX, () => {
   });
 });
 
-test("get erkennt offene Issues als backlog, wenn backlog der Open-Zustand ist", NUR_POSIX, () => {
+test("get erkennt offene Issues als backlog, wenn backlog der Open-Zustand ist", () => {
   mitProjekt((dir) => {
     assert.equal(board(dir, "issue", "get", "42").status, "backlog");
   }, {
@@ -172,13 +172,13 @@ const GL_MIT_LABELS = {
   },
 };
 
-test("get liefert die Labels als Namen-Array", NUR_POSIX, () => {
+test("get liefert die Labels als Namen-Array", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "get", "42").labels, ["Ready", "kit:nightrun"]);
   }, { regeln: [GL_MIT_LABELS] });
 });
 
-test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", NUR_POSIX, () => {
+test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "get", "42").labels, []);
   }, {
@@ -186,7 +186,7 @@ test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined
   });
 });
 
-test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () => {
+test("get und list liefern fuer dasselbe Issue dieselben Labels", () => {
   mitProjekt((dir) => {
     const ausGet = board(dir, "issue", "get", "42").labels;
     const ausList = board(dir, "issue", "list").find((i) => i.id === "42").labels;
@@ -202,7 +202,7 @@ test("get und list liefern fuer dasselbe Issue dieselben Labels", NUR_POSIX, () 
 // Bei GitLab SIND Spalten Labels — deshalb der Kollisions-Guard in `label-sync`
 // (Issue #384, Plan #347/A5). Solange kein Zustandslabel mit einem Spalten-Label
 // kollidiert, darf es den abgeleiteten Status nicht beruehren.
-test("Ein Zustandslabel aendert weder den Status noch die Spaltenlogik", NUR_POSIX, () => {
+test("Ein Zustandslabel aendert weder den Status noch die Spaltenlogik", () => {
   mitProjekt((dir) => {
     const geholt = board(dir, "issue", "get", "42");
     assert.equal(geholt.status, "ready", "das Zustandslabel hat den Status verschoben");
@@ -218,7 +218,7 @@ test("Ein Zustandslabel aendert weder den Status noch die Spaltenlogik", NUR_POS
   });
 });
 
-test("Ein Zustandslabel allein ergibt keinen Status", NUR_POSIX, () => {
+test("Ein Zustandslabel allein ergibt keinen Status", () => {
   mitProjekt((dir) => {
     assert.equal(board(dir, "issue", "get", "42").status, null,
       "review:offen wurde als Spalte gelesen");

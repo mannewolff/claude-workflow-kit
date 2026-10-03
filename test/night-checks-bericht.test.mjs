@@ -30,10 +30,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 // Zwei Pruefungen mit Bereichszuordnung. Der Bereich 'board' ist bewusst KEINER
 // Pruefung zugeordnet: Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter
 // issues/, und eine Datei ohne Muster loest in checks.mjs den vollen Umfang aus —
@@ -127,8 +123,10 @@ const FAKE_MIT_PRUEFUNG = [
 const FAKE_OHNE_PRUEFUNG = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', COMMIT, NACH_IN_REVIEW].join("\n");
 
 // Eine Session, die nichts veraendert und trotzdem prueft: checks.mjs meldet
-// leeresPaket.
-const FAKE_LEERES_PAKET = [LOG_SESSION, CHECKS_RUN, NACH_IN_REVIEW].join("\n");
+// leeresPaket. Seit Issue #1089 schreibt der Runner vor der Session den Laufstand `laeuft`
+// an die Karte — in diesem Fixture eine versionierte Datei unter issues/. Die Session blendet
+// den Board-Stand fuer git darum aus, sonst zaehlte er als ihre Aenderung.
+const FAKE_LEERES_PAKET = [LOG_SESSION, "git update-index --assume-unchanged issues/*.md", CHECKS_RUN, NACH_IN_REVIEW].join("\n");
 
 function sessions(dir) {
   const p = join(dir, "sessions.log");
@@ -137,7 +135,7 @@ function sessions(dir) {
 
 // --- Die drei Zustaende einer Session ---
 
-test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-Bericht", NUR_POSIX, () => {
+test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-Bericht", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -153,7 +151,7 @@ test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-
   });
 });
 
-test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als ungeprueft ausgewiesen", NUR_POSIX, () => {
+test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als ungeprueft ausgewiesen", () => {
   mitProjekt((dir) => {
     const eins = readyIssue(dir, "Eins");
     const zwei = readyIssue(dir, "Zwei");
@@ -169,7 +167,7 @@ test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als 
   });
 });
 
-test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht als Leerzeile", NUR_POSIX, () => {
+test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht als Leerzeile", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -183,7 +181,7 @@ test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht al
   });
 });
 
-test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Session nicht zugerechnet", NUR_POSIX, () => {
+test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Session nicht zugerechnet", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -206,7 +204,7 @@ test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Sessio
   });
 });
 
-test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", NUR_POSIX, () => {
+test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", () => {
   // Die gewollte Verschiebung aus Issue #857 (Fachplan #769, AK 4): Bis dahin schrieb
   // checks.mjs seine Zusammenfassung erst nach der Schleife — ein Lauf, der dazwischen
   // starb, hinterliess keine Datei und die Session galt als "ungeprueft", also als
@@ -227,7 +225,9 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
     { cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; kill -9 $PPID", areas: ["kit"] },
     FRONTEND_CHECK,
   ];
-  const fake = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
+  // Das Ereignis im Strom: Die Session kam zustande, ihr Exit nach dem Tod von checks.mjs
+  // ist kein Fehlstart (Issue #1088, E13).
+  const fake = [`echo '{"type":"system","subtype":"init"}'`, LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -243,7 +243,7 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
 
 // --- Der Bericht als Ganzes ---
 
-test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", NUR_POSIX, () => {
+test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", () => {
   mitProjekt((dir) => {
     const eins = readyIssue(dir, "Eins");
     const zwei = readyIssue(dir, "Zwei");
@@ -264,7 +264,7 @@ test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeil
 
 // --- Salvage: der Umfang, den auch das Commit-Gate bezeugt ---
 
-test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", NUR_POSIX, () => {
+test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", () => {
   // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
   // exportiert. Alle Pruefungen protokollieren ihre Ausfuehrung; die Session fasst nur
   // den Bereich 'kit' an.

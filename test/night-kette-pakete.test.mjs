@@ -10,13 +10,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, PAKETE_HALT, PAKET_OHNE_ABHAENGIGKEITEN, PAKET_REPARIEREN,
 } from "./helpers/kette-fixture.mjs";
 
 const RESULT_TEXT = "### Zuordnung ... ### Ohne Paket Alle Kriterien sind abgebildet. ### Zuwachs Nichts Zusaetzliches.";
 
-test("[night-20] zwei Pakete mit Herkunftszeile zaehlen, die fremde Karte steht als nicht zuordenbar", NUR_POSIX, () => {
+test("[night-20] zwei Pakete mit Herkunftszeile zaehlen, die fremde Karte steht als nicht zuordenbar", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -39,7 +39,7 @@ test("[night-20] zwei Pakete mit Herkunftszeile zaehlen, die fremde Karte steht 
   });
 });
 
-test("[night-20] kein Paket mit Halt-Kommentar von /issues heisst angehalten: Frage und kit:klaeren am Fachplan", NUR_POSIX, () => {
+test("[night-20] kein Paket mit Halt-Kommentar von /issues heisst angehalten: Frage und kit:klaeren am Fachplan", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_HALT } });
@@ -59,7 +59,7 @@ test("[night-20] kein Paket mit Halt-Kommentar von /issues heisst angehalten: Fr
   });
 });
 
-test("[night-20] kein Paket und kein Halt-Kommentar heisst abgebrochen", NUR_POSIX, () => {
+test("[night-20] kein Paket und kein Halt-Kommentar heisst abgebrochen", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: ":" } });
@@ -72,7 +72,7 @@ test("[night-20] kein Paket und kein Halt-Kommentar heisst abgebrochen", NUR_POS
   });
 });
 
-test("[night-20] ein Paket ohne Abhaengigkeiten-Abschnitt loest eine Korrekturrunde aus, dann ist die Kette fertig", NUR_POSIX, () => {
+test("[night-20] ein Paket ohne Abhaengigkeiten-Abschnitt loest eine Korrekturrunde aus, dann ist die Kette fertig", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {

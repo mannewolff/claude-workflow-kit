@@ -16,11 +16,11 @@ import { writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, fakeCli, runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
-import { NUR_POSIX, GITHUB, basisRegeln, graphqlItem, mitProjekt, metaCache } from "./helpers/board-github-fixture.mjs";
+import { GITHUB, basisRegeln, graphqlItem, mitProjekt, metaCache } from "./helpers/board-github-fixture.mjs";
 
 // --- Project-Nummer: Konfiguration, Auto-Erkennung, Cache ---
 
-test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erkannt und gecacht", NUR_POSIX, () => {
+test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erkannt und gecacht", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -39,7 +39,7 @@ test("Ohne konfigurierte projectNumber wird ein einziges Project automatisch erk
   });
 });
 
-test("Kein Project fuer den Owner: harter Fehler mit Anleitung", NUR_POSIX, () => {
+test("Kein Project fuer den Owner: harter Fehler mit Anleitung", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -50,7 +50,7 @@ test("Kein Project fuer den Owner: harter Fehler mit Anleitung", NUR_POSIX, () =
   });
 });
 
-test("Mehrere Projects: harter Fehler mit Projektliste", NUR_POSIX, () => {
+test("Mehrere Projects: harter Fehler mit Projektliste", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -66,7 +66,7 @@ test("Mehrere Projects: harter Fehler mit Projektliste", NUR_POSIX, () => {
 
 // Ohne Project ist kein Board-Status-Filter moeglich — statt abzubrechen listet der
 // Adapter alle offenen Issues und sagt das auf stderr.
-test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zurueck", NUR_POSIX, () => {
+test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zurueck", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -83,7 +83,7 @@ test("list --status ohne bestimmbares Project faellt auf alle offenen Issues zur
 
 // Der Cache ist eine Beschleunigung, keine Quelle der Wahrheit: Ist die Datei kaputt,
 // muss die Auto-Erkennung normal durchlaufen und die Datei sauber ersetzt werden.
-test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnummer", NUR_POSIX, () => {
+test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnummer", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "board-meta-cache.json"), "{kein JSON", "utf-8");
     const res = runBoard(dir, ["issue", "list", "--status", "ready"]);
@@ -99,7 +99,7 @@ test("Korrupter Cache blockiert weder Lesen noch Schreiben der Auto-Projektnumme
 // Zwischen dem Laden der Meta-Daten und dem Verwerfen des Caches kann ein anderer
 // Prozess die Datei zerschiessen (paralleler board.mjs-Lauf, abgebrochener Schreib-
 // vorgang). Das darf den Ablauf nicht kippen — der naechste Schreibzugriff heilt sie.
-test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", NUR_POSIX, () => {
+test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -115,7 +115,7 @@ test("Ein waehrend des Laufs zerschossener Cache stoppt den move nicht", NUR_POS
   });
 });
 
-test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben", NUR_POSIX, () => {
+test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "board-meta-cache.json"), "{kaputt", "utf-8");
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
@@ -124,7 +124,7 @@ test("Korrupter Meta-Cache wird wie ein Cache-Miss behandelt und ueberschrieben"
   });
 });
 
-test("Geaenderte Spalten-Labels entwerten den Meta-Cache", NUR_POSIX, () => {
+test("Geaenderte Spalten-Labels entwerten den Meta-Cache", () => {
   const dir = setupProjekt(GITHUB, "board-github-");
   fakeCli(dir, "gh", basisRegeln());
   try {
@@ -148,7 +148,7 @@ test("Geaenderte Spalten-Labels entwerten den Meta-Cache", NUR_POSIX, () => {
   }
 });
 
-test("Project nicht gefunden und fehlendes Status-Feld werden benannt", NUR_POSIX, () => {
+test("Project nicht gefunden und fehlendes Status-Feld werden benannt", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -168,7 +168,7 @@ test("Project nicht gefunden und fehlendes Status-Feld werden benannt", NUR_POSI
 
 // Weicht nur die Gross-/Kleinschreibung ab, greift der Fallback — aber mit Hinweis,
 // damit die Config nachgezogen wird, bevor daraus ein stiller Folgefehler wird.
-test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", NUR_POSIX, () => {
+test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -183,7 +183,7 @@ test("Abweichende Gross-/Kleinschreibung der Spalte wird erkannt und gemeldet", 
 
 // --- Verschieben ---
 
-test("move setzt die Single-Select-Option des Project-Items", NUR_POSIX, () => {
+test("move setzt die Single-Select-Option des Project-Items", () => {
   mitProjekt((dir) => {
     assert.deepEqual(board(dir, "issue", "move", "42", "in_review"), { ok: true, id: "42", status: "in_review" });
     assert.match(
@@ -193,7 +193,7 @@ test("move setzt die Single-Select-Option des Project-Items", NUR_POSIX, () => {
   });
 });
 
-test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", NUR_POSIX, () => {
+test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);
@@ -213,7 +213,7 @@ test("move findet das Issue nicht im Repo bzw. nicht auf dem Board", NUR_POSIX, 
 
 // Gecachte Option-IDs koennen veralten (Option im Project ersetzt). Der erste
 // item-edit scheitert dann, der Cache wird verworfen und einmal wiederholt.
-test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", NUR_POSIX, () => {
+test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 0, res.stderr);
@@ -224,7 +224,7 @@ test("move verwirft den Cache und wiederholt einmal, wenn item-edit scheitert", 
   });
 });
 
-test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", NUR_POSIX, () => {
+test("move meldet beide Fehler, wenn auch der Wiederholungsversuch scheitert", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["issue", "move", "42", "ready"]);
     assert.equal(res.status, 1);

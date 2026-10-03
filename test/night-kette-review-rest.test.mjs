@@ -11,18 +11,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, planBody, PLAN_ANLEGEN,
+  run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER, EREIGNIS,
 } from "./helpers/kette-fixture.mjs";
 import { REVIEW_REST_ANKER } from "../kit/night.mjs";
 
 /** Die Fake-Zeile der Stufe review: haengt die Befunde als Kommentar an den Plan aus dem Prompt. */
 const BEFUNDE = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issue-review #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue comment "$id" --text "Fund 1 (opus, WICHTIG): Kriterium 3 ist im Weg nicht abgebildet." >/dev/null`;
-
-/** Der Plan-Body, wie ihn eine durchgelaufene Einarbeitung hinterliesse: mit Marker im Kopf. */
-const PLAN_MIT_MARKER = planBody().replace(
-  "Plan-Modell: fixture-modell",
-  "Plan-Modell: fixture-modell\nPlan-Review: opus (2026-09-14, Nachtlauf)",
-);
 
 /** Der Plan des Laufs und sein Dateiinhalt. */
 function plan(dir, F) {
@@ -36,13 +30,14 @@ function anker(text) {
   return text.split(REVIEW_REST_ANKER).length - 1;
 }
 
-test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker ab, traegt der Plan den Vermerk", NUR_POSIX, () => {
+test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker ab, traegt der Plan den Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     // Die Session schreibt ihre Befunde und haengt dann — genau der Ablauf, der am
     // 2026-09-14 im Lauf 2026-09-14-113433 am Zeitbudget endete.
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: BEFUNDE + "; sleep 60" } });
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "6000" });
+    // Das Limit gilt nur dem Review (Issue #1080), die Planstufe davor behaelt ihres.
+    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "6000", NIGHT_TIMEOUT_STUFE: "review" });
     assert.equal(res.status, 0, res.stderr);
 
     const { einheit, id, text } = plan(dir, F);
@@ -57,10 +52,10 @@ test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker
   });
 });
 
-test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Plan ohne Vermerk", NUR_POSIX, () => {
+test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Plan ohne Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: "exit 3" } });
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${EREIGNIS}; exit 3` } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, res.stderr);
 
@@ -72,18 +67,20 @@ test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Pla
   });
 });
 
-test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne Vermerk", NUR_POSIX, () => {
+test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    // Der Plan traegt den Marker bereits aus der Plan-Stufe: Die Einarbeitung war durch,
-    // der Abbruch traf die Stufe danach.
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: BEFUNDE + "; exit 3" }, plan: PLAN_MIT_MARKER });
+    // Die Review-Session hat den Marker gesetzt: Die Einarbeitung war durch, der Abbruch
+    // traf sie danach. Seit Issue #1086 (Plan #1079 E9) ist der Marker das Ergebnis der
+    // Stufe — sie gilt als fertig, und die Kette laeuft weiter.
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${REVIEW_MARKER}; ${BEFUNDE}; ${EREIGNIS}; exit 3`, pakete: PAKETE_ANLEGEN } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, res.stderr);
 
     const { einheit, text } = plan(dir, F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /technischer Fehler: die Session der Stufe review endete mit Exit 3/);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.equal(einheit.stufen.review.vorgefunden, true);
+    assert.match(res.stdout, /Stufe review: abgebrochen \(technischer Fehler: die Session der Stufe review endete mit Exit 3\), das Ergebnis liegt aber vor/);
     assert.ok(/^[ \t]*Plan-Review:[ \t]*\S/m.test(text), "der Marker steht im Body");
     assert.equal(anker(text), 0, "mit Marker ist die Einarbeitung durch");
     assert.doesNotMatch(res.stdout, new RegExp(REVIEW_REST_ANKER));

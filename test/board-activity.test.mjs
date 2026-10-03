@@ -21,6 +21,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { createServer } from "node:http";
 
 import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
 
@@ -235,4 +236,104 @@ test("[board-18] local liefert in der Sammelform je Nummer denselben synthetisch
   assert.equal(objekt["7"].length, 1);
   assert.equal(objekt["7"][0].type, "CREATED");
   assert.match(String(objekt["99"]?.fehler), /99/, "die fehlende Datei endet als Fehlergrund, nicht als Abbruch");
+});
+
+// ============================================================
+// Gleichzeitige Verlaufsabrufe (Issue #1095)
+// ============================================================
+//
+// Die Sammelform holte den Verlauf je Karte nacheinander — bei Dutzenden Karten der
+// Ruecklaeuferquote eine Kette von Wartezeiten. Jetzt laufen hoechstens vier Abrufe
+// zugleich: mehr als einer, damit sich die Wartezeiten ueberlappen, und nicht alle,
+// weil die API drosselt. Gemessen wird am Fake-Server ueber die Zahl gleichzeitig
+// offener Verlaufsanfragen, nicht ueber die Wanduhr: Der Server haelt jede Anfrage
+// fest, bis vier offen sind oder eine kurze Frist ablaeuft, und antwortet erst dann.
+
+const GRENZE = 4;
+
+function verlaufVon(number) {
+  return [{ id: number, type: "CREATED", createdAt: "2026-08-14T09:12:33Z", detail: `Karte ${number} angelegt` }];
+}
+
+/**
+ * Fake-Server, der Verlaufsanfragen zurueckhaelt und das Maximum offener Anfragen
+ * zaehlt. `status(number)` liefert den HTTP-Status je Kartennummer (Default 200).
+ */
+async function mitHaltendemBoard(karten, status, fn) {
+  const zustand = { offen: 0, maximum: 0, wartend: [], listen: 0 };
+  const loesen = () => {
+    const alle = zustand.wartend.splice(0);
+    for (const antworte of alle) antworte();
+  };
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (req.url === "/api/kanban/items") {
+        zustand.listen++;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(gruppiert(karten)));
+        return;
+      }
+      const treffer = /^\/api\/kanban\/items\/(\d+)\/activity$/.exec(req.url);
+      if (!treffer) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "keine Route" }));
+        return;
+      }
+      const number = Number(treffer[1]) / 100;
+      zustand.offen++;
+      zustand.maximum = Math.max(zustand.maximum, zustand.offen);
+      zustand.wartend.push(() => {
+        zustand.offen--;
+        const code = status(number);
+        res.writeHead(code, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(code === 200 ? verlaufVon(number) : { message: "Forbidden" }));
+      });
+      // Vier offene Anfragen sind die Grenze: dann sofort antworten. Darunter erst
+      // nach einer kurzen Frist — ein nacheinander arbeitender Adapter kommt nie ueber
+      // eine offene Anfrage hinaus und laeuft so trotzdem durch.
+      if (zustand.offen >= GRENZE) loesen();
+      else setTimeout(loesen, 40);
+    });
+  });
+  await new Promise((fertig) => server.listen(0, "127.0.0.1", fertig));
+  const host = `http://127.0.0.1:${server.address().port}`;
+  const dir = setupProjekt({ issueTracker: "toolbox", toolbox: { host } });
+  try {
+    await fn(dir, zustand);
+  } finally {
+    server.close();
+  }
+}
+
+const ZEHN = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+test("[board-18] --ids holt hoechstens vier Verlaeufe zugleich, und mehr als einen", async () => {
+  await mitHaltendemBoard(ZEHN.map((n) => karte(n)), () => 200, async (dir, zustand) => {
+    const res = await runBoardAsync(dir, ["issue", "activity", "--ids", ZEHN.join(",")], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(zustand.maximum <= GRENZE, `${zustand.maximum} Verlaufsabrufe waren zugleich offen, erlaubt sind ${GRENZE}`);
+    assert.ok(zustand.maximum > 1, "die Verlaufsabrufe liefen nacheinander statt gleichzeitig");
+    assert.equal(zustand.listen, 1, `die Kartenliste wurde ${zustand.listen}-mal geholt statt einmal`);
+  });
+});
+
+test("[board-18] --ids liefert gleichzeitig je Nummer denselben Verlauf, eine unbekannte Nummer mit fehler", async () => {
+  await mitHaltendemBoard(ZEHN.map((n) => karte(n)), () => 200, async (dir) => {
+    const res = await runBoardAsync(dir, ["issue", "activity", "--ids", [...ZEHN, 99].join(",")], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    const objekt = JSON.parse(res.stdout);
+    for (const n of ZEHN) assert.deepEqual(objekt[n], verlaufVon(n), `Karte ${n} traegt nicht ihren eigenen Verlauf`);
+    assert.match(String(objekt["99"]?.fehler), /99/, "die unbekannte Nummer traegt einen Fehlergrund");
+    assert.deepEqual(Object.keys(objekt).sort((a, b) => a - b), [...ZEHN, 99].map(String));
+  });
+});
+
+test("[board-18] ein 403 auf einen der gleichzeitigen Abrufe laesst den ganzen Aufruf scheitern", async () => {
+  await mitHaltendemBoard(ZEHN.map((n) => karte(n)), (n) => (n === 6 ? 403 : 200), async (dir) => {
+    const res = await runBoardAsync(dir, ["issue", "activity", "--ids", ZEHN.join(",")], MIT_TOKEN);
+    assert.notEqual(res.status, 0, "ein 403 muss den Aufruf rot machen");
+    assert.match(res.stderr, /403/, "der HTTP-Status fehlt in der Meldung");
+    assert.equal(res.stdout.trim(), "", "stdout muss im Fehlerfall leer bleiben");
+  });
 });

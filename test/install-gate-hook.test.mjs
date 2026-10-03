@@ -12,34 +12,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, chmodSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync,
   rmSync, existsSync, statSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
+import { cliStart } from "../install.mjs";
+import { posixShell, shellPfad } from "./helpers/checks-repo.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows kennt kein x-Bit; die Ausfuehrbarkeit ist dort nicht messbar." }
-  : {};
-
-// Ein haengender Symlink braucht unter Windows das Entwicklerprivileg SeCreateSymbolicLink;
-// ohne das wirft symlinkSync EPERM, und der Test schluege aus einem Grund fehl, der nichts
-// mit dem geprueften Verhalten zu tun hat. Der Grund steht im Skip-Text, damit ein
-// ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX_SYMLINK = process.platform === "win32"
-  ? { skip: "Windows: symlinkSync braucht dort ein Privileg, das der CI-Runner nicht sicher hat." }
-  : {};
-
-// Dasselbe Hindernis wie in test/install-gitlab-labels.test.mjs: Das Fake-CLI ist ein
-// sh-Wrapper und laege unter Windows als .cmd im PATH; Node wirft dafuer EINVAL ohne
-// shell:true (CVE-2024-27980), und install.mjs startet seit #198 bewusst ohne Shell.
-const NUR_POSIX_FAKE = process.platform === "win32"
-  ? { skip: "Windows: der sh-Wrapper des Fake-git ist dort nicht startbar. Siehe Issue #197." }
-  : {};
 
 // Woertlich so, wie sie im Installer steht.
 const FRAGE = "Soll das Commit-Gate eingehaengt werden?";
@@ -77,34 +61,49 @@ function installiere(dir, antworten, extraEnv = {}, nodeArgs = [], installer = I
 }
 
 /**
- * Ein `git` im PATH, das einzelne Aufrufe abfaengt und alle uebrigen an das echte git
- * durchreicht (Weg 1 aus Issue #188). Gebraucht fuer die zwei Antworten, die kein
- * Dateisystem-Fixture herstellt: ein Fehlschlag OHNE Fehlertext und ein Erfolg OHNE
- * Ausgabe. `sonderfaelle` sind sh-Zeilen, die vor dem Durchreichen laufen.
+ * Ein Fake-`git` als Node-Skript, das einzelne Aufrufe abfaengt und alle uebrigen an das
+ * echte git durchreicht (Weg 1 aus Issue #188). Gebraucht fuer die zwei Antworten, die
+ * kein Dateisystem-Fixture herstellt: ein Fehlschlag OHNE Fehlertext und ein Erfolg OHNE
+ * Ausgabe. `sonderfaelle` sind JavaScript-Zeilen, die vor dem Durchreichen laufen; sie
+ * sehen die Argumente als `argv`.
  *
- * Rueckgabe ist das Verzeichnis, das in den PATH von `installiere` gehoert — der Helper
- * `git()` bleibt aussen vor und prueft weiter mit dem echten git. Das Fake ruft das echte
- * git ueber einen absoluten Pfad, ein PATH aus nur diesem Verzeichnis genuegt ihm also.
+ * Rueckgabe ist die Umgebung fuer `installiere`: Der Test-Hook `INSTALL_GIT_FAKE`
+ * (Issue #1136) startet das Skript statt git, mit dem laufenden Node und ohne Shell —
+ * anders als ein sh-Wrapper im PATH auch unter Windows. Der Helper `git()` bleibt aussen
+ * vor und prueft weiter mit dem echten git.
  */
 function fakeGit(dir, ...sonderfaelle) {
   const binDir = join(dir, "fakebin");
   mkdirSync(binDir, { recursive: true });
-  const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
-  assert.ok(echtesGit, "ohne echtes git im PATH ist das Fixture nicht baubar");
-  // Eigener PATH fuer die Sonderfall-Zeilen: Ein Test darf den PATH des Installers auf
-  // dieses Verzeichnis beschraenken, und dann faende der Wrapper sonst nicht einmal `rm`.
-  // Auf das echte git wirkt das nicht — es wird mit absolutem Pfad gerufen.
-  const wrapper = [
-    "#!/bin/sh",
-    "PATH=/usr/bin:/bin",
+  const skript = join(binDir, "git.mjs");
+  writeFileSync(skript, [
+    'import { spawnSync } from "node:child_process";',
+    'import { rmSync } from "node:fs";',
+    "const argv = process.argv.slice(2);",
     ...sonderfaelle,
-    `exec ${JSON.stringify(echtesGit)} "$@"`,
+    'const res = spawnSync("git", argv, { stdio: "inherit" });',
+    "process.exit(res.status ?? 1);",
     "",
-  ].join("\n");
-  writeFileSync(join(binDir, "git"), wrapper, "utf-8");
-  chmodSync(join(binDir, "git"), 0o755);
-  return binDir;
+  ].join("\n"), "utf-8");
+  return { INSTALL_GIT_FAKE: skript, skript };
 }
+
+test("ohne INSTALL_GIT_FAKE startet install.mjs das echte git mit unveraenderten Argumenten", () => {
+  const args = ["config", "core.hooksPath", ".githooks"];
+  assert.deepEqual(cliStart("git", args, "INSTALL_GIT_FAKE", {}), { cmd: "git", args });
+});
+
+test("mit INSTALL_GIT_FAKE startet install.mjs das Node-Skript mit dem laufenden Node", () => {
+  assert.deepEqual(
+    cliStart("git", ["rev-parse", "--git-dir"], "INSTALL_GIT_FAKE", { INSTALL_GIT_FAKE: INSTALLER }),
+    { cmd: process.execPath, args: [INSTALLER, "rev-parse", "--git-dir"] },
+  );
+});
+
+test("zeigt INSTALL_GIT_FAKE ins Leere, scheitert schon der Start wie bei einem fehlenden git", () => {
+  const weg = join(tmpdir(), "gibt-es-nicht-1136", "git.mjs");
+  assert.deepEqual(cliStart("git", ["status"], "INSTALL_GIT_FAKE", { INSTALL_GIT_FAKE: weg }), { cmd: weg, args: ["status"] });
+});
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand — und an neunter Stelle die Hook-Frage.
@@ -118,6 +117,17 @@ function hooksPath(dir) {
 function mitFixture(praefix, fn, optionen = {}) {
   const dir = fixture(praefix, optionen);
   try { fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+/**
+ * Der Nachweis, dass git den installierten Hook wirklich ausfuehrt: Ein Commit ohne
+ * Pruef-Zusammenfassung weist das Gate ab. Windows kennt kein x-Bit; dort ist dies der
+ * Beleg der Ausfuehrbarkeit (Plan #1128 E7).
+ */
+function gitFuehrtHookAus(dir) {
+  const res = git(dir, "commit", "--allow-empty", "-q", "-m", "probe");
+  assert.notEqual(res.status, 0, `der Hook lief nicht, der Commit ging durch: ${res.stdout}`);
+  assert.match(res.stderr, /Zusammenfassung fehlt/, `das Gate meldete sich nicht: ${res.stderr}`);
 }
 
 test("[installer-2] bei Zustimmung liegen Hook und Gate, und core.hooksPath steht auf .githooks", () => {
@@ -154,11 +164,14 @@ test("[installer-2] das ausgelieferte gate.mjs laeuft im Zielprojekt ohne Import
   });
 });
 
-test("[installer-2] pre-commit ist ausfuehrbar", NUR_POSIX, () => {
+test("[installer-2] pre-commit ist ausfuehrbar", () => {
   mitFixture("install-gate-x-", (dir) => {
     installiere(dir, antworten("j"));
-    const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
-    assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
+    if (process.platform !== "win32") {
+      const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
+      assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
+    }
+    gitFuehrtHookAus(dir);
   });
 });
 
@@ -219,7 +232,7 @@ function mitWerfendemChmod(dir) {
 // Stelle liesse den Installer auf einer ganzen Plattform rot enden. Ein echtes Fixture
 // gibt es fuer den Fall nicht: Auf POSIX gelingt chmod im eigenen Temp-Verzeichnis
 // immer, also wird der Fehlschlag untergeschoben.
-test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", NUR_POSIX, () => {
+test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", () => {
   mitFixture("install-gate-chmod-", (dir) => {
     const res = installiere(dir, antworten("j"), {}, [mitWerfendemChmod(dir)]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -230,7 +243,10 @@ test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)",
     // diese Zeile bestuende der Test auch dann, wenn die Ersetzung gar nicht griffe.
     const hookDatei = join(dir, ".githooks", "pre-commit");
     assert.ok(existsSync(hookDatei), "und er liegt auch wirklich da");
-    assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
+    // Unter Windows gibt es kein x-Bit zu vermissen; dort zaehlt, dass git den Hook
+    // auch ohne chmod ausfuehrt — genau dafuer ist der Rueckfall da.
+    if (process.platform === "win32") gitFuehrtHookAus(dir);
+    else assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
   });
 });
 
@@ -367,11 +383,13 @@ test("[installer-2] ein Unterverzeichnis im Hooks-Verzeichnis ist keine aktive D
   });
 });
 
-test("[installer-2] ein haengender Symlink im Hooks-Verzeichnis kippt die Pruefung nicht", NUR_POSIX_SYMLINK, () => {
+test("[installer-2] ein haengender Symlink im Hooks-Verzeichnis kippt die Pruefung nicht", () => {
   mitFixture("install-gate-symlink-", (dir) => {
     // statSync folgt dem Link und wirft. Ohne den abgefangenen Fehler brach der
-    // Installer hier ab, statt die Frage zu stellen.
-    symlinkSync(join(dir, "gibt-es-nicht"), join(hooksDir(dir), "pre-push"));
+    // Installer hier ab, statt die Frage zu stellen. Unter Windows wird der Link eine
+    // Verzeichnis-Junction, die kein Privileg braucht; POSIX uebergeht den Typ
+    // (Plan #1128 E7).
+    symlinkSync(join(dir, "gibt-es-nicht"), join(hooksDir(dir), "pre-push"), "junction");
     const res = installiere(dir, antworten("j"));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -448,12 +466,12 @@ test("[installer-2] scheitert das Setzen von core.hooksPath, endet der Lauf rot 
   });
 });
 
-test("[installer-2] scheitert git stumm, meldet der Installer trotzdem einen Grund", NUR_POSIX_FAKE, () => {
+test("[installer-2] scheitert git stumm, meldet der Installer trotzdem einen Grund", () => {
   mitFixture("install-gate-stumm-", (dir) => {
     // Ohne Fehlertext bliebe von der Meldung "…liess sich nicht setzen: undefined"
     // uebrig. Der Test haelt fest, dass die Meldung dann leer endet statt zu raten.
-    const binDir = fakeGit(dir, 'if [ "$1" = "config" ] && [ "$2" = "core.hooksPath" ]; then exit 1; fi');
-    const res = installiere(dir, antworten("j"), { PATH: `${binDir}:${process.env.PATH}` });
+    const { INSTALL_GIT_FAKE } = fakeGit(dir, 'if (argv[0] === "config" && argv[1] === "core.hooksPath") process.exit(1);');
+    const res = installiere(dir, antworten("j"), { INSTALL_GIT_FAKE });
 
     assert.notEqual(res.status, 0, "ein nicht gesetztes Gate darf nicht gruen gemeldet werden");
     assert.match(res.stderr, /core\.hooksPath liess sich nicht setzen/);
@@ -461,19 +479,17 @@ test("[installer-2] scheitert git stumm, meldet der Installer trotzdem einen Gru
   });
 });
 
-test("[installer-2] laesst git sich gar nicht mehr starten, nennt die Meldung den Startfehler", NUR_POSIX_FAKE, () => {
+test("[installer-2] laesst git sich gar nicht mehr starten, nennt die Meldung den Startfehler", () => {
   mitFixture("install-gate-weg-", (dir) => {
     // Der letzte git-Aufruf des Laufs ist das Setzen von core.hooksPath. Loescht sich das
-    // Fake beim vorletzten Aufruf, findet spawnSync fuer diesen einen Aufruf gar kein
-    // git mehr und liefert `error` statt `stderr` — ohne den Rueckgriff darauf bliebe von
-    // der Meldung nur ein leerer Grund uebrig. Der PATH enthaelt deshalb NUR das Fixture:
-    // sonst uebernaehme das echte git aus dem PATH den Aufruf.
-    const eigenerPfad = JSON.stringify(join(dir, "fakebin", "git"));
-    const binDir = fakeGit(
+    // Fake beim vorletzten Aufruf, zeigt INSTALL_GIT_FAKE ins Leere: Der Start scheitert
+    // wie bei einem fehlenden git, und spawnSync liefert `error` statt `stderr` — ohne den
+    // Rueckgriff darauf bliebe von der Meldung nur ein leerer Grund uebrig.
+    const { INSTALL_GIT_FAKE } = fakeGit(
       dir,
-      `if [ "$1" = "rev-parse" ] && [ "$2" = "--git-path" ]; then rm -f ${eigenerPfad}; fi`,
+      `if (argv[0] === "rev-parse" && argv[1] === "--git-path") rmSync(${JSON.stringify(join(dir, "fakebin", "git.mjs"))}, { force: true });`,
     );
-    const res = installiere(dir, antworten("j"), { PATH: binDir });
+    const res = installiere(dir, antworten("j"), { INSTALL_GIT_FAKE });
 
     assert.notEqual(res.status, 0, "ein nicht gesetztes Gate darf nicht gruen gemeldet werden");
     assert.match(res.stderr, /core\.hooksPath liess sich nicht setzen/);
@@ -481,13 +497,13 @@ test("[installer-2] laesst git sich gar nicht mehr starten, nennt die Meldung de
   });
 });
 
-test("[installer-2] antwortet git ohne Ausgabe, gilt das Hooks-Verzeichnis als unbekannt", NUR_POSIX_FAKE, () => {
+test("[installer-2] antwortet git ohne Ausgabe, gilt das Hooks-Verzeichnis als unbekannt", () => {
   mitFixture("install-gate-leer-", (dir) => {
     // `git rev-parse --git-path hooks` nennt sonst immer einen Pfad. Bleibt die Antwort
     // leer — etwa hinter einem fremden git-Wrapper —, darf der Installer daraus keinen
     // Pfad basteln: Ohne Pfad ist keine aktive Datei feststellbar, die Lage gilt als frei.
-    const binDir = fakeGit(dir, 'if [ "$1" = "rev-parse" ] && [ "$2" = "--git-path" ]; then exit 0; fi');
-    const res = installiere(dir, antworten("j"), { PATH: `${binDir}:${process.env.PATH}` });
+    const { INSTALL_GIT_FAKE } = fakeGit(dir, 'if (argv[0] === "rev-parse" && argv[1] === "--git-path") process.exit(0);');
+    const res = installiere(dir, antworten("j"), { INSTALL_GIT_FAKE });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, new RegExp(FRAGE), "die Frage haette gestellt werden muessen");
@@ -540,4 +556,40 @@ test("[installer-2] gate.mjs steht nicht in STAMPED und wird nicht nach .claude/
   const stamped = sync.slice(sync.indexOf("const STAMPED"), sync.indexOf("\n", sync.indexOf("const STAMPED")));
   assert.doesNotMatch(stamped, /gate\.mjs/, "das Gate gehoert nicht in die Dogfooding-Kopie");
   assert.equal(existsSync(join(repoRoot, ".claude", "kit", "gate.mjs")), false);
+});
+
+// --- Die Weiche zum Gate des festen Kit-Stands (Issue #1102, Plan #1101 A6) ---
+//
+// Der ausgelieferte Hook ist derselbe wie im Kit-Repo: Mit Markierung im Baum und gesetztem
+// KIT_STAND_PFAD startet er das Gate des Stands, sonst das eigene. In einem Zielprojekt ist
+// KIT_STAND_PFAD nie gesetzt; der Test belegt, dass auch eine geerbte Variable ohne
+// Markierung nichts umlenkt.
+
+function standMitSpur(dir) {
+  const stand = join(dir, "stand");
+  mkdirSync(join(stand, ".githooks"), { recursive: true });
+  writeFileSync(join(stand, ".githooks", "gate.mjs"),
+    'import { writeFileSync } from "node:fs";\nwriteFileSync(process.env.STAND_SPUR, "stand\\n");\n');
+  return stand;
+}
+
+function hook(dir, env) {
+  return spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+}
+
+test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Markierung", () => {
+  mitFixture("install-gate-stand-", (dir) => {
+    assert.equal(installiere(dir, antworten("j")).status, 0);
+    const stand = standMitSpur(dir);
+    const spur = join(dir, "spur.txt");
+
+    const ohne = hook(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+    assert.notEqual(ohne.status, 0, "ohne Markierung prueft das eigene Gate und weist ohne Zusammenfassung ab");
+    assert.equal(existsSync(spur), false, "ohne Markierung lief das Gate des Stands");
+
+    writeFileSync(join(dir, ".claude", "kit-stand.json"), JSON.stringify({ commit: "abc", pfad: stand, pid: process.pid }));
+    const mit = hook(dir, { KIT_STAND_PFAD: stand, STAND_SPUR: spur });
+    assert.equal(mit.status, 0, mit.stderr);
+    assert.equal(readFileSync(spur, "utf-8"), "stand\n", "mit Markierung lief das Gate des Stands");
+  });
 });

@@ -42,6 +42,29 @@ git config core.hooksPath .githooks
 Ohne diesen Schritt weist nichts einen Commit ohne Pruefnachweis ab; es bleibt allein
 die nachtraegliche Wertung im Nacht-Runner (Issue #471).
 
+Die Rueckmeldung zur Windows-Pruefung (Issue #1129) laeuft als Hook in
+`.claude/settings.json`. Die Datei ist nicht versioniert, und schreiben darf sie nur der
+Mensch. Deshalb stehen die beiden Eintraege hier, wortgetreu unter `"hooks"`:
+
+```json
+"SessionStart": [
+  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
+],
+"UserPromptSubmit": [
+  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
+]
+```
+
+### Rueckmeldung zur Windows-Pruefung
+
+Fuer die Windows-Pruefung ist #316 zurueckgenommen: Ein roter Job `check (windows-latest)`
+auf `origin/main` faellt nicht mehr erst beim CI-Gate in `/merge-production` auf.
+`push main` wartet weiter nicht auf die CI. Gemeldet wird beim naechsten Schritt: Der Hook
+fragt `code ci-status` fuer `origin/main` ab, ohne Fetch und mit einer Frist von fuenf
+Sekunden. Ein rotes Ergebnis meldet er einmal je Sitzung und bei jedem Sitzungsstart
+erneut. Ergebnis und Abfragezeit haelt er in `.claude/windows-pruefung.json`. Laeuft der Job
+noch, fragt er fruehestens nach zwei Minuten wieder. Scheitert die Abfrage, schweigt er.
+
 ## Ablauf
 
 Die Listen unten fuehren nur die **Erzeugungsschritte**. Prueflauf, Festschreiben und
@@ -116,6 +139,29 @@ Wichtig: Der Version-Commit aus `merge production` loest **keinen** zusaetzliche
 Patch-Bump aus — er ist Teil des Release-Schritts, nicht ein separates `push main`.
 
 `x` (Major) wird ausschliesslich auf explizite Ansage erhoeht.
+
+### Frischer Checkout in der Push-Stufe
+
+Die Push-Stufe prueft in diesem Repo zusaetzlich den **frischen Checkout**:
+`node tools/frischer-checkout.mjs` ist ein `buildCheck` mit `stufe: "push"` und faehrt die
+Suite in einem Worktree, der nur Versioniertes enthaelt, ohne die installierte Kopie unter
+`.claude/` (Issue #1012, Plan #1035). Beim Abschluss eines Pakets und in der Merge-Stufe
+laeuft die Pruefung nicht.
+
+Ein **Fund** heisst: Ein Test haengt an etwas Unversioniertem. Entweder ist er im frischen
+Checkout rot, oder er ist dort gruen und hat trotzdem eine Datei gesucht, die nur im
+Arbeitsverzeichnis liegt (der stille Fall). Die Meldung nennt je Testdatei den fehlenden
+Pfad. Ein Fund haelt den Push an wie jede andere rote Pflichtpruefung. So waere der Fall
+vom 2026-09-04 (Issue #472) vor dem Push aufgefallen.
+
+**Behoben wird ein Fund, indem der Test auf die Quelle umgestellt wird** (`kit/`,
+`skills/`, `templates/`), nicht indem die Datei versioniert wird. Die installierte Kopie
+bleibt unversioniert.
+
+Ein Pfad kommt nur dann auf die Ausnahmeliste `AUSNAHMEN` in `tools/frischer-checkout.mjs`,
+wenn er **bestimmungsgemaess optional** ist, also auch im Arbeitsverzeichnis fehlen darf
+(etwa `.claude/workflow.config.local.json`), und zwar mit Grund. Eine echte Abhaengigkeit
+wird so nie zum Schweigen gebracht.
 
 ## Git-Tags
 

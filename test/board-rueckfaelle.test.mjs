@@ -223,10 +223,10 @@ test("pickReviewers: die Regel nimmt nie den Autor selbst", () => {
 // leseTextQuelle: die Vorrangregeln
 // ============================================================
 
-test("leseTextQuelle nimmt den direkten Wert, wenn keine Datei angegeben ist", () => {
+test("leseTextQuelle nimmt den direkten Wert, wenn keine Datei angegeben ist", async () => {
   // Nur der Gluecksfall in-process: Alle Fehlerwege enden in `fail()` und damit in
   // process.exit — sie sind ueber die CLI geprueft (board-text-quelle, board-luecken).
-  assert.equal(leseTextQuelle("Direkter Text", undefined, "text"), "Direkter Text");
-  assert.equal(leseTextQuelle("Direkter Text", "", "text"), "Direkter Text",
+  assert.equal(await leseTextQuelle("Direkter Text", undefined, "text"), "Direkter Text");
+  assert.equal(await leseTextQuelle("Direkter Text", "", "text"), "Direkter Text",
     "ein leerer Dateipfad zaehlt nicht als angegebene Datei");
 });

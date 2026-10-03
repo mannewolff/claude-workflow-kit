@@ -99,15 +99,9 @@ test("[night-976-14] eine nicht ganze Grenze steht mit einer Nachkommastelle", (
 
 // --- Das wirksame Zeitlimit im Ergebnis von `runSession` ---
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const ARGS = { model: "fixture-modell", timeoutMin: 7, yolo: false, verbose: false };
 
-test("[night-976-11] runSession fuehrt das wirksame Zeitlimit in seinem Ergebnis", NUR_POSIX, async () => {
+test("[night-976-11] runSession fuehrt das wirksame Zeitlimit in seinem Ergebnis", async () => {
   process.env.NIGHT_CLAUDE_CMD = "true";
   delete process.env.NIGHT_TIMEOUT_MS;
   try {
@@ -118,7 +112,7 @@ test("[night-976-11] runSession fuehrt das wirksame Zeitlimit in seinem Ergebnis
   }
 });
 
-test("[night-976-12] ein gesetztes NIGHT_TIMEOUT_MS kommt im Ergebnis an", NUR_POSIX, async () => {
+test("[night-976-12] ein gesetztes NIGHT_TIMEOUT_MS kommt im Ergebnis an", async () => {
   process.env.NIGHT_CLAUDE_CMD = "true";
   process.env.NIGHT_TIMEOUT_MS = "90000";
   try {

@@ -22,11 +22,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
-  NUR_POSIX, NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
+  NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
 import { nachtlaufMeldung } from "../kit/board.mjs";
@@ -56,7 +56,7 @@ function grundWortgleich(dir, satz) {
 }
 
 
-test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes Feld, dazu erzeugtVon", NUR_POSIX, () => {
+test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes Feld, dazu erzeugtVon", () => {
   const dir = setupProjekt("night-stand-neu-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: "true" });
@@ -87,7 +87,7 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
 // #668 fordert der Implementierungslauf den Strom immer an — der Hinweis hat damit
 // keinen Gegenstand mehr und entfaellt in JEDEM Lauf. Das Feld bedingt stehenzulassen
 // waere schlimmer als es zu streichen: Es behauptete fehlende Kennzahlen, die es gibt.
-test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis — der Strom wird immer angefordert", NUR_POSIX, () => {
+test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis — der Strom wird immer angefordert", () => {
   const dir = setupProjekt("night-stand-still-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -119,7 +119,7 @@ test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis
 // kann zwischen zwei Naechten eine andere gewesen sein, und eine Auswertung, die sie aus
 // der heutigen Config naehme, bewertete den Lauf von gestern gegen eine Vorgabe, die
 // damals nicht galt.
-test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config", NUR_POSIX, () => {
+test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config", () => {
   const dir = setupProjekt("night-stand-zielmarke-", { zielUmsetzungMin: 7 });
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -142,10 +142,33 @@ test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config",
   }
 });
 
+// Der feste Kit-Stand (Issue #1102, Plan #1101 A7, E9): Das Feld `kitStand` haengt hinten am
+// Lauf-Kopf, die Fassung bleibt 1. Ohne festen Stand — hier ein Projekt ohne Kit-Quelle und
+// ohne origin — steht dort `null`, damit der Morgen den Lauf mit der Kopie der Hauptkopie
+// von einem mit festem Stand unterscheidet.
+test("[night-2] ohne festen Kit-Stand traegt der Lauf-Kopf kitStand null, hinter der Zielmarke", () => {
+  const dir = setupProjekt("night-stand-kitstand-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+    assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
+    assert.ok("kitStand" in stand, "das Feld fehlt");
+    assert.equal(stand.kitStand, null);
+    const schluessel = Object.keys(stand);
+    assert.equal(schluessel.indexOf("kitStand"), schluessel.indexOf("zielUmsetzungMin") + 1,
+      `kitStand gehoert direkt hinter die Zielmarke: ${schluessel.join(", ")}`);
+    assert.doesNotMatch(res.stdout, /Kit-Stand:/, "ohne Stand keine Stand-Zeile");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Bricht
 // der Implementierungslauf schon in der ersten Runde am leeren Ready ab, steht "Ready
 // ist leer" wortgleich am Lauf-Kopf, hinter den Feldern der Schemafassung 1.
-test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", NUR_POSIX, () => {
+test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", () => {
   const dir = setupProjekt("night-stand-ohnearbeit-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
@@ -174,7 +197,7 @@ test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als n
 // Der Beweis, dass der Strom wirklich angefordert wird, und nicht nur der Hinweis
 // verschwunden ist: Der Session-Fake schreibt seine Argumente mit. Ohne diesen Test
 // bestuende das Streichen des Feldes fuer sich — und die Kennzahlen fehlten weiter.
-test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream-json, auch ohne --verbose", NUR_POSIX, () => {
+test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream-json, auch ohne --verbose", () => {
   const dir = setupProjekt("night-stand-strom-");
   let binDir = null;
   try {
@@ -188,9 +211,12 @@ test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream
     const argLog = join(binDir, "cli-args.txt");
     writeFileSync(join(binDir, "claude"), `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\nexit 0\n`);
     chmodSync(join(binDir, "claude"), 0o755);
+    // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
+    // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
+    writeFileSync(join(binDir, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
-      PATH: `${binDir}:${process.env.PATH}`,
+      PATH: `${binDir}${delimiter}${process.env.PATH}`,
     });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
@@ -207,7 +233,7 @@ test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream
 // planmaessig endet, schliesst regulaer ab und meldet ans Board keinen abortReason. Der
 // Grund gehoert allein dem harten Stopp — stuende er auch hier, saehe jede volle Nacht
 // wie eine Stoerung aus.
-test("[night-2] ein am --max beendeter Lauf schliesst regulaer ab und meldet keinen abortReason", NUR_POSIX, () => {
+test("[night-2] ein am --max beendeter Lauf schliesst regulaer ab und meldet keinen abortReason", () => {
   const dir = setupProjekt("night-stand-max-");
   try {
     readyIssue(dir, "Einziges Paket der Nacht");
@@ -226,7 +252,7 @@ test("[night-2] ein am --max beendeter Lauf schliesst regulaer ab und meldet kei
   }
 });
 
-test("mit --dry-run --verbose entsteht keine Ergebnisstand-Datei", NUR_POSIX, () => {
+test("mit --dry-run --verbose entsteht keine Ergebnisstand-Datei", () => {
   const dir = setupProjekt("night-stand-dry-");
   try {
     readyIssue(dir, "Wird nur angezeigt");
@@ -238,7 +264,7 @@ test("mit --dry-run --verbose entsteht keine Ergebnisstand-Datei", NUR_POSIX, ()
   }
 });
 
-test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", NUR_POSIX, async () => {
+test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", async () => {
   const dir = setupProjekt("night-stand-zwei-");
   try {
     const erst = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: "true" });
@@ -256,7 +282,7 @@ test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", NUR_PO
   }
 });
 
-test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textprotokoll nennt ihn", NUR_POSIX, () => {
+test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textprotokoll nennt ihn", () => {
   // root ignoriert Verzeichnisrechte — der Schreibfehler waere nicht herstellbar.
   if (process.getuid?.() === 0) return;
   const dir = setupProjekt("night-stand-eacces-");
@@ -273,7 +299,19 @@ test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textpro
     // Runde gar nicht erst, und dieser Test prueefte nicht mehr, was er prueft. Leer heisst
     // verwaist, der Lauf nimmt ihn also selbst.
     writeFileSync(join(claudeDir, "night-umsetzung.lock"), "", "utf-8");
-    chmodSync(claudeDir, 0o555);
+    if (process.platform === "win32") {
+      // Unter Windows sperrt das Read-only-Attribut ein Verzeichnis nicht gegen neue
+      // Dateien. Derselbe Fehlerpfad entsteht dort, wenn ein Verzeichnis steht, wo die
+      // JSON-Datei hin soll (EISDIR, Plan #1128 E7) — eines je Sekunde der naechsten zwei
+      // Minuten, denn der Name traegt die Startsekunde des Laufs.
+      const start = Date.now();
+      for (let s = 0; s < 120; s++) {
+        const iso = new Date(start + s * 1000).toISOString();
+        mkdirSync(join(claudeDir, `night-run-${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}.json`), { recursive: true });
+      }
+    } else {
+      chmodSync(claudeDir, 0o555);
+    }
 
     const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
@@ -290,7 +328,7 @@ test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textpro
   }
 });
 
-test("[night-3] eine erfolgreiche Runde endet trotz untracked Ergebnisstand mit Exit 0", NUR_POSIX, () => {
+test("[night-3] eine erfolgreiche Runde endet trotz untracked Ergebnisstand mit Exit 0", () => {
   const dir = setupProjekt("night-stand-clean-");
   try {
     const id = readyIssue(dir, "Erfolgreiche Runde");
@@ -313,7 +351,7 @@ test("[night-3] eine erfolgreiche Runde endet trotz untracked Ergebnisstand mit 
 
 // --- Der abgeschlossene harte Stopp (Issue #488) ---
 
-test("ein Abbruch waehrend der Runde hinterlaesst harterStopp, Fehlerklasse tracker und das gezogene Paket unbekannt", NUR_POSIX, () => {
+test("ein Abbruch waehrend der Runde hinterlaesst harterStopp, Fehlerklasse tracker und das gezogene Paket unbekannt", () => {
   const dir = setupProjekt("night-stand-tracker-");
   try {
     const id = readyIssue(dir, "Abbruch mitten in der Runde");
@@ -337,7 +375,7 @@ test("ein Abbruch waehrend der Runde hinterlaesst harterStopp, Fehlerklasse trac
   }
 });
 
-test("der Rest-Guard hinterlaesst harterStopp und das Paket mit Ausgang harterStopp, Commit und Pruefstand", NUR_POSIX, () => {
+test("der Rest-Guard hinterlaesst harterStopp und das Paket mit Ausgang harterStopp, Commit und Pruefstand", () => {
   const dir = setupProjekt("night-stand-restguard-");
   try {
     const id = readyIssue(dir, "Runde mit Resten");
@@ -359,7 +397,7 @@ test("der Rest-Guard hinterlaesst harterStopp und das Paket mit Ausgang harterSt
   }
 });
 
-test("ein Vorflug-Abbruch traegt die Fehlerklasse zustand", NUR_POSIX, () => {
+test("ein Vorflug-Abbruch traegt die Fehlerklasse zustand", () => {
   const dir = setupProjekt("night-stand-vorflug-");
   try {
     // Ein unsauberer Baum vor dem Lauf: vorbereiten() bricht ab, noch bevor eine
@@ -384,7 +422,7 @@ test("ein Vorflug-Abbruch traegt die Fehlerklasse zustand", NUR_POSIX, () => {
 // eigenen Satz, und der Schreibfehler am Lock ist ueberhaupt kein Fall ohne Arbeit,
 // sondern eine Stoerung der Umgebung.
 
-test("kein Ready-Issue traegt das Routing-Label: der Lauf nennt Label und Kartenzahl statt zu schweigen", NUR_POSIX, () => {
+test("kein Ready-Issue traegt das Routing-Label: der Lauf nennt Label und Kartenzahl statt zu schweigen", () => {
   const dir = setupProjekt("night-stand-keinlabel-");
   try {
     readyIssue(dir, "Traegt das gesuchte Label nicht");
@@ -397,7 +435,7 @@ test("kein Ready-Issue traegt das Routing-Label: der Lauf nennt Label und Karten
   }
 });
 
-test("alle Ready-Karten am Gate zurueckgestellt: der Lauf nennt seine eigene Raeumung, nicht 'Ready ist leer'", NUR_POSIX, () => {
+test("alle Ready-Karten am Gate zurueckgestellt: der Lauf nennt seine eigene Raeumung, nicht 'Ready ist leer'", () => {
   const dir = setupProjekt("night-stand-zurueckgestellt-");
   try {
     // Ein Plandokument faellt am Gate zurueck nach Backlog. In der zweiten Runde ist Ready
@@ -415,7 +453,7 @@ test("alle Ready-Karten am Gate zurueckgestellt: der Lauf nennt seine eigene Rae
   }
 });
 
-test("die Umsetzung ist belegt: der Lauf nennt den haltenden Prozess und endet trotzdem mit Exit 0", NUR_POSIX, () => {
+test("die Umsetzung ist belegt: der Lauf nennt den haltenden Prozess und endet trotzdem mit Exit 0", () => {
   const dir = setupProjekt("night-stand-belegt-");
   try {
     readyIssue(dir, "Bleibt liegen, weil belegt");
@@ -432,7 +470,7 @@ test("die Umsetzung ist belegt: der Lauf nennt den haltenden Prozess und endet t
   }
 });
 
-test("ein nicht beschreibbarer Umsetzungs-Lock ist eine Stoerung der Umgebung: harter Stopp ohne noWorkReason", NUR_POSIX, () => {
+test("ein nicht beschreibbarer Umsetzungs-Lock ist eine Stoerung der Umgebung: harter Stopp ohne noWorkReason", () => {
   const dir = setupProjekt("night-stand-lockfehler-");
   try {
     readyIssue(dir, "Kommt nicht zum Zuge");
@@ -454,7 +492,7 @@ test("ein nicht beschreibbarer Umsetzungs-Lock ist eine Stoerung der Umgebung: h
   }
 });
 
-test("ein Lauf mit leerem Ready und ohne jede Rueckstellung behaelt seinen Satz wortgleich", NUR_POSIX, () => {
+test("ein Lauf mit leerem Ready und ohne jede Rueckstellung behaelt seinen Satz wortgleich", () => {
   const dir = setupProjekt("night-stand-leerohne-");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });

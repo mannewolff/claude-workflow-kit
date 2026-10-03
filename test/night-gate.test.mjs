@@ -30,10 +30,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, {
     cwd, encoding: "utf-8",
@@ -120,7 +116,7 @@ function sessions(dir) {
   return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean) : [];
 }
 
-test("[night-1] eine Runde ohne Nachweis gilt als Fehlschlag, obwohl die Karte in In review steht", NUR_POSIX, () => {
+test("[night-1] eine Runde ohne Nachweis gilt als Fehlschlag, obwohl die Karte in In review steht", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -131,7 +127,7 @@ test("[night-1] eine Runde ohne Nachweis gilt als Fehlschlag, obwohl die Karte i
   });
 });
 
-test("[night-1] ein roter Lauf gilt als Fehlschlag und wird von ungeprueft unterschieden", NUR_POSIX, () => {
+test("[night-1] ein roter Lauf gilt als Fehlschlag und wird von ungeprueft unterschieden", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -142,7 +138,7 @@ test("[night-1] ein roter Lauf gilt als Fehlschlag und wird von ungeprueft unter
   }, { buildChecks: ["false"] });
 });
 
-test("[night-1] eine unlesbare Zusammenfassung gilt als Fehlschlag mit eigenem Grund", NUR_POSIX, () => {
+test("[night-1] eine unlesbare Zusammenfassung gilt als Fehlschlag mit eigenem Grund", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -152,7 +148,7 @@ test("[night-1] eine unlesbare Zusammenfassung gilt als Fehlschlag mit eigenem G
   });
 });
 
-test("[night-1] Kartenstatus und HEAD bleiben nach dem Fehlschlag unveraendert", NUR_POSIX, () => {
+test("[night-1] Kartenstatus und HEAD bleiben nach dem Fehlschlag unveraendert", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -165,7 +161,7 @@ test("[night-1] Kartenstatus und HEAD bleiben nach dem Fehlschlag unveraendert",
   });
 });
 
-test("[night-1] der Board-Kommentar unterscheidet sich vom Text fuer eine Session ohne In-review-Ergebnis", NUR_POSIX, () => {
+test("[night-1] der Board-Kommentar unterscheidet sich vom Text fuer eine Session ohne In-review-Ergebnis", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -174,7 +170,7 @@ test("[night-1] der Board-Kommentar unterscheidet sich vom Text fuer eine Sessio
   });
 });
 
-test("[night-1] steht die Karte nicht in In review, bleibt der bestehende Backlog-Pfad unberuehrt", NUR_POSIX, () => {
+test("[night-1] steht die Karte nicht in In review, bleibt der bestehende Backlog-Pfad unberuehrt", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -185,7 +181,7 @@ test("[night-1] steht die Karte nicht in In review, bleibt der bestehende Backlo
   });
 });
 
-test("[night-1] ein Ready-Issue ohne Nachweis wird in derselben Nacht nicht erneut gezogen", NUR_POSIX, () => {
+test("[night-1] ein Ready-Issue ohne Nachweis wird in derselben Nacht nicht erneut gezogen", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -194,7 +190,7 @@ test("[night-1] ein Ready-Issue ohne Nachweis wird in derselben Nacht nicht erne
   });
 });
 
-test("[night-1] der Lauf setzt nach dem Fehlschlag mit dem naechsten Issue fort", NUR_POSIX, () => {
+test("[night-1] der Lauf setzt nach dem Fehlschlag mit dem naechsten Issue fort", () => {
   mitProjekt((dir) => {
     const a = readyIssue(dir, "Erstes");
     const b = readyIssue(dir, "Zweites");
@@ -205,7 +201,7 @@ test("[night-1] der Lauf setzt nach dem Fehlschlag mit dem naechsten Issue fort"
   });
 });
 
-test("[night-1] die Endzeile fuehrt Runden ohne gueltigen Nachweis in einem eigenen Zaehler", NUR_POSIX, () => {
+test("[night-1] die Endzeile fuehrt Runden ohne gueltigen Nachweis in einem eigenen Zaehler", () => {
   mitProjekt((dir) => {
     readyIssue(dir);
     issuesCommitten(dir);
@@ -215,7 +211,7 @@ test("[night-1] die Endzeile fuehrt Runden ohne gueltigen Nachweis in einem eige
   });
 });
 
-test("[night-1] eine Session mit gruenem Nachweis bleibt Erfolg", NUR_POSIX, () => {
+test("[night-1] eine Session mit gruenem Nachweis bleibt Erfolg", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);

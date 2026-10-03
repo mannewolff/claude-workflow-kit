@@ -9,8 +9,8 @@
 //
 // Der heikelste Punkt ist derselbe wie im Regeltext: Eine spaeter laufende Pruefung
 // sieht in der Checklist wie eine ausgelassene aus. Steht nirgends, dass die Stufen
-// kumulativ sind und vor der Freigabe alle drei laufen, liest das jeder als
-// weggenommene Pruefung.
+// kumulativ sind und jede Pruefung einmal vor der Freigabe laeuft, liest das jeder
+// als weggenommene Pruefung.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -58,10 +58,12 @@ test("der Abschnitt ordnet jeder Stufe ihren Zeitpunkt und ihren Skill zu", () =
 });
 
 // Ohne diesen Satz liest jeder eine spaeter laufende Pruefung als weggenommene.
-test("der Abschnitt sagt, dass die Stufen kumulativ sind und vor der Freigabe alle laufen", () => {
+test("der Abschnitt sagt, dass die Stufen kumulativ sind und jede Pruefung einmal vor der Freigabe laeuft", () => {
   const abschnitt = staffelAbschnitt();
   assert.match(abschnitt, /kumulativ/i, "die Kumulativitaet ist nicht benannt");
-  assert.match(abschnitt, /alle drei/i, "es steht nicht, dass vor der Freigabe alle drei Stufen laufen");
+  assert.match(abschnitt, /jede Prüfung läuft einmal vor der Freigabe/i,
+    "es steht nicht, dass jede Pruefung einmal vor der Freigabe laeuft");
+  assert.doesNotMatch(abschnitt, /alle drei Stufen/, "der Abschnitt beschreibt noch den Doppellauf (Issue #1000)");
   assert.match(abschnitt, /(entfällt|entfallen|nimmt)[\s\S]{0,160}(keine|nichts|niemandem)|keine[\s\S]{0,120}entfällt/i,
     "es steht nicht, dass keine Pruefung aus dem Prozess entfaellt");
 });
@@ -100,4 +102,25 @@ test("der Abschnitt grenzt die Stufe gegen die anderen Stufenbegriffe ab", () =>
   const abschnitt = staffelAbschnitt();
   assert.match(abschnitt, /`reviewStufen`/, "die Abgrenzung gegen reviewStufen fehlt");
   assert.match(abschnitt, /Nacht-Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Nacht-Kette fehlt");
+});
+
+// Issue #1000: Die Freigabe prueft nur, was `push main` nicht geprueft hat — und wer
+// eine kurze Freigabe will, bekommt den Weg dorthin samt Preis beschrieben.
+test("der Abschnitt beschreibt die Auswahl der Freigabestufe mit dem Grund der Push-Stufe", () => {
+  const abschnitt = staffelAbschnitt();
+  assert.match(abschnitt, /nur, was `push main` nicht geprüft hat/);
+  assert.match(abschnitt, /Stufe push, geprueft beim push main/);
+});
+
+test("der Abschnitt fuehrt den Absatz 'Kurze Freigabe' mit Rat und Preis", () => {
+  const abschnitt = staffelAbschnitt();
+  const absatz = abschnitt.split("\n").find((z) => z.startsWith("**Kurze Freigabe.**"));
+  assert.ok(absatz, "der Absatz 'Kurze Freigabe' fehlt");
+  assert.match(absatz, /Stufe `push` statt `merge`/, "der Rat, lange Pruefungen auf push zu stellen, fehlt");
+  assert.match(absatz, /Preis/, "der Preis fehlt");
+  assert.match(absatz, /`push main` dauert/, "der Preis nennt nicht, dass jedes push main laenger dauert");
+});
+
+test("die Dokumentation nennt 'alle drei Stufen' nirgends mehr", () => {
+  assert.doesNotMatch(DOKU, /alle drei Stufen/);
 });

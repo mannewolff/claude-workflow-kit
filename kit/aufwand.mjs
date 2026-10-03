@@ -9,6 +9,12 @@
  * und `.claude/aufwand.json` (fuer die zwei Ausgabestellen). `befund` gibt allein den
  * Befundblock als Text aus.
  *
+ * DIE ZEIT FUER BOARD-AUSKUENFTE (Issue #1027, Plan #1015, E11 bis E13): Der Abschnitt
+ * "Auskuenfte" mittelt die Auskunftszeit, die der Runner je Einheit misst, ueber die
+ * Umsetzungseinheiten. `auskunft` misst dieselbe Groesse nachtraeglich an Claude-Code-
+ * Transkripten — mit einer Kopie des Klassifizierers aus night.mjs, damit Referenz und
+ * Ziel mit derselben Messung entstehen.
+ *
  * WARUM EINE EIGENE DATEI UND KEIN ANBAU AN night.mjs (Plan #745, E7): `/push-main` muss
  * den Befund lesen koennen, ohne den Nacht-Runner zu starten. night.mjs traegt ueber
  * 5.000 Zeilen, und diese Auswertung ist eine reine Leseoperation ueber Dateien — ohne
@@ -34,6 +40,7 @@
  *
  * Aufruf im Projekt-Root:  node .claude/kit/aufwand.mjs auswerten [--laeufe <n>]
  *                          node .claude/kit/aufwand.mjs befund
+ *                          node .claude/kit/aufwand.mjs auskunft <transkript…>
  *
  * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek — das Kit liefert
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
@@ -46,7 +53,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.5.0";
+const KIT_VERSION = "3.6.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "aufwand.json";
@@ -85,9 +92,11 @@ const HELP = `aufwand.mjs (claude-workflow-kit v${KIT_VERSION}) — Aufwand des 
 
   node aufwand.mjs auswerten [--laeufe <n>]
   node aufwand.mjs befund
+  node aufwand.mjs auskunft <transkript…>
 
 auswerten  Liest die juengsten Ergebnisstaende aus ${CLAUDE_DIR}/, aggregiert Zeit,
-           Pruefungen, Umfang, Kosten und den Aufwand je Aufgabenstufe und schreibt
+           Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe und die Zeit
+           fuer Board-Auskuenfte je Umsetzungseinheit (Abschnitt Auskuenfte) und schreibt
            ${CLAUDE_DIR}/${BERICHT_DATEI} sowie
            ${CLAUDE_DIR}/${STAND_DATEI}. Die Ausgabe auf stdout ist immer JSON —
            auch im Leerfall und auch bei einem abgewiesenen Aufruf.
@@ -95,6 +104,11 @@ befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, m
            Zeitpunkt der Auswertung als erster Zeile. Liegt kein Befund vor, fehlt die
            Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer 0 — der
            Befund ist kein Gate.
+auskunft   Misst Claude-Code-Transkripte (*.jsonl) nach derselben Regel wie der
+           Nacht-Runner: die Spanne vom Werkzeugaufruf bis zu seinem Ergebnis fuer jede
+           Rueckfrage an das Board und jedes Aufbereiten ihrer Antwort. Gibt je Datei
+           und gesamt Minuten und Aufrufe aus. Eine unlesbare Datei oder eine ohne
+           Zeitstempel wird gemeldet und nicht als 0 gezaehlt; dann Exit 1.
 
   --laeufe <n>    Wie viele Staende hoechstens einbezogen werden, die juengsten zuerst
                   (Vorgabe ${VORGABE_LAEUFE}). Sticht den Config-Block.
@@ -320,6 +334,96 @@ export function einheitKosten(einheit) {
   };
 }
 
+// --- Board-Auskuenfte (Issue #1027, Plan #1015, E11 bis E13) -----------------
+//
+// SYNC: `TOOL_RESULTS_PFAD`, `RUECKFRAGE_MUSTER`, `AUFBEREITUNG_PIPE` und `auskunftArt`
+// sind eine Kopie aus kit/night.mjs, wo das Original samt Beleg des Pfadmusters steht.
+// Kopie statt `import`: Diese Auswertung bleibt eine reine Leseoperation ohne den Runner
+// (Plan #745, E7). Den Gleichlauf haelt test/night-auskunft-gleichlauf.test.mjs — er
+// laesst beide Fassungen ueber dieselben Fixtures laufen.
+
+const TOOL_RESULTS_PFAD = "tool-results/";
+
+const RUECKFRAGE_MUSTER = [
+  /board\.mjs["']?\s+(?:issue\s+(?:get|list|epics|activity|auftrag)|kontext)(?![\w-])/,
+  /(?:^|[\s;&|(])(?:gh|glab)\s+issue\s+(?:view|list)(?![\w-])/,
+  /(?:^|[\s;&|(])gh\s+api\b[^|;&\n]*issues/,
+];
+
+const AUFBEREITUNG_PIPE = /(?<!\|)\|(?!\|)\s*(?:jq|node\s+-e|python3?)(?![\w-])/g;
+
+/**
+ * Ob ein `tool_use`-Block eine Board-Auskunft ist — "rueckfrage", "aufbereitung" oder
+ * `null`. Die Bedeutung der drei Antworten steht am Original in kit/night.mjs.
+ */
+export function auskunftArt(block) {
+  if (block?.type !== "tool_use" || !block.input || typeof block.input !== "object") return null;
+  const bashText = block.name === "Bash" && typeof block.input.command === "string" ? block.input.command : null;
+  if (JSON.stringify(block.input).includes(TOOL_RESULTS_PFAD)) return "aufbereitung";
+  if (bashText === null) return null;
+  let erste = -1;
+  for (const muster of RUECKFRAGE_MUSTER) {
+    const treffer = muster.exec(bashText);
+    if (treffer && (erste < 0 || treffer.index < erste)) erste = treffer.index;
+  }
+  if (erste < 0) return null;
+  for (const pipe of bashText.matchAll(AUFBEREITUNG_PIPE)) {
+    if (pipe.index > erste) return "aufbereitung";
+  }
+  return "rueckfrage";
+}
+
+/**
+ * Misst ein Claude-Code-Transkript (`*.jsonl`) mit derselben Regel wie der
+ * `auskunftBeobachter` in night.mjs den Live-Strom (E13): die Spanne tool_use bis
+ * tool_result jedes Aufrufs, den `auskunftArt` erkennt. Die Zeit stammt hier aus dem
+ * `timestamp` der Transkriptzeile statt aus der Ankunft am Strom.
+ *
+ * `zeitstempel: false` heisst: keine einzige Zeile trug einen lesbaren Zeitstempel — die
+ * Datei ist nicht gemessen, und ihre 0 waere eine Behauptung. `ohneSpanne` zaehlt die
+ * Aufrufe, deren Ergebnis oder Zeitstempel fehlt: Sie zaehlen als Aufruf, ihre Spanne
+ * nicht — sie waere eine Schaetzung.
+ */
+export function transkriptMessen(inhalt) {
+  const m = { ms: 0, aufrufe: 0, ohneSpanne: 0, zeitstempel: false, offen: new Map(), gesehen: new Set() };
+  for (const zeile of String(inhalt).split("\n")) {
+    const obj = transkriptZeile(zeile);
+    if (obj === null) continue;
+    const ts = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;
+    if (Number.isFinite(ts)) m.zeitstempel = true;
+    if (!Array.isArray(obj.message?.content)) continue;
+    for (const block of obj.message.content) transkriptBlock(m, obj.type, block, ts);
+  }
+  return { ms: m.ms, aufrufe: m.aufrufe, ohneSpanne: m.ohneSpanne + m.offen.size, zeitstempel: m.zeitstempel };
+}
+
+/** Eine Transkriptzeile als Objekt; eine leere oder kaputte Zeile ist `null`. */
+function transkriptZeile(zeile) {
+  try {
+    const obj = JSON.parse(zeile);
+    return obj && typeof obj === "object" ? obj : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ein Inhaltsblock: Beginn eines Auskunftsaufrufs oder das Ergebnis eines offenen. */
+function transkriptBlock(m, typ, block, ts) {
+  if (typ === "assistant") {
+    // Dieselbe Id zaehlt einmal, auch wenn das Transkript die Nachricht wiederholt.
+    if (typeof block?.id !== "string" || block.id === "" || m.gesehen.has(block.id) || !auskunftArt(block)) return;
+    m.gesehen.add(block.id);
+    m.aufrufe += 1;
+    m.offen.set(block.id, ts);
+    return;
+  }
+  if (block?.type !== "tool_result" || !m.offen.has(block.tool_use_id)) return;
+  const start = m.offen.get(block.tool_use_id);
+  m.offen.delete(block.tool_use_id);
+  if (Number.isFinite(start) && Number.isFinite(ts) && ts >= start) m.ms += ts - start;
+  else m.ohneSpanne += 1;
+}
+
 // --- Aggregation -------------------------------------------------------------
 
 /** Die leeren Sammler einer Auswertung — ein Ort, an dem steht, was ueberhaupt gezaehlt wird. */
@@ -351,6 +455,13 @@ function sammlerAnlegen() {
       versuche: 0, ueber: 0, ueberschreitung: reihe(), maxMs: null,
       zeitabbrueche: 0, laeufe: new Set(),
       ohneMarke: { einheiten: 0, laeufe: new Set() }, marken: new Set(),
+    },
+    // Die Zeit fuer Board-Auskuenfte (Issue #1027). `umsetzungen` je Einheit, `anzahl` die
+    // gemessenen darunter — der Nenner des Mittels, den die Summe allein nicht kennt.
+    auskuenfte: {
+      umsetzungen: [], summe: reihe(), anzahl: 0,
+      keineUmsetzung: { einheiten: 0, ms: reihe(), laeufe: new Set() },
+      nichtGemessen: { einheiten: 0, laeufe: new Set() },
     },
     unvollstaendig: [],
     einheitenGesamt: 0,
@@ -615,6 +726,55 @@ function istNacharbeit(einheit) {
   return einheit.endStatus !== "in_review" || einheit.pruefung?.zustand === "rot";
 }
 
+/**
+ * Die Auskunftszeit einer Einheit (Issue #1027, Plan #1015, E12).
+ *
+ * Ins Mittel geht nur eine Umsetzungseinheit — `umsetzung: true`, gesetzt vom Runner, wenn
+ * eine Session der Einheit mit `/implement-*` startete. `umsetzung: false` (Kette, Karten
+ * anlegen, Prueflaeufe, Einheiten ohne Session) steht in "keine Umsetzung". Eine Einheit
+ * ohne das Feld stammt aus einem Stand vor Issue #1026: Ob sie umsetzte, weiss niemand,
+ * sie zaehlt allein als "nicht gemessen".
+ *
+ * `auskunft: null` und ein fehlendes Feld heissen "nicht gemessen" und gehen nie als 0
+ * ein — dieselbe Regel wie ueberall in dieser Auswertung.
+ */
+function auskunftErfassen(s, einheit, stempel) {
+  const a = s.auskuenfte;
+  const ms = zahl(einheit?.auskunft?.ms);
+  const aufrufe = ms === null ? null : zahl(einheit.auskunft.aufrufe);
+  if (ms === null) {
+    a.nichtGemessen.einheiten += 1;
+    a.nichtGemessen.laeufe.add(stempel);
+  }
+  if (einheit?.umsetzung === true) {
+    a.umsetzungen.push({ lauf: stempel, id: String(einheit.id), titel: einheit.titel ?? null, ms, aufrufe });
+    if (messen(a.summe, ms, stempel)) a.anzahl += 1;
+  } else if (einheit?.umsetzung === false) {
+    a.keineUmsetzung.einheiten += 1;
+    a.keineUmsetzung.laeufe.add(stempel);
+    messen(a.keineUmsetzung.ms, ms, stempel);
+  }
+}
+
+/** Die Auskunftszeit als Ergebnis: das Mittel mit der Zahl der Einheiten, die es tragen. */
+function auskuenfteErgebnis(s) {
+  const a = s.auskuenfte;
+  return {
+    umsetzungen: a.umsetzungen,
+    mittelMs: {
+      wert: a.anzahl === 0 ? null : Math.round(a.summe.summe / a.anzahl),
+      einheiten: a.anzahl,
+      laeufe: a.summe.laeufe.size,
+    },
+    keineUmsetzung: {
+      einheiten: a.keineUmsetzung.einheiten,
+      ms: fertig(a.keineUmsetzung.ms),
+      laeufe: a.keineUmsetzung.laeufe.size,
+    },
+    nichtGemessen: { einheiten: a.nichtGemessen.einheiten, laeufe: a.nichtGemessen.laeufe.size },
+  };
+}
+
 /** Der leere Sammler eines Paares — ein Ort, an dem steht, was je Stufe gezaehlt wird. */
 function stufenSammler(stufe, effort) {
   return {
@@ -716,6 +876,7 @@ function standErfassen(s, { stempel, daten }) {
     wartendErfassen(s, einheit, stempel);
     stufeErfassen(s, einheit, stempel);
     zielmarkeErfassen(s, einheit, stempel, marke);
+    auskunftErfassen(s, einheit, stempel);
   }
   // Was zu keiner Karte gehoert (Vorflug, Kette) — nur der Runner kennt diesen Rest.
   messen(s.kosten.nichtZuordenbar, daten?.verbrauchOhneEinheit?.kostenUsd, stempel);
@@ -786,6 +947,7 @@ function aggregieren(staende) {
     kosten: kostenErgebnis(s),
     jeStufe: stufenErgebnis(s),
     zielmarke: zielmarkeErgebnis(s),
+    auskuenfte: auskuenfteErgebnis(s),
   };
 }
 
@@ -926,11 +1088,13 @@ const NUR_ZIFFERN = /^\d+$/;
  */
 export function tausenderPunkte(ziffern) {
   if (!NUR_ZIFFERN.test(ziffern)) return ziffern;
+  // Angehaengt und einmal umgedreht (Issue #1080): `unshift` verschob bei jeder Gruppe
+  // das ganze Array, die Schleife war damit quadratisch — die Wachstumsprobe fand es.
   const gruppen = [];
   for (let ende = ziffern.length; ende > 0; ende -= 3) {
-    gruppen.unshift(ziffern.slice(Math.max(0, ende - 3), ende));
+    gruppen.push(ziffern.slice(Math.max(0, ende - 3), ende));
   }
-  return gruppen.join(".");
+  return gruppen.reverse().join(".");
 }
 
 /**
@@ -1007,6 +1171,7 @@ export function berichtText(e) {
     ...berichtKosten(e),
     ...berichtStufen(e),
     ...berichtZielmarke(e),
+    ...berichtAuskuenfte(e),
     ...berichtBefund(e),
     ...berichtFuss(e),
   ].join("\n");
@@ -1245,6 +1410,52 @@ function berichtZielmarke(e) {
   return zeilen;
 }
 
+/** Minuten mit einer Nachkommastelle — die Einheit, in der AK 7 aus Plan #1015 misst. */
+function minuten(ms) {
+  return ms === null ? NICHT_GEMESSEN : `${zahlform(ms / 60_000, 1)} min`;
+}
+
+function einheitenText(n) {
+  return n === 1 ? "1 Einheit" : `${n} Einheiten`;
+}
+
+/**
+ * Die Zeit fuer Board-Auskuenfte (Issue #1027, Plan #1015, E11/E12).
+ *
+ * Je Umsetzungseinheit eine Zeile, darunter das Mittel mit der Zahl der Einheiten, die es
+ * tragen. "keine Umsetzung" und "nicht gemessen" stehen gesondert: Beide gehen nicht ins
+ * Mittel, und ihr Schweigen liesse das Mittel breiter getragen aussehen, als es ist.
+ */
+function berichtAuskuenfte(e) {
+  const a = e.auskuenfte;
+  const zeilen = ["## Auskuenfte", ""];
+  if (a.umsetzungen.length > 0) {
+    zeilen.push(
+      "| Lauf | Paket | Auskunftszeit | Aufrufe |", "| --- | --- | --- | --- |",
+      ...a.umsetzungen.map((u) => `| ${u.lauf} | #${u.id}${u.titel ? " " + u.titel : ""} | ${minuten(u.ms)} | `
+        + `${u.aufrufe === null ? NICHT_GEMESSEN : u.aufrufe} |`),
+      ""
+    );
+  }
+  zeilen.push(
+    a.mittelMs.einheiten === 0
+      ? "Mittel ueber die Umsetzungseinheiten: nicht gemessen."
+      : `Mittel ueber ${a.mittelMs.einheiten} Umsetzungseinheiten: ${minuten(a.mittelMs.wert)} (${laufText(a.mittelMs.laeufe)}).`,
+    "",
+    `keine Umsetzung: ${einheitenText(a.keineUmsetzung.einheiten)}, Auskunftszeit ${minuten(a.keineUmsetzung.ms.wert)} `
+    + "— Kette, Karten anlegen, Prueflaeufe; nicht im Mittel.",
+    "",
+    `nicht gemessen: ${einheitenText(a.nichtGemessen.einheiten)}`
+    + (a.nichtGemessen.einheiten > 0 ? ` (${laufText(a.nichtGemessen.laeufe)})` : "")
+    + " — ohne Messung oder aus Staenden vor #1026; sie gehen nicht als 0 ins Mittel ein.",
+    "",
+    "Gezaehlt wird die Spanne vom Werkzeugaufruf bis zu seinem Ergebnis fuer jede Rueckfrage an das Board "
+    + "und jedes Aufbereiten ihrer Antwort; Nachdenkzeit zaehlt nicht.",
+    ""
+  );
+  return zeilen;
+}
+
 function berichtBefund(e) {
   const zeilen = ["## Befund", ""];
   if (e.befund.length === 0) zeilen.push("Keine der vier Schwellen ist ueberschritten.", "");
@@ -1394,6 +1605,8 @@ export function auswerten(root, { laeufe: grenzeArg } = {}) {
     // Ebenso hinten angehaengt (Issue #978): Die Zielmarke ist eine neue Kennzahl, kein
     // Umbau der bestehenden Bloecke.
     zielmarke: a.zielmarke,
+    // Ebenso hinten angehaengt (Issue #1027).
+    auskuenfte: a.auskuenfte,
     schwellen: einstellungen.schwellen,
     nichtBestimmbar,
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
@@ -1421,6 +1634,49 @@ export function befund(root) {
   } catch {
     return "";
   }
+}
+
+/**
+ * Misst Transkript-Dateien (E13) und gibt je Datei eine Zeile und eine Gesamtzeile aus.
+ * Rueckgabe `{ text, gemessen }`: `gemessen` ist false, sobald eine Datei nicht messbar
+ * war — der Aufrufer macht daraus Exit 1, statt eine Summe fuer vollstaendig auszugeben.
+ */
+export function auskunftMessen(pfade) {
+  const zeilen = [];
+  let ms = 0;
+  let aufrufe = 0;
+  let dateien = 0;
+  let nichtGemessen = 0;
+  for (const pfad of pfade) {
+    let inhalt;
+    try {
+      inhalt = readFileSync(pfad, "utf-8");
+    } catch (err) {
+      zeilen.push(`${pfad}: nicht lesbar (${err.code ?? err.message}) — nicht gemessen`);
+      nichtGemessen += 1;
+      continue;
+    }
+    const m = transkriptMessen(inhalt);
+    if (!m.zeitstempel) {
+      zeilen.push(`${pfad}: ohne Zeitstempel — nicht gemessen`);
+      nichtGemessen += 1;
+      continue;
+    }
+    dateien += 1;
+    ms += m.ms;
+    aufrufe += m.aufrufe;
+    zeilen.push(`${pfad}: ${minuten(m.ms)}, ${m.aufrufe} Aufrufe`
+      + (m.ohneSpanne > 0 ? ` (${m.ohneSpanne} davon ohne messbare Spanne)` : ""));
+  }
+  let gesamt = "Gesamt: nicht gemessen";
+  if (dateien === 1) gesamt = `Gesamt: ${minuten(ms)}, ${aufrufe} Aufrufe aus 1 Datei`;
+  if (dateien > 1) {
+    gesamt = `Gesamt: ${minuten(ms)}, ${aufrufe} Aufrufe aus ${dateien} Dateien, `
+      + `im Mittel ${minuten(Math.round(ms / dateien))} je Datei`;
+  }
+  if (nichtGemessen > 0) gesamt += ` (${nichtGemessen} nicht gemessen)`;
+  zeilen.push(gesamt);
+  return { text: zeilen.join("\n") + "\n", gemessen: nichtGemessen === 0 };
 }
 
 // --- CLI ---------------------------------------------------------------------
@@ -1475,8 +1731,15 @@ function main() {
     return 0;
   }
 
+  if (command === "auskunft") {
+    if (rest.length === 0) fail("'auskunft' erwartet mindestens eine Transkript-Datei (*.jsonl).");
+    const { text, gemessen } = auskunftMessen(rest);
+    process.stdout.write(text);
+    return gemessen ? 0 : 1;
+  }
+
   process.stdout.write(HELP);
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten oder befund`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten, befund oder auskunft`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

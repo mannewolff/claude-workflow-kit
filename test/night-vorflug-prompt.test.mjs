@@ -74,6 +74,57 @@ test("der Befund-Teil zaehlt die Reviewer-Namen auf und schliesst den Modellname
   );
 });
 
+// Issue #1107: Der Auftrag sagt, woran die Session den Exit-Code erkennt. Das Bash-Werkzeug
+// meldet einen Exit-Code ungleich 0 als Zeile `Exit code N`; ohne diese Angabe riet die
+// Vorflug-Session am 2026-09-17 aus drei Warnzeilen auf "nicht verfuegbar" (Idee #690).
+const ZWEI_REVIEWER = [
+  { name: "gpt-astra", command: 'codex exec --model gpt-6-astra -c model_reasoning_effort="high"' },
+  { name: "gpt-sol", command: 'codex exec --model gpt-5.6-sol -c model_reasoning_effort="high"' },
+];
+
+function schritt(prompt, nummer) {
+  const start = prompt.indexOf(`SCHRITT ${nummer}`);
+  const ende = prompt.indexOf(`SCHRITT ${nummer + 1}`);
+  return prompt.slice(start, ende === -1 ? undefined : ende);
+}
+
+test("[#1107] Schritt 1 nennt die Zeile 'Exit code N' und ihr Fehlen als Exit-Code 0", () => {
+  const teil = schritt(vorflugPrompt(ZWEI_REVIEWER, "311"), 1);
+  assert.match(teil, /`Exit code N`/);
+  assert.match(teil, /Fehlt diese Zeile, war der Exit-Code 0/);
+});
+
+test("[#1107] Schritt 1 nennt Warnzeilen und Meldungen in eckigen Klammern ausdruecklich als kein Fehler", () => {
+  const teil = schritt(vorflugPrompt(ZWEI_REVIEWER, "311"), 1);
+  assert.match(teil, /Warnzeilen, Hinweise und Meldungen in eckigen Klammern/);
+  assert.match(teil, /\[claude-code:unrecognized_model\]/);
+  assert.match(teil, /sind kein Fehler/);
+});
+
+test("[#1107] Schritt 1 macht die Zeile OK zur Bedingung der Verfuegbarkeit, mit eigenem Grund", () => {
+  const teil = schritt(vorflugPrompt(ZWEI_REVIEWER, "311"), 1);
+  assert.match(teil, /eine Zeile `OK` enthaelt/);
+  assert.match(teil, /fehlende `OK`-Zeile ergeben "verfuegbar": false/);
+  assert.match(teil, /"keine Antwort OK"/);
+});
+
+for (const trackerId of ["311", null]) {
+  test(`[#1107] Schritt 2 erkennt Exit-Code 0 ebenso und nennt Warnzeilen als kein Fehler (trackerId ${trackerId})`, () => {
+    const teil = schritt(vorflugPrompt(ZWEI_REVIEWER, trackerId), 2);
+    assert.match(teil, /keine `Exit code`-Zeile/);
+    assert.match(teil, /Warnzeilen sind kein Fehler/);
+  });
+}
+
+test("[#1107] die Probezeilen bleiben unveraendert, ohne Pipe und ohne Umleitung", () => {
+  const prompt = vorflugPrompt(ZWEI_REVIEWER, "311");
+  const zeilen = prompt.split("\n").filter((z) => z.startsWith("  ") && z.includes("# Reviewer-Name fuer den Befund:"));
+  assert.deepEqual(zeilen, [
+    `  codex exec --model gpt-6-astra -c model_reasoning_effort="high" 'Antworte nur mit dem Wort OK.'   # Reviewer-Name fuer den Befund: gpt-astra`,
+    `  codex exec --model gpt-5.6-sol -c model_reasoning_effort="high" 'Antworte nur mit dem Wort OK.'   # Reviewer-Name fuer den Befund: gpt-sol`,
+  ]);
+});
+
 // Charakterisierung: haelt den heutigen Fall fest. Von Anfang an gruen — das ist gewollt,
 // die Abgleichregel wird von diesem Issue ausdruecklich nicht angefasst.
 test("normalisiereVorflug: Modellnamen statt Reviewer-Namen bleiben nicht verfuegbar", () => {

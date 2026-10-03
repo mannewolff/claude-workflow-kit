@@ -41,11 +41,34 @@ export function vorTagen(n) {
  * die Zeile, die eine Auswertung im Bestand vorfindet und die in der Kennzahl je
  * Karte nicht mitzaehlt (Issue #951).
  */
-export function zeile({ tage = 1, zeit, cmd = "node --test", ergebnis = "gruen", dauerMs = 1000, anlass, lauf, karte }) {
+export function zeile({
+  tage = 1, zeit, cmd = "node --test", ergebnis = "gruen", dauerMs = 1000, anlass, lauf, karte,
+  ausloeser, bereiche, dateien,
+}) {
   const stempel = zeit ?? vorTagen(tage);
   const vorn = `${stempel}\t${cmd}\t${ergebnis}\t${dauerMs}`;
-  if (anlass === undefined && lauf === undefined && karte === undefined) return vorn;
-  return `${vorn}\t${anlass ?? "paket"}\t${lauf ?? stempel}\t${karte ?? ""}`;
+  const mitAusloeser = ausloeser !== undefined || bereiche !== undefined || dateien !== undefined;
+  if (anlass === undefined && lauf === undefined && karte === undefined && !mitAusloeser) return vorn;
+  const mitte = `${vorn}\t${anlass ?? "paket"}\t${lauf ?? stempel}\t${karte ?? ""}`;
+  if (!mitAusloeser) return mitte;
+  return `${mitte}\t${ausloeser ?? "bereiche"}\t${listeMaskieren(bereiche ?? [])}\t${listeMaskieren(dateien ?? [])}`;
+}
+
+/**
+ * Eine Liste als EIN Protokollfeld, wie `listeMaskieren` in kit/checks.mjs sie schreibt
+ * (Issue #1004): jeder Eintrag maskiert wie das Kommando, dazu das Komma, dann
+ * kommagetrennt. Hier nachgebaut und nicht importiert — der Test soll die Schreibform
+ * festhalten, nicht die Funktion, die er prueft.
+ */
+function listeMaskieren(eintraege) {
+  return eintraege
+    .map((e) => e
+      .replaceAll("\\", "\\\\")
+      .replaceAll("\t", String.raw`\t`)
+      .replaceAll("\n", String.raw`\n`)
+      .replaceAll("\r", String.raw`\r`)
+      .replaceAll(",", String.raw`\,`))
+    .join(",");
 }
 
 /**
@@ -86,6 +109,22 @@ for (const id of ids) antwort[id] = verlaeufe[id] ?? { fehler: \`Issue \${id} ni
 process.stdout.write(JSON.stringify(antwort));
 `;
 
+/**
+ * Der Fake fuer `checks.mjs bereiche` (Issue #1005): ein ECHTER Kindprozess unter
+ * `.claude/kit/checks.mjs` im Fixture — genau der Pfad, den kit/wirksamkeit.mjs aufruft,
+ * wie beim Fake-Board. Die Antwort kommt aus zuschnitt.json: `exit` != 0 laesst den
+ * Prozess mit stderr scheitern, sonst gibt er `ausgabe` als JSON aus.
+ */
+const FAKE_CHECKS = `import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+const hier = dirname(fileURLToPath(import.meta.url));
+const { ausgabe, exit, stderr } = JSON.parse(readFileSync(join(hier, "zuschnitt.json"), "utf-8"));
+if (exit) { process.stderr.write(stderr || "Fehler"); process.exit(exit); }
+if (process.argv[2] !== "bereiche") { process.stderr.write("unerwartet: " + process.argv.slice(2).join(" ")); process.exit(2); }
+process.stdout.write(JSON.stringify(ausgabe));
+`;
+
 /** Die geloggten Aufrufe des Fake-Boards, eine Zeile je Kindprozess. */
 export function boardAufrufe(dir) {
   const pfad = join(dir, ".claude", "kit", "aufrufe.log");
@@ -101,9 +140,11 @@ export function boardAufrufe(dir) {
  * heisst: kein Protokoll anlegen. `config` ist die workflow.config.json des Fixtures.
  * `bewegungen` sind Zeilen fuer `.claude/bewegungen.tsv` (siehe `bewegung`);
  * `board` legt das Fake-Board an: `{ verlaeufe }` fuer Verlaeufe je Kartennummer,
- * `{ exit, stderr }` fuer einen scheiternden `issue activity`-Aufruf.
+ * `{ exit, stderr }` fuer einen scheiternden `issue activity`-Aufruf. `zuschnitt` legt
+ * den Fake fuer `checks.mjs bereiche` an: `{ ausgabe }` fuer dessen JSON, `{ exit, stderr }`
+ * fuer einen scheiternden Aufruf. Ohne `zuschnitt` fehlt die Datei, und der Aufruf scheitert.
  */
-export function mitProjekt({ zeilen = [], config, bewegungen, board }, fn) {
+export function mitProjekt({ zeilen = [], config, bewegungen, board, zuschnitt }, fn) {
   const dir = mkdtempSync(join(tmpdir(), "wirksamkeit-"));
   try {
     mkdirSync(join(dir, ".claude"), { recursive: true });
@@ -121,6 +162,12 @@ export function mitProjekt({ zeilen = [], config, bewegungen, board }, fn) {
       mkdirSync(kitDir, { recursive: true });
       writeFileSync(join(kitDir, "board.mjs"), FAKE_BOARD, "utf-8");
       writeFileSync(join(kitDir, "antwort.json"), JSON.stringify({ verlaeufe: {}, exit: 0, stderr: "", ...board }), "utf-8");
+    }
+    if (zuschnitt !== undefined) {
+      const kitDir = join(dir, ".claude", "kit");
+      mkdirSync(kitDir, { recursive: true });
+      writeFileSync(join(kitDir, "checks.mjs"), FAKE_CHECKS, "utf-8");
+      writeFileSync(join(kitDir, "zuschnitt.json"), JSON.stringify({ exit: 0, stderr: "", ...zuschnitt }), "utf-8");
     }
     return fn(dir);
   } finally {

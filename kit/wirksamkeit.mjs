@@ -43,6 +43,10 @@
  * ueber spawnSync auf und laufen an checks.mjs vorbei; ihre Ausfuehrungen stehen nicht
  * im Protokoll. Der Bericht nennt das sichtbar.
  *
+ * BEREICHE (Issue #1005, Plan #1001): je Bereich Anteil, Laeufe und Minuten, dazu das
+ * Inventar der Dateien ohne Bereich und die teuren unter ihnen. Den Zuschnitt rechnet
+ * `checks.mjs bereiche` (zweiter Kindprozess, ebenfalls nur ein Vermerk, wenn er scheitert).
+ *
  * NICHT-ZIEL: keine Handlungsempfehlung. Das Werkzeug sagt, was auffaellt, nicht was
  * zu tun ist — dieselbe Haltung wie in kit/aufwand.mjs.
  *
@@ -61,7 +65,7 @@ import { fileURLToPath } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.5.0";
+const KIT_VERSION = "3.6.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "wirksamkeit.json";
@@ -79,6 +83,34 @@ const BEWEGUNGEN_DATEI = "bewegungen.tsv";
 
 // Die Auswertung ruft die installierte Kopie des Adapters auf, nie die Quelle.
 const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
+
+// Dasselbe fuer den Zuschnitt der Bereiche (Issue #1005, Plan #1001, E7): Anteil,
+// Hervorhebung und Inventar rechnet `checks.mjs bereiche` — ueber dieselbe Zuordnung,
+// die jede Auswahl trifft. Eine zweite Glob-Logik hier bescheinigte ab der ersten
+// Abweichung eine Deckung, die die Auswahl nicht sieht.
+const CHECKS_KOMMANDO = [".claude", "kit", "checks.mjs"];
+
+// SYNC: PRUEFDAUER_OBERGRENZE_MS in kit/checks.mjs (Issue #1003, Plan #1001, E3, E4).
+// Gezaehlt wird hier aus dem Protokoll, nicht aus `ueberObergrenzeMs`: Das steht nur in
+// der Zusammenfassung, und die ueberschreibt jeder Lauf.
+const PRUEFDAUER_OBERGRENZE_MS = 30_000;
+
+// SYNC: `ausloeserBestimmen` in kit/checks.mjs setzt diese Arten (Issue #1004, E5). Jede
+// Art ausser `bereiche` hat ihre Sonderzeile in der Bereichstabelle (E6) — ebenso eine
+// Zeile ohne die Spalte, geschrieben vor der Erfassung.
+const AUSLOESER_BEREICHE = "bereiche";
+const AUSLOESER_OHNE_ZUORDNUNG = "ohne-zuordnung";
+const VOR_DER_ERFASSUNG = "vor der Erfassung";
+const SONDERZEILEN = new Map([
+  ["ohne-bereich", "ohne Bereich"],
+  [AUSLOESER_OHNE_ZUORDNUNG, "voller Umfang wegen fehlender Zuordnung"],
+  ["veroeffentlichung", "Veroeffentlichung (push/merge)"],
+  ["anker", "Anker nicht aufloesbar"],
+]);
+// Eine Art, die dieses Werkzeug nicht kennt — ein neuerer Schreiber genuegt. Ihre Minuten
+// stehen in einer eigenen Zeile, statt still aus der Tabelle zu fallen; die Zeile erscheint
+// nur, wenn es sie gibt.
+const AUSLOESER_UNBEKANNT = "Ausloeser unbekannt";
 
 // SYNC: COLUMN_DEFAULTS aus kit/board.mjs — die Anzeigenamen der Spalten, gegen die
 // das Ziel einer Verlaufsbewegung gehalten wird, wenn die Config schweigt.
@@ -131,6 +163,10 @@ const ANLAESSE_VEROEFFENTLICHUNG = new Set(["push", "merge"]);
 // Maskierung geschriebene Zeile liest sich damit unveraendert.
 const MASKIERUNGEN = new Map([["t", "\t"], ["n", "\n"], ["r", "\r"], ["\\", "\\"]]);
 
+// SYNC: `listeMaskieren` in kit/checks.mjs (Issue #1004) maskiert in einer Listenspalte
+// zusaetzlich das Komma, den Trenner der Eintraege.
+const LISTEN_MASKIERUNGEN = new Map([...MASKIERUNGEN, [",", ","]]);
+
 const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamkeit der Pruefungen
 
   node wirksamkeit.mjs auswerten [--fenster <tage>]
@@ -139,7 +175,8 @@ const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamk
 auswerten  Liest ${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}, aggregiert je Pruefkommando
            Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, rechnet die
            mittlere Pruefzeit je Karte aus den Abschlusslaeufen samt Vergleichswert,
-           ermittelt
+           zaehlt Laeufe und Minuten je Bereich (Zuschnitt und Inventar ueber
+           checks.mjs bereiche), ermittelt
            die Ruecklaeuferquote (Kandidaten aus ${CLAUDE_DIR}/${BEWEGUNGEN_DATEI},
            Verlauf ueber board.mjs issue activity) und schreibt
            ${CLAUDE_DIR}/${BERICHT_DATEI} sowie ${CLAUDE_DIR}/${STAND_DATEI}. Die
@@ -296,12 +333,43 @@ function kommandoLesen(feld) {
 }
 
 /**
+ * Wandelt eine Listenspalte aus `listeMaskieren` (kit/checks.mjs, Issue #1004) zurueck:
+ * Ein unmaskiertes Komma trennt, `\,` ist ein Komma im Eintrag, sonst dieselben
+ * Maskierungen wie beim Kommando — aus demselben Grund in EINEM Durchgang. Eine fehlende
+ * oder leere Spalte ist die leere Liste.
+ */
+function listeLesen(feld) {
+  if (typeof feld !== "string" || feld === "") return [];
+  const eintraege = [];
+  let text = "";
+  let i = 0;
+  while (i < feld.length) {
+    const ersatz = feld[i] === "\\" ? LISTEN_MASKIERUNGEN.get(feld[i + 1]) : undefined;
+    if (ersatz !== undefined) {
+      text += ersatz;
+      i += 2;  // Backslash und maskiertes Zeichen
+      continue;
+    }
+    if (feld[i] === ",") {
+      eintraege.push(text);
+      text = "";
+    } else {
+      text += feld[i];
+    }
+    i += 1;
+  }
+  eintraege.push(text);
+  return eintraege;
+}
+
+/**
  * Liest `.claude/ausfuehrungen.tsv` und parst jede Zeile: Zeitpunkt, Kommando,
  * Ergebnis, Dauer — durch Tabs getrennt, wie `ausfuehrungSchreiben` in kit/checks.mjs
  * sie anhaengt. Das Kommando steht dort maskiert und wird zurueckgewandelt.
  *
  * Vier Spalten sind das MINDESTE, nicht die genaue Zahl (Issue #948): Dahinter stehen
- * Anlass, Laufkennung und Karte, und weitere koennen folgen. Eine Zeile mit den hinteren
+ * Anlass, Laufkennung und Karte, seit Issue #1004 noch Ausloeser, Bereiche und Dateien,
+ * und weitere koennen folgen. Eine Zeile mit den hinteren
  * Spalten ist keine fehlerhafte Zeile — als solche gezaehlt saehe jedes neue Protokoll
  * kaputt aus.
  *
@@ -317,7 +385,37 @@ function kommandoLesen(feld) {
  * kaputtes Protokoll aus wie ein duennes.
  */
 function protokollLesen(root) {
-  const pfad = join(root, CLAUDE_DIR, AUSFUEHRUNGEN_DATEI);
+  return tabZeilenLesen(join(root, CLAUDE_DIR, AUSFUEHRUNGEN_DATEI), (teile) => {
+    const zeitMs = Date.parse(teile[0]);
+    const dauerMs = teile.length >= 4 ? Number(teile[3]) : Number.NaN;
+    if (teile.length < 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) return null;
+    return {
+      zeitMs,
+      tag: teile[0].slice(0, 10),
+      cmd: kommandoLesen(teile[1]),
+      ergebnis: teile[2],
+      dauerMs,
+      anlass: herkunftsfeld(teile[4]),
+      lauf: herkunftsfeld(teile[5]),
+      karte: herkunftsfeld(teile[6]),
+      // Die drei Spalten aus Issue #1004 sind optional: Eine Zeile ohne sie bleibt
+      // gueltig und steht in der Bereichstabelle "vor der Erfassung" (`null`).
+      ausloeser: typeof teile[7] === "string" && teile[7] !== "" ? teile[7] : null,
+      bereiche: listeLesen(teile[8]),
+      dateien: listeLesen(teile[9]),
+      // Die elfte Spalte aus Issue #1071: Ohne sie gilt die Dauer als nacheinander gemessen.
+      gleichzeitig: teile[10] === "gleichzeitig",
+    };
+  });
+}
+
+/**
+ * Gemeinsamer Leser der beiden Tab-Protokolle (Issue #1095). Fehlt die Datei oder ist
+ * sie unlesbar, heisst das `vorhanden: false`; eine leere Zeile wird uebersprungen.
+ * `zeileAus(teile)` entscheidet je Aufrufer, was eine Zeile gueltig macht und welche
+ * Felder entstehen — liefert sie `null`, zaehlt die Zeile als fehlerhaft.
+ */
+function tabZeilenLesen(pfad, zeileAus) {
   if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
   let inhalt;
   try {
@@ -329,23 +427,9 @@ function protokollLesen(root) {
   let fehlerhaft = 0;
   for (const roh of inhalt.split("\n")) {
     if (roh === "") continue;
-    const teile = roh.split("\t");
-    const zeitMs = Date.parse(teile[0]);
-    const dauerMs = teile.length >= 4 ? Number(teile[3]) : Number.NaN;
-    if (teile.length < 4 || Number.isNaN(zeitMs) || !ERGEBNISSE.has(teile[2]) || !Number.isFinite(dauerMs)) {
-      fehlerhaft += 1;
-      continue;
-    }
-    zeilen.push({
-      zeitMs,
-      tag: teile[0].slice(0, 10),
-      cmd: kommandoLesen(teile[1]),
-      ergebnis: teile[2],
-      dauerMs,
-      anlass: herkunftsfeld(teile[4]),
-      lauf: herkunftsfeld(teile[5]),
-      karte: herkunftsfeld(teile[6]),
-    });
+    const zeile = zeileAus(roh.split("\t"));
+    if (zeile) zeilen.push(zeile);
+    else fehlerhaft += 1;
   }
   return { vorhanden: true, zeilen, fehlerhaft };
 }
@@ -545,6 +629,159 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
   };
 }
 
+// --- Bereiche (Issue #1005, Plan #1001, E4, E6, E7, E8, E14) -----------------
+
+/**
+ * Der Zuschnitt der Bereiche aus `checks.mjs bereiche` ueber genau EINEN Kindprozess, wie
+ * der Verlauf beim Board (E7). Ein Fehlschlag ist ein VERMERK, kein Abbruch: Laeufe und
+ * Minuten stehen im Protokoll und bleiben auch ohne ihn lesbar.
+ */
+function zuschnittHolen(root) {
+  const res = spawnSync(process.execPath, [join(root, ...CHECKS_KOMMANDO), "bereiche"], { cwd: root, encoding: "utf-8" });
+  if (res.status !== 0) {
+    const grund = (res.stderr || "").trim() || `das Kommando endete mit ${res.status ?? res.error?.message ?? "?"}`;
+    return { fehler: grund };
+  }
+  try {
+    const zuschnitt = JSON.parse(res.stdout);
+    if (!Array.isArray(zuschnitt?.bereiche)) return { fehler: "die Ausgabe traegt keine Liste 'bereiche'" };
+    return { zuschnitt };
+  } catch (err) {
+    return { fehler: `das Kommando lieferte kein JSON (${err.message})` };
+  }
+}
+
+/**
+ * Der Abschnitt "Bereiche": Tabelle, Sonderzeilen, Inventar, teure Dateien, Obergrenze.
+ *
+ * GEZAEHLT wird jede Protokollzeile im Fenster, alle Anlaesse, Wiederholungen
+ * eingeschlossen (E6). Eine Ausfuehrung zaehlt fuer JEDEN ihrer Bereiche mit voller Dauer
+ * — die Frage je Bereich ist "wie viel Pruefzeit hat er ausgeloest", und die Antwort
+ * teilt sich nicht. Darum uebersteigt die Summe der Bereichszeilen die Gesamtzeit, und
+ * der Bericht sagt das. Jede andere Ausloeserart steht in ihrer Sonderzeile, eine Zeile
+ * ohne die Spalte "vor der Erfassung" — so faellt keine Minute aus der Tabelle.
+ *
+ * TEURE DATEIEN (E8): Je unzugeordneter Datei die Zahl der vollen LAEUFE, die sie
+ * ausgeloest hat (ein Lauf faehrt mehrere Kommandos und schreibt je eines eine Zeile),
+ * und die Minuten aller dieser Zeilen.
+ *
+ * DIE OBERGRENZE (E4) zaehlt je Kommando die Abschlusszeilen ueber 30 s — auch alte
+ * siebenspaltige: Der Anlass steht dort schon, und nur er entscheidet. Davon vermerkt sie,
+ * wie viele gleichzeitig gemessen wurden (Issue #1073); eine Zeile ohne die Spalte
+ * `gleichzeitig` gilt als nacheinander gemessen.
+ */
+function bereicheErmitteln(zeilen, fenster, buildCmds, geholt) {
+  const jeBereich = new Map();
+  const sonder = new Map([...SONDERZEILEN.values(), VOR_DER_ERFASSUNG].map((name) => [name, { name, laeufe: 0, dauerMs: 0 }]));
+  const teuer = new Map();
+  const obergrenze = new Map(buildCmds.map((cmd) => [cmd, { cmd, abschlusslaeufe: 0, ueber: 0, ueberGleichzeitig: 0 }]));
+  let gesamtDauerMs = 0;
+
+  for (const z of zeilen) {
+    if (!imFenster(z.zeitMs, fenster)) continue;
+    gesamtDauerMs += z.dauerMs;
+    ausloeserZaehlen(z, jeBereich, sonder);
+    teuerZaehlen(z, teuer);
+    obergrenzeZaehlen(z, obergrenze);
+  }
+
+  const zuschnitt = geholt.zuschnitt ?? null;
+  return {
+    vermerk: geholt.fehler ?? null,
+    kommandos: zuschnitt?.kommandos ?? null,
+    tabelle: bereichsTabelle(zuschnitt, jeBereich),
+    sonderzeilen: [...sonder.values()],
+    gesamtDauerMs,
+    inventar: zuschnitt?.inventar ?? null,
+    teureDateien: [...teuer.entries()]
+      .map(([pfad, t]) => ({ pfad, volleLaeufe: t.laeufe.size, dauerMs: t.dauerMs }))
+      .sort((a, b) => b.dauerMs - a.dauerMs || vergleicheText(a.pfad, b.pfad)),
+    obergrenze: {
+      grenzeMs: PRUEFDAUER_OBERGRENZE_MS,
+      kommandos: [...obergrenze.values()]
+        .sort((a, b) => b.ueber - a.ueber || b.abschlusslaeufe - a.abschlusslaeufe || vergleicheText(a.cmd, b.cmd)),
+    },
+  };
+}
+
+/** Der Eintrag unter `schluessel`, beim ersten Zugriff aus `neu()` angelegt. */
+function eintragVon(map, schluessel, neu) {
+  if (!map.has(schluessel)) map.set(schluessel, neu());
+  return map.get(schluessel);
+}
+
+/** Laeufe und Minuten einer Zeile: bei jedem ihrer Bereiche oder in ihrer Sonderzeile (E6). */
+function ausloeserZaehlen(z, jeBereich, sonder) {
+  const ziele = z.ausloeser === AUSLOESER_BEREICHE
+    ? z.bereiche.map((name) => eintragVon(jeBereich, name, () => ({ laeufe: 0, dauerMs: 0 })))
+    : [eintragVon(sonder, sonderzeileVon(z.ausloeser), () => ({ name: sonderzeileVon(z.ausloeser), laeufe: 0, dauerMs: 0 }))];
+  for (const ziel of ziele) {
+    ziel.laeufe += 1;
+    ziel.dauerMs += z.dauerMs;
+  }
+}
+
+/** Der Name der Sonderzeile einer Ausloeserart — `null` heisst: vor der Erfassung geschrieben. */
+function sonderzeileVon(ausloeser) {
+  if (ausloeser === null) return VOR_DER_ERFASSUNG;
+  return SONDERZEILEN.get(ausloeser) ?? AUSLOESER_UNBEKANNT;
+}
+
+/** Die teuren Dateien (E8): je unzugeordneter Datei ihre vollen Laeufe und deren Dauer. */
+function teuerZaehlen(z, teuer) {
+  if (z.ausloeser !== AUSLOESER_OHNE_ZUORDNUNG) return;
+  // Ohne Laufkennung steht der Zeitpunkt fuer den Lauf — eine Zeile, ein Lauf.
+  const kennung = z.lauf === UNBEKANNT ? String(z.zeitMs) : z.lauf;
+  for (const pfad of z.dateien) {
+    const t = eintragVon(teuer, pfad, () => ({ laeufe: new Set(), dauerMs: 0 }));
+    t.laeufe.add(kennung);
+    t.dauerMs += z.dauerMs;
+  }
+}
+
+/** Die Obergrenze (E4): je Kommando seine Abschlusszeilen und die ueber der Grenze. */
+function obergrenzeZaehlen(z, obergrenze) {
+  if (z.anlass !== ANLASS_ABSCHLUSS) return;
+  const o = eintragVon(obergrenze, z.cmd, () => ({ cmd: z.cmd, abschlusslaeufe: 0, ueber: 0, ueberGleichzeitig: 0 }));
+  o.abschlusslaeufe += 1;
+  if (z.dauerMs <= PRUEFDAUER_OBERGRENZE_MS) return;
+  o.ueber += 1;
+  // Neben anderen Pruefungen gemessen (Issue #1073): Die Dauer enthaelt fremde Last und
+  // sagt ueber die Pruefung allein weniger als eine nacheinander gemessene.
+  if (z.gleichzeitig) o.ueberGleichzeitig += 1;
+}
+
+/**
+ * Die Tabellenzeilen je Bereich: zuerst die Bereiche der Config in ihrer Reihenfolge, mit
+ * Anteil und Hervorhebung aus dem Zuschnitt — auch ohne einen Lauf, denn ein Bereich, der
+ * nie etwas ausloest, ist selbst eine Aussage. Danach die Bereiche, die nur noch im
+ * Protokoll stehen (umbenannt oder entfernt, oder der Zuschnitt fehlt); ihr Anteil ist
+ * unbekannt, `null`, und nie eine geratene 0.
+ */
+function bereichsTabelle(zuschnitt, jeBereich) {
+  const zeilen = [];
+  const gesehen = new Set();
+  for (const b of zuschnitt?.bereiche ?? []) {
+    const gezaehlt = jeBereich.get(b.name) ?? { laeufe: 0, dauerMs: 0 };
+    gesehen.add(b.name);
+    zeilen.push({
+      name: b.name,
+      nennend: b.nennend ?? null,
+      von: b.von ?? null,
+      hervorgehoben: b.hervorgehoben ?? null,
+      kopplungsgrund: b.kopplungsgrund ?? null,
+      laeufe: gezaehlt.laeufe,
+      dauerMs: gezaehlt.dauerMs,
+    });
+  }
+  const uebrige = [...jeBereich.keys()].filter((name) => !gesehen.has(name)).sort(vergleicheText);
+  for (const name of uebrige) {
+    const { laeufe, dauerMs } = jeBereich.get(name);
+    zeilen.push({ name, nennend: null, von: null, hervorgehoben: null, kopplungsgrund: null, laeufe, dauerMs });
+  }
+  return zeilen;
+}
+
 // --- Ruecklaeuferquote (Issue #788) ------------------------------------------
 
 /**
@@ -557,27 +794,11 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
  * Ausfuehrungsprotokoll — eine halbe Zeile darf keine Auswertung kosten.
  */
 function bewegungenLesen(root) {
-  const pfad = join(root, CLAUDE_DIR, BEWEGUNGEN_DATEI);
-  if (!existsSync(pfad)) return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  let inhalt;
-  try {
-    inhalt = readFileSync(pfad, "utf-8");
-  } catch {
-    return { vorhanden: false, zeilen: [], fehlerhaft: 0 };
-  }
-  const zeilen = [];
-  let fehlerhaft = 0;
-  for (const roh of inhalt.split("\n")) {
-    if (roh === "") continue;
-    const teile = roh.split("\t");
+  return tabZeilenLesen(join(root, CLAUDE_DIR, BEWEGUNGEN_DATEI), (teile) => {
     const zeitMs = Date.parse(teile[0]);
-    if (teile.length !== 3 || Number.isNaN(zeitMs) || teile[1] === "") {
-      fehlerhaft += 1;
-      continue;
-    }
-    zeilen.push({ zeitMs, id: teile[1] });
-  }
-  return { vorhanden: true, zeilen, fehlerhaft };
+    if (teile.length !== 3 || Number.isNaN(zeitMs) || teile[1] === "") return null;
+    return { zeitMs, id: teile[1] };
+  });
 }
 
 /**
@@ -791,11 +1012,13 @@ const NUR_ZIFFERN = /^\d+$/;
  */
 export function tausenderPunkte(ziffern) {
   if (!NUR_ZIFFERN.test(ziffern)) return ziffern;
+  // Angehaengt und einmal umgedreht (Issue #1080): `unshift` verschob bei jeder Gruppe
+  // das ganze Array, die Schleife war damit quadratisch — die Wachstumsprobe fand es.
   const gruppen = [];
   for (let ende = ziffern.length; ende > 0; ende -= 3) {
-    gruppen.unshift(ziffern.slice(Math.max(0, ende - 3), ende));
+    gruppen.push(ziffern.slice(Math.max(0, ende - 3), ende));
   }
-  return gruppen.join(".");
+  return gruppen.reverse().join(".");
 }
 
 export function zahlform(wert, stellen) {
@@ -814,6 +1037,11 @@ export function zahlform(wert, stellen) {
 function prozent(quote) {
   const p = quote * 100;
   return `${zahlform(p, Number.isInteger(p) ? 0 : 1)} %`;
+}
+
+/** Eine Dauer in Minuten mit einer Nachkommastelle — die Spalte der Bereichstabelle. */
+function minuten(ms) {
+  return zahlform(ms / 60_000, 1);
 }
 
 /** Eine Dauer in Millisekunden als lesbare Spanne; `null` sagt "nicht gemessen". */
@@ -862,6 +1090,7 @@ export function berichtText(e) {
     ...berichtKopf(e),
     ...berichtPruefungen(e),
     ...berichtAbschlusszeit(e),
+    ...berichtBereiche(e),
     ...berichtRuecklauf(e),
     ...berichtBefund(e),
     // Die Messgrenze aus E17 steht in JEDEM Bericht, auch im Leerfall: Wer die Datei
@@ -965,6 +1194,98 @@ function abschlusszeitVermerke(a) {
       + "Veroeffentlichen — ihre Dauer ist nicht gemessen, und darum bleibt der Vergleichswert offen."
     : `Die beim Abschluss ausgelassene Pruefung \`${p.cmd}\` (${p.grund}) kostete beim Veroeffentlichen `
       + `im Mittel ${dauer(p.mittelMs)} (${ausfuehrungsText(p.ausfuehrungen)} gelaufen).`));
+}
+
+/**
+ * Der Abschnitt "Bereiche" (Issue #1005): die Tabelle mit Sonderzeilen und Summen-Hinweis,
+ * das Inventar, die teuren Dateien und die Obergrenze. Fehlt der Zuschnitt, steht der
+ * Vermerk vorn, und Anteil wie Inventar entfallen — Laeufe und Minuten bleiben.
+ */
+function berichtBereiche(e) {
+  const b = e.bereiche;
+  const zeilen = ["## Bereiche", ""];
+  if (b.vermerk !== null) {
+    zeilen.push(
+      `Der Zuschnitt aus \`checks.mjs bereiche\` fehlt: ${b.vermerk}. Anteil, Hervorhebung und Inventar `
+      + "entfallen; Laeufe und Minuten stammen aus dem Protokoll.",
+      "",
+    );
+  }
+  zeilen.push(
+    "| Bereich | nennende Kommandos | hervorgehoben | Laeufe | Minuten |",
+    "| --- | --- | --- | --- | --- |",
+    ...b.tabelle.map((z) => `| ${z.name} | ${anteilText(z)} | ${hervorhebungText(z)} | ${z.laeufe} | ${minuten(z.dauerMs)} |`),
+    ...b.sonderzeilen.map((z) => `| ${z.name} | — | — | ${z.laeufe} | ${minuten(z.dauerMs)} |`),
+    "",
+    `Die Summe der Zeilen uebersteigt die Gesamtzeit von ${minuten(b.gesamtDauerMs)} Minuten, weil eine Ausfuehrung `
+    + "fuer jeden ihrer Bereiche mit voller Dauer zaehlt. Uebernommene Ergebnisse schreiben keine Protokollzeile "
+    + "und zaehlen nicht.",
+    "",
+    ...berichtInventar(b.inventar),
+    ...berichtTeureDateien(b.teureDateien),
+    ...berichtObergrenze(b.obergrenze),
+  );
+  return zeilen;
+}
+
+/** Der Anteil `n/m` einer Tabellenzeile, ohne Zuschnitt ein Strich. */
+function anteilText(z) {
+  return z.nennend === null || z.von === null ? "—" : `${z.nennend}/${z.von}`;
+}
+
+/** Die Hervorhebung einer Tabellenzeile — bei gekoppelten Bereichen mit Grund (E14). */
+function hervorhebungText(z) {
+  if (z.hervorgehoben === null) return "—";
+  if (!z.hervorgehoben) return "nein";
+  return z.kopplungsgrund ? `ja — durch Kopplung erzwungen: ${z.kopplungsgrund}` : "ja";
+}
+
+function berichtInventar(inventar) {
+  if (inventar === null) return [];
+  const freigestellt = inventar.freigestellt ?? [];
+  const ohneZuordnung = inventar.ohneZuordnung ?? [];
+  return [
+    "### Inventar", "",
+    `${inventar.ohneTreffer} von ${inventar.dateien} versionierten Dateien treffen kein Bereichsmuster.`,
+    "",
+    `freigestellt (\`ohnePruefung\`, mit Grund): ${freigestellt.length}`,
+    ...freigestellt.map((f) => `- \`${f.pfad}\` — ${f.grund}`),
+    "",
+    `ohne jede Zuordnung — loest den vollen Umfang aus: ${ohneZuordnung.length}`,
+    ...ohneZuordnung.map((pfad) => `- \`${pfad}\``),
+    "",
+  ];
+}
+
+function berichtTeureDateien(teure) {
+  const zeilen = ["### Teure Dateien ohne Zuordnung", ""];
+  if (teure.length === 0) {
+    zeilen.push("Im Fenster loeste keine unzugeordnete Datei den vollen Umfang aus.", "");
+    return zeilen;
+  }
+  zeilen.push(
+    "| Datei | volle Laeufe | Minuten |",
+    "| --- | --- | --- |",
+    ...teure.map((t) => `| \`${t.pfad}\` | ${t.volleLaeufe} | ${minuten(t.dauerMs)} |`),
+    "",
+  );
+  return zeilen;
+}
+
+function berichtObergrenze(o) {
+  const grenze = dauer(o.grenzeMs);
+  const zeilen = [`### Abschlusslaeufe ueber ${grenze}`, ""];
+  if (o.kommandos.length === 0) {
+    zeilen.push("Keine Pruefung und kein Abschlusslauf im Fenster.", "");
+    return zeilen;
+  }
+  zeilen.push(
+    `| Kommando | Abschlusslaeufe | ueber ${grenze} | davon gleichzeitig gemessen |`,
+    "| --- | --- | --- | --- |",
+    ...o.kommandos.map((k) => `| \`${k.cmd}\` | ${k.abschlusslaeufe} | ${k.ueber} | ${k.ueberGleichzeitig ?? 0} |`),
+    "",
+  );
+  return zeilen;
 }
 
 /**
@@ -1097,6 +1418,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster);
   const abschlusszeit = abschlusszeitErmitteln(protokoll.zeilen, fenster, einstellungen.abschlussAusgelassen);
+  const bereiche = bereicheErmitteln(protokoll.zeilen, fenster, einstellungen.buildCmds, zuschnittHolen(root));
   const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs);
   const befund = [
     ...befundBestimmen(pruefungen, einstellungen.nieBeanstandetAb),
@@ -1119,6 +1441,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
     },
     pruefungen,
     abschlusszeit,
+    bereiche,
     ruecklauf,
     schwellen: {
       fensterTage,
@@ -1142,6 +1465,8 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
  * Der Befund als Text. Nie ein Fehler: Eine fehlende, leere oder unlesbare Datei ist
  * dasselbe wie kein Befund — es soll dann nichts dastehen und nichts aufgehalten
  * werden.
+ *
+ * SYNC: dieselbe Funktion steht in kit/aufwand.mjs (#440).
  */
 export function befund(root) {
   const pfad = join(root, CLAUDE_DIR, STAND_DATEI);
@@ -1154,6 +1479,7 @@ export function befund(root) {
 
 // --- CLI ---------------------------------------------------------------------
 
+// SYNC: `parseAuswertenArgs` und `main` stehen gleichlautend in kit/aufwand.mjs (#440).
 function parseAuswertenArgs(rest) {
   const args = {};
   let i = 0;

@@ -39,10 +39,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const NUR_CLAUDE = [
   { name: "opus", kind: "claude", model: "claude-opus-5" },
   { name: "sonnet", kind: "claude", model: "claude-sonnet-5" },
@@ -86,6 +82,8 @@ function setupProjekt(praefix, buildChecks = ["true"]) {
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     local: { issuesDir: "issues" }, issueReview: { reviewers: NUR_CLAUDE },
+    // Der Infrastruktur-Guard folgt seit Issue #1088 auf einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 } },
   }, null, 2));
   // Bewusst OHNE `.claude/*`: Der Ergebnisstand muss untracked sichtbar bleiben, sonst
   // pruefte der Rest-Guard-Test die falsche Datei. Das Textprotokoll und die
@@ -177,7 +175,7 @@ const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen",
 
 // --- Weg 1: der Rest-Guard nach erfolgreicher Runde ---
 
-test("[night-4] [night-11] der Rest-Guard hinterlegt seinen Protokollsatz und die liegengebliebene Datei", NUR_POSIX, () => {
+test("[night-4] [night-11] der Rest-Guard hinterlegt seinen Protokollsatz und die liegengebliebene Datei", () => {
   mitProjekt("night-grund-restguard-", (dir) => {
     const id = readyIssue(dir, "Runde mit Resten");
     const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW, "echo rest > rest.txt"].join("\n");
@@ -195,7 +193,7 @@ test("[night-4] [night-11] der Rest-Guard hinterlegt seinen Protokollsatz und di
   });
 });
 
-test("[night-11] ab dem elften Rest nennt der Grund die Anzahl und die ersten zehn", NUR_POSIX, () => {
+test("[night-11] ab dem elften Rest nennt der Grund die Anzahl und die ersten zehn", () => {
   mitProjekt("night-grund-restguard-viele-", (dir) => {
     const id = readyIssue(dir, "Runde mit vielen Resten");
     // Zwoelf Reste mit sortierbaren Namen: `git status --porcelain` gibt sie
@@ -217,7 +215,7 @@ test("[night-11] ab dem elften Rest nennt der Grund die Anzahl und die ersten ze
 
 // --- Weg 2: der Infrastruktur-Guard der Implementierungsrunde ---
 
-test("[night-11] der Infrastruktur-Guard der Implementierungsrunde nennt exitInfo und die CLI-Meldung", NUR_POSIX, () => {
+test("[night-11] der Infrastruktur-Guard der Implementierungsrunde nennt exitInfo und die CLI-Meldung", () => {
   mitProjekt("night-grund-infra-", (dir) => {
     const id = readyIssue(dir, "Session-Start scheitert");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
@@ -235,7 +233,7 @@ test("[night-11] der Infrastruktur-Guard der Implementierungsrunde nennt exitInf
 
 // --- Weg 3: der gescheiterte Salvage ---
 
-test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", NUR_POSIX, () => {
+test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", () => {
   // Gruene buildChecks fuehren in den Salvage-Versuch; die Salvage-Session hinterlaesst
   // wieder nur Dreck — weder Commit noch Board-Zug, also endet sie als `gescheitert`.
   // Seit Issue #672 nennt der Satz auch, was genau fehlt.
@@ -243,11 +241,15 @@ test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", 
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "echo dreck > uebrig.txt" });
-    assert.notEqual(res.status, 0, `der Salvage haette scheitern muessen:\n${res.stdout}`);
+    // Seit Issue #1089 (E14) kein harter Stopp: Der Grund steht an der Einheit des
+    // abgebrochenen Pakets, der Lauf traegt keine Fehlerklasse.
+    assert.equal(res.status, 0, `das gescheiterte Paket haelt nur sich an:\n${res.stdout}`);
 
     const s = stand(dir);
-    assert.equal(s.fehlerklasse, "harterStopp");
-    const grund = grundDerKarte(s, id);
+    assert.equal(s.fehlerklasse ?? null, null);
+    assert.equal(einheit(s, id).ausgang, "abgebrochen");
+    // Kein `fehlerEinheit`: Der verweist auf die Einheit eines harten Stopps.
+    const grund = einheit(s, id).grund;
     assert.match(grund, /SALVAGE-VERSUCH gescheitert/, `der Salvage-Satz fehlt: ${grund}`);
     assert.match(grund, /kein Commit, Board nicht bewegt/, `der Endzustand fehlt: ${grund}`);
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
@@ -256,18 +258,18 @@ test("[night-11] ein gescheiterter Salvage hinterlegt seinen Satz samt Resten", 
 
 // --- Weg 4: der regulaere Dirty-Fehlschlag ---
 
-test("[night-11] ohne moeglichen Salvage traegt der Dirty-Fehlschlag seine Fehlschlag-Zeile", NUR_POSIX, () => {
+test("[night-11] ohne moeglichen Salvage traegt der Dirty-Fehlschlag seine Fehlschlag-Zeile", () => {
   // Rote buildChecks: Der Salvage ist nicht moeglich, die regulaere Fehlschlag-Meldung
   // des Aufrufers gilt — ein anderer Weg mit einem anderen Text.
   mitProjekt("night-grund-dirty-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "echo dreck > uebrig.txt" });
-    assert.notEqual(res.status, 0, `der Dirty-Guard haette anschlagen muessen:\n${res.stdout}`);
+    assert.equal(res.status, 0, `das gescheiterte Paket haelt nur sich an (Issue #1089):\n${res.stdout}`);
 
     const s = stand(dir);
-    assert.equal(s.fehlerklasse, "harterStopp");
-    const grund = grundDerKarte(s, id);
+    assert.equal(s.fehlerklasse ?? null, null);
+    const grund = einheit(s, id).grund;
     assert.match(grund, /nicht in In review UND Working Tree dirty/, `die Fehlschlag-Zeile fehlt: ${grund}`);
     assert.doesNotMatch(grund, /SALVAGE/, "ohne moeglichen Salvage darf sein Text nicht auftauchen");
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);

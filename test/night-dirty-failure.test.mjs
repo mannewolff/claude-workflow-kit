@@ -29,10 +29,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -78,7 +74,7 @@ function setupProjekt() {
   return dir;
 }
 
-test("Nachtlauf: Fehlschlag mit dirty Tree stoppt hart und laesst das Issue liegen", NUR_POSIX, () => {
+test("Nachtlauf: Fehlschlag mit dirty Tree sichert die Reste im Stash, legt das Issue ins Backlog und laeuft weiter (Issue #1089, E14)", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -94,29 +90,28 @@ test("Nachtlauf: Fehlschlag mit dirty Tree stoppt hart und laesst das Issue lieg
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, `night.mjs haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
+    // Ein Paket, das an sich selbst scheitert, haelt nur sich an: kein harter Stopp.
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/, "die Fehlschlag-Meldung fehlt");
-    // Die Abschlusszeile trennt den harten Stopp vom sauberen Ende — das ist das
-    // Signal, das der Morgen liest.
-    assert.match(res.stdout, /Nacht-Runner beendet:[^\n]*HARTER STOPP/,
-      "die Abschlusszeile weist den harten Stopp nicht aus");
+    assert.doesNotMatch(res.stdout, /HARTER STOPP/);
+    assert.match(res.stdout, /Nacht-Runner beendet:[^\n]*2 abgebrochen mit Resten im Stash/,
+      "die Abschlusszeile weist die abgebrochenen Pakete nicht aus");
 
-    // Kein Backlog-Move: Ein verschobenes Issue sieht morgens aus wie ein regulaer
-    // zurueckgestelltes, obwohl der Lauf mitten im Baum stehengeblieben ist.
-    const ready = new Set(board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id)));
-    assert.ok(ready.has(String(erstes.id)), "das gescheiterte Issue haette in Ready bleiben muessen");
-    assert.ok(ready.has(String(zweites.id)), "zweites Issue haette in Ready bleiben muessen");
-
-    // Der Kommentar am Ticket ist der Hinweis fuer die morgendliche Sichtung.
-    // Der lokale Tracker haengt Kommentare an den Body an, statt sie in einem
-    // eigenen Feld zu fuehren — deshalb wird hier der Body geprueft.
-    const full = board(dir, "issue", "get", String(erstes.id));
-    assert.match(full.body, /Working Tree nicht sauber hinterlassen/,
-      "am gescheiterten Issue haengt kein Hinweis auf den harten Stopp");
-
-    // Genau eine Session: Der Lauf bricht ab, statt das naechste Issue anzufassen.
+    // Beide Pakete liefen; jedes liegt mit seinen Resten im eigenen Stash.
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "der Lauf ging nicht weiter");
+    const stashes = run(dir, "git", ["stash", "list"]).stdout;
+    for (const id of [erstes.id, zweites.id]) assert.match(stashes, new RegExp(`nachtrest #${id} `));
+    // Die Laufdateien unter .claude/ zaehlen nicht als Rest und bleiben, wo sie sind.
+    assert.doesNotMatch(run(dir, "git", ["status", "--porcelain"]).stdout, /work-/, "der Baum blieb unsauber");
+
+    // Die Karte geht ins Backlog: Bliebe sie in Ready, zoege der Lauf sie erneut. Ihr
+    // Kommentar nennt den Stash, ihr Laufstand den Abbruch.
+    const full = board(dir, "issue", "get", String(erstes.id));
+    assert.equal(full.status, "backlog");
+    assert.match(full.body, /Working Tree nicht sauber hinterlassen/);
+    assert.match(full.body, new RegExp(`Die Reste liegen im Stash „nachtrest #${erstes.id} `));
+    assert.ok(full.labels.includes("lauf:abgebrochen"), `Labels: ${full.labels}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

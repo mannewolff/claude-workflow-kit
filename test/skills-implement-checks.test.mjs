@@ -166,3 +166,85 @@ test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte"
   assert.match(text, /nicht aus .In review. zur(ü|ue)ck/i,
     "es fehlt, dass die verursachende Karte nicht aus In review zurueckwandert");
 });
+
+// --- Berichtsblock wortgetreu (Issue #1006) ---------------------------------
+//
+// `checks.mjs run` bildet den Block `Fuer den Abschlussbericht:` selbst, samt
+// Dauer und Grund (Issue #1003). Stand im Berichtsformat nur
+// `<Kommando> -> <Ergebnis>`, gingen beide bei der Uebernahme verloren.
+
+for (const { name, text } of SKILLS) {
+  test(`${name}: der Abschnitt Tests und Checks nennt den Block 'Fuer den Abschlussbericht:'`, () => {
+    const format = berichtsformat(text);
+    assert.match(format, /Fuer den Abschlussbericht:/,
+      "das Berichtsformat verweist nicht auf den Block aus `checks.mjs run`");
+    assert.match(format, /gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>/,
+      "die gelaufene Zeile traegt Dauer und Grund nicht");
+    assert.match(format, /wortgetreu/i,
+      "es fehlt, dass die Zeilen wortgetreu uebernommen werden");
+  });
+
+  // Plan E11: Wer eine Datei anlegt, ordnet sie zu.
+  test(`${name}: die Regel zu neu angelegten Dateien im vollen Umfang steht am Pruefschritt`, () => {
+    const pruefschritt = text.slice(text.indexOf("checks.mjs run --abschluss"),
+      text.search(/### \d+\. Lokal committen/));
+    assert.match(pruefschritt, /voller Umfang/);
+    assert.match(pruefschritt, /checkAreas/);
+    assert.match(pruefschritt, /ohnePruefung/);
+    assert.match(pruefschritt, /### Hinweise/);
+  });
+}
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format uebernimmt den Block wortgetreu", () => {
+  const text = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  const start = text.indexOf("## Abschlussbericht-Format");
+  assert.notEqual(start, -1, "der Abschnitt '## Abschlussbericht-Format' fehlt");
+  const format = berichtsformat(text.slice(start));
+  assert.match(format, /Fuer den Abschlussbericht:/);
+  assert.match(format, /gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>/);
+  assert.match(format, /ausgelassen: <Kommando> → <Grund>/);
+  assert.match(format, /wortgetreu/i);
+  assert.doesNotMatch(format, /- <Kommando> -> <Ergebnis>/);
+});
+
+// --- Zeile Wartezeit (Issue #1069) --------------------------------------------
+//
+// Der Block beginnt mit `Wartezeit: …`. Nennt das Format die Zeile nicht, fehlt im
+// Abschlussbericht genau die Zahl, an der Manne das Warten misst.
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt die Zeile 'Wartezeit:'", () => {
+  const text = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  const format = berichtsformat(text.slice(text.indexOf("## Abschlussbericht-Format")));
+  assert.match(format, /Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>/);
+});
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt die Zeile 'Wartezeit:'`, () => {
+    const format = berichtsformat(readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8"));
+    assert.match(format, /Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>/);
+  });
+}
+
+// --- Zeile Teillauf (Issue #1072) ---------------------------------------------
+//
+// Nach einem roten Teillauf steht vor den Zeilen je Pruefung `Teillauf: nur die zuletzt
+// roten Pruefungen`. Kennt das Format die Zeile nicht, laesst der Bericht sie weg — und
+// die Zeilen mit `nicht gestartet` saehen aus wie ein abgebrochener voller Lauf.
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt die Zeile 'Teillauf:'", () => {
+  const text = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  const format = berichtsformat(text.slice(text.indexOf("## Abschlussbericht-Format")));
+  assert.match(format, /Teillauf: nur die zuletzt roten Pruefungen/);
+});
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt die Zeile 'Teillauf:'`, () => {
+    const format = berichtsformat(readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8"));
+    assert.match(format, /Teillauf: nur die zuletzt roten Pruefungen/);
+  });
+}
+
+test("implement-test: der Hinweis auf den vollen Lauf nennt die Zeile 'Wartezeit:'", () => {
+  const text = readFileSync(join(repoRoot, "skills", "implement-test", "SKILL.md"), "utf-8");
+  assert.match(text, /`Wartezeit:`/);
+});

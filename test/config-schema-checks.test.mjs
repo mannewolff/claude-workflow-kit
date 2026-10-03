@@ -64,6 +64,8 @@ test("Mini-Validator: erkennt falsche Typen, Pflichtfelder und unbekannte Felder
   assert.deepEqual(pruefe({ type: "number", exclusiveMinimum: 0 }, 0.5), [], "ueber der echten Untergrenze");
   assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, 0).length, 1, "auf der echten Untergrenze");
   assert.equal(pruefe({ type: "number", exclusiveMinimum: 0 }, -1).length, 1, "unter der echten Untergrenze");
+  assert.deepEqual(pruefe({ const: true }, true), [], "const trifft");
+  assert.equal(pruefe({ const: true }, false).length, 1, "const trifft nicht");
 });
 
 // --- Die drei gueltigen Formen ---
@@ -350,6 +352,84 @@ test("checkAreas: Bereichsnamen auf Pfadmuster sind gueltig", () => {
 
 test("checkAreas: ein Bereich, dessen Wert kein Muster-Array ist, ist ungueltig", () => {
   assert.notDeepEqual(pruefe(schema.properties.checkAreas, { backend: "backend/**" }), []);
+});
+
+// --- gekoppelteBereiche (Issue #1007, Plan #1001 E14) ---
+//
+// Dieselbe Form wie `ohnePruefung`: je Eintrag ein Name und ein Pflichtgrund. Ein Bereich,
+// den eine gemessene Kopplung in fast alle Pruefkommandos zwingt, bleibt hervorgehoben —
+// aber nur mit Begruendung.
+
+test("gekoppelteBereiche: ein Eintrag mit bereich und grund ist gueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.ok(feld, "gekoppelteBereiche ist im Schema definiert");
+  assert.deepEqual(pruefe(feld, [{ bereich: "board", grund: "Fast jede Testgruppe laedt kit/board.mjs." }]), []);
+  assert.deepEqual(pruefe(feld, []), [], "die leere Liste ist gueltig");
+});
+
+test("gekoppelteBereiche: ein Eintrag ohne grund oder mit leerem grund ist ungueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.notDeepEqual(pruefe(feld, [{ bereich: "board" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ grund: "ohne Namen" }]), []);
+  // Den leeren String weist `minLength` ab; der Mini-Validator ignoriert es, deshalb steht
+  // die Grenze hier am Feld selbst.
+  assert.equal(feld.items.properties.bereich.minLength, 1);
+  assert.equal(feld.items.properties.grund.minLength, 1);
+});
+
+test("gekoppelteBereiche: falsche Typen und unbekannte Felder sind ungueltig", () => {
+  const feld = schema.properties.gekoppelteBereiche;
+  assert.notDeepEqual(pruefe(feld, { bereich: "board", grund: "kein Array" }), []);
+  assert.notDeepEqual(pruefe(feld, ["board"]), []);
+  assert.notDeepEqual(pruefe(feld, [{ bereich: 1, grund: "Zahl als Name" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ bereich: "board", grund: "x", muster: "kit/**" }]), []);
+});
+
+test("gekoppelteBereiche: die Beschreibung nennt den Vermerk und das fehlende Feld", () => {
+  const text = schema.properties.gekoppelteBereiche.description;
+  assert.match(text, /durch Kopplung erzwungen: <Grund>/);
+  assert.match(text, /Ohne Eintrag gilt die Hervorhebungsregel ausnahmslos/);
+  assert.match(text, /Gilt teamweit; ein abweichender Wert in workflow\.config\.local\.json wird ignoriert\.$/);
+  assert.deepEqual(schema.properties.gekoppelteBereiche.default, []);
+});
+
+// --- testAblagen (Issue #1032, Plan #1029 A4/A5) ---
+//
+// Zwei Eintragsformen: ein Paar aus Quell- und Test-Muster oder der Marker
+// `{ "vorgaben": true }`, der die Vorgaben des Kits an dieser Stelle einfuegt. Kein
+// `default`: „Feld fehlt" heisst Vorgaben, `[]` heisst abgeschaltet.
+
+test("testAblagen: ein Paar, der Vorgaben-Marker und die leere Liste sind gueltig", () => {
+  const feld = schema.properties.testAblagen;
+  assert.ok(feld, "testAblagen ist im Schema definiert");
+  assert.deepEqual(pruefe(feld, [{ quelle: "src/{pfad}/{name}.ts", test: "src/{pfad}/{name}*.test.ts" }]), []);
+  assert.deepEqual(pruefe(feld, [{ vorgaben: true }]), []);
+  assert.deepEqual(pruefe(feld, [{ quelle: "kit/{name}.mjs", test: "test/{name}-*.test.mjs" }, { vorgaben: true }]), []);
+  assert.deepEqual(pruefe(feld, []), [], "die leere Liste schaltet ab und ist gueltig");
+});
+
+test("testAblagen: leeres quelle, unbekannter Schluessel und vorgaben false sind ungueltig", () => {
+  const feld = schema.properties.testAblagen;
+  const paar = feld.items.oneOf.find((zweig) => zweig.properties?.quelle);
+  // Den leeren String weist `minLength` ab; der Mini-Validator ignoriert es, deshalb steht
+  // die Grenze hier am Feld selbst — wie bei gekoppelteBereiche.
+  assert.equal(paar.properties.quelle.minLength, 1);
+  assert.equal(paar.properties.test.minLength, 1);
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts", test: "src/{name}.test.ts", modul: "a" }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ vorgaben: false }]), []);
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts" }]), [], "ein Paar ohne test");
+  assert.notDeepEqual(pruefe(feld, [{ quelle: "src/{name}.ts", test: "src/{name}.test.ts", vorgaben: true }]), []);
+  assert.notDeepEqual(pruefe(feld, { quelle: "src/{name}.ts", test: "src/{name}.test.ts" }), [], "kein Array");
+});
+
+test("testAblagen: kein default, die Beschreibung nennt Platzhalter, Vorgaben und die drei Faelle", () => {
+  const feld = schema.properties.testAblagen;
+  assert.equal(Object.hasOwn(feld, "default"), false);
+  const text = feld.description;
+  for (const teil of ["{pfad}", "{name}", "*", ".spec", "src/main/java", "src/test/java", "{ \"vorgaben\": true }", "[]"]) {
+    assert.ok(text.includes(teil), `die Beschreibung nennt ${teil} nicht`);
+  }
+  assert.match(text, /Mehrmodul/);
 });
 
 // --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---
@@ -675,4 +755,19 @@ test("installCommand: die Beschreibung sagt, was ein fehlendes Feld bedeutet", (
   const text = schema.properties.installCommand.description;
   assert.match(text, /teamweit/, "die Beschreibung nennt die Geltung nicht");
   assert.match(text, /fehlendes Feld/, "die Beschreibung sagt nicht, was ein fehlendes Feld bedeutet");
+});
+
+// --- Die Achse gleichzeitig (Issue #1071, Plan #1066, E2) ---
+//
+// Ein Wahrheitswert je Eintrag: Gekennzeichnete Pruefungen laufen in `checks.mjs run`
+// in einer ersten Phase gleichzeitig. Eine Zeichenkette waere ein vertipptes Feld, das
+// still nichts bewirkte.
+
+test("gleichzeitig: ein Wahrheitswert ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node --test test/a.test.mjs", gleichzeitig: true }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "npx eslint .", areas: ["kit"], gleichzeitig: false }), []);
+});
+
+test("gleichzeitig: eine Zeichenkette ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", gleichzeitig: "ja" }), []);
 });

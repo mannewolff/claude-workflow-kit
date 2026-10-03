@@ -23,8 +23,6 @@ const STELLEN = [
   "skills/fachplan/SKILL.md",
   "skills/task/SKILL.md",
   "templates/CLAUDE-workflow.md",
-  "skills/implement-next/SKILL.md",
-  "skills/implement-ready/SKILL.md",
   "docs/dokumentation.md",
 ];
 
@@ -69,16 +67,16 @@ test("[skills-962] keine Stelle schickt eine `[Idee]` mehr nach /techplan", () =
   assert.deepEqual(funde, [], `der gestrichene Weg [Idee] -> /techplan steht noch da:\n${funde.join("\n")}`);
 });
 
-test("[skills-962] der Rueckgabe-Kommentar der implement-Skills nennt beide Wege", () => {
-  for (const pfad of ["skills/implement-next/SKILL.md", "skills/implement-ready/SKILL.md"]) {
-    const text = readFileSync(join(repoRoot, pfad), "utf-8");
-    const bloecke = [...text.matchAll(/^```[a-z]*\n([\s\S]*?)^```/gm)].map((m) => m[1]);
-    const idee = bloecke.filter((b) => /^Idee —/m.test(b));
-    assert.equal(idee.length, 1, `${pfad}: genau ein Rueckgabe-Kommentar fuer eine Idee erwartet`);
-    assert.match(idee[0], /\/fachplan/, `${pfad}: der Kommentar nennt /fachplan nicht`);
-    assert.match(idee[0], /\/task/, `${pfad}: der Kommentar nennt /task nicht`);
-    assert.doesNotMatch(idee[0], /techplan/, `${pfad}: der Kommentar schickt weiter nach /techplan`);
-  }
+// Seit Issue #1025 steht der Rueckgabe-Kommentar nur noch in kit/board.mjs; die
+// implement-Skills posten, was `issue auftrag` liefert.
+test("[skills-962] der Rueckgabe-Kommentar aus issue auftrag nennt beide Wege", async () => {
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const idee = AUFTRAG_BACKLOG_TEXTE.idee("N");
+  assert.match(idee, /^Idee —/, "der Kommentar beginnt nicht mit 'Idee —'");
+  assert.match(idee, /Abw(?:ae|ä)gung/, "der Kommentar unterscheidet nicht nach Abwaegung");
+  assert.match(idee, /\/fachplan/, "der Kommentar nennt /fachplan nicht");
+  assert.match(idee, /\/task/, "der Kommentar nennt /task nicht");
+  assert.doesNotMatch(idee, /techplan/, "der Kommentar schickt weiter nach /techplan");
 });
 
 test("[skills-962] /fachplan nimmt eine `[Idee]` mit Abwaegung an, ohne Herkunftsspur am neuen Issue", () => {

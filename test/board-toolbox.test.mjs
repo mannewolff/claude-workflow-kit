@@ -178,7 +178,7 @@ test("get liefert die Karte samt Kommentaren", async () => {
       assert.equal(res.status, 0, res.stderr);
       assert.deepEqual(JSON.parse(res.stdout), {
         id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task",
-        comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }],
+        comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z", id: null }],
         created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
       });
     }

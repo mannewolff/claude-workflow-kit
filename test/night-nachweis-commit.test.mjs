@@ -26,10 +26,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 // Ein einziger Pflichtcheck, der drei Dinge kann: hinhalten (`.probe`), scheitern
 // (`.rot`) und sich protokollieren. Die Protokolldatei ist das Mass dafuer, wie oft
 // geprueft wurde — daran haengt die Aussage "es wurde NICHT nachgeprueft".
@@ -38,7 +34,7 @@ const NUR_POSIX = process.platform === "win32"
 // toetet checks.mjs, nicht das Kommando — ein durchlaufender Zweig traege seinen
 // Eintrag verwaist nach und verfaelschte die Zaehlung.
 const KIT_CHECK = {
-  cmd: "if [ -f .probe ]; then sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log",
+  cmd: "if [ -f .probe ]; then touch .probe-haelt; sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log",
   areas: ["kit"],
 };
 // Der Bereich 'board' ist bewusst keinem Check zugeordnet: Board-Moves sind beim
@@ -72,7 +68,7 @@ function setupProjekt(buildChecks = [KIT_CHECK]) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"),
-    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.rot\n");
+    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.probe-haelt\n.rot\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
@@ -134,12 +130,16 @@ const ABGEBROCHENE_PROBE = [
   "touch kit/probe.txt",
   "node .claude/kit/checks.mjs run > /dev/null 2>&1 &",
   "PROBE_PID=$!",
-  "sleep 1",
+  // Warten, bis der Pflichtcheck der Probe haelt (`.probe-haelt`), statt einer festen
+  // Sekunde (Issue #1080). Unter Last kam der Abbruch sonst, bevor die Shell des Checks
+  // `.probe` geprueft hatte: `kill -9` trifft nur checks.mjs, die verwaiste Shell fand
+  // `.probe` danach nicht mehr und zaehlte einen dritten Lauf. Hoechstens 30 s.
+  "for i in $(seq 1 300); do [ -f .probe-haelt ] && break; sleep 0.1; done",
   "kill -9 $PROBE_PID",
-  "rm -f .probe kit/probe.txt",
+  "rm -f .probe .probe-haelt kit/probe.txt",
 ].join("\n");
 
-test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", NUR_POSIX, () => {
+test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, ABGEBROCHENE_PROBE, NACH_IN_REVIEW].join("\n");
@@ -160,7 +160,7 @@ test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine a
   });
 });
 
-test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird nicht nachgeprueft", NUR_POSIX, () => {
+test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird nicht nachgeprueft", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, NACH_IN_REVIEW].join("\n");
@@ -174,7 +174,7 @@ test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird
   });
 });
 
-test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nennt den fremden Nachweis", NUR_POSIX, () => {
+test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nennt den fremden Nachweis", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // `.rot` wirkt erst auf die Nachpruefung — der Lauf der Session selbst war gruen.
@@ -189,7 +189,7 @@ test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nenn
   });
 });
 
-test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nichts zu vergleichen", NUR_POSIX, () => {
+test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nichts zu vergleichen", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // Keine Arbeit, kein Commit: Die Session prueft und bewegt nur das Board.
@@ -205,7 +205,7 @@ test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nich
   });
 });
 
-test("[night-865] eine Loeschung im Commit wird als geprueft erkannt und loest keine Nachpruefung aus", NUR_POSIX, () => {
+test("[night-865] eine Loeschung im Commit wird als geprueft erkannt und loest keine Nachpruefung aus", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = ['git rm -q "kit/bestand.txt"', CHECKS_RUN, COMMIT, NACH_IN_REVIEW].join("\n");
@@ -237,7 +237,7 @@ const GUETE_CHECK = {
   guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
 };
 
-test("[night-950] die Nachpruefung laesst nichtBeimAbschluss und Guetemessung aus — der Abschlussumfang", NUR_POSIX, () => {
+test("[night-950] die Nachpruefung laesst nichtBeimAbschluss und Guetemessung aus — der Abschlussumfang", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, ABGEBROCHENE_PROBE, NACH_IN_REVIEW].join("\n");

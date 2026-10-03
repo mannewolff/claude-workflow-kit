@@ -12,7 +12,7 @@ import {
   waehleKettenKandidaten, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL,
 } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
@@ -21,7 +21,7 @@ const STUFEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEG
 /** Die Nummern der Auftragskarten, die `waehleKettenKandidaten` fahren wuerde. */
 const laufen = (r) => r.kandidaten.map((a) => String(a.karte.id));
 
-test("[night-895] ist zu einer gekennzeichneten Anforderung ein Plan gekennzeichnet, laeuft der Plan", NUR_POSIX, () => {
+test("[night-895] ist zu einer gekennzeichneten Anforderung ein Plan gekennzeichnet, laeuft der Plan", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel");
     const M = planauftrag(dir, F);
@@ -55,7 +55,7 @@ test("[night-895] die Anforderung weicht dem gekennzeichneten Plan auch dann, we
   assert.ok(r.uebersprungen[1].grund.startsWith(UNGEPRUEFT_PRAEFIX), r.uebersprungen[1].grund);
 });
 
-test("[night-895] von zwei gekennzeichneten Plaenen derselben Wurzel laeuft der mit der hoeheren Nummer", NUR_POSIX, () => {
+test("[night-895] von zwei gekennzeichneten Plaenen derselben Wurzel laeuft der mit der hoeheren Nummer", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const alt = planauftrag(dir, F, { titel: "[Plan] Der aeltere Weg" });
@@ -86,7 +86,7 @@ test("[night-895] eine weichende Karte verbraucht keinen Platz unter --max", () 
   assert.deepEqual(r.liegengeblieben, []);
 });
 
-test("[night-895] ein Fachplan-Auftrag und ein Plan-Auftrag zu einer anderen Wurzel laufen in derselben Nacht", NUR_POSIX, () => {
+test("[night-895] ein Fachplan-Auftrag und ein Plan-Auftrag zu einer anderen Wurzel laufen in derselben Nacht", () => {
   mitProjekt((dir) => {
     const F1 = fachplan(dir, "[Fachlich] Erste Wurzel");
     const F2 = fachplan(dir, "[Fachlich] Zweite Wurzel", null);

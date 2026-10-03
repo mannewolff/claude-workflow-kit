@@ -19,20 +19,19 @@
 // seinerseits Bash-Tool-Aufrufe wie `mvn verify`.
 //
 // Dieser Test erzwingt den Enkelprozess ueber "& wait" und ist damit auf jeder
-// Plattform aussagekraeftig.
+// Plattform aussagekraeftig. Unter Windows laeuft der Session-Fake ueber die Git Bash
+// (#1131), und den Baum beendet `taskkill /T /F` (#1132); dass kein Enkel ueberlebt, misst
+// der erste Test dort echt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
+import { baumBeendenAufruf, warteAufProzessgruppe } from "../kit/night.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -70,30 +69,69 @@ function setupProjekt() {
   return dir;
 }
 
-test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", NUR_POSIX, () => {
+function lebt(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+
+test("Baum beenden: unter Windows taskkill auf den Baum, auf POSIX ein Signal an die Gruppe", () => {
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "win32"), { taskkill: ["/pid", "4711", "/T", "/F"] });
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "win32"), { taskkill: ["/pid", "4711", "/T", "/F"] });
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "linux"), { pid: -4711, signal: "SIGTERM" });
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "darwin"), { pid: -4711, signal: "SIGKILL" });
+});
+
+test("Warten auf die Prozessgruppe: unter Windows sofort zurueck, weil taskkill synchron beendet", async () => {
+  // Die eigene PID als Gruppe: Auf POSIX liefe sie, das Warten liefe also bis zur Frist.
+  const beginn = Date.now();
+  assert.equal(await warteAufProzessgruppe(process.pid, 60_000, { plattform: "win32" }), true);
+  assert.ok(Date.now() - beginn < 1000, "unter Windows darf nicht gewartet werden");
+});
+
+test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
   const dir = setupProjekt();
+  // Der Enkel ist ein Node-Prozess, der seine PID ausserhalb des Repos ablegt: `$!` der Git
+  // Bash naennte unter Windows eine MSYS-PID statt der des Betriebssystems.
+  const aussen = mkdtempSync(join(tmpdir(), "night-killgroup-enkel-"));
+  const pidDatei = join(aussen, "enkel.pid").replaceAll("\\", "/");
+  const enkel = join(aussen, "enkel.mjs");
+  writeFileSync(enkel, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(pidDatei)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`);
   try {
     const issue = board(dir, "issue", "create", "--title", "Langsames-Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(issue.id), "ready");
 
     // "& wait" erzwingt einen echten Enkelprozess: Die Shell bleibt Elternprozess,
     // sleep haelt die geerbte stdout-Pipe. Ohne Gruppen-Kill laeuft der Runner die
-    // vollen 30 s, obwohl das Zeitlimit bei 400 ms liegt.
+    // vollen 120 s, obwohl das Zeitlimit bei 400 ms liegt. Die Grenze muss nur unter der
+    // Schlafdauer liegen (Issue #1080): Unter Last brauchte allein der Runner-Start 27 s,
+    // und 20 s bei 30 s Schlaf riss ohne Fehler.
+    // Das Zeitlimit liegt ueber dem Start des Enkels, damit er seine PID sicher schreibt.
+    const node = JSON.stringify(process.execPath.replaceAll("\\", "/"));
+    const skript = JSON.stringify(enkel.replaceAll("\\", "/"));
     const started = Date.now();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: "sleep 30 & wait", NIGHT_TIMEOUT_MS: "400" });
+      { NIGHT_CLAUDE_CMD: `${node} ${skript} & wait`, NIGHT_TIMEOUT_MS: "3000" });
     const elapsed = Date.now() - started;
 
-    assert.ok(elapsed < 20000, `Timeout griff nicht — Enkelprozess hielt den Lauf auf (${elapsed} ms)`);
+    assert.ok(elapsed < 90000, `Timeout griff nicht — Enkelprozess hielt den Lauf auf (${elapsed} ms)`);
     assert.equal(res.status, 0, "regulaeres Ende (kein harter Stopp) nach Timeout-Fehlschlag");
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(String(issue.id)), "Issue haette nach Timeout im Backlog liegen muessen");
+    assert.ok(existsSync(pidDatei), `der Enkel hat seine PID nicht geschrieben: ${res.stdout}${res.stderr}`);
+    const pid = Number(readFileSync(pidDatei, "utf-8").trim());
+    assert.ok(pid > 0, "der Enkel hat keine PID geschrieben");
+    assert.equal(lebt(pid), false, `der Enkel ${pid} lebt nach dem Zeitlimit noch`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+    rmSync(aussen, { recursive: true, force: true });
   }
 });
 
-test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", NUR_POSIX, () => {
+test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Taubes-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -103,10 +141,11 @@ test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", NUR_POSIX, ()
     // Runner unbegrenzt — genau der Zustand, den ein Nachtlauf nie erreichen darf.
     const started = Date.now();
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 30', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
+      { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 120', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
     const elapsed = Date.now() - started;
 
-    assert.ok(elapsed < 20000, `harte Obergrenze griff nicht — Lauf haengt (${elapsed} ms)`);
+    // Unter der Schlafdauer, mit Reserve fuer Last (Issue #1080).
+    assert.ok(elapsed < 90000, `harte Obergrenze griff nicht — Lauf haengt (${elapsed} ms)`);
     assert.equal(res.status, 0, "regulaeres Ende nach hartem Nachkillen");
   } finally {
     rmSync(dir, { recursive: true, force: true });

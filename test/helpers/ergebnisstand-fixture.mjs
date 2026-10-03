@@ -22,10 +22,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-export const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -48,7 +44,8 @@ export function setupProjekt(praefix, night = null) {
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
-    ...(night ? { night } : {}),
+    // Ein Board-Ausfall bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 }, ...night },
   }, null, 2));
   // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der

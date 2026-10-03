@@ -15,10 +15,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -59,7 +55,7 @@ function setupProjekt() {
   return dir;
 }
 
-test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der naechsten Runde", NUR_POSIX, () => {
+test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der naechsten Runde", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -103,7 +99,7 @@ test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der n
 // exportiert und hat kein CLI-Kommando. Die `.gitignore` des Fixtures fuehrt
 // `.claude/*` NICHT — die Notiz ist fuer git also sichtbar, und nur der Ausschluss
 // im Code kann sie entschaerfen.
-test("[night-10] Nachtlauf: eine wartende Vorhaben-Notiz ist kein unkommittierter Rest", NUR_POSIX, () => {
+test("[night-10] Nachtlauf: eine wartende Vorhaben-Notiz ist kein unkommittierter Rest", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -136,7 +132,7 @@ test("[night-10] Nachtlauf: eine wartende Vorhaben-Notiz ist kein unkommittierte
   }
 });
 
-test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsverhalten)", NUR_POSIX, () => {
+test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsverhalten)", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -172,7 +168,7 @@ test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsver
 //
 // Die `.gitignore` des Fixtures fuehrt `.claude/*` bewusst nicht; nur der Ausschluss im
 // Code kann die Datei entschaerfen.
-test("Nachtlauf: eine Wegmarke ist kein unkommittierter Rest", NUR_POSIX, () => {
+test("Nachtlauf: eine Wegmarke ist kein unkommittierter Rest", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");

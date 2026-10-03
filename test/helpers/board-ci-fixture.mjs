@@ -13,12 +13,6 @@ import { rmSync } from "node:fs";
 
 import { setupProjekt, fakeCli, runBoard, aufrufZeilen } from "./board-fixture.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-export const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-CLI liegt als .cmd im PATH; Node wirft dafuer EINVAL ohne shell:true (CVE-2024-27980), und board.mjs startet seit #196 bewusst ohne Shell. Siehe Issue #197." }
-  : {};
-
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
 
 /** Legt ein Fixture mit Fake-CLI an, ruft `code ci-status` auf und raeumt auf. */

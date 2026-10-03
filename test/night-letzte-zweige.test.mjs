@@ -21,10 +21,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Fakes laufen ueber `sh -c` bzw. haengen an POSIX-Dateirechten. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
@@ -84,7 +80,7 @@ function readyIssue(dir, titel = "Ein Issue") {
 // Eine Config ohne local-Block
 // ============================================================
 
-test("ohne local-Block zaehlen die Board-Dateien im Default-Verzeichnis nicht als dirty", NUR_POSIX, () => {
+test("ohne local-Block zaehlen die Board-Dateien im Default-Verzeichnis nicht als dirty", () => {
   // gitClean nimmt beim lokalen Tracker das issuesDir aus der Config heraus. Fehlt
   // der Block, muss der Default 'issues' gelten — sonst hielte der Runner jeden
   // Board-Move fuer eine Code-Aenderung und stoppte sofort hart.
@@ -106,7 +102,7 @@ test("ohne local-Block zaehlen die Board-Dateien im Default-Verzeichnis nicht al
 // Ein Lauf ohne buildChecks
 // ============================================================
 
-test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", NUR_POSIX, () => {
+test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", () => {
   // Mit --no-checks-ok laeuft die Nacht ohne Gate. Trifft sie dann auf eine Runde,
   // die Arbeit liegen laesst, gibt es nichts zu verifizieren: Eine leere Pruefliste
   // gilt als gruen, und der Salvage startet. Genau diese Kette muss halten, statt an
@@ -123,7 +119,7 @@ test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", NU
 
     const res = run(dir, ["--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: fake });
 
-    assert.equal(res.status, 1, "die gescheiterte Runde haette hart stoppen muessen");
+    assert.equal(res.status, 0, "die gescheiterte Runde haelt nur ihr Paket an (Issue #1089)");
     assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
       "eine leere Pruefliste gilt als gruen — der Salvage haette starten muessen");
   }, { buildChecks: [] }, "night-letzte-ohne-checks-");

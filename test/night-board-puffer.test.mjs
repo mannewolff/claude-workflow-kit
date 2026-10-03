@@ -10,7 +10,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { boardFehlertext } from "../kit/night.mjs";
-import { NUR_POSIX, run, mitProjekt } from "./helpers/kette-fixture.mjs";
+import { run, mitProjekt } from "./helpers/kette-fixture.mjs";
 
 /** Ersetzt die Kit-Kopie von board.mjs im Fixture durch ein eigenes Skript und committet es. */
 function fakeBoardInstallieren(dir, script) {
@@ -55,7 +55,7 @@ const FEHLSCHLAG_FAKE = [
   "",
 ].join("\n");
 
-test("[night-32] issue list ueber 1,5 MB bricht die Kette im Dry-Run nicht am Puffer ab", NUR_POSIX, () => {
+test("[night-32] issue list ueber 1,5 MB bricht die Kette im Dry-Run nicht am Puffer ab", () => {
   mitProjekt((dir) => {
     fakeBoardInstallieren(dir, GROSSE_LISTE_FAKE);
     const res = run(dir, ["--kette", "--dry-run"]);
@@ -64,7 +64,7 @@ test("[night-32] issue list ueber 1,5 MB bricht die Kette im Dry-Run nicht am Pu
   });
 });
 
-test("[night-32] scheitert board.mjs mit grosser Ausgabe, bleibt die Fehlermeldung kurz", NUR_POSIX, () => {
+test("[night-32] scheitert board.mjs mit grosser Ausgabe, bleibt die Fehlermeldung kurz", () => {
   mitProjekt((dir) => {
     fakeBoardInstallieren(dir, FEHLSCHLAG_FAKE);
     const res = run(dir, ["--kette", "--dry-run"]);

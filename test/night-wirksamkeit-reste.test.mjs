@@ -21,10 +21,6 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { worktreeAnlegen } from "../kit/night.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -92,7 +88,7 @@ function mitProjekt(fn) {
   }
 }
 
-test("[night-59] gitReste wertet die acht Dateien von Wirksamkeits-Auswertung und Befunden nicht als Rest", NUR_POSIX, () => {
+test("[night-59] gitReste wertet die acht Dateien von Wirksamkeits-Auswertung und Befunden nicht als Rest", () => {
   mitProjekt((dir) => {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
     const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");

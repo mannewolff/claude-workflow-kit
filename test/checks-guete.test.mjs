@@ -141,14 +141,27 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Pa
   });
 });
 
-test("[checks-6] bei --stufe merge traegt die Guetemessung ihren eigenen Grund", () => {
-  mitRepo({ config: gueteConfig(80) }, (dir) => {
+// An der Freigabe hat die Messung keine Sonderrolle mehr (Issue #1000): Beim
+// `push main` lief sie fuer denselben Stand, und `merge production` gibt es nie ohne
+// ihn. Sie folgt der Auswahl der Freigabestufe wie jede andere Pruefung.
+test("[checks-6] bei --stufe merge laeuft eine Guetemessung der Push-Stufe nicht, mit Grund", () => {
+  mitRepo({ config: gueteConfig(80, { stufe: "push" }) }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
     const ergebnis = plan(dir, "--stufe", "merge");
 
-    assert.equal(
-      eintrag(ergebnis.laufen, MISST_84).grund,
-      "Guetemessung: laeuft vor dem Veroeffentlichen immer",
-    );
+    assert.deepEqual(ergebnis.laufen, []);
+    assert.equal(eintrag(ergebnis.ausgelassen, MISST_84).grund, "Stufe push, geprueft beim push main");
+  });
+});
+
+test("[checks-6] bei --stufe merge folgt eine Guetemessung der Paketstufe der Bereichsauswahl", () => {
+  mitRepo({ config: gueteConfig(80) }, (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const ergebnis = plan(dir, "--stufe", "merge");
+
+    assert.equal(eintrag(ergebnis.laufen, MISST_84).grund, "als immer laufend festgelegt");
   });
 });
 

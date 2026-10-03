@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung,
+  run, board, mitProjekt, fachplan, umgebung,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
@@ -57,7 +57,7 @@ function kettenUmgebung(dir) {
   } });
 }
 
-test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entstehen", NUR_POSIX, () => {
+test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entstehen", () => {
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     const F = fachplan(dir);
@@ -77,7 +77,7 @@ test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entst
   });
 });
 
-test("[night-70] ohne Schwellentreffer entsteht keine Idee", NUR_POSIX, () => {
+test("[night-70] ohne Schwellentreffer entsteht keine Idee", () => {
   mitProjekt((dir) => {
     // Nur die eine Buchung der Kette — eins von drei noetigen Vorkommen.
     const F = fachplan(dir);
@@ -89,7 +89,7 @@ test("[night-70] ohne Schwellentreffer entsteht keine Idee", NUR_POSIX, () => {
   });
 });
 
-test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", NUR_POSIX, () => {
+test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () => {
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     // Eine unlesbare Zustandsdatei weist `vorschlag` ab — sie ist ignoriert und macht
@@ -112,7 +112,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", NUR_P
   });
 });
 
-test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", NUR_POSIX, () => {
+test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
       [zeile("luecke"), zeile("luecke"), zeile("doppelung"), zeile("doppelung")]
@@ -151,7 +151,7 @@ test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette brau
     "der Pfad folgt demselben KIT_ROOT-Weg wie Board, Aufwand und Wirksamkeit");
 });
 
-test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar", NUR_POSIX, () => {
+test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar", () => {
   // Der Vorschlag legt eine Karte im selben Tracker an; die Nummernvergabe des lokalen
   // Trackers darf dabei nicht mit den Karten der Kette kollidieren.
   mitProjekt((dir) => {

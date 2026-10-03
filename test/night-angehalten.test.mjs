@@ -35,10 +35,6 @@ import { HALT_FOLGESATZ, KLAEREN_LABEL } from "../kit/night.mjs";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -135,12 +131,14 @@ function nurBeim(ersteId, wennErste, sonst) {
 }
 
 /** Die Kommentare, die am Issue haengen — der lokale Tracker haengt sie an den Body. */
+// Ohne den Laufstand (Issue #1089, E2): Er ist der Stand des Laufs an der Karte, keine
+// zweite Aussage ueber den Halt — `issue stand` ersetzt ihn statt anzuhaengen.
 function kommentarZahl(dir, id) {
   const body = board(dir, "issue", "get", String(id)).body || "";
-  return (body.match(/\*\*Kommentar\*\*/g) || []).length;
+  return body.split("\n---\n**Kommentar**").slice(1).filter((k) => !/\n## Laufstand\b/.test(k)).length;
 }
 
-test("[night-13] Nachtlauf: ein vollstaendiger Halt wird als angehalten verbucht, der Lauf geht weiter", NUR_POSIX, () => {
+test("[night-13] Nachtlauf: ein vollstaendiger Halt wird als angehalten verbucht, der Lauf geht weiter", () => {
   const dir = setupProjekt("night-halt-voll-");
   try {
     const erstes = readyIssue(dir, "[Task] Haelt an");
@@ -180,7 +178,7 @@ test("[night-13] Nachtlauf: ein vollstaendiger Halt wird als angehalten verbucht
   }
 });
 
-test("[night-4] Nachtlauf: der Ergebnisstand traegt die angehaltene Einheit mit Ausgang angehalten", NUR_POSIX, () => {
+test("[night-4] Nachtlauf: der Ergebnisstand traegt die angehaltene Einheit mit Ausgang angehalten", () => {
   const dir = setupProjekt("night-halt-stand-");
   try {
     const erstes = readyIssue(dir, "[Task] Haelt an");
@@ -199,7 +197,7 @@ test("[night-4] Nachtlauf: der Ergebnisstand traegt die angehaltene Einheit mit 
   }
 });
 
-test("[night-14] Nachtlauf: Halt mit unsauberem Baum loest keinen Salvage aus und stoppt hart", NUR_POSIX, () => {
+test("[night-14] Nachtlauf: Halt mit unsauberem Baum loest keinen Salvage aus und stoppt hart", () => {
   const dir = setupProjekt("night-halt-dirty-");
   try {
     const erstes = readyIssue(dir, "[Task] Haelt an, laesst aber liegen");
@@ -239,7 +237,7 @@ test("[night-14] Nachtlauf: Halt mit unsauberem Baum loest keinen Salvage aus un
   }
 });
 
-test("[night-13] Nachtlauf: ein Abbruch nach dem Label, vor Kommentar und Move, ist kein Halt", NUR_POSIX, () => {
+test("[night-13] Nachtlauf: ein Abbruch nach dem Label, vor Kommentar und Move, ist kein Halt", () => {
   const dir = setupProjekt("night-halt-halb-");
   try {
     const erstes = readyIssue(dir, "[Task] Bricht nach dem Label ab");
@@ -258,7 +256,7 @@ test("[night-13] Nachtlauf: ein Abbruch nach dem Label, vor Kommentar und Move, 
   }
 });
 
-test("[night-13] Nachtlauf: ein Kommentar von vor der Session belegt den Halt nicht", NUR_POSIX, () => {
+test("[night-13] Nachtlauf: ein Kommentar von vor der Session belegt den Halt nicht", () => {
   const dir = setupProjekt("night-halt-alt-");
   try {
     const erstes = readyIssue(dir, "[Task] Trug den Folgesatz schon vorher");
@@ -280,7 +278,7 @@ test("[night-13] Nachtlauf: ein Kommentar von vor der Session belegt den Halt ni
   }
 });
 
-test("[night-13] Nachtlauf: ein neuer Kommentar ohne den festen Folgesatz belegt den Halt nicht", NUR_POSIX, () => {
+test("[night-13] Nachtlauf: ein neuer Kommentar ohne den festen Folgesatz belegt den Halt nicht", () => {
   const dir = setupProjekt("night-halt-ohne-satz-");
   try {
     const erstes = readyIssue(dir, "[Task] Kommentiert ohne Folgesatz");

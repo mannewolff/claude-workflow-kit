@@ -14,8 +14,9 @@
 //     Nutzungshilfe — und der Unterschied zwischen 'Fehler' und 'Unerwarteter
 //     Fehler'.
 //
-// Wo git scheitern muss, steht ein Fake-`git` im PATH (Fixture, kein Umbau am
-// Produktionscode): Es reicht alles durch und faelscht genau ein Unterkommando.
+// Wo git scheitern muss, startet checks.mjs ueber den Test-Hook `CHECKS_GIT_FAKE` ein
+// Fake-`git` als Node-Skript (Issue #1136): Es reicht alles durch und faelscht genau
+// ein Unterkommando. Ohne die Variable startet checks.mjs das echte git.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,14 +28,25 @@ import {
   CHECKS, mitRepo, plan, run, checks, checksMitFakeGit, fakeGitOhne,
   zusammenfassung, datei, kommandos, eintrag,
 } from "./helpers/checks-repo.mjs";
-import { vergleicheText } from "../kit/checks.mjs";
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: das Fake-git liegt als sh-Wrapper im PATH und ist dort nicht ausfuehrbar." }
-  : {};
+import { vergleicheText, gitStart } from "../kit/checks.mjs";
 
 /** Ein Kommando, das nichts ausgibt und gruen endet. */
 const LEISE = "node -e \"process.exit(0)\"";
+
+// --- Test-Hook fuer git (Issue #1136) -----------------------------------------
+
+test("ohne CHECKS_GIT_FAKE startet checks.mjs das echte git mit unveraenderten Argumenten", () => {
+  assert.deepEqual(gitStart(["diff", "--name-only"], {}), { cmd: "git", args: ["diff", "--name-only"] });
+  assert.deepEqual(gitStart(["status"], { CHECKS_GIT_FAKE: "" }), { cmd: "git", args: ["status"] },
+    "eine leere Variable gilt als nicht gesetzt");
+});
+
+test("mit CHECKS_GIT_FAKE startet checks.mjs das Node-Skript mit dem laufenden Node", () => {
+  assert.deepEqual(
+    gitStart(["hash-object", "--stdin-paths"], { CHECKS_GIT_FAKE: "/x/git.mjs" }),
+    { cmd: process.execPath, args: ["/x/git.mjs", "hash-object", "--stdin-paths"] },
+  );
+});
 
 // --- Abbrueche --------------------------------------------------------------
 
@@ -64,7 +76,7 @@ test("buildChecks als String statt Array endet als 'Unerwarteter Fehler'", () =>
   });
 });
 
-test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt den Anker", NUR_POSIX, () => {
+test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt den Anker", () => {
   mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
     fakeGitOhne(dir, "diff", "fatal: fake diff");
     datei(dir, "a.txt", "A\n");
@@ -77,7 +89,7 @@ test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt d
   });
 });
 
-test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefert hat", NUR_POSIX, () => {
+test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefert hat", () => {
   // Der teure Fall: `rev-parse` und `diff` sind durch, die getrackten Aenderungen
   // stehen schon in der Menge. Ohne Abbruch fehlte nur das Ungetrackte, und der
   // Lauf saehe wie ein vollstaendiger aus.
@@ -92,7 +104,7 @@ test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefe
   });
 });
 
-test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassung", NUR_POSIX, () => {
+test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassung", () => {
   mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
     fakeGitOhne(dir, "hash-object", "fatal: fake hash-object");
     datei(dir, "a.txt", "A\n");
@@ -105,7 +117,7 @@ test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassun
   });
 });
 
-test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schritt", NUR_POSIX, () => {
+test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schritt", () => {
   // Ein Abbruch ohne stderr ist kein hypothetischer Fall: Endet der Prozess durch
   // ein Signal, ist `status` null und `stderr` leer. Ohne den Leerstring-Ersatz
   // stuende dort 'undefined' statt einer Meldung — und der eigentliche Abbruch
@@ -122,7 +134,7 @@ test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schri
   });
 });
 
-test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt beide Zahlen", NUR_POSIX, () => {
+test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt beide Zahlen", () => {
   // Ein Zeilenumbruch im Dateinamen: `--stdin-paths` liest zeilenweise, also wird
   // aus drei Pfaden eine Eingabe mit vier Zeilen und git antwortet mit vier
   // Hashes. Ohne den Abgleich bekaemen die Pfade fremde Hashes zugeordnet, und
@@ -279,7 +291,7 @@ test("ein unbekannter Befehl endet rot, nennt ihn und gibt die Nutzungshilfe aus
 
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /Unbekannter Befehl: 'planx'/);
-    assert.match(res.stderr, /Erwartet: plan oder run/);
+    assert.match(res.stderr, /Erwartet: plan, run oder bereiche/);
     assert.match(res.stdout, /--since/, "ohne Nutzungshilfe bliebe der Leser ohne naechsten Schritt");
   });
 });

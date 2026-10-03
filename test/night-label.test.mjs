@@ -14,10 +14,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -69,7 +65,7 @@ function successFake(sessionLog) {
     + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
 }
 
-test("Default-Label: nur kit:nightrun-Issues laufen, ungelabelte bleiben in Ready", NUR_POSIX, () => {
+test("Default-Label: nur kit:nightrun-Issues laufen, ungelabelte bleiben in Ready", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
@@ -93,7 +89,7 @@ test("Default-Label: nur kit:nightrun-Issues laufen, ungelabelte bleiben in Read
   }
 });
 
-test("--label none: altes Verhalten, striktes ready[0] (auch ungelabelt)", NUR_POSIX, () => {
+test("--label none: altes Verhalten, striktes ready[0] (auch ungelabelt)", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
@@ -114,7 +110,7 @@ test("--label none: altes Verhalten, striktes ready[0] (auch ungelabelt)", NUR_P
   }
 });
 
-test("kein Label-Treffer -> Lauf endet wie bei leerem Ready", NUR_POSIX, () => {
+test("kein Label-Treffer -> Lauf endet wie bei leerem Ready", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");
@@ -132,7 +128,7 @@ test("kein Label-Treffer -> Lauf endet wie bei leerem Ready", NUR_POSIX, () => {
   }
 });
 
-test("--dry-run: ungelabelte Issues werden sichtbar als uebersprungen ausgewiesen", NUR_POSIX, () => {
+test("--dry-run: ungelabelte Issues werden sichtbar als uebersprungen ausgewiesen", () => {
   const dir = setupProjekt();
   try {
     const a = board(dir, "issue", "create", "--title", "Ungelabelt", "--body", "## Abhaengigkeiten\nKeine.");

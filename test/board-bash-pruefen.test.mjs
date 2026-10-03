@@ -197,3 +197,41 @@ test("[bash-pruefen] Hook: ohne Settings gibt es keine Muster und nichts wird ab
     assert.equal(res.stderr, "");
   });
 });
+
+// --- Hintergrundarbeit ohne Aufsicht (Issue #1081) ---------------------------
+//
+// Eine headless Session hat keinen Folge-Zug: Startet sie etwas mit `run_in_background`
+// und beendet dann ihren Zug, ist die Sitzung zu Ende (#1065 am 30.09.2026). Die Regel
+// stand im Skilltext (#668, #754, #983) und wurde trotzdem gebrochen — jetzt weist der
+// Hook den Aufruf ab, sobald `KIT_AGENT_MODEL` gesetzt ist. Interaktiv bleibt er erlaubt.
+
+const HINTERGRUND = { tool_name: "Bash", tool_input: { command: "sleep 1", run_in_background: true } };
+
+test("[bash-pruefen] Hook: Hintergrundarbeit ohne Aufsicht endet mit Exit 2 und nennt den Vordergrund-Weg", () => {
+  mitProjekt(undefined, undefined, (dir) => {
+    const res = runBoard(dir, ["hook", "bash-pruefen"], { CLAUDE_PROJECT_DIR: "", KIT_AGENT_MODEL: "claude-opus-5-5" },
+      { input: JSON.stringify(HINTERGRUND) });
+    assert.equal(res.status, 2, res.stderr);
+    assert.match(res.stderr, /run_in_background/);
+    assert.match(res.stderr, /Vordergrund/);
+    assert.match(res.stderr, /Folge-Zug/);
+  });
+});
+
+test("[bash-pruefen] Hook: Hintergrundarbeit mit Aufsicht bleibt erlaubt", () => {
+  mitProjekt(undefined, undefined, (dir) => {
+    const res = runBoard(dir, ["hook", "bash-pruefen"], { CLAUDE_PROJECT_DIR: "", KIT_AGENT_MODEL: "" },
+      { input: JSON.stringify(HINTERGRUND) });
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stderr, "");
+  });
+});
+
+test("[bash-pruefen] Hook: ein Vordergrund-Aufruf ohne Aufsicht bleibt erlaubt", () => {
+  mitProjekt(undefined, undefined, (dir) => {
+    const res = runBoard(dir, ["hook", "bash-pruefen"], { CLAUDE_PROJECT_DIR: "", KIT_AGENT_MODEL: "claude-opus-5-5" },
+      { input: JSON.stringify({ tool_name: "Bash", tool_input: { command: "sleep 1", run_in_background: false } }) });
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stderr, "");
+  });
+});

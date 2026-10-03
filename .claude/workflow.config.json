@@ -1,68 +1,127 @@
 {
   "codeHost": "github",
-  "installCommand": "npm ci",
   "issueTracker": "toolbox",
   "buildChecks": [
     {
-      "cmd": "node --test \"test/night-*.test.mjs\" \"test/board-*.test.mjs\" \"test/migrate-*.test.mjs\" \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\" \"test/guete-*.test.mjs\"",
+      "cmd": "node --test \"test/night-kette-*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
+        "board",
+        "installer",
+        "nachtrunner"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-w*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board",
+        "nachtrunner",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
         "board",
         "installer",
         "nachtrunner",
         "preise",
-        "pruefungen"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
-      "areas": [
-        "board",
-        "einstellungen",
-        "installer",
-        "nachtrunner",
-        "pruefungen"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/cli-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\"",
-      "areas": [
-        "board",
-        "installer",
-        "pruefungen"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\"",
-      "areas": [
-        "board",
-        "einstellungen",
-        "installer",
-        "nachtrunner",
-        "preise",
         "pruefungen",
-        "worktree"
+        "sync"
       ]
     },
     {
-      "cmd": "node --test \"test/docs-*.test.mjs\"",
-      "areas": [
-        "einstellungen",
-        "installer",
-        "nachtrunner",
-        "pruefungen",
-        "skills-doku"
-      ]
-    },
-    {
-      "cmd": "node --test \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-s*.test.mjs\" \"test/night-t*.test.mjs\" \"test/night-u*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-w*.test.mjs\" \"test/night-z*.test.mjs\"",
+      "gleichzeitig": true,
       "areas": [
         "board",
         "installer",
         "nachtrunner",
         "pruefungen",
         "skills-doku",
+        "wirksamkeit"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/board-g*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/guete-*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board",
+        "installer",
+        "nachtrunner",
+        "preise",
+        "pruefungen",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/migrate-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board",
+        "nachtrunner"
+      ]
+    },
+    {
+      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/plattform-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board",
+        "einstellungen",
+        "frischer-checkout",
+        "herkunft",
+        "installer",
+        "konfiguration",
+        "nachtrunner",
+        "preise",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
         "worktree"
       ]
+    },
+    {
+      "cmd": "node --test \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board",
+        "einstellungen",
+        "herkunft",
+        "installer",
+        "nachtrunner",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node tools/frischer-checkout.mjs",
+      "always": true,
+      "stufe": "push"
     },
     "node tools/sync-blobs.mjs --check",
     "npx eslint kit tools test install.mjs .githooks"
@@ -86,13 +145,16 @@
     "in_review": "In review",
     "done": "Done"
   },
+  "installCommand": "npm ci",
   "checkAreas": {
     "nachtrunner": [
       "kit/night.mjs",
       "test/night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
       "test/helpers/kette-fixture.mjs",
-      "test/helpers/kette-umsetzung-fixture.mjs"
+      "test/helpers/kette-umsetzung-fixture.mjs",
+      "test/helpers/kitstand-fixture.mjs",
+      "test/fixtures/auskunft/**"
     ],
     "board": [
       "kit/board.mjs",
@@ -100,30 +162,46 @@
       "tools/migrate-issues.mjs",
       "test/board-*.test.mjs",
       "test/migrate-*.test.mjs",
+      "test/cli-*.test.mjs",
       "startboard.sh",
-      "test/helpers/board-*.mjs"
+      "test/helpers/board-*.mjs",
+      "test/fixtures/cli-grammar.json",
+      "test/fixtures/migrate-import-*.md"
     ],
     "pruefungen": [
       "kit/checks.mjs",
-      "kit/aufwand.mjs",
-      "kit/wirksamkeit.mjs",
-      "kit/befunde.mjs",
-      ".githooks/**",
-      "templates/**",
+      ".githooks/gate.mjs",
+      "tools/verflechtung.mjs",
       "test/checks-*.test.mjs",
       "test/gate*.test.mjs",
-      "test/aufwand-*.test.mjs",
-      "test/wirksamkeit-*.test.mjs",
-      "test/befunde-*.test.mjs",
       "test/guete-*.test.mjs",
+      "test/plattform-*.test.mjs",
       "eslint.config.mjs",
-      "test/helpers/aufwand-fixture.mjs",
       "test/helpers/checks-repo.mjs",
       "test/helpers/checks-sperre.mjs",
+      "test/helpers/haenger.mjs",
+      "test/helpers/wachstum.mjs",
+      "test/fixtures/mvn-verify-*.log"
+    ],
+    "aufwand": [
+      "kit/aufwand.mjs",
+      "test/aufwand-*.test.mjs",
+      "test/helpers/aufwand-fixture.mjs",
+      "test/fixtures/aufwand/**"
+    ],
+    "wirksamkeit": [
+      "kit/wirksamkeit.mjs",
+      "test/wirksamkeit-*.test.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
+    ],
+    "befunde": [
+      "kit/befunde.mjs",
+      "test/befunde-*.test.mjs"
     ],
     "einstellungen": [
       "kit/einstellungen.mjs",
+      "tools/config-referenz.mjs",
+      "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
       "test/config-*.test.mjs",
@@ -135,27 +213,40 @@
     "worktree": [
       "kit/worktree.mjs"
     ],
+    "sync": [
+      "tools/sync-blobs.mjs",
+      "tools/version.mjs",
+      "test/sync-*.test.mjs",
+      "test/kit-*.test.mjs"
+    ],
+    "herkunft": [
+      "tools/derived-from-report.mjs",
+      "test/derived-*.test.mjs",
+      "test/fixtures/board-snapshot-*.json"
+    ],
     "installer": [
       "install.mjs",
-      "tools/**",
-      ".githooks/**",
+      "tools/changelog.mjs",
+      "tools/copy-downloads-for-docs.mjs",
+      "tools/windows-pruefung.mjs",
+      ".githooks/pre-commit",
       "test/install-*.test.mjs",
-      "test/sync-*.test.mjs",
       "test/tools-*.test.mjs",
       "test/changelog*.test.mjs",
-      "test/derived-*.test.mjs",
       "test/copy-*.test.mjs",
-      "test/kit-*.test.mjs",
-      "test/cli-*.test.mjs",
       ".gitignore",
       "package.json",
-      "package-lock.json",
-      "test/helpers/board-fixture.mjs"
+      "package-lock.json"
+    ],
+    "workflow-vorlage": [
+      "templates/CLAUDE-workflow.md"
     ],
     "skills-doku": [
       "skills/**",
       "docs/**",
-      "templates/**",
+      "templates/CLAUDE-Fachplan.md",
+      "templates/CLAUDE-Plan.md",
+      "templates/kontext.config.json",
       "RELEASING.md",
       "CLAUDE.md",
       "README.md",
@@ -167,14 +258,17 @@
       "test/vergleiche-*.test.mjs",
       ".github/workflows/**",
       "docs-site/**",
-      "package.json",
-      "test/helpers/board-fixture.mjs"
+      "package.json"
     ],
     "konfiguration": [
       ".claude/workflow.config.json"
     ],
     "preise": [
       "kit/preise.mjs"
+    ],
+    "frischer-checkout": [
+      "tools/frischer-checkout*.mjs",
+      "test/tools-frischer-checkout*.test.mjs"
     ]
   },
   "ohnePruefung": [
@@ -227,6 +321,12 @@
     {
       "muster": "CLAUDE.md",
       "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
+    }
+  ],
+  "gekoppelteBereiche": [
+    {
+      "bereich": "board",
+      "grund": "Fast jede Testgruppe lädt kit/board.mjs (gemessen mit tools/verflechtung.mjs)."
     }
   ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",

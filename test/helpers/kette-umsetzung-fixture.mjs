@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 
-import { board, fachplan, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN } from "./kette-fixture.mjs";
+import { board, durchziehen, fachplan, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN } from "./kette-fixture.mjs";
 
 /** Die vier erzeugenden Stufen, wie sie jeder dieser Tests braucht. */
 export const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };
@@ -19,7 +19,7 @@ export const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAK
 /** Ein Fachplan mit beiden Labels: Kettenlabel und das Kennzeichen der Variante B. */
 export function fachplanB(dir, titel = "[Fachlich] Ein Anliegen") {
   const F = fachplan(dir, titel);
-  board(dir, "issue", "label", "add", F, "kit:durchziehen");
+  durchziehen(dir, F);
   return F;
 }
 

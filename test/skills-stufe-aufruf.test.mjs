@@ -73,12 +73,28 @@ test("[skills-31] /merge-production ruft die Pruefungen mit --stufe merge auf", 
     `nicht jeder Aufruf traegt --stufe merge: ${zeilen.join(" | ")}`);
 });
 
-test("[skills-31] /merge-production sagt, dass alle drei Stufen laufen, auch ohne neue Aenderungen", () => {
+// Seit Issue #1000 prueft die Freigabe nur, was `push main` nicht geprueft hat.
+test("[skills-31] /merge-production beschreibt die Auswahl der Freigabestufe statt aller drei Stufen", () => {
   const text = fliesstext(skill("merge-production"));
-  assert.match(text, /alle drei Stufen/,
-    "der Satz zu den drei Stufen fehlt");
-  assert.match(text, /seit dem letzten Push nichts hinzugekommen/,
-    "es fehlt, dass der volle Umfang auch ohne neue Aenderungen laeuft");
+  assert.doesNotMatch(text, /alle drei Stufen/,
+    "der Skill beschreibt noch den Doppellauf aller drei Stufen");
+  assert.match(text, /nur, was `push main` nicht geprüft hat/,
+    "der Skill sagt nicht, dass die Freigabe nur prueft, was push main nicht geprueft hat");
+  assert.match(text, /Stufe push, geprueft beim push main/,
+    "der Skill nennt den Auslassungsgrund der Push-Stufe nicht");
+  assert.match(text, /nach Bereichen über die Dateien seit dem Anker/,
+    "der Skill sagt nicht, dass die Paketstufe nach Bereichen laeuft");
+});
+
+test("[skills-31] /merge-production haelt vor dem Worktree an, wenn main Unveroeffentlichtes traegt", () => {
+  const roh = skill("merge-production");
+  const text = fliesstext(roh);
+  assert.match(roh, /git log origin\/<mainBranch>\.\.<mainBranch>/,
+    "der Vorab-Halt nennt seinen Git-Nachweis nicht");
+  assert.match(text, /Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft\./,
+    "die Meldung des Vorab-Halts fehlt");
+  assert.ok(roh.indexOf("Erst `push main`") < roh.indexOf("### 4. Worktree"),
+    "der Vorab-Halt steht nicht vor dem Worktree");
 });
 
 for (const name of PAKETSTUFE) {

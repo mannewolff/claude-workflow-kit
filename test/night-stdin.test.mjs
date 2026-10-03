@@ -9,14 +9,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, sessions, stand, VORFLUG_OK,
+  run, mitProjekt, fachplan, umgebung, sessions, stand, VORFLUG_OK,
 } from "./helpers/kette-fixture.mjs";
 
-test("[night-22] eine Session, die stdin bis zum Dateiende liest, endet sofort statt am Zeitlimit", NUR_POSIX, () => {
+test("[night-22] eine Session, die stdin bis zum Dateiende liest, endet sofort statt am Zeitlimit", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "cat > /dev/null" } });
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "2000" });
+    // 20 s statt 2 s (Issue #1080): Die Session soll sofort enden; 2 s riss unter Last
+    // schon der Start. Haelt stdin sie fest, wartet der Test im Fehlerfall 20 s.
+    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "20000" });
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "abgebrochen");
@@ -26,7 +28,7 @@ test("[night-22] eine Session, die stdin bis zum Dateiende liest, endet sofort s
   });
 });
 
-test("[night-22] auch die Vorflug-Session bekommt ein geschlossenes stdin", NUR_POSIX, () => {
+test("[night-22] auch die Vorflug-Session bekommt ein geschlossenes stdin", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: {} });

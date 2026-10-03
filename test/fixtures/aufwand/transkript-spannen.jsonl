@@ -1,0 +1,10 @@
+{"type":"summary","summary":"Sitzung ohne Zeitstempel in dieser Zeile"}
+{"type":"assistant","timestamp":"2026-09-27T10:00:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"a1","name":"Bash","input":{"command":"node .claude/kit/board.mjs issue auftrag 5"}}]}}
+{"type":"user","timestamp":"2026-09-27T10:00:30.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"a1","content":"x"}]}}
+{"type":"assistant","timestamp":"2026-09-27T10:01:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"a2","name":"Bash","input":{"command":"git status --porcelain"}}]}}
+{"type":"user","timestamp":"2026-09-27T10:05:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"a2","content":"x"}]}}
+{"type":"assistant","timestamp":"2026-09-27T10:06:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"a3","name":"Read","input":{"file_path":"/Users/x/.claude/projects/-Users-x-projekt/0f0e0d0c-aaaa-bbbb-cccc-123456789abc/tool-results/b0x1.txt"}}]}}
+{"type":"user","timestamp":"2026-09-27T10:07:30.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"a3","content":"x"}]}}
+{"type":"assistant","timestamp":"2026-09-27T10:08:00.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"a4","name":"Bash","input":{"command":"gh issue view 5 --json body | jq -r .body"}}]}}
+{"type":"user","timestamp":"2026-09-27T10:09:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"a4","content":"x"}]}}
+keine JSON-Zeile

@@ -18,9 +18,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { stufenEinstellung, paketWahl, sessionStart, berichtBauen } from "../kit/night.mjs";
+import { stufenEinstellung, paketWahl, sessionStart, berichtBauen, posixShell } from "../kit/night.mjs";
 import {
-  NUR_POSIX, NIGHT, run, setupProjekt, readyIssue, einheit,
+  NIGHT, run, setupProjekt, readyIssue, einheit,
   SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW,
 } from "./helpers/ergebnisstand-fixture.mjs";
 
@@ -95,17 +95,9 @@ test("[night-42] beim Modell des Laufs ist die Gruendlichkeit null", () => {
   assert.equal(ohneEinstellung.effort, null);
 });
 
-// Eine Kommando-Stufe gilt unter Windows als nicht startbar (E17 aus Plan #707): Der
-// Kommando-Zweig braucht eine POSIX-Shell, die es dort nicht gibt. Das ist gewolltes
-// Produktverhalten und keine Luecke der Testumgebung — die Lage laesst sich dort also
-// nicht herstellen, und `paketWahl` weicht auf die naechste Stufe aus. Der Grund steht
-// im Skip-Text, damit ein ausgenommener Test nicht wie ein bestandener aussieht
-// (Muster aus Issue #197, gefunden ueber den roten Windows-Job in Issue #873).
-const NUR_POSIX_KOMMANDOSTUFE = process.platform === "win32"
-  ? { skip: "Windows: eine Kommando-Stufe gilt dort als nicht startbar (E17), es gibt keine POSIX-Shell. Siehe Issue #197." }
-  : {};
-
-test("[night-42] eine Kommando-Stufe traegt keine Gruendlichkeit", NUR_POSIX_KOMMANDOSTUFE, () => {
+// Eine Kommando-Stufe ist seit Issue #1131 auch unter Windows startbar: Sie laeuft dort ueber
+// die Git Bash, und `sh` ist darin auffindbar.
+test("[night-42] eine Kommando-Stufe traegt keine Gruendlichkeit", () => {
   // Das Schema verbietet effort neben kommando (Issue #845). Die Wahl verlaesst sich
   // nicht darauf: Ein fremdes Programm kennt das Flag nicht, und `sessionStart` setzt es
   // im Kommando-Zweig ohnehin nie.
@@ -138,7 +130,7 @@ test("[night-42] im Kommando-Zweig steht --effort nie", () => {
   // Das Programm ist nicht `claude` und kennt das Flag nicht — dieselbe Begruendung wie
   // beim Weglassen von --model.
   const { cmd, cmdArgs } = start({ effort: "max" }, "mein-runner");
-  assert.equal(cmd, "sh");
+  assert.equal(cmd, posixShell().pfad);
   assert.ok(!cmdArgs.includes("--effort"), `--effort im Kommando-Zweig: ${cmdArgs.join(" ")}`);
 });
 
@@ -146,7 +138,7 @@ test("[night-42] der Test-Hook bleibt unberuehrt", () => {
   const { cmd, cmdArgs } = sessionStart({
     testCmd: "true", kommando: null, prompt: "p", modell: "claude-sonnet-5", args: {}, opts: { effort: "max" },
   });
-  assert.equal(cmd, "sh");
+  assert.equal(cmd, posixShell().pfad);
   assert.deepEqual(cmdArgs, ["-c", "true"]);
 });
 
@@ -154,7 +146,7 @@ test("[night-42] der Test-Hook bleibt unberuehrt", () => {
 
 const FAKE_ERFOLG = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
 
-test("[night-42] ein Nachtlauf schreibt die Gruendlichkeit in die Einheit und nennt sie im Protokoll", NUR_POSIX, () => {
+test("[night-42] ein Nachtlauf schreibt die Gruendlichkeit in die Einheit und nennt sie im Protokoll", () => {
   const dir = setupProjekt("night-effort-stand-", {
     modelle: ERLAUBT,
     stufen: { leicht: { modell: "claude-sonnet-5", effort: "low" } },
@@ -178,7 +170,7 @@ test("[night-42] ein Nachtlauf schreibt die Gruendlichkeit in die Einheit und ne
   }
 });
 
-test("[night-42] ohne Gruendlichkeit steht null in der Einheit und die Hinweiszeile bleibt wortgleich", NUR_POSIX, () => {
+test("[night-42] ohne Gruendlichkeit steht null in der Einheit und die Hinweiszeile bleibt wortgleich", () => {
   const dir = setupProjekt("night-effort-ohne-", {
     modelle: ERLAUBT,
     stufen: { leicht: { modell: "claude-sonnet-5" } },
@@ -200,7 +192,7 @@ test("[night-42] ohne Gruendlichkeit steht null in der Einheit und die Hinweisze
 
 // --- Die Vorschau ---
 
-test("[night-42] --dry-run nennt die Gruendlichkeit der Stufe", NUR_POSIX, () => {
+test("[night-42] --dry-run nennt die Gruendlichkeit der Stufe", () => {
   const dir = setupProjekt("night-effort-dryrun-", {
     modelle: ERLAUBT,
     stufen: { leicht: { modell: "claude-sonnet-5", effort: "low" }, schwer: { modell: "claude-opus-5" } },

@@ -16,6 +16,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { pruefeLinear } from "./helpers/wachstum.mjs";
+
 import { tausenderPunkte as aufwandPunkte, zahlform as aufwandZahl } from "../kit/aufwand.mjs";
 import { tausenderPunkte as wirksamkeitPunkte, zahlform as wirksamkeitZahl } from "../kit/wirksamkeit.mjs";
 
@@ -83,19 +85,10 @@ for (const [wo, fn] of ZAHL) {
 // bemaengelt, statt nur den Aufrufvertrag zu bestaetigen.
 
 const GROSS = 32 * 1024;
-const GRENZE_MS = 100;
-
-function dauer(fn) {
-  const t0 = process.hrtime.bigint();
-  fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6;
-}
 
 for (const [wo, fn] of PUNKTE) {
-  test(`tausenderPunkte (${wo}) bleibt bei 32 KiB Ziffern unter ${GRENZE_MS} ms`, (t) => {
-    const ziffern = "1".repeat(GROSS);
-    const ms = dauer(() => fn(ziffern));
-    t.diagnostic(`${wo}: ${ms.toFixed(2)} ms bei ${GROSS} Ziffern`);
-    assert.ok(ms < GRENZE_MS, `${wo}: ${ms.toFixed(1)} ms — erwartet unter ${GRENZE_MS} ms`);
+  test(`tausenderPunkte (${wo}) waechst bis 32 KiB Ziffern linear`, (t) => {
+    const e = pruefeLinear(wo, fn, (n) => "1".repeat(n), { gross: GROSS });
+    t.diagnostic(`${wo}: ${e.kleinMs.toFixed(2)} -> ${e.grossMs.toFixed(2)} ms bei ${GROSS} Ziffern`);
   });
 }

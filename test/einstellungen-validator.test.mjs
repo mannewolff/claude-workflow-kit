@@ -22,6 +22,7 @@ const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
 const FAELLE = [
   ["type", { type: "string" }, "a", 5],
   ["enum", { enum: ["x", "y"] }, "x", "z"],
+  ["const", { const: true }, true, false],
   ["pattern", { type: "string", pattern: "^claude-" }, "claude-opus-5", "--gefahr"],
   ["oneOf", { oneOf: [{ type: "string" }, { type: "number" }] }, 3, true],
   ["not", { not: { required: ["a"] } }, { b: 1 }, { a: 1 }],
@@ -67,7 +68,7 @@ test("[einstellungen-1] der Validator kennt jedes Schlüsselwort, das das Schema
   sammle(VORLAGE);
   const unbekannt = [...benutzt].filter((w) => !SCHLUESSELWOERTER.includes(w) && !BESCHREIBEND.has(w));
   assert.deepEqual(unbekannt, [], `unbekannte Schlüsselwörter: ${unbekannt.join(", ")}`);
-  assert.equal(SCHLUESSELWOERTER.length, 16);
+  assert.equal(SCHLUESSELWOERTER.length, 17);
 });
 
 test("[einstellungen-1] das eingebettete Schema gleicht der Vorlage", () => {

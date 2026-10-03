@@ -31,10 +31,6 @@ import { gitResteAusnahmen, salvageSauberkeitsKommando, salvagePrompt } from "..
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -140,7 +136,7 @@ function fakeSession(sessionLog) {
     + `fi\n`;
 }
 
-test("[night-66] Salvage gelingt auch in einem Projekt ohne .claude/*-Block in .gitignore", NUR_POSIX, () => {
+test("[night-66] Salvage gelingt auch in einem Projekt ohne .claude/*-Block in .gitignore", () => {
   const dir = setupProjektOhneIgnoreBlock();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");

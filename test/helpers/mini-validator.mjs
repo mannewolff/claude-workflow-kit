@@ -4,7 +4,7 @@
 // Geprueft wird damit statt mit ajv (entschieden am 2026-09-01): Das Repo fuehrt
 // heute keinen Schema-Validator, und das Kit liefert seine Werkzeuge bewusst
 // abhaengigkeitsfrei aus. Der Validator kennt nur die Schluesselwoerter, die dieses
-// Schema braucht — type, oneOf, required, not, pattern, enum, minimum,
+// Schema braucht — type, oneOf, required, not, pattern, enum, const, minimum,
 // exclusiveMinimum, maximum, minItems, minProperties, additionalProperties,
 // properties, items. Alles andere
 // (minLength, uniqueItems) ignoriert er; er ist damit nachsichtiger als ein echter Validator,
@@ -83,6 +83,23 @@ function pruefeObjekt(teilschema, wert, pfad) {
   return fehler;
 }
 
+/** enum und const. */
+function pruefeErlaubteWerte(teilschema, wert, pfad) {
+  const fehler = [];
+  // Seit Issue #757: Die Stufenangabe an einem buildChecks-Eintrag ist ein enum,
+  // und die Aussage 'eine Stufe ausserhalb der drei Namen wird abgewiesen' haengt
+  // allein daran. Ein ignoriertes enum liesse sie unbelegt durchgehen.
+  if (Array.isArray(teilschema.enum) && !teilschema.enum.includes(wert)) {
+    fehler.push(`${pfad}: '${wert}' ist keiner der erlaubten Werte`);
+  }
+  // Seit Issue #1032: Der Vorgaben-Marker in testAblagen ist `{ "vorgaben": { "const": true } }`,
+  // und die Aussage 'vorgaben false wird abgewiesen' haengt allein daran.
+  if (Object.hasOwn(teilschema, "const") && wert !== teilschema.const) {
+    fehler.push(`${pfad}: erwartet den festen Wert ${JSON.stringify(teilschema.const)}`);
+  }
+  return fehler;
+}
+
 /** Liefert die Liste der Verstoesse; leer heisst gueltig. */
 export function pruefe(teilschema, wert, pfad = "$") {
   if (!istObjekt(teilschema)) return [];
@@ -96,12 +113,7 @@ export function pruefe(teilschema, wert, pfad = "$") {
       && !new RegExp(teilschema.pattern).test(wert)) {
     fehler.push(`${pfad}: passt nicht auf '${teilschema.pattern}'`);
   }
-  // Seit Issue #757: Die Stufenangabe an einem buildChecks-Eintrag ist ein enum,
-  // und die Aussage 'eine Stufe ausserhalb der drei Namen wird abgewiesen' haengt
-  // allein daran. Ein ignoriertes enum liesse sie unbelegt durchgehen.
-  if (Array.isArray(teilschema.enum) && !teilschema.enum.includes(wert)) {
-    fehler.push(`${pfad}: '${wert}' ist keiner der erlaubten Werte`);
-  }
+  fehler.push(...pruefeErlaubteWerte(teilschema, wert, pfad));
   if (typeof wert === "number") fehler.push(...pruefeZahl(teilschema, wert, pfad));
   if (Array.isArray(teilschema.oneOf)) {
     const treffer = teilschema.oneOf.filter((zweig) => pruefe(zweig, wert, pfad).length === 0);

@@ -24,10 +24,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -122,10 +118,11 @@ function lauf(buildChecks) {
 }
 
 for (const [wie, merkmal] of [["ersten", MERKMAL_STUFE], ["zweiten", MERKMAL_BAU]]) {
-  test(`[night-859] Salvage: Exit 0 mit dem ${wie} Merkmal in der Ausgabe ist rot — kein Rettungsversuch`, NUR_POSIX, () => {
+  test(`[night-859] Salvage: Exit 0 mit dem ${wie} Merkmal in der Ausgabe ist rot — kein Rettungsversuch`, () => {
     const { res, geretttet, sessions, id } = lauf([gibtAus(merkmal)]);
 
-    assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
+    // Seit Issue #1089 (E14) haelt das gescheiterte Paket nur sich an, die Reste gehen in den Stash.
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Salvage nicht moeglich/,
       "das Fehlermerkmal haette den Salvage verhindern muessen");
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
@@ -140,7 +137,7 @@ for (const [wie, merkmal] of [["ersten", MERKMAL_STUFE], ["zweiten", MERKMAL_BAU
   });
 }
 
-test("[night-859] Salvage: dasselbe Kommando ohne Merkmal bleibt gruen und rettet", NUR_POSIX, () => {
+test("[night-859] Salvage: dasselbe Kommando ohne Merkmal bleibt gruen und rettet", () => {
   // Die Gegenprobe zum Fall darueber: Ohne das Merkmal ist der Lauf unveraendert
   // gruen — die Pruefung faerbt also nicht pauschal jede Ausgabe rot.
   const { res, geretttet } = lauf([gibtAus("alles gut")]);

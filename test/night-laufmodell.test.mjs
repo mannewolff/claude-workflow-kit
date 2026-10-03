@@ -19,8 +19,6 @@ import { tmpdir } from "node:os";
 
 import { laufModell } from "../kit/night.mjs";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 const ERLAUBT = ["claude-opus-5-5", "claude-sonnet-5"];
@@ -91,7 +89,7 @@ function mitFixture(optionen, fn) {
   try { fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
-test("Startzeile: night.modell aus der geteilten Config samt Herkunft", NUR_POSIX, () => {
+test("Startzeile: night.modell aus der geteilten Config samt Herkunft", () => {
   mitFixture({ night: { modell: "claude-opus-5-5", modelle: ERLAUBT } }, (dir) => {
     const res = trockenlauf(dir);
     assert.equal(res.status, 0, res.alles);
@@ -99,7 +97,7 @@ test("Startzeile: night.modell aus der geteilten Config samt Herkunft", NUR_POSI
   });
 });
 
-test("Startzeile: --model gewinnt und nennt sich als Herkunft", NUR_POSIX, () => {
+test("Startzeile: --model gewinnt und nennt sich als Herkunft", () => {
   mitFixture({ night: { modell: "claude-opus-5-5", modelle: ERLAUBT } }, (dir) => {
     const res = trockenlauf(dir, ["--model", "claude-sonnet-5"]);
     assert.equal(res.status, 0, res.alles);
@@ -107,7 +105,7 @@ test("Startzeile: --model gewinnt und nennt sich als Herkunft", NUR_POSIX, () =>
   });
 });
 
-test("Startzeile: ohne beides gilt die Vorgabe", NUR_POSIX, () => {
+test("Startzeile: ohne beides gilt die Vorgabe", () => {
   mitFixture({}, (dir) => {
     const res = trockenlauf(dir);
     assert.equal(res.status, 0, res.alles);
@@ -115,7 +113,7 @@ test("Startzeile: ohne beides gilt die Vorgabe", NUR_POSIX, () => {
   });
 });
 
-test("night.modell ausserhalb von night.modelle beendet den Runner vor dem Start", NUR_POSIX, () => {
+test("night.modell ausserhalb von night.modelle beendet den Runner vor dem Start", () => {
   mitFixture({ night: { modell: "claude-haiku-4-5", modelle: ERLAUBT } }, (dir) => {
     const res = trockenlauf(dir);
     assert.notEqual(res.status, 0, "der Runner darf nicht weiterlaufen");
@@ -125,7 +123,7 @@ test("night.modell ausserhalb von night.modelle beendet den Runner vor dem Start
   });
 });
 
-test("ein night.modell aus der lokalen Config wird ignoriert und gemeldet", NUR_POSIX, () => {
+test("ein night.modell aus der lokalen Config wird ignoriert und gemeldet", () => {
   mitFixture({ night: { modelle: ERLAUBT }, lokal: { night: { modell: "claude-sonnet-5" } } }, (dir) => {
     const res = trockenlauf(dir);
     assert.equal(res.status, 0, res.alles);

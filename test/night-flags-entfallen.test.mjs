@@ -18,10 +18,6 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env },
@@ -119,7 +115,7 @@ function readyIssue(dir, titel, body) {
   return String(issue.id);
 }
 
-test("[night-16] Gate an: ohne Marker zurueckgestellt, mit Marker gestartet — in einem Lauf", NUR_POSIX, () => {
+test("[night-16] Gate an: ohne Marker zurueckgestellt, mit Marker gestartet — in einem Lauf", () => {
   mitProjekt((dir) => {
     const offen = readyIssue(dir, "Erstes Ticket ohne Marker", OHNE_MARKER);
     const frei = readyIssue(dir, "Zweites Ticket mit Marker", MIT_MARKER);

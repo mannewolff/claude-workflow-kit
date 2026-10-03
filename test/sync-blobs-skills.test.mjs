@@ -23,12 +23,6 @@ import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Unter Windows uebersprungen: Der Schreibschutz-Test haengt an POSIX-Dateirechten;
-// `chmod` hat dort auf Verzeichnisse nicht dieselbe Wirkung.
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Schreibschutz haengt an POSIX-Dateirechten, chmod wirkt dort anders." }
-  : {};
-
 function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sync-skills-"));
   mkdirSync(join(dir, "tools"), { recursive: true });
@@ -98,6 +92,8 @@ function mitFixture(fn, optionen) {
     // Schreibrechte zuruecksetzen, sonst scheitert das Aufraeumen am eigenen Test.
     const geschuetzt = join(dir, ".claude", "skills", "beispiel");
     if (existsSync(geschuetzt)) chmodSync(geschuetzt, 0o755);
+    // Unter Windows haelt das Read-only-Attribut der Datei sonst das Aufraeumen auf.
+    if (existsSync(join(geschuetzt, "SKILL.md"))) chmodSync(join(geschuetzt, "SKILL.md"), 0o644);
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -140,11 +136,13 @@ test("eine bereits gleiche Kopie wird nicht angefasst und nicht gemeldet", () =>
   }, { kopien: { beispiel: "# Beispiel-Skill\n" } });
 });
 
-test("ein schreibgeschuetztes Ziel bricht sichtbar ab, statt still weiterzulaufen", NUR_POSIX, () => {
+test("ein schreibgeschuetztes Ziel bricht sichtbar ab, statt still weiterzulaufen", () => {
   mitFixture((dir) => {
     // Ordner UND Datei schreibgeschuetzt: genau die Sandbox-Sperre aus Issue #186.
     // Der Ordner allein genuegt nicht — zum Ueberschreiben einer vorhandenen Datei
     // braucht es nur deren eigenes Schreibrecht, nicht das des Verzeichnisses.
+    // Unter Windows setzt `chmod 0o444` das Read-only-Attribut der Datei; das traegt den
+    // Schreibschutz dort allein, das chmod am Ordner wirkt nicht (Plan #1128 E7).
     // Ein verschluckter Fehler waere derselbe Fehler eine Ebene tiefer: sync-blobs
     // meldete "aufgefrischt", waehrend die Kopie alt bleibt.
     chmodSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), 0o444);
@@ -200,4 +198,79 @@ test("ohne KIT_ROOT gilt das Repo, aus dem das Script stammt", () => {
   } finally {
     rmSync(fremd, { recursive: true, force: true });
   }
+});
+
+// --- Fester Kit-Stand eines laufenden Laufs (Issue #1102, Plan #1101 A5) ---
+//
+// Traegt der Baum eine lebende Markierung `.claude/kit-stand.json`, gehoert die Kopie dem
+// Lauf: Weder `.claude/kit/` noch `.claude/skills/` werden geschrieben, und `--check` meldet
+// ihre Abweichung nicht. Die Blobs in install.mjs bleiben Pruefgegenstand. Eine verwaiste
+// Markierung (toter Prozess) gilt nicht, ebenso wenig eine fehlende.
+
+const STAND_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+
+function markieren(dir, pid) {
+  writeFileSync(join(dir, ".claude", "kit-stand.json"),
+    JSON.stringify({ commit: STAND_COMMIT, pfad: "/irgendwo", pid, seit: new Date().toISOString() }));
+}
+
+/** Die PID eines Prozesses, der schon beendet ist. */
+function totePid() {
+  return spawnSync(process.execPath, ["-e", ""]).pid;
+}
+
+test("[kitstand-5] eine lebende Markierung laesst beide Kopien stehen und nennt den Lauf, die Blobs werden trotzdem geschrieben", () => {
+  mitFixture((dir) => {
+    writeFileSync(join(dir, ".claude", "kit", "board.mjs"), "// Stand des Laufs\n");
+    markieren(dir, process.pid);
+
+    const res = syncBlobs(dir);
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, new RegExp(`Kopie gehört dem Lauf auf ${STAND_COMMIT.slice(0, 12)}`));
+    assert.equal(readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"), "alt\n",
+      "die Skill-Kopie des Laufs wurde ueberschrieben");
+    assert.equal(readFileSync(join(dir, ".claude", "kit", "board.mjs"), "utf-8"), "// Stand des Laufs\n",
+      "die Kit-Kopie des Laufs wurde ueberschrieben");
+    assert.doesNotMatch(readFileSync(join(dir, "install.mjs"), "utf-8"), /const SKILLS_B64 = "";/,
+      "die Blobs in install.mjs gehoeren weiter geschrieben");
+  }, { kopien: { beispiel: "alt\n" } });
+});
+
+test("[kitstand-5] --check meldet bei lebender Markierung keine Kopie als veraltet, die Blob-Drift aber weiter", () => {
+  mitFixture((dir) => {
+    markieren(dir, process.pid);
+
+    const res = syncBlobs(dir, "--check");
+
+    assert.equal(res.status, 1, "die leeren Blobs des Fixtures sind Drift");
+    assert.match(res.stderr, /Blob-Drift/);
+    assert.doesNotMatch(res.stdout + res.stderr, /Lokale Kopie veraltet/);
+    assert.match(res.stdout, /Kopie gehört dem Lauf auf/);
+  }, { kopien: { beispiel: "alt\n" } });
+});
+
+test("[kitstand-5] eine verwaiste Markierung gilt nicht: die Kopie wird aufgefrischt und --check meldet sie", () => {
+  mitFixture((dir) => {
+    markieren(dir, totePid());
+
+    const check = syncBlobs(dir, "--check");
+    assert.match(check.stderr, /Lokale Kopie veraltet: .*\.claude\/skills\/beispiel\/SKILL\.md/);
+    assert.doesNotMatch(check.stdout, /Kopie gehört dem Lauf/);
+
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"), "# Beispiel-Skill\n");
+  }, { kopien: { beispiel: "alt\n" } });
+});
+
+test("[kitstand-5] ohne Markierung bleibt alles beim Alten, auch mit KIT_STAND in der Umgebung", () => {
+  mitFixture((dir) => {
+    const res = spawnSync(process.execPath, [join(repoRoot, "tools", "sync-blobs.mjs")], {
+      cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir, KIT_STAND: STAND_COMMIT, KIT_STAND_PFAD: "/nicht/vorhanden" },
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.doesNotMatch(res.stdout, /Kopie gehört dem Lauf/);
+    assert.equal(readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"), "# Beispiel-Skill\n");
+  }, { kopien: { beispiel: "alt\n" } });
 });

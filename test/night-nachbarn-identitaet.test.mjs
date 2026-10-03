@@ -30,10 +30,20 @@ test("[night-6] ohne Hook stammen die Board-Bindungen aus board.mjs, nicht aus d
   assert.equal(night.nachbarn.istPlan, board.istPlan);
   assert.equal(night.nachbarn.istIdee, board.istIdee);
   assert.equal(night.nachbarn.istMensch, board.istMensch);
+  // Seit Issue #1062 (Plan #1057, E1) liest der Runner die Herkunft seiner Abhaengigkeiten
+  // mit derselben Funktion wie die Schreibwege in board.mjs — eine Kopie liefe auseinander.
+  assert.equal(night.nachbarn.abhaengigkeitenMitHerkunft, board.abhaengigkeitenMitHerkunft);
+  // Seit Issue #1046 (Plan #987, E1) erkennt das Gate geschuetzte Dateien mit denselben
+  // Funktionen wie `issue check-geschuetzt` — Treffer, Halt-Text und Freigabe. Der Halt-Text
+  // ist zugleich das Leseformat der Freigabe; eine Kopie hier liesse die Karte gesperrt.
+  assert.equal(night.nachbarn.geschuetzteTreffer, board.geschuetzteTreffer);
+  assert.equal(night.nachbarn.geschuetztKommentar, board.geschuetztKommentar);
+  assert.equal(night.nachbarn.geschuetztFreigabe, board.geschuetztFreigabe);
   // Seit Plan #638 sind das die einzigen Bindungen an board.mjs: Pruefvorgabe,
   // Pruefzustand, Rundengrenze und Kopfzeilen-Muster sind mit den Nachtmodi entfallen.
   assert.deepEqual(Object.keys(night.nachbarn).sort(),
-    ["fenceLauf", "istFachlich", "istIdee", "istMensch", "istPlan", "zusammenfassungPfad"]);
+    ["abhaengigkeitenMitHerkunft", "fenceLauf", "geschuetztFreigabe", "geschuetztKommentar", "geschuetzteTreffer",
+      "istFachlich", "istIdee", "istMensch", "istPlan", "zusammenfassungPfad"]);
 });
 
 test("[night-6] ohne Hook stammt zusammenfassungPfad aus checks.mjs", () => {

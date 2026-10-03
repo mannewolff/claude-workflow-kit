@@ -14,10 +14,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -44,6 +40,8 @@ function setupProjekt() {
     issueTracker: "local",
     buildChecks: ["true"],
     local: { issuesDir: "issues" },
+    // Der Fehlstart bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
+    night: { stand: { pauseMin: 0.0001 } },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
   for (const [c, a] of [
@@ -66,7 +64,7 @@ function issuesDirText(dir) {
     .join("\n---\n");
 }
 
-test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt unveraendert", NUR_POSIX, () => {
+test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt unveraendert", () => {
   const dir = setupProjekt();
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -96,15 +94,15 @@ test("Nachtlauf: Session-Fehlstart (Exit ungleich 0) stoppt hart, Ready bleibt u
     // Keine Kommentare auf den Issues.
     assert.doesNotMatch(issuesDirText(dir), /Nachtlauf/, "Issue wurde faelschlich kommentiert");
 
-    // Genau eine Session — nach dem Fehlstart keine weitere.
+    // Ein Versuch nach der Pause (Issue #1088, E13), dann keine weitere Session.
     const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
+    assert.deepEqual(sessions, [String(erstes.id), String(erstes.id)], "es lief nicht genau ein zweiter Versuch");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("Nachtlauf: fachlicher Fehlschlag (Exit 0, kein In review) wandert weiterhin ins Backlog", NUR_POSIX, () => {
+test("Nachtlauf: fachlicher Fehlschlag (Exit 0, kein In review) wandert weiterhin ins Backlog", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Scheitert fachlich", "--body", "## Abhaengigkeiten\nKeine.");

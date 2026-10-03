@@ -150,6 +150,11 @@ Implementierung.
 - **Ob eine Stopp-Frage fehlt.** P7 erfasst nur zu Unrecht enthaltene Fragen; die
   fehlende prueft die Rolle `schnitt-abhaengigkeiten` (Frage 5).
 - **Laenge und Ton.**
+- **Testhinweise der Formpruefung.** `issue check-form` meldet beim Plan unter `hinweise`
+  je eigenen Test eines gefuehrten Bausteins, den der Plan nirgends nennt (Ablagen aus
+  `testAblagen`). Sie beruehren weder `ok` noch den Exit-Code und tragen keine P-Nummer.
+  Nachts schreibt der Nacht-Runner, was stehen bleibt, als Kommentar
+  `## Testhinweise der Formpruefung` an den Plan.
 - **Ob der Plan gut schneidbar ist.** Das prueft die Rolle `schnitt-abhaengigkeiten` im
   Plan-Review und gehoert dort hin: Ein schlecht schneidbarer Plan ist ein Fund mit
   Alternativen, kein Regelverstoss.

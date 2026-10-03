@@ -14,8 +14,8 @@ import assert from "node:assert/strict";
 import { rmSync, writeFileSync, mkdirSync, chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { pickReviewers, findeImPath } from "../kit/board.mjs";
+import { setupProjekt, runBoard, cmdAttrappe } from "./helpers/board-fixture.mjs";
+import { pickReviewers, findeImPath, kommandoVerfuegbar } from "../kit/board.mjs";
 
 const OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
 const SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
@@ -298,25 +298,79 @@ test("findeImPath: win32 prueft kein Ausfuehrbar-Bit", () => {
   assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
 });
 
+// --- Startregel des Reviewer-Starts (Issue #1135, Plan #1128, E8) ---
+//
+// Ein per npm installiertes `codex` liegt unter Windows als `codex.cmd`, und Node startet
+// eine `.cmd` ohne Shell nicht (CVE-2024-27980). npm legt daneben eine sh-Huelle ohne
+// Endung an; die startet das Kit ueber die Git Bash. Die Plattform ist injiziert, damit
+// die Windows-Regel auch dort belegt ist, wo der Test nicht unter Windows laeuft.
+const NPM = String.raw`C:\Users\m\AppData\Roaming\npm`;
+const GIT = String.raw`C:\Program Files\Git`;
+const GIT_BASH = String.raw`C:\Program Files\Git\bin\bash.exe`;
+const WIN_START = {
+  plattform: "win32",
+  env: { Path: `${NPM};${GIT}\\cmd`, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+};
+
+test("kommandoVerfuegbar: win32 startet codex.cmd mit sh-Huelle ueber die Git Bash", () => {
+  const { ok, start } = kommandoVerfuegbar("codex exec --model gpt-5", {
+    ...WIN_START,
+    existiert: fs_mit(`${NPM}\\codex.cmd`, `${NPM}\\codex`, `${GIT}\\cmd\\git.exe`, GIT_BASH),
+  });
+  assert.equal(ok, true);
+  assert.equal(start.fehler, null);
+  assert.equal(start.befehl, GIT_BASH);
+  assert.deepEqual(start.vorArgs, [`${NPM}\\codex`]);
+  assert.equal(start.umgebung.MSYS_NO_PATHCONV, "1");
+});
+
+test("kommandoVerfuegbar: win32 startet eine .exe direkt", () => {
+  const { ok, start } = kommandoVerfuegbar("codex exec", {
+    ...WIN_START,
+    existiert: fs_mit(`${NPM}\\codex.exe`, `${NPM}\\codex.cmd`, `${NPM}\\codex`),
+  });
+  assert.equal(ok, true);
+  assert.equal(start.fehler, null);
+  assert.equal(start.befehl.toLowerCase(), `${NPM}\\codex.exe`.toLowerCase());
+  assert.deepEqual(start.vorArgs, []);
+});
+
+test("kommandoVerfuegbar: win32 meldet eine .cmd ohne sh-Huelle als nicht startbar", () => {
+  const { ok, start } = kommandoVerfuegbar("codex exec", {
+    ...WIN_START,
+    existiert: fs_mit(`${NPM}\\codex.cmd`, `${GIT}\\cmd\\git.exe`, GIT_BASH),
+  });
+  assert.equal(ok, true, "die Datei liegt im PATH — nur starten laesst sie sich nicht");
+  assert.equal(start.befehl, null);
+  assert.match(start.fehler, /ohne sh-Huelle daneben vor und ist nicht ohne cmd\.exe startbar/);
+});
+
+test("kommandoVerfuegbar: POSIX startet den gefundenen Pfad unveraendert", () => {
+  const { ok, pfad, start } = kommandoVerfuegbar("codex exec", {
+    plattform: "linux",
+    env: { PATH: "/usr/local/bin:/usr/bin" },
+    existiert: fs_mit("/usr/bin/codex"),
+    ausfuehrbar: () => true,
+  });
+  assert.equal(ok, true);
+  assert.equal(pfad, "/usr/bin/codex");
+  assert.deepEqual(start, { befehl: "/usr/bin/codex", vorArgs: [], umgebung: {}, fehler: null });
+});
+
 test("findeImPath: leerer PATH liefert null statt zu werfen", () => {
   assert.equal(findeImPath("codex", { ...POSIX, path: "", existiert: () => true }), null);
   assert.equal(findeImPath("codex", { ...POSIX, path: undefined, existiert: () => true }), null);
 });
-
-// POSIX-only (Issue #230): Die Datei hat keine Endung und traegt ihre Ausfuehrbarkeit
-// im Shebang und im Modus. Unter Windows ist beides wirkungslos — dort entscheidet die
-// Endung (.cmd/.bat/.exe), ob etwas startbar ist. Wer diesen Helfer in einen neuen Test
-// einbaut, muss ihn dort ueberspringen (NUR_POSIX), sonst sucht er denselben Fehler
-// noch einmal.
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Das Fake-Binary ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197 und #231." }
-  : {};
 
 /**
  * Legt ein Fake-Binary ohne Grammatik-Bindung im Fixture-PATH an.
  *
  * `rumpf` ersetzt den Standard-Rumpf (`exit 0`) — der Probelauf aus Issue #262
  * braucht Kommandos, die scheitern, haengen oder stdin mitschreiben.
+ *
+ * Startbar ist ein Fake auf POSIX ueber das X-Bit, unter Windows ueber die `.cmd`-Attrappe
+ * daneben (Issue #1135, E8). Darum bekommt nur ein ausfuehrbarer Modus die Attrappe: Ein
+ * nur lesbares Fake ist dann auf beiden Plattformen kein Kommando.
  */
 function fakeBinary(dir, name, modus = 0o755, rumpf = "exit 0") {
   const binDir = join(dir, "fakebin");
@@ -324,6 +378,7 @@ function fakeBinary(dir, name, modus = 0o755, rumpf = "exit 0") {
   const pfad = join(binDir, name);
   writeFileSync(pfad, `#!/bin/sh\n${rumpf}\n`);
   chmodSync(pfad, modus);
+  if (modus & 0o111) cmdAttrappe(pfad);
 }
 
 test("issue-review check: claude-Reviewer gelten immer als verfuegbar", () => {
@@ -371,7 +426,7 @@ test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleib
   });
 });
 
-test("issue-review check: vorhandenes Kommando gilt als verfuegbar", NUR_POSIX, () => {
+test("issue-review check: vorhandenes Kommando gilt als verfuegbar", () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag" }] }, (dir) => {
     fakeBinary(dir, "meinfake");
     const res = runBoard(dir, ["issue-review", "check"]);
@@ -381,7 +436,7 @@ test("issue-review check: vorhandenes Kommando gilt als verfuegbar", NUR_POSIX, 
   });
 });
 
-test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando", NUR_POSIX, () => {
+test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando", () => {
   // Deckt den echten accessSync-Pfad ab (Issue #231): Die Datei liegt im PATH, ist
   // aber nur lesbar. Der fruehere Prozessstart fing das implizit ab.
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "nurlesbar --flag" }] }, (dir) => {
@@ -396,6 +451,12 @@ test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando"
   });
 });
 
+// Woran der Probelauf einen Absturz erkennt (Issue #1135). Auf POSIX meldet Node den
+// Signal-Tod mit dem Namen des Signals. Unter Windows gibt es keine Signale: Die Git Bash,
+// in der das Fake laeuft, endet bei `kill -SEGV $$` mit einem Exit-Code, und den nennt der
+// Befund. Belegt bleibt auf beiden Plattformen, dass ein Absturz nicht als verfuegbar gilt.
+const SIGNAL_TOD = process.platform === "win32" ? /Exit \d+/ : /SIGSEGV/;
+
 // --- Probelauf statt reiner PATH-Suche (Issue #262) ---
 //
 // Belegt am 2026-08-08: Der Vorflug meldete `codex` verfuegbar, weil das Binary im
@@ -404,7 +465,7 @@ test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando"
 // nicht — dort wird aus `alleVerfuegbar: false` ein harter Stopp, und genau der
 // blieb aus, weil der Befund `true` lautete.
 
-test("issue-review check: ein startbares Kommando wird durch einen Probelauf bestaetigt", NUR_POSIX, () => {
+test("issue-review check: ein startbares Kommando wird durch einen Probelauf bestaetigt", () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "laeuft --flag" }] }, (dir) => {
     fakeBinary(dir, "laeuft");
     const res = runBoard(dir, ["issue-review", "check"]);
@@ -416,7 +477,7 @@ test("issue-review check: ein startbares Kommando wird durch einen Probelauf bes
   });
 });
 
-test("issue-review check: ein Kommando im PATH, das scheitert, gilt als nicht verfuegbar", NUR_POSIX, () => {
+test("issue-review check: ein Kommando im PATH, das scheitert, gilt als nicht verfuegbar", () => {
   // Der Fall aus dem Befund: startbar, aber nicht benutzbar.
   const rumpf = 'echo "model is not supported for this account" >&2\nexit 1';
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt --flag" }] }, (dir) => {
@@ -432,10 +493,10 @@ test("issue-review check: ein Kommando im PATH, das scheitert, gilt als nicht ve
   });
 });
 
-test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", NUR_POSIX, () => {
+test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "liest --flag" }] }, (dir) => {
     const mitschrift = join(dir, "stdin.txt");
-    fakeBinary(dir, "liest", 0o755, `cat > ${mitschrift}\nexit 0`);
+    fakeBinary(dir, "liest", 0o755, `cat > ${JSON.stringify(mitschrift)}\nexit 0`);
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
     assert.ok(existsSync(mitschrift), "das Kommando hat nichts auf stdin bekommen");
@@ -453,7 +514,7 @@ test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", NU
 // ohne stdin zu lesen — 1 MiB liesse dagegen schon den Spawn mit E2BIG scheitern.
 const GROSSER_PROBE_PROMPT = "x".repeat(100 * 1024);
 
-test("issue-review check: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", NUR_POSIX, () => {
+test("issue-review check: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", () => {
   // Der Fall aus dem roten CI-Lauf (Issue #393): Das Kommando ist weg, bevor der
   // Prompt geschrieben ist. spawnSync meldet dann EPIPE *zusaetzlich* zum
   // Exit-Status — und der Grund, den der Vorflug ausgeben soll, steht in stderr.
@@ -470,7 +531,7 @@ test("issue-review check: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", NU
   });
 });
 
-test("issue-review check: ein Kommando, das stdin nicht liest, bleibt verfuegbar", NUR_POSIX, () => {
+test("issue-review check: ein Kommando, das stdin nicht liest, bleibt verfuegbar", () => {
   // Die Gegenrichtung desselben Fehlers: exit 0 mit EPIPE ist ein Erfolg. Wer den
   // error-Zweig zuerst prueft, meldet ein funktionierendes Werkzeug als Ausfall.
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "still --flag" }] }, (dir) => {
@@ -483,7 +544,7 @@ test("issue-review check: ein Kommando, das stdin nicht liest, bleibt verfuegbar
   });
 });
 
-test("issue-review check: ein per Signal gestorbenes Kommando gilt als Ausfall", NUR_POSIX, () => {
+test("issue-review check: ein per Signal gestorbenes Kommando gilt als Ausfall", () => {
   // Der dritte Zustand neben "gelaufen" und "nie gestartet": kein Exit-Status, kein
   // error — nur ein Signal. Ohne eigenen Zweig faellt er auf ok: true durch, und ein
   // abgestuerzter Reviewer gilt als verfuegbar (Issue #393).
@@ -493,11 +554,11 @@ test("issue-review check: ein per Signal gestorbenes Kommando gilt als Ausfall",
     assert.equal(res.status, 0, res.stderr);
     const out = JSON.parse(res.stdout);
     assert.equal(out.reviewers[0].verfuegbar, false);
-    assert.match(out.reviewers[0].grund, /SIGSEGV/);
+    assert.match(out.reviewers[0].grund, SIGNAL_TOD);
   });
 });
 
-test("issue-review check: ein haengendes Kommando laeuft ins Zeitlimit", NUR_POSIX, () => {
+test("issue-review check: ein haengendes Kommando laeuft ins Zeitlimit", () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "haengt --flag" }] }, (dir) => {
     fakeBinary(dir, "haengt", 0o755, "sleep 30");
     // Test-Hook statt 60 s Default — sonst dauert dieser Test eine Minute.
@@ -509,7 +570,7 @@ test("issue-review check: ein haengendes Kommando laeuft ins Zeitlimit", NUR_POS
   });
 });
 
-test("issue-review check: --nur-pfad ueberspringt den Probelauf", NUR_POSIX, () => {
+test("issue-review check: --nur-pfad ueberspringt den Probelauf", () => {
   // Dasselbe kaputte Kommando wie oben: Ohne Probelauf gilt es als verfuegbar.
   const rumpf = 'echo "kaputt" >&2\nexit 1';
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "kaputt2 --flag" }] }, (dir) => {
@@ -531,7 +592,7 @@ test("issue-review check: claude-Reviewer bekommen keinen Probelauf", () => {
   });
 });
 
-test("issue-review check: jeder Befund nennt die Umgebung 'runner'", NUR_POSIX, () => {
+test("issue-review check: jeder Befund nennt die Umgebung 'runner'", () => {
   // Der Befund von hier stammt immer aus dem aufrufenden Prozess (Issue #269). Wer ihn
   // ohne diesen Stempel liest, koennte ein `verfuegbar: true` auf eine Umgebung beziehen,
   // in der gar nicht geprueft wurde — genau der Fehlschluss aus der Nacht vom 2026-08-08.

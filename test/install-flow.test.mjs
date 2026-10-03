@@ -51,10 +51,11 @@ function installiere(dir, antworten, extraEnv = {}) {
 }
 
 // Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults. Zeile 7 und 8
-// sind das Reviewer-Paar reviewModel/reviewCommand (Issue #433), Zeile 9 die Spec-Frage
-// (leer = Nein, Issue #439). Im Pipe-Modus verbraucht jede Frage genau eine Zeile —
-// eine fehlende Antwort verschoebe alle folgenden.
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
+// sind das Reviewer-Paar reviewModel/reviewCommand (Issue #433), Zeile 9 die Hook-Frage
+// (nur im Git-Repo gestellt) und Zeile 10 die Bereichsfrage (leer = ueberspringen,
+// Issue #1009). Im Pipe-Modus verbraucht jede Frage genau eine Zeile — eine fehlende
+// Antwort verschoebe alle folgenden; im TTY-Pfad wartete readline auf sie bis zur Frist.
+const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", "", ""];
 
 function config(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"));
@@ -617,7 +618,7 @@ test("Re-Install akzeptiert ein bestehendes issueTracker: toolbox (#124)", () =>
       JSON.stringify({ ...vorher, issueTracker: "toolbox", toolbox: { host: "https://beispiel.invalid" } }, null, 2), "utf-8");
 
     // Leere Antwort auf die issueTracker-Frage = bestehenden Wert uebernehmen.
-    const res = installiere(dir, ["projekt", "github", "", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["projekt", "github", "", "", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(config(dir).issueTracker, "toolbox",
       "toolbox muss als bestehender Wert durch die Validierung kommen");
@@ -650,8 +651,8 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
       JSON.stringify({ provider: "gitlab", mainBranch: "trunk" }, null, 2), "utf-8");
 
     // Leere Antworten uebernehmen die migrierten Werte als Defaults; vorletzte Zeile
-    // ist die Spec-Frage (#439), letzte das 'n' der GitLab-Label-Frage.
-    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "", "n"]);
+    // ist die Bereichsfrage (#1009), letzte das 'n' der GitLab-Label-Frage.
+    const res = installiere(dir, ["projekt", "", "", "", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     const c = config(dir);
     assert.equal(c.codeHost, "gitlab");
@@ -667,7 +668,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
 test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   const dir = fixture("install-gitlab-nein-");
   try {
-    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Labels manuell anlegen: Backlog, Ready/);
     assert.match(res.stdout, /Leerzeichen in den Namen verwenden, kein Bindestrich/);

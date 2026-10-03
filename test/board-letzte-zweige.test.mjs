@@ -10,10 +10,6 @@ import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { setupProjekt, runBoard, runBoardAsync, board, starteServer } from "./helpers/board-fixture.mjs";
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Fake ist eine endungslose Datei mit Shebang; startbar sind dort nur .cmd/.bat/.exe. Siehe Issue #197." }
-  : {};
-
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
 function mitProjekt(fn, config = LOKAL, praefix = "board-letzte-") {
@@ -89,7 +85,7 @@ test("--text ohne Wert nennt auch den stdin-Weg", () => {
 // Ein Reviewer-Kommando, das es nicht gibt
 // ============================================================
 
-test("check: ein Kommando ausserhalb des PATH wird VOR dem Probelauf abgefangen", NUR_POSIX, () => {
+test("check: ein Kommando ausserhalb des PATH wird VOR dem Probelauf abgefangen", () => {
   mitProjekt((dir) => {
     // Die PATH-Pruefung greift zuerst: Ein Werkzeug, das gar nicht da ist, kostet
     // keinen Probelauf. Der Befund traegt deshalb `geprueft: "pfad"` und nicht
