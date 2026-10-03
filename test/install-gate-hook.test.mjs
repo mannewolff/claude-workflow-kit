@@ -20,21 +20,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 import { cliStart } from "../install.mjs";
+import { posixShell, shellPfad } from "./helpers/checks-repo.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows kennt kein x-Bit; die Ausfuehrbarkeit ist dort nicht messbar." }
-  : {};
-
-// Ein haengender Symlink braucht unter Windows das Entwicklerprivileg SeCreateSymbolicLink;
-// ohne das wirft symlinkSync EPERM, und der Test schluege aus einem Grund fehl, der nichts
-// mit dem geprueften Verhalten zu tun hat. Der Grund steht im Skip-Text, damit ein
-// ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX_SYMLINK = process.platform === "win32"
-  ? { skip: "Windows: symlinkSync braucht dort ein Privileg, das der CI-Runner nicht sicher hat." }
-  : {};
 
 // Woertlich so, wie sie im Installer steht.
 const FRAGE = "Soll das Commit-Gate eingehaengt werden?";
@@ -130,6 +119,17 @@ function mitFixture(praefix, fn, optionen = {}) {
   try { fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+/**
+ * Der Nachweis, dass git den installierten Hook wirklich ausfuehrt: Ein Commit ohne
+ * Pruef-Zusammenfassung weist das Gate ab. Windows kennt kein x-Bit; dort ist dies der
+ * Beleg der Ausfuehrbarkeit (Plan #1128 E7).
+ */
+function gitFuehrtHookAus(dir) {
+  const res = git(dir, "commit", "--allow-empty", "-q", "-m", "probe");
+  assert.notEqual(res.status, 0, `der Hook lief nicht, der Commit ging durch: ${res.stdout}`);
+  assert.match(res.stderr, /Zusammenfassung fehlt/, `das Gate meldete sich nicht: ${res.stderr}`);
+}
+
 test("[installer-2] bei Zustimmung liegen Hook und Gate, und core.hooksPath steht auf .githooks", () => {
   mitFixture("install-gate-ja-", (dir) => {
     const res = installiere(dir, antworten("j"));
@@ -164,11 +164,14 @@ test("[installer-2] das ausgelieferte gate.mjs laeuft im Zielprojekt ohne Import
   });
 });
 
-test("[installer-2] pre-commit ist ausfuehrbar", NUR_POSIX, () => {
+test("[installer-2] pre-commit ist ausfuehrbar", () => {
   mitFixture("install-gate-x-", (dir) => {
     installiere(dir, antworten("j"));
-    const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
-    assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
+    if (process.platform !== "win32") {
+      const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
+      assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
+    }
+    gitFuehrtHookAus(dir);
   });
 });
 
@@ -229,7 +232,7 @@ function mitWerfendemChmod(dir) {
 // Stelle liesse den Installer auf einer ganzen Plattform rot enden. Ein echtes Fixture
 // gibt es fuer den Fall nicht: Auf POSIX gelingt chmod im eigenen Temp-Verzeichnis
 // immer, also wird der Fehlschlag untergeschoben.
-test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", NUR_POSIX, () => {
+test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)", () => {
   mitFixture("install-gate-chmod-", (dir) => {
     const res = installiere(dir, antworten("j"), {}, [mitWerfendemChmod(dir)]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -240,7 +243,10 @@ test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)",
     // diese Zeile bestuende der Test auch dann, wenn die Ersetzung gar nicht griffe.
     const hookDatei = join(dir, ".githooks", "pre-commit");
     assert.ok(existsSync(hookDatei), "und er liegt auch wirklich da");
-    assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
+    // Unter Windows gibt es kein x-Bit zu vermissen; dort zaehlt, dass git den Hook
+    // auch ohne chmod ausfuehrt — genau dafuer ist der Rueckfall da.
+    if (process.platform === "win32") gitFuehrtHookAus(dir);
+    else assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
   });
 });
 
@@ -377,11 +383,13 @@ test("[installer-2] ein Unterverzeichnis im Hooks-Verzeichnis ist keine aktive D
   });
 });
 
-test("[installer-2] ein haengender Symlink im Hooks-Verzeichnis kippt die Pruefung nicht", NUR_POSIX_SYMLINK, () => {
+test("[installer-2] ein haengender Symlink im Hooks-Verzeichnis kippt die Pruefung nicht", () => {
   mitFixture("install-gate-symlink-", (dir) => {
     // statSync folgt dem Link und wirft. Ohne den abgefangenen Fehler brach der
-    // Installer hier ab, statt die Frage zu stellen.
-    symlinkSync(join(dir, "gibt-es-nicht"), join(hooksDir(dir), "pre-push"));
+    // Installer hier ab, statt die Frage zu stellen. Unter Windows wird der Link eine
+    // Verzeichnis-Junction, die kein Privileg braucht; POSIX uebergeht den Typ
+    // (Plan #1128 E7).
+    symlinkSync(join(dir, "gibt-es-nicht"), join(hooksDir(dir), "pre-push"), "junction");
     const res = installiere(dir, antworten("j"));
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -566,10 +574,10 @@ function standMitSpur(dir) {
 }
 
 function hook(dir, env) {
-  return spawnSync("sh", [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
 }
 
-test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Markierung", NUR_POSIX, () => {
+test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Markierung", () => {
   mitFixture("install-gate-stand-", (dir) => {
     assert.equal(installiere(dir, antworten("j")).status, 0);
     const stand = standMitSpur(dir);

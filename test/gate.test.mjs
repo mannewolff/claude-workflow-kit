@@ -16,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync, readFileSync, mkdirSync, rmSync, chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { mitRepo, git, run, datei, gate, gateEinbauen, GATE, HOOK } from "./helpers/checks-repo.mjs";
+import { mitRepo, git, run, datei, gate, gateEinbauen, posixShell, shellPfad, GATE, HOOK } from "./helpers/checks-repo.mjs";
 
 const LEISE = { buildChecks: ["node -e \"process.exit(0)\""] };
 
@@ -223,8 +223,13 @@ test("[gate-1] ohne checks.mjs an beiden Orten weist das Gate ab und nennt den I
   });
 });
 
-test("[gate-1] der Hook ist POSIX-sh, ausfuehrbar und faellt ohne node sichtbar aus", { skip: process.platform === "win32" }, () => {
-  const syntax = spawnSync("sh", ["-n", HOOK], { encoding: "utf-8" });
+/** Die Umgebung ohne jeden PATH-Eintrag — unter Windows heisst er `Path`. */
+function ohnePath() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"));
+}
+
+test("[gate-1] der Hook ist POSIX-sh, ausfuehrbar und faellt ohne node sichtbar aus", () => {
+  const syntax = spawnSync(posixShell(), ["-n", shellPfad(HOOK)], { encoding: "utf-8" });
   assert.equal(syntax.status, 0, `sh -n meldete: ${syntax.stderr}`);
   assert.match(readFileSync(HOOK, "utf-8"), /^#!\/bin\/sh/);
 
@@ -233,10 +238,10 @@ test("[gate-1] der Hook ist POSIX-sh, ausfuehrbar und faellt ohne node sichtbar 
     chmodSync(join(dir, ".githooks", "pre-commit"), 0o755);
     // Aufruf aus einem anderen Arbeitsverzeichnis und mit PATH ohne node: Der Hook
     // muss gate.mjs relativ zu sich selbst finden und den Ausfall melden.
-    const res = spawnSync("sh", [join(dir, ".githooks", "pre-commit")], {
+    const res = spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], {
       cwd: dir,
       encoding: "utf-8",
-      env: { ...process.env, PATH: "/nonexistent" },
+      env: { ...ohnePath(), PATH: "/nonexistent" },
     });
     assert.notEqual(res.status, 0, "ohne node darf der Hook nicht durchlassen");
     assert.ok(`${res.stderr}${res.stdout}`.length > 0, "der Ausfall muss sichtbar sein");
@@ -314,10 +319,10 @@ function fremderStand(dir) {
 }
 
 function hookMitStand(dir, env) {
-  return spawnSync("sh", [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
 }
 
-test("[kitstand-6] mit Markierung und KIT_STAND_PFAD startet der Hook das Gate des Stands", { skip: process.platform === "win32" }, () => {
+test("[kitstand-6] mit Markierung und KIT_STAND_PFAD startet der Hook das Gate des Stands", () => {
   mitRepo({ config: LEISE }, (dir) => {
     gateEinbauen(dir);
     const stand = fremderStand(dir);
@@ -331,7 +336,7 @@ test("[kitstand-6] mit Markierung und KIT_STAND_PFAD startet der Hook das Gate d
   });
 });
 
-test("[kitstand-6] ohne Markierung bleibt der Hook beim eigenen Gate, auch mit KIT_STAND_PFAD", { skip: process.platform === "win32" }, () => {
+test("[kitstand-6] ohne Markierung bleibt der Hook beim eigenen Gate, auch mit KIT_STAND_PFAD", () => {
   mitRepo({ config: LEISE }, (dir) => {
     gateEinbauen(dir);
     const stand = fremderStand(dir);
@@ -345,7 +350,7 @@ test("[kitstand-6] ohne Markierung bleibt der Hook beim eigenen Gate, auch mit K
   });
 });
 
-test("[kitstand-6] fehlt das Gate des Stands, bleibt der Hook beim eigenen", { skip: process.platform === "win32" }, () => {
+test("[kitstand-6] fehlt das Gate des Stands, bleibt der Hook beim eigenen", () => {
   mitRepo({ config: LEISE }, (dir) => {
     gateEinbauen(dir);
     writeFileSync(join(dir, ".claude", "kit-stand.json"), JSON.stringify({ commit: "abc", pfad: "/nicht/vorhanden", pid: process.pid }));

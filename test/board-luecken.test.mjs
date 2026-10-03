@@ -91,27 +91,33 @@ test("jeder andere Label-Fehler wird unveraendert durchgereicht", async () => {
 // Eine Textdatei, die sich nicht lesen laesst
 // ============================================================
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Leseschutz haengt an POSIX-Dateirechten, chmod wirkt dort anders." }
-  : {};
+// Unter Windows wirkt chmod nicht als Leseschutz. Derselbe Fehlerpfad wird dort ueber
+// ein Verzeichnis an Stelle der Datei ausgeloest (EISDIR), Plan #1128 E7.
+function unlesbarMachen(datei) {
+  if (process.platform === "win32") {
+    mkdirSync(datei);
+  } else {
+    writeFileSync(datei, "Inhalt\n", "utf-8");
+    chmodSync(datei, 0o000);
+  }
+}
 
-test("eine unlesbare --text-file wird von einer fehlenden unterschieden", NUR_POSIX, () => {
+test("eine unlesbare --text-file wird von einer fehlenden unterschieden", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-luecken-text-");
   const datei = join(dir, "kommentar.txt");
   try {
     const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    writeFileSync(datei, "Inhalt\n", "utf-8");
-    chmodSync(datei, 0o000);
+    unlesbarMachen(datei);
 
     const res = runBoard(dir, ["issue", "comment", String(issue.id), "--text-file", datei]);
 
     assert.notEqual(res.status, 0, "eine unlesbare Datei haette den Aufruf scheitern lassen muessen");
-    assert.match(res.stderr, /ist nicht lesbar \(EACCES\)/,
+    assert.match(res.stderr, /ist nicht lesbar \((EACCES|EISDIR)\)/,
       "der Unterschied zu 'nicht gefunden' ist die halbe Diagnose und fehlt");
     assert.doesNotMatch(res.stderr, /nicht gefunden/,
       "eine vorhandene Datei darf nicht als fehlend gemeldet werden");
   } finally {
-    if (existsSync(datei)) chmodSync(datei, 0o644);
+    if (existsSync(datei) && process.platform !== "win32") chmodSync(datei, 0o644);
     rmSync(dir, { recursive: true, force: true });
   }
 });

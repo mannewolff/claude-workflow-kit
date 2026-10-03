@@ -21,12 +21,32 @@ import assert from "node:assert/strict";
 // Helfer geht und `process.env` prozessweit gilt, also auch fuer spawn-Aufrufe, die
 // an ihm vorbeigehen.
 import "./checks-sperre.mjs";
+import { gitBashPfad } from "../../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export const CHECKS = join(repoRoot, "kit", "checks.mjs");
 export const GATE = join(repoRoot, ".githooks", "gate.mjs");
 export const HOOK = join(repoRoot, ".githooks", "pre-commit");
+
+/**
+ * Die POSIX-Shell, mit der ein Test den Hook startet: `sh`, unter Windows die Git Bash,
+ * die das Kit dort voraussetzt (Issue #1138, Plan #1128 E7).
+ */
+export function posixShell() {
+  if (process.platform !== "win32") return "sh";
+  const { pfad, fehler } = gitBashPfad();
+  if (!pfad) throw new Error(fehler);
+  return pfad;
+}
+
+/**
+ * Ein Pfad, wie ihn die Shell als Argument braucht: Unter Windows mit `/` — `dirname "$0"`
+ * im Hook trennt nur dort.
+ */
+export function shellPfad(pfad) {
+  return process.platform === "win32" ? pfad.replaceAll("\\", "/") : pfad;
+}
 
 export function git(dir, ...args) {
   const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });

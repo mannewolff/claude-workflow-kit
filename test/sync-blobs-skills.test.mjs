@@ -23,12 +23,6 @@ import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Unter Windows uebersprungen: Der Schreibschutz-Test haengt an POSIX-Dateirechten;
-// `chmod` hat dort auf Verzeichnisse nicht dieselbe Wirkung.
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Schreibschutz haengt an POSIX-Dateirechten, chmod wirkt dort anders." }
-  : {};
-
 function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sync-skills-"));
   mkdirSync(join(dir, "tools"), { recursive: true });
@@ -98,6 +92,8 @@ function mitFixture(fn, optionen) {
     // Schreibrechte zuruecksetzen, sonst scheitert das Aufraeumen am eigenen Test.
     const geschuetzt = join(dir, ".claude", "skills", "beispiel");
     if (existsSync(geschuetzt)) chmodSync(geschuetzt, 0o755);
+    // Unter Windows haelt das Read-only-Attribut der Datei sonst das Aufraeumen auf.
+    if (existsSync(join(geschuetzt, "SKILL.md"))) chmodSync(join(geschuetzt, "SKILL.md"), 0o644);
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -140,11 +136,13 @@ test("eine bereits gleiche Kopie wird nicht angefasst und nicht gemeldet", () =>
   }, { kopien: { beispiel: "# Beispiel-Skill\n" } });
 });
 
-test("ein schreibgeschuetztes Ziel bricht sichtbar ab, statt still weiterzulaufen", NUR_POSIX, () => {
+test("ein schreibgeschuetztes Ziel bricht sichtbar ab, statt still weiterzulaufen", () => {
   mitFixture((dir) => {
     // Ordner UND Datei schreibgeschuetzt: genau die Sandbox-Sperre aus Issue #186.
     // Der Ordner allein genuegt nicht — zum Ueberschreiben einer vorhandenen Datei
     // braucht es nur deren eigenes Schreibrecht, nicht das des Verzeichnisses.
+    // Unter Windows setzt `chmod 0o444` das Read-only-Attribut der Datei; das traegt den
+    // Schreibschutz dort allein, das chmod am Ordner wirkt nicht (Plan #1128 E7).
     // Ein verschluckter Fehler waere derselbe Fehler eine Ebene tiefer: sync-blobs
     // meldete "aufgefrischt", waehrend die Kopie alt bleibt.
     chmodSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), 0o444);
