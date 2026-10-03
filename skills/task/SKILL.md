@@ -67,7 +67,7 @@ Keine. (oder: Issue #N muss vorher fertig sein)
 
 ### 4. Anlegen
 
-Nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": Der Body entsteht stueckweise per Shell ausserhalb des Projektverzeichnisses, jedes Stueck hoechstens 6.000 Zeichen und ein **eigener** Werkzeugaufruf mit woertlichem Pfad, dann geht er in einem Aufruf ans Board:
+Nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": Der Body entsteht stueckweise per Shell ausserhalb des Projektverzeichnisses, jedes Stueck hoechstens 6.000 Zeichen und ein **eigener** Werkzeugaufruf mit woertlichem Pfad, dann geht er in einem Aufruf ans Board. Bleibt `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"`:
 
 ```bash
 printenv TMPDIR

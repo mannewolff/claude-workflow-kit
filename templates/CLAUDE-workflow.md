@@ -280,7 +280,7 @@ Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bere
 
 ## Lange Texte ans Board
 
-**Jeder Text, den eine Sitzung ans Board schreibt, geht ueber eine Datei ausserhalb des Projektverzeichnisses — nie im Befehl selbst.** Erst `printenv TMPDIR`, dann stueckweise `cat >` und `cat >>` in `<tmpdir>/<name>.md`, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Vier Regeln, jede mit einem Beleg dahinter:
+**Jeder Text, den eine Sitzung ans Board schreibt, geht ueber eine Datei ausserhalb des Projektverzeichnisses — nie im Befehl selbst.** Erst `printenv TMPDIR` — bleibt die Ausgabe leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"` —, dann stueckweise `cat >` und `cat >>` in `<tmpdir>/<name>.md`, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Vier Regeln, jede mit einem Beleg dahinter:
 
 1. **Hoechstens 6.000 Zeichen je Werkzeugaufruf**, nicht je Datei. Die 6.000 sind eine **Beobachtung** vom 2026-09-10 im Kit-Repo: Aufrufe bis 9.722 Zeichen gingen durch, ab 10.154 wies der Befehls-Parser sie ab — auch ein `cat >>`, nicht nur der Board-Aufruf.
 2. **Der Zielpfad steht woertlich im Befehl, nie als Variable.** Ein Variablen-Redirect wird unbeaufsichtigt als „path is runtime-determined" abgewiesen.

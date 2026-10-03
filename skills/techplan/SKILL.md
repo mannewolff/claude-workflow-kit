@@ -131,6 +131,8 @@ Der Plantext entsteht davor stueckweise, jedes Stueck in einem **eigenen** Werkz
 printenv TMPDIR
 ```
 
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"` als `<tmpdir>`.
+
 ```bash
 cat  > <tmpdir>/plandokument.md <<'TEIL1'
 Plan-Modell: <wert>

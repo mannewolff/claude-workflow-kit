@@ -137,6 +137,8 @@ Issue anlegen ueber den Board-Adapter:
 printenv TMPDIR
 ```
 
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"` als `<tmpdir>`.
+
 ```bash
 cat  > <tmpdir>/neues-issue.md <<'TEIL1'
 ## Kontext

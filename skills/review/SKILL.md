@@ -97,6 +97,8 @@ Schreibe die Befunde als Kommentar ans aktuelle Issue:
 printenv TMPDIR
 ```
 
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"` als `<tmpdir>`.
+
 ```bash
 cat  > <tmpdir>/id-review.md <<'TEIL1'
 ## Code-Review (Schritt 7)
