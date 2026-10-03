@@ -13,7 +13,11 @@ import { writeFileSync } from "node:fs";
 
 const [modus, wert] = process.argv.slice(2);
 
-if (modus === "enkel") {
+if (modus === undefined) {
+  // `node --test` ohne Pfade fuehrt jede `.mjs` unter `test/` als Testdatei aus, auch
+  // diesen Helfer. Ohne Modus endet er darum still und gruen (Issue #1142).
+  process.exit(0);
+} else if (modus === "enkel") {
   const enkel = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"], { stdio: "ignore" });
   writeFileSync("enkel.pid", `${enkel.pid}\n`);
   enkel.on("exit", (code) => process.exit(code ?? 1));

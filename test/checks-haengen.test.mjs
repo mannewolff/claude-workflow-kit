@@ -157,3 +157,15 @@ test("wird checks.mjs selbst beendet, endet die laufende Pruefung samt Enkel mit
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// `node --test` ohne Pfade fuehrt jede `.mjs` unter `test/` aus, auch den Helfer — ohne
+// Argument muss er darum still und gruen enden, sonst ist die ganze Suite rot (Issue #1142).
+test("der Helfer endet ohne Modus still mit Exit 0, ein unbekannter Modus bleibt laut", () => {
+  const leer = spawnSync(process.execPath, [HELFER], { encoding: "utf-8" });
+  assert.equal(leer.status, 0, leer.stderr);
+  assert.equal(leer.stdout + leer.stderr, "");
+
+  const unsinn = spawnSync(process.execPath, [HELFER, "unsinn"], { encoding: "utf-8" });
+  assert.equal(unsinn.status, 2);
+  assert.match(unsinn.stderr, /unbekannter Modus unsinn/);
+});
