@@ -31,24 +31,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, chmodSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
-// gleichen Namens (`setupProjekt`, `board`, `run`, `stand`, `NUR_POSIX`) schon gehoeren.
+// gleichen Namens (`setupProjekt`, `board`, `run`, `stand`) schon gehoeren.
 import * as kette from "./helpers/kette-fixture.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
-
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -111,7 +107,7 @@ const resultZeile = (stopReason, isError = false) =>
 
 // --- night-25: die Werkzeugsperre ---
 
-test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit gehobenem Bash-Zeitlimit", NUR_POSIX, () => {
+test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit gehobenem Bash-Zeitlimit", () => {
   const dir = setupProjekt("night-warte-args-", ["true"]);
   let binDir = null;
   try {
@@ -127,9 +123,12 @@ test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit ge
       `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\n` +
       `printf 'MAX=%s\\nDEFAULT=%s\\n' "$BASH_MAX_TIMEOUT_MS" "$BASH_DEFAULT_TIMEOUT_MS" >> ${JSON.stringify(envLog)}\nexit 0\n`);
     chmodSync(join(binDir, "claude"), 0o755);
+    // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
+    // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
+    writeFileSync(join(binDir, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--timeout-min", "40"], {
-      PATH: `${binDir}:${process.env.PATH}`,
+      PATH: `${binDir}${delimiter}${process.env.PATH}`,
     });
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
@@ -171,7 +170,7 @@ test("[night-91] das Bash-Limit bleibt positiv und stets unter dem Rundenzeitlim
 
 // --- night-25: die Wartezeit auf die Prozessgruppe ---
 
-test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session mehr laeuft", NUR_POSIX, () => {
+test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session mehr laeuft", () => {
   // Der buildCheck ist hier der Zeuge: Er laeuft als Vorpruefung des Salvage und haelt
   // fest, ob der Hintergrundprozess der Session da schon fertig war. Faende er ihn noch
   // laufend, schriebe er "verletzung.txt" — genau die Kollision, die bei #900 die
@@ -209,7 +208,7 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
 // regulaer endete, ohne fertig zu sein, ob sie am Zeitlimit starb, ob sie abbrach oder ob
 // ihr Pflichtcheck rot war — vier Faelle mit vier verschiedenen naechsten Schritten.
 
-test("[night-24] eine regulaer beendete Session ohne Commit wird als solche ausgewiesen", NUR_POSIX, () => {
+test("[night-24] eine regulaer beendete Session ohne Commit wird als solche ausgewiesen", () => {
   const dir = setupProjekt("night-warte-endturn-", ["false"]);
   try {
     readyIssue(dir, "Endet regulaer ohne Commit");
@@ -230,7 +229,7 @@ test("[night-24] eine regulaer beendete Session ohne Commit wird als solche ausg
   }
 });
 
-test("[night-24] eine am Zeitlimit beendete Session bekommt einen anderen Grund", NUR_POSIX, () => {
+test("[night-24] eine am Zeitlimit beendete Session bekommt einen anderen Grund", () => {
   const dir = setupProjekt("night-warte-timeout-", ["false"]);
   try {
     readyIssue(dir, "Laeuft in das Zeitlimit");
@@ -254,7 +253,7 @@ test("[night-24] eine am Zeitlimit beendete Session bekommt einen anderen Grund"
   }
 });
 
-test("[night-24] eine abgebrochene Session wird an is_error erkannt, nicht an stop_reason", NUR_POSIX, () => {
+test("[night-24] eine abgebrochene Session wird an is_error erkannt, nicht an stop_reason", () => {
   const dir = setupProjekt("night-warte-error-", ["false"]);
   try {
     readyIssue(dir, "Bricht ab");
@@ -270,7 +269,7 @@ test("[night-24] eine abgebrochene Session wird an is_error erkannt, nicht an st
   }
 });
 
-test("[night-24] eine rote Vorpruefung nennt das Kommando und seine Ausgabe", NUR_POSIX, () => {
+test("[night-24] eine rote Vorpruefung nennt das Kommando und seine Ausgabe", () => {
   // "Salvage nicht moeglich: buildChecks sind rot" sagte bisher nicht, WELCHER Check rot
   // war und warum. Im Protokoll zu #900 steht deshalb kein Wort zur Ursache — und die
   // Vermutung "Postgres-Verbindungslimit" liess sich am Protokoll nicht pruefen.
@@ -462,7 +461,7 @@ function karte(dir, id) {
   return board(dir, "issue", "get", String(id));
 }
 
-test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, Vermerk und Feld — der Lauf laeuft weiter", NUR_POSIX, () => {
+test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, Vermerk und Feld — der Lauf laeuft weiter", () => {
   const dir = setupProjekt("night-warte-zurueck-", ["true"]);
   try {
     const erstes = readyIssue(dir, "Wartet auf den eigenen Pflichtcheck");
@@ -510,7 +509,7 @@ test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, 
   }
 });
 
-test("[night-55] dieselbe Runde ohne wartenden Schlusstext behaelt den bisherigen Grund, ohne Vermerk und ohne Feld", NUR_POSIX, () => {
+test("[night-55] dieselbe Runde ohne wartenden Schlusstext behaelt den bisherigen Grund, ohne Vermerk und ohne Feld", () => {
   const dir = setupProjekt("night-warte-zurueck-alt-", ["true"]);
   try {
     const id = readyIssue(dir, "Endet ohne zu warten");
@@ -565,7 +564,7 @@ const SALVAGE_ERFOLG = [
   '  node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null',
 ].join("\n");
 
-test("[night-56] wartender Schlusstext, Salvage erfolgreich: der Erfolg bleibt unberuehrt", NUR_POSIX, () => {
+test("[night-56] wartender Schlusstext, Salvage erfolgreich: der Erfolg bleibt unberuehrt", () => {
   const dir = setupProjekt("night-warte-salvage-erfolg-", ["true"]);
   try {
     const id = readyIssue(dir, "Wartet, der Salvage rettet");
@@ -584,7 +583,7 @@ test("[night-56] wartender Schlusstext, Salvage erfolgreich: der Erfolg bleibt u
   }
 });
 
-test("[night-56] wartender Schlusstext, Salvage nicht moeglich: Abbruch mit Grund, Vermerk samt Resten und Feld", NUR_POSIX, () => {
+test("[night-56] wartender Schlusstext, Salvage nicht moeglich: Abbruch mit Grund, Vermerk samt Resten und Feld", () => {
   const dir = setupProjekt("night-warte-salvage-rot-", ["false"]);
   try {
     const id = readyIssue(dir, "Wartet, die Vorpruefung ist rot");
@@ -613,7 +612,7 @@ test("[night-56] wartender Schlusstext, Salvage nicht moeglich: Abbruch mit Grun
   }
 });
 
-test("[night-56] wartender Schlusstext, Salvage gescheitert: der night-27-Grund bleibt und traegt den Warte-Grund vorangestellt", NUR_POSIX, () => {
+test("[night-56] wartender Schlusstext, Salvage gescheitert: der night-27-Grund bleibt und traegt den Warte-Grund vorangestellt", () => {
   const dir = setupProjekt("night-warte-salvage-fehl-", ["true"]);
   try {
     const id = readyIssue(dir, "Wartet, der Salvage tut nichts");
@@ -642,7 +641,7 @@ test("[night-56] wartender Schlusstext, Salvage gescheitert: der night-27-Grund 
   }
 });
 
-test("[night-56] ohne wartenden Schlusstext bleibt der Salvage-Erfolg wie heute", NUR_POSIX, () => {
+test("[night-56] ohne wartenden Schlusstext bleibt der Salvage-Erfolg wie heute", () => {
   const dir = setupProjekt("night-warte-salvage-erfolg-alt-", ["true"]);
   try {
     const id = readyIssue(dir, "Gibt auf, der Salvage rettet");
@@ -660,7 +659,7 @@ test("[night-56] ohne wartenden Schlusstext bleibt der Salvage-Erfolg wie heute"
   }
 });
 
-test("[night-56] ohne wartenden Schlusstext behaelt der nicht moegliche Salvage den bisherigen Grund", NUR_POSIX, () => {
+test("[night-56] ohne wartenden Schlusstext behaelt der nicht moegliche Salvage den bisherigen Grund", () => {
   const dir = setupProjekt("night-warte-salvage-rot-alt-", ["false"]);
   try {
     const id = readyIssue(dir, "Gibt auf, die Vorpruefung ist rot");
@@ -680,7 +679,7 @@ test("[night-56] ohne wartenden Schlusstext behaelt der nicht moegliche Salvage 
   }
 });
 
-test("[night-56] ohne wartenden Schlusstext behaelt der gescheiterte Salvage den unveraenderten night-27-Grund", NUR_POSIX, () => {
+test("[night-56] ohne wartenden Schlusstext behaelt der gescheiterte Salvage den unveraenderten night-27-Grund", () => {
   const dir = setupProjekt("night-warte-salvage-fehl-alt-", ["true"]);
   try {
     const id = readyIssue(dir, "Gibt auf, der Salvage tut nichts");
@@ -701,7 +700,7 @@ test("[night-56] ohne wartenden Schlusstext behaelt der gescheiterte Salvage den
   }
 });
 
-test("[night-55] eine Wartemeldung mitten im Strom vor erfolgreichem Abschluss loest nichts aus", NUR_POSIX, () => {
+test("[night-55] eine Wartemeldung mitten im Strom vor erfolgreichem Abschluss loest nichts aus", () => {
   // Gelesen wird nur der Schlusstext (night-52). Wer spaeter fertig wird, sagt zum Schluss
   // etwas anderes — und genau das ist hier der Fall: Die Runde schliesst ab.
   const dir = setupProjekt("night-warte-strom-", ["true"]);
@@ -757,7 +756,7 @@ function kettenEinheit(dir, F) {
   return treffer;
 }
 
-test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Vermerk am Dokument der Stufe und Feld", kette.NUR_POSIX, () => {
+test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Vermerk am Dokument der Stufe und Feld", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     const env = kette.umgebung(dir, { stufen: { plan: kette.PLAN_ANLEGEN } });
@@ -784,7 +783,7 @@ test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Verm
   });
 });
 
-test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht am Fachplan", kette.NUR_POSIX, () => {
+test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht am Fachplan", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     // Nur die Review-Session wartet; die Plan-Stufe davor endet regulaer.
@@ -812,7 +811,7 @@ test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht 
   });
 });
 
-test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig, ohne Vermerk und ohne Feld", kette.NUR_POSIX, () => {
+test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig, ohne Vermerk und ohne Feld", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     const env = kette.umgebung(dir, {
@@ -833,7 +832,7 @@ test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig
   });
 });
 
-test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, auch wenn er eine Wendung der Musterliste traegt", kette.NUR_POSIX, () => {
+test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, auch wenn er eine Wendung der Musterliste traegt", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     // Ein echter Befundsatz, der die Musterliste trifft — genau der Fall, den die
@@ -859,7 +858,7 @@ test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, au
   });
 });
 
-test("[night-58] der Zusatz der Stufen-Sessions nennt die Regel, der Prompt der Implementierungs-Runde nicht", kette.NUR_POSIX, () => {
+test("[night-58] der Zusatz der Stufen-Sessions nennt die Regel, der Prompt der Implementierungs-Runde nicht", () => {
   // Die Regel selbst — der Wortlaut steht hier ein zweites Mal, wie bei WARTEND_WORTLAUT:
   // Wer den Zusatz umformuliert, soll es an einem roten Test merken.
   assert.match(KETTE_ZUSATZ, /Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft/);

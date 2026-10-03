@@ -13,10 +13,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -68,7 +64,7 @@ function issuesDirText(dir) {
     .join("\n---\n");
 }
 
-test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue laeuft", NUR_POSIX, () => {
+test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue laeuft", () => {
   const dir = setupProjekt();
   try {
     const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Kunden-Selbstauskunft", "--body", "## Ziel\nPO-Story.");
@@ -98,7 +94,7 @@ test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue
   }
 });
 
-test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewegen", NUR_POSIX, () => {
+test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
     const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", "## Ziel\nStory.");

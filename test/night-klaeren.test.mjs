@@ -18,8 +18,6 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -60,7 +58,7 @@ const kommentare = (text) =>
 
 // --- Implementierungsschleife ---
 
-test("Nachtlauf: Ready-Issue mit kit:klaeren wird kommentiert uebersprungen", NUR_POSIX, () => {
+test("Nachtlauf: Ready-Issue mit kit:klaeren wird kommentiert uebersprungen", () => {
   const dir = setupProjekt();
   try {
     const gezeichnet = board(dir, "issue", "create", "--title", "Gezeichnetes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -92,7 +90,7 @@ test("Nachtlauf: Ready-Issue mit kit:klaeren wird kommentiert uebersprungen", NU
 
 // A4: Die Maschine setzt, der Mensch nimmt ab. Ohne diesen Test koennte ein
 // spaeterer Umbau das Label "aufraeumen" und der Runner gaebe sich selbst frei.
-test("Nachtlauf entfernt das Label NIE", NUR_POSIX, () => {
+test("Nachtlauf entfernt das Label NIE", () => {
   const dir = setupProjekt();
   try {
     const gezeichnet = board(dir, "issue", "create", "--title", "Bleibt gezeichnet", "--body", "## Abhaengigkeiten\nKeine.");
@@ -110,7 +108,7 @@ test("Nachtlauf entfernt das Label NIE", NUR_POSIX, () => {
   }
 });
 
-test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", NUR_POSIX, () => {
+test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
     const gezeichnet = board(dir, "issue", "create", "--title", "Gezeichnet im Dry-Run", "--body", "## Abhaengigkeiten\nKeine.");

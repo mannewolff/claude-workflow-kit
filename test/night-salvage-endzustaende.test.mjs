@@ -32,10 +32,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Session-Fakes laufen ueber `sh -c`. Siehe Issue #199." }
-  : {};
-
 const VORFLUG_OK = `cat <<'EOF'
 <<<VORFLUG
 {"reviewers": [], "tracker": {"erreichbar": true, "geprueft": "issue list"}}
@@ -141,7 +137,7 @@ function fake(salvageTeil) {
 // Endzustand 2: Commit, Board nicht bewegt
 // ============================================================
 
-test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTAENDIG samt Resten", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTAENDIG samt Resten", () => {
   mitProjekt("night-salvage-unvoll-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, ["--label", "none"], {
@@ -168,7 +164,7 @@ test("[night-27] eine Salvage-Session mit Commit ohne Board-Zug meldet UNVOLLSTA
 // Endzustand 3: In review, aber Baum unsauber
 // ============================================================
 
-test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, meldet WIDERSPRUECHLICH", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, meldet WIDERSPRUECHLICH", () => {
   mitProjekt("night-salvage-widerspruch-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     const res = run(dir, ["--label", "none"], {
@@ -194,7 +190,7 @@ test("[night-27] eine Salvage-Session, die trotz Resten nach In review zieht, me
 // Endzustand 1: kein Commit, Board nicht bewegt
 // ============================================================
 
-test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'gescheitert', sagt warum, und die Reste gehen in den Stash (Issue #1089)", NUR_POSIX, () => {
+test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'gescheitert', sagt warum, und die Reste gehen in den Stash (Issue #1089)", () => {
   mitProjekt("night-salvage-gescheitert-", (dir) => {
     const id = readyIssue(dir, "Runde ohne Board-Ergebnis");
     // Die Salvage-Session tut nichts: kein Commit, kein Board-Zug. Die Arbeit der
@@ -220,7 +216,7 @@ test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'ges
 // Die Reihenfolge im Salvage-Prompt
 // ============================================================
 
-test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", NUR_POSIX, () => {
+test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", () => {
   mitProjekt("night-salvage-prompt-", (dir) => {
     readyIssue(dir, "Runde ohne Board-Ergebnis");
     // Der Prompt der Session steht ihr als NIGHT_PROMPT zur Verfuegung (Issue #620) —
@@ -261,7 +257,7 @@ function einheitDerKarte(dir, id) {
   return einheit;
 }
 
-test("[night-27] die Rundendauer schliesst die Salvage-Session ein", NUR_POSIX, () => {
+test("[night-27] die Rundendauer schliesst die Salvage-Session ein", () => {
   mitProjekt("night-salvage-dauer-", (dir) => {
     const id = readyIssue(dir);
     // Die regulaere Session endet unsauber (Datei ohne Commit) — das fuehrt in

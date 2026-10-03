@@ -449,10 +449,6 @@ test("[night-924] die Summe traegt nur die Messung, keine Rechnung daraus (Plan 
 // E2E — der Weg in den Ergebnisstand und die Stufe ohne Strom
 // ============================================================
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -518,7 +514,7 @@ function schub(id, command) {
   ].join("\n");
 }
 
-test("[night-924] nach einer Session mit Prueflaeufen traegt die Einheit prueflaeufe.arbeit neben zeiten", NUR_POSIX, () => {
+test("[night-924] nach einer Session mit Prueflaeufen traegt die Einheit prueflaeufe.arbeit neben zeiten", () => {
   const dir = setupProjekt("night-prueflaeufe-stand-");
   try {
     const issue = board(dir, "issue", "create", "--title", "Mit Prueflaeufen", "--body", "## Abhaengigkeiten\nKeine.");
@@ -553,7 +549,7 @@ test("[night-924] nach einer Session mit Prueflaeufen traegt die Einheit pruefla
   }
 });
 
-test("[night-924] eine Stufe ohne Strom liefert prueflaeufe: null — nicht gemessen ist nicht null Laeufe", NUR_POSIX, async () => {
+test("[night-924] eine Stufe ohne Strom liefert prueflaeufe: null — nicht gemessen ist nicht null Laeufe", async () => {
   const dir = mkdtempSync(join(tmpdir(), "night-prueflaeufe-ohne-strom-"));
   try {
     const prog = join(dir, "stufen-programm");

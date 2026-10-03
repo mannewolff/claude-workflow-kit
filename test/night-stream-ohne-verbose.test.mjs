@@ -21,12 +21,6 @@ import { runSession } from "../kit/night.mjs";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -90,7 +84,7 @@ function protokoll(dir) {
   return readFileSync(join(dir, ".claude", datei), "utf-8");
 }
 
-test("[night-50] ohne --verbose misst die Session die Werkzeugzeit, sobald sie den Strom anfordert", NUR_POSIX, async () => {
+test("[night-50] ohne --verbose misst die Session die Werkzeugzeit, sobald sie den Strom anfordert", async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", ARGS, { stream: true });
@@ -104,7 +98,7 @@ test("[night-50] ohne --verbose misst die Session die Werkzeugzeit, sobald sie d
   }
 });
 
-test("[night-50] mit --verbose wird ebenso gemessen", NUR_POSIX, async () => {
+test("[night-50] mit --verbose wird ebenso gemessen", async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", { ...ARGS, verbose: true }, { stream: true });
@@ -116,7 +110,7 @@ test("[night-50] mit --verbose wird ebenso gemessen", NUR_POSIX, async () => {
   }
 });
 
-test("[night-50] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobachter-Ergebnis — nicht etwa eines mit Nullen", NUR_POSIX, async () => {
+test("[night-50] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobachter-Ergebnis — nicht etwa eines mit Nullen", async () => {
   process.env.NIGHT_CLAUDE_CMD = SCHUB.join(" && ");
   try {
     const res = await runSession("748", ARGS, {});
@@ -130,7 +124,7 @@ test("[night-50] ein Lauf, der den Strom gar nicht anfordert, traegt kein Beobac
 // Seit Issue #867 ist das Verlaufsprotokoll die Vorbelegung; abgeschaltet wird mit
 // `--verbose no`. Geprueft wird derselbe Punkt wie zuvor, nur unter der neuen Geste:
 // Der Strom wird auch dann angefordert und gemessen, wenn nichts davon ausgegeben wird.
-test("[night-50] mit --verbose no bleibt das Tagesprotokoll frei von Stream-Ereignissen", NUR_POSIX, () => {
+test("[night-50] mit --verbose no bleibt das Tagesprotokoll frei von Stream-Ereignissen", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -148,7 +142,7 @@ test("[night-50] mit --verbose no bleibt das Tagesprotokoll frei von Stream-Erei
   }
 });
 
-test("[night-50] mit --verbose traegt das Tagesprotokoll die Stream-Ereignisse weiterhin", NUR_POSIX, () => {
+test("[night-50] mit --verbose traegt das Tagesprotokoll die Stream-Ereignisse weiterhin", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Laut-Issue", "--body", "## Abhaengigkeiten\nKeine.");

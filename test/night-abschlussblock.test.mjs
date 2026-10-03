@@ -36,10 +36,6 @@ import { worktreeAnlegen } from "../kit/night.mjs";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -179,7 +175,7 @@ const FAKE_ERFOLG = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_
 
 // --- Die Reihenfolge ----------------------------------------------------------
 
-test("[night-47] die Auswertung sieht den eigenen Lauf abgeschlossen: abschluss und complete stehen schon auf der Platte", NUR_POSIX, () => {
+test("[night-47] die Auswertung sieht den eigenen Lauf abgeschlossen: abschluss und complete stehen schon auf der Platte", () => {
   mitProjekt("night-abschluss-reihenfolge-", {}, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -196,7 +192,7 @@ test("[night-47] die Auswertung sieht den eigenen Lauf abgeschlossen: abschluss 
   });
 });
 
-test("[night-47] der Befund steht am Lauf-Kopf und als Abschlussblock im Laufprotokoll", NUR_POSIX, () => {
+test("[night-47] der Befund steht am Lauf-Kopf und als Abschlussblock im Laufprotokoll", () => {
   mitProjekt("night-abschluss-befund-", {}, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -216,7 +212,7 @@ test("[night-47] der Befund steht am Lauf-Kopf und als Abschlussblock im Laufpro
   });
 });
 
-test("[night-47] ohne Befund steht nichts im Protokoll — keine Ueberschrift, keine leere Tabelle, kein beruhigender Satz", NUR_POSIX, () => {
+test("[night-47] ohne Befund steht nichts im Protokoll — keine Ueberschrift, keine leere Tabelle, kein beruhigender Satz", () => {
   mitProjekt("night-abschluss-stumm-", { aufwandStub: stubMitErgebnis(ERGEBNIS_OHNE_BEFUND) }, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -243,7 +239,7 @@ function fehlerzeilen(dir) {
   return protokoll(dir).split("\n").filter((z) => z.includes("Aufwands-Auswertung"));
 }
 
-test("[night-47] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und kein Abbruch", NUR_POSIX, () => {
+test("[night-47] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und kein Abbruch", () => {
   mitProjekt("night-abschluss-exit-", { aufwandStub: STUB_EXIT_UNGLEICH_NULL }, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -259,7 +255,7 @@ test("[night-47] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und
   });
 });
 
-test("[night-47] eine unlesbare Ausgabe ist eine Protokollzeile und kein Abbruch", NUR_POSIX, () => {
+test("[night-47] eine unlesbare Ausgabe ist eine Protokollzeile und kein Abbruch", () => {
   mitProjekt("night-abschluss-unlesbar-", { aufwandStub: STUB_UNLESBAR }, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -271,7 +267,7 @@ test("[night-47] eine unlesbare Ausgabe ist eine Protokollzeile und kein Abbruch
   });
 });
 
-test("[night-47] fehlt aufwand.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", NUR_POSIX, () => {
+test("[night-47] fehlt aufwand.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
   mitProjekt("night-abschluss-fehlt-", { aufwandStub: null }, (dir) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG });
@@ -285,7 +281,7 @@ test("[night-47] fehlt aufwand.mjs ganz, endet der Lauf mit unveraendertem Exit-
   });
 });
 
-test("[night-67] eine Auswertung, die nicht zurueckkehrt, endet am Zeitlimit als Protokollzeile — der Lauf meldet", NUR_POSIX, () => {
+test("[night-67] eine Auswertung, die nicht zurueckkehrt, endet am Zeitlimit als Protokollzeile — der Lauf meldet", () => {
   // Die Wirksamkeits-Auswertung ruft `board.mjs issue activity`, also das Netz. Haengt
   // der Aufruf, erreichte der Lauf ohne Zeitlimit `laufMelden()` nie.
   mitProjekt("night-abschluss-timeout-", { aufwandStub: STUB_HAENGT }, (dir) => {
@@ -308,7 +304,7 @@ test("[night-67] eine Auswertung, die nicht zurueckkehrt, endet am Zeitlimit als
   });
 });
 
-test("[night-47] im Dry-Run entfaellt der Aufruf ganz", NUR_POSIX, () => {
+test("[night-47] im Dry-Run entfaellt der Aufruf ganz", () => {
   mitProjekt("night-abschluss-dryrun-", {}, (dir, capture) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG, AUFWAND_CAPTURE: capture });
@@ -319,7 +315,7 @@ test("[night-47] im Dry-Run entfaellt der Aufruf ganz", NUR_POSIX, () => {
 
 // --- Der harte Stopp ----------------------------------------------------------
 
-test("[night-47] auch ein harter Stopp durchlaeuft den Weg: Abschlussart, Fehlerklasse und Grund bleiben unveraendert", NUR_POSIX, () => {
+test("[night-47] auch ein harter Stopp durchlaeuft den Weg: Abschlussart, Fehlerklasse und Grund bleiben unveraendert", () => {
   // Eine erfolgreiche Runde mit Rest (Issue #152): Seit Issue #1089 haelt ein gescheitertes
   // Paket nur noch sich an, der Rest nach einem Erfolg bleibt der harte Stopp.
   mitProjekt("night-abschluss-hartstopp-", {}, (dir, capture) => {
@@ -356,7 +352,7 @@ test("[night-47] auch ein harter Stopp durchlaeuft den Weg: Abschlussart, Fehler
 //
 // Die `.gitignore` des Fixtures fuehrt `.claude/*` bewusst nicht; nur der Ausschluss im
 // Code kann die beiden Dateien entschaerfen.
-test("[night-47] eine vorliegende Aufwands-Auswertung ist kein unkommittierter Rest", NUR_POSIX, () => {
+test("[night-47] eine vorliegende Aufwands-Auswertung ist kein unkommittierter Rest", () => {
   mitProjekt("night-abschluss-rest-", {}, (dir, capture) => {
     const erstes = readyIssue(dir, "Erstes Issue");
     const zweites = readyIssue(dir, "Zweites Issue");

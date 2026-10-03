@@ -25,12 +25,6 @@ function beobachte(zeilen) {
   return b.ergebnis();
 }
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const ARGS = { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false };
 
 test("[night-975-1] eine Zeile mit dem Anker wird gesammelt, alles andere nicht", () => {
@@ -88,7 +82,7 @@ test("[night-975-5] eine unlesbare Zeile wird uebersprungen, statt den Lauf zu F
 /** Eine Kommandozeile, die genau eine Fortschritts-Stromzeile ausgibt. */
 const STROM_FAKE = `printf '%s\\n' '${text("FORTSCHRITT: AK1 — eins")}'`;
 
-test("[night-975-6] ein Lauf ohne angeforderten Strom traegt kein Ergebnis — nicht etwa eines mit Nullen", NUR_POSIX, async () => {
+test("[night-975-6] ein Lauf ohne angeforderten Strom traegt kein Ergebnis — nicht etwa eines mit Nullen", async () => {
   process.env.NIGHT_CLAUDE_CMD = STROM_FAKE;
   try {
     const res = await runSession("975", ARGS, {});
@@ -99,7 +93,7 @@ test("[night-975-6] ein Lauf ohne angeforderten Strom traegt kein Ergebnis — n
   }
 });
 
-test("[night-975-8] mit angefordertem Strom kommen die Zeilen der Sitzung an", NUR_POSIX, async () => {
+test("[night-975-8] mit angefordertem Strom kommen die Zeilen der Sitzung an", async () => {
   process.env.NIGHT_CLAUDE_CMD = STROM_FAKE;
   try {
     const res = await runSession("975", ARGS, { stream: true });
@@ -110,7 +104,7 @@ test("[night-975-8] mit angefordertem Strom kommen die Zeilen der Sitzung an", N
   }
 });
 
-test("[night-975-7] eine Kommando-Stufe traegt null und nicht ein leeres Ergebnis", NUR_POSIX, async () => {
+test("[night-975-7] eine Kommando-Stufe traegt null und nicht ein leeres Ergebnis", async () => {
   // `laufeRunde` fordert den Strom immer an, aber die Kommando-Stufe startet ein fremdes
   // Programm ohne `--output-format stream-json`: Der Beobachter lieferte `{ zeilen: [],
   // gesehen: 0 }`, und am Vermerk stuende "keine Auskunft der Sitzung", obwohl gar nicht

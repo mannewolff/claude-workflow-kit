@@ -32,10 +32,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -194,7 +190,7 @@ function laufMitEinemPaket(dir, capture, cliArgs = []) {
 
 // --- Die Reihenfolge ----------------------------------------------------------
 
-test("[night-64] laufAbschliessen ruft die Befunde als dritte, hinter Aufwand und Wirksamkeit", NUR_POSIX, () => {
+test("[night-64] laufAbschliessen ruft die Befunde als dritte, hinter Aufwand und Wirksamkeit", () => {
   mitProjekt("night-befunde-reihenfolge-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -217,7 +213,7 @@ test("[night-64] laufAbschliessen ruft die Befunde als dritte, hinter Aufwand un
   });
 });
 
-test("[night-64] der Ergebnisstand traegt nach dem Lauf alle drei Auswertungen am Lauf-Kopf", NUR_POSIX, () => {
+test("[night-64] der Ergebnisstand traegt nach dem Lauf alle drei Auswertungen am Lauf-Kopf", () => {
   mitProjekt("night-befunde-standfeld-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -233,7 +229,7 @@ test("[night-64] der Ergebnisstand traegt nach dem Lauf alle drei Auswertungen a
   });
 });
 
-test("[night-64] die drei Befundbloecke stehen im Protokoll in der Reihenfolge ihrer Aufrufe", NUR_POSIX, () => {
+test("[night-64] die drei Befundbloecke stehen im Protokoll in der Reihenfolge ihrer Aufrufe", () => {
   mitProjekt("night-befunde-block-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -248,7 +244,7 @@ test("[night-64] die drei Befundbloecke stehen im Protokoll in der Reihenfolge i
   });
 });
 
-test("[night-64] ohne Befund steht nichts im Protokoll, und die beiden anderen Bloecke bleiben unberuehrt", NUR_POSIX, () => {
+test("[night-64] ohne Befund steht nichts im Protokoll, und die beiden anderen Bloecke bleiben unberuehrt", () => {
   mitProjekt("night-befunde-stumm-", { befundeStub: stubMitErgebnis("befunde", BEFUNDE_OHNE_BEFUND) }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -272,7 +268,7 @@ function fehlerzeilen(dir) {
   return protokoll(dir).split("\n").filter((z) => z.includes("Befunde-Auswertung"));
 }
 
-test("[night-64] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und laesst den Lauf unveraendert", NUR_POSIX, () => {
+test("[night-64] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und laesst den Lauf unveraendert", () => {
   mitProjekt("night-befunde-exit-", { befundeStub: BEFUNDE_STUB_EXIT_UNGLEICH_NULL }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -289,7 +285,7 @@ test("[night-64] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile und
   });
 });
 
-test("[night-64] fehlt befunde.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", NUR_POSIX, () => {
+test("[night-64] fehlt befunde.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
   mitProjekt("night-befunde-fehlt-", { befundeStub: null }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -302,7 +298,7 @@ test("[night-64] fehlt befunde.mjs ganz, endet der Lauf mit unveraendertem Exit-
   });
 });
 
-test("[night-64] im Dry-Run entfaellt der Aufruf ganz", NUR_POSIX, () => {
+test("[night-64] im Dry-Run entfaellt der Aufruf ganz", () => {
   mitProjekt("night-befunde-dryrun-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture, ["--dry-run"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);

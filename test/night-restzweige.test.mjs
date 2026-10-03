@@ -26,10 +26,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Session-Fakes laufen ueber `sh -c`. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
@@ -91,7 +87,7 @@ const MOVE_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" 
 // Die Pruef-Zusammenfassung einer Session
 // ============================================================
 
-test("eine Zusammenfassung ohne laufen- und ausgelassen-Feld wird als leere Listen gemeldet", NUR_POSIX, () => {
+test("eine Zusammenfassung ohne laufen- und ausgelassen-Feld wird als leere Listen gemeldet", () => {
   // `checks.mjs` schreibt beide Felder — eine aeltere oder abgeschnittene Datei kann
   // sie aber verlieren. Fehlt `laufen`, ist das etwas anderes als "rot": Es ist eine
   // Session ohne gemeldete Pruefung, und der Bericht muss sie als solche fuehren
@@ -113,7 +109,7 @@ test("eine Zusammenfassung ohne laufen- und ausgelassen-Feld wird als leere List
   }, {}, "night-rest-summary-leer-");
 });
 
-test("eine nicht loeschbare Zusammenfassung meldet einen Hinweis und stoppt den Lauf nicht", NUR_POSIX, () => {
+test("eine nicht loeschbare Zusammenfassung meldet einen Hinweis und stoppt den Lauf nicht", () => {
   // Ein Verzeichnis am Pfad der Zusammenfassung laesst rmSync scheitern. Der Runner
   // darf daran keine Nacht beenden — er vermerkt es und faehrt fort. Die Datei gilt
   // danach als nicht vertrauenswuerdig, und genau das steht im Bericht.
@@ -135,7 +131,7 @@ test("eine nicht loeschbare Zusammenfassung meldet einen Hinweis und stoppt den 
 // Der Infrastruktur-Guard ohne Exit-Code
 // ============================================================
 
-test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exit-Codes", NUR_POSIX, () => {
+test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exit-Codes", () => {
   // Wird die Session hart abgeschossen, liefert der Prozess keinen Exit-Code, nur ein
   // Signal. Ohne den Rueckfall auf `res.signal` stuende in der Meldung `Exit null` —
   // und morgens waere die Ursache nicht mehr zu erkennen.
@@ -160,7 +156,7 @@ test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exi
 // Der Salvage, der das Issue verschiebt und den Baum liegen laesst
 // ============================================================
 
-test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", NUR_POSIX, () => {
+test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", () => {
   // Salvage gilt nur als Erfolg, wenn BEIDES stimmt: Karte in In review UND sauberer
   // Baum. Der halbe Erfolg ist der gefaehrlichste Ausgang — die Karte sieht fertig
   // aus, der Commit fehlt. Die Meldung muss ihn vom "gar nicht verschoben" trennen;
@@ -213,7 +209,7 @@ function mitFakeBin(fn) {
   }
 }
 
-test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines Exit-Codes", NUR_POSIX, () => {
+test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines Exit-Codes", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     mitFakeBin((bin) => {
@@ -268,7 +264,7 @@ function mitAttrappe(fn, status, config = {}, praefix = "night-rest-attrappe-", 
   }, config, praefix);
 }
 
-test("Dry-Run: ein Ready-Issue ohne labels-Feld gilt als Issue ohne das gesuchte Label", NUR_POSIX, () => {
+test("Dry-Run: ein Ready-Issue ohne labels-Feld gilt als Issue ohne das gesuchte Label", () => {
   // Zwei Stellen lesen die Labels: der Filter je Issue und die Warnung, die alle in
   // Ready vorhandenen Labels aufzaehlt. Beide muessen das fehlende Feld ueberstehen.
   mitAttrappe((dir) => {

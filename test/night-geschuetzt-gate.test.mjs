@@ -24,8 +24,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 const boardModul = await import(pathToFileURL(join(repoRoot, "kit", "board.mjs")).href);
@@ -124,7 +122,7 @@ function kurzform(a) {
 
 // --- Treffer ---
 
-test("Treffer: das Paket wird nach Backlog geschoben, gezeichnet und genau einmal kommentiert", NUR_POSIX, () => {
+test("Treffer: das Paket wird nach Backlog geschoben, gezeichnet und genau einmal kommentiert", () => {
   const dir = setupProjekt();
   try {
     const geschuetzt = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
@@ -162,7 +160,7 @@ test("Treffer: das Paket wird nach Backlog geschoben, gezeichnet und genau einma
 
 // --- Gegenprobe ---
 
-test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", NUR_POSIX, () => {
+test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", () => {
   const dir = setupProjekt();
   try {
     const normal = readyPaket(dir, "Normales Paket", paketBody("kit/board.mjs"));
@@ -178,7 +176,7 @@ test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", NUR_P
 
 // --- Board ohne Label ---
 
-test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter, der naechste Anlauf haelt erneut", NUR_POSIX, () => {
+test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter, der naechste Anlauf haelt erneut", () => {
   const dir = setupProjekt();
   try {
     const geschuetzt = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
@@ -212,7 +210,7 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
 const haltKommentar = (dir, body, titel) =>
   `${boardModul.geschuetztKommentar(boardModul.geschuetzteTreffer(body, titel, dir))}\n\nLabel kit:geschuetzt gesetzt`;
 
-test("Wiederaufnahme: Halt-Kommentar mit gesetztem Label, Label abgenommen — das Paket laeuft durch", NUR_POSIX, () => {
+test("Wiederaufnahme: Halt-Kommentar mit gesetztem Label, Label abgenommen — das Paket laeuft durch", () => {
   const dir = setupProjekt();
   try {
     const body = paketBody(PFAD);
@@ -226,7 +224,7 @@ test("Wiederaufnahme: Halt-Kommentar mit gesetztem Label, Label abgenommen — d
   }
 });
 
-test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Label bleibt", NUR_POSIX, () => {
+test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Label bleibt", () => {
   const dir = setupProjekt();
   try {
     const body = paketBody(PFAD);
@@ -246,7 +244,7 @@ test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Labe
   }
 });
 
-test("Wiederaufnahme: ein weiterer, im Kommentar nicht genannter Pfad haelt erneut an", NUR_POSIX, () => {
+test("Wiederaufnahme: ein weiterer, im Kommentar nicht genannter Pfad haelt erneut an", () => {
   const dir = setupProjekt();
   try {
     const alt = paketBody(PFAD);
@@ -307,7 +305,7 @@ function vorschauZeile(dir, id) {
   return zeile;
 }
 
-test("Vorschau: eine Karte mit geschuetztem Pfad wuerde ins Backlog, keine Session", NUR_POSIX, () => {
+test("Vorschau: eine Karte mit geschuetztem Pfad wuerde ins Backlog, keine Session", () => {
   const dir = setupProjekt();
   try {
     const id = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
@@ -320,7 +318,7 @@ test("Vorschau: eine Karte mit geschuetztem Pfad wuerde ins Backlog, keine Sessi
   }
 });
 
-test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backlog, keine Session", NUR_POSIX, () => {
+test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backlog, keine Session", () => {
   const dir = setupProjekt();
   try {
     const id = readyPaket(dir, "Paket aus dem Rueckfall-Halt", paketBody("src/frei.mjs"));
@@ -333,7 +331,7 @@ test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backl
   }
 });
 
-test("Vorschau: die freigegebene Karte nach E5 bekommt eine Session", NUR_POSIX, () => {
+test("Vorschau: die freigegebene Karte nach E5 bekommt eine Session", () => {
   const dir = setupProjekt();
   try {
     const body = paketBody(PFAD);

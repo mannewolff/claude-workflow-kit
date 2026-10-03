@@ -24,10 +24,6 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
 }
@@ -80,7 +76,7 @@ const MIT_MARKER = "## Kontext\nAutor-Modell: claude-opus-5\nIssue-Review: sonne
 
 const GATE_AN = { issueReview: { requiredBeforeReady: true, reviewers: [] } };
 
-test("[night-16] Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlog", NUR_POSIX, () => {
+test("[night-16] Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlog", () => {
   const dir = setupProjekt(GATE_AN);
   try {
     const id = readyIssue(dir, "Ein Issue ohne Marker", OHNE_MARKER);
@@ -96,7 +92,7 @@ test("[night-16] Gate an: ungepruftes Ready-Issue wandert kommentiert ins Backlo
   }
 });
 
-test("[night-16] Gate an: geprueftes Issue wird normal verarbeitet", NUR_POSIX, () => {
+test("[night-16] Gate an: geprueftes Issue wird normal verarbeitet", () => {
   const dir = setupProjekt(GATE_AN);
   try {
     readyIssue(dir, "Ein Issue mit Marker", MIT_MARKER);
@@ -111,7 +107,7 @@ test("[night-16] Gate an: geprueftes Issue wird normal verarbeitet", NUR_POSIX, 
   }
 });
 
-test("Gate an: eine aehnliche Zeile zaehlt nicht als Marker", NUR_POSIX, () => {
+test("Gate an: eine aehnliche Zeile zaehlt nicht als Marker", () => {
   // 'Issue-Review folgt noch' ist genau das Gegenteil einer Freigabe.
   const dir = setupProjekt(GATE_AN);
   try {
@@ -125,7 +121,7 @@ test("Gate an: eine aehnliche Zeile zaehlt nicht als Marker", NUR_POSIX, () => {
   }
 });
 
-test("Default: ohne requiredBeforeReady aendert sich nichts", NUR_POSIX, () => {
+test("Default: ohne requiredBeforeReady aendert sich nichts", () => {
   // Ein Kit-Update darf keinem Bestandsprojekt ueber Nacht den Runner anhalten.
   const dir = setupProjekt();
   try {
@@ -152,7 +148,7 @@ const MIT_PLAN_MARKER =
   "## Kontext\nAutor-Modell: claude-opus-5\nPlan-Review: opus, codex (2026-08-08)\n\n## Abhaengigkeiten\nKeine.";
 
 for (const [name, body] of [["Fachplan-Review", MIT_FACHPLAN_MARKER], ["Plan-Review", MIT_PLAN_MARKER]]) {
-  test(`Gate an: ein ${name}-Marker zaehlt nicht als Freigabe-Nachweis`, NUR_POSIX, () => {
+  test(`Gate an: ein ${name}-Marker zaehlt nicht als Freigabe-Nachweis`, () => {
     const dir = setupProjekt(GATE_AN);
     try {
       const id = readyIssue(dir, `Ein Dokument mit fremdem Marker (${name})`, body);
@@ -172,7 +168,7 @@ for (const [name, body] of [["Fachplan-Review", MIT_FACHPLAN_MARKER], ["Plan-Rev
 
 // Seit Plan #638 (A17) kennt das Gate nur noch zwei Arten: `marker` und
 // `ungeprueft`. Eine `Pruefung:`-Zeile im Body hat keine Wirkung mehr.
-test("[night-16] Gate an: eine Pruefung-Verzicht-Zeile hat keine Wirkung, das Issue bleibt ungeprueft", NUR_POSIX, () => {
+test("[night-16] Gate an: eine Pruefung-Verzicht-Zeile hat keine Wirkung, das Issue bleibt ungeprueft", () => {
   const dir = setupProjekt(GATE_AN);
   try {
     const id = readyIssue(dir, "Ein Issue mit Verzichtzeile", `${OHNE_MARKER.replace("\n\n## Abh", "\nPruefung: Verzicht\n\n## Abh")}`);
@@ -187,7 +183,7 @@ test("[night-16] Gate an: eine Pruefung-Verzicht-Zeile hat keine Wirkung, das Is
   }
 });
 
-test("[night-16] Dry-Run: das Gate laeuft mit — mit Marker wird Session, ohne geht ins Backlog", NUR_POSIX, () => {
+test("[night-16] Dry-Run: das Gate laeuft mit — mit Marker wird Session, ohne geht ins Backlog", () => {
   const dir = setupProjekt(GATE_AN);
   try {
     const frei = readyIssue(dir, "Erstes Ticket mit Marker", MIT_MARKER);
@@ -203,7 +199,7 @@ test("[night-16] Dry-Run: das Gate laeuft mit — mit Marker wird Session, ohne 
   }
 });
 
-test("Dry-Run: ohne requiredBeforeReady bleibt der Dry-Run unveraendert", NUR_POSIX, () => {
+test("Dry-Run: ohne requiredBeforeReady bleibt der Dry-Run unveraendert", () => {
   // Dieselbe Zurueckhaltung wie im echten Lauf: Ein Kit-Update darf keinem
   // Bestandsprojekt den Dry-Run umschreiben.
   const dir = setupProjekt();

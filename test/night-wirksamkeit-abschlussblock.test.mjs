@@ -32,10 +32,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -183,7 +179,7 @@ function laufMitEinemPaket(dir, capture, cliArgs = []) {
 
 // --- Die Reihenfolge ----------------------------------------------------------
 
-test("[night-60] laufAbschliessen ruft erst den Aufwand, dann die Wirksamkeit, und schreibt den Stand erst danach erneut", NUR_POSIX, () => {
+test("[night-60] laufAbschliessen ruft erst den Aufwand, dann die Wirksamkeit, und schreibt den Stand erst danach erneut", () => {
   mitProjekt("night-wirk-reihenfolge-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -205,7 +201,7 @@ test("[night-60] laufAbschliessen ruft erst den Aufwand, dann die Wirksamkeit, u
   });
 });
 
-test("[night-60] der Ergebnisstand traegt nach dem Lauf beide Auswertungen am Lauf-Kopf", NUR_POSIX, () => {
+test("[night-60] der Ergebnisstand traegt nach dem Lauf beide Auswertungen am Lauf-Kopf", () => {
   mitProjekt("night-wirk-standfeld-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -220,7 +216,7 @@ test("[night-60] der Ergebnisstand traegt nach dem Lauf beide Auswertungen am La
   });
 });
 
-test("[night-60] der Wirksamkeits-Befundblock steht im Laufprotokoll hinter dem Aufwands-Block", NUR_POSIX, () => {
+test("[night-60] der Wirksamkeits-Befundblock steht im Laufprotokoll hinter dem Aufwands-Block", () => {
   mitProjekt("night-wirk-block-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -234,7 +230,7 @@ test("[night-60] der Wirksamkeits-Befundblock steht im Laufprotokoll hinter dem 
   });
 });
 
-test("[night-60] ohne Wirksamkeits-Befund steht nichts im Protokoll, und der Aufwands-Block bleibt unberuehrt", NUR_POSIX, () => {
+test("[night-60] ohne Wirksamkeits-Befund steht nichts im Protokoll, und der Aufwands-Block bleibt unberuehrt", () => {
   mitProjekt("night-wirk-stumm-", { wirksamkeitStub: stubMitErgebnis("wirksamkeit", WIRK_OHNE_BEFUND) }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -257,7 +253,7 @@ function fehlerzeilen(dir) {
   return protokoll(dir).split("\n").filter((z) => z.includes("Wirksamkeits-Auswertung"));
 }
 
-test("[night-60] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile, kein Abbruch und haelt den Aufwands-Teil nicht auf", NUR_POSIX, () => {
+test("[night-60] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile, kein Abbruch und haelt den Aufwands-Teil nicht auf", () => {
   mitProjekt("night-wirk-exit-", { wirksamkeitStub: WIRK_STUB_EXIT_UNGLEICH_NULL }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -274,7 +270,7 @@ test("[night-60] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile, ke
   });
 });
 
-test("[night-60] fehlt wirksamkeit.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", NUR_POSIX, () => {
+test("[night-60] fehlt wirksamkeit.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
   mitProjekt("night-wirk-fehlt-", { wirksamkeitStub: null }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -287,7 +283,7 @@ test("[night-60] fehlt wirksamkeit.mjs ganz, endet der Lauf mit unveraendertem E
   });
 });
 
-test("[night-60] im Dry-Run entfaellt der Aufruf ganz", NUR_POSIX, () => {
+test("[night-60] im Dry-Run entfaellt der Aufruf ganz", () => {
   mitProjekt("night-wirk-dryrun-", {}, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture, ["--dry-run"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);

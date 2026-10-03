@@ -21,10 +21,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -77,7 +73,7 @@ function streamFake() {
   ].join(" && ");
 }
 
-test("ohne jedes Flag zeigt der Lauf kompakte Ereigniszeilen — das Verlaufsprotokoll ist der Normalfall", NUR_POSIX, () => {
+test("ohne jedes Flag zeigt der Lauf kompakte Ereigniszeilen — das Verlaufsprotokoll ist der Normalfall", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Normalfall-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -94,7 +90,7 @@ test("ohne jedes Flag zeigt der Lauf kompakte Ereigniszeilen — das Verlaufspro
   }
 });
 
-test("--verbose yes schaltet ausdruecklich an", NUR_POSIX, () => {
+test("--verbose yes schaltet ausdruecklich an", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Laut-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -113,7 +109,7 @@ test("--verbose yes schaltet ausdruecklich an", NUR_POSIX, () => {
 // Ein Wert, den es nicht gibt, ist ein Tippfehler — und ein Tippfehler darf nicht
 // stillschweigend zur Vorbelegung zurueckfallen: Wer `--verbose nein` schreibt, will
 // abschalten und bekaeme sonst das Gegenteil.
-test("ein unbekannter Wert bricht ab und nennt beide Schreibweisen", NUR_POSIX, () => {
+test("ein unbekannter Wert bricht ab und nennt beide Schreibweisen", () => {
   const dir = setupProjekt();
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose", "vielleicht"],
@@ -130,7 +126,7 @@ test("ein unbekannter Wert bricht ab und nennt beide Schreibweisen", NUR_POSIX, 
 
 // `--verbose` darf den naechsten Eintrag nur dann verbrauchen, wenn er ein Wert ist.
 // Ein Flag ist keiner — sonst verschluckte `--verbose --max 5` das `--max`.
-test("--verbose --max 5 laesst --max seine Wirkung", NUR_POSIX, () => {
+test("--verbose --max 5 laesst --max seine Wirkung", () => {
   const dir = setupProjekt();
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run", "--verbose", "--max", "5"],
@@ -143,7 +139,7 @@ test("--verbose --max 5 laesst --max seine Wirkung", NUR_POSIX, () => {
   }
 });
 
-test("--verbose ohne Wert bleibt zulaessig und wirkungslos (Rueckwaertskompatibilitaet)", NUR_POSIX, () => {
+test("--verbose ohne Wert bleibt zulaessig und wirkungslos (Rueckwaertskompatibilitaet)", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Verbose-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -160,7 +156,7 @@ test("--verbose ohne Wert bleibt zulaessig und wirkungslos (Rueckwaertskompatibi
   }
 });
 
-test("--verbose no bleibt beim alten Format (keine Ereigniszeilen)", NUR_POSIX, () => {
+test("--verbose no bleibt beim alten Format (keine Ereigniszeilen)", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Still-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -177,7 +173,7 @@ test("--verbose no bleibt beim alten Format (keine Ereigniszeilen)", NUR_POSIX, 
   }
 });
 
-test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haenger", NUR_POSIX, () => {
+test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haenger", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Langsames-Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -208,7 +204,7 @@ test("Timeout-Pfad: laenger laufende Session wird gekillt, Runde endet ohne Haen
 // Lauf daran zu kippen. Ein Verbose-Modus, der an einer unparsebaren Zeile stirbt,
 // waere schlimmer als keiner.
 
-test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
+test("--verbose ueberspringt Zeilen, die kein Ereignis sind", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -249,7 +245,7 @@ test("--verbose ueberspringt Zeilen, die kein Ereignis sind", NUR_POSIX, () => {
   }
 });
 
-test("--verbose kuerzt lange Texte und Argumente", NUR_POSIX, () => {
+test("--verbose kuerzt lange Texte und Argumente", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -280,7 +276,7 @@ test("--verbose kuerzt lange Texte und Argumente", NUR_POSIX, () => {
   }
 });
 
-test("--verbose wertet auch eine letzte Zeile ohne Zeilenumbruch aus", NUR_POSIX, () => {
+test("--verbose wertet auch eine letzte Zeile ohne Zeilenumbruch aus", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Ein Issue", "--body", "## Abhaengigkeiten\nKeine.");

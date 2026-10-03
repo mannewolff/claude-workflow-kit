@@ -10,13 +10,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { join, delimiter } from "node:path";
 import { tmpdir } from "node:os";
 import { runSession, leseKennzahlen } from "../kit/night.mjs";
-
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
 
 const ARGS = { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false };
 
@@ -29,12 +25,14 @@ async function mitOrdner(fn) {
   }
 }
 
-test("[night-18] runSession startet den Fake im uebergebenen cwd und setzt NIGHT_KETTE_STUFE neben KIT_AGENT_MODEL", NUR_POSIX, async () => {
+// Das Arbeitsverzeichnis schreibt node und nicht `pwd`: In der Git Bash liefert `pwd` die
+// Form /c/..., die realpathSync unter Windows nicht kennt (Issue #1133).
+test("[night-18] runSession startet den Fake im uebergebenen cwd und setzt NIGHT_KETTE_STUFE neben KIT_AGENT_MODEL", async () => {
   await mitOrdner(async (dir) => {
     const worktree = join(dir, "wt");
     mkdirSync(worktree);
     const aus = join(dir, "aus.txt");
-    process.env.NIGHT_CLAUDE_CMD = `pwd > "$NIGHT_AUS"; echo "stufe=$NIGHT_KETTE_STUFE" >> "$NIGHT_AUS"; echo "modell=$KIT_AGENT_MODEL" >> "$NIGHT_AUS"; echo "prompt=$NIGHT_PROMPT" >> "$NIGHT_AUS"`;
+    process.env.NIGHT_CLAUDE_CMD = `node -e 'console.log(process.cwd())' > "$NIGHT_AUS"; echo "stufe=$NIGHT_KETTE_STUFE" >> "$NIGHT_AUS"; echo "modell=$KIT_AGENT_MODEL" >> "$NIGHT_AUS"; echo "prompt=$NIGHT_PROMPT" >> "$NIGHT_AUS"`;
     try {
       const res = await runSession("635", ARGS, { cwd: worktree, stufe: "plan", prompt: "/techplan #635", extraEnv: { NIGHT_AUS: aus } });
       assert.equal(res.status, 0, res.stderr);
@@ -49,10 +47,10 @@ test("[night-18] runSession startet den Fake im uebergebenen cwd und setzt NIGHT
   });
 });
 
-test("[night-18] ohne stufe steht NIGHT_KETTE_STUFE nicht in der Umgebung, ohne cwd laeuft der Fake im cwd des Runners", NUR_POSIX, async () => {
+test("[night-18] ohne stufe steht NIGHT_KETTE_STUFE nicht in der Umgebung, ohne cwd laeuft der Fake im cwd des Runners", async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
-    process.env.NIGHT_CLAUDE_CMD = `pwd > "$NIGHT_AUS"; echo "stufe=\${NIGHT_KETTE_STUFE-unset}" >> "$NIGHT_AUS"`;
+    process.env.NIGHT_CLAUDE_CMD = `node -e 'console.log(process.cwd())' > "$NIGHT_AUS"; echo "stufe=\${NIGHT_KETTE_STUFE-unset}" >> "$NIGHT_AUS"`;
     try {
       await runSession("1", ARGS, { extraEnv: { NIGHT_AUS: aus } });
     } finally {
@@ -74,15 +72,18 @@ function fakeClaude(dir) {
     `echo '{"type":"result","total_cost_usd":1.25,"duration_api_ms":10,"num_turns":2}'`,
     "",
   ].join("\n"), { mode: 0o755 });
+  // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
+  // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
+  writeFileSync(join(bin, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
   return bin;
 }
 
-test("[night-18] mit stream: true fordert die Session stream-json auch ohne --verbose an, und leseKennzahlen liefert die Kosten", NUR_POSIX, async () => {
+test("[night-18] mit stream: true fordert die Session stream-json auch ohne --verbose an, und leseKennzahlen liefert die Kosten", async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const bin = fakeClaude(dir);
     const pathVorher = process.env.PATH;
-    process.env.PATH = `${bin}:${pathVorher}`;
+    process.env.PATH = `${bin}${delimiter}${pathVorher}`;
     let res;
     try {
       res = await runSession("635", ARGS, { stream: true, prompt: "/techplan #635", extraEnv: { NIGHT_AUS: aus } });
@@ -99,12 +100,12 @@ test("[night-18] mit stream: true fordert die Session stream-json auch ohne --ve
   });
 });
 
-test("[night-18] ohne stream und ohne --verbose bleibt die Kommandozeile wie zuvor", NUR_POSIX, async () => {
+test("[night-18] ohne stream und ohne --verbose bleibt die Kommandozeile wie zuvor", async () => {
   await mitOrdner(async (dir) => {
     const aus = join(dir, "aus.txt");
     const bin = fakeClaude(dir);
     const pathVorher = process.env.PATH;
-    process.env.PATH = `${bin}:${pathVorher}`;
+    process.env.PATH = `${bin}${delimiter}${pathVorher}`;
     try {
       await runSession("1", ARGS, { extraEnv: { NIGHT_AUS: aus } });
     } finally {

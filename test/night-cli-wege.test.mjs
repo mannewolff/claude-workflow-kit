@@ -19,10 +19,6 @@ import { tmpdir } from "node:os";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Die Fakes laufen ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
@@ -209,7 +205,7 @@ test("liegen gar keine Labels in Ready, sagt die Warnung genau das", () => {
   }, {}, "night-cli-label-keine-");
 });
 
-test("mit --label none entfaellt die Warnung und das Issue wird eingeplant", NUR_POSIX, () => {
+test("mit --label none entfaellt die Warnung und das Issue wird eingeplant", () => {
   mitProjekt((dir) => {
     readyIssue(dir, "Ganz ohne Label");
 

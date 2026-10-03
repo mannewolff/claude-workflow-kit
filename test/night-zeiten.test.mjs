@@ -143,8 +143,6 @@ test("[night-51] eine unvollstaendige Messung auf einer Seite macht die Summe nu
 // zeitenErfassen — E2E: Einheit, Ziel und Ueberschreiben
 // ============================================================
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -222,7 +220,7 @@ const SCHUB = [
   `echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'`,
 ].join("\n");
 
-test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen sechs Feldern", NUR_POSIX, () => {
+test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen sechs Feldern", () => {
   const dir = setupProjekt("night-zeiten-regel-");
   try {
     const id = readyIssue(dir, "Volle Zeiten");
@@ -244,7 +242,7 @@ test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traeg
   }
 });
 
-test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", NUR_POSIX, () => {
+test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", () => {
   const dir = setupProjekt("night-zeiten-ohne-kennzahlen-");
   try {
     const id = readyIssue(dir, "Ohne Kennzahlen");
@@ -262,7 +260,7 @@ test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Da
   }
 });
 
-test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit — genau eine Einheit im Stand", NUR_POSIX, () => {
+test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit — genau eine Einheit im Stand", () => {
   const dir = setupProjekt("night-zeiten-ohne-karte-");
   try {
     const id = readyIssue(dir, "Regulaeres Paket");
@@ -282,7 +280,7 @@ test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendein
   }
 });
 
-test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und addiert ihre Zeiten", NUR_POSIX, () => {
+test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und addiert ihre Zeiten", () => {
   // Rote buildChecks lassen die erste (regulaere) Session als dirty zurueck; gruene
   // buildChecks (per Fake selbst geschrieben) erlauben danach den Salvage-Versuch — das
   // ist der einzige Weg in diesem Runner, an dem eine Karte zwei Sessions bekommt
@@ -323,7 +321,7 @@ test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengst
   }
 });
 
-test("[night-51] misst eine der beiden Sessions unvollstaendig, bleibt das Feld in der Summe null", NUR_POSIX, () => {
+test("[night-51] misst eine der beiden Sessions unvollstaendig, bleibt das Feld in der Summe null", () => {
   // Wie oben, nur gibt die Salvage-Session kein result-Ereignis aus: ihre apiDauerMs fehlt.
   // Die 1000 der regulaeren Runde allein stehenzulassen, gaebe einen Teil als Ganzes aus.
   const dir = setupProjekt("night-zeiten-summe-unvollstaendig-", ["true"]);

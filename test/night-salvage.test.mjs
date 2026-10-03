@@ -27,10 +27,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -93,7 +89,7 @@ function fakeSession(sessionLog, salvageBody) {
     + `fi\n`;
 }
 
-test("Salvage: rote buildChecks starten keine Rettung — die Reste gehen in den Stash, der Lauf geht weiter (Issue #1089)", NUR_POSIX, () => {
+test("Salvage: rote buildChecks starten keine Rettung — die Reste gehen in den Stash, der Lauf geht weiter (Issue #1089)", () => {
   const dir = setupProjekt(["false"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -128,7 +124,7 @@ test("Salvage: rote buildChecks starten keine Rettung — die Reste gehen in den
   }
 });
 
-test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf fort", NUR_POSIX, () => {
+test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf fort", () => {
   const dir = setupProjekt(["true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -162,7 +158,7 @@ test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf
   }
 });
 
-test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", NUR_POSIX, () => {
+test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", () => {
   // buildChecks besteht nur, wenn die Variable ankommt — belegt, dass
   // runBuildChecksSync sie aus settings.json mergt statt nur process.env zu
   // erben (kanban-kit #445: DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE
@@ -226,7 +222,7 @@ function laufMitSettings(erwarteterWert, dateien) {
   }
 }
 
-test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", NUR_POSIX, () => {
+test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", () => {
   // settings.local.json ist gitignored und damit der uebliche Ort fuer
   // maschinenspezifische Werte (z. B. ein Colima-Socket-Pfad). Claude Code liest
   // beide Dateien — die Vorpruefung muss das auch tun (Issue #168).
@@ -240,7 +236,7 @@ test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt"
   assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", NUR_POSIX, () => {
+test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", () => {
   const { res, geretttet } = laufMitSettings("from-local", {
     "settings.json": { NIGHT_TEST_ENV_VAR: "from-shared" },
     "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
@@ -252,7 +248,7 @@ test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Preceden
   assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeile, die Reste gehen in den Stash", NUR_POSIX, () => {
+test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeile, die Reste gehen in den Stash", () => {
   const dir = setupProjekt(["true"]);
   try {
     const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
@@ -291,7 +287,7 @@ test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeil
 // mit zwanzig wartenden Issues nicht beenden. Rote Checks mit inhaltlicher
 // Aussage (Testfehler, Lint) bleiben unveraendert ein harter Stopp.
 
-test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", NUR_POSIX, () => {
+test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", () => {
   // Der buildCheck besteht erst, wenn die Marker-Datei existiert — das
   // formatFixCommand legt sie an. Damit ist "erst rot, nach dem Fix gruen"
   // deterministisch nachgestellt.
@@ -323,7 +319,7 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den L
   }
 });
 
-test("Format-Fix: hilft er nicht, bleibt das Paket gescheitert — und er lief genau einmal", NUR_POSIX, () => {
+test("Format-Fix: hilft er nicht, bleibt das Paket gescheitert — und er lief genau einmal", () => {
   // Das Format-Kommando protokolliert jeden Aufruf, die Checks bleiben rot.
   // Belegt zugleich: keine Schleife, genau ein Versuch.
   const dir = setupProjekt(["false"], { formatFixCommand: "echo lauf >> fixcount.log" });
@@ -378,7 +374,7 @@ function gueteLaeufe(dir) {
   return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean).length : 0;
 }
 
-test("[night-950] Salvage: eine verfehlte Marke haelt die Vorpruefung nicht auf — sie gehoert nicht zum Abschlussumfang", NUR_POSIX, () => {
+test("[night-950] Salvage: eine verfehlte Marke haelt die Vorpruefung nicht auf — sie gehoert nicht zum Abschlussumfang", () => {
   // Der Eintrag "true" daneben ist das Gate des Abschlusses: Ohne ihn startet der Lauf
   // gar nicht (Start-Guard, Issue #950).
   const dir = setupProjekt([gueteCheck(90), "true"]);
@@ -405,7 +401,7 @@ test("[night-950] Salvage: eine verfehlte Marke haelt die Vorpruefung nicht auf 
   }
 });
 
-test("[night-950] Salvage: auch ein nicht auswertbares Ergebnis ist kein Halt mehr — es wird nicht gemessen", NUR_POSIX, () => {
+test("[night-950] Salvage: auch ein nicht auswertbares Ergebnis ist kein Halt mehr — es wird nicht gemessen", () => {
   const dir = setupProjekt([{
     cmd: `node -e "console.log('BUILD SUCCESS')" && echo guete >> checklauf.log`,
     guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
@@ -430,7 +426,7 @@ test("[night-950] Salvage: auch ein nicht auswertbares Ergebnis ist kein Halt me
   }
 });
 
-test("[night-65] Salvage: ein Guete-Eintrag der Stufe push bleibt in der Vorpruefung aussen vor", NUR_POSIX, () => {
+test("[night-65] Salvage: ein Guete-Eintrag der Stufe push bleibt in der Vorpruefung aussen vor", () => {
   // Die Stufenauswahl gilt unveraendert (Plan #753, E13): Was erst beim
   // Veroeffentlichen faellig ist, haelt keinen Rettungsversuch auf.
   const dir = setupProjekt([{ ...gueteCheck(90), stufe: "push" }, "true"]);

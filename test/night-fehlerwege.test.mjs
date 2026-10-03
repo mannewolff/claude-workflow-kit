@@ -24,10 +24,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
@@ -143,7 +139,7 @@ test("ausserhalb eines git-Repos nennt der Abbruch den Projekt-Root", () => {
   }
 });
 
-test("in einem Repo ohne Commit meldet der Erfolg den Hash als '?'", NUR_POSIX, () => {
+test("in einem Repo ohne Commit meldet der Erfolg den Hash als '?'", () => {
   // `git log -1` scheitert im leeren Repo. Der Rueckfall auf "?" haelt die
   // Erfolgsmeldung lesbar, statt den ganzen Lauf an einer Protokollzeile zu kippen.
   mitProjekt((dir) => {
@@ -162,7 +158,7 @@ test("in einem Repo ohne Commit meldet der Erfolg den Hash als '?'", NUR_POSIX, 
 // Die Session startet gar nicht
 // ============================================================
 
-test("ein Infrastruktur-Fehlschlag nennt Exit-Code und die ersten Zeilen der Ausgabe", NUR_POSIX, () => {
+test("ein Infrastruktur-Fehlschlag nennt Exit-Code und die ersten Zeilen der Ausgabe", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // Exit != 0 ohne Timeout heisst: das CLI selbst ist gescheitert. Mit dem Issue
@@ -183,7 +179,7 @@ test("ein Infrastruktur-Fehlschlag nennt Exit-Code und die ersten Zeilen der Aus
   }, { config: { night: { stand: { pauseMin: 0.0001 } } } }, "night-fehler-infra-");
 });
 
-test("ein Fehlstart ohne jede Ausgabe meldet trotzdem den Exit-Code", NUR_POSIX, () => {
+test("ein Fehlstart ohne jede Ausgabe meldet trotzdem den Exit-Code", () => {
   mitProjekt((dir) => {
     readyIssue(dir);
 
@@ -196,7 +192,7 @@ test("ein Fehlstart ohne jede Ausgabe meldet trotzdem den Exit-Code", NUR_POSIX,
   }, { config: { night: { stand: { pauseMin: 0.0001 } } } }, "night-fehler-infra-stumm-");
 });
 
-test("eine Session, die ihr Zeitlimit reisst, ist KEIN Infrastruktur-Fehlschlag", NUR_POSIX, () => {
+test("eine Session, die ihr Zeitlimit reisst, ist KEIN Infrastruktur-Fehlschlag", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // Ein Timeout ist ein fachlicher Fehlschlag: Das CLI lief, es wurde nur nicht
@@ -216,7 +212,7 @@ test("eine Session, die ihr Zeitlimit reisst, ist KEIN Infrastruktur-Fehlschlag"
 // Salvage: Checks ohne Ausgabe
 // ============================================================
 
-test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", NUR_POSIX, () => {
+test("der Salvage-Prompt kommt auch mit Checks ohne Ausgabe zustande", () => {
   mitProjekt((dir) => {
     readyIssue(dir);
     // Die regulaere Runde laesst Arbeit liegen; die Checks sind gruen, geben aber
@@ -260,7 +256,7 @@ test("scheitert board.mjs wortlos, nennt die Meldung wenigstens das Kommando", (
   }, { boardInhalt: "process.exit(1);\n" }, "night-fehler-board-stumm-");
 });
 
-test("ohne buildChecks-Feld gilt die leere Pruefliste", NUR_POSIX, () => {
+test("ohne buildChecks-Feld gilt die leere Pruefliste", () => {
   // Nicht `buildChecks: []`, sondern das Feld GANZ WEG — der Zustand einer Config,
   // die nie fuer den Nachtbetrieb ergaenzt wurde. Mit --no-checks-ok muss der Lauf
   // trotzdem tragen.

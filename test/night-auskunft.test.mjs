@@ -225,10 +225,6 @@ test("[night-1026] das Umsetzungs-Merkmal haengt am Start mit /implement-*, nich
 // E2E: Nachtlauf mit Fake-Session
 // ============================================================
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -285,7 +281,7 @@ function schub(id, command) {
   ].join("\n");
 }
 
-test("[night-1026] nach einer Umsetzungssession traegt die Einheit auskunft { ms, aufrufe } und umsetzung: true", NUR_POSIX, () => {
+test("[night-1026] nach einer Umsetzungssession traegt die Einheit auskunft { ms, aufrufe } und umsetzung: true", () => {
   const dir = setupProjekt("night-auskunft-stand-");
   try {
     const id = String(board(dir, "issue", "create", "--title", "Mit Auskunft", "--body", "## Abhaengigkeiten\nKeine.").id);
@@ -310,7 +306,7 @@ test("[night-1026] nach einer Umsetzungssession traegt die Einheit auskunft { ms
   }
 });
 
-test("[night-1026] eine beobachtete Session ohne Auskunftsaufruf traegt { ms: 0, aufrufe: 0 }", NUR_POSIX, () => {
+test("[night-1026] eine beobachtete Session ohne Auskunftsaufruf traegt { ms: 0, aufrufe: 0 }", () => {
   const dir = setupProjekt("night-auskunft-null-");
   try {
     const id = String(board(dir, "issue", "create", "--title", "Ohne Auskunft", "--body", "## Abhaengigkeiten\nKeine.").id);
@@ -325,7 +321,7 @@ test("[night-1026] eine beobachtete Session ohne Auskunftsaufruf traegt { ms: 0,
   }
 });
 
-test("[night-1026] eine Einheit ohne Session bleibt auskunft: null und ist keine Umsetzung", NUR_POSIX, () => {
+test("[night-1026] eine Einheit ohne Session bleibt auskunft: null und ist keine Umsetzung", () => {
   const dir = setupProjekt("night-auskunft-ohne-session-");
   try {
     const id = String(board(dir, "issue", "create", "--title", "[Idee] Nur eine Idee", "--body", "## Abhaengigkeiten\nKeine.").id);
@@ -340,7 +336,7 @@ test("[night-1026] eine Einheit ohne Session bleibt auskunft: null und ist keine
   }
 });
 
-test("[night-1026] eine Stufe ohne Strom liefert auskunft: null", NUR_POSIX, async () => {
+test("[night-1026] eine Stufe ohne Strom liefert auskunft: null", async () => {
   const dir = mkdtempSync(join(tmpdir(), "night-auskunft-ohne-strom-"));
   try {
     const prog = join(dir, "stufen-programm");

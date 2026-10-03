@@ -27,12 +27,6 @@ import { tmpdir } from "node:os";
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -95,7 +89,7 @@ const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen",
   + " > .claude/checks-summary.json";
 const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null';
 
-test("[night-57] mit --verbose no laeuft auch die Salvage-Session ueber den Strom: ihre Kennzahlen stehen im Verbrauch der Einheit", NUR_POSIX, () => {
+test("[night-57] mit --verbose no laeuft auch die Salvage-Session ueber den Strom: ihre Kennzahlen stehen im Verbrauch der Einheit", () => {
   const dir = setupProjekt();
   try {
     const issue = board(dir, "issue", "create", "--title", "Salvage-Kandidat", "--body", "## Abhaengigkeiten\nKeine.");

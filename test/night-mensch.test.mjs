@@ -18,10 +18,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -79,7 +75,7 @@ function gateProbe(dir, titel) {
   return run(dir, process.execPath, [skript, titel]);
 }
 
-test("[night-984] pruefeIssueGates haelt eine `[Mensch]`-Karte, eine Karte ohne Praefix nicht", NUR_POSIX, () => {
+test("[night-984] pruefeIssueGates haelt eine `[Mensch]`-Karte, eine Karte ohne Praefix nicht", () => {
   const dir = setupProjekt();
   try {
     const res = gateProbe(dir, "[Mensch] Private Vulnerability Reporting aktivieren");
@@ -105,7 +101,7 @@ test("[night-984] pruefeIssueGates haelt eine `[Mensch]`-Karte, eine Karte ohne 
 
 // --- Der Lauf (AK 3) ---
 
-test("Nachtlauf: [Mensch]-Karte wird kommentiert uebersprungen, normales Issue laeuft", NUR_POSIX, () => {
+test("Nachtlauf: [Mensch]-Karte wird kommentiert uebersprungen, normales Issue laeuft", () => {
   const dir = setupProjekt();
   try {
     const mensch = board(dir, "issue", "create", "--title", "[Mensch] Private Vulnerability Reporting aktivieren", "--body", "## Kontext\nEin Klick in den Einstellungen.");
@@ -136,7 +132,7 @@ test("Nachtlauf: [Mensch]-Karte wird kommentiert uebersprungen, normales Issue l
   }
 });
 
-test("Dry-Run weist [Mensch]-Karten als uebersprungen aus, ohne etwas zu bewegen", NUR_POSIX, () => {
+test("Dry-Run weist [Mensch]-Karten als uebersprungen aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
     const mensch = board(dir, "issue", "create", "--title", "[Mensch] Zugang zum Paketregister anlegen", "--body", "## Kontext\nEin Konto.");

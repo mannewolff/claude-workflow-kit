@@ -17,8 +17,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -85,7 +83,7 @@ function summary(felder) {
   return `printf '%s' '${JSON.stringify(felder)}' > .claude/checks-summary.json`;
 }
 
-test("[night-46] eine Zusammenfassung mit vollerUmfang: true traegt vollerUmfang, leeresPaket, basis, bereiche und dauerGesamtMs im Prüfstand", NUR_POSIX, () => {
+test("[night-46] eine Zusammenfassung mit vollerUmfang: true traegt vollerUmfang, leeresPaket, basis, bereiche und dauerGesamtMs im Prüfstand", () => {
   const dir = setupProjekt("night-pruefstand-voll-");
   try {
     const id = readyIssue(dir, "Voller Umfang");
@@ -118,7 +116,7 @@ test("[night-46] eine Zusammenfassung mit vollerUmfang: true traegt vollerUmfang
   }
 });
 
-test("[night-46] eine Zusammenfassung ohne vollerUmfang (alter Stand) traegt vollerUmfang: null, nicht false", NUR_POSIX, () => {
+test("[night-46] eine Zusammenfassung ohne vollerUmfang (alter Stand) traegt vollerUmfang: null, nicht false", () => {
   const dir = setupProjekt("night-pruefstand-alt-");
   try {
     const id = readyIssue(dir, "Alter Stand ohne Umfangsfelder");
@@ -141,7 +139,7 @@ test("[night-46] eine Zusammenfassung ohne vollerUmfang (alter Stand) traegt vol
   }
 });
 
-test("[night-46] die bestehenden Zustaende bleiben gleich: rot, leeresPaket und unlesbar tragen weiterhin ihren Zustand", NUR_POSIX, () => {
+test("[night-46] die bestehenden Zustaende bleiben gleich: rot, leeresPaket und unlesbar tragen weiterhin ihren Zustand", () => {
   const dir = setupProjekt("night-pruefstand-zustaende-");
   try {
     // rot: ein nicht gruener Eintrag.
@@ -158,7 +156,7 @@ test("[night-46] die bestehenden Zustaende bleiben gleich: rot, leeresPaket und 
   }
 });
 
-test("[night-46] leeresPaket traegt ebenfalls die Umfangsfelder", NUR_POSIX, () => {
+test("[night-46] leeresPaket traegt ebenfalls die Umfangsfelder", () => {
   const dir = setupProjekt("night-pruefstand-leer-");
   try {
     const id = readyIssue(dir, "Leeres Paket");
@@ -178,7 +176,7 @@ test("[night-46] leeresPaket traegt ebenfalls die Umfangsfelder", NUR_POSIX, () 
   }
 });
 
-test("[night-46] eine unlesbare Zusammenfassung bleibt unlesbar", NUR_POSIX, () => {
+test("[night-46] eine unlesbare Zusammenfassung bleibt unlesbar", () => {
   const dir = setupProjekt("night-pruefstand-unlesbar-");
   try {
     const id = readyIssue(dir, "Unlesbare Zusammenfassung");
@@ -196,7 +194,7 @@ test("[night-46] eine unlesbare Zusammenfassung bleibt unlesbar", NUR_POSIX, () 
   }
 });
 
-test("[night-46] ungeprueft (keine Zusammenfassungsdatei) bleibt unveraendert", NUR_POSIX, () => {
+test("[night-46] ungeprueft (keine Zusammenfassungsdatei) bleibt unveraendert", () => {
   const dir = setupProjekt("night-pruefstand-ungeprueft-");
   try {
     const id = readyIssue(dir, "Ungeprueft");

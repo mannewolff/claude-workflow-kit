@@ -34,10 +34,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 /** Ein Kommando im PIT-Format: `Killed 42 (84%)` in der Ausgabe. */
 const MISST_84 = `node -e "console.log('Killed 42 (84%)')"`;
 const MUSTER = String.raw`\((\d+)%\)`;
@@ -112,7 +108,7 @@ function lauf(buildChecks, fn) {
 
 const gueteZeile = (stdout, id) => stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /Guete/.test(z));
 
-test("[night-49] traegt die Zusammenfassung ein guete-Feld, nennt das Protokoll Anteil und Marke", NUR_POSIX, () => {
+test("[night-49] traegt die Zusammenfassung ein guete-Feld, nennt das Protokoll Anteil und Marke", () => {
   lauf(MIT_GUETE, ({ id, res }) => {
     const zeile = gueteZeile(res.stdout, id);
     assert.ok(zeile, `keine Guete-Zeile fuer Issue #${id} im Protokoll:\n${res.stdout}`);
@@ -121,14 +117,14 @@ test("[night-49] traegt die Zusammenfassung ein guete-Feld, nennt das Protokoll 
   });
 });
 
-test("[night-49] ohne guete-Feld steht keine solche Zeile im Protokoll", NUR_POSIX, () => {
+test("[night-49] ohne guete-Feld steht keine solche Zeile im Protokoll", () => {
   lauf(OHNE_GUETE, ({ id, res }) => {
     assert.equal(gueteZeile(res.stdout, id), undefined,
       `ohne Guetemessung darf keine Guete-Zeile entstehen:\n${res.stdout}`);
   });
 });
 
-test("[night-49] der Ausgang des Laufs ist derselbe, ob das guete-Feld vorliegt oder nicht", NUR_POSIX, () => {
+test("[night-49] der Ausgang des Laufs ist derselbe, ob das guete-Feld vorliegt oder nicht", () => {
   // Die Zeile ist ein Protokoll und kein Gate: Ein Halt wegen verfehlter Marke
   // ist bereits ueber den roten Lauf abgebildet (Issue #763). Verglichen werden
   // Exit-Code, Board-Zustand und die Summenzeile des Pruefteils — dieselbe

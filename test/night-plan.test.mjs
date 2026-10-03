@@ -13,10 +13,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Unter Windows uebersprungen — der Grund steht im Skip-Text und erscheint im Report,
-// damit ein ausgenommener Test nicht wie ein bestandener aussieht (Issue #197).
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
@@ -62,7 +58,7 @@ function issueText(dir, id) {
 const kommentare = (text) =>
   text.split(/\n---\n\*\*Kommentar\*\* \([^)]*\)\n\n/).slice(1).map((k) => k.trim());
 
-test("Nachtlauf: [Plan]-Issue wird kommentiert uebersprungen, normales Issue laeuft", NUR_POSIX, () => {
+test("Nachtlauf: [Plan]-Issue wird kommentiert uebersprungen, normales Issue laeuft", () => {
   const dir = setupProjekt();
   try {
     const plan = board(dir, "issue", "create", "--title", "[Plan] Weg zur Mandantentrennung", "--body", "## Ziel\nEin Loesungsweg.");
@@ -97,7 +93,7 @@ test("Nachtlauf: [Plan]-Issue wird kommentiert uebersprungen, normales Issue lae
   }
 });
 
-test("Dry-Run weist [Plan]-Issues als uebersprungen aus, ohne etwas zu bewegen", NUR_POSIX, () => {
+test("Dry-Run weist [Plan]-Issues als uebersprungen aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
     const plan = board(dir, "issue", "create", "--title", "[Plan] Umbau der Board-Achse", "--body", "## Ziel\nEin Loesungsweg.");

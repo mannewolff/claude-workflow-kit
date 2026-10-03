@@ -26,10 +26,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 // Ein einziger Pflichtcheck, der drei Dinge kann: hinhalten (`.probe`), scheitern
 // (`.rot`) und sich protokollieren. Die Protokolldatei ist das Mass dafuer, wie oft
 // geprueft wurde — daran haengt die Aussage "es wurde NICHT nachgeprueft".
@@ -143,7 +139,7 @@ const ABGEBROCHENE_PROBE = [
   "rm -f .probe .probe-haelt kit/probe.txt",
 ].join("\n");
 
-test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", NUR_POSIX, () => {
+test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, ABGEBROCHENE_PROBE, NACH_IN_REVIEW].join("\n");
@@ -164,7 +160,7 @@ test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine a
   });
 });
 
-test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird nicht nachgeprueft", NUR_POSIX, () => {
+test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird nicht nachgeprueft", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, NACH_IN_REVIEW].join("\n");
@@ -178,7 +174,7 @@ test("[night-865] ein Nachweis, der zum Commit passt, bleibt 'geprueft' und wird
   });
 });
 
-test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nennt den fremden Nachweis", NUR_POSIX, () => {
+test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nennt den fremden Nachweis", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // `.rot` wirkt erst auf die Nachpruefung — der Lauf der Session selbst war gruen.
@@ -193,7 +189,7 @@ test("[night-865] eine rote Nachpruefung macht die Runde zum Fehlschlag und nenn
   });
 });
 
-test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nichts zu vergleichen", NUR_POSIX, () => {
+test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nichts zu vergleichen", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     // Keine Arbeit, kein Commit: Die Session prueft und bewegt nur das Board.
@@ -209,7 +205,7 @@ test("[night-865] ohne Commit bleibt der Pruefstand, was er war — es gibt nich
   });
 });
 
-test("[night-865] eine Loeschung im Commit wird als geprueft erkannt und loest keine Nachpruefung aus", NUR_POSIX, () => {
+test("[night-865] eine Loeschung im Commit wird als geprueft erkannt und loest keine Nachpruefung aus", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = ['git rm -q "kit/bestand.txt"', CHECKS_RUN, COMMIT, NACH_IN_REVIEW].join("\n");
@@ -241,7 +237,7 @@ const GUETE_CHECK = {
   guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
 };
 
-test("[night-950] die Nachpruefung laesst nichtBeimAbschluss und Guetemessung aus — der Abschlussumfang", NUR_POSIX, () => {
+test("[night-950] die Nachpruefung laesst nichtBeimAbschluss und Guetemessung aus — der Abschlussumfang", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     const fake = [ARBEIT, CHECKS_RUN, COMMIT, ABGEBROCHENE_PROBE, NACH_IN_REVIEW].join("\n");

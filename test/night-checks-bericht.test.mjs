@@ -30,10 +30,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 // Zwei Pruefungen mit Bereichszuordnung. Der Bereich 'board' ist bewusst KEINER
 // Pruefung zugeordnet: Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter
 // issues/, und eine Datei ohne Muster loest in checks.mjs den vollen Umfang aus —
@@ -139,7 +135,7 @@ function sessions(dir) {
 
 // --- Die drei Zustaende einer Session ---
 
-test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-Bericht", NUR_POSIX, () => {
+test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-Bericht", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -155,7 +151,7 @@ test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-
   });
 });
 
-test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als ungeprueft ausgewiesen", NUR_POSIX, () => {
+test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als ungeprueft ausgewiesen", () => {
   mitProjekt((dir) => {
     const eins = readyIssue(dir, "Eins");
     const zwei = readyIssue(dir, "Zwei");
@@ -171,7 +167,7 @@ test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als 
   });
 });
 
-test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht als Leerzeile", NUR_POSIX, () => {
+test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht als Leerzeile", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -185,7 +181,7 @@ test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht al
   });
 });
 
-test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Session nicht zugerechnet", NUR_POSIX, () => {
+test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Session nicht zugerechnet", () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);
@@ -208,7 +204,7 @@ test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Sessio
   });
 });
 
-test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", NUR_POSIX, () => {
+test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", () => {
   // Die gewollte Verschiebung aus Issue #857 (Fachplan #769, AK 4): Bis dahin schrieb
   // checks.mjs seine Zusammenfassung erst nach der Schleife — ein Lauf, der dazwischen
   // starb, hinterliess keine Datei und die Session galt als "ungeprueft", also als
@@ -247,7 +243,7 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
 
 // --- Der Bericht als Ganzes ---
 
-test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", NUR_POSIX, () => {
+test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", () => {
   mitProjekt((dir) => {
     const eins = readyIssue(dir, "Eins");
     const zwei = readyIssue(dir, "Zwei");
@@ -268,7 +264,7 @@ test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeil
 
 // --- Salvage: der Umfang, den auch das Commit-Gate bezeugt ---
 
-test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", NUR_POSIX, () => {
+test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", () => {
   // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
   // exportiert. Alle Pruefungen protokollieren ihre Ausfuehrung; die Session fasst nur
   // den Bereich 'kit' an.

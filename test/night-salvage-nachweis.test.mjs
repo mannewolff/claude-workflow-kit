@@ -28,10 +28,6 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 // Der Pflichtcheck des Bereichs `kit`: rot, solange die Marker-Datei `.rot` liegt.
 // Damit laesst sich "die Session sah rot, der Runner sieht gruen" ohne Zeitspiele
 // nachstellen — genau die Lage des Vorfalls.
@@ -132,7 +128,7 @@ function zusammenfassung(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "checks-summary.json"), "utf-8"));
 }
 
-test("[night-919] Die externe Verifikation hinterlaesst den gruenen Nachweis — das Gate laesst die Rettung durch", NUR_POSIX, () => {
+test("[night-919] Die externe Verifikation hinterlaesst den gruenen Nachweis — das Gate laesst die Rettung durch", () => {
   const dir = setupProjekt([KIT_CHECK]);
   try {
     const id = readyIssue(dir);
@@ -160,7 +156,7 @@ test("[night-919] Die externe Verifikation hinterlaesst den gruenen Nachweis —
   }
 });
 
-test("[night-919] Der Salvage-Prompt zitiert die Ausgabe von checks.mjs run, nicht die eines ausgelassenen Kommandos", NUR_POSIX, () => {
+test("[night-919] Der Salvage-Prompt zitiert die Ausgabe von checks.mjs run, nicht die eines ausgelassenen Kommandos", () => {
   const dir = setupProjekt([KIT_CHECK, FRONTEND_CHECK]);
   try {
     readyIssue(dir);

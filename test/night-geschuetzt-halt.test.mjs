@@ -25,8 +25,6 @@ import {
 
 import "./helpers/checks-sperre.mjs";
 
-const NUR_POSIX = process.platform === "win32" ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." } : {};
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
@@ -179,7 +177,7 @@ const geschuetztFake = (mitLabel) => [NACH_BACKLOG, ...(mitLabel ? [label(GESCHU
 const klaerenFake = [label(KLAEREN_LABEL), kommentar(HALT_TEXT), NACH_BACKLOG].join(" && ");
 
 for (const mitLabel of [true, false]) {
-  test(`[night-halt] die Logzeile nennt den geschuetzten Halt (${mitLabel ? "mit" : "ohne"} Label), nicht die offene Entscheidung`, NUR_POSIX, () => {
+  test(`[night-halt] die Logzeile nennt den geschuetzten Halt (${mitLabel ? "mit" : "ohne"} Label), nicht die offene Entscheidung`, () => {
     const dir = setupProjekt("night-geschuetzt-halt-");
     try {
       const id = readyIssue(dir, "[Task] Scheitert am Schutz");
@@ -197,7 +195,7 @@ for (const mitLabel of [true, false]) {
   });
 }
 
-test("[night-halt] die Logzeile einer Stopp-Frage bleibt die offene Entscheidung", NUR_POSIX, () => {
+test("[night-halt] die Logzeile einer Stopp-Frage bleibt die offene Entscheidung", () => {
   const dir = setupProjekt("night-geschuetzt-halt-klaeren-");
   try {
     const id = readyIssue(dir, "[Task] Haelt an");
@@ -214,7 +212,7 @@ for (const [art, fake, muster] of [
   ["geschuetzt", geschuetztFake(false), /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ haelt an einer geschuetzten Datei, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
   ["klaeren", klaerenFake, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:klaeren, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
 ]) {
-  test(`[night-halt] der Dirty-Guard stoppt hart, wenn ein ${art}-Halt an einem unsauberen Baum haengt`, NUR_POSIX, () => {
+  test(`[night-halt] der Dirty-Guard stoppt hart, wenn ein ${art}-Halt an einem unsauberen Baum haengt`, () => {
     const dir = setupProjekt(`night-geschuetzt-halt-dirty-${art}-`);
     try {
       const erstes = readyIssue(dir, "[Task] Haelt an, laesst aber liegen");
@@ -266,7 +264,7 @@ const sitzungen = (dir) => {
 };
 
 for (const werkzeug of ["Edit", "Write"]) {
-  test(`[night-1051] mit Abweisung (${werkzeug}) auf einen geschuetzten Pfad: Stash, sauberer Baum, Anker-Kommentar, das naechste Paket startet`, NUR_POSIX, () => {
+  test(`[night-1051] mit Abweisung (${werkzeug}) auf einen geschuetzten Pfad: Stash, sauberer Baum, Anker-Kommentar, das naechste Paket startet`, () => {
     const { dir, erstes, zweites, res } = auffangLauf("night-1051-auffang-", (d) => abweisung(werkzeug, `${d}/.claude/settings.json`));
     try {
       assert.equal(res.status, 0, `night.mjs haette regulaer enden muessen: ${res.stderr}\n${res.stdout}`);
@@ -297,7 +295,7 @@ for (const [fall, stream] of [
   ["ohne Abweisung", () => `{"type":"result","subtype":"success","is_error":false,"result":"fertig","permission_denials":[]}`],
   ["mit Abweisung auf einen fremden Pfad", (d) => abweisung("Edit", `${d}/src/frei.mjs`)],
 ]) {
-  test(`[night-1051] ${fall}: kein Auffang, der Bestand greift (Salvage)`, NUR_POSIX, () => {
+  test(`[night-1051] ${fall}: kein Auffang, der Bestand greift (Salvage)`, () => {
     const { dir, erstes, res } = auffangLauf("night-1051-bestand-", stream);
     try {
       assert.doesNotMatch(res.stdout, /AUFFANG GESCHUETZT/, res.stdout);
