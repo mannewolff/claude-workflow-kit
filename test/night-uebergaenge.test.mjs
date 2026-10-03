@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ladeKetteUebergaenge, KETTE_UEBERGAENGE_DEFAULTS } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 import { fachplanB } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -53,7 +53,7 @@ test("[night-uebergaenge] ladeKetteUebergaenge: ein Schalter, der kein Wahrheits
   assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: true } } }), /night\.kette\.uebergaenge/);
 });
 
-test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Karte, ein neues kit:night setzt bei review an", NUR_POSIX, () => {
+test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Karte, ein neues kit:night setzt bei review an", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });
@@ -74,7 +74,7 @@ test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Ka
   }, { uebergaenge: { planReview: false } });
 });
 
-test("[night-uebergaenge] ohne Feld, Variante A: die drei ersten Uebergaenge folgen, die Kette endet fertig wie vor #1087", NUR_POSIX, () => {
+test("[night-uebergaenge] ohne Feld, Variante A: die drei ersten Uebergaenge folgen, die Kette endet fertig wie vor #1087", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
@@ -89,7 +89,7 @@ test("[night-uebergaenge] ohne Feld, Variante A: die drei ersten Uebergaenge fol
 
 // Issue #1105: Vor #1087 setzte eine Kette mit kit:durchziehen nach der Abdeckung um. Ohne
 // Eintrag im Projekt gilt das weiter — erst ein ausdrueckliches `false` haelt sie an.
-test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Umsetzung, kein lauf:wartet", NUR_POSIX, () => {
+test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Umsetzung, kein lauf:wartet", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     board(dir, "issue", "label", "add", F, "kit:durchziehen");
@@ -107,7 +107,7 @@ test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Um
   }, { uebergaenge: undefined });
 });
 
-test("[night-uebergaenge] abdeckungUmsetzung: true ohne kit:durchziehen — die Karte wartet auf ihre Freigabe, keine Umsetzung", NUR_POSIX, () => {
+test("[night-uebergaenge] abdeckungUmsetzung: true ohne kit:durchziehen — die Karte wartet auf ihre Freigabe, keine Umsetzung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
@@ -121,7 +121,7 @@ test("[night-uebergaenge] abdeckungUmsetzung: true ohne kit:durchziehen — die 
   }, { uebergaenge: { abdeckungUmsetzung: true } });
 });
 
-test("[night-uebergaenge] abdeckungUmsetzung: false mit kit:durchziehen — wartet mit dem Uebergangs-Text, keine Umsetzung", NUR_POSIX, () => {
+test("[night-uebergaenge] abdeckungUmsetzung: false mit kit:durchziehen — wartet mit dem Uebergangs-Text, keine Umsetzung", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });

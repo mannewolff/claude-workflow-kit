@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import {
-  NUR_POSIX, run as ketteRun, mitProjekt, umgebung, sessions, fachplan, stand, EREIGNIS, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  run as ketteRun, mitProjekt, umgebung, sessions, fachplan, stand, EREIGNIS, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -124,7 +124,7 @@ const fake = (logPfad, rest) => `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(logP
 
 // --- Belegfall 3 (#1026): ein Board-Aufruf scheitert einmal ---
 
-test("[#1026] ein Board-Aufruf scheitert einmal: Pause, zweiter Versuch, Vermerk an der Karte, der Lauf geht weiter", NUR_POSIX, () => {
+test("[#1026] ein Board-Aufruf scheitert einmal: Pause, zweiter Versuch, Vermerk an der Karte, der Lauf geht weiter", () => {
   mitDir((dir) => {
     const a = karte(dir, "Erstes Paket");
     const b = karte(dir, "Zweites Paket");
@@ -151,7 +151,7 @@ test("[#1026] ein Board-Aufruf scheitert einmal: Pause, zweiter Versuch, Vermerk
 
 // --- Board scheitert zweimal: der Lauf haelt an ---
 
-test("[E15] scheitert auch der zweite Versuch am Board, haelt der Lauf an und die naechsten Karten zeigen 'nicht begonnen'", NUR_POSIX, () => {
+test("[E15] scheitert auch der zweite Versuch am Board, haelt der Lauf an und die naechsten Karten zeigen 'nicht begonnen'", () => {
   mitDir((dir) => {
     const a = karte(dir, "Erstes Paket");
     const b = karte(dir, "Zweites Paket");
@@ -185,7 +185,7 @@ test("[E15] scheitert auch der zweite Versuch am Board, haelt der Lauf an und di
 
 // --- Belegfall #1008: der Sitzungsstart scheitert ---
 
-test("[#1008] Sitzungsstart mit Exit ungleich 0 ohne Sitzungsereignis: ein Versuch nach der Pause", NUR_POSIX, () => {
+test("[#1008] Sitzungsstart mit Exit ungleich 0 ohne Sitzungsereignis: ein Versuch nach der Pause", () => {
   mitDir((dir) => {
     const a = karte(dir, "Erstes Paket");
     const b = karte(dir, "Zweites Paket");
@@ -205,7 +205,7 @@ test("[#1008] Sitzungsstart mit Exit ungleich 0 ohne Sitzungsereignis: ein Versu
   });
 });
 
-test("[#1008] scheitert auch der zweite Sitzungsstart, haelt der Lauf an", NUR_POSIX, () => {
+test("[#1008] scheitert auch der zweite Sitzungsstart, haelt der Lauf an", () => {
   mitDir((dir) => {
     const a = karte(dir, "Erstes Paket");
     const b = karte(dir, "Zweites Paket");
@@ -225,7 +225,7 @@ test("[#1008] scheitert auch der zweite Sitzungsstart, haelt der Lauf an", NUR_P
 
 // --- Paket: die Sitzung kam zustande ---
 
-test("[E13] eine Sitzung, die zustande kam und ohne Ergebnis endete, ist ein Paketfehler ohne Versuch", NUR_POSIX, () => {
+test("[E13] eine Sitzung, die zustande kam und ohne Ergebnis endete, ist ein Paketfehler ohne Versuch", () => {
   mitDir((dir) => {
     const a = karte(dir, "Scheitert an sich");
     const b = karte(dir, "Laeuft danach");
@@ -248,7 +248,7 @@ test("[E13] eine Sitzung, die zustande kam und ohne Ergebnis endete, ist ein Pak
 
 // --- Laufstand je Paket (Issue #1089, E2) ---
 
-test("[E2] jedes Paket steht mit Laufstand: laeuft zu Rundenbeginn, danach sein Ausgang", NUR_POSIX, () => {
+test("[E2] jedes Paket steht mit Laufstand: laeuft zu Rundenbeginn, danach sein Ausgang", () => {
   mitDir((dir) => {
     const a = karte(dir, "Ein Paket");
     const log = join(dir, "helfer", "sessions.log");
@@ -264,7 +264,7 @@ test("[E2] jedes Paket steht mit Laufstand: laeuft zu Rundenbeginn, danach sein 
 
 // --- Die Kette: Pakete des Auftrags ohne Ergebnis ---
 
-test("[E15] haelt die Kette wegen der Umgebung an, zeigen die Pakete des Auftrags ohne Ergebnis 'nicht begonnen'", NUR_POSIX, () => {
+test("[E15] haelt die Kette wegen der Umgebung an, zeigen die Pakete des Auftrags ohne Ergebnis 'nicht begonnen'", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: 'echo "Failed to start" >&2; exit 1' } });

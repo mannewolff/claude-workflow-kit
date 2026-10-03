@@ -23,10 +23,6 @@ import {
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-export const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 /** Der Vorflug meldet: Tracker erreichbar, keine Kommando-Reviewer zu pruefen. */
 export const VORFLUG_OK = "cat <<'EOF'\n<<<VORFLUG\n{\"reviewers\":[],\"tracker\":{\"erreichbar\":true,\"geprueft\":\"issue list\"}}\nVORFLUG>>>\nEOF";
 
@@ -196,6 +192,9 @@ export function planauftrag(dir, F, { titel = "[Plan] Ein fertiger Weg", label =
  * nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
  * KIT_AGENT_MODEL in `$KETTE_LOG` und liefert ein result-Ereignis mit `$KETTE_KOSTEN`.
  *
+ * Das Arbeitsverzeichnis schreibt node und nicht `pwd -P`: In der Git Bash liefert `pwd`
+ * die Form /c/..., die mit realpathSync unter Windows nicht vergleichbar ist (Issue #1134).
+ *
  * Die vier erzeugenden Stufen nennt der Runner in NIGHT_KETTE_STUFE. Die Sessions der
  * Stufe `umsetzung` bekommen sie NICHT gesetzt — sie sehen ein regulaeres Ready-Paket
  * und erfahren von der Variante nichts (Plan #691, E11). Der Fake benennt sie deshalb
@@ -217,7 +216,7 @@ export function fake(stufen = {}) {
     'if [ -z "$stufe" ]; then',
     '  if [ -n "$NIGHT_SALVAGE" ]; then stufe=salvage; else stufe=umsetzung; fi',
     "fi",
-    String.raw`printf "%s\t%s\t%s\n" "$stufe" "$(pwd -P)" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
+    String.raw`printf "%s\t%s\t%s\n" "$stufe" "$(node -e 'process.stdout.write(require("fs").realpathSync(process.cwd()))')" "$KIT_AGENT_MODEL" >> "$KETTE_LOG"`,
     'case "$stufe" in',
     faelle,
     "  *) : ;;",

@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  NUR_POSIX, run, board, mitProjekt, umgebung, repoRoot, sessions, UMSETZUNG_ERFOLG,
+  run, board, mitProjekt, umgebung, repoRoot, sessions, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
 
@@ -82,7 +82,7 @@ function istZurueckgestellt(dir, id, an) {
 
 // --- Einzellauf ---
 
-test("Einzellauf: drei Ready-Karten, eine mit geschuetztem Pfad — sie haelt an, die beiden uebrigen laufen", NUR_POSIX, () => {
+test("Einzellauf: drei Ready-Karten, eine mit geschuetztem Pfad — sie haelt an, die beiden uebrigen laufen", () => {
   mitProjekt((dir) => {
     const geschuetzt = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
     const erstes = readyPaket(dir, "Erstes freies Paket", paketBody("src/eins.mjs"));
@@ -99,7 +99,7 @@ test("Einzellauf: drei Ready-Karten, eine mit geschuetztem Pfad — sie haelt an
   });
 });
 
-test("Einzellauf: das Paket, das die angehaltene Karte voraussetzt, wird mit Abhaengigkeits-Kommentar zurueckgestellt", NUR_POSIX, () => {
+test("Einzellauf: das Paket, das die angehaltene Karte voraussetzt, wird mit Abhaengigkeits-Kommentar zurueckgestellt", () => {
   mitProjekt((dir) => {
     const geschuetzt = readyPaket(dir, "Paket mit geschuetzter Datei", paketBody(PFAD));
     const abhaengig = readyPaket(dir, "Abhaengiges Paket", paketBody("src/eins.mjs", `Issue #${Number(geschuetzt)}`));
@@ -134,7 +134,7 @@ const PAKETE_DREI = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/iss
  */
 const ABDECKUNG_SCHUETZT_ERSTES = String.raw`id=$(cat "$KETTE_LOG.erste"); sed "s|src/paket1.mjs|$KETTE_GESCHUETZT|" "$KETTE_LOG.p1.md" > "$KETTE_LOG.p1g.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.p1g.md" >/dev/null`;
 
-test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengige Paket am Board, das freie laeuft", NUR_POSIX, () => {
+test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengige Paket am Board, das freie laeuft", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, abdeckung: ABDECKUNG_SCHUETZT_ERSTES, umsetzung: UMSETZUNG_MIT_SPUR };
@@ -159,7 +159,7 @@ test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengi
 
 // --- Formstufe der Kette (Issue #1049, Plan #987, Verifizierung 9, E15) ---
 
-test("Kette: ein Paket, dessen einziger Verstoss I8 ist, bekommt keine Korrektursession und haelt erst in der Umsetzungsstufe an", NUR_POSIX, () => {
+test("Kette: ein Paket, dessen einziger Verstoss I8 ist, bekommt keine Korrektursession und haelt erst in der Umsetzungsstufe an", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, form: ":", umsetzung: UMSETZUNG_MIT_SPUR };
@@ -191,7 +191,7 @@ const PAKET_OHNE_PFAD = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^
 /** Die Fake-Zeile der Stufe form: ergaenzt in der Aufgabe des Dokuments aus dem Prompt einen Backtick-Pfad. */
 const PFAD_ERGAENZEN = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s/^Das Dokument #\([0-9]*\).*/\1/p"); node .claude/kit/board.mjs issue get "$id" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(i.body.replace("Den Eintrag ergaenzen.","In \x60src/paket.mjs\x60 den Eintrag ergaenzen."))' > "$KETTE_LOG.pfix.md"; node .claude/kit/board.mjs issue update "$id" --body-file "$KETTE_LOG.pfix.md" >/dev/null`;
 
-test("Kette: ein Paket, das allein an I7 rot ist, wird in genau einer Korrekturrunde gruen", NUR_POSIX, () => {
+test("Kette: ein Paket, das allein an I7 rot ist, wird in genau einer Korrekturrunde gruen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKET_OHNE_PFAD, form: PFAD_ERGAENZEN, umsetzung: UMSETZUNG_MIT_SPUR };

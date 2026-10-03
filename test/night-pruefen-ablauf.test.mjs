@@ -18,7 +18,7 @@ import {
   pruefLaufFassung,
 } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, fachplanBody, sessions, stand,
+  NIGHT, run, board, mitProjekt, fachplan, fachplanBody, sessions, stand,
   pruefUmgebung, FACHPLAN_MARKER, PRUEFUNG_GEPRUEFT, PRUEFUNG_HALT, PRUEFUNG_BEFUNDE, PRUEFUNG_FRAGE,
 } from "./helpers/kette-fixture.mjs";
 
@@ -67,7 +67,7 @@ function arbeitsstand(dir) {
   return res.stdout.split("\n").filter((z) => z.trim() !== "" && !z.includes("issues/")).sort();
 }
 
-test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten und laesst die Hauptkopie in Ruhe", NUR_POSIX, () => {
+test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten und laesst die Hauptkopie in Ruhe", () => {
   mitPruefProjekt((dir) => {
     const k = karten(dir);
     const fassungen = Object.fromEntries(
@@ -162,7 +162,7 @@ test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten u
   });
 });
 
-test("[night-909] ist das Kostenbudget erschoepft, gelten die restlichen Karten als uebersprungen und behalten ihr Kennzeichen", NUR_POSIX, () => {
+test("[night-909] ist das Kostenbudget erschoepft, gelten die restlichen Karten als uebersprungen und behalten ihr Kennzeichen", () => {
   mitPruefProjekt((dir) => {
     const k = karten(dir);
     // 1,50 $ je Session: Nach der ersten ist der Deckel von 2 $ noch nicht gerissen, nach
@@ -186,7 +186,7 @@ test("[night-909] ist das Kostenbudget erschoepft, gelten die restlichen Karten 
   }, { ...BUDGET, kostenUsd: 2 });
 });
 
-test("[night-909] der Prueflauf liefert seinen Ergebnisstand nicht ein und hinterlaesst keine Fehlzeile", NUR_POSIX, () => {
+test("[night-909] der Prueflauf liefert seinen Ergebnisstand nicht ein und hinterlaesst keine Fehlzeile", () => {
   mitPruefProjekt((dir) => {
     const k = karten(dir);
     const env = { ...pruefUmgebung(dir, { jeKarte: jeKarte(k) }), NIGHT_MELDEN_ERZWINGEN: "1" };

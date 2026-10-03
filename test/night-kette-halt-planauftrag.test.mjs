@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { KETTE_HALT_ANKER, KLAEREN_LABEL, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, umgebung, stand, planBody,
+  run, board, mitProjekt, fachplan, planauftrag, umgebung, stand, planBody,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_HALT,
 } from "./helpers/kette-fixture.mjs";
 
@@ -31,7 +31,7 @@ function haltKommentar(dir, id) {
   return text.slice(i);
 }
 
-test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an — der fachlichen Anforderung", NUR_POSIX, () => {
+test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an — der fachlichen Anforderung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
@@ -51,7 +51,7 @@ test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an —
   });
 });
 
-test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bleibt unberuehrt", NUR_POSIX, () => {
+test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bleibt unberuehrt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const M = planauftrag(dir, F);
@@ -113,7 +113,7 @@ function anweisungAus(kommentar) {
   return { entscheidungen: abschnitte[0], fragen: abschnitte[1], sollwert, planId, pruefen: kommentar.includes("/issue-review") };
 }
 
-test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den planAusschluss annimmt", NUR_POSIX, () => {
+test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den planAusschluss annimmt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {

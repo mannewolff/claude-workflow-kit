@@ -6,7 +6,7 @@
 // `night-ergebnisstand-einheiten.test.mjs`.
 //
 // Das Fixture der Kette liegt neben den uebrigen Kette-Tests und wird als Namensraum
-// eingebunden, weil es `run`, `board`, `stand` und `NUR_POSIX` unter denselben Namen
+// eingebunden, weil es `run`, `board` und `stand` unter denselben Namen
 // fuehrt wie das Fixture des Ergebnisstands.
 
 import { test } from "node:test";
@@ -37,7 +37,7 @@ const FORM_ZWEITE_RUNDE = [
 /** Die Fake-Zeile der Stufe form fuer ein Paket, mit eigenen Kennzahlen der Korrekturrunde. */
 const PAKET_REPARIEREN_MIT_KENNZAHLEN = `KETTE_STOP='"korrektur"'; KETTE_IS_ERROR=true; ${kette.PAKET_REPARIEREN}`;
 
-test("[night-62] die Plan-Stufe mit zwei Korrekturrunden traegt die Summe ihrer drei Sessions, stopReason und isError der letzten", kette.NUR_POSIX, () => {
+test("[night-62] die Plan-Stufe mit zwei Korrekturrunden traegt die Summe ihrer drei Sessions, stopReason und isError der letzten", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     const env = kette.umgebung(dir, {
@@ -69,7 +69,7 @@ test("[night-62] die Plan-Stufe mit zwei Korrekturrunden traegt die Summe ihrer 
   });
 });
 
-test("[night-62] die Pakete-Stufe mit einer Korrekturrunde traegt die Summe ihrer zwei Sessions, stopReason und isError der letzten", kette.NUR_POSIX, () => {
+test("[night-62] die Pakete-Stufe mit einer Korrekturrunde traegt die Summe ihrer zwei Sessions, stopReason und isError der letzten", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     const env = kette.umgebung(dir, {
@@ -100,7 +100,7 @@ test("[night-62] die Pakete-Stufe mit einer Korrekturrunde traegt die Summe ihre
   });
 });
 
-test("[night-62] Review und Abdeckung haben keine Korrekturrunden und tragen die Kennzahlen ihrer einen Session", kette.NUR_POSIX, () => {
+test("[night-62] Review und Abdeckung haben keine Korrekturrunden und tragen die Kennzahlen ihrer einen Session", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
     const env = kette.umgebung(dir, {
@@ -129,7 +129,7 @@ test("[night-62] Review und Abdeckung haben keine Korrekturrunden und tragen die
 // diese Payload baut — nicht nur die Hilfsfunktion im Test. Die Kette laeuft ohne
 // eigenen night.kette-Block: Alle Budget-Felder kommen aus den Defaults, der Zuschnitt
 // auf die fuenf gezeigten Felder (E4) ist damit direkt sichtbar.
-test("[board-20] der echte Kettenlauf meldet Budget samt Herkunft, die vier Stufen und Modellzeit und Zuege je Vorgang", kette.NUR_POSIX, () => {
+test("[board-20] der echte Kettenlauf meldet Budget samt Herkunft, die vier Stufen und Modellzeit und Zuege je Vorgang", () => {
   const dir = kette.setupProjekt({}, "night-stand-payload-");
   const capture = join(dir, "..", `melde-capture-${basename(dir)}.jsonl`);
   kette.meldeCaptureInstallieren(dir);

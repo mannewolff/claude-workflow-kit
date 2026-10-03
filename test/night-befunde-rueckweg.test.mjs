@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { befundeZurueck } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung,
+  run, mitProjekt, fachplan, umgebung,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -149,7 +149,7 @@ test("[night-69] ein gescheitertes Anhaengen wirft nicht und wird als Hinweis pr
 /** Die Fake-Zeile, die im Worktree eine Buchung hinterlaesst — wie `befunde buchen` es taete. */
 const BUCHUNG_IM_WORKTREE = String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tluecke\tWICHTIG\t-\n" >> .claude/befunde.tsv`;
 
-test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Review-Stufe zurueck", NUR_POSIX, () => {
+test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Review-Stufe zurueck", () => {
   mitProjekt((dir) => {
     // Zwei Vorkommen liegen schon in der Hauptkopie — der Spiegel traegt sie nicht in
     // den Worktree, und die Kette darf sie beim Rueckholen nicht ueberschreiben.
@@ -174,7 +174,7 @@ test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Revie
   });
 });
 
-test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck — und das finally haengt nicht noch einmal an", NUR_POSIX, () => {
+test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck — und das finally haengt nicht noch einmal an", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     durchziehen(dir, F);

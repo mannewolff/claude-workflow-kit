@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, basename } from "node:path";
 import {
-  NUR_POSIX, repoRoot, run, mitProjekt, setupProjekt, fachplan, umgebung, stand,
+  repoRoot, run, mitProjekt, setupProjekt, fachplan, umgebung, stand,
   meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -46,7 +46,7 @@ function meldeUmgebung(dir, capture, stufen, zusatz = {}) {
 
 const GLATT = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };
 
-test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erreichten Stufe genau einmal", NUR_POSIX, () => {
+test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erreichten Stufe genau einmal", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT));
@@ -62,7 +62,7 @@ test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erre
   });
 });
 
-test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einzelnen Pakete", NUR_POSIX, () => {
+test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einzelnen Pakete", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     durchziehen(dir, F);
@@ -76,7 +76,7 @@ test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einze
   });
 });
 
-test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danach folgt die Abschlussmeldung", NUR_POSIX, () => {
+test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danach folgt die Abschlussmeldung", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { plan: PLAN_ANLEGEN, review: REVIEW_HALT }));
@@ -89,7 +89,7 @@ test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danac
   });
 });
 
-test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette endet", NUR_POSIX, () => {
+test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette endet", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     // Die Plan-Session legt keinen Plan an: die Stufe endet abgebrochen.
@@ -123,7 +123,7 @@ test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Mel
   }
 });
 
-test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter und der Grund steht einmal im Protokoll", NUR_POSIX, () => {
+test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter und der Grund steht einmal im Protokoll", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT, { KETTE_MELDE_FEHLER: "1" }));
@@ -136,7 +136,7 @@ test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter
   });
 });
 
-test("[night-61] ohne toolbox entfaellt die Meldung nach einer Stufe mit derselben einen Protokollzeile", NUR_POSIX, () => {
+test("[night-61] ohne toolbox entfaellt die Meldung nach einer Stufe mit derselben einen Protokollzeile", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], umgebung(dir, { stufen: GLATT }));

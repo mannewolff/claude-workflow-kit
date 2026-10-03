@@ -12,13 +12,13 @@ import { spawnSync } from "node:child_process";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 import { TESTHINWEIS_ANKER } from "../kit/night.mjs";
 
 const PLAN_MIT_NOTIZ = `${PLAN_ANLEGEN}; printf "notiz" > .claude/vorhaben-wartend-plan-1.md`;
 
-test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, Worktree entfernt, keine Notiz geholt", NUR_POSIX, () => {
+test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, Worktree entfernt, keine Notiz geholt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_MIT_NOTIZ, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -70,7 +70,7 @@ test("[night-19] eine Kette laeuft bis zum geprueften Plan: Label weg, fertig, W
   });
 });
 
-test("[night-19] ein Issue in In progress haelt die Kette nicht auf — sie laeuft neben der Umsetzungsnacht", NUR_POSIX, () => {
+test("[night-19] ein Issue in In progress haelt die Kette nicht auf — sie laeuft neben der Umsetzungsnacht", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const paket = board(dir, "issue", "create", "--title", "Ein Paket in Arbeit", "--body", "## Kontext\n\nAutor-Modell: x\n\n## Abhaengigkeiten\n\nKeine.\n");
@@ -83,7 +83,7 @@ test("[night-19] ein Issue in In progress haelt die Kette nicht auf — sie laeu
   });
 });
 
-test("[night-19] eine unsaubere Hauptkopie haelt die Kette nicht auf (Issue #878)", NUR_POSIX, () => {
+test("[night-19] eine unsaubere Hauptkopie haelt die Kette nicht auf (Issue #878)", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     // Der Rest, den eine parallel laufende Umsetzungsnacht in der Hauptkopie liegen hat.
@@ -113,7 +113,7 @@ const VOLLER_BLOCK = {
   abdeckungMin: 10, umsetzungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
 };
 
-test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", NUR_POSIX, () => {
+test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir);
     const res = run(dir, ["--kette"], env);
@@ -127,7 +127,7 @@ test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefau
   });
 });
 
-test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinweiszeile", NUR_POSIX, () => {
+test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinweiszeile", () => {
   mitProjekt((dir) => {
     const res = run(dir, ["--kette"], umgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -136,7 +136,7 @@ test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinwei
   }, VOLLER_BLOCK);
 });
 
-test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", NUR_POSIX, () => {
+test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", () => {
   mitProjekt((dir) => {
     const res = run(dir, ["--kette"], umgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -147,7 +147,7 @@ test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", NUR_POSIX, 
 });
 
 // Verbrauch, Lauf-Art, complete und Einlieferung am Lauf (Issue #669).
-test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den Rest, die Art je Einheit und complete", NUR_POSIX, () => {
+test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den Rest, die Art je Einheit und complete", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -163,7 +163,7 @@ test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den 
   });
 });
 
-test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokoll sagt es", NUR_POSIX, () => {
+test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokoll sagt es", () => {
   mitProjekt((dir) => {
     const res = run(dir, ["--kette"], umgebung(dir));
     assert.equal(res.status, 0, res.stderr);
@@ -171,7 +171,7 @@ test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokol
   });
 });
 
-test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehlschlag, das Protokoll nennt den Grund", NUR_POSIX, () => {
+test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehlschlag, das Protokoll nennt den Grund", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = { ...umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } }), NIGHT_MELDEN_ERZWINGEN: "1" };
@@ -209,7 +209,7 @@ function testhinweisAnker(dir, id) {
 
 const PLAN_MIT_NAV = planBody().replace("- kit/night.mjs: eine Funktion.", `- ${NAV}: der Fuss wandert nach oben.`);
 
-test("[night-19] bleibt ein Testhinweis stehen, laeuft die Kette weiter und der Plan traegt genau einen Kommentar", NUR_POSIX, () => {
+test("[night-19] bleibt ein Testhinweis stehen, laeuft die Kette weiter und der Plan traegt genau einen Kommentar", () => {
   mitProjekt((dir) => {
     navVersionieren(dir);
     const F = fachplan(dir);
@@ -238,7 +238,7 @@ test("[night-19] bleibt ein Testhinweis stehen, laeuft die Kette weiter und der 
   });
 });
 
-test("[night-19] ohne Testhinweis bekommt der Plan keinen Kommentar mit dem Anker", NUR_POSIX, () => {
+test("[night-19] ohne Testhinweis bekommt der Plan keinen Kommentar mit dem Anker", () => {
   mitProjekt((dir) => {
     navVersionieren(dir);
     const F = fachplan(dir);
@@ -251,7 +251,7 @@ test("[night-19] ohne Testhinweis bekommt der Plan keinen Kommentar mit dem Anke
   });
 });
 
-test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, auch wenn ein Paket den Baustein fuehrt", NUR_POSIX, () => {
+test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, auch wenn ein Paket den Baustein fuehrt", () => {
   mitProjekt((dir) => {
     navVersionieren(dir);
     const F = fachplan(dir);
@@ -301,7 +301,7 @@ process.exit(res.status ?? 1);
 `);
 }
 
-test("[night-19] ein Abhaengigkeits-Hinweis erzeugt keinen Testhinweis-Kommentar, ein echter Testhinweis am Plan weiterhin", NUR_POSIX, () => {
+test("[night-19] ein Abhaengigkeits-Hinweis erzeugt keinen Testhinweis-Kommentar, ein echter Testhinweis am Plan weiterhin", () => {
   mitProjekt((dir) => {
     navVersionieren(dir);
     checkFormMitSchreibweise(dir);

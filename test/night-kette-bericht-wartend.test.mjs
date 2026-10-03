@@ -12,7 +12,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BERICHT_ANKER } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren, VORFLUG_KAPUTT,
+  run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren, VORFLUG_KAPUTT,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 
@@ -20,7 +20,7 @@ function wartende(dir) {
   return readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-bericht-")).sort();
 }
 
-test("[night-21] nimmt der Tracker den Bericht nicht an, wartet er in der Hauptkopie und der naechste Lauf traegt ihn nach", NUR_POSIX, () => {
+test("[night-21] nimmt der Tracker den Bericht nicht an, wartet er in der Hauptkopie und der naechste Lauf traegt ihn nach", () => {
   mitProjekt((dir) => {
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
@@ -52,7 +52,7 @@ test("[night-21] nimmt der Tracker den Bericht nicht an, wartet er in der Hauptk
   });
 });
 
-test("[night-21] bleibt der Tracker tot, bleibt der Bericht liegen und der Lauf geht weiter", NUR_POSIX, () => {
+test("[night-21] bleibt der Tracker tot, bleibt der Bericht liegen und der Lauf geht weiter", () => {
   mitProjekt((dir) => {
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
@@ -67,7 +67,7 @@ test("[night-21] bleibt der Tracker tot, bleibt der Bericht liegen und der Lauf 
   });
 });
 
-test("[night-21] im Dry-Run wird nichts nachgetragen", NUR_POSIX, () => {
+test("[night-21] im Dry-Run wird nichts nachgetragen", () => {
   mitProjekt((dir) => {
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
@@ -82,7 +82,7 @@ test("[night-21] im Dry-Run wird nichts nachgetragen", NUR_POSIX, () => {
   });
 });
 
-test("[night-21] scheitert der Vorflug vor der ersten Kette, bekommt jeder Kandidat 'Kette nicht gestartet' und behaelt sein Label", NUR_POSIX, () => {
+test("[night-21] scheitert der Vorflug vor der ersten Kette, bekommt jeder Kandidat 'Kette nicht gestartet' und behaelt sein Label", () => {
   mitProjekt((dir) => {
     const a = fachplan(dir);
     const b = fachplan(dir, "[Fachlich] Ein zweites Anliegen");

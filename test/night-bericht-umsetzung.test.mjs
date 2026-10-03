@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { berichtBauen } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand,
+  run, mitProjekt, fachplan, umgebung, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -165,7 +165,7 @@ test("[night-36] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
 });
 
-test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet, modell und effort", NUR_POSIX, () => {
+test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet, modell und effort", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Ein Anliegen");
     durchziehen(dir, F);

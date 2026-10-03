@@ -15,7 +15,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, VORFLUG_OK, VORFLUG_KAPUTT, run, board, mitProjekt, setupProjekt, fachplan, umgebung,
+  NIGHT, VORFLUG_OK, VORFLUG_KAPUTT, run, board, mitProjekt, setupProjekt, fachplan, umgebung,
   sessions, stand, jePaket, fachplanBody, FACHPLAN_MARKER,
   PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, PRUEFUNG_GEPRUEFT,
 } from "./helpers/kette-fixture.mjs";
@@ -54,7 +54,7 @@ async function warteAuf(pruefung, ms = 20000) {
   throw new Error("Zeitueberschreitung beim Warten");
 }
 
-test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreiben getrennte Schrittprotokolle", NUR_POSIX, async () => {
+test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreiben getrennte Schrittprotokolle", async () => {
   const dir = setupProjekt({}, "night-protokoll-", { pruefLauf: PRUEF_BUDGET });
   try {
     const F = fachplan(dir);
@@ -120,7 +120,7 @@ test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreibe
   }
 });
 
-test("[protokoll-schritt] Vorab-Stand: vor dem Vorflug steht jede Kandidatenkarte auf laeuft", NUR_POSIX, () => {
+test("[protokoll-schritt] Vorab-Stand: vor dem Vorflug steht jede Kandidatenkarte auf laeuft", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -133,7 +133,7 @@ test("[protokoll-schritt] Vorab-Stand: vor dem Vorflug steht jede Kandidatenkart
   });
 });
 
-test("[protokoll-schritt] scheitert der Vorflug, steht jede Karte auf abgebrochen mit Befund, kit:night bleibt", NUR_POSIX, () => {
+test("[protokoll-schritt] scheitert der Vorflug, steht jede Karte auf abgebrochen mit Befund, kit:night bleibt", () => {
   mitProjekt((dir) => {
     const a = fachplan(dir);
     const b = fachplan(dir, "[Fachlich] Ein zweites Anliegen");
@@ -155,7 +155,7 @@ test("[protokoll-schritt] scheitert der Vorflug, steht jede Karte auf abgebroche
   });
 });
 
-test("[protokoll-schritt] mit --dry-run entsteht kein Vorab-Stand", NUR_POSIX, () => {
+test("[protokoll-schritt] mit --dry-run entsteht kein Vorab-Stand", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
@@ -167,7 +167,7 @@ test("[protokoll-schritt] mit --dry-run entsteht kein Vorab-Stand", NUR_POSIX, (
   });
 });
 
-test("[protokoll-schritt] im Prueflauf entsteht kein Vorab-Stand", NUR_POSIX, () => {
+test("[protokoll-schritt] im Prueflauf entsteht kein Vorab-Stand", () => {
   mitProjekt((dir) => {
     const G = fachplan(dir, "[Fachlich] Zu pruefen", PRUEF_LABEL, false);
     const env = {
@@ -182,7 +182,7 @@ test("[protokoll-schritt] im Prueflauf entsteht kein Vorab-Stand", NUR_POSIX, ()
   }, {}, "night-protokoll-", { pruefLauf: PRUEF_BUDGET });
 });
 
-test("[protokoll-schritt] eine angehaltene Kette setzt wartet mit dem Wortlaut aus E1, kit:klaeren wie heute", NUR_POSIX, () => {
+test("[protokoll-schritt] eine angehaltene Kette setzt wartet mit dem Wortlaut aus E1, kit:klaeren wie heute", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_HALT } });

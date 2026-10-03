@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
+  run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 import { UEBERHOLT_UNBESTAETIGT_GRUND as UNBESTAETIGT_GRUND } from "../kit/night.mjs";
@@ -46,7 +46,7 @@ function zweiteKette(dir, F, env, alt) {
   return { res, einheit: stand(dir).einheiten.find((e) => e.id === F), text: readFileSync(join(dir, "issues", `${F}.md`), "utf-8") };
 }
 
-test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, den fremden nicht", NUR_POSIX, () => {
+test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, den fremden nicht", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const anderer = fachplan(dir, "[Fachlich] Ein anderes Anliegen", null);
@@ -78,7 +78,7 @@ test("[night-20] die zweite Kette kommentiert den aelteren Plan als ueberholt, d
   });
 });
 
-test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", NUR_POSIX, () => {
+test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -88,7 +88,7 @@ test("[night-20] ohne aelteren Plan traegt die Einheit kein Feld ueberholt", NUR
   });
 });
 
-test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steht der Plan im Bericht unter Ueberholt", NUR_POSIX, () => {
+test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steht der Plan im Bericht unter Ueberholt", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
     const { F, alt } = ersteKette(dir, env);
@@ -103,7 +103,7 @@ test("[night-20] ist der Ueberholt-Kommentar nach dem Schreiben auffindbar, steh
   });
 });
 
-test("[night-20] ist der Ueberholt-Kommentar nicht auffindbar, steht der Plan getrennt im Bericht und der Lauf laeuft weiter", NUR_POSIX, () => {
+test("[night-20] ist der Ueberholt-Kommentar nicht auffindbar, steht der Plan getrennt im Bericht und der Lauf laeuft weiter", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
     const { F, alt } = ersteKette(dir, env);

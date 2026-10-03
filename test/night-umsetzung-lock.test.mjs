@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { UMSETZUNG_LOCK, umsetzungLockNehmen } from "../kit/night.mjs";
 import {
-  NUR_POSIX, repoRoot, run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
+  repoRoot, run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
   fake, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -44,13 +44,14 @@ function lockSchreiben(dir, inhalt) {
 }
 
 /**
- * Die Id eines Prozesses, den es sicher nicht mehr gibt: eine Shell, die ihre eigene
- * Nummer meldet und danach beendet ist. Eine geratene Zahl koennte einem fremden
- * laufenden Prozess gehoeren.
+ * Die Id eines Prozesses, den es sicher nicht mehr gibt: ein node-Prozess, der seine
+ * eigene Nummer meldet und danach beendet ist. Eine geratene Zahl koennte einem fremden
+ * laufenden Prozess gehoeren. Nicht `sh -c 'echo $'`: In der Git Bash ist `$` eine
+ * MSYS-Nummer und nicht die Windows-Prozess-Id (Issue #1134).
  */
 function totePid() {
-  const res = spawnSync("sh", ["-c", "echo $$"], { encoding: "utf-8" });
-  assert.equal(res.status, 0, "die Hilfs-Shell lief nicht");
+  const res = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" });
+  assert.equal(res.status, 0, "der Hilfsprozess lief nicht");
   const pid = Number(res.stdout.trim());
   assert.ok(Number.isInteger(pid) && pid > 0, `keine Prozess-Id: ${res.stdout}`);
   return pid;
@@ -170,7 +171,7 @@ test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits 
 // ihre bestellte Umsetzung nicht ausgefuehrt hat, darf am Morgen nicht als gelungen
 // dastehen. Was die Stufe tut, aendert das nicht: Sie laesst aus und faellt auf Variante A
 // zurueck. Die Zusicherungen darunter sind deshalb unveraendert.
-test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet unvollstaendig, kein Paket wird gezogen", NUR_POSIX, () => {
+test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet unvollstaendig, kein Paket wird gezogen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${process.pid}\n`);
@@ -196,7 +197,7 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet
   });
 });
 
-test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
+test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", () => {
   mitProjekt((dir) => {
     const stufen = { ...ERZEUGEN, umsetzung: `${probe(dir)}; ${UMSETZUNG_ERFOLG}` };
     const env = umgebung(dir, { stufen });
@@ -212,7 +213,7 @@ test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und 
   });
 });
 
-test("[night-35] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_POSIX, () => {
+test("[night-35] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     lockSchreiben(dir, `${totePid()}\n`);
@@ -226,7 +227,7 @@ test("[night-35] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", NUR_PO
   });
 });
 
-test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liegen", NUR_POSIX, () => {
+test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liegen", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -238,7 +239,7 @@ test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liege
   });
 });
 
-test("[night-35] --kette --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", NUR_POSIX, () => {
+test("[night-35] --kette --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });
@@ -263,7 +264,7 @@ function nachtProjekt(dir, zeilen) {
   return { id: String(issue.id), env: { ...env, NIGHT_CLAUDE_CMD: fake({ umsetzung: zeilen }) } };
 }
 
-test("[night-35] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der Grund steht im Protokoll", NUR_POSIX, () => {
+test("[night-35] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der Grund steht im Protokoll", () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, UMSETZUNG_ERFOLG);
@@ -281,7 +282,7 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsnacht ab: kein Paket, der
   }
 });
 
-test("[night-35] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", NUR_POSIX, () => {
+test("[night-35] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, `${probe(dir)}; ${UMSETZUNG_ERFOLG}`);
@@ -298,7 +299,7 @@ test("[night-35] die Umsetzungsnacht haelt den Lock waehrend ihrer Sessions und 
   }
 });
 
-test("[night-35] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", NUR_POSIX, () => {
+test("[night-35] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const { id, env } = nachtProjekt(dir, UMSETZUNG_ERFOLG);
@@ -313,7 +314,7 @@ test("[night-35] ein verwaister Lock haelt die Umsetzungsnacht nicht ab", NUR_PO
   }
 });
 
-test("[night-35] auch ohne .claude-Regel in der .gitignore ist der Lock kein Rest im Arbeitsbaum", NUR_POSIX, () => {
+test("[night-35] auch ohne .claude-Regel in der .gitignore ist der Lock kein Rest im Arbeitsbaum", () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     // Die Fixture bildet den `.claude/*`-Block des Installers nach. Den laesst der Installer
@@ -338,7 +339,7 @@ test("[night-35] auch ohne .claude-Regel in der .gitignore ist der Lock kein Res
   }
 });
 
-test("[night-35] ein Lauf ohne Ready-Paket nimmt keinen Lock — er haelt keine Kette ab", NUR_POSIX, () => {
+test("[night-35] ein Lauf ohne Ready-Paket nimmt keinen Lock — er haelt keine Kette ab", () => {
   const dir = setupProjekt({}, "night-lock-nacht-");
   try {
     const env = umgebung(dir);

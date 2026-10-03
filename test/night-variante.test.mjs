@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { varianteVon } from "../kit/night.mjs";
 import {
-  NIGHT, NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions,
+  NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -34,7 +34,7 @@ test("[night-33] varianteVon bei fehlenden labels, leerem Array und fehlendem bu
   assert.equal(varianteVon(undefined, budget), "A");
 });
 
-test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert", NUR_POSIX, () => {
+test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -45,7 +45,7 @@ test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert"
   });
 });
 
-test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung, das Label bleibt stehen", NUR_POSIX, () => {
+test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung, das Label bleibt stehen", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     durchziehen(dir, F);
@@ -62,7 +62,7 @@ test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung,
   });
 });
 
-test("[night-33] der Dry-Run nennt je Kandidat die Variante", NUR_POSIX, () => {
+test("[night-33] der Dry-Run nennt je Kandidat die Variante", () => {
   mitProjekt((dir) => {
     const a = fachplan(dir, "[Fachlich] Variante A");
     const b = fachplan(dir, "[Fachlich] Variante B");
@@ -83,7 +83,7 @@ test("[night-33] --help nennt kit:durchziehen und beide Varianten", () => {
   assert.match(res.stdout, /Variante B/);
 });
 
-test("[night-33] die Schlusszeile Morgen-Ritual nennt beide Varianten und das Label aus night.kette.varianteBLabel", NUR_POSIX, () => {
+test("[night-33] die Schlusszeile Morgen-Ritual nennt beide Varianten und das Label aus night.kette.varianteBLabel", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });

@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 
 // Eigener Sperrpfad je Testprozess (Issue #958): die Rettung faehrt das echte checks.mjs.
 import "./helpers/checks-sperre.mjs";
-import { NUR_POSIX, UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
+import { UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -105,7 +105,7 @@ function fake(logPfad, faelle, sonst = ":") {
   ].join("\n");
 }
 
-test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiterter Rettung halten nur sich an — Stash, Laufstand, das unabhaengige Paket laeuft", NUR_POSIX, () => {
+test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiterter Rettung halten nur sich an — Stash, Laufstand, das unabhaengige Paket laeuft", () => {
   mitDir((dir) => {
     const ohne = karte(dir, "Ohne Ergebnis");
     const reste = karte(dir, "Laesst Reste liegen");
@@ -159,7 +159,7 @@ test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiter
   });
 });
 
-test("[E14] Reste nach einem Erfolg bleiben harter Stopp — kein Stash, kein weiteres Paket", NUR_POSIX, () => {
+test("[E14] Reste nach einem Erfolg bleiben harter Stopp — kein Stash, kein weiteres Paket", () => {
   mitDir((dir) => {
     const a = karte(dir, "Erfolg mit Rest");
     const b = karte(dir, "Laeuft nicht mehr");

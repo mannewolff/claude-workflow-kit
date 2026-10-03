@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER, EREIGNIS,
+  run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER, EREIGNIS,
 } from "./helpers/kette-fixture.mjs";
 import { REVIEW_REST_ANKER } from "../kit/night.mjs";
 
@@ -30,7 +30,7 @@ function anker(text) {
   return text.split(REVIEW_REST_ANKER).length - 1;
 }
 
-test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker ab, traegt der Plan den Vermerk", NUR_POSIX, () => {
+test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker ab, traegt der Plan den Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     // Die Session schreibt ihre Befunde und haengt dann — genau der Ablauf, der am
@@ -52,7 +52,7 @@ test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker
   });
 });
 
-test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Plan ohne Vermerk", NUR_POSIX, () => {
+test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Plan ohne Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: `${EREIGNIS}; exit 3` } });
@@ -67,7 +67,7 @@ test("[night-19] bricht die Review-Stufe ohne neuen Kommentar ab, bleibt der Pla
   });
 });
 
-test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne Vermerk", NUR_POSIX, () => {
+test("[night-19] traegt der Plan beim Abbruch schon den Marker, bleibt er ohne Vermerk", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     // Die Review-Session hat den Marker gesetzt: Die Einarbeitung war durch, der Abbruch

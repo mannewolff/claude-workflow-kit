@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { KLAEREN_LABEL } from "../kit/night.mjs";
 import {
-  NUR_POSIX, VORFLUG_OK, run, board, mitProjekt, fachplan, sessions, stand, umgebung, pruefUmgebung,
+  VORFLUG_OK, run, board, mitProjekt, fachplan, sessions, stand, umgebung, pruefUmgebung,
 } from "./helpers/kette-fixture.mjs";
 
 const PRUEF_LABEL = "kit:pruefen";
@@ -30,7 +30,6 @@ function mitPruefProjekt(fn, configZusatz = {}) {
 // ============================================================
 
 test("[night-1096] eine Vorflug-Session, die den Working Tree veraendert, haelt den Lauf hart an", {
-  ...NUR_POSIX,
   // Der Zweig in fuehreVorflug() ist ueber die Kommandozeile nicht erreichbar: Seine
   // einzigen Aufrufer sind die Kette und der Prueflauf, und beide sind von der Messung
   // ausgenommen (`args.kette || args.pruefen ? [] : gitReste()`, Issue #878 und #909).
@@ -56,7 +55,7 @@ test("[night-1096] eine Vorflug-Session, die den Working Tree veraendert, haelt 
   }
 });
 
-test("[night-1096] Gegenprobe: in der Kette bleibt derselbe Rest ohne Stopp", NUR_POSIX, () => {
+test("[night-1096] Gegenprobe: in der Kette bleibt derselbe Rest ohne Stopp", () => {
   mitProjekt((dir) => {
     const env = { ...umgebung(dir), NIGHT_VORFLUG_CMD: VORFLUG_MIT_REST };
     const res = run(dir, ["--kette"], env);
@@ -73,7 +72,7 @@ test("[night-1096] Gegenprobe: in der Kette bleibt derselbe Rest ohne Stopp", NU
 // Der Prueflauf: Vorflug mit Problem, Zahlendeckel, alles uebersprungen
 // ============================================================
 
-test("[night-1096] meldet der Vorflug des Prueflaufs ein Problem, bekommt jeder Kandidat den Vermerk und behaelt sein Kennzeichen", NUR_POSIX, () => {
+test("[night-1096] meldet der Vorflug des Prueflaufs ein Problem, bekommt jeder Kandidat den Vermerk und behaelt sein Kennzeichen", () => {
   mitPruefProjekt((dir) => {
     const a = fachplan(dir, "[Fachlich] Erste", PRUEF_LABEL, false);
     const b = fachplan(dir, "[Fachlich] Zweite", PRUEF_LABEL, false);
@@ -95,7 +94,7 @@ test("[night-1096] meldet der Vorflug des Prueflaufs ein Problem, bekommt jeder 
   }, { issueReview: { reviewers: [] } });
 });
 
-test("[night-1096] mehr Kandidaten als --max: die ueberzaehligen bleiben liegen, ohne Session und mit Kennzeichen", NUR_POSIX, () => {
+test("[night-1096] mehr Kandidaten als --max: die ueberzaehligen bleiben liegen, ohne Session und mit Kennzeichen", () => {
   mitPruefProjekt((dir) => {
     const erste = fachplan(dir, "[Fachlich] Erste", PRUEF_LABEL, false);
     const zweite = fachplan(dir, "[Fachlich] Zweite", PRUEF_LABEL, false);
@@ -120,7 +119,7 @@ test("[night-1096] mehr Kandidaten als --max: die ueberzaehligen bleiben liegen,
   });
 });
 
-test("[night-1096] sind alle Kandidaten uebersprungen, nennt das Laufende sie und es startet keine Session", NUR_POSIX, () => {
+test("[night-1096] sind alle Kandidaten uebersprungen, nennt das Laufende sie und es startet keine Session", () => {
   mitPruefProjekt((dir) => {
     const plan = board(dir, "issue", "create", "--title", "[Plan] Ein Weg", "--body", "## Ziel\n\nEin Weg.\n");
     const planId = String(plan.id);

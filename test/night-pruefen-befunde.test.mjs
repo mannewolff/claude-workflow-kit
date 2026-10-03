@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { NUR_POSIX, run, mitProjekt, fachplan, pruefUmgebung, PRUEFUNG_BEFUNDE } from "./helpers/kette-fixture.mjs";
+import { run, mitProjekt, fachplan, pruefUmgebung, PRUEFUNG_BEFUNDE } from "./helpers/kette-fixture.mjs";
 
 const PRUEF_LABEL = "kit:pruefen";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };
@@ -41,7 +41,7 @@ function ideenTitel(dir) {
     .filter((t) => t.startsWith("[Idee]"));
 }
 
-test("[night-1028] die im Worktree des Prueflaufs gebuchten Befunde landen in der Hauptkopie", NUR_POSIX, () => {
+test("[night-1028] die im Worktree des Prueflaufs gebuchten Befunde landen in der Hauptkopie", () => {
   mitPruefProjekt((dir) => {
     const id = fachplan(dir, "[Fachlich] Mit Befunden", PRUEF_LABEL, false);
     const env = pruefUmgebung(dir, { jeKarte: { [id]: `${PRUEFUNG_BEFUNDE}; ${BUCHUNG_IM_WORKTREE}` } });
@@ -52,7 +52,7 @@ test("[night-1028] die im Worktree des Prueflaufs gebuchten Befunde landen in de
   });
 });
 
-test("[night-1028] erreicht eine Art die Schwelle, schlaegt der Prueflauf in der Hauptkopie vor", NUR_POSIX, () => {
+test("[night-1028] erreicht eine Art die Schwelle, schlaegt der Prueflauf in der Hauptkopie vor", () => {
   mitPruefProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
       [zeile("konvention"), zeile("konvention")].map((z) => `${z}\n`).join(""), "utf-8");

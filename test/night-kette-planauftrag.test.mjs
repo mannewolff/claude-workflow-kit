@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -32,7 +32,7 @@ function keinUeberholtKommentar(dir) {
   }
 }
 
-test("[night-895] ein gekennzeichneter, gepruefter Plan laeuft als Auftrag: nur pakete und abdeckung", NUR_POSIX, () => {
+test("[night-895] ein gekennzeichneter, gepruefter Plan laeuft als Auftrag: nur pakete und abdeckung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const M = planauftrag(dir, F);
@@ -85,7 +85,7 @@ test("[night-895] ein gekennzeichneter, gepruefter Plan laeuft als Auftrag: nur 
   });
 });
 
-test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzung", NUR_POSIX, () => {
+test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const M = planauftrag(dir, F);
@@ -103,7 +103,7 @@ test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzun
   });
 });
 
-test("[night-895] das Durchziehen-Label an der fachlichen Anforderung bleibt wirkungslos", NUR_POSIX, () => {
+test("[night-895] das Durchziehen-Label an der fachlichen Anforderung bleibt wirkungslos", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     durchziehen(dir, F);
@@ -121,7 +121,7 @@ test("[night-895] das Durchziehen-Label an der fachlichen Anforderung bleibt wir
   });
 });
 
-test("[night-895] --kette --dry-run nennt den Plan-Auftrag mit fachlicher Quelle und Variante", NUR_POSIX, () => {
+test("[night-895] --kette --dry-run nennt den Plan-Auftrag mit fachlicher Quelle und Variante", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
     const M = planauftrag(dir, F);

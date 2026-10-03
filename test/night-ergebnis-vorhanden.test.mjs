@@ -15,7 +15,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paketUmgesetzt } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, planauftrag, planBody, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, planauftrag, planBody, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 import { fachplanB } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -53,7 +53,7 @@ function einheitVon(dir, id) {
 
 const kartenText = (dir, id) => readFileSync(join(dir, "issues", `${id}.md`), "utf-8");
 
-test("[night-ergebnis] kit:night an einem Fachplan mit fertigem Plan startet bei review", NUR_POSIX, () => {
+test("[night-ergebnis] kit:night an einem Fachplan mit fertigem Plan startet bei review", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F);
@@ -71,7 +71,7 @@ test("[night-ergebnis] kit:night an einem Fachplan mit fertigem Plan startet bei
   });
 });
 
-test("[night-ergebnis] Plan mit Pruefvermerk: plan und review vorgefunden, keine Session dafuer", NUR_POSIX, () => {
+test("[night-ergebnis] Plan mit Pruefvermerk: plan und review vorgefunden, keine Session dafuer", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -89,7 +89,7 @@ test("[night-ergebnis] Plan mit Pruefvermerk: plan und review vorgefunden, keine
   });
 });
 
-test("[night-ergebnis] Laufstand 'pakete fertig fuer #M': pakete vorgefunden, nur die Abdeckung laeuft", NUR_POSIX, () => {
+test("[night-ergebnis] Laufstand 'pakete fertig fuer #M': pakete vorgefunden, nur die Abdeckung laeuft", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -108,7 +108,7 @@ test("[night-ergebnis] Laufstand 'pakete fertig fuer #M': pakete vorgefunden, nu
   });
 });
 
-test("[night-ergebnis] Laufstand 'abdeckung fertig fuer #M': die ganze Kette ist vorgefunden, keine Session", NUR_POSIX, () => {
+test("[night-ergebnis] Laufstand 'abdeckung fertig fuer #M': die ganze Kette ist vorgefunden, keine Session", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -125,7 +125,7 @@ test("[night-ergebnis] Laufstand 'abdeckung fertig fuer #M': die ganze Kette ist
   });
 });
 
-test("[night-ergebnis] Variante B: Pakete in In review mit Nachweis sind vorgefunden, keine Umsetzungs-Session", NUR_POSIX, () => {
+test("[night-ergebnis] Variante B: Pakete in In review mit Nachweis sind vorgefunden, keine Umsetzungs-Session", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -154,7 +154,7 @@ test("[night-ergebnis] Umsetzung: In review ohne gueltigen Nachweis zaehlt nicht
   assert.equal(paketUmgesetzt(null), false);
 });
 
-test("[night-ergebnis] Belegfall 2 (#868): Review am Zeitlimit, Marker im Plan — fertig und vorgefunden", NUR_POSIX, () => {
+test("[night-ergebnis] Belegfall 2 (#868): Review am Zeitlimit, Marker im Plan — fertig und vorgefunden", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, review: `${REVIEW_MARKER}; sleep 60` } });
@@ -169,7 +169,7 @@ test("[night-ergebnis] Belegfall 2 (#868): Review am Zeitlimit, Marker im Plan �
   });
 });
 
-test("[night-ergebnis] ein vorgefundener Plan bekommt keinen Ueberholt-Kommentar, auch keiner in Done", NUR_POSIX, () => {
+test("[night-ergebnis] ein vorgefundener Plan bekommt keinen Ueberholt-Kommentar, auch keiner in Done", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const alt = planVorhanden(dir, F, { status: "done" });
@@ -186,7 +186,7 @@ test("[night-ergebnis] ein vorgefundener Plan bekommt keinen Ueberholt-Kommentar
   });
 });
 
-test("[night-ergebnis] ein Plan in Done zaehlt nicht als vorgefunden: die Stufe plan laeuft", NUR_POSIX, () => {
+test("[night-ergebnis] ein Plan in Done zaehlt nicht als vorgefunden: die Stufe plan laeuft", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const alt = planVorhanden(dir, F, { marker: true, status: "done" });
@@ -202,7 +202,7 @@ test("[night-ergebnis] ein Plan in Done zaehlt nicht als vorgefunden: die Stufe 
 });
 
 for (const status of ["ready", "in_review"]) {
-  test(`[night-ergebnis] ein Plan in ${status} zaehlt als vorgefunden`, NUR_POSIX, () => {
+  test(`[night-ergebnis] ein Plan in ${status} zaehlt als vorgefunden`, () => {
     mitProjekt((dir) => {
       const F = fachplan(dir);
       const P = planVorhanden(dir, F, { status });
@@ -218,7 +218,7 @@ for (const status of ["ready", "in_review"]) {
   });
 }
 
-test("[night-ergebnis] Teilschnitt im Laufstand: abgebrochen mit den Paketen, kein Versuch", NUR_POSIX, () => {
+test("[night-ergebnis] Teilschnitt im Laufstand: abgebrochen mit den Paketen, kein Versuch", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -239,7 +239,7 @@ test("[night-ergebnis] Teilschnitt im Laufstand: abgebrochen mit den Paketen, ke
   });
 });
 
-test("[night-ergebnis] Teilschnitt im Journal eines frueheren Laufs: abgebrochen, kein Versuch", NUR_POSIX, () => {
+test("[night-ergebnis] Teilschnitt im Journal eines frueheren Laufs: abgebrochen, kein Versuch", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -263,7 +263,7 @@ test("[night-ergebnis] Teilschnitt im Journal eines frueheren Laufs: abgebrochen
   });
 });
 
-test("[night-ergebnis] Pakete ohne jeden Laufstand-Eintrag: die Stufe pakete laeuft wie bisher (Issue #895)", NUR_POSIX, () => {
+test("[night-ergebnis] Pakete ohne jeden Laufstand-Eintrag: die Stufe pakete laeuft wie bisher (Issue #895)", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const P = planVorhanden(dir, F, { marker: true });
@@ -279,7 +279,7 @@ test("[night-ergebnis] Pakete ohne jeden Laufstand-Eintrag: die Stufe pakete lae
   });
 });
 
-test("[night-ergebnis] der Laufstand je Stufe steht an der Karte, die die Kette traegt", NUR_POSIX, () => {
+test("[night-ergebnis] der Laufstand je Stufe steht an der Karte, die die Kette traegt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });

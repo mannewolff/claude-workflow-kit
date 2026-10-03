@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { berichtBauen, einarbeitungVon, kommentareVon, kitStandZeile, BERICHT_ANKER, BERICHT_SCHLUSS } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, stand, planBody,
+  run, mitProjekt, fachplan, umgebung, stand, planBody,
   PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, EINARBEITUNG_ZEILE_ABGELEHNT, PAKET_ENTSCHEIDUNG,
 } from "./helpers/kette-fixture.mjs";
 
@@ -22,7 +22,7 @@ function fachplanText(dir, F) {
   return readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
 }
 
-test("[night-21] nach einem fertigen Lauf traegt der Fachplan genau einen Nachtbericht mit allen Abschnitten", NUR_POSIX, () => {
+test("[night-21] nach einem fertigen Lauf traegt der Fachplan genau einen Nachtbericht mit allen Abschnitten", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -56,7 +56,7 @@ test("[night-21] nach einem fertigen Lauf traegt der Fachplan genau einen Nachtb
   });
 });
 
-test("[night-21] nach angehalten steht die Stopp-Frage im Bericht, hinter dem Halt-Kommentar", NUR_POSIX, () => {
+test("[night-21] nach angehalten steht die Stopp-Frage im Bericht, hinter dem Halt-Kommentar", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_HALT } });
@@ -74,7 +74,7 @@ test("[night-21] nach angehalten steht die Stopp-Frage im Bericht, hinter dem Ha
   });
 });
 
-test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es keine Entscheidungen und keine Einarbeitung", NUR_POSIX, () => {
+test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es keine Entscheidungen und keine Einarbeitung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
@@ -92,7 +92,7 @@ test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es 
   });
 });
 
-test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Bericht nennt sie und die Einarbeitung fehlt", NUR_POSIX, () => {
+test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Bericht nennt sie und die Einarbeitung fehlt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {

@@ -14,14 +14,14 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  NUR_POSIX, NIGHT, run, setupProjekt, setupProjektMitMeldeCapture, meldungen, readyIssue,
+  NIGHT, run, setupProjekt, setupProjektMitMeldeCapture, meldungen, readyIssue,
   stand, einheit, textprotokollDa,
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN, SUMMARY_LEER, RESULT_AUSGEBEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
 
 // --- Die Einheiten je Arbeitspaket (Issue #488) ---
 
-test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefstand und Kennzahlen im Stand", NUR_POSIX, () => {
+test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefstand und Kennzahlen im Stand", () => {
   const dir = setupProjekt("night-stand-erfolg-");
   try {
     const id = readyIssue(dir, "Erfolgreiches Paket");
@@ -50,7 +50,7 @@ test("[night-4] ein erfolgreiches Paket steht mit Ausgang, Dauer, Commit, Pruefs
   }
 });
 
-test("[night-4] die Einheit traegt stufe und stufeVerwendet hinter den drei Modellfeldern", NUR_POSIX, () => {
+test("[night-4] die Einheit traegt stufe und stufeVerwendet hinter den drei Modellfeldern", () => {
   // Issue #711: Zwei Felder kommen hinzu, die bestehenden behalten Namen und Reihenfolge —
   // sie sind der Vertrag mit den Auswertungen.
   const dir = setupProjekt("night-stand-stufe-", {
@@ -80,7 +80,7 @@ test("[night-4] die Einheit traegt stufe und stufeVerwendet hinter den drei Mode
   }
 });
 
-test("[night-4] ohne Stufe stehen beide Felder als null in der Einheit", NUR_POSIX, () => {
+test("[night-4] ohne Stufe stehen beide Felder als null in der Einheit", () => {
   // Ein fehlendes Feld liesse offen, ob niemand gemessen hat oder ob die Frage sich nicht
   // stellte — dieselbe Begruendung wie bei den drei Modellfeldern.
   const dir = setupProjekt("night-stand-ohne-stufe-");
@@ -99,7 +99,7 @@ test("[night-4] ohne Stufe stehen beide Felder als null in der Einheit", NUR_POS
   }
 });
 
-test("ohne result-Zeile bleiben die Kennzahlen null", NUR_POSIX, () => {
+test("ohne result-Zeile bleiben die Kennzahlen null", () => {
   const dir = setupProjekt("night-stand-ohnekennzahlen-");
   try {
     const id = readyIssue(dir, "Session ohne result-Ereignis");
@@ -116,7 +116,7 @@ test("ohne result-Zeile bleiben die Kennzahlen null", NUR_POSIX, () => {
 // GRUENE Ausgaenge — ein Paar aus gruen und rot bewiese nichts, weil ein roter
 // Nachweis seit Issue #471 ohnehin als Fehlschlag endet und die Ausgaenge sich
 // schon dadurch unterschieden.
-test("zwei erfolgreiche Pakete mit verschiedenem Pruefstand: gleicher Ausgang, verschiedener Zustand", NUR_POSIX, () => {
+test("zwei erfolgreiche Pakete mit verschiedenem Pruefstand: gleicher Ausgang, verschiedener Zustand", () => {
   const laeufe = [
     { praefix: "night-stand-kern-gruen-", summary: SUMMARY_GRUEN, zustand: "geprueft" },
     { praefix: "night-stand-kern-leer-", summary: SUMMARY_LEER, zustand: "leeresPaket" },
@@ -143,7 +143,7 @@ test("zwei erfolgreiche Pakete mit verschiedenem Pruefstand: gleicher Ausgang, v
   assert.notEqual(beobachtet[1].zustand, beobachtet[0].zustand, "der Pruefstand unterscheidet sie");
 });
 
-test("ein zurueckgestelltes Paket erscheint als eigene Einheit mit Grund, nicht nur als Zaehler", NUR_POSIX, () => {
+test("ein zurueckgestelltes Paket erscheint als eigene Einheit mit Grund, nicht nur als Zaehler", () => {
   const dir = setupProjekt("night-stand-gate-");
   try {
     const id = readyIssue(dir, "[Idee] Roher Einfall");
@@ -161,7 +161,7 @@ test("ein zurueckgestelltes Paket erscheint als eigene Einheit mit Grund, nicht 
 
 // --- Die Startmeldung vor dem ersten Arbeitspaket (Issue #743) ---
 
-test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Abschluss, bevor ein Arbeitspaket gezogen wird", NUR_POSIX, () => {
+test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Abschluss, bevor ein Arbeitspaket gezogen wird", () => {
   const dir = setupProjektMitMeldeCapture("night-stand-start-melden-");
   const captureFile = join(dir, "..", "night43-capture-melden.jsonl");
   try {
@@ -184,7 +184,7 @@ test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Absc
   }
 });
 
-test("[night-43] im Dry-Run bleibt die Startmeldung aus", NUR_POSIX, () => {
+test("[night-43] im Dry-Run bleibt die Startmeldung aus", () => {
   const dir = setupProjektMitMeldeCapture("night-stand-start-dry-");
   const captureFile = join(dir, "..", "night43-capture-dry.jsonl");
   try {

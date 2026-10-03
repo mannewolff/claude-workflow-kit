@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, umgebung, sessions, stand,
+  run, board, mitProjekt, umgebung, sessions, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
 } from "./helpers/kette-fixture.mjs";
 import {
@@ -28,7 +28,7 @@ import {
 } from "./helpers/kette-umsetzung-fixture.mjs";
 
 
-test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", NUR_POSIX, () => {
+test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -59,7 +59,7 @@ test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
   });
 });
 
-test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", NUR_POSIX, () => {
+test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -85,7 +85,7 @@ test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab u
   });
 });
 
-test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Stufe faellt regulaer aus", NUR_POSIX, () => {
+test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Stufe faellt regulaer aus", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Die Abdeckungs-Session laesst einen Rest in der Hauptkopie liegen — sie laeuft im
@@ -114,7 +114,7 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
   });
 });
 
-test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", NUR_POSIX, () => {
+test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     // Eine Karte, die der Mensch selbst nach Ready gezogen hat — sie gehoert zu keinem
@@ -133,7 +133,7 @@ test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready",
   });
 });
 
-test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und gilt als nicht begonnen", NUR_POSIX, () => {
+test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und gilt als nicht begonnen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Das erste Paket haelt an einer Stopp-Frage an und bleibt damit in Backlog; das
@@ -166,7 +166,7 @@ test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und
   });
 });
 
-test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne den Fachplan zu zeichnen", NUR_POSIX, () => {
+test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne den Fachplan zu zeichnen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG) };
@@ -195,7 +195,7 @@ test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
 // ein solches Paket nicht nach Ready; ein Paket mit gewoehnlicher Verweiszeile schon.
 const PAKETE_WARTEN_AUF_PUSH = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 1 ]; then dep="Keine."; elif [ "$n" = 2 ]; then dep="Issue #$erste (wartet auf Push)"; else dep="Issue #$erste"; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
 
-test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoehnlicher Verweiszeile wird gezogen", NUR_POSIX, () => {
+test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoehnlicher Verweiszeile wird gezogen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_WARTEN_AUF_PUSH, umsetzung: UMSETZUNG_ERFOLG };

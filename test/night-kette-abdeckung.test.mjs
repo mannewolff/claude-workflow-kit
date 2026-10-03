@@ -10,13 +10,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { abdeckungPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ, leseErgebnisText } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, ABDECKUNG_SCHREIBT,
 } from "./helpers/kette-fixture.mjs";
 
 const RESULT_TEXT = "### Zuordnung 1 -> #0003. ### Ohne Paket Alle Kriterien sind abgebildet. ### Zuwachs Nichts Zusaetzliches.";
 
-test("[night-20] der Text der Abdeckungs-Session steht in der Einheit", NUR_POSIX, () => {
+test("[night-20] der Text der Abdeckungs-Session steht in der Einheit", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -32,7 +32,7 @@ test("[night-20] der Text der Abdeckungs-Session steht in der Einheit", NUR_POSI
   });
 });
 
-test("[night-20] schreibt die Abdeckungs-Session am Fachplan, steht abdeckungSchrieb in der Einheit — die Kette bleibt fertig", NUR_POSIX, () => {
+test("[night-20] schreibt die Abdeckungs-Session am Fachplan, steht abdeckungSchrieb in der Einheit — die Kette bleibt fertig", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: ABDECKUNG_SCHREIBT } });
@@ -45,7 +45,7 @@ test("[night-20] schreibt die Abdeckungs-Session am Fachplan, steht abdeckungSch
   });
 });
 
-test("[night-20] ohne Text bleibt die Abdeckung null mit Grund, die Kette endet fertig", NUR_POSIX, () => {
+test("[night-20] ohne Text bleibt die Abdeckung null mit Grund, die Kette endet fertig", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
@@ -58,7 +58,7 @@ test("[night-20] ohne Text bleibt die Abdeckung null mit Grund, die Kette endet 
   });
 });
 
-test("[night-20] reisst die Abdeckungs-Session ihr Zeitbudget, endet die Kette trotzdem fertig, der Grund steht an der Stufe", NUR_POSIX, () => {
+test("[night-20] reisst die Abdeckungs-Session ihr Zeitbudget, endet die Kette trotzdem fertig, der Grund steht an der Stufe", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: "sleep 5" } });
@@ -92,7 +92,7 @@ test("[night-20] leseErgebnisText liest das result-Feld des letzten result-Ereig
   assert.equal(leseErgebnisText(undefined), null);
 });
 
-test("[night-20] die Abdeckungs-Session bekommt keinen Auftrag, ans Board zu schreiben — Plan, Review und Pakete tragen KETTE_ZUSATZ unveraendert", NUR_POSIX, () => {
+test("[night-20] die Abdeckungs-Session bekommt keinen Auftrag, ans Board zu schreiben — Plan, Review und Pakete tragen KETTE_ZUSATZ unveraendert", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const mit = (stufe, befehl) => (befehl ? `${befehl}; ` : "") + String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.` + stufe + `"`;

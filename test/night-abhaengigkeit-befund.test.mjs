@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, umgebung, stand,
+  run, board, mitProjekt, umgebung, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
 } from "./helpers/kette-fixture.mjs";
 import { ERZEUGEN, fachplanB, umsetzung } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -41,7 +41,7 @@ function nachtlaufKommentar(dir, id) {
   return text.slice(start);
 }
 
-test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten ersten Zeile den Befund", NUR_POSIX, () => {
+test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten ersten Zeile den Befund", () => {
   mitProjekt((dir) => {
     const fertig = karte(dir, "Schon fertig", "## Abhaengigkeiten\nKeine.", "in_review");
     const plan = karte(dir, "[Plan] Ein Plandokument", "## Kontext\nx");
@@ -84,7 +84,7 @@ test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten e
   });
 });
 
-test("[night-1062] eine unbekannte Nummer wird wie bisher zurueckgestellt, und der Lauf laeuft weiter", NUR_POSIX, () => {
+test("[night-1062] eine unbekannte Nummer wird wie bisher zurueckgestellt, und der Lauf laeuft weiter", () => {
   mitProjekt((dir) => {
     const paket = karte(dir, "Wartet auf Unbekanntes", "## Abhaengigkeiten\nIssue #9999 muss vorher fertig sein.", "ready");
     const danach = karte(dir, "Laeuft danach", "## Abhaengigkeiten\nKeine.", "ready");
@@ -104,7 +104,7 @@ test("[night-1062] eine unbekannte Nummer wird wie bisher zurueckgestellt, und d
   });
 });
 
-test("[night-1062] ein startendes Paket mit Dokument-Verweis erzeugt eine Logzeile und keinen Kommentar", NUR_POSIX, () => {
+test("[night-1062] ein startendes Paket mit Dokument-Verweis erzeugt eine Logzeile und keinen Kommentar", () => {
   mitProjekt((dir) => {
     const plan = karte(dir, "[Plan] Liegt in Review", "## Kontext\nx", "in_review");
     const paket = karte(dir, "Startet trotz Dokument-Verweis", `## Abhaengigkeiten\nIssue #${plan}`, "ready");
@@ -123,7 +123,7 @@ test("[night-1062] ein startendes Paket mit Dokument-Verweis erzeugt eine Logzei
   });
 });
 
-test("[night-1062] in der Umsetzungsstufe der Kette bleibt der Eintrag unter nichtBegonnen einzeilig", NUR_POSIX, () => {
+test("[night-1062] in der Umsetzungsstufe der Kette bleibt der Eintrag unter nichtBegonnen einzeilig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = {
@@ -151,7 +151,7 @@ function kreisZeilen(dir, id) {
 
 const n = (id) => `#${Number(id)}`;
 
-test("[night-1063] zwei Ready-Pakete, die sich festhalten, tragen denselben Kreis, beginnend bei der kleineren Nummer", NUR_POSIX, () => {
+test("[night-1063] zwei Ready-Pakete, die sich festhalten, tragen denselben Kreis, beginnend bei der kleineren Nummer", () => {
   mitProjekt((dir) => {
     const a = karte(dir, "Erstes", "## Abhaengigkeiten\nKeine.");
     const b = karte(dir, "Zweites", `## Abhaengigkeiten\nIssue #${a}`, "ready");
@@ -174,7 +174,7 @@ test("[night-1063] zwei Ready-Pakete, die sich festhalten, tragen denselben Krei
   });
 });
 
-test("[night-1063] ein Kreis durch das Backlog wird erkannt, und das Backlog-Paket bekommt keinen Kommentar", NUR_POSIX, () => {
+test("[night-1063] ein Kreis durch das Backlog wird erkannt, und das Backlog-Paket bekommt keinen Kommentar", () => {
   mitProjekt((dir) => {
     const a = karte(dir, "Anfang", "## Abhaengigkeiten\nKeine.");
     const b = karte(dir, "Im Backlog", "## Abhaengigkeiten\nKeine.");
@@ -194,7 +194,7 @@ test("[night-1063] ein Kreis durch das Backlog wird erkannt, und das Backlog-Pak
   });
 });
 
-test("[night-1063] ein Paket, das an einem Kreis haengt, wartet auf einen Kreis", NUR_POSIX, () => {
+test("[night-1063] ein Paket, das an einem Kreis haengt, wartet auf einen Kreis", () => {
   mitProjekt((dir) => {
     const x = karte(dir, "Kreis eins", "## Abhaengigkeiten\nKeine.");
     const y = karte(dir, "Kreis zwei", `## Abhaengigkeiten\nIssue #${x}`);
@@ -212,7 +212,7 @@ test("[night-1063] ein Paket, das an einem Kreis haengt, wartet auf einen Kreis"
   });
 });
 
-test("[night-1063] ein Paket, das von sich selbst abhaengt, ist ein Kreis aus einem Paket", NUR_POSIX, () => {
+test("[night-1063] ein Paket, das von sich selbst abhaengt, ist ein Kreis aus einem Paket", () => {
   mitProjekt((dir) => {
     const s = karte(dir, "Selbstbezug", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "update", s, "--body", `## Abhaengigkeiten\nIssue #${s}`);
@@ -224,7 +224,7 @@ test("[night-1063] ein Paket, das von sich selbst abhaengt, ist ein Kreis aus ei
   });
 });
 
-test("[night-1063] kein Kreis-Befund ohne Erreichbarkeit ueber unerfuellte Abhaengigkeiten, auch nicht durch In review", NUR_POSIX, () => {
+test("[night-1063] kein Kreis-Befund ohne Erreichbarkeit ueber unerfuellte Abhaengigkeiten, auch nicht durch In review", () => {
   mitProjekt((dir) => {
     // Ein Kreis im Backlog, den kein Ready-Paket erreicht.
     const x = karte(dir, "Abseits eins", "## Abhaengigkeiten\nKeine.");
@@ -247,7 +247,7 @@ test("[night-1063] kein Kreis-Befund ohne Erreichbarkeit ueber unerfuellte Abhae
   });
 });
 
-test("[night-1063] ein scheiternder Abruf beendet den Pfad, und der Lauf laeuft weiter", NUR_POSIX, () => {
+test("[night-1063] ein scheiternder Abruf beendet den Pfad, und der Lauf laeuft weiter", () => {
   mitProjekt((dir) => {
     const r = karte(dir, "Anfang", "## Abhaengigkeiten\nKeine.");
     const b = karte(dir, "Mitte", `## Abhaengigkeiten\nIssue #9999\nIssue #${r}`);
@@ -289,7 +289,7 @@ function boardMitZaehler(dir) {
   return logPfad;
 }
 
-test("[night-1063] jede Karte wird je Lauf hoechstens einmal abgerufen", NUR_POSIX, () => {
+test("[night-1063] jede Karte wird je Lauf hoechstens einmal abgerufen", () => {
   mitProjekt((dir) => {
     const a = karte(dir, "Anfang", "## Abhaengigkeiten\nKeine.");
     const b = karte(dir, "Im Backlog", "## Abhaengigkeiten\nKeine.");
@@ -333,7 +333,7 @@ function paketZeilen(zeilen, id, titel) {
   return { kopf: zeilen[kopf], darunter };
 }
 
-test("[night-1064] der Probelauf nennt Herkunft und Dokument-Hinweis auch bei einem Paket, das eine Session bekaeme", NUR_POSIX, () => {
+test("[night-1064] der Probelauf nennt Herkunft und Dokument-Hinweis auch bei einem Paket, das eine Session bekaeme", () => {
   mitProjekt((dir) => {
     const fertig = karte(dir, "Schon fertig", "## Abhaengigkeiten\nKeine.", "in_review");
     const plan = karte(dir, "[Plan] Ein Plandokument", "## Kontext\nx", "in_review");
@@ -349,7 +349,7 @@ test("[night-1064] der Probelauf nennt Herkunft und Dokument-Hinweis auch bei ei
   });
 });
 
-test("[night-1064] die erste Zeile eines zurueckgestellten Pakets bleibt zeichengleich, der Befund steht darunter", NUR_POSIX, () => {
+test("[night-1064] die erste Zeile eines zurueckgestellten Pakets bleibt zeichengleich, der Befund steht darunter", () => {
   mitProjekt((dir) => {
     const offen = karte(dir, "Noch offen", "## Abhaengigkeiten\nKeine.");
     const paket = karte(dir, "Wartet", `## Abhaengigkeiten\nIssue #${offen}`, "ready");
@@ -360,7 +360,7 @@ test("[night-1064] die erste Zeile eines zurueckgestellten Pakets bleibt zeichen
   });
 });
 
-test("[night-1064] ein Kreis erscheint im Probelauf als eigene Zeile", NUR_POSIX, () => {
+test("[night-1064] ein Kreis erscheint im Probelauf als eigene Zeile", () => {
   mitProjekt((dir) => {
     const a = karte(dir, "Erstes", "## Abhaengigkeiten\nKeine.");
     const b = karte(dir, "Zweites", `## Abhaengigkeiten\nIssue #${a}`, "ready");
@@ -377,7 +377,7 @@ test("[night-1064] ein Kreis erscheint im Probelauf als eigene Zeile", NUR_POSIX
   });
 });
 
-test("[night-1064] ein Paket ohne Abhaengigkeit bekommt im Probelauf keine eingerueckte Zeile", NUR_POSIX, () => {
+test("[night-1064] ein Paket ohne Abhaengigkeit bekommt im Probelauf keine eingerueckte Zeile", () => {
   mitProjekt((dir) => {
     const ohne = karte(dir, "Ohne", "## Abhaengigkeiten\nKeine.", "ready");
     const keinAbschnitt = karte(dir, "Ganz ohne", "## Kontext\nx", "ready");

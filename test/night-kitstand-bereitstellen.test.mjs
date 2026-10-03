@@ -20,7 +20,7 @@ import {
   KIT_STAND_MARKIERUNG,
 } from "../kit/night.mjs";
 import {
-  NUR_POSIX, kitFixture, git, runner, laufStand, standWorktrees, aufraeumen,
+  kitFixture, git, runner, laufStand, standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
 
 function mitFixture(optionen, fn) {
@@ -208,7 +208,7 @@ test("[kitstand-4] Kind ist nur, wer KIT_STAND traegt UND aus dem Stand laeuft",
   }
 });
 
-test("[kitstand-4] ein Runner mit ererbtem KIT_STAND, der nicht aus dem Stand laeuft, baut seinen eigenen", NUR_POSIX, () => {
+test("[kitstand-4] ein Runner mit ererbtem KIT_STAND, der nicht aus dem Stand laeuft, baut seinen eigenen", () => {
   mitFixture({}, ({ dir }) => {
     const commit = git(dir, "rev-parse", "refs/remotes/origin/main");
     const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "true", KIT_STAND: "deadbeef", KIT_STAND_PFAD: "/nicht/vorhanden" });
@@ -230,7 +230,7 @@ test("[kitstand-4] ein Runner mit ererbtem KIT_STAND, der nicht aus dem Stand la
 
 // --- Gegenprobe und Abbruch (E2, E3) ---
 
-test("[kitstand-5] Gegenprobe: ohne kit/night.mjs unter origin laeuft der Runner ohne Stand-Schritt, kitStand ist null", NUR_POSIX, () => {
+test("[kitstand-5] Gegenprobe: ohne kit/night.mjs unter origin laeuft der Runner ohne Stand-Schritt, kitStand ist null", () => {
   mitFixture({ mitKitQuelle: false }, ({ dir }) => {
     const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
@@ -242,7 +242,7 @@ test("[kitstand-5] Gegenprobe: ohne kit/night.mjs unter origin laeuft der Runner
   });
 });
 
-test("[kitstand-5] fehlt origin/main in einem Repo mit Kit-Quelle, bricht der Lauf vor der ersten Sitzung ab", NUR_POSIX, () => {
+test("[kitstand-5] fehlt origin/main in einem Repo mit Kit-Quelle, bricht der Lauf vor der ersten Sitzung ab", () => {
   mitFixture({ ohneOrigin: true }, ({ dir }) => {
     const spur = join(dir, "helfer", "sitzung");
     const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: `touch ${spur}` });

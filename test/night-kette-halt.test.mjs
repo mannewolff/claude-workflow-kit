@@ -10,12 +10,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, stand, planBody, PLAN_ANLEGEN, REVIEW_HALT, REVIEW_MARKER,
+  run, board, mitProjekt, fachplan, umgebung, stand, planBody, PLAN_ANLEGEN, REVIEW_HALT, REVIEW_MARKER,
 } from "./helpers/kette-fixture.mjs";
 
 const kommentare = (dir, id) => readFileSync(join(dir, "issues", `${id}.md`), "utf-8");
 
-test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:klaeren am Fachplan, Plan bleibt", NUR_POSIX, () => {
+test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:klaeren am Fachplan, Plan bleibt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
@@ -49,7 +49,7 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
   });
 });
 
-test("[night-19] kit:klaeren nach dem Review haelt die Kette an, die Frage ist der letzte Kommentar am Plan", NUR_POSIX, () => {
+test("[night-19] kit:klaeren nach dem Review haelt die Kette an, die Frage ist der letzte Kommentar am Plan", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_HALT } });
@@ -67,7 +67,7 @@ test("[night-19] kit:klaeren nach dem Review haelt die Kette an, die Frage ist d
   });
 });
 
-test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden uebersprungen, ihr Label bleibt", NUR_POSIX, () => {
+test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden uebersprungen, ihr Label bleibt", () => {
   mitProjekt((dir) => {
     const offen = fachplan(dir, "[Fachlich] Mit offener Frage");
     board(dir, "issue", "label", "add", offen, "kit:klaeren");

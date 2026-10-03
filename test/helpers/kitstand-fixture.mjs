@@ -23,10 +23,6 @@ import { tmpdir } from "node:os";
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-export const NUR_POSIX = process.platform === "win32"
-  ? { skip: "Windows: Der Session-Fake laeuft ueber `sh -c`, das night.mjs dort nicht findet. Siehe Issue #199." }
-  : {};
-
 /** Die Antwort einer Vorflug-Session, die alles erreicht (wie in kette-fixture.mjs). */
 export const VORFLUG_OK = "cat <<'EOF'\n<<<VORFLUG\n{\"reviewers\":[],\"tracker\":{\"erreichbar\":true,\"geprueft\":\"issue list\"}}\nVORFLUG>>>\nEOF";
 

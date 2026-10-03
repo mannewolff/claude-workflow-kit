@@ -16,14 +16,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 // Der Runner faehrt ueber die Sitzungen `checks.mjs run`: ein eigener Sperrpfad je Testprozess (Issue #958).
 import "./helpers/checks-sperre.mjs";
 
 import { KIT_STAND_MARKIERUNG } from "../kit/night.mjs";
 import {
-  NUR_POSIX, VORFLUG_OK, RESULT, GATE_MARKE, kitFixture, git, sha256, syncBlobs, runner, board, laufStand,
+  VORFLUG_OK, RESULT, GATE_MARKE, kitFixture, git, sha256, syncBlobs, runner, board, laufStand,
   standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
 
@@ -49,7 +49,7 @@ function abschluss(dateien) {
   ].join(" && ");
 }
 
-test("[kitstand-7] Fall 1: das zweite Paket einer Nacht arbeitet mit Werkzeug und Gate des Pushs, nicht mit dem des ersten", NUR_POSIX, () => {
+test("[kitstand-7] Fall 1: das zweite Paket einer Nacht arbeitet mit Werkzeug und Gate des Pushs, nicht mit dem des ersten", () => {
   const fx = kitFixture({ praefix: "kitbeleg1-" });
   const { dir } = fx;
   try {
@@ -114,7 +114,7 @@ test("[kitstand-7] Fall 1: das zweite Paket einer Nacht arbeitet mit Werkzeug un
   }
 });
 
-test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn der Mensch ihn waehrenddessen aendert", NUR_POSIX, () => {
+test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn der Mensch ihn waehrenddessen aendert", () => {
   const fx = kitFixture({ praefix: "kitbeleg2-", config: {
     pruefLauf: { label: "kit:pruefen", pruefungMin: 5, kostenUsd: 25 },
     issueReview: { reviewers: [{ name: "opus", kind: "claude", model: "claude-opus-5" }] },
@@ -157,7 +157,7 @@ test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn de
     assert.equal(worktree, `worktree ${ausOrigin}`, "die Sitzung im Worktree las den Skill des Pushs");
     assert.ok(zeilen.some((z) => z.includes("/pruefung-")), `die Sitzung lief nicht im Worktree: ${zeilen.join(" | ")}`);
     assert.equal(laufStand(dir).kitStand.commit, git(dir, "rev-parse", "refs/remotes/origin/main"));
-    assert.ok(standWorktrees(dir).some((p) => p.includes("/kitstand-pruefung-")), "kein Stand des Prueflaufs");
+    assert.ok(standWorktrees(dir).some((p) => basename(p).startsWith("kitstand-pruefung-")), "kein Stand des Prueflaufs");
   } finally {
     aufraeumen(fx);
   }

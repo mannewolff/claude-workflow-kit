@@ -6,11 +6,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
 import { nachtlaufMeldung } from "../kit/board.mjs";
 
-test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", NUR_POSIX, () => {
+test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
@@ -25,7 +25,7 @@ test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstand
   });
 });
 
-test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach ist die Kette fertig", NUR_POSIX, () => {
+test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach ist die Kette fertig", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
@@ -44,7 +44,7 @@ test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach is
   });
 });
 
-test("[night-19] bleibt die Form nach den Korrekturrunden rot, endet die Kette abgebrochen", NUR_POSIX, () => {
+test("[night-19] bleibt die Form nach den Korrekturrunden rot, endet die Kette abgebrochen", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
@@ -61,7 +61,7 @@ test("[night-19] bleibt die Form nach den Korrekturrunden rot, endet die Kette a
   }, { korrekturrunden: 2 });
 });
 
-test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der Session abgebrochen", NUR_POSIX, () => {
+test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der Session abgebrochen", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER }, kosten: 30 });
@@ -76,7 +76,7 @@ test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der 
   }, { kostenUsd: 25 });
 });
 
-test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUnbekannt", NUR_POSIX, () => {
+test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUnbekannt", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN }, ohneResult: true });
@@ -90,7 +90,7 @@ test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUn
   });
 });
 
-test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette abgebrochen mit Zeitbudget plan", NUR_POSIX, () => {
+test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette abgebrochen mit Zeitbudget plan", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "sleep 5; " + PLAN_ANLEGEN } });
@@ -112,7 +112,7 @@ test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette a
 // der Session — ein Umgebungsfehler: ein zweiter Versuch nach der Pause, scheitert auch er,
 // haelt der Lauf an. Eine Session, die zustande kam und scheiterte, bleibt ein technischer
 // Fehler dieser Kette (test/night-kette-review-rest.test.mjs).
-test("[night-19] ein Fehlstart der Session bekommt einen zweiten Versuch, scheitert auch er, haelt der Lauf an", NUR_POSIX, () => {
+test("[night-19] ein Fehlstart der Session bekommt einen zweiten Versuch, scheitert auch er, haelt der Lauf an", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "exit 3" } });

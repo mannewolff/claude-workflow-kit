@@ -13,12 +13,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NUR_POSIX, run, board, mitProjekt, umgebung, sessions, UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
+import { run, board, mitProjekt, umgebung, sessions, UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
 import {
   ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
 } from "./helpers/kette-umsetzung-fixture.mjs";
 
-test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } });
@@ -34,7 +34,7 @@ test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am 
   });
 });
 
-test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, das gezogene Paket steht in Backlog", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Ein Fehlstart ohne Ereignis der Session: seit Issue #1088 (E13) mit einem zweiten
@@ -54,7 +54,7 @@ test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, 
   }, {}, "night-kette-", { night: { stand: { pauseMin: 0.0001 } } });
 });
 
-test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", NUR_POSIX, () => {
+test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gezogene Paket steht in Backlog", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -71,7 +71,7 @@ test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gez
   });
 });
 
-test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die Pakete sind nicht begonnen", NUR_POSIX, () => {
+test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die Pakete sind nicht begonnen", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -88,7 +88,7 @@ test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die
   }, { umsetzungMin: 0.5 });
 });
 
-test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von kostenUsd, die Kette bleibt fertig", NUR_POSIX, () => {
+test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von kostenUsd, die Kette bleibt fertig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     // Vier erzeugende Sessions zu je 0.25 $ = 1.00 $. Unter `kostenUsd` (0.5 $) waere die
@@ -109,7 +109,7 @@ test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von k
   }, { kostenUsd: 0.5, kostenUsdB: 1.1 });
 });
 
-test("[night-34] mit issueReview.requiredBeforeReady faellt die Kette auf Variante A zurueck und bleibt fertig", NUR_POSIX, () => {
+test("[night-34] mit issueReview.requiredBeforeReady faellt die Kette auf Variante A zurueck und bleibt fertig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });

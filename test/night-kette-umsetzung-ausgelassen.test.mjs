@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { UMSETZUNG_LOCK, UMSETZUNG_AUSGELASSEN_PRAEFIX } from "../kit/night.mjs";
 import {
-  NUR_POSIX, run, board, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-fixture.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, stehenInBacklog, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -38,7 +38,7 @@ function lockBelegen(dir) {
 
 const fachplanText = (dir, F) => readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
 
-test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht fertig", NUR_POSIX, () => {
+test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht fertig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const pid = lockBelegen(dir);
@@ -65,7 +65,7 @@ test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht
   });
 });
 
-test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pakete", NUR_POSIX, () => {
+test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pakete", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const pid = lockBelegen(dir);
@@ -84,7 +84,7 @@ test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pa
   });
 });
 
-test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", NUR_POSIX, () => {
+test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const schmutz = `echo rest > ${JSON.stringify(dir)}/rest.md`;
@@ -102,7 +102,7 @@ test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", NUR_PO
   });
 });
 
-test("[night-862] eine gelungene Umsetzung bleibt fertig", NUR_POSIX, () => {
+test("[night-862] eine gelungene Umsetzung bleibt fertig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
@@ -117,7 +117,7 @@ test("[night-862] eine gelungene Umsetzung bleibt fertig", NUR_POSIX, () => {
   });
 });
 
-test("[night-862] eine Kette ohne bestellte Umsetzung bleibt vom belegten Lock unberuehrt", NUR_POSIX, () => {
+test("[night-862] eine Kette ohne bestellte Umsetzung bleibt vom belegten Lock unberuehrt", () => {
   mitProjekt((dir) => {
     // Variante A: kein kit:durchziehen, also gar keine Stufe umsetzung — der Lock einer
     // fremden Umsetzung darf eine reine Planungskette nicht faerben.
