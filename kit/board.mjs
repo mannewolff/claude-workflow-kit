@@ -5554,6 +5554,113 @@ export function findeImPath(datei, opts = {}) {
   return null;
 }
 
+/**
+ * Der Wert einer Umgebungsvariablen ohne Ruecksicht auf Gross-/Kleinschreibung (Issue #1131).
+ *
+ * `process.env` ist unter Windows case-insensitiv, eine Kopie davon nicht mehr: Dort heisst
+ * die Variable meist `Path`, und `{ ...process.env, PATH: x }` traegt dann beide Schluessel.
+ * Gewonnen hat der spaetere, wie bei der Kopie gemeint.
+ */
+function umgebungsWert(env, name) {
+  let wert;
+  for (const [schluessel, w] of Object.entries(env || {})) {
+    if (schluessel.toUpperCase() === name) wert = w;
+  }
+  return wert;
+}
+
+const GIT_BASH_FEHLT = "Git Bash nicht gefunden (Voraussetzung unter Windows)"
+  + String.raw` — Git for Windows installieren oder CLAUDE_CODE_GIT_BASH_PATH auf bin\bash.exe setzen`;
+
+/**
+ * Die Umgebung jedes Starts ueber die Git Bash (Issue #1131). Ohne sie verwandelt die Git Bash
+ * ein Argument mit fuehrendem Schraegstrich auf dem Weg zu einem nativen Programm in einen
+ * Windows-Pfad — aus dem Auftrag `/implement-next #1` wuerde `C:/Program Files/Git/implement-next #1`.
+ * Beide Schreibweisen, weil MSYS2 die zweite liest und Git for Windows die erste.
+ */
+export const GIT_BASH_UMGEBUNG = Object.freeze({ MSYS_NO_PATHCONV: "1", MSYS2_ARG_CONV_EXCL: "*" });
+
+/**
+ * Wo liegt die Git Bash (Issue #1131, Plan #1128, E1)? Liefert `{ pfad, fehler }`.
+ *
+ * Der Reihe nach: `CLAUDE_CODE_GIT_BASH_PATH`, wenn die Datei existiert — dieselbe Variable,
+ * mit der Claude Code selbst seine Shell findet. Dann vom Pfad der im PATH gefundenen
+ * `git.exe` aufwaerts bis zu dem Verzeichnis, das `bin\bash.exe` enthaelt; so trifft die Suche
+ * `<Git>\cmd\git.exe`, `<Git>\bin\git.exe` und `<Git>\mingw64\bin\git.exe` gleichermassen.
+ *
+ * **Nie `bash` ueber den PATH:** `C:\Windows\System32\bash.exe` ist der WSL-Starter, und WSL
+ * gilt als Linux, nicht als natives Windows. Eine Fundstelle dort waere eine fremde Shell mit
+ * eigenem Dateisystem.
+ *
+ * Umgebung, Plattform und Dateisystem sind injizierbar wie bei `findeImPath`.
+ */
+export function gitBashPfad({ env = process.env, plattform = "win32", existiert = existsSync } = {}) {
+  const eingestellt = umgebungsWert(env, "CLAUDE_CODE_GIT_BASH_PATH");
+  if (eingestellt && existiert(eingestellt)) return { pfad: eingestellt, fehler: null };
+
+  const git = findeImPath("git", {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+  });
+  if (git) {
+    // path.win32 statt path: Die Semantik ist die der uebergebenen Plattform, nicht die des
+    // Hosts — derselbe Grund wie beim Zusammensetzen in findeImPath.
+    let dir = path.win32.dirname(git);
+    for (;;) {
+      const bash = path.win32.join(dir, "bin", "bash.exe");
+      if (existiert(bash)) return { pfad: bash, fehler: null };
+      const oben = path.win32.dirname(dir);
+      if (oben === dir) break;
+      dir = oben;
+    }
+  }
+  return { pfad: null, fehler: GIT_BASH_FEHLT };
+}
+
+/**
+ * Wie startet das Kit ein Programm (Issue #1131, Plan #1128, E8)? Liefert
+ * `{ befehl, vorArgs, umgebung, fehler }`; gestartet wird `befehl` mit `[...vorArgs, ...args]`
+ * und `umgebung` zusaetzlich zur eigenen.
+ *
+ * Auf POSIX unveraendert der Name. Unter Windows:
+ *   - Liefert die Suche im PATH eine `.exe` oder `.com`, startet sie direkt.
+ *   - Liegt nur eine `.cmd`- oder `.bat`-Huelle vor und daneben eine gleichnamige Datei ohne
+ *     Endung, startet diese ueber die Git Bash: `bash.exe <datei> …args`. npm legt eine solche
+ *     sh-Huelle unter Windows immer mit an.
+ *   - Fehlt sie, ist das Programm ohne `cmd.exe` nicht startbar, und genau das steht im Fehler.
+ *     Ein `.cmd` ueber `shell: true` faellt aus: Node lehnt `.cmd` ohne Shell seit
+ *     CVE-2024-27980 ab, und cmd-Quoting kann keine Zeilenumbrueche.
+ *
+ * Liegt das Programm gar nicht im PATH, bleibt es beim Namen: Der Start scheitert dann mit
+ * ENOENT, und die Meldung dazu kennt der Aufrufer.
+ */
+export function startbefehlFuer(name, { env = process.env, plattform = process.platform, existiert = existsSync } = {}) {
+  const direkt = { befehl: name, vorArgs: [], umgebung: {}, fehler: null };
+  if (plattform !== "win32") return direkt;
+
+  const gefunden = findeImPath(name, {
+    platform: plattform,
+    path: umgebungsWert(env, "PATH"),
+    pathext: umgebungsWert(env, "PATHEXT"),
+    existiert,
+  });
+  if (!gefunden) return direkt;
+
+  const endung = path.win32.extname(gefunden).toLowerCase();
+  if (endung === ".exe" || endung === ".com") return { ...direkt, befehl: gefunden };
+
+  const nichtStartbar = (grund) => ({ befehl: null, vorArgs: [], umgebung: {}, fehler: grund });
+  const huelle = gefunden.slice(0, -endung.length);
+  if ((endung === ".cmd" || endung === ".bat") && existiert(huelle)) {
+    const bash = gitBashPfad({ env, plattform, existiert });
+    if (bash.fehler) return nichtStartbar(`"${name}" liegt als sh-Huelle vor (${huelle}): ${bash.fehler}`);
+    return { befehl: bash.pfad, vorArgs: [huelle], umgebung: { ...GIT_BASH_UMGEBUNG }, fehler: null };
+  }
+  return nichtStartbar(`"${name}" liegt nur als ${gefunden} ohne sh-Huelle daneben vor und ist nicht ohne cmd.exe startbar`);
+}
+
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
 // sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
 // Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
