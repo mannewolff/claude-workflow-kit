@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [3.5.4] - 2026-10-03
+## [3.6.0] - 2026-10-03
 - Das Hilfsskript der Hänge-Tests bricht die Testsuche nicht mehr (#1142)
 - README und Dokumentation sagen Windows mit Git Bash zu, die Anweisungen fangen ein leeres TMPDIR ab (#1139)
 - Kein Test überspringt sich mehr wegen Windows, ein Wächtertest hält das fest (#1138)
