@@ -1,0 +1,11 @@
+// Eingebaute Brueche der Art pfade (Issue #1158, Plan #1150 E17). Kein ausfuehrbarer Code:
+// Die Endung .txt haelt die Datei aus node --test und aus dem Waechter heraus.
+
+// Bruch: die Programmpfade mit ":" zusammengesetzt statt mit path.delimiter (#1145).
+process.env.PATH = `${join(dir, "fakebin")}:${altPath}`;
+
+// Gegenbeispiel: ein fester POSIX-Pfad mit Vermerk; die Plattformweiche steht davor.
+if (process.platform !== "win32") {
+  // windows-ausnahme: Gegenbeispiel fuer einen vermerkten plattformgebundenen Zweig
+  writeFileSync("/dev/null", "x");
+}

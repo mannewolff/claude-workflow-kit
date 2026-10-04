@@ -17,7 +17,7 @@
  * Ausgabe je Fund: `Hinweis: <datei>:<zeile> — <art>: <grund>`. Exit 0 auch bei Funden —
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
- * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`. Die Arten `pfade`,
+ * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`. Die Arten
  * `kommandos`, `dateien`, `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
@@ -64,6 +64,59 @@ export function skipFunde(quelle) {
   return funde;
 }
 
+// ---- Art pfade --------------------------------------------------------------
+//
+// Pfade und Pfadlisten in Mac-Schreibweise (Issue #1158; echte Faelle #1145, #1146). Die
+// Regel meldet nur Stellen, an denen der Text als Pfad oder Pfadliste benutzt wird — ein
+// Muster je Bruch, jedes mit eigenem Grund. Nicht gemeldet: `/dev/null` oder `/tmp` mitten
+// in einer Shell-Zeile (das ist die Art `kommandos`), Testerwartungen und Kommentare, die
+// solche Pfade nur nennen.
+
+// Eine Zeichenkette, die mit `/tmp` oder `/dev/null` beginnt.
+const POSIX_PFAD = /["'`](?:\/tmp[/"'`]|\/dev\/null["'`])/;
+// Datei-, Pfad- und Prozessaufrufe ohne `Sync` im Namen; jeder `…Sync`-Aufruf zaehlt dazu.
+const PFAD_AUFRUFE = new Set([
+  "join", "resolve", "spawn", "execFile", "fork", "open", "readFile", "writeFile", "appendFile",
+  "mkdtemp", "mkdir", "rm", "stat", "access", "unlink", "createReadStream", "createWriteStream",
+]);
+
+const PFADMUSTER = [
+  {
+    // Eine Variable der Programmpfade (`PATH`, `NODE_PATH`), zusammengesetzt oder zerlegt
+    // am Doppelpunkt: zwei Einsetzungen mit `:` dazwischen oder `":"` als eigenes Stueck.
+    // Unter Windows trennt `;`, der Eintrag wird nicht als eigener Pfad gelesen (#1145).
+    treffer: (z) => /\b[A-Z_]*PATH\b/.test(z) && /\}:\$\{|[(+]\s*["'`]:["'`]|["'`]:["'`]\s*[)+]/.test(z),
+    grund: "Pfadliste mit \":\" als Trenner statt path.delimiter",
+  },
+  {
+    // Ein fester POSIX-Pfad als Argument eines Datei-, Pfad- oder Prozessaufrufs oder als
+    // `cwd`. Unter Windows gibt es weder `/tmp` noch das Nullgeraet `/dev/null`.
+    treffer: (z) => {
+      const m = POSIX_PFAD.exec(z);
+      if (!m) return false;
+      const davor = z.slice(0, m.index);
+      const aufruf = /\b(\w+)\s*\([^()]*$/.exec(davor);
+      return /\bcwd:\s*$/.test(davor) || (aufruf !== null && (aufruf[1].endsWith("Sync") || PFAD_AUFRUFE.has(aufruf[1])));
+    },
+    grund: "fester POSIX-Pfad (/tmp oder /dev/null) statt os.tmpdir() bzw. Nullgeraet der Plattform",
+  },
+  {
+    // Den letzten Teil eines Pfads am Schraegstrich abschneiden: Unter Windows trennt `\`,
+    // das Ergebnis ist der ganze Pfad (#1146). Repo-Namen, URLs und Config-Vorlagen tragen
+    // `/` als festes Format und sind kein Pfad des Dateisystems.
+    treffer: (z) => /\.split\(\s*["'`]\/["'`]\s*\)\s*\.(?:pop\(\)|at\(\s*-1\s*\))/.test(z) && !/repo|url|template/i.test(z),
+    grund: "Pfadzerlegung an \"/\" statt basename",
+  },
+];
+
+/** Die Funde der Art `pfade` in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function pfadFunde(zeilen) {
+  return zeilen.flatMap((z, i) => {
+    const muster = PFADMUSTER.find((m) => m.treffer(z));
+    return muster ? [{ zeile: i + 1, grund: muster.grund }] : [];
+  });
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -72,6 +125,10 @@ export const REGELN = [
       zeile,
       grund: "Test ueberspringt sich nach dem Plattformnamen statt nach einer Faehigkeit",
     })),
+  },
+  {
+    art: "pfade",
+    pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : pfadFunde(zeilen),
   },
 ];
 
