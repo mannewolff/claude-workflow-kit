@@ -36,3 +36,21 @@ export function ciStatusOk(config, cliName, regeln) {
   assert.equal(res.status, 0, `Exit ${res.status}: ${res.stderr}`);
   return { daten: JSON.parse(res.stdout), zeilen };
 }
+
+// Startzeit je Job (Issue #1151): `gh run view --json jobs` liefert `startedAt`, `glab ci
+// get` liefert `started_at`. Je Host ein gestarteter und ein noch wartender Job — der
+// wartende traegt das Feld gar nicht (GitLab: `null`), bei GitHub zusaetzlich die
+// Null-Zeit, die gh fuer einen nie gestarteten Job ausgibt.
+export const STARTZEIT = "2026-10-04T16:00:00Z";
+export const GH_NULLZEIT = "0001-01-01T00:00:00Z";
+
+export const GH_JOBS_START = [
+  { name: "check (ubuntu-latest)", conclusion: "success", status: "completed", startedAt: STARTZEIT },
+  { name: "check (windows-latest)", conclusion: null, status: "queued" },
+  { name: "check (macos-latest)", conclusion: null, status: "queued", startedAt: GH_NULLZEIT },
+];
+
+export const GLAB_JOBS_START = [
+  { name: "test", status: "running", started_at: STARTZEIT },
+  { name: "lint", status: "pending", started_at: null },
+];

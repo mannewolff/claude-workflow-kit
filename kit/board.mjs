@@ -195,9 +195,10 @@ Nutzung:
   node board.mjs code pr --from <branch> --to <branch>
   node board.mjs code ci-status --commit <sha>
       Zustand der CI fuer genau diesen Commit (Issue #316):
-      { status: gruen|rot|laeuft|keine, jobs: [{ name, ergebnis }] }. Vorrang rot vor
-      laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch unsichtbarer
-      Lauf ist 'laeuft'.
+      { status: gruen|rot|laeuft|keine, jobs: [{ name, ergebnis, gestartet }] }. Vorrang
+      rot vor laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch
+      unsichtbarer Lauf ist 'laeuft'. 'gestartet' ist die Startzeit des Jobs (ISO) oder
+      null, solange er nicht gestartet ist (Issue #1151).
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -1056,6 +1057,17 @@ function ciErgebnis(wert, gruen, rot) {
 }
 
 /**
+ * Startzeit eines Jobs als ISO-Zeichenkette oder `null`, solange er nicht gestartet ist
+ * (Issue #1151). Ab ihr zaehlt die Frist, mit der `push main` auf die Windows-Pruefung
+ * wartet (Plan #1150, E4). gh gibt fuer einen nie gestarteten Job die Null-Zeit
+ * `0001-01-01T00:00:00Z` aus — sie ist kein Start.
+ */
+function ciStartzeit(wert) {
+  if (typeof wert !== "string" || wert === "" || wert.startsWith("0001-01-01")) return null;
+  return wert;
+}
+
+/**
  * Das Gesamturteil aus den Einzeljobs: rot vor laeuft vor gruen.
  *
  * Eine LEERE Jobliste ist `laeuft`, nicht `gruen`: Unmittelbar nach einem Push ist der
@@ -1125,7 +1137,11 @@ class GitHubCodeHost {
     for (const lauf of Array.isArray(laeufe) ? laeufe : []) {
       const detail = ciJSON("gh", ["run", "view", String(lauf.databaseId), "--json", "jobs"]);
       for (const job of Array.isArray(detail.jobs) ? detail.jobs : []) {
-        jobs.push({ name: job.name, ergebnis: ciErgebnis(job.conclusion, GITHUB_CI_GRUEN, GITHUB_CI_ROT) });
+        jobs.push({
+          name: job.name,
+          ergebnis: ciErgebnis(job.conclusion, GITHUB_CI_GRUEN, GITHUB_CI_ROT),
+          gestartet: ciStartzeit(job.startedAt),
+        });
       }
     }
     return { status: ciGesamturteil(jobs), jobs };
@@ -1332,6 +1348,7 @@ class GitLabCodeHost {
     const jobs = (Array.isArray(detail.jobs) ? detail.jobs : []).map((job) => ({
       name: job.name,
       ergebnis: ciErgebnis(job.status, GITLAB_CI_GRUEN, GITLAB_CI_ROT),
+      gestartet: ciStartzeit(job.started_at),
     }));
     return { status: ciGesamturteil(jobs), jobs };
   }

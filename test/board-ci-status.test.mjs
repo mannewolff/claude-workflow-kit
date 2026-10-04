@@ -15,7 +15,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
+import {
+  SHA, ciStatus, ciStatusOk, STARTZEIT, GH_JOBS_START,
+} from "./helpers/board-ci-fixture.mjs";
 
 // --- GitHub ---
 
@@ -37,8 +39,8 @@ test("[board-7] github: alle Jobs gruen ergeben gruen", () => {
   assert.deepEqual(daten, {
     status: "gruen",
     jobs: [
-      { name: "check (ubuntu-latest)", ergebnis: "gruen" },
-      { name: "check (windows-latest)", ergebnis: "gruen" },
+      { name: "check (ubuntu-latest)", ergebnis: "gruen", gestartet: null },
+      { name: "check (windows-latest)", ergebnis: "gruen", gestartet: null },
     ],
   });
   // Der SHA geht als Filter an gh, und die Jobs kommen aus `run view` — `run list --json name`
@@ -55,7 +57,7 @@ test("[board-7] github: ein roter Job ergibt rot und wird benannt", () => {
   ]));
   assert.equal(daten.status, "rot");
   assert.deepEqual(daten.jobs.find((j) => j.ergebnis === "rot"), {
-    name: "check (windows-latest)", ergebnis: "rot",
+    name: "check (windows-latest)", ergebnis: "rot", gestartet: null,
   });
 });
 
@@ -65,7 +67,7 @@ test("[board-7] github: ein laufender Job ergibt laeuft", () => {
     { name: "check (windows-latest)", conclusion: null, status: "in_progress" },
   ]));
   assert.equal(daten.status, "laeuft");
-  assert.deepEqual(daten.jobs[1], { name: "check (windows-latest)", ergebnis: "laeuft" });
+  assert.deepEqual(daten.jobs[1], { name: "check (windows-latest)", ergebnis: "laeuft", gestartet: null });
 });
 
 test("[board-7] github: cancelled zaehlt als rot", () => {
@@ -109,6 +111,21 @@ test("[board-7] github: ungueltiges JSON endet mit Exit 1", () => {
   const { res } = ciStatus(GITHUB, "gh", [{ match: "^run list", stdout: "kein json" }]);
   assert.equal(res.status, 1);
   assert.match(res.stderr, /Fehler:/);
+});
+
+// Startzeit je Job (Issue #1151): Ab ihr zaehlt die Frist, mit der `push main` auf die
+// Windows-Pruefung wartet (Plan #1150, E4). Das Feld ist additiv (E5).
+test("[board-7] github: ein gestarteter Job nennt seine Startzeit", () => {
+  const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln(GH_JOBS_START));
+  assert.equal(daten.jobs[0].gestartet, STARTZEIT);
+  assert.equal(daten.status, "laeuft");
+});
+
+test("[board-7] github: ein nicht gestarteter Job traegt gestartet null", () => {
+  const { daten } = ciStatusOk(GITHUB, "gh", ghRegeln(GH_JOBS_START));
+  assert.equal(daten.jobs[1].gestartet, null);
+  // gh gibt fuer einen nie gestarteten Job die Null-Zeit aus — sie ist kein Start.
+  assert.equal(daten.jobs[2].gestartet, null);
 });
 
 // Die Achse haengt am codeHost, nicht am issueTracker: Dieses Repo faehrt toolbox als

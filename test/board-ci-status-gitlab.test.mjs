@@ -11,7 +11,9 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { SHA, ciStatus, ciStatusOk } from "./helpers/board-ci-fixture.mjs";
+import {
+  SHA, ciStatus, ciStatusOk, STARTZEIT, GLAB_JOBS_START,
+} from "./helpers/board-ci-fixture.mjs";
 
 // --- GitLab ---
 
@@ -31,7 +33,10 @@ test("[board-7] gitlab: alle Jobs gruen ergeben gruen", () => {
   ]));
   assert.deepEqual(daten, {
     status: "gruen",
-    jobs: [{ name: "test", ergebnis: "gruen" }, { name: "lint", ergebnis: "gruen" }],
+    jobs: [
+      { name: "test", ergebnis: "gruen", gestartet: null },
+      { name: "lint", ergebnis: "gruen", gestartet: null },
+    ],
   });
   // `glab ci status` filtert nach Branch, nicht nach SHA — deshalb list/get mit --sha.
   assert.match(zeilen[0], new RegExp(`ci list .*--sha ${SHA}`));
@@ -45,7 +50,7 @@ test("[board-7] gitlab: ein roter Job ergibt rot und wird benannt", () => {
     { name: "lint", status: "failed" },
   ]));
   assert.equal(daten.status, "rot");
-  assert.deepEqual(daten.jobs.find((j) => j.ergebnis === "rot"), { name: "lint", ergebnis: "rot" });
+  assert.deepEqual(daten.jobs.find((j) => j.ergebnis === "rot"), { name: "lint", ergebnis: "rot", gestartet: null });
 });
 
 test("[board-7] gitlab: ein laufender Job ergibt laeuft", () => {
@@ -81,6 +86,18 @@ test("[board-7] gitlab: ein CLI mit Exit 1 endet mit Exit 1", () => {
   assert.match(res.stderr, /Fehler:/);
 });
 
+// Startzeit je Job (Issue #1151), GitLab liest `started_at`.
+test("[board-7] gitlab: ein gestarteter Job nennt seine Startzeit", () => {
+  const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln(GLAB_JOBS_START));
+  assert.equal(daten.jobs[0].gestartet, STARTZEIT);
+  assert.equal(daten.status, "laeuft");
+});
+
+test("[board-7] gitlab: ein nicht gestarteter Job traegt gestartet null", () => {
+  const { daten } = ciStatusOk(GITLAB, "glab", glabRegeln(GLAB_JOBS_START));
+  assert.equal(daten.jobs[1].gestartet, null);
+});
+
 // --- local ---
 
 // Ein Projekt ohne CI darf nicht releaseunfaehig werden: `keine` ist kein Fehler.
@@ -110,6 +127,7 @@ test("[board-7] der HELP-Text nennt code ci-status --commit", () => {
     const res = runBoard(dir, ["--help"]);
     assert.equal(res.status, 0);
     assert.match(res.stdout, /code ci-status --commit <sha>/);
+    assert.match(res.stdout, /gestartet/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
