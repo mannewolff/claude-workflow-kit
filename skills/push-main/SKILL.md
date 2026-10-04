@@ -272,6 +272,19 @@ Push fährt allein die Commits aus Schritt 2.
 
 > `Schritt 7 von 9 — Push (laeuft)`
 
+**Vor-Push-Schritt.** Nennt `RELEASING.md` einen Vor-Push-Schritt, fährt der Skill ihn
+nach dem Commit (Schritt 6) und vor dem Push, im Worktree, **im Hintergrund**, und wartet
+auf dessen Ende — er kann länger laufen, als ein Werkzeugaufruf im Vordergrund darf, und
+endet nach seiner eigenen Frist von selbst. Seine Fortschrittszeilen und seine Schlusszeile
+zeigt der Skill, bevor er pusht. Er ist kein eigener Schritt: Die Zählung bleibt `von 9`.
+Nennt `RELEASING.md` keinen, oder gibt es keine `RELEASING.md`, entfällt er ersatzlos.
+
+- Exit 0 — weiter zum Push.
+- Exit 1 — die Prüfung ist rot. Der Skill zeigt das Ergebnis und fragt wörtlich:
+  „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ Nur `ja` pusht;
+  alles außer „ja“ heißt kein Push, weiter mit Schritt 8.
+- Jeder andere Exit — Halt ohne Push, mit der Meldung des Werkzeugs; weiter mit Schritt 8.
+
 Aus dem Worktree, der auf einem losgelösten `HEAD` steht:
 
 ```bash
@@ -286,8 +299,8 @@ der Lauf mit dieser Meldung, und der Mensch entscheidet.
 
 > `Schritt 8 von 9 — Rueckweg und Abbau (laeuft)`
 
-Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf, einem Rebase-Konflikt
-oder einem abgewiesenen Push — ein liegengebliebener Worktree ist genau der Rest, den
+Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf, einem Rebase-Konflikt,
+einem Halt im Vor-Push-Schritt oder einem abgewiesenen Push — ein liegengebliebener Worktree ist genau der Rest, den
 dieser Weg beseitigt.
 
 Erst das, was in der Hauptkopie weiterzählt:
@@ -346,7 +359,7 @@ den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 `<mainBranch>` nachgezogen wurde oder mit welchem Grund nicht, und dass der
 Haupt-Working-Tree unberührt geblieben ist.
 
-**CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
+**CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Einzige Ausnahme ist die Vor-Push-Prüfung aus Schritt 7, wenn `RELEASING.md` eine nennt: Ihr Ergebnis lag vor dem Push vor, und der Bericht nennt es. Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
 
 Hinweis auf nächsten Schritt:
 > "Commit-Batch gepusht. Wenn der Test-Server automatisch zieht: dort prüfen. Dann auf Wunsch \`merge production\` für den PR nach production."
@@ -361,7 +374,7 @@ Hinweis auf nächsten Schritt:
   der Haupt-Tree schmutzig ist (Schritt 8)
 - Kein zweiter Commit und kein `--amend` auf diesem Weg
 - Keine Force-Pushes
-- Kein Push auf `production` oder andere Branches
+- Kein Push auf `production` oder andere Branches — ausgenommen der Vorab-Zweig, den ein Vor-Push-Schritt selbst anlegt und löscht
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
 - Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
