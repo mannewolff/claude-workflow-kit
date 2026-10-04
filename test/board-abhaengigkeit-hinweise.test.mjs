@@ -3,13 +3,14 @@
 // Der Nachtlauf liest jede lokale `#N` im Abschnitt als Abhaengigkeit, auch in einer
 // Erlaeuterung. `issue check-form`, `issue create` und `issue update` sagen das dem Autor
 // sofort, im Kanal `hinweise`: ein Eintrag `schreibweise` je Nummer ausserhalb einer
-// Verweiszeile, ein Eintrag `dokument` je Nummer, deren Karte ein Dokument ist. Keine neue
+// Verweiszeile, ein Eintrag `dokument` je Nummer, deren Karte ein Dokument ist, ein Eintrag
+// `unbekannt` je Nummer, die das Board nicht kennt (Issue #1149). Keine neue
 // Ablehnung — `ok` und Exit-Code bleiben, wie sie waren. Geprueft auf dem local-Adapter
 // und dem Toolbox-Mock (Plan-Verifizierung 2).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, board, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
@@ -33,6 +34,13 @@ In \`kit/board.mjs\` etwas aendern.
 ${abhaengigkeiten}
 `;
 }
+
+// Issue #1149: Eine Nummer, die das Board nicht kennt, gilt als erfuellte Abhaengigkeit —
+// ein Tippfehler faellt nur noch hier auf, als Hinweis ohne Ablehnung.
+const unbekannt = (nummer, stelle) => ({
+  art: "unbekannt", nummer, stelle,
+  meldung: `#${nummer} steht nicht auf dem Board (archiviert oder nicht vorhanden?) — sie gilt als erfüllt`,
+});
 
 const PLAN_SATZ = "ein Plandokument wird nie durch Umsetzung erledigt";
 const ANFORDERUNG_SATZ = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
@@ -75,7 +83,7 @@ test("local: eine Nummer aus Erlaeuterungstext gibt einen Hinweis schreibweise m
         nummer: 999,
         stelle: "Nicht #999: das bleibt getrennt.",
         meldung: "#999 zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #999‘): Nicht #999: das bleibt getrennt.",
-      }], weg);
+      }, unbekannt(999, "Nicht #999: das bleibt getrennt.")], weg);
     }
     // Angelegt bzw. geaendert trotz Hinweis.
     assert.match(board(dir, "issue", "get", "5").body, /Nicht #999/);
@@ -128,12 +136,24 @@ test("local: eine Verweiszeile mit (wartet auf Push) gibt keinen Hinweis schreib
   });
 });
 
-test("local: eine unbekannte Nummer in einer Verweiszeile gibt keinen Eintrag und keinen Fehler", () => {
+test("local: eine unbekannte Nummer in einer Verweiszeile gibt den Hinweis unbekannt, ohne Ablehnung", () => {
   mitLokal((dir) => {
     for (const { weg, res, json } of alleWege(dir, paket("Issue #777"))) {
       assert.equal(res.status, 0, `${weg}: ${res.stderr}`);
-      assert.equal("hinweise" in json, false, weg);
+      if (weg === "check-form") assert.equal(json.ok, true);
+      assert.deepEqual(json.hinweise, [unbekannt(777, "Issue #777")], weg);
     }
+  });
+});
+
+test("local: eine Karte, die sich nicht lesen laesst, gibt keinen Hinweis unbekannt", () => {
+  mitLokal((dir) => {
+    // Ein Verzeichnis statt der Datei: Die Karte existiert, ihr Abruf scheitert.
+    mkdirSync(join(dir, "issues", "0777.md"));
+    const [pruef] = alleWege(dir, paket("Issue #777"));
+    assert.equal(pruef.res.status, 0, pruef.res.stderr);
+    assert.equal(pruef.json.ok, true);
+    assert.equal("hinweise" in pruef.json, false);
   });
 });
 
@@ -157,7 +177,7 @@ test("local: I3- und I4-Verstoesse weisen wie bisher ab, die Hinweise kommen hin
     assert.equal(i3.status, 1);
     const j3 = JSON.parse(i3.stdout);
     assert.ok(j3.verstoesse.some((v) => v.gate === "I3"), JSON.stringify(j3.verstoesse));
-    assert.deepEqual(j3.hinweise.map((h) => [h.art, h.nummer]), [["schreibweise", 12]]);
+    assert.deepEqual(j3.hinweise.map((h) => [h.art, h.nummer]), [["schreibweise", 12], ["unbekannt", 12]]);
   });
 });
 
@@ -244,11 +264,12 @@ test("toolbox: ein ruhiger Bestand gibt keinen Schluessel hinweise", async () =>
   });
 });
 
-test("toolbox: eine Nummer, die nicht auf dem Board steht, gibt keinen Eintrag und keinen Fehler", async () => {
+test("toolbox: eine Nummer, die nicht auf dem Board steht, gibt den Hinweis unbekannt, ohne Ablehnung", async () => {
   await mitToolbox(async (dir) => {
     for (const { weg, res, json } of await alleWegeTbx(dir, paket("Issue #99"))) {
       assert.equal(res.status, 0, `${weg}: ${res.stderr}`);
-      assert.equal("hinweise" in json, false, weg);
+      if (weg === "check-form") assert.equal(json.ok, true);
+      assert.deepEqual(json.hinweise, [unbekannt(99, "Issue #99")], weg);
     }
   });
 });

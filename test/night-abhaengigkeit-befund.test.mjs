@@ -21,6 +21,7 @@ import {
 import { ERZEUGEN, fachplanB, umsetzung } from "./helpers/kette-umsetzung-fixture.mjs";
 
 const BLOCK_KOPF = "Abhaengigkeiten, wie der Nachtlauf sie liest:";
+const NEU = "nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.";
 const SESSION_ERFOLG = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;
 
 function karte(dir, titel, body, status = null) {
@@ -51,7 +52,7 @@ test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten e
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: SESSION_ERFOLG });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const erwartet = `Nachtlauf: Abhaengigkeit #${Number(plan)} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`;
+    const erwartet = `Nachtlauf: Abhaengigkeit #${Number(plan)} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.`;
     const kommentar = nachtlaufKommentar(dir, paket);
     const zeilen = kommentar.split("\n");
     assert.equal(zeilen[0], erwartet, "die erste Zeile des Kommentars hat sich geaendert");
@@ -84,25 +85,85 @@ test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten e
   });
 });
 
-test("[night-1062] eine unbekannte Nummer wird wie bisher zurueckgestellt, und der Lauf laeuft weiter", () => {
+test("[night-1149] eine Nummer, die das Board nicht kennt, gilt als erfuellt, und das Paket laeuft", () => {
   mitProjekt((dir) => {
     const paket = karte(dir, "Wartet auf Unbekanntes", "## Abhaengigkeiten\nIssue #9999 muss vorher fertig sein.", "ready");
-    const danach = karte(dir, "Laeuft danach", "## Abhaengigkeiten\nKeine.", "ready");
 
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: SESSION_ERFOLG });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    assert.equal(board(dir, "issue", "get", paket).status, "backlog");
-    assert.equal(board(dir, "issue", "get", danach).status, "in_review", "der Lauf lief nach der unbekannten Nummer nicht weiter");
-    const zeilen = nachtlaufKommentar(dir, paket).split("\n");
-    assert.equal(zeilen[0], "Nachtlauf: Abhaengigkeit #9999 nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.");
-    assert.equal(zeilen[2], BLOCK_KOPF);
-    const zeile = zeilen.find((z) => z.startsWith("- #9999"));
-    assert.ok(zeile, zeilen.join("\n"));
-    assert.match(zeile, /^- #9999: unerfuellt, aus einer Verweiszeile/, "eine unbekannte Nummer traegt weder Titel noch Dokument-Hinweis");
-    assert.doesNotMatch(zeile, /Dokument/);
+    assert.equal(board(dir, "issue", "get", paket).status, "in_review", "das Paket haette laufen muessen");
+    assert.doesNotMatch(kartenText(dir, paket), /Nachtlauf: Abhaengigkeit/);
   });
 });
+
+test("[night-1149] unerfuellt ist nur, was in Backlog, Ready oder In progress liegt", () => {
+  mitProjekt((dir) => {
+    const imBacklog = karte(dir, "Im Backlog", "## Abhaengigkeiten\nKeine.");
+    // Der Vorflug laesst keinen Lauf mit einer Karte in In progress an: Sie geht erst
+    // waehrend der ersten Session aus Done zurueck in die Arbeit.
+    const inArbeit = karte(dir, "Wieder in Arbeit", "## Abhaengigkeiten\nKeine.", "done");
+    const zuerst = karte(dir, "Zuerst", "## Abhaengigkeiten\nKeine.", "ready");
+    const imReview = karte(dir, "Im Review", "## Abhaengigkeiten\nKeine.", "in_review");
+    const fertig = karte(dir, "Fertig", "## Abhaengigkeiten\nKeine.", "done");
+    const wartetBacklog = karte(dir, "Wartet auf Backlog", `## Abhaengigkeiten\nIssue #${imBacklog}`, "ready");
+    const wartetArbeit = karte(dir, "Wartet auf In progress", `## Abhaengigkeiten\nIssue #${inArbeit}`, "ready");
+    // Vor seiner Voraussetzung angelegt: Sie liegt noch in Ready, wenn das Paket dran ist.
+    const wartetReady = karte(dir, "Wartet auf Ready", "## Abhaengigkeiten\nKeine.", "ready");
+    const imReady = karte(dir, "In Ready", "## Abhaengigkeiten\nKeine.", "ready");
+    board(dir, "issue", "update", wartetReady, "--body", `## Abhaengigkeiten\nIssue #${imReady}`);
+    const nachReview = karte(dir, "Nach Review", `## Abhaengigkeiten\nIssue #${imReview}`, "ready");
+    const nachDone = karte(dir, "Nach Done", `## Abhaengigkeiten\nIssue #${fertig}`, "ready");
+
+    const session = `if [ "$NIGHT_ISSUE_ID" = "${zuerst}" ]; then node .claude/kit/board.mjs issue move ${inArbeit} in_progress > /dev/null; fi\n${SESSION_ERFOLG}`;
+    const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: session });
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const spalte = (id) => board(dir, "issue", "get", id).status;
+    assert.equal(spalte(inArbeit), "in_progress", "die Voraussetzung ging nicht zurueck in die Arbeit");
+    for (const id of [wartetBacklog, wartetArbeit, wartetReady]) {
+      assert.equal(spalte(id), "backlog", `#${id} haette zurueckgestellt werden muessen`);
+      assert.ok(kartenText(dir, id).includes(` ${NEU}`), `#${id} ohne Rueckstell-Kommentar`);
+    }
+    for (const id of [zuerst, nachReview, nachDone, imReady]) assert.equal(spalte(id), "in_review", `#${id} haette laufen muessen`);
+  });
+});
+
+test("[night-1149] scheitert der Abruf der Sperrspalten, beginnt das Paket nicht", () => {
+  mitProjekt((dir) => {
+    const fertig = karte(dir, "Fertig", "## Abhaengigkeiten\nKeine.", "done");
+    const paket = karte(dir, "Wartet auf Fertiges", `## Abhaengigkeiten\nIssue #${fertig}`, "ready");
+    boardOhneBacklogListe(dir);
+
+    const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: SESSION_ERFOLG });
+
+    assert.match(`${res.stdout}\n${res.stderr}`, /Backlog-Liste kaputt/, "der Board-Fehler steht nicht in der Ausgabe");
+    assert.notEqual(board(dir, "issue", "get", paket).status, "in_review", "das Paket lief trotz Board-Ausfall");
+  }, undefined, undefined, { night: { stand: { pauseMin: 0.0001 } } });
+});
+
+/**
+ * Legt vor board.mjs der Kit-Kopie eine Huelle, die `issue list --status backlog` scheitern
+ * laesst und alles andere an die echte Datei reicht. Committet wie `boardMitZaehler`.
+ */
+function boardOhneBacklogListe(dir) {
+  const kit = join(dir, ".claude", "kit");
+  renameSync(join(kit, "board.mjs"), join(kit, "board-echt.mjs"));
+  writeFileSync(join(kit, "board.mjs"), [
+    'import { spawnSync } from "node:child_process";',
+    'if (process.argv.slice(2).join(" ") === "issue list --status backlog") {',
+    String.raw`  process.stderr.write("Backlog-Liste kaputt\n");`,
+    "  process.exit(1);",
+    "}",
+    `const res = spawnSync(process.execPath, [${JSON.stringify(join(kit, "board-echt.mjs"))}, ...process.argv.slice(2)], { stdio: "inherit" });`,
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"));
+  for (const a of [["add", "-A"], ["commit", "-q", "-m", "huelle"]]) {
+    const r = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(r.status, 0, `git ${a.join(" ")}: ${r.stderr}`);
+  }
+}
 
 test("[night-1062] ein startendes Paket mit Dokument-Verweis erzeugt eine Logzeile und keinen Kommentar", () => {
   mitProjekt((dir) => {
@@ -137,7 +198,7 @@ test("[night-1062] in der Umsetzungsstufe der Kette bleibt der Eintrag unter nic
     const { stufe } = umsetzung(dir, F);
     assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), ["0004"]);
     const { grund } = stufe.nichtBegonnen[0];
-    assert.equal(grund, "Abhaengigkeit #3 nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.");
+    assert.equal(grund, "Abhaengigkeit #3 nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.");
     assert.doesNotMatch(grund, /\n/);
   });
 });

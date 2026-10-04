@@ -25,7 +25,8 @@ import { GESCHUETZT_LABEL_GATE_TEXT, parseDeps, pruefeIssueGates } from "../kit/
 
 // --- Das gemeinsame Board ---
 //
-// Jede Karte steht fuer genau ein Urteil. 20 bis 22 sind Voraussetzungen, 99 fehlt.
+// Jede Karte steht fuer genau ein Urteil. 20 bis 23 sind Voraussetzungen, 99 fehlt, 98 laesst
+// sich bei local und GitHub nicht abrufen (Issue #1149).
 
 const deps = (...nummern) => `## Abhängigkeiten\n${nummern.length ? nummern.map((n) => "Issue #" + n).join("\n") : "Keine."}\n`;
 const body = (...nummern) => `## Kontext\nText.\n\n## Aufgabe\nTun.\n\n## Akzeptanzkriterium\n- gruen\n\n${deps(...nummern)}`;
@@ -70,6 +71,9 @@ const KARTEN = [
   { nr: 20, spalte: "ready", titel: "Voraussetzung offen", body: body() },
   { nr: 21, spalte: "in_review", titel: "Voraussetzung im Review", body: body() },
   { nr: 22, spalte: "done", titel: "Voraussetzung fertig", body: body() },
+  { nr: 23, spalte: "backlog", titel: "Voraussetzung im Backlog", body: body() },
+  { nr: 24, spalte: "ready", titel: "Paket wartet auf Backlog und In progress", body: body(23, 11) },
+  { nr: 25, spalte: "ready", titel: "Paket mit Ausfall", body: body(98) },
   // Ein Vorhaben (Issue #1024): Plan 30 mit fachlicher Quelle 40, seine Pakete 31 bis 34.
   // 35 gehoert zu Plan 300 und nennt #30 nur im Fliesstext; 36 gehoert zu Plan 37 ohne Quelle.
   { nr: 30, spalte: "backlog", titel: "[Plan] Vorhaben", body: `Fachliche Quelle: Issue #40\n\n## Ziel\nPlanziel.\n\n${E_ABSCHNITT}` },
@@ -95,6 +99,15 @@ const GLIEDER = ["Urteil", "Aufgabe", "Plan-Entscheidungen", "Fachlicher Anlass"
 function ueberschriften(markdown) {
   const imFence = fenceLauf();
   return markdown.split("\n").filter((z) => !imFence(z) && /^## /.test(z)).map((z) => z.slice(3).trim());
+}
+
+/** Paket 25 haengt an #98, deren Abruf scheitert: Das Board schweigt, die Karte bleibt. */
+function nichtFeststellbar(a) {
+  assert.equal(a.urteil.folge, "bleibt");
+  assert.equal(a.voraussetzungen.length, 1);
+  assert.equal(a.voraussetzungen[0].id, "98");
+  assert.equal(a.voraussetzungen[0].befund, "nicht feststellbar");
+  assert.ok(a.luecken.some((l) => l.includes("#98")), a.luecken.join("\n"));
 }
 
 function json(res) {
@@ -212,13 +225,20 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.deepEqual(a.voraussetzungen, [{ id: "20", titel: "Voraussetzung offen", spalte: "ready", befund: "unerfuellt" }]);
   });
 
-  await t.test("Voraussetzung nicht feststellbar -> bleibt und steht unter Luecken", async () => {
-    const a = await auftrag("18");
+  await t.test("Voraussetzungen in Backlog und In progress -> bleibt", async () => {
+    const a = await auftrag("24");
     assert.equal(a.urteil.folge, "bleibt");
-    assert.equal(a.voraussetzungen.length, 1);
-    assert.equal(a.voraussetzungen[0].id, "99");
-    assert.equal(a.voraussetzungen[0].befund, "nicht feststellbar");
-    assert.ok(a.luecken.some((l) => l.includes("#99")));
+    assert.deepEqual(a.voraussetzungen.map((v) => [v.id, v.spalte, v.befund]), [["23", "backlog", "unerfuellt"], ["11", "in_progress", "unerfuellt"]]);
+    assert.match(a.urteil.grund, /unerfuellt ist, was in Backlog, Ready oder In progress liegt/);
+  });
+
+  await t.test("Voraussetzung nicht auf dem Board -> erfuellt, darf beginnen (Issue #1149)", async () => {
+    const a = await auftrag("18");
+    assert.equal(a.urteil.folge, "beginnen");
+    assert.deepEqual(a.voraussetzungen, [{ id: "99", titel: null, spalte: null, befund: "erfuellt", grund: "steht nicht auf dem Board" }]);
+    assert.ok(!a.luecken.some((l) => l.includes("#99")), a.luecken.join("\n"));
+    const md = (await lauf(["issue", "auftrag", "18"])).stdout;
+    assert.match(md, /- #99 \(ohne Titel\) — Spalte: keine — erfuellt \(steht nicht auf dem Board\)/);
   });
 
   await t.test("Voraussetzungen in In review und Done -> darf beginnen; Ruecklaeufer zeigt Kommentare", async () => {
@@ -370,6 +390,15 @@ test("local", async (t) => {
   const zustand = (nr) => readFileSync(join(dir, "issues", `${nr.padStart(4, "0")}.md`), "utf-8");
   try {
     await adapterFaelle(t, async (args) => runBoard(dir, args), zustand);
+    await t.test("Abruf der Voraussetzung scheitert -> nicht feststellbar, bleibt (Issue #1149)", () => {
+      // Ein Verzeichnis statt der Datei: Die Karte existiert, laesst sich aber nicht lesen.
+      mkdirSync(join(dir, "issues", "0098.md"));
+      try {
+        nichtFeststellbar(json(runBoard(dir, ["issue", "auftrag", "25", "--json"])));
+      } finally {
+        rmSync(join(dir, "issues", "0098.md"), { recursive: true, force: true });
+      }
+    });
     await t.test("rein lesend: kein Bewegungsprotokoll, keine Berichtsstuecke", () => {
       assert.deepEqual(readdirSync(join(dir, ".claude")).sort(), ["workflow.config.json"]);
     });
@@ -397,6 +426,7 @@ function ghRegeln() {
     },
   }));
   regeln.push({ match: "^issue view 99 ", stderr: "GraphQL: Could not resolve to an issue with the number of 99.\n", exit: 1 });
+  regeln.push({ match: "^issue view 98 ", stderr: "HTTP 502: Bad Gateway (https://api.github.com/graphql)\n", exit: 1 });
   regeln.push({
     match: "^project item-list",
     stdout: { items: KARTEN.map((k) => ({ status: GH_STATUS[k.spalte], content: { number: k.nr, title: k.titel } })) },
@@ -431,6 +461,9 @@ test("GitHub", async (t) => {
       assert.ok(a.luecken.some((l) => l.includes("#38") && l.includes("nicht feststellbar")), a.luecken.join("\n"));
       const md = runBoard(dir, ["issue", "auftrag", "31"]).stdout;
       assert.match(md, /#38 Geschwister ohne Spalte — Spalte: nicht feststellbar/);
+    });
+    await t.test("Abruf der Voraussetzung scheitert -> nicht feststellbar, bleibt (Issue #1149)", () => {
+      nichtFeststellbar(json(runBoard(dir, ["issue", "auftrag", "25", "--json"])));
     });
     await t.test("geschlossene Voraussetzung in Done gilt als erfuellt", () => {
       const a = json(runBoard(dir, ["issue", "auftrag", "19", "--json"]));

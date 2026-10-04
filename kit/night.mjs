@@ -79,8 +79,8 @@
  *   - Working Tree sauber -> weiter mit der naechsten Runde
  *   - Working Tree dirty   -> harter Stopp (unkommittete Reste wuerden die naechste
  *     Runde vergiften, siehe Issue #152)
- * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N in
- * In review oder Done), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
+ * Abhaengigkeiten: `## Abhaengigkeiten` muss erfuellt sein (referenzierte #N nicht in
+ * Backlog, Ready oder In progress), sonst wandert das Issue kommentiert ins Backlog (Kaskade).
  * Nicht implementierbare Issues werden vor dem Session-Start am Titel erkannt und
  * kommentiert ins Backlog gestellt: `[Fachlich]` (PO-Story, wird gegroomt, #146),
  * `[Idee]` (rohe Anforderung, noch kein Arbeitspaket, #192) und `[Plan]` (Plandokument, muss erst
@@ -3497,12 +3497,32 @@ function kreisText(kreis) {
   return [...kreis, kreis[0]].map((k) => `#${k}`).join(" -> ");
 }
 
+// Die Spalten, in denen eine Abhaengigkeit unerfuellt ist (Issue #1149). Jede andere Lage —
+// In review, Done, archiviert, nicht mehr auf dem Board — gilt als erfuellt.
+const SPERR_SPALTEN = ["backlog", "ready", "in_progress"];
+
+/**
+ * Die erfuellten Abhaengigkeiten als Menge mit `has` und `add` (Issue #1149): erfuellt ist
+ * jede Nummer, die nicht in einer Sperrspalte liegt. Umgekehrt bestimmt, weil das Board
+ * archivierte und alte erledigte Karten nicht mehr listet. Scheitert ein Abruf, greift wie
+ * bisher der Board-Fehler von `board()`.
+ */
 function satisfiedIds() {
-  const inReview = board("issue", "list", "--status", "in_review");
-  const done = board("issue", "list", "--status", "done");
-  const erledigt = [...inReview, ...done];
-  for (const k of erledigt) KARTEN_CACHE.set(Number(k.id), k);
-  return new Set(erledigt.map((i) => Number(i.id)));
+  const gesperrt = SPERR_SPALTEN.flatMap((spalte) => board("issue", "list", "--status", spalte));
+  // Nur fehlende Eintraege: Die Sperrspalten tragen auch Karten, die der Lauf schon
+  // kommentiert hat — ihr frischer Body (lokaler Tracker: samt Kommentar) truege fremde
+  // Nummern in die Kreis-Suche.
+  for (const k of gesperrt) if (!KARTEN_CACHE.has(Number(k.id))) KARTEN_CACHE.set(Number(k.id), k);
+  return erfuelltAusser(gesperrt.map((i) => Number(i.id)));
+}
+
+/** Erfuellt ist jede Nummer ausser `offen`; `add` nimmt eine Nummer aus `offen` heraus. */
+function erfuelltAusser(offen) {
+  const rest = new Set(offen);
+  return {
+    has: (nummer) => !rest.has(nummer),
+    add: (nummer) => { rest.delete(nummer); },
+  };
 }
 
 // Der Satz je Dokument-Art, dem Wortlaut von `dokumentArt` in kit/board.mjs folgend
@@ -9964,8 +9984,7 @@ export function laufeDryRun(args, ctx) {
     process.exit(0);
   }
   warnWennLabelNirgendsVorkommt(ctx, ready);
-  const satisfied = satisfiedIds();
-  const assumedDone = new Set(satisfied); // Annahme: frühere Runden gelingen
+  const assumedDone = satisfiedIds(); // Annahme: frühere Runden gelingen
   let planned = 0;
   for (const issue of ready) {
     const { grund, vermerk, befund } = dryRunBefund(issue, ctx, assumedDone);
@@ -10072,7 +10091,7 @@ export function pruefeIssueGates(top) {
   }
 
   // Der Befund erst, wenn es Abhaengigkeiten gibt: Ein Paket mit "Keine." kostet so
-  // keinen Abruf der erledigten Listen mehr als vorher.
+  // keinen Abruf der Sperrspalten mehr als vorher.
   if (parseDeps(full.body).length === 0) return null;
   const befund = abhaengigkeitsBefund(top, full.body, satisfiedIds());
   const unmet = befund.abhaengigkeiten.filter((a) => !a.erfuellt).map((a) => a.nummer);
@@ -10080,7 +10099,7 @@ export function pruefeIssueGates(top) {
     return {
       unmet,
       log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
-      kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.`,
+      kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.`,
       block: abhaengigkeitsBlock(befund),
       kreisLog: befund.kreise.map((k) => kreisLogZeile(top.id, k)),
     };

@@ -3700,7 +3700,9 @@ const AUFTRAG_PRAEFIXE = [
 ];
 const AUFTRAG_KLAEREN = "kit:klaeren";
 const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
-const AUFTRAG_ERFUELLT = ["in_review", "done"];
+// Die Spalten, in denen eine Voraussetzung unerfuellt ist (Issue #1149); jede andere Lage
+// gilt als erfuellt — wie `satisfiedIds` in kit/night.mjs.
+const AUFTRAG_UNERFUELLT = ["backlog", "ready", "in_progress"];
 const KEIN_VORHABEN = "kein Vorhaben";
 
 // SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
@@ -3752,10 +3754,12 @@ export function abhaengigkeitenMitHerkunft(body) {
 
 /**
  * Die Hinweise zum Abschnitt `## Abhaengigkeiten` beim Schreiben (Issue #1060, Plan #1057
- * E4, E5): `{ art: "schreibweise" | "dokument", nummer, stelle, meldung }` — `schreibweise`
- * je Nummer aus Text, `dokument` je Nummer, deren Karte ein Dokument-Praefix traegt, auch
- * in einer Verweiszeile. Jede Nummer wird einmal nachgeschlagen; scheitert der Abruf,
- * entfaellt ihr Dokument-Hinweis still — alte erledigte Karten findet `getIssue` nicht.
+ * E4, E5): `{ art: "schreibweise" | "dokument" | "unbekannt", nummer, stelle, meldung }` —
+ * `schreibweise` je Nummer aus Text, `dokument` je Nummer, deren Karte ein Dokument-Praefix
+ * traegt, auch in einer Verweiszeile, `unbekannt` je Nummer, die das Board ausdruecklich
+ * nicht kennt (Issue #1149) — sie gilt als erfuellt, ein Tippfehler faellt also nur hier auf.
+ * Jede Nummer wird einmal nachgeschlagen; scheitert der Abruf aus anderem Grund, entfaellt
+ * ihr Hinweis still.
  */
 export async function abhaengigkeitsHinweise(body, tracker) {
   const hinweise = [];
@@ -3767,7 +3771,12 @@ export async function abhaengigkeitsHinweise(body, tracker) {
       });
     }
     const dokument = await dokumentArt(tracker, nummer);
-    if (dokument) {
+    if (dokument?.unbekannt) {
+      hinweise.push({
+        art: "unbekannt", nummer, stelle,
+        meldung: `#${nummer} steht nicht auf dem Board (archiviert oder nicht vorhanden?) — sie gilt als erfüllt`,
+      });
+    } else if (dokument) {
       hinweise.push({
         art: "dokument", nummer, stelle,
         meldung: `#${nummer} ist ein Dokument (${dokument.praefix}), kein Arbeitspaket — ${dokument.satz}`,
@@ -3777,13 +3786,16 @@ export async function abhaengigkeitsHinweise(body, tracker) {
   return hinweise;
 }
 
-/** Praefix und Satz, wenn die Karte ein Dokument ist; sonst oder bei scheiterndem Abruf null. */
+/**
+ * Praefix und Satz, wenn die Karte ein Dokument ist; `{ unbekannt: true }`, wenn der Tracker
+ * die Nummer nicht kennt; sonst oder bei scheiterndem Abruf null.
+ */
 async function dokumentArt(tracker, nummer) {
   let titel;
   try {
     titel = (await tracker.getIssue(String(nummer))).title;
-  } catch {
-    return null;
+  } catch (e) {
+    return karteUnbekannt(e) ? { unbekannt: true } : null;
   }
   const erst = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
   if (istPlan(titel)) return { praefix: "[Plan]", satz: "ein Plandokument wird nie durch Umsetzung erledigt" };
@@ -3844,18 +3856,39 @@ async function auftragSpalte(tracker, issue, reihenfolge, spaltenListen) {
   return null;
 }
 
+/**
+ * Das Urteil ueber eine Voraussetzung (Issue #1149): unerfuellt nur in Backlog, Ready oder
+ * In progress; jede andere Spalte und eine Nummer, die der Tracker nicht kennt, gilt als
+ * erfuellt. Antwortet das Board nicht, bleibt sie "nicht feststellbar".
+ */
 async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
   let karte;
   try {
     karte = await tracker.getIssue(String(nummer));
   } catch (e) {
+    if (karteUnbekannt(e)) return { id: String(nummer), titel: null, spalte: null, befund: "erfuellt", grund: NICHT_AUF_DEM_BOARD };
     return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: `Karte nicht lesbar: ${e.message}` };
   }
-  const spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_ERFUELLT, spaltenListen)
-    .catch(() => null);
+  let spalte;
+  try {
+    spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_UNERFUELLT, spaltenListen);
+  } catch (e) {
+    return { id: String(nummer), titel: karte.title ?? null, spalte: null, befund: "nicht feststellbar", grund: `Spalte nicht lesbar: ${e.message}` };
+  }
   const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
-  if (spalte === null) return { ...eintrag, befund: "nicht feststellbar", grund: "Spalte nicht bestimmbar" };
-  return { ...eintrag, befund: AUFTRAG_ERFUELLT.includes(spalte) ? "erfuellt" : "unerfuellt" };
+  return { ...eintrag, befund: AUFTRAG_UNERFUELLT.includes(spalte) ? "unerfuellt" : "erfuellt" };
+}
+
+const NICHT_AUF_DEM_BOARD = "steht nicht auf dem Board";
+
+/**
+ * Der Tracker kennt die Nummer nicht — anders als ein Abruf, der scheitert (Issue #1149).
+ * Lokaler Tracker und Toolbox werfen `Issue <n> nicht gefunden`, gh und glab ihre eigene
+ * Meldung. Ein fehlendes CLI ("gh nicht gefunden") zaehlt nicht dazu.
+ */
+function karteUnbekannt(e) {
+  if (e instanceof BoardError) return /^Issue \S+ nicht gefunden/.test(e.message);
+  return /Could not resolve to an issue|404 Not Found/i.test(String(e?.message ?? ""));
 }
 
 const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
@@ -4096,7 +4129,7 @@ function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare)
   const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
   if (offen.length > 0) {
     const liste = offen.map((v) => `#${v.id} ${v.befund}`).join(", ");
-    return nicht("bleibt", `Voraussetzung ${liste} (erfuellt ist nur In review oder Done).`);
+    return nicht("bleibt", `Voraussetzung ${liste} (unerfuellt ist, was in Backlog, Ready oder In progress liegt).`);
   }
   return { urteil: "darf beginnen", folge: "beginnen", grund: null, kommentar: null };
 }
@@ -4122,7 +4155,8 @@ function auftragKommentarBlock(k) {
 
 function auftragVoraussetzungZeile(v) {
   const grund = v.grund ? " (" + v.grund + ")" : "";
-  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${v.spalte ?? "nicht feststellbar"} — ${v.befund}${grund}`;
+  const spalte = v.spalte ?? (v.befund === "erfuellt" ? "keine" : "nicht feststellbar");
+  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${spalte} — ${v.befund}${grund}`;
 }
 
 function auftragMarkdown(a) {

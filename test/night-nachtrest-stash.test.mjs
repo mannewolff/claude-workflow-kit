@@ -144,7 +144,7 @@ test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiter
     // Das abhaengige Paket wartet, sein Rueckstell-Kommentar ist der von heute.
     assert.ok(labels(dir, abhaengig).includes("lauf:wartet"), `Labels #${abhaengig}: ${labels(dir, abhaengig)}`);
     assert.match(laufstand(dir, abhaengig), new RegExp(`hängt an #${Number(reste)} \\(abgebrochen in diesem Lauf\\)`));
-    assert.ok(roh(dir, abhaengig).includes(`Nachtlauf: Abhaengigkeit #${Number(reste)} nicht erfuellt (nicht in In review/Done) — Issue zurueckgestellt.\n\nAbhaengigkeiten, wie der Nachtlauf sie liest:`));
+    assert.ok(roh(dir, abhaengig).includes(`Nachtlauf: Abhaengigkeit #${Number(reste)} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.\n\nAbhaengigkeiten, wie der Nachtlauf sie liest:`));
     assert.equal(spalte(dir, abhaengig), "backlog");
 
     // Laufstand je Paket: laeuft zu Rundenbeginn, fertig bei In review mit Nachweis.

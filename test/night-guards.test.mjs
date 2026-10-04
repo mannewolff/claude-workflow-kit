@@ -298,7 +298,7 @@ test("Kaskade: unerfuellte Abhaengigkeit wandert kommentiert ins Backlog, erfuel
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(blockiert), "das blockierte Issue haette ins Backlog gemusst");
     const text = readFileSync(join(dir, "issues", `${blockiert}.md`), "utf-8");
-    assert.match(text, /Abhaengigkeit #\d+ nicht erfuellt \(nicht in In review\/Done\)/);
+    assert.match(text, /Abhaengigkeit #\d+ nicht erfuellt \(liegt in Backlog, Ready oder In progress\)/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
