@@ -244,6 +244,7 @@ function ladeEinstellungen(root) {
     issueTracker: null,
     buildCmds: [],
     abschlussAusgelassen: [],
+    hinweisCmds: [],
     configGelesen: null,
   };
   if (!existsSync(pfad)) return vorgabe;
@@ -253,7 +254,7 @@ function ladeEinstellungen(root) {
   } catch (err) {
     return { ...vorgabe, configGelesen: `nicht lesbar (${err.message})` };
   }
-  const { buildCmds, abschlussAusgelassen } = pruefungenAusConfig(config);
+  const { buildCmds, abschlussAusgelassen, hinweisCmds } = pruefungenAusConfig(config);
   const block = config?.wirksamkeit && typeof config.wirksamkeit === "object" ? config.wirksamkeit : {};
   return {
     fensterTage: ganzzahl(block.fensterTage) ?? VORGABE_FENSTER_TAGE,
@@ -265,6 +266,7 @@ function ladeEinstellungen(root) {
     issueTracker: typeof config?.issueTracker === "string" ? config.issueTracker : null,
     buildCmds,
     abschlussAusgelassen,
+    hinweisCmds,
     configGelesen: null,
   };
 }
@@ -275,22 +277,30 @@ function ladeEinstellungen(root) {
  * auslaesst (Issue #946) — ihre Dauer ist der Aufschlag des Vergleichswerts (E8).
  *
  * Die drei Formen eines buildChecks-Eintrags (String, { cmd, areas }, { cmd, ... })
- * interessieren hier nur als Kommando und als `nichtBeimAbschluss`. Ohne Stufenfilter —
+ * interessieren hier nur als Kommando, als `nichtBeimAbschluss` und als `art`. Ohne Stufenfilter —
  * checks.mjs weist eine Config ab, die `nichtBeimAbschluss` mit `push` oder `merge`
  * paart, und ein zweiter Filter hier waere eine zweite Wahrheit ueber dieselbe Regel.
  */
 function pruefungenAusConfig(config) {
   const buildCmds = [];
   const abschlussAusgelassen = [];
+  const hinweisCmds = [];
   for (const eintrag of Array.isArray(config?.buildChecks) ? config.buildChecks : []) {
     const objekt = typeof eintrag === "string" ? { cmd: eintrag } : eintrag;
     const cmd = objekt?.cmd;
     if (typeof cmd !== "string" || cmd.length === 0) continue;
+    // Ein Eintrag der Art `hinweis` endet in checks.mjs immer gruen (Issue #1155, Plan
+    // #1150, E11): Er kann nicht beanstanden und ist darum keine Pflichtpruefung — weder
+    // "nie beanstandet" noch "nicht gelaufen" sagte ueber ihn etwas aus.
+    if (objekt.art === "hinweis") {
+      hinweisCmds.push(cmd);
+      continue;
+    }
     buildCmds.push(cmd);
     const grund = objekt.nichtBeimAbschluss;
     if (typeof grund === "string" && grund.length > 0) abschlussAusgelassen.push({ cmd, grund });
   }
-  return { buildCmds, abschlussAusgelassen };
+  return { buildCmds, abschlussAusgelassen, hinweisCmds };
 }
 
 /** Eine ganze Zahl groesser null oder `null` — ein unbrauchbarer Wert faellt auf die Vorgabe zurueck. */
@@ -504,19 +514,22 @@ function zeilenbilanz(protokoll, fenster) {
  * ist die VEREINIGUNG aus den `cmd`-Werten der heutigen buildChecks und allen
  * Kommandos mit einer Protokollzeile im Fenster (E3): Eine im Fenster entfernte
  * Pruefung faellt damit nicht aus der Zeitbilanz, eine vorgeschriebene ohne jede
- * Ausfuehrung erscheint als "nicht gelaufen".
+ * Ausfuehrung erscheint als "nicht gelaufen". Die Zeilen einer Hinweis-Pruefung
+ * (`hinweisCmds`, Issue #1155) bleiben draussen: Sie ist immer gruen und stuende sonst
+ * als "nie beanstandet" im Befund.
  *
  * `dauerMs` bleibt ohne Ausfuehrung `null` und heisst "nicht gemessen" — nie 0. Eine
  * 0 behauptete, es sei nichts verbraucht worden, und saehe aus wie gemessen (dieselbe
  * Regel wie in kit/aufwand.mjs).
  */
-function aggregieren(zeilen, buildCmds, fenster) {
+function aggregieren(zeilen, buildCmds, fenster, hinweisCmds = []) {
+  const hinweis = new Set(hinweisCmds);
   const jeCmd = new Map();
   for (const cmd of buildCmds) {
     jeCmd.set(cmd, { cmd, vorgeschrieben: true, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() });
   }
   for (const z of zeilen) {
-    if (!imFenster(z.zeitMs, fenster)) continue;
+    if (!imFenster(z.zeitMs, fenster) || hinweis.has(z.cmd)) continue;
     const p = jeCmd.get(z.cmd)
       ?? { cmd: z.cmd, vorgeschrieben: false, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() };
     p.ausfuehrungen += 1;
@@ -1416,7 +1429,7 @@ export function auswerten(root, { fenster: fensterArg } = {}) {
   const jetztMs = Date.now();
   const protokoll = protokollLesen(root);
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
-  const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster);
+  const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster, einstellungen.hinweisCmds);
   const abschlusszeit = abschlusszeitErmitteln(protokoll.zeilen, fenster, einstellungen.abschlussAusgelassen);
   const bereiche = bereicheErmitteln(protokoll.zeilen, fenster, einstellungen.buildCmds, zuschnittHolen(root));
   const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs);

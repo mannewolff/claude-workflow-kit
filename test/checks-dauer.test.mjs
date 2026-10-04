@@ -89,7 +89,7 @@ test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGes
       [
         "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
         "configHash",
-        "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
+        "dauerGesamtMs", "geaendert", "hashes", "hinweise", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
         "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
       ],
     );

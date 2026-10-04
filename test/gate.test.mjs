@@ -361,3 +361,26 @@ test("[kitstand-6] fehlt das Gate des Stands, bleibt der Hook beim eigenen", () 
     assert.match(res.stderr, /Zusammenfassung fehlt/, "das eigene Gate lief");
   });
 });
+
+// --- Hinweis-Pruefungen (Issue #1155, Plan #1150, E12) ---
+//
+// Ein Hinweis-Eintrag endet gruen, auch mit Fund. Das Gate liest nur `ergebnis` und
+// bleibt unveraendert — der Fund haelt den Commit nicht an.
+
+test("[gate-1] ein Hinweis-Eintrag mit Fund laesst den Commit zu", () => {
+  const config = {
+    buildChecks: [{ cmd: "node hinweis.mjs", always: true, art: "hinweis" }],
+  };
+  mitRepo({ config }, (dir) => {
+    gateEinbauen(dir);
+    datei(dir, "hinweis.mjs", "console.log('Hinweis: kit/a.mjs:1 — pfade: Schraegstrich');\nprocess.exit(1);\n");
+    const lauf = run(dir);
+    assert.equal(lauf.status, 0, `${lauf.stdout}${lauf.stderr}`);
+    assert.deepEqual(zusammenfassungLesen(dir).hinweise, [{ cmd: "node hinweis.mjs", zeilen: ["kit/a.mjs:1 — pfade: Schraegstrich"] }]);
+
+    git(dir, "add", "hinweis.mjs");
+    const res = gate(dir, "pre-commit");
+
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+  });
+});

@@ -771,3 +771,30 @@ test("gleichzeitig: ein Wahrheitswert ist gueltig", () => {
 test("gleichzeitig: eine Zeichenkette ist ungueltig", () => {
   assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", gleichzeitig: "ja" }), []);
 });
+
+// --- Die Eintragsart art (Issue #1155, Plan #1150, E11) ---
+//
+// Ein Eintrag der Art `hinweis` meldet und haelt nie an. Ein anderer Wert waere ein
+// vertipptes Feld, das die Pruefung still zur gewoehnlichen machte.
+
+test("art: der Wert hinweis ist gueltig", () => {
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/windows-brueche.mjs", always: true, art: "hinweis" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/windows-brueche.mjs", areas: ["kit"], stufe: "push", art: "hinweis" }), []);
+});
+
+test("art: ein anderer Wert ist ungueltig", () => {
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", art: "warnung" }), []);
+  assert.notDeepEqual(pruefe(eintragSchema, { cmd: "node --test", art: true }), []);
+});
+
+test("art: das enum und die Beschreibung stehen am Feld im Schema", () => {
+  const feld = eintragSchema.oneOf.find((z) => z.type === "object")?.properties?.art;
+  assert.ok(feld, "das Feld 'art' fehlt in der Objektform von buildChecks");
+  assert.deepEqual(feld.enum, ["hinweis"]);
+  assert.match(feld.description, /gruen|grün/i, "die Beschreibung sagt nicht, dass der Eintrag gruen endet");
+  assert.match(feld.description, /Hinweis: /, "die Beschreibung nennt die Zeilenform nicht");
+  assert.ok(
+    feld.description.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
+    "die Beschreibung endet nicht mit der Standardformel"
+  );
+});

@@ -113,6 +113,13 @@
                 "type": "boolean",
                 "default": false,
                 "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens vier, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
+              "art": {
+                "type": "string",
+                "enum": [
+                  "hinweis"
+                ],
+                "description": "Die Eintragsart. \"hinweis\" = die Prüfung meldet nur und hält nie an: Sie endet in \"checks.mjs run\" immer grün — mit Fund, ohne Fund und auch beim Absturz des Werkzeugs; Rückgabewert, Fehlermerkmale und Gütemessung werden für sie nicht ausgewertet. Jede Ausgabezeile der Form \"Hinweis: <text>\" steht in \"hinweise\" der Zusammenfassung und als \"hinweis: <text>\" im Block für den Abschlussbericht; endet das Werkzeug mit Exit 2 oder mehr, steht dort genau eine Zeile \"Hinweis-Pruefung gescheitert\" mit dem Kommando. Die Wirksamkeitsauswertung führt einen solchen Eintrag nicht als Pflichtprüfung. Fehlendes Feld = eine gewöhnliche Prüfung, deren Rot den Lauf anhält. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [

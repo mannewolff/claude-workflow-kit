@@ -233,6 +233,20 @@ const STUFEN = ["paket", "push", "merge"];
 // Auswertung koennte die Gruppen nicht zaehlen.
 const NICHT_BEIM_ABSCHLUSS = ["zusammenspiel", "volleTestmenge"];
 
+// Die Werte des Felds `art` (Issue #1155, Plan #1150, E11). Ein Eintrag der Art `hinweis`
+// meldet und haelt nie an: Er endet immer `gruen`, seine Zeilen `Hinweis: …` gehen in den
+// Bericht. Kein dritter Ergebniswert (E12) — Gate, Runner und Befunde lesen jedes
+// `ergebnis !== "gruen"` als Abweisung, und ein neuer Wert braeuchte an jeder dieser
+// Stellen eine zweite Bahn. Hier oben, weil `HELP` die Werte nennt.
+const ARTEN = ["hinweis"];
+
+// Die Zeilenform, in der eine Hinweis-Pruefung ihre Funde meldet (Issue #1155).
+const HINWEIS_ZEILE = /^Hinweis: (.+)$/;
+
+// Ab diesem Rueckgabewert gilt ein Hinweis-Werkzeug als gescheitert statt fuendig: Exit 1
+// ist bei Pruefwerkzeugen ueblicherweise "Fund", Exit 2 und mehr "eigener Fehler".
+const HINWEIS_ABSTURZ_AB = 2;
+
 /**
  * Die allgemeinen Fehlermerkmale (Issue #858, Fachplan #769, AK 2): Merkmale, an
  * denen eine Ausgabe ihr Scheitern selbst ausweist, auch wenn der Rueckgabewert 0
@@ -465,7 +479,11 @@ Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
 (Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
 und 'nichtBeimAbschluss': ${NICHT_BEIM_ABSCHLUSS.join(" | ")} — die Pruefung
 zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, sowie
-'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen) und
+'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen, sowie
+'art': ${ARTEN.join(" | ")} — die Pruefung meldet nur: Sie endet immer gruen, auch
+beim Absturz, ohne Rueckgabewert-, Merkmal- und Guetepruefung; jede Ausgabezeile
+'Hinweis: <text>' steht in 'hinweise' und als 'hinweis: <text>' im Bericht, ein
+Exit ab ${HINWEIS_ABSTURZ_AB} als 'Hinweis-Pruefung gescheitert') und
 'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
 Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 'frontend/**'.
@@ -531,6 +549,14 @@ function normalisiere(check) {
   if (nichtBeimAbschluss !== null && !NICHT_BEIM_ABSCHLUSS.includes(nichtBeimAbschluss)) {
     const genannt = typeof nichtBeimAbschluss === "string" ? `'${nichtBeimAbschluss}'` : JSON.stringify(nichtBeimAbschluss);
     fail(`Unbekannter Wert ${genannt} fuer nichtBeimAbschluss bei Pruefung '${objekt.cmd}'. Erwartet: ${NICHT_BEIM_ABSCHLUSS.join(", ")}.`);
+  }
+  // Dieselbe Haltung fuer `art` (Issue #1155): Ein vertippter Wert machte aus der
+  // Hinweis-Pruefung still eine gewoehnliche, deren Fund den Lauf rot faerbte. Das Feld
+  // steht nur im Ergebnis, wenn es gesetzt ist — so bleibt der Fingerabdruck jeder
+  // bestehenden Config unveraendert.
+  if (objekt.art !== undefined && !ARTEN.includes(objekt.art)) {
+    const genannt = typeof objekt.art === "string" ? `'${objekt.art}'` : JSON.stringify(objekt.art);
+    fail(`Unbekannter Wert ${genannt} fuer art bei Pruefung '${objekt.cmd}'. Erwartet: ${ARTEN.join(", ")}.`);
   }
   return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, gleichzeitig: objekt.gleichzeitig === true };
 }
@@ -871,11 +897,21 @@ function verteilen(checks, stufe, entscheiden, abschluss = false) {
     } else {
       ergebnis = entscheiden(check);
     }
-    const eintrag = { cmd: check.cmd, stufe: check.stufe, grund: ergebnis.grund };
-    if (check.guete) eintrag.guete = check.guete;
-    (ergebnis.laeuft ? laufen : ausgelassen).push(eintrag);
+    (ergebnis.laeuft ? laufen : ausgelassen).push(auswahlEintrag(check, ergebnis.grund));
   }
   return { laufen, ausgelassen };
+}
+
+/**
+ * Der Eintrag einer Pruefung in `laufen` oder `ausgelassen`. Er behaelt den `guete`-Block
+ * und die `art` (Issue #1155), damit `ausfuehren` beides nicht ein zweites Mal aus der
+ * Config lesen muss; fehlt eines, fehlt auch das Feld.
+ */
+function auswahlEintrag(check, grund) {
+  const eintrag = { cmd: check.cmd, stufe: check.stufe, grund };
+  if (check.guete) eintrag.guete = check.guete;
+  if (check.art) eintrag.art = check.art;
+  return eintrag;
 }
 
 /**
@@ -1201,7 +1237,7 @@ function kommandoAusfuehren(cmd, env, { grenzeMs = Infinity, fristMs = HAENGEN_F
       // startete — beides ist rot, nie gruen. Ein Haenger ist rot, auch wenn die Gruppe
       // auf SIGTERM hin noch sauber endet.
       const ausgabe = `${Buffer.concat(stdout).toString("utf-8")}${Buffer.concat(stderr).toString("utf-8")}`;
-      aufloesen({ gruen: code === 0 && !haengend, ausgabe, haengend });
+      aufloesen({ gruen: code === 0 && !haengend, ausgabe, haengend, code: haengend ? null : code });
     };
     // stdin "ignore" (Issue #1076): Ohne Angabe waere sie eine Pipe, deren Schreibende
     // wir halten und nie schliessen. Ein Nachfahre, der von stdin liest, ohne eine
@@ -1749,6 +1785,8 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
     zeilen.push(
       `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}`,
     );
+    // Die Funde einer Hinweis-Pruefung direkt unter ihrer Zeile (Issue #1155, E11).
+    for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
   }
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
   return zeilen;
@@ -2012,6 +2050,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // gestarteten Eintraege darin sind nie gemessen worden.
     ...(frueher.teillauf === true ? { teillauf: true } : {}),
     uebernommen: original,
+    hinweise: hinweiseVon(frueher.laufen),
     berichtszeilen: zeilen,
     wartezeitMs,
     ...(wartezeitKarte ? { wartezeitKarte } : {}),
@@ -2037,13 +2076,17 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
  * Anteil bescheinigte eine Messung, die es nicht gab. Das Ergebnis bleibt `rot`,
  * es gibt keinen dritten Ergebniswert (E5): Gate und Runner lesen
  * `ergebnis !== "gruen"`, und ein neuer Wert brauchte an jeder dieser Stellen
- * eine zweite Bahn.
+ * eine zweite Bahn. Auch die HINWEIS-ART (Issue #1155, Plan #1150, E11, E12) hat
+ * keinen eigenen Wert: Ein Eintrag mit `art: "hinweis"` bekommt keines der drei
+ * Urteile, er ist immer bestanden — mit Fund, ohne Fund und beim Absturz. Seine
+ * Funde traegt er in `hinweise`, nicht im Ergebnis (siehe `hinweisBewerten`).
  *
  * Eigene Funktion und nicht in der Schleife von `ausfuehren`, damit die Schleife
  * ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei Urteile in
  * einer Verzweigungskette traegt.
  */
-function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => process.stdout.write(text)) {
+function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => process.stdout.write(text), code = null) {
+  if (eintrag.art === "hinweis") return hinweisBewerten(eintrag, ausgabe, code, schreibe);
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
     eintrag.fehlermerkmal = merkmal;
@@ -2061,6 +2104,36 @@ function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => process.stdout.w
   const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
   schreibe(`${gueteZeile(guete)}\n`);
   return { bestanden: bestanden && guete.erfuellt, guete };
+}
+
+/**
+ * Die Funde einer Hinweis-Pruefung (Issue #1155, Plan #1150, E11): jede Ausgabezeile
+ * `Hinweis: <text>` als `<text>` in `eintrag.hinweise`. Ein Rueckgabewert ab
+ * `HINWEIS_ABSTURZ_AB` oder ein Ende ohne Rueckgabewert (Signal, Haenger) ist ein
+ * Absturz und steht als genau eine Zeile `Hinweis-Pruefung gescheitert` mit dem
+ * Kommando dabei — gemeldet, nicht gewertet: Der Befund haelt weder Fertigmeldung noch
+ * Veroeffentlichung an (E12). Exit 1 ist bei Pruefwerkzeugen der Fund selbst.
+ */
+function hinweisBewerten(eintrag, ausgabe, code, schreibe) {
+  eintrag.hinweise = ausgabe
+    .split("\n")
+    .map((zeile) => HINWEIS_ZEILE.exec(zeile.replace(/\r$/, "")))
+    .filter((treffer) => treffer !== null)
+    .map((treffer) => treffer[1]);
+  if (code === null || code >= HINWEIS_ABSTURZ_AB) {
+    const wie = code === null ? "ohne Rueckgabewert" : `Exit ${code}`;
+    const zeile = `Hinweis-Pruefung gescheitert: ${eintrag.cmd} (${wie})`;
+    eintrag.hinweise.push(zeile);
+    schreibe(`${zeile}\n`);
+  }
+  return { bestanden: true, guete: null };
+}
+
+/** Die Hinweise eines Laufs je Kommando fuer die Zusammenfassung (Issue #1155). */
+function hinweiseVon(laufen) {
+  return laufen
+    .filter((e) => Array.isArray(e.hinweise) && e.hinweise.length > 0)
+    .map((e) => ({ cmd: e.cmd, zeilen: e.hinweise }));
 }
 
 // --- Verursachersuche (Issue #947) -----------------------------------------
@@ -2671,6 +2744,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     dauerGesamtMs: dauerGesamt(stand.laufen), ...(stand.guete ? { guete: stand.guete } : {}),
     ...(stand.verursacher ? { verursacher: stand.verursacher } : {}),
     ...(stand.teillauf ? { teillauf: true } : {}),
+    hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
   });
@@ -2695,7 +2769,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     const einKommando = async (eintrag, schreibe, nebenAnderen) => {
       const start = process.hrtime.bigint();
       const haengeMs = haengeGrenzeMs(eintrag.cmd, historie, env);
-      const { gruen, ausgabe, haengend } = await kommandoAusfuehren(eintrag.cmd, env,
+      const { gruen, ausgabe, haengend, code } = await kommandoAusfuehren(eintrag.cmd, env,
         { grenzeMs: haengeMs, fristMs: haengenFristMs(env) });
       eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
       // Das Feld fehlt ohne Abbruch (Issue #1077) — wie `ueberObergrenzeMs`.
@@ -2706,7 +2780,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       if (nebenAnderen) eintrag.gleichzeitig = true;
       schreibe(ausgabe);
       if (haengend) schreibe(`${haengendText(haengeMs)}\n`);
-      const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe);
+      const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe, code);
       stand.guete = bewertung.guete ?? stand.guete;
       eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
       schreibe(`-> ${eintrag.ergebnis}\n`);
