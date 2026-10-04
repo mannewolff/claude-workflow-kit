@@ -14,7 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { faelligeAbfrage, meldungFuer, urteilFuer } from "../tools/windows-pruefung.mjs";
+import { STARTGRENZE_MS, exitCodeFuer, faelligeAbfrage, fristUeberschritten, meldungFuer, urteilFuer, vorab } from "../tools/windows-pruefung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const werkzeug = join(repoRoot, "tools", "windows-pruefung.mjs");
@@ -190,4 +190,174 @@ test("[1129] Hook: eine haengende Abfrage wird nach fuenf Sekunden abgebrochen, 
     assert.ok(dauer >= 4_500, `zu frueh beendet: ${dauer} ms`);
     assert.ok(dauer < 20_000, `nicht abgebrochen: ${dauer} ms`);
   });
+});
+
+// ---- --vorab: Warten auf die Windows-Pruefung vor dem Push (Issue #1153, Plan #1150) --
+//
+// Der Ablauf laeuft in-process mit ersetzten Abhaengigkeiten: Die Uhr ist eine Variable,
+// und `warte` rueckt sie vor, statt echte Minuten zu warten. Die Verdrahtung der
+// Umgebungs-Hooks belegen zwei Kindprozesse, die ohne Warten enden.
+
+const MIN = 60_000;
+const job = (ergebnis, gestartet = null) => ({ status: "egal", jobs: [{ name: JOB, ergebnis, gestartet }] });
+
+/** Abhaengigkeiten fuer `vorab`: `antworten` liefert je Abfrage den Status (oder null). */
+function fakes(antworten, { pushAntworten = [] } = {}) {
+  const t = { jetzt: 1_000_000_000_000 };
+  const pushes = [];
+  const gewartet = [];
+  const zeilen = [];
+  let abfrage = 0;
+  const deps = {
+    revParse: () => SHA,
+    frageCiStatus: (sha) => {
+      assert.equal(sha, SHA);
+      const a = typeof antworten === "function" ? antworten(abfrage, t.jetzt) : antworten[Math.min(abfrage, antworten.length - 1)];
+      abfrage += 1;
+      return a;
+    },
+    push: (args) => {
+      pushes.push(args);
+      return pushAntworten[pushes.length - 1] ?? { ok: true, stderr: "" };
+    },
+    jetzt: () => t.jetzt,
+    warte: async (ms) => {
+      gewartet.push(ms);
+      t.jetzt += ms;
+    },
+    ausgabe: (zeile) => zeilen.push(zeile),
+  };
+  return { deps, t, pushes, gewartet, zeilen, abfragen: () => abfrage };
+}
+
+test("[1153] fristUeberschritten: Startgrenze ab dem Vorab-Push, solange der Job nicht gestartet ist", () => {
+  assert.equal(STARTGRENZE_MS, 15 * MIN);
+  assert.equal(fristUeberschritten({ pushUm: 0, gestartet: null, jetzt: 15 * MIN - 1 }), null);
+  assert.match(fristUeberschritten({ pushUm: 0, gestartet: null, jetzt: 15 * MIN }), /Startgrenze/);
+});
+
+test("[1153] fristUeberschritten: 30 Minuten ab dem Start des Jobs, nicht ab dem Push", () => {
+  const start = new Date(40 * MIN).toISOString();
+  assert.equal(fristUeberschritten({ pushUm: 0, gestartet: start, jetzt: 70 * MIN - 1 }), null);
+  assert.match(fristUeberschritten({ pushUm: 0, gestartet: start, jetzt: 70 * MIN }), /30 Minuten/);
+});
+
+test("[1153] vorab grün: Push, Abfrage alle 30 s mit Fortschrittszeile, Exit 0", async () => {
+  const f = fakes([status(), job("laeuft", null), job("laeuft", "2026-10-04T12:00:00Z"), job("gruen", "2026-10-04T12:00:00Z")]);
+  const r = await vorab(f.deps);
+  assert.deepEqual(r, { ergebnis: "gruen", commit: SHA, grund: r.grund });
+  assert.equal(exitCodeFuer(r.ergebnis), 0);
+  assert.deepEqual(f.gewartet, [30_000, 30_000, 30_000]);
+  assert.equal(f.pushes.length, 2);
+  assert.equal(f.zeilen.filter((z) => /Abfrage \d/.test(z)).length, 3, f.zeilen.join("\n"));
+});
+
+test("[1153] vorab rot: Urteil rot, Exit 1; ein roter anderer Job zaehlt nicht", async () => {
+  const anderer = { status: "rot", jobs: [{ name: "sonarqube", ergebnis: "rot", gestartet: null }] };
+  const f = fakes([anderer, anderer, job("rot", "2026-10-04T12:00:00Z")]);
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "rot");
+  assert.equal(r.commit, SHA);
+  assert.equal(exitCodeFuer(r.ergebnis), 1);
+  assert.equal(f.pushes.length, 2, "ein roter anderer Job ist kein Endurteil");
+});
+
+test("[1153] vorab: Frist 30 Minuten nach dem Start ueberschritten, kein verwertbares Ergebnis, Exit 2", async () => {
+  // Ab der dritten Abfrage meldet der Job seinen Start, zwei Minuten nach dem Push.
+  const gestartetAb = (n) => (n >= 3 ? new Date(f.t0 + 2 * MIN).toISOString() : null);
+  const f = fakes((n) => (n === 0 ? status() : job("laeuft", gestartetAb(n))));
+  f.t0 = f.t.jetzt;
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "kein-ergebnis");
+  assert.match(r.grund, /30 Minuten/);
+  assert.equal(exitCodeFuer(r.ergebnis), 2);
+  const vergangen = f.t.jetzt - (f.t0 + 2 * MIN);
+  assert.ok(vergangen >= 30 * MIN && vergangen < 30 * MIN + 30_000, `beendet nach ${vergangen} ms ab Start`);
+});
+
+test("[1153] vorab: der Job startet nicht innerhalb der Startgrenze, kein verwertbares Ergebnis", async () => {
+  const f = fakes([status(), job("laeuft", null)]);
+  const t0 = f.t.jetzt;
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "kein-ergebnis");
+  assert.match(r.grund, /Startgrenze/);
+  const vergangen = f.t.jetzt - t0;
+  assert.ok(vergangen >= STARTGRENZE_MS && vergangen < STARTGRENZE_MS + 30_000, `beendet nach ${vergangen} ms`);
+});
+
+test("[1153] vorab: eine dauerhaft scheiternde Abfrage endet ohne verwertbares Ergebnis", async () => {
+  const f = fakes([null]);
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "kein-ergebnis");
+  assert.match(r.grund, /Abfrage/);
+  assert.equal(f.pushes.length, 2, "ohne erste Antwort liegt kein Endurteil vor, also wird gepusht");
+  assert.ok(f.t.jetzt - 1_000_000_000_000 < STARTGRENZE_MS, "endet vor der Startgrenze");
+});
+
+test("[1153] vorab: ein vorliegendes Endurteil wird ohne Push und ohne Warten uebernommen", async () => {
+  for (const ergebnis of ["gruen", "rot"]) {
+    const f = fakes([job(ergebnis, "2026-10-04T12:00:00Z")]);
+    const r = await vorab(f.deps);
+    assert.equal(r.ergebnis, ergebnis);
+    assert.deepEqual(f.pushes, [], "der Push-Hook wird nicht aufgerufen");
+    assert.deepEqual(f.gewartet, []);
+    assert.equal(f.abfragen(), 1);
+  }
+});
+
+test("[1153] vorab: Push-Folge ist Loeschen, dann Anlegen, ohne +; ein fehlender Zweig ist kein Fehler", async () => {
+  const f = fakes([status(), job("gruen", "2026-10-04T12:00:00Z")], {
+    pushAntworten: [{ ok: false, stderr: "error: unable to delete 'windows-vorab': remote ref does not exist" }],
+  });
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "gruen");
+  assert.deepEqual(f.pushes, [
+    ["push", "origin", "--delete", "windows-vorab"],
+    ["push", "origin", "HEAD:refs/heads/windows-vorab"],
+  ]);
+  assert.ok(f.pushes.flat().every((a) => !a.includes("+")), "kein Force-Push");
+});
+
+test("[1153] vorab: ein gescheiterter Push ist kein verwertbares Ergebnis, ohne Warten", async () => {
+  const f = fakes([status()], { pushAntworten: [{ ok: true, stderr: "" }, { ok: false, stderr: "rejected" }] });
+  const r = await vorab(f.deps);
+  assert.equal(r.ergebnis, "kein-ergebnis");
+  assert.match(r.grund, /Push/);
+  assert.deepEqual(f.gewartet, []);
+});
+
+/** Kindprozess `--vorab` mit Fakes fuer CI und Push; endet ohne Warten. */
+function vorabProzess(ciQuelle, pushQuelle) {
+  return mitRepo(ciQuelle, (ctx) => {
+    const pushFake = join(ctx.wurzel, "fake-push.mjs");
+    const pushLog = join(ctx.wurzel, "pushes.txt");
+    writeFileSync(pushFake, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(pushLog)}, process.argv.slice(2).join(" ") + "\\n");\n${pushQuelle}\n`);
+    const r = spawnSync(process.execPath, [werkzeug, "--vorab"], {
+      cwd: ctx.wurzel,
+      encoding: "utf8",
+      env: { ...process.env, WINDOWS_PRUEFUNG_CI_CMD: ctx.fake, WINDOWS_PRUEFUNG_PUSH_CMD: pushFake },
+      timeout: 30_000,
+    });
+    const pushes = existsSync(pushLog) ? readFileSync(pushLog, "utf8").split("\n").filter(Boolean) : [];
+    const sha = git(ctx.wurzel, "rev-parse", "HEAD");
+    return { r, pushes, sha, aufrufe: ctx.aufrufe() };
+  });
+}
+
+test("[1153] Kindprozess --vorab: vorliegendes Grün, Exit 0, Schlusszeile und JSON, kein Push", () => {
+  const { r, pushes, sha, aufrufe } = vorabProzess(antwort([[JOB, "gruen"]]), "");
+  assert.equal(r.status, 0, r.stderr);
+  const zeilen = r.stdout.trim().split("\n");
+  assert.deepEqual(JSON.parse(zeilen.at(-1)), { ergebnis: "gruen", commit: sha, grund: JSON.parse(zeilen.at(-1)).grund });
+  assert.match(zeilen.at(-2), /grün/);
+  assert.deepEqual(pushes, []);
+  assert.deepEqual(aufrufe, [`code ci-status --commit ${sha}`]);
+});
+
+test("[1153] Kindprozess --vorab: gescheiterter Push, Exit 2, Push-Folge ueber den Hook", () => {
+  const { r, pushes, sha } = vorabProzess(antwort([[JOB, "laeuft"]]), `if (process.argv.includes("--delete")) process.exit(0); process.stderr.write("rejected"); process.exit(1);`);
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(JSON.parse(r.stdout.trim().split("\n").at(-1)).ergebnis, "kein-ergebnis");
+  assert.equal(JSON.parse(r.stdout.trim().split("\n").at(-1)).commit, sha);
+  assert.deepEqual(pushes, ["push origin --delete windows-vorab", "push origin HEAD:refs/heads/windows-vorab"]);
 });
