@@ -2,6 +2,26 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.6.1] - 2026-10-04
+- windows-brueche.mjs erkennt Test-Ersatzprogramme ohne Windows-Hülle (#1163)
+- windows-brueche.mjs erkennt Zeilenende-Brüche (#1162)
+- windows-brueche.mjs erkennt Prozess- und Signal-Brüche (#1161)
+- windows-brueche.mjs erkennt Dateinamen- und Modus-Brüche (#1160)
+- windows-brueche.mjs erkennt Kommando-Brüche in Code und Skills (#1159)
+- windows-brueche.mjs erkennt Pfad-Brüche (#1158)
+- windows-brueche.mjs prüft den Bestand statisch, erste Art: Plattform-Skips (#1157)
+- Nacht-Runner und Abschlussberichte geben Hinweis-Zeilen weiter (#1156)
+- checks.mjs kennt Hinweis-Prüfungen, die melden und nie anhalten (#1155)
+- push main fährt den Vor-Push-Schritt aus RELEASING.md vor der Veröffentlichung (#1154)
+- windows-pruefung.mjs --vorab wartet vor dem Push auf die Windows-Prüfung des fertigen Commits (#1153)
+- Die gehostete Prüfung fährt Windows auch für den Vorab-Zweig windows-vorab (#1152)
+- code ci-status nennt je Job den Startzeitpunkt (#1151)
+- Eine Abhängigkeit ist erfüllt, sobald sie nicht mehr in Backlog, Ready oder In progress liegt (#1149)
+- Sechs Test-Fixtures prüfen unter Windows dieselbe Zusage (#1146)
+- Die Fake-CLIs der Kommentar-Tests greifen unter Windows (#1145)
+- Hängende Sessions enden unter Windows samt den Prozessen mit ihrer Marke, die Tests erwarten die Windows-Meldungen (#1144)
+- Die Kommando-Stufe übergibt unter Windows Programmpfad und Argumente unverändert an die Git Bash (#1143)
+
 ## [3.6.0] - 2026-10-03
 - Das Hilfsskript der Hänge-Tests bricht die Testsuche nicht mehr (#1142)
 - README und Dokumentation sagen Windows mit Git Bash zu, die Anweisungen fangen ein leeres TMPDIR ab (#1139)
