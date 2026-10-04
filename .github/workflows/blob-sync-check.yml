@@ -12,17 +12,18 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 #    Sie liegt zwar unter kit/, ist aber von diesem Guard nicht abgedeckt.
 #
 # Zweck: verhindert, dass ein veralteter oder kaputter install.mjs auf main landet
-# und von dort auf docs.mwolff.org deployt wird. main ist dafür das einzige Tor:
-# production entsteht ausschließlich per PR aus main (siehe RELEASING.md), und was
-# auf main grün war, geht unverändert dorthin — ein Lauf auf production prüfte
-# denselben Stand ein drittes Mal (#891). Lokal laufen dieselben Kommandos als
+# und von dort auf docs.mwolff.org deployt wird. production entsteht ausschließlich
+# per PR aus main (siehe RELEASING.md) und wird darum nicht eigens geprüft.
+# Der Vorab-Zweig windows-vorab trägt den fertigen Stand vor dem Push auf main: Dort
+# läuft die Windows-Prüfung, bevor er veröffentlicht ist, und derselbe Commit geht
+# danach per Fast-Forward auf main (#1147, Plan #1150). Lokal laufen dieselben Kommandos als
 # buildChecks (Gate in /local-check und /push-main); diese Doppelung bleibt gewollt
 # — lokal fängt vor dem Push, CI bleibt Sicherheitsnetz für PRs und Fremd-Pushes
 # (#137).
 
 on:
   push:
-    branches: [main]
+    branches: [main, windows-vorab]
   pull_request:
     branches: [main]
 
@@ -33,10 +34,10 @@ jobs:
     # ausschliesslich Ubuntu lief. fail-fast ist aus, damit ein plattformspezifischer
     # Fehler nicht den jeweils anderen Job mit abbricht — sonst sieht man nicht, ob
     # etwas ueberall oder nur auf einer Plattform kaputt ist.
-    # Windows haengt nur am Push: Dort landet ein Stand zum ersten Mal auf main, und
-    # genau dieser Moment braucht die zweite Plattform. Der PR-Lauf prueft denselben
-    # Stand, den der Push gleich danach nochmals faehrt — eine zweite Plattform
-    # brachte dort nichts als Wartezeit (#891).
+    # Windows haengt an jedem Push, also an windows-vorab und an main: Auf dem
+    # Vorab-Zweig zeigt sich ein Windows-Bruch vor der Veroeffentlichung (#1147), und
+    # main behaelt Windows als Netz fuer Pushes ausserhalb von `push main` (Plan
+    # #1150, E3). Pull Requests fahren nur Ubuntu.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
