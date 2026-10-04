@@ -5522,6 +5522,11 @@ export function lesePruefung(issueId) {
       // Stand aus der Zeit vor Issue #922 weiss darueber nichts, und eine leere Liste
       // behauptete, es habe keine Luecke gegeben.
       ohneZuordnung: Array.isArray(daten.ohneZuordnung) ? daten.ohneZuordnung : null,
+      // Die Funde der Hinweis-Pruefungen je Kommando, `{ cmd, zeilen }` (Issue #1156, Plan
+      // #1150, E11/E12): nur durchgereicht, nie gewertet — ein Hinweis-Eintrag endet `gruen`,
+      // und der `zustand` bleibt, was `laufen` sagt. Ein Stand vor Issue #1155 fuehrt das
+      // Feld nicht, darum `null` und nicht `[]`.
+      hinweise: Array.isArray(daten.hinweise) ? daten.hinweise : null,
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf
@@ -5824,6 +5829,11 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
     // bleibt davon unberuehrt — die Luecke ist ein Befund, kein rotes Ergebnis.
     const ohne = e.pruefung?.ohneZuordnung ?? [];
     if (ohne.length > 0) zeilen.push(`- Issue #${e.id}: ohne Zuordnung: ${ohne.join(", ")}`);
+    // Je Hinweis eine Zeile, Datei und Grund stehen im Text des Werkzeugs (Issue #1156,
+    // E12): gemeldet, nicht gewertet — die Einheit bleibt erfolgreich.
+    for (const h of e.pruefung?.hinweise ?? []) {
+      for (const zeile of h?.zeilen ?? []) zeilen.push(`- Issue #${e.id}: hinweis: ${zeile}`);
+    }
   }
   const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
   zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);

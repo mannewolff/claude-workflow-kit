@@ -210,6 +210,11 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   und der Bericht sagt das: Der Bump ist seit Issue #656 idempotent, ein neuer Anlauf
   erzeugt ihn wieder — ein stehengebliebener Worktree wäre genau der Rest, den dieser Weg
   beseitigt.
+- **Hinweise werden gezeigt, nicht gewertet.** Eine Hinweis-Prüfung endet grün und
+  schreibt ihre Funde als `hinweis: <Datei und Grund>` in den Block `Fuer den
+  Abschlussbericht:`. Die `hinweis:`-Zeilen gehen unverändert in den Bericht an den
+  Menschen und halten weder Commit noch Push an — sie verlangen keine Freigabe
+  (Issue #1156).
 - Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
   Schritt 6 (kein Abbruch).
 
