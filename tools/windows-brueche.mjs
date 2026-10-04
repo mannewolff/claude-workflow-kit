@@ -19,7 +19,7 @@
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
  * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`,
- * `dateien`. Die Arten `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
+ * `dateien`, `prozesse`. Die Arten `zeilenenden` und `fakes` folgen in eigenen Paketen.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
  * Zeile, in Markdown als HTML-Kommentar, nimmt eine Stelle aus — aber nur, wenn in der
@@ -303,6 +303,43 @@ export function rechteFunde(zeilen) {
   return funde;
 }
 
+// ---- Art prozesse -----------------------------------------------------------
+//
+// Prozessabbrueche, die sich auf Mac-Eigenheiten verlassen (Issue #1161; echte Faelle #1127,
+// #1132, #1144). Ein Kill mit negativer PID trifft auf POSIX die Prozessgruppe, unter
+// Windows gibt es keine. `detached: true` gibt dem Kind auf POSIX eine eigene Gruppe, unter
+// Windows eine eigene Konsole (#1123) — kein Fund, wenn derselbe Aufruf `windowsHide` setzt
+// oder das Kind per `unref()` bewusst abkoppelt: Dann ist die Abkopplung auf jeder Plattform
+// gewollt (#1132). Ein Handler fuer SIGTERM oder SIGINT ist ein Fund in einem Test oder
+// seinem Helfer: Unter Windows beendet `kill` den Prozess, ohne dass der Handler laeuft. Im
+// Kit-Code ist der Handler das Verhalten selbst, ob ein Test sich darauf verlaesst, zeigt
+// der Test. Kommentarzeilen, die die Muster nur nennen, sind kein Fund.
+
+const KOMMENTAR = /^\s*(?:\/\/|\/?\*)/;
+const KILL_GRUPPE = /\bkill\(\s*-/;
+const DETACHED = /\bdetached:\s*true\b/;
+const ABGEKOPPELT = /\bwindowsHide\b|\.unref\(/;
+const SIGNAL_HANDLER = /\bprocess\.(?:on|once)\(\s*["'`]SIG(?:TERM|INT)["'`]/;
+const TEST_DATEI = /(?:(?:^|\/)test\/)|(?:\.test\.[cm]?js$)/;
+
+/** Die Funde der Art `prozesse` in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function prozessFunde(zeilen, datei = "") {
+  const imTest = TEST_DATEI.test(datei) || zeilen.some((z) => /["']node:test["']/.test(z));
+  return zeilen.flatMap((zeile, i) => {
+    if (KOMMENTAR.test(zeile)) return [];
+    let grund = null;
+    if (KILL_GRUPPE.test(zeile)) {
+      grund = "Signal an die Prozessgruppe per negativer PID; unter Windows gibt es keine Prozessgruppen";
+    } else if (DETACHED.test(zeile)
+      && !ABGEKOPPELT.test(zeilen.slice(Math.max(0, i - AUFRUF_ZEILEN + 1), i + AUFRUF_ZEILEN).join("\n"))) {
+      grund = "eigene Prozessgruppe per detached; unter Windows eine eigene Konsole statt einer Gruppe";
+    } else if (imTest && SIGNAL_HANDLER.test(zeile)) {
+      grund = "Test verlaesst sich auf einen Signal-Handler; unter Windows beendet kill den Prozess ohne ihn";
+    }
+    return grund === null ? [] : [{ zeile: i + 1, grund }];
+  });
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -329,6 +366,10 @@ export const REGELN = [
     // Die Namen prueft `pruefe` ueber `namenFunde`, sie stehen in keiner Datei.
     art: "dateien",
     pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : rechteFunde(zeilen),
+  },
+  {
+    art: "prozesse",
+    pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : prozessFunde(zeilen, datei),
   },
 ];
 

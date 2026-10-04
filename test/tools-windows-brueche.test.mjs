@@ -11,8 +11,9 @@
 // fuer ihren Namen, `§Y` fuer eine Shell-Variable, `§D`
 // fuer die Kommandoersetzung, `§E` fuer die Variable des Temp-Ordners, `§C` fuer ihren
 // Rueckfall, `§H` fuer den Aufruf, der Dateirechte setzt, `§K` fuer das Shell-Kommando
-// dazu, `§M` fuer das Feld der Dateirechte): Diese Datei liegt selbst im geprueften
-// Bestand und darf dort keinen Fund ausloesen.
+// dazu, `§M` fuer das Feld der Dateirechte, `§R` fuer den Kill mit negativer PID, `§A` fuer
+// die eigene Prozessgruppe, `§O` und `§I` fuer die Signalnamen als Zeichenkette): Diese
+// Datei liegt selbst im geprueften Bestand und darf dort keinen Fund ausloesen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,7 +44,11 @@ const q = (...zeilen) => zeilen.join("\n")
   .replaceAll("§Y", "$" + "HOME")
   .replaceAll("§H", "ch" + "modSync")
   .replaceAll("§K", "ch" + "mod")
-  .replaceAll("§M", "mo" + "de");
+  .replaceAll("§M", "mo" + "de")
+  .replaceAll("§R", "ki" + "ll(-")
+  .replaceAll("§A", "detac" + "hed: true")
+  .replaceAll("§O", '"SIG' + 'TERM"')
+  .replaceAll("§I", '"SIG' + 'INT"');
 
 const lauf = (args, cwd = repoRoot) => spawnSync(process.execPath, [werkzeug, ...args], { cwd, encoding: "utf-8" });
 const hinweise = (stdout) => stdout.split(/\r?\n/).filter((z) => z.startsWith("Hinweis: "));
@@ -480,6 +485,85 @@ test("[1160] Das Fixture traegt je genau einen Bruch der Art dateien in Namensli
   const namen = readFileSync(join(fixtures, "dateien-namen.txt"), "utf-8").split(/\r?\n/).filter(Boolean);
   assert.equal(namen.length, 2);
   assert.equal(namenFunde(namen).length, 1);
+});
+
+// ---- Regel prozesse -----------------------------------------------------------
+
+const prozessFunde = (datei, ...zeilen) => pruefeQuelle(q(...zeilen), { kontext: { datei } })
+  .filter((f) => f.art === "prozesse");
+
+test("[1161] REGELN traegt die Art prozesse", () => {
+  const prozesse = REGELN.find((r) => r.art === "prozesse");
+  assert.ok(prozesse, "Regel prozesse fehlt");
+  assert.equal(typeof prozesse.pruefe, "function");
+});
+
+test("[1161] prozesse: ein Kill mit negativer PID ist ein Fund", () => {
+  for (const zeile of ["process.§Rkind.pid, \"SIGTERM\");", "process.§R pid);", "  try { process.§Rchild.pid, signal); } catch {}"]) {
+    const funde = prozessFunde("kit/a.mjs", "x();", zeile);
+    assert.deepEqual(funde.map((f) => f.zeile), [2], zeile);
+    assert.match(funde[0].grund, /Prozessgruppe/);
+  }
+});
+
+test("[1161] prozesse: ein Kill mit positiver PID oder als Kommentar ist kein Fund", () => {
+  for (const zeile of ["process.kill(pid, 0);", "process.kill(aufruf.pid, aufruf.signal);", "kind.kill(\"SIGTERM\");",
+    "// process.§Rpid) trifft die Gruppe", " * process.§Rpid) trifft die Gruppe"]) {
+    assert.deepEqual(prozessFunde("kit/a.mjs", zeile), [], zeile);
+  }
+});
+
+test("[1161] prozesse: eine eigene Prozessgruppe per detached ist ein Fund", () => {
+  const funde = prozessFunde("kit/a.mjs", "const kind = spawn(cmd, args, {", "  §A,", "  stdio: \"pipe\",", "});");
+  assert.deepEqual(funde.map((f) => f.zeile), [2]);
+  assert.match(funde[0].grund, /detached/);
+  assert.equal(prozessFunde("kit/a.mjs", "spawn(cmd, args, { §A, stdio: \"inherit\" });").length, 1);
+});
+
+test("[1161] prozesse: detached mit windowsHide, mit unref, aus einer Weiche oder als Kommentar ist kein Fund", () => {
+  assert.deepEqual(prozessFunde("kit/a.mjs", "return { cwd, §A, stdio: \"ignore\", windowsHide: true };"), []);
+  assert.deepEqual(prozessFunde("kit/a.mjs", "spawn(cmd, args, {", "  windowsHide: true,", "  §A,", "});"), []);
+  assert.deepEqual(prozessFunde("test/a.test.mjs", "const s = 'spawn(x, [], { §A, stdio: \"inherit\" }).unref()';"), []);
+  assert.deepEqual(prozessFunde("kit/a.mjs", "spawn(cmd, args, { detached: process.platform !== \"§W\" });"), []);
+  assert.deepEqual(prozessFunde("kit/a.mjs", "// (`§A`) gibt dem Kind eine eigene Gruppe"), []);
+});
+
+test("[1161] prozesse: ein Signal-Handler in einem Test ist ein Fund", () => {
+  for (const signal of ["§O", "§I"]) {
+    const funde = prozessFunde("test/a.test.mjs", "x();", `process.on(${signal}, () => process.exit(0));`);
+    assert.deepEqual(funde.map((f) => f.zeile), [2], signal);
+    assert.match(funde[0].grund, /Signal/);
+  }
+  assert.equal(prozessFunde("test/helpers/fake.mjs", "process.once(§O, () => {});").length, 1);
+  // eine Datei, die node:test laedt, ist ein Test, auch ausserhalb von test/
+  assert.equal(prozessFunde("probe.txt", 'import { test } from "node:test";', "process.on(§O, () => {});").length, 1);
+});
+
+test("[1161] prozesse: ein Signal-Handler im Kit-Code, ein anderes Signal oder ein Kommentar ist kein Fund", () => {
+  assert.deepEqual(prozessFunde("kit/a.mjs", "process.on(§O, () => laufAbbrechen());"), []);
+  assert.deepEqual(prozessFunde("test/a.test.mjs", 'process.on("uncaughtException", (e) => {});'), []);
+  assert.deepEqual(prozessFunde("test/a.test.mjs", "// process.on(§O) wuerde hier nie feuern"), []);
+});
+
+test("[1161] prozesse: eine Plattformweiche ohne Vermerk nimmt nicht aus, mit Vermerk schon", () => {
+  // Kriterium 2 der Quelle #1147: Ausgenommen ist eine Stelle nur mit Vermerk daneben.
+  assert.equal(prozessFunde("kit/a.mjs", 'if (process.platform !== "§W") {', "  process.§Rpid, signal);", "}").length, 1);
+  assert.deepEqual(prozessFunde("kit/a.mjs",
+    'if (process.platform !== "§W") {',
+    "  // §V: Prozessgruppen gibt es nur auf POSIX, Windows nimmt taskkill",
+    "  process.§Rpid, signal);",
+    "}",
+  ), []);
+  assert.deepEqual(prozessFunde("kit/a.mjs", "// §V: Grund steht da", "process.§Rpid, signal);").map((f) => f.grund),
+    ["Vermerk ohne Plattformzweig"]);
+});
+
+test("[1161] Das Fixture traegt genau einen Bruch der Art prozesse", () => {
+  const r = lauf(["--wurzel", join(repoRoot, "test", "fixtures", "windows-brueche")]);
+  assert.equal(r.status, 0, r.stderr);
+  const zeilen = hinweise(r.stdout).filter((z) => z.includes(" — prozesse: "));
+  assert.equal(zeilen.length, 1, r.stdout);
+  assert.match(zeilen[0], /^Hinweis: prozesse\.txt:\d+ — prozesse: /);
 });
 
 // ---- Vermerk (E14) ----------------------------------------------------------

@@ -1,0 +1,11 @@
+// Eingebaute Brueche der Art prozesse (Issue #1161, Plan #1150 E17). Kein ausfuehrbarer Code:
+// Die Endung .txt haelt die Datei aus node --test und aus dem Waechter heraus.
+
+// Bruch: ein Signal an die Prozessgruppe per negativer PID; unter Windows gibt es keine (#1127).
+process.kill(-kind.pid, "SIGTERM");
+
+// Gegenbeispiel: derselbe Kill mit Vermerk; die Plattformweiche steht davor.
+if (process.platform !== "win32") {
+  // windows-ausnahme: Gegenbeispiel fuer einen vermerkten plattformgebundenen Zweig
+  process.kill(-kind.pid, "SIGTERM");
+}
