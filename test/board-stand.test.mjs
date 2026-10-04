@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
@@ -27,7 +27,6 @@ function mitLokal(fn, { config = LOKAL, labels = [], kommentare = [] } = {}) {
   try {
     return fn(dir, datei);
   } finally {
-    try { chmodSync(datei, 0o644); } catch { /* schon weg */ }
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -115,13 +114,16 @@ test("die Vorgaben im Kommando sind die des Schemas", () => {
   assert.equal(block.pauseMin.default, 5);
 });
 
+// Unlesbar auf jeder Plattform: An der Stelle der Karte steht ein Verzeichnis, das
+// Lesen scheitert mit EISDIR. Dateirechte wirken unter Windows nicht (Issue #1146).
 test("strenges Lesen: nicht lesbare Kommentare -> Exit 1, kein zweiter Kommentar, kein Label", () => {
-  if (process.getuid?.() === 0) return; // root liest trotz chmod 000
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");
-    chmodSync(datei, 0o000);
+    rmSync(datei);
+    mkdirSync(datei);
     const res = stand(dir, "abgebrochen", "Zuletzt begonnen: Pakete");
-    chmodSync(datei, 0o644);
+    rmSync(datei, { recursive: true });
+    writeFileSync(datei, vorher, "utf-8");
     assert.equal(res.status, 1);
     assert.match(res.stderr, /Kommentare.*nicht lesbar/);
     assert.equal(readFileSync(datei, "utf-8"), vorher);

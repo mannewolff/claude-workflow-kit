@@ -42,7 +42,10 @@ async function warteAufServer(port) {
 
 test("GO-Commit entsteht bei Leerzeichen, Anfuehrungszeichen und $ im Pfad, fremder Index bleibt", async () => {
   const repo = mkdtempSync(join(tmpdir(), "board-ui-git-"));
-  const issuesDir = join(repo, `iss ues "x" 'y' $HOME`);
+  // `"` ist in Windows-Pfaden verboten; dort pruefen Leerzeichen, `'` und `$` dieselbe
+  // Zusage (Issue #1146).
+  const sonder = process.platform === "win32" ? `iss ues 'y' $HOME` : `iss ues "x" 'y' $HOME`;
+  const issuesDir = join(repo, sonder);
   mkdirSync(issuesDir);
   mkdirSync(join(repo, ".claude"));
   const port = await freierPort();

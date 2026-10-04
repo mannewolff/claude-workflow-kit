@@ -20,7 +20,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, rmSync, mkdtempSync } from "node:fs";
+import { writeFileSync, rmSync, mkdtempSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -139,17 +139,46 @@ test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt bei
   // aus drei Pfaden eine Eingabe mit vier Zeilen und git antwortet mit vier
   // Hashes. Ohne den Abgleich bekaemen die Pfade fremde Hashes zugeordnet, und
   // das Commit-Gate pruefte gegen einen Nachweis, der nichts bezeugt.
+  //
+  // Windows verbietet den Zeilenumbruch im Dateinamen (Issue #1146). Dort reicht ein
+  // Fake-git dieselbe Eingabe mit einer Zeile mehr an das echte git weiter: drei
+  // Pfade, vier Zeilen, vier Hashes — dieselbe Lage, dieselbe Zusage.
   mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
     datei(dir, "a", "A\n");
     datei(dir, "b", "B\n");
-    datei(dir, "a\nb", "AB\n");
-
-    const res = run(dir);
+    let res;
+    if (process.platform === "win32") {
+      datei(dir, "c", "C\n");
+      fakeGitZeileMehr(dir);
+      res = checksMitFakeGit(dir, "run");
+    } else {
+      datei(dir, "a\nb", "AB\n");
+      res = run(dir);
+    }
 
     assert.notEqual(res.status, 0, "ein Zaehlabgleich, der nicht aufgeht, darf nicht durchgehen");
     assert.match(res.stderr, /git hash-object lieferte 4 Hashes fuer 3 Pfade/);
   });
 });
+
+/** Fake-git, das an `hash-object --stdin-paths` den ersten Pfad ein zweites Mal anhaengt. */
+function fakeGitZeileMehr(dir) {
+  mkdirSync(join(dir, "fakebin"), { recursive: true });
+  writeFileSync(join(dir, "fakebin", "git.mjs"), [
+    "// Generiert von test/checks-luecken.test.mjs (Issue #1146) — kein Produktivcode.",
+    'import { spawnSync } from "node:child_process";',
+    'import { readFileSync } from "node:fs";',
+    "const argv = process.argv.slice(2);",
+    'let opts = { stdio: "inherit" };',
+    'if (argv[0] === "hash-object") {',
+    String.raw`  const pfade = readFileSync(0, "utf-8").split("\n").filter(Boolean);`,
+    String.raw`  opts = { input: [...pfade, pfade[0]].join("\n") + "\n", stdio: ["pipe", "inherit", "inherit"] };`,
+    "}",
+    'const res = spawnSync("git", argv, opts);',
+    "process.exit(res.status ?? 1);",
+    "",
+  ].join("\n"), "utf-8");
+}
 
 // --- settingsEnv ------------------------------------------------------------
 

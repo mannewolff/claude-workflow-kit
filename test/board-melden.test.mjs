@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -75,7 +75,6 @@ function mitLokal(fn, { kommentare = [] } = {}) {
   try {
     return fn(dir, datei);
   } finally {
-    try { chmodSync(datei, 0o644); } catch { /* schon weg */ }
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -123,14 +122,17 @@ test("local: ein Bericht mit aelterem Bericht-Lauf bleibt Byte fuer Byte", () =>
   }, { kommentare: [ALTER_BERICHT] });
 });
 
+// Unlesbar auf jeder Plattform: An der Stelle der Karte steht ein Verzeichnis, das
+// Lesen scheitert mit EISDIR. Dateirechte wirken unter Windows nicht (Issue #1146).
 test("local: Karte nicht lesbar -> Exit 1, nichts geschrieben, Karte bleibt", () => {
-  if (process.getuid?.() === 0) return; // root liest trotz chmod 000
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");
     const zuegeVorher = bewegungen(dir);
-    chmodSync(datei, 0o000);
+    rmSync(datei);
+    mkdirSync(datei);
     const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
-    chmodSync(datei, 0o644);
+    rmSync(datei, { recursive: true });
+    writeFileSync(datei, vorher, "utf-8");
     assert.equal(res.status, 1);
     assert.match(res.stderr, /Kommentare.*nicht lesbar/);
     assert.equal(readFileSync(datei, "utf-8"), vorher);

@@ -16,8 +16,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, dirname, basename } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { setupProjekt, fakePath, fakeCli, aufrufe, aufrufZeilen } from "./helpers/board-fixture.mjs";
 
@@ -257,7 +257,9 @@ test("der Direktstart-Guard laesst den Modul-Import wirkungslos", () => {
   const dir = fixture("migrate-import-", []);
   try {
     const probe = join(dir, "probe.mjs");
-    writeFileSync(probe, `await import(${JSON.stringify(MIGRATE)});\n`, "utf-8");
+    // Als file-URL: Einen nackten Windows-Pfad (`C:\…`) weist der ESM-Loader ab
+    // (Issue #1146).
+    writeFileSync(probe, `await import(${JSON.stringify(pathToFileURL(MIGRATE).href)});\n`, "utf-8");
     const vorher = readdirSync(dir).sort();
 
     const res = spawnSync(process.execPath, [probe], {
@@ -390,7 +392,7 @@ test("export legt das Zielverzeichnis an und meldet ausschliesslich den absolute
 
     assert.equal(res.stdout, `${pfad}\n`, "stdout enthaelt nur den Pfad");
     assert.equal(dirname(pfad), out);
-    assert.match(pfad.split("/").pop(), /^issues-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z\.json$/);
+    assert.match(basename(pfad), /^issues-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}Z\.json$/);
     assert.ok(existsSync(pfad));
   } finally {
     aufraeumen(dir);
