@@ -11,14 +11,15 @@
  * installierte Kopie unter `.claude/`. Mit `--wurzel` liest es dort jede Datei, auch
  * `.txt` — so liegen die Fixtures, ohne dass `node --test` sie ausfuehrt.
  *
- * `--namen <datei>` liest eine Namensliste (eine Zeile je Name) fuer die Art `dateien`,
- * die ein Folgepaket ergaenzt. `--json` gibt die Funde als Liste aus.
+ * `--namen <datei>` liest eine Namensliste (eine Zeile je Name) fuer die Art `dateien`.
+ * Ohne `--namen` und ohne `--wurzel` kommen die Namen aus `git ls-files`; mit `--wurzel`
+ * allein prueft das Werkzeug keine Namen. `--json` gibt die Funde als Liste aus.
  *
  * Ausgabe je Fund: `Hinweis: <datei>:<zeile> — <art>: <grund>`. Exit 0 auch bei Funden —
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
- * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`. Die
- * Arten `dateien`, `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
+ * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`,
+ * `dateien`. Die Arten `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
  * Zeile, in Markdown als HTML-Kommentar, nimmt eine Stelle aus — aber nur, wenn in der
@@ -27,6 +28,7 @@
  * mit dem Grund „Vermerk ohne Plattformzweig". Ein Vermerk ohne Grund ist selbst ein Fund.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -215,6 +217,92 @@ export function tmpdirFunde(zeilen) {
     .map(({ zeile }) => ({ zeile, grund: "$TMPDIR ohne den Rueckfall cygpath -m \"$TEMP\" im selben Abschnitt" }));
 }
 
+// ---- Art dateien ------------------------------------------------------------
+//
+// Dateinamen und Dateirechte, die es unter Windows nicht gibt (Issue #1160; echte Faelle
+// #1138, #1136, #1146). Die Namen prueft `namenFunde` ueber eine Liste — im Bestand aus
+// `git ls-files`, sonst aus `--namen` —, nie ueber echte Dateien: Ein verbotener Name im
+// Repository braeche jeden Windows-Klon. Im Inhalt meldet die Regel Dateirechte, auf die
+// sich Code oder Test verlaesst: ein Rechte-Aufruf mit festem Modus, der dem Eigentuemer
+// das Leserecht nimmt (unter Windows setzt er nur das Schreibschutz-Attribut), und das
+// Lesen der x-Bits aus den Dateirechten von `stat` (unter Windows nie gesetzt). Kein Fund:
+// Ausfuehrbarkeit setzen (dort wirkungslos, kein Bruch; ein Ersatzprogramm ohne Huelle
+// ist die Art `fakes`), Schreibschutz, `X_OK` (unter Windows ein Existenztest), und ein
+// Leseschutz in einem Test oder einer Probe, die sich ueber die Faehigkeit
+// `MIT_DATEIRECHTEN` ausnimmt — dort laeuft er nur, wo er greift.
+
+const VERBOTENE_ZEICHEN = '<>:"|?*';
+const RESERVIERT = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+const RECHTE_AUFRUF = /\b[fl]?chmod(?:Sync)?\s*\(/g;
+const FESTER_MODUS = /^(?:0o[0-7]+|\d+|"[0-7]+"|'[0-7]+')$/;
+const RECHTE_SHELL = /\bchmod\s+(?:-[a-zA-Z]+\s)?(?:0?[0-3][0-7]{2}\b|[ugoa]*-[wx]*r)/;
+const X_BITS = /\bmode\)?\s?&\s?(0o[0-7]+)/;
+const KOPF = /^\s*(?:export\s+)?(?:async\s+)?function\b|^\s*test\(/;
+const FAEHIGKEIT = /\bMIT_DATEIRECHTEN\b|\bdateirechteGreifen\b/;
+
+/**
+ * Die Funde in einer Namensliste (`/` trennt die Teile eines Pfads): `[{ index, grund }]`.
+ * Fuer zwei Namen, die sich nur in der Schreibweise unterscheiden, zaehlt der zweite.
+ */
+export function namenFunde(namen) {
+  const gesehen = new Map();
+  const funde = [];
+  namen.forEach((name, index) => {
+    const teile = name.split("/");
+    const zeichen = [...name].find((c) => VERBOTENE_ZEICHEN.includes(c) || c.charCodeAt(0) < 32);
+    const reserviert = teile.find((t) => RESERVIERT.test(t.split(".")[0]));
+    let grund = null;
+    if (zeichen) grund = `unter Windows verbotenes Zeichen ${JSON.stringify(zeichen)} im Namen ${name}`;
+    else if (reserviert) grund = `unter Windows reservierter Name ${reserviert} in ${name}`;
+    else {
+      for (let n = 1; n <= teile.length && grund === null; n++) {
+        const pfad = teile.slice(0, n).join("/");
+        const frueher = gesehen.get(pfad.toLowerCase());
+        if (frueher === undefined) gesehen.set(pfad.toLowerCase(), pfad);
+        else if (frueher !== pfad) grund = `${pfad} unterscheidet sich von ${frueher} nur in der Schreibweise`;
+      }
+    }
+    if (grund !== null) funde.push({ index, grund });
+  });
+  return funde;
+}
+
+/** Ob die Zeile in einem Test oder einer Funktion steht, deren Kopf die Faehigkeit nennt. */
+function unterFaehigkeit(zeilen, i) {
+  for (let j = i; j >= 0; j--) if (KOPF.test(zeilen[j])) return FAEHIGKEIT.test(zeilen[j]);
+  return false;
+}
+
+/** Der Modus im letzten Argument eines Aufrufs als Zahl, oder `null`, wenn er nicht fest ist. */
+function festerModus(argumente) {
+  const ohneKomma = argumente.trimEnd().replace(/,$/, "");
+  const text = ohneKomma.slice(ohneKomma.lastIndexOf(",") + 1).trim();
+  if (!FESTER_MODUS.test(text)) return null;
+  if (text.startsWith("0o")) return parseInt(text.slice(2), 8);
+  const zeichenkette = text.startsWith('"') || text.startsWith("'");
+  const ziffern = zeichenkette ? text.slice(1, -1) : text;
+  return parseInt(ziffern, zeichenkette || ziffern.startsWith("0") ? 8 : 10);
+}
+
+/** Die Funde der Dateirechte in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function rechteFunde(zeilen) {
+  const funde = [];
+  zeilen.forEach((zeile, i) => {
+    const text = zeilen.slice(i, i + AUFRUF_ZEILEN).join("\n");
+    const leseschutz = RECHTE_SHELL.test(zeile) || [...zeile.matchAll(RECHTE_AUFRUF)].some((m) => {
+      const fest = festerModus(aufrufText(text, m.index + m[0].length));
+      return fest !== null && (fest & 0o400) === 0;
+    });
+    const x = X_BITS.exec(zeile);
+    if (leseschutz && !unterFaehigkeit(zeilen, i)) {
+      funde.push({ zeile: i + 1, grund: "Rechte-Aufruf nimmt das Leserecht; unter Windows bleibt die Datei lesbar" });
+    } else if (x && (parseInt(x[1].slice(2), 8) & 0o111) !== 0) {
+      funde.push({ zeile: i + 1, grund: "liest die x-Bits der Dateirechte; unter Windows sind sie nie gesetzt" });
+    }
+  });
+  return funde;
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -237,6 +325,11 @@ export const REGELN = [
       ...(CODE.test(datei) ? [] : tmpdirFunde(roh)),
     ],
   },
+  {
+    // Die Namen prueft `pruefe` ueber `namenFunde`, sie stehen in keiner Datei.
+    art: "dateien",
+    pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : rechteFunde(zeilen),
+  },
 ];
 
 // ---- Vermerk ----------------------------------------------------------------
@@ -254,7 +347,7 @@ function vermerkGrund(zeile) {
 /**
  * Alle Funde in einem Quelltext, nach Vermerk gefiltert: `[{ zeile, art, grund }]`.
  * `regeln` ersetzt die Regeln (Tests), `kontext` geht an jede Regel (`datei`: der
- * angezeigte Pfad, `namen`: die Namensliste aus `--namen`).
+ * angezeigte Pfad, `roh`: die ungefilterten Zeilen einer Markdown-Datei).
  */
 export function pruefeQuelle(quelle, { regeln = REGELN, kontext = {} } = {}) {
   const zeilen = quelle.split(/\r?\n/);
@@ -326,16 +419,35 @@ export function bestand(wurzel) {
 
 const anzeige = (wurzel, pfad) => relative(wurzel, pfad).split(/[\\/]/).join("/");
 
-/** Prueft die Dateien und liefert `[{ datei, zeile, art, grund }]`, nach Datei geordnet. */
-export function pruefe({ wurzel, dateien, kontext = {} }) {
-  return dateien
-    .map((pfad) => ({ pfad, datei: anzeige(wurzel, pfad) }))
-    .sort((a, b) => a.datei.localeCompare(b.datei))
-    .flatMap(({ pfad, datei }) => {
-      const roh = readFileSync(pfad, "utf-8");
-      const quelle = pfad.endsWith(".md") ? shellBloecke(roh) : roh;
-      return pruefeQuelle(quelle, { kontext: { ...kontext, datei, roh: roh.split(/\r?\n/) } }).map((f) => ({ datei, ...f }));
-    });
+/**
+ * Prueft die Dateien und die Namensliste und liefert `[{ datei, zeile, art, grund }]`,
+ * nach Datei geordnet. Ein Name der Liste traegt `datei` und `zeile`: die Zeile seiner
+ * Namensliste, oder bei `git ls-files` den Namen selbst und Zeile 1.
+ */
+export function pruefe({ wurzel, dateien, namen = [], kontext = {} }) {
+  const imInhalt = dateien.map((pfad) => ({ pfad, datei: anzeige(wurzel, pfad) })).flatMap(({ pfad, datei }) => {
+    const roh = readFileSync(pfad, "utf-8");
+    const quelle = pfad.endsWith(".md") ? shellBloecke(roh) : roh;
+    return pruefeQuelle(quelle, { kontext: { ...kontext, datei, roh: roh.split(/\r?\n/) } }).map((f) => ({ datei, ...f }));
+  });
+  const imNamen = namenFunde(namen.map((n) => n.name))
+    .map(({ index, grund }) => ({ datei: namen[index].datei, zeile: namen[index].zeile, art: "dateien", grund }));
+  return [...imInhalt, ...imNamen].sort((a, b) => a.datei.localeCompare(b.datei) || a.zeile - b.zeile);
+}
+
+/** Die Namen aus `--namen`: `[{ name, datei, zeile }]`, leere Zeilen uebersprungen. */
+function namenAusListe(wurzel, pfad) {
+  const datei = anzeige(wurzel, resolve(pfad));
+  return readFileSync(pfad, "utf-8").split(/\r?\n/)
+    .map((z, i) => ({ name: z.trim(), datei, zeile: i + 1 }))
+    .filter((n) => n.name !== "");
+}
+
+/** Die Namen aus `git ls-files`; ausserhalb eines Repositorys keine. */
+function namenAusGit(wurzel) {
+  const r = spawnSync("git", ["ls-files", "-z"], { cwd: wurzel, encoding: "utf-8" });
+  if (r.status !== 0) return [];
+  return r.stdout.split("\0").filter(Boolean).map((name) => ({ name, datei: name, zeile: 1 }));
 }
 
 export const hinweisZeile = (f) => `Hinweis: ${f.datei}:${f.zeile} — ${f.art}: ${f.grund}`;
@@ -354,10 +466,6 @@ function argumente(argv) {
 
 function haupt(argv) {
   const opts = argumente(argv);
-  const kontext = {};
-  if (opts.namen !== null) {
-    kontext.namen = readFileSync(opts.namen, "utf-8").split(/\r?\n/).map((z) => z.trim()).filter(Boolean);
-  }
   let wurzel;
   let dateien;
   if (opts.wurzel !== null) {
@@ -368,7 +476,10 @@ function haupt(argv) {
     wurzel = process.cwd();
     dateien = bestand(wurzel);
   }
-  const funde = pruefe({ wurzel, dateien, kontext });
+  let namen = [];
+  if (opts.namen !== null) namen = namenAusListe(wurzel, opts.namen);
+  else if (opts.wurzel === null) namen = namenAusGit(wurzel);
+  const funde = pruefe({ wurzel, dateien, namen });
   process.stdout.write(opts.json ? JSON.stringify(funde, null, 2) + "\n" : funde.map((f) => hinweisZeile(f) + "\n").join(""));
 }
 

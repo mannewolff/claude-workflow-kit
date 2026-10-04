@@ -98,6 +98,7 @@ function unlesbarMachen(datei) {
     mkdirSync(datei);
   } else {
     writeFileSync(datei, "Inhalt\n", "utf-8");
+    // windows-ausnahme: unter Windows steht im Zweig darueber ein Verzeichnis an Stelle der Datei
     chmodSync(datei, 0o000);
   }
 }

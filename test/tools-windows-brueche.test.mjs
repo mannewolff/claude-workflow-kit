@@ -10,17 +10,18 @@
 // den Schraegstrich als Zeichenkette, `§S` und `§B` fuer die Shell als Zeichenkette, `§X`
 // fuer ihren Namen, `§Y` fuer eine Shell-Variable, `§D`
 // fuer die Kommandoersetzung, `§E` fuer die Variable des Temp-Ordners, `§C` fuer ihren
-// Rueckfall): Diese Datei liegt selbst im geprueften Bestand und darf dort keinen Fund
-// ausloesen.
+// Rueckfall, `§H` fuer den Aufruf, der Dateirechte setzt, `§K` fuer das Shell-Kommando
+// dazu, `§M` fuer das Feld der Dateirechte): Diese Datei liegt selbst im geprueften
+// Bestand und darf dort keinen Fund ausloesen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { REGELN, pruefeQuelle, skipFunde } from "../tools/windows-brueche.mjs";
+import { REGELN, namenFunde, pruefeQuelle, skipFunde } from "../tools/windows-brueche.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const werkzeug = join(repoRoot, "tools", "windows-brueche.mjs");
@@ -39,7 +40,10 @@ const q = (...zeilen) => zeilen.join("\n")
   .replaceAll("§E", "$" + "TMPDIR")
   .replaceAll("§C", "cyg" + 'path -m "$TEMP"')
   .replaceAll("§X", "s" + "h")
-  .replaceAll("§Y", "$" + "HOME");
+  .replaceAll("§Y", "$" + "HOME")
+  .replaceAll("§H", "ch" + "modSync")
+  .replaceAll("§K", "ch" + "mod")
+  .replaceAll("§M", "mo" + "de");
 
 const lauf = (args, cwd = repoRoot) => spawnSync(process.execPath, [werkzeug, ...args], { cwd, encoding: "utf-8" });
 const hinweise = (stdout) => stdout.split(/\r?\n/).filter((z) => z.startsWith("Hinweis: "));
@@ -309,6 +313,173 @@ test("[1159] Dateiauswahl im Bestand: $TMPDIR im Bash-Block einer Skill-Datei, F
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- Regel dateien ------------------------------------------------------------
+
+const dateiFunde = (datei, ...zeilen) => pruefeQuelle(q(...zeilen), { kontext: { datei } })
+  .filter((f) => f.art === "dateien");
+
+test("[1160] REGELN traegt die Art dateien", () => {
+  const dateien = REGELN.find((r) => r.art === "dateien");
+  assert.ok(dateien, "Regel dateien fehlt");
+  assert.equal(typeof dateien.pruefe, "function");
+});
+
+test("[1160] dateien: ein Name mit unter Windows verbotenem Zeichen ist ein Fund", () => {
+  for (const name of ["docs/a:b.md", "x<y", "x>y", 'zitat"e.txt', "a|b", "frage?.md", "stern*.txt", "steuer\u0001.txt"]) {
+    const funde = namenFunde(["ok.mjs", name]);
+    assert.deepEqual(funde.map((f) => f.index), [1], JSON.stringify(name));
+    assert.match(funde[0].grund, /verbotenes Zeichen/);
+  }
+});
+
+test("[1160] dateien: ein reservierter Name ist ein Fund, auch mit Endung, Kleinschreibung und als Ordner", () => {
+  for (const name of ["CON", "nul.txt", "kit/Aux.mjs", "com1/datei.md", "LPT9.log", "prn"]) {
+    const funde = namenFunde([name]);
+    assert.equal(funde.length, 1, name);
+    assert.match(funde[0].grund, /reservierter Name/);
+  }
+  // nur der ganze Teil vor dem ersten Punkt zaehlt
+  assert.deepEqual(namenFunde(["console.mjs", "nullen.txt", "com10.md", "auxiliar/a.md", "test/con-fig.mjs"]), []);
+});
+
+test("[1160] dateien: Namen, die sich nur in der Schreibweise unterscheiden, sind ein Fund", () => {
+  const funde = namenFunde(["docs/README.md", "kit/a.mjs", "docs/readme.md"]);
+  assert.deepEqual(funde.map((f) => f.index), [2]);
+  assert.match(funde[0].grund, /Schreibweise/);
+  assert.match(funde[0].grund, /docs\/README\.md/);
+  // auch ein Ordner, der sich nur in der Schreibweise unterscheidet
+  assert.deepEqual(namenFunde(["Docs/a.md", "docs/b.md"]).map((f) => f.index), [1]);
+  // derselbe Ordner mit verschiedenen Dateien ist kein Fund
+  assert.deepEqual(namenFunde(["docs/a.md", "docs/b.md", "docs/A-b.md"]), []);
+});
+
+test("[1160] dateien: ein chmod, das dem Eigentuemer das Leserecht nimmt, ist ein Fund", () => {
+  for (const bruch of [
+    "§H(datei, 0o000);",
+    "§H(join(dir, \"geheim.txt\"), 0o200);",
+    "fs.§H(ordner, 0);",
+    "await §K(ordner, \"000\");",
+  ]) {
+    const funde = dateiFunde("test/a.test.mjs", bruch);
+    assert.equal(funde.length, 1, bruch);
+    assert.match(funde[0].grund, /Leserecht/);
+  }
+  // ueber mehrere Zeilen
+  assert.equal(dateiFunde("test/a.test.mjs", "§H(", "  join(dir, \"x\"),", "  0o000,", ");").length, 1);
+  // in einem Bash-Block
+  assert.equal(dateiFunde("skills/x/SKILL.md", "```bash", "§K 000 geheim.txt", "```").length, 1);
+  assert.equal(dateiFunde("skills/x/SKILL.md", "```bash", "§K a-r geheim.txt", "```").length, 1);
+});
+
+test("[1160] dateien: Ausfuehrbarkeit setzen, Schreibschutz und ein Modus aus einer Variable sind kein Fund", () => {
+  for (const ok of [
+    "§H(join(bin, \"claude\"), 0o755);",
+    "§H(datei, 0o644);",
+    "§H(datei, 0o444);",
+    "§H(pfad, modus);",
+    "spawnSync(\"§K\", [\"+x\", pfad]);",
+    "accessSync(p, constants.X_OK);",
+    "// Unter Windows wirkt §K nicht als Leseschutz.",
+  ]) {
+    assert.deepEqual(dateiFunde("test/a.test.mjs", ok), [], ok);
+  }
+  assert.deepEqual(dateiFunde("skills/x/SKILL.md", "```bash", "§K +x .githooks/pre-commit", "```"), []);
+});
+
+test("[1160] dateien: die x-Bits aus stat lesen ist ein Fund, andere Bits nicht", () => {
+  for (const bruch of [
+    "assert.equal((statSync(p).§M & 0o111) !== 0, true);",
+    "const ausfuehrbar = (§M & 0o100) !== 0;",
+  ]) {
+    const funde = dateiFunde("test/a.test.mjs", bruch);
+    assert.equal(funde.length, 1, bruch);
+    assert.match(funde[0].grund, /x-Bits/);
+  }
+  assert.deepEqual(dateiFunde("test/a.test.mjs", "const art = statSync(p).§M & 0o170000;"), []);
+  assert.deepEqual(dateiFunde("test/a.test.mjs", "const schreibbar = (§M & 0o200) !== 0;"), []);
+});
+
+test("[1160] dateien: ein Leseschutz unter der Faehigkeit MIT_DATEIRECHTEN ist kein Fund", () => {
+  assert.deepEqual(dateiFunde("test/a.test.mjs",
+    'test("gesperrt", MIT_DATEIRECHTEN, () => {',
+    "  const ordner = join(dir, \"x\");",
+    "  a();", "  b();", "  c();", "  d();", "  e();",
+    "  §H(ordner, 0o000);",
+    "});",
+  ), []);
+  // die Probe der Faehigkeit selbst
+  assert.deepEqual(dateiFunde("test/helpers/h.mjs",
+    "function dateirechteGreifen() {",
+    "  const probe = mkdtempSync(join(tmpdir(), \"p-\"));",
+    "  try {",
+    "    §H(probe, 0o000);",
+  ), []);
+  // ein anderer Test davor nimmt nichts aus
+  assert.equal(dateiFunde("test/a.test.mjs",
+    'test("gesperrt", MIT_DATEIRECHTEN, () => {});',
+    'test("offen", () => {',
+    "  §H(ordner, 0o000);",
+    "});",
+  ).length, 1);
+});
+
+test("[1160] dateien: Vermerk mit Plattformweiche nimmt einen POSIX-Zweig aus", () => {
+  assert.deepEqual(dateiFunde("test/a.test.mjs",
+    'if (process.platform !== "§W") {',
+    "  // §V: unter Windows steht ein Verzeichnis an Stelle der Datei",
+    "  §H(datei, 0o000);",
+    "}",
+  ), []);
+});
+
+test("[1160] --namen meldet je Fund die Zeile der Namensliste; ohne --namen und ohne Git keine Namenspruefung", () => {
+  const dir = wegwerf({ "namen.txt": "kit/a.mjs\n\nkit/b?.mjs\nKit/A.mjs\n", "c.mjs": "ok();\n" });
+  try {
+    const r = lauf(["--wurzel", dir, "--namen", join(dir, "namen.txt")]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(hinweise(r.stdout).map((z) => z.split(" — ")[0] + " — " + z.split(" — ")[1].split(":")[0]), [
+      "Hinweis: namen.txt:3 — dateien",
+      "Hinweis: namen.txt:4 — dateien",
+    ]);
+    assert.deepEqual(hinweise(lauf(["--wurzel", dir]).stdout), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1160] Im Bestand kommen die Namen aus git ls-files, ohne echte Datei", () => {
+  const dir = wegwerf({});
+  try {
+    const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
+    assert.equal(git("init", "-q").status, 0);
+    const blob = git("hash-object", "-w", "--stdin").stdout.trim();
+    for (const name of ["kit/a.mjs", "kit/b|c.mjs"]) {
+      assert.equal(git("update-index", "--add", "--cacheinfo", `100644,${blob},${name}`).status, 0);
+    }
+    const r = lauf([], dir);
+    assert.equal(r.status, 0, r.stderr);
+    const zeilen = hinweise(r.stdout);
+    assert.equal(zeilen.length, 1, r.stdout);
+    assert.match(zeilen[0], /^Hinweis: kit\/b\|c\.mjs:1 — dateien: .*verbotenes Zeichen/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1160] Das Fixture traegt je genau einen Bruch der Art dateien in Namensliste und Inhalt", () => {
+  const fixtures = join(repoRoot, "test", "fixtures", "windows-brueche");
+  const r = lauf(["--wurzel", fixtures, "--namen", join(fixtures, "dateien-namen.txt")]);
+  assert.equal(r.status, 0, r.stderr);
+  const zeilen = hinweise(r.stdout).filter((z) => z.includes(" — dateien: "));
+  assert.equal(zeilen.length, 2, r.stdout);
+  assert.match(zeilen[0], /^Hinweis: dateien-namen\.txt:\d+ — dateien: /);
+  assert.match(zeilen[1], /^Hinweis: dateien\.txt:\d+ — dateien: /);
+  // die Namensliste traegt genau zwei Namen, von denen einer zulaessig ist
+  const namen = readFileSync(join(fixtures, "dateien-namen.txt"), "utf-8").split(/\r?\n/).filter(Boolean);
+  assert.equal(namen.length, 2);
+  assert.equal(namenFunde(namen).length, 1);
 });
 
 // ---- Vermerk (E14) ----------------------------------------------------------

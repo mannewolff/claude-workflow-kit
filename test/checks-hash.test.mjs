@@ -138,15 +138,16 @@ test("[checks-8] blobHashes ist exportiert und liefert denselben Hash wie git ha
  * hash-object scheitert an derselben Stelle (Plan #1128 E7).
  */
 function unlesbarMachen(dir) {
-  if (process.platform === "win32") {
+  if (process.platform !== "win32") {
+    datei(dir, "geheim.txt", "x\n");
+    // windows-ausnahme: unter Windows steht im Zweig darunter ein Verzeichnis an Stelle der Datei
+    chmodSync(join(dir, "geheim.txt"), 0o000);
+  } else {
     datei(dir, "geheim.txt", "x\n");
     git(dir, "add", "geheim.txt");
     git(dir, "commit", "-q", "-m", "geheim");
     rmSync(join(dir, "geheim.txt"));
     datei(dir, "geheim.txt/innen.txt", "y\n");
-  } else {
-    datei(dir, "geheim.txt", "x\n");
-    chmodSync(join(dir, "geheim.txt"), 0o000);
   }
 }
 
