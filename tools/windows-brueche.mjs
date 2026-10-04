@@ -17,8 +17,8 @@
  * Ausgabe je Fund: `Hinweis: <datei>:<zeile> — <art>: <grund>`. Exit 0 auch bei Funden —
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
- * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`. Die Arten
- * `kommandos`, `dateien`, `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
+ * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`. Die
+ * Arten `dateien`, `prozesse`, `zeilenenden` und `fakes` folgen in eigenen Paketen.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
  * Zeile, in Markdown als HTML-Kommentar, nimmt eine Stelle aus — aber nur, wenn in der
@@ -117,6 +117,104 @@ export function pfadFunde(zeilen) {
   });
 }
 
+// ---- Art kommandos ----------------------------------------------------------
+//
+// Kommandos, die nur auf Mac und Linux laufen (Issue #1159; echte Faelle #1137, #1131,
+// #1143, #1139). Im Code: ein Zeichenketten-Aufruf (`exec`/`execSync`, `spawn`/`execFile`
+// mit `shell: true`), dessen woertlicher Text POSIX-Shellsyntax enthaelt — unter Windows
+// liest ihn die `cmd.exe` —, und ein Aufruf, der `sh` oder `bash` woertlich als Programm
+// startet statt ueber die Git-Bash-Aufloesung (`posixShell`, `gitBashPfad`). Nur ein
+// woertliches erstes Argument zaehlt: `spawn(cmd, { shell: true })` ueber ein
+// konfiguriertes Projektkommando wie in `kit/checks.mjs` ist kein Fund (Nicht-Ziel der
+// Quelle #1147). In Markdown: `$TMPDIR` in einem Bash-Block, ohne dass derselbe Abschnitt
+// den Rueckfall `cygpath -m "$TEMP"` nennt — in der Git Bash ist `TMPDIR` leer.
+
+const AUFRUF = /(\.?)\b(execSync|exec|execFileSync|execFile|spawnSync|spawn)\s*\(/g;
+const NUR_SHELL = new Set(["exec", "execSync"]);
+const AUFRUF_ZEILEN = 4;
+const POSIX_SYNTAX = /\/dev\/null|\$\(|\$[A-Za-z_@]/;
+const SHELL_PROGRAMM = /^(?:\S*\/)?(?:ba)?sh$/;
+const SHELL_VORNE = /^\s*(?:\S*\/)?(?:ba)?sh\s/;
+const CODE = /\.(?:mjs|cjs|js)$/;
+
+/** Der Text eines Aufrufs ab der oeffnenden Klammer bis zur schliessenden, ohne sie. */
+function aufrufText(text, start) {
+  let tiefe = 1;
+  let zeichenkette = null;
+  let maskiert = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (maskiert) maskiert = false;
+    else if (zeichenkette !== null) {
+      if (c === "\\") maskiert = true;
+      else if (c === zeichenkette) zeichenkette = null;
+    } else if (c === '"' || c === "'" || c === "`") zeichenkette = c;
+    else if (c === "(") tiefe++;
+    else if (c === ")" && --tiefe === 0) return text.slice(start, i);
+  }
+  return text.slice(start);
+}
+
+/** Das erste Argument, wenn es eine woertliche Zeichenkette ist, sonst `null`. */
+function woertlich(argumente) {
+  const m = /^\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/.exec(argumente);
+  return m ? m[2] : null;
+}
+
+/** Die Funde der Zeichenketten-Aufrufe in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function aufrufFunde(zeilen) {
+  const funde = [];
+  zeilen.forEach((zeile, i) => {
+    const text = zeilen.slice(i, i + AUFRUF_ZEILEN).join("\n");
+    for (const m of zeile.matchAll(AUFRUF)) {
+      if (m[1] === "." && m[2] === "exec") continue; // RegExp#exec
+      const argumente = aufrufText(text, m.index + m[0].length);
+      const programm = woertlich(argumente);
+      if (programm === null) continue;
+      const shell = NUR_SHELL.has(m[2]) || /\bshell:\s*true\b/.test(argumente);
+      let grund = null;
+      if (NUR_SHELL.has(m[2]) ? SHELL_VORNE.test(programm) : SHELL_PROGRAMM.test(programm.trim())) {
+        grund = "sh/bash als Programm ohne Git-Bash-Aufloesung (posixShell, gitBashPfad)";
+      } else if (shell && POSIX_SYNTAX.test(programm)) {
+        grund = "POSIX-Shellsyntax in einem Zeichenketten-Aufruf, den unter Windows cmd.exe liest";
+      }
+      if (grund !== null) {
+        funde.push({ zeile: i + 1, grund });
+        break;
+      }
+    }
+  });
+  return funde;
+}
+
+const ZAUN = /^\s*(`{3,}|~{3,})\s*([\w-]*)/;
+const UEBERSCHRIFT = /^#{1,6}\s/;
+const TMPDIR = /\$\{?TMPDIR\b/;
+const RUECKFALL = 'cygpath -m "$TEMP"';
+
+/** Die Zeilen mit `$TMPDIR` in Bash-Bloecken, deren Abschnitt keinen `cygpath`-Rueckfall nennt. */
+export function tmpdirFunde(zeilen) {
+  let zaun = null;
+  let abschnitt = 0;
+  const mitRueckfall = new Set();
+  const kandidaten = [];
+  zeilen.forEach((zeile, i) => {
+    const m = ZAUN.exec(zeile);
+    if (zaun === null) {
+      if (m) zaun = { zeichen: m[1], shell: m[2] === "bash" || m[2] === "sh" };
+      else if (UEBERSCHRIFT.test(zeile)) abschnitt++;
+    } else if (m && m[1].startsWith(zaun.zeichen) && m[2] === "") {
+      zaun = null;
+    } else if (zaun.shell && TMPDIR.test(zeile)) {
+      kandidaten.push({ zeile: i + 1, abschnitt });
+    }
+    if (zeile.includes(RUECKFALL)) mitRueckfall.add(abschnitt);
+  });
+  return kandidaten
+    .filter((k) => !mitRueckfall.has(k.abschnitt))
+    .map(({ zeile }) => ({ zeile, grund: "$TMPDIR ohne den Rueckfall cygpath -m \"$TEMP\" im selben Abschnitt" }));
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -129,6 +227,15 @@ export const REGELN = [
   {
     art: "pfade",
     pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : pfadFunde(zeilen),
+  },
+  {
+    // Markdown liest die Regel roh (`kontext.roh`): Den Rueckfall nennt oft der Fliesstext
+    // des Abschnitts, nicht der Block selbst. Eine Code-Datei traegt keine Bash-Bloecke.
+    art: "kommandos",
+    pruefe: (zeilen, { datei = "", roh = zeilen } = {}) => DATEN.test(datei) ? [] : [
+      ...aufrufFunde(zeilen),
+      ...(CODE.test(datei) ? [] : tmpdirFunde(roh)),
+    ],
   },
 ];
 
@@ -227,7 +334,7 @@ export function pruefe({ wurzel, dateien, kontext = {} }) {
     .flatMap(({ pfad, datei }) => {
       const roh = readFileSync(pfad, "utf-8");
       const quelle = pfad.endsWith(".md") ? shellBloecke(roh) : roh;
-      return pruefeQuelle(quelle, { kontext: { ...kontext, datei } }).map((f) => ({ datei, ...f }));
+      return pruefeQuelle(quelle, { kontext: { ...kontext, datei, roh: roh.split(/\r?\n/) } }).map((f) => ({ datei, ...f }));
     });
 }
 

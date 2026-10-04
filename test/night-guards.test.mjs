@@ -317,19 +317,20 @@ function binMitClaude(dir, claudeScript) {
   // git und sh muessen erreichbar bleiben (gitClean, buildChecks) — der PATH wird
   // ersetzt, nicht ergaenzt, damit ein echtes claude auf der Maschine nie greift.
   let pfadListe = [binDir];
-  if (process.platform === "win32") {
+  if (process.platform !== "win32") {
+    for (const werkzeug of ["git", "sh", "node"]) {
+      // windows-ausnahme: POSIX-Zweig; unter Windows stehen stattdessen die Ordner von git und node im PATH
+      const pfad = spawnSync("sh", ["-c", `command -v ${werkzeug}`], { encoding: "utf-8" }).stdout.trim();
+      assert.ok(pfad, `${werkzeug} nicht im PATH gefunden`);
+      symlinkSync(pfad, join(binDir, werkzeug));
+    }
+  } else {
     // Unter Windows braucht ein Symlink auf eine Datei ein Privileg, und eine Kopie von
     // git.exe faende ihre Installation nicht mehr. Deshalb stehen die Ordner von git und
     // node im PATH; die Git Bash findet das Kit von git.exe aus (Issue #1131, E1).
     const git = findeImPath("git", { path: process.env.PATH, pathext: process.env.PATHEXT });
     assert.ok(git, "git nicht im PATH gefunden");
     pfadListe = [binDir, dirname(git), dirname(process.execPath)];
-  } else {
-    for (const werkzeug of ["git", "sh", "node"]) {
-      const pfad = spawnSync("sh", ["-c", `command -v ${werkzeug}`], { encoding: "utf-8" }).stdout.trim();
-      assert.ok(pfad, `${werkzeug} nicht im PATH gefunden`);
-      symlinkSync(pfad, join(binDir, werkzeug));
-    }
   }
   if (claudeScript !== null) {
     const pfad = join(binDir, "claude");

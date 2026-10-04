@@ -7,8 +7,11 @@
 // Die Quelltexte der Faelle tragen Platzhalter statt der Woerter, auf die das Werkzeug
 // anspringt (`§W` fuer den Plattformnamen, `§V` fuer den Vermerk, `§P` fuer die
 // Umgebungsvariable der Programmpfade, `§T` und `§N` fuer die festen POSIX-Pfade, `§L` fuer
-// den Schraegstrich als Zeichenkette): Diese Datei liegt selbst im geprueften Bestand und
-// darf dort keinen Fund ausloesen.
+// den Schraegstrich als Zeichenkette, `§S` und `§B` fuer die Shell als Zeichenkette, `§X`
+// fuer ihren Namen, `§Y` fuer eine Shell-Variable, `§D`
+// fuer die Kommandoersetzung, `§E` fuer die Variable des Temp-Ordners, `§C` fuer ihren
+// Rueckfall): Diese Datei liegt selbst im geprueften Bestand und darf dort keinen Fund
+// ausloesen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -29,7 +32,14 @@ const q = (...zeilen) => zeilen.join("\n")
   .replaceAll("§P", "PA" + "TH")
   .replaceAll("§T", "/t" + "mp")
   .replaceAll("§N", "/dev/" + "null")
-  .replaceAll("§L", '"' + "/" + '"');
+  .replaceAll("§L", '"' + "/" + '"')
+  .replaceAll("§S", '"' + "s" + "h" + '"')
+  .replaceAll("§B", '"' + "ba" + "sh" + '"')
+  .replaceAll("§D", "$" + "(")
+  .replaceAll("§E", "$" + "TMPDIR")
+  .replaceAll("§C", "cyg" + 'path -m "$TEMP"')
+  .replaceAll("§X", "s" + "h")
+  .replaceAll("§Y", "$" + "HOME");
 
 const lauf = (args, cwd = repoRoot) => spawnSync(process.execPath, [werkzeug, ...args], { cwd, encoding: "utf-8" });
 const hinweise = (stdout) => stdout.split(/\r?\n/).filter((z) => z.startsWith("Hinweis: "));
@@ -168,6 +178,139 @@ test("[1158] Das Fixture traegt genau einen Bruch der Art pfade", () => {
   assert.match(zeilen[0], /^Hinweis: pfade\.txt:\d+ — pfade: /);
 });
 
+// ---- Regel kommandos ---------------------------------------------------------
+
+const kommandoFunde = (datei, ...zeilen) => pruefeQuelle(q(...zeilen), { kontext: { datei } })
+  .filter((f) => f.art === "kommandos");
+
+test("[1159] REGELN traegt die Art kommandos", () => {
+  const kommandos = REGELN.find((r) => r.art === "kommandos");
+  assert.ok(kommandos, "Regel kommandos fehlt");
+  assert.equal(typeof kommandos.pruefe, "function");
+});
+
+test("[1159] kommandos: POSIX-Shellsyntax in einem Zeichenketten-Aufruf ist ein Fund", () => {
+  for (const bruch of [
+    'const kopf = execSync("git rev-parse HEAD 2>§N");',
+    "const ast = execSync(`git branch --show-current §D git rev-parse HEAD)`);",
+    'exec("echo §Y", (fehler) => {});',
+    'const r = child.execSync("git status >§N", { encoding: "utf-8" });',
+    'spawnSync("git log 2>§N", { shell: true });',
+    ['const r = spawn(', '  "echo §D date)",', "  { shell: true, stdio: \"pipe\" },", ");"],
+  ]) {
+    const funde = kommandoFunde("kit/a.mjs", ...[bruch].flat());
+    assert.equal(funde.length, 1, String(bruch));
+    assert.equal(funde[0].zeile, 1);
+    assert.match(funde[0].grund, /POSIX-Shellsyntax/);
+  }
+});
+
+test("[1159] kommandos: dieselbe Syntax ohne Shell, als JS-Einsetzung oder in einem Argument-Array ist kein Fund", () => {
+  for (const ok of [
+    // ohne shell reicht spawn die Zeichenkette als ein Argument weiter, keine Shell liest sie
+    'spawnSync("git", ["log", "2>§N"]);',
+    // `${…}` setzt JavaScript ein, nicht die Shell
+    "execSync(`git show ${rev}`);",
+    'execSync("git rev-parse HEAD", { stdio: "pipe" });',
+    // RegExp#exec ist kein Prozessaufruf
+    'const m = /§D/.exec("§D x");',
+  ]) {
+    assert.deepEqual(kommandoFunde("kit/a.mjs", ok), [], ok);
+  }
+});
+
+test("[1159] kommandos: sh oder bash woertlich als Programm ist ein Fund", () => {
+  for (const bruch of [
+    'const r = spawnSync(§S, ["-c", "command -v git"]);',
+    'spawn(§B, ["skript.sh"], { stdio: "inherit" });',
+    'execFileSync("/bin/" + "x", []); execFileSync(§S, ["-c", "true"]);',
+    'execSync("§X -c ls");',
+    'execSync("ba§X skript.sh");',
+  ]) {
+    const funde = kommandoFunde("test/a.test.mjs", bruch);
+    assert.equal(funde.length, 1, bruch);
+    assert.match(funde[0].grund, /Git-Bash-Aufloesung/);
+  }
+});
+
+test("[1159] kommandos: die Shell aus der Git-Bash-Aufloesung ist kein Fund", () => {
+  for (const ok of [
+    'const r = spawnSync(posixShell(), ["-c", "command -v git"]);',
+    'const aufruf = spawnAufruf(shell.pfad, ["-c", \'command -v -- "$1"\', §S, programm], shell);',
+    'spawnSync(shell.pfad, ["-c", "true"]);',
+    // ein Argument namens sh ist kein Programm
+    'spawnSync("git", ["log", §S]);',
+  ]) {
+    assert.deepEqual(kommandoFunde("kit/a.mjs", ok), [], ok);
+  }
+});
+
+test("[1159] kommandos: ein konfiguriertes Projektkommando mit shell: true ist kein Fund (Fund 11)", () => {
+  // die Zeile aus kit/checks.mjs, dazu die ausgeschriebene Form
+  assert.deepEqual(kommandoFunde("kit/checks.mjs", "    const kind = spawn(cmd, { cwd: process.cwd(), env, ...startOptionen() });"), []);
+  assert.deepEqual(kommandoFunde("kit/checks.mjs", "const kind = spawn(cmd, { shell: true });"), []);
+  assert.deepEqual(kommandoFunde("kit/worktree.mjs", 'const res = spawnSync(kommando, { cwd: pfad, encoding: "utf-8", shell: true });'), []);
+});
+
+test("[1159] kommandos: Vermerk mit Plattformweiche nimmt einen POSIX-Zweig aus", () => {
+  assert.deepEqual(kommandoFunde("test/a.test.mjs",
+    'if (process.platform !== "§W") {',
+    "  // §V: nur POSIX, unter Windows steht die Git Bash im Zweig daneben",
+    '  spawnSync(§S, ["-c", "true"]);',
+    "}",
+  ), []);
+});
+
+test("[1159] kommandos: $TMPDIR im Bash-Block ohne cygpath-Rueckfall im Abschnitt ist ein Fund", () => {
+  const funde = kommandoFunde("skills/x/SKILL.md", "## Bericht", "", "```bash", 'cat > "§E/x.md"', "```");
+  assert.deepEqual(funde.map((f) => f.zeile), [4]);
+  assert.match(funde[0].grund, /cygpath/);
+  // auch in der Form mit Klammern und in einem sh-Block
+  assert.equal(kommandoFunde("templates/V.md", "## A", "```sh", 'ls "${TMPDIR}"', "```").length, 1);
+  // der Rueckfall in einem anderen Abschnitt hilft nicht
+  assert.deepEqual(kommandoFunde("skills/x/SKILL.md",
+    "## Eins", "Sonst gilt `§C`.", "## Zwei", "```bash", 'cat > "§E/x.md"', "```").map((f) => f.zeile), [5]);
+});
+
+test("[1159] kommandos: $TMPDIR mit cygpath-Rueckfall im Abschnitt, ausserhalb eines Bash-Blocks oder im Code ist kein Fund", () => {
+  // Rueckfall im Fliesstext desselben Abschnitts
+  assert.deepEqual(kommandoFunde("skills/x/SKILL.md",
+    "## Bericht", "Bleibt `printenv TMPDIR` leer, gilt `§C`.", "```bash", 'cat > "§E/x.md"', "```"), []);
+  // Rueckfall im Block selbst
+  assert.deepEqual(kommandoFunde("skills/x/SKILL.md",
+    "## Bericht", "```bash", 'd="${TMPDIR:-$(§C)}"', 'cat > "§E/x.md"', "```"), []);
+  // Fliesstext und Bloecke anderer Sprachen
+  assert.deepEqual(kommandoFunde("skills/x/SKILL.md", "## A", "Die Datei liegt in `§E`.", "```js", "const d = '§E';", "```"), []);
+  // eine Code-Datei traegt keine Bash-Bloecke, auch wenn ihr Text so aussieht
+  assert.deepEqual(kommandoFunde("test/a.test.mjs", "const md = `", "```bash", 'cat > "§E/x.md"', "```", "`;"), []);
+});
+
+test("[1159] Das Fixture traegt je genau einen Bruch der Art kommandos in Code und Markdown", () => {
+  const r = lauf(["--wurzel", join(repoRoot, "test", "fixtures", "windows-brueche")]);
+  assert.equal(r.status, 0, r.stderr);
+  for (const datei of ["kommandos.txt", "kommandos-skill.txt"]) {
+    const zeilen = hinweise(r.stdout).filter((z) => z.startsWith(`Hinweis: ${datei}:`));
+    assert.equal(zeilen.length, 1, r.stdout);
+    assert.ok(zeilen[0].startsWith(`Hinweis: ${datei}:`) && zeilen[0].includes(" — kommandos: "), zeilen[0]);
+  }
+});
+
+test("[1159] Dateiauswahl im Bestand: $TMPDIR im Bash-Block einer Skill-Datei, Fliesstext nur fuer den Rueckfall", () => {
+  const dir = wegwerf({
+    "skills/ohne/SKILL.md": q("# Ohne", "", "## Bericht", "", "Erst §E pruefen.", "", "```bash", 'cat > "§E/x.md"', "```"),
+    "skills/mit/SKILL.md": q("# Mit", "", "## Bericht", "", "Sonst gilt `§C`.", "", "```bash", 'cat > "§E/x.md"', "```"),
+  });
+  try {
+    const r = lauf([], dir);
+    assert.equal(r.status, 0, r.stderr);
+    const zeilen = hinweise(r.stdout);
+    assert.equal(zeilen.length, 1, r.stdout);
+    assert.match(zeilen[0], /^Hinweis: skills\/ohne\/SKILL\.md:8 — kommandos: /);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---- Vermerk (E14) ----------------------------------------------------------
 
 test("[1157] Vermerk mit Grund und Plattformweiche nimmt die Stelle aus", () => {
@@ -274,8 +417,16 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
   assert.match(zeilen[0], /^Hinweis: skips\.txt:\d+ — skips: /);
 });
 
-test("[1157] Der Bestand ist fundfrei (E15)", () => {
+// Echte Brueche, die eine eigene Karte reparieren soll (E15): Die Regel bleibt scharf, und
+// der Bestand ist bis zur Reparatur nicht fundfrei. Wer repariert, streicht die Zeilen hier.
+const BEKANNTE_BRUECHE = [
+  "test/board-melden.test.mjs:192 — kommandos", // #1166
+  "test/night-restzweige.test.mjs:202 — kommandos", // #1166
+  "test/night-restzweige.test.mjs:203 — kommandos", // #1166
+];
+
+test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {
   const r = lauf([]);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(hinweise(r.stdout), []);
+  assert.deepEqual(hinweise(r.stdout).map((z) => z.replace(/^Hinweis: /, "").replace(/: [^:]*$/, "")), BEKANNTE_BRUECHE);
 });
