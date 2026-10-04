@@ -254,7 +254,9 @@ wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer ver
 function exec(datei, args = []) {
   const start = startbefehlFuer(datei);
   if (start.fehler) throw new Error(start.fehler);
-  const res = spawnSync(start.befehl, [...start.vorArgs, ...args], {
+  const aufruf = spawnAufruf(start.befehl, [...start.vorArgs, ...args], start);
+  const res = spawnSync(aufruf.befehl, aufruf.args, {
+    ...aufruf.optionen,
     encoding: "utf-8",
     env: { ...process.env, ...start.umgebung },
   });
@@ -5630,9 +5632,35 @@ export function gitBashPfad({ env = process.env, plattform = "win32", existiert 
 }
 
 /**
+ * Die Kommandozeile eines Starts (Issue #1143). Liefert `{ befehl, args, optionen }`; gestartet
+ * wird `befehl` mit `args` und `optionen` zusaetzlich zu den eigenen spawn-Optionen.
+ *
+ * Ohne `gitBash` unveraendert, ebenso auf einem Rechner, der nicht Windows ist: Die
+ * Kommandozeile gibt es nur dort, und eine injizierte Plattform in `startbefehlFuer` oder
+ * `posixShell` aendert nichts am Rechner, auf dem gestartet wird. `plattform` ist darum die
+ * des Rechners und nur fuer Tests injizierbar.
+ *
+ * Ein Start ueber die Git Bash unter Windows schreibt seine Kommandozeile selbst: Die Git Bash ist ein MSYS-Programm und zerlegt die Windows-Kommandozeile nach
+ * eigenen Regeln, nicht nach denen, nach denen Node sie baut. In Anfuehrungszeichen wird `\\`
+ * zu `\`, und ein Wort mit `*`, `?`, `[` oder `{` laeuft durch die Dateinamen-Erweiterung
+ * (dcrt0.cc der MSYS-Laufzeit, `quoted` und `globify`). Darum steht jedes Argument in
+ * Anfuehrungszeichen, `\` und `"` darin mit `\` geschuetzt: So schuetzt die Laufzeit jedes
+ * Zeichen vor der Erweiterung und gibt es woertlich weiter. `windowsVerbatimArguments` haelt
+ * Node davon ab, noch einmal zu quoten; `argv0` traegt den Programmpfad in Anfuehrungszeichen,
+ * weil er Leerzeichen enthalten kann (`C:\Program Files\Git`).
+ */
+export function spawnAufruf(befehl, args, { gitBash = false, plattform = process.platform } = {}) {
+  if (!gitBash || plattform !== "win32") return { befehl, args, optionen: {} };
+  const schutz = String.raw`\$&`;
+  const woertlich = (arg) => `"${String(arg).replaceAll(/[\\"]/g, schutz)}"`;
+  return { befehl, args: args.map(woertlich), optionen: { windowsVerbatimArguments: true, argv0: `"${befehl}"` } };
+}
+
+/**
  * Wie startet das Kit ein Programm (Issue #1131, Plan #1128, E8)? Liefert
  * `{ befehl, vorArgs, umgebung, fehler }`; gestartet wird `befehl` mit `[...vorArgs, ...args]`
- * und `umgebung` zusaetzlich zur eigenen.
+ * und `umgebung` zusaetzlich zur eigenen. Ein Start ueber die Git Bash traegt dazu
+ * `gitBash: true` und geht ueber `spawnAufruf` (Issue #1143).
  *
  * Auf POSIX unveraendert der Name. Unter Windows:
  *   - Liefert die Suche im PATH eine `.exe` oder `.com`, startet sie direkt.
@@ -5666,7 +5694,7 @@ export function startbefehlFuer(name, { env = process.env, plattform = process.p
   if ((endung === ".cmd" || endung === ".bat") && existiert(huelle)) {
     const bash = gitBashPfad({ env, plattform, existiert });
     if (bash.fehler) return nichtStartbar(`"${name}" liegt als sh-Huelle vor (${huelle}): ${bash.fehler}`);
-    return { befehl: bash.pfad, vorArgs: [huelle], umgebung: { ...GIT_BASH_UMGEBUNG }, fehler: null };
+    return { befehl: bash.pfad, vorArgs: [huelle], umgebung: { ...GIT_BASH_UMGEBUNG }, gitBash: true, fehler: null };
   }
   return nichtStartbar(`"${name}" liegt nur als ${gefunden} ohne sh-Huelle daneben vor und ist nicht ohne cmd.exe startbar`);
 }
@@ -5722,7 +5750,9 @@ const PROBE_TIMEOUT_MS = Number(process.env.KIT_PROBE_TIMEOUT_MS) || 60_000;
  */
 function probelauf(kommandozeile, start) {
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
-  const res = spawnSync(start.befehl, [...start.vorArgs, ...argumente], {
+  const aufruf = spawnAufruf(start.befehl, [...start.vorArgs, ...argumente], start);
+  const res = spawnSync(aufruf.befehl, aufruf.args, {
+    ...aufruf.optionen,
     input: PROBE_PROMPT,
     encoding: "utf-8",
     timeout: PROBE_TIMEOUT_MS,

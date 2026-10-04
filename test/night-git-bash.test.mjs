@@ -17,8 +17,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { gitBashPfad, startbefehlFuer, GIT_BASH_UMGEBUNG } from "../kit/board.mjs";
-import { posixShell } from "../kit/night.mjs";
+import { gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } from "../kit/board.mjs";
+import { posixShell, sessionStart } from "../kit/night.mjs";
 
 const GIT = String.raw`C:\Program Files\Git`;
 const BASH = String.raw`${GIT}\bin\bash.exe`;
@@ -147,7 +147,7 @@ test("[night-git-bash] eine .cmd mit sh-Huelle daneben startet die Huelle ueber 
     env: { PATH: `${NPM};${GIT}\\cmd` },
     existiert: dateien(`${NPM}\\claude.cmd`, `${NPM}\\claude`, `${GIT}\\cmd\\git.exe`, BASH),
   });
-  assert.deepEqual(r, { befehl: BASH, vorArgs: [`${NPM}\\claude`], umgebung: GIT_BASH_UMGEBUNG, fehler: null });
+  assert.deepEqual(r, { befehl: BASH, vorArgs: [`${NPM}\\claude`], umgebung: GIT_BASH_UMGEBUNG, gitBash: true, fehler: null });
 });
 
 test("[night-git-bash] eine .bat mit sh-Huelle folgt derselben Regel", () => {
@@ -185,4 +185,118 @@ test("[night-git-bash] ein Programm, das nicht im PATH liegt, bleibt beim Namen 
   // So greift weiter die bestehende Meldung zum fehlenden claude-CLI (ENOENT des Spawns).
   const r = startbefehlFuer("claude", { ...WIN, env: { PATH: NPM }, existiert: dateien() });
   assert.deepEqual(r, { befehl: "claude", vorArgs: [], umgebung: {}, fehler: null });
+});
+
+// --- Die Kommandozeile eines Starts ueber die Git Bash (Issue #1143) ---
+//
+// Die Git Bash ist ein MSYS-Programm und zerlegt ihre Windows-Kommandozeile nicht nach den
+// Regeln, nach denen Node sie baut: In Anfuehrungszeichen wird `\\` zu `\`, und ein Wort
+// mit `*`, `?`, `[` oder `{` laeuft durch die Dateinamen-Erweiterung. Der CI-Lauf zu
+// v3.6.0 zeigte das am Argument `C:\Users\anna\pfad\ \\ende\\`, das mit einem Backslash
+// weniger ankam. `msysZerlegen` bildet die Zerlegung der MSYS-Laufzeit fuer vollstaendig
+// gequotete Woerter nach (dcrt0.cc, `quoted` und `globify`): `\` schuetzt das naechste
+// Zeichen, das Wort endet am ungeschuetzten `"`.
+
+function msysZerlegen(zeile) {
+  const wort = /"((?:\\[\s\S]|[^"\\])*)"(?: |$)/y;
+  const woerter = [];
+  while (wort.lastIndex < zeile.length) {
+    const treffer = wort.exec(zeile);
+    assert.ok(treffer, `jedes Wort steht in Anfuehrungszeichen: ${zeile.slice(wort.lastIndex)}`);
+    woerter.push(treffer[1].replaceAll(/\\([\\"])/g, "$1"));
+  }
+  return woerter;
+}
+
+const UNTER_WINDOWS = [
+  "/implement-next #1",
+  "mit Leerzeichen  doppelt",
+  `"doppelt" und 'einfach'`,
+  String.raw`C:\Users\anna\pfad\ \\ende\\`,
+  "erste Zeile\nzweite Zeile\n",
+  "Grüße aus Köln",
+  "",
+  "*.mjs {a,b} [x] ~ ?",
+  String.raw`\"`,
+];
+
+test("[night-git-bash] ein Start ueber die Git Bash schreibt seine Kommandozeile selbst und woertlich", () => {
+  const r = spawnAufruf(BASH, ["-c", 'C:/prog "$@"', "sh", "/implement-next #1"], { gitBash: true, ...WIN });
+  assert.equal(r.befehl, BASH);
+  assert.deepEqual(r.optionen, { windowsVerbatimArguments: true, argv0: `"${BASH}"` });
+  assert.deepEqual(r.args, ['"-c"', String.raw`"C:/prog \"$@\""`, '"sh"', '"/implement-next #1"']);
+});
+
+test("[night-git-bash] jedes Argument kommt nach der Zerlegung der Git Bash Byte fuer Byte an", () => {
+  const r = spawnAufruf(BASH, UNTER_WINDOWS, { gitBash: true, ...WIN });
+  assert.deepEqual(msysZerlegen(r.args.join(" ")), UNTER_WINDOWS);
+});
+
+test("[night-git-bash] ohne Git Bash bleibt der Start unveraendert", () => {
+  const args = ["-p", String.raw`a\\b "c"`];
+  assert.deepEqual(spawnAufruf("claude", args), { befehl: "claude", args, optionen: {} });
+  assert.deepEqual(spawnAufruf("sh", args, { gitBash: false, ...WIN }), { befehl: "sh", args, optionen: {} });
+});
+
+test("[night-git-bash] eine injizierte Windows-Shell startet auf einem POSIX-Rechner mit unveraenderten Argumenten", () => {
+  // Die Kommandozeile gibt es nur unter Windows; auf POSIX gehen die Argumente als argv.
+  const args = ["-c", 'command -v -- "$1"', "sh", "prog"];
+  assert.deepEqual(spawnAufruf(BASH, args, { gitBash: true, plattform: "linux" }), { befehl: BASH, args, optionen: {} });
+});
+
+const MIT_GIT = { env: { PATH: `${GIT}\\cmd` }, existiert: dateien(`${GIT}\\cmd\\git.exe`, BASH) };
+
+test("[night-git-bash] posixShell kennzeichnet unter Windows den Start ueber die Git Bash", () => {
+  assert.equal(posixShell({ ...WIN, ...MIT_GIT }).gitBash, true);
+  assert.equal(posixShell({ plattform: "linux", env: {} }).gitBash, undefined);
+});
+
+test("[night-git-bash] die Kommando-Stufe startet einen Windows-Pfad mit Backslashes ueber die Git Bash", () => {
+  const prog = String.raw`C:\Users\anna\stufen-programm`;
+  const s = sessionStart({
+    testCmd: null, kommando: prog, prompt: "/implement-next #1", modell: "m", args: {}, opts: {},
+    ...WIN, ...MIT_GIT,
+  });
+  assert.equal(s.startfehler, null);
+  assert.equal(s.cmd, BASH);
+  // Der Pfad steht mit Schraegstrichen im Shell-String — mit Backslashes verloere er sie in
+  // der Shell (`C:UsersRUNNER~1…stufen-programm: command not found`). Der Auftrag steht nie
+  // darin, sondern als Argument daneben.
+  assert.deepEqual(s.cmdArgs, ["-c", 'C:/Users/anna/stufen-programm "$@"', "sh", "/implement-next #1"]);
+  assert.deepEqual(s.umgebung, GIT_BASH_UMGEBUNG);
+  assert.equal(s.gitBash, true);
+
+  const r = spawnAufruf(s.cmd, s.cmdArgs, { gitBash: s.gitBash, ...WIN });
+  assert.equal(r.optionen.windowsVerbatimArguments, true);
+  assert.deepEqual(msysZerlegen(r.args.join(" ")), s.cmdArgs);
+});
+
+test("[night-git-bash] fuehrende Zuweisungen und Argumente der Kommandozeile bleiben unberuehrt", () => {
+  const s = sessionStart({
+    testCmd: null, kommando: String.raw`OLLAMA_HOST=127.0.0.1 D:\runner\lauf.exe --stufe leicht`,
+    prompt: "/implement-next #1", modell: "m", args: {}, opts: {}, ...WIN, ...MIT_GIT,
+  });
+  assert.equal(s.cmdArgs[1], 'OLLAMA_HOST=127.0.0.1 D:/runner/lauf.exe --stufe leicht "$@"');
+});
+
+test("[night-git-bash] auf POSIX bleibt die Kommandozeile der Kommando-Stufe woertlich", () => {
+  const s = sessionStart({
+    testCmd: null, kommando: String.raw`mein\ programm`, prompt: "/implement-next #1", modell: "m",
+    args: {}, opts: {}, plattform: "linux", env: {},
+  });
+  assert.equal(s.cmd, "sh");
+  assert.deepEqual(s.cmdArgs, ["-c", String.raw`mein\ programm "$@"`, "sh", "/implement-next #1"]);
+  assert.equal(s.gitBash, undefined);
+});
+
+test("[night-git-bash] claude ueber seine sh-Huelle ist ein Start ueber die Git Bash", () => {
+  const s = sessionStart({
+    testCmd: null, kommando: null, prompt: "/implement-next #1", modell: "m", args: {}, opts: {},
+    ...WIN,
+    env: { PATH: `${NPM};${GIT}\\cmd` },
+    existiert: dateien(`${NPM}\\claude.cmd`, `${NPM}\\claude`, `${GIT}\\cmd\\git.exe`, BASH),
+  });
+  assert.equal(s.cmd, BASH);
+  assert.equal(s.gitBash, true);
+  assert.deepEqual(s.cmdArgs.slice(0, 3), [`${NPM}\\claude`, "-p", "/implement-next #1"]);
 });

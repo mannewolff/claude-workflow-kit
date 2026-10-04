@@ -197,11 +197,11 @@ const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
 // Ebenso geteilt und abgefangen: der Finder der Git Bash und die Startregel fuer Programme
 // unter Windows (Issue #1131, Plan #1128, E2). Fehlt der Nachbar, melden sie das wie jeder
 // andere Board-Zugriff — erst, wenn jemand sie wirklich braucht.
-const { fenceLauf, TOOLBOX_BUDGET_NACHT_MS, gitBashPfad, startbefehlFuer, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => {
+const { fenceLauf, TOOLBOX_BUDGET_NACHT_MS, gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => {
   const fehlt = () => {
     throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   };
-  return { fenceLauf: fehlt, gitBashPfad: fehlt, startbefehlFuer: fehlt, GIT_BASH_UMGEBUNG: {} };
+  return { fenceLauf: fehlt, gitBashPfad: fehlt, startbefehlFuer: fehlt, spawnAufruf: fehlt, GIT_BASH_UMGEBUNG: {} };
 });
 
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
@@ -4583,7 +4583,8 @@ const ZUWEISUNG = /^[A-Za-z_]\w*=/;
 /**
  * Die POSIX-Shell des Kits (Issue #1131, Plan #1128, E1): `sh` auf POSIX, unter Windows die
  * Git Bash, gefunden ueber `gitBashPfad` aus board.mjs. Liefert `{ pfad, fehler, umgebung }`;
- * `umgebung` gehoert in die Umgebung jedes Starts ueber diese Shell.
+ * `umgebung` gehoert in die Umgebung jedes Starts ueber diese Shell. Die Git Bash traegt dazu
+ * `gitBash: true`, und ihr Start geht ueber `spawnAufruf` aus board.mjs (Issue #1143).
  *
  * Nie `bash` ueber den PATH: Unter Windows ist das haeufig der WSL-Starter in System32.
  * Plattform, Umgebung und Dateisystem sind injizierbar, damit beide Wege auf jedem Host
@@ -4592,7 +4593,22 @@ const ZUWEISUNG = /^[A-Za-z_]\w*=/;
 export function posixShell({ env = process.env, plattform = process.platform, existiert } = {}) {
   if (plattform !== "win32") return { pfad: "sh", fehler: null, umgebung: {} };
   const { pfad, fehler } = gitBashPfad({ env, plattform, ...(existiert ? { existiert } : {}) });
-  return { pfad, fehler, umgebung: pfad ? { ...GIT_BASH_UMGEBUNG } : {} };
+  if (!pfad) return { pfad, fehler, umgebung: {} };
+  return { pfad, fehler, umgebung: { ...GIT_BASH_UMGEBUNG }, gitBash: true };
+}
+
+/**
+ * Die Kommandozeile einer Kommando-Stufe, wie sie in den Shell-String kommt (Issue #1143).
+ *
+ * Unter Windows ist das Programm oft ein Pfad mit Backslashes. Die Git Bash liest einen
+ * ungequoteten Backslash als Maskierung, und aus `C:\Users\anna\prog` wuerde
+ * `C:Usersannaprog`. Im Programmwort — dem ersten Wort nach den fuehrenden Zuweisungen,
+ * dieselbe Zerlegung wie in `stufeStartbar` — stehen darum Schraegstriche, die die Git Bash
+ * als Windows-Pfad nimmt. Der Rest der Zeile bleibt woertlich, auf POSIX die ganze Zeile.
+ */
+function kommandoFuerShell(kommando, plattform = process.platform) {
+  if (plattform !== "win32") return kommando;
+  return kommando.replace(/^(\s*(?:[A-Za-z_]\w*=\S*\s+)*)(\S+)/, (_, zuweisungen, programm) => zuweisungen + programm.replaceAll("\\", "/"));
 }
 
 /**
@@ -4629,13 +4645,15 @@ export function stufeStartbar(eintrag, erlaubteModelle, umgebung = {}) {
   const shell = posixShell(umgebung);
   if (shell.fehler) return { ok: false, grund: shell.fehler };
 
-  const woerter = kommando.trim().split(/\s+/);
+  const woerter = kommandoFuerShell(kommando.trim(), umgebung.plattform).split(/\s+/);
   const programm = woerter.find((w) => !ZUWEISUNG.test(w));
   if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
 
   // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
   // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
-  const res = spawnSync(shell.pfad, ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], {
+  const aufruf = spawnAufruf(shell.pfad, ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], shell);
+  const res = spawnSync(aufruf.befehl, aufruf.args, {
+    ...aufruf.optionen,
     encoding: "utf-8",
     env: { ...process.env, ...shell.umgebung },
   });
@@ -4872,7 +4890,7 @@ export function baumBeendenAufruf(pid, signal, plattform = process.platform) {
   return { pid: -pid, signal };
 }
 
-function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }) {
+function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe, gitBash }) {
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -4881,7 +4899,11 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // wartet dann die volle Laufzeit ab, obwohl er laengst gekillt hat.
     // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
     // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
-    const child = spawn(cmd, cmdArgs, {
+    // Ueber die Git Bash mit selbst geschriebener Kommandozeile (Issue #1143), sonst
+    // unveraendert.
+    const aufruf = spawnAufruf(cmd, cmdArgs, { gitBash });
+    const child = spawn(aufruf.befehl, aufruf.args, {
+      ...aufruf.optionen,
       env: sessionUmgebung(issueId, extraEnv),
       detached: process.platform !== "win32",
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
@@ -5120,7 +5142,9 @@ export function permissionArgs(yolo) {
  *
  * Zurueck kommt `{ cmd, cmdArgs, umgebung, startfehler }`. `umgebung` gehoert zusaetzlich in
  * die Umgebung des Starts; `startfehler` ist gesetzt, wenn sich gar nichts starten laesst —
- * dann ist `cmd` null. `env` ist die Umgebung, in der Shell und Programm gesucht werden.
+ * dann ist `cmd` null. Ein Start ueber die Git Bash traegt `gitBash: true` und geht ueber
+ * `spawnAufruf` (Issue #1143). `env` ist die Umgebung, in der Shell und Programm gesucht
+ * werden; `plattform` und `existiert` sind wie bei `posixShell` injizierbar (Tests).
  *
  * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
  * darum in jedem der drei Wege.
@@ -5149,12 +5173,13 @@ export function bashZeitlimit(timeoutMs) {
   return Math.max(1, timeoutMs - reserve);
 }
 
-export function sessionStart({ testCmd, kommando, prompt, modell, args, opts, env = process.env }) {
+export function sessionStart({ testCmd, kommando, prompt, modell, args, opts, env = process.env, plattform = process.platform, existiert }) {
+  const suche = { env, plattform, ...(existiert ? { existiert } : {}) };
   if (testCmd || kommando) {
-    const shell = posixShell({ env });
+    const shell = posixShell(suche);
     if (shell.fehler) return { cmd: null, cmdArgs: [], umgebung: {}, startfehler: shell.fehler };
-    const cmdArgs = testCmd ? ["-c", testCmd] : ["-c", `${kommando} "$@"`, "sh", prompt];
-    return { cmd: shell.pfad, cmdArgs, umgebung: shell.umgebung, startfehler: null };
+    const cmdArgs = testCmd ? ["-c", testCmd] : ["-c", `${kommandoFuerShell(kommando, plattform)} "$@"`, "sh", prompt];
+    return { cmd: shell.pfad, cmdArgs, umgebung: shell.umgebung, ...(shell.gitBash ? { gitBash: true } : {}), startfehler: null };
   }
 
   const permArgs = permissionArgs(args.yolo);
@@ -5174,11 +5199,12 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts, en
   // Flag gilt die Voreinstellung der CLI, und eine Stufe ohne `effort` faehrt damit
   // zeichengleich zu vorher.
   const effortArgs = alsText(opts.effort) ? ["--effort", opts.effort] : [];
-  const start = startbefehlFuer("claude", { env });
+  const start = startbefehlFuer("claude", suche);
   return {
     cmd: start.befehl,
     cmdArgs: [...start.vorArgs, "-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs, ...effortArgs],
     umgebung: start.umgebung,
+    ...(start.gitBash ? { gitBash: true } : {}),
     startfehler: start.fehler,
   };
 }
@@ -5249,7 +5275,7 @@ export async function runSession(issueId, args, opts = {}) {
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
   // Shell und Programm werden in der Umgebung gesucht, die auch die Session bekommt
   // (Issue #1131) — ein PATH aus `opts.extraEnv` gilt fuer beides.
-  const { cmd, cmdArgs, umgebung, startfehler } = sessionStart({
+  const { cmd, cmdArgs, umgebung, gitBash, startfehler } = sessionStart({
     testCmd, kommando, prompt, modell, args, opts, env: { ...process.env, ...opts.extraEnv },
   });
   // Die Session-Dauer fuer die Zeiten-Erfassung (Issue #749): gemessen um genau den
@@ -5262,7 +5288,7 @@ export async function runSession(issueId, args, opts = {}) {
     // `sessionStart` (Issue #748). Bisher stand hier `args.verbose` allein, und damit lag
     // der Strom jedes normalen Nachtlaufs unausgewertet als Block in `res.stdout`.
     // `verbose` daneben steuert nur noch die Ausgabe der Ereignisse.
-    issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd,
+    issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd, gitBash,
     // Die Kommando-Stufe beobachtet ihren Fortschritt nicht (Issue #975): Ihr Programm
     // kennt das Strom-Format nicht, und ein leeres Ergebnis waere eine Aussage ueber eine
     // Sitzung, die nie beobachtet wurde.
@@ -6585,19 +6611,19 @@ export function normalisiereVorflug(roh, reviewers) {
 /** Startet die Vorflug-Session — dieselbe Bauart wie eine Review-Session (runProcess). */
 async function runVorflugSession(args, prompt) {
   const testCmd = process.env.NIGHT_VORFLUG_CMD;
-  let cmd, cmdArgs, umgebung, startfehler;
+  let cmd, cmdArgs, umgebung, gitBash, startfehler;
   if (testCmd) {
     // Wie bei NIGHT_CLAUDE_CMD ueber `posixShell()`: Dieser Zweig ist ausschliesslich der
     // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell — unter Windows startet
     // sie die Git Bash (Issue #1131).
     const shell = posixShell();
-    ({ pfad: cmd, umgebung, fehler: startfehler } = shell);
+    ({ pfad: cmd, umgebung, gitBash, fehler: startfehler } = shell);
     cmdArgs = ["-c", testCmd];
   } else {
     const permArgs = permissionArgs(args.yolo);
     // Der Start von `claude` folgt derselben Regel wie in der Runde (Issue #1131, E8).
     const start = startbefehlFuer("claude");
-    ({ befehl: cmd, umgebung, fehler: startfehler } = start);
+    ({ befehl: cmd, umgebung, gitBash, fehler: startfehler } = start);
     // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
     // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
     // Befund-Block steht dann im Text des result-Ereignisses (siehe reviewerVorflug).
@@ -6608,7 +6634,7 @@ async function runVorflugSession(args, prompt) {
     : VORFLUG_TIMEOUT_MS;
   const gestartet = Date.now();
   const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
-    issueId: "vorflug", timeoutMs, useStream: false,
+    issueId: "vorflug", timeoutMs, useStream: false, gitBash,
     extraEnv: { ...umgebung, NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1" },
   });
   if (LOG_FILE) {

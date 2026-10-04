@@ -7,6 +7,10 @@
 // einem Node-Fake ankommt: Leerzeichen, Anfuehrungszeichen, `$`, Backslash, Zeilenumbruch,
 // Umlaute und ein fuehrender Schraegstrich wie in `/implement-next #1`. Den letzten verwandelt
 // die Git Bash auf dem Weg zu einem nativen Programm sonst in einen Windows-Pfad.
+//
+// Gestartet wird wie im Kit ueber `spawnAufruf` (Issue #1143): Die Git Bash zerlegt ihre
+// Windows-Kommandozeile nach eigenen Regeln, und erst die selbst geschriebene Kommandozeile
+// bringt `\\` in Anfuehrungszeichen unveraendert an. Auf POSIX aendert der Aufruf nichts.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,6 +20,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { posixShell, sessionStart } from "../kit/night.mjs";
+import { spawnAufruf } from "../kit/board.mjs";
 
 const ARGUMENTE = [
   "/implement-next #1131",
@@ -55,7 +60,9 @@ test("[night-shell-rundlauf] die POSIX-Shell des Kits ist auf dieser Plattform v
 
 test("[night-shell-rundlauf] Argumente kommen Byte fuer Byte beim Programm an", () => {
   mitFake((kommando) => {
-    const res = spawnSync(shell.pfad, ["-c", `${kommando} "$@"`, "sh", ...ARGUMENTE], {
+    const aufruf = spawnAufruf(shell.pfad, ["-c", `${kommando} "$@"`, "sh", ...ARGUMENTE], shell);
+    const res = spawnSync(aufruf.befehl, aufruf.args, {
+      ...aufruf.optionen,
       env: { ...process.env, ...shell.umgebung },
     });
     assert.equal(res.status, 0, String(res.stderr));
@@ -67,7 +74,7 @@ test("[night-shell-rundlauf] Argumente kommen Byte fuer Byte beim Programm an", 
 test("[night-shell-rundlauf] der Auftrag der Kommando-Stufe steht nie im Shell-String und kommt unveraendert an", () => {
   const auftrag = ARGUMENTE.join(" | ");
   mitFake((kommando) => {
-    const { cmd, cmdArgs, umgebung } = sessionStart({
+    const { cmd, cmdArgs, umgebung, gitBash } = sessionStart({
       testCmd: null, kommando, prompt: auftrag, modell: "m", args: {}, opts: {},
     });
     assert.equal(cmd, shell.pfad);
@@ -75,7 +82,8 @@ test("[night-shell-rundlauf] der Auftrag der Kommando-Stufe steht nie im Shell-S
     assert.ok(!cmdArgs[1].includes("VERWUNDBAR"), `der Auftrag steht im Shell-String: ${cmdArgs[1]}`);
     assert.equal(cmdArgs.at(-1), auftrag);
 
-    const res = spawnSync(cmd, cmdArgs, { env: { ...process.env, ...umgebung } });
+    const aufruf = spawnAufruf(cmd, cmdArgs, { gitBash });
+    const res = spawnSync(aufruf.befehl, aufruf.args, { ...aufruf.optionen, env: { ...process.env, ...umgebung } });
     assert.equal(res.status, 0, String(res.stderr));
     assert.deepEqual(res.stdout, Buffer.from(JSON.stringify([auftrag]), "utf-8"),
       `der Auftrag kam veraendert an: ${res.stdout}`);
