@@ -12,7 +12,8 @@
 // fuer die Kommandoersetzung, `§E` fuer die Variable des Temp-Ordners, `§C` fuer ihren
 // Rueckfall, `§H` fuer den Aufruf, der Dateirechte setzt, `§K` fuer das Shell-Kommando
 // dazu, `§M` fuer das Feld der Dateirechte, `§R` fuer den Kill mit negativer PID, `§A` fuer
-// die eigene Prozessgruppe, `§O` und `§I` fuer die Signalnamen als Zeichenkette): Diese
+// die eigene Prozessgruppe, `§O` und `§I` fuer die Signalnamen als Zeichenkette, `§Z` fuer
+// das Zerlegen an LF, `§G` fuer das Init-Kommando als Zeichenkette): Diese
 // Datei liegt selbst im geprueften Bestand und darf dort keinen Fund ausloesen.
 
 import { test } from "node:test";
@@ -48,7 +49,9 @@ const q = (...zeilen) => zeilen.join("\n")
   .replaceAll("§R", "ki" + "ll(-")
   .replaceAll("§A", "detac" + "hed: true")
   .replaceAll("§O", '"SIG' + 'TERM"')
-  .replaceAll("§I", '"SIG' + 'INT"');
+  .replaceAll("§I", '"SIG' + 'INT"')
+  .replaceAll("§Z", ".split(" + '"' + "\\" + "n" + '"' + ")")
+  .replaceAll("§G", '"in' + 'it"');
 
 const lauf = (args, cwd = repoRoot) => spawnSync(process.execPath, [werkzeug, ...args], { cwd, encoding: "utf-8" });
 const hinweise = (stdout) => stdout.split(/\r?\n/).filter((z) => z.startsWith("Hinweis: "));
@@ -566,6 +569,99 @@ test("[1161] Das Fixture traegt genau einen Bruch der Art prozesse", () => {
   assert.match(zeilen[0], /^Hinweis: prozesse\.txt:\d+ — prozesse: /);
 });
 
+// ---- Regel zeilenenden ---------------------------------------------------------
+
+const zeilenFunde = (datei, ...zeilen) => pruefeQuelle(q(...zeilen), { kontext: { datei } })
+  .filter((f) => f.art === "zeilenenden");
+
+test("[1162] REGELN traegt die Art zeilenenden", () => {
+  const zeilenenden = REGELN.find((r) => r.art === "zeilenenden");
+  assert.ok(zeilenenden, "Regel zeilenenden fehlt");
+  assert.equal(typeof zeilenenden.pruefe, "function");
+  assert.equal(q("x§Z"), String.raw`x.split("\n")`);
+});
+
+test("[1162] zeilenenden: Zerlegen an LF auf Dateiinhalt oder Prozessausgabe im selben Ausdruck ist ein Fund", () => {
+  for (const zeile of [
+    'const z = readFileSync(p, "utf-8")§Z;',
+    'const z = (await readFile(p, "utf-8")).trim()§Z;',
+    'const z = execFileSync("git", ["log"], { encoding: "utf-8" }).trim()§Z;',
+    'const z = spawnSync("git", ["status"], { encoding: "utf-8" }).stdout§Z;',
+    "for (const z of r.stdout.trim()§Z) {}",
+    "const z = r.stderr§Z.filter(Boolean);",
+  ]) {
+    const funde = zeilenFunde("kit/a.mjs", "x();", zeile);
+    assert.deepEqual(funde.map((f) => f.zeile), [2], zeile);
+    assert.match(funde[0].grund, /\\r\?\\n/);
+  }
+  // die Kette ueber mehrere Zeilen
+  assert.deepEqual(zeilenFunde("kit/a.mjs", 'const z = readFileSync(p, "utf-8")', "  .trim()", "  §Z;").map((f) => f.zeile), [3]);
+});
+
+test("[1162] zeilenenden: Zerlegen an LF ueber eine Variable aus Datei oder Prozess in derselben Funktion ist ein Fund", () => {
+  assert.deepEqual(zeilenFunde("kit/a.mjs",
+    "function lies(p) {", '  const text = readFileSync(p, "utf-8");', "  return text§Z;", "}").map((f) => f.zeile), [3]);
+  assert.deepEqual(zeilenFunde("kit/a.mjs",
+    "function lies() {", '  const out = execSync("git log", {', '    encoding: "utf-8",', "  });", "  return out.trim()§Z;", "}").map((f) => f.zeile), [5]);
+  assert.deepEqual(zeilenFunde("kit/a.mjs",
+    "function lies() {", '  const { stdout } = spawnSync("git", ["log"], { encoding: "utf-8" });', "  return stdout§Z;", "}").map((f) => f.zeile), [3]);
+  assert.deepEqual(zeilenFunde("kit/a.mjs",
+    "function lies(p) {", '  const raw = readFileSync(p, "utf-8");', "  return raw.slice(start, ende(raw)).trim()§Z;", "}").map((f) => f.zeile), [3]);
+});
+
+test(String.raw`[1162] zeilenenden: selbst gebaute Zeichenketten, /\r?\n/ und eine Variable aus einer anderen Funktion sind kein Fund`, () => {
+  assert.deepEqual(zeilenFunde("kit/a.mjs", "const z = bericht§Z;"), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", String.raw`const z = ["a", "b"].join("\n")§Z;`), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", String.raw`const z = readFileSync(p, "utf-8").split(/\r?\n/);`), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", String.raw`const z = r.stdout.split(/\r?\n/);`), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs",
+    "function a(p) {", '  const text = readFileSync(p, "utf-8");', "  return text;", "}",
+    "function b(text) {", "  return text§Z;", "}"), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", '// readFileSync(p, "utf-8")§Z ist der Bruch'), []);
+});
+
+test("[1162] zeilenenden: sofort bereinigte Zeilen und jedes Zerlegen in einem Test sind kein Fund (E15)", () => {
+  assert.deepEqual(zeilenFunde("kit/a.mjs", "const [a, b] = res.stdout§Z.map((z) => z.trim());"), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", 'const z = readFileSync(p, "utf-8")§Z.map((zeile) => JSON.parse(zeile));'), []);
+  // erst filtern, dann parsen: eine Zeile aus nur "\r" uebersteht das Filtern
+  assert.equal(zeilenFunde("kit/a.mjs", 'const z = readFileSync(p, "utf-8")§Z.filter(Boolean).map((z) => JSON.parse(z));').length, 1);
+  assert.deepEqual(zeilenFunde("test/a.test.mjs", 'const z = readFileSync(p, "utf-8")§Z;'), []);
+  assert.deepEqual(zeilenFunde("test/helpers/a.mjs", "const z = r.stdout§Z;"), []);
+  assert.deepEqual(zeilenFunde("probe.txt", 'import { test } from "node:test";', "const z = r.stdout§Z;"), []);
+});
+
+test("[1162] zeilenenden: git init in einem Test ohne .gitattributes und ohne autocrlf ist ein Fund", () => {
+  for (const zeile of ["  git(dir, §G, \"-q\");", '  execFileSync("git", [§G, "-q"], { cwd: dir });', '    ["git", [§G, "-q"]],',
+    '  for (const a of [[§G, "-q"], ["config", "user.name", "T"]]) git(dir, ...a);', '  execSync("git init -q", { cwd: dir });']) {
+    const funde = zeilenFunde("test/a.test.mjs", "function repo(dir) {", zeile, "}");
+    assert.deepEqual(funde.map((f) => f.zeile), [2], zeile);
+    assert.match(funde[0].grund, /gitattributes/);
+  }
+  assert.equal(zeilenFunde("test/helpers/repo.mjs", "function repo(dir) {", "  git(dir, §G);", "}").length, 1);
+});
+
+test("[1162] zeilenenden: git init mit .gitattributes oder autocrlf im selben Helfer, ausserhalb eines Tests oder als Wort ist kein Fund", () => {
+  assert.deepEqual(zeilenFunde("test/a.test.mjs",
+    "function repo(dir) {", "  git(dir, §G);", String.raw`  writeFileSync(join(dir, ".gitattributes"), "* text=auto eol=lf\n");`, "}"), []);
+  assert.deepEqual(zeilenFunde("test/a.test.mjs",
+    "function repo(dir) {", "  git(dir, §G);", '  git(dir, "config", "core.autocrlf", "false");', "}"), []);
+  assert.deepEqual(zeilenFunde("kit/a.mjs", "function repo(dir) {", "  git(dir, §G);", "}"), []);
+  assert.deepEqual(zeilenFunde("test/a.test.mjs", 'const zeile = JSON.stringify({ subtype: §G });'), []);
+  assert.deepEqual(zeilenFunde("test/a.test.mjs", "// Kein `git init`: git log scheitert"), []);
+  // eine andere Funktion schreibt die .gitattributes: nicht derselbe Helfer
+  assert.equal(zeilenFunde("test/a.test.mjs",
+    "function repo(dir) {", "  git(dir, §G);", "}",
+    "function attribute(dir) {", String.raw`  writeFileSync(join(dir, ".gitattributes"), "* text=auto eol=lf\n");`, "}").length, 1);
+});
+
+test("[1162] Das Fixture traegt genau einen Bruch der Art zeilenenden", () => {
+  const r = lauf(["--wurzel", join(repoRoot, "test", "fixtures", "windows-brueche")]);
+  assert.equal(r.status, 0, r.stderr);
+  const zeilen = hinweise(r.stdout).filter((z) => z.includes(" — zeilenenden: "));
+  assert.equal(zeilen.length, 1, r.stdout);
+  assert.match(zeilen[0], /^Hinweis: zeilenenden\.txt:\d+ — zeilenenden: /);
+});
+
 // ---- Vermerk (E14) ----------------------------------------------------------
 
 test("[1157] Vermerk mit Grund und Plattformweiche nimmt die Stelle aus", () => {
@@ -674,14 +770,121 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
 
 // Echte Brueche, die eine eigene Karte reparieren soll (E15): Die Regel bleibt scharf, und
 // der Bestand ist bis zur Reparatur nicht fundfrei. Wer repariert, streicht die Zeilen hier.
+// Je Fund ein Eintrag aus Datei und Art, ohne Zeile: Sonst braeche jede Bearbeitung einer
+// der Dateien diesen Test (Issue #1162).
 const BEKANNTE_BRUECHE = [
-  "test/board-melden.test.mjs:192 — kommandos", // #1166
-  "test/night-restzweige.test.mjs:202 — kommandos", // #1166
-  "test/night-restzweige.test.mjs:203 — kommandos", // #1166
+  "install.mjs — zeilenenden", // #1167
+  "kit/befunde.mjs — zeilenenden", // #1167
+  "kit/befunde.mjs — zeilenenden", // #1167
+  "kit/board.mjs — zeilenenden", // #1167
+  "kit/board.mjs — zeilenenden", // #1167
+  "kit/board.mjs — zeilenenden", // #1167
+  "kit/checks.mjs — zeilenenden", // #1167
+  "kit/checks.mjs — zeilenenden", // #1167
+  "kit/night.mjs — zeilenenden", // #1167
+  "kit/night.mjs — zeilenenden", // #1167
+  "kit/night.mjs — zeilenenden", // #1167
+  "kit/night.mjs — zeilenenden", // #1167
+  "kit/wirksamkeit.mjs — zeilenenden", // #1167
+  "kit/worktree.mjs — zeilenenden", // #1167
+  "kit/worktree.mjs — zeilenenden", // #1167
+  "test/befunde-vorschlag-worktree.test.mjs — zeilenenden", // #1168
+  "test/board-check-form-testhinweise.test.mjs — zeilenenden", // #1168
+  "test/board-github-schreiben.test.mjs — zeilenenden", // #1168
+  "test/board-gitlab-listen.test.mjs — zeilenenden", // #1168
+  "test/board-local.test.mjs — zeilenenden", // #1168
+  "test/board-melden.test.mjs — kommandos", // #1166
+  "test/board-rest-luecken.test.mjs — zeilenenden", // #1168
+  "test/board-ui-git.test.mjs — zeilenenden", // #1168
+  "test/changelog-release-ablauf.test.mjs — zeilenenden", // #1168
+  "test/helpers/checks-repo.mjs — zeilenenden", // #1168
+  "test/helpers/ergebnisstand-fixture.mjs — zeilenenden", // #1168
+  "test/helpers/ergebnisstand-fixture.mjs — zeilenenden", // #1168
+  "test/helpers/kette-fixture.mjs — zeilenenden", // #1168
+  "test/install-bereiche.test.mjs — zeilenenden", // #1168
+  "test/install-flow.test.mjs — zeilenenden", // #1168
+  "test/install-gate-hook.test.mjs — zeilenenden", // #1168
+  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
+  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
+  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
+  "test/night-abschlussblock.test.mjs — zeilenenden", // #1168
+  "test/night-abschlussblock.test.mjs — zeilenenden", // #1168
+  "test/night-agent-model.test.mjs — zeilenenden", // #1168
+  "test/night-angehalten.test.mjs — zeilenenden", // #1168
+  "test/night-assignment.test.mjs — zeilenenden", // #1168
+  "test/night-auskunft.test.mjs — zeilenenden", // #1168
+  "test/night-auto-memory.test.mjs — zeilenenden", // #1168
+  "test/night-befunde-abschlussblock.test.mjs — zeilenenden", // #1168
+  "test/night-checks-bericht.test.mjs — zeilenenden", // #1168
+  "test/night-cli-wege.test.mjs — zeilenenden", // #1168
+  "test/night-dirty-failure.test.mjs — zeilenenden", // #1168
+  "test/night-dirty-success.test.mjs — zeilenenden", // #1168
+  "test/night-fachlich.test.mjs — zeilenenden", // #1168
+  "test/night-fehlerwege.test.mjs — zeilenenden", // #1168
+  "test/night-flags-entfallen.test.mjs — zeilenenden", // #1168
+  "test/night-gate.test.mjs — zeilenenden", // #1168
+  "test/night-geschuetzt-gate.test.mjs — zeilenenden", // #1168
+  "test/night-geschuetzt-halt.test.mjs — zeilenenden", // #1168
+  "test/night-guards.test.mjs — zeilenenden", // #1168
+  "test/night-guete-protokoll.test.mjs — zeilenenden", // #1168
+  "test/night-hinweise.test.mjs — zeilenenden", // #1168
+  "test/night-idee.test.mjs — zeilenenden", // #1168
+  "test/night-infra.test.mjs — zeilenenden", // #1168
+  "test/night-kette-worktree.test.mjs — zeilenenden", // #1168
+  "test/night-klaeren.test.mjs — zeilenenden", // #1168
+  "test/night-label-warn.test.mjs — zeilenenden", // #1168
+  "test/night-label.test.mjs — zeilenenden", // #1168
+  "test/night-laufmodell.test.mjs — zeilenenden", // #1168
+  "test/night-laufstand.test.mjs — zeilenenden", // #1168
+  "test/night-letzte-zweige.test.mjs — zeilenenden", // #1168
+  "test/night-luecken.test.mjs — zeilenenden", // #1168
+  "test/night-mensch.test.mjs — zeilenenden", // #1168
+  "test/night-modell.test.mjs — zeilenenden", // #1168
+  "test/night-nachtrest-stash.test.mjs — zeilenenden", // #1168
+  "test/night-nachweis-commit.test.mjs — zeilenenden", // #1168
+  "test/night-plan.test.mjs — zeilenenden", // #1168
+  "test/night-prueflaeufe.test.mjs — zeilenenden", // #1168
+  "test/night-pruefstand-felder.test.mjs — zeilenenden", // #1168
+  "test/night-restzweige.test.mjs — zeilenenden", // #1168
+  "test/night-restzweige.test.mjs — kommandos", // #1166
+  "test/night-restzweige.test.mjs — kommandos", // #1166
+  "test/night-review-gate.test.mjs — zeilenenden", // #1168
+  "test/night-salvage-ausnahmen.test.mjs — zeilenenden", // #1168
+  "test/night-salvage-endzustaende.test.mjs — zeilenenden", // #1168
+  "test/night-salvage-fehlermerkmal.test.mjs — zeilenenden", // #1168
+  "test/night-salvage-nachweis.test.mjs — zeilenenden", // #1168
+  "test/night-salvage-stream.test.mjs — zeilenenden", // #1168
+  "test/night-salvage.test.mjs — zeilenenden", // #1168
+  "test/night-stopp-grund.test.mjs — zeilenenden", // #1168
+  "test/night-stream-ohne-verbose.test.mjs — zeilenenden", // #1168
+  "test/night-timeout-group.test.mjs — zeilenenden", // #1168
+  "test/night-umgebung-paket.test.mjs — zeilenenden", // #1168
+  "test/night-verbose.test.mjs — zeilenenden", // #1168
+  "test/night-version-drift.test.mjs — zeilenenden", // #1168
+  "test/night-waechter.test.mjs — zeilenenden", // #1168
+  "test/night-wartende-session.test.mjs — zeilenenden", // #1168
+  "test/night-wirksamkeit-abschlussblock.test.mjs — zeilenenden", // #1168
+  "test/night-wirksamkeit-reste.test.mjs — zeilenenden", // #1168
+  "test/night-wirksamkeit-reste.test.mjs — zeilenenden", // #1168
+  "test/night-zeitabbruch-karte.test.mjs — zeilenenden", // #1168
+  "test/night-zeiten.test.mjs — zeilenenden", // #1168
+  "test/night-zustand-an-der-karte.test.mjs — zeilenenden", // #1168
+  "test/push-release-worktree.test.mjs — zeilenenden", // #1168
+  "test/tools-cli.test.mjs — zeilenenden", // #1168
+  "test/tools-cli.test.mjs — zeilenenden", // #1168
+  "test/tools-cli.test.mjs — zeilenenden", // #1168
+  "test/tools-frischer-checkout.test.mjs — zeilenenden", // #1168
+  "test/tools-windows-brueche.test.mjs — zeilenenden", // #1168
+  "test/tools-windows-pruefung.test.mjs — zeilenenden", // #1168
+  "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
+  "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
+  "tools/frischer-checkout.mjs — zeilenenden", // #1167
+  "tools/frischer-checkout.mjs — zeilenenden", // #1167
 ];
 
 test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {
   const r = lauf([]);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(hinweise(r.stdout).map((z) => z.replace(/^Hinweis: /, "").replace(/: [^:]*$/, "")), BEKANNTE_BRUECHE);
+  assert.deepEqual(hinweise(r.stdout).map((z) => z.replace(/^Hinweis: /, "").replace(/: [^:]*$/, "").replace(/:\d+ — /, " — ")),
+    BEKANNTE_BRUECHE);
 });

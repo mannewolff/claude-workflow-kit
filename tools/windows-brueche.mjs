@@ -19,7 +19,7 @@
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
  * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`,
- * `dateien`, `prozesse`. Die Arten `zeilenenden` und `fakes` folgen in eigenen Paketen.
+ * `dateien`, `prozesse`, `zeilenenden`. Die Art `fakes` folgt in einem eigenen Paket.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
  * Zeile, in Markdown als HTML-Kommentar, nimmt eine Stelle aus — aber nur, wenn in der
@@ -340,6 +340,113 @@ export function prozessFunde(zeilen, datei = "") {
   });
 }
 
+// ---- Art zeilenenden --------------------------------------------------------
+//
+// Zeilenenden, die nur auf Mac und Linux stimmen (Issue #1162; echter Fall #1125). Das
+// Zerlegen an `"\n"` ist ein Fund, wenn die Zeichenkette erkennbar aus einer Datei oder
+// aus der Ausgabe eines Kindprozesses stammt: im selben Ausdruck oder ueber eine Variable,
+// die in derselben Funktion so belegt wird. Unter Windows bleibt dort `\r` am Zeilenende.
+// Kein Fund: selbst gebaute Zeichenketten (sie tragen kein `\r`), ein Zerlegen, dessen
+// Zeilen sofort per `trim()` oder `JSON.parse` bereinigt werden, und jedes Zerlegen in
+// einem Test — dort stammt der Text aus dem Test selbst, aus dem Repo (LF ueber seine
+// `.gitattributes`) oder aus Node, das LF schreibt; den CRLF-Checkout eines Test-Repos
+// erfasst die Regel fuer `git init` (E15). Ein Test-Repo per
+// `git init` ist ein Fund, wenn derselbe Helfer weder eine `.gitattributes` schreibt noch
+// `core.autocrlf` setzt: Unter Windows checkt Git dort mit CRLF aus.
+
+const LF_SPLIT = /\.split\(\s*(?:(["'`])\\n\1|\/\\n\/)\s*\)/;
+const BEREINIGT = /^\.map\(\(?(\w+)\)? ?=> ?(?:\1\.trim\(\)|JSON\.parse\(\1\))/;
+const AUS_DATEI_ODER_PROZESS = /\b(?:readFileSync|readFile|execSync|execFileSync|spawnSync)\s*\(|\.(?:stdout|stderr)\b/;
+const WORTZEICHEN = /\w/;
+const TEST_KOPF = /^\s*(?:it|describe)\(/;
+const GIT_INIT = /\bgit\b[^;]*["'`]init["'`]|\[\s*["'`]init["'`]\s*[,\]]|\bgit\s+init\b/;
+const LF_FEST = /\.gitattributes|\bautocrlf\b/;
+
+const einzug = (zeile) => /^\s*/.exec(zeile)[0].length;
+
+/** Ob die Zeile eine Funktion oeffnet: `function`, ein Testblock oder ein Pfeil mit Block. */
+const funktionsKopfZeile = (zeile) => KOPF.test(zeile) || TEST_KOPF.test(zeile) || zeile.trimEnd().endsWith("=> {");
+
+/** Die Stelle der Klammer, die die schliessende Klammer am Ende von `text` oeffnet. */
+function oeffnendeKlammer(text) {
+  let tiefe = 0;
+  for (let i = text.length - 1; i >= 0; i--) {
+    if (text[i] === ")") tiefe++;
+    else if (text[i] === "(" && --tiefe === 0) return i;
+  }
+  return 0;
+}
+
+/** Der Name am Anfang der Kette vor `.split`, etwa `text` in `text.slice(0, n).trim()`, sonst `null`. */
+function empfaenger(davor) {
+  let rest = davor.trimEnd();
+  for (;;) {
+    if (rest.endsWith(")")) rest = rest.slice(0, oeffnendeKlammer(rest));
+    let anfang = rest.length;
+    while (anfang > 0 && WORTZEICHEN.test(rest[anfang - 1])) anfang--;
+    if (anfang === rest.length) return null;
+    const wort = rest.slice(anfang);
+    rest = rest.slice(0, anfang);
+    if (!rest.endsWith(".")) return wort;
+    rest = rest.slice(0, rest.endsWith("?.") ? -2 : -1);
+  }
+}
+
+/** Die Zeile des Kopfs der Funktion, in der Zeile `i` steht, oder `-1` auf oberster Ebene. */
+function funktionsKopf(zeilen, i) {
+  for (let j = i - 1; j >= 0; j--) {
+    if (funktionsKopfZeile(zeilen[j]) && einzug(zeilen[j]) < einzug(zeilen[i])) return j;
+  }
+  return -1;
+}
+
+/** Die Zeilen der Funktion um Zeile `i`, vom Kopf bis zu ihrer schliessenden Klammer. */
+function funktion(zeilen, i) {
+  const kopf = funktionsKopf(zeilen, i);
+  if (kopf === -1) return zeilen;
+  const tiefe = einzug(zeilen[kopf]);
+  let ende = kopf + 1;
+  while (ende < zeilen.length && !(einzug(zeilen[ende]) <= tiefe && /^\s*[})]/.test(zeilen[ende]))) ende++;
+  return zeilen.slice(kopf, ende + 1);
+}
+
+/** Ob die Variable `name` vor Zeile `i` in derselben Funktion aus Datei oder Prozess belegt wird. */
+function ausDateiOderProzess(zeilen, i, name) {
+  const belegung = new RegExp(String.raw`(?:^|[^.\w])` + name + String.raw`\s*(?:[,}\]][^=]*)?=(?![=>])`);
+  const kopf = funktionsKopf(zeilen, i);
+  for (let j = i - 1; j > kopf; j--) {
+    const m = belegung.exec(zeilen[j]);
+    if (!m) continue;
+    let rechts = zeilen[j].slice(m.index + m[0].length);
+    for (let k = j + 1; k < zeilen.length && k < j + AUFRUF_ZEILEN && !/;\s*$/.test(zeilen[k - 1]); k++) rechts += `\n${zeilen[k]}`;
+    return AUS_DATEI_ODER_PROZESS.test(rechts);
+  }
+  return false;
+}
+
+/** Die Funde der Art `zeilenenden` in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function zeilenendenFunde(zeilen, datei = "") {
+  const imTest = TEST_DATEI.test(datei) || zeilen.some((z) => /["']node:test["']/.test(z));
+  return zeilen.flatMap((zeile, i) => {
+    if (KOMMENTAR.test(zeile)) return [];
+    const m = imTest ? null : LF_SPLIT.exec(zeile);
+    if (m && !BEREINIGT.test(zeile.slice(m.index + m[0].length))) {
+      // Eine Kette, die mit `.split` auf eigener Zeile weitergeht, beginnt weiter oben.
+      let anfang = i;
+      while (anfang > 0 && /^\s*\./.test(zeilen[anfang])) anfang--;
+      const davor = [...zeilen.slice(anfang, i), zeile.slice(0, m.index)].join("\n");
+      const name = empfaenger(davor);
+      if (AUS_DATEI_ODER_PROZESS.test(davor) || (name !== null && ausDateiOderProzess(zeilen, anfang, name))) {
+        return [{ zeile: i + 1, grund: String.raw`Zerlegen an "\n" auf Datei- oder Prozessausgabe statt /\r?\n/; unter Windows bleibt \r am Zeilenende` }];
+      }
+    }
+    if (imTest && GIT_INIT.test(zeile) && !funktion(zeilen, i).some((z) => LF_FEST.test(z))) {
+      return [{ zeile: i + 1, grund: "Test-Repo per git init ohne .gitattributes oder core.autocrlf im selben Helfer; unter Windows checkt Git CRLF aus" }];
+    }
+    return [];
+  });
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -370,6 +477,10 @@ export const REGELN = [
   {
     art: "prozesse",
     pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : prozessFunde(zeilen, datei),
+  },
+  {
+    art: "zeilenenden",
+    pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : zeilenendenFunde(zeilen, datei),
   },
 ];
 
