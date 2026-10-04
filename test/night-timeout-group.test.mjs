@@ -85,8 +85,10 @@ test("Baum beenden: unter Windows taskkill auf den Baum, auf POSIX ein Signal an
   assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "darwin"), { pid: -4711, signal: "SIGKILL" });
 });
 
-test("Warten auf die Prozessgruppe: unter Windows sofort zurueck, weil taskkill synchron beendet", async () => {
+test("Warten auf die Prozessgruppe: unter Windows ohne Suche nach der Marke sofort zurueck", async () => {
   // Die eigene PID als Gruppe: Auf POSIX liefe sie, das Warten liefe also bis zur Frist.
+  // Unter Windows fragt die Funktion allein die Suche nach der Marke der Session
+  // (Issue #1144, night-25); ohne sie gibt es dort nichts, worauf zu warten waere.
   const beginn = Date.now();
   assert.equal(await warteAufProzessgruppe(process.pid, 60_000, { plattform: "win32" }), true);
   assert.ok(Date.now() - beginn < 1000, "unter Windows darf nicht gewartet werden");

@@ -35,7 +35,10 @@ import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
+import {
+  wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER,
+  sessionUmgebung, SITZUNG_MARKE, sitzungsSuche, sitzungsPids, warteAufProzessgruppe, baumBeendenAufruf,
+} from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
 // gleichen Namens (`setupProjekt`, `board`, `run`, `stand`) schon gehoeren.
@@ -199,6 +202,55 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Unter Windows gibt es keine Prozessgruppe (Issue #1144). Die Prozesse einer Session
+// erkennt der Runner dort an ihrer Marke in der Umgebung; die Suche ist injiziert, damit
+// das Warten auf jedem Rechner pruefbar ist.
+
+test("[night-25] jede Session traegt eine eigene Marke in der Umgebung", () => {
+  const erste = sessionUmgebung(42, {}, {});
+  const zweite = sessionUmgebung(42, {}, {});
+  assert.match(erste[SITZUNG_MARKE], /^[\w-]+$/, "die Marke fehlt oder enthaelt Zeichen, die die Git Bash umdeuten koennte");
+  assert.notEqual(erste[SITZUNG_MARKE], zweite[SITZUNG_MARKE], "zwei Sessions duerfen nicht dieselbe Marke tragen");
+  assert.equal(sessionUmgebung(42, {}, {}, "fest")[SITZUNG_MARKE], "fest");
+});
+
+test("[night-25] die Suche liest die Marke aus der Umgebung der MSYS-Prozesse und nennt ihre Windows-PID", () => {
+  const suche = sitzungsSuche("marke-1");
+  assert.equal(suche.umgebung.KIT_SITZUNG_SUCHE, "marke-1");
+  assert.match(suche.skript, /\/proc\/\[0-9\]\*/);
+  assert.match(suche.skript, new RegExp(`grep -qzx "${SITZUNG_MARKE}=\\$KIT_SITZUNG_SUCHE"`));
+  assert.match(suche.skript, /winpid/);
+  // Die Suche selbst traegt die Marke nur unter anderem Namen — sonst faende sie sich.
+  assert.ok(!(SITZUNG_MARKE in suche.umgebung));
+  assert.deepEqual(sitzungsPids("4711\n\n 815 \nkeine-pid\n0\n"), [4711, 815]);
+  assert.deepEqual(sitzungsPids(""), []);
+});
+
+test("[night-25] unter Windows wartet der Runner, bis kein Prozess mit der Marke der Session mehr laeuft", async () => {
+  const antworten = [[11, 12], [12], []];
+  let gefragt = 0;
+  const prozesse = () => antworten[Math.min(gefragt++, antworten.length - 1)];
+  assert.equal(await warteAufProzessgruppe(4711, 60_000, { plattform: "win32", pollMs: 1, prozesse }), true);
+  assert.equal(gefragt, 3, "gewartet wird, bis die Suche nichts mehr findet");
+});
+
+test("[night-25] unter Windows endet das Warten an der Frist, wenn ein Prozess der Session weiterlaeuft", async () => {
+  let uhr = 0;
+  const res = await warteAufProzessgruppe(4711, 1000, {
+    plattform: "win32", pollMs: 1, prozesse: () => [11], jetzt: () => (uhr += 300),
+  });
+  assert.equal(res, false);
+});
+
+test("[night-25] unter Windows beendet taskkill die Wurzel und die Prozesse mit der Marke der Session", () => {
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "win32", [11, 12]),
+    { taskkill: ["/pid", "4711", "/pid", "11", "/pid", "12", "/T", "/F"] });
+  // Die Wurzel steht nur einmal da, auch wenn die Suche sie mitfindet.
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "win32", [4711]), { taskkill: ["/pid", "4711", "/T", "/F"] });
+  // Auf POSIX trifft das Signal an die Gruppe dieselben Prozesse; weitere PIDs gibt es dort nicht.
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "linux", [11]), { pid: -4711, signal: "SIGTERM" });
 });
 
 // --- night-24: der Grund im Protokoll ---

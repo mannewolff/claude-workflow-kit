@@ -108,7 +108,10 @@ test("ein haengendes Kommando wird abgebrochen und als haengend rot gemeldet, sa
     assert.ok(pid > 0, "der Enkel hat seine PID nicht geschrieben");
     assert.equal(lebt(pid), false, `der Enkel ${pid} lebt noch`);
 
-    const protokoll = ausfuehrungen(dir).map((z) => z.split("\t")).filter((spalten) => spalten[1] === HAENGER);
+    // Das Protokoll fuehrt das Kommando maskiert (`kommandoMaskieren`): Unter Windows
+    // traegt es Backslashes, und jeder steht dort verdoppelt (Issue #1144).
+    const maskiert = HAENGER.replaceAll("\\", "\\\\");
+    const protokoll = ausfuehrungen(dir).map((z) => z.split("\t")).filter((spalten) => spalten[1] === maskiert);
     assert.equal(protokoll.at(-1)?.[2], "rot", "das Protokoll fuehrt den Abbruch als rot");
   });
 });

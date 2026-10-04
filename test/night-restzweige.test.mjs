@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, accessSync, constants as fsConstants } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -141,7 +141,11 @@ test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exi
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "kill -9 $$" });
 
     assert.equal(res.status, 1, "ein Fehlstart haette hart stoppen muessen");
-    assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(Exit SIGKILL\)/,
+    // Unter Windows gibt es keine Signale (Issue #1144): Die Git Bash meldet ihren
+    // Selbstabschuss als Exit-Code, und die Meldung nennt ihn statt eines erfundenen
+    // Signalnamens. Leer ist sie auch dort nicht.
+    const ursache = process.platform === "win32" ? String.raw`Exit \d+` : "Exit SIGKILL";
+    assert.match(res.stdout, new RegExp(String.raw`INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(${ursache}\)`),
       "das Signal fehlt in der Meldung");
     assert.doesNotMatch(res.stdout, /Exit null|Exit undefined/,
       "ohne Exit-Code darf dort kein leerer Wert stehen");
@@ -209,7 +213,27 @@ function mitFakeBin(fn) {
   }
 }
 
-test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines Exit-Codes", () => {
+// Der Fall setzt ein Dateisystem mit Ausfuehrungsrecht voraus (Issue #1144): Ohne es gibt
+// es kein EACCES, und die Shell-Skripte der Attrappe sind keine startbaren Programme. So
+// unter Windows; den Fall eines nicht startbaren claude dort — eine .cmd ohne sh-Huelle —
+// meldet `sessionStart` als Startfehler, belegt in `test/night-git-bash.test.mjs`.
+function kenntAusfuehrungsrecht() {
+  const dir = mkdtempSync(join(tmpdir(), "night-rest-xok-"));
+  try {
+    const datei = join(dir, "ohne-x");
+    writeFileSync(datei, "", { mode: 0o644 });
+    accessSync(datei, fsConstants.X_OK);
+    return false;
+  } catch {
+    return true;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("eine Session, die nicht startbar ist, meldet den Systemfehler statt eines Exit-Codes", {
+  skip: !kenntAusfuehrungsrecht() && "das Dateisystem kennt kein Ausfuehrungsrecht",
+}, () => {
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     mitFakeBin((bin) => {

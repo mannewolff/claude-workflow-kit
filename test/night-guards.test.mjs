@@ -454,7 +454,10 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
     assert.match(res.stdout, new RegExp(`Fehlschlag nach .* Issue #${id}.* nicht in In review`),
       "der Runner muss das Zeitlimit selbst aufloesen, statt auf das close-Event zu warten");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // Der Enkel hat sich vom Baum geloest und ueberlebt das Zeitlimit auf jeder Plattform
+    // bis zu seinem Ende nach zwei Sekunden. Unter Windows haelt er solange das
+    // Verzeichnis fest; das Aufraeumen wartet darum auf ihn (Issue #1144).
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

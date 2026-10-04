@@ -4818,19 +4818,20 @@ export function frischeStufenFelder(configPfad, stand) {
  * verhindern soll. Rueckgabe: `true`, wenn die Gruppe leer ist, `false` bei Ablauf der
  * Frist — der Aufrufer protokolliert das, haelt den Lauf aber nicht an.
  *
- * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht);
- * die Funktion meldet dort sofort `true`. Den Baum beendet dort `taskkill /T` synchron
- * (Issue #1132), und was nach dem regulaeren Ende einer Session weiterliefe, haelt das
- * Job-Objekt nicht ueber das Ende des Runners hinaus am Leben.
+ * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht).
+ * Dort fragt die Funktion `prozesse` — in `runProcess` die Suche nach der Marke der
+ * Session, `sitzungsProzesse` (Issue #1144) — und wartet, bis sie nichts mehr findet. Ohne
+ * `prozesse` gibt es dort nichts zu fragen, und sie meldet sofort `true`.
  */
-export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform } = {}) {
-  if (plattform === "win32" || !pgid || restMs <= 0) return true;
+export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform, prozesse } = {}) {
+  if (!pgid || restMs <= 0) return true;
+  if (plattform === "win32" && !prozesse) return true;
   const frist = jetzt() + restMs;
   // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
   // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
   // Wartezeit ist eine Vorsichtsmassnahme und darf keine Runde aufhalten, weil ein
-  // Werkzeug fehlt.
-  const gruppeLaeuft = () => {
+  // Werkzeug fehlt. Dieselbe Haltung hat die Suche unter Windows.
+  const gruppeLaeuft = plattform === "win32" ? () => prozesse().length > 0 : () => {
     const res = spawnSync("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
     if (res.error || res.status !== 0) return false;
     return (res.stdout || "").trim() !== "";
@@ -4867,15 +4868,82 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
  * NODE_USE_ENV_PROXY (Issue #998): In der Sandbox geht der Netzverkehr ueber einen Proxy,
  * und Nodes fetch nutzt ihn nur mit diesem Schalter beim Start. Ohne ihn scheitern
  * board.mjs, checks.mjs und Projektskripte der Session mit "fetch failed".
+ *
+ * SITZUNG_MARKE (Issue #1144): je Session ein eigener Wert, den jeder ihrer Prozesse erbt.
+ * Unter Windows gibt es keine Prozessgruppe, und an der Marke erkennt der Runner dort, was
+ * von der Session noch laeuft — siehe `sitzungsProzesse`.
  */
-export function sessionUmgebung(issueId, extraEnv, basis = process.env) {
+export function sessionUmgebung(issueId, extraEnv, basis = process.env, marke = sitzungsMarke()) {
   return {
     ...basis,
     NIGHT_ISSUE_ID: String(issueId),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     NODE_USE_ENV_PROXY: "1",
+    [SITZUNG_MARKE]: marke,
     ...extraEnv,
   };
+}
+
+/** Der Name der Umgebungsvariable, die die Prozesse einer Session kennzeichnet (Issue #1144). */
+export const SITZUNG_MARKE = "NIGHT_SITZUNG";
+
+let sitzungsZaehler = 0;
+
+/**
+ * Eine Marke, die keine andere Session dieses oder eines anderen Runners traegt: PID des
+ * Runners, laufende Nummer, Startzeit. Nur Ziffern, Buchstaben und Bindestriche — die Git
+ * Bash deutet einen Wert, der wie ein Pfad aussieht, sonst beim Start um.
+ */
+function sitzungsMarke() {
+  sitzungsZaehler += 1;
+  return `s${process.pid}-${sitzungsZaehler}-${Date.now()}`;
+}
+
+/**
+ * Die Suche nach den Prozessen einer Session unter Windows (Issue #1144). Windows kennt
+ * keine Prozessgruppe, und eine Elternkette reisst, sobald ein Zwischenglied endet: Die
+ * Session beendet sich, ihr Hintergrundlauf lebt weiter und nennt als Eltern eine PID, die
+ * es nicht mehr gibt. Was bleibt, ist die geerbte Umgebung. Die MSYS-Laufzeit der Git Bash
+ * legt sie fuer jeden ihrer Prozesse unter `/proc/<pid>/environ` offen, dazu dessen
+ * Windows-PID unter `/proc/<pid>/winpid`.
+ *
+ * Gesucht wird die Zeile `NIGHT_SITZUNG=<marke>`. Die Marke kommt unter anderem Namen in
+ * die Umgebung der Suche, sonst faende die Suche sich selbst. Erreicht werden die Prozesse
+ * der Git Bash und die Programme, die sie gerade ausfuehrt — darunter die Bash-Aufrufe von
+ * Claude Code und alles, was sie starten. Ein Windows-Programm, das ein anderes
+ * Windows-Programm startet und vor ihm endet, hinterlaesst ein Kind ohne Eintrag; das ist
+ * dieselbe Luecke wie auf POSIX ein Enkel, der eine eigene Prozessgruppe aufmacht.
+ */
+export function sitzungsSuche(marke) {
+  return {
+    skript: `for d in /proc/[0-9]*; do grep -qzx "${SITZUNG_MARKE}=$KIT_SITZUNG_SUCHE" "$d/environ" 2>/dev/null && cat "$d/winpid" 2>/dev/null; done; true`,
+    umgebung: { KIT_SITZUNG_SUCHE: marke },
+  };
+}
+
+/** Die Windows-PIDs aus der Ausgabe von `sitzungsSuche`, eine je Zeile (Issue #1144). */
+export function sitzungsPids(ausgabe) {
+  return String(ausgabe ?? "").split("\n").map((z) => Number(z.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
+/**
+ * Die Windows-PIDs der Prozesse, die die Marke einer Session tragen (Issue #1144). Ohne Git
+ * Bash oder bei einer gescheiterten Suche eine leere Liste: Wie das Fehlen von `ps` auf
+ * POSIX darf das Fehlen eines Werkzeugs keine Runde aufhalten.
+ */
+function sitzungsProzesse(marke) {
+  const shell = posixShell();
+  if (shell.fehler) return [];
+  const suche = sitzungsSuche(marke);
+  const aufruf = spawnAufruf(shell.pfad, ["-c", suche.skript], shell);
+  const res = spawnSync(aufruf.befehl, aufruf.args, {
+    ...aufruf.optionen,
+    encoding: "utf-8",
+    windowsHide: true,
+    env: { ...process.env, ...shell.umgebung, ...suche.umgebung },
+  });
+  if (res.error || res.status !== 0) return [];
+  return sitzungsPids(res.stdout);
 }
 
 /**
@@ -4885,8 +4953,13 @@ export function sessionUmgebung(issueId, extraEnv, basis = process.env) {
  * seine Enkel hielten die geerbte Pipe offen. Unter Windows gibt es kein mildes SIGTERM fuer
  * einen Baum; beide Stufen des Zeitlimits werden zum harten Abbruch.
  */
-export function baumBeendenAufruf(pid, signal, plattform = process.platform) {
-  if (plattform === "win32") return { taskkill: ["/pid", String(pid), "/T", "/F"] };
+export function baumBeendenAufruf(pid, signal, plattform = process.platform, weitere = []) {
+  if (plattform === "win32") {
+    // `weitere` sind die Prozesse mit der Marke der Session (Issue #1144): Ist die Wurzel
+    // schon fort, reicht `taskkill /T` von ihr aus nicht mehr bis zu ihnen.
+    const pids = [...new Set([pid, ...weitere].map(String))];
+    return { taskkill: [...pids.flatMap((p) => ["/pid", p]), "/T", "/F"] };
+  }
   return { pid: -pid, signal };
 }
 
@@ -4902,9 +4975,13 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // Ueber die Git Bash mit selbst geschriebener Kommandozeile (Issue #1143), sonst
     // unveraendert.
     const aufruf = spawnAufruf(cmd, cmdArgs, { gitBash });
+    // Die Marke dieser Session (Issue #1144): Unter Windows findet der Runner an ihr die
+    // Prozesse, die eine Prozessgruppe auf POSIX zusammenhaelt.
+    const marke = sitzungsMarke();
+    const windows = process.platform === "win32";
     const child = spawn(aufruf.befehl, aufruf.args, {
       ...aufruf.optionen,
-      env: sessionUmgebung(issueId, extraEnv),
+      env: sessionUmgebung(issueId, extraEnv, process.env, marke),
       detached: process.platform !== "win32",
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
       // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
@@ -4965,7 +5042,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // scheitern und taskkill mit einem Exitcode ungleich 0; das ist der Normalfall, kein
     // Fehler.
     const killTree = (signal) => {
-      const aufruf = baumBeendenAufruf(child.pid, signal);
+      const aufruf = baumBeendenAufruf(child.pid, signal, process.platform, windows ? sitzungsProzesse(marke) : []);
       if (aufruf.taskkill) {
         spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
         return;
@@ -5056,7 +5133,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
       if (!timedOut) {
         const restMs = Math.max(0, timeoutMs - (Date.now() - gestartet));
-        const leer = await warteAufProzessgruppe(child.pid, restMs);
+        const leer = await warteAufProzessgruppe(child.pid, restMs, windows ? { prozesse: () => sitzungsProzesse(marke) } : {});
         if (!leer) {
           log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
         }
