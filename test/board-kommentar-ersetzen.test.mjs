@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 import { resolveTracker } from "../kit/board.mjs";
 import {
-  setupProjekt, fakeCli, aufrufe, starteServer, runBoardAsync, toolboxMitKommentaren, TEST_TOOLBOX_BUDGET_MS,
+  setupProjekt, fakeCli, fakePath, aufrufe, starteServer, runBoardAsync, toolboxMitKommentaren, TEST_TOOLBOX_BUDGET_MS,
 } from "./helpers/board-fixture.mjs";
 
 process.env.TBX_TOKEN = "test-token";
@@ -32,7 +32,7 @@ async function mitFakeCli(name, regeln, fn) {
   const dir = setupProjekt(null, `board-ersetzen-${name}-`);
   fakeCli(dir, name, regeln);
   const altPath = process.env.PATH;
-  process.env.PATH = `${join(dir, "fakebin")}:${altPath}`;
+  process.env.PATH = fakePath(dir);
   try {
     return await fn(dir);
   } finally {
