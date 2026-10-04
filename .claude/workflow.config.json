@@ -229,6 +229,8 @@
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
       "tools/windows-pruefung.mjs",
+      "tools/windows-brueche.mjs",
+      "test/fixtures/windows-brueche/**",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
       "test/tools-*.test.mjs",
