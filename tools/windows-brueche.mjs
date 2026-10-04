@@ -19,7 +19,7 @@
  * das Werkzeug meldet, es haelt nicht an; Exit 2 nur bei eigenem Fehler.
  *
  * Je Art eine benannte Regel in `REGELN` (E16). Bisher: `skips`, `pfade`, `kommandos`,
- * `dateien`, `prozesse`, `zeilenenden`. Die Art `fakes` folgt in einem eigenen Paket.
+ * `dateien`, `prozesse`, `zeilenenden`, `fakes`.
  *
  * Vermerk (E14): `windows-ausnahme: <Grund>` in derselben oder der direkt vorangehenden
  * Zeile, in Markdown als HTML-Kommentar, nimmt eine Stelle aus — aber nur, wenn in der
@@ -447,6 +447,143 @@ export function zeilenendenFunde(zeilen, datei = "") {
   });
 }
 
+// ---- Art fakes --------------------------------------------------------------
+//
+// Test-Ersatzprogramme, die unter Windows nicht starten (Issue #1163; echte Faelle #1136,
+// #1145). Ein Fund ist ein Schreibaufruf in einem Test oder Testhelfer, der ein Programm mit
+// Shebang in einen bin-Ordner legt und es ausfuehrbar macht — per Modus im Aufruf, per
+// Rechte-Aufruf oder `chmod +x` auf denselben Pfad —, ohne dass dieselbe Funktion eine
+// Windows-Huelle daneben legt: eine `.cmd` oder `.exe`, `cmdAttrappe`, den gemeinsamen
+// Helfer `fakeCli`/`fakePath` oder einen Helfer derselben Datei, der die Huelle schreibt.
+// Unter Windows findet die Suche im PATH nur Dateien mit einer Endung aus PATHEXT. Darum
+// ist auch der Helfer in `test/helpers/board-fixture.mjs` kein Fund. Kein Fund: ein Programm
+// ausserhalb eines bin-Ordners (ein Stufenprogramm startet das Kit ueber die POSIX-Shell,
+// nicht ueber den PATH), ein nicht ausfuehrbares Programm, und ein Ersatzprogramm nur fuer
+// Tests, die sich ueber das Ausfuehrungsrecht ausnehmen — dort laufen sie unter Windows nie.
+
+const SCHREIBEN = /\bwriteFileSync\s*\(/g;
+const SHEBANG = /["'`]#!/;
+const IN_BIN = /\bjoin\(\s*\w*bin\w*\s*,|["'`]\w*bin["'`]/i;
+const HUELLE = /\.(?:cmd|exe)["'`]|\bcmdAttrappe\(|\bfakeCli\(|\bfakePath\(/;
+const MODUS = /\bmode:\s*(0o[0-7]+)/;
+const PLUS_X = /["'`]\+x["'`]/;
+const AUSFUEHRUNGSRECHT = /\bMIT_DATEIRECHTEN\b|\bdateirechteGreifen\b|\bkenntAusfuehrungsrecht\b/;
+const FUNKTIONSNAME = /\bfunction\s+(\w+)|\b(?:const|let)\s+(\w+)\s*=/;
+const TEST_AUFRUF = /^\s*test\(/;
+const SCHREIBEN_ZEILEN = 15;
+
+/** Die Argumente eines Aufrufs, an den Kommas der obersten Ebene getrennt. */
+function teileArgumente(argumente) {
+  const teile = [];
+  let tiefe = 0;
+  let zeichenkette = null;
+  let anfang = 0;
+  let maskiert = false;
+  for (let i = 0; i < argumente.length; i++) {
+    const c = argumente[i];
+    if (maskiert) maskiert = false;
+    else if (zeichenkette !== null) {
+      if (c === "\\") maskiert = true;
+      else if (c === zeichenkette) zeichenkette = null;
+    } else if (c === '"' || c === "'" || c === "`") zeichenkette = c;
+    else if ("([{".includes(c)) tiefe++;
+    else if (")]}".includes(c)) tiefe--;
+    else if (c === "," && tiefe === 0) {
+      teile.push(argumente.slice(anfang, i).trim());
+      anfang = i + 1;
+    }
+  }
+  teile.push(argumente.slice(anfang).trim());
+  return teile;
+}
+
+/** Ob ein Modus-Text ausfuehrbar macht: ein fester Modus mit x-Bit oder einer aus einer Variable. */
+const machtAusfuehrbar = (modus) => {
+  const fest = festerModus(modus);
+  return fest === null ? /^\w+$/.test(modus.trim()) : (fest & 0o111) !== 0;
+};
+
+/** Die Namen der Funktionen einer Datei, deren Rumpf eine Windows-Huelle schreibt. */
+function huellenHelfer(zeilen) {
+  const namen = [];
+  zeilen.forEach((zeile, i) => {
+    const m = funktionsKopfZeile(zeile) ? FUNKTIONSNAME.exec(zeile) : null;
+    if (m && funktion(zeilen, i + 1).slice(1).some((z) => !KOMMENTAR.test(z) && HUELLE.test(z))) namen.push(m[1] ?? m[2]);
+  });
+  return namen;
+}
+
+/** Ob jeder Aufruf der Funktion um Zeile `i` in einem Test steht, der sich ueber das Ausfuehrungsrecht ausnimmt. */
+function nurMitAusfuehrungsrecht(zeilen, i) {
+  const testKopf = (j) => {
+    while (j >= 0 && !TEST_AUFRUF.test(zeilen[j])) j--;
+    return j >= 0 && zeilen.slice(j, j + 3).some((z) => AUSFUEHRUNGSRECHT.test(z));
+  };
+  const kopf = funktionsKopf(zeilen, i);
+  if (kopf === -1) return false;
+  if (TEST_AUFRUF.test(zeilen[kopf]) || !FUNKTIONSNAME.test(zeilen[kopf])) return testKopf(kopf);
+  const m = FUNKTIONSNAME.exec(zeilen[kopf]);
+  const aufruf = new RegExp(String.raw`\b${m[1] ?? m[2]}\(`);
+  const ende = kopf + funktion(zeilen, i).length;
+  const stellen = zeilen.map((z, j) => j).filter((j) => (j < kopf || j >= ende) && aufruf.test(zeilen[j]));
+  return stellen.length > 0 && stellen.every(testKopf);
+}
+
+/** Ob die Funktion `rumpf` das Ziel ausfuehrbar macht: per Modus im Aufruf, Rechte-Aufruf oder `chmod +x`. */
+function ausfuehrbarGemacht(rumpf, ziel, optionen) {
+  const modus = MODUS.exec(optionen);
+  if (modus && machtAusfuehrbar(modus[1])) return true;
+  const zielMuster = ziel.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  const rechte = new RegExp(String.raw`\b[fl]?chmod(?:Sync)?\s*\(\s*${zielMuster}\s*,\s*([^)]+)\)`);
+  return rumpf.some((z) => {
+    const r = rechte.exec(z);
+    return (r && machtAusfuehrbar(r[1])) || (PLUS_X.test(z) && z.includes(ziel));
+  });
+}
+
+/**
+ * Die Zeile (ab 0) des Shebangs, wenn der Schreibaufruf ab `start` in Zeile `i` ein
+ * ausfuehrbares Ersatzprogramm ohne Huelle in einen bin-Ordner legt, sonst `null`.
+ */
+function fakeOhneHuelle(zeilen, i, start, huelle) {
+  const text = zeilen.slice(i, i + SCHREIBEN_ZEILEN).join("\n");
+  const argumente = aufrufText(text, start);
+  const [ziel, inhalt = "", optionen = ""] = teileArgumente(argumente);
+  const kopf = funktionsKopf(zeilen, i);
+  const rumpf = funktion(zeilen, i);
+  // Ziel oder Inhalt aus einer Variable: deren Belegung in derselben Funktion gilt.
+  const belegtIn = (name) => {
+    if (!/^\w+$/.test(name)) return -1;
+    const belegung = new RegExp(String.raw`\b(?:const|let)\s+${name}\s*=[^=>]`);
+    for (let j = i - 1; j > kopf; j--) if (belegung.test(zeilen[j])) return j;
+    return -1;
+  };
+  const inhaltBei = belegtIn(inhalt);
+  const [ab, quelle, versatz] = inhaltBei === -1 ? [i, text.slice(0, start + argumente.length), start] : [inhaltBei, zeilen.slice(inhaltBei, i).join("\n"), 0];
+  const shebang = SHEBANG.exec(quelle.slice(versatz));
+  const zielBei = belegtIn(ziel);
+  if (!shebang || !IN_BIN.test(zielBei === -1 ? ziel : zeilen[zielBei])) return null;
+  // Der Kopf zaehlt nicht: Eine eigene Funktion `fakeCli` legt noch keine Huelle.
+  const legtHuelle = rumpf.slice(1).some((z) => !KOMMENTAR.test(z) && huelle.test(z));
+  if (!ausfuehrbarGemacht(rumpf, ziel, optionen) || legtHuelle || nurMitAusfuehrungsrecht(zeilen, i)) return null;
+  return ab + (quelle.slice(0, versatz + shebang.index).match(/\n/g) ?? []).length;
+}
+
+/** Die Funde der Art `fakes` in den Zeilen eines Quelltexts: `[{ zeile, grund }]`. */
+export function fakeFunde(zeilen, datei = "") {
+  const imTest = TEST_DATEI.test(datei) || zeilen.some((z) => /["']node:test["']/.test(z));
+  if (!imTest) return [];
+  const helfer = huellenHelfer(zeilen);
+  const huelle = helfer.length === 0 ? HUELLE : new RegExp(`${HUELLE.source}|\\b(?:${helfer.join("|")})\\(`);
+  return zeilen.flatMap((zeile, i) => KOMMENTAR.test(zeile) ? [] : [...zeile.matchAll(SCHREIBEN)]
+    .map((m) => fakeOhneHuelle(zeilen, i, m.index + m[0].length, huelle))
+    .filter((z) => z !== null)
+    .map((z) => ({
+      zeile: z + 1,
+      grund: "ausfuehrbares Ersatzprogramm mit Shebang ohne .cmd-Huelle (fakeCli, cmdAttrappe); unter Windows findet die Suche im PATH es nicht",
+    })));
+}
+
 /** Je Art eine Regel: `pruefe(zeilen, kontext)` liefert `[{ zeile, grund }]`. */
 export const REGELN = [
   {
@@ -481,6 +618,10 @@ export const REGELN = [
   {
     art: "zeilenenden",
     pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : zeilenendenFunde(zeilen, datei),
+  },
+  {
+    art: "fakes",
+    pruefe: (zeilen, { datei = "" } = {}) => DATEN.test(datei) ? [] : fakeFunde(zeilen, datei),
   },
 ];
 

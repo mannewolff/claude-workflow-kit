@@ -13,7 +13,7 @@
 // Rueckfall, `§H` fuer den Aufruf, der Dateirechte setzt, `§K` fuer das Shell-Kommando
 // dazu, `§M` fuer das Feld der Dateirechte, `§R` fuer den Kill mit negativer PID, `§A` fuer
 // die eigene Prozessgruppe, `§O` und `§I` fuer die Signalnamen als Zeichenkette, `§Z` fuer
-// das Zerlegen an LF, `§G` fuer das Init-Kommando als Zeichenkette): Diese
+// das Zerlegen an LF, `§G` fuer das Init-Kommando als Zeichenkette, `§F` fuer den Shebang): Diese
 // Datei liegt selbst im geprueften Bestand und darf dort keinen Fund ausloesen.
 
 import { test } from "node:test";
@@ -51,7 +51,8 @@ const q = (...zeilen) => zeilen.join("\n")
   .replaceAll("§O", '"SIG' + 'TERM"')
   .replaceAll("§I", '"SIG' + 'INT"')
   .replaceAll("§Z", ".split(" + '"' + "\\" + "n" + '"' + ")")
-  .replaceAll("§G", '"in' + 'it"');
+  .replaceAll("§G", '"in' + 'it"')
+  .replaceAll("§F", "#" + "!");
 
 const lauf = (args, cwd = repoRoot) => spawnSync(process.execPath, [werkzeug, ...args], { cwd, encoding: "utf-8" });
 const hinweise = (stdout) => stdout.split(/\r?\n/).filter((z) => z.startsWith("Hinweis: "));
@@ -660,6 +661,97 @@ test("[1162] Das Fixture traegt genau einen Bruch der Art zeilenenden", () => {
   const zeilen = hinweise(r.stdout).filter((z) => z.includes(" — zeilenenden: "));
   assert.equal(zeilen.length, 1, r.stdout);
   assert.match(zeilen[0], /^Hinweis: zeilenenden\.txt:\d+ — zeilenenden: /);
+});
+
+// ---- Regel fakes ----------------------------------------------------------------
+
+const fakeFunde = (datei, ...zeilen) => pruefeQuelle(q(...zeilen), { kontext: { datei } })
+  .filter((f) => f.art === "fakes");
+
+test("[1163] REGELN traegt die Art fakes", () => {
+  const fakes = REGELN.find((r) => r.art === "fakes");
+  assert.ok(fakes, "Regel fakes fehlt");
+  assert.equal(typeof fakes.pruefe, "function");
+  assert.equal(q("§F/bin/sh"), "#" + "!/bin/sh");
+});
+
+test("[1163] fakes: ein ausfuehrbares Ersatzprogramm im bin-Ordner ohne Huelle ist ein Fund", () => {
+  // Modus im Schreibaufruf
+  let funde = fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", String.raw`  writeFileSync(join(dir, "bin", "gh"), "§F/bin/sh\nexit 0\n", { mode: 0o755 });`, "}");
+  assert.deepEqual(funde.map((f) => f.zeile), [2]);
+  assert.match(funde[0].grund, /\.cmd/);
+  // chmod danach, Pfad ueber eine Variable, Shebang in einem Array auf eigener Zeile
+  funde = fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", '  const pfad = join(binDir, "claude");', "  writeFileSync(pfad, [", '    "§F/bin/sh",', '    "exit 0",',
+    String.raw`  ].join("\n"));`, "  §H(pfad, 0o755);", "}");
+  assert.deepEqual(funde.map((f) => f.zeile), [4]);
+  // der Inhalt aus einer Variable derselben Funktion, wie im gemeinsamen Helfer
+  funde = fakeFunde("test/helpers/a.mjs",
+    "export function fakeCli(dir, name) {", "  const wrapper = [", '    "§F/bin/sh",', '    "exec node impl.mjs",', String.raw`  ].join("\n");`,
+    '  const cliPfad = join(dir, "fakebin", name);', "  writeFileSync(cliPfad, wrapper);", "  §H(cliPfad, 0o755);", "}");
+  assert.deepEqual(funde.map((f) => f.zeile), [3]);
+  // chmod +x als Kindprozess
+  assert.equal(fakeFunde("test/a.test.mjs",
+    "function fake(bin) {", String.raw`  writeFileSync(join(bin, "git"), "§F/bin/sh\n");`, '  spawnSync("§K", ["+x", join(bin, "git")]);', "}").length, 1);
+  // ein Testhelfer ausserhalb einer .test-Datei
+  assert.equal(fakeFunde("test/helpers/a.mjs",
+    "function fake(dir) {", String.raw`  writeFileSync(join(dir, "fakebin", "gh"), "§F/bin/sh\n", { mode: 0o755 });`, "}").length, 1);
+});
+
+test("[1163] fakes: mit fakeCli, fakePath oder einer .cmd-Huelle ist kein Fund", () => {
+  const schreibe = String.raw`  writeFileSync(join(binDir, "gh"), "§F/bin/sh\n", { mode: 0o755 });`;
+  for (const huelle of ['  cmdAttrappe(join(binDir, "gh"));', String.raw`  writeFileSync(join(binDir, "gh.cmd"), "@rem\r\n");`,
+    "  writeFileSync(`${pfad}.cmd`, \"@rem\\r\\n\");", '  writeFileSync(`${pfad}.exe`, "kein Programm");',
+    '  fakeCli(dir, "git", []);', "  return fakePath(dir);"]) {
+    assert.deepEqual(fakeFunde("test/a.test.mjs", "function fake(dir) {", schreibe, huelle, "}"), [], huelle);
+  }
+  // ein eigener Helfer derselben Datei, der die Huelle schreibt
+  assert.deepEqual(fakeFunde("test/a.test.mjs",
+    "function huelle(binDir, name) {", '  writeFileSync(join(binDir, `${name}.cmd`), "@rem\\r\\n");', "}",
+    "function fake(binDir) {", schreibe, '  huelle(binDir, "gh");', "}"), []);
+  // ein Kommentar, der die Huelle nur nennt, und eine eigene Funktion namens fakeCli legen keine
+  assert.equal(fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", schreibe, "  // Unter Windows findet das Kit es ueber die `.cmd` daneben.", "}").length, 1);
+  assert.equal(fakeFunde("test/a.test.mjs", "function fakeCli(dir) {", schreibe, "}").length, 1);
+  // die Huelle in einer anderen Funktion gilt nicht
+  assert.equal(fakeFunde("test/a.test.mjs",
+    "function andere(dir) {", '  cmdAttrappe(join(dir, "x"));', "}",
+    "function fake(dir) {", schreibe, "}").length, 1);
+});
+
+test("[1163] fakes: nicht ausfuehrbar, ausserhalb eines bin-Ordners, ausserhalb eines Tests oder ohne Shebang ist kein Fund", () => {
+  assert.deepEqual(fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", String.raw`  writeFileSync(join(dir, "bin", "gh"), "§F/bin/sh\n", { mode: 0o644 });`, "}"), []);
+  assert.deepEqual(fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", String.raw`  writeFileSync(join(binDir, "gh"), "§F/bin/sh\n");`, '  §H(join(binDir, "gh"), 0o644);', "}"), []);
+  // ein Stufenprogramm, das das Kit ueber die POSIX-Shell startet, nicht ueber den PATH
+  assert.deepEqual(fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", '  const prog = join(dir, "stufen-programm");', String.raw`  writeFileSync(prog, "§F/bin/sh\n", { mode: 0o755 });`, "}"), []);
+  assert.deepEqual(fakeFunde("kit/a.mjs",
+    "function hook(dir) {", String.raw`  writeFileSync(join(dir, "bin", "x"), "§F/bin/sh\n", { mode: 0o755 });`, "}"), []);
+  assert.deepEqual(fakeFunde("test/a.test.mjs",
+    "function fake(dir) {", String.raw`  writeFileSync(join(dir, "bin", "x"), "exit 0\n", { mode: 0o755 });`, "}"), []);
+});
+
+test("[1163] fakes: ein Ersatzprogramm nur fuer Tests, die sich ueber das Ausfuehrungsrecht ausnehmen, ist kein Fund", () => {
+  const helfer = ["function mitBin(fn) {", String.raw`  writeFileSync(join(bin, "git"), "§F/bin/sh\n", { mode: 0o755 });`, "  fn(bin);", "}"];
+  assert.deepEqual(fakeFunde("test/a.test.mjs", ...helfer,
+    'test("x", {', '  skip: !kenntAusfuehrungsrecht() && "kein x-Bit",', "}, () => {", "  mitBin(() => {});", "});"), []);
+  assert.deepEqual(fakeFunde("test/a.test.mjs", ...helfer,
+    'test("x", MIT_DATEIRECHTEN, () => {', "  mitBin(() => {});", "});"), []);
+  // ein zweiter Aufruf ohne Faehigkeit: der Fund bleibt
+  assert.equal(fakeFunde("test/a.test.mjs", ...helfer,
+    'test("x", MIT_DATEIRECHTEN, () => {', "  mitBin(() => {});", "});",
+    'test("y", () => {', "  mitBin(() => {});", "});").length, 1);
+});
+
+test("[1163] Das Fixture traegt genau einen Bruch der Art fakes", () => {
+  const r = lauf(["--wurzel", join(repoRoot, "test", "fixtures", "windows-brueche")]);
+  assert.equal(r.status, 0, r.stderr);
+  const zeilen = hinweise(r.stdout).filter((z) => z.includes(" — fakes: "));
+  assert.equal(zeilen.length, 1, r.stdout);
+  assert.match(zeilen[0], /^Hinweis: fakes\.txt:\d+ — fakes: /);
 });
 
 // ---- Vermerk (E14) ----------------------------------------------------------
