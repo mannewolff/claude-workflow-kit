@@ -7,7 +7,7 @@
  *
  * Wozu: Das Sitzungsprotokoll von Claude Code fuehrt keinen Dollarbetrag — nur
  * Tokenmengen (geprueft am 2026-09-18 ueber alle Protokolle dieses Projekts: kein
- * einziges Feld mit 'cost' im Namen). Der Sitzungs-Melder in board.mjs rechnet den
+ * einziges Feld mit 'cost' im Namen). Der Sitzungs-Melder in board/melder.mjs rechnet den
  * Betrag deshalb aus den Mengen. Das ist die Antwort auf E20 des Plans
  * mannewolff/kanban-kit#1007: "rechnen", nicht "durchreichen".
  *
@@ -108,7 +108,7 @@ export const MODELL_STUFEN = {
  *
  * `null` ist die Antwort, nicht ein Ersatzwert: Ein geratener Satz erzeugte einen
  * Betrag, der aussieht wie gemessen. Der Aufrufer macht daraus einen fehlenden
- * Betrag — siehe `sitzungKosten` in board.mjs.
+ * Betrag — siehe `sitzungKosten` in board/melder.mjs.
  */
 export function preisFuer(modell) {
   const stufe = MODELL_STUFEN[modell];

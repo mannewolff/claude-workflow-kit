@@ -1,18 +1,16 @@
-// Die Einlieferung eines Nachtlaufs an kanban-kit (Issue #669).
+// Die Einlieferung eines Nachtlaufs an kanban-kit (Issue #669), im selben Prozess gegen den
+// Teil kit/board/melder.mjs (Issue #1222, Plan #1199, E6 und E18).
 //
 // `nachtlaufMeldung` uebersetzt den Ergebnisstand in den Vertrag von
 // `POST /api/kanban/night-runs` (kanban-kit, NightRunIngestController, Plan #943). Die
 // Farben folgen der Deutung in kanban-kit `frontend/src/lib/nightRunErgebnisstand.ts`,
-// beschraenkt auf die beiden Lauf-Arten, die night.mjs heute schreibt.
+// beschraenkt auf die beiden Lauf-Arten, die night.mjs heute schreibt. Den Befehl
+// `nightrun melden` ueber die Kommandozeile belegt `test/ablauf-board-melder-cli.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 
-import { nachtlaufMeldung, nachtlaufAbbruchGrund } from "../kit/board.mjs";
-import { verbrauchLeer } from "../kit/night.mjs";
-import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
+import { nachtlaufMeldung, nachtlaufAbbruchGrund, nightrunMelden, meldungSenden } from "../kit/board/melder.mjs";
 
 const JETZT = new Date("2026-09-16T10:10:00.000Z");
 const V = (kostenUsd, eingabe, ausgabe, erzeugt, gelesen) => ({ kostenUsd, eingabeTokens: eingabe, ausgabeTokens: ausgabe, cacheErzeugtTokens: erzeugt, cacheGelesenTokens: gelesen });
@@ -300,29 +298,6 @@ test("[night-31] Arbeitspaket: Nummer, gekuerzte Texte, Dauer, Commit, Verbrauch
   assert.equal(m.skippedCount, 1);
 });
 
-test("[night-31] nightrun melden schickt die Meldung mit Token an /api/kanban/night-runs", async () => {
-  const { server, requests, host } = await starteServer((req) =>
-    req.url === "/api/kanban/night-runs" && req.method === "POST" ? { status: 200, json: { startedAt: "2026-09-16T10:00:00Z", outcome: "REPLACED" } } : null);
-  const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-nightrun-");
-  try {
-    const datei = join(dir, "stand.json");
-    writeFileSync(datei, JSON.stringify(stand("implementierung", [{ id: "7", titel: "T", ausgang: "erfolg", pruefung: { zustand: "geprueft" } }])));
-    const res = await runBoardAsync(dir, ["nightrun", "melden", "--datei", datei], { TBX_TOKEN: "test-token" });
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(JSON.parse(res.stdout), { ok: true, outcome: "REPLACED" });
-    assert.equal(requests.length, 1);
-    assert.equal(requests[0].headers["x-kanban-token"], "test-token");
-    assert.equal(requests[0].headers["content-type"], "application/json");
-    const body = JSON.parse(requests[0].body);
-    assert.equal(body.mode, "IMPLEMENTATION");
-    assert.equal(body.kind, "NIGHT");
-    assert.equal(body.items[0].state, "GREEN");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    server.close();
-  }
-});
-
 // --- Budgets, Herkunft, Stufen, Modellzeit und Zuege (Issue #808) ---
 //
 // Der Ergebnisstand fuehrt Budgets, deren Herkunft, die Stufen einer Kette und die
@@ -431,28 +406,64 @@ test("[board-20] ohne Kennzahlen bleiben Modellzeit und Zuege null, und ohne jed
   assert.equal(leer.usage, null, "nichts gemessen heisst weiterhin null, nicht ein Objekt aus Nullen");
 });
 
-// Der Vertrag des Ergebnisstands bleibt, wie er ist (Issue #808): Modellzeit und Zuege
-// stehen nicht in `e.verbrauch`, sondern in `e.kennzahlen` — VERBRAUCH_FELDER waechst
-// nicht mit. Belegt ueber das exportierte verbrauchLeer(), das genau diese Felder traegt.
-test("[board-20] VERBRAUCH_FELDER des Ergebnisstands bleibt bei den fuenf Mengen-Feldern", () => {
-  assert.deepEqual(Object.keys(verbrauchLeer()), ["kostenUsd", "eingabeTokens", "ausgabeTokens", "cacheErzeugtTokens", "cacheGelesenTokens"]);
+// --- Der Befehl `nightrun melden` -------------------------------------------
+//
+// Config, Datei, Uhr und Versand sind injiziert: Der Versand merkt sich, was er bekam,
+// und antwortet wie die Gegenstelle. Ein Abbruch wirft BoardError; der Einstieg gibt ihn
+// mit Exit 1 aus.
+
+const TOOLBOX = { codeHost: "local", issueTracker: "toolbox", toolbox: { host: "https://board.invalid" } };
+const STAND_DATEI = JSON.stringify(stand("implementierung", [{ id: "7", titel: "T", ausgang: "erfolg", pruefung: { zustand: "geprueft" } }]));
+
+function versand(antwort = { outcome: "REPLACED" }) {
+  const gesendet = [];
+  return { gesendet, senden: async (config, meldung) => { gesendet.push({ config, meldung }); return antwort; } };
+}
+
+test("[night-31] nightrun melden schickt die gedeutete Meldung des Ergebnisstands und nennt das Ergebnis", async () => {
+  const { gesendet, senden } = versand();
+  const gelesen = [];
+  const antwort = await nightrunMelden({ datei: "/ablage/stand.json" }, {
+    config: TOOLBOX,
+    lesen: (pfad) => { gelesen.push(pfad); return STAND_DATEI; },
+    senden,
+    jetzt: () => JETZT,
+  });
+  assert.deepEqual(antwort, { ok: true, outcome: "REPLACED" });
+  assert.deepEqual(gelesen, ["/ablage/stand.json"]);
+  assert.equal(gesendet.length, 1);
+  assert.equal(gesendet[0].config, TOOLBOX);
+  const body = gesendet[0].meldung;
+  assert.equal(body.mode, "IMPLEMENTATION");
+  assert.equal(body.kind, "NIGHT");
+  assert.equal(body.durationMs, 600000, "die Dauer misst die injizierte Uhr");
+  assert.equal(body.items[0].state, "GREEN");
 });
 
-test("[night-31] nightrun melden weist einen anderen Tracker und eine fehlende Datei mit Grund ab", async () => {
-  const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-nightrun-");
-  try {
-    const lokal = await runBoardAsync(dir, ["nightrun", "melden", "--datei", join(dir, "x.json")], {});
-    assert.notEqual(lokal.status, 0);
-    assert.match(lokal.stderr, /nur mit issueTracker toolbox/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-  const tb = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host: "http://127.0.0.1:9" } }, "board-nightrun-");
-  try {
-    const fehlt = await runBoardAsync(tb, ["nightrun", "melden", "--datei", join(tb, "fehlt.json")], { TBX_TOKEN: "t" });
-    assert.notEqual(fehlt.status, 0);
-    assert.match(fehlt.stderr, /Ergebnisstand .* nicht lesbar/);
-  } finally {
-    rmSync(tb, { recursive: true, force: true });
-  }
+test("[night-31] nightrun melden ohne JSON-Antwort meldet outcome null", async () => {
+  const { senden } = versand(null);
+  const antwort = await nightrunMelden({ datei: "x" }, { config: TOOLBOX, lesen: () => STAND_DATEI, senden, jetzt: () => JETZT });
+  assert.deepEqual(antwort, { ok: true, outcome: null });
+});
+
+test("[night-31] nightrun melden weist einen anderen Tracker, eine fehlende Angabe und eine unlesbare Datei mit Grund ab", async () => {
+  const { gesendet, senden } = versand();
+  const lesen = () => { throw new Error("ENOENT: fehlt"); };
+  await assert.rejects(nightrunMelden({ datei: "x" }, { config: { issueTracker: "local" }, lesen, senden }), /nur mit issueTracker toolbox moeglich, konfiguriert ist 'local'/);
+  await assert.rejects(nightrunMelden({}, { config: TOOLBOX, lesen, senden }), /braucht --datei/);
+  await assert.rejects(nightrunMelden({ datei: "/ablage/fehlt.json" }, { config: TOOLBOX, lesen, senden }), /Ergebnisstand \/ablage\/fehlt\.json nicht lesbar: ENOENT/);
+  await assert.rejects(nightrunMelden({ datei: "kaputt.json" }, { config: TOOLBOX, lesen: () => "{kaputt", senden }), /Ergebnisstand kaputt\.json nicht lesbar/);
+  assert.equal(gesendet.length, 0, "ein Abbruch schickt nichts");
+});
+
+test("[night-31] meldungSenden schickt die Meldung als JSON an /api/kanban/night-runs", async () => {
+  const aufrufe = [];
+  const tracker = { _fetch: async (pfad, optionen) => { aufrufe.push({ pfad, optionen }); return { json: async () => ({ outcome: "CREATED" }) }; } };
+  assert.deepEqual(await meldungSenden(TOOLBOX, { kind: "NIGHT" }, tracker), { outcome: "CREATED" });
+  assert.deepEqual(aufrufe, [{
+    pfad: "/api/kanban/night-runs",
+    optionen: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "NIGHT" }) },
+  }]);
+  const ohneRumpf = { _fetch: async () => ({ json: async () => { throw new SyntaxError("kein JSON"); } }) };
+  assert.equal(await meldungSenden(TOOLBOX, {}, ohneRumpf), null, "ein Rumpf ohne JSON ist kein Fehler");
 });

@@ -30,7 +30,7 @@ import {
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
 import { nachtlaufMeldung } from "../kit/board.mjs";
-import { UMSETZUNG_LOCK } from "../kit/night.mjs";
+import { UMSETZUNG_LOCK, verbrauchLeer } from "../kit/night.mjs";
 
 
 /** Das Textprotokoll des Laufs als ein String — der Weg ins Detail, den der Morgen liest. */
@@ -488,4 +488,12 @@ test("ein Lauf mit leerem Ready und ohne jede Rueckstellung behaelt seinen Satz 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Der Vertrag des Ergebnisstands bleibt, wie er ist (Issue #808): Modellzeit und Zuege
+// stehen nicht in `e.verbrauch`, sondern in `e.kennzahlen` — VERBRAUCH_FELDER waechst
+// nicht mit. Belegt ueber das exportierte verbrauchLeer(), das genau diese Felder traegt.
+// Stand bis Issue #1222 im Test der Einlieferung; er prueft night.mjs, nicht den Melder.
+test("[board-20] VERBRAUCH_FELDER des Ergebnisstands bleibt bei den fuenf Mengen-Feldern", () => {
+  assert.deepEqual(Object.keys(verbrauchLeer()), ["kostenUsd", "eingabeTokens", "ausgabeTokens", "cacheErzeugtTokens", "cacheGelesenTokens"]);
 });

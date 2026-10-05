@@ -9,13 +9,14 @@
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-melder",
         "board-wiederholung",
         "installer",
         "nachtrunner"
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -34,6 +35,7 @@
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-melder",
         "board-wiederholung",
         "installer",
         "nachtrunner",
@@ -49,6 +51,7 @@
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-melder",
         "board-wiederholung",
         "installer",
         "nachtrunner",
@@ -126,6 +129,18 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-melder-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-melder",
+        "board-wiederholung",
+        "preise"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -135,6 +150,7 @@
         "board-geschuetzt",
         "board-grundlagen",
         "board-issue-review",
+        "board-melder",
         "board-testhinweise",
         "board-wiederholung",
         "nachtrunner",
@@ -286,8 +302,7 @@
       "test/board-i*.test.mjs",
       "test/board-k*.test.mjs",
       "test/board-l*.test.mjs",
-      "test/board-m*.test.mjs",
-      "test/board-n*.test.mjs",
+      "test/board-mensch-*.test.mjs",
       "test/board-o*.test.mjs",
       "test/board-p*.test.mjs",
       "test/board-r*.test.mjs",
@@ -335,6 +350,10 @@
     "board-issue-review": [
       "kit/board/issue-review.mjs",
       "test/board-issue-review-*.test.mjs"
+    ],
+    "board-melder": [
+      "kit/board/melder.mjs",
+      "test/board-melder-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",

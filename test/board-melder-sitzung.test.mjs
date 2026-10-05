@@ -1,4 +1,5 @@
-// Der Sitzungs-Melder fuer den interaktiven Verbrauch (Issue #734).
+// Der Sitzungs-Melder fuer den interaktiven Verbrauch (Issue #734), im selben Prozess gegen
+// den Teil kit/board/melder.mjs (Issue #1222, Plan #1199, E6 und E18).
 //
 // Was der Melder tut: Er liest das Sitzungsprotokoll von Claude Code, summiert die
 // Tokenmengen, teilt sie anhand der Wegmarken aus Issue #733 auf die Karten auf und
@@ -16,13 +17,14 @@
 // 3. ER RAET KEINEN BETRAG. Ein Modell ohne Eintrag in der Preistabelle fuehrt zu
 //    keinem Dollarbetrag — nicht zu 0, denn 0 waere eine Messung.
 
+
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
-import { sitzungProtokoll, wegmarkenAbschnitte, sitzungMeldung } from "../kit/board.mjs";
-import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
+import { sitzungProtokoll, wegmarkenAbschnitte, sitzungMeldung, sitzungMelden } from "../kit/board/melder.mjs";
 
 const T0 = Date.parse("2026-09-18T08:00:00.000Z");
 const MIN = 60_000;
@@ -241,175 +243,209 @@ test("[board-15] der Betrag einer Karte faellt weg, ohne den der anderen mitzune
   assert.equal(m.items[1].usage.costUsd, null);
   assert.equal(m.usage.costUsd, null, "die Sitzungssumme ist unbekannt, sobald ein Teil es ist");
 });
-
 // --- Das Kommando -----------------------------------------------------------
+//
+// Umgebung, Config, Ablage, stdin, Uhr, Versand und Hinweiskanal sind injiziert; die Ablage
+// ist ein eigenes Verzeichnis unter tmpdir, damit Drosselung und Wegmarken echte Dateien
+// lesen und schreiben. Den Weg ueber die Kommandozeile belegt
+// `test/ablauf-board-melder-cli.test.mjs`.
 
-const TOOLBOX = (host) => ({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } });
-
-/** Ein Fixture mit Protokoll und Wegmarken; liefert Verzeichnis und Protokollpfad. */
-function fixture(config, protokollText, markenText = null) {
-  const dir = setupProjekt(config, "board-sitzung-");
-  const pfad = join(dir, "protokoll.jsonl");
-  writeFileSync(pfad, protokollText, "utf-8");
-  if (markenText !== null) {
-    mkdirSync(join(dir, ".claude"), { recursive: true });
-    writeFileSync(join(dir, ".claude", "wegmarken.tsv"), markenText, "utf-8");
-  }
-  return { dir, pfad };
-}
-
+const TOOLBOX = { codeHost: "local", issueTracker: "toolbox", toolbox: { host: "https://board.invalid" } };
 const EIN_ZUG = protokoll(zug({ id: "a", ms: 0, ausgabe: 100 }));
-
-async function mitServer(fn) {
-  const { server, requests, host } = await starteServer((req) =>
-    req.url === "/api/kanban/night-runs" && req.method === "POST" ? { status: 200, json: { outcome: "REPLACED" } } : null);
-  try {
-    await fn({ requests, host });
-  } finally {
-    server.close();
-  }
+const MIT_TOKEN = { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "" };
+/**
+ * Ein Melder mit eigener Ablage unter tmpdir. `protokollText` liegt als echte Datei darin:
+ * Der Melder liest `--protokoll` vom Dateisystem.
+ */
+function umgebung({ config = TOOLBOX, env = MIT_TOKEN, protokollText = EIN_ZUG, markenText = null, antwort = { outcome: "REPLACED" }, versandFehler = null } = {}) {
+  const ablage = mkdtempSync(join(tmpdir(), "board-melder-sitzung-"));
+  const pfad = join(ablage, "protokoll.jsonl");
+  writeFileSync(pfad, protokollText, "utf-8");
+  if (markenText !== null) writeFileSync(join(ablage, "wegmarken.tsv"), markenText, "utf-8");
+  const gesendet = [];
+  const hinweise = [];
+  const optionen = {
+    // Ein leerer tbx-Ordner, damit der globale Login des Rechners nicht als Token zaehlt.
+    env: { TBX_CONFIG_DIR: join(ablage, "tbx-config"), ...env },
+    leseConfig: () => config,
+    ablage,
+    stdinLesen: () => { throw new Error("kein stdin"); },
+    jetzt: () => JETZT,
+    senden: async (cfg, meldung) => {
+      if (versandFehler) throw versandFehler;
+      gesendet.push({ cfg, meldung });
+      return antwort;
+    },
+    melde: (zeile) => hinweise.push(zeile),
+  };
+  return {
+    ablage, pfad, gesendet, hinweise,
+    melden: (args, extra = {}) => sitzungMelden(args, { ...optionen, ...extra }),
+    aufraeumen: () => rmSync(ablage, { recursive: true, force: true }),
+  };
 }
 
-test("[board-11] sitzung melden schickt den Rumpf mit Token an /api/kanban/night-runs", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG);
-    try {
-      const res = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "" });
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal(JSON.parse(res.stdout).gemeldet, true);
-      assert.equal(requests.length, 1);
-      assert.equal(requests[0].headers["x-kanban-token"], "test-token");
-      const body = JSON.parse(requests[0].body);
-      assert.equal(body.kind, "INTERACTIVE");
-      assert.equal(body.mode, "INTERACTIVE");
-      assert.equal(body.complete, true);
-      assert.equal(body.usage.outputTokens, 100);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-12] bei gesetztem KIT_AGENT_MODEL findet kein HTTP-Aufruf statt", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG);
-    try {
-      const res = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "claude-opus-5" });
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal(JSON.parse(res.stdout).gemeldet, false);
-      assert.equal(requests.length, 0, "der Nacht-Runner meldet diese Session bereits selbst");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-12] ohne Zugriffstoken findet kein HTTP-Aufruf statt", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG);
-    try {
-      const res = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], { KIT_AGENT_MODEL: "" });
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal(JSON.parse(res.stdout).gemeldet, false);
-      assert.equal(requests.length, 0);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-12] ohne Board-Tracker und ohne lesbares Protokoll wird nichts gemeldet", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const lokal = fixture({ codeHost: "local", issueTracker: "local" }, EIN_ZUG);
-    const ohne = fixture(TOOLBOX(host), EIN_ZUG);
-    try {
-      const a = await runBoardAsync(lokal.dir, ["sitzung", "melden", "--protokoll", lokal.pfad], { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" });
-      assert.equal(a.status, 0, a.stderr);
-      assert.equal(JSON.parse(a.stdout).gemeldet, false);
-      const b = await runBoardAsync(ohne.dir, ["sitzung", "melden", "--protokoll", join(ohne.dir, "gibt-es-nicht.jsonl")], { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" });
-      assert.equal(b.status, 0, b.stderr);
-      assert.equal(JSON.parse(b.stdout).gemeldet, false);
-      assert.equal(requests.length, 0);
-    } finally {
-      rmSync(lokal.dir, { recursive: true, force: true });
-      rmSync(ohne.dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-14] zwei Zuege binnen fuenf Minuten erzeugen genau eine Zwischenmeldung", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG);
-    const env = { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" };
-    try {
-      const erste = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad], env);
-      assert.equal(erste.status, 0, erste.stderr);
-      assert.equal(JSON.parse(erste.stdout).gemeldet, true);
-
-      writeFileSync(pfad, protokoll(zug({ id: "a", ms: 0, ausgabe: 100 }), zug({ id: "b", ms: 1000, ausgabe: 50 })), "utf-8");
-      const zweite = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad], env);
-      assert.equal(zweite.status, 0, zweite.stderr);
-      assert.equal(JSON.parse(zweite.stdout).gemeldet, false, "gedrosselt");
-      assert.equal(requests.length, 1);
-
-      // Das Sitzungsende wird nicht gedrosselt — sonst verloere jede kurze Sitzung ihren
-      // Abschluss und der Leitstand haette nie einen vollstaendigen Stand.
-      const ende = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], env);
-      assert.equal(ende.status, 0, ende.stderr);
-      assert.equal(requests.length, 2);
-      assert.equal(JSON.parse(requests[0].body).complete, false);
-      assert.equal(JSON.parse(requests[1].body).complete, true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-14] nach complete ist die Wegmarken-Datei leer, nach einer Zwischenmeldung nicht", async () => {
-  await mitServer(async ({ host }) => {
-    const markenText = marken([10 * MIN, "10", "in_progress"]);
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG, markenText);
-    const datei = join(dir, ".claude", "wegmarken.tsv");
-    const env = { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" };
-    try {
-      await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad], env);
-      assert.equal(readFileSync(datei, "utf-8"), markenText, "eine Zwischenmeldung laesst die Abschnitte stehen");
-
-      await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], env);
-      assert.equal(existsSync(datei), true, "die Datei bleibt, sie wird geleert");
-      assert.equal(readFileSync(datei, "utf-8"), "", "nach dem Sitzungsende zaehlt keine Wegmarke mehr");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-test("[board-14] eine gescheiterte Meldung leert die Wegmarken nicht und beendet die Sitzung nicht hart", async () => {
-  const { server, host } = await starteServer(() => ({ status: 500, json: { message: "kaputt" } }));
-  const markenText = marken([10 * MIN, "10", "in_progress"]);
-  const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG, markenText);
+test("[board-11] sitzung melden schickt den Rumpf mit kind/mode INTERACTIVE an das Board", async () => {
+  const u = umgebung();
   try {
-    const res = await runBoardAsync(dir, ["sitzung", "melden", "--protokoll", pfad, "--complete"], { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" });
-    assert.equal(res.status, 0, "der Melder ist Buchhaltung, keine Bedingung");
-    assert.equal(JSON.parse(res.stdout).gemeldet, false);
-    assert.match(res.stderr, /Sitzungs-Meldung/);
-    assert.equal(readFileSync(join(dir, ".claude", "wegmarken.tsv"), "utf-8"), markenText, "nicht eingeliefert heisst nicht verbucht");
+    const antwort = await u.melden({ protokoll: u.pfad, complete: true });
+    assert.deepEqual(antwort, { ok: true, gemeldet: true, complete: true, karten: 0, outcome: "REPLACED" });
+    assert.equal(u.gesendet.length, 1);
+    assert.equal(u.gesendet[0].cfg, TOOLBOX);
+    const body = u.gesendet[0].meldung;
+    assert.equal(body.kind, "INTERACTIVE");
+    assert.equal(body.mode, "INTERACTIVE");
+    assert.equal(body.complete, true);
+    assert.equal(body.durationMs, 60 * MIN, "die Dauer misst die injizierte Uhr");
+    assert.equal(body.usage.outputTokens, 100);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
-    server.close();
+    u.aufraeumen();
+  }
+});
+
+test("[board-12] bei gesetztem KIT_AGENT_MODEL wird nichts gesendet und keine Config gelesen", async () => {
+  const u = umgebung({ env: { TBX_TOKEN: "t", KIT_AGENT_MODEL: "claude-opus-5" } });
+  try {
+    const antwort = await u.melden({ complete: true }, { leseConfig: () => assert.fail("die Config darf nachts nicht gelesen werden") });
+    assert.deepEqual(antwort, { ok: true, gemeldet: false, grund: "nachtbetrieb" });
+    assert.equal(u.gesendet.length, 0, "der Nacht-Runner meldet diese Session bereits selbst");
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-12] ohne Zugriffstoken wird nichts gesendet", async () => {
+  const u = umgebung({ env: { KIT_AGENT_MODEL: "" } });
+  try {
+    assert.deepEqual(await u.melden({ protokoll: u.pfad, complete: true }), { ok: true, gemeldet: false, grund: "kein-token" });
+    assert.equal(u.gesendet.length, 0);
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-12] ohne Board-Tracker, ohne Config, ohne Protokoll und ohne Zuege wird nichts gemeldet", async () => {
+  const lokal = umgebung({ config: { codeHost: "local", issueTracker: "local" } });
+  const ohneConfig = umgebung({ config: null });
+  const ohne = umgebung();
+  const leer = umgebung({ protokollText: protokoll(ohneUsage(0)) });
+  try {
+    assert.equal((await lokal.melden({ protokoll: lokal.pfad })).grund, "kein-board");
+    assert.equal((await ohneConfig.melden({})).grund, "kein-board");
+    assert.equal((await ohne.melden({ protokoll: join(ohne.ablage, "gibt-es-nicht.jsonl") })).grund, "protokoll-nicht-lesbar");
+    assert.equal((await ohne.melden({ protokoll: undefined })).grund, "kein-protokoll", "ein unlesbarer Hook-Rumpf heisst: kein Protokoll");
+    assert.equal((await leer.melden({ protokoll: leer.pfad })).grund, "nichts-gemessen");
+    for (const u of [lokal, ohneConfig, ohne, leer]) assert.equal(u.gesendet.length, 0);
+  } finally {
+    for (const u of [lokal, ohneConfig, ohne, leer]) u.aufraeumen();
+  }
+});
+
+test("[board-12] ein Hook-Rumpf ohne transcript_path heisst: kein Protokoll", async () => {
+  const u = umgebung();
+  try {
+    const antwort = await u.melden({ protokoll: undefined }, { stdinLesen: () => JSON.stringify({ session_id: "x" }) });
+    assert.equal(antwort.grund, "kein-protokoll");
+  } finally {
+    u.aufraeumen();
   }
 });
 
 test("[board-11] ohne --protokoll kommt der Pfad aus dem Hook-Rumpf auf stdin", async () => {
-  await mitServer(async ({ requests, host }) => {
-    const { dir, pfad } = fixture(TOOLBOX(host), EIN_ZUG);
-    try {
-      const res = await runBoardAsync(dir, ["sitzung", "melden", "--complete"], { TBX_TOKEN: "t", KIT_AGENT_MODEL: "" }, JSON.stringify({ transcript_path: pfad }));
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal(JSON.parse(res.stdout).gemeldet, true);
-      assert.equal(requests.length, 1);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  const u = umgebung();
+  try {
+    const { pfad } = u;
+    const antwort = await u.melden({ protokoll: undefined, complete: true }, { stdinLesen: () => JSON.stringify({ transcript_path: pfad }) });
+    assert.equal(antwort.gemeldet, true);
+    assert.equal(u.gesendet.length, 1);
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-14] zwei Zuege binnen fuenf Minuten erzeugen genau eine Zwischenmeldung", async () => {
+  const u = umgebung();
+  try {
+    const { pfad } = u;
+    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+
+    writeFileSync(pfad, protokoll(zug({ id: "a", ms: 0, ausgabe: 100 }), zug({ id: "b", ms: 1000, ausgabe: 50 })), "utf-8");
+    const zweite = await u.melden({ protokoll: pfad }, { jetzt: () => new Date(JETZT.getTime() + 4 * MIN) });
+    assert.deepEqual(zweite, { ok: true, gemeldet: false, grund: "gedrosselt" });
+    assert.equal(u.gesendet.length, 1);
+
+    // Nach Ablauf der fuenf Minuten meldet die naechste Zwischenmeldung wieder.
+    const spaeter = await u.melden({ protokoll: pfad }, { jetzt: () => new Date(JETZT.getTime() + 5 * MIN) });
+    assert.equal(spaeter.gemeldet, true);
+
+    // Das Sitzungsende wird nicht gedrosselt — sonst verloere jede kurze Sitzung ihren
+    // Abschluss und der Leitstand haette nie einen vollstaendigen Stand.
+    const ende = await u.melden({ protokoll: pfad, complete: true }, { jetzt: () => new Date(JETZT.getTime() + 6 * MIN) });
+    assert.equal(ende.gemeldet, true);
+    assert.deepEqual(u.gesendet.map((g) => g.meldung.complete), [false, false, true]);
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-14] ein fremder oder kaputter Stand zaehlt als noch nie gemeldet", async () => {
+  const u = umgebung();
+  try {
+    const { pfad } = u;
+    writeFileSync(join(u.ablage, "sitzung-meldung.json"), "{kaputt", "utf-8");
+    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+    writeFileSync(join(u.ablage, "sitzung-meldung.json"), JSON.stringify({ sitzung: "andere", zuletzt: JETZT.toISOString() }), "utf-8");
+    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-14] nach complete ist die Wegmarken-Datei leer, nach einer Zwischenmeldung nicht", async () => {
+  const markenText = marken([10 * MIN, "10", "in_progress"]);
+  const u = umgebung({ markenText });
+  const datei = join(u.ablage, "wegmarken.tsv");
+  try {
+    const { pfad } = u;
+    await u.melden({ protokoll: pfad });
+    assert.equal(readFileSync(datei, "utf-8"), markenText, "eine Zwischenmeldung laesst die Abschnitte stehen");
+    assert.equal(u.gesendet[0].meldung.items.length, 0, "der Zug liegt vor der Wegmarke und gehoert keiner Karte");
+
+    await u.melden({ protokoll: pfad, complete: true });
+    assert.equal(existsSync(datei), true, "die Datei bleibt, sie wird geleert");
+    assert.equal(readFileSync(datei, "utf-8"), "", "nach dem Sitzungsende zaehlt keine Wegmarke mehr");
+    assert.deepEqual(JSON.parse(readFileSync(join(u.ablage, "sitzung-meldung.json"), "utf-8")), { sitzung: new Date(T0).toISOString(), zuletzt: null });
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-14] eine gescheiterte Meldung leert die Wegmarken nicht und beendet die Sitzung nicht hart", async () => {
+  const markenText = marken([10 * MIN, "10", "in_progress"]);
+  const u = umgebung({ markenText, versandFehler: new Error("HTTP 500 kaputt") });
+  try {
+    const antwort = await u.melden({ protokoll: u.pfad, complete: true });
+    assert.deepEqual(antwort, { ok: true, gemeldet: false, grund: "nicht-eingeliefert" }, "der Melder ist Buchhaltung, keine Bedingung");
+    assert.deepEqual(u.hinweise, ["Hinweis: Sitzungs-Meldung nicht eingeliefert: HTTP 500 kaputt"]);
+    assert.equal(readFileSync(join(u.ablage, "wegmarken.tsv"), "utf-8"), markenText, "nicht eingeliefert heisst nicht verbucht");
+    assert.equal(existsSync(join(u.ablage, "sitzung-meldung.json")), false, "und nicht gedrosselt");
+  } finally {
+    u.aufraeumen();
+  }
+});
+
+test("[board-14] ein Stand, der sich nicht schreiben laesst, bleibt ein Hinweis", async () => {
+  const u = umgebung();
+  try {
+    const { pfad } = u;
+    // Die Ablage ist eine Datei: mkdir scheitert, die Meldung ist trotzdem raus.
+    const versperrt = join(u.ablage, "versperrt");
+    writeFileSync(versperrt, "", "utf-8");
+    const antwort = await u.melden({ protokoll: pfad }, { ablage: versperrt });
+    assert.equal(antwort.gemeldet, true);
+    assert.equal(u.hinweise.length, 1);
+    assert.match(u.hinweise[0], /^Hinweis: Sitzungs-Stand nicht geschrieben/);
+  } finally {
+    u.aufraeumen();
+  }
 });
